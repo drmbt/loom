@@ -54,11 +54,30 @@ export const HELPER_DEVICES_ONLY_FLAG = "--devices-only";
  */
 export const HELPER_TERMINAL_FLAG = "--terminal";
 
+/**
+ * The flag that opens EVERY door in one word (T1343b).
+ *
+ * The owner's ask was *"a way where we can just start an ALL-INCLUSIVE helper … so that we
+ * don't have to remember all the different flags"*, and the answer is one command — but NOT
+ * a new default, because of what the flags being folded in ARE. `--terminal` spawns shells;
+ * the export grant lets an attached agent read rendered pixels and readback buffers. Those
+ * are security grants wearing convenience's clothes. Turning them on for a BARE invocation
+ * would silently widen what "start the helper" means for everyone who already runs it,
+ * including anyone with it in a script — so `--all` is one thing to remember and still an
+ * affirmative act, and `DEVICE_HELPER_COMMAND` alone keeps meaning exactly what it meant.
+ *
+ * Named here for the same reason the other two flags are, and `helper.test.ts` enforces it.
+ */
+export const HELPER_ALL_FLAG = "--all";
+
 /** The literal command. One place, because it is expected to be renamed. */
 export const DEVICE_HELPER_COMMAND = `pnpm ${HELPER_SCRIPT}`;
 
 /** The command that also opens the terminal door (T1263). */
 export const DEVICE_HELPER_TERMINAL_COMMAND = `${DEVICE_HELPER_COMMAND} ${HELPER_TERMINAL_FLAG}`;
+
+/** The one-command form: device bridge, agent server, terminal and export grant (T1343b). */
+export const DEVICE_HELPER_ALL_COMMAND = `${DEVICE_HELPER_COMMAND} ${HELPER_ALL_FLAG}`;
 
 /**
  * The command for someone who wants NOTHING to do with agents (T1111).
@@ -68,6 +87,42 @@ export const DEVICE_HELPER_TERMINAL_COMMAND = `${DEVICE_HELPER_COMMAND} ${HELPER
  * and the same pairing code.
  */
 export const DEVICE_HELPER_DEVICES_ONLY_COMMAND = `${DEVICE_HELPER_COMMAND} ${HELPER_DEVICES_ONLY_FLAG}`;
+
+/**
+ * WHAT `--all` OPENED, SAID OUT LOUD AT STARTUP (T1343b, §V985/§V986's family).
+ *
+ * The one-command form is precisely the one whose user did NOT enumerate the doors, so this
+ * line is where they learn what is now reachable: a grant the user cannot see is a grant
+ * they cannot revoke. It names the two grants in terms of the capability rather than the
+ * flag, because the reader who typed `--all` never typed `--terminal` and will not recognise
+ * it — "shells as you" and "reads pixels and readback buffers" are what they can act on.
+ *
+ * The last clause is the revocation: dropping the flag is how you close the last two doors,
+ * and the sentence has to say so or the banner is a notice with no exit.
+ *
+ * Printed by `serveStdio`'s entry point on stderr, beside `terminalDoorBanner` — which still
+ * prints its own shell/cwd/user line, because only the door itself knows those.
+ */
+export const HELPER_ALL_BANNER =
+  `Started with \`${HELPER_ALL_FLAG}\`: device bridge (OSC, laser, Apple Vision), agent ` +
+  "server on stdio, TERMINAL (a paired Loom tab may open shells as you), and the EXPORT " +
+  "GRANT (an attached agent may read rendered pixels and readback buffers). " +
+  `\`${DEVICE_HELPER_COMMAND}\` on its own opens the first two and neither of the last two.`;
+
+/**
+ * WHY `--all --devices-only` IS REFUSED BY NAME (T1343b).
+ *
+ * One flag is ADDITIVE and the other is SUBTRACTIVE, so there is no reading of the pair that
+ * is not a guess about which the person meant. Precedence would pick one silently and start
+ * a helper with a door set nobody asked for — and at least one of those doors is a shell.
+ * So the contradiction is named and nothing starts, the shape `PREVIEW_ORBIT_RIGS` and
+ * T1311b(a)'s camera contract both use: refuse, say which two, say what to type instead.
+ */
+export const HELPER_ALL_DEVICES_ONLY_REFUSAL =
+  `\`${HELPER_ALL_FLAG}\` and \`${HELPER_DEVICES_ONLY_FLAG}\` contradict each other: one opens ` +
+  "every door, the other closes all but the device bridge. Nothing was started. Run " +
+  `\`${DEVICE_HELPER_ALL_COMMAND}\` for everything, or ` +
+  `\`${DEVICE_HELPER_DEVICES_ONLY_COMMAND}\` for devices with no agent server and no shell.`;
 
 /**
  * What the helper is, in the fewest words that stop the wrong inference.

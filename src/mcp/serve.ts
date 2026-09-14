@@ -20,7 +20,13 @@ import { createBridgeHost, type BridgeStatus } from "./bridge-host.ts";
 import { createDeviceDoors, type DeviceDoors } from "@devices/doors.ts";
 import type { TerminalHost } from "@devices/terminal-host.ts";
 import type { UdpSocketFactory } from "@devices/device-hub.ts";
-import { HELPER_DEVICES_ONLY_FLAG, HELPER_TERMINAL_FLAG } from "@devices/helper.ts";
+import {
+  HELPER_ALL_BANNER,
+  HELPER_ALL_DEVICES_ONLY_REFUSAL,
+  HELPER_ALL_FLAG,
+  HELPER_DEVICES_ONLY_FLAG,
+  HELPER_TERMINAL_FLAG,
+} from "@devices/helper.ts";
 
 /**
  * The out-of-process MCP server (T290, T294): a HEADLESS Loom on stdio — store,
@@ -487,12 +493,16 @@ function terminalDoorBanner(door: TerminalHost): string {
   return `Terminal door OPEN: paired Loom tabs served from localhost (and only those) may open one ${shell} per terminal pane in ${cwd}, as ${userInfo().username}. Every shell dies with its pane, and all of them with this helper.`;
 }
 
-export function serveStdio(options: { readonly terminal?: boolean } = {}): void {
+export function serveStdio(
+  options: { readonly terminal?: boolean; readonly grantExport?: boolean } = {},
+): void {
   const server = createHeadlessMcpServer({
     send: (message) => {
       process.stdout.write(`${JSON.stringify(message)}\n`);
     },
-    grantExport: process.argv.includes("--grant-export"),
+    // T1343b: the argv read moved to `resolveHelperInvocation` with the other two, so ONE
+    // function answers "which doors does this command line open" and a test can ask it.
+    grantExport: options.grantExport === true,
     // The listener is ON here and nowhere else: this is the one caller that owns a process
     // (T451). stdout is the JSON-RPC channel, so everything a HUMAN reads goes to stderr.
     bridge: {
@@ -653,13 +663,61 @@ export function serveDevices(options: { readonly terminal?: boolean } = {}): voi
   process.on("SIGTERM", close);
 }
 
+/**
+ * WHICH DOORS A COMMAND LINE OPENS, DECIDED IN ONE PLACE (T1111, T1263, T1343b).
+ *
+ * The flag→door mapping has always belonged to the entry points and nowhere else; T1343b
+ * makes that one PURE FUNCTION instead of three `process.argv.includes` calls in two scopes,
+ * because `--all` is the first flag whose meaning is a COMBINATION and the first that can
+ * CONTRADICT another. Both of those are decisions, and a decision spread across the file is
+ * a decision no test can ask about. The entry point below is now a switch over the answer.
+ *
+ * `--grant-export` is read here too, having been read inside `serveStdio` until now — one
+ * command line, one reader. `--terminal` and `--devices-only` stay orthogonal (a shell with
+ * no agent server is a real thing to want, §T1263); `--all` implies both grants and is
+ * refused BY NAME against `--devices-only` rather than losing to precedence.
+ */
+export type HelperInvocation =
+  | { readonly kind: "refused"; readonly reason: string }
+  | { readonly kind: "devices"; readonly terminal: boolean }
+  | {
+      readonly kind: "stdio";
+      readonly terminal: boolean;
+      readonly grantExport: boolean;
+      /** The `--all` startup line, or null when this invocation opened nothing extra. */
+      readonly banner: string | null;
+    };
+
+export function resolveHelperInvocation(args: readonly string[]): HelperInvocation {
+  const all = args.includes(HELPER_ALL_FLAG);
+  const devicesOnly = args.includes(HELPER_DEVICES_ONLY_FLAG);
+  // Additive meets subtractive: there is no reading of the pair that is not a guess, and
+  // one of the doors at stake is a shell. Refuse before anything binds, dials or spawns.
+  if (all && devicesOnly) return { kind: "refused", reason: HELPER_ALL_DEVICES_ONLY_REFUSAL };
+  const terminal = all || args.includes(HELPER_TERMINAL_FLAG);
+  if (devicesOnly) return { kind: "devices", terminal };
+  return {
+    kind: "stdio",
+    terminal,
+    grantExport: all || args.includes("--grant-export"),
+    banner: all ? HELPER_ALL_BANNER : null,
+  };
+}
+
 // Started directly (not imported): serve.
 if (process.argv[1]?.endsWith("serve.ts") === true) {
-  // T1111: the flag decides WHICH doors open. Read here rather than inside either function,
-  // so the two entry points stay independently callable by a test. T1263: `--terminal` is
-  // the second flag, orthogonal to the first — `--devices-only --terminal` is a shell with
-  // no agent server — and this is the ONLY place it is read.
-  const terminal = process.argv.includes(HELPER_TERMINAL_FLAG);
-  if (process.argv.includes(HELPER_DEVICES_ONLY_FLAG)) serveDevices({ terminal });
-  else serveStdio({ terminal });
+  const invocation = resolveHelperInvocation(process.argv.slice(2));
+  if (invocation.kind === "refused") {
+    // stderr and a non-zero exit, because the caller asked for two incompatible things and
+    // got neither: a refusal that exits 0 reads as a helper that started (§V288).
+    process.stderr.write(`[loom helper] ${invocation.reason}\n`);
+    process.exit(2);
+  } else if (invocation.kind === "devices") {
+    serveDevices({ terminal: invocation.terminal });
+  } else {
+    // Before the doors open, not after: the reader of the one-command form learns what is
+    // reachable from the line that scrolls past first (T1343b).
+    if (invocation.banner !== null) process.stderr.write(`[loom helper] ${invocation.banner}\n`);
+    serveStdio({ terminal: invocation.terminal, grantExport: invocation.grantExport });
+  }
 }

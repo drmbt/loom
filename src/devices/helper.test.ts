@@ -6,9 +6,13 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import {
+  DEVICE_HELPER_ALL_COMMAND,
   DEVICE_HELPER_COMMAND,
   DEVICE_HELPER_DEVICES_ONLY_COMMAND,
   DEVICE_HELPER_TERMINAL_COMMAND,
+  HELPER_ALL_BANNER,
+  HELPER_ALL_DEVICES_ONLY_REFUSAL,
+  HELPER_ALL_FLAG,
   HELPER_DEVICES_ONLY_FLAG,
   HELPER_SCRIPT,
   HELPER_TERMINAL_FLAG,
@@ -17,7 +21,7 @@ import {
   TERMINAL_UNPAIRED_REFUSAL,
 } from "./helper.ts";
 import { createDeviceDoors } from "./doors.ts";
-import { createDeviceHelper } from "../mcp/serve.ts";
+import { createDeviceHelper, resolveHelperInvocation } from "../mcp/serve.ts";
 
 /**
  * ONE SPELLING OF THE COMMAND, AND A GATE THAT SAYS SO (T1110, §V39).
@@ -161,6 +165,107 @@ describe("the helper command has exactly one spelling (T1110)", () => {
       }
     }
     expect(offenders, "Import HELPER_TERMINAL_FLAG from @devices/helper.ts instead").toEqual([]);
+  });
+
+  /*
+   * T1343b — the fourth spelling. `--all` inherits the rule the other two flags carry: one
+   * definition, and every sentence that names it interpolates that definition. The banner
+   * and the refusal both do, which is why neither appears in the offender list below.
+   *
+   * Substring matching is deliberate and the same as the `--terminal` scan above: a file
+   * that says `--all-outputs` would be flagged, and being asked to justify a near-miss is
+   * the cheap side of that trade next to a second spelling of a flag that grants a shell.
+   */
+  it("the --all flag is not spelled into a string anywhere else under src/ (T1343b)", () => {
+    const offenders: string[] = [];
+    for (const path of sourceFiles(SRC)) {
+      if (ALLOWED.has(path)) continue;
+      if (literalText(path).some((text) => text.includes(HELPER_ALL_FLAG))) {
+        offenders.push(relative(SRC, path));
+      }
+    }
+    expect(offenders, "Import HELPER_ALL_FLAG from @devices/helper.ts instead").toEqual([]);
+  });
+
+  it("builds the all-inclusive command from the same script name (T1343b)", () => {
+    expect(DEVICE_HELPER_ALL_COMMAND).toBe(`${DEVICE_HELPER_COMMAND} ${HELPER_ALL_FLAG}`);
+  });
+});
+
+/**
+ * T1343b — ONE COMMAND TO REMEMBER, AND IT IS STILL AN EXPLICIT GRANT.
+ *
+ * What these assert is not "the parser parses". It is the RULING: `--all` folds in two
+ * SECURITY GRANTS — a shell spawner and a pixel/readback reader — so (a) it must fold them
+ * in, (b) a BARE invocation must be untouched by its existence, (c) the process must SAY
+ * what it opened, because a grant the user cannot see is a grant they cannot revoke, and
+ * (d) the contradiction with `--devices-only` must be refused by name rather than resolved
+ * by precedence. Each of those can regress independently and silently.
+ */
+describe("`--all` opens every door, and only when asked (T1343b)", () => {
+  it("folds in the terminal and the export grant, which no other single flag does", () => {
+    const all = resolveHelperInvocation([HELPER_ALL_FLAG]);
+    expect(all.kind).toBe("stdio");
+    if (all.kind !== "stdio") return;
+    expect(all.terminal).toBe(true);
+    expect(all.grantExport).toBe(true);
+  });
+
+  /*
+   * THE LOAD-BEARING ONE. Anyone who has ever typed the bare command — or put it in a
+   * script — gets the same process they got before `--all` existed. If this goes red, the
+   * convenience became a default and every existing invocation silently grew a shell door.
+   */
+  it("leaves the bare invocation exactly as it was: no shell, no pixels", () => {
+    const bare = resolveHelperInvocation([]);
+    expect(bare.kind).toBe("stdio");
+    if (bare.kind !== "stdio") return;
+    expect(bare.terminal).toBe(false);
+    expect(bare.grantExport).toBe(false);
+    expect(bare.banner).toBeNull();
+  });
+
+  it("still honours each flag on its own, so --all is additive and not a replacement", () => {
+    const terminalOnly = resolveHelperInvocation([HELPER_TERMINAL_FLAG]);
+    expect(terminalOnly.kind === "stdio" && terminalOnly.terminal).toBe(true);
+    expect(terminalOnly.kind === "stdio" && terminalOnly.grantExport).toBe(false);
+    const exportOnly = resolveHelperInvocation(["--grant-export"]);
+    expect(exportOnly.kind === "stdio" && exportOnly.grantExport).toBe(true);
+    expect(exportOnly.kind === "stdio" && exportOnly.terminal).toBe(false);
+    const devicesTerminal = resolveHelperInvocation([HELPER_DEVICES_ONLY_FLAG, HELPER_TERMINAL_FLAG]);
+    expect(devicesTerminal).toEqual({ kind: "devices", terminal: true });
+  });
+
+  /*
+   * The announcement is the condition the ruling attached to the convenience, so it is
+   * asserted by CONTENT and not merely as non-null: a reader who did not enumerate the
+   * doors has to find the two grants and the way back out in this one line.
+   */
+  it("says what it opened, naming both grants and the way to not have them", () => {
+    const all = resolveHelperInvocation([HELPER_ALL_FLAG]);
+    expect(all.kind === "stdio" && all.banner).toBe(HELPER_ALL_BANNER);
+    expect(HELPER_ALL_BANNER).toContain("shells as you");
+    expect(HELPER_ALL_BANNER).toContain("readback buffers");
+    // The revocation: the bare command, named, as the thing that opens neither.
+    expect(HELPER_ALL_BANNER).toContain(DEVICE_HELPER_COMMAND);
+  });
+
+  it("refuses --all --devices-only BY NAME and starts nothing, in either argument order", () => {
+    for (const args of [
+      [HELPER_ALL_FLAG, HELPER_DEVICES_ONLY_FLAG],
+      [HELPER_DEVICES_ONLY_FLAG, HELPER_ALL_FLAG],
+      [HELPER_DEVICES_ONLY_FLAG, HELPER_ALL_FLAG, HELPER_TERMINAL_FLAG],
+    ]) {
+      expect(resolveHelperInvocation(args), `precedence decided ${args.join(" ")}`).toEqual({
+        kind: "refused",
+        reason: HELPER_ALL_DEVICES_ONLY_REFUSAL,
+      });
+    }
+    // BY NAME: both flags, and both of the commands the reader could have meant instead.
+    expect(HELPER_ALL_DEVICES_ONLY_REFUSAL).toContain(HELPER_ALL_FLAG);
+    expect(HELPER_ALL_DEVICES_ONLY_REFUSAL).toContain(HELPER_DEVICES_ONLY_FLAG);
+    expect(HELPER_ALL_DEVICES_ONLY_REFUSAL).toContain(DEVICE_HELPER_ALL_COMMAND);
+    expect(HELPER_ALL_DEVICES_ONLY_REFUSAL).toContain(DEVICE_HELPER_DEVICES_ONLY_COMMAND);
   });
 });
 
