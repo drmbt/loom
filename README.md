@@ -18,9 +18,9 @@
 ## Run
 
 The hosted build has everything that runs in the browser. Anything needing a helper
-process on your machine — the stdio MCP bridge today, external devices and services
-later — works only from a local clone. Nodes that need one stay visible either way and
-say what they are waiting for.
+process on your machine — OSC, a laser DAC, the native Person Mask, a shell in a pane,
+the stdio MCP bridge — works only from a local clone. Nodes and panes that need one stay
+visible either way and say what they are waiting for.
 
 Requires Node.js 22.12+, pnpm 9.15.4, and a WebGPU browser.
 
@@ -33,7 +33,10 @@ For the Electron app, run `pnpm desktop:dev`. The lockfile pins the tested runti
 its official installer downloads the binary on first use. macOS Apple Silicon
 supports **Syphon In / Out** using the same graph runtime. Building the native
 adapters requires Xcode and its macOS SDK. See [desktop setup and validation](src/desktop/README.md).
-Windows native transport, NDI and native Python inference are not yet integrated.
+**NDI In / Out** and native Python inference for Person Mask also run there, each behind an
+explicit opt-in the desktop README covers — a separately supplied NDI SDK path, and a Python
+3.11+ interpreter with no packages or models installed for you. Windows native transport
+(Spout) is node wiring only; the transport itself is not implemented.
 
 Desktop checks: `pnpm desktop:check` (unit/ownership) and `pnpm desktop:test`
 (actual app/GPU integration; macOS native checks require Apple Silicon).
@@ -41,6 +44,51 @@ Desktop checks: `pnpm desktop:check` (unit/ownership) and `pnpm desktop:test`
 ```bash
 pnpm lint && pnpm typecheck && pnpm test && pnpm build
 ```
+
+## The local helper
+
+A browser tab cannot receive or send UDP, cannot open TCP to a laser DAC, cannot run the
+Apple Vision worker, cannot spawn a shell, and cannot speak stdio MCP. One local process —
+**the helper** — does all five, behind a single pairing code you enter once in the agent
+panel's **Connections** section. There is no second code and no second panel.
+
+```bash
+pnpm helper                  # device bridge + agent server. No shells, no pixels.
+pnpm helper --terminal       # …and terminal panes can open a shell
+pnpm helper --grant-export   # …and an attached agent may read pixels and readbacks
+pnpm helper --all            # every door above, in one flag
+pnpm helper --devices-only   # OSC, laser and Person Mask only — no agent server at all
+```
+
+`--all` is the one to remember. It is **not the default, and that is deliberate**:
+`--terminal` hands whoever pairs a shell running as you, and `--grant-export` lets an
+attached agent read rendered pixels and readback buffers. Those are grants, not
+conveniences, and switching them on for a bare `pnpm helper` would quietly widen what that
+command means for everyone who already has it in a script. So the one-command form stays an
+affirmative act — and it **prints what it opened** before any door opens, because a grant
+you cannot see is a grant you cannot revoke.
+
+`pnpm helper --all` and `pnpm helper --devices-only` contradict each other, one adding every
+door and the other removing all but one. The helper **refuses the pair by name** and starts
+nothing, rather than letting flag order pick a winner.
+
+## Terminal
+
+A pane can hold a real shell, so an editor session does not mean juggling windows. **One
+shell per pane**, started in the directory the helper was started from, running as you.
+
+It is **opt-in per helper launch** — `pnpm helper --terminal`, or `pnpm helper --all` — and
+nothing inside the page or on the wire can turn it on. This door is not like the other
+three: a UDP socket or a segmentation mask is one capability, while a shell is every
+capability you have. So the helper builds it only when the person who started the process
+said so on its own command line, it accepts loopback pages only, and it prints one line at
+startup naming the shell, the directory and the user it will run as.
+
+Closing a pane **kills** its shell. Restoring a saved layout opens a fresh one rather than
+re-attaching — a session nobody can see is a session nobody should be able to reach — and
+every shell dies with the helper. A pane with no shell to show says which of the two reasons
+applies (no helper paired, or one paired that was started without the flag) and names the
+command to fix it.
 
 ## MIDI
 
@@ -76,17 +124,10 @@ Then send from one tab and learn in the other. The page repeats these instructio
 An **OSC In** node reads OSC as channels and an **OSC Out** node sends them back out, so a
 patch can sit in the middle of a studio chain rather than at the end of one.
 
-Both need a **local helper**, because a browser page cannot receive or send UDP. It is one
-process with two doors — the device bridge these nodes use, and the stdio MCP server an
-agent uses — so if you are already running it for an agent, it is already running for OSC:
-
-```bash
-pnpm helper                  # both doors
-pnpm helper --devices-only   # OSC, laser and Person Mask, with no MCP server at all
-```
-
-Enter the pairing code it prints in the agent panel's **Connections** section, once. The OSC
-nodes use the same attachment — there is no second code and no second panel.
+Both need [the local helper](#the-local-helper), because a browser page cannot receive or
+send UDP. Every form of it opens the device bridge and none of the extra flags are needed
+for OSC, so if you are already running the helper for an agent it is already running for
+these nodes, on the same pairing code.
 
 **Everything else is on the node itself.** On *OSC In*, set **Port** and list the channel
 names you want in **Controls** (`cutoff pan`); each name grows its own **Address** and
@@ -161,7 +202,7 @@ Restart Claude, then ask it to call `bridge_status` and show the current pairing
 starting its own:
 
 ```bash
-pnpm helper --grant-export
+pnpm helper --grant-export   # …or pnpm helper --all, which includes it
 ```
 
 `--grant-export` is what enables the pixel and readback tools — `render_preview`,
@@ -232,6 +273,7 @@ pnpm deploy
 - Bring in stills, video and webcams. Run depth and pose inference in the browser, then use the results in texture and point graphs.
 - Turn a selection into a versioned component, then publish the controls its instances should expose.
 - Preview any branch, pop panes into their own windows, save layouts, export stills or render a frame range to MP4.
+- Keep a shell in a pane, when the local helper is started with the flag that opts into it.
 - Drive the open document from the UI, MCP or WebMCP through the same command surface. Changes remain visible and undoable.
 - Save versioned `.loom.json` projects, with autosave recovery if the tab disappears.
 

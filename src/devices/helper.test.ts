@@ -20,6 +20,7 @@ import {
   TERMINAL_PANE_RUN,
   TERMINAL_UNPAIRED_REFUSAL,
 } from "./helper.ts";
+import * as helperModule from "./helper.ts";
 import { createDeviceDoors } from "./doors.ts";
 import { createDeviceHelper, resolveHelperInvocation } from "../mcp/serve.ts";
 
@@ -266,6 +267,76 @@ describe("`--all` opens every door, and only when asked (T1343b)", () => {
     expect(HELPER_ALL_DEVICES_ONLY_REFUSAL).toContain(HELPER_DEVICES_ONLY_FLAG);
     expect(HELPER_ALL_DEVICES_ONLY_REFUSAL).toContain(DEVICE_HELPER_ALL_COMMAND);
     expect(HELPER_ALL_DEVICES_ONLY_REFUSAL).toContain(DEVICE_HELPER_DEVICES_ONLY_COMMAND);
+  });
+});
+
+/**
+ * T1344b — THE README IS OUTSIDE `src/`, WHICH IS EXACTLY HOW IT FELL BEHIND.
+ *
+ * ## The failure this exists for, as it actually happened
+ *
+ * `--terminal` shipped in §T1263 with its own door, its own opt-in flag and its own copy,
+ * and the README never learned about it — the word appeared NOWHERE in 240 lines that
+ * documented `pnpm helper`, `--devices-only` and `--grant-export`. The T1110 gate above
+ * walks `src/` and cannot see a file one directory up, so the one document a new user reads
+ * first is the one document nothing checked.
+ *
+ * ## Why this gate and not a bigger one
+ *
+ * §V1003's amendment says a gate nobody runs is worse than none, and this project's CI runs
+ * no tests at all. So this is deliberately the cheapest thing that would have caught it: a
+ * `readFileSync` and a substring, in a file ALREADY named in `test:gates` — no new script
+ * entry, no `gate-list` exemption, nothing anyone has to remember to run. The subjects are
+ * DERIVED from the module's own exports rather than listed here, so the fifth command
+ * constant somebody adds is red in the README on the day they add it, which is the property
+ * a hand-maintained list would not have.
+ *
+ * ## Blind spot, stated
+ *
+ * This proves the README SPELLS each command correctly, not that the prose around it is
+ * true. A section that describes `--terminal` wrongly still passes. What it removes is the
+ * silent case — a command that exists in the product and is absent from, or misspelled in,
+ * the document that teaches it.
+ */
+describe("the README spells every helper command the product builds (T1344b)", () => {
+  const readme = readFileSync(resolve(SRC, "..", "README.md"), "utf8");
+
+  /** Every `DEVICE_HELPER_*_COMMAND` export: what a human is told to type. */
+  const commands = Object.entries(helperModule)
+    .filter(
+      (entry): entry is [string, string] =>
+        /^DEVICE_HELPER(_[A-Z_]+)?_COMMAND$/.test(entry[0]) && typeof entry[1] === "string",
+    )
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  it("found the commands to check by reading the module, not a list kept here", () => {
+    // The floor, said out loud (§V739): a filter that stopped matching would make the
+    // assertion below vacuously green rather than loudly red.
+    expect(commands.map(([name]) => name)).toContain("DEVICE_HELPER_ALL_COMMAND");
+    expect(commands.length).toBeGreaterThan(1);
+  });
+
+  it("spells each one exactly as helper.ts builds it", () => {
+    const missing = commands.filter(([, command]) => !readme.includes(command));
+    expect(
+      missing.map(([name, command]) => `${name} (\`${command}\`)`),
+      "README.md is outside src/, so the T1110 scan above cannot reach it. Write these " +
+        "commands into README.md, or this document teaches a command the product does not have",
+    ).toEqual([]);
+  });
+
+  /*
+   * The retired name, for the same reason the `src/` scan looks for it. The README may
+   * SAY the alias exists (it does, in a sentence explaining that an old config keeps
+   * working) but must not hand it out as the command to run, which is what the `pnpm `
+   * prefix distinguishes — the same distinction the scan above draws.
+   */
+  it("hands out the current script name and not the retired one", () => {
+    const mentions = readme
+      .split("\n")
+      .map((line, index) => [index + 1, line] as const)
+      .filter(([, line]) => line.includes(RETIRED_COMMAND));
+    expect(mentions.map(([line, text]) => `${String(line)}: ${text.trim()}`)).toEqual([]);
   });
 });
 

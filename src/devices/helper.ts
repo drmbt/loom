@@ -183,5 +183,12 @@ export const TERMINAL_PANE_THEN = "Pair it in Agent \u2192 Connections.";
 export const TERMINAL_UNPAIRED_REFUSAL =
   `No local helper is paired with this tab. Run \`${TERMINAL_PANE_RUN}\`. ${TERMINAL_PANE_THEN}`;
 
-/** Where the long version lives — the README's helper section (T1284b). */
-export const HELPER_DOCS_URL = "https://github.com/laubsauger/loom#osc";
+/**
+ * Where the long version lives — the README's helper section (T1284b).
+ *
+ * T1344b pointed it at the section it always named. Until then the README had no helper
+ * section and this anchored on `#osc`, the nearest thing — so a terminal pane's "read more"
+ * sent the reader to a page about UDP. The README now opens with the helper, its flags and
+ * the terminal door, which is what a pane with no shell needs the reader to find.
+ */
+export const HELPER_DOCS_URL = "https://github.com/laubsauger/loom#the-local-helper";
