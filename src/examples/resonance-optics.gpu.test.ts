@@ -10,8 +10,9 @@ import { BYTES_PER_PIXEL } from "../runtime/export/pixel-format.ts";
 let unavailable:string|undefined;
 beforeAll(async()=>{unavailable=(await probeDawn()).error;},60_000);
 const prefix=RESONANCE_ROOM_WGSL.slice(0,RESONANCE_ROOM_WGSL.indexOf("@fragment fn fs"));
-async function pixels(source:string,output:string,parameters:Record<string,number>={}) {
+async function pixels(source:string,output:string,parameters:Record<string,number>={},lensParameters:Record<string,number>={}) {
   const graph=structuredClone(resonanceDocument.graph);
+  Object.assign(graph.nodes["lens"]!.parameters,lensParameters);
   graph.nodes["room"]!.parameters={...graph.nodes["room"]!.parameters,...parameters,source:prefix+source};
   const result=await renderHeadless({host:nodeGpuHost(),components:await starterComponentsView(),graph,settings:{...resonanceDocument.settings,outputResolution:{width:256,height:4}},frames:1,outputNodeId:output});
   expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
@@ -28,6 +29,14 @@ describe("Resonance floor and lens response",()=>{
     expect(early[45*4]!).toBeGreaterThan(quiet[45*4]!*3);
     expect(early[64*4]!).toBeGreaterThan(late[64*4]!*1.5);
     expect(late[192*4]!).toBeGreaterThan(early[192*4]!*1.5);
+  },60_000);
+  it("bass strikes illuminate stone beside a floor fixture without lifting distant blacks",async(ctx)=>{
+    if(unavailable){ctx.skip();return;}
+    const source="\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {return vec4f(surface(vec3f(select(3.9,9.0,uv.x>0.5),0,0.2),vec3f(0,-1,0),1.0),1);}";
+    const quiet=await pixels(source,"room",{bass:0,energy:0,beatPosition:0});
+    const strike=await pixels(source,"room",{bass:1,energy:0,beatPosition:0});
+    expect(strike[0]!-quiet[0]!).toBeGreaterThan(12);
+    expect(Math.abs(strike[200*4]!-quiet[200*4]!)).toBeLessThanOrEqual(1);
   },60_000);
   it("keeps the focus plane sharp and gently softens the distant background",async(ctx)=>{
     if(unavailable){ctx.skip();return;}
@@ -128,6 +137,87 @@ ${SHARED_UNIFORMS_WGSL}
     const palette=await sample("\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {return vec4f(paletteWarm(),1);}");
     expect(palette[1]![1]!).toBeLessThan(palette[0]![1]!); // Gold -> orange.
     expect(palette[2]![2]!).toBeGreaterThan(palette[2]![0]!); // Violet.
+  },60_000);
+
+  it("advects the water downward and keeps it visible under a dark video projection",async(ctx)=>{
+    if(unavailable){ctx.skip();return;}
+    const sample=async(travel:boolean,projection:boolean,water=1)=>{
+      const graph=structuredClone(resonanceDocument.graph);
+      const source=projection?
+        "return vec4f(panelContent(vec2f(uv.x*0.58,2.0+uv.y*9.0),3),1);":
+        `let seed=hash(vec3f(3,params.projectionSeed,83));let offset=${travel?"frameU.absTime*(1.15+seed*0.4)":"0.0"};return vec4f(vec3f(fallingWater(vec2f(uv.x*0.58,2.0+uv.y*9.0-offset),3).z),1);`;
+      graph.nodes["room"]!.parameters={...graph.nodes["room"]!.parameters,panelVideo:1,videoMotion:0,videoGlitch:0,panelWater:water,paletteCycle:0,
+        source:prefix+"\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {"+source+"}"};
+      const result=await renderHeadless({host:nodeGpuHost(),components:await starterComponentsView(),graph,settings:{...resonanceDocument.settings,outputResolution:{width:64,height:64}},frames:2,capture:[0,1],fps:2,outputNodeId:"room"});
+      expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+      return result.frames.map(f=>toRgba8({width:f.width,height:f.height,format:f.format,bytes:f.bytes,rowStride:f.width*BYTES_PER_PIXEL[f.format]},{space:"linear"}).data);
+    };
+    const following=await sample(true,false),stationary=await sample(false,false);
+    let followingDelta=0,stationaryDelta=0;
+    for(let i=0;i<following[0]!.length;i+=4){
+      followingDelta+=Math.abs(following[0]![i]!-following[1]![i]!);
+      stationaryDelta+=Math.abs(stationary[0]![i]!-stationary[1]![i]!);
+    }
+    expect(followingDelta/4096).toBeLessThan(0.1);
+    expect(stationaryDelta/4096).toBeGreaterThan(5);
+    const wet=await sample(false,true),dry=await sample(false,true,0);
+    const red=(p:Uint8Array)=>Array.from(p).filter((_,i)=>i%4===0).reduce((a,b)=>a+b,0)/4096;
+    expect(red(wet[0]!)).toBeGreaterThan(15);
+    expect(red(dry[0]!)).toBe(0);
+  },60_000);
+
+  it("adds bounded subpixel colour separation with a true zero-intensity identity",async(ctx)=>{
+    if(unavailable){ctx.skip();return;}
+    const edge="\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {return vec4f(vec3f(select(0.0,1.0,uv.x>0.8)),0.173);}";
+    const off=await pixels(edge,"lens",{}, {chromatic:0,strength:0});
+    const on=await pixels(edge,"lens",{}, {chromatic:0.75,strength:0});
+    const capped=await pixels(edge,"lens",{}, {chromatic:4,strength:0});
+    expect(on).toEqual(capped);
+    let split=0;
+    for(let x=0;x<256;x++) {
+      expect(off[x*4]).toBe(off[x*4+2]);
+      split=Math.max(split,Math.abs(on[x*4]!-on[x*4+2]!));
+      if(x<202 || x>208) expect(on[x*4]).toBe(off[x*4]);
+    }
+    expect(split).toBeGreaterThan(30);
+    const flat="\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {return vec4f(0.2,0.3,0.4,0.173);}";
+    expect(await pixels(flat,"lens",{}, {chromatic:0.75,strength:0})).toEqual(await pixels(flat,"lens",{}, {chromatic:0,strength:0}));
+  },60_000);
+
+  it("moves shaft crests downward continuously and staggers adjacent strand groups",async(ctx)=>{
+    if(unavailable){ctx.skip();return;}
+    const source="\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {let height=uv.x*12.0;return vec4f(shaftPacket(height,0),shaftPacket(height,1),0,1);}";
+    const early=await pixels(source,"room",{beatPosition:0});
+    const late=await pixels(source,"room",{beatPosition:0.5});
+    const boundary=await pixels(source,"room",{beatPosition:0.9999});
+    const next=await pixels(source,"room",{beatPosition:1.0001});
+    // A half beat carries the same crest down 1.667 world units.
+    expect(early[142*4]!).toBeGreaterThan(240);
+    expect(late[106*4]!).toBeGreaterThan(240);
+    expect(late[142*4]!).toBeLessThan(5);
+    expect(early[142*4+1]!).toBeLessThan(early[142*4]!*0.4);
+    let delta=0;
+    for(let i=0;i<boundary.length;i++) delta=Math.max(delta,Math.abs(boundary[i]!-next[i]!));
+    expect(delta).toBeLessThanOrEqual(1);
+  },60_000);
+
+  it("preserves visible beam pixels when skipping negligible Gaussian tails",async(ctx)=>{
+    if(unavailable){ctx.skip();return;}
+    const sample=async(bounded:boolean)=>{
+      const graph=structuredClone(resonanceDocument.graph);
+      const source=bounded?RESONANCE_ROOM_WGSL:RESONANCE_ROOM_WGSL.replace(" && d*d<max(width*width*170.0,0.065)*20.0","");
+      graph.nodes["room"]!.parameters={...graph.nodes["room"]!.parameters,source,energy:1,highs:1,beatPulse:1,atmosphere:1};
+      const result=await renderHeadless({host:nodeGpuHost(),components:await starterComponentsView(),graph,settings:{...resonanceDocument.settings,outputResolution:{width:320,height:180}},frames:2,capture:[0,1],fps:1/72,animate:true,outputNodeId:"out"});
+      expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+      return result.frames.map(f=>toRgba8({width:f.width,height:f.height,format:f.format,bytes:f.bytes,rowStride:f.width*BYTES_PER_PIXEL[f.format]},{space:result.plan.outputs.find(o=>o.nodeId==="out")!.space}).data);
+    };
+    const bounded=await sample(true),full=await sample(false);
+    for(let frame=0;frame<bounded.length;frame++) {
+      let total=0,max=0;
+      for(let i=0;i<bounded[frame]!.length;i++) {const difference=Math.abs(bounded[frame]![i]!-full[frame]![i]!);total+=difference;max=Math.max(max,difference);}
+      expect(max).toBeLessThanOrEqual(1);
+      expect(total/bounded[frame]!.length).toBeLessThan(0.001);
+    }
   },60_000);
 
 });

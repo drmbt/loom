@@ -1,3 +1,4 @@
+import { RESONANCE_PALETTE_WGSL } from "./resonance-palette.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 
 /** Architecture and participating light around the rasterised, attribute-driven shell. */
@@ -18,6 +19,7 @@ struct Params {
   videoMotion: f32, // @default 0.6 Evolving luminous pattern over video.
   videoGlitch: f32, // @default 0.18 Bounded staggered scanline offsets.
   paletteCycle: f32, // @default 1 Slow amber, orange and violet lighting cycle.
+  panelWater: f32, // @default 1 Falling water surface beneath every projection.
   panelVideo: f32, // @default 0 1 projects the connected TimeGrid video cells.
   panelStyle: f32, // @default 0 0 slowly morphs; 1 water, 2 mineral, 3 caustics, 4 constellation.
   coreGradient: f32, // @default 0.65 Colour variation around the warm-white energy centre.
@@ -45,12 +47,8 @@ struct Params {
 `;
 
 const RESONANCE_ARCHITECTURE_WGSL = `
-fn paletteWarm()->vec3f {
-  let phase=frameU.absTime/36.0;
-  let part=u32(floor(phase))%3u;
-  let colours=array<vec3f,3>(vec3f(1.0,0.69,0.39),vec3f(1.0,0.29,0.065),vec3f(0.57,0.28,1.0));
-  return mix(colours[0],mix(colours[part],colours[(part+1u)%3u],smoothstep(0.15,0.85,fract(phase))),clamp(params.paletteCycle,0.0,1.0));
-}
+${RESONANCE_PALETTE_WGSL}
+fn paletteWarm()->vec3f {return resonancePalette(frameU.absTime,params.paletteCycle);}
 const CENTRE = vec3f(0,5.6,0);
 fn hash(p: vec3f) -> f32 { return fract(sin(dot(p,vec3f(127.1,311.7,74.7)))*43758.5453); }
 fn noise(p: vec3f) -> f32 {
@@ -61,12 +59,12 @@ fn noise(p: vec3f) -> f32 {
 fn fbm(p:vec3f)->f32 {return noise(p)*0.55+noise(p*2.03)*0.27+noise(p*4.11)*0.12+noise(p*8.23)*0.06;}
 fn energyGradient(p:vec3f)->vec3f {
   let height=smoothstep(-1.3,1.3,p.y-CENTRE.y);
-  return mix(vec3f(1.0,0.26,0.06),vec3f(0.34,0.42,1.0),height);
+  return mix(paletteWarm()*0.7,mix(paletteWarm(),vec3f(1),0.32),height);
 }
 fn coreColour(local:vec3f,ray:vec3f)->vec3f {
   let facing=pow(max(0.0,dot(normalize(local),-ray)),5.0);
   let edge=mix(paletteWarm(),energyGradient(local+CENTRE),clamp(params.coreGradient,0.0,1.0));
-  return mix(edge,vec3f(1.0,0.91,0.73),facing*0.88);
+  return mix(edge,mix(paletteWarm(),vec3f(1),0.86),facing*0.88);
 }
 fn line(x:f32,width:f32)->f32 {return exp(-abs(x)/width);}
 // Analytic room intersections: x is distance, y is surface identity.
@@ -129,14 +127,9 @@ fn roomHit(ro:vec3f,rd:vec3f)->vec2f {
 }
 
 fn projectionFamily(kind:u32,uv:vec2f,seed:f32,clock:f32)->vec3f {
-  let p=vec3f(uv.x*8.0,uv.y*0.65+clock,seed*43.0);
   if(kind==0u){
-    let warp=vec3f(fbm(p*0.8),noise(p*0.7+19.0),noise(p*0.6+37.0));
-    let cloud=fbm(p*1.2+warp*2.8);
-    let threads=pow(1.0-abs(2.0*noise(p*vec3f(6,0.7,3)+warp*3.0)-1.0),12.0);
-    let foam=pow(noise(p*vec3f(12,5,9)+warp*4.0),4.0);
-    let fine=pow(noise(p*vec3f(35,15,23)),5.0);
-    return vec3f(0.42,0.49,0.56)*(0.04+threads*0.3+foam*1.5+fine*0.7)*smoothstep(0.25,0.8,cloud);
+    // The moving sheet is shared by every source, including video.
+    return mix(vec3f(0.065,0.075,0.085),paletteWarm()*0.10,0.4);
   }
   if(kind==1u){
     let stone=vec3f(uv.x*10.0,uv.y*0.9,seed*31.0+clock*0.07);
@@ -162,7 +155,7 @@ fn projectionFamily(kind:u32,uv:vec2f,seed:f32,clock:f32)->vec3f {
   let ribbon=pow(0.5+0.5*sin(uv.x*18.0+sin(uv.y*0.7+clock*0.2)*2.5+seed*7.0),16.0)*0.025;
   return vec3f(0.37,0.44,0.64)*(star*0.85+ribbon);
 }
-fn panelContent(localUv:vec2f,panelId:f32)->vec3f {
+fn panelProjection(localUv:vec2f,panelId:f32)->vec3f {
   if(params.panelVideo>0.5){
     // Each architectural bay samples one complete delayed cell, never a strip across cells.
     let cell=u32(panelId)%24u;
@@ -208,6 +201,28 @@ fn panelContent(localUv:vec2f,panelId:f32)->vec3f {
   let footlight=0.4+1.0*exp(-max(localUv.y-1.75,0.0)*0.7);
   return mix(projected,projected*paletteWarm()*1.25,params.paletteCycle*0.55)*(0.5+identity)*footlight;
 }
+// World-space height plus time advects a fixed texture DOWN the wall.
+// A seeded sheet keeps moving even when the projected picture is held still.
+fn fallingWater(localUv:vec2f,panelId:f32)->vec3f {
+  let seed=hash(vec3f(panelId,params.projectionSeed,83));
+  let height=localUv.y+frameU.absTime*(1.15+seed*0.4);
+  let broad=noise(vec3f(localUv.x*19.0,height*0.7,seed*31.0));
+  let flow=noise(vec3f(localUv.x*87.0+broad*2.0,height*1.2,seed*47.0));
+  let beads=noise(vec3f(localUv.x*143.0,height*9.0,seed*71.0));
+  let threads=pow(1.0-abs(flow*2.0-1.0),10.0);
+  let foam=pow(beads,5.0)*(0.25+threads*1.8);
+  let sheen=threads*0.42+foam*1.9;
+  return vec3f((broad-0.5)*0.012,(flow-0.5)*0.065,sheen);
+}
+fn panelContent(localUv:vec2f,panelId:f32)->vec3f {
+  let amount=clamp(params.panelWater,0.0,1.0);
+  if(amount==0.0){return panelProjection(localUv,panelId);}
+  let water=fallingWater(localUv,panelId);
+  let projected=panelProjection(localUv+water.xy*amount,panelId);
+  // Light catches the falling ridges; dark video still leaves the wet surface visible.
+  let scattering=mix(paletteWarm(),vec3f(1),0.16)*(0.012+water.z*0.22);
+  return projected*mix(1.0,0.55+water.z*1.8,amount)+scattering*amount;
+}
 fn panelSceneState(panelId:f32,scene:u32)->vec3f {
   // Opacity, independent-content share, brightness. No configuration changes texture time.
   if(scene==0u){return vec3f(1,0,1);}
@@ -241,6 +256,12 @@ fn panelLight(localUv:vec2f,panelId:f32)->vec3f {
   let coverage=smoothstep(rank,rank+0.1,clamp(params.panelCoverage,0.0,1.0));
   let brightness=max(params.panelBrightness,0.0)*(0.75+params.panelAudio*params.mids*0.75);
   return mix(first,second,blend)*coverage*brightness;
+}
+
+// Broad, continuous crests descend on the musical grid; adjacent strands answer in groups.
+fn shaftPacket(height:f32,identity:f32)->f32 {
+  let phase=params.beatPosition*0.5+height*0.15-identity*0.13;
+  return pow(max(0.0,cos(phase*6.2831853)),8.0);
 }
 
 fn surface(p:vec3f,rd:vec3f,id:f32)->vec3f {
@@ -318,6 +339,10 @@ fn surface(p:vec3f,rd:vec3f,id:f32)->vec3f {
     let wave=pow(max(0.0,sin(r*3.4-params.beatPosition*6.2831853)),18.0)*exp(-max(r-3.0,0.0)*0.5);
     let strike=pow(clamp(params.bass,0.0,1.0),1.5);
     col+=warm*rings*(0.35+strike*11.0);
+    // Light washes the neighbouring wet stone rather than living only on a subpixel tube.
+    let ringSpill=line(r-3.4,0.14)+line(r-3.8,0.17)+line(r-4.8,0.14)+line(r-4.95,0.10);
+    let stoneResponse=(0.35+rock*0.65)*smoothstep(0.002,0.012,slab);
+    col+=warm*ringSpill*(0.012+strike*0.85)*stoneResponse;
     let ringFront=3.0+fract(params.beatPosition)*4.5;
     let travelling=exp(-pow((r-ringFront)/0.15,2.0))*smoothstep(2.8,3.2,r)*(1.0-smoothstep(6.2,7.5,r));
     col+=warm*(wave*0.35+travelling*1.4)*strike;
@@ -473,7 +498,9 @@ fn sceneAt(uv:vec2f)->vec4f {
     let fog=params.haze*(0.45+params.atmosphere*0.6)*(0.55+0.45*noise(v*0.4+vec3f(frameU.absTime*0.03,0,0)));
     var beam=0.0;
     if(radial<5.0){
-      let shaftShape=exp(-radial*radial*0.16)*(1.0-smoothstep(4.0,5.0,radial));
+      let breath=0.5+0.5*sin(frameU.absTime*0.19);
+      let aperture=0.20-mix(0.0,0.07,clamp(params.atmosphere,0.0,1.0))*breath;
+      let shaftShape=exp(-radial*radial*aperture)*(1.0-smoothstep(4.0,5.0,radial));
       let curtains=0.55+0.45*noise(vec3f(v.x*1.6,v.y*0.22-frameU.absTime*0.09,v.z*1.6));
       beam=shaftShape*curtains*(0.008+params.energy*params.energy*0.22)*(0.6+params.highs)*smoothstep(0.1,1.2,v.y);
     }
@@ -494,19 +521,31 @@ fn sceneAt(uv:vec2f)->vec4f {
   color=color*transmission+scatter*foregroundOcclusion;
   // Analytic Gaussian shafts avoid undersampling thin beams in the volume march.
   for(var i=0u;i<56u;i++){
-    let h=hash(vec3f(f32(i),19,3));let a=f32(i)*2.399963;
-    let centre=vec2f(cos(a),sin(a))*sqrt(h)*mix(1.75,3.0,step(0.9,h));
-    let denom=dot(rd.xz,rd.xz);
+    let h=hash(vec3f(f32(i),19,3));
+    let a=f32(i)*2.399963+frameU.absTime*0.035;
+    let breath=0.5+0.5*sin(frameU.absTime*0.19);
+    let opening=0.85+clamp(params.atmosphere,0.0,1.0)*0.3+breath*0.12;
+    let direction=vec2f(cos(a),sin(a));
+    let centre=direction*sqrt(h)*mix(1.75,3.0,step(0.9,h))*opening;
+    // A straight tilted line gives an exact closest approach, even as its aperture turns.
+    let tilt=direction*(0.025+0.018*sin(frameU.absTime*0.23+h*6.2831853));
+    let rayOrigin=ro.xz-centre-tilt*(ro.y-13.0);
+    let rayDirection=rd.xz-tilt*rd.y;
+    let denom=dot(rayDirection,rayDirection);
     if(denom>0.00001){
-      let t=-dot(ro.xz-centre,rd.xz)/denom;
-      let v=ro+rd*t;let d=length(v.xz-centre);
+      let t=-dot(rayOrigin,rayDirection)/denom;
+      let v=ro+rd*t;let d=length(rayOrigin+rayDirection*t);
       let width=0.008+params.energy*0.012+0.021*hash(vec3f(f32(i),4,8));
-      if(t>0.0 && t<distance && v.y>0.1 && v.y<15.0){
+      // Beyond this bound even the broadest Gaussian is below exp(-20).
+      // Reject before evaluating flowing noise; keep every visible shaft sample.
+      if(t>0.0 && t<distance && v.y>0.1 && v.y<15.0 && d*d<max(width*width*170.0,0.065)*20.0){
         let vertical=select(smoothstep(7.0,9.0,v.y),1.0,i<8u);
-        let flow=v.y-frameU.absTime*(0.3+h*0.4);
+        let flow=v.y+frameU.absTime*(0.55+h*0.6);
         let breakup=0.005+4.0*pow(noise(vec3f(f32(i)*5.0,flow*1.2,0)),5.0);
         let fine=0.3+0.7*noise(vec3f(f32(i)*11.0,flow*15.0,3));
-        let pulse=(0.08+params.energy*params.energy*1.1+params.highs*0.25+params.beatPulse*0.25)*vertical*breakup*fine;
+        let packet=shaftPacket(v.y,f32(i%5u));
+        let travelling=packet*(0.15+params.energy*0.55+params.transient*0.65);
+        let pulse=(0.08+params.energy*params.energy*1.1+params.highs*0.25+params.beatPulse*0.25)*vertical*(breakup*fine+travelling);
         let veil=select(0.0,exp(-d*d/0.065)*0.045,i<12u);
         color+=mix(paletteWarm(),vec3f(1),0.45)*pulse*(exp(-d*d/(width*width))*0.14+exp(-d*d/(width*width*170.0))*0.013+veil);
       }
@@ -572,6 +611,7 @@ fn noise(p:vec2f)->f32{
 /** Small depth-aware lens blur. The protected central volume remains in focus. */
 export const RESONANCE_DOF_WGSL = `
 struct Params {
+  chromatic:f32, // @default 0 Subpixel radial colour separation, capped at 0.75 pixels.
   focusDistance:f32, // @default 17.3 Distance to the suspended sphere.
   focusRange:f32, // @default 5 Half-width of the sharp depth range.
   strength:f32, // @default 0.12 Blur pixels per world unit beyond the sharp range.
@@ -585,8 +625,16 @@ struct Params {
   let centre=textureSampleLevel(inputTexture,inputSampler,uv,0.0);
   let depth=centre.a*params.far;
   let radius=clamp((abs(depth-params.focusDistance)-params.focusRange)*params.strength,0.0,params.maxRadius);
-  if(radius<0.05){return vec4f(centre.rgb,1);}
   let pixel=1.0/vec2f(textureDimensions(inputTexture));
+  var fringe=vec3f(0);
+  if(params.chromatic>0.001){
+    let radial=(uv-0.5)*2.0;
+    let offset=radial*min(params.chromatic,0.75)*pixel;
+    let red=textureSampleLevel(inputTexture,inputSampler,uv+offset,0.0).r;
+    let blue=textureSampleLevel(inputTexture,inputSampler,uv-offset,0.0).b;
+    fringe=vec3f(red-centre.r,0,blue-centre.b);
+  }
+  if(radius<0.05){return vec4f(max(centre.rgb+fringe,vec3f(0)),1);}
   var sum=centre.rgb*2.0;var weight=2.0;
   for(var i=0u;i<8u;i++){
     let angle=f32(i)*0.7853981634;
@@ -595,7 +643,7 @@ struct Params {
     let w=1.0-smoothstep(0.5,2.0,abs(sample.a*params.far-depth));
     sum+=sample.rgb*w;weight+=w;
   }
-  return vec4f(sum/weight,1);
+  return vec4f(max(sum/weight+fringe,vec3f(0)),1);
 }`;
 
 // Two disjoint quadrants preserve every native scene texel and its unfiltered depth.

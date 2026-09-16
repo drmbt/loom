@@ -1,3 +1,4 @@
+import { RESONANCE_PALETTE_WGSL } from "./resonance-palette.ts";
 /** Spherical Voronoi sites. The same cell owns every vertex through the entire motion. */
 export const FRAGMENT_COUNT = 128;
 export const SHELL_COLUMNS = 97;
@@ -158,11 +159,13 @@ fn fragmentRandom(id:u32,salt:u32)->f32 {
 }
 `;
 export const DEBRIS_KERNEL = `
+${RESONANCE_PALETTE_WGSL}
 ${AXIS_ROTATION_WGSL}
 ${FRAGMENT_RANDOM_WGSL}
 struct Params {
   rotation: f32, // @default 0 Common vertical-axis rotation in degrees.
   expansion: f32, // @default 0 Fragment envelope.
+  paletteCycle: f32, // @default 1 Shared room palette cycle.
   highs: f32, // @default 0 Fine-detail energy.
 };
 fn process(p:Point,ctx:PointCtx)->Point {
@@ -180,7 +183,7 @@ fn process(p:Point,ctx:PointCtx)->Point {
   q.orient=normalize(vec4f(n*sin(turn+f32(id)),cos(turn+f32(id))));
   let bright=select(0.085,0.50,fragmentRandom(id,39u)>0.82);
   let sparkle=select(1.0,1.0+ctx.params.highs*8.0,size<0.025);
-  q.tint=vec4f(vec3f(1.0,0.86,0.64)*bright*sparkle,1);
+  q.tint=vec4f(mix(resonancePalette(ctx.absTime,ctx.params.paletteCycle),vec3f(1),0.12)*bright*sparkle,1);
   return q;
 }`;
 
@@ -193,10 +196,12 @@ export const SEAM_MIRROR_KERNEL = `fn process(p:Point,ctx:PointCtx)->Point {
 }`;
 /** Light on the exposed cut lip; it follows the actual deformed vertices. */
 function seamKernel(columns:number):string { return `
+${RESONANCE_PALETTE_WGSL}
 ${AXIS_ROTATION_WGSL}
 ${ROCK_NOISE_WGSL}
 struct Params {
   rotation: f32, // @default 0 Common vertical-axis rotation in degrees.
+  paletteCycle: f32, // @default 1 Shared room palette cycle.
   gain: f32, // @default 0 Energy visible at the exposed cut lip.
 };
 fn process(p:Point,ctx:PointCtx)->Point {
@@ -207,7 +212,7 @@ fn process(p:Point,ctx:PointCtx)->Point {
   q.position=p.position+rotateAxis(normalize(p.rest),ctx.params.rotation)*0.006;
   q.end=neighbour.position+rotateAxis(normalize(neighbour.rest),ctx.params.rotation)*0.006;
   let cut=0.06+pow(rockNoise(p.rest*18.0),3.0)*3.0;
-  q.tint=vec4f(vec3f(1.0,0.76,0.48)*(0.003+1.8*ctx.params.gain*ctx.params.gain)*cut,1);
+  q.tint=vec4f(resonancePalette(ctx.absTime,ctx.params.paletteCycle)*(0.003+1.8*ctx.params.gain*ctx.params.gain)*cut,1);
   return q;
 }`;
 }
@@ -221,11 +226,13 @@ export const CHIP_ROWS = CHIP_COUNT * CHIP_ROWS_PER_CELL;
 export const CHIP_CAPACITY = CHIP_COLUMNS * CHIP_ROWS;
 /** Individually cut convex stone chips, with a closed surface instead of repeated primitives. */
 export const CHIP_KERNEL = `
+${RESONANCE_PALETTE_WGSL}
 ${AXIS_ROTATION_WGSL}
 ${FRAGMENT_RANDOM_WGSL}
 ${ROCK_NOISE_WGSL}
 struct Params {
   rotation: f32, // @default 0 Common vertical-axis rotation in degrees.
+  paletteCycle: f32, // @default 1 Shared room palette cycle.
   expansion: f32, // @default 0 Bounded radial expansion.
 };
 fn process(p:Point,ctx:PointCtx)->Point {
@@ -264,6 +271,6 @@ fn process(p:Point,ctx:PointCtx)->Point {
   let brightness=(0.045+fragmentRandom(id,39u)*0.08)*mineral;
   // The centre-facing cut faces catch the warm internal energy.
   let innerGlow=pow(max(0.0,-local.z),2.0)*energy*0.22;
-  q.tint=vec4f(vec3f(0.92,0.88,0.81)*brightness+vec3f(1,0.57,0.25)*innerGlow,1);
+  q.tint=vec4f(vec3f(0.92,0.88,0.81)*brightness+resonancePalette(ctx.absTime,ctx.params.paletteCycle)*innerGlow,1);
   return q;
 }`;

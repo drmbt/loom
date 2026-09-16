@@ -79,6 +79,7 @@ scratchpad/
 *.local
 
 # project artifacts
+/artifacts/
 renders/
 exports/
 *.loomz

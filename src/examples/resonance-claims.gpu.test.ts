@@ -1,3 +1,5 @@
+import { resonancePaletteExpression } from "./shaders/resonance-palette.ts";
+import { evaluateExpression } from "../domain/expressions/evaluate.ts";
 import { beforeAll, describe, expect, it } from "vitest";
 import { RESONANCE_ROOM_WGSL } from "./shaders/resonance.wgsl.ts";
 import { resonanceDocument } from "./documents/resonance.ts";
@@ -281,6 +283,28 @@ describe("Resonance GPU geometry invariants",()=>{
     expect(odd[4]).toBeGreaterThan(odd[5]!);
     expect(odd[5]).toBe(0);
     expect(new Set(even).size).toBe(1);
+  },60_000);
+
+  it("matches fragment emission to the scene-light palette through the colour cycle",async(ctx)=>{
+    if(unavailable){ctx.skip();return;}
+    for(const [seconds,cycle] of [[36,1],[54,1],[72,1],[72,0]] as const) {
+      const graph=structuredClone(resonanceDocument.graph);
+      graph.nodes["room"]!.parameters["paletteCycle"]=cycle;
+      graph.nodes["seams"]!.parameters["gain"]=1;
+      const result=await renderHeadless({host:nodeGpuHost(),components:await starterComponentsView(),graph,settings:{...resonanceDocument.settings,outputResolution:{width:80,height:45}},frames:2,fps:1/seconds,animate:true,outputNodeId:"out",probeBuffers:[pointStorageId("seams")]});
+      expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+      const raw=result.buffers?.[pointStorageId("seams")];
+      if(raw===undefined) throw new Error("Missing seam palette readback");
+      const tint=kernelRegionSlice(graph.nodes["seams"]!,raw,"tint").floats;
+      const expected=([0,1,2] as const).map(channel=>{
+        const value=evaluateExpression(resonancePaletteExpression(channel).replace("op('room1').par.paletteCycle","cycle"),{abstime:seconds,cycle});
+        if(!value.ok) throw new Error(JSON.stringify(value));
+        return value.value;
+      });
+      const sum=tint[0]!+tint[1]!+tint[2]!;
+      const expectedSum=expected.reduce((a,b)=>a+b,0);
+      for(let c=0;c<3;c++) expect(tint[c]!/sum).toBeCloseTo(expected[c]!/expectedSum,5);
+    }
   },60_000);
 
 });

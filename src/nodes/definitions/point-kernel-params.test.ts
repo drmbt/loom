@@ -489,7 +489,8 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
   "E63-Skin.loom.json": "7c422382185bd253",
   // Resonance: both fitted shells now expose minimum radial travel; the inner layer
   // opens at 0.10 energy with aligned, wider fissures and 14%-thick pieces.
-  "E75-Resonance.loom.json": "2c191e31180e8eb9",
+  // Emissive seams, grit and dust now share the architectural palette.
+  "E75-Resonance.loom.json": "cbd6f428043ad638",
 };
 
 const POINT_KERNEL_TYPES = new Set(["pointKernel", "pointKernelAdvanced"]);
