@@ -134,6 +134,51 @@ async function seedTwoOutputs(runtime: AppRuntime): Promise<void> {
   });
 }
 
+/**
+ * T1346b — THE READOUT COSTS ONE LINE, AND THE PROBE HALF COSTS NOTHING UNTIL IT HAS
+ * SOMETHING TO SAY.
+ *
+ * Owner: *"the pixel value size stuff … takes up a lot of space and that feels like wasted
+ * space … I like the resolution that we have it on there somewhere"*. It was three labelled
+ * rows under the canvas, and two of them read "—" until a pointer had crossed the picture:
+ * pane height spent on a dash (§V91 — nothing to report is nothing shown).
+ *
+ * The claim is about the CONTENT of the line rather than its CSS, because that is what
+ * survives a restyle: before any probe the readout carries the resolution and NOT a
+ * coordinate; after one it carries both, on the one element.
+ */
+describe("T1346b — the viewer readout is one line, and the probe joins it only when probed", () => {
+  it("shows the resolution alone until something has been sampled", async () => {
+    const runtime = newRuntime();
+    await seedTwoOutputs(runtime);
+    const gpu = fixture();
+    const canvas = await mountViewer(runtime, gpu.backend);
+
+    const readout = screen.getByTestId("viewer-readout");
+    // The half the owner keeps: it is there before anyone touches the picture.
+    expect(readout.textContent).toContain("1280 × 720");
+    // And the half that used to sit there empty: no dash row, no "pixel"/"value" terms,
+    // nothing at all — the probe has produced no fact yet.
+    expect(readout.textContent).not.toContain("—");
+    expect(readout.querySelectorAll("dd").length).toBe(1);
+
+    await act(async () => {
+      fireEvent.pointerMove(canvas, { clientX: 200, clientY: 125, buttons: 0 });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("viewer-readout").textContent).toContain("640, 540");
+    });
+    // Same element, now carrying all three facts: the resolution the owner asked to keep,
+    // the coordinate, and the sample.
+    const probed = screen.getByTestId("viewer-readout");
+    expect(probed.textContent).toContain("1280 × 720");
+    expect(probed.querySelectorAll("dd").length).toBe(3);
+    // The gates that read the viewer's resolution find it on this one element (§V349).
+    expect(probed.getAttribute("aria-label")).toBe("Resolved output");
+    runtime.dispose();
+  });
+});
+
 describe("T329 — the mounted viewer inspects pixels (T36, §V7, §V48)", () => {
   it("reads the pixel under the cursor, at the image coordinate the rect implies", async () => {
     const runtime = newRuntime();

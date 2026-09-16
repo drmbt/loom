@@ -355,11 +355,36 @@
   font-size: var(--fs-micro);
 }
 
+/*
+ * T1346b — ONE LINE UNDER THE PICTURE, and it grows only while someone is probing.
+ *
+ * It was three labelled rows (pixel / value / size) stacked under the viewer canvas, two
+ * of which read "—" whenever nobody had sampled anything: three lines of pane height spent
+ * on a dash. Flex rather than the label grid, so the terms sit inline and a narrow pane
+ * wraps instead of clipping — the values are monospace and must not be truncated.
+ */
 .readout {
-  display: grid;
-  grid-template-columns: minmax(0, 4rem) minmax(0, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
   gap: var(--space-1) var(--space-3);
   margin: 0;
+}
+
+/**
+ * The row NAMES, kept for a screen reader and taken out of the layout.
+ *
+ * The line is monospace numbers in a fixed order and reads fine to an eye; "0.5000 0.2200
+ * 0.9000 1.0000" with no term does not read at all to a screen reader, and a `dl` whose
+ * `dt`s were simply deleted would be invalid besides.
+ */
+.rowNameHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /*

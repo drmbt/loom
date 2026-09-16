@@ -334,9 +334,11 @@ describe("T726 — a load resets the viewer's pin (B106)", () => {
       fireEvent.pointerMove(canvas, { clientX: 200, clientY: 125, buttons: 0 });
     });
     // NON-VACUITY: there has to BE a reading before "the reading did not survive" means
-    // anything. `—` is the empty state, so the assertion is that it is not that.
+    // anything. Since T1346b the readout is ONE line that always carries the resolution,
+    // so "it has digits in it" is true of the empty state too — the reading is the probe's
+    // own pair of entries joining that line.
     await waitFor(() => {
-      expect(screen.getByTestId("viewer-readout").textContent).toMatch(/\d/);
+      expect(screen.getByTestId("viewer-readout").querySelectorAll("dd").length).toBe(3);
     });
     const sampled = screen.getByTestId("viewer-readout").textContent ?? "";
 
@@ -351,9 +353,15 @@ describe("T726 — a load resets the viewer's pin (B106)", () => {
 
     // THE CLAIM. A number belonging to a project the user has closed is not a reading of
     // the one they just opened, so the readout is back to its empty state.
-    const after = screen.getByTestId("viewer-readout").textContent ?? "";
+    //
+    // T1346b changed what "empty" LOOKS like without changing what it MEANS: the probe's
+    // coordinate and sample are no longer dash rows waiting to be filled \u2014 they are absent
+    // from the line entirely until something has been sampled (\u00a7V91). So the empty state is
+    // the resolution on its own, which is one `dd`.
+    const readout = screen.getByTestId("viewer-readout");
+    const after = readout.textContent ?? "";
     expect(after).not.toBe(sampled);
-    expect(after).toContain("\u2014");
+    expect(readout.querySelectorAll("dd").length).toBe(1);
   }, 30_000);
 
   it("keeps the pin across an ordinary edit inside ONE document (the control)", async () => {

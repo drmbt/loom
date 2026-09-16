@@ -776,6 +776,31 @@ export function ViewerPane({
   const { probeAt, clear } = readout;
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
 
+  /**
+   * T1346b — WHAT THE PROBE HAS TO SAY, or null when it has nothing.
+   *
+   * Null is what keeps the readout one line: the coordinate and the value are not rows
+   * waiting to be filled, they are absent until a probe produced something (§V91).
+   *
+   * A COORDINATE ALONE IS NOT SOMETHING. The probe cursor outlives a document swap when
+   * the new document's sink happens to carry the same address (§T733's adversarial case —
+   * `out:$target` in both), while the sample is invalidated by the readout's own
+   * generation guard. Rendering on the cursor would then show a position in a picture
+   * nobody has sampled, which is the shape of stale number §T733 exists to prevent. So the
+   * pair is rendered only when there is a VALUE to pair with it — a sample, the reason
+   * there is none, or the honest "this machine cannot read pixels at all".
+   */
+  const probeFacts = useMemo((): { at: string; value: string } | null => {
+    if (cursor === null) return null;
+    const at = `${cursor.x}, ${cursor.y}`;
+    if (readout.error !== null) return { at, value: readout.error };
+    if (readout.sample !== null) return { at, value: readout.sample.rgba.map(formatChannel).join("  ") };
+    // No device is a fact about the machine and worth saying the moment someone probes;
+    // "a read is in flight" is not, and neither is "that sample belonged to a document you
+    // have closed" — both of those are simply not a reading yet.
+    return probe === undefined ? { at, value: "no device" } : null;
+  }, [cursor, probe, readout.error, readout.sample]);
+
   // §T1178: the cursor state is written once per animation frame, not once per pointer
   // event — a 120 Hz pointer was 120 React commits a second for a crosshair that paints
   // at most 60 times. The probe keeps its own 10 Hz limiter.
@@ -1371,29 +1396,36 @@ export function ViewerPane({
         )}
       </div>
 
-      <dl className={styles.readout} data-testid="viewer-readout">
-        <dt className={styles.rowName}>pixel</dt>
-        <dd className={styles.rowValue}>
-          {cursor === null ? "—" : `${cursor.x}, ${cursor.y}`}
-        </dd>
-        <dt className={styles.rowName}>value</dt>
-        <dd className={styles.rowValue}>
-          {readout.error !== null
-            ? readout.error
-            : readout.sample === null
-              ? probe === undefined
-                ? "no device"
-                : "—"
-              : readout.sample.rgba.map(formatChannel).join("  ")}
-        </dd>
-      </dl>
-      <dl className={styles.readout} aria-label="Resolved output">
-        <dt className={styles.rowName}>size</dt>
+      {/*
+        T1346b — ONE readout line, and the pixel half of it exists only while probing.
+        Owner: *"the pixel value size stuff … takes up a lot of space and that feels like
+        wasted space … I like the resolution that we have it on there somewhere"*.
+
+        It was three labelled rows, two of which said "—" until somebody moved a pointer
+        over the picture — three lines of pane height to show a dash. The resolution is the
+        part that is always worth space, so it stays; the probe's coordinate and sample
+        JOIN the same line when there is a cursor and take no height at all when there is
+        not (§V91: nothing to report is nothing shown, never a placeholder).
+
+        ONE `dl`, carrying both the `Resolved output` name the aspect and parity gates read
+        and the `viewer-readout` id the probe tests read — they were two elements only
+        because they were two rows.
+      */}
+      <dl className={styles.readout} aria-label="Resolved output" data-testid="viewer-readout">
+        <dt className={styles.rowNameHidden}>size</dt>
         <dd className={styles.rowValue}>
           {selected === null
             ? "—"
             : `${selected.size[0]} × ${selected.size[1]} · ${selected.format}`}
         </dd>
+        {probeFacts === null ? null : (
+          <>
+            <dt className={styles.rowNameHidden}>pixel</dt>
+            <dd className={styles.rowValue}>{probeFacts.at}</dd>
+            <dt className={styles.rowNameHidden}>value</dt>
+            <dd className={styles.rowValue}>{probeFacts.value}</dd>
+          </>
+        )}
       </dl>
     </div>
   );
