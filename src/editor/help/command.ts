@@ -17,10 +17,20 @@ import { commandHolder } from "@domain/commands/command-holder.ts";
  */
 declare module "@domain/types/commands.ts" {
   interface CommandMap {
-    /** Open the help panel, optionally on a named section. */
+    /**
+     * Open the help panel, optionally on a named section, optionally AT A NODE TYPE.
+     *
+     * T1342b — `nodeType` is the half the vocabulary could not express. The nodes tab has
+     * always had a search over title and type; nothing outside the panel could set it, so
+     * the reference was addressable in principle and unreachable from where a user is
+     * standing. A caller that names a type gets the nodes tab with that search already
+     * filled — which is what lets the inspector hand its 115 node descriptions a path
+     * without putting any of that prose in the dock (§V90's reasoning is about the
+     * parameter row and stays intact).
+     */
     "ui.openHelp": {
-      input: { section?: HelpSection };
-      output: { opened: boolean; section: HelpSection | null };
+      input: { section?: HelpSection; nodeType?: string };
+      output: { opened: boolean; section: HelpSection | null; nodeType: string | null };
     };
   }
 }
@@ -38,8 +48,13 @@ export const HELP_SECTIONS: readonly HelpSection[] = ["shortcuts", "nodes", "exp
 export const OPEN_HELP_COMMAND = "ui.openHelp";
 
 export interface HelpHandlers {
-  /** Shows the panel. Returns the section it settled on. */
-  open(section: HelpSection | undefined): HelpSection;
+  /**
+   * Shows the panel. Returns the section it settled on.
+   *
+   * A `nodeType` implies the `nodes` section — asking for a node and landing on Shortcuts
+   * is the shape of path that reads as broken rather than as absent.
+   */
+  open(section: HelpSection | undefined, nodeType: string | undefined): HelpSection;
 }
 
 export interface HelpHolder {
@@ -71,7 +86,7 @@ export function registerHelpCommand(bus: LoomBus): HelpHolder {
               message: "No help surface is mounted to open the panel.",
             },
           ],
-          output: { opened: false, section: null },
+          output: { opened: false, section: null, nodeType: null },
         };
       }
 
@@ -80,14 +95,18 @@ export function registerHelpCommand(bus: LoomBus): HelpHolder {
         return {
           status: "applied" as const,
           revision,
-          output: { opened: false, section: input.section ?? null },
+          output: { opened: false, section: input.section ?? null, nodeType: input.nodeType ?? null },
         };
       }
 
-      const section = holder.current.open(input.section);
-      return { status: "applied" as const, revision, output: { opened: true, section } };
+      const section = holder.current.open(input.section, input.nodeType);
+      return {
+        status: "applied" as const,
+        revision,
+        output: { opened: true, section, nodeType: input.nodeType ?? null },
+      };
     },
-    rejectionOutput: () => ({ opened: false, section: null }),
+    rejectionOutput: () => ({ opened: false, section: null, nodeType: null }),
   });
 
   return holder;

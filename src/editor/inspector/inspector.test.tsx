@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createDomainBus } from "@domain/commands/index.ts";
 import { alice, contextFor } from "@domain/commands/test-support.ts";
@@ -571,6 +571,56 @@ describe("T954 — name first, machine type as a badge", () => {
  * would resolve to 2048 either way and would have gone green against the bug. The 16384
  * case is its converse — clamping to a constant cannot pass both.
  */
+/**
+ * T1342b — THE BADGE IS THE PATH, and the claim is that activating it ASKS FOR THIS NODE.
+ *
+ * 115 node definitions carry a description (median 160 characters, p90 674) and the
+ * inspector rendered none of it; §T1337b put all of it in the help panel and `ui.openHelp`
+ * had no way to name a node. These assert the half that lives here: the badge is a real
+ * control, and what it sends carries the type.
+ *
+ * ⚑ A `<button>` rather than a `<span>` with a handler, and that is asserted rather than
+ * assumed: a path a keyboard cannot walk is not a path, and the mouse version of this
+ * passes a click test while failing a user.
+ */
+describe("T1342b — the type badge opens this node's reference", () => {
+  it("is a real control, reachable by keyboard and named by what it does", async () => {
+    await setup();
+    const header = document.querySelector("header");
+    const badge = header?.querySelector("[data-machine-type]");
+    expect(badge?.tagName).toBe("BUTTON");
+    expect(badge?.getAttribute("aria-label")).toContain("open the node reference");
+  });
+
+  it("asks `ui.openHelp` for THIS node's type", async () => {
+    const { bus } = await setup();
+    const asked: unknown[] = [];
+    bus.registerCommand({
+      name: "ui.openHelp",
+      description: "test double",
+      handler: (input, ctx) => {
+        asked.push(input);
+        return {
+          status: "applied" as const,
+          revision: ctx.store.getRevision(),
+          output: { opened: true, section: "nodes" as const, nodeType: null },
+        };
+      },
+      rejectionOutput: () => ({ opened: false, section: null, nodeType: null }),
+    });
+
+    const badge = document.querySelector("header [data-machine-type]");
+    expect(badge).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(badge as Element);
+    });
+
+    // The TYPE, because the panel's search matches on title or type and the type is the
+    // one the document actually stores.
+    expect(asked).toEqual([{ nodeType: "test.everything" }]);
+  });
+});
+
 describe("the resolved-size readout is the compiler's answer, on the device in front of you", () => {
   const registry = createNodeRegistry([sourceNode, everythingNode, sinkNode]).view();
 

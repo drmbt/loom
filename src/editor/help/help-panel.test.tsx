@@ -153,6 +153,84 @@ const EDITABLE: KeyBinding[] = [
   { id: "redo", keys: "mod+shift+z", context: "global", command: "graph.redo", label: "Redo" },
 ];
 
+/**
+ * T1342b — THE PATH, and the claim is that it ARRIVES.
+ *
+ * `ui.openHelp` took a section and nothing else, so the node reference was addressable in
+ * principle (the nodes tab has always had a search) and unreachable from where a user is
+ * standing (§V998's shape: the display works, the input vocabulary cannot express the
+ * request). These assert what a caller naming a node type actually gets — the nodes tab,
+ * the search filled, and THE NODE ON SCREEN.
+ *
+ * ⚑ The last of those is the one that matters. A pre-filled search that matches nothing
+ * opens a panel showing "No node matches", which reads as the feature being BROKEN rather
+ * than absent — worse than no path at all. The panel filters on `title` OR `type`, which
+ * is why the command carries the machine type; this is that read, asserted rather than
+ * remembered.
+ */
+describe("T1342b — opening help AT a node type", () => {
+  const store = (): KeymapStore =>
+    createKeymapStore({ defaults: DEFAULT_BINDINGS, storage: null, platform: "mac" });
+
+  it("lands on the nodes tab with the search filled, and the node is the one shown", async () => {
+    const { harness } = setup(store());
+    const blur = registry.require("test.blur");
+    await act(async () => {
+      await harness.bus.execute("ui.openHelp", { nodeType: blur.type }, context);
+    });
+
+    const dialog = await screen.findByRole("dialog");
+    // No `selectTab` here on purpose: asking for a node and landing on Shortcuts is the
+    // failure this test exists to catch, so the tab must already be right.
+    const search = within(dialog).getByRole("searchbox", { name: "Search node reference" });
+    expect((search as HTMLInputElement).value).toBe(blur.type);
+    expect(await within(dialog).findByText(blur.title)).toBeDefined();
+  });
+
+  it("shows that node ALONE — the search is doing the work, not the tab", async () => {
+    const { harness } = setup(store());
+    const blur = registry.require("test.blur");
+    const other = registry.list().find((entry) => entry.type !== blur.type);
+    if (other === undefined) throw new Error("the test registry has only one node");
+    await act(async () => {
+      await harness.bus.execute("ui.openHelp", { nodeType: blur.type }, context);
+    });
+
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText(blur.title);
+    expect(within(dialog).queryByText(other.title)).toBeNull();
+  });
+
+  it("a section with no node type still opens that section — the old callers are untouched", async () => {
+    const { harness } = setup(store());
+    const result = await act(async () =>
+      harness.bus.execute("ui.openHelp", { section: "agents" }, context),
+    );
+    expect(result.output).toMatchObject({ opened: true, section: "agents", nodeType: null });
+  });
+
+  it("re-opening on the same node RE-APPLIES the search after the user has typed over it", async () => {
+    const { harness } = setup(store());
+    const blur = registry.require("test.blur");
+    await act(async () => {
+      await harness.bus.execute("ui.openHelp", { nodeType: blur.type }, context);
+    });
+    const dialog = await screen.findByRole("dialog");
+    const search = within(dialog).getByRole("searchbox", { name: "Search node reference" });
+
+    // The panel owns the box: typing must survive a re-render.
+    fireEvent.change(search, { target: { value: "something else" } });
+    expect((search as HTMLInputElement).value).toBe("something else");
+
+    // And the same request again must still arrive — the nonce is what makes a repeat of
+    // an identical value a new request rather than a no-op.
+    await act(async () => {
+      await harness.bus.execute("ui.openHelp", { nodeType: blur.type }, context);
+    });
+    expect((search as HTMLInputElement).value).toBe(blur.type);
+  });
+});
+
 describe("the shortcuts tab edits the keymap (T360)", () => {
   const editable = (storage: ReturnType<typeof createMemoryStorage> | null = null): KeymapStore =>
     createKeymapStore({ defaults: EDITABLE, storage, platform: "other" });

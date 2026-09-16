@@ -16,6 +16,23 @@ export interface TypeBadgeProps {
    * something else (a derived facet, say) passes its own attribute or none.
    */
   readonly machineType?: string | undefined;
+  /**
+   * T1342b — what to do when the badge is ACTIVATED, for the one surface that has
+   * somewhere to go.
+   *
+   * Absent (the graph node header, the library row, every other caller) the badge is the
+   * `<span>` it has always been: quiet, unfocusable, hover copy only. Present, it becomes a
+   * real `<button>` — because a path a keyboard cannot walk is not a path, and a `<span>`
+   * with a click handler is the version of this that passes a mouse test and fails a user.
+   *
+   * ⚑ OPTIONAL RATHER THAN ALWAYS, and that is the §V90-shaped half: making every badge in
+   * the app focusable would put a tab stop on the type of every node in the library and on
+   * every graph tile, which is a cost paid everywhere for an affordance that exists in one
+   * place.
+   */
+  onActivate?: (() => void) | undefined;
+  /** What activating it does, for the tooltip and the accessible name. Required with `onActivate`. */
+  activateLabel?: string | undefined;
 }
 
 /**
@@ -30,16 +47,37 @@ export interface TypeBadgeProps {
  * The badge owns border, radius, mono, size, case and tint. The surface owns layout and
  * nothing else.
  */
-export function TypeBadge({ label, category, className, title, machineType }: TypeBadgeProps) {
+export function TypeBadge({
+  label,
+  category,
+  className,
+  title,
+  machineType,
+  onActivate,
+  activateLabel,
+}: TypeBadgeProps) {
+  const shared = {
+    ...(category === undefined ? {} : { "data-category": category }),
+    ...(machineType === undefined ? {} : { "data-machine-type": machineType }),
+    ...(title === undefined ? {} : { title }),
+  };
+  if (onActivate === undefined) {
+    return (
+      <span {...shared} className={cx(styles.type, className)}>
+        {label}
+      </span>
+    );
+  }
   return (
-    <span
-      {...(category === undefined ? {} : { "data-category": category })}
-      className={cx(styles.type, className)}
-      {...(machineType === undefined ? {} : { "data-machine-type": machineType })}
-      {...(title === undefined ? {} : { title })}
+    <button
+      type="button"
+      {...shared}
+      {...(activateLabel === undefined ? {} : { "aria-label": `${label} — ${activateLabel}` })}
+      className={cx(styles.type, styles.typeAction, className)}
+      onClick={onActivate}
     >
       {label}
-    </span>
+    </button>
   );
 }
 
@@ -70,6 +108,13 @@ export interface NodeIdentityProps {
   /** Hover copy, per §V90 — help hangs off the label, on demand. */
   nameTitle?: string | undefined;
   typeTitle?: string | undefined;
+  /**
+   * T1342b — hands the badge somewhere to go, for the one surface that has a destination.
+   * Absent everywhere else, which keeps the badge a `<span>` on every graph tile and
+   * library row. See `TypeBadge.onActivate` for why this is opt-in rather than always.
+   */
+  onTypeActivate?: (() => void) | undefined;
+  typeActivateLabel?: string | undefined;
 }
 
 /**
@@ -97,6 +142,8 @@ export function NodeIdentity({
   typeClassName,
   nameTitle,
   typeTitle,
+  onTypeActivate,
+  typeActivateLabel,
 }: NodeIdentityProps) {
   return (
     <>
@@ -116,6 +163,8 @@ export function NodeIdentity({
         {...(category === undefined ? {} : { category })}
         {...(typeClassName === undefined ? {} : { className: typeClassName })}
         {...(typeTitle === undefined ? {} : { title: typeTitle })}
+        {...(onTypeActivate === undefined ? {} : { onActivate: onTypeActivate })}
+        {...(typeActivateLabel === undefined ? {} : { activateLabel: typeActivateLabel })}
       />
     </>
   );

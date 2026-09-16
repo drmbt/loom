@@ -26,13 +26,25 @@ export interface HelpHostProps {
 export function HelpHost({ bus, nodes, scope }: HelpHostProps) {
   const [open, setOpen] = useState(false);
   const [section, setSection] = useState<HelpSection>("shortcuts");
+  /**
+   * T1342b — the search the panel opens with, and it is a REQUEST rather than the panel's
+   * state: the panel owns what the box currently says, so typing in it must not be undone
+   * by a re-render, and re-opening on the same node must re-apply. A counter makes the
+   * second true without the first becoming false.
+   */
+  const [nodeQuery, setNodeQuery] = useState<{ value: string; nonce: number } | null>(null);
 
   useEffect(() => {
     const holder = registerHelpCommand(bus);
     const handlers = {
-      open(requested: HelpSection | undefined): HelpSection {
-        const next = requested ?? "shortcuts";
+      open(requested: HelpSection | undefined, nodeType: string | undefined): HelpSection {
+        // A node type implies the nodes tab: asking for a node and landing on Shortcuts is
+        // the shape of path that reads as broken rather than as absent.
+        const next = nodeType === undefined ? (requested ?? "shortcuts") : "nodes";
         setSection(next);
+        if (nodeType !== undefined) {
+          setNodeQuery((previous) => ({ value: nodeType, nonce: (previous?.nonce ?? 0) + 1 }));
+        }
         setOpen(true);
         return next;
       },
@@ -50,6 +62,7 @@ export function HelpHost({ bus, nodes, scope }: HelpHostProps) {
       section={section}
       onSectionChange={setSection}
       nodes={nodes}
+      {...(nodeQuery === null ? {} : { nodeQuery })}
       {...(scope === undefined ? {} : { scope })}
     />
   );

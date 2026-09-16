@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { cx } from "@ui/cx.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
+import { OPEN_HELP_COMMAND } from "@editor/help/command.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
@@ -513,6 +514,16 @@ export function Inspector({
     };
   }, [editor, nodeId]);
 
+  /* T1342b: the command carries the TYPE, and the panel's search already matches on
+     `title` OR `type` (`help-panel.tsx`), so the machine type lands on the right entry —
+     which is the half that had to be read rather than assumed: pre-filling with something
+     the search does not match opens a panel that finds nothing, and a path that arrives
+     empty reads as broken rather than as absent. */
+  const openTypeReference = useCallback(() => {
+    if (node === undefined) return;
+    void bus.execute(OPEN_HELP_COMMAND, { nodeType: node.type }, context);
+  }, [bus, context, node]);
+
   if (node === undefined || editor === null) {
     return (
       <div className={styles.empty}>
@@ -981,6 +992,24 @@ export function Inspector({
         `sway`) falls back to the id it is addressed by.
       */}
       <header className={styles.header}>
+        {/*
+          T1342b — THE BADGE IS THE PATH TO THE PROSE, and it is the existing element
+          rather than a new one.
+
+          115 node definitions carry a description (median 160 characters, p90 674) and
+          not one character of it was reachable from this pane: the header said the type
+          and stopped. §T1337b put every one of them in the help panel, uncut, and the
+          nodes tab has always had a search — but `ui.openHelp` took a SECTION and nothing
+          else, so the reference was addressable in principle and unreachable from where
+          the user is standing.
+
+          The affordance goes on the badge because the badge is already what the type is
+          said by, and because §V90's reasoning — a `?` handle wraps in the parameter row's
+          two-column grid, and an indicator restates what the label implies — is about the
+          PARAMETER ROW and says nothing about the header (§V1020). No new element, no
+          second hover target, and the long-form parameter descriptions keep their `title=`:
+          the same path answers them, because the panel renders every one under its node.
+        */}
         <NodeIdentity
           name={node.label ?? node.id}
           type={node.type}
@@ -988,6 +1017,8 @@ export function Inspector({
           typeClassName={styles.type}
           nameTitle={node.label ?? node.id}
           typeTitle={`${definition?.title ?? node.type} — this node's type`}
+          onTypeActivate={openTypeReference}
+          typeActivateLabel="open the node reference"
         />
       </header>
       <CommonReadout resolved={resolvedCommon} compact />

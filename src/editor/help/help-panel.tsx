@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ExpressionScope } from "@domain/expressions/index.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
@@ -67,6 +67,15 @@ export interface HelpPanelProps {
   onSectionChange: (section: HelpSection) => void;
   /** The installed catalogue — `registry.list()`. */
   nodes: readonly NodeDefinition[];
+  /**
+   * T1342b — a search to open the nodes tab WITH, from a caller that named a node type.
+   *
+   * A request, not the box's state: the panel owns what the search currently says, so a
+   * new value is applied when the `nonce` changes and never on a re-render. Re-opening on
+   * the same node therefore re-applies (same value, new nonce) while typing in the box
+   * survives (same nonce, no effect).
+   */
+  nodeQuery?: { value: string; nonce: number };
   /** The scope a parameter expression sees, for the live examples (§V71). */
   scope?: ExpressionScope;
 }
@@ -84,10 +93,18 @@ export function HelpPanel({
   section,
   onSectionChange,
   nodes,
+  nodeQuery: requestedQuery,
   scope = {},
 }: HelpPanelProps) {
   const keymap = useOptionalKeymap();
   const [nodeQuery, setNodeQuery] = useState("");
+  const appliedQuery = useRef<number | null>(null);
+  if (requestedQuery !== undefined && appliedQuery.current !== requestedQuery.nonce) {
+    // Applied during render rather than in an effect: an effect would paint the panel once
+    // with the previous search, and the frame a user sees on opening is the whole point.
+    appliedQuery.current = requestedQuery.nonce;
+    if (requestedQuery.value !== nodeQuery) setNodeQuery(requestedQuery.value);
+  }
   /** The binding id whose next keystroke is being recorded, if any (T360). */
   const [capturing, setCapturing] = useState<string | null>(null);
   const [status, setStatus] = useState("");

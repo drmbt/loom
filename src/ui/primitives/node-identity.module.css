@@ -31,6 +31,31 @@
 }
 
 /*
+  T1342b — the badge as a BUTTON, where a surface gave it somewhere to go.
+
+  A `<button>` brings a browser default background, font and padding that would make it a
+  different shape from the `<span>` next to it in the library and on every graph tile, and
+  the whole point of T954's badge is that there is ONE of it. So this resets the chrome the
+  element brings and adds nothing but the affordance: a pointer, a hover that lifts the
+  text out of `--text-dim`, and the focus ring the rest of the kit uses.
+*/
+.typeAction {
+  appearance: none;
+  background: none;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.typeAction:hover,
+.typeAction:focus-visible {
+  color: var(--text);
+  border-color: var(--line-hot);
+}
+
+/*
   T964 — a subtle tint on the type badge, keyed off the node's DECLARED category.
 
   Subtle is the constraint the owner set, and it is load-bearing: the graph already
