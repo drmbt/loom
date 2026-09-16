@@ -330,9 +330,28 @@ export function NodePreviewSlot({ nodeId, runtime, bounds, views, orbits, orbita
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
+    /*
+     * T1334b / §V142 — UNMOUNTING IS NOT DELETION, and the difference is a black frame.
+     *
+     * This slot unmounts for two unrelated reasons: the node left the document, or React
+     * Flow culled it because the camera moved (`onlyRenderVisibleElements`). Clearing the
+     * published box on unmount answers both the same way, and for the second one the answer
+     * is wrong: the preview tick then finds no offset, emits no request, and the node leaves
+     * the schedule entirely — so the program signature moves and the host reinstalls it,
+     * which `previews/system.ts` states blanks EVERY preview for the frame. That is B13,
+     * the bug §V142 exists to keep fixed.
+     *
+     * So the box stays. It is node-LOCAL (§V111) — an offset and a size inside the node's
+     * own wrapper — so it does not go stale while the camera moves; the node's absolute
+     * position is read live from React Flow every tick, for mounted and culled nodes alike.
+     * A remount republishes it, and an identical box neither copies the map nor notifies.
+     *
+     * Deletion is handled where deletion is KNOWN: the preview tick prunes boxes whose node
+     * is no longer in the document (`use-node-previews.ts`). Allocation follows the
+     * document; drawing follows the viewport.
+     */
     return () => {
       observer.disconnect();
-      bounds.clear(nodeId);
     };
   }, [bounds, flow, nodeId]);
 

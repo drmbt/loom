@@ -194,6 +194,59 @@ describe("useNodePreviews (T185)", () => {
     expect(nodeRuntime.get("n1").preview?.state.kind).toBe("idle");
     nodeRuntime.dispose();
   });
+
+  /**
+   * T1334b — WHO CLEANS UP A SLOT BOX, now that unmounting no longer does.
+   *
+   * `NodePreviewSlot` used to clear its published box on unmount, which answered "the node
+   * was deleted" and "React Flow culled it off screen" the same way — and for the cull the
+   * answer costs a preview-program reinstall, i.e. every tile black for a frame (§V142,
+   * B13). The box therefore survives unmounting, and DELETION is handled here, where the
+   * document is.
+   *
+   * Both halves are asserted, because a prune that swallowed the legitimate case would put
+   * the original bug back: a node that is merely unmounted keeps its box.
+   */
+  it("prunes a slot box whose node left the document, and keeps one whose node did not", () => {
+    const registry = createTestRegistry().view();
+    const graph = graphWith("test.blur");
+    const nodeRuntime = createNodeRuntimeStore();
+    const bounds = createPreviewSlotBounds();
+    bounds.publish("n1", { x: 0, y: 0, width: 200, height: 120 });
+    // The culled node: still in no document at all here — this is the box left behind by a
+    // node that WAS deleted, which is the only case the prune may take.
+    bounds.publish("gone", { x: 0, y: 0, width: 200, height: 120 });
+
+    const canvas = document.createElement("canvas");
+    canvas.getBoundingClientRect = () =>
+      ({ x: 0, y: 0, top: 0, left: 0, right: 400, bottom: 300, width: 400, height: 300 }) as DOMRect;
+
+    renderHook(() =>
+      useNodePreviews({
+        backend: fakeBackend(),
+        canvasRef: { current: canvas },
+        bounds,
+        graph,
+        registry,
+        compiledOutputs: [],
+        nodeRuntime,
+        getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+        getNodePosition: () => ({ x: 0, y: 0 }),
+        getNodeBoxes: () => [],
+        previewFps: 20,
+        previewLongEdge: 192,
+        documentIdentity: "document-under-test",
+      }),
+    );
+
+    vi.advanceTimersToNextFrame();
+    vi.advanceTimersByTime(150);
+
+    expect(bounds.get("gone")).toBeUndefined();
+    // The box the schedule needs to keep a culled node as a holder rather than dropping it.
+    expect(bounds.get("n1")).toEqual({ x: 0, y: 0, width: 200, height: 120 });
+    nodeRuntime.dispose();
+  });
 });
 
 /**

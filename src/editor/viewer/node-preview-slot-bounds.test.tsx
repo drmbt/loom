@@ -122,6 +122,38 @@ describe("§B174 preview slot bounds", () => {
     expectLocal(raced);
   });
 
+  /**
+   * T1334b — UNMOUNTING IS NOT DELETION, and the box is what keeps the two apart.
+   *
+   * A slot unmounts when its node leaves the document AND when React Flow culls it off
+   * screen. Clearing the published box answered both the same way, and the preview tick
+   * then finds no offset for a culled node, emits no request, and the node leaves the
+   * schedule — which moves the program signature and makes the host reinstall it. A
+   * reinstall rebuilds every tile at once (`previews/system.ts`), i.e. every preview in
+   * the graph goes black for the frame: B13, the bug §V142 exists to keep fixed.
+   *
+   * The box is node-LOCAL, so it is still correct for a node nobody is rendering — which
+   * is exactly why keeping it is safe rather than merely convenient.
+   */
+  it("keeps the published box when the slot unmounts, because a cull is not a delete", () => {
+    const bounds = createPreviewSlotBounds();
+    installLayout(1, { x: 0, y: 0 });
+    const view = render(
+      <ReactFlowProvider>
+        <div className="react-flow__node">
+          <NodePreviewSlot nodeId={NODE} runtime={idleRuntime} bounds={bounds} />
+        </div>
+      </ReactFlowProvider>,
+    );
+    expectLocal(bounds.get(NODE));
+
+    view.unmount();
+
+    // The measurement the preview tick needs to keep this node in the schedule as a
+    // holder, still there after the component that took it is gone.
+    expectLocal(bounds.get(NODE));
+  });
+
   it("cancels pan without re-measuring, at a scale the store does not know about", () => {
     // §V111's other half: the rect DELTA between slot and node removes pan entirely, so
     // the same box comes back from a graph scrolled anywhere.

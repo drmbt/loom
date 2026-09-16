@@ -533,6 +533,22 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
       const viewport = current.getViewport();
       const devicePixelRatio = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
       const candidates = candidatesFor(current.graph, current.registry);
+
+      /*
+       * T1334b — the other half of "a slot keeps its box when its node unmounts".
+       *
+       * `NodePreviewSlot` no longer clears on unmount, because a culled node is not a
+       * deleted one and dropping its box costs a program reinstall (§V142). Deletion is
+       * known HERE, where the document is: a box whose node is gone can never be asked for
+       * again, so it is pruned. The size compare keeps the ordinary tick at one integer
+       * comparison — boxes only ever outnumber nodes just after a delete.
+       */
+      const boxes = current.bounds.snapshot();
+      if (boxes.size > Object.keys(current.graph.nodes).length) {
+        for (const nodeId of boxes.keys()) {
+          if (current.graph.nodes[nodeId] === undefined) current.bounds.clear(nodeId);
+        }
+      }
       /* T1248: the counter if the canvas offers one, and only then is the DOM read skipped
          — the boxes are still read below, once, on every tick that is not quiet. */
       const layout = current.nodeLayoutRevision?.() ?? current.getNodeBoxes();
