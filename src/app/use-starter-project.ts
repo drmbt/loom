@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import { listExampleProjects } from "@editor/library/index.ts";
 import type { ExampleProject } from "@editor/library/example-catalogue.ts";
 import { resolveExampleLink } from "@editor/library/example-link.ts";
+import { assessRequirements, describeRunVerdict } from "@domain/types/requirements.ts";
+import type { HostFacts, RuntimeRequirement } from "@domain/types/requirements.ts";
 import { STARTER_EXAMPLE_FILE } from "./starter-document.ts";
 import type { LastOpened } from "./last-opened.ts";
 
@@ -26,7 +28,8 @@ import type { LastOpened } from "./last-opened.ts";
  *   WORK and the missing concept was DELIBERATE INTENT. `last-opened.ts` holds that
  *   concept as a POINTER (a file name and a kind, never bytes), so it cannot become the
  *   user's work the way an autosave-on-open would; this module asks it after the autosave
- *   and before the starter.
+ *   and before the starter. **Since B225, only if this machine can actually run it** —
+ *   see rule two, and `unrunnableHere` for why only a KNOWN `unmet` counts.
  *
  * …and one thing that outranks both, since T1278, because it is not from this browser at
  * all:
@@ -167,6 +170,67 @@ export type ExampleLinkOutcome =
   /** It ships and it did not parse. `sync.test.ts`'s finding, said out loud meanwhile. */
   | { readonly kind: "unreadable"; readonly example: ExampleProject };
 
+/**
+ * B225 — THE BOOT DECLINED TO REOPEN WHERE YOU WERE, BECAUSE THIS MACHINE CANNOT RUN IT.
+ *
+ * Reported for the same reason `ExampleLinkOutcome` is: this module is a decision over
+ * facts and has no opinion about how the app talks. But this one is not optional the way
+ * a silent `opened` is. **A boot that substitutes a different document for the one the
+ * user deliberately chose and says nothing is its own bug report waiting to happen** —
+ * they picked that example on purpose, and "my graph turned back into the demo" is
+ * indistinguishable from data loss from where they are sitting. So the outcome carries
+ * everything the notice needs to name it AND a way back into it: `text` is the restamped
+ * document, already resolved, so "Open it anyway" is one call and the override stays the
+ * user's to make.
+ */
+export interface UnrunnableRestore {
+  /** The example the pointer named — the row, so the notice can use its real name. */
+  readonly example: ExampleProject;
+  /** Its bytes, restamped with this browser's project id. Ready for `project.open`. */
+  readonly text: string;
+  /** The one requirement that decided it, for a notice that says WHY in the user's words. */
+  readonly blocking: RuntimeRequirement;
+  /** `describeRunVerdict`'s sentence — the same words the Examples pane shows on the row. */
+  readonly summary: string;
+}
+
+/**
+ * Can this host run the example the boot is about to reopen? Null when the answer is
+ * "yes, or we cannot prove otherwise" — i.e. when it should be reopened.
+ *
+ * ⚠ **THE THIRD VERDICT DECIDES THIS FUNCTION AND IT IS NOT A DETAIL (§V986).** The
+ * verdict is `met` / `unmet` / `unknown`, and only a KNOWN `unmet` may override a
+ * deliberate choice. On `cannot tell` the example is reopened: refusing somebody the
+ * document they asked for on the strength of a fact nobody checked is the same
+ * confident-wrong-answer failure this vocabulary exists to refuse, just pointing the
+ * other way. Concretely: an `ndi-sdk` example is `unknown` on every host (a page cannot
+ * see the filesystem) and a `helper` example is `unknown` on a tab whose bridge socket
+ * has not finished opening — neither is a reason to take somebody's document away.
+ *
+ * A file whose requirements could not be READ is the same case in its strongest form:
+ * `requirementsError` means we know nothing about what it needs, which is not evidence
+ * that it needs something impossible.
+ */
+export function unrunnableHere(
+  document: StarterDocument,
+  host: HostFacts,
+): UnrunnableRestore | null {
+  if (document.example.requirementsError !== undefined) return null;
+  const verdict = describeRunVerdict(
+    assessRequirements(
+      document.example.requirements.map((requirement) => requirement.id),
+      host,
+    ),
+  );
+  if (verdict === null || verdict.verdict !== "unmet") return null;
+  return {
+    example: document.example,
+    text: document.text,
+    blocking: verdict.blocking,
+    summary: verdict.summary,
+  };
+}
+
 export interface StarterProjectOptions {
   /**
    * The app BUILT its own runtime, i.e. this is the product boot (`<App />` in
@@ -244,6 +308,20 @@ export interface StarterProjectOptions {
   readonly exampleLink: string | null;
   /** Where an `exampleLink` decision goes. Required whenever a link can arrive. */
   readonly onExampleLink?: ((outcome: ExampleLinkOutcome) => void) | undefined;
+  /**
+   * WHAT THIS MACHINE IS (B225, T1340b) — `pageHostFacts`, read at the decision.
+   *
+   * A value rather than a probe, so the whole of rule two stays a decision over facts and
+   * the "a browser boot reopened a desktop-only example" case is a headless assertion
+   * against a FAKE host record rather than something only a headed lane can see.
+   */
+  readonly host: HostFacts;
+  /**
+   * Where a DECLINED restore goes (B225). Required wherever `lastOpened` can name an
+   * example — a boot that quietly swaps the user's document for the starter and has
+   * nowhere to say so is the half of this fix that matters.
+   */
+  readonly onUnrunnableRestore?: ((outcome: UnrunnableRestore) => void) | undefined;
   /** The project id the starter is restamped with — the runtime's own. */
   readonly projectId: string;
   /** `useProject().openText`, i.e. `project.open` on the bus (§V29). */
@@ -276,6 +354,8 @@ export function useStarterProject(options: StarterProjectOptions): void {
     lastOpened,
     exampleLink,
     onExampleLink,
+    host,
+    onUnrunnableRestore,
     projectId,
     openText,
     catalogue,
@@ -294,6 +374,8 @@ export function useStarterProject(options: StarterProjectOptions): void {
     lastOpened,
     exampleLink,
     onExampleLink,
+    host,
+    onUnrunnableRestore,
     projectId,
     openText,
     catalogue,
@@ -308,6 +390,8 @@ export function useStarterProject(options: StarterProjectOptions): void {
     lastOpened,
     exampleLink,
     onExampleLink,
+    host,
+    onUnrunnableRestore,
     projectId,
     openText,
     catalogue,
@@ -397,6 +481,27 @@ export function useStarterProject(options: StarterProjectOptions): void {
      * An example that is no longer shipped falls THROUGH to the starter rather than
      * returning: the pointer has gone stale, so there is genuinely nothing to return to,
      * and the starter is what a boot with nothing to restore is for.
+     *
+     * ## B225 — …AND IT MUST BE RUNNABLE WHERE THEY ARE
+     *
+     * The owner, on the hosted build: *"the current version doesn't have the checkerboard
+     * displacement noise example as the default any more, but the SYPHON LOOPBACK. that's
+     * confusing… that's a HELPER-SUPPORTED one and we're in the BROWSER."* Nothing above
+     * was broken and the starter was never touched — the pointer had been left on E71 by
+     * a visit that browsed the freshly-landed desktop-only examples, and rule two returned
+     * the user to it exactly as designed. **RESTORING AN EXAMPLE THIS HOST CANNOT RUN IS A
+     * BAD BOOT WHATEVER RECORDED IT**, so `unrunnableHere` is asked before the open.
+     *
+     * ⛑ **THE GENERAL RULE, WHICH OUTLIVES THIS BUG: THE FIRST THING SOMEBODY SEES MUST BE
+     * RUNNABLE WHERE THEY ARE. A first impression that cannot render is worse than no
+     * example at all** — a graph that draws nothing teaches the new arrival that the app
+     * is broken, and the one that was actually broken was their machine's fit to a
+     * transport they never asked for.
+     *
+     * Only a KNOWN `unmet` may do this. `cannot tell` reopens (§V986 — see
+     * `unrunnableHere`), and a declined restore is REPORTED and falls through to the
+     * starter, never silently substituted: the user chose that example on purpose, and the
+     * notice carries the bytes so one click still takes them there.
      */
     if (current.lastOpened.kind === "other") return;
     if (current.lastOpened.kind === "example") {
@@ -406,8 +511,12 @@ export function useStarterProject(options: StarterProjectOptions): void {
         current.catalogue,
       );
       if (previous !== null) {
-        current.openText(previous.text);
-        return;
+        const refusal = unrunnableHere(previous, current.host);
+        if (refusal === null) {
+          current.openText(previous.text);
+          return;
+        }
+        current.onUnrunnableRestore?.(refusal);
       }
     }
 

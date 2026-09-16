@@ -12,7 +12,10 @@ import { App } from "./app.tsx";
 import type { AppRuntime } from "./app-runtime.ts";
 import type { GpuStatus } from "./gpu-status.ts";
 import { PROJECT_STORAGE_KEY } from "./app-runtime.ts";
-import { STARTER_EXAMPLE_FILE, starterProjectText } from "./use-starter-project.ts";
+import { STARTER_EXAMPLE_FILE, starterProjectText, unrunnableHere } from "./use-starter-project.ts";
+import type { StarterDocument } from "./use-starter-project.ts";
+import { orderRequirements } from "@domain/types/requirements.ts";
+import type { HostFacts, RuntimeRequirementId } from "@domain/types/requirements.ts";
 
 /**
  * THE STARTER NETWORK AND THE AUTOSAVE IT MUST NEVER TOUCH (owner request).
@@ -572,5 +575,205 @@ describe("T1164 — the starter does not override a document somebody deliberate
       expect(app.runtime()).not.toBeNull();
     });
     expect([...app.nodeTypes()].sort()).toEqual([...STARTER_NODE_TYPES].sort());
+  });
+});
+
+/**
+ * B225 — THE FIRST THING SOMEBODY SEES MUST BE RUNNABLE WHERE THEY ARE.
+ *
+ * The owner, on the hosted build: *"the current version doesn't have the checkerboard
+ * displacement noise example as the default any more, but the SYPHON LOOPBACK. that's
+ * confusing… that's a HELPER-SUPPORTED one and we're in the BROWSER."*
+ *
+ * And, as with T1164 above, NOTHING WAS BROKEN. The starter is still E6 (the describe at
+ * the top of this file asserts it), and a genuinely fresh profile against the deployed
+ * build opens E6 — checked, not assumed. What had happened is that rule two worked: the
+ * pointer had been left on E71 by a visit that browsed the desktop-only examples, and the
+ * next boot dutifully returned the user to a Syphon loopback in a browser tab, where it
+ * cannot render a pixel. **Restoring an example this host cannot run is a bad boot
+ * whatever recorded it**, and a first impression that cannot render is worse than none.
+ *
+ * The defect's own signature is therefore "A BROWSER BOOT OPENED A DESKTOP-ONLY EXAMPLE",
+ * and that is what the first case here asserts, end to end through the real store, the
+ * real pointer and the real catalogue — not that a predicate returned a value.
+ */
+describe("B225 — a boot does not restore an example this machine cannot run", () => {
+  /** E71's node types — what "a Syphon loopback is on screen" actually looks like. */
+  const E71 = "E71 Syphon Loopback";
+
+  it("opens the starter, not the desktop-only example the pointer names, and SAYS SO", async () => {
+    const { store } = memorySnapshotStore();
+
+    // BOOT ONE. The user browses the new examples and opens E71 through the real row,
+    // which executes `project.open` on the bus and records the pointer (§V29, §V88).
+    const first = await mountApp(store);
+    await waitFor(() => {
+      expect(first.runtime()).not.toBeNull();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${E71}`) }));
+    });
+    await waitFor(() => {
+      expect(first.nodeTypes()).not.toEqual([]);
+    });
+    /*
+     * NON-VACUITY, and the thing that makes this a browser boot rather than a unit test:
+     * a Syphon node really is on the canvas, in jsdom, where `desktopShellPresent()` is
+     * false. If E71 ever stopped containing one, the case below would pass for no reason.
+     */
+    expect(
+      first.nodeTypes().some((type) => type.toLowerCase().startsWith("syphon")),
+      "E71 must really put a Syphon node on the canvas, or this case proves nothing",
+    ).toBe(true);
+
+    cleanup();
+
+    // BOOT TWO — same browser, still nothing to restore, still a browser tab. Before
+    // B225 this put the Syphon loopback straight back.
+    const second = await mountApp(store);
+    await waitFor(() => {
+      expect(second.runtime()).not.toBeNull();
+    });
+    expect(
+      [...second.nodeTypes()].sort(),
+      "a browser boot reopened a desktop-only example",
+    ).toEqual([...STARTER_NODE_TYPES].sort());
+
+    /*
+     * AND THE SUBSTITUTION IS NOT SILENT. They chose E71 on purpose; a boot that hands
+     * them a different document with no word about it is its own bug report. The notice
+     * names the example and the requirement that decided it, and "Open it anyway" is
+     * theirs to click — being unable to RUN a graph never stopped it opening (§V93).
+     */
+    const notice = await screen.findByText(new RegExp(`${E71} was not reopened`));
+    // The WHY, in the same words the Examples pane puts on the row — asserted off the
+    // notice's own subtree, because "Desktop only" is also a badge on four library rows.
+    expect(
+      notice.textContent,
+      "the notice must name the requirement that decided it, not just refuse",
+    ).toContain("Desktop only");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Open it anyway/ }));
+    });
+    await waitFor(() => {
+      expect(
+        second.nodeTypes().some((type) => type.toLowerCase().startsWith("syphon")),
+        "the override must actually take the user to the example they chose",
+      ).toBe(true);
+    });
+  }, 30_000);
+
+  it("still reopens an example this machine CAN run, and says nothing about it", async () => {
+    /*
+     * The other side of the switch. A guard that declined everything would pass every
+     * assertion above while quietly retiring T1164 — so this is the legitimate case the
+     * guard could swallow: E3 needs nothing beyond a browser tab, and rule two must be
+     * exactly as it was.
+     */
+    const { store } = memorySnapshotStore();
+    const first = await mountApp(store);
+    await waitFor(() => {
+      expect(first.runtime()).not.toBeNull();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^E3 Animated Noise Field/ }));
+    });
+    await waitFor(() => {
+      expect(first.nodeTypes()).not.toEqual([]);
+    });
+    const theirDocument = [...first.nodeTypes()].sort();
+    expect(theirDocument).not.toEqual([...STARTER_NODE_TYPES].sort());
+
+    cleanup();
+
+    const second = await mountApp(store);
+    await waitFor(() => {
+      expect(second.runtime()).not.toBeNull();
+    });
+    expect([...second.nodeTypes()].sort()).toEqual(theirDocument);
+    // Nothing was overridden, so there is nothing to announce.
+    expect(screen.queryByText(/was not reopened/)).toBeNull();
+  }, 30_000);
+});
+
+/**
+ * B225 — THE THREE VERDICTS, against a FAKE host record.
+ *
+ * The evaluation is pure (`requirements × HostFacts → verdict`), so the interesting half
+ * of this fix is assertable without a browser at all — and the `unknown` arm is the one
+ * that decides the design. §V986: only a KNOWN `unmet` may override what the user chose.
+ * A guard that also refused on `cannot tell` would be the same confident wrong answer
+ * pointing the other way, and no host reachable from jsdom can produce that arm.
+ */
+describe("B225 — only a KNOWN 'cannot run' overrides a deliberate choice (§V986)", () => {
+  function documentNeeding(ids: readonly RuntimeRequirementId[]): StarterDocument {
+    return {
+      text: "{}",
+      example: {
+        fileName: "E-fake.loom.json",
+        name: "Fake",
+        nodeCount: 1,
+        text: "{}",
+        description: "",
+        category: "image",
+        tags: [],
+        requirements: orderRequirements(ids),
+      },
+    };
+  }
+
+  const BROWSER_ON_A_MAC: HostFacts = { shell: "browser", helper: "unknown", os: "macos" };
+
+  it("declines a desktop-only example in a browser — the verdict is KNOWN unmet", () => {
+    const refusal = unrunnableHere(documentNeeding(["desktop", "macos"]), BROWSER_ON_A_MAC);
+    expect(refusal, "a browser tab has no Syphon transport at all, and we can prove it").not.toBeNull();
+    // The words the notice shows: the blocking requirement is the one the reader acts on.
+    expect(refusal?.blocking.id).toBe("desktop");
+  });
+
+  it("REOPENS an example whose requirement this page cannot check", () => {
+    /*
+     * `ndi-sdk` is a machine install: a page cannot see the filesystem, so the verdict is
+     * `unknown` on every host, forever. Refusing here would mean nobody who works on NDI
+     * can ever be returned to their own document — punishment for a fact we declined to
+     * establish.
+     */
+    expect(unrunnableHere(documentNeeding(["ndi-sdk"]), BROWSER_ON_A_MAC)).toBeNull();
+  });
+
+  it("REOPENS a helper example on a tab whose bridge has not finished probing", () => {
+    /*
+     * `helper: "unknown"` is the state one second after load — the socket is still
+     * opening. Reading that as "the helper is absent" is exactly the confident wrong
+     * answer §V986 names, and it would hit every OSC and laser user on every reload.
+     */
+    expect(unrunnableHere(documentNeeding(["helper"]), BROWSER_ON_A_MAC)).toBeNull();
+    // …and when the page has genuinely established there is no helper, it declines.
+    expect(
+      unrunnableHere(documentNeeding(["helper"]), { ...BROWSER_ON_A_MAC, helper: "absent" }),
+    ).not.toBeNull();
+  });
+
+  it("REOPENS a plain example, and one whose requirements could not be read at all", () => {
+    expect(unrunnableHere(documentNeeding([]), BROWSER_ON_A_MAC)).toBeNull();
+    const unreadable: StarterDocument = {
+      ...documentNeeding([]),
+      example: { ...documentNeeding([]).example, requirementsError: "unavailable node spoutIn" },
+    };
+    // Knowing nothing about what a file needs is not evidence that it needs the impossible.
+    expect(unrunnableHere(unreadable, BROWSER_ON_A_MAC)).toBeNull();
+  });
+
+  it("declines on the desktop app too, when the PLATFORM is the thing that is wrong", () => {
+    // Not a browser-only rule: a macOS Syphon example on a Windows desktop build is just
+    // as unrunnable, and the same sentence is the right one.
+    const windowsDesktop: HostFacts = { shell: "desktop", helper: "paired", os: "windows" };
+    expect(unrunnableHere(documentNeeding(["desktop", "macos"]), windowsDesktop)?.blocking.id).toBe(
+      "macos",
+    );
+    // …and it reopens the same file on the Mac desktop build that meets it.
+    const macDesktop: HostFacts = { shell: "desktop", helper: "paired", os: "macos" };
+    expect(unrunnableHere(documentNeeding(["desktop", "macos"]), macDesktop)).toBeNull();
   });
 });

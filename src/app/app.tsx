@@ -64,7 +64,7 @@ import { useRuntimeCommands } from "./runtime-commands.ts";
 import { createPreviewSinkStore } from "./preview-sinks.ts";
 import { useAutosave } from "./use-autosave.ts";
 import { useStarterProject } from "./use-starter-project.ts";
-import type { ExampleLinkOutcome } from "./use-starter-project.ts";
+import type { ExampleLinkOutcome, UnrunnableRestore } from "./use-starter-project.ts";
 import { consumeExampleLink, currentExampleLink } from "./example-link-boot.ts";
 import { lastOpenedStore } from "./last-opened.ts";
 import type { LastOpened } from "./last-opened.ts";
@@ -1115,6 +1115,15 @@ export function App({
   const [exampleLinkOutcome, setExampleLinkOutcome] = useState<
     Exclude<ExampleLinkOutcome, { kind: "opened" }> | null
   >(null);
+  /**
+   * B225 — THE BOOT DECLINED TO PUT YOU BACK WHERE YOU WERE.
+   *
+   * State rather than a call into a dialog, for the same reason `exampleLinkOutcome` is:
+   * this arrives without anybody asking, and the notice strip is where this app says such
+   * things. It is null on virtually every boot — the answer only exists when the pointer
+   * named an example whose requirements this machine is KNOWN not to meet.
+   */
+  const [unrunnableRestore, setUnrunnableRestore] = useState<UnrunnableRestore | null>(null);
   const onExampleLink = useCallback((outcome: ExampleLinkOutcome) => {
     /*
      * Consumed as soon as the boot has TAKEN RESPONSIBILITY — including while a
@@ -1239,6 +1248,11 @@ export function App({
     // outranks this browser's own autosave.
     exampleLink: bootExampleLink,
     onExampleLink,
+    // B225: what this machine IS, so rule two cannot put a browser tab back on a
+    // desktop-only example. Read at the decision, not frozen: the helper fact moves as the
+    // bridge socket settles, and the honest answer is whatever is true when we decide.
+    host: hostFacts,
+    onUnrunnableRestore: setUnrunnableRestore,
     projectId: runtime.invocation.projectId,
     openText: openProjectText,
   });
@@ -1568,6 +1582,44 @@ export function App({
       }
     }
 
+    /**
+     * B225 — WE DID NOT PUT YOU BACK WHERE YOU WERE, AND HERE IS WHY AND HERE IS THE WAY
+     * BACK.
+     *
+     * The boot reopens the example this browser last opened on purpose (T1164). When that
+     * example is one this machine is KNOWN not to be able to run — a Syphon loopback in a
+     * browser tab — it opens the starter instead, and **the substitution may not be
+     * silent**: the user chose that document deliberately, and a boot that quietly hands
+     * them a different one is indistinguishable from losing their work.
+     *
+     * So the notice names the example, says which requirement decided it in the same words
+     * the Examples pane uses, and carries the bytes — "Open it anyway" is the user's
+     * override, because being unable to RUN a graph has never stopped it from opening,
+     * reading and saving (§V93's grain).
+     */
+    if (unrunnableRestore !== null) {
+      list.push({
+        id: "last-opened-unrunnable",
+        tone: "warn",
+        // Deliberately does NOT name what was opened instead: the starter preference may
+        // be off, in which case the answer was an empty canvas. What the reader needs is
+        // which document they did NOT get back and why.
+        message: `${unrunnableRestore.example.name} was not reopened — this machine cannot run it.`,
+        detail: unrunnableRestore.summary,
+        actions: [
+          {
+            label: "Open it anyway",
+            variant: "outline",
+            onSelect: () => {
+              setUnrunnableRestore(null);
+              project.openText(unrunnableRestore.text);
+            },
+          },
+          { label: "Dismiss", onSelect: () => setUnrunnableRestore(null) },
+        ],
+      });
+    }
+
     if (runtime.unknownParameters.length > 0) {
       list.push({
         id: "newer-version",
@@ -1592,6 +1644,7 @@ export function App({
     project,
     recovery,
     runtime.unknownParameters.length,
+    unrunnableRestore,
   ]);
 
   const environment = useMemo<KeymapEnvironment>(
