@@ -154,6 +154,16 @@ export interface AppShellProps {
   openPaneWindow?: OpenPaneWindow;
   /** A float that the browser refused. The pane is docked again; say so on screen. */
   onFloatBlocked?: (role: PaneId) => void;
+  /**
+   * T1329b — true while a split divider is being dragged, false when it is released.
+   *
+   * The shell is the only place that knows a pane-resize GESTURE is in progress, and the
+   * surfaces inside the panes are the only place that pays for it: every frame of the drag
+   * changes their CSS box, and sizing a canvas to it reallocates and clears its drawing
+   * buffer. The app hands this to the backend, which holds the backing stores for the
+   * duration and resizes once on release (`setSurfaceResizeHold`).
+   */
+  onResizeGesture?: (active: boolean) => void;
 }
 
 /**
@@ -201,6 +211,7 @@ export function AppShell({
   storage,
   openPaneWindow,
   onFloatBlocked,
+  onResizeGesture,
 }: AppShellProps) {
   const initial = useMemo(() => readPaneTreeStore(storage), [storage]);
   const storeRef = useRef<PaneTreeStore>(initial);
@@ -581,6 +592,7 @@ export function AppShell({
               `Resize ${leafLabels.get(node.first.kind === "leaf" ? node.first.id : node.second.kind === "leaf" ? node.second.id : node.id) ?? "split"}`
             }
             onDoubleClick={() => resetSplit(node.id)}
+            {...(onResizeGesture === undefined ? {} : { onDragging: onResizeGesture })}
           />
           <Panel
             id={`panel-${node.id}-b`}

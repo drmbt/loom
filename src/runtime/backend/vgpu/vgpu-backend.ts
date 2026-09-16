@@ -341,6 +341,59 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
   }
   const previewHosts = new Set<PreviewHostState>();
 
+  /**
+   * T1329b — WHO SIZES A LAYOUT-BACKED SURFACE, and why it is this file rather than vgpu.
+   *
+   * vgpu sizes every layout-backed surface from its CSS box once per frame advance
+   * (`applyAutoResize`), and a size change assigns `canvas.width`, which REALLOCATES and
+   * CLEARS the drawing buffer. Measured on E32 Pasture while dragging the bottom divider:
+   * 80 backing-store writes across 40 pointer moves, all of them from that per-frame
+   * sizing — 40 on the preview surface, 40 on the graph background. The row's original
+   * suspect (`use-output-presentation`'s ResizeObserver) wrote nothing in that gesture.
+   *
+   * So the surfaces are created with `autoResize: false` and sized HERE, by the same rule,
+   * at the same moment in the frame — which costs nothing extra and buys the one thing
+   * vgpu's version cannot offer: it can be HELD for the duration of a gesture
+   * (`setSurfaceResizeHold`). While held the bitmap keeps its size and the browser scales
+   * it into the changing box; the release resizes once.
+   */
+  let surfaceResizeHeld = false;
+
+  /** The CSS box in device pixels, or undefined for a canvas with no layout (Offscreen). */
+  function layoutSize(canvas: PresentableCanvas): readonly [number, number] | undefined {
+    const laidOut = canvas as PresentableCanvas & { clientWidth?: number; clientHeight?: number };
+    if (typeof laidOut.clientWidth !== "number" || typeof laidOut.clientHeight !== "number") return undefined;
+    const ratio = globalThis.devicePixelRatio ?? 1;
+    return [Math.max(1, Math.floor(laidOut.clientWidth * ratio)), Math.max(1, Math.floor(laidOut.clientHeight * ratio))];
+  }
+
+  /**
+   * Sizes every live surface to its CSS box, unless a gesture is holding them.
+   *
+   * MUST run outside frame encoding: `surface.resize` recreates the swapchain textures
+   * (§V8), which is why every caller is at a frame boundary rather than inside one.
+   */
+  function fitSurfacesToLayout(): void {
+    if (surfaceResizeHeld) return;
+    for (const p of presentations.values()) {
+      // A native-model canvas is sized by its packed input extent, never by a CSS box —
+      // `ensurePresentation` throws if the two disagree, and it has no layout anyway.
+      if (p.disposed || p.surface === undefined || p.modelInputSize !== undefined) continue;
+      fitSurface(p.canvas, p.surface);
+    }
+    for (const h of previewHosts) {
+      if (h.disposed || h.surface === undefined) continue;
+      fitSurface(h.canvas, h.surface);
+    }
+  }
+
+  function fitSurface(canvas: PresentableCanvas, target: Surface): void {
+    const size = layoutSize(canvas);
+    if (size === undefined) return;
+    if (canvas.width === size[0] && canvas.height === size[1]) return;
+    target.resize([size[0], size[1]]);
+  }
+
   const status: BackendStatus = {
     get initialized() {
       return session !== undefined;
@@ -816,6 +869,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     // T311: BEFORE the frame opens — building preview resources is an allocation, and
     // the §V8 guard rightly refuses it once `duringFrame` begins.
     retryDirtyPreviewHosts();
+    // T1329b: the sizing vgpu used to do at frame advance, at the same boundary, minus the
+    // part that cannot be held for the duration of a gesture.
+    fitSurfacesToLayout();
     flushRings(); // T321: archive last frame's ring writes before anything binds a tap.
     const previous = currentFrame;
     currentFrame = f;
@@ -1355,6 +1411,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         // because every lens shader writes `a = 1.0` (`debug-effects.wgsl.ts`).
         p.surface = surface(active.gpu, p.canvas as unknown as SurfaceCanvas, {
           alphaMode: "opaque",
+          // T1329b: this file sizes it (see `fitSurfacesToLayout`), so a gesture can hold it.
+          autoResize: false,
           ...(p.label === undefined ? {} : { label: p.label }),
         });
         // T739: record WHICH device this canvas got configured against. A floated
@@ -1525,6 +1583,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           label: "previews",
           alphaMode: "premultiplied",
           clearColor: [0, 0, 0, 0],
+          // T1329b: sized by `fitSurfacesToLayout`, so a pane drag can hold it.
+          autoResize: false,
         });
       }
       if (!h.program) return;
@@ -1922,6 +1982,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // before opening it — so only retry here when no frame is open.
       if (currentFrame === undefined) {
         retryDirtyPreviewHosts();
+        fitSurfacesToLayout(); // T1329b, same seam: outside the frame, before anything encodes.
         flushRings(); // T321: same reasoning, same seam.
       }
       if (compiled.id !== program.id) {
@@ -2325,6 +2386,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         },
         presentPreviews(command: PreviewFrameCommand) {
           if (h.disposed || disposed || halted) return;
+          // T1329b: this path opens its own frame below, so the surface is sized here —
+          // outside it, where recreating the swapchain textures is legal (§V8).
+          fitSurfacesToLayout();
           const active = session;
           const set = h.set;
           const surfaceTarget = h.surface;
@@ -2586,6 +2650,14 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       }
       recovery = rebuildWithRetries().finally(() => (recovery = undefined));
       await recovery;
+    },
+
+    setSurfaceResizeHold(held: boolean) {
+      if (surfaceResizeHeld === held) return;
+      surfaceResizeHeld = held;
+      // The release is the whole point: one resize, now, rather than the next frame's.
+      // Held, there is nothing to do — the bitmap keeps its size until this runs.
+      if (!held) fitSurfacesToLayout();
     },
 
     setCookPolicy(policy) {

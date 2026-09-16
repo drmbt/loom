@@ -88,6 +88,7 @@ function recordingBackend(): LoomBackend & {
     readBuffer: () => Promise.resolve(new ArrayBuffer(0)),
     registerMediaSource: () => () => {},
     setCookPolicy() {},
+    setSurfaceResizeHold() {},
   };
 }
 

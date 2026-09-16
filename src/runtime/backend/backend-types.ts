@@ -267,6 +267,28 @@ export interface LoomBackend extends RenderBackend {
   setCookPolicy(policy: CookPolicy): void;
 
   /**
+   * T1329b — HOLD EVERY SURFACE'S BACKING STORE WHILE A PANE-RESIZE GESTURE IS LIVE.
+   *
+   * Assigning `canvas.width`/`height` is not a resize: it reallocates the drawing buffer
+   * and CLEARS it, and a WebGPU canvas has no valid swapchain texture again until the next
+   * present lands. A layout-backed surface is sized from its CSS box once per frame, so a
+   * pane divider dragged across 40 frames reallocates 40 times — measured on E32 Pasture
+   * (77 nodes): 40 writes on the preview surface and 40 on the graph background, every one
+   * of them from the per-frame sizing, and frame pacing tracked the count (median gap
+   * 20–30 ms against 10–11 ms for a divider that could not move).
+   *
+   * While held, the backing store keeps the size it has and the browser scales the existing
+   * bitmap into the changing box — so the picture is momentarily soft or slightly stretched
+   * instead of blanking, and that is the deliberate trade. Releasing the hold resizes every
+   * surface once, immediately.
+   *
+   * It is a GESTURE hold, not a debounce: the caller states when the drag begins and ends,
+   * so nothing has to guess at a settling time, and a hold that is never released is a bug
+   * with an obvious cause rather than a silently stale picture.
+   */
+  setSurfaceResizeHold(held: boolean): void;
+
+  /**
    * Binds a CPU-side frame producer to a `sourceId` (T229, §V135). Every
    * `externalTexture` resource declaring that sourceId uploads from this source — on
    * frame-ready, never per render frame (§V136). Returns the unregister function.

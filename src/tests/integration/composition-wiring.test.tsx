@@ -164,6 +164,7 @@ function fixtureBackend(): LoomBackend {
     readBuffer: noGpu,
     registerMediaSource: () => () => {},
     setCookPolicy() {},
+    setSurfaceResizeHold() {},
   };
 }
 

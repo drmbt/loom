@@ -974,6 +974,49 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     preview.dispose();
   });
 
+  /**
+   * T1329b — THE BACKING STORE IS HELD FOR THE DURATION OF A PANE-RESIZE GESTURE.
+   *
+   * Assigning `canvas.width` reallocates the drawing buffer and CLEARS it, and a surface
+   * sized from its CSS box does that once per frame — measured on E32 Pasture, 80 writes
+   * across one 40-move drag of the bottom divider, all of them from the per-frame sizing.
+   * The hold is what turns those 40 frames of reallocation into ONE, on release.
+   *
+   * Both halves are here, because a hold that never releases is the worse bug: the size
+   * must not move while held, AND it must be correct the moment the gesture ends.
+   */
+  it("holds the backing store through a gesture and resizes once on release (§V8)", async () => {
+    const { backend, host } = await harness();
+    const plan = await backend.compile(fixturePlan());
+    const { canvas } = previewCanvas(host);
+    // A LAID-OUT canvas: the CSS box is what the surface sizes from, and it is what a
+    // pane drag changes every frame.
+    const laidOut = { ...canvas, clientWidth: 800, clientHeight: 600 };
+    const preview = backend.previewHost(laidOut);
+    preview.setPreviewProgram(tileProgram());
+
+    preview.presentPreviews(frameCommand());
+    const settled = { width: laidOut.width, height: laidOut.height };
+    expect(settled).toEqual({ width: 800, height: 600 });
+
+    // The gesture: the divider moves, so the box changes on every frame of it.
+    backend.setSurfaceResizeHold(true);
+    for (const height of [560, 520, 480, 440]) {
+      laidOut.clientHeight = height;
+      backend.render(plan, frameInputs(0));
+      preview.presentPreviews(frameCommand());
+      // Not one reallocation through the whole drag — the bitmap is scaled into the box
+      // by the browser instead, which is the trade this feature makes.
+      expect({ width: laidOut.width, height: laidOut.height }).toEqual(settled);
+    }
+
+    backend.setSurfaceResizeHold(false);
+    // And the release catches up immediately, without waiting for another frame: a stale
+    // picture after the gesture is exactly what a debounce would have shipped.
+    expect({ width: laidOut.width, height: laidOut.height }).toEqual({ width: 800, height: 440 });
+    preview.dispose();
+  });
+
   it("an unchanged signature does not rebuild the tile resources (§V8)", async () => {
     const { backend, host } = await harness();
     await backend.compile(fixturePlan());

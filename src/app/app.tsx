@@ -612,6 +612,17 @@ export function App({
     [runtime],
   );
 
+  /**
+   * T1329b — the pane-resize GESTURE, handed to the backend so it can hold its surfaces.
+   *
+   * Through the ref rather than `backend` directly: the callback is handed to the shell
+   * once and must not change identity on a device rebuild, and a hold armed against a
+   * backend that has since been replaced would never be released on the live one.
+   */
+  const onResizeGesture = useCallback((active: boolean) => {
+    backendRef.current?.setSurfaceResizeHold(active);
+  }, []);
+
   const [cookPolicy, setCookPolicy] = useState<CookPolicyValue>("always");
   useEffect(() => {
     backend?.setCookPolicy(cookPolicy);
@@ -1906,6 +1917,7 @@ export function App({
           {...(storage === undefined ? {} : { storage })}
           {...(openPaneWindow === undefined ? {} : { openPaneWindow })}
           onFloatBlocked={setFloatBlocked}
+          onResizeGesture={onResizeGesture}
           problemCount={errorCount}
           notices={<NoticeStrip notices={notices} />}
           topBar={topBar}
