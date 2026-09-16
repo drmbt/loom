@@ -300,6 +300,8 @@ function motionOf(
  * by accident, because the sweep that created this table found none.
  */
 const DELIBERATELY_STILL: Record<string, string> = {
+  "E75-Resonance.loom.json churnx1.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
+  "E75-Resonance.loom.json churny1.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
   /* §T809 — E27's optional audio, and "optional" is a GATE here rather than a promise:
      `kick1` is a multiply whose operand ships at 0, so the whole audioPattern → bias →
      envelope → gain chain reaches `lift1.value1` as EXACTLY 0. `relief-claims.gpu.test.ts`

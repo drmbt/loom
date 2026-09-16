@@ -487,6 +487,9 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
      times, differing only in where each stands. The digest covers all three, which is why
      one row stands for what reads on screen as three separate claims. */
   "E63-Skin.loom.json": "7c422382185bd253",
+  // Resonance: both fitted shells now expose minimum radial travel; the inner layer
+  // opens at 0.10 energy with aligned, wider fissures and 14%-thick pieces.
+  "E75-Resonance.loom.json": "2c191e31180e8eb9",
 };
 
 const POINT_KERNEL_TYPES = new Set(["pointKernel", "pointKernelAdvanced"]);
@@ -509,8 +512,8 @@ describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
 
   it("covers exactly the looms that carry kernels — a shrinking gate is a passing gate", () => {
     expect([...digests.keys()].sort()).toEqual(Object.keys(FRAME_ZERO_DIGESTS).sort());
-    // T1290: 47 + E69-Burnish's five — one plate and four spheres.
-    expect(kernelCount).toBe(52);
+    // 52 existing kernels plus Resonance's eleven.
+    expect(kernelCount).toBe(63);
   });
 
   it.each(Object.keys(FRAME_ZERO_DIGESTS))("%s is unchanged at frame 0", (fileName) => {

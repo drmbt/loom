@@ -365,6 +365,12 @@
     "f0max": 1,
     "cardFloor": 0
   },
+  "E75-Resonance.loom.json": {
+    "motion": 0.02584,
+    "range": 0.993,
+    "f0max": 0.792,
+    "cardFloor": 0
+  },
   "E8-Slit-Scan.loom.json": {
     "motion": 0.11307,
     "range": 0.6484,

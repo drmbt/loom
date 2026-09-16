@@ -1,3 +1,5 @@
+export { resonanceDocument } from "./documents/resonance.ts";
+import { resonanceDocument } from "./documents/resonance.ts";
 import type { ProjectDocument } from "../domain/types/graph.ts";
 export { EXAMPLE_TIMESTAMP } from "./documents/builders.ts";
 export { feedbackEchoDocument } from "./documents/feedback-echo.ts";
@@ -128,6 +130,7 @@ import { syphonLoopbackDocument, ndiLoopbackDocument, spoutLoopbackDocument } fr
 import { nativePersonMaskDocument } from "./documents/native-person-mask.ts";
 
 export const EXAMPLE_DOCUMENTS: readonly ProjectDocument[] = [
+  resonanceDocument,
   feedbackEchoDocument,
   reactionDiffusionDocument,
   animatedNoiseFieldDocument,

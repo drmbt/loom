@@ -1,0 +1,422 @@
+{
+  "mode": "shipped",
+  "wallMsPerFrame": 64.13878835999999,
+  "passes": [
+    {
+      "id": "room#room:custom",
+      "ms": 15.885356521739128,
+      "n": 28
+    },
+    {
+      "id": "lens#lens:custom",
+      "ms": 14.041800347826085,
+      "n": 28
+    },
+    {
+      "id": "bloom#bloom:custom",
+      "ms": 12.389153391304346,
+      "n": 28
+    },
+    {
+      "id": "blur#blur:blur-v",
+      "ms": 12.030130086956522,
+      "n": 28
+    },
+    {
+      "id": "glow#glow:add:1",
+      "ms": 11.961744695652172,
+      "n": 28
+    },
+    {
+      "id": "blur#blur:blur-h",
+      "ms": 11.67965495652174,
+      "n": 28
+    },
+    {
+      "id": "out#out:present:filmic",
+      "ms": 11.052788869565216,
+      "n": 28
+    },
+    {
+      "id": "fxaa#fxaa:custom",
+      "ms": 10.98440347826087,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:scene:1",
+      "ms": 3.5873836521739135,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:scene:0",
+      "ms": 3.5731366956521735,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:scene:5",
+      "ms": 2.781005913043478,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:scene:2",
+      "ms": 2.5815485217391303,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:scene:6",
+      "ms": 2.4647234782608693,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:scene:3",
+      "ms": 2.196880695652174,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:shadow:3:0",
+      "ms": 2.0944213333333326,
+      "n": 29
+    },
+    {
+      "id": "shot#shot:scene:4",
+      "ms": 2.023067826086957,
+      "n": 28
+    },
+    {
+      "id": "timeWall/grid#timeWall/grid:tile",
+      "ms": 1.9196586666666668,
+      "n": 29
+    },
+    {
+      "id": "timeWall/paint#timeWall/paint:fill",
+      "ms": 1.8650453333333337,
+      "n": 29
+    },
+    {
+      "id": "timeWall/scan#timeWall/scan:record",
+      "ms": 1.8158933333333336,
+      "n": 29
+    },
+    {
+      "id": "panelSource#panelSource:switch:3",
+      "ms": 1.68034304,
+      "n": 30
+    },
+    {
+      "id": "timeWall/palette#timeWall/palette:ramp",
+      "ms": 1.6684373333333335,
+      "n": 29
+    },
+    {
+      "id": "timeWall/pack#timeWall/pack:reorder",
+      "ms": 1.6384000000000005,
+      "n": 29
+    },
+    {
+      "id": "shot#shot:shadow:3:clear",
+      "ms": 1.594709333333334,
+      "n": 29
+    },
+    {
+      "id": "timeWall/fit#timeWall/fit:transform",
+      "ms": 1.5537493333333334,
+      "n": 29
+    },
+    {
+      "id": "timeWall/scan#timeWall/scan:scan",
+      "ms": 1.5045973333333331,
+      "n": 29
+    },
+    {
+      "id": "shot#shot:scene:7",
+      "ms": 1.4645871304347826,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:scene:8",
+      "ms": 1.4132980869565217,
+      "n": 28
+    },
+    {
+      "id": "mineral#mineral:custom",
+      "ms": 1.3893631999999996,
+      "n": 30
+    },
+    {
+      "id": "timeWall/map#timeWall/map:custom",
+      "ms": 1.3653333333333333,
+      "n": 29
+    },
+    {
+      "id": "shot#shot:scene:9",
+      "ms": 1.3135693913043476,
+      "n": 28
+    },
+    {
+      "id": "panelCam#panelCam:media",
+      "ms": 1.2792627200000002,
+      "n": 30
+    },
+    {
+      "id": "timeWall/break#timeWall/break:custom",
+      "ms": 1.2670293333333333,
+      "n": 29
+    },
+    {
+      "id": "shot#shot:depthOut:0",
+      "ms": 1.2337864347826086,
+      "n": 28
+    },
+    {
+      "id": "movieCrop#movieCrop:custom",
+      "ms": 1.22945536,
+      "n": 30
+    },
+    {
+      "id": "cameraCrop#cameraCrop:custom",
+      "ms": 1.21634816,
+      "n": 30
+    },
+    {
+      "id": "timeWall/sweep#timeWall/sweep:custom",
+      "ms": 1.1823786666666665,
+      "n": 29
+    },
+    {
+      "id": "panelMovie#panelMovie:media",
+      "ms": 1.1796479999999998,
+      "n": 30
+    },
+    {
+      "id": "shot#shot:shadow:0:clear",
+      "ms": 1.155072,
+      "n": 29
+    },
+    {
+      "id": "envSeed#envSeed:fill",
+      "ms": 1.1062476799999998,
+      "n": 30
+    },
+    {
+      "id": "shot#shot:shadow:0:0",
+      "ms": 1.0922666666666663,
+      "n": 29
+    },
+    {
+      "id": "scenePack#scenePack:custom",
+      "ms": 1.0599735652173912,
+      "n": 28
+    },
+    {
+      "id": "videoPack#videoPack:custom",
+      "ms": 1.057124173913044,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:shadow:3:1",
+      "ms": 1.040384,
+      "n": 29
+    },
+    {
+      "id": "sceneAtlas#sceneAtlas:add:1",
+      "ms": 0.9944375652173918,
+      "n": 28
+    },
+    {
+      "id": "timeWall/guard#timeWall/guard:limit",
+      "ms": 0.9939626666666669,
+      "n": 29
+    },
+    {
+      "id": "timeWall/crush#timeWall/crush:level",
+      "ms": 0.9912320000000001,
+      "n": 29
+    },
+    {
+      "id": "environment#environment:custom",
+      "ms": 0.9202346666666669,
+      "n": 29
+    },
+    {
+      "id": "timeWall/tone#timeWall/tone:lookup",
+      "ms": 0.9120426666666668,
+      "n": 29
+    },
+    {
+      "id": "shot#shot:scene:10",
+      "ms": 0.9118052173913043,
+      "n": 28
+    },
+    {
+      "id": "seamMirror#seamMirror:kernel",
+      "ms": 0.8956586666666667,
+      "n": 29
+    },
+    {
+      "id": "mirror#mirror:kernel",
+      "ms": 0.8362393600000001,
+      "n": 30
+    },
+    {
+      "id": "depthPack#depthPack:mask",
+      "ms": 0.8348716521739136,
+      "n": 28
+    },
+    {
+      "id": "opaqueAlpha#opaqueAlpha:reorder",
+      "ms": 0.809227130434783,
+      "n": 28
+    },
+    {
+      "id": "seams#seams:kernel",
+      "ms": 0.7973546666666668,
+      "n": 29
+    },
+    {
+      "id": "timeWall/tint#timeWall/tint:multiply:1",
+      "ms": 0.7782399999999999,
+      "n": 29
+    },
+    {
+      "id": "timeWall/mix#timeWall/mix:cross",
+      "ms": 0.7154346666666664,
+      "n": 29
+    },
+    {
+      "id": "shot#shot:depthOut:7",
+      "ms": 0.7094984347826087,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:depthOut:clear",
+      "ms": 0.6924020869565216,
+      "n": 28
+    },
+    {
+      "id": "innerGrid#innerGrid:generate",
+      "ms": 0.6690133333333333,
+      "n": 29
+    },
+    {
+      "id": "innerMirror#innerMirror:kernel",
+      "ms": 0.6081740799999998,
+      "n": 30
+    },
+    {
+      "id": "chipGrid#chipGrid:generate",
+      "ms": 0.59506688,
+      "n": 30
+    },
+    {
+      "id": "innerSeamMirror#innerSeamMirror:kernel",
+      "ms": 0.5845811199999996,
+      "n": 30
+    },
+    {
+      "id": "shot#shot:depthOut:3",
+      "ms": 0.5784264347826086,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:shadow:0:1",
+      "ms": 0.5734400000000002,
+      "n": 29
+    },
+    {
+      "id": "shot#shot:shadow:0:7",
+      "ms": 0.5461333333333332,
+      "n": 29
+    },
+    {
+      "id": "shot#shot:depthOut:1",
+      "ms": 0.5328361739130435,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:shadow:3:7",
+      "ms": 0.5160959999999999,
+      "n": 29
+    },
+    {
+      "id": "fracture#fracture:kernel",
+      "ms": 0.47972352,
+      "n": 30
+    },
+    {
+      "id": "shot#shot:shadow:0:8",
+      "ms": 0.4696746666666665,
+      "n": 29
+    },
+    {
+      "id": "shot#shot:shadow:3:8",
+      "ms": 0.46694399999999975,
+      "n": 29
+    },
+    {
+      "id": "innerSeams#innerSeams:kernel",
+      "ms": 0.44564479999999984,
+      "n": 30
+    },
+    {
+      "id": "innerFracture#innerFracture:kernel",
+      "ms": 0.43963733333333316,
+      "n": 29
+    },
+    {
+      "id": "shot#shot:depthOut:8",
+      "ms": 0.43310747826086937,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:shadow:0:3",
+      "ms": 0.37137066666666657,
+      "n": 29
+    },
+    {
+      "id": "chipForm#chipForm:kernel",
+      "ms": 0.32505855999999994,
+      "n": 30
+    },
+    {
+      "id": "shot#shot:shadow:3:3",
+      "ms": 0.3222186666666666,
+      "n": 29
+    },
+    {
+      "id": "shot#shot:shadow:3:2",
+      "ms": 0.32221866666666654,
+      "n": 29
+    },
+    {
+      "id": "grid#grid:generate",
+      "ms": 0.30146559999999994,
+      "n": 30
+    },
+    {
+      "id": "debrisMirror#debrisMirror:kernel",
+      "ms": 0.26738687999999994,
+      "n": 30
+    },
+    {
+      "id": "shot#shot:backdrop",
+      "ms": 0.2649933913043477,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:depthOut:2",
+      "ms": 0.23080069565217384,
+      "n": 28
+    },
+    {
+      "id": "shot#shot:shadow:0:2",
+      "ms": 0.20206933333333324,
+      "n": 29
+    },
+    {
+      "id": "debris#debris:kernel",
+      "ms": 0.15466495999999996,
+      "n": 30
+    }
+  ],
+  "timedSegments": 208
+}
