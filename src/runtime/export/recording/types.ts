@@ -37,10 +37,36 @@ export interface EncoderFrame {
 export interface EncodedVideo {
   /** e.g. `video/mp4; codecs="avc1.42001f"`. */
   readonly mimeType: string;
-  readonly bytes: Uint8Array;
+  readonly bytes: Uint8Array | Blob;
+  /** Removes temporary disk-backed storage after the artifact has been saved. */
+  readonly dispose?: (() => Promise<void>) | undefined;
   readonly frameCount: number;
   readonly durationSeconds: number;
 }
+
+/** Interleaved float PCM. Offline export currently supplies one fixed-rate mono channel. */
+export interface AudioPcmTrack {
+  readonly sampleRate: number;
+  readonly channelCount: number;
+  readonly samples: Float32Array;
+}
+
+/** A finite PCM track sampled in bounded batches instead of allocated for the whole take. */
+export interface AudioPcmSource {
+  readonly sampleRate: number;
+  readonly channelCount: number;
+  readonly totalFrames: number;
+  /** Returns exactly count interleaved frames; invalid ranges throw. */
+  readFrames(offset: number, count: number): Float32Array;
+}
+
+export type AudioPcmProvider = () => AudioPcmTrack | AudioPcmSource | Promise<AudioPcmTrack | AudioPcmSource>;
+
+/** Work performed by `finish()` after the exact video frames have been collected. */
+export type EncoderFinishProgress =
+  | { readonly stage: "video" }
+  | { readonly stage: "audio"; readonly completedFrames: number; readonly totalFrames: number }
+  | { readonly stage: "finalizing" };
 
 export interface VideoEncoderSink {
   configure(config: EncoderConfig): Promise<void> | void;
@@ -48,7 +74,7 @@ export interface VideoEncoderSink {
   /** Flushes and muxes. Called once. */
   finish(): Promise<EncodedVideo>;
   /** Releases resources after a cancelled take. */
-  close?(): void;
+  close?(): Promise<void> | void;
 }
 
 export type RecorderState = "idle" | "recording" | "finishing" | "done" | "failed" | "cancelled";

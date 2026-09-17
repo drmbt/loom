@@ -366,9 +366,27 @@
     "cardFloor": 0
   },
   "E75-Resonance.loom.json": {
-    "motion": 0.03243,
+    "motion": 0.03708,
     "range": 0.9994,
-    "f0max": 0.7928,
+    "f0max": 0.7501,
+    "cardFloor": 0
+  },
+  "E76-Verdant-Lotus.loom.json": {
+    "motion": 0.02696,
+    "range": 0.8239,
+    "f0max": 0.6654,
+    "cardFloor": 0
+  },
+  "E77-Ember-Monoliths.loom.json": {
+    "motion": 0.00509,
+    "range": 0.4378,
+    "f0max": 0.4622,
+    "cardFloor": 0
+  },
+  "E78-Aether-Orrery.loom.json": {
+    "motion": 0.01768,
+    "range": 0.9024,
+    "f0max": 0.9899,
     "cardFloor": 0
   },
   "E8-Slit-Scan.loom.json": {

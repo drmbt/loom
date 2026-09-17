@@ -89,6 +89,14 @@ describe("vgpu backend — initialization and capabilities", () => {
     expect(image.bytes.byteLength).toBe(64 * 64 * 4);
     expect(backend.status.readbacks).toBe(1);
 
+    // Export owns its returned bytes; mutating them must not touch the texture or
+    // a later readback when the backend forwards vgpu's owned array directly.
+    const original = image.bytes.slice();
+    image.bytes.fill(255);
+    const nextImage = await backend.readOutput("output");
+    expect(nextImage.bytes).toEqual(original);
+    expect(nextImage.bytes.buffer).not.toBe(image.bytes.buffer);
+
     // A region crop comes back region-sized, still fully described.
     const probe = await backend.readOutput("output", { x: 1, y: 2, width: 3, height: 4 });
     expect([probe.width, probe.height]).toEqual([3, 4]);

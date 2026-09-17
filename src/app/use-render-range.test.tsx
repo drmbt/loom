@@ -6,7 +6,7 @@ import { alice, contextFor, createHarness } from "@domain/commands/test-support.
 import type { FrameInputs } from "@domain/types/backend.ts";
 import type { GraphDocument, ProjectSettings } from "@domain/types/graph.ts";
 import type { CompiledGraph } from "@compiler/index.ts";
-import type { EncoderFrame, ExportInterface, VideoEncoderSink } from "@runtime/export/index.ts";
+import type { EncoderFrame, ExportInterface, LoadEncoderOptions, VideoEncoderSink } from "@runtime/export/index.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { transportHolderFor } from "./transport-commands.ts";
@@ -39,7 +39,62 @@ import type { LoomBackend } from "@runtime/backend/index.ts";
  * different take), and the diagnostic is `severity: "warning"`, not `"error"`.
  */
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+it("uses output-frame units after an FPS change while preserving time during the change itself", () => {
+  const { bus } = createHarness();
+  const view = renderHook(() => useRenderRange({
+    bus,
+    exports: fakeExports(),
+    compiled: COMPILED,
+    graph: graphWith("timeline"),
+    registry: REGISTRY,
+    settings: { ...SETTINGS, fps: 60, frameRange: { start: 0, end: 128 } },
+    latestFrame: () => frameInputs(0),
+    name: () => "test",
+    write: async () => ({ kind: "cancelled" }),
+    probeEncoder: async () => ({ supported: true, codec: "avc1.42002a", reason: null }),
+  }));
+
+  expect(view.result.current.frames).toBe(129);
+  act(() => view.result.current.setRenderSettings({ outputFps: 30 }));
+  expect(view.result.current.renderSettings.range).toEqual({ start: 0, end: 64 });
+  expect(view.result.current.frames).toBe(65);
+  act(() => view.result.current.setRenderSettings({ range: { start: 0, end: 128 } }));
+  expect(view.result.current.frames).toBe(129);
+});
+
+it("offers the selected render dimensions in the destination filename", async () => {
+  let suggestedName: string | undefined;
+  vi.stubGlobal("showSaveFilePicker", async (options: { suggestedName?: string }) => {
+    suggestedName = options.suggestedName;
+    return {
+      createWritable: async () => ({
+        write: async () => undefined,
+        close: async () => undefined,
+        abort: async () => undefined,
+      }),
+    };
+  });
+  const { bus } = createHarness();
+  const view = renderHook(() => useRenderRange({
+    bus,
+    exports: fakeExports(),
+    compiled: COMPILED,
+    graph: graphWith("timeline"),
+    registry: REGISTRY,
+    settings: SETTINGS,
+    latestFrame: () => frameInputs(0),
+    name: () => "take.loom.json",
+  }));
+  await act(async () => {
+    await view.result.current.prepareDestination();
+  });
+  expect(suggestedName).toBe("take.2x2.0-2.mp4");
+});
 
 it("blocks the take and awaits output shutdown before evaluating its first frame", async () => {
   const { bus } = createHarness();
@@ -66,17 +121,320 @@ it("blocks the take and awaits output shutdown before evaluating its first frame
   await act(async () => { release(); });
   expect(seek).not.toHaveBeenCalled();
   await act(async () => { releaseViewer(); await pending; });
-  expect(seek).toHaveBeenCalledOnce();
+  expect(seek).toHaveBeenCalledTimes(1); // Seek to the render in point; cleanup must not replay the timeline.
   expect(renderRangeHolderFor(bus).current!.busy()).toBe(false);
   beforeRender.mockRejectedValueOnce(new Error("GPU shutdown failed"));
   await act(async () => { await bus.execute("export.renderRange", {}, contextFor(alice)); });
-  expect(seek).toHaveBeenCalledOnce();
+  expect(seek).toHaveBeenCalledTimes(1);
   expect(renderRangeHolderFor(bus).current!.busy()).toBe(false);
+});
+
+it("cancels an active take and restores hook state without saving a partial file", async () => {
+  const { bus } = createHarness();
+  const seek = vi.fn((frame: number) => frame);
+  transportHolderFor(bus).current = {
+    isPlaying: () => false,
+    togglePlay() {},
+    resetAbsoluteClock() {},
+    seek,
+    stepOnce: () => frameInputs(1),
+  } as never;
+  let release!: () => void;
+  let entered!: () => void;
+  const beforeRenderEntered = new Promise<void>((resolve) => { entered = resolve; });
+  const beforeRender = () => new Promise<void>((resolve) => {
+    release = resolve;
+    entered();
+  });
+  const write = vi.fn(async () => ({
+    kind: "saved" as const,
+    fileName: "partial.mp4",
+    method: "download" as const,
+  }));
+  const view = renderHook(() => useRenderRange({
+    bus,
+    exports: fakeExports(),
+    compiled: COMPILED,
+    graph: graphWith("timeline"),
+    registry: REGISTRY,
+    settings: SETTINGS,
+    latestFrame: () => frameInputs(0),
+    name: () => "test",
+    beforeRender,
+    loadEncoder: async () => fakeEncoder(),
+    probeEncoder: async () => ({ supported: true, codec: "avc1.42002a", reason: null }),
+    write,
+  }));
+
+  let pending!: Promise<unknown>;
+  await act(async () => {
+    pending = bus.execute("export.renderRange", {}, contextFor(alice));
+  });
+  await act(async () => { await beforeRenderEntered; });
+  expect(view.result.current.rendering).toBe(true);
+
+  await act(async () => {
+    view.result.current.cancel();
+    release();
+    await pending;
+  });
+
+  expect(view.result.current.rendering).toBe(false);
+  expect(renderRangeHolderFor(bus).current?.busy()).toBe(false);
+  expect(seek).not.toHaveBeenCalled();
+  expect(write).not.toHaveBeenCalled();
+});
+
+it("passes deterministic range audio to the MP4 encoder", async () => {
+  const { bus } = createHarness();
+  let current = 0;
+  transportHolderFor(bus).current = {
+    isPlaying: () => false,
+    togglePlay() {},
+    resetAbsoluteClock() {},
+    seek: (frame: number) => { current = frame; return frame; },
+    stepOnce: () => frameInputs(++current),
+  } as never;
+  const pcm = vi.fn(() => ({
+    sampleRate: 48_000,
+    channelCount: 1,
+    samples: new Float32Array(800),
+  }));
+  const close = vi.fn();
+  const loadEncoder = vi.fn(async (options: LoadEncoderOptions = {}) => {
+    const encoder = fakeEncoder();
+    const finish = encoder.finish;
+    encoder.finish = async () => {
+      await options.audio?.();
+      return finish();
+    };
+    return encoder;
+  });
+  renderHook(() => useRenderRange({
+    bus,
+    exports: fakeExports(),
+    compiled: COMPILED,
+    graph: graphWith("timeline"),
+    registry: REGISTRY,
+    settings: { ...SETTINGS, frameRange: { start: 0, end: 0 } },
+    latestFrame: () => frameInputs(0),
+    name: () => "test",
+    audioRequirement: () => ({ kind: "required" }),
+    prepareAudio: async () => ({ pcm, close }),
+    loadEncoder,
+    probeEncoder: async () => ({ supported: true, codec: "avc1.42002a", reason: null }),
+    probeAudioEncoder: async () => ({ supported: true, codec: "mp4a.40.2", reason: null }),
+    write: async () => ({ kind: "cancelled" }),
+  }));
+
+  await act(async () => { await bus.execute("export.renderRange", {}, contextFor(alice)); });
+  expect(loadEncoder).toHaveBeenCalledWith(expect.objectContaining({
+    audio: pcm,
+    onFinishProgress: expect.any(Function),
+    yieldControl: expect.any(Function),
+    signal: expect.any(AbortSignal),
+  }));
+  expect(pcm).toHaveBeenCalledOnce();
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it("renders video-only when audio is excluded, even if the source is not reproducible", async () => {
+  const { bus } = createHarness();
+  transportHolderFor(bus).current = {
+    isPlaying: () => false,
+    togglePlay() {},
+    resetAbsoluteClock() {},
+    seek: (frame: number) => frame,
+    stepOnce: () => frameInputs(1),
+  } as never;
+  const prepareAudio = vi.fn();
+  const probeAudioEncoder = vi.fn();
+  const loadEncoder = vi.fn(async () => fakeEncoder());
+  const restoreAudioMonitor = vi.fn();
+  const muteAudioMonitor = vi.fn(() => restoreAudioMonitor);
+  const view = renderHook(() => useRenderRange({
+    bus,
+    exports: fakeExports(),
+    compiled: COMPILED,
+    graph: graphWith(),
+    registry: REGISTRY,
+    settings: { ...SETTINGS, frameRange: { start: 0, end: 0 } },
+    latestFrame: () => frameInputs(0),
+    name: () => "test",
+    audioRequirement: () => ({ kind: "invalid", reason: "Audio File In must be Locked to Timeline." }),
+    prepareAudio,
+    muteAudioMonitor,
+    loadEncoder,
+    probeEncoder: async () => ({ supported: true, codec: "avc1.42002a", reason: null }),
+    probeAudioEncoder,
+    write: async () => ({ kind: "cancelled" }),
+  }));
+
+  expect(view.result.current.includeAudio).toBe(true);
+  act(() => view.result.current.setIncludeAudio(false));
+  expect(view.result.current.includeAudio).toBe(false);
+  await act(async () => { await bus.execute("export.renderRange", {}, contextFor(alice)); });
+
+  expect(prepareAudio).not.toHaveBeenCalled();
+  expect(probeAudioEncoder).not.toHaveBeenCalled();
+  expect(loadEncoder).toHaveBeenCalledWith(expect.objectContaining({
+    onFinishProgress: expect.any(Function),
+    yieldControl: expect.any(Function),
+    signal: expect.any(AbortSignal),
+  }));
+  expect(muteAudioMonitor).toHaveBeenCalledOnce();
+  expect(restoreAudioMonitor).toHaveBeenCalledOnce();
+});
+
+it("awaits timeline-file analysis for video-only reactivity without encoding its PCM", async () => {
+  const { bus } = createHarness();
+  transportHolderFor(bus).current = {
+    isPlaying: () => false,
+    togglePlay() {},
+    resetAbsoluteClock() {},
+    seek: (frame: number) => frame,
+    stepOnce: () => frameInputs(1),
+  } as never;
+  const pcm = vi.fn(() => ({
+    sampleRate: 48_000,
+    channelCount: 1,
+    samples: new Float32Array(800),
+  }));
+  const close = vi.fn();
+  const prepareAudio = vi.fn(async () => ({ pcm, close }));
+  const loadEncoder = vi.fn(async () => fakeEncoder());
+  const view = renderHook(() => useRenderRange({
+    bus,
+    exports: fakeExports(),
+    compiled: COMPILED,
+    graph: graphWith("timeline"),
+    registry: REGISTRY,
+    settings: { ...SETTINGS, frameRange: { start: 0, end: 0 } },
+    latestFrame: () => frameInputs(0),
+    name: () => "test",
+    audioRequirement: () => ({ kind: "required" }),
+    prepareAudio,
+    loadEncoder,
+    probeEncoder: async () => ({ supported: true, codec: "avc1.42002a", reason: null }),
+    probeAudioEncoder: async () => ({ supported: true, codec: "mp4a.40.2", reason: null }),
+    write: async () => ({ kind: "cancelled" }),
+  }));
+
+  act(() => view.result.current.setIncludeAudio(false));
+  await act(async () => { await bus.execute("export.renderRange", {}, contextFor(alice)); });
+
+  expect(prepareAudio).toHaveBeenCalledOnce();
+  expect(loadEncoder).toHaveBeenCalledWith(expect.objectContaining({
+    onFinishProgress: expect.any(Function),
+    yieldControl: expect.any(Function),
+    signal: expect.any(AbortSignal),
+  }));
+  expect(pcm).not.toHaveBeenCalled();
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it("releases prepared audio after an encoder failure so monitoring can be restored", async () => {
+  const { bus } = createHarness();
+  transportHolderFor(bus).current = {
+    isPlaying: () => false,
+    togglePlay() {},
+    resetAbsoluteClock() {},
+    seek: (frame: number) => frame,
+    stepOnce: () => frameInputs(1),
+  } as never;
+  const close = vi.fn();
+  const restoreAudioMonitor = vi.fn();
+  renderHook(() => useRenderRange({
+    bus,
+    exports: fakeExports(),
+    compiled: COMPILED,
+    graph: graphWith("timeline"),
+    registry: REGISTRY,
+    settings: { ...SETTINGS, frameRange: { start: 0, end: 0 } },
+    latestFrame: () => frameInputs(0),
+    name: () => "test",
+    audioRequirement: () => ({ kind: "required" }),
+    prepareAudio: async () => ({ pcm: () => ({
+      sampleRate: 48_000,
+      channelCount: 1,
+      samples: new Float32Array(800),
+    }), close }),
+    muteAudioMonitor: () => restoreAudioMonitor,
+    loadEncoder: async () => { throw new Error("encoder failed"); },
+    probeEncoder: async () => ({ supported: true, codec: "avc1.42002a", reason: null }),
+    probeAudioEncoder: async () => ({ supported: true, codec: "mp4a.40.2", reason: null }),
+    write: async () => ({ kind: "cancelled" }),
+  }));
+
+  await act(async () => { await bus.execute("export.renderRange", {}, contextFor(alice)); });
+  expect(close).toHaveBeenCalledOnce();
+  expect(restoreAudioMonitor).toHaveBeenCalledOnce();
+});
+
+it("releases prepared audio after cancellation so monitoring can be restored", async () => {
+  const { bus } = createHarness();
+  transportHolderFor(bus).current = {
+    isPlaying: () => false,
+    togglePlay() {},
+    resetAbsoluteClock() {},
+    seek: (frame: number) => frame,
+    stepOnce: () => frameInputs(1),
+  } as never;
+  let enterRead!: () => void;
+  let releaseRead!: () => void;
+  const readEntered = new Promise<void>((resolve) => { enterRead = resolve; });
+  const heldRead = new Promise<Awaited<ReturnType<ExportInterface["read"]>>>((resolve) => {
+    releaseRead = () => resolve({
+      width: 2,
+      height: 2,
+      format: "rgba8unorm",
+      rowStride: 8,
+      bytes: new Uint8Array(16),
+    });
+  });
+  const exports = fakeExports();
+  const close = vi.fn();
+  const restoreAudioMonitor = vi.fn();
+  const view = renderHook(() => useRenderRange({
+    bus,
+    exports: { ...exports, read: () => { enterRead(); return heldRead; } },
+    compiled: COMPILED,
+    graph: graphWith("timeline"),
+    registry: REGISTRY,
+    settings: { ...SETTINGS, frameRange: { start: 0, end: 0 } },
+    latestFrame: () => frameInputs(0),
+    name: () => "test",
+    audioRequirement: () => ({ kind: "required" }),
+    prepareAudio: async () => ({ pcm: () => ({
+      sampleRate: 48_000,
+      channelCount: 1,
+      samples: new Float32Array(800),
+    }), close }),
+    muteAudioMonitor: () => restoreAudioMonitor,
+    loadEncoder: async () => fakeEncoder(),
+    probeEncoder: async () => ({ supported: true, codec: "avc1.42002a", reason: null }),
+    probeAudioEncoder: async () => ({ supported: true, codec: "mp4a.40.2", reason: null }),
+    write: async () => ({ kind: "cancelled" }),
+  }));
+
+  let pending!: Promise<unknown>;
+  await act(async () => { pending = bus.execute("export.renderRange", {}, contextFor(alice)); });
+  await act(async () => { await readEntered; });
+  act(() => view.result.current.cancel());
+  await act(async () => { releaseRead(); await pending; });
+
+  expect(close).toHaveBeenCalledOnce();
+  expect(restoreAudioMonitor).toHaveBeenCalledOnce();
 });
 
 const REGISTRY = createNodeRegistry(allNodeDefinitions);
 
-const SETTINGS = { frameRange: { start: 0, end: 2 }, fps: 60 } as unknown as ProjectSettings;
+const SETTINGS = {
+  outputResolution: { width: 2, height: 2 },
+  frameRange: { start: 0, end: 2 },
+  fps: 60,
+  limits: { maxResolution: 4096 },
+} as unknown as ProjectSettings;
 
 function graphWith(playMode?: string): GraphDocument {
   return {
@@ -254,7 +612,7 @@ describe("T586 — a take over free-run media reports itself, and a locked one d
     // NOT a refusal: the owner approved free run, and forcing the lock or cancelling the
     // take would both hand back something other than what they asked for.
     expect((result as unknown as { status: string }).status).toBe("applied");
-    expect(saved.fileName).toBe("take.0-2.mp4");
+    expect(saved.fileName).toBe("take.2x2.0-2.mp4");
   });
 
   it("the SAME document with the lock opted in renders silently", async () => {
@@ -288,7 +646,7 @@ describe("T586 — a take over free-run media reports itself, and a locked one d
     // Same ruling as T586's: the take PROCEEDS. Refusing would hand back nothing at all for
     // a document whose only content is the camera the user pointed at something.
     expect((result as unknown as { status: string }).status).toBe("applied");
-    expect(saved.fileName).toBe("take.0-2.mp4");
+    expect(saved.fileName).toBe("take.2x2.0-2.mp4");
   });
 
   /**

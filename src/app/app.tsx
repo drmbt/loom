@@ -98,6 +98,8 @@ import { drainNativeViewerOutputs } from "./native-viewer-outputs.ts";
 import { createMediaControlRegistry, useMediaCommands } from "./media-commands.ts";
 import { useProject } from "./use-project.ts";
 import { useRenderRange } from "./use-render-range.ts";
+import type { RenderJobSettings } from "./use-render-range.ts";
+import { RenderVideoDialog } from "./render-video-dialog.tsx";
 // T949: the ONE synchronous answer to "is a take running", read per frame by the OSC pump.
 import { renderRangeHolderFor } from "./render-range.ts";
 
@@ -663,7 +665,27 @@ export function App({
     () => [...vision.diagnostics, ...laser.diagnostics, ...requirements],
     [vision.diagnostics, laser.diagnostics, requirements],
   );
-  const compile = useGraphCompile(runtime, capabilities, previewSinks, driverChannels, sessionNodeDiagnostics);
+  const projectRenderDefaults = useCallback((): RenderJobSettings => ({
+    resolution: runtime.settings.outputResolution,
+    outputFps: projectFps(runtime.settings),
+    range: projectRange(runtime.settings),
+  }), [runtime.settings]);
+  const [renderJobSettings, setRenderJobSettings] = useState<RenderJobSettings>(projectRenderDefaults);
+  useEffect(() => {
+    setRenderJobSettings(projectRenderDefaults());
+  }, [projectRenderDefaults, runtime.documentIdentity]);
+  const renderCompileSettings = useMemo(
+    () => ({ ...runtime.settings, outputResolution: renderJobSettings.resolution }),
+    [renderJobSettings.resolution, runtime.settings],
+  );
+  const compile = useGraphCompile(
+    runtime,
+    capabilities,
+    previewSinks,
+    driverChannels,
+    sessionNodeDiagnostics,
+    renderCompileSettings,
+  );
   const recovery = useGpuRecovery(status.kind === "ready" ? status.backend : null);
 
   // The tracked set is a function of the DOCUMENT (which nodes are Analyze) and of the
@@ -834,7 +856,10 @@ export function App({
     backend: backend ?? null,
     audio: audioTrack.read,
     compiled: compile.compiled,
-    settings: runtime.settings,
+    // Render resolution is session state: the plan, camera aspect and FrameU.resolution
+    // must describe the same target while a take override is active. Rate/range remain
+    // the project's, so this does not retime the composition.
+    settings: renderCompileSettings,
     animate: compile.animate,
     // Before `animate` reads the channels, every rendered frame (§V179, §V155).
     advanceChannels: (inputs) => {
@@ -888,6 +913,9 @@ export function App({
     observe: observeFrame,
     onReset: () => {
       valueGraph.reset();
+      // Audio has one frame of Jacobi state too. A seek/replay must start from the
+      // document's retained transport rather than the live frame that preceded it.
+      audioInput.reset();
       // The window goes with the state: a replayed seek must not draw a trajectory from
       // the history it just discarded (§V170, §V181).
       valueHistory.clear();
@@ -1015,8 +1043,16 @@ export function App({
   const onToggleLoop = useCallback(() => {
     void runtime.bus.execute("transport.toggleLoop", {}, runtime.invocation).then(reportRefusal);
   }, [reportRefusal, runtime]);
+  const [renderVideoOpen, setRenderVideoOpen] = useState(false);
+  const prepareRenderDestinationRef = useRef<() => Promise<boolean>>(async () => false);
   const onRenderRange = useCallback(() => {
-    void runtime.bus.execute("export.renderRange", {}, runtime.invocation).then(reportRefusal);
+    setRenderJobSettings(projectRenderDefaults());
+    setRenderVideoOpen(true);
+  }, [projectRenderDefaults]);
+  const onConfirmRenderRange = useCallback(() => {
+    void prepareRenderDestinationRef.current().then((ready) => {
+      if (ready) void runtime.bus.execute("export.renderRange", {}, runtime.invocation).then(reportRefusal);
+    });
   }, [reportRefusal, runtime]);
   /**
    * The timeline's in/out points are DOCUMENT state (§V177), so dragging or typing one
@@ -1312,6 +1348,11 @@ export function App({
     graph: compile.graph,
     registry: runtime.registry,
     settings: runtime.settings,
+    renderSettings: renderJobSettings,
+    onRenderSettingsChange: setRenderJobSettings,
+    prepareAudio: audioInput.prepareRenderAudio,
+    muteAudioMonitor: audioInput.muteMonitorForRender,
+    audioRequirement: audioInput.renderAudioRequirement,
     latestFrame: frameLoop.latestFrame,
     name: () => project.fileName ?? runtime.project.name,
     // T747: a take waits for each frame's inference instead of picking up whatever the
@@ -1322,6 +1363,7 @@ export function App({
       await vision.settle(frameIndex);
     },
   });
+  prepareRenderDestinationRef.current = renderRange.prepareDestination;
 
   /**
    * Every diagnostic the session has to offer, in one list (§V338: the honest answer has
@@ -2162,6 +2204,16 @@ export function App({
           bus={runtime.bus}
           settings={runtime.settings}
           onChange={onSettingsChange}
+        />
+        <RenderVideoDialog
+          open={renderVideoOpen}
+          onOpenChange={(next) => {
+            setRenderVideoOpen(next);
+            if (!next) setRenderJobSettings(projectRenderDefaults());
+          }}
+          settings={runtime.settings}
+          session={renderRange}
+          onRender={onConfirmRenderRange}
         />
         {/* T1188/§V307: the pipeline inspector, opened by `ui.showPipeline`.
             ⚑ `installed` is the latch, NOT `compile.compiled` — §B179 and §T1163 are the

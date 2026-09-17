@@ -1,7 +1,7 @@
 import type { ReadbackImage } from "../../domain/types/backend.ts";
 import type { TextureFormat } from "../../domain/types/node-definition.ts";
 import type { ColorSpace } from "../../domain/types/ports.ts";
-import { BYTES_PER_PIXEL, clamp01, linearToSrgb, readChannels, srgbToLinear } from "./pixel-format.ts";
+import { BYTES_PER_PIXEL, decodeHalf, clamp01, linearToSrgb, readChannels, srgbToLinear } from "./pixel-format.ts";
 import { ExportDiagnosticCode, ExportError, exportDiagnostic } from "./types.ts";
 
 /**
@@ -204,6 +204,44 @@ function passthroughRgba8(image: ReadbackImage): Rgba8Image {
   return { width: image.width, height: image.height, data };
 }
 
+// A binary16 channel has only 65,536 possible bit patterns. Cache the exact existing
+// decode/Float32-store/encode result once, including NaN, infinity and transfer overrides.
+// This avoids a full float plane and millions of pow calls for same-size HDR captures.
+const halfTransferTables = new Map<string, Uint8Array>();
+function halfTransferTable(encoded: boolean, transfer: TransferMode): Uint8Array {
+  const key = `${encoded}:${transfer}`;
+  const existing = halfTransferTables.get(key);
+  if (existing !== undefined) return existing;
+  const table = new Uint8Array(65_536);
+  const encode = transfer === "srgb" ? linearToSrgb : clamp01;
+  for (let bits = 0; bits < table.length; bits += 1) {
+    const value = decodeHalf(bits);
+    const linear = Math.fround(encoded ? srgbToLinear(value) : value);
+    table[bits] = Math.round(encode(linear) * 255);
+  }
+  halfTransferTables.set(key, table);
+  return table;
+}
+
+function convertHalfRgba8(image: ReadbackImage, encoded: boolean, transfer: TransferMode): Rgba8Image {
+  const rgb = halfTransferTable(encoded, transfer);
+  const alpha = halfTransferTable(false, "raw");
+  const data = new Uint8Array(image.width * image.height * 4);
+  const view = new DataView(image.bytes.buffer, image.bytes.byteOffset, image.bytes.byteLength);
+  for (let y = 0; y < image.height; y += 1) {
+    let source = y * image.rowStride;
+    let target = y * image.width * 4;
+    const end = target + image.width * 4;
+    for (; target < end; target += 4, source += 8) {
+      data[target] = rgb[view.getUint16(source, true)]!;
+      data[target + 1] = rgb[view.getUint16(source + 2, true)]!;
+      data[target + 2] = rgb[view.getUint16(source + 4, true)]!;
+      data[target + 3] = alpha[view.getUint16(source + 6, true)]!;
+    }
+  }
+  return { width: image.width, height: image.height, data };
+}
+
 export interface ToRgba8Options {
   readonly maxWidth?: number;
   readonly maxHeight?: number;
@@ -243,6 +281,9 @@ export function toRgba8At(
     bytesAreEncoded(image.format, options.space)
   ) {
     return passthroughRgba8(image);
+  }
+  if (unchanged && image.format === "rgba16float") {
+    return convertHalfRgba8(image, bytesAreEncoded(image.format, options.space), transfer);
   }
   return encodePlaneToRgba8(
     resizePlane(decodeToLinear(image, options.space), width, height),

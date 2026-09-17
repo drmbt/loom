@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { AudioFeatures, FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import type { FrameRange, GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
 import { createHopAnalyser } from "@domain/audio/analysis/hop-analyser.ts";
-import type { MediaTransportValues } from "@domain/media/transport.ts";
+import { mediaTransportFrom, type MediaPlayhead, type MediaTransportValues } from "@domain/media/transport.ts";
 import { awaitMediaReady } from "./media-sources.ts";
 import { createAudioHopReducer } from "./audio-analysis-frame.ts";
 import {
@@ -24,6 +24,9 @@ import type { MediaControlRegistry } from "./media-commands.ts";
 import { audioLatencyEstimate, type AudioLatencyEstimate } from "./audio-latency.ts";
 import { createPreAnalyser, readTrackAtPlayhead } from "./audio-pre-analysis.ts";
 import type { OfflineAnalysis } from "./audio-offline-analysis.ts";
+import { createOfflineAudioCapture } from "./offline-render-audio.ts";
+import type { OfflineAudioCapture } from "./offline-render-audio.ts";
+import type { AudioPcmProvider } from "@runtime/export/index.ts";
 import {
   applyMediaPlayhead,
   createMediaTransportRunner,
@@ -198,8 +201,51 @@ export interface AudioInputSource {
    * to mean one thing for pictures and another for sound.
    */
   readonly sync: (frame: FrameEvaluationInput, channels?: ChannelResolver) => void;
+  /** A replay starts from the document's retained transport, never the prior live frame. */
+  readonly reset: () => void;
   /** The app transport stopped: hold the file rather than letting it run on unwatched. */
   readonly setRunning: (running: boolean) => void;
+  /** Prepares the bound timeline-locked file for deterministic audible export. */
+  readonly prepareRenderAudio: (
+    range: FrameRange,
+    timelineFps: number,
+    outputFps: number,
+    signal: AbortSignal,
+  ) => Promise<PreparedRenderAudio | null>;
+  /** Silence speaker monitoring for a take without disconnecting analysis. Returns restore. */
+  readonly muteMonitorForRender: () => (() => void);
+  readonly renderAudioRequirement: () => RenderAudioRequirement;
+}
+
+export type RenderAudioRequirement =
+  | { readonly kind: "none" }
+  | { readonly kind: "required" }
+  | { readonly kind: "invalid"; readonly reason: string };
+
+export interface PreparedRenderAudio {
+  readonly pcm: AudioPcmProvider;
+  close(): void;
+}
+
+/** Monitoring is the speaker path only; analysis and exported PCM stay at unity upstream. */
+export function monitorGainLevel(level: number, renderMuted: boolean): number {
+  return renderMuted ? 0 : level;
+}
+
+/**
+ * Offline audio is read from pre-decoded PCM, so the browser media element has no render
+ * job. Letting it play on wall time forces a corrective seek on nearly every slow offline
+ * frame and queues decoder work that grows through the take.
+ */
+export function syncAudioMediaElement(
+  element: PlayableMedia,
+  transport: MediaTransportValues,
+  head: MediaPlayhead,
+  offlineRender: boolean,
+): boolean {
+  if (!offlineRender) return applyMediaPlayhead(element, transport, head);
+  if (!element.paused) element.pause();
+  return false;
 }
 
 export interface CaptureConfig {
@@ -268,11 +314,33 @@ export function syncLeadOf(read: (key: string) => ParameterValue | undefined): n
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+export interface AudioReplayBaseline {
+  readonly transport: MediaTransportValues;
+  readonly leadSeconds: number;
+}
+
+/** The deterministic state frame zero reads before driven channels have produced a value. */
+export function audioReplayBaselineOf(
+  graph: GraphDocument,
+  nodeId: NodeId,
+): AudioReplayBaseline | null {
+  const node = graph.nodes[nodeId];
+  if (node === undefined) return null;
+  const readStatic = (key: string): ParameterValue | undefined => {
+    return staticValueOf(node, key) as ParameterValue | undefined;
+  };
+  return {
+    transport: mediaTransportFrom(readStatic),
+    leadSeconds: syncLeadOf(readStatic),
+  };
+}
+
 /** The string a capture is identified by: equal keys keep the capture, anything else rebuilds it. */
-export function captureKeyOf(config: CaptureConfig | null, reloadToken: number): string {
+export function captureKeyOf(config: CaptureConfig | null, reloadToken: number, analysisFps?: number): string {
   if (config === null) return "";
   const { detector } = config;
-  return `${config.source}|${config.url}|${config.device}|${config.monitor}|${detector.threshold}|${detector.retrigger}|${reloadToken}`;
+  const analysisGrid = config.source === "file" ? `|${String(analysisFps ?? "none")}` : "";
+  return `${config.source}|${config.url}|${config.device}|${config.monitor}|${detector.threshold}|${detector.retrigger}|${reloadToken}${analysisGrid}`;
 }
 
 /**
@@ -339,6 +407,19 @@ export function captureConfigOf(graph: GraphDocument): CaptureConfig | null {
   };
 }
 
+export function renderAudioRequirementOf(graph: GraphDocument): RenderAudioRequirement {
+  const config = captureConfigOf(graph);
+  if (config === null) return { kind: "none" };
+  if (config.source !== "file" || config.nodeId === null) {
+    return { kind: "invalid", reason: "Live microphone audio cannot be reproduced offline." };
+  }
+  const node = graph.nodes[config.nodeId];
+  if (node === undefined || staticValueOf(node, "playMode") !== "timeline") {
+    return { kind: "invalid", reason: "Audio File In must be Locked to Timeline." };
+  }
+  return { kind: "required" };
+}
+
 interface LiveCapture {
   readonly context: AudioContext;
   readonly analyser: AnalyserNode;
@@ -367,6 +448,11 @@ export function useAudioInput(
   const configRef = useRef<CaptureConfig | null>(null);
   /** T1229: the bound file's playhead-indexed track, once the walk has finished. Null until then, and for a mic. */
   const offlineRef = useRef<OfflineAnalysis | null>(null);
+  const pcmRef = useRef<Awaited<ReturnType<typeof preAnalyser.analyse>>["pcm"] | null>(null);
+  const preAnalysisPendingRef = useRef<Promise<Awaited<ReturnType<typeof preAnalyser.analyse>>> | null>(null);
+  const renderCaptureRef = useRef<OfflineAudioCapture | null>(null);
+  const renderMutedRef = useRef(false);
+  const monitorLevelRef = useRef(1);
   /** T1229: the transport as `sync` last resolved it — the previous frame's channels (§V887). */
   const transportRef = useRef<MediaTransportValues | null>(null);
   /** T1312b: the capturing node's sync offset, resolved with the transport it belongs to. */
@@ -404,6 +490,10 @@ export function useAudioInput(
       captureRef.current = null;
       configRef.current = null;
       offlineRef.current = null;
+      pcmRef.current = null;
+      preAnalysisPendingRef.current = null;
+      renderCaptureRef.current = null;
+      monitorLevelRef.current = 1;
       transportRef.current = null;
       readerRef.current = null;
       runnerRef.current = null;
@@ -515,6 +605,7 @@ export function useAudioInput(
            * with no error to find it by.
            */
           const gain = context.createGain();
+          gain.gain.value = monitorGainLevel(monitorLevelRef.current, renderMutedRef.current);
           analyser.connect(gain);
           if (config.monitor) gain.connect(context.destination);
           // T493/§V369: kicked, never AWAITED. `play()` on a source that never decodes
@@ -570,15 +661,20 @@ export function useAudioInput(
         if (config.source === "file" && rate !== undefined) {
           publish("Pre-analysing file…");
           const key = configKeyRef.current;
-          void preAnalyseFile(config, rate).then(
+          const pending = preAnalyseFile(config, rate);
+          preAnalysisPendingRef.current = pending;
+          void pending.then(
             (outcome) => {
               // The capture this walk was for may be gone: a re-bound file has its own walk.
               if (cancelled || configKeyRef.current !== key || configRef.current !== config) return;
               offlineRef.current = outcome.analysis;
+              pcmRef.current = outcome.pcm;
+              preAnalysisPendingRef.current = null;
               publish([preAnalysisMessage(outcome.analysis), outcome.fallback].filter((part) => part !== null).join(" "));
             },
             (error: unknown) => {
               if (cancelled || configKeyRef.current !== key) return;
+              preAnalysisPendingRef.current = null;
               // Named, never silent: the live path still runs, but a timeline scrub is now
               // the live hops and not a record, and the panel has to say why (§V288).
               publish(`Pre-analysis failed, so a timeline scrub reads the live hops: ${error instanceof Error ? error.message : String(error)}`);
@@ -601,7 +697,7 @@ export function useAudioInput(
      */
     const refresh = () => {
       const config = captureConfigOf(getGraphRef.current());
-      const key = captureKeyOf(config, reloadTokenRef.current);
+      const key = captureKeyOf(config, reloadTokenRef.current, fpsRef.current?.());
       if (key === configKeyRef.current) return;
       configKeyRef.current = key;
       teardown();
@@ -688,7 +784,10 @@ export function useAudioInput(
      * `captureKeyOf`, which is what a knob that rebuilt the capture on every drag would be.
      */
     leadRef.current = syncLeadOf(stepped.read);
-    applyMediaPlayhead(capture.element, stepped.transport, stepped.head);
+    const deterministicOfflineAudio = renderMutedRef.current &&
+      offlineRef.current !== null &&
+      stepped.transport.playMode !== "freeRun";
+    syncAudioMediaElement(capture.element, stepped.transport, stepped.head, deterministicOfflineAudio);
     if (capture.gain !== undefined) {
       // Read from the SAME resolve the playhead came from, so volume and position can
       // never come from two different reads of one frame (§B8's shape). And `visible`
@@ -696,7 +795,15 @@ export function useAudioInput(
       const raw = stepped.read("volume");
       const volume = typeof raw === "number" && Number.isFinite(raw) ? Math.max(0, raw) : 1;
       const level = stepped.head.visible ? volume : 0;
-      if (capture.gain.gain.value !== level) capture.gain.gain.value = level;
+      monitorLevelRef.current = level;
+      const monitorLevel = monitorGainLevel(level, renderMutedRef.current);
+      if (capture.gain.gain.value !== monitorLevel) capture.gain.gain.value = monitorLevel;
+      renderCaptureRef.current?.note({
+        frameIndex: frame.frameIndex,
+        timelineSeconds: frame.timeSeconds,
+        transport: stepped.transport,
+        volume,
+      });
     }
   }, []);
 
@@ -706,5 +813,109 @@ export function useAudioInput(
     if (element !== undefined && !element.paused) element.pause();
   }, []);
 
-  return { read, status, detector, sync, setRunning };
+  const muteMonitorForRender = useCallback((): (() => void) => {
+    renderMutedRef.current = true;
+    const element = captureRef.current?.element;
+    const deterministicOfflineAudio = offlineRef.current !== null && transportRef.current?.playMode !== "freeRun";
+    if (deterministicOfflineAudio && element !== undefined && !element.paused) element.pause();
+    const liveGain = captureRef.current?.gain?.gain;
+    if (liveGain !== undefined) liveGain.value = 0;
+    let restored = false;
+    return () => {
+      if (restored) return;
+      restored = true;
+      renderMutedRef.current = false;
+      const currentGain = captureRef.current?.gain?.gain;
+      if (currentGain !== undefined) currentGain.value = monitorLevelRef.current;
+    };
+  }, []);
+
+  const reset = useCallback(() => {
+    runnerRef.current?.reset();
+    const config = configRef.current;
+    const baseline = config?.nodeId === null || config?.nodeId === undefined
+      ? null
+      : audioReplayBaselineOf(getGraphRef.current(), config.nodeId);
+    if (baseline === null) {
+      transportRef.current = null;
+      leadRef.current = 0;
+      return;
+    }
+    transportRef.current = baseline.transport;
+    leadRef.current = baseline.leadSeconds;
+  }, []);
+
+  const prepareRenderAudio = useCallback(async (
+    range: FrameRange,
+    timelineRate: number,
+    outputRate: number,
+    signal: AbortSignal,
+  ): Promise<PreparedRenderAudio | null> => {
+    const config = configRef.current;
+    if (config === null) return null;
+    if (config.source !== "file" || config.nodeId === null) {
+      throw new Error("Audible offline export requires an Audio File In node, not a live microphone.");
+    }
+    const node = getGraphRef.current().nodes[config.nodeId];
+    if (node === undefined || staticValueOf(node, "playMode") !== "timeline") {
+      throw new Error("Audible offline export requires Audio File In to be Locked to Timeline.");
+    }
+    const pending = preAnalysisPendingRef.current;
+    if (pending !== null) await pending;
+    if (signal.aborted) throw new DOMException("The video render was cancelled.", "AbortError");
+    let pcm = pcmRef.current;
+    let analysis = offlineRef.current;
+    if (pcm === null || analysis === null) {
+      throw new Error("The audio file has not completed deterministic pre-analysis.");
+    }
+    if (analysis.track.fps !== timelineRate) {
+      const outcome = await preAnalyseFile(config, timelineRate);
+      if (signal.aborted) throw new DOMException("The video render was cancelled.", "AbortError");
+      if (configRef.current !== config) {
+        throw new Error("The audio source changed while its render analysis was being rebuilt.");
+      }
+      analysis = outcome.analysis;
+      pcm = outcome.pcm;
+      offlineRef.current = analysis;
+      pcmRef.current = pcm;
+      configKeyRef.current = captureKeyOf(config, reloadTokenRef.current, timelineRate);
+      statusRef.current = {
+        kind: "live",
+        message: [preAnalysisMessage(analysis), outcome.fallback].filter((part) => part !== null).join(" "),
+      };
+    }
+    const capture = createOfflineAudioCapture(
+      pcm,
+      pcm.samples.length / pcm.sampleRate,
+      range,
+      timelineRate,
+      outputRate,
+    );
+    renderCaptureRef.current = capture;
+    let closed = false;
+    return {
+      pcm: () => capture.source(),
+      close() {
+        if (closed) return;
+        closed = true;
+        if (renderCaptureRef.current === capture) renderCaptureRef.current = null;
+      },
+    };
+  }, []);
+
+  const renderAudioRequirement = useCallback((): RenderAudioRequirement => {
+    return renderAudioRequirementOf(getGraphRef.current());
+  }, []);
+
+  return {
+    read,
+    status,
+    detector,
+    sync,
+    reset,
+    setRunning,
+    prepareRenderAudio,
+    muteMonitorForRender,
+    renderAudioRequirement,
+  };
 }

@@ -1,5 +1,7 @@
 export { resonanceDocument } from "./documents/resonance.ts";
+export { verdantLotusDocument, emberMonolithsDocument, aetherOrreryDocument } from "./documents/monument-halls.ts";
 import { resonanceDocument } from "./documents/resonance.ts";
+import { verdantLotusDocument, emberMonolithsDocument, aetherOrreryDocument } from "./documents/monument-halls.ts";
 import type { ProjectDocument } from "../domain/types/graph.ts";
 export { EXAMPLE_TIMESTAMP } from "./documents/builders.ts";
 export { feedbackEchoDocument } from "./documents/feedback-echo.ts";
@@ -131,6 +133,9 @@ import { nativePersonMaskDocument } from "./documents/native-person-mask.ts";
 
 export const EXAMPLE_DOCUMENTS: readonly ProjectDocument[] = [
   resonanceDocument,
+  verdantLotusDocument,
+  emberMonolithsDocument,
+  aetherOrreryDocument,
   feedbackEchoDocument,
   reactionDiffusionDocument,
   animatedNoiseFieldDocument,

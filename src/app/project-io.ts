@@ -28,6 +28,7 @@ interface FileSystemWritable {
   /** Bytes as well as text: T433 writes an encoded mp4 through this same ladder. */
   write(data: string | Blob | BufferSource): Promise<void>;
   close(): Promise<void>;
+  abort(reason?: unknown): Promise<void>;
 }
 interface SaveFileHandle {
   readonly name?: string;
@@ -96,8 +97,9 @@ export interface WriteProjectOptions {
  * the assertion would be a claim about every future caller's allocator, and this runs once
  * per saved file.
  */
-function payloadOf(file: WritableTextFile): string | Uint8Array<ArrayBuffer> {
-  return typeof file.text === "string" ? file.text : new Uint8Array(file.text);
+function payloadOf(file: WritableTextFile): string | Uint8Array<ArrayBuffer> | Blob {
+  if (typeof file.text === "string" || file.text instanceof Blob) return file.text;
+  return new Uint8Array(file.text);
 }
 
 /** Downloads the bytes. The last resort, and the only path Firefox and Safari have. */
@@ -135,10 +137,95 @@ function downloadTextFile(file: WritableTextFile): void {
 export interface WritableTextFile {
   readonly fileName: string;
   /** Text for a document, bytes for an encoded artifact (T433's mp4). */
-  readonly text: string | Uint8Array;
+  readonly text: string | Uint8Array | Blob;
   readonly mime: string;
   /** What the save picker offers to filter by. */
   readonly pickerTypes: readonly FilePickerTypeSpec[];
+}
+
+export interface PreparedFileWrite {
+  write(file: WritableTextFile, signal?: AbortSignal, onCommitStart?: () => void): Promise<SaveOutcome>;
+}
+
+export type PrepareFileWriteOutcome =
+  | { readonly kind: "ready"; readonly destination: PreparedFileWrite }
+  | { readonly kind: "cancelled" }
+  | { readonly kind: "failed"; readonly reason: string };
+
+/**
+ * Acquires a durable destination while the initiating click still owns user activation.
+ * Long video rendering starts only after this succeeds; the OPFS spool can therefore be
+ * copied, closed, and deleted without relying on an asynchronous download navigation.
+ */
+export async function prepareFileWrite(
+  file: Pick<WritableTextFile, "fileName" | "pickerTypes">,
+  options: WriteProjectOptions = {},
+): Promise<PrepareFileWriteOutcome> {
+  const globals = options.globals ?? pickers();
+  if (typeof globals.showSaveFilePicker !== "function") {
+    return { kind: "failed", reason: "This browser cannot choose a durable video destination." };
+  }
+  try {
+    const handle = await globals.showSaveFilePicker({
+      suggestedName: file.fileName,
+      types: file.pickerTypes,
+    });
+    return {
+      kind: "ready",
+      destination: {
+        async write(output, signal, onCommitStart) {
+          let writable: FileSystemWritable | null = null;
+          let abortTask: Promise<void> | null = null;
+          let abortFailure: unknown = null;
+          const requestAbort = (): void => {
+            if (writable === null || abortTask !== null) return;
+            abortTask = writable.abort(signal?.reason).catch((error: unknown) => {
+              abortFailure = error;
+            });
+          };
+          try {
+            writable = await handle.createWritable();
+            if (signal?.aborted === true) requestAbort();
+            else signal?.addEventListener("abort", requestAbort, { once: true });
+            if (abortTask !== null) {
+              await abortTask;
+              if (abortFailure !== null) return { kind: "failed", reason: describe(abortFailure) };
+              return { kind: "cancelled" };
+            }
+            await writable.write(payloadOf(output));
+            if (signal?.aborted === true) {
+              requestAbort();
+              await abortTask;
+              if (abortFailure !== null) return { kind: "failed", reason: describe(abortFailure) };
+              return { kind: "cancelled" };
+            }
+            // `close()` commits the selected file. Stop accepting cancellation before
+            // crossing that boundary: a late abort must never report that no file exists
+            // after the browser has successfully committed one.
+            signal?.removeEventListener("abort", requestAbort);
+            onCommitStart?.();
+            await writable.close();
+            return { kind: "saved", fileName: handle.name ?? output.fileName, method: "picker" };
+          } catch (error) {
+            if (signal?.aborted === true) {
+              requestAbort();
+              await abortTask;
+              if (abortFailure !== null) {
+                return { kind: "failed", reason: `${describe(error)}; cancellation failed: ${describe(abortFailure)}` };
+              }
+              return { kind: "cancelled" };
+            }
+            return { kind: "failed", reason: describe(error) };
+          } finally {
+            signal?.removeEventListener("abort", requestAbort);
+          }
+        },
+      },
+    };
+  } catch (error) {
+    if (isAbort(error)) return { kind: "cancelled" };
+    return { kind: "failed", reason: describe(error) };
+  }
 }
 
 export const PROJECT_PICKER_TYPES = PICKER_TYPES;

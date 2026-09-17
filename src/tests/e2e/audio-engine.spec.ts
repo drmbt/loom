@@ -33,7 +33,7 @@ import { addNode, openApp } from "./app.ts";
 
 test.use({
   launchOptions: {
-    args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
+    args: ["--mute-audio", "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
   },
   permissions: ["microphone"],
 });

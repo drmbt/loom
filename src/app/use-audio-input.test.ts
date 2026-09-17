@@ -4,7 +4,15 @@ import type { GraphDocument } from "@domain/types/graph.ts";
 import { createHopAnalyser } from "@domain/audio/analysis/hop-analyser.ts";
 import { DETECTOR_STREAM, analysisOptionsFor } from "./audio-analysis-protocol.ts";
 import { DETECTOR_EVENT_PICKER } from "./audio-features.ts";
-import { captureConfigOf, captureKeyOf, syncLeadOf } from "./use-audio-input.ts";
+import {
+  audioReplayBaselineOf,
+  captureConfigOf,
+  captureKeyOf,
+  monitorGainLevel,
+  renderAudioRequirementOf,
+  syncAudioMediaElement,
+  syncLeadOf,
+} from "./use-audio-input.ts";
 
 /**
  * T434: WHICH capture the session runs, pinned as a pure function.
@@ -91,6 +99,104 @@ describe("captureConfigOf (T434)", () => {
   });
 });
 
+describe("audible offline export requirements", () => {
+  it("accepts a bound timeline file and refuses sources no deterministic take can replay", () => {
+    expect(renderAudioRequirementOf(graphOf({ n: { type: "noise" } }))).toEqual({ kind: "none" });
+    expect(renderAudioRequirementOf(graphOf({ a: { type: "audioIn" } }))).toMatchObject({ kind: "invalid" });
+    expect(renderAudioRequirementOf(graphOf({
+      a: { type: "audioFileIn", parameters: { file: "blob:t" } },
+    }))).toMatchObject({ kind: "invalid" });
+    expect(renderAudioRequirementOf(graphOf({
+      a: { type: "audioFileIn", parameters: { file: "blob:t", playMode: "timeline" } },
+    }))).toEqual({ kind: "required" });
+  });
+});
+
+it("mutes only the speaker monitor while an offline take is active", () => {
+  expect(monitorGainLevel(0.65, false)).toBe(0.65);
+  expect(monitorGainLevel(0.65, true)).toBe(0);
+});
+
+it("does not seek or play the browser audio element while offline PCM drives a take", () => {
+  let currentTime = 9;
+  let currentTimeWrites = 0;
+  let paused = false;
+  let plays = 0;
+  let pauses = 0;
+  const element = {
+    get currentTime() { return currentTime; },
+    set currentTime(value: number) { currentTime = value; currentTimeWrites += 1; },
+    playbackRate: 1,
+    duration: 60,
+    get paused() { return paused; },
+    play() { plays += 1; paused = false; },
+    pause() { pauses += 1; paused = true; },
+  };
+  const transport = {
+    playMode: "timeline",
+    play: true,
+    speed: 1,
+    cue: false,
+    cuePoint: 0,
+    trimStart: 0,
+    trimEnd: 60,
+    extend: "loop",
+  } as const;
+  const head = {
+    position: 1,
+    start: 0,
+    end: 60,
+    visible: true,
+    done: false,
+    cued: false,
+    laps: 0,
+  };
+
+  for (let frame = 0; frame < 600; frame += 1) {
+    expect(syncAudioMediaElement(element, transport, { ...head, position: frame / 60 }, true)).toBe(false);
+  }
+  expect({ currentTime, currentTimeWrites, plays, pauses, paused }).toEqual({
+    currentTime: 9,
+    currentTimeWrites: 0,
+    plays: 0,
+    pauses: 1,
+    paused: true,
+  });
+
+  expect(syncAudioMediaElement(element, { ...transport, playMode: "freeRun" }, head, false)).toBe(true);
+  expect({ currentTimeWrites, plays }).toEqual({ currentTimeWrites: 1, plays: 1 });
+});
+
+describe("audio replay baseline", () => {
+  it("starts a replay from retained static values instead of the preceding live frame", () => {
+    const graph = graphOf({
+      a: {
+        type: "audioFileIn",
+        parameters: {
+          playMode: "timeline",
+          speed: { bindings: { static: { value: 1.5 }, expression: { value: "chan.speed" } } },
+          trimStart: 2,
+          syncOffset: 0.125,
+        },
+      },
+    });
+
+    expect(audioReplayBaselineOf(graph, "a")).toEqual({
+      transport: {
+        playMode: "timeline",
+        play: true,
+        speed: 1.5,
+        cue: false,
+        cuePoint: 0,
+        trimStart: 2,
+        trimEnd: 0,
+        extend: "loop",
+      },
+      leadSeconds: 0.125,
+    });
+  });
+});
+
 /**
  * T1230 — the source node's Analysis knobs reach the engine, and only through a rebuild.
  *
@@ -130,6 +236,13 @@ describe("detector knobs on the source node (T1230)", () => {
     expect(captureKeyOf(raised, 0)).not.toBe(captureKeyOf(base, 0));
     expect(captureKeyOf(slower, 0)).not.toBe(captureKeyOf(base, 0));
     expect(captureKeyOf(null, 0)).toBe("");
+  });
+
+  it("a file analysis rebuilds when the project frame grid changes, while a microphone does not", () => {
+    const file = captureConfigOf(graphOf({ a: { type: "audioFileIn", parameters: { file: "blob:track" } } }));
+    const mic = captureConfigOf(graphOf({ a: { type: "audioIn" } }));
+    expect(captureKeyOf(file, 0, 30)).not.toBe(captureKeyOf(file, 0, 60));
+    expect(captureKeyOf(mic, 0, 30)).toBe(captureKeyOf(mic, 0, 60));
   });
 
   it("T1312b — the sync offset is NOT a rebuild door: it must not re-analyse the file", () => {

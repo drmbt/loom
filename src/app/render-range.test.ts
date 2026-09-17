@@ -7,6 +7,7 @@ import {
   registerRenderRangeCommand,
   renderFrameRange,
   renderRangeHolderFor,
+  sourceRangeForOutputRange,
 } from "./render-range.ts";
 import type { RangeTransport } from "./render-range.ts";
 
@@ -119,6 +120,39 @@ function fakeExports(): ExportInterface {
 }
 
 describe("renderFrameRange covers exactly the range (T433)", () => {
+  it("maps inclusive output ranges onto the complete project-frame intervals", () => {
+    expect(sourceRangeForOutputRange({ start: 0, end: 128 }, 60, 30)).toEqual({ start: 0, end: 257 });
+    expect(sourceRangeForOutputRange({ start: 24, end: 47 }, 60, 24)).toEqual({ start: 60, end: 119 });
+  });
+
+  it("treats a 30 fps output range as output frames while evaluating every 60 fps project frame", async () => {
+    const transport = fakeTransport();
+    const encoder = fakeEncoder();
+    const settled: number[] = [];
+    const capturedSourceFrames: Array<number | undefined> = [];
+    const encode = encoder.encode;
+    encoder.encode = (frame) => {
+      capturedSourceFrames.push(settled.at(-1));
+      return encode(frame);
+    };
+    const result = await renderFrameRange({
+      api: fakeExports(),
+      ref: { nodeId: "out", portId: "out" },
+      range: { start: 0, end: 4 },
+      timelineFps: 60,
+      outputFps: 30,
+      transport,
+      encoder,
+      onFrameRendered: async (frame) => { settled.push(frame); },
+    });
+
+    expect(encoder.encoded).toEqual([0, 1, 2, 3, 4]);
+    expect(transport.rendered).toEqual([-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(settled).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(capturedSourceFrames).toEqual([0, 2, 4, 6, 8]);
+    expect(result.report).toMatchObject({ frames: 5, firstFrameIndex: 0, lastFrameIndex: 4, contiguous: true });
+  });
+
   it("captures the IN POINT itself — the frame the seek rendered — and stops at the out point", async () => {
     const transport = fakeTransport();
     const encoder = fakeEncoder();
@@ -127,7 +161,8 @@ describe("renderFrameRange covers exactly the range (T433)", () => {
       api: fakeExports(),
       ref: { nodeId: "out", portId: "out" },
       range: { start: 10, end: 14 },
-      fps: 60,
+      timelineFps: 60,
+      outputFps: 60,
       transport,
       encoder,
     });
@@ -148,42 +183,97 @@ describe("renderFrameRange covers exactly the range (T433)", () => {
       api: fakeExports(),
       ref: { nodeId: "out", portId: "out" },
       range: { start: 7, end: 7 },
-      fps: 60,
+      timelineFps: 60,
+      outputFps: 60,
       transport,
       encoder,
     });
     expect(encoder.encoded).toEqual([7]);
   });
 
-  it("seeks to the in point first, so the take starts from that frame's real state (§V170)", async () => {
+  it("replays to the in point with cooperative progress, preserving its real state (§V170)", async () => {
     const transport = fakeTransport();
+    const preRoll: Array<readonly [number, number]> = [];
+    const yieldControl = vi.fn(async () => undefined);
     await renderFrameRange({
       api: fakeExports(),
       ref: { nodeId: "out", portId: "out" },
       range: { start: 3, end: 5 },
-      fps: 60,
+      timelineFps: 60,
+      outputFps: 60,
       transport,
       encoder: fakeEncoder(),
+      onPreRollProgress: (completed, total) => preRoll.push([completed, total]),
+      yieldControl,
     });
-    // T467 first, THEN the seek: the absolute clock zeroes before the replay, so the
-    // replayed frames 0..start carry abs 0..start — a take is a fresh performance, and
-    // the same project renders the same bytes on any day. Then §V170: the seek is the
-    // first thing rendered, so a feedback graph's history cannot leak into the take.
+    // T467 first, then canonical seek(0), then visible/cancellable replay to the in point.
+    // Every temporal frame still exists; only the old synchronous page freeze is removed.
     expect(transport.rendered[0]).toBe(-1); // the fake records resetAbsoluteClock as -1
-    expect(transport.rendered[1]).toBe(3);
+    expect(transport.rendered.slice(1, 5)).toEqual([0, 1, 2, 3]);
+    expect(preRoll).toEqual([[1, 3], [2, 3], [3, 3]]);
+    expect(yieldControl).toHaveBeenCalledOnce();
   });
 
-  it("pauses a running loop, so no frame slips between the steps it takes", async () => {
+  it("pauses a running loop during capture, then restores playback", async () => {
     const transport = fakeTransport();
     transport.playing = true;
     await renderFrameRange({
       api: fakeExports(),
       ref: { nodeId: "out", portId: "out" },
       range: { start: 0, end: 2 },
-      fps: 60,
+      timelineFps: 60,
+      outputFps: 60,
       transport,
       encoder: fakeEncoder(),
     });
+    expect(transport.isPlaying()).toBe(true);
+  });
+
+  it("cancels without replaying the previous playhead or resuming GPU work", async () => {
+    const transport = fakeTransport();
+    transport.seek(10_000);
+    transport.rendered.length = 0;
+    transport.playing = true;
+    const controller = new AbortController();
+    await expect(renderFrameRange({
+      api: fakeExports(), ref: { nodeId: "out", portId: "out" },
+      range: { start: 0, end: 30 }, timelineFps: 60, outputFps: 60,
+      transport, encoder: fakeEncoder(), signal: controller.signal,
+      onProgress: progress => { if (progress.completedFrames === 1) controller.abort(); },
+    })).rejects.toThrow("cancelled");
+    expect(transport.rendered).toEqual([-1, 0]);
+    expect(transport.isPlaying()).toBe(false);
+    expect(transport.latestFrame()?.frame.frameIndex).toBe(0);
+  });
+
+  it("reports exact progress and closes the encoder when cancellation reaches a frame boundary", async () => {
+    const transport = fakeTransport();
+    const controller = new AbortController();
+    const encoder = fakeEncoder();
+    const close = vi.fn();
+    encoder.close = close;
+    const progress: Array<[number, number | null]> = [];
+
+    const running = renderFrameRange({
+      api: fakeExports(),
+      ref: { nodeId: "out", portId: "out" },
+      range: { start: 10, end: 14 },
+      timelineFps: 60,
+      outputFps: 60,
+      transport,
+      encoder,
+      signal: controller.signal,
+      onProgress: (update) => {
+        progress.push([update.completedFrames, update.frameIndex]);
+        if (update.completedFrames === 2) controller.abort();
+      },
+    });
+
+    await expect(running).rejects.toMatchObject({ name: "RenderRangeCancelledError" });
+    expect(encoder.encoded).toEqual([10, 11]);
+    expect(progress).toEqual([[0, null], [1, 10], [2, 11]]);
+    expect(close).toHaveBeenCalledOnce();
+    expect(transport.rendered.at(-1)).toBe(11);
     expect(transport.isPlaying()).toBe(false);
   });
 });
@@ -282,7 +372,8 @@ describe("T747 — a take waits for each frame's inference", () => {
       api: fakeExports(),
       ref: { nodeId: "out", portId: "out" },
       range: { start: 0, end: 2 },
-      fps: 60,
+      timelineFps: 60,
+      outputFps: 60,
       transport,
       encoder,
       onFrameRendered: async (frameIndex) => {
@@ -316,7 +407,8 @@ describe("T747 — a take waits for each frame's inference", () => {
       api: fakeExports(),
       ref: { nodeId: "out", portId: "out" },
       range: { start: 0, end: 2 },
-      fps: 60,
+      timelineFps: 60,
+      outputFps: 60,
       transport: {
         ...transport,
         stepOnce: () => {
@@ -340,7 +432,8 @@ describe("T747 — a take waits for each frame's inference", () => {
       api: fakeExports(),
       ref: { nodeId: "out", portId: "out" },
       range: { start: 0, end: 2 },
-      fps: 60,
+      timelineFps: 60,
+      outputFps: 60,
       transport,
       encoder,
     });

@@ -64,7 +64,13 @@ fn energyGradient(p:vec3f)->vec3f {
 fn coreColour(local:vec3f,ray:vec3f)->vec3f {
   let facing=pow(max(0.0,dot(normalize(local),-ray)),5.0);
   let edge=mix(paletteWarm(),energyGradient(local+CENTRE),clamp(params.coreGradient,0.0,1.0));
-  return mix(edge,mix(paletteWarm(),vec3f(1),0.86),facing*0.88);
+  let normal=normalize(local);
+  let drift=vec3f(frameU.absTime*0.055,-frameU.absTime*0.035,frameU.absTime*0.02);
+  let cloud=fbm(normal*5.0+drift);
+  let filament=pow(1.0-abs(2.0*noise(normal*11.0+cloud*2.0+drift)-1.0),7.0);
+  let secondary=mix(paletteWarm(),vec3f(paletteWarm().b,paletteWarm().r,paletteWarm().g),0.32);
+  let textured=mix(edge,secondary,0.18+cloud*0.18)*(0.76+cloud*0.24+filament*0.12);
+  return mix(textured,mix(paletteWarm(),vec3f(1),0.86),facing*0.88);
 }
 fn line(x:f32,width:f32)->f32 {return exp(-abs(x)/width);}
 // Analytic room intersections: x is distance, y is surface identity.
@@ -254,14 +260,71 @@ fn panelLight(localUv:vec2f,panelId:f32)->vec3f {
   let second=mix(sharedContent,distinct,to.y*variety)*to.x*to.z;
   let rank=hash(vec3f(panelId,params.projectionSeed,97))*0.9;
   let coverage=smoothstep(rank,rank+0.1,clamp(params.panelCoverage,0.0,1.0));
-  let brightness=max(params.panelBrightness,0.0)*(0.75+params.panelAudio*params.mids*0.75);
+  let bank=0.5+0.5*sin(panelId*1.7+params.beatPosition*0.45);
+  let hit=params.bass*(0.3+bank*0.55)+params.transient*(0.85-bank*0.5)+params.highs*0.18;
+  let brightness=max(params.panelBrightness,0.0)*(0.65+params.panelAudio*(params.mids*0.65+hit*1.7));
   return mix(first,second,blend)*coverage*brightness;
 }
 
-// Broad, continuous crests descend on the musical grid; adjacent strands answer in groups.
+// A shallow veil hugs the oculus; its support never reaches the sphere or outer hall.
+fn ceilingVeil(p:vec3f)->f32 {
+  let radius=length(p.xz);
+  if(p.y<10.8 || p.y>15.0 || radius>8.5){return 0.0;}
+  let angle=frameU.absTime*0.055;
+  let q=vec2f(cos(angle)*p.x-sin(angle)*p.z,sin(angle)*p.x+cos(angle)*p.z);
+  let inward=radius+frameU.absTime*0.16;
+  let curls=fbm(vec3f(q*0.65,p.y*1.2)+vec3f(0,inward*0.35,frameU.absTime*0.035));
+  let height=exp(-pow((p.y-(13.35+curls*0.45))/0.65,2.0));
+  let annulus=exp(-pow((radius-5.6)/2.1,2.0))*(1.0-smoothstep(7.6,8.5,radius));
+  return height*annulus*smoothstep(0.22,0.78,curls)*(0.25+clamp(params.atmosphere,0.0,1.0)*0.75);
+}
+
+// Blend two continuous travel clocks: changing energy never multiplies elapsed time.
+fn shaftOpening()->f32 {return smoothstep(0.0,0.15,clamp(params.energy,0.0,1.0));}
+fn shaftDrive()->f32 {return smoothstep(0.15,0.85,clamp(params.energy,0.0,1.0));}
+fn shaftWave(height:f32,identity:f32,rate:f32)->f32 {
+  let phase=params.beatPosition*rate+height*0.05+0.18-identity*0.07;
+  // GPU cosine may undershoot -1 slightly; pow requires a nonnegative base.
+  return pow(clamp(0.5+0.5*cos(phase*6.2831853),0.0,1.0),36.0);
+}
 fn shaftPacket(height:f32,identity:f32)->f32 {
-  let phase=params.beatPosition*0.5+height*0.15-identity*0.13;
-  return pow(max(0.0,cos(phase*6.2831853)),8.0);
+  return mix(shaftWave(height,identity,0.025),shaftWave(height,identity,0.07),shaftDrive());
+}
+// One faint candidate at low energy; up to four independently staggered accents at peaks.
+fn shaftAccent(strand:u32)->f32 {
+  if(strand%14u!=0u){return 0.0;}
+  let rank=f32(strand/14u)*0.25;
+  return shaftOpening()*(1.0-smoothstep(shaftDrive()+0.04,shaftDrive()+0.16,rank));
+}
+fn shaftPulseGain()->f32 {
+  return shaftOpening()*(0.045+shaftDrive()*(0.65+clamp(params.bass,0.0,1.0)*0.12
+    +clamp(params.transient,0.0,1.0)*0.15+clamp(params.beatPulse,0.0,1.0)*0.08));
+}
+// A closed shell keeps a dim architectural filament; percussion cannot expose its light.
+fn shaftBaseGain()->f32 {
+  let opening=clamp(params.energy,0.0,1.0);
+  return 0.012+opening*opening*(1.1+clamp(params.highs,0.0,1.0)*0.25+clamp(params.beatPulse,0.0,1.0)*0.25);
+}
+fn shaftVolumeGain()->f32 {
+  let opening=clamp(params.energy,0.0,1.0);
+  return 0.0012+opening*opening*0.22*(0.6+clamp(params.highs,0.0,1.0));
+}
+// Keep the accent close to the filament instead of creating a broad white bead.
+fn shaftBulbWidth(baseWidth:f32,packet:f32)->f32 {
+  return baseWidth*(1.0+1.25*packet*shaftOpening()*(0.3+0.7*shaftDrive()));
+}
+fn shaftAccentColour()->vec3f {
+  return mix(paletteWarm(),sqrt(paletteWarm()),0.25);
+}
+
+// Shared smooth envelope: no strand ends halfway through the foreground volume.
+fn shaftEnvelope(height:f32,landing:f32)->f32 {
+  return smoothstep(landing,landing+2.2,height)*(1.0-smoothstep(12.8,15.0,height))*mix(0.3,1.0,smoothstep(2.0,8.0,height));
+}
+// Approximate the Gaussian integral up to the visible surface, rather than clipping
+// an entire strand when its closest point crosses that surface.
+fn shaftVisibility(beforeSurface:f32,width:f32)->f32 {
+  return smoothstep(-1.5,1.5,beforeSurface/width);
 }
 
 fn surface(p:vec3f,rd:vec3f,id:f32)->vec3f {
@@ -303,7 +366,9 @@ fn surface(p:vec3f,rd:vec3f,id:f32)->vec3f {
     let lightPhrase=frameU.absTime*max(params.panelBpm,1.0)/60.0*0.19634954;
     let sweep=pow(0.5+0.5*sin(lightPhrase-floor(bay)*0.7),3.0);
     let stripGain=0.22+sweep*1.5+params.transient*(0.3+fixture*0.7);
-    let coveGain=0.9+params.atmosphere*0.7+sweep*0.4+params.beatPulse*0.18;
+    let bank=0.5+0.5*sin(floor(bay)*1.7+params.beatPosition*0.45);
+    let accent=params.transient*(0.3+bank*0.7)+params.bass*(0.7-bank*0.35);
+    let coveGain=0.65+params.atmosphere*0.6+sweep*0.55+accent*1.5;
     col+=warm*(toplight*coveGain+strip*stripGain);
     // The moving fixtures illuminate the adjacent stone, including its reflection environment.
     let stripWash=exp(-abs(fraction-0.12)*32.0)*stripHeight;
@@ -326,6 +391,11 @@ fn surface(p:vec3f,rd:vec3f,id:f32)->vec3f {
     let rings=line(r-5.85,0.024)+line(r-6.40,0.014)+line(r-7.05,0.014)+line(r-7.70,0.014)+line(r-8.35,0.018);
     col+=warm*rings*(1.2+params.atmosphere*0.8+params.highs*0.25+params.beatPulse*0.2);
     col+=warm*0.12*line(r-6.0,0.55);
+    let azimuth=atan2(p.x,p.z);
+    let inlay=line(r-6.68,0.012)+line(r-7.39,0.008)+line(r-8.05,0.012);
+    let facets=pow(0.5+0.5*cos(azimuth*48.0),12.0);
+    let travellingLight=pow(0.5+0.5*cos(azimuth*3.0+frameU.absTime*0.12),6.0);
+    col+=warm*inlay*facets*(0.08+travellingLight*0.6)*(0.35+params.atmosphere);
     let radial=abs(sin(atan2(p.x,p.z)*32.0));
     col*=0.3+0.7*smoothstep(0.01,0.08,radial);
   } else if(id==1.0){
@@ -348,7 +418,13 @@ fn surface(p:vec3f,rd:vec3f,id:f32)->vec3f {
     col+=warm*(wave*0.35+travelling*1.4)*strike;
   } else {
     col=vec3f(0.024,0.017,0.01)*(0.5+rock)+warm*0.012;
-    if(id==4.0){col+=warm*line(r-2.74,0.014)*1.3;}
+    if(id==4.0){
+      col+=warm*line(r-2.74,0.014)*1.3;
+      let arrival=(0.025+params.energy*0.22+params.beatPulse*0.08)*exp(-r*r*0.85);
+      let engraving=line(r-1.95,0.009)+line(r-2.12,0.006)+line(r-2.43,0.009);
+      let sweep=pow(0.5+0.5*cos(atan2(p.x,p.z)*3.0-frameU.absTime*0.18),8.0);
+      col+=warm*(arrival*(0.65+fine*0.35)+engraving*(0.035+sweep*0.18)*(0.3+params.atmosphere));
+    }
     if(id==5.0){col+=warm*line(p.y-0.28,0.014)*2.0;col*=0.55+fine*0.45;}
   }
   let spill=2.0/(1.0+dot(p-CENTRE,p-CENTRE));
@@ -421,14 +497,15 @@ fn audience(ro:vec3f,rd:vec3f)->f32 {
   }
   return closest;
 }
-fn sceneAt(uv:vec2f)->vec4f {
+fn layerAt(uv:vec2f,offset:vec2f)->vec4f {
   let dimensions=textureDimensions(inputTexture);
-  let pixel=clamp(vec2i(uv*vec2f(dimensions)*0.5),vec2i(0),vec2i(dimensions/2u)-1);
+  let pixel=clamp(vec2i(uv*vec2f(dimensions)*0.5),vec2i(0),vec2i(dimensions/2u)-1)+vec2i(offset*vec2f(dimensions));
   // Colour may interpolate; depth must not invent a surface between front and back faces.
-  let colour=textureSampleLevel(inputTexture,inputSampler,clamp(uv*0.5,0.5/vec2f(dimensions),vec2f(0.5)-0.5/vec2f(dimensions)),0.0).rgb;
+  let colour=textureSampleLevel(inputTexture,inputSampler,offset+clamp(uv*0.5,0.5/vec2f(dimensions),vec2f(0.5)-0.5/vec2f(dimensions)),0.0).rgb;
   let depth=textureLoad(inputTexture,pixel,0).a;
   return vec4f(colour,depth);
 }
+fn sceneAt(uv:vec2f)->vec4f {return layerAt(uv,vec2f(0));}
 @fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {
   let forward=normalize(params.aim-params.eye);
   let right=normalize(cross(forward,vec3f(0,1,0)));let up=cross(right,forward);
@@ -454,26 +531,30 @@ fn sceneAt(uv:vec2f)->vec4f {
     if(audience(p+vec3f(0,0.003,0),refl)<rh.x){reflected=vec3f(0.003);}
     let fresnel=0.20+0.80*pow(1.0-abs(rd.y),5.0);
     let wet=0.12+0.88*smoothstep(0.35,0.68,fbm(p*vec3f(0.5,1,1.3)));
-    color+=reflected*params.reflection*fresnel*wet;
-    let toLight=normalize(CENTRE-p);
-    let halfway=normalize(toLight-rd);
-    let polish=pow(max(0.0,dot(normal,halfway)),220.0);
-    let smear=pow(max(0.0,dot(normal,halfway)),35.0);
-    color+=paletteWarm()*(polish*4.5+smear*0.12)*(0.4+params.energy)*wet;
+    var reflectionDepth=hit.x+min(rh.x,audience(p+vec3f(0,0.003,0),refl));
     let vein=pow(1.0-abs(sin(fbm(p*1.3)*23.0)),18.0);
     color+=vec3f(0.014)*vein*(0.5+noise(p*30.0));
     let distorted=uv+vec2f(slopeX*0.14,slopeZ*0.12);
     shell=sceneAt(distorted);
-    let reflectedDepth=shell.a*params.far/max(dot(rd,forward),0.0001);
-    let centreRef=vec3f(0,-5.6,0);
-    let core=sphereHit(ro,rd,centreRef,1.0);
-    if(core<reflectedDepth){
-      let cp=ro+rd*core-centreRef;
-      let internal=0.4+fbm(cp*4.0+vec3f(0,-frameU.absTime*0.3,0));
-      color+=coreColour(cp*vec3f(1,-1,1),rd*vec3f(1,-1,1))*(0.35+pow(clamp(params.energy,0.0,1.0),1.5)*9.0+params.transient*3.0+params.beatPulse*0.8)*internal*params.reflection*fresnel*wet;
-    }else if(shell.a<0.999){
-      color+=shell.rgb*params.reflection*fresnel*wet;
+    let reflectedScreen=vec2f(distorted.x*2.0-1.0,1.0-distorted.y*2.0);
+    let mirrorRay=normalize(forward+(right*reflectedScreen.x*aspect+up*reflectedScreen.y)*tan(params.fov*0.0087266463));
+    let reflectedDepth=shell.a*params.far/max(dot(mirrorRay,forward),0.0001);
+    if(shell.a<0.999 && reflectedDepth<reflectionDepth){
+      reflected=shell.rgb;
+      reflectionDepth=reflectedDepth;
     }
+    let centreRef=vec3f(0,-5.6,0);
+    let core=sphereHit(ro,mirrorRay,centreRef,1.0);
+    if(core<reflectionDepth){
+      let cp=ro+mirrorRay*core-centreRef;
+      let internal=0.4+fbm(cp*4.0+vec3f(0,-frameU.absTime*0.3,0));
+      reflectionDepth=core;
+      reflected=coreColour(cp*vec3f(1,-1,1),mirrorRay*vec3f(1,-1,1))*(0.35+pow(clamp(params.energy,0.0,1.0),1.5)*9.0+params.transient*3.0+params.beatPulse*0.8)*internal;
+    }
+    let reflectedLight=layerAt(distorted,vec2f(0,0.5));
+    let lightDepth=reflectedLight.a*params.far/max(dot(mirrorRay,forward),0.0001);
+    if(reflectedLight.a<0.999 && lightDepth<reflectionDepth){reflected+=reflectedLight.rgb;}
+    color+=reflected*params.reflection*fresnel*wet;
   }else{
     let core=sphereHit(ro,rd,CENTRE,1.0);
     if(core<min(hit.x,geometryDepth)){
@@ -489,6 +570,10 @@ fn sceneAt(uv:vec2f)->vec4f {
   }
   let person=audience(ro,rd);
   if(person<distance){color=vec3f(0.006,0.005,0.004);distance=person;}
+  // Additive light never shortens the opaque ray or suppresses the fog behind its halo.
+  let light=layerAt(uv,vec2f(0,0.5));
+  let lightDepth=light.a*params.far/max(dot(rd,forward),0.0001);
+  if(light.a<0.999 && lightDepth<distance){color+=light.rgb;}
   // Single scattering integrated along the visible ray, stopped by opaque geometry.
   let dt=min(distance,45.0)/40.0;
   var scatter=vec3f(0);var transmission=1.0;
@@ -502,10 +587,10 @@ fn sceneAt(uv:vec2f)->vec4f {
       let aperture=0.20-mix(0.0,0.07,clamp(params.atmosphere,0.0,1.0))*breath;
       let shaftShape=exp(-radial*radial*aperture)*(1.0-smoothstep(4.0,5.0,radial));
       let curtains=0.55+0.45*noise(vec3f(v.x*1.6,v.y*0.22-frameU.absTime*0.09,v.z*1.6));
-      beam=shaftShape*curtains*(0.008+params.energy*params.energy*0.22)*(0.6+params.highs)*smoothstep(0.1,1.2,v.y);
+      beam=shaftShape*curtains*shaftVolumeGain()*smoothstep(0.1,1.2,v.y);
     }
     let toCore=length(v-CENTRE);
-    let glow=(0.035+params.energy*params.energy*7.0+params.transient*1.5)*exp(-toCore*0.3)/(0.3+toCore*toCore);
+    let glow=(0.035+params.energy*params.energy*(7.0+params.transient*1.5))*exp(-toCore*0.3)/(0.3+toCore*toCore);
     // Local fog occupies small volumes. Do not evaluate its octave noise throughout the hall.
     var groundFog=0.0;
     if(v.y<3.5){groundFog=exp(-max(v.y,0.0)*1.2)*0.18*pow(fbm(v*0.9+vec3f(frameU.absTime*0.04,0,0)),2.0);}
@@ -514,8 +599,10 @@ fn sceneAt(uv:vec2f)->vec4f {
       let plumes=smoothstep(0.35,0.72,noise(vec3f(v.x*0.38,frameU.absTime*0.025,v.z*0.38)));
       wallMist=exp(-pow((radial-16.8)/2.0,2.0))*exp(-pow((v.y-1.7)/1.25,2.0))*pow(fbm(v*1.2+vec3f(frameU.absTime*0.08,0,0)),2.0)*20.0*plumes*(1.0-smoothstep(1.0,5.0,v.z));
     }
-    scatter+=transmission*fog*dt*(paletteWarm()*beam*8.0+mix(paletteWarm(),energyGradient(v),params.coreGradient*0.5)*glow*5.0+vec3f(0.45,0.48,0.50)*(groundFog+wallMist));
-    transmission*=exp(-fog*dt*0.30);
+    let ceilingMist=ceilingVeil(v);
+    let ceilingLight=mix(paletteWarm(),vec3f(1),0.18)*(0.4+params.energy*(0.7+params.transient*0.55));
+    scatter+=transmission*fog*dt*(ceilingMist*ceilingLight*14.0+paletteWarm()*beam*8.0+mix(paletteWarm(),energyGradient(v),params.coreGradient*0.5)*glow*5.0+mix(vec3f(0.45,0.48,0.50),paletteWarm()*0.85,clamp(params.energy*exp(-radial*0.16)+params.bass*exp(-abs(radial-4.2)),0.0,0.8))*groundFog+mix(vec3f(0.45,0.48,0.50),paletteWarm()*0.8,clamp(params.panelBrightness*0.55,0.0,0.75))*wallMist);
+    transmission*=exp(-fog*dt*(0.30+ceilingMist*0.9));
   }
   let foregroundOcclusion=select(1.0,0.12,visibleGeometry);
   color=color*transmission+scatter*foregroundOcclusion;
@@ -528,7 +615,8 @@ fn sceneAt(uv:vec2f)->vec4f {
     let direction=vec2f(cos(a),sin(a));
     let centre=direction*sqrt(h)*mix(1.75,3.0,step(0.9,h))*opening;
     // A straight tilted line gives an exact closest approach, even as its aperture turns.
-    let tilt=direction*(0.025+0.018*sin(frameU.absTime*0.23+h*6.2831853));
+    let excursion=pow(max(0.0,sin(frameU.absTime*0.24)),3.0);
+    let tilt=direction*(0.003+0.023*excursion)*sin(frameU.absTime*0.19+h*6.2831853);
     let rayOrigin=ro.xz-centre-tilt*(ro.y-13.0);
     let rayDirection=rd.xz-tilt*rd.y;
     let denom=dot(rayDirection,rayDirection);
@@ -536,18 +624,34 @@ fn sceneAt(uv:vec2f)->vec4f {
       let t=-dot(rayOrigin,rayDirection)/denom;
       let v=ro+rd*t;let d=length(rayOrigin+rayDirection*t);
       let width=0.008+params.energy*0.012+0.021*hash(vec3f(f32(i),4,8));
+      // Sparse, individually staggered crests prevent a whole horizontal light sheet.
+      let packet=shaftPacket(v.y,hash(vec3f(f32(i),37,11))*13.0);
+      let accent=shaftAccent(i);
+      // The packet already has a narrow crest. Cubing its crossfade suppresses the
+      // mid-energy bulge, exactly where opening fragments should reveal travelling light.
+      let bulb=packet*accent;
+      let bulbWidth=shaftBulbWidth(width,bulb);
+      let tailVariance=max(max(width*width*170.0,0.065),bulbWidth*bulbWidth*7.0);
       // Beyond this bound even the broadest Gaussian is below exp(-20).
       // Reject before evaluating flowing noise; keep every visible shaft sample.
-      if(t>0.0 && t<distance && v.y>0.1 && v.y<15.0 && d*d<max(width*width*170.0,0.065)*20.0){
-        let vertical=select(smoothstep(7.0,9.0,v.y),1.0,i<8u);
+      if(t>0.0 && (distance-t)*sqrt(denom)>-sqrt(tailVariance)*1.5 && v.y>0.1 && v.y<15.0 && d*d<tailVariance*20.0){
+        let landing=select(0.02,0.32,length(v.xz)<2.8);
+        let vertical=shaftEnvelope(v.y,landing);
         let flow=v.y+frameU.absTime*(0.55+h*0.6);
-        let breakup=0.005+4.0*pow(noise(vec3f(f32(i)*5.0,flow*1.2,0)),5.0);
-        let fine=0.3+0.7*noise(vec3f(f32(i)*11.0,flow*15.0,3));
-        let packet=shaftPacket(v.y,f32(i%5u));
-        let travelling=packet*(0.15+params.energy*0.55+params.transient*0.65);
-        let pulse=(0.08+params.energy*params.energy*1.1+params.highs*0.25+params.beatPulse*0.25)*vertical*(breakup*fine+travelling);
-        let veil=select(0.0,exp(-d*d/0.065)*0.045,i<12u);
-        color+=mix(paletteWarm(),vec3f(1),0.45)*pulse*(exp(-d*d/(width*width))*0.14+exp(-d*d/(width*width*170.0))*0.013+veil);
+        let breakup=0.25+0.75*noise(vec3f(f32(i)*5.0,flow*0.38,0));
+        let fine=0.82+0.18*noise(vec3f(f32(i)*11.0,flow*4.0,3));
+        let travelling=packet*accent*shaftPulseGain()*vertical;
+        let pulse=shaftBaseGain()*vertical*breakup*fine;
+        let beforeSurface=(distance-t)*sqrt(denom);
+        let veil=select(0.0,exp(-d*d/0.065)*0.045*shaftVisibility(beforeSurface,sqrt(0.065)),i<12u);
+        let strand=exp(-d*d/(width*width))*0.14*shaftVisibility(beforeSurface,width);
+        let halo=exp(-d*d/(width*width*170.0))*0.013*shaftVisibility(beforeSurface,width*sqrt(170.0));
+        color+=mix(paletteWarm(),vec3f(1),0.45)*pulse*(strand+halo+veil);
+        // Keep the moving accent on the filament; broad haze must not become stacked sheets.
+        color+=shaftAccentColour()*travelling*(strand*1.5+halo*0.2);
+        let bulbCore=exp(-d*d/(bulbWidth*bulbWidth))*shaftVisibility(beforeSurface,bulbWidth);
+        let bulbHalo=exp(-d*d/(bulbWidth*bulbWidth*7.0))*shaftVisibility(beforeSurface,bulbWidth*sqrt(7.0));
+        color+=shaftAccentColour()*bulb*shaftPulseGain()*vertical*(bulbCore*0.42+bulbHalo*0.045);
       }
     }
   }
@@ -646,19 +750,20 @@ struct Params {
   return vec4f(max(sum/weight+fringe,vec3f(0)),1);
 }`;
 
-// Two disjoint quadrants preserve every native scene texel and its unfiltered depth.
+// Disjoint quadrants preserve opaque and emissive texels with independent depths.
 // Add is RGBA arithmetic, so neither pack premultiplies the depth stored in alpha.
-function atlasPack(right:boolean):string {return `
+function atlasPack(right:boolean,bottom=false):string {return `
 @group(0) @binding(0) var inputSampler:sampler;
 @group(0) @binding(1) var inputTexture:texture_2d<f32>;
 @fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {
-  let local=(uv-vec2f(${right?"0.5":"0.0"},0))*2.0;
+  let local=(uv-vec2f(${right?"0.5":"0.0"},${bottom?"0.5":"0.0"}))*2.0;
   if(any(local<vec2f(0)) || any(local>=vec2f(1))){return vec4f(0);}
   let dims=textureDimensions(inputTexture);
   return textureLoad(inputTexture,clamp(vec2i(local*vec2f(dims)),vec2i(0),vec2i(dims)-1),0);
 }`;}
 export const RESONANCE_ATLAS_SCENE_WGSL=atlasPack(false);
 export const RESONANCE_ATLAS_VIDEO_WGSL=atlasPack(true);
+export const RESONANCE_ATLAS_LIGHT_WGSL=atlasPack(false,true);
 
 /** Preserve source proportions before the switch normalizes video resolution. */
 export const RESONANCE_VIDEO_CROP_WGSL=`

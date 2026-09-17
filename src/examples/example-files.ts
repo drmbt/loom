@@ -19,6 +19,9 @@ export const EXAMPLE_COMPONENT_IDS: Readonly<Record<string, readonly string[]>> 
   "example-e67-fins": ["audioAnalysis"],
   "example-chimera": ["audioAnalysis"],
   "example-resonance": ["audioAnalysis", "timeGrid"],
+  "example-verdant-lotus": ["audioAnalysis", "timeGrid"],
+  "example-ember-monoliths": ["audioAnalysis", "timeGrid"],
+  "example-aether-orrery": ["audioAnalysis", "timeGrid"],
 };
 
 /**

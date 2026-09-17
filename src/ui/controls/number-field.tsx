@@ -101,6 +101,8 @@ export interface NumberFieldProps {
   spec: NumericSpec;
   unit?: NumberParameter["unit"];
   disabled?: boolean;
+  /** Hide magnitude controls and use the declared step, for fixed-unit fields such as pixels. */
+  showPrecisionSelector?: boolean;
   /**
    * §V830 (T988) — WHAT decides this value, when it is not the stored constant:
    * "Expression", "Bind", "Channel", "Map". Presence means the field refuses edits.
@@ -264,6 +266,7 @@ export function NumberField({
   spec,
   unit,
   disabled = false,
+  showPrecisionSelector = true,
   drivenBy,
   id,
   describedBy,
@@ -277,7 +280,8 @@ export function NumberField({
   const keyRef = useRef<number | null>(null);
   const [dragging, setDragging] = useState(false);
   /** Null = the manifest step decides the drag, exactly as before the ladder existed. */
-  const [decade, setDecade] = useState<number | null>(null);
+  const [pickedDecade, setDecade] = useState<number | null>(null);
+  const decade = showPrecisionSelector ? pickedDecade : null;
   const [ladderOpen, setLadderOpen] = useState(false);
   /** Non-null while the user is typing. Null means "showing the value". */
   const [text, setText] = useState<string | null>(null);
@@ -436,6 +440,7 @@ export function NumberField({
       // The ladder still opens; the drag stays armed underneath it and the first move
       // past the threshold takes the gesture back (see `onPointerMove`).
       cancelHold();
+      if (!showPrecisionSelector) return;
       holdRef.current = setTimeout(() => {
         holdRef.current = null;
         const drag = dragRef.current;
@@ -444,7 +449,7 @@ export function NumberField({
         setLadderOpen(true);
       }, LADDER_HOLD_MS);
     },
-    [cancelHold, editing, locked, value],
+    [cancelHold, editing, locked, showPrecisionSelector, value],
   );
 
   const onPointerMove = useCallback(
@@ -533,7 +538,7 @@ export function NumberField({
 
       // mod+↑/↓ walks the magnitude ladder and shows it, so the reach the pointer gets
       // by pressing and holding is reachable — and VISIBLE — without a pointer (§V19).
-      if ((event.metaKey || event.ctrlKey) && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      if (showPrecisionSelector && (event.metaKey || event.ctrlKey) && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
         event.preventDefault();
         event.stopPropagation();
         setDecade(shiftDecade(shownDecade, event.key === "ArrowUp" ? 1 : -1));
@@ -615,6 +620,7 @@ export function NumberField({
       locked,
       emit,
       shownDecade,
+      showPrecisionSelector,
       spec,
       text,
       value,
@@ -728,7 +734,7 @@ export function NumberField({
     {drivenBy === undefined ? null : <DrivenMark label={label} drivenBy={drivenBy} />}
     {/* A field that refuses drags has no use for a drag magnitude; the gutter carries
         the driven mark instead, and the two can never collide. */}
-    {locked ? null : (
+    {locked || !showPrecisionSelector ? null : (
       <LadderSwatch
         label={label}
         open={ladderOpen}
@@ -737,7 +743,7 @@ export function NumberField({
         }}
       />
     )}
-    {ladderOpen ? (
+    {showPrecisionSelector && ladderOpen ? (
       <DecadeLadder
         label={label}
         current={shownDecade}

@@ -80,6 +80,7 @@ struct Params {
   height: f32, // @default 5.6 Sphere centre above floor.
   fissure: f32, // @default 0.004 Fraction removed along cell boundaries.
   vibration: f32, // @default 0.01 Subordinate radial motion.
+  impulse: f32, // @default 0 Fast audio transient independent of the expansion envelope.
 };
 const SITES = array<vec3f, ${FRAGMENT_COUNT}>(
 ${sites.map(s => `vec3f(${s.map(literal).join(",")})`).join(",\n")});
@@ -126,7 +127,11 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   // A dense central population preserves the sphere's memory at maximum expansion.
   let allocation = mix(ctx.params.spreadFloor, 1.0, pow(identity, 2.0));
   let drift = ctx.params.vibration * sin(ctx.absTime*2.2+f32(cell)*7.1) * energy;
-  let displacement = clamp(ctx.params.reach * energy * allocation + drift,0.0,ctx.params.reach);
+  // Reserve radial travel before the slow envelope saturates. A transient uses only
+  // this reserved budget: rigid stones remain lively without crossing the envelope.
+  let reserve = 0.12 + 0.06 * identity;
+  let impulse = clamp(ctx.params.impulse,0.0,1.0);
+  let displacement = clamp(ctx.params.reach * energy * allocation * (1.0-reserve+reserve*impulse) + drift,0.0,ctx.params.reach);
   q.position = rotateAxis(q.rest + n * displacement,ctx.params.rotation) + vec3f(0,ctx.params.height,0);
   let grain = rockNoise(q.rest*65.0);
   let stone = (0.025 + 0.04*identity + 0.05*grain*grain) * select(1.0,1.25,ring>=11u && ring<=20u);
@@ -190,11 +195,21 @@ fn process(p:Point,ctx:PointCtx)->Point {
 export const SEAM_ATTRIBUTES = JSON.stringify([
   ...JSON.parse(SHELL_ATTRIBUTES),
   { name: "end", type: "vec3f", default: [0,0,0] },
+  { name: "beamWidth", type: "f32", default: [0.018] },
 ]);
 export const SEAM_MIRROR_KERNEL = `fn process(p:Point,ctx:PointCtx)->Point {
   var q=p; q.position.y=-p.position.y; q.end.y=-p.end.y; return q;
 }`;
-/** Light on the exposed cut lip; it follows the actual deformed vertices. */
+/** Live inner-face poles of actual Voronoi neighbours, shared by every arc segment. */
+function arcAnchors(columns:number,rank=0):string {
+  const innerIndex=(cell:number)=>(cell*SHELL_ROWS_PER_CELL+SHELL_ROWS_PER_CELL-1)*columns;
+  return neighbours.map((list,cell)=>{
+    const ordered=[...list].sort((a,b)=>dot(sites[cell]!,sites[b]!)-dot(sites[cell]!,sites[a]!));
+    const other=ordered[rank%ordered.length]!;
+    return `vec2u(${innerIndex(cell)}u,${innerIndex(other)}u)`;
+  }).join(',');
+}
+/** Cut-lip light plus plasma linking inner stone faces to the core and neighbouring stones. */
 function seamKernel(columns:number):string { return `
 ${RESONANCE_PALETTE_WGSL}
 ${AXIS_ROTATION_WGSL}
@@ -203,10 +218,69 @@ struct Params {
   rotation: f32, // @default 0 Common vertical-axis rotation in degrees.
   paletteCycle: f32, // @default 1 Shared room palette cycle.
   gain: f32, // @default 0 Energy visible at the exposed cut lip.
+  voltage: f32, // @default 0 Sustained musical charge for core-to-fragment tendrils.
 };
+const ARC_ANCHORS=array<vec2u,${FRAGMENT_COUNT}>(${arcAnchors(columns)});
+const ARC_ANCHORS_B=array<vec2u,${FRAGMENT_COUNT}>(${arcAnchors(columns,1)});
+const ARC_ANCHORS_C=array<vec2u,${FRAGMENT_COUNT}>(${arcAnchors(columns,2)});
+fn arcPoint(a:vec3f,b:vec3f,t:f32,seed:f32,time:f32,rotation:f32)->vec3f {
+  let delta=b-a;
+  let direction=normalize(rotateAxis(delta,-rotation)+vec3f(0.000001));
+  let localSide=normalize(cross(direction,select(vec3f(0,1,0),vec3f(1,0,0),abs(direction.y)>0.9)));
+  let side=rotateAxis(localSide,rotation);
+  let up=rotateAxis(cross(direction,localSide),rotation);
+  // Each discharge has its own irregular path. Smooth time coordinates preserve
+  // frame continuity; a new lifecycle changes the seed only while the arc is dark.
+  let frequency=2.3+rockHash(vec3f(seed,7,11))*3.7;
+  let domain=vec3f(t*frequency,time*0.32,seed*1.71);
+  let broad=vec2f(rockNoise(domain),rockNoise(domain+vec3f(19.3,8.1,27.7)))*2.0-1.0;
+  let detail=vec2f(rockNoise(domain*2.7+vec3f(31,4,13)),rockNoise(domain*3.1+vec3f(7,29,3)))*2.0-1.0;
+  let bend=broad+detail*0.24;
+  return mix(a,b,t)+(side*bend.x+up*bend.y)*(4.0*t*(1.0-t))*min(length(delta)*0.24,0.6);
+}
 fn process(p:Point,ctx:PointCtx)->Point {
   var q=p;
+  q.beamWidth=${columns===SHELL_COLUMNS?'0.018':'0.008'};
   let col=ctx.index % ${columns}u;
+  let row=ctx.index / ${columns}u;
+  let cell=row / ${SHELL_ROWS_PER_CELL}u;
+  let localRow=row % ${SHELL_ROWS_PER_CELL}u;
+  // Two unused rows carry the fine plasma thread and its broad, faint halo.
+  // Sparse routes alternate core-to-inner-face links with inner-face neighbour chains.
+  if((localRow==12u || localRow==13u) && col<32u && cell%13u==0u) {
+    let life=ctx.absTime/2.8+f32(cell)*0.173+0.31;
+    let phase=fract(life);
+    let route=u32(floor(life))%3u;
+    var anchors=ARC_ANCHORS[cell];
+    if(route==1u){anchors=ARC_ANCHORS_B[cell];}
+    if(route==2u){anchors=ARC_ANCHORS_C[cell];}
+    let centre=vec3f(0,${SHELL_HEIGHT},0);
+    let innerA=pointAt(anchors.x);
+    let innerB=pointAt(anchors.y);
+    // Move a hair into the exposed cavity so the line touches, rather than floats above, the face.
+    let faceA=innerA.position-rotateAxis(normalize(innerA.rest),ctx.params.rotation)*0.006;
+    let faceB=innerB.position-rotateAxis(normalize(innerB.rest),ctx.params.rotation)*0.006;
+    let chain=route==1u;
+    let b=select(faceA,faceB,chain);
+    let a=select(centre+normalize(b-centre)*0.98,faceA,chain);
+    let seed=f32(cell)*3.17+floor(life)*19.71;
+    let voltage=clamp(ctx.params.voltage,0.0,1.0);
+    let sustain=smoothstep(0.02,0.18,phase)*(1.0-smoothstep(0.64,0.98,phase));
+    let t=(f32(col)+0.5)/32.0;
+    let front=smoothstep(t-0.12,t+0.12,phase*5.0);
+    let tail=1.0-smoothstep(t-0.15,t+0.15,(phase-0.7)*4.0);
+    let gate=smoothstep(0.08,0.5,voltage)*sustain*front*tail;
+    let halo=localRow==13u;
+    q.seam=select(0.0,1.0,gate>0.001);
+    q.position=arcPoint(a,b,f32(col)/32.0,seed,ctx.absTime,ctx.params.rotation);
+    q.end=arcPoint(a,b,f32(col+1u)/32.0,seed,ctx.absTime,ctx.params.rotation);
+    let primary=resonancePalette(ctx.absTime,ctx.params.paletteCycle);
+    let colour=mix(primary,vec3f(1),0.18);
+    let pulse=0.4+0.6*rockNoise(vec3f(t*7.0-ctx.absTime*0.8,seed,11));
+    q.beamWidth=select(0.024,0.12,halo)*(0.8+0.2*pulse);
+    q.tint=vec4f(colour*gate*(0.8+1.4*voltage)*pulse*select(1.0,0.12,halo),1);
+    return q;
+  }
   let next=select(ctx.index+1u,ctx.index-col,col==${columns-1}u);
   let neighbour=pointAt(next);
   q.position=p.position+rotateAxis(normalize(p.rest),ctx.params.rotation)*0.006;

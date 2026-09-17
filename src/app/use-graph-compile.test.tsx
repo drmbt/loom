@@ -55,6 +55,26 @@ async function seed(runtime: AppRuntime, operations: GraphPatchOperation[]) {
 }
 
 describe("useGraphCompile — default-on previews (§V28a, §V28b, §V28c)", () => {
+  it("recompiles when a take-local output resolution changes without a document edit", async () => {
+    const runtime = newRuntime();
+    await act(async () => {
+      await seed(runtime, [{ op: "addNode", ref: "$noise", type: "noise", position: { x: 0, y: 0 } }]);
+    });
+    const settingsAt = (width: number, height: number) => ({
+      ...runtime.settings,
+      outputResolution: { width, height },
+    });
+    const { result, rerender } = renderHook(
+      ({ settings }) => useGraphCompile(runtime, CAPABILITIES, undefined, undefined, undefined, settings),
+      { initialProps: { settings: settingsAt(640, 360) } },
+    );
+    expect(result.current.compiled?.outputs[0]?.size).toEqual([640, 360]);
+
+    rerender({ settings: settingsAt(1080, 1920) });
+    expect(result.current.compiled?.outputs[0]?.size).toEqual([1080, 1920]);
+    runtime.dispose();
+  });
+
   it("does not prune a disconnected texture-producing node, and gives it a preview sink", async () => {
     const runtime = newRuntime();
     await act(async () => {

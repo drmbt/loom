@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import type { ProjectSettings } from "@domain/types/graph.ts";
 import { ProjectSettingsDialog } from "./project-settings.tsx";
@@ -129,4 +129,22 @@ describe("the rendered fields are the kit's controls (T390)", () => {
     const toggle = screen.getByLabelText("Show each node's type beside its name");
     expect(toggle.getAttribute("role")).toBe("switch");
   });
+});
+
+
+it("shares resolution presets, aspect choices and orientation with video rendering",()=>{
+  const onChange=vi.fn();
+  render(<ProjectSettingsDialog settings={{...SETTINGS,outputResolution:{width:720,height:1280}}} onChange={onChange} open onOpenChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button",{name:"1080p"}));
+  expect(onChange).toHaveBeenLastCalledWith({outputResolution:{width:1080,height:1920}},"Set output resolution to 1080p");
+  fireEvent.click(screen.getByRole("button",{name:"4:3"}));
+  expect(onChange).toHaveBeenLastCalledWith({outputResolution:{width:960,height:1280}},"Set output aspect ratio to 4:3");
+  fireEvent.click(screen.getByRole("button",{name:"Swap width and height"}));
+  expect(onChange).toHaveBeenLastCalledWith({outputResolution:{width:1280,height:720}},"Swap output orientation");
+});
+
+it("disables presets that exceed the project limit",()=>{
+  render(<ProjectSettingsDialog settings={{...SETTINGS,limits:{...SETTINGS.limits,maxResolution:2048}}} onChange={vi.fn()} open onOpenChange={vi.fn()} />);
+  expect((screen.getByRole("button",{name:"1080p"}) as HTMLButtonElement).disabled).toBe(false);
+  expect((screen.getByRole("button",{name:"4K UHD"}) as HTMLButtonElement).disabled).toBe(true);
 });

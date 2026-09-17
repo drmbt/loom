@@ -24,6 +24,7 @@ export default defineConfig({
   use: {
     ...devices["Desktop Chrome"],
     headless: false,
+    launchOptions: { args: ["--mute-audio"] },
     baseURL: "http://localhost:5211",
     viewport: { width: 1920, height: 1200 },
     trace: "off",

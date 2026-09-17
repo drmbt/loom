@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildProjectFile } from "@domain/project/index.ts";
 import { createAppRuntime } from "./app-runtime.ts";
 import type { AppRuntime } from "./app-runtime.ts";
-import { writeTextFile } from "./project-io.ts";
+import { prepareFileWrite, writeTextFile } from "./project-io.ts";
 import type { WritableTextFile } from "./project-io.ts";
 import { useProject } from "./use-project.ts";
 
@@ -59,7 +59,7 @@ describe("the suggestion reaches BOTH save paths (T43/T139)", () => {
             offered = options.suggestedName;
             return {
               name: "bloom-2.loom.json",
-              createWritable: async () => ({ write: async () => {}, close: async () => {} }),
+              createWritable: async () => ({ write: async () => {}, close: async () => {}, abort: async () => {} }),
             };
           },
         },
@@ -82,6 +82,108 @@ describe("the suggestion reaches BOTH save paths (T43/T139)", () => {
 
     expect(downloaded).toEqual(["bloom-2.loom.json"]);
     expect(outcome).toEqual({ kind: "saved", fileName: "bloom-2.loom.json", method: "download" });
+  });
+});
+
+describe("a long render acquires its destination before producing bytes", () => {
+  it("holds the selected handle and closes its write before reporting success", async () => {
+    const events: string[] = [];
+    const prepared = await prepareFileWrite(
+      { fileName: "take.mp4", pickerTypes: PROJECT.pickerTypes },
+      { globals: { showSaveFilePicker: async () => ({
+        name: "chosen.mp4",
+        createWritable: async () => ({
+          write: async () => { events.push("write"); },
+          close: async () => { events.push("close"); },
+          abort: async () => undefined,
+        }),
+      }) } },
+    );
+    expect(prepared.kind).toBe("ready");
+    if (prepared.kind !== "ready") return;
+    const outcome = await prepared.destination.write({
+      fileName: "take.mp4",
+      text: new Blob([Uint8Array.of(1, 2, 3)]),
+      mime: "video/mp4",
+      pickerTypes: PROJECT.pickerTypes,
+    });
+    expect(events).toEqual(["write", "close"]);
+    expect(outcome).toEqual({ kind: "saved", fileName: "chosen.mp4", method: "picker" });
+  });
+
+  it("refuses bounded output when no durable picker exists", async () => {
+    await expect(prepareFileWrite(
+      { fileName: "take.mp4", pickerTypes: PROJECT.pickerTypes },
+      { globals: {} },
+    )).resolves.toEqual({
+      kind: "failed",
+      reason: "This browser cannot choose a durable video destination.",
+    });
+  });
+
+  it("aborts an active durable write when a render is cancelled", async () => {
+    let rejectWrite!: (error: unknown) => void;
+    let enterWrite!: () => void;
+    const writeEntered = new Promise<void>(resolve => { enterWrite = resolve; });
+    const abort = vi.fn(async () => rejectWrite(new DOMException("cancelled", "AbortError")));
+    const prepared = await prepareFileWrite(
+      { fileName: "take.mp4", pickerTypes: PROJECT.pickerTypes },
+      { globals: { showSaveFilePicker: async () => ({
+        createWritable: async () => ({
+          write: () => new Promise<void>((_resolve, reject) => { rejectWrite = reject; enterWrite(); }),
+          close: async () => undefined,
+          abort,
+        }),
+      }) } },
+    );
+    expect(prepared.kind).toBe("ready");
+    if (prepared.kind !== "ready") return;
+    const controller = new AbortController();
+    const writing = prepared.destination.write({
+      fileName: "take.mp4",
+      text: new Blob([Uint8Array.of(1, 2, 3)]),
+      mime: "video/mp4",
+      pickerTypes: PROJECT.pickerTypes,
+    }, controller.signal);
+    await writeEntered;
+    controller.abort();
+    await expect(writing).resolves.toEqual({ kind: "cancelled" });
+    expect(abort).toHaveBeenCalledOnce();
+  });
+
+  it("does not cancel after the destination starts committing a completed file", async () => {
+    let enterClose!: () => void;
+    let releaseClose!: () => void;
+    const closeEntered = new Promise<void>(resolve => { enterClose = resolve; });
+    const closeReleased = new Promise<void>(resolve => { releaseClose = resolve; });
+    const abort = vi.fn(async () => undefined);
+    const prepared = await prepareFileWrite(
+      { fileName: "take.mp4", pickerTypes: PROJECT.pickerTypes },
+      { globals: { showSaveFilePicker: async () => ({
+        name: "chosen.mp4",
+        createWritable: async () => ({
+          write: async () => undefined,
+          close: async () => { enterClose(); await closeReleased; },
+          abort,
+        }),
+      }) } },
+    );
+    expect(prepared.kind).toBe("ready");
+    if (prepared.kind !== "ready") return;
+    const controller = new AbortController();
+    const onCommitStart = vi.fn();
+    const writing = prepared.destination.write({
+      fileName: "take.mp4",
+      text: new Blob([Uint8Array.of(1, 2, 3)]),
+      mime: "video/mp4",
+      pickerTypes: PROJECT.pickerTypes,
+    }, controller.signal, onCommitStart);
+    await closeEntered;
+    controller.abort();
+    releaseClose();
+    await expect(writing).resolves.toEqual({ kind: "saved", fileName: "chosen.mp4", method: "picker" });
+    expect(onCommitStart).toHaveBeenCalledOnce();
+    expect(abort).not.toHaveBeenCalled();
   });
 });
 

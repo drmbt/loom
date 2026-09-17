@@ -21,7 +21,7 @@ import { expect, test } from "@playwright/test";
 
 test.use({
   launchOptions: {
-    args: ["--enable-unsafe-webgpu", "--use-angle=metal", "--enable-gpu", "--headless=new"],
+    args: ["--mute-audio", "--enable-unsafe-webgpu", "--use-angle=metal", "--enable-gpu", "--headless=new"],
   },
 });
 

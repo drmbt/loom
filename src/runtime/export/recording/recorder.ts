@@ -51,7 +51,7 @@ export interface FrameRecorder {
    */
   captureFrame(frame: FrameEvaluationInput): Promise<void>;
   finish(): Promise<RecordingResult>;
-  cancel(): void;
+  cancel(): Promise<void>;
 }
 
 export function createFrameRecorder(options: FrameRecorderOptions): FrameRecorder {
@@ -295,9 +295,10 @@ export function createFrameRecorder(options: FrameRecorderOptions): FrameRecorde
       return result;
     },
 
-    cancel() {
+    async cancel() {
+      if (state === "cancelled") return;
       state = "cancelled";
-      options.encoder.close?.();
+      await options.encoder.close?.();
     },
   };
 }

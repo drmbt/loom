@@ -229,7 +229,10 @@ export function resolveNodeResolution(request: ResolutionRequest): ResolutionOut
 
   const rounded = normalize(raw);
   const max = effectiveMaxResolution(settings, request.capabilities);
-  const clampedSize: readonly [number, number] = [Math.min(rounded[0], max), Math.min(rounded[1], max)];
+  // A safety cap changes sampling density, not the image's geometry. Independent
+  // per-axis clamps turn a 2x portrait pass (4320x7680) into a square texture.
+  const scale = Math.min(1, max / Math.max(rounded[0], rounded[1]));
+  const clampedSize = normalize([rounded[0] * scale, rounded[1] * scale]);
   const clamped = clampedSize[0] !== rounded[0] || clampedSize[1] !== rounded[1];
 
   if (clamped) {
@@ -237,7 +240,7 @@ export function resolveNodeResolution(request: ResolutionRequest): ResolutionOut
       compilerDiagnostic(
         "warning",
         CompilerDiagnosticCode.resolutionClamped,
-        `Node "${nodeId}" (${nodeType}) resolved to ${rounded[0]}x${rounded[1]}, above the ${max}px limit in force; it was clamped to ${clampedSize[0]}x${clampedSize[1]}.`,
+        `Node "${nodeId}" (${nodeType}) resolved to ${rounded[0]}x${rounded[1]}, above the ${max}px limit in force; it was scaled proportionally to ${clampedSize[0]}x${clampedSize[1]}.`,
         {
           nodeId,
           suggestion:

@@ -1,4 +1,6 @@
 import type { VideoEncoderSink } from "./types.ts";
+import type { AudioPcmProvider, EncoderConfig, EncoderFinishProgress } from "./types.ts";
+import type { MediaSpoolMode } from "./media-spool.ts";
 
 /**
  * The WebCodecs/headless boundary, in one file.
@@ -25,6 +27,40 @@ export interface LoadEncoderOptions {
   readonly codec?: string;
   readonly bitrate?: number;
   readonly latencyMode?: "quality" | "realtime";
+  /** When present, the flushed H.264 take is muxed with this deterministic PCM source. */
+  readonly audio?: AudioPcmProvider;
+  readonly audioBitrate?: number;
+  /** Explicit test seam. Production uses disk-backed OPFS and never falls back silently. */
+  readonly spool?: MediaSpoolMode;
+  /** Reports work performed after all video frames have been collected. */
+  readonly onFinishProgress?: ((progress: EncoderFinishProgress) => void) | undefined;
+  /** Encoded media bytes durably appended to temporary disk storage. */
+  readonly onSpoolProgress?: ((writtenBytes: number) => void) | undefined;
+  /** Lets the app yield a browser task while CPU-heavy finishing work continues. */
+  readonly yieldControl?: (() => Promise<void>) | undefined;
+  /** Cancels queued video flush, soundtrack encoding, or MP4 finalization. */
+  readonly signal?: AbortSignal | undefined;
+}
+
+export interface VideoEncoderSupport {
+  readonly supported: boolean;
+  readonly codec: string;
+  readonly reason: string | null;
+}
+
+export type AudioEncoderSupport = VideoEncoderSupport;
+
+export async function probeVideoEncoderSupport(
+  config: EncoderConfig,
+  options: LoadEncoderOptions = {},
+): Promise<VideoEncoderSupport> {
+  const module = await import("./webcodecs.ts");
+  return module.probeWebCodecsEncoder(config, options);
+}
+
+export async function probeAudioEncoderSupport(): Promise<AudioEncoderSupport> {
+  const module = await import("./webcodecs.ts");
+  return module.probeWebCodecsAudioEncoder();
 }
 
 export async function loadVideoEncoder(

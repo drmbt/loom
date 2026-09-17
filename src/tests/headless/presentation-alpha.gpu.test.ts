@@ -7,6 +7,7 @@ import {
   outputDisplayShader,
 } from "../../nodes/shaders/output-passthrough.wgsl.ts";
 import { exampleRegistry } from "../../examples/runner.ts";
+import { starterComponentsView } from "../../examples/component-files.ts";
 import { mockGpuHost, type MockGpuHost } from "../../runtime/backend/vgpu/mock-gpu-host.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { fixturePlan } from "../../runtime/backend/vgpu/plan-fixture.ts";
@@ -142,6 +143,7 @@ describe("T674 — the viewer pane presents its output opaquely", () => {
     const capture = [8, 9, 10, 11, 12, 13, 14, 15];
     const rendered = await renderHeadless({
       host: nodeGpuHost(),
+      components: await starterComponentsView(),
       graph: document.graph,
       settings: document.settings,
       frames: 16,
@@ -150,6 +152,7 @@ describe("T674 — the viewer pane presents its output opaquely", () => {
       animate: true,
     });
 
+    expect(rendered.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     const presented = rendered.frames.map((frame) => {
       const components = decodeComponents(frame.bytes, frame.format);
       const pixels = frame.width * frame.height;
@@ -226,6 +229,7 @@ describe("T678 — the Output node bounds the alpha it writes", () => {
     const capture = [0, 1, 2, 5, 9, 12, 15];
     const rendered = await renderHeadless({
       host: nodeGpuHost(),
+      components: await starterComponentsView(),
       graph: document.graph,
       settings: document.settings,
       frames: 16,
@@ -234,6 +238,7 @@ describe("T678 — the Output node bounds the alpha it writes", () => {
       animate: true,
     });
 
+    expect(rendered.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     for (const frame of rendered.frames) {
       const components = decodeComponents(frame.bytes, frame.format);
       const pixels = frame.width * frame.height;

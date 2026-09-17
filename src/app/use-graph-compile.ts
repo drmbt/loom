@@ -27,7 +27,7 @@ const NO_STORE = { subscribe: () => () => {}, get: () => EMPTY_SINKS };
 const NO_CHANNELS: readonly ChannelResolver[] = [];
 const NO_SESSION_DIAGNOSTICS: readonly RuntimeDiagnostic[] = [];
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { GraphDocument, ProjectSettings } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { NodeRunStatus, NodeRuntimeStore } from "@editor/graph-canvas/index.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
@@ -201,13 +201,14 @@ function compileRequest(
   graph: GraphDocument,
   flattened: FlattenedGraph,
   runtime: AppRuntime,
+  settings: ProjectSettings,
   capabilities: BackendCapabilities,
   resolution: ParameterResolution,
   previewSinks?: ReadonlyArray<ActiveSink>,
 ): CompileRequest {
   return {
     graph,
-    settings: runtime.settings,
+    settings,
     registry: runtime.registry,
     capabilities,
     /**
@@ -372,6 +373,7 @@ export function useGraphCompile(
    * sat in the problems pane. Re-published whenever the array's identity changes.
    */
   sessionDiagnostics: readonly RuntimeDiagnostic[] = NO_SESSION_DIAGNOSTICS,
+  settings: ProjectSettings = runtime.settings,
 ): GraphCompileResult {
   const graph = useSyncExternalStore<GraphDocument>(
     runtime.bus.store.subscribe,
@@ -510,11 +512,12 @@ export function useGraphCompile(
             graph,
             flattened,
             runtime,
+            settings,
             capabilities,
             { channels },
             previewSinks === undefined ? undefined : scheduledPreviews,
           ),
-    [capabilities, channels, flattened, graph, runtime, previewSinks, scheduledPreviews],
+    [capabilities, channels, flattened, graph, runtime, settings, previewSinks, scheduledPreviews],
   );
 
   /**
@@ -693,6 +696,7 @@ export function useGraphCompile(
       previewSinks,
       scheduledPreviews,
       catalogueRevision,
+      settings,
     ];
     const remembered = memoized.current;
     if (
@@ -726,7 +730,7 @@ export function useGraphCompile(
       });
     }
     const previous = lastCompile.current;
-    const settingsKey = structuralSettingsKey(runtime.settings);
+    const settingsKey = structuralSettingsKey(settings);
     const sameInputs =
       previous !== null &&
       // T519 — belt and braces with the classifier below. Both gates that can reuse
@@ -803,7 +807,7 @@ export function useGraphCompile(
       resetFeedback: change?.resetFeedback === true,
       documentBoundary: change?.documentBoundary === true,
     });
-  }, [animate, request, channels, flatGraph, flattened, graph, runtime, capabilities, previewSinks, scheduledPreviews, catalogueRevision]);
+  }, [animate, request, channels, flatGraph, flattened, graph, runtime, capabilities, previewSinks, scheduledPreviews, catalogueRevision, settings]);
 
   const capabilitiesRef = useRef(capabilities);
   capabilitiesRef.current = capabilities;
@@ -835,7 +839,7 @@ export function useGraphCompile(
     // document `current` was just read from — so this compile and the rendered one are
     // built from one flattening even when React has not caught up yet.
     const { compiled, diagnostics } = compileSafely(
-      compileRequest(current, runtime.flattened.current(), runtime, capability, {}),
+      compileRequest(current, runtime.flattened.current(), runtime, runtime.settings, capability, {}),
     );
     const view: CompileResultView = { compiled, diagnostics };
     cacheRef.current = { documentIdentity: runtime.documentIdentity, revision: current.revision, view };

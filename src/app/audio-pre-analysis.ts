@@ -114,6 +114,8 @@ export function runInWorker(request: OfflineAnalysisRequest): Promise<OfflineAna
 
 export interface PreAnalysisOutcome {
   readonly analysis: OfflineAnalysis;
+  /** Fixed-rate mono PCM from the same decode the analysis walked. */
+  readonly pcm: MonoPcm;
   /** Null when the walk ran off the main thread; otherwise the reason it did not. */
   readonly fallback: string | null;
 }
@@ -143,11 +145,12 @@ export function createPreAnalyser(deps: Partial<PreAnalyserDeps> = {}): PreAnaly
     try {
       // The worker takes the buffer with it; the fallback below needs its own copy.
       const analysis = await run({ id, samples: samples.slice(0), sampleRate, fps, detector });
-      return { analysis, fallback: null };
+      return { analysis, pcm: { samples, sampleRate }, fallback: null };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       return {
         analysis: analyseOffline(samples, sampleRate, fps, detector),
+        pcm: { samples, sampleRate },
         fallback: `Pre-analysis ran on the main thread: ${reason}.`,
       };
     }

@@ -1,6 +1,6 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { FrameRange } from "@domain/types/graph.ts";
+import { frameRangeLength, type FrameRange } from "@domain/types/graph.ts";
 import type { ExportInterface, OutputRef } from "@runtime/export/index.ts";
 import { createFrameRecorder } from "@runtime/export/index.ts";
 import type { RecordingReport, VideoEncoderSink } from "@runtime/export/index.ts";
@@ -20,8 +20,8 @@ import { commandHolder } from "@domain/commands/command-holder.ts";
  * samples what the display happened to show. The transport is seeked to the in point —
  * which REPLAYS and clears temporal state (§V170), so a feedback graph starts the take
  * from the state that genuinely belongs to that frame — and then stepped one frame at a
- * time, synchronously, with each rendered frame handed to the recorder labelled by the
- * `frameIndex` the render actually consumed (§V44). The same project, seed and range
+ * time, synchronously. Output cadence selects source frames and gives the recorder
+ * consecutive output indices; progress retains the sampled project-frame index (§V44). The same project, seed and range
  * produce the same file, on a fast machine and on a slow one.
  *
  * That is why the loop below does not use `recordSequence`, which is the same shape one
@@ -41,10 +41,9 @@ declare module "@domain/types/commands.ts" {
     /**
      * Renders the timeline's in/out range to a video file.
      *
-     * The range is the DOCUMENT's (`ProjectSettings.frameRange`) — the same value the
-     * scrubber drags and the loop cycles. It is deliberately not an input here: a caller
-     * that could pass its own length would be a second answer to "how long is this", and
-     * T433's ruling is that there is one.
+     * The app session owns take-local range/rate overrides initialized from the project.
+     * They are deliberately not command inputs, so every command caller renders the same
+     * reviewed job without editing the composition's persisted clock.
      */
     "export.renderRange": {
       input: Record<string, never>;
@@ -62,6 +61,31 @@ export interface RenderRangeHandlers {
   /** True while a take is in flight, so a second press reports rather than interleaving. */
   busy(): boolean;
   render(): Promise<RenderRangeOutcome>;
+  /** Stops the active take at the next safe frame boundary. No-op while idle. */
+  cancel?(): void;
+}
+
+/** Monotonic exact-frame progress. `completedFrames` advances only after encode accepts a frame. */
+export interface RenderRangeProgress {
+  readonly completedFrames: number;
+  readonly totalFrames: number;
+  readonly frameIndex: number | null;
+}
+
+export function renderedFrameCount(range: FrameRange): number {
+  return frameRangeLength(range);
+}
+
+/** Project frames whose state is needed to cover every selected output-frame interval. */
+export function sourceRangeForOutputRange(
+  range: FrameRange,
+  timelineFps: number,
+  outputFps: number,
+): FrameRange {
+  return {
+    start: Math.floor((range.start * timelineFps) / outputFps),
+    end: Math.ceil(((range.end + 1) * timelineFps) / outputFps) - 1,
+  };
 }
 
 export interface RenderRangeHolder {
@@ -95,10 +119,19 @@ export interface RenderFrameRangeInputs {
   readonly api: ExportInterface;
   readonly ref: OutputRef;
   readonly range: FrameRange;
-  readonly fps: number;
+  /** Frame rate of the project timeline being evaluated. */
+  readonly timelineFps: number;
+  /** Frame rate written to the output file. */
+  readonly outputFps: number;
   readonly transport: RangeTransport;
   readonly encoder: VideoEncoderSink;
   readonly onDiagnostic?: ((diagnostic: RuntimeDiagnostic) => void) | undefined;
+  readonly signal?: AbortSignal | undefined;
+  readonly onProgress?: ((progress: RenderRangeProgress) => void) | undefined;
+  /** Reports deterministic replay before a non-zero in point. */
+  readonly onPreRollProgress?: ((completedFrames: number, totalFrames: number) => void) | undefined;
+  /** Gives the app a paint/cancel turn during long deterministic replay. */
+  readonly yieldControl?: (() => Promise<void>) | undefined;
   /**
    * T747: awaited after each frame is rendered, before anything steps past it.
    *
@@ -115,10 +148,20 @@ export interface RenderFrameRangeInputs {
   readonly onFrameRendered?: ((frameIndex: number) => Promise<void>) | undefined;
 }
 
+const PRE_ROLL_YIELD_INTERVAL = 8;
+
+export class RenderRangeCancelledError extends Error {
+  constructor() {
+    super("The video render was cancelled.");
+    this.name = "RenderRangeCancelledError";
+  }
+}
+
 export interface RenderedRange {
   readonly mimeType: string;
-  readonly bytes: Uint8Array;
+  readonly bytes: Uint8Array | Blob;
   readonly report: RecordingReport;
+  readonly dispose?: (() => Promise<void>) | undefined;
 }
 
 /**
@@ -130,61 +173,185 @@ export interface RenderedRange {
  * unreachable from a test that has to stand up a device first.
  */
 export async function renderFrameRange(inputs: RenderFrameRangeInputs): Promise<RenderedRange> {
-  const { api, ref, range, fps, transport, encoder } = inputs;
+  const { api, ref, range, timelineFps, outputFps, transport, encoder } = inputs;
   const recorder = createFrameRecorder({
     api,
     ref,
     encoder,
-    fps,
+    fps: outputFps,
     ...(inputs.onDiagnostic === undefined ? {} : { onDiagnostic: inputs.onDiagnostic }),
   });
 
-  // Pausing first is not politeness: a running loop would keep advancing the timeline
-  // between our steps, so the take would carry frames nobody asked for and the recorder
-  // would report duplicates it did not cause.
-  if (transport.isPlaying()) transport.togglePlay();
+  const totalFrames = renderedFrameCount(range);
+  const sourceRange = sourceRangeForOutputRange(range, timelineFps, outputFps);
+  const cancelled = (): boolean => inputs.signal?.aborted === true;
+  const stopIfCancelled = (): void => {
+    if (!cancelled()) return;
+    throw new RenderRangeCancelledError();
+  };
 
-  await recorder.start();
-  /*
-   * T467 — A TAKE IS A FRESH PERFORMANCE. `absFrameIndex` counts from transport
-   * creation, so without this a project rendered on two different days would carry a
-   * different abstime into every frame — and different PIXELS wherever an expression or
-   * shader reads it, breaking "the same project renders the same file" (T431). Zeroed
-   * before the seek so the replayed frames 0..start carry abs 0..start, deterministic.
-   * The LIVE clock is untouched: only a render resets it (T461's rule kept whole).
-   */
-  transport.resetAbsoluteClock();
-  // §V170 — the in point's true state, replayed rather than jumped to. The seek RENDERS
-  // that frame, so the first thing captured is the frame already on the GPU; stepping
-  // first instead is the off-by-one described above.
-  transport.seek(range.start);
-  let frame = transport.latestFrame();
-  for (let index = range.start; index <= range.end; index += 1) {
-    if (frame === null) break;
+  const wasPlaying = transport.isPlaying();
+  let completed = false;
+  try {
+    stopIfCancelled();
+    // Pausing first is not politeness: a running loop would keep advancing the timeline
+    // between our steps, so the take would carry frames nobody asked for and the recorder
+    // would report duplicates it did not cause.
+    if (wasPlaying) transport.togglePlay();
+
+    await recorder.start();
+    stopIfCancelled();
+    inputs.onProgress?.({ completedFrames: 0, totalFrames, frameIndex: null });
     /*
-     * T747 — SETTLE THE FRAME THAT WAS JUST RENDERED, BEFORE STEPPING PAST IT.
-     *
-     * The render fills an inference node's model-input buffer; this awaits the model
-     * reading it. The result is uploaded by the NEXT render, so a take shows frame N's
-     * inference at frame N+1 — a lag of exactly one frame, fixed, on every machine.
-     *
-     * ONE rather than ZERO, and it is not a compromise that could be tightened later.
-     * Zero would need the frame re-rendered after the result exists, and a second render
-     * of the same frame ADVANCES EVERY TEMPORAL NODE A SECOND TIME — feedback, caches,
-     * simulations. E2, E12 and every reaction-diffusion document would render a take at
-     * double their true rate. A deterministic one-frame lag is correct; a corrupted
-     * simulation is not, and the difference is invisible in the file.
-     *
-     * The value of this is not the lag, it is that the lag is now a CONSTANT. Before it
-     * was however far behind the model happened to be — wall-clock dependent, different
-     * on every run and every machine, and nothing in the take said so.
+     * T467 — A TAKE IS A FRESH PERFORMANCE. `absFrameIndex` counts from transport
+     * creation, so without this a project rendered on two different days would carry a
+     * different abstime into every frame — and different PIXELS wherever an expression or
+     * shader reads it, breaking "the same project renders the same file" (T431). Zeroed
+     * before the seek so the replayed frames 0..start carry abs 0..start, deterministic.
+     * The LIVE clock is untouched: only a render resets it (T461's rule kept whole).
      */
-    await inputs.onFrameRendered?.(index);
-    await recorder.captureFrame(frame.frame);
-    if (index < range.end) frame = transport.stepOnce();
+    transport.resetAbsoluteClock();
+    // §V170 — build the in point's true temporal state from frame zero. `seek(start)` did
+    // the same replay in one synchronous loop, which froze the page and made later ranges
+    // look hung. Reset through the canonical seek, then expose each required replay step
+    // to cancellation and the browser scheduler without skipping any temporal work.
+    transport.seek(0);
+    let frame = transport.latestFrame();
+    let sourceFrameIndex = 0;
+    let completedFrames = 0;
+    let settledSourceFrame: number | null = null;
+    if (frame !== null) {
+      await inputs.onFrameRendered?.(0);
+      settledSourceFrame = 0;
+    }
+    while (frame !== null && sourceFrameIndex < sourceRange.start) {
+      stopIfCancelled();
+      frame = transport.stepOnce();
+      sourceFrameIndex += 1;
+      if (frame === null) break;
+      if (frame.frame.frameIndex !== sourceFrameIndex) {
+        const diagnostic: RuntimeDiagnostic = {
+          severity: "error",
+          code: "export.recordingSourceFrameMismatch",
+          message: `Timeline step expected frame ${String(sourceFrameIndex)} but rendered ${String(frame.frame.frameIndex)}.`,
+        };
+        inputs.onDiagnostic?.(diagnostic);
+        throw new Error(diagnostic.message);
+      }
+      await inputs.onFrameRendered?.(sourceFrameIndex);
+      settledSourceFrame = sourceFrameIndex;
+      inputs.onPreRollProgress?.(sourceFrameIndex, sourceRange.start);
+      if (sourceFrameIndex % PRE_ROLL_YIELD_INTERVAL === 0 || sourceFrameIndex === sourceRange.start) {
+        await inputs.yieldControl?.();
+      }
+      stopIfCancelled();
+    }
+    for (let outputOffset = 0; outputOffset < totalFrames; outputOffset += 1) {
+      stopIfCancelled();
+      if (frame === null) break;
+      const outputFrameIndex = range.start + outputOffset;
+      const targetSourceFrame = Math.min(
+        sourceRange.end,
+        Math.floor((outputFrameIndex * timelineFps) / outputFps),
+      );
+      while (sourceFrameIndex < targetSourceFrame) {
+        frame = transport.stepOnce();
+        sourceFrameIndex += 1;
+        if (frame === null) break;
+        if (frame.frame.frameIndex !== sourceFrameIndex) {
+          const diagnostic: RuntimeDiagnostic = {
+            severity: "error",
+            code: "export.recordingSourceFrameMismatch",
+            message: `Timeline step expected frame ${String(sourceFrameIndex)} but rendered ${String(frame.frame.frameIndex)}.`,
+          };
+          inputs.onDiagnostic?.(diagnostic);
+          throw new Error(diagnostic.message);
+        }
+        await inputs.onFrameRendered?.(sourceFrameIndex);
+        settledSourceFrame = sourceFrameIndex;
+        stopIfCancelled();
+      }
+      if (frame === null) break;
+      /*
+       * T747 — SETTLE THE FRAME THAT WAS JUST RENDERED, BEFORE STEPPING PAST IT.
+       *
+       * The render fills an inference node's model-input buffer; this awaits the model
+       * reading it. The result is uploaded by the NEXT render, so a take shows frame N's
+       * inference at frame N+1 — a lag of exactly one frame, fixed, on every machine.
+       *
+       * ONE rather than ZERO, and it is not a compromise that could be tightened later.
+       * Zero would need the frame re-rendered after the result exists, and a second render
+       * of the same frame ADVANCES EVERY TEMPORAL NODE A SECOND TIME — feedback, caches,
+       * simulations. E2, E12 and every reaction-diffusion document would render a take at
+       * double their true rate. A deterministic one-frame lag is correct; a corrupted
+       * simulation is not, and the difference is invisible in the file.
+       *
+       * The value of this is not the lag, it is that the lag is now a CONSTANT. Before it
+       * was however far behind the model happened to be — wall-clock dependent, different
+       * on every run and every machine, and nothing in the take said so.
+       */
+      if (settledSourceFrame !== sourceFrameIndex) {
+        await inputs.onFrameRendered?.(sourceFrameIndex);
+        settledSourceFrame = sourceFrameIndex;
+      }
+      stopIfCancelled();
+      await recorder.captureFrame({ ...frame.frame, frameIndex: outputFrameIndex });
+      stopIfCancelled();
+      completedFrames += 1;
+      inputs.onProgress?.({ completedFrames, totalFrames, frameIndex: outputFrameIndex });
+    }
+    // Audio capture records transport/volume at project-frame boundaries. A lower output
+    // rate may not photograph the tail project frames, but the soundtrack still spans the
+    // full selected timeline range and must observe them before its lazy PCM source opens.
+    while (frame !== null && sourceFrameIndex < sourceRange.end) {
+      frame = transport.stepOnce();
+      sourceFrameIndex += 1;
+      if (frame !== null) {
+        if (frame.frame.frameIndex !== sourceFrameIndex) {
+          const diagnostic: RuntimeDiagnostic = {
+            severity: "error",
+            code: "export.recordingSourceFrameMismatch",
+            message: `Timeline step expected frame ${String(sourceFrameIndex)} but rendered ${String(frame.frame.frameIndex)}.`,
+          };
+          inputs.onDiagnostic?.(diagnostic);
+          throw new Error(diagnostic.message);
+        }
+        await inputs.onFrameRendered?.(sourceFrameIndex);
+      }
+      stopIfCancelled();
+    }
+    stopIfCancelled();
+    const result = await recorder.finish();
+    stopIfCancelled();
+    completed = true;
+    return {
+      mimeType: result.video.mimeType,
+      bytes: result.video.bytes,
+      report: result.report,
+      ...(result.video.dispose === undefined ? {} : { dispose: result.video.dispose }),
+    };
+  } catch (error) {
+    // Also closes an encoder-owned disk spool. A failed mux/write must not leave an OPFS
+    // payload behind merely because cancellation was not the cause.
+    try {
+      await recorder.cancel();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "The video render failed and its temporary storage could not be fully removed.",
+        { cause: cleanupError },
+      );
+    }
+    if (cancelled() && !(error instanceof RenderRangeCancelledError)) {
+      throw new RenderRangeCancelledError();
+    }
+    throw error;
+  } finally {
+    // A seek replays every frame from zero. Rewinding here can queue thousands of
+    // expensive frames after Cancel and lock the page again. Keep the valid current
+    // simulation state; cancelled/failed takes stay paused at the last computed frame.
+    if (completed && wasPlaying && !transport.isPlaying()) transport.togglePlay();
   }
-  const result = await recorder.finish();
-  return { mimeType: result.video.mimeType, bytes: result.video.bytes, report: result.report };
 }
 
 const NO_SESSION: RuntimeDiagnostic = {

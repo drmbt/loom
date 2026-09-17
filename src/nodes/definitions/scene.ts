@@ -1206,6 +1206,40 @@ export const renderNode: NodeDefinition = {
     const countedByIndex = new Map<number, NonNullable<ReturnType<typeof countedDrawSupport>>>();
 
     /*
+     * T647: the billboard basis for points-mode geometries — camera right/up from the
+     * SAME eye/lookAt the view-projection was built from, so the cards face the camera
+     * exactly. A straight-down camera falls back to +x as up, the lookAt() convention.
+     *
+     * T659 hoisted this above the backdrop, unchanged: the environment BACKGROUND needs
+     * the same basis to build its per-pixel ray, and one derivation serving both is what
+     * stops the sky and the billboards disagreeing about which way is right (§V349).
+     */
+    const bbForward = (() => {
+      const delta = [
+        camera.lookAt[0] - camera.eye[0],
+        camera.lookAt[1] - camera.eye[1],
+        camera.lookAt[2] - camera.eye[2],
+      ];
+      const length = Math.hypot(delta[0] ?? 0, delta[1] ?? 0, delta[2] ?? 0) || 1;
+      return [delta[0]! / length, delta[1]! / length, delta[2]! / length] as const;
+    })();
+    const bbRight = (() => {
+      const up = Math.abs(bbForward[1]) > 0.99 ? ([1, 0, 0] as const) : ([0, 1, 0] as const);
+      const cross = [
+        bbForward[1] * up[2] - bbForward[2] * up[1],
+        bbForward[2] * up[0] - bbForward[0] * up[2],
+        bbForward[0] * up[1] - bbForward[1] * up[0],
+      ];
+      const length = Math.hypot(cross[0] ?? 0, cross[1] ?? 0, cross[2] ?? 0) || 1;
+      return [cross[0]! / length, cross[1]! / length, cross[2]! / length] as const;
+    })();
+    const bbUp = [
+      bbRight[1] * bbForward[2] - bbRight[2] * bbForward[1],
+      bbRight[2] * bbForward[0] - bbRight[0] * bbForward[2],
+      bbRight[0] * bbForward[1] - bbRight[1] * bbForward[0],
+    ] as const;
+
+    /*
      * T481/T624 — ONE depth-only sweep of the scene, parameterised. The shadow phase
      * runs it per casting light (light matrix, light-space clip depth); the AO prepass
      * runs it once from the camera (camera matrix, linear view distance over the far
@@ -1219,6 +1253,8 @@ export const renderNode: NodeDefinition = {
       readonly target: string;
       readonly matrix: Float32Array | undefined;
       readonly linearDepth: boolean;
+      /** Camera visibility includes transmissive and emissive surfaces, unlike occlusion. */
+      readonly visibility?: boolean;
       /** T704: store fragment-z (z ÷ w) — a projector's frustum is perspective. */
       readonly perspective?: boolean;
       readonly extraUniforms: Readonly<Record<string, ReadonlyArray<number>>>;
@@ -1254,12 +1290,70 @@ export const renderNode: NodeDefinition = {
            comes from the data — but its width is a viewing artefact, and a shadow is
            mostly width. §V617's material rule already skips the unlit beams every use so
            far wants; this covers the LIT one, which §V617 does not reach. */
-        if (payload.mode === "points" || payload.mode === "beam") return;
+        if (payload.mode === "points" || payload.mode === "beam") {
+          if (!options.visibility) return;
+          const billboard = payload.mode === "points";
+          const instance = payload.instance ?? { shape: "quad" as const, scale: 0.05 };
+          let counted = countedByIndex.get(geometryIndex);
+          if (counted === undefined) {
+            counted = countedDrawSupport(nodeId, payload, {
+              vertexCount: 6,
+              maxInstances: Math.max(1, payload.capacity),
+              argsKey: `drawArgs${geometryIndex}`,
+            });
+            if (counted !== undefined) {
+              countedByIndex.set(geometryIndex, counted);
+              passes.push(counted.argsPass);
+              scratch.push(counted.scratch);
+            }
+          }
+          passes.push({
+            kind: "draw",
+            id: `${nodeId}:${options.prefix}:${geometryIndex}`,
+            nodeId,
+            shader: sceneInstancesWgsl({
+              model: "unlit", lightCount: 0, cameraDepth: true,
+              ...(billboard ? { billboard: true } : { beam: true }),
+              ...(instance.spherical === true ? { sphericalPoints: true } : {}),
+              ...(payload.colorAttribute === undefined ? {} : { pointColor: true }),
+              ...(payload.group === undefined ? {} : { group: payload.group }),
+              ...(payload.scaleAttribute === undefined ? {} : {
+                pointScale: { type: payload.scaleAttribute.type,
+                  ...(payload.scaleAttribute.channel === undefined ? {} : { channel: payload.scaleAttribute.channel }) },
+              }),
+            }),
+            target: options.target,
+            topology: "triangle-list",
+            instances: counted?.instances ?? payload.capacity,
+            vertexCount: 6,
+            buffers: [
+              attributeBinding("positions", position),
+              ...(payload.endpoint === undefined ? [] : [attributeBinding("endpoints", payload.endpoint)]),
+              ...(payload.colorAttribute === undefined ? [] : [attributeBinding("pointColors", payload.colorAttribute)]),
+              ...(payload.scaleAttribute === undefined ? [] : [attributeBinding("pointScales", payload.scaleAttribute)]),
+              ...(payload.group === undefined ? [] : payload.group.binds.map(bind => attributeBinding(`group_${bind.attribute}`, bind))),
+            ],
+            uniforms: {
+              viewProjection: Array.from(viewProjectionMatrix),
+              eye: [...camera.eye, 0],
+              ambientColor: [0, 0, 0, 0], baseColor: [...payload.material.baseColor],
+              specular: [0, 0, 0, 1], material: [0, 0, 0, 0],
+              instance: [instance.scale, 0, instance.taper ?? 0, instance.soft ?? 0],
+              ...(billboard ? { billboardRight: [...bbRight, 0], billboardUp: [...bbUp, 0] } : {}),
+              ...options.extraUniforms,
+            },
+            uniformBinding: "params",
+            clear: false,
+          });
+          return;
+        }
         /* T725: GLASS casts no shadow — light passes through it, so the opaque stamp a
            caster leaves would be a lie (a caustic is a different feature, stated on the
            material). Same argument family as the billboard and the beam above; reaches
-           the AO sweep too, deliberately — glass does not enclose its neighbourhood. */
-        if (payload.material.model === "glass") return;
+           the AO sweep too, deliberately — glass does not enclose its neighbourhood.
+           Camera visibility is different: glass draws write hardware depth, so its
+           exported surface depth must agree or downstream compositors erase it. */
+        if (!options.visibility && payload.material.model === "glass") return;
         /*
          * T666 — an UNLIT geometry exchanges no light IN EITHER DIRECTION, so it does
          * not cast either. §V610 named the billboard half of this and stopped there;
@@ -1280,9 +1374,9 @@ export const renderNode: NodeDefinition = {
          *
          * It reaches the AO sweep too, deliberately and for the same reason: occlusion
          * is light that fails to arrive, and a thing that does not interact with light
-         * cannot stop it.
+         * cannot stop it. Its visible surface still belongs in camera depth.
          */
-        if (payload.material.model === "unlit") return;
+        if (!options.visibility && payload.material.model === "unlit") return;
         if (payload.mode === "instances") {
           let counted = countedByIndex.get(geometryIndex);
           if (counted === undefined && payload.count !== undefined) {
@@ -1470,6 +1564,7 @@ export const renderNode: NodeDefinition = {
       const depthFar = Math.max(camera.far, 1e-3);
       emitDepthSweep({
         prefix: "depthOut",
+        visibility: true,
         target: depthTarget,
         matrix: viewProjectionMatrix,
         linearDepth: true,
@@ -1552,40 +1647,6 @@ export const renderNode: NodeDefinition = {
       } as DrawPassDescriptor);
     }
     /*
-     * T647: the billboard basis for points-mode geometries — camera right/up from the
-     * SAME eye/lookAt the view-projection was built from, so the cards face the camera
-     * exactly. A straight-down camera falls back to +x as up, the lookAt() convention.
-     *
-     * T659 hoisted this above the backdrop, unchanged: the environment BACKGROUND needs
-     * the same basis to build its per-pixel ray, and one derivation serving both is what
-     * stops the sky and the billboards disagreeing about which way is right (§V349).
-     */
-    const bbForward = (() => {
-      const delta = [
-        camera.lookAt[0] - camera.eye[0],
-        camera.lookAt[1] - camera.eye[1],
-        camera.lookAt[2] - camera.eye[2],
-      ];
-      const length = Math.hypot(delta[0] ?? 0, delta[1] ?? 0, delta[2] ?? 0) || 1;
-      return [delta[0]! / length, delta[1]! / length, delta[2]! / length] as const;
-    })();
-    const bbRight = (() => {
-      const up = Math.abs(bbForward[1]) > 0.99 ? ([1, 0, 0] as const) : ([0, 1, 0] as const);
-      const cross = [
-        bbForward[1] * up[2] - bbForward[2] * up[1],
-        bbForward[2] * up[0] - bbForward[0] * up[2],
-        bbForward[0] * up[1] - bbForward[1] * up[0],
-      ];
-      const length = Math.hypot(cross[0] ?? 0, cross[1] ?? 0, cross[2] ?? 0) || 1;
-      return [cross[0]! / length, cross[1]! / length, cross[2]! / length] as const;
-    })();
-    const bbUp = [
-      bbRight[1] * bbForward[2] - bbRight[2] * bbForward[1],
-      bbRight[2] * bbForward[0] - bbRight[0] * bbForward[2],
-      bbRight[0] * bbForward[1] - bbRight[1] * bbForward[0],
-    ] as const;
-
-    /*
      * T444: the BACKGROUND pass — one full-target triangle-pair painting the backdrop,
      * so a render used as a material map is a PICTURE with a stage behind it rather
      * than performers floating on unlit black (the invisible-screen failure the E25
@@ -1623,6 +1684,8 @@ export const renderNode: NodeDefinition = {
       nodeId,
       shader: backdropWgsl(drawEnvironment ? { environment: true } : {}),
       target,
+      // Background colour must not occlude real geometry near the camera's far plane.
+      depthWrite: false,
       topology: "triangle-list",
       instances: 1,
       vertexCount: 6,

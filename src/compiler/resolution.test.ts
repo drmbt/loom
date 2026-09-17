@@ -161,13 +161,29 @@ describe("resolveNodeResolution — limits (§V24)", () => {
       request({ policy: { kind: "fixed", width: 8192, height: 512 }, settings }),
     );
 
-    expect(outcome.size).toEqual([1024, 512]);
+    expect(outcome.size).toEqual([1024, 64]);
     expect(outcome.clamped).toBe(true);
     const warning = outcome.diagnostics.find(
       (d) => d.code === CompilerDiagnosticCode.resolutionClamped,
     );
     expect(warning?.severity).toBe("warning");
-    expect(warning?.message).toContain("1024x512");
+    expect(warning?.message).toContain("1024x64");
+  });
+
+  it.each([
+    { input: [2160, 3840], factor: 2, limit: 4096, expected: [2304, 4096] },
+    { input: [3840, 2160], factor: 2, limit: 4096, expected: [4096, 2304] },
+    { input: [2160, 3840], factor: 4, limit: 2048, expected: [1152, 2048] },
+    { input: [3840, 2160], factor: 4, limit: 2048, expected: [2048, 1152] },
+  ])("preserves aspect for $input at $factor x under a $limit px device cap", ({ input, factor, limit, expected }) => {
+    const outcome = resolveNodeResolution(request({
+      override: { mode: "scale", factor },
+      inputs: { byPort: { source: input as [number, number] }, primaryPort: "source" },
+      capabilities: { ...testCapabilities(), limits: { maxTextureDimension2D: limit } },
+    }));
+    expect(outcome.size).toEqual(expected);
+    expect(outcome.size[0] / outcome.size[1]).toBeCloseTo(input[0]! / input[1]!, 6);
+    expect(outcome.diagnostics.find(d => d.code === CompilerDiagnosticCode.resolutionClamped)?.message).toContain("scaled proportionally");
   });
 
   it("does not warn when nothing was clamped", () => {
@@ -233,6 +249,18 @@ describe("resolution propagation through a graph (§V21)", () => {
     const graph = chain();
     const resized = testSettings({ outputResolution: { width: 800, height: 400 } });
     expect(sizeOf(graph, "half", resized)).toEqual([400, 200]);
+  });
+
+  it.each([
+    { width: 2160, height: 3840, intermediate: [2304, 4096] },
+    { width: 3840, height: 2160, intermediate: [4096, 2304] },
+  ])("keeps a 4K $width x $height project's doubled intermediate and output proportional", ({ width, height, intermediate }) => {
+    const graph = chain();
+    graph.nodes["half"] = { ...graph.nodes["half"]!, resolution: { mode: "scale", factor: 2 } };
+    const settings = testSettings({ outputResolution: { width, height } });
+    expect(sizeOf(graph, "half", settings)).toEqual(intermediate);
+    expect(sizeOf(graph, "blur", settings)).toEqual(intermediate);
+    expect(sizeOf(graph, "out", settings)).toEqual([width, height]);
   });
 
   it("reports the clamp against the node it happened on", () => {

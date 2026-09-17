@@ -1,21 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { FrameInputs } from "@domain/types/backend.ts";
-import type { ProjectSettings } from "@domain/types/graph.ts";
-import { frameRangeLength, projectFps, projectRange } from "@domain/types/graph.ts";
+import type { FrameRange, ProjectSettings } from "@domain/types/graph.ts";
+import { SEEK_FRAME_LIMIT, projectFps, projectRange } from "@domain/types/graph.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import { nonReproducibleRenderWarning } from "@domain/render/reproducibility.ts";
 import type { CompiledGraph } from "@compiler/index.ts";
 import { presentsPicture } from "@compiler/index.ts";
-import type { ExportInterface, OutputRef } from "@runtime/export/index.ts";
-import { loadVideoEncoder } from "@runtime/export/index.ts";
+import type { AudioEncoderSupport, AudioPcmProvider, EncoderFinishProgress, ExportInterface, OutputRef, VideoEncoderSupport } from "@runtime/export/index.ts";
+import { ExportError, loadVideoEncoder, probeAudioEncoderSupport, probeVideoEncoderSupport } from "@runtime/export/index.ts";
+import type { RenderAudioRequirement } from "./use-audio-input.ts";
 import { transportHolderFor } from "./transport-commands.ts";
-import type { RenderRangeOutcome } from "./render-range.ts";
-import { registerRenderRangeCommand, renderFrameRange } from "./render-range.ts";
-import { writeTextFile } from "./project-io.ts";
+import type { RenderRangeOutcome, RenderRangeProgress } from "./render-range.ts";
+import { RenderRangeCancelledError, registerRenderRangeCommand, renderFrameRange, renderedFrameCount, sourceRangeForOutputRange } from "./render-range.ts";
+import { prepareFileWrite, writeTextFile } from "./project-io.ts";
+import type { PreparedFileWrite } from "./project-io.ts";
 
 /**
  * The seam that makes "render the timeline out" a thing the app can do (T433, §V220).
@@ -38,6 +40,10 @@ import { writeTextFile } from "./project-io.ts";
 export interface RenderRangeSession {
   /** True while a take is running, for the header's control. */
   readonly rendering: boolean;
+  /** True after cancellation was requested while cleanup or an active file write settles. */
+  readonly cancelling: boolean;
+  /** False once the destination starts its atomic close/commit step. */
+  readonly cancelAvailable: boolean;
   /** Frames the current range would produce. Zero when nothing can render. */
   readonly frames: number;
   /**
@@ -50,6 +56,36 @@ export interface RenderRangeSession {
    * render not match what I heard?") is asked AFTER the file exists.
    */
   readonly diagnostics: readonly RuntimeDiagnostic[];
+  readonly progress: RenderExportProgress;
+  /** Encoded media already written to bounded temporary disk storage. */
+  readonly spooledBytes: number;
+  readonly encoderSupport: VideoEncoderSupport | null;
+  readonly audioSupport: AudioEncoderSupport | null;
+  readonly audioRequirement: RenderAudioRequirement;
+  /** Whether a deterministic soundtrack should be included in the MP4. */
+  readonly includeAudio: boolean;
+  readonly setIncludeAudio: (include: boolean) => void;
+  /** True once installed output targets match the take resolution after a settings edit. */
+  readonly outputReady: boolean;
+  /** Requests cooperative cancellation. The current GPU readback/encode finishes first. */
+  readonly cancel: () => void;
+  /** Acquires the output file from the Render button's user gesture. */
+  readonly prepareDestination: () => Promise<boolean>;
+  readonly renderSettings: RenderJobSettings;
+  readonly setRenderSettings: (patch: Partial<RenderJobSettings>) => void;
+}
+
+export type RenderExportProgress =
+  | ({ readonly stage: "frames" } & RenderRangeProgress)
+  | ({ readonly stage: "preroll"; readonly completedPreRollFrames: number; readonly totalPreRollFrames: number } & RenderRangeProgress)
+  | ({ readonly stage: "video" } & RenderRangeProgress)
+  | ({ readonly stage: "audio"; readonly completedAudioFrames: number; readonly totalAudioFrames: number } & RenderRangeProgress)
+  | ({ readonly stage: "finalizing" | "saving" } & RenderRangeProgress);
+
+export interface RenderJobSettings {
+  readonly resolution: ProjectSettings["outputResolution"];
+  readonly outputFps: number;
+  readonly range: FrameRange;
 }
 
 export interface UseRenderRangeInputs {
@@ -59,6 +95,8 @@ export interface UseRenderRangeInputs {
   readonly graph: GraphDocument;
   readonly registry: NodeRegistryView;
   readonly settings: ProjectSettings;
+  readonly renderSettings?: RenderJobSettings | undefined;
+  readonly onRenderSettingsChange?: ((next: RenderJobSettings) => void) | undefined;
   readonly latestFrame: () => FrameInputs | null;
   readonly name: () => string;
   /**
@@ -69,8 +107,20 @@ export interface UseRenderRangeInputs {
   readonly onFrameRendered?: ((frameIndex: number) => Promise<void>) | undefined;
   /** Await external output shutdown before the first offline frame is evaluated. */
   readonly beforeRender?: (() => Promise<void>) | undefined;
+  /** Mutes only speaker monitoring for every take; returned cleanup restores it. */
+  readonly muteAudioMonitor?: (() => (() => void)) | undefined;
+  readonly prepareAudio?: ((
+    range: FrameRange,
+    timelineFps: number,
+    outputFps: number,
+    signal: AbortSignal,
+  ) => Promise<{ readonly pcm: AudioPcmProvider; close(): void } | null>) | undefined;
+  readonly audioRequirement?: (() => RenderAudioRequirement) | undefined;
   /** Test seam. The real one is a `VideoEncoder` behind the WebCodecs loader. */
   readonly loadEncoder?: typeof loadVideoEncoder;
+  /** Test seam; production probes the exact project size/rate through WebCodecs. */
+  readonly probeEncoder?: typeof probeVideoEncoderSupport;
+  readonly probeAudioEncoder?: typeof probeAudioEncoderSupport;
   /** Test seam for the file ladder. */
   readonly write?: typeof writeTextFile;
 }
@@ -99,30 +149,119 @@ function refuse(
 }
 
 /** Strips a project file name back to a stem a video can sit beside. */
-function videoFileName(projectName: string, start: number, end: number): string {
+function videoFileName(
+  projectName: string,
+  resolution: ProjectSettings["outputResolution"],
+  start: number,
+  end: number,
+): string {
   const stem = projectName.replace(/\.loom\.json$/i, "").replace(/[^\w.-]+/g, "_") || "untitled";
-  return `${stem}.${String(start)}-${String(end)}.mp4`;
+  return `${stem}.${String(resolution.width)}x${String(resolution.height)}.${String(start)}-${String(end)}.mp4`;
 }
 
 export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession {
+  const initialAudioRequirement = inputs.audioRequirement?.() ?? { kind: "none" as const };
   const [rendering, setRendering] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelAvailable, setCancelAvailable] = useState(false);
   const [diagnostics, setDiagnostics] = useState<readonly RuntimeDiagnostic[]>([]);
+  const projectFrameRate = projectFps(inputs.settings);
+  const projectFrameRange = projectRange(inputs.settings);
+  const [fallbackRenderSettings, setFallbackRenderSettings] = useState<RenderJobSettings>({
+    resolution: inputs.settings.outputResolution,
+    outputFps: projectFrameRate,
+    range: projectFrameRange,
+  });
+  const renderSettings = inputs.renderSettings ?? fallbackRenderSettings;
+  const totalFrames = renderedFrameCount(renderSettings.range);
+  const outputWidth = renderSettings.resolution.width;
+  const outputHeight = renderSettings.resolution.height;
+  const outputFps = renderSettings.outputFps;
+  const [progress, setProgress] = useState<RenderExportProgress>({
+    stage: "frames",
+    completedFrames: 0,
+    totalFrames,
+    frameIndex: null,
+  });
+  const [spooledBytes, setSpooledBytes] = useState(0);
+  const [encoderSupport, setEncoderSupport] = useState<VideoEncoderSupport | null>(null);
+  const [audioSupport, setAudioSupport] = useState<AudioEncoderSupport | null>(null);
+  const [includeAudio, setIncludeAudioState] = useState(initialAudioRequirement.kind !== "none");
   // Every input is read through ONE ref, at the moment the command runs: a take is
   // started by a keypress or the palette, and the handlers must not need re-registering
   // on every compile to see the current graph.
   const inputsRef = useRef(inputs);
+  const preparedWriteRef = useRef<PreparedFileWrite | null>(null);
+  const renderSettingsRef = useRef(renderSettings);
   inputsRef.current = inputs;
+  renderSettingsRef.current = renderSettings;
   const renderingRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const range = projectRange(inputs.settings);
   const sink = declaredSink(inputs.compiled, inputs.graph, inputs.registry);
+  const audioRequirement = inputs.audioRequirement?.() ?? { kind: "none" };
+  const hasAudioSource = audioRequirement.kind !== "none";
+  const includeAudioRef = useRef(includeAudio && hasAudioSource);
+  includeAudioRef.current = includeAudio && hasAudioSource;
+  const previousHasAudioSourceRef = useRef(hasAudioSource);
+
+  useEffect(() => {
+    if (previousHasAudioSourceRef.current === hasAudioSource) return;
+    previousHasAudioSourceRef.current = hasAudioSource;
+    setIncludeAudioState(hasAudioSource);
+  }, [hasAudioSource]);
+
+  useEffect(() => {
+    let current = true;
+    setEncoderSupport(null);
+    const config = {
+      width: outputWidth,
+      height: outputHeight,
+      fps: outputFps,
+    };
+    void (inputsRef.current.probeEncoder ?? probeVideoEncoderSupport)(config).then((support) => {
+      if (current) setEncoderSupport(support);
+    });
+    return () => {
+      current = false;
+    };
+  }, [
+    outputFps,
+    outputHeight,
+    outputWidth,
+  ]);
+
+  useEffect(() => {
+    let current = true;
+    setAudioSupport(null);
+    if (!includeAudio || audioRequirement.kind !== "required") return () => { current = false; };
+    void (inputsRef.current.probeAudioEncoder ?? probeAudioEncoderSupport)().then((support) => {
+      if (current) setAudioSupport(support);
+    });
+    return () => {
+      current = false;
+    };
+  }, [audioRequirement.kind, includeAudio]);
 
   useEffect(() => {
     const holder = registerRenderRangeCommand(inputs.bus);
     const handlers = {
       busy: () => renderingRef.current,
+      cancel: () => {
+        if (abortRef.current === null) return;
+        setCancelling(true);
+        abortRef.current.abort();
+      },
       render: async (): Promise<RenderRangeOutcome> => {
         const live = inputsRef.current;
+        const preparedWrite = preparedWriteRef.current;
+        preparedWriteRef.current = null;
+        if (live.write === undefined && preparedWrite === null) {
+          return refuse(
+            "export.saveDestinationRequired",
+            "Choose an MP4 destination before starting a bounded video render.",
+          );
+        }
         const api = live.exports;
         if (api === undefined) {
           return refuse(
@@ -138,6 +277,15 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
             "Add an Output node and connect it to the branch you want on the timeline.",
           );
         }
+        const described = api.describe(ref);
+        const wanted = renderSettingsRef.current.resolution;
+        if (described === null || described.width !== wanted.width || described.height !== wanted.height) {
+          return refuse(
+            "export.planUpdating",
+            `The renderer is still applying ${wanted.width}x${wanted.height} render resolution.`,
+            "Wait for the graph to finish recompiling, then render again.",
+          );
+        }
         const transport = transportHolderFor(live.bus).current;
         if (transport === null) {
           return refuse(
@@ -145,24 +293,102 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
             "No frame loop is attached, so the timeline cannot be stepped.",
           );
         }
-        const encoder = await (live.loadEncoder ?? loadVideoEncoder)();
-        if (encoder === null) {
+        const liveRenderSettings = renderSettingsRef.current;
+        const liveRange = liveRenderSettings.range;
+        const timelineFps = projectFps(live.settings);
+        const renderFps = liveRenderSettings.outputFps;
+        const sourceRange = sourceRangeForOutputRange(liveRange, timelineFps, renderFps);
+        if (sourceRange.end > SEEK_FRAME_LIMIT) {
           return refuse(
-            "export.encoderUnavailable",
-            "This browser has no VideoEncoder, so a rendered range cannot be encoded.",
-            "WebCodecs is required. Chromium-based browsers have it; Safari and Firefox may not.",
+            "export.renderRangeOutsideTimeline",
+            `The selected output range needs project frame ${String(sourceRange.end)}, beyond the timeline limit ${String(SEEK_FRAME_LIMIT)}.`,
           );
         }
-
-        const liveRange = projectRange(live.settings);
+        const liveAudioRequirement = live.audioRequirement?.() ?? { kind: "none" };
+        const includeSoundtrack = includeAudioRef.current && liveAudioRequirement.kind !== "none";
+        if (includeSoundtrack && liveAudioRequirement.kind === "invalid") {
+          return refuse("export.audioNotDeterministic", liveAudioRequirement.reason);
+        }
+        if (includeSoundtrack && liveAudioRequirement.kind === "required") {
+          const support = await (live.probeAudioEncoder ?? probeAudioEncoderSupport)();
+          if (!support.supported) {
+            return refuse(
+              "export.audioEncoderUnavailable",
+              support.reason ?? "This browser has no AAC-LC encoder for the soundtrack.",
+            );
+          }
+        }
+        const controller = new AbortController();
+        abortRef.current = controller;
         renderingRef.current = true;
         setRendering(true);
+        setCancelling(false);
+        setCancelAvailable(true);
+        setProgress({
+          stage: "frames",
+          completedFrames: 0,
+          totalFrames: renderedFrameCount(liveRange),
+          frameIndex: null,
+        });
+        setSpooledBytes(0);
         // Cleared at the START of a take, so a warning that is still on screen always
         // describes the take you are looking at — a stale one from two renders ago would
         // be worse than none (§V421's shape, on a live surface).
         const collected: RuntimeDiagnostic[] = [];
         const onDiagnostic = (diagnostic: RuntimeDiagnostic): void => {
           collected.push(diagnostic);
+        };
+        let lastProgressAt = 0;
+        const onProgress = (next: RenderRangeProgress): void => {
+          const now = performance.now();
+          if (
+            next.completedFrames === 0 ||
+            next.completedFrames === next.totalFrames ||
+            now - lastProgressAt >= 100
+          ) {
+            lastProgressAt = now;
+            setProgress({ stage: "frames", ...next });
+          }
+        };
+        const yieldToBrowser = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0));
+        const onPreRollProgress = (completedPreRollFrames: number, totalPreRollFrames: number): void => {
+          setProgress({
+            stage: "preroll",
+            completedFrames: 0,
+            totalFrames: renderedFrameCount(liveRange),
+            frameIndex: null,
+            completedPreRollFrames,
+            totalPreRollFrames,
+          });
+        };
+        let lastSpoolProgressAt = Number.NEGATIVE_INFINITY;
+        let latestSpoolBytes = 0;
+        const onSpoolProgress = (writtenBytes: number): void => {
+          latestSpoolBytes = writtenBytes;
+          const now = performance.now();
+          if (now - lastSpoolProgressAt < 100) return;
+          lastSpoolProgressAt = now;
+          setSpooledBytes(writtenBytes);
+        };
+        const onFinishProgress = (next: EncoderFinishProgress): void => {
+          setSpooledBytes(latestSpoolBytes);
+          const frameProgress = {
+            completedFrames: renderedFrameCount(liveRange),
+            totalFrames: renderedFrameCount(liveRange),
+            frameIndex: liveRange.end,
+          };
+          if (next.stage === "audio") {
+            setProgress({
+              stage: "audio",
+              ...frameProgress,
+              completedAudioFrames: next.completedFrames,
+              totalAudioFrames: next.totalFrames,
+            });
+            return;
+          }
+          setProgress(next.stage === "video"
+            ? { stage: "video", ...frameProgress }
+            : { stage: "finalizing", ...frameProgress });
         };
         setDiagnostics([]);
         /*
@@ -184,15 +410,56 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
          */
         const notReproducible = nonReproducibleRenderWarning(live.graph, live.registry);
         if (notReproducible !== null) onDiagnostic(notReproducible);
+        let preparedAudio: Awaited<ReturnType<NonNullable<UseRenderRangeInputs["prepareAudio"]>>> = null;
+        let restoreAudioMonitor: (() => void) | null = null;
+        let disposeRendered: (() => Promise<void>) | null = null;
         try {
+          restoreAudioMonitor = live.muteAudioMonitor?.() ?? null;
           await live.beforeRender?.();
+          if (controller.signal.aborted) throw new RenderRangeCancelledError();
+          // A timeline-locked file drives visuals even when its PCM is excluded from the
+          // MP4. Always await its deterministic pre-analysis before replay; inclusion
+          // decides only whether the resulting PCM provider reaches the encoder.
+          preparedAudio = liveAudioRequirement.kind === "required"
+            ? await live.prepareAudio?.(
+              liveRange,
+              timelineFps,
+              renderFps,
+              controller.signal,
+            ) ?? null
+            : null;
+          if (liveAudioRequirement.kind === "required" && preparedAudio === null) {
+            throw new Error("The timeline audio file is not ready for deterministic export.");
+          }
+          if (controller.signal.aborted) throw new RenderRangeCancelledError();
+          const encoder = await (live.loadEncoder ?? loadVideoEncoder)(
+            {
+              ...(includeSoundtrack && preparedAudio !== null ? { audio: preparedAudio.pcm } : {}),
+              onFinishProgress,
+              onSpoolProgress,
+              yieldControl: yieldToBrowser,
+              signal: controller.signal,
+            },
+          );
+          if (encoder === null) {
+            return refuse(
+              "export.encoderUnavailable",
+              "This browser cannot encode the requested H.264/AAC MP4.",
+              "WebCodecs H.264 and AAC-LC encoders are required.",
+            );
+          }
           const rendered = await renderFrameRange({
             api,
             ref,
             range: liveRange,
-            fps: projectFps(live.settings),
+            timelineFps,
+            outputFps: renderFps,
             encoder,
             onDiagnostic,
+            signal: controller.signal,
+            onProgress,
+            onPreRollProgress,
+            yieldControl: yieldToBrowser,
             ...(live.onFrameRendered === undefined ? {} : { onFrameRendered: live.onFrameRendered }),
             transport: {
               isPlaying: transport.isPlaying,
@@ -203,6 +470,7 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
               resetAbsoluteClock: transport.resetAbsoluteClock,
             },
           });
+          disposeRendered = rendered.dispose ?? null;
           // The report, not the byte count, decides whether this take is what was asked
           // for: a file with the right number of frames and a gap in the middle is wrong
           // in the one way a video player will never show you.
@@ -214,12 +482,33 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
               )} but is missing ${String(rendered.report.missing.length)} of them.`,
             );
           }
-          const outcome = await (live.write ?? writeTextFile)({
-            fileName: videoFileName(live.name(), liveRange.start, liveRange.end),
+          if (controller.signal.aborted) throw new RenderRangeCancelledError();
+          setProgress({
+            stage: "saving",
+            completedFrames: rendered.report.frames,
+            totalFrames: renderedFrameCount(liveRange),
+            frameIndex: liveRange.end,
+          });
+          await yieldToBrowser();
+          if (controller.signal.aborted) throw new RenderRangeCancelledError();
+          const output = {
+            fileName: videoFileName(live.name(), liveRenderSettings.resolution, liveRange.start, liveRange.end),
             text: rendered.bytes,
             mime: "video/mp4",
             pickerTypes: VIDEO_PICKER_TYPES,
-          });
+          };
+          const beginSaveCommit = (): void => {
+            if (abortRef.current === controller) abortRef.current = null;
+            setCancelAvailable(false);
+          };
+          const injectedWriter = live.write;
+          if (injectedWriter !== undefined) beginSaveCommit();
+          const outcome = injectedWriter === undefined
+            ? await preparedWrite!.write(output, controller.signal, beginSaveCommit)
+            : await injectedWriter(output);
+          if (outcome.kind === "cancelled" && controller.signal.aborted) {
+            throw new RenderRangeCancelledError();
+          }
           if (outcome.kind === "failed") {
             return refuse("export.writeFailed", `The rendered range could not be written: ${outcome.reason}`);
           }
@@ -230,12 +519,43 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
             // count says so while the missing name says the file was not kept.
             fileName: outcome.kind === "saved" ? outcome.fileName : null,
           };
+        } catch (error) {
+          if (error instanceof RenderRangeCancelledError || controller.signal.aborted) {
+            return {
+              kind: "refused",
+              diagnostic: {
+                severity: "info",
+                code: "export.renderCancelled",
+                message: "Video render cancelled. No partial file was saved.",
+              },
+            };
+          }
+          if (error instanceof ExportError) return { kind: "refused", diagnostic: error.diagnostic };
+          return refuse(
+            "export.renderFailed",
+            `The video render failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
         } finally {
-          renderingRef.current = false;
-          setRendering(false);
-          // In `finally`, because a take that refused halfway still rendered frames under
-          // a free-run playhead and the user still deserves to be told which node.
-          setDiagnostics(collected);
+          try {
+            await disposeRendered?.();
+          } catch (error) {
+            collected.push({
+              severity: "warning",
+              code: "export.cleanupFailed",
+              message: `The temporary render file could not be removed: ${error instanceof Error ? error.message : String(error)}`,
+            });
+          } finally {
+            preparedAudio?.close();
+            restoreAudioMonitor?.();
+            if (abortRef.current === controller) abortRef.current = null;
+            renderingRef.current = false;
+            setRendering(false);
+            setCancelling(false);
+            setCancelAvailable(false);
+            // In `finally`, because a take that refused halfway still rendered frames under
+            // a free-run playhead and the user still deserves to be told which node.
+            setDiagnostics(collected);
+          }
         }
       },
     };
@@ -245,7 +565,80 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
     };
   }, [inputs.bus]);
 
-  return { rendering, frames: sink === null ? 0 : frameRangeLength(range), diagnostics };
+  const cancel = useCallback(() => {
+    if (abortRef.current === null) return;
+    setCancelling(true);
+    abortRef.current.abort();
+  }, []);
+  const prepareDestination = useCallback(async (): Promise<boolean> => {
+    if (inputsRef.current.write !== undefined) return true;
+    const range = renderSettingsRef.current.range;
+    const outcome = await prepareFileWrite({
+      fileName: videoFileName(
+        inputsRef.current.name(),
+        renderSettingsRef.current.resolution,
+        range.start,
+        range.end,
+      ),
+      pickerTypes: VIDEO_PICKER_TYPES,
+    });
+    if (outcome.kind === "ready") {
+      preparedWriteRef.current = outcome.destination;
+      return true;
+    }
+    preparedWriteRef.current = null;
+    if (outcome.kind === "failed") {
+      setDiagnostics([{
+        severity: "error",
+        code: "export.saveDestinationUnavailable",
+        message: `The video destination could not be opened: ${outcome.reason}`,
+      }]);
+    }
+    return false;
+  }, []);
+  const setIncludeAudio = useCallback((include: boolean) => {
+    setIncludeAudioState(include);
+  }, []);
+  const setRenderSettings = useCallback((patch: Partial<RenderJobSettings>) => {
+    const current = renderSettingsRef.current;
+    const nextRate = patch.outputFps ?? current.outputFps;
+    const convertedRange = patch.outputFps !== undefined && patch.range === undefined && nextRate !== current.outputFps
+      ? {
+          start: Math.round((current.range.start * nextRate) / current.outputFps),
+          end: Math.max(
+            Math.round((current.range.start * nextRate) / current.outputFps),
+            Math.round(((current.range.end + 1) * nextRate) / current.outputFps) - 1,
+          ),
+        }
+      : current.range;
+    const next = { ...current, ...patch, range: patch.range ?? convertedRange };
+    const update = inputsRef.current.onRenderSettingsChange;
+    if (update === undefined) setFallbackRenderSettings(next);
+    else update(next);
+  }, []);
+  const described = sink === null ? null : inputs.exports?.describe(sink) ?? null;
+  const outputReady = described !== null &&
+    described.width === renderSettings.resolution.width &&
+    described.height === renderSettings.resolution.height;
+  return {
+    rendering,
+    cancelling,
+    cancelAvailable,
+    frames: sink === null ? 0 : totalFrames,
+    diagnostics,
+    progress,
+    spooledBytes,
+    encoderSupport,
+    audioSupport,
+    audioRequirement,
+    includeAudio: includeAudio && hasAudioSource,
+    setIncludeAudio,
+    outputReady,
+    cancel,
+    prepareDestination,
+    renderSettings,
+    setRenderSettings,
+  };
 }
 
 /**

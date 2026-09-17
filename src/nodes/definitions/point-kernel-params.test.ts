@@ -489,8 +489,17 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
   "E63-Skin.loom.json": "7c422382185bd253",
   // Resonance: both fitted shells now expose minimum radial travel; the inner layer
   // opens at 0.10 energy with aligned, wider fissures and 14%-thick pieces.
-  // Emissive seams, grit and dust now share the architectural palette.
-  "E75-Resonance.loom.json": "cbd6f428043ad638",
+  // Emissive seams, grit and dust share seven palette stops; bounded transient travel
+  // and neighbouring lightning arcs extend the same fitted-shell kernels.
+  // E75: smooth core tendrils, mapped glow widths, and core/mirror light occluders.
+  "E75-Resonance.loom.json": "520298dcb8de8522",
+  // Resonance-family installations: independent faceted lotus blades, tectonic stone
+  // volumes, and multi-axis orbital surfaces. Updated after crystal facet polish,
+  // batched monolith geometry, beveled orbital metal/insets and spherical plasma beams.
+  // E78 gains ten inset kernels and two filament kernels; E76 keeps its three tiers.
+  "E76-Verdant-Lotus.loom.json": "06c3d91618daa84c",
+  "E77-Ember-Monoliths.loom.json": "00402c8049030eaf",
+  "E78-Aether-Orrery.loom.json": "2a989d66bce14a28",
 };
 
 const POINT_KERNEL_TYPES = new Set(["pointKernel", "pointKernelAdvanced"]);
@@ -513,8 +522,8 @@ describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
 
   it("covers exactly the looms that carry kernels — a shrinking gate is a passing gate", () => {
     expect([...digests.keys()].sort()).toEqual(Object.keys(FRAME_ZERO_DIGESTS).sort());
-    // 52 existing kernels plus Resonance's eleven.
-    expect(kernelCount).toBe(63);
+    // 63 existing kernels, 51 family kernels, and two E75 core-occlusion kernels.
+    expect(kernelCount).toBe(116);
   });
 
   it.each(Object.keys(FRAME_ZERO_DIGESTS))("%s is unchanged at frame 0", (fileName) => {

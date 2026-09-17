@@ -33,6 +33,8 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: "html",
   use: {
+    // Exercise audio analysis and encoding without playing test tracks through speakers.
+    launchOptions: { args: ["--mute-audio"] },
     baseURL: "http://localhost:5173",
     trace: "on-first-retry",
     /*

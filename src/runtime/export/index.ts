@@ -84,6 +84,10 @@ export type {
   EncodedVideo,
   EncoderConfig,
   EncoderFrame,
+  EncoderFinishProgress,
+  AudioPcmProvider,
+  AudioPcmSource,
+  AudioPcmTrack,
   FrameRecorderOptions,
   RecorderState,
   RecordingReport,
@@ -92,10 +96,10 @@ export type {
 } from "./recording/types.ts";
 
 export { avcCodecString, muxMp4, sampleDurationFor, timescaleFor } from "./recording/mp4-muxer.ts";
-export type { Mp4MuxInput, Mp4Sample } from "./recording/mp4-muxer.ts";
+export type { Mp4AudioSample, Mp4AudioTrack, Mp4MuxInput, Mp4Sample } from "./recording/mp4-muxer.ts";
 
-export { isRecordingAvailable, loadVideoEncoder } from "./recording/encoder-loader.ts";
-export type { LoadEncoderOptions } from "./recording/encoder-loader.ts";
+export { isRecordingAvailable, loadVideoEncoder, probeAudioEncoderSupport, probeVideoEncoderSupport } from "./recording/encoder-loader.ts";
+export type { AudioEncoderSupport, LoadEncoderOptions, VideoEncoderSupport } from "./recording/encoder-loader.ts";
 export {
   createPointsReadback,
   type PointSetInfo,

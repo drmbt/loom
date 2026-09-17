@@ -668,6 +668,7 @@ function installSavePicker(onWrite: (text: string) => void): void {
           onWrite(data);
         },
         async close() {},
+        async abort() {},
       };
     },
   });

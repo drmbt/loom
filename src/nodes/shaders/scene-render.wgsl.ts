@@ -381,8 +381,8 @@ const ENV_CONE_WGSL = (taps: number): string => `fn sampleEnvironmentCone(direct
  * PRE-SCALED by the frustum's half-extents, so the fragment shader does one add and one
  * normalize and the trigonometry lives on the CPU where the camera already is.
  *
- * Depth is untouched: it still writes 0.999 and every geometry draws over it, exactly as
- * the colour backdrop did. This is a background, not an object.
+ * Clip depth stays 0.999, but the render pass disables depth writes: valid distant
+ * geometry can project beyond 0.999 and must still draw over this background.
  *
  * ORTHOGRAPHIC cameras get a CONSTANT direction, and that is correct rather than
  * degenerate: parallel rays see one point of an environment at infinity. Stated because
@@ -878,6 +878,8 @@ ${gatedReturn}
 export function sceneInstancesWgsl(options: {
   model: "unlit" | "lambert" | "phong" | "pbr";
   lightCount: number;
+  /** Camera visibility depth uses the identical ribbon/billboard vertices and coverage. */
+  cameraDepth?: boolean;
   /** T478: a vec4f attribute multiplies the base colour per point (the geometry's mapped tint). */
   pointColor?: boolean;
   /**
@@ -1111,7 +1113,7 @@ ${Array.from({ length: lightCount }, (_, index) => lightBlock(index)).join("")}`
   specular: vec4f,
   material: vec4f,
   instance: vec4f,          // x = scale (beam: HALF-WIDTH), y = shape (0 quad, 1 box, 2 octahedron), z = beam taper, w = soft profile (T917)
-${billboard ? "  billboardRight: vec4f,\n  billboardUp: vec4f,\n" : ""}${lightField}${shadowFields}${envField}${projectors.fields}};
+${billboard ? "  billboardRight: vec4f,\n  billboardUp: vec4f,\n" : ""}${lightField}${shadowFields}${envField}${projectors.fields}${options.cameraDepth ? "  depthRow: vec4f,\n  depthRange: vec4f,\n" : ""}};
 
 @group(0) @binding(0) var<uniform> params: SceneParams;
 @group(0) @binding(1) var<storage, read> positions: array<vec3f>;
@@ -1234,7 +1236,9 @@ ${
 `
       : `  let cover = select(1.0, clamp((1.0 - abs(input.profile.x)) / max(soft, 1e-4), 0.0, 1.0), soft > 0.0);
 `
-  }${shading}
+  }${options.cameraDepth ? `  if (cover <= 0.0) { discard; }
+  let depth = clamp(dot(params.depthRow, vec4f(input.world, 1.0)) / params.depthRange.x, 0.0, 1.0);
+  return vec4f(depth, 0.0, 0.0, 1.0);` : shading}
 }`;
 }
 

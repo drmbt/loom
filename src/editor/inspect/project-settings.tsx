@@ -13,14 +13,13 @@ import { BooleanField } from "@ui/controls/boolean-field.tsx";
 import { ControlRow } from "@ui/controls/control-row.tsx";
 import { EnumField } from "@ui/controls/enum-field.tsx";
 import { NumberField } from "@ui/controls/number-field.tsx";
-import { SwapDimensions } from "@ui/controls/swap-dimensions.tsx";
+import { ResolutionControl } from "@ui/controls/resolution-control.tsx";
 import type { EditPhase, NumericSpec } from "@ui/controls/types.ts";
 import {
   DialogContent,
   DialogRoot,
   DialogTitle,
 } from "@ui/primitives/dialog.tsx";
-import { cx } from "@ui/cx.ts";
 import styles from "./project-settings.module.css";
 import { DesktopPermissionsPanel } from "./desktop-permissions.tsx";
 
@@ -84,13 +83,6 @@ const FORMAT_OPTIONS: ReadonlyArray<{ value: TextureFormat; label: string }> = [
   { value: "rgba8unorm-srgb", label: "8-bit RGBA, sRGB" },
 ];
 
-/** Whole pixels: a resolution edit recreates render targets, so there are no half ones. */
-const dimensionSpec = (max: number): NumericSpec => ({
-  min: 1,
-  max,
-  step: 1,
-  precision: 0,
-});
 /** A rate is a whole number of frames per second, 1..240. */
 const FPS_SPEC: NumericSpec = { min: 1, max: 240, step: 1, precision: 0 };
 /**
@@ -128,7 +120,6 @@ export function ProjectSettingsDialog({
   open,
   onOpenChange,
 }: ProjectSettingsProps) {
-  const { width, height } = settings.outputResolution;
   const typeLabels = nodeTypeLabelStore();
   const showTypeLabels = useSyncExternalStore(
     typeLabels.subscribe,
@@ -211,48 +202,8 @@ export function ProjectSettingsDialog({
             rather than floating beside the row.
           */}
           <ControlRow label="resolution" compileTime>
-            <div className={cx(styles.pair, styles.pairWithAction)}>
-              <NumberField
-                label="width"
-                value={shown("width", width)}
-                spec={dimensionSpec(maxResolution)}
-                unit="px"
-                onChange={commitOnly("width", (next) =>
-                  onChange(
-                    { outputResolution: { width: next, height } },
-                    "Set output width",
-                  ),
-                )}
-              />
-              <NumberField
-                label="height"
-                value={shown("height", height)}
-                spec={dimensionSpec(maxResolution)}
-                unit="px"
-                onChange={commitOnly("height", (next) =>
-                  onChange(
-                    { outputResolution: { width, height: next } },
-                    "Set output height",
-                  ),
-                )}
-              />
-              {/*
-                T1157 — the owner's portrait/landscape button, and it is a BUTTON: it
-                writes the pair the other way round through the same `project.setSettings`
-                the two fields above use, and stores no orientation of its own. The word
-                "portrait" is re-derived from whatever comes back, so there is nothing here
-                that can disagree with the numbers. It writes the DOCUMENT's pair, never
-                `shown`: a swap mid-drag would otherwise commit a value the drag had not.
-              */}
-              <SwapDimensions
-                width={width}
-                height={height}
-                onSwap={(next) => {
-                  setLive({});
-                  onChange({ outputResolution: next }, "Swap output orientation");
-                }}
-              />
-            </div>
+            <ResolutionControl value={settings.outputResolution} max={maxResolution}
+              onChange={(next, label) => onChange({ outputResolution: next }, label)} />
           </ControlRow>
           <ControlRow label="working format">
             <EnumField

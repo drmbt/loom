@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { avcCodecString, muxMp4, sampleDurationFor, timescaleFor } from "./mp4-muxer.ts";
-import type { Mp4Sample } from "./mp4-muxer.ts";
+import { avcCodecString, mp4StreamParts, muxMp4, sampleDurationFor, timescaleFor } from "./mp4-muxer.ts";
+import type { Mp4AudioTrack, Mp4Sample } from "./mp4-muxer.ts";
 
 /**
  * The muxer is checked by walking the box tree back out of the bytes. Every assertion here is
@@ -55,6 +55,25 @@ function samples(count: number, duration: number): Mp4Sample[] {
   }));
 }
 
+const AUDIO_DESCRIPTION = Uint8Array.from([0x12, 0x10]); // AAC-LC, 44.1 kHz, stereo
+
+function audioTrack(sampleCount = 3): Mp4AudioTrack {
+  return {
+    sampleRate: 44100,
+    channelCount: 2,
+    codecDescription: AUDIO_DESCRIPTION,
+    bitrate: 192000,
+    samples: Array.from({ length: sampleCount }, (_value, index) => ({
+      bytes: Uint8Array.from({ length: 7 + index }, () => 0xa0 + index),
+      duration: 1024,
+    })),
+  };
+}
+
+function tracks(file: Uint8Array): Box[] {
+  return boxes(find(file, ["moov"]).payload).filter((candidate) => candidate.type === "trak");
+}
+
 describe("mp4 muxing", () => {
   const fps = 30;
   const timescale = timescaleFor(fps);
@@ -90,7 +109,7 @@ describe("mp4 muxing", () => {
     expect(view.getUint32(4)).toBe(0); // per-sample sizes follow
     expect(view.getUint32(8)).toBe(frames.length);
     for (let index = 0; index < frames.length; index += 1) {
-      expect(view.getUint32(12 + index * 4)).toBe(frames[index]?.bytes.length);
+      expect(view.getUint32(12 + index * 4)).toBe(frames[index]?.bytes?.length);
     }
   });
 
@@ -154,5 +173,166 @@ describe("mp4 muxing", () => {
 
   it("derives the codec string from the SPS rather than hardcoding one", () => {
     expect(avcCodecString(DESCRIPTION)).toBe("avc1.42001f");
+  });
+
+  it("adds an AAC-LC sound track with mp4a and esds sample descriptions", () => {
+    const audio = audioTrack();
+    const withAudio = muxMp4({
+      width: 320,
+      height: 240,
+      timescale,
+      samples: frames,
+      codecDescription: DESCRIPTION,
+      audio,
+    });
+    const fileTracks = tracks(withAudio);
+    expect(fileTracks).toHaveLength(2);
+
+    const audioTrak = fileTracks[1];
+    expect(audioTrak).toBeDefined();
+    const hdlr = find(audioTrak?.payload ?? new Uint8Array(0), ["mdia", "hdlr"]);
+    expect(String.fromCharCode(...hdlr.payload.subarray(8, 12))).toBe("soun");
+
+    const mdhd = find(audioTrak?.payload ?? new Uint8Array(0), ["mdia", "mdhd"]);
+    const mdhdView = new DataView(mdhd.payload.buffer, mdhd.payload.byteOffset, mdhd.payload.byteLength);
+    expect(mdhdView.getUint32(12)).toBe(audio.sampleRate);
+    expect(mdhdView.getUint32(16)).toBe(3 * 1024);
+
+    const stsd = find(audioTrak?.payload ?? new Uint8Array(0), ["mdia", "minf", "stbl", "stsd"]);
+    const mp4a = boxes(stsd.payload.subarray(8))[0];
+    expect(mp4a?.type).toBe("mp4a");
+    const entry = mp4a?.payload ?? new Uint8Array(0);
+    const entryView = new DataView(entry.buffer, entry.byteOffset, entry.byteLength);
+    expect(entryView.getUint16(16)).toBe(2);
+    expect(entryView.getUint32(24) >>> 16).toBe(44100);
+    const esds = boxes(entry, 28).find((candidate) => candidate.type === "esds");
+    expect(esds).toBeDefined();
+    expect(Array.from(esds?.payload ?? [])).toContain(0x40); // MPEG-4 Audio object type
+    expect(Array.from(esds?.payload ?? [])).toContain(0x12); // AudioSpecificConfig byte 1
+  });
+
+  it("places the audio chunk after video samples and records every AAC sample size", () => {
+    const audio = audioTrack();
+    const withAudio = muxMp4({
+      width: 320,
+      height: 240,
+      timescale,
+      samples: frames,
+      codecDescription: DESCRIPTION,
+      audio,
+    });
+    const top = boxes(withAudio);
+    const mdat = top.find((candidate) => candidate.type === "mdat");
+    const videoByteLength = frames.reduce((total, sample) => total + (sample.bytes?.length ?? 0), 0);
+    const audioTrak = tracks(withAudio)[1];
+    const stco = find(audioTrak?.payload ?? new Uint8Array(0), ["mdia", "minf", "stbl", "stco"]);
+    const stcoView = new DataView(stco.payload.buffer, stco.payload.byteOffset, stco.payload.byteLength);
+    expect(stcoView.getUint32(8)).toBe((mdat?.start ?? -1) + 8 + videoByteLength);
+
+    const stsz = find(audioTrak?.payload ?? new Uint8Array(0), ["mdia", "minf", "stbl", "stsz"]);
+    const stszView = new DataView(stsz.payload.buffer, stsz.payload.byteOffset, stsz.payload.byteLength);
+    expect(stszView.getUint32(8)).toBe(audio.samples.length);
+    audio.samples.forEach((sample, index) => {
+      expect(stszView.getUint32(12 + index * 4)).toBe(sample.bytes?.length);
+    });
+  });
+
+  it("uses the longer track for movie duration while keeping each track duration independent", () => {
+    const longAudio = audioTrack(50); // about 1.16s; video is about 0.17s
+    const withAudio = muxMp4({
+      width: 320,
+      height: 240,
+      timescale,
+      samples: frames,
+      codecDescription: DESCRIPTION,
+      audio: longAudio,
+    });
+    const mvhd = find(withAudio, ["moov", "mvhd"]);
+    const mvhdView = new DataView(mvhd.payload.buffer, mvhd.payload.byteOffset, mvhd.payload.byteLength);
+    expect(mvhdView.getUint32(16)).toBe(Math.round((50 * 1024 * 1000) / 44100));
+
+    const [videoTrak, audioTrak] = tracks(withAudio);
+    for (const [track, expected] of [
+      [videoTrak, Math.round((frames.length * duration * 1000) / timescale)],
+      [audioTrak, Math.round((50 * 1024 * 1000) / 44100)],
+    ] as const) {
+      const tkhd = find(track?.payload ?? new Uint8Array(0), ["tkhd"]);
+      const tkhdView = new DataView(tkhd.payload.buffer, tkhd.payload.byteOffset, tkhd.payload.byteLength);
+      expect(tkhdView.getUint32(20)).toBe(expected);
+    }
+  });
+
+  it("writes an edit list that removes encoder priming and pins audible duration", () => {
+    const audio = {
+      ...audioTrack(4),
+      mediaStart: 2112,
+      presentationDuration: 1024,
+    };
+    const withAudio = muxMp4({
+      width: 320,
+      height: 240,
+      timescale,
+      samples: frames,
+      codecDescription: DESCRIPTION,
+      audio,
+    });
+    const audioTrak = tracks(withAudio)[1];
+    const elst = find(audioTrak?.payload ?? new Uint8Array(0), ["edts", "elst"]);
+    const view = new DataView(elst.payload.buffer, elst.payload.byteOffset, elst.payload.byteLength);
+    expect(view.getUint32(8)).toBe(Math.round((1024 * 1000) / 44100));
+    expect(view.getUint32(12)).toBe(2112);
+  });
+
+  it("rejects incomplete AAC track metadata", () => {
+    const base = { width: 320, height: 240, timescale, samples: frames, codecDescription: DESCRIPTION };
+    expect(() => muxMp4({ ...base, audio: { ...audioTrack(), samples: [] } })).toThrow(/no samples/i);
+    expect(() => muxMp4({ ...base, audio: { ...audioTrack(), codecDescription: new Uint8Array(0) } })).toThrow(
+      /AudioSpecificConfig/i,
+    );
+  });
+
+  it("describes media beyond 4 GiB without allocating it and uses a 64-bit audio offset", () => {
+    const videoBytes = 0x1_0000_0100;
+    const parts = mp4StreamParts({
+      width: 3840,
+      height: 2160,
+      timescale,
+      samples: [{ byteLength: videoBytes, keyFrame: true, duration }],
+      codecDescription: DESCRIPTION,
+      audio: {
+        ...audioTrack(1),
+        samples: [{ byteLength: 2, duration: 1024 }],
+      },
+    });
+    const mdat = new DataView(
+      parts.mdatHeader.buffer,
+      parts.mdatHeader.byteOffset,
+      parts.mdatHeader.byteLength,
+    );
+    expect(mdat.getUint32(0)).toBe(1);
+    expect(mdat.getBigUint64(8)).toBe(BigInt(16 + videoBytes + 2));
+
+    const audioTrak = tracks(parts.moov)[1];
+    const co64 = find(audioTrak?.payload ?? new Uint8Array(0), ["mdia", "minf", "stbl", "co64"]);
+    const offsets = new DataView(co64.payload.buffer, co64.payload.byteOffset, co64.payload.byteLength);
+    expect(offsets.getBigUint64(8)).toBe(BigInt(parts.ftyp.length + 16 + videoBytes));
+  });
+
+  it("builds an hour-scale AAC sample table without spreading one argument per packet", () => {
+    const audioSamples = Array.from({ length: 170_000 }, () => ({ byteLength: 200, duration: 1024 }));
+    const parts = mp4StreamParts({
+      width: 1920,
+      height: 1080,
+      timescale,
+      samples: [{ byteLength: 1_000, keyFrame: true, duration }],
+      codecDescription: DESCRIPTION,
+      audio: {
+        sampleRate: 48_000,
+        channelCount: 1,
+        samples: audioSamples,
+        codecDescription: AUDIO_DESCRIPTION,
+      },
+    });
+    expect(parts.moov.byteLength).toBeGreaterThan(audioSamples.length * 4);
   });
 });

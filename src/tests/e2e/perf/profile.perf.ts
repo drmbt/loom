@@ -112,7 +112,7 @@ for (const fixture of FIXTURES) {
   test(`profile ${fixture.name}`, async ({ playwright }) => {
     test.skip(ONLY !== null && !ONLY.includes(fixture.name), `PERF_FIXTURES excludes ${fixture.name}`);
     mkdirSync(OUT_DIR, { recursive: true });
-    const browser: Browser = await playwright.chromium.launch({ headless: false });
+    const browser: Browser = await playwright.chromium.launch({ headless: false, args: ["--mute-audio"] });
     try {
       const context = await browser.newContext({ viewport: { width: 1920, height: 1200 }, baseURL: BASE_URL });
       const page = await context.newPage();

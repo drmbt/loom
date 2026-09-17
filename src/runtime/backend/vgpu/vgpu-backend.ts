@@ -2158,7 +2158,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       const bytesPerPixel = bytesPerPixelFor(format);
 
       readbacks += 1;
-      const raw = new Uint8Array(await first.read());
+      // vgpu returns an owned, unpadded Uint8Array after releasing its staging buffer.
+      // Re-wrapping that array copies the entire frame (63 MiB at 4K rgba16float).
+      const raw = await first.read();
       if (raw.byteLength !== width * height * bytesPerPixel) {
         throw new Error(
           `readOutput("${outputId}") returned ${raw.byteLength} bytes; expected ${width * height * bytesPerPixel} for ${width}×${height} ${format}.`,
