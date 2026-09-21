@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { SILENCE } from "../../domain/audio/feature-track.ts";
+import { distinctSpectrumBands } from "../../domain/audio/spectrum-bands.fixture.ts";
+import { SPECTRUM_BAND_NAMES } from "../../domain/audio/spectrum-bands.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import type { AudioFeatures, FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { GraphDocument } from "../../domain/types/graph.ts";
@@ -50,6 +52,8 @@ const FEATURES: AudioFeatures = {
   beatPhase: 0.45,
   beat: 17,
   beatCount: 5,
+  // T1347b: the eighteen spectrum bands, each its own number too.
+  ...distinctSpectrumBands(0.61),
 };
 
 function audioGraph(extra: GraphDocument["nodes"] = {}, edges: GraphDocument["edges"] = {}): GraphDocument {
@@ -509,6 +513,36 @@ describe("audioPattern (T442)", () => {
    * drum's events over the frame interval. At 120 bpm t = 1.5 s is beat 3: an ODD beat,
    * so kick AND snare strike, and a hat with them (eighths land on every beat).
    */
+  /**
+   * T1347b — the spectrum rows follow the drums that made them. Between beat 2 (t = 1.0)
+   * and the eighth after it (t = 1.25, beatPhase 0.5 at 120 bpm) the kick has decayed
+   * from 1 to e^-3.5 while the hat strikes afresh at BOTH (hatPhase 0), so the DIFFERENCE
+   * between the two frames is the kick alone: large at 80 Hz, nothing at 8.6 kHz. The
+   * reverse pair — t = 1.25 (hat 0.5, kick e^-3.5) against t = 1.2 (hat at e^-11.2, kick
+   * at e^-2.8) — moves the top rows; the bottom moves only by the kick's own 0.03 of linear
+   * decay between the two, which is ~1.2 dB of the analyser's 70. Silence is silence.
+   */
+  it("T1347b — the kick moves the bottom spectrum rows and the hat the top, and silence reads 0 on all eighteen", () => {
+    const onTwo = channelsAt(1.0);
+    const eighth = channelsAt(1.25);
+    expect(onTwo.band80! - eighth.band80!).toBeGreaterThan(0.1);
+    expect(onTwo.band109! - eighth.band109!).toBeGreaterThan(0.05);
+    expect(Math.abs(onTwo.band8600! - eighth.band8600!)).toBeLessThan(0.005);
+    expect(Math.abs(onTwo.band16000! - eighth.band16000!)).toBeLessThan(0.005);
+    const hatOn = eighth;
+    const hatOff = channelsAt(1.2);
+    expect(hatOn.band8600! - hatOff.band8600!).toBeGreaterThan(0.05);
+    expect(hatOn.band11700! - hatOff.band11700!).toBeGreaterThan(0.05);
+    expect(Math.abs(hatOn.band80! - hatOff.band80!)).toBeLessThan(0.03);
+    // Every row sits in the analyser's 0..1 domain, and a silent pattern publishes all eighteen at 0.
+    for (const name of SPECTRUM_BAND_NAMES) {
+      expect(onTwo[name]!).toBeGreaterThanOrEqual(0);
+      expect(onTwo[name]!).toBeLessThanOrEqual(1);
+    }
+    const silent = channelsAt(1.0, 1 / 60, { amount: 0 });
+    expect(SPECTRUM_BAND_NAMES.map((name) => silent[name])).toEqual(new Array(18).fill(0));
+  });
+
   it("strikes kick, snare and hat as their own detectors, and claims its tempo at confidence 1", () => {
     const onThree = channelsAt(1.5);
     expect(onThree.kick).toBeCloseTo(0.28, 12);

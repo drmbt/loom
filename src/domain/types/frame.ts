@@ -1,3 +1,5 @@
+import type { AudioSpectrumBands } from "../audio/spectrum-bands.ts";
+
 /**
  * Transport-independent frame input (§I.frame, doc §16.4).
  *
@@ -109,10 +111,15 @@ export interface FrameEvaluationInput {
  *    that can count it (`audioPattern`, a declared `beatsPerBar` + reset, or an offline
  *    pre-analysis, T1229).
  */
-export interface AudioFeatures {
+export interface AudioFeatures extends AudioSpectrumBands {
   /** Broadband RMS of the current analysis window. */
   readonly level: number;
-  /** Band energies: ~20-250 Hz, 250-2k, 2k-6k, 6k-16k. */
+  /**
+   * Band energies: ~20-250 Hz, 250-2k, 2k-6k, 6k-16k — the MUSICAL bands. T1347b added
+   * the SPECTRUM beside them: eighteen log-spaced bands `band80` … `band16000`
+   * (`AUDIO_SPECTRUM_BANDS`), inherited from `AudioSpectrumBands` above, in the same
+   * analyser byte domain as these four. Version 3 of the record.
+   */
   readonly low: number;
   readonly lowMid: number;
   readonly highMid: number;

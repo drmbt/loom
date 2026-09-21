@@ -1,4 +1,5 @@
 import type { AudioFeatures } from "../types/frame.ts";
+import { SILENT_SPECTRUM_BANDS, SPECTRUM_BAND_NAMES } from "./spectrum-bands.ts";
 
 /**
  * Recorded audio feature tracks — the replay half of the sound determinism seam
@@ -35,8 +36,14 @@ import type { AudioFeatures } from "../types/frame.ts";
  * and the tempo claim — see `AudioFeatures`. Bumped while no `.loomtrack.json` had ever
  * shipped and the app had no track load path, which is what made it free; version 1
  * tracks (there are none) would refuse by name below.
+ *
+ * 3 (T1347b): the twenty v2 fields verbatim, then the eighteen spectrum bands
+ * (`AUDIO_SPECTRUM_BANDS`). A v2 track REFUSES rather than replaying with dead bands: a
+ * document driven from `band109` would render a performance that never happened, and
+ * look entirely plausible doing it. No shipped example carries a track, so nothing is
+ * stranded; a user's own v2 recording re-records.
  */
-export const FEATURE_TRACK_VERSION = 2;
+export const FEATURE_TRACK_VERSION = 3;
 
 /**
  * Field order IS part of the contract, which is why it lives in one exported constant
@@ -67,6 +74,9 @@ export const FEATURE_TRACK_FIELDS = [
   "beatPhase",
   "beat",
   "beatCount",
+  // 3 (T1347b): the twenty v2 fields verbatim, then the eighteen spectrum bands in
+  // ascending frequency — `SPECTRUM_BAND_NAMES` is the one spelling of that order.
+  ...SPECTRUM_BAND_NAMES,
 ] as const satisfies ReadonlyArray<keyof AudioFeatures>;
 
 export const FEATURE_TRACK_STRIDE = FEATURE_TRACK_FIELDS.length;
@@ -124,6 +134,7 @@ export const SILENCE: AudioFeatures = {
   hatCount: 0,
   centroid: 0,
   ...NO_TEMPO_CLAIM,
+  ...SILENT_SPECTRUM_BANDS,
 };
 
 export function featureTrackLength(track: FeatureTrack): number {

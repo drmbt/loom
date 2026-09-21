@@ -1,4 +1,5 @@
 import type { AudioFeatures } from "@domain/types/frame.ts";
+import { AUDIO_SPECTRUM_BANDS, type AudioSpectrumBands, type SpectrumBandName } from "@domain/audio/spectrum-bands.ts";
 
 /**
  * T414: analyser bytes → AudioFeatures, as a PURE function.
@@ -122,8 +123,19 @@ function spectralCentroid(frequency: Uint8Array, binHz: number): number {
  */
 export type AudioSpectralFeatures = Pick<
   AudioFeatures,
-  "level" | "low" | "lowMid" | "highMid" | "high" | "onset" | "onsetCount" | "onsetMax" | "centroid"
+  "level" | "low" | "lowMid" | "highMid" | "high" | "onset" | "onsetCount" | "onsetMax" | "centroid" | SpectrumBandName
 >;
+
+/**
+ * T1347b — the eighteen spectrum bands, each the same `bandAverage` the four musical bands
+ * are: mean byte over the bins whose centre lies inside the band's edges, over 255. Same
+ * domain, same rounding, so a spectrum band and `low` read alike on the same sound.
+ */
+function spectrumBands(frequency: Uint8Array, binHz: number): AudioSpectrumBands {
+  const out: Record<string, number> = {};
+  for (const band of AUDIO_SPECTRUM_BANDS) out[band.name] = bandAverage(frequency, binHz, band.lowHz, band.highHz);
+  return out as AudioSpectrumBands;
+}
 
 export function computeAudioFeatures(input: AudioAnalysisInput): AudioSpectralFeatures {
   const { frequency, timeDomain, sampleRate, fftSize, state } = input;
@@ -177,5 +189,6 @@ export function computeAudioFeatures(input: AudioAnalysisInput): AudioSpectralFe
     onsetCount,
     onsetMax: onset,
     centroid: spectralCentroid(frequency, binHz),
+    ...spectrumBands(frequency, binHz),
   };
 }

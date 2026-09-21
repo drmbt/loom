@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { AUDIO_BAND_EDGES_HZ, CENTROID_RANGE_HZ, computeAudioFeatures } from "./audio-features.ts";
+import { AUDIO_SPECTRUM_BANDS, SPECTRUM_BAND_NAMES } from "@domain/audio/spectrum-bands.ts";
 import type { AudioAnalysisState } from "./audio-features.ts";
 
 /**
@@ -41,6 +42,31 @@ describe("computeAudioFeatures (T414, §V147)", () => {
     expect(features.lowMid).toBe(0);
     expect(features.highMid).toBe(0);
     expect(features.high).toBe(0);
+  });
+
+  it("T1347b — a spectrum band averages exactly its own bins, and its neighbours read nothing", () => {
+    const binHz = SAMPLE_RATE / FFT_SIZE;
+    // Energy ONLY in band109 (93.5..127.7 Hz: bins 4 and 5 at 23.4 Hz per bin), at two
+    // different levels so the average is a real mean and not a constant.
+    const band = AUDIO_SPECTRUM_BANDS[1]!;
+    expect(band.name).toBe("band109");
+    const first = Math.ceil(band.lowHz / binHz);
+    const last = Math.floor(band.highHz / binHz);
+    expect([first, last]).toEqual([4, 5]);
+    const features = computeAudioFeatures({
+      frequency: spectrum((bin) => (bin === 4 ? 255 : bin === 5 ? 51 : 0)),
+      timeDomain: silence(),
+      sampleRate: SAMPLE_RATE,
+      fftSize: FFT_SIZE,
+      state: freshState(),
+    });
+    expect(features.band109).toBe((255 + 51) / 2 / 255);
+    expect(features.band80).toBe(0);
+    expect(features.band149).toBe(0);
+    // The musical band that CONTAINS it sees the same energy diluted over its own ten bins (1..10).
+    expect(features.low).toBe((255 + 51) / 10 / 255);
+    // Every band is published, silent or not, in ascending order.
+    expect(SPECTRUM_BAND_NAMES.every((name) => typeof features[name] === "number")).toBe(true);
   });
 
   it("computes RMS level exactly: a full-scale square wave is 1, silence is 0", () => {

@@ -8,6 +8,8 @@ import {
   ONSET_EVENT_THRESHOLD,
 } from "../../app/audio-features.ts";
 import type { AudioFeatures } from "../types/frame.ts";
+import { AUDIO_SPECTRUM_BANDS } from "./spectrum-bands.ts";
+import { distinctSpectrumBands } from "./spectrum-bands.fixture.ts";
 import {
   FEATURE_TRACK_FIELDS,
   FEATURE_TRACK_STRIDE,
@@ -43,6 +45,8 @@ const features = (level: number): AudioFeatures => ({
   beatPhase: level * 13,
   beat: 5,
   beatCount: 6,
+  // T1347b: eighteen more, each distinct — `band80` is level × 20, `band16000` level × 37.
+  ...distinctSpectrumBands(level),
 });
 
 describe("§V352 — the recorded CONTRACT is pinned, and changing it is a versioning event", () => {
@@ -92,9 +96,51 @@ describe("§V352 — the recorded CONTRACT is pinned, and changing it is a versi
       "beatPhase",
       "beat",
       "beatCount",
+      // T1347b — v3: the spectrum, ascending, after everything v2 had.
+      "band80",
+      "band109",
+      "band149",
+      "band204",
+      "band278",
+      "band380",
+      "band519",
+      "band709",
+      "band968",
+      "band1300",
+      "band1800",
+      "band2500",
+      "band3400",
+      "band4600",
+      "band6300",
+      "band8600",
+      "band11700",
+      "band16000",
+    ]);
+    // T1347b — the spectrum's edges are contract too: 80 Hz × 200^(k/17), a geometric
+    // half-step either side. Pinned as the numbers a track was recorded under, rounded
+    // to the tenth of a hertz that distinguishes one layout from another.
+    expect(AUDIO_SPECTRUM_BANDS.map((band) => [band.name, +band.lowHz.toFixed(1), +band.highHz.toFixed(1)])).toEqual([
+      ["band80", 68.5, 93.5],
+      ["band109", 93.5, 127.7],
+      ["band149", 127.7, 174.4],
+      ["band204", 174.4, 238.1],
+      ["band278", 238.1, 325.2],
+      ["band380", 325.2, 444.2],
+      ["band519", 444.2, 606.6],
+      ["band709", 606.6, 828.4],
+      ["band968", 828.4, 1131.4],
+      ["band1300", 1131.4, 1545.1],
+      ["band1800", 1545.1, 2110.2],
+      ["band2500", 2110.2, 2881.8],
+      ["band3400", 2881.8, 3935.7],
+      ["band4600", 3935.7, 5375.0],
+      ["band6300", 5375.0, 7340.6],
+      ["band8600", 7340.6, 10025.1],
+      ["band11700", 10025.1, 13691.2],
+      ["band16000", 13691.2, 18698.1],
     ]);
     // Change any of the above and this line is the one you must change too.
-    expect(FEATURE_TRACK_VERSION).toBe(2);
+    expect(FEATURE_TRACK_VERSION).toBe(3);
   });
 
   it("T1227 — a version 1 track refuses by name, and the reader never widens it into twenty fields", () => {
@@ -106,6 +152,18 @@ describe("§V352 — the recorded CONTRACT is pinned, and changing it is a versi
     if (result.ok) return;
     expect(result.code).toBe("audio.track.version");
     expect(result.message).toContain("version 1");
+  });
+
+  it("T1347b — a version 2 track refuses by name rather than replaying with eighteen dead bands", () => {
+    // Twenty numbers per frame under v2; 38 frames of twenty is exactly 20 frames of
+    // thirty-eight, so the stride check alone would let it through and every band would
+    // read as some other frame's tempo field. The version is what refuses it.
+    const stored = JSON.stringify({ version: 2, fps: 60, frames: new Array(20 * 38).fill(0.25) });
+    const result = parseFeatureTrack(stored);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("audio.track.version");
+    expect(result.message).toContain("version 2");
   });
 
   it("§V357 — the fields are named for the INTERVAL they describe, not the analyser", () => {

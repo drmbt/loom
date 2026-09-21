@@ -4,6 +4,7 @@ import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { AudioFeatures } from "../types/frame.ts";
+import { distinctSpectrumBands } from "../audio/spectrum-bands.fixture.ts";
 import type { NodeDefinition } from "../types/node-definition.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
@@ -115,6 +116,7 @@ const AUDIO: AudioFeatures = {
   beatPhase: 0.71,
   beat: 3,
   beatCount: 1,
+  ...distinctSpectrumBands(0.35),
 };
 
 const bag = (result: { byName: ReadonlyMap<string, Record<string, number>> }, name: string) => {

@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createMemoryStorage, installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { installFlowStubs } from "@editor/graph-canvas/testing.tsx";
 import { parseFeatureTrack, featureTrackLength } from "@domain/audio/feature-track.ts";
+import { distinctSpectrumBands } from "@domain/audio/spectrum-bands.fixture.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { App } from "../../app/app.tsx";
 import { createAppRuntime } from "../../app/app-runtime.ts";
@@ -152,6 +153,7 @@ describe("T452 — the track a save produces is a real, parseable artifact", () 
       onset: 0.6, onsetCount: 1, onsetMax: 0.7,
       kick: 0.35, kickCount: 1, snare: 0.25, snareCount: 1, hat: 0.15, hatCount: 2,
       centroid: 0.45, bpm: 120, bpmConfidence: 1, beatPhase: 0.5, beat: 8, beatCount: 1,
+      ...distinctSpectrumBands(0.01),
     });
 
     let written: { fileName: string; text: string; mime: string } | null = null;
