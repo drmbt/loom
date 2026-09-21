@@ -83,12 +83,7 @@ const UI_KEYS = new Set([
   "componentPreview",
   // T1102: stacking order among overlapping nodes. A NUMBER, unlike every flag above.
   "z",
-  // Bar or curve in the node body. A STRING from a closed set, unlike either.
-  "valuePlotMode",
 ]);
-
-/** The only two values `ui.valuePlotMode` takes; null clears it back to the default. */
-const VALUE_PLOT_MODES = new Set(["bar", "trail"]);
 
 class PatchAbort extends Error {
   constructor() {
@@ -822,20 +817,6 @@ function executeOperation(
           if (value !== null && typeof value !== "string") {
             fail("node.ui.type", `ui.componentPreview must be a string or null.`, { nodeId: node.id });
           }
-        } else if (key === "valuePlotMode") {
-          /*
-           * A closed set, checked here rather than trusted from the caller, because this
-           * value reaches a `switch` in the renderer and an unrecognised string would
-           * fall through it to whatever the default arm draws — a node silently showing
-           * the wrong picture, with a document that validates. Null CLEARS, the same
-           * affordance `componentPreview` offers: "back to the default for this kind of
-           * node" has to be reachable, and it is not the same request as "draw a trail".
-           */
-          if (value !== null && (typeof value !== "string" || !VALUE_PLOT_MODES.has(value))) {
-            fail("node.ui.type", `ui.valuePlotMode must be "bar", "trail" or null.`, {
-              nodeId: node.id,
-            });
-          }
         } else if (key === "z") {
           /*
            * T1102 — an INTEGER, and finite, because this number leaves the document.
@@ -853,7 +834,7 @@ function executeOperation(
         } else if (typeof value !== "boolean") {
           fail("node.ui.type", `ui.${key} must be a boolean.`, { nodeId: node.id });
         }
-        if ((key === "componentPreview" || key === "valuePlotMode") && value === null) {
+        if (key === "componentPreview" && value === null) {
           delete ui[key];
           continue;
         }
