@@ -167,6 +167,12 @@ describe("core catalogue (T70, T40)", () => {
       // T1190: TD's Speed CHOP, name and limit types both — the value family's only
       // accumulator, and the node that turns a level into MOTION rather than a position.
       "valueSpeed",
+      // T1348b: the owner's reference chain, as nodes — Range is Math's Range with the
+      // bounds as its whole face (clamp on), Tail an instant-attack shaped release, Beat a
+      // Trigger with a hold-off and a tail. Same `rerange`/`decay` functions underneath.
+      "valueRange",
+      "valueTail",
+      "valueBeat",
       // T414: sound as channels — the value family's third input source after Mouse
       // and the trio. Deliberately named for what it IS, not a TD analog.
       "audioIn",
@@ -311,6 +317,8 @@ describe("reset is exposed where it is declared (§V123, T216)", () => {
      */
     valueNormalize: "no command can reach one value node's state; the feedback table holds textures",
     valueSpeed: "no command can reach one value node's state; the feedback table holds textures",
+    valueTail: "no command can reach one value node's state; the feedback table holds textures",
+    valueBeat: "no command can reach one value node's state; the feedback table holds textures",
   };
 
   it("every stateful node either fires a reset or is a listed gap", () => {
@@ -390,9 +398,12 @@ describe("T438 (§V316) — the channel publishers are DECLARED, not a category"
         "valueLimit",
         "valueMath",
         "valueNormalize",
+        "valueRange",
         "valueSelect",
         "valueSpeed",
         "valueSlope",
+        "valueTail",
+        "valueBeat",
         "valueStep",
         "valueSwitch",
         "valueTrigger",

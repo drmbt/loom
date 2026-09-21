@@ -287,3 +287,44 @@ describe("§V146 — the panel says which half of Math is doing the work", () =>
     expect(operand?.inactiveWhen?.({ operation: "multiply" })).toBeNull();
   });
 });
+
+/**
+ * T1348b — the Range NODE is Math's Range with the bounds as its whole face, and it is the
+ * same function underneath (`rerange`), so the proof is equality with Math on the same
+ * bounds — plus the one deliberate difference, which is the default: the node clamps.
+ */
+describe("T1348b — the Range node is Math's Range with Clamp on by default", () => {
+  function rangeNode(input: number, parameters: Record<string, unknown>): number {
+    const doc = chain(
+      { type: "constant", parameters: { value: input } },
+      { operation: "add", operand: 0 },
+      { e1: { id: "e1", source: { nodeId: "src", portId: "out" }, target: { nodeId: "range", portId: "in" } } },
+      { range: { id: "range", type: "valueRange", definitionVersion: 1, position: { x: 0, y: 0 }, label: "range1", parameters } },
+    );
+    const session = createValueGraphSession(registry);
+    const result = session.evaluate(doc, FRAME);
+    expect(result.diagnostics).toEqual([]);
+    return result.byName.get("range1")!["value"]!;
+  }
+
+  it("maps exactly as Math's Range does, on every bound including a reversal", () => {
+    for (const bounds of [
+      { fromLow: 0.35, fromHigh: 0.45, toLow: 0, toHigh: 1 },
+      { fromLow: 1, fromHigh: 0, toLow: 0, toHigh: 1 },
+      { fromLow: 0, fromHigh: 1, toLow: 10, toHigh: -10 },
+    ]) {
+      for (const input of [0.35, 0.4, 0.45, 0.7]) {
+        expect(rangeNode(input, { ...bounds, outside: "extrapolate" })).toBe(ranged(input, { ...bounds, outside: "extrapolate" }));
+        expect(rangeNode(input, { ...bounds, outside: "clamp" })).toBe(ranged(input, { ...bounds, outside: "clamp" }));
+      }
+    }
+  });
+
+  it("clamps by default — the calibration node pins what falls outside, where Math extrapolates", () => {
+    // 0.35..0.45 → 0..1 is the owner's reference chain. 0.7 is outside: Math carries it to 3.5.
+    expect(rangeNode(0.7, { fromLow: 0.35, fromHigh: 0.45 })).toBe(1);
+    expect(rangeNode(0.2, { fromLow: 0.35, fromHigh: 0.45 })).toBe(0);
+    expect(ranged(0.7, { fromLow: 0.35, fromHigh: 0.45 })).toBeCloseTo(3.5, 12);
+    expect(rangeNode(0.4, { fromLow: 0.35, fromHigh: 0.45 })).toBeCloseTo(0.5, 12);
+  });
+});

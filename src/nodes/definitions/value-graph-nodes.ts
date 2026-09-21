@@ -69,8 +69,84 @@ export const mouseNode: NodeDefinition = {
     y: pointer?.y ?? 0,
     buttons: pointer?.buttons ?? 0,
   }),
+  /*
+   * x and y only. `buttons` is a BITMASK (PointerEvent's, unchanged), so it is neither a
+   * boolean nor a range with a top — declaring it either way would put a confident scale
+   * under a number that does not have one, and the observed lane says what it is instead.
+   */
+  valueChannelMeta: {
+    x: { kind: "bounded", low: 0, high: 1 },
+    y: { kind: "bounded", low: 0, high: 1 },
+  },
   compile: noPasses,
 };
+
+/**
+ * T1348b — the five bounds of a re-range, ONE definition for Math's Range operation and
+ * the Range node (§V316: one vocabulary). `outside` defaults differently on the two, and
+ * that is the one deliberate difference: Math extrapolates because a map is arithmetic and
+ * a clip would be a second operation hiding in the first (T991); Range CLAMPS because it is
+ * the calibration node — its job is to put the sliver of range a signal actually occupies
+ * onto 0..1, and what it drives has walls. `inactiveWhen` is Math's "only Range reads
+ * this"; the Range node has no other operation, so it passes none.
+ */
+function rangeParameters(options: {
+  readonly outside: "extrapolate" | "clamp";
+  readonly inactiveWhen?: (values: Readonly<Record<string, ParameterValue>>) => string | null;
+}): ParameterSchema {
+  const inactive = options.inactiveWhen === undefined ? {} : { inactiveWhen: options.inactiveWhen };
+  return {
+    /*
+     * §V107: every one of these is a full parameter and therefore takes every mode. That
+     * is the point rather than a side effect — `From High` bound to `op('audio1').chan.peak`
+     * is auto-gain, and a static-only bound could not express it.
+     */
+    fromLow: { type: "number", label: "From Low", group: "Range", default: 0, description: "The input value that maps onto To Low.", ...inactive },
+    fromHigh: {
+      type: "number",
+      label: "From High",
+      group: "Range",
+      default: 1,
+      description: "The input value that maps onto To High; equal to From Low, every input maps to To Low.",
+      ...inactive,
+    },
+    toLow: { type: "number", label: "To Low", group: "Range", default: 0, description: "What From Low becomes.", ...inactive },
+    toHigh: { type: "number", label: "To High", group: "Range", default: 1, description: "What From High becomes.", ...inactive },
+    outside: {
+      type: "enum",
+      label: "Outside",
+      group: "Range",
+      default: options.outside,
+      options: [
+        { value: "extrapolate", label: "Extrapolate" },
+        { value: "clamp", label: "Clamp" },
+      ],
+      description: "Extrapolate carries a value from outside the input range on past the output range; Clamp pins it to the output range.",
+      ...inactive,
+    },
+  };
+}
+
+/** The re-range itself, per channel — Math's Range operation and the Range node share it (T1348b). */
+function rerange(bag: ValueChannels, values: Readonly<Record<string, ParameterValue>>): ValueChannels {
+  const fromLow = num(values["fromLow"], 0);
+  const span = num(values["fromHigh"], 1) - fromLow;
+  const toLow = num(values["toLow"], 0);
+  const reach = num(values["toHigh"], 1) - toLow;
+  // The degenerate span, decided once and above the loop: no input distinguishes
+  // itself from any other, so there is nothing per channel left to compute.
+  if (span === 0) return mapChannels(bag, () => toLow);
+  const clamps = values["outside"] === "clamp";
+  return mapChannels(bag, (value) => {
+    const position = (value - fromLow) / span;
+    // Clamped on the 0..1 POSITION rather than on the output: an inverted range
+    // (From Low above From High, or To Low above To High) is a legitimate way to
+    // write a reversal, and clamping the output would need to know which end was
+    // which. The position always runs low-to-high whichever way the bounds do.
+    const held = clamps ? Math.min(1, Math.max(0, position)) : position;
+    return toLow + held * reach;
+  });
+}
 
 /**
  * T991 — RE-RANGE, the join between an external signal and a manifest.
@@ -148,74 +224,13 @@ export const valueMathNode: NodeDefinition = {
      * is the point rather than a side effect — `From High` bound to `op('audio1').chan.peak`
      * is auto-gain, and a static-only bound could not express it.
      */
-    fromLow: {
-      type: "number",
-      label: "From Low",
-      group: "Range",
-      default: 0,
-      description: "The input value that maps onto To Low.",
-      inactiveWhen: rangeOnly,
-    },
-    fromHigh: {
-      type: "number",
-      label: "From High",
-      group: "Range",
-      default: 1,
-      description: "The input value that maps onto To High; equal to From Low, every input maps to To Low.",
-      inactiveWhen: rangeOnly,
-    },
-    toLow: {
-      type: "number",
-      label: "To Low",
-      group: "Range",
-      default: 0,
-      description: "What From Low becomes.",
-      inactiveWhen: rangeOnly,
-    },
-    toHigh: {
-      type: "number",
-      label: "To High",
-      group: "Range",
-      default: 1,
-      description: "What From High becomes.",
-      inactiveWhen: rangeOnly,
-    },
-    outside: {
-      type: "enum",
-      label: "Outside",
-      group: "Range",
-      default: "extrapolate",
-      options: [
-        { value: "extrapolate", label: "Extrapolate" },
-        { value: "clamp", label: "Clamp" },
-      ],
-      description: "Extrapolate carries a value from outside the input range on past the output range; Clamp pins it to the output range.",
-      inactiveWhen: rangeOnly,
-    },
+    ...rangeParameters({ outside: "extrapolate", inactiveWhen: rangeOnly }),
   },
   valueEvaluate: ({ inputs, values }) => {
     const a = inputs["a"] ?? {};
     const b = inputs["b"];
 
-    if (values["operation"] === "range") {
-      const fromLow = num(values["fromLow"], 0);
-      const span = num(values["fromHigh"], 1) - fromLow;
-      const toLow = num(values["toLow"], 0);
-      const reach = num(values["toHigh"], 1) - toLow;
-      // The degenerate span, decided once and above the loop: no input distinguishes
-      // itself from any other, so there is nothing per channel left to compute.
-      if (span === 0) return mapChannels(a, () => toLow);
-      const clamps = values["outside"] === "clamp";
-      return mapChannels(a, (value) => {
-        const position = (value - fromLow) / span;
-        // Clamped on the 0..1 POSITION rather than on the output: an inverted range
-        // (From Low above From High, or To Low above To High) is a legitimate way to
-        // write a reversal, and clamping the output would need to know which end was
-        // which. The position always runs low-to-high whichever way the bounds do.
-        const held = clamps ? Math.min(1, Math.max(0, position)) : position;
-        return toLow + held * reach;
-      });
-    }
+    if (values["operation"] === "range") return rerange(a, values);
 
     const fallback = num(values["operand"], 1);
     const operate = (left: number, right: number): number => {
@@ -335,6 +350,10 @@ export const valueTriggerNode: NodeDefinition = {
     state["above"] = above;
     return out;
   },
+  // "Emits 1 on the frame a channel rises past the threshold, 0 otherwise" — the
+  // description's own words, declared so the body draws a pulse as a pulse. A curve of
+  // this is a vertical smear and an auto-ranged bar of it is permanently full.
+  valueChannelMeta: { "*": { kind: "boolean" } },
   compile: noPasses,
 };
 
@@ -918,6 +937,15 @@ export const valueNormalizeNode: NodeDefinition = {
     state["history"] = history;
     return out;
   },
+  /*
+   * 0..1 BY CONSTRUCTION, and the bound is strict at both ends — mid-rank never returns 0
+   * or 1, which the description already promises ("the output NEVER reaches 0 or 1, so
+   * what it drives cannot be driven into its wall"). Declaring it is what makes a bar of
+   * this node readable as a POSITION IN ITS RANGE rather than as a position in whatever
+   * this session happened to see; observing it would re-derive a 0..1 scale from a signal
+   * that is already 0..1, and get a tighter, wronger one.
+   */
+  valueChannelMeta: { "*": { kind: "bounded", low: 0, high: 1 } },
   compile: noPasses,
 };
 
@@ -1195,6 +1223,185 @@ export const valueSelectNode: NodeDefinition = {
   compile: noPasses,
 };
 
+/**
+ * T1348b — RANGE as its own node: Math's Range operation with nothing else on the page.
+ *
+ * The owner's reference chain (an Unreal audio graph) is `band → Normalize(min, max,
+ * clamp) → Tail` and `band → Normalize → Beat`, and that "Normalize" is exactly this: put
+ * the sliver a band occupies (0.35..0.45 on one row, 0.55..0.9 on another) onto 0..1 and
+ * clip. `valueMath` could already do it behind an Operation picker with four inactive
+ * controls, and a picker is where a person building that chain stops to think. This node
+ * is the same map (`rerange`, one function) with the bounds as its whole face, and Clamp on
+ * by default because calibration is what it is for. NOT `valueNormalize`, which ranks
+ * against history and needs no bounds: that one adapts, this one is set.
+ */
+export const valueRangeNode: NodeDefinition = {
+  type: "valueRange",
+  version: 1,
+  title: "Range",
+  category: "value",
+  description:
+    "Re-maps every channel from one span onto another: From Low..From High becomes To Low..To High, per channel. Clamp (the default) pins what falls outside; Extrapolate carries it on. The calibration node — put the 0.35..0.45 a band actually occupies onto 0..1 and drive with that. Same map as Math's Range, with nothing else on the page. Normalize is the other kind: it ranks against history and needs no bounds. CLOCKLESS (§V436): it reads no clock, so whatever its input does across a timeline loop, it does.",
+  tags: ["value", "range", "remap", "calibrate", "normalize", "chop"],
+  inputs: [{ id: "in", label: "In", type: VALUE_PORT }],
+  outputs: [{ id: "out", label: "Out", type: VALUE_PORT }],
+  parameters: rangeParameters({ outside: "clamp" }),
+  valueEvaluate: ({ inputs, values }) => rerange(inputs["in"] ?? {}, values),
+  /** A map against constants keeps the input's period, exactly as Math's Range does (T735). */
+  plotPeriodFollowsInputs: true,
+  compile: noPasses,
+};
+
+/**
+ * T1348b — the DECAY the Tail and Beat nodes share: how a held value falls once nothing
+ * holds it up. LINEAR falls at a constant rate and reaches 0 exactly `tail` seconds after
+ * the peak it fell from — a fade with an end. EXPONENTIAL is one-pole toward 0 with time
+ * constant `tail` — 37% left after one tail, never quite 0, the shape a struck string has.
+ * A tail of 0 is no tail: the value is gone the frame after it was held. DELTA-DRIVEN
+ * (§V436): the step is `deltaSeconds`, never a clock position, so a timeline lap carries a
+ * real step and a tail crosses it intact; a frame with no elapsed time leaves it where it is.
+ */
+const DECAY_OPTIONS = [
+  { value: "linear", label: "Linear" },
+  { value: "exponential", label: "Exponential" },
+] as const;
+function decay(held: number, peak: number, deltaSeconds: number, tail: number, mode: unknown): number {
+  if (deltaSeconds <= 0) return held;
+  if (tail <= 0) return 0;
+  if (mode === "exponential") return held * Math.exp(-deltaSeconds / tail);
+  return Math.max(0, held - (deltaSeconds * peak) / tail);
+}
+const TAIL_PARAMETER: NumberParameter = {
+  type: "number",
+  label: "Tail",
+  description: "How long the fall takes. Linear reaches 0 in exactly this long; Exponential has 37% left after it. 0 is no tail at all.",
+  default: 0.25,
+  min: 0,
+  step: 0.01,
+  range: "floor",
+  unit: "seconds",
+};
+
+/**
+ * T1348b — TAIL: instant attack, a shaped release. A peak follower whose fall is a choice.
+ *
+ * Lag eases BOTH ways and its release is exponential by construction; a fast-attack Lag
+ * (Release Ratio high) is the nearest thing the set had, and it cannot fall in a straight
+ * line to a definite end. This node holds the input the moment it rises above what is held,
+ * and lets it down through `decay` — so a band's strike lands at full height on its own
+ * frame and fades over a tail you can read off the knob. The value the fall started from is
+ * what the linear rate is measured against, so "0.25 s" means 0.25 s from THAT peak.
+ */
+export const valueTailNode: NodeDefinition = {
+  type: "valueTail",
+  version: 1,
+  title: "Tail",
+  category: "value",
+  description:
+    "Holds each channel's peak and lets it fall: the output jumps UP to the input the moment the input is higher, and falls through the chosen decay when it is not. Linear reaches 0 exactly Tail seconds after the peak; Exponential has 37% left after Tail and keeps going. Lag eases both ways; this eases only down. DELTA-DRIVEN (§V436): the fall reads the frame STEP, not a clock position, so a timeline loop does not restart it.",
+  tags: ["value", "tail", "release", "decay", "envelope", "peak", "chop"],
+  inputs: [{ id: "in", label: "In", type: VALUE_PORT }],
+  outputs: [{ id: "out", label: "Out", type: VALUE_PORT }],
+  parameters: {
+    tail: TAIL_PARAMETER,
+    decay: { type: "enum", label: "Decay", default: "linear", options: DECAY_OPTIONS, description: "Linear falls at a constant rate to 0; Exponential falls fast then slow, like a struck string." },
+  },
+  stateful: VALUE_STATEFUL,
+  valueEvaluate: ({ inputs, values, frame, state }) => {
+    const tail = num(values["tail"], 0.25);
+    const held = (state["held"] ?? {}) as Record<string, number>;
+    const peak = (state["peak"] ?? {}) as Record<string, number>;
+    const out = mapChannels(inputs["in"] ?? {}, (value, name) => {
+      const current = held[name] ?? value; // first sight: start ON the input, no swoop-in
+      let next: number;
+      if (value >= current) {
+        next = value;
+        peak[name] = value;
+      } else {
+        next = decay(current, peak[name] ?? current, frame.deltaSeconds, tail, values["decay"]);
+      }
+      held[name] = next;
+      return next;
+    });
+    state["held"] = held;
+    state["peak"] = peak;
+    return out;
+  },
+  compile: noPasses,
+};
+
+/**
+ * T1348b — BEAT: a hit detector with a hold-off and a tail.
+ *
+ * Trigger fires on every upward crossing and that is what makes it a Trigger; on a band
+ * that flutters around the threshold it fires every other frame. Beat is Trigger with the
+ * two things a person means by "a beat": it will not fire again inside `retrigger` seconds
+ * of the last hit, and each hit is a whole event — 1 on its frame, then the chosen decay
+ * over `tail` — rather than a single-frame spike. With Tail at 0 it IS a hold-off Trigger.
+ * The hold-off is measured in seconds elapsed (delta-driven, §V436), so a slow frame
+ * cannot let two hits through that a fast one would have separated.
+ */
+export const valueBeatNode: NodeDefinition = {
+  type: "valueBeat",
+  version: 1,
+  title: "Beat",
+  category: "value",
+  description:
+    "Fires when a channel rises past Threshold, and not again until Retrigger seconds have passed: 1 on the hit's frame, then the chosen decay over Tail (Linear reaches 0 exactly Tail seconds after the hit; Exponential has 37% left). Tail 0 is a bare pulse with a hold-off. Trigger is the version with no hold-off and no tail. DELTA-DRIVEN (§V436): the hold-off and the fall count elapsed frame steps, never a clock position, so a timeline loop neither fires it nor resets it.",
+  tags: ["value", "beat", "hit", "onset", "trigger", "retrigger", "envelope", "chop"],
+  inputs: [{ id: "in", label: "In", type: VALUE_PORT }],
+  outputs: [{ id: "out", label: "Out", type: VALUE_PORT }],
+  parameters: {
+    threshold: { type: "number", label: "Threshold", default: 0.5, description: "A channel rising past this is a hit." },
+    retrigger: {
+      type: "number",
+      label: "Retrigger",
+      description: "The shortest gap between two hits. A crossing inside it is ignored.",
+      default: 0.1,
+      min: 0,
+      step: 0.01,
+      range: "floor",
+      unit: "seconds",
+    },
+    tail: TAIL_PARAMETER,
+    decay: { type: "enum", label: "Decay", default: "linear", options: DECAY_OPTIONS, description: "Linear falls at a constant rate to 0; Exponential falls fast then slow." },
+  },
+  stateful: VALUE_STATEFUL,
+  valueEvaluate: ({ inputs, values, frame, state }) => {
+    const threshold = num(values["threshold"], 0.5);
+    const retrigger = Math.max(0, num(values["retrigger"], 0.1));
+    const tail = num(values["tail"], 0.25);
+    const above = (state["above"] ?? {}) as Record<string, boolean>;
+    const since = (state["since"] ?? {}) as Record<string, number>;
+    const envelope = (state["envelope"] ?? {}) as Record<string, number>;
+    const out = mapChannels(inputs["in"] ?? {}, (value, name) => {
+      const wasAbove = above[name] === true;
+      const isAbove = value >= threshold;
+      above[name] = isAbove;
+      // Seconds since the last hit; a channel that has never hit is infinitely ready.
+      const elapsed = (since[name] ?? Number.POSITIVE_INFINITY) + Math.max(0, frame.deltaSeconds);
+      const current = envelope[name] ?? 0;
+      let next: number;
+      if (isAbove && !wasAbove && elapsed >= retrigger) {
+        next = 1;
+        since[name] = 0;
+      } else {
+        next = decay(current, 1, frame.deltaSeconds, tail, values["decay"]);
+        since[name] = elapsed;
+      }
+      envelope[name] = next;
+      return next;
+    });
+    state["above"] = above;
+    state["since"] = since;
+    state["envelope"] = envelope;
+    return out;
+  },
+  /** 1 on the hit, falling to 0: declared so a bar of it reads as a position in 0..1, not an auto-fitted guess. */
+  valueChannelMeta: { "*": { kind: "bounded", low: 0, high: 1 } },
+  compile: noPasses,
+};
+
 export const valueGraphNodeDefinitions: readonly NodeDefinition[] = [
   mouseNode,
   channelInNode,
@@ -1209,4 +1416,7 @@ export const valueGraphNodeDefinitions: readonly NodeDefinition[] = [
   valueStepNode,
   valueNormalizeNode,
   valueSpeedNode,
+  valueRangeNode,
+  valueTailNode,
+  valueBeatNode,
 ];

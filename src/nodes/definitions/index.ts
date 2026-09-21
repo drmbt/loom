@@ -122,6 +122,9 @@ export {
   valueSwitchNode,
   valueNormalizeNode,
   valueSpeedNode,
+  valueRangeNode,
+  valueTailNode,
+  valueBeatNode,
   valueGraphNodeDefinitions,
 } from "./value-graph-nodes.ts";
 export { customWgslNode } from "./custom-wgsl.ts";

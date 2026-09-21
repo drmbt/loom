@@ -297,8 +297,13 @@ const CLOCK_OWNERSHIP: Readonly<Record<string, "free-running" | "timeline-anchor
   // the distance travelled across a lap is the real step and the accumulator crosses it
   // intact — the same reading as Lag's held value.
   valueSpeed: "delta-driven",
+  // T1348b: Tail's fall and Beat's hold-off both count `deltaSeconds` and read no clock
+  // position, so a lap is one real step through a tail or a hold-off, never a restart.
+  valueTail: "delta-driven",
+  valueBeat: "delta-driven",
   // CLOCKLESS: reads no clock. A loop cannot reach them.
   constant: "clockless",
+  valueRange: "clockless",
   mouse: "clockless",
   valueMath: "clockless",
   valueLimit: "clockless",

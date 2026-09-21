@@ -341,6 +341,11 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   // a reset is deterministic. Random access is what it gives up, and that is `stateful`'s
   // `randomAccess: false` (§V181), not this axis's question.
   valueSpeed: "pure",
+  // T1348b: Range is a map; Tail and Beat hold state that resets with the transport and
+  // replays deterministically from a reset, Lag's shape exactly.
+  valueRange: "pure",
+  valueTail: "pure",
+  valueBeat: "pure",
   valueSelect: "pure",
   audioPattern: "pure",
   // MEDIA FILES ARE PURE AS TYPES, and this is the split the module note argues for. A
