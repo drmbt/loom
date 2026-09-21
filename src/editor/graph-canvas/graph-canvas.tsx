@@ -1,6 +1,7 @@
 // Library chrome first, then our overrides, then (transitively, below) the component
 // modules — so a token override never loses a specificity tie to React Flow's default.
 import "@xyflow/react/dist/style.css";
+import type { ValueHistorySource } from "@editor/nodes/value-history.ts";
 import "./xyflow-theme.css";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -148,6 +149,8 @@ export interface GraphCanvasProps {
      The graph pane draws it over the tiles; see `preview-inspect-overlay.tsx`. */
   /** T685: the preview lens marker's source — §V70a's warning, out from under the tile. */
   previewLens?: (nodeId: NodeId) => PreviewLensSource | null;
+  /** T1350b: per-channel sockets on value outputs read the channel names from here. */
+  valueChannels?: ValueHistorySource;
   /** Patch outcomes, so a rejected gesture can surface instead of failing silently. */
   onPatchResult?: (result: CommandResult<"graph.applyPatch">) => void;
   /**
@@ -184,6 +187,7 @@ export function GraphCanvas({
   renderPreview,
   renderControls,
   previewLens,
+  valueChannels,
   onPatchResult,
   onSelectionChange,
   underlay,
@@ -520,7 +524,8 @@ export function GraphCanvas({
       // T695: a variadic input's handles are addressed by SLOT, so the handle id is not
       // the port id. Everything below works in port-and-slot terms from here.
       const { portId: targetPortId, slot } = parseHandleId(targetHandle);
-      const { portId: sourcePortId } = parseHandleId(sourceHandle);
+      // T1350b: dragged from a per-channel socket, the wire carries that channel.
+      const { portId: sourcePortId, channel } = parseHandleId(sourceHandle);
 
       /*
        * T1049 — what the drop MEANS is decided in `connect-drop.ts`, not here.
@@ -534,7 +539,7 @@ export function GraphCanvas({
       const drop = connectDropOperations({
         graph: { nodes: domainNodes, edges: domainEdges },
         registry,
-        source: { nodeId: source, portId: sourcePortId },
+        source: { nodeId: source, portId: sourcePortId, ...(channel === undefined ? {} : { channel }) },
         target: { nodeId: target, portId: targetPortId, ...(slot === undefined ? {} : { slot }) },
       });
       if (drop.kind !== "connect") return;
@@ -829,6 +834,7 @@ export function GraphCanvas({
       renderPreview,
       renderControls,
       previewLens,
+      valueChannels,
       showProblems,
       diveIn,
       components,
@@ -850,6 +856,7 @@ export function GraphCanvas({
       renderPreview,
       renderControls,
       previewLens,
+      valueChannels,
       showProblems,
       diveIn,
       components,

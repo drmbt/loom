@@ -4,6 +4,7 @@ import type { GraphDocument, GraphEdge, GraphNode } from "@domain/types/graph.ts
 import type { EdgeId, NodeId } from "@domain/types/ids.ts";
 import { overNode } from "@nodes/definitions/composite.ts";
 import { solidNode } from "@nodes/definitions/solid.ts";
+import { mouseNode, valueSelectNode } from "@nodes/definitions/value-graph-nodes.ts";
 import { pointGridNode } from "@nodes/definitions/point-generators.ts";
 import { textureToAttributeNode } from "@nodes/definitions/points.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
@@ -193,5 +194,54 @@ describe("a drop that cannot mean anything (§V13, §V288)", () => {
       [],
     );
     expect(drop(graph, ["tex", "out"], { nodeId: "mix", portId: "texture" }).kind).toBe("connect");
+  });
+});
+
+describe("T1350b — a wire dragged from a per-channel socket", () => {
+  const mouse = { id: "m" as NodeId, type: "mouse", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} };
+  const pick = { id: "p" as NodeId, type: "valueSelect", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} };
+  const valueRegistry = createNodeRegistry([mouseNode, valueSelectNode]).view();
+
+  it("carries the channel onto the connect operation", () => {
+    const drop = connectDropOperations({
+      graph: document([mouse, pick], []),
+      registry: valueRegistry,
+      source: { nodeId: "m" as NodeId, portId: "out", channel: "x" },
+      target: { nodeId: "p" as NodeId, portId: "in" },
+    });
+    expect(drop.kind).toBe("connect");
+    if (drop.kind !== "connect") return;
+    expect(drop.operations).toEqual([
+      { op: "connect", source: { nodeId: "m", portId: "out" }, target: { nodeId: "p", portId: "in" }, channel: "x" },
+    ]);
+  });
+
+  it("is UNCHANGED only when the wire in the socket carries the same channel; another channel replaces it", () => {
+    const existing = { ...edge("e1", ["m", "out"], ["p", "in"]), channel: "x" };
+    const same = connectDropOperations({
+      graph: document([mouse, pick], [existing]),
+      registry: valueRegistry,
+      source: { nodeId: "m" as NodeId, portId: "out", channel: "x" },
+      target: { nodeId: "p" as NodeId, portId: "in" },
+    });
+    expect(same.kind).toBe("unchanged");
+    const other = connectDropOperations({
+      graph: document([mouse, pick], [existing]),
+      registry: valueRegistry,
+      source: { nodeId: "m" as NodeId, portId: "out", channel: "y" },
+      target: { nodeId: "p" as NodeId, portId: "in" },
+    });
+    expect(other.kind).toBe("connect");
+    if (other.kind !== "connect") return;
+    expect(other.operations[0]).toEqual({ op: "disconnect", edgeIds: ["e1"] });
+    expect(other.operations[1]).toMatchObject({ op: "connect", channel: "y" });
+    // And the whole-bag wire replaces a per-channel one: absent is a different wire too.
+    const whole = connectDropOperations({
+      graph: document([mouse, pick], [existing]),
+      registry: valueRegistry,
+      source: { nodeId: "m" as NodeId, portId: "out" },
+      target: { nodeId: "p" as NodeId, portId: "in" },
+    });
+    expect(whole.kind).toBe("connect");
   });
 });

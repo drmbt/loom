@@ -11,6 +11,7 @@ import type { ComponentRegistryView } from "@domain/components/index.ts";
 import type { EdgeFlowStore } from "@editor/edges/edge-flow-command.ts";
 import type { NodeTimingScaleSource } from "@editor/nodes/node-timing.ts";
 import type { TimingOverlayStore } from "@editor/nodes/timing-overlay-command.ts";
+import type { ValueHistorySource } from "@editor/nodes/value-history.ts";
 import type {
   AgentActivity,
   NodeRunStatus,
@@ -148,6 +149,12 @@ export interface GraphCanvasContextValue {
    * close a cycle.
    */
   previewLens?: ((nodeId: NodeId) => PreviewLensSource | null) | undefined;
+  /**
+   * T1350b — which channels a value node published, keyed by CANVAS id (the host maps a
+   * dived component's ids to the flat history, T1031). A value output draws one socket per
+   * channel from this; absent, it draws the port alone.
+   */
+  valueChannels?: ValueHistorySource | undefined;
   /**
    * T1010 — is the per-node timing overlay drawn? `ui.toggleTimingOverlay`'s store, OFF by
    * default. A node reads it to decide whether to MOUNT the overlay at all: off has to
