@@ -150,7 +150,7 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
       }
 
       /** Value edges between members, target input port → sorted upstream sources. */
-      const incoming = new Map<NodeId, Array<{ edgeId: string; source: NodeId; port: PortId }>>();
+      const incoming = new Map<NodeId, Array<{ edgeId: string; source: NodeId; port: PortId; channel: string | undefined }>>();
       const dependents = new Map<NodeId, NodeId[]>();
       const indegree = new Map<NodeId, number>();
       for (const nodeId of members.keys()) indegree.set(nodeId, 0);
@@ -162,7 +162,7 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
         if (source === undefined || target === undefined) continue;
         if (!valuePortIds(target.definition).has(edge.target.portId)) continue;
         const list = incoming.get(edge.target.nodeId) ?? [];
-        list.push({ edgeId, source: edge.source.nodeId, port: edge.target.portId });
+        list.push({ edgeId, source: edge.source.nodeId, port: edge.target.portId, channel: edge.channel });
         incoming.set(edge.target.nodeId, list);
         const dependentList = dependents.get(edge.source.nodeId) ?? [];
         dependentList.push(edge.target.nodeId);
@@ -238,8 +238,16 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
           // sources stays ABSENT from `inputs`, which is how a consumer sees "unwired":
           // `valueSwitch` counts connected inputs, and an empty bag would still be a
           // branch. §V457's merge simply loses a contributor, deliberately.
-          const arriving = byId.get(entry.source);
-          if (arriving === undefined) continue;
+          const published = byId.get(entry.source);
+          if (published === undefined) continue;
+          // T1350b: a per-channel wire delivers ONE channel of the bag. A channel the source
+          // did not publish this frame delivers nothing — the wire is then the same as an
+          // unwired port, which is what a cut wire reads as too (§V457's merge just loses
+          // a contributor, as it does for a muted source).
+          let arriving: ValueChannels;
+          if (entry.channel === undefined) arriving = published;
+          else if (entry.channel in published) arriving = { [entry.channel]: published[entry.channel]! };
+          else continue;
           const existing = inputs[entry.port] ?? {};
           for (const name of Object.keys(arriving)) {
             const holder = providers.get(`${entry.port}:${name}`);

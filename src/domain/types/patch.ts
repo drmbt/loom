@@ -41,7 +41,8 @@ export type GraphPatchOperation =
    * by the edge that used to follow it, and inserting is what puts the new wire back in
    * front of it. Ignored on a non-variadic port, which has no position to carry.
    */
-  | { op: "connect"; ref?: TempId; source: { nodeId: NodeRef; portId: PortId }; target: { nodeId: NodeRef; portId: PortId }; order?: number }
+  /** `channel` (T1350b): one channel of the source's VALUE bag rides the wire — see `GraphEdge.channel`. */
+  | { op: "connect"; ref?: TempId; source: { nodeId: NodeRef; portId: PortId }; target: { nodeId: NodeRef; portId: PortId }; order?: number; channel?: string }
   | { op: "disconnect"; edgeIds: EdgeId[] }
   /**
    * The new order of the edges landing on one VARIADIC input port (T225, §V131).

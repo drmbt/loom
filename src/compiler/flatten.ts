@@ -807,6 +807,9 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       edges[flatEdgeId] = {
         id: flatEdgeId,
         ...(edge.order === undefined ? {} : { order: edge.order }),
+        // T1350b: `channel` rides through for B155's reason — a dropped field is invisible
+        // from either side alone, and the app always flattens.
+        ...(edge.channel === undefined ? {} : { channel: edge.channel }),
         source: { ...source },
         target: { ...target },
       };

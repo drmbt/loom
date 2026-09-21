@@ -60,6 +60,22 @@ export const RESOLUTION_SCALE_PRESETS = [
   { label: "8x", factor: 8 },
 ] as const;
 
+/**
+ * The two pictures a value node's body can draw.
+ *
+ * `trail` is the picture that was always there and is deliberately ONE name for two
+ * renderings: a pure periodic node draws one whole cycle of its real function with a
+ * playhead, a stateful one draws its rolling history window. Both answer "where has this
+ * been", both are a curve, and which of the two a node gets is a property of the node
+ * rather than a choice the user makes — so splitting them into two user-facing modes
+ * would offer a switch whose second position is unreachable on most nodes.
+ *
+ * `bar` answers "what is it NOW", which is the question a curve reads worst: a boolean
+ * flicking between 0 and 1 is a smear, and a value near a bound tells you nothing about
+ * which bound without a scale.
+ */
+export type ValuePlotMode = "bar" | "trail";
+
 export interface GraphNode {
   id: NodeId;
   type: string;
@@ -135,6 +151,22 @@ export interface GraphNode {
      * shared materialization and an unmarked document costs nothing.
      */
     background?: boolean;
+    /**
+     * Which picture this value node's body draws — a BAR of the current value, or the
+     * CURVE it has been drawing all along. Absent means the default for what this node
+     * IS: a pure periodic source keeps its whole-cycle curve and playhead (T459 — a bar
+     * cannot show frequency or waveform, which is the thing you open an LFO to see),
+     * everything else gets the bar.
+     *
+     * Document state rather than view state, by the owner's call, made with the cost
+     * stated: it travels with the project and with a shared example, and ⌘Z after a mode
+     * switch undoes the switch rather than the last edit (§V16's argument, overridden
+     * deliberately here). It needs no migration for the reason `z` above needs none —
+     * `ui` is already persisted and already treats an absent value as the default, so a
+     * document written before this field is one where every node draws its default
+     * picture, which is exactly what those documents looked like.
+     */
+    valuePlotMode?: ValuePlotMode;
     color?: string;
   };
 }
@@ -156,6 +188,19 @@ export interface GraphEdge {
    * field existed, which is why an absent order sorts last (§V68, `compareEdgeOrder`).
    */
   order?: number;
+  /**
+   * T1350b — ONE channel of the source's bag rides this wire instead of the whole bag.
+   *
+   * A value edge carries a bag; the target sees every channel the source published, and
+   * picking one meant a `valueSelect` in between. The owner's reference graph has a socket
+   * per channel on the source card — "the 109 Hz row" is a thing you drag from — and this
+   * is what that drag writes: the port is still `out`, the edge names the channel. The
+   * value graph narrows the arriving bag to `{ [channel]: value }` (a channel the source
+   * does not publish this frame contributes nothing, the same as an unwired port). Only
+   * meaningful on a VALUE edge; the patch layer refuses it on any other port kind. Absent
+   * on every edge written before the field existed, which is "the whole bag" (§V68).
+   */
+  channel?: string;
 }
 
 export interface GraphGroup {

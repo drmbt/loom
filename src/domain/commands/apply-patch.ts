@@ -83,7 +83,12 @@ const UI_KEYS = new Set([
   "componentPreview",
   // T1102: stacking order among overlapping nodes. A NUMBER, unlike every flag above.
   "z",
+  // Bar or curve in the node body. A STRING from a closed set, unlike either.
+  "valuePlotMode",
 ]);
+
+/** The only two values `ui.valuePlotMode` takes; null clears it back to the default. */
+const VALUE_PLOT_MODES = new Set(["bar", "trail"]);
 
 class PatchAbort extends Error {
   constructor() {
@@ -536,6 +541,17 @@ function executeOperation(
         );
       }
 
+      // T1350b: a per-channel wire only means something on a value port — a texture has
+      // no channels to pick, and a silent accept would write a field the compiler ignores.
+      if (operation.channel !== undefined && sourcePort.type.kind !== "value") {
+        fail(
+          "port.channel",
+          `output "${sourcePort.id}" on "${sourceNode.type}" is ${describePortType(sourcePort.type)}; only a value port has channels to wire one of.`,
+          { nodeId: sourceNode.id, portId: sourcePort.id },
+        );
+        return;
+      }
+
       const incoming = incomingEdges(draft, targetNode.id, targetPort.id);
       // §V14: one edge per input unless the port declares itself variadic.
       if (targetPort.variadic !== true && incoming.length > 0) {
@@ -549,9 +565,12 @@ function executeOperation(
           },
         );
       }
+      // T1350b: two wires from the same port carrying DIFFERENT channels are two wires.
       const duplicate = incoming.some(
         (edge) =>
-          edge.source.nodeId === sourceNode.id && edge.source.portId === operation.source.portId,
+          edge.source.nodeId === sourceNode.id &&
+          edge.source.portId === operation.source.portId &&
+          edge.channel === operation.channel,
       );
       if (duplicate) {
         fail("edge.duplicate", `that exact connection already exists.`, {
@@ -587,6 +606,7 @@ function executeOperation(
         ...(targetPort.variadic === true
           ? { order: placementFor(operation.order, incoming.length) }
           : {}),
+        ...(operation.channel === undefined ? {} : { channel: operation.channel }),
       };
       if (targetPort.variadic === true) {
         compactPortOrder(draft, targetNode.id, targetPort.id);
@@ -802,6 +822,20 @@ function executeOperation(
           if (value !== null && typeof value !== "string") {
             fail("node.ui.type", `ui.componentPreview must be a string or null.`, { nodeId: node.id });
           }
+        } else if (key === "valuePlotMode") {
+          /*
+           * A closed set, checked here rather than trusted from the caller, because this
+           * value reaches a `switch` in the renderer and an unrecognised string would
+           * fall through it to whatever the default arm draws — a node silently showing
+           * the wrong picture, with a document that validates. Null CLEARS, the same
+           * affordance `componentPreview` offers: "back to the default for this kind of
+           * node" has to be reachable, and it is not the same request as "draw a trail".
+           */
+          if (value !== null && (typeof value !== "string" || !VALUE_PLOT_MODES.has(value))) {
+            fail("node.ui.type", `ui.valuePlotMode must be "bar", "trail" or null.`, {
+              nodeId: node.id,
+            });
+          }
         } else if (key === "z") {
           /*
            * T1102 — an INTEGER, and finite, because this number leaves the document.
@@ -819,7 +853,7 @@ function executeOperation(
         } else if (typeof value !== "boolean") {
           fail("node.ui.type", `ui.${key} must be a boolean.`, { nodeId: node.id });
         }
-        if (key === "componentPreview" && value === null) {
+        if ((key === "componentPreview" || key === "valuePlotMode") && value === null) {
           delete ui[key];
           continue;
         }

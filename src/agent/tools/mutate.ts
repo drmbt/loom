@@ -211,18 +211,18 @@ export const connectPorts: AgentTool<ConnectPortsInput, PatchToolData> = {
   name: "connect_ports",
   title: "Connect ports",
   description:
-    "Connect an output port to an input port. Port types must match exactly; a conversion is a node, never an implicit cast.",
+    "Connect an output port to an input port. Port types must match exactly; a conversion is a node, never an implicit cast. On a VALUE port, `channel` wires one named channel of the source's bag (a spectrum row such as `band109`) instead of the whole bag.",
   kind: "mutate",
   inputSchema: connectPortsInput,
   requires: { commands: ["graph.applyPatch"] },
   capabilities: [],
   mutates: true,
-  preview: (input) => [{ op: "connect", source: input.source, target: input.target }],
+  preview: (input) => [{ op: "connect", source: input.source, target: input.target, ...(input.channel === undefined ? {} : { channel: input.channel }) }],
   run: (input, runtime) =>
     dispatchOperations(
       "connect_ports",
       runtime,
-      [{ op: "connect", ref: tempRef("edge"), source: input.source, target: input.target }],
+      [{ op: "connect", ref: tempRef("edge"), source: input.source, target: input.target, ...(input.channel === undefined ? {} : { channel: input.channel }) }],
       { label: "Connect", baseRevision: input.baseRevision },
     ),
 };

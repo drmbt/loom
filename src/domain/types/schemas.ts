@@ -187,6 +187,8 @@ export const graphEdgeSchema = z.object({
    * the value is an index the UI shows and a node reads as "input 1, input 2".
    */
   order: z.number().int().nonnegative().optional(),
+  /** T1350b: one named channel of the source bag rides the wire. Optional (§V68). */
+  channel: z.string().min(1).optional(),
 });
 
 export const graphGroupSchema = z.object({
@@ -341,6 +343,9 @@ export const graphPatchOperationSchema = z.discriminatedUnion("op", [
       // it meant before the field existed (§V68). Out-of-range is clamped at apply time
       // rather than rejected here — the schema cannot know how many edges the port holds.
       order: z.number().int().min(0).optional(),
+      // T1350b: the channel a per-channel socket was dragged from. Value ports only;
+      // apply-patch refuses it elsewhere, the schema cannot know the port's kind.
+      channel: z.string().min(1).optional(),
     })
     .strict(),
   z.object({ op: z.literal("disconnect"), edgeIds: z.array(z.string().min(1)) }).strict(),
