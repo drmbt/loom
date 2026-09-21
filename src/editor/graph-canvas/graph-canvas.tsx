@@ -591,6 +591,8 @@ export function GraphCanvas({
         // T695 — the grabbed end may be one SOCKET of a variadic input; what the document
         // records is the port.
         portId: parseHandleId(fromPortId).portId,
+        // T1350b — grabbed from a per-channel socket, the replacement wire carries it.
+        ...(parseHandleId(fromPortId).channel === undefined ? {} : { channel: parseHandleId(fromPortId).channel }),
         // React Flow's "source" handle is our output; "target" is our input.
         direction: from.type === "source" ? "output" : "input",
       });

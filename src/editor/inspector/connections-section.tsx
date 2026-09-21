@@ -278,7 +278,8 @@ function InputSide({
     const drop = connectDropOperations({
       graph,
       registry,
-      source: { nodeId: edge.source.nodeId, portId: edge.source.portId },
+      // T1350b: a per-channel wire moves as a per-channel wire.
+      source: { nodeId: edge.source.nodeId, portId: edge.source.portId, ...(edge.channel === undefined ? {} : { channel: edge.channel }) },
       target: { nodeId, portId, ...(slot === undefined ? {} : { slot }) },
       moving: edgeId,
     });
