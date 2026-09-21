@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { flattenComponents } from "../compiler/flatten.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
 import { SILENCE } from "../domain/audio/feature-track.ts";
+import { SPECTRUM_BAND_NAMES } from "../domain/audio/spectrum-bands.ts";
 import type { AudioFeatures, FrameEvaluationInput } from "../domain/types/frame.ts";
 import type { GraphDocument } from "../domain/types/graph.ts";
 import type { ParameterValue } from "../domain/types/parameters.ts";
@@ -148,6 +149,9 @@ const audioAt = (frameIndex: number): AudioFeatures => {
     hat: level,
     hatCount: count,
     centroid: level,
+    // T1347b: the eighteen spectrum rows ride the stimulus too, so a lane picked off one of
+    // them (E79's `band109` / `band968`) is stimulated rather than exempted.
+    ...Object.fromEntries(SPECTRUM_BAND_NAMES.map((name) => [name, level])),
   };
 };
 
@@ -308,6 +312,8 @@ const DELIBERATELY_STILL: Record<string, string> = {
   "E77-Ember-Monoliths.loom.json churny1.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
   "E78-Aether-Orrery.loom.json churnx1.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
   "E78-Aether-Orrery.loom.json churny1.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
+  "E79-Crucible.loom.json churnx1.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
+  "E79-Crucible.loom.json churny1.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
   /* §T809 — E27's optional audio, and "optional" is a GATE here rather than a promise:
      `kick1` is a multiply whose operand ships at 0, so the whole audioPattern → bias →
      envelope → gain chain reaches `lift1.value1` as EXACTLY 0. `relief-claims.gpu.test.ts`

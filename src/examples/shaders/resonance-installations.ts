@@ -265,3 +265,116 @@ export const INSTALLATION_MIRROR_KERNEL = `fn process(p:Point,ctx:PointCtx)->Poi
 export const CRYSTAL_SHELL_KERNEL = `struct Params{centreY:f32, // @default 5.0 Expansion centre height.
 scale:f32, // @default 1.025 Shell expansion.
 };fn process(p:Point,ctx:PointCtx)->Point{var q=p;let centre=vec3f(0,ctx.params.centreY,0);q.position=centre+(p.position-centre)*ctx.params.scale;q.tint=mix(p.tint,vec4f(0.72,1.0,0.82,1),0.28);return q;}`;
+
+/**
+ * T1349b — E79 Crucible: THE HALO. A torus standing in the XY plane so it faces the eye,
+ * closed around both directions (the first/last column and row repeat their neighbour at
+ * the same angle, so the surface has no seam and finite-difference normals hold up). It is
+ * the scene's key light: `energy` — the Beat lane — pushes the emission from a dull red
+ * ember to a white-hot flash, and the point light in the document rides the same lane, so
+ * what the ring shows the hulls receive. `breath` — the Tail lane — swells the tube.
+ */
+export const HALO_COLUMNS = 256;
+export const HALO_ROWS = 17;
+export const HALO_CAPACITY = HALO_COLUMNS * HALO_ROWS;
+export const HALO_KERNEL = `${NOISE}
+struct Params {
+  radius:f32, // @default 2.7 Ring radius.
+  tube:f32, // @default 0.11 Tube radius.
+  height:f32, // @default 5.6 Centre height.
+  tilt:f32, // @default 0 Lean of the ring plane, radians.
+  energy:f32, // @default 0 Beat lane: 0 ember, 1 white-hot.
+  breath:f32, // @default 0 Tail lane: swells the tube.
+};
+fn process(p:Point,ctx:PointCtx)->Point{
+  var q=p;
+  let column=ctx.index%${HALO_COLUMNS}u;let row=ctx.index/${HALO_COLUMNS}u;
+  // Repeat the seam vertex rather than leaving a gap: 255 steps close the circle exactly.
+  let theta=f32(column%${HALO_COLUMNS - 1}u)/${HALO_COLUMNS - 1}.0*6.283185307;
+  let phi=f32(row%${HALO_ROWS - 1}u)/${HALO_ROWS - 1}.0*6.283185307;
+  let tube=ctx.params.tube*(1.0+ctx.params.breath*0.45+ctx.params.energy*0.35);
+  // Ring in XY (axis along Z); the tube circle lies in the ring's radial/Z plane.
+  let radial=ctx.params.radius+cos(phi)*tube;
+  var local=vec3f(cos(theta)*radial,sin(theta)*radial,sin(phi)*tube);
+  let c=cos(ctx.params.tilt);let sn=sin(ctx.params.tilt);
+  local=vec3f(local.x,c*local.y-sn*local.z,sn*local.y+c*local.z);
+  q.position=local+vec3f(0,ctx.params.height,0);
+  // Heat travels round the ring: a slow moving hot spot plus fine flicker, both on absTime.
+  let travel=0.6+0.4*sin(theta*3.0-ctx.absTime*0.9)+0.25*mineral(vec3f(theta*9.0,ctx.absTime*2.5,phi));
+  let ember=vec3f(1.0,0.12,0.02);let hot=vec3f(1.0,0.78,0.5);
+  let glow=mix(ember,hot,clamp((ctx.params.energy-0.25)*1.4,0.0,1.0))*(0.25+ctx.params.energy*8.0)*travel;
+  // The inner face (phi near pi, facing the ring centre) is hotter: the light comes from the core.
+  let inner=0.7+0.3*(0.5-0.5*cos(phi));
+  q.tint=vec4f(glow*inner,1);
+  return q;
+}`;
+
+/**
+ * T1349b — E79 Crucible: THE HULLS. Blocky panelled bodies on an orbit around the halo,
+ * each a closed four-faced box (the monolith's face walk, here with capped ends) turned
+ * tangent to its orbit and leaning by its own hash. `drift` — the Tail lane — pushes the
+ * orbit round and lifts the bodies; the free-running `absTime` orbit underneath means a
+ * silent track still turns (§V903: never an envelope that settles). `burst` — the Beat lane
+ * — flashes the panel seams; the seam rows carry `fissure` so the document can draw them
+ * as additive beams, and `emission` carries the seam colour the beam reads.
+ */
+export const HULL_KERNEL = `${NOISE}
+struct Params {
+  slot:f32, // @default 0 Which body on the orbit (0..count-1).
+  count:f32, // @default 6 How many bodies share the orbit.
+  orbit:f32, // @default 4.6 Orbit radius.
+  height:f32, // @default 5.6 Orbit centre height.
+  width:f32, // @default 1.3 Body width along the orbit.
+  depth:f32, // @default 0.9 Body depth across the orbit.
+  length:f32, // @default 2.4 Body length (the long axis).
+  speed:f32, // @default 0.04 Orbit turns per second.
+  drift:f32, // @default 0 Tail lane: pushes the orbit round and lifts the bodies.
+  burst:f32, // @default 0 Beat lane: flashes the seams.
+  phase:f32, // @default 0 Surface identity.
+};
+fn process(p:Point,ctx:PointCtx)->Point{
+  var q=p;
+  let axial=ctx.index%129u;
+  let v=clamp((f32(axial)-1.0)/126.0,0.0,1.0);
+  let around=f32(ctx.index/129u)/128.0*4.0;
+  let face=floor(around);let along=fract(around);
+  var x=0.0;var z=0.0;
+  if(face<1.0){x=mix(-ctx.params.width*0.5,ctx.params.width*0.5,along);z=-ctx.params.depth*0.5;}
+  else if(face<2.0){x=ctx.params.width*0.5;z=mix(-ctx.params.depth*0.5,ctx.params.depth*0.5,along);}
+  else if(face<3.0){x=mix(ctx.params.width*0.5,-ctx.params.width*0.5,along);z=ctx.params.depth*0.5;}
+  else{x=-ctx.params.width*0.5;z=mix(ctx.params.depth*0.5,-ctx.params.depth*0.5,along);}
+  let cap=select(1.0,0.0,axial==0u || axial==128u);
+  x*=cap;z*=cap;
+  let id=ctx.params.slot+ctx.params.phase*7.0;
+  // Panel relief: a coarse cell grid pressed out of the faces, with a thin recessed seam between cells.
+  // Plates of unequal size: each face of each body cuts its own grid, and the grid is
+  // warped by a slow noise so no two plates are the same rectangle.
+  let faceId=id*3.1+face*1.7;
+  let cols=2.0+floor(ihash(faceId)*3.0);let rows=3.0+floor(ihash(faceId+2.0)*4.0);
+  let warpU=(mineral(vec3f(v*4.0,faceId,1.0))-0.5)*0.35;let warpV=(mineral(vec3f(along*4.0,faceId,7.0))-0.5)*0.35;
+  let cellU=along*cols+warpU;let cellV=v*rows+warpV;
+  let seam=min(min(fract(cellU),1.0-fract(cellU))*ctx.params.width/cols,min(fract(cellV),1.0-fract(cellV))*ctx.params.length/rows);
+  let recess=(1.0-smoothstep(0.0,0.035,seam))*0.045;
+  let plate=(mineral(vec3f(floor(cellU),floor(cellV),id))-0.5)*0.09;
+  let outward=normalize(vec3f(x/max(ctx.params.width,0.1),0.0,z/max(ctx.params.depth,0.1))+vec3f(0.00001,0,0));
+  let rest=vec3f(x,(v-0.5)*ctx.params.length,z)+outward*(plate-recess)*cap;
+  // Orbit: free-running turn plus the Tail lane's push, each body at its own slot angle.
+  let turn=(ctx.params.slot/max(ctx.params.count,1.0))*6.283185307+ctx.absTime*ctx.params.speed*6.283185307+ctx.params.drift*0.9;
+  let bob=sin(ctx.absTime*0.31+id*2.1)*0.35+ctx.params.drift*0.8;
+  let lean=0.45+ihash(id)*0.9;
+  // Long axis tangent to the orbit, then leaned about the radial axis by the body's own hash.
+  var local=vec3f(rest.z,rest.y,rest.x);
+  let lc=cos(lean);let ls=sin(lean);
+  local=vec3f(local.x,lc*local.y-ls*local.z,ls*local.y+lc*local.z);
+  local=rotateY(local,turn+1.5707963);
+  q.position=local+vec3f(cos(turn)*ctx.params.orbit,ctx.params.height+bob+sin(turn*2.0)*0.6,sin(turn)*ctx.params.orbit);
+  q.end=q.position+rotateY(vec3f(0,ctx.params.length/126.0,0),turn);
+  let seamRow=cap*(1.0-smoothstep(0.0,0.03,seam));
+  q.fissure=select(0.0,1.0,seamRow>0.5 && axial>0u && axial<128u && ((ctx.index/129u)%16u)==8u);
+  let heat=0.12+ctx.params.burst*2.8;
+  q.emission=vec4f(vec3f(1.0,0.24,0.05)*heat*(0.6+mineral(rest*6.0+id)),1);
+  let paint=0.05+0.05*mineral(vec3f(floor(cellU),floor(cellV),id+3.0));
+  let scorch=0.45+0.55*mineral(rest*3.0+id);
+  q.tint=vec4f(vec3f(paint*scorch,paint*scorch*0.95,paint*scorch*0.9)+vec3f(0.6,0.12,0.02)*seamRow*(0.05+ctx.params.burst*1.2),1);
+  return q;
+}`;
