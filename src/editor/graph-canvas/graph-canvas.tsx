@@ -42,6 +42,7 @@ import {
   createEdgeGeometry,
 } from "@editor/edges/edge-geometry.ts";
 import { connectDropOperations } from "@editor/edges/connect-drop.ts";
+import { parameterDropOperations } from "@editor/edges/parameter-drop.ts";
 import { replaceEdgeOperations, spliceNodeOperations } from "@editor/edges/edge-drop.ts";
 import { ReferenceLines } from "@editor/edges/reference-lines.tsx";
 import { registerReferenceLinesCommand } from "@editor/edges/reference-lines-command.ts";
@@ -581,7 +582,28 @@ export function GraphCanvas({
       const zoom = flow.getZoom();
       if (!(zoom > 0)) return;
       const edgeId = edgeGeometry.nearest(point, EDGE_HIT_TOLERANCE_PX / zoom);
-      if (edgeId === null) return;
+      if (edgeId === null) {
+        // T1351b — not a wire: was it a PARAMETER ROW? A channel socket released over a
+        // row in the inspector drives that parameter (§T897's expression). The rows are
+        // outside the canvas, so the hit is a DOM one, by the attributes the inspector
+        // already stamps for its context menu (`data-parameter-key`, `data-node-id`).
+        if (from.type !== "source") return;
+        const under = document.elementFromPoint(client.clientX, client.clientY);
+        const row = under?.closest<HTMLElement>("[data-parameter-key]");
+        const pane = row?.closest<HTMLElement>("[data-node-id]");
+        const key = row?.dataset["parameterKey"];
+        const targetNodeId = pane?.dataset["nodeId"];
+        if (key === undefined || targetNodeId === undefined) return;
+        const handle = parseHandleId(fromPortId);
+        const operations = parameterDropOperations(
+          bus.store.getGraph(),
+          registry,
+          { nodeId: from.nodeId, portId: handle.portId, ...(handle.channel === undefined ? {} : { channel: handle.channel }) },
+          { nodeId: targetNodeId as NodeId, key },
+        );
+        if (operations.length > 0) dispatch(operations, "Drive parameter");
+        return;
+      }
 
       const graph = bus.store.getGraph();
       const edge = graph.edges[edgeId];
