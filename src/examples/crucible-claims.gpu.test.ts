@@ -3,8 +3,6 @@ import { crucibleDocument } from "./documents/crucible.ts";
 import { starterComponentsView } from "./component-files.ts";
 import { nodeGpuHost, probeDawn } from "../runtime/backend/vgpu/node-gpu-host.ts";
 import { renderHeadless } from "../tests/headless/render-harness.ts";
-import { pointStorageId } from "../nodes/definitions/point-storage.ts";
-import { kernelRegionSlice } from "../nodes/definitions/test-support.ts";
 import { toRgba8 } from "../runtime/export/image.ts";
 import { BYTES_PER_PIXEL } from "../runtime/export/pixel-format.ts";
 
@@ -25,17 +23,18 @@ beforeAll(async () => {
 const WIDTH = 320;
 const HEIGHT = 180;
 
-async function render(lanes: { beat?: number; tail?: number; light?: number }, probe = false) {
+async function render(lanes: { beat?: number; tail?: number; light?: number }) {
   const graph = structuredClone(crucibleDocument.graph);
   // Pin the lanes: every consumer of `beat1` / `tail1` reads the constant instead.
   for (const node of Object.values(graph.nodes)) {
     for (const [key, slot] of Object.entries(node.parameters)) {
       if (typeof slot !== "object" || slot === null || !("bindings" in slot)) continue;
       const expression = (slot as { bindings: { expression?: { source?: string } } }).bindings.expression?.source ?? "";
-      if (lanes.beat !== undefined && expression.includes("op('beat1')") && !expression.includes("op('tail1')")) {
-        node.parameters[key] = expression.startsWith("12 + ") ? (lanes.light ?? 12 + lanes.beat * 160) : lanes.beat;
+      if (lanes.beat !== undefined && (expression.includes("op('beat1')") || expression.includes("op('punch1')")) && !expression.includes("op('tail1')")) {
+        node.parameters[key] = expression.startsWith("8 + ") ? (lanes.light ?? 8 + lanes.beat * 110) : lanes.beat;
       } else if (lanes.tail !== undefined && expression.includes("op('tail1')") && !expression.includes("op('beat1')")) {
-        node.parameters[key] = lanes.tail;
+        // The accent light reads `8 + tail * 50`; everything else reads the lane itself.
+        node.parameters[key] = expression.startsWith("8 + ") ? 8 + lanes.tail * 50 : lanes.tail;
       }
     }
   }
@@ -46,14 +45,12 @@ async function render(lanes: { beat?: number; tail?: number; light?: number }, p
     settings: { ...crucibleDocument.settings, outputResolution: { width: WIDTH, height: HEIGHT } },
     frames: 1,
     outputNodeId: "out",
-    ...(probe ? { probeBuffers: [pointStorageId("swarm0Form")] } : {}),
   });
   expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   const frame = result.frames[0]!;
   const space = result.plan.outputs.find((o) => o.nodeId === "out")!.space;
   const pixels = toRgba8({ width: frame.width, height: frame.height, format: frame.format, bytes: frame.bytes, rowStride: frame.width * BYTES_PER_PIXEL[frame.format] }, { space }).data;
-  const positions = probe ? kernelRegionSlice(graph.nodes["swarm0Form"]!, result.buffers![pointStorageId("swarm0Form")]!, "position").floats : undefined;
-  return { pixels, positions };
+  return { pixels };
 }
 
 /** Mean of a channel over a rectangle, in display bytes. */
@@ -73,10 +70,10 @@ describe("E79 Crucible — the lanes reach the picture (T1349b)", () => {
   it("the beat lane at 1 makes the halo band brighter and whiter than at 0", async (ctx) => {
     if (unavailable) { ctx.skip(); return; }
     // The light is pinned at its floor in both, so this claim is the RING's emission alone;
-    // the light has its own claim below (at 172 it floods the tunnel red, which would pull
+    // the light has its own claim below (at 118 it floods the tunnel red, which would pull
     // the band's green-to-red ratio down and hide the hue move).
-    const off = await render({ beat: 0, light: 12 });
-    const on = await render({ beat: 1, light: 12 });
+    const off = await render({ beat: 0, light: 8 });
+    const on = await render({ beat: 1, light: 8 });
     // The ring: at frame 0 the lens sits on the axis 25.5 out, so the torus (radius 4.5)
     // is a circle of ~31 px radius about the frame's centre at 320×180.
     const ring = { x0: 110, x1: 210, y0: 50, y1: 130 };
@@ -89,22 +86,25 @@ describe("E79 Crucible — the lanes reach the picture (T1349b)", () => {
   it("the halo light alone — ring emission and seams held at 0 — lights the hulls of the tunnel", async (ctx) => {
     if (unavailable) { ctx.skip(); return; }
     // The point light at the ring's centre is the lane's second destination: at the hit it
-    // goes 12 → 172 and every hull face turned toward the ring catches it, across the frame.
-    const dim = await render({ beat: 0, light: 12 });
-    const lit = await render({ beat: 0, light: 172 });
+    // goes 8 → 118 and every hull face turned toward the ring catches it, across the frame.
+    const dim = await render({ beat: 0, light: 8 });
+    const lit = await render({ beat: 0, light: 118 });
     const whole = { x0: 0, x1: WIDTH, y0: 0, y1: HEIGHT };
     expect(mean(lit.pixels, whole, 0)).toBeGreaterThan(mean(dim.pixels, whole, 0) + 4);
   }, 120_000);
 
-  it("the tail lane moves the hulls: swarm positions differ between drift 0 and drift 1, and repeat at the same drift", async (ctx) => {
+  it("the tail lane lights the strips and the green accent: more green in the frame at 1 than at 0, and byte-equal at the same value", async (ctx) => {
     if (unavailable) { ctx.skip(); return; }
-    const rest = await render({ tail: 0 }, true);
-    const pushed = await render({ tail: 1 }, true);
-    const again = await render({ tail: 0 }, true);
-    let moved = 0;
-    for (let index = 0; index < rest.positions!.length; index += 1) moved = Math.max(moved, Math.abs(rest.positions![index]! - pushed.positions![index]!));
-    // drift 0.6 rad round orbits of 7–14: several units of travel on the outer bodies.
-    expect(moved).toBeGreaterThan(1);
-    expect(Array.from(again.positions!)).toEqual(Array.from(rest.positions!));
+    // Third cut: the tail lane no longer moves geometry (motion is structural, the tiers
+    // turn on absTime); it breathes the lit strips on every hull and the green accent
+    // light. So the claim is colour: the frame's green mean rises, and the green-to-red
+    // ratio rises with it — the red halo light is pinned, so only the green sources moved.
+    const rest = await render({ tail: 0, beat: 0 });
+    const swelled = await render({ tail: 1, beat: 0 });
+    const again = await render({ tail: 0, beat: 0 });
+    const whole = { x0: 0, x1: WIDTH, y0: 0, y1: HEIGHT };
+    expect(mean(swelled.pixels, whole, 1)).toBeGreaterThan(mean(rest.pixels, whole, 1) + 2);
+    expect(mean(swelled.pixels, whole, 1) / mean(swelled.pixels, whole, 0)).toBeGreaterThan(mean(rest.pixels, whole, 1) / mean(rest.pixels, whole, 0));
+    expect(Array.from(again.pixels)).toEqual(Array.from(rest.pixels));
   }, 120_000);
 });

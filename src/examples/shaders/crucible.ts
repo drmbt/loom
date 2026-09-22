@@ -55,12 +55,16 @@ export const SWARM_ATTRIBUTES = JSON.stringify([
 export const SWARM_KERNEL = `${NOISE}
 struct Params {
   slot:f32, // @default 0 Which hash range this node draws from.
-  near:f32, // @default 3 Closest orbit radius.
-  far:f32, // @default 14 Farthest orbit radius.
-  small:f32, // @default 0.5 Smallest body size.
-  large:f32, // @default 3.2 Largest body size.
-  speed:f32, // @default 0.02 Orbit turns per second at the near radius.
-  drift:f32, // @default 0 Tail lane: pushes the orbits round.
+  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.
+  near:f32, // @default 8 Closest orbit radius.
+  far:f32, // @default 12 Farthest orbit radius.
+  small:f32, // @default 0.8 Smallest body size.
+  large:f32, // @default 2.4 Largest body size.
+  depthNear:f32, // @default -4 Depth band start along the lens axis.
+  depthFar:f32, // @default 4 Depth band end along the lens axis.
+  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.
+  sectors:f32, // @default 16 Angular sectors the bodies snap to.
+  drift:f32, // @default 0 Tail lane: breathes the lit strips.
   burst:f32, // @default 0 Beat lane: lights the seams.
   accent:f32, // @default 0.25 Share of bodies with green strips.
   bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).
@@ -73,78 +77,81 @@ fn process(p:Point,ctx:PointCtx)->Point{
   let axial=row%${SWARM_ROWS}u;
   let id=f32(body)+ctx.params.slot*${SWARM_BODIES}.0;
   let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));
-  // Along the body: rows 1..32 span the length, rows 0 and 33 collapse to the caps.
-  let v=clamp((f32(axial)-1.0)/${SWARM_ROWS - 3}.0,0.0,1.0);
+  // Along the body: rows 3..30 span the length; rows 1–2 and 31–32 lie IN the end planes
+  // (an inset ring and the full profile), so the end cap is a flat face with its own normal
+  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.
+  let v=clamp((f32(axial)-3.0)/${SWARM_ROWS - 7}.0,0.0,1.0);
   let cap=select(1.0,0.0,axial==0u || axial==${SWARM_ROWS - 1}u);
+  let inset=select(1.0,0.72,axial==1u || axial==${SWARM_ROWS - 2}u);
   // Around the body: four faces of seventeen columns each, the corner column DUPLICATED
   // on both faces that meet there — the surface renderer's finite differences then keep
   // each face's own hard normal instead of rounding the edge over one column.
   let face=f32(column/17u);let along=f32(column%17u)/16.0;
-  let size=mix(ctx.params.small,ctx.params.large,pow(h[4],2.6));
-  let width=size*(0.55+h[5]*0.9);let depth=size*(0.45+h[6]*0.7);let length=size*(0.8+h[7]*0.9);
+  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with
+  // a recessed channel down each broad face and lit strips at regular stations. Sizes
+  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.
+  let size=mix(ctx.params.small,ctx.params.large,h[4]);
+  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);
   var x=0.0;var z=0.0;
   if(face<1.0){x=mix(-width,width,along);z=-depth;}
   else if(face<2.0){x=width;z=mix(-depth,depth,along);}
   else if(face<3.0){x=mix(width,-width,along);z=depth;}
   else{x=-width;z=mix(depth,-depth,along);}
-  x*=cap;z*=cap;
-  // Plates of unequal size per face, warped so no two are the same rectangle; a recessed
-  // seam between them; a shallow step per plate.
-  let faceId=id*3.1+face*1.7;
-  let cols=2.0+floor(ihash(faceId)*3.0);let rows=3.0+floor(ihash(faceId+2.0)*4.0);
-  let warpU=(mineral(vec3f(v*4.0,faceId,1.0))-0.5)*0.3;let warpV=(mineral(vec3f(along*4.0,faceId,7.0))-0.5)*0.3;
-  let cellU=along*cols+warpU;let cellV=v*rows+warpV;
-  let seam=min(min(fract(cellU),1.0-fract(cellU))*width*2.0/cols,min(fract(cellV),1.0-fract(cellV))*length/rows);
-  let recess=(1.0-smoothstep(0.0,0.02*size,seam))*0.018*size;
-  let plate=(mineral(vec3f(floor(cellU),floor(cellV),id))-0.5)*0.03*size;
+  x*=cap*inset;z*=cap*inset;
+  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));
+  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,
+  // and a shallow chamfer at the ends: relief a light can rake across.
+  let ribs=3.0+floor(h[5]*3.0);
+  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;
+  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;
+  let chamfer=0.0;
   let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));
-  let rest=vec3f(x,(v-0.5)*length,z)+outward*(plate-recess)*cap;
-  // THE TUNNEL. The halo stands in the XY plane and the lens looks down Z at it, so every
-  // body orbits IN a plane near XY — an annulus around the ring, never across it — and
-  // sits at its own depth along Z, spread from well behind the ring to near the lens.
-  // The ring is therefore always seen through a tunnel of hulls, which is the reference's
-  // layout. Radius by a hash with the near bodies rarer; angular speed falling with radius
-  // so the rings shear; the Tail lane pushes everything round.
-  let radius=mix(ctx.params.near,ctx.params.far,pow(h[0],1.4))+(ihash(id*13.7+2.2)-0.5)*2.5;
-  let turn=h[3]*6.283185307+ctx.absTime*ctx.params.speed*6.283185307*ctx.params.near/radius+ctx.params.drift*0.6;
-  let planeTilt=(h[1]-0.5)*0.5;
-  let depthAlong=mix(-14.0,9.0,h[2]);
-  var centre=vec3f(cos(turn)*radius,sin(turn)*radius,depthAlong+sin(ctx.absTime*0.05+id)*0.6);
-  centre=rotateX(centre,planeTilt);
-  // Orientation: long axis along the orbit tangent, then a slow tumble of the body's own.
-  let tangent=rotateX(vec3f(-sin(turn),cos(turn),0.0),planeTilt);
-  let tumble=ctx.absTime*(0.02+h[8]*0.06)*(select(-1.0,1.0,h[9]>0.5));
-  // rest's long axis is Y: swing it onto the tangent (a rotation about Z by the tangent's
-  // angle), after a roll about its own axis.
-  var local=rotateY(rest,h[10]*6.283185307+tumble);
-  // Off the tangent by up to ±0.5 rad, so the annuli read as stacked wreckage, not rings.
-  local=rotateZ(local,atan2(tangent.y,tangent.x)-1.5707963+(h[11]-0.5)*1.0);
-  local=rotateX(local,planeTilt);
+  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;
+  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),
+  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL
+  // for the teeth and the giants, tangential for the inner modules. The whole tier turns
+  // slowly as one — no tumble, no per-body jitter in time.
+  let sector=floor(h[3]*ctx.params.sectors);
+  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;
+  let radius=mix(ctx.params.near,ctx.params.far,h[0]);
+  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.04+sector)*0.25;
+  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);
+  let radialDir=vec3f(cos(angle),sin(angle),0.0);
+  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);
+  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);
+  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.
+  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);
+  // rest's long axis is Y: roll about it, then swing it onto the axis direction.
+  var local=rotateY(rest,h[10]*3.1415926*0.5);
+  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);
+  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));
   q.position=local+centre;
-  q.end=q.position+tangent*(length/${SWARM_ROWS - 3}.0);
-  // Seams: the recessed borders carry a glow the Beat lane lights; the strips on the
-  // accent bodies are green windows that stay lit and breathe with the Tail lane.
-  let border=cap*(1.0-smoothstep(0.0,0.025*size,seam));
-  let onBorder=border>0.5 && axial>0u && axial<${SWARM_ROWS - 1}u && (row%${SWARM_ROWS}u)%6u==3u;
-  q.seam=select(0.0,1.0,onBorder);
+  q.end=q.position+axisDir*(length/${SWARM_ROWS - 3}.0);
+  // Seams: the rib edges carry an ember the Beat lane lights; lit strips sit at every
+  // second station on the broad faces — green on the accent bodies, amber on the rest —
+  // and breathe with the Tail lane.
+  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));
+  let onSeam=atRib>0.5 && cap>0.5 && axial>0u && axial<${SWARM_ROWS - 1}u && (row%${SWARM_ROWS}u)%4u==1u;
+  q.seam=select(0.0,1.0,onSeam);
+  let station=fract(v*ribs+0.5);
+  let strip=broad*step(0.5,fract(floor(v*ribs)*0.5+h[9]))*smoothstep(0.42,0.46,station)*(1.0-smoothstep(0.54,0.58,station))*(1.0-smoothstep(0.3,0.36,abs(along-0.5)))*step(0.1,abs(along-0.5));
   let accented=h[11]<ctx.params.accent;
-  let strip=select(0.0,1.0,accented && face<1.0 && fract(v*5.0+h[2])<0.12 && along>0.1 && along<0.9);
-  let ember=vec3f(1.0,0.22,0.04)*(0.12+ctx.params.burst*3.0);
-  let window=vec3f(0.18,1.0,0.45)*(0.6+ctx.params.drift*1.4)*strip;
-  q.emission=vec4f(ember*(0.5+mineral(rest*5.0+id))+window*4.0,1);
-  let paint=0.16+0.16*mineral(vec3f(floor(cellU),floor(cellV),id+3.0));
-  let scorch=0.55+0.45*mineral(rest*2.0+id);
-  q.tint=vec4f(vec3f(paint*scorch,paint*scorch*0.96,paint*scorch*0.92)+window*0.35+vec3f(0.5,0.1,0.02)*border*(0.02+ctx.params.burst*0.5),1);
+  let stripColour=select(vec3f(1.0,0.45,0.12),vec3f(0.18,1.0,0.45),accented);
+  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);
+  q.emission=vec4f(ember+stripColour*strip*(1.5+ctx.params.drift*2.0),1);
+  let paint=0.14+0.1*h[5];
+  let rust=mix(vec3f(0.55,0.5,0.46),vec3f(0.45,0.2,0.1),h[6]*0.6);
+  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);
   return q;
 }`;
 
 export const SHARD_COLUMNS = 9;
 export const SHARD_ROWS = 4;
-export const SHARD_COUNT = 900;
+export const SHARD_COUNT = 320;
 export const SHARD_CAPACITY = SHARD_COLUMNS * SHARD_ROWS * SHARD_COUNT;
 
 /**
- * The shards: small boxes streaming outward from the ring along their own ray, tumbling,
+ * The shards: a few hundred small boxes streaming outward from the ring along their own ray,
  * dark with an ember few. `rate` is the stream speed, `burst` (Beat lane) throws a wave
  * out and lights the embers, `highs` sparkles them.
  */
@@ -175,14 +182,14 @@ fn process(p:Point,ctx:PointCtx)->Point{
   var x=0.0;var z=0.0;
   if(face<1.0){x=mix(-w,w,along);z=-d;}else if(face<2.0){x=w;z=mix(-d,d,along);}else if(face<3.0){x=mix(w,-w,along);z=d;}else{x=-w;z=mix(d,-d,along);}
   let rest=vec3f(x*cap,v*l,z*cap);
-  // A ray per shard — kept off the lens axis (|z| of the direction under 0.6), so the
+  // A ray per shard — kept off the lens axis (|z| of the direction under 0.3), so the
   // stream crosses the frame beside the ring and never fills its hole — and a phase that
   // streams with time and jumps with the burst.
-  let theta=h4*6.283185307;let phi=acos((h5*2.0-1.0)*0.6);
+  let theta=h4*6.283185307;let phi=acos((h5*2.0-1.0)*0.3);
   let ray=vec3f(sin(phi)*cos(theta),cos(phi),sin(phi)*sin(theta));
-  let phase=fract(h0*7.0+ctx.absTime*ctx.params.rate+ctx.params.burst*0.06);
+  let phase=fract(h0*7.0+ctx.absTime*ctx.params.rate+ctx.params.burst*0.02);
   let dist=mix(ctx.params.inner,ctx.params.outer,phase*phase);
-  let tumble=ctx.absTime*(0.3+h1*1.2);
+  let tumble=ctx.absTime*(0.06+h1*0.18);
   var local=rotateZ(rotateX(rest,tumble),h2*6.283185307+tumble*0.7);
   q.position=local+ray*dist+vec3f(sin(ctx.absTime*0.4+id)*0.15,0.0,0.0);
   let ember=step(0.82,h3);

@@ -502,7 +502,7 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
   "E78-Aether-Orrery.loom.json": "2a989d66bce14a28",
   // T1349b — E79 Crucible (second cut): one halo torus, eight swarm grids of 24 hulls each
   // (one grid, many bodies), and two shard streams.
-  "E79-Crucible.loom.json": "d27f1a240d727911",
+  "E79-Crucible.loom.json": "13b32b0b9b8f69ec",
 };
 
 const POINT_KERNEL_TYPES = new Set(["pointKernel", "pointKernelAdvanced"]);
