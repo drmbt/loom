@@ -292,7 +292,8 @@ fn process(p:Point,ctx:PointCtx)->Point{
   // Repeat the seam vertex rather than leaving a gap: 255 steps close the circle exactly.
   let theta=f32(column%${HALO_COLUMNS - 1}u)/${HALO_COLUMNS - 1}.0*6.283185307;
   let phi=f32(row%${HALO_ROWS - 1}u)/${HALO_ROWS - 1}.0*6.283185307;
-  let tube=ctx.params.tube*(1.0+ctx.params.breath*0.45+ctx.params.energy*0.35);
+  // A modest swell: 12% on the hit, 25% over the tail lane — a bigger one popped (T1349b).
+  let tube=ctx.params.tube*(1.0+ctx.params.breath*0.25+ctx.params.energy*0.12);
   // Ring in XY (axis along Z); the tube circle lies in the ring's radial/Z plane.
   let radial=ctx.params.radius+cos(phi)*tube;
   var local=vec3f(cos(theta)*radial,sin(theta)*radial,sin(phi)*tube);

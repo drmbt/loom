@@ -3,6 +3,8 @@ import { crucibleDocument } from "./documents/crucible.ts";
 import { starterComponentsView } from "./component-files.ts";
 import { nodeGpuHost, probeDawn } from "../runtime/backend/vgpu/node-gpu-host.ts";
 import { renderHeadless } from "../tests/headless/render-harness.ts";
+import { pointStorageId } from "../nodes/definitions/point-storage.ts";
+import { kernelRegionSlice } from "../nodes/definitions/test-support.ts";
 import { toRgba8 } from "../runtime/export/image.ts";
 import { BYTES_PER_PIXEL } from "../runtime/export/pixel-format.ts";
 
@@ -23,7 +25,10 @@ beforeAll(async () => {
 const WIDTH = 320;
 const HEIGHT = 180;
 
-async function render(lanes: { beat?: number; tail?: number; light?: number }) {
+const PROBED = ["swarm0Form", "swarm6Form", "shards0Form", "haloForm"] as const;
+const FIXED = ["swarm0Form", "swarm6Form", "shards0Form"] as const;
+
+async function render(lanes: { beat?: number; tail?: number; light?: number }, probe = false) {
   const graph = structuredClone(crucibleDocument.graph);
   // Pin the lanes: every consumer of `beat1` / `tail1` reads the constant instead.
   for (const node of Object.values(graph.nodes)) {
@@ -45,12 +50,14 @@ async function render(lanes: { beat?: number; tail?: number; light?: number }) {
     settings: { ...crucibleDocument.settings, outputResolution: { width: WIDTH, height: HEIGHT } },
     frames: 1,
     outputNodeId: "out",
+    ...(probe ? { probeBuffers: PROBED.map((id) => pointStorageId(id)) } : {}),
   });
   expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   const frame = result.frames[0]!;
   const space = result.plan.outputs.find((o) => o.nodeId === "out")!.space;
   const pixels = toRgba8({ width: frame.width, height: frame.height, format: frame.format, bytes: frame.bytes, rowStride: frame.width * BYTES_PER_PIXEL[frame.format] }, { space }).data;
-  return { pixels };
+  const positions = probe ? Object.fromEntries(PROBED.map((id) => [id, Array.from(kernelRegionSlice(graph.nodes[id]!, result.buffers![pointStorageId(id)]!, "position").floats)])) : undefined;
+  return { pixels, positions };
 }
 
 /** Mean of a channel over a rectangle, in display bytes. */
@@ -67,6 +74,22 @@ function mean(pixels: Uint8ClampedArray | Uint8Array, rect: { x0: number; x1: nu
 }
 
 describe("E79 Crucible — the lanes reach the picture (T1349b)", () => {
+  it("NO lane moves a point: hull, giant, shard and halo positions are byte-equal at lanes 0 and 1 (the teleport the owner saw)", async (ctx) => {
+    if (unavailable) { ctx.skip(); return; }
+    // Motion is structural (absTime); the audio lights things. A lane in a position term
+    // makes geometry jump on every hit — the shard stream's phase carried one and the
+    // owner reported blocks teleporting on the beat. This is the regression, pinned.
+    const rest = await render({ beat: 0, tail: 0 }, true);
+    const hit = await render({ beat: 1, tail: 1 }, true);
+    for (const id of FIXED) expect(hit.positions![id], id).toEqual(rest.positions![id]);
+    // The halo is the one body a lane may touch: its tube swells 12% on the hit and 25%
+    // over the tail, through the 50 ms punch — a bound, not a jump. Tube 0.12 × 37% = 0.044.
+    let swell = 0;
+    for (let index = 0; index < rest.positions!["haloForm"]!.length; index += 1) swell = Math.max(swell, Math.abs(hit.positions!["haloForm"]![index]! - rest.positions!["haloForm"]![index]!));
+    expect(swell).toBeGreaterThan(0.02);
+    expect(swell).toBeLessThan(0.05);
+  }, 120_000);
+
   it("the beat lane at 1 makes the halo band brighter and whiter than at 0", async (ctx) => {
     if (unavailable) { ctx.skip(); return; }
     // The light is pinned at its floor in both, so this claim is the RING's emission alone;

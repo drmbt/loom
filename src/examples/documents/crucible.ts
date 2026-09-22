@@ -36,7 +36,7 @@ import {
  *   clip1 ─ band109x1 (Select `band109`) ─ beatrange1 (Range 0.38..0.60, clamp) ─ beat1 (Beat)
  *   clip1 ─ band968x1 (Select `band968`) ─ tailrange1 (Range 0.40..0.58, clamp) ─ tail1 (Tail 1.4 s)
  *
- * `beat1` flashes the halo, the seams on every hull and the shard wave; through `punch1`
+ * `beat1` flashes the halo, the seams on every hull and the shard embers; through `punch1`
  * (a 50 ms attack) it drives the point light that IS the halo's light and the haze, so the
  * frame punches on a hit rather than strobing (measured: the instant jump was 70% of the
  * frame's luminance in one frame); `tail1` pushes every orbit round, swells the
@@ -111,11 +111,11 @@ function crucibleDocumentBuild(): ProjectDocument {
     node("haloMat", "materialUnlit", [-1300, -700], { color: [1, 1, 1, 1] }, { label: "halomat1" }),
     node("haloLight", "light", [-2200, -450], { kind: "point", color: [1, 0.3, 0.08, 1], intensity: expressionSlot(`8 + ${PUNCH} * 110`, 22), position: [0, 0, 0] }, { label: "halolight1" }),
     node("accentLight", "light", [-1900, -450], { kind: "point", color: [0.2, 1, 0.45, 1], intensity: expressionSlot(`8 + ${TAIL} * 50`, 26), position: [12, 5, -8] }, { label: "accentlight1" }),
-    node("key", "light", [-1600, -450], { kind: "directional", color: [0.55, 0.62, 0.9, 1], intensity: 0.5, shadows: true, shadowExtent: 34, shadowSoftness: 2, direction: [-0.35, -0.55, -0.75] }, { label: "key1" }),
-    node("rim", "light", [-1300, -450], { kind: "directional", color: [1, 0.4, 0.12, 1], intensity: 2.4, shadows: true, shadowExtent: 34, shadowSoftness: 2, direction: [0.15, 0.25, 1] }, { label: "rim1" }),
+    node("key", "light", [-1600, -450], { kind: "directional", color: [0.55, 0.62, 0.9, 1], intensity: 0.5, shadows: true, shadowExtent: 34, shadowSoftness: 1, direction: [-0.35, -0.55, -0.75] }, { label: "key1" }),
+    node("rim", "light", [-1300, -450], { kind: "directional", color: [1, 0.4, 0.12, 1], intensity: 2.4, shadows: true, shadowExtent: 34, shadowSoftness: 1, direction: [0.15, 0.25, 1] }, { label: "rim1" }),
     // ── The halo ──
     node("haloGrid", "pointGrid", [-2200, -200], { cols: HALO_COLUMNS, rows: HALO_ROWS, count: HALO_CAPACITY, sizeX: 2, sizeY: 2 }, { label: "halogrid1" }),
-    node("haloForm", "pointKernel", [-1900, -200], { capacity: HALO_CAPACITY, attributes: INSTALLATION_ATTRIBUTES, kernel: HALO_KERNEL, radius: 4.5, tube: 0.12, height: 0, tilt: expressionSlot("sin(abstime * 0.09) * 0.3", 0.1), energy: expressionSlot(BEAT, 0.1), breath: expressionSlot(TAIL, 0.4) }, { label: "haloform1" }),
+    node("haloForm", "pointKernel", [-1900, -200], { capacity: HALO_CAPACITY, attributes: INSTALLATION_ATTRIBUTES, kernel: HALO_KERNEL, radius: 4.5, tube: 0.12, height: 0, tilt: expressionSlot("sin(abstime * 0.09) * 0.3", 0.1), energy: expressionSlot(PUNCH, 0.1), breath: expressionSlot(TAIL, 0.4) }, { label: "haloform1" }),
     node("haloMesh", "geometry", [-1600, -200], { mode: "surface", material: "halomat1", tint: mappedTint }, { label: "halomesh1" }),
     // ── Post: depth-packed haze, bloom, FXAA ──
     node("shot", "render", [-700, 0], { scenes: "", camera: "cam1", lights: "halolight1 accentlight1 key1 rim1", background: [0, 0, 0, 1], environmentIntensity: 0, environmentTaps: 4, ambientColor: [0.5, 0.55, 0.7, 1], ambientIntensity: 0.008, antialias: "msaa", depthOutput: true }, { label: "shot1" }),

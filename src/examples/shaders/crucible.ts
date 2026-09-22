@@ -152,8 +152,8 @@ export const SHARD_CAPACITY = SHARD_COLUMNS * SHARD_ROWS * SHARD_COUNT;
 
 /**
  * The shards: a few hundred small boxes streaming outward from the ring along their own ray,
- * dark with an ember few. `rate` is the stream speed, `burst` (Beat lane) throws a wave
- * out and lights the embers, `highs` sparkles them.
+ * dark with an ember few. `rate` is the stream speed, `burst` (Beat lane) lights the embers,
+ * `highs` sparkles them. No lane touches a position (§T1349b, the teleport).
  */
 export const SHARD_KERNEL = `${NOISE}
 struct Params {
@@ -162,7 +162,7 @@ struct Params {
   inner:f32, // @default 1.6 Where a shard is born.
   outer:f32, // @default 16 Where it dies.
   size:f32, // @default 0.12 Typical shard size.
-  burst:f32, // @default 0 Beat lane: throws a wave outward, lights the embers.
+  burst:f32, // @default 0 Beat lane: lights the embers.
   highs:f32, // @default 0 Hat lane: sparkle.
 };
 fn process(p:Point,ctx:PointCtx)->Point{
@@ -187,7 +187,9 @@ fn process(p:Point,ctx:PointCtx)->Point{
   // streams with time and jumps with the burst.
   let theta=h4*6.283185307;let phi=acos((h5*2.0-1.0)*0.3);
   let ray=vec3f(sin(phi)*cos(theta),cos(phi),sin(phi)*sin(theta));
-  let phase=fract(h0*7.0+ctx.absTime*ctx.params.rate+ctx.params.burst*0.02);
+  // The phase is absTime only: a lane in it made every shard jump on the hit (the owner
+  // saw blocks teleport on the beat). The Beat lane lights the embers and nothing else.
+  let phase=fract(h0*7.0+ctx.absTime*ctx.params.rate);
   let dist=mix(ctx.params.inner,ctx.params.outer,phase*phase);
   let tumble=ctx.absTime*(0.06+h1*0.18);
   var local=rotateZ(rotateX(rest,tumble),h2*6.283185307+tumble*0.7);
