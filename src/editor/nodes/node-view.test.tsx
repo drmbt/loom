@@ -930,6 +930,12 @@ describe("T1350b — per-channel sockets on a value output", () => {
     expect(rightHandles()).toEqual(["out", "out@x"]);
   });
 
+  it("an audio SOURCE stays one plug however many channels it publishes (T1352b, channelSockets: false)", () => {
+    const channels = channelSource(["level", "low", "lowMid", "band109", "band968"]);
+    const view = mountNode("audioPattern", { graph: graphWith("audioPattern"), registry: createNodeRegistry(allNodeDefinitions).view(), valueChannels: channels.source });
+    expect([...view.container.querySelectorAll('[data-handlepos="right"]')].map((handle) => handle.getAttribute("data-handleid"))).toEqual(["out"]);
+  });
+
   it("gives a texture output no channel sockets, and a value output none when no history is wired", () => {
     const channels = channelSource(["r", "g", "b"]);
     const texture = mountNode("test.solid", { graph: graphWith("test.solid"), valueChannels: channels.source });

@@ -4,9 +4,31 @@
     "components": [
       {
         "componentId": "audioAnalysis",
-        "description": "Any audio source in, two conditioned bags out. levels: every channel enveloped, ranked to 0..1 over a sliding window and settled — read level, the bands and centroid here. hits: every channel as a 1 ms attack / decaying release pulse — read kickCount, snareCount, hatCount, onsetCount and beatCount here; through levels a count rests at its mid-rank, not at 0.",
+        "description": "Any audio source in, two conditioned bags out. levels: the chosen channels enveloped, ranked to 0..1 over a sliding window and settled — level, the four bands and centroid by default; add a spectrum row or the tempo claim with the Levels patterns. hits: the chosen counts as a 1 ms attack / decaying release pulse — kickCount, snareCount, hatCount, onsetCount and beatCount by default; through levels a count rests at its mid-rank, not at 0.",
         "graph": {
           "edges": {
+            "e-hits-decay": {
+              "id": "e-hits-decay",
+              "source": {
+                "nodeId": "pickHits",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "decay",
+                "portId": "in"
+              }
+            },
+            "e-levels-smooth": {
+              "id": "e-levels-smooth",
+              "source": {
+                "nodeId": "pickLevels",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "smooth",
+                "portId": "in"
+              }
+            },
             "e-rank-settle": {
               "id": "e-rank-settle",
               "source": {
@@ -36,7 +58,7 @@
                 "portId": "out"
               },
               "target": {
-                "nodeId": "decay",
+                "nodeId": "pickHits",
                 "portId": "in"
               }
             },
@@ -47,7 +69,7 @@
                 "portId": "out"
               },
               "target": {
-                "nodeId": "smooth",
+                "nodeId": "pickLevels",
                 "portId": "in"
               }
             },
@@ -84,7 +106,7 @@
                 "releaseRatio": 250
               },
               "position": {
-                "x": 258,
+                "x": 516,
                 "y": -168
               },
               "type": "valueLag"
@@ -106,7 +128,7 @@
               "label": "hits",
               "parameters": {},
               "position": {
-                "x": 516,
+                "x": 774,
                 "y": -168
               },
               "type": "componentOutValue"
@@ -117,10 +139,34 @@
               "label": "levels",
               "parameters": {},
               "position": {
-                "x": 1032,
+                "x": 1290,
                 "y": -74
               },
               "type": "componentOutValue"
+            },
+            "pickHits": {
+              "definitionVersion": 1,
+              "id": "pickHits",
+              "parameters": {
+                "channels": "onsetCount kickCount snareCount hatCount beatCount kick snare hat"
+              },
+              "position": {
+                "x": 258,
+                "y": -168
+              },
+              "type": "valueSelect"
+            },
+            "pickLevels": {
+              "definitionVersion": 1,
+              "id": "pickLevels",
+              "parameters": {
+                "channels": "level low lowMid highMid high centroid"
+              },
+              "position": {
+                "x": 258,
+                "y": 20
+              },
+              "type": "valueSelect"
             },
             "rank": {
               "definitionVersion": 1,
@@ -129,7 +175,7 @@
                 "window": 16
               },
               "position": {
-                "x": 516,
+                "x": 774,
                 "y": 20
               },
               "type": "valueNormalize"
@@ -142,7 +188,7 @@
                 "releaseRatio": 1
               },
               "position": {
-                "x": 774,
+                "x": 1032,
                 "y": -74
               },
               "type": "valueLag"
@@ -155,7 +201,7 @@
                 "releaseRatio": 1
               },
               "position": {
-                "x": 258,
+                "x": 516,
                 "y": 20
               },
               "type": "valueLag"
@@ -187,6 +233,36 @@
           }
         ],
         "parameters": [
+          {
+            "definition": {
+              "default": "level low lowMid highMid high centroid",
+              "description": "Which channels the levels lane carries, as Select patterns (space-separated; * any run, ^ removes). The default is the handful the examples read; add a spectrum row (band109), all of them (band*), or the tempo claim (bpm beatPhase) here.",
+              "label": "Levels",
+              "type": "string"
+            },
+            "key": "levels",
+            "targets": [
+              {
+                "key": "channels",
+                "nodeId": "pickLevels"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": "onsetCount kickCount snareCount hatCount beatCount kick snare hat",
+              "description": "Which channels the hits lane carries, as Select patterns. Counts and the detector envelopes belong here — a count through levels rests at its mid-rank, not at 0.",
+              "label": "Hits",
+              "type": "string"
+            },
+            "key": "hits",
+            "targets": [
+              {
+                "key": "channels",
+                "nodeId": "pickHits"
+              }
+            ]
+          },
           {
             "definition": {
               "default": 0.08,
@@ -341,7 +417,7 @@
           "bpm": 112
         },
         "position": {
-          "x": -720,
+          "x": -960,
           "y": 240
         },
         "type": "audioPattern"
@@ -406,8 +482,8 @@
         "id": "nd_audioAnalysis1",
         "parameters": {},
         "position": {
-          "x": -300,
-          "y": 180
+          "x": -440,
+          "y": 200
         },
         "type": "component:audioAnalysis@1"
       },

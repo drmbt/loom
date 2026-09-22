@@ -284,6 +284,23 @@ export interface MigrationResult {
 /** A value node's per-frame output: named numbers (T274). */
 export type ValueChannels = Readonly<Record<string, number>>;
 
+/**
+ * What one named channel means, so a bar over it can be drawn against a real scale.
+ *
+ * `bounded` carries the zero too, implicitly and on purpose: a track whose `low` is
+ * negative and whose `high` is positive is BIPOLAR, and the bar fills from the zero
+ * position outward rather than from the left edge — which is the difference between
+ * "this is at -0.9" and "this is nearly empty". Declaring `{ low: -1, high: 1 }` is
+ * therefore the whole of what a centred meter needs; there is no second flag to forget
+ * to set, and no way to declare a bipolar range and get a unipolar picture.
+ *
+ * `boolean` is its own kind rather than `{ low: 0, high: 1 }` because a half-filled
+ * boolean is not a state it has. It draws as on or off, and nothing in between.
+ */
+export type ValueChannelMeta =
+  | { readonly kind: "bounded"; readonly low: number; readonly high: number }
+  | { readonly kind: "boolean" };
+
 export interface ValueEvaluateContext {
   /** Upstream channel bags, one per connected input port (merged over sorted edge ids). */
   readonly inputs: Readonly<Record<PortId, ValueChannels>>;
@@ -474,6 +491,33 @@ export interface NodeDefinition {
     frame: FrameEvaluationInput,
   ): number;
   /**
+   * What this node's channels MEAN, by channel name — the declared half of the bar's
+   * scale.
+   *
+   * A channel bag is named numbers and nothing else, so a bar drawn over one has no
+   * honest full-scale and no honest zero: auto-ranging a constant 0.7 over its own
+   * extremes fills half the track forever, and a boolean reads identically to a float
+   * that happens to sit at 1. Declaring the range is the only way a bar states a fact
+   * rather than a ratio of a window to itself.
+   *
+   * OPTIONAL, and the fallback is deliberate rather than a gap: a channel with no entry
+   * is drawn against the extremes actually OBSERVED since the plot opened, and is marked
+   * as observed so the two are never read as the same claim. A Math node's output has no
+   * range anyone can declare — that is a fact about the node, not an omission — and
+   * refusing to draw it would leave the majority of value nodes with no bar at all.
+   *
+   * Static per channel NAME rather than a function of the parameter values: a range that
+   * moves with a parameter cannot be stated once, and those channels fall to the observed
+   * lane, which is where a moving range belongs anyway.
+   *
+   * The key `"*"` applies to EVERY channel the node publishes, and is not a convenience —
+   * it is the only way the most declarable nodes here can declare anything. A Trigger
+   * emits exactly 0 or 1 and a Normalize emits exactly 0..1, both BY CONSTRUCTION, but
+   * both republish their INPUT's channel names (`mapChannels`), so neither knows what its
+   * channels will be called. A named entry wins over `"*"` where both match.
+   */
+  valueChannelMeta?: Readonly<Record<string, ValueChannelMeta>>;
+  /**
    * T438: this node publishes a MEASURED channel — a per-frame number produced by
    * machinery outside the value graph (analyze's GPU readback), addressed by the
    * node's name exactly like a value source's. Declared so `publishesValueChannels`
@@ -530,6 +574,14 @@ export interface NodeDefinition {
    * the clock, or if it reads anything outside the value graph.
    */
   plotPeriodFollowsInputs?: boolean;
+  /**
+   * T1352b — `false` keeps the card's value output to ONE socket, the whole bag, instead of
+   * a socket per published channel (T1350b). For the audio SOURCES: the record they publish
+   * is forty channels, and forty handles on the source card is not the reference's picture
+   * — there the source is one plug and the ANALYSIS breaks the channels out. Absent means
+   * per-channel sockets, which is what every other value node wants.
+   */
+  channelSockets?: false;
   compile(context: NodeCompileContext): CompiledNodeDescription;
   migrate?(oldVersion: number, data: unknown): MigrationResult;
 }

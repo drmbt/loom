@@ -518,7 +518,7 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
             {(definition?.outputs ?? []).map((port) =>
               // T1350b: a value output is the bag's socket PLUS one socket per channel it
               // published — the owner's equaliser rows, each a thing you drag from.
-              port.type.kind === "value" ? (
+              port.type.kind === "value" && definition?.channelSockets !== false ? (
                 <Fragment key={port.id}>
                   <PortRow port={port} side="output" />
                   <ChannelPortRows nodeId={id as NodeId} port={port} />

@@ -352,6 +352,16 @@ export const audioLevelHost: ProjectDocument = {
  * knobs that tune them sit on the source node's Analysis group and travel to the engine
  * (T1230's other half); the component conditions what the source already counted.
  */
+/**
+ * T1352b — the channels each lane carries BY DEFAULT: the handful the shipped examples read.
+ * A user adds more on the instance (`band109`, `band*`, `bpm beatPhase`); the whole record
+ * was forty channels and forty sockets per lane on every instance.
+ */
+export const AUDIO_ANALYSIS_LEVELS = "level low lowMid highMid high centroid";
+// The three detector ENVELOPES ride the hits lane too (E70 reads them): a band-limited onset
+// is a hit-shaped signal, and through levels it would rest at its rank like a count.
+export const AUDIO_ANALYSIS_HITS = "onsetCount kickCount snareCount hatCount beatCount kick snare hat";
+
 const AUDIO_ANALYSIS_TUNING = {
   /** The first follower: the envelope on the levels lane. E24 used 0.12, E35 0.09. */
   envelope: 0.08,
@@ -376,7 +386,13 @@ export const audioAnalysisHost: ProjectDocument = {
     revision: 1,
     nodes: {
       // Outside: the source. Any audio node takes this seat once the component is instanced.
-      beat: { id: "beat", type: "audioPattern", definitionVersion: 1, position: { x: -720, y: 240 }, parameters: { bpm: 112, amount: 1 } },
+      beat: { id: "beat", type: "audioPattern", definitionVersion: 1, position: { x: -960, y: 240 }, parameters: { bpm: 112, amount: 1 } },
+      // Inside, first: WHICH channels each lane carries (T1352b). The record is forty
+      // channels and a lane that carried them all put forty sockets on every instance; the
+      // defaults are the handful the shipped examples read, and a pattern adds more
+      // (`band109`, `band*`, `bpm`). §V80: the host's values ARE the published defaults.
+      pickLevels: { id: "pickLevels", type: "valueSelect", definitionVersion: 1, position: { x: -720, y: 120 }, parameters: { channels: AUDIO_ANALYSIS_LEVELS } },
+      pickHits: { id: "pickHits", type: "valueSelect", definitionVersion: 1, position: { x: -720, y: 360 }, parameters: { channels: AUDIO_ANALYSIS_HITS } },
       // Inside, the levels lane: §V952's chain.
       smooth: { id: "smooth", type: "valueLag", definitionVersion: 1, position: { x: -480, y: 120 }, parameters: { lag: AUDIO_ANALYSIS_TUNING.envelope, releaseRatio: 1 } },
       rank: { id: "rank", type: "valueNormalize", definitionVersion: 1, position: { x: -240, y: 120 }, parameters: { window: AUDIO_ANALYSIS_TUNING.window } },
@@ -413,8 +429,10 @@ export const audioAnalysisHost: ProjectDocument = {
     edges: {
       // The boundary-defining edges. Both cut edges leave `beat`, so they synthesize ONE
       // componentInValue (T607's fan-in rule); the first by id names it (`portNames`).
-      "e-beat-decay": { id: "e-beat-decay", source: { nodeId: "beat", portId: "out" }, target: { nodeId: "decay", portId: "in" } },
-      "e-beat-smooth": { id: "e-beat-smooth", source: { nodeId: "beat", portId: "out" }, target: { nodeId: "smooth", portId: "in" } },
+      "e-beat-hits": { id: "e-beat-hits", source: { nodeId: "beat", portId: "out" }, target: { nodeId: "pickHits", portId: "in" } },
+      "e-beat-levels": { id: "e-beat-levels", source: { nodeId: "beat", portId: "out" }, target: { nodeId: "pickLevels", portId: "in" } },
+      "e-levels-smooth": { id: "e-levels-smooth", source: { nodeId: "pickLevels", portId: "out" }, target: { nodeId: "smooth", portId: "in" } },
+      "e-hits-decay": { id: "e-hits-decay", source: { nodeId: "pickHits", portId: "out" }, target: { nodeId: "decay", portId: "in" } },
       "e-smooth-rank": { id: "e-smooth-rank", source: { nodeId: "smooth", portId: "out" }, target: { nodeId: "rank", portId: "in" } },
       "e-rank-settle": { id: "e-rank-settle", source: { nodeId: "rank", portId: "out" }, target: { nodeId: "settle", portId: "in" } },
       // Source inside, target outside: one componentOutValue each.
@@ -1673,13 +1691,34 @@ export const STARTER_COMPONENT_SPECS: readonly StarterComponentSpec[] = [
     componentId: "audioAnalysis",
     name: "AudioAnalysis",
     description:
-      "Any audio source in, two conditioned bags out. levels: every channel enveloped, ranked to 0..1 over a sliding window and settled — read level, the bands and centroid here. hits: every channel as a 1 ms attack / decaying release pulse — read kickCount, snareCount, hatCount, onsetCount and beatCount here; through levels a count rests at its mid-rank, not at 0.",
+      "Any audio source in, two conditioned bags out. levels: the chosen channels enveloped, ranked to 0..1 over a sliding window and settled — level, the four bands and centroid by default; add a spectrum row or the tempo claim with the Levels patterns. hits: the chosen counts as a 1 ms attack / decaying release pulse — kickCount, snareCount, hatCount, onsetCount and beatCount by default; through levels a count rests at its mid-rank, not at 0.",
     host: audioAnalysisHost,
     // The source stays OUTSIDE (any audio node takes the seat); the two probes stay outside
     // so the cut value edges synthesize one input and two output boundaries (T822).
-    selection: ["smooth", "rank", "settle", "decay"],
-    portNames: { "decay.in": "audio", "smooth.in": "audio", "settle.out": "levels", "decay.out": "hits" },
+    selection: ["pickLevels", "pickHits", "smooth", "rank", "settle", "decay"],
+    portNames: { "pickHits.in": "audio", "pickLevels.in": "audio", "settle.out": "levels", "decay.out": "hits" },
     publish: [
+      {
+        key: "levels",
+        definition: {
+          type: "string",
+          label: "Levels",
+          default: AUDIO_ANALYSIS_LEVELS,
+          description:
+            "Which channels the levels lane carries, as Select patterns (space-separated; * any run, ^ removes). The default is the handful the examples read; add a spectrum row (band109), all of them (band*), or the tempo claim (bpm beatPhase) here.",
+        },
+        targets: [{ nodeId: "pickLevels", key: "channels" }],
+      },
+      {
+        key: "hits",
+        definition: {
+          type: "string",
+          label: "Hits",
+          default: AUDIO_ANALYSIS_HITS,
+          description: "Which channels the hits lane carries, as Select patterns. Counts and the detector envelopes belong here — a count through levels rests at its mid-rank, not at 0.",
+        },
+        targets: [{ nodeId: "pickHits", key: "channels" }],
+      },
       {
         key: "envelope",
         definition: {

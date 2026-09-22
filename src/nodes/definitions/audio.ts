@@ -255,6 +255,8 @@ export const audioInNode: NodeDefinition = {
   tags: ["value", "input", "audio", "sound", "music", "fft"],
   inputs: [],
   outputs: [{ id: "out", label: "Out", type: VALUE_PORT }],
+  // T1352b: one plug. The analysis breaks the channels out, not the source (owner's call).
+  channelSockets: false,
   parameters: {
     /*
      * T434: capture configuration, read by the APP's capture hook — never by compile.
@@ -363,6 +365,8 @@ export const audioFileInNode: NodeDefinition = {
   tags: ["value", "input", "audio", "music", "file", "fft", "transport"],
   inputs: [],
   outputs: [{ id: "out", label: "Out", type: VALUE_PORT }],
+  // T1352b: one plug. The analysis breaks the channels out, not the source (owner's call).
+  channelSockets: false,
   parameters: {
     file: { type: "asset", label: "File", kind: "audio", group: "File" },
     ...MEDIA_TRANSPORT_PARAMETERS,
@@ -647,6 +651,8 @@ export const audioPatternNode: NodeDefinition = {
   tags: ["value", "audio", "test", "beat", "pattern", "deterministic"],
   inputs: [],
   outputs: [{ id: "out", label: "Out", type: VALUE_PORT }],
+  // T1352b: one plug. The analysis breaks the channels out, not the source (owner's call).
+  channelSockets: false,
   parameters: {
     bpm: { type: "number", label: "BPM", default: 112, min: 20, max: 300, range: "floor" },
     amount: { type: "number", label: "Amount", default: 1, min: 0, max: 1, range: "bounded", description: "Master gain on every channel." },

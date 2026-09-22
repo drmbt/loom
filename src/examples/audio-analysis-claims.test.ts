@@ -87,6 +87,13 @@ function settleLag(graph: GraphDocument): number {
 }
 
 const host = audioAnalysisHost.graph as GraphDocument;
+/**
+ * T1352b: the levels lane carries a chosen set, and the shipped default has no count in it
+ * (a count belongs on hits — the claim below is WHY). So the claim's fixture adds `kickCount`
+ * to the host's levels pick, which is exactly what a user adding a channel does.
+ */
+const hostWithCountOnLevels: GraphDocument = structuredClone(host);
+hostWithCountOnLevels.nodes["pickLevels"]!.parameters["channels"] = `${String(host.nodes["pickLevels"]!.parameters["channels"])} kickCount`;
 
 describe("AudioAnalysis — the levels lane is lag → normalize → lag, second lag included (§V952)", () => {
   it("rank steps a third of its span in one frame; settle bounds the step to the follower's own limit", () => {
@@ -109,7 +116,7 @@ describe("AudioAnalysis — the levels lane is lag → normalize → lag, second
 
 describe("AudioAnalysis — a count rests at mid-rank through levels and pulses through hits (T1230)", () => {
   it("kickCount: the levels lane holds it near 0.5, the hits lane takes it to 1 and back below 0.2", () => {
-    const { settle, decay } = trace(host, ["settle", "decay"], "kickCount", FRAMES);
+    const { settle, decay } = trace(hostWithCountOnLevels, ["settle", "decay"], "kickCount", FRAMES);
     const settled = settle!.slice(SETTLED_FROM);
     const pulsed = decay!.slice(SETTLED_FROM);
 
