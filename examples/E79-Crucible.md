@@ -1,6 +1,9 @@
 # E79 — Crucible
 
-A white-hot ring at the centre of a black void, seen down a tunnel of machinery: three tiers
+A white-hot ring at the centre of a black void with a fractured sphere inside it — a dark
+metallic shell of fragments (E75's shell kernel, centred here) over a white-hot heart: the tail
+lane opens the fragments, every hit kicks them and widens the fissures, and the heart pulses
+through the cracks. Around it, seen down a tunnel of machinery: three tiers
 of dark ribbed modules around the ring — an inner ring of tangential modules, a wide field of
 radial teeth, foreground giants nearest the lens — about a hundred and ninety in all, snapped
 to angular sectors and turning slowly as tiers, with amber and green strips at their stations.
@@ -18,8 +21,9 @@ clip1(audioFileIn) ─ band109x1(valueSelect) ─ beatrange1(valueRange) ─ bea
 clip1(audioFileIn) ─ band968x1(valueSelect) ─ tailrange1(valueRange) ─ tail1(valueTail)
 ```
 
-`beat1` flashes the halo from ember to white, lights the rib seams on every hull and throws a
-shard wave; through `punch1` (a 50 ms attack) it drives `halolight1` (8 to 118, the light every
+`beat1` flashes the halo from ember to white, kicks the core's fragments and lights the strips
+on every hull; `tail1` opens the core and breathes the strips and the green accent; through
+`punch1` (a 50 ms attack) it drives `halolight1` (8 to 118, the light every
 hull face turned toward the ring receives) and the haze flare, so a hit punches rather than
 strobes. `tail1` pushes every orbit round, swells the tube, breathes the green
 windows and the accent light. The four Range bounds are measured on the shipped clip —
@@ -30,8 +34,9 @@ retunes those four numbers and nothing else.
 The hulls are eight point grids of 24 bodies each — one grid, many bodies, the first and last
 row of each body collapsed to a point so neighbours never join, two rows in each end plane so
 the caps are flat faces — with hard box corners from duplicated corner columns, ribs across the
-length, a channel down each broad face and lit strips at the stations. Nothing tumbles: each
-tier turns as one, the shards drift, the ring's heat travels, the camera swoops, all on absolute
-time, so silence still moves; the audio adds on top.
+length, a channel down each broad face and lit strips at the stations. Nothing tumbles: each tier
+turns as one and breathes its radius, the lit stations chase along the bodies, the giants drift
+in depth, the shards stream, the ring's heat travels, the camera swoops — all on absolute time,
+so silence still moves; the audio adds on top, and the core is the one body that moves with it.
 
 Visual control: [E79 reference](references/E79-Crucible-reference.png).

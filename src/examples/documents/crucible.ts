@@ -4,7 +4,8 @@ import { document, edge, expressionSlot, graph, node as buildNode, settings } fr
 import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from "../build-showcase-beat.ts";
 import { FXAA_WGSL } from "../shaders/fxaa.wgsl.ts";
 import { RESONANCE_BLOOM_WGSL, RESONANCE_DOF_WGSL } from "../shaders/resonance.wgsl.ts";
-import { HALO_CAPACITY, HALO_COLUMNS, HALO_KERNEL, HALO_ROWS, INSTALLATION_ATTRIBUTES } from "../shaders/resonance-installations.ts";
+import { HALO_CAPACITY, HALO_COLUMNS, HALO_KERNEL, HALO_ROWS, INSTALLATION_ATTRIBUTES, sphereGridKernel } from "../shaders/resonance-installations.ts";
+import { SHELL_ATTRIBUTES, SHELL_CAPACITY, SHELL_COLUMNS, SHELL_KERNEL, SHELL_ROWS } from "../shaders/resonance-shell.ts";
 import {
   CRUCIBLE_HAZE_WGSL,
   SHARD_CAPACITY,
@@ -36,7 +37,8 @@ import {
  *   clip1 ─ band109x1 (Select `band109`) ─ beatrange1 (Range 0.38..0.60, clamp) ─ beat1 (Beat)
  *   clip1 ─ band968x1 (Select `band968`) ─ tailrange1 (Range 0.40..0.58, clamp) ─ tail1 (Tail 1.4 s)
  *
- * `beat1` flashes the halo, the seams on every hull and the shard embers; through `punch1`
+ * `beat1` flashes the halo, kicks the core's fragments, lights the strips and the shard
+ * embers; `tail1` opens the core; through `punch1`
  * (a 50 ms attack) it drives the point light that IS the halo's light and the haze, so the
  * frame punches on a hit rather than strobing (measured: the instant jump was 70% of the
  * frame's luminance in one frame); `tail1` pushes every orbit round, swells the
@@ -117,6 +119,18 @@ function crucibleDocumentBuild(): ProjectDocument {
     node("haloGrid", "pointGrid", [-2200, -200], { cols: HALO_COLUMNS, rows: HALO_ROWS, count: HALO_CAPACITY, sizeX: 2, sizeY: 2 }, { label: "halogrid1" }),
     node("haloForm", "pointKernel", [-1900, -200], { capacity: HALO_CAPACITY, attributes: INSTALLATION_ATTRIBUTES, kernel: HALO_KERNEL, radius: 4.5, tube: 0.12, height: 0, tilt: expressionSlot("sin(abstime * 0.09) * 0.3", 0.1), energy: expressionSlot(PUNCH, 0.1), breath: expressionSlot(TAIL, 0.4) }, { label: "haloform1" }),
     node("haloMesh", "geometry", [-1600, -200], { mode: "surface", material: "halomat1", tint: mappedTint }, { label: "halomesh1" }),
+    // ── The core: a fractured shell inside the ring, over an emissive heart ──
+    // E75's shell kernel (§T1141's lineage), centred at the origin: the Tail lane opens the
+    // fragments outward, the Beat lane kicks them, the fissures widen on the hit and show
+    // the heart, which pulses white-hot through the punch. This is the thing that SHIFTS.
+    node("coreMat", "materialPbr", [-1000, -450], { color: [0.5, 0.5, 0.56, 1], metallic: 0.85, roughness: 0.32 }, { label: "coremat1" }),
+    node("heartMat", "materialUnlit", [-700, -450], { color: [1, 1, 1, 1] }, { label: "heartmat1" }),
+    node("coreGrid", "pointGrid", [-2200, 2600], { cols: SHELL_COLUMNS, rows: SHELL_ROWS, count: SHELL_CAPACITY, sizeX: 2, sizeY: 2 }, { label: "coregrid1" }),
+    node("coreForm", "pointKernel", [-1900, 2600], { capacity: SHELL_CAPACITY, seed: 79, attributes: SHELL_ATTRIBUTES, kernel: SHELL_KERNEL, rotation: expressionSlot("abstime * 5", 0), radius: 3.3, spreadFloor: 0.05, reach: 1.7, height: 0, vibration: 0.01, fissure: expressionSlot(`0.02 + ${PUNCH} * 0.1`, 0.03), expansion: expressionSlot(`${TAIL} * 0.85`, 0.3), impulse: expressionSlot(BEAT, 0.1) }, { label: "coreform1" }),
+    node("coreMesh", "geometry", [-1600, 2600], { mode: "surface", material: "coremat1", tint: mappedTint }, { label: "coremesh1" }),
+    node("heartGrid", "pointGrid", [-2200, 2850], { cols: 65, rows: 32, count: 65 * 32, sizeX: 2, sizeY: 2 }, { label: "heartgrid1" }),
+    node("heartForm", "pointKernel", [-1900, 2850], { capacity: 65 * 32, attributes: INSTALLATION_ATTRIBUTES, kernel: sphereGridKernel(65, [1, 0.42, 0.12]), radius: 2.3, height: 0, energy: expressionSlot(`${PUNCH} * 2.5`, 0.3) }, { label: "heartform1" }),
+    node("heartMesh", "geometry", [-1600, 2850], { mode: "surface", material: "heartmat1", tint: mappedTint }, { label: "heartmesh1" }),
     // ── Post: depth-packed haze, bloom, FXAA ──
     node("shot", "render", [-700, 0], { scenes: "", camera: "cam1", lights: "halolight1 accentlight1 key1 rim1", background: [0, 0, 0, 1], environmentIntensity: 0, environmentTaps: 4, ambientColor: [0.5, 0.55, 0.7, 1], ambientIntensity: 0.008, antialias: "msaa", depthOutput: true }, { label: "shot1" }),
     node("opaqueAlpha", "reorder", [-400, 0], { outa: "one" }, { label: "opaquealpha1" }),
@@ -142,11 +156,13 @@ function crucibleDocumentBuild(): ProjectDocument {
     edge("clip-band109", ["clip", "out"], ["band109", "in"]), edge("band109-range", ["band109", "out"], ["beatRange", "in"]), edge("range-beat", ["beatRange", "out"], ["beat", "in"]), edge("beat-punch", ["beat", "out"], ["punch", "in"]),
     edge("clip-band968", ["clip", "out"], ["band968", "in"]), edge("band968-range", ["band968", "out"], ["tailRange", "in"]), edge("range-tail", ["tailRange", "out"], ["tail", "in"]),
     edge("halo-grid", ["haloGrid", "out"], ["haloForm", "in"]), edge("halo-mesh", ["haloForm", "out"], ["haloMesh", "points"]),
+    edge("core-grid", ["coreGrid", "out"], ["coreForm", "in"]), edge("core-mesh", ["coreForm", "out"], ["coreMesh", "points"]),
+    edge("heart-grid", ["heartGrid", "out"], ["heartForm", "in"]), edge("heart-mesh", ["heartForm", "out"], ["heartMesh", "points"]),
     edge("shot-alpha", ["shot", "out"], ["opaqueAlpha", "in1"]), edge("alpha-depth", ["opaqueAlpha", "out"], ["depthPack", "input"]), edge("depth-pack", ["shot", "depth"], ["depthPack", "mask"]),
     edge("pack-haze", ["depthPack", "out"], ["haze", "input"]), edge("haze-lens", ["haze", "out"], ["lens", "input"]), edge("lens-bloom", ["lens", "out"], ["bloom", "input"]), edge("bloom-blur", ["bloom", "out"], ["blur", "input"]),
     edge("blur-glow", ["blur", "out"], ["glow", "in1"]), edge("lens-glow", ["lens", "out"], ["glow", "in2"]), edge("glow-fxaa", ["glow", "out"], ["fxaa", "input"]), edge("fxaa-out", ["fxaa", "out"], ["out", "input"]),
   ];
-  const scenes: string[] = ["halomesh1"];
+  const scenes: string[] = ["halomesh1", "coremesh1", "heartmesh1"];
   // Eight swarms: six of the mid-field, two of foreground giants that cut the frame.
   // Three tiers. Inner: tangential modules on a tight ring just outside the halo. Mid:
   // radial teeth. Outer: foreground giants, nearest the lens, sparse. Each tier turns as
@@ -178,7 +194,7 @@ function crucibleDocumentBuild(): ProjectDocument {
     const y = 100 + (swarms.length + index) * 250;
     nodes.push(
       node(grid, "pointGrid", [-2200, y], { cols: SHARD_COLUMNS, rows: SHARD_ROWS * SHARD_COUNT, count: SHARD_CAPACITY, sizeX: 2, sizeY: 2 }, { label: `${id}grid1` }),
-      node(form, "pointKernel", [-1900, y], { capacity: SHARD_CAPACITY, attributes: INSTALLATION_ATTRIBUTES, kernel: SHARD_KERNEL, slot: index, rate: index === 0 ? 0.05 : 0.035, inner: 9, outer: 22 + index * 5, size: index === 0 ? 0.12 : 0.2, burst: expressionSlot(BEAT, 0.1), highs: expressionSlot(HIGHS, 0) }, { label: `${id}form1` }),
+      node(form, "pointKernel", [-1900, y], { capacity: SHARD_CAPACITY, attributes: INSTALLATION_ATTRIBUTES, kernel: SHARD_KERNEL, slot: index, rate: index === 0 ? 0.07 : 0.05, inner: 9.5, outer: 22 + index * 5, size: index === 0 ? 0.12 : 0.2, burst: expressionSlot(BEAT, 0.1), highs: expressionSlot(HIGHS, 0) }, { label: `${id}form1` }),
       node(mesh, "geometry", [-1600, y], { mode: "surface", material: "shardpaint1", tint: mappedTint }, { label: `${id}mesh1` }),
     );
     edges.push(edge(`${id}-grid`, [grid, "out"], [form, "in"]), edge(`${id}-mesh`, [form, "out"], [mesh, "points"]));

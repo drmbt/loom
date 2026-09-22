@@ -114,8 +114,9 @@ fn process(p:Point,ctx:PointCtx)->Point{
   // slowly as one — no tumble, no per-body jitter in time.
   let sector=floor(h[3]*ctx.params.sectors);
   let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;
-  let radius=mix(ctx.params.near,ctx.params.far,h[0]);
-  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.04+sector)*0.25;
+  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.
+  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;
+  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);
   let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);
   let radialDir=vec3f(cos(angle),sin(angle),0.0);
   let tangentDir=vec3f(-sin(angle),cos(angle),0.0);
@@ -134,7 +135,8 @@ fn process(p:Point,ctx:PointCtx)->Point{
   // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted
   // ladder on the coarse grid. The Beat lane lights the same line as an ember.
   let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));
-  let lit=broad*step(0.5,fract(floor(v*ribs)*0.5+h[9]));
+  // The lit stations chase along the body, one station every ~8 s.
+  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));
   let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<${SWARM_ROWS - 4}u;
   q.seam=select(0.0,1.0,onStrip);
   let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));

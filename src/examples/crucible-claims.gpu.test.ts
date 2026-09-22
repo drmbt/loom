@@ -25,7 +25,7 @@ beforeAll(async () => {
 const WIDTH = 320;
 const HEIGHT = 180;
 
-const PROBED = ["swarm0Form", "swarm6Form", "shards0Form", "haloForm"] as const;
+const PROBED = ["swarm0Form", "swarm6Form", "shards0Form", "haloForm", "coreForm"] as const;
 const FIXED = ["swarm0Form", "swarm6Form", "shards0Form"] as const;
 
 async function render(lanes: { beat?: number; tail?: number; light?: number }, probe = false) {
@@ -74,7 +74,7 @@ function mean(pixels: Uint8ClampedArray | Uint8Array, rect: { x0: number; x1: nu
 }
 
 describe("E79 Crucible — the lanes reach the picture (T1349b)", () => {
-  it("NO lane moves a point: hull, giant, shard and halo positions are byte-equal at lanes 0 and 1 (the teleport the owner saw)", async (ctx) => {
+  it("no lane moves a hull, giant or shard (the teleport the owner saw); the halo swells a little and the core is the one thing that opens", async (ctx) => {
     if (unavailable) { ctx.skip(); return; }
     // Motion is structural (absTime); the audio lights things. A lane in a position term
     // makes geometry jump on every hit — the shard stream's phase carried one and the
@@ -88,6 +88,11 @@ describe("E79 Crucible — the lanes reach the picture (T1349b)", () => {
     for (let index = 0; index < rest.positions!["haloForm"]!.length; index += 1) swell = Math.max(swell, Math.abs(hit.positions!["haloForm"]![index]! - rest.positions!["haloForm"]![index]!));
     expect(swell).toBeGreaterThan(0.02);
     expect(swell).toBeLessThan(0.05);
+    // The CORE is the one body built to move with the music: the Tail lane opens its
+    // fragments, the Beat lane kicks them. More than a unit of travel on the outer cells.
+    let opened = 0;
+    for (let index = 0; index < rest.positions!["coreForm"]!.length; index += 1) opened = Math.max(opened, Math.abs(hit.positions!["coreForm"]![index]! - rest.positions!["coreForm"]![index]!));
+    expect(opened).toBeGreaterThan(1);
   }, 120_000);
 
   it("the beat lane at 1 makes the halo band brighter and whiter than at 0", async (ctx) => {
