@@ -99,7 +99,7 @@ happened:
 | [E76 Verdant Lotus](./E76-Verdant-Lotus.md) | Crystalline lotus installation in a circular projection hall: luminous petals, suspended core, wet reflections, haze, shafts and audio-driven emerald energy. |
 | [E77 Ember Monoliths](./E77-Ember-Monoliths.md) | Ring of fractured stone monoliths around a white-hot aperture, with ember seams, monumental wall projections, wet floor reflections and audio-driven firelight. |
 | [E78 Aether Orrery](./E78-Aether-Orrery.md) | Suspended orbital sculpture around a violet energy sphere, with independently turning rings, cosmic wall panels, floor reflections and volumetric light. |
-| [E79 Crucible](./E79-Crucible.md) | A white-hot ring with a fractured sphere inside it — a metallic shell that opens on the tail lane and cracks on every hit over a pulsing heart — seen down a tunnel of ~190 ribbed machine modules in three breathing tiers, shards streaming past, red haze, a hot back rim and a green accent, a swooping lens. Driven by two SPECTRUM rows through Select → Range → Beat / Tail (T1347b/T1348b). |
+| [E79 Crucible](./E79-Crucible.md) | A white-hot ring with a belted sphere inside it — plates that split on every hit over a lava heart — in a black void of machinery at three scales, five coloured lights among the hulls each on its own SPECTRUM row (Select → Range → Beat / Tail, T1347b/T1348b), dust, red haze, a slow orbit. |
 
 ## Running them
 

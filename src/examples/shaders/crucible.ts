@@ -64,9 +64,10 @@ struct Params {
   depthFar:f32, // @default 4 Depth band end along the lens axis.
   speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.
   sectors:f32, // @default 16 Angular sectors the bodies snap to.
-  drift:f32, // @default 0 Tail lane: breathes the lit strips.
+  drift:f32, // @default 0 This tier's own lane: breathes the lit strips.
   burst:f32, // @default 0 Beat lane: lights the seams.
   accent:f32, // @default 0.25 Share of bodies with green strips.
+  density:f32, // @default 1 Share of this grid's bodies that exist; the rest collapse away.
   bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).
 };
 fn process(p:Point,ctx:PointCtx)->Point{
@@ -127,8 +128,11 @@ fn process(p:Point,ctx:PointCtx)->Point{
   var local=rotateY(rest,h[10]*3.1415926*0.5);
   local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);
   local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));
-  q.position=local+centre;
-  q.end=q.position+axisDir*(length/${SWARM_ROWS - 3}.0);
+  // Composition is what is LEFT OUT: below 'density' a body collapses to a point inside the
+  // heart and draws nothing, which is how the tunnel keeps its dark gaps.
+  let present=step(ihash(id*17.3+5.5),ctx.params.density);
+  q.position=(local+centre)*present;
+  q.end=q.position+axisDir*(length/${SWARM_ROWS - 3}.0)*present;
   // Lit strips: a continuous emissive line down the centre of each broad face, present on
   // half the stations (a hash decides which), green on the accent bodies and amber on the
   // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,
@@ -152,7 +156,7 @@ fn process(p:Point,ctx:PointCtx)->Point{
 
 export const SHARD_COLUMNS = 9;
 export const SHARD_ROWS = 4;
-export const SHARD_COUNT = 220;
+export const SHARD_COUNT = 400;
 export const SHARD_CAPACITY = SHARD_COLUMNS * SHARD_ROWS * SHARD_COUNT;
 
 /**
@@ -182,7 +186,7 @@ fn process(p:Point,ctx:PointCtx)->Point{
   let v=select(-0.5,0.5,axial==2u);
   let around=f32(column%${SHARD_COLUMNS - 1}u)/2.0;
   let face=floor(around);let along=fract(around);
-  let size=ctx.params.size*(0.3+pow(h0,2.0)*2.2);
+  let size=ctx.params.size*(0.4+h0*1.2);
   let w=size*(0.4+h1*0.6);let d=size*(0.3+h2*0.5);let l=size*(0.8+h3*2.5);
   var x=0.0;var z=0.0;
   if(face<1.0){x=mix(-w,w,along);z=-d;}else if(face<2.0){x=w;z=mix(-d,d,along);}else if(face<3.0){x=mix(w,-w,along);z=d;}else{x=-w;z=mix(d,-d,along);}
@@ -196,7 +200,7 @@ fn process(p:Point,ctx:PointCtx)->Point{
   // saw blocks teleport on the beat). The Beat lane lights the embers and nothing else.
   let phase=fract(h0*7.0+ctx.absTime*ctx.params.rate);
   let dist=mix(ctx.params.inner,ctx.params.outer,phase*phase);
-  let tumble=ctx.absTime*(0.06+h1*0.18);
+  let tumble=h1*6.283185307;
   var local=rotateZ(rotateX(rest,tumble),h2*6.283185307+tumble*0.7);
   q.position=local+ray*dist+vec3f(sin(ctx.absTime*0.4+id)*0.15,0.0,0.0);
   let ember=step(0.82,h3);
@@ -259,4 +263,98 @@ struct Params {
   let vignette=1.0-0.35*smoothstep(0.35,0.95,length((uv-0.5)*vec2f(aspect,1.0)));
   let colour=(sample.rgb*(1.0-fog)+fogColour*fog+flare)*vignette;
   return vec4f(max(colour,vec3f(0)),sample.a);
+}`;
+
+/**
+ * THE CORE — a sphere of latitude BELTS. Eight belts of plates, each turning at its own
+ * rate and direction (alternating, so neighbours counter-rotate), the belts SPLITTING apart
+ * along the axis on the hit and closing through the punch, the whole form twisting and
+ * squaring off toward a superellipsoid on the Tail lane. Plate borders are recessed and
+ * carry an ember edge. Own kernel: not E75's fracture, which the owner called out.
+ *
+ * Grid: `CORE_COLUMNS` around × `CORE_BELT_ROWS` rows per belt × `CORE_BELTS`. Rows 1..10 of
+ * a belt are its surface (rows 1 and 10 an inset lip so the belt reads as a plate with
+ * thickness), rows 0 and 11 collapse onto the axis so the strip between two belts is a line
+ * inside the heart and draws nothing.
+ */
+export const CORE_COLUMNS = 129;
+export const CORE_BELT_ROWS = 12;
+export const CORE_BELTS = 8;
+export const CORE_CAPACITY = CORE_COLUMNS * CORE_BELT_ROWS * CORE_BELTS;
+export const CORE_KERNEL = `${NOISE}
+struct Params {
+  radius:f32, // @default 3.3 Sphere radius at rest.
+  segments:f32, // @default 14 Plates around each belt.
+  spin:f32, // @default 0.05 Turns per second of the fastest belt.
+  split:f32, // @default 0 Punch lane: belts split apart along the axis.
+  morph:f32, // @default 0 Tail lane: twist, and sphere → superellipsoid.
+  ember:f32, // @default 0 Beat lane: lights the plate edges.
+};
+fn process(p:Point,ctx:PointCtx)->Point{
+  var q=p;
+  let column=ctx.index%${CORE_COLUMNS}u;
+  let row=ctx.index/${CORE_COLUMNS}u;
+  let belt=f32(row/${CORE_BELT_ROWS}u);
+  let axial=row%${CORE_BELT_ROWS}u;
+  let onAxis=axial==0u || axial==${CORE_BELT_ROWS - 1}u;
+  let lip=select(1.0,0.9,axial==1u || axial==${CORE_BELT_ROWS - 2}u);
+  // Latitude: the belt's span, rows 1..10 across it; the poles stay open by 6%.
+  let t=clamp((f32(axial)-1.0)/${CORE_BELT_ROWS - 3}.0,0.0,1.0);
+  let theta=(0.06+(belt+t)/${CORE_BELTS}.0*0.88)*3.14159265;
+  // Longitude: this belt's own turn — alternating direction, faster toward the equator —
+  // plus the Tail lane's twist, which shears the belts against each other.
+  let centreDistance=abs(belt-3.5)/3.5;
+  let direction=select(-1.0,1.0,(u32(belt)%2u)==0u);
+  let turn=ctx.absTime*ctx.params.spin*6.283185307*direction*(1.0-centreDistance*0.6)+ctx.params.morph*0.9*(belt-3.5)/3.5;
+  let phi=f32(column%${CORE_COLUMNS - 1}u)/${CORE_COLUMNS - 1}.0*6.283185307+turn;
+  // Sphere → superellipsoid: the exponent runs 2..4.4 with the Tail lane.
+  let n=2.0+ctx.params.morph*2.4;
+  let dir=vec3f(sin(theta)*cos(phi),cos(theta),sin(theta)*sin(phi));
+  let norm=pow(pow(abs(dir.x),n)+pow(abs(dir.y),n)+pow(abs(dir.z),n),1.0/n);
+  // Plates: recessed borders between segments and at the belt's lips.
+  let seg=fract(f32(column%${CORE_COLUMNS - 1}u)/${CORE_COLUMNS - 1}.0*ctx.params.segments+belt*0.37);
+  let border=1.0-smoothstep(0.0,0.08,min(seg,1.0-seg));
+  let recess=border*0.06+(1.0-lip)*0.4;
+  let radius=ctx.params.radius/max(norm,0.001)*(1.0-recess*0.12);
+  // The split: belts move apart along the axis on the hit, outer belts furthest.
+  let lift=ctx.params.split*(belt-3.5)/3.5*1.7;
+  var position=dir*radius+vec3f(0.0,lift,0.0);
+  if(onAxis){position=vec3f(0.0,cos(theta)*0.2+lift,0.0);}
+  q.position=position;
+  // Steel plates, an ember edge on the borders the Beat lane lights, hotter near the equator.
+  let steel=vec3f(0.5,0.52,0.58)*(0.55+0.45*mineral(dir*6.0+belt));
+  let edge=border*(0.15+ctx.params.ember*2.2)*(0.6+0.4*(1.0-centreDistance));
+  q.tint=vec4f(steel*(1.0-border*0.6)+vec3f(1.0,0.3,0.06)*edge,1);
+  return q;
+}`;
+
+/**
+ * THE HEART — a lava sphere under the belts. A noise field flowing across the surface
+ * displaces it and, where the field crests, opens into white-hot cracks; the punch lifts the
+ * whole thing's heat. Seen through the belt gaps at rest, and whole when the belts split.
+ */
+export const HEART_COLUMNS = 97;
+export const HEART_ROWS = 48;
+export const HEART_CAPACITY = HEART_COLUMNS * HEART_ROWS;
+export const HEART_KERNEL = `${NOISE}
+struct Params {
+  radius:f32, // @default 2.2 Sphere radius.
+  flow:f32, // @default 0.12 Speed of the surface flow.
+  heat:f32, // @default 0 Punch lane: the cracks' brightness.
+};
+fn process(p:Point,ctx:PointCtx)->Point{
+  var q=p;
+  let u=f32(ctx.index%${HEART_COLUMNS}u)/${HEART_COLUMNS - 1}.0;
+  let v=f32(ctx.index/${HEART_COLUMNS}u)/${HEART_ROWS - 1}.0;
+  let theta=v*3.14159265;let phi=u*6.283185307;
+  let dir=vec3f(sin(theta)*cos(phi),cos(theta),sin(theta)*sin(phi));
+  let flow=vec3f(ctx.absTime*ctx.params.flow,ctx.absTime*ctx.params.flow*0.6,0.0);
+  let field=mineral(dir*3.0+flow)*0.6+mineral(dir*7.0-flow*1.7)*0.4;
+  let bulge=(field-0.5)*0.35+ctx.params.heat*0.1;
+  q.position=dir*ctx.params.radius*(1.0+bulge);
+  let crack=smoothstep(0.54,0.66,field);
+  let crust=vec3f(0.12,0.03,0.01)*(0.6+field);
+  let lava=vec3f(1.0,0.5,0.15)*(2.0+ctx.params.heat*4.0);
+  q.tint=vec4f(mix(crust,lava,crack),1);
+  return q;
 }`;

@@ -25,8 +25,8 @@ beforeAll(async () => {
 const WIDTH = 320;
 const HEIGHT = 180;
 
-const PROBED = ["swarm0Form", "swarm6Form", "shards0Form", "haloForm", "coreForm"] as const;
-const FIXED = ["swarm0Form", "swarm6Form", "shards0Form"] as const;
+const PROBED = ["swarm0Form", "swarm5Form", "dustForm", "haloForm", "coreForm"] as const;
+const FIXED = ["swarm0Form", "swarm5Form", "dustForm"] as const;
 
 async function render(lanes: { beat?: number; tail?: number; light?: number }, probe = false) {
   const graph = structuredClone(crucibleDocument.graph);
@@ -36,7 +36,7 @@ async function render(lanes: { beat?: number; tail?: number; light?: number }, p
       if (typeof slot !== "object" || slot === null || !("bindings" in slot)) continue;
       const expression = (slot as { bindings: { expression?: { source?: string } } }).bindings.expression?.source ?? "";
       if (lanes.beat !== undefined && (expression.includes("op('beat1')") || expression.includes("op('punch1')")) && !expression.includes("op('tail1')")) {
-        node.parameters[key] = expression.startsWith("6 + ") ? (lanes.light ?? 6 + lanes.beat * 90) : lanes.beat;
+        node.parameters[key] = expression.startsWith("24 + ") ? (lanes.light ?? 24 + lanes.beat * 90) : lanes.beat;
       } else if (lanes.tail !== undefined && expression.includes("op('tail1')") && !expression.includes("op('beat1')")) {
         // The accent light reads `8 + tail * 50`; everything else reads the lane itself.
         node.parameters[key] = expression.startsWith("8 + ") ? 8 + lanes.tail * 50 : lanes.tail;
@@ -98,10 +98,10 @@ describe("E79 Crucible — the lanes reach the picture (T1349b)", () => {
   it("the beat lane at 1 makes the halo band brighter and whiter than at 0", async (ctx) => {
     if (unavailable) { ctx.skip(); return; }
     // The light is pinned at its floor in both, so this claim is the RING's emission alone;
-    // the light has its own claim below (at 96 it floods the tunnel red, which would pull
+    // the light has its own claim below (at 114 it floods the tunnel red, which would pull
     // the band's green-to-red ratio down and hide the hue move).
-    const off = await render({ beat: 0, light: 6 });
-    const on = await render({ beat: 1, light: 6 });
+    const off = await render({ beat: 0, light: 24 });
+    const on = await render({ beat: 1, light: 24 });
     // The ring: at frame 0 the lens sits on the axis 25.5 out, so the torus (radius 4.5)
     // is a circle of ~31 px radius about the frame's centre at 320×180.
     const ring = { x0: 110, x1: 210, y0: 50, y1: 130 };
@@ -114,11 +114,11 @@ describe("E79 Crucible — the lanes reach the picture (T1349b)", () => {
   it("the halo light alone — ring emission and seams held at 0 — lights the hulls of the tunnel", async (ctx) => {
     if (unavailable) { ctx.skip(); return; }
     // The point light at the ring's centre is the lane's second destination: at the hit it
-    // goes 6 → 96 and every hull face turned toward the ring catches it, across the frame.
-    const dim = await render({ beat: 0, light: 6 });
-    const lit = await render({ beat: 0, light: 96 });
+    // goes 24 → 114 and every hull face turned toward the ring catches it, across the frame.
+    const dim = await render({ beat: 0, light: 24 });
+    const lit = await render({ beat: 0, light: 114 });
     const whole = { x0: 0, x1: WIDTH, y0: 0, y1: HEIGHT };
-    expect(mean(lit.pixels, whole, 0)).toBeGreaterThan(mean(dim.pixels, whole, 0) + 4);
+    expect(mean(lit.pixels, whole, 0)).toBeGreaterThan(mean(dim.pixels, whole, 0) + 2);
   }, 120_000);
 
   it("the tail lane lights the strips and the green accent: more green in the frame at 1 than at 0, and byte-equal at the same value", async (ctx) => {

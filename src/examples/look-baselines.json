@@ -390,10 +390,10 @@
     "cardFloor": 0
   },
   "E79-Crucible.loom.json": {
-    "motion": 0.02633,
-    "range": 0.9249,
-    "f0max": 0.9097,
-    "cardFloor": 0.0002
+    "motion": 0.01094,
+    "range": 0.8975,
+    "f0max": 0.61,
+    "cardFloor": 0.0013
   },
   "E8-Slit-Scan.loom.json": {
     "motion": 0.11307,

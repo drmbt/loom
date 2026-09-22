@@ -395,6 +395,39 @@
           "portId": "in"
         }
       },
+      "band1300-range": {
+        "id": "band1300-range",
+        "source": {
+          "nodeId": "band1300",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "range1300",
+          "portId": "in"
+        }
+      },
+      "band3400-range": {
+        "id": "band3400-range",
+        "source": {
+          "nodeId": "band3400",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "range3400",
+          "portId": "in"
+        }
+      },
+      "band380-range": {
+        "id": "band380-range",
+        "source": {
+          "nodeId": "band380",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "range380",
+          "portId": "in"
+        }
+      },
       "band968-range": {
         "id": "band968-range",
         "source": {
@@ -461,6 +494,39 @@
           "portId": "in"
         }
       },
+      "clip-band1300": {
+        "id": "clip-band1300",
+        "source": {
+          "nodeId": "clip",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "band1300",
+          "portId": "in"
+        }
+      },
+      "clip-band3400": {
+        "id": "clip-band3400",
+        "source": {
+          "nodeId": "clip",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "band3400",
+          "portId": "in"
+        }
+      },
+      "clip-band380": {
+        "id": "clip-band380",
+        "source": {
+          "nodeId": "clip",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "band380",
+          "portId": "in"
+        }
+      },
       "clip-band968": {
         "id": "clip-band968",
         "source": {
@@ -503,6 +569,28 @@
         "target": {
           "nodeId": "depthPack",
           "portId": "mask"
+        }
+      },
+      "dust-grid": {
+        "id": "dust-grid",
+        "source": {
+          "nodeId": "dustGrid",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "dustForm",
+          "portId": "in"
+        }
+      },
+      "dust-mesh": {
+        "id": "dust-mesh",
+        "source": {
+          "nodeId": "dustForm",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "dustMesh",
+          "portId": "points"
         }
       },
       "fxaa-out": {
@@ -637,48 +725,37 @@
           "portId": "in"
         }
       },
-      "shards0-grid": {
-        "id": "shards0-grid",
+      "range1300-beat": {
+        "id": "range1300-beat",
         "source": {
-          "nodeId": "shards0Grid",
+          "nodeId": "range1300",
           "portId": "out"
         },
         "target": {
-          "nodeId": "shards0Form",
+          "nodeId": "beat1300",
           "portId": "in"
         }
       },
-      "shards0-mesh": {
-        "id": "shards0-mesh",
+      "range3400-tail": {
+        "id": "range3400-tail",
         "source": {
-          "nodeId": "shards0Form",
+          "nodeId": "range3400",
           "portId": "out"
         },
         "target": {
-          "nodeId": "shards0Mesh",
-          "portId": "points"
-        }
-      },
-      "shards1-grid": {
-        "id": "shards1-grid",
-        "source": {
-          "nodeId": "shards1Grid",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "shards1Form",
+          "nodeId": "tail3400",
           "portId": "in"
         }
       },
-      "shards1-mesh": {
-        "id": "shards1-mesh",
+      "range380-tail": {
+        "id": "range380-tail",
         "source": {
-          "nodeId": "shards1Form",
+          "nodeId": "range380",
           "portId": "out"
         },
         "target": {
-          "nodeId": "shards1Mesh",
-          "portId": "points"
+          "nodeId": "tail380",
+          "portId": "in"
         }
       },
       "shot-alpha": {
@@ -889,72 +966,6 @@
           "nodeId": "swarm5Mesh",
           "portId": "points"
         }
-      },
-      "swarm6-glow": {
-        "id": "swarm6-glow",
-        "source": {
-          "nodeId": "swarm6Form",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "swarm6Glow",
-          "portId": "points"
-        }
-      },
-      "swarm6-grid": {
-        "id": "swarm6-grid",
-        "source": {
-          "nodeId": "swarm6Grid",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "swarm6Form",
-          "portId": "in"
-        }
-      },
-      "swarm6-mesh": {
-        "id": "swarm6-mesh",
-        "source": {
-          "nodeId": "swarm6Form",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "swarm6Mesh",
-          "portId": "points"
-        }
-      },
-      "swarm7-glow": {
-        "id": "swarm7-glow",
-        "source": {
-          "nodeId": "swarm7Form",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "swarm7Glow",
-          "portId": "points"
-        }
-      },
-      "swarm7-grid": {
-        "id": "swarm7-grid",
-        "source": {
-          "nodeId": "swarm7Grid",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "swarm7Form",
-          "portId": "in"
-        }
-      },
-      "swarm7-mesh": {
-        "id": "swarm7-mesh",
-        "source": {
-          "nodeId": "swarm7Form",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "swarm7Mesh",
-          "portId": "points"
-        }
       }
     },
     "groups": {},
@@ -996,6 +1007,43 @@
         },
         "type": "light"
       },
+      "amberLight": {
+        "definitionVersion": 1,
+        "id": "amberLight",
+        "label": "amberlight1",
+        "parameters": {
+          "color": [
+            1,
+            0.55,
+            0.15,
+            1
+          ],
+          "intensity": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "4 + op('tail380x1').chan.band380 * 70"
+              },
+              "static": {
+                "kind": "static",
+                "value": 25
+              }
+            },
+            "mode": "expression"
+          },
+          "kind": "point",
+          "position": [
+            -11,
+            -2,
+            -8
+          ]
+        },
+        "position": {
+          "x": -1000,
+          "y": -950
+        },
+        "type": "light"
+      },
       "analysis": {
         "definitionVersion": 1,
         "id": "analysis",
@@ -1025,6 +1073,45 @@
         },
         "type": "valueSelect"
       },
+      "band1300": {
+        "definitionVersion": 1,
+        "id": "band1300",
+        "label": "band1300x1",
+        "parameters": {
+          "channels": "band1300"
+        },
+        "position": {
+          "x": -3400,
+          "y": 1550
+        },
+        "type": "valueSelect"
+      },
+      "band3400": {
+        "definitionVersion": 1,
+        "id": "band3400",
+        "label": "band3400x1",
+        "parameters": {
+          "channels": "band3400"
+        },
+        "position": {
+          "x": -3400,
+          "y": 1800
+        },
+        "type": "valueSelect"
+      },
+      "band380": {
+        "definitionVersion": 1,
+        "id": "band380",
+        "label": "band380x1",
+        "parameters": {
+          "channels": "band380"
+        },
+        "position": {
+          "x": -3400,
+          "y": 1300
+        },
+        "type": "valueSelect"
+      },
       "band968": {
         "definitionVersion": 1,
         "id": "band968",
@@ -1051,6 +1138,22 @@
         "position": {
           "x": -2500,
           "y": 800
+        },
+        "type": "valueBeat"
+      },
+      "beat1300": {
+        "definitionVersion": 1,
+        "id": "beat1300",
+        "label": "beat1300x1",
+        "parameters": {
+          "decay": "exponential",
+          "retrigger": 0.15,
+          "tail": 0.3,
+          "threshold": 0.55
+        },
+        "position": {
+          "x": -2800,
+          "y": 1550
         },
         "type": "valueBeat"
       },
@@ -1133,7 +1236,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(21 + 6 * sin(abstime * 0.012)) * sin((1.1 * sin(abstime * 0.014))) * cos((0.45 * sin(abstime * 0.009 + 1)))"
+                "source": "(23 - 5 * sin(abstime * 0.01)) * sin((0.8 * sin(abstime * 0.011))) * cos((0.2 + 0.25 * sin(abstime * 0.008)))"
               },
               "static": {
                 "kind": "static",
@@ -1146,7 +1249,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(21 + 6 * sin(abstime * 0.012)) * sin((0.45 * sin(abstime * 0.009 + 1)))"
+                "source": "(23 - 5 * sin(abstime * 0.01)) * sin((0.2 + 0.25 * sin(abstime * 0.008)))"
               },
               "static": {
                 "kind": "static",
@@ -1159,7 +1262,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(21 + 6 * sin(abstime * 0.012)) * cos((1.1 * sin(abstime * 0.014))) * cos((0.45 * sin(abstime * 0.009 + 1)))"
+                "source": "(23 - 5 * sin(abstime * 0.01)) * cos((0.8 * sin(abstime * 0.011))) * cos((0.2 + 0.25 * sin(abstime * 0.008)))"
               },
               "static": {
                 "kind": "static",
@@ -1179,7 +1282,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.8 * sin(abstime * 0.021)"
+                "source": "0.4 * sin(abstime * 0.017)"
               },
               "static": {
                 "kind": "static",
@@ -1192,7 +1295,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.5 * sin(abstime * 0.019)"
+                "source": "0.3 * sin(abstime * 0.013)"
               },
               "static": {
                 "kind": "static",
@@ -1206,7 +1309,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "sin(abstime * 0.008) * 6"
+                "source": "sin(abstime * 0.006) * 3"
               },
               "static": {
                 "kind": "static",
@@ -1254,36 +1357,9 @@
         "id": "coreForm",
         "label": "coreform1",
         "parameters": {
-          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"rest\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"radial\",\"type\":\"vec3f\",\"default\":[0,1,0]},{\"name\":\"seam\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]}]",
-          "capacity": 397312,
-          "expansion": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('tail1').chan.band968 * 0.85"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0.3
-              }
-            },
-            "mode": "expression"
-          },
-          "fissure": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "0.02 + op('punch1').chan.band109 * 0.1"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0.03
-              }
-            },
-            "mode": "expression"
-          },
-          "height": 0,
-          "impulse": {
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]}]",
+          "capacity": 12384,
+          "ember": {
             "bindings": {
               "expression": {
                 "kind": "expression",
@@ -1296,25 +1372,36 @@
             },
             "mode": "expression"
           },
-          "kernel": "\n\nfn rotateAxis(p:vec3f,degrees:f32)->vec3f {\n  let angle=degrees*0.01745329252;\n  let c=cos(angle);let s=sin(angle);\n  return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);\n}\n\nstruct Params {\n  rotation: f32, // @default 0 Common vertical-axis rotation in degrees.\n  expansion: f32, // @default 0 Bounded audio envelope, 0 closes the shell.\n  radius: f32, // @default 2.1 Resting sphere radius.\n  spreadFloor: f32, // @default 0.015 Minimum share of radial travel for every cell.\n  reach: f32, // @default 3.1 Maximum radial displacement.\n  height: f32, // @default 5.6 Sphere centre above floor.\n  fissure: f32, // @default 0.004 Fraction removed along cell boundaries.\n  vibration: f32, // @default 0.01 Subordinate radial motion.\n  impulse: f32, // @default 0 Fast audio transient independent of the expansion envelope.\n};\nconst SITES = array<vec3f, 128>(\nvec3f(-0.13462543,0.69985066,0.70148774),\nvec3f(0.69560465,0.71793303,-0.02657674),\nvec3f(-0.53472652,-0.08773905,-0.84045785),\nvec3f(0.31827247,0.37765674,0.86952747),\nvec3f(-0.97042012,-0.07373251,-0.22988759),\nvec3f(0.51572891,0.28024920,-0.80961971),\nvec3f(-0.77312679,-0.26695167,-0.57533622),\nvec3f(0.69556604,-0.59010390,0.40983565),\nvec3f(-0.71246861,0.45148992,-0.53716415),\nvec3f(-0.57815174,0.12257117,0.80667024),\nvec3f(-0.75195842,-0.61578254,0.23530917),\nvec3f(-0.58871175,-0.75984764,0.27577173),\nvec3f(0.03924067,-0.45176553,0.89127329),\nvec3f(-0.00292103,0.35352246,0.93542148),\nvec3f(-0.25056820,-0.47607812,-0.84295029),\nvec3f(-0.75560553,-0.07159598,0.65110237),\nvec3f(0.54450845,-0.03385363,-0.83807188),\nvec3f(0.11457622,-0.69232128,-0.71243493),\nvec3f(0.24658190,0.62122820,-0.74382316),\nvec3f(0.13137985,0.20394107,0.97012750),\nvec3f(0.18054294,-0.80648169,0.56302002),\nvec3f(-0.35068185,0.77603650,-0.52420376),\nvec3f(-0.41308678,0.90533488,0.09863093),\nvec3f(0.31808818,0.88333381,0.34429826),\nvec3f(0.34289984,-0.90599080,-0.24819424),\nvec3f(0.28266365,0.61148201,0.73904737),\nvec3f(-0.63464840,0.68979097,-0.34843913),\nvec3f(0.93577995,-0.33659847,0.10496364),\nvec3f(0.16228618,-0.08163709,0.98336086),\nvec3f(-0.49818090,0.70925983,0.49876475),\nvec3f(-0.18164617,-0.92828517,-0.32448624),\nvec3f(-0.68755819,-0.71081868,0.14832578),\nvec3f(-0.44675796,0.69112701,-0.56811159),\nvec3f(0.81499931,0.36244172,0.45211959),\nvec3f(0.08375983,-0.99398706,-0.07052675),\nvec3f(0.68580544,-0.02762846,-0.72726031),\nvec3f(-0.05177955,0.99239533,0.11167090),\nvec3f(-0.47278990,0.75459860,-0.45502821),\nvec3f(-0.10268397,0.99440774,0.02468286),\nvec3f(-0.92018698,0.25425294,-0.29767661),\nvec3f(-0.70962044,-0.28938932,-0.64241159),\nvec3f(0.56286973,-0.82649316,0.00931235),\nvec3f(0.81764746,-0.48261975,0.31389617),\nvec3f(-0.28004982,0.59763241,-0.75127066),\nvec3f(-0.66632717,0.74403478,0.04919697),\nvec3f(0.99780092,0.04391010,0.04965097),\nvec3f(0.28500329,-0.53063435,-0.79824828),\nvec3f(-0.41671736,-0.71690917,0.55891671),\nvec3f(0.58765578,0.60388622,-0.53849988),\nvec3f(0.67119840,-0.46842811,-0.57451528),\nvec3f(-0.58743604,0.17945430,-0.78912297),\nvec3f(0.71838968,-0.17861329,-0.67231954),\nvec3f(0.47321796,0.31138201,0.82407888),\nvec3f(0.13551669,0.72084651,0.67971725),\nvec3f(0.35670853,-0.84001277,-0.40882462),\nvec3f(0.59761795,0.37431925,-0.70904012),\nvec3f(-0.43541272,-0.85071798,0.29443962),\nvec3f(-0.79293489,0.58861870,0.15742393),\nvec3f(0.40540405,-0.90180227,-0.14966706),\nvec3f(0.05819135,-0.93473812,0.35054016),\nvec3f(0.71232186,0.30596459,-0.63165120),\nvec3f(0.28240846,-0.92206051,0.26466938),\nvec3f(0.84770767,0.12881972,-0.51458449),\nvec3f(0.26491808,0.08073718,0.96088497),\nvec3f(-0.53722452,-0.40655432,-0.73898809),\nvec3f(0.49424976,-0.66260272,0.56273867),\nvec3f(0.32762185,-0.11288274,-0.93804126),\nvec3f(-0.38448876,-0.41158162,-0.82629835),\nvec3f(0.55145686,-0.29885416,-0.77883344),\nvec3f(-0.83131354,0.36802110,-0.41650722),\nvec3f(0.31447669,-0.53766264,0.78231918),\nvec3f(0.59325351,-0.69480983,-0.40655820),\nvec3f(0.86883666,-0.07818488,0.48888647),\nvec3f(-0.18115057,-0.97703991,0.11214941),\nvec3f(-0.28000055,-0.95006767,0.13773570),\nvec3f(-0.36936483,0.92925638,0.00722482),\nvec3f(-0.47278401,-0.15967310,-0.86659090),\nvec3f(-0.82155029,0.48518021,0.29942493),\nvec3f(-0.64718004,-0.60135938,-0.46853483),\nvec3f(0.90538840,-0.22500377,-0.36006269),\nvec3f(-0.32635450,0.83914521,-0.43511845),\nvec3f(0.67844784,0.48895706,0.54829693),\nvec3f(0.97960371,0.02067221,0.19987303),\nvec3f(-0.94043144,-0.33962213,-0.01566855),\nvec3f(0.65196995,0.75547525,0.06474820),\nvec3f(-0.11357915,-0.25148075,-0.96117491),\nvec3f(0.14982085,-0.98466812,0.08934434),\nvec3f(0.06616268,-0.78899325,0.61082907),\nvec3f(-0.53846195,0.84232346,-0.02345031),\nvec3f(0.16929064,0.95708612,-0.23521658),\nvec3f(-0.47712926,-0.14134674,0.86739193),\nvec3f(0.87821899,0.34094733,0.33538981),\nvec3f(0.84698952,0.49457317,0.19495164),\nvec3f(0.88937348,0.05377127,-0.45400823),\nvec3f(0.08565178,0.02363137,0.99604484),\nvec3f(0.81924163,-0.28754071,0.49614866),\nvec3f(0.74808737,-0.33425411,-0.57327086),\nvec3f(-0.25503902,-0.94961970,-0.18214700),\nvec3f(-0.47918141,0.42469062,-0.76812959),\nvec3f(-0.68070903,0.15682836,0.71556976),\nvec3f(-0.94985780,-0.24977792,-0.18809878),\nvec3f(-0.57059461,-0.65340067,-0.49748302),\nvec3f(0.83755879,-0.19140518,0.51172192),\nvec3f(0.33519330,-0.94184020,0.02413497),\nvec3f(0.02086495,0.48177407,0.87604703),\nvec3f(0.48859410,0.79790431,-0.35302198),\nvec3f(0.99475513,0.03637044,-0.09560036),\nvec3f(-0.99189564,0.08640693,0.09314977),\nvec3f(0.43414706,-0.73955922,0.51436222),\nvec3f(0.82897892,-0.32978319,-0.45170455),\nvec3f(0.24006249,0.29588564,0.92456567),\nvec3f(0.27670565,0.82202899,-0.49769701),\nvec3f(-0.22324410,-0.00766891,0.97473240),\nvec3f(-0.19576746,-0.62375509,-0.75670647),\nvec3f(0.45123468,-0.38803874,-0.80362504),\nvec3f(-0.72609716,0.32903723,0.60375277),\nvec3f(0.68547297,-0.47772953,0.54945546),\nvec3f(0.78122087,0.06789546,-0.62055150),\nvec3f(-0.72051377,0.65506770,0.22747793),\nvec3f(-0.35282825,-0.79440394,0.49440327),\nvec3f(-0.44848734,-0.73614022,-0.50690895),\nvec3f(-0.45385634,0.52882844,-0.71718541),\nvec3f(-0.28053446,-0.91361427,-0.29429474),\nvec3f(-0.43068320,-0.49878486,-0.75214736),\nvec3f(0.94127540,0.25606797,-0.22006773),\nvec3f(0.55250932,0.72601569,0.40943212),\nvec3f(0.79491016,0.26255255,0.54697714),\nvec3f(0.85126455,-0.52193181,0.05418342));\nconst NEIGHBOURS = array<u32, 756>(9u,13u,29u,36u,53u,104u,115u,48u,84u,92u,105u,124u,6u,40u,50u,76u,25u,52u,104u,110u,6u,39u,100u,107u,16u,18u,35u,55u,60u,66u,2u,4u,39u,40u,50u,69u,78u,100u,41u,42u,65u,108u,116u,127u,26u,32u,50u,69u,98u,121u,0u,13u,15u,90u,99u,112u,115u,11u,15u,31u,47u,83u,10u,31u,47u,56u,28u,47u,70u,87u,90u,112u,0u,9u,19u,94u,104u,110u,112u,17u,46u,67u,85u,113u,123u,9u,10u,47u,83u,90u,99u,107u,115u,5u,35u,51u,66u,68u,14u,30u,46u,54u,113u,5u,43u,48u,55u,66u,111u,13u,63u,94u,110u,59u,61u,70u,87u,108u,32u,37u,43u,80u,111u,29u,36u,38u,44u,75u,88u,118u,25u,36u,53u,84u,89u,125u,30u,34u,54u,58u,71u,103u,3u,23u,52u,53u,81u,104u,125u,8u,32u,37u,44u,57u,69u,88u,42u,45u,72u,79u,82u,95u,102u,106u,127u,12u,63u,70u,94u,112u,0u,22u,36u,77u,115u,118u,17u,24u,34u,54u,97u,113u,120u,122u,10u,11u,56u,74u,78u,83u,97u,101u,122u,8u,21u,26u,37u,43u,121u,81u,91u,92u,126u,24u,30u,73u,86u,97u,103u,5u,16u,51u,60u,117u,0u,22u,23u,29u,38u,53u,89u,21u,26u,32u,80u,88u,22u,36u,75u,80u,89u,4u,6u,57u,69u,107u,2u,6u,64u,76u,78u,7u,58u,61u,71u,103u,108u,127u,7u,27u,95u,116u,127u,18u,21u,32u,66u,85u,98u,111u,121u,22u,26u,57u,88u,118u,27u,82u,91u,92u,106u,124u,14u,17u,49u,54u,66u,71u,85u,114u,10u,11u,12u,15u,56u,87u,90u,119u,1u,18u,55u,60u,105u,111u,124u,46u,68u,71u,96u,109u,114u,2u,6u,8u,69u,76u,85u,98u,16u,35u,68u,79u,93u,96u,109u,117u,3u,25u,63u,72u,81u,102u,110u,126u,0u,23u,25u,36u,104u,17u,24u,30u,46u,71u,5u,18u,48u,60u,11u,31u,47u,74u,119u,26u,39u,44u,69u,77u,107u,118u,24u,41u,71u,103u,20u,61u,73u,74u,86u,87u,119u,5u,35u,48u,55u,62u,117u,124u,20u,41u,59u,86u,103u,108u,60u,93u,117u,124u,19u,28u,52u,70u,94u,102u,110u,116u,40u,67u,76u,78u,101u,123u,7u,70u,108u,116u,5u,16u,18u,43u,46u,68u,85u,114u,14u,64u,76u,85u,123u,16u,49u,51u,66u,96u,114u,6u,8u,26u,39u,50u,57u,12u,20u,28u,63u,65u,87u,108u,116u,24u,41u,46u,49u,54u,58u,109u,127u,27u,52u,82u,91u,102u,126u,34u,59u,74u,86u,97u,31u,56u,59u,73u,97u,119u,22u,38u,80u,88u,2u,40u,50u,64u,67u,85u,29u,57u,107u,115u,118u,6u,31u,40u,64u,83u,100u,101u,27u,51u,93u,106u,109u,127u,21u,37u,38u,75u,88u,89u,111u,25u,33u,52u,92u,125u,126u,27u,45u,72u,91u,10u,15u,31u,78u,100u,107u,1u,23u,89u,92u,105u,125u,14u,43u,46u,50u,66u,67u,76u,98u,34u,59u,61u,73u,103u,12u,20u,47u,59u,70u,119u,22u,26u,37u,44u,75u,80u,23u,36u,38u,80u,84u,105u,111u,9u,12u,15u,47u,112u,33u,45u,72u,82u,92u,126u,1u,33u,45u,81u,84u,91u,124u,125u,51u,62u,79u,106u,117u,124u,13u,19u,28u,63u,112u,27u,42u,102u,116u,49u,51u,68u,109u,30u,31u,34u,73u,74u,122u,8u,43u,50u,85u,121u,9u,15u,115u,4u,6u,78u,83u,107u,31u,64u,78u,120u,122u,123u,27u,52u,63u,72u,95u,116u,24u,34u,41u,58u,61u,86u,0u,3u,13u,25u,53u,110u,1u,48u,84u,89u,111u,27u,45u,79u,93u,124u,4u,15u,39u,57u,77u,83u,100u,115u,7u,20u,41u,61u,65u,70u,49u,51u,71u,79u,96u,127u,3u,13u,19u,52u,63u,104u,18u,21u,43u,48u,80u,89u,105u,9u,12u,13u,28u,90u,94u,14u,17u,30u,120u,123u,46u,49u,66u,68u,0u,9u,15u,29u,77u,99u,107u,7u,42u,63u,65u,70u,95u,102u,35u,51u,60u,62u,93u,22u,29u,44u,57u,77u,47u,56u,59u,74u,87u,30u,101u,113u,122u,123u,8u,32u,43u,98u,30u,31u,97u,101u,120u,14u,64u,67u,101u,113u,120u,1u,45u,48u,60u,62u,92u,93u,106u,23u,25u,81u,84u,92u,33u,52u,72u,81u,91u,7u,27u,41u,42u,71u,79u,109u);\nconst OFFSETS = array<u32, 129>(0u,7u,12u,16u,20u,24u,30u,38u,44u,50u,57u,62u,66u,72u,79u,85u,93u,98u,103u,109u,113u,118u,123u,130u,136u,142u,149u,156u,165u,170u,176u,184u,193u,199u,203u,209u,214u,221u,226u,231u,236u,241u,248u,253u,261u,266u,272u,280u,288u,295u,301u,308u,316u,324u,329u,334u,338u,343u,350u,354u,361u,368u,374u,378u,386u,392u,396u,404u,409u,415u,421u,429u,437u,443u,448u,454u,458u,464u,469u,476u,482u,489u,495u,499u,505u,511u,519u,524u,530u,536u,543u,548u,554u,562u,568u,573u,577u,581u,587u,592u,595u,600u,606u,612u,618u,624u,629u,634u,642u,648u,654u,660u,667u,673u,678u,682u,689u,696u,701u,706u,711u,716u,720u,725u,731u,739u,744u,749u,756u);\nfn rockHash(p:vec3f)->f32 {return fract(sin(dot(p,vec3f(127.1,311.7,74.7)))*43758.5453);}\nfn rockNoise(p:vec3f)->f32 {\n  let i=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n  return mix(mix(mix(rockHash(i),rockHash(i+vec3f(1,0,0)),u.x),mix(rockHash(i+vec3f(0,1,0)),rockHash(i+vec3f(1,1,0)),u.x),u.y),mix(mix(rockHash(i+vec3f(0,0,1)),rockHash(i+vec3f(1,0,1)),u.x),mix(rockHash(i+vec3f(0,1,1)),rockHash(i+vec3f(1,1,1)),u.x),u.y),u.z);\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let row = ctx.index / 97u;\n  let cell = row / 32u;\n  let ring = row % 32u;\n  let col = ctx.index % 97u;\n  let n = SITES[cell];\n  let tangent = normalize(cross(n, select(vec3f(0,1,0), vec3f(1,0,0), abs(n.y) > 0.9)));\n  let bitangent = cross(n, tangent);\n  let angle = f32(col) / 96.0 * 6.283185307;\n  let direction = tangent * cos(angle) + bitangent * sin(angle);\n  var slope = 100.0;\n  for (var j = OFFSETS[cell]; j < OFFSETS[cell+1u]; j++) {\n    let other = SITES[NEIGHBOURS[j]];\n    let denom = dot(direction, other);\n    if (denom > 0.00001) { slope = min(slope, (1.0-dot(n,other))/denom); }\n  }\n  // Closed curved wedge: front pole -> outer lip -> inner lip -> back pole.\n  // Consecutive collapsed pole rows make the bridges between cells zero-area.\n  let radialStep = select(min(f32(ring) / 11.0,1.0), f32(31u-ring) / 11.0, ring >= 20u);\n  let a = atan(slope) * clamp(radialStep,0.0,1.0) * (1.0-ctx.params.fissure);\n  let spherical = n * cos(a) + direction * sin(a);\n  // A shared domain warp roughens both sides of every joint identically.\n  let warp=vec3f(rockNoise(spherical*13.0),rockNoise(spherical*13.0+19.0),rockNoise(spherical*13.0+37.0))-0.5;\n  let unit=normalize(spherical+warp*0.045);\n  let cutDepth=clamp((f32(ring)-11.0)/9.0,0.0,1.0);\n  let inner=1.0-cutDepth*0.14;\n  let texturePoint = unit * ctx.params.radius;\n  let coarse = rockNoise(texturePoint*8.0)-0.5;\n  let fine = rockNoise(texturePoint*31.0)-0.5;\n  let mineralRidge=pow(1.0-abs(rockNoise(texturePoint*19.0)*2.0-1.0),4.0)-0.5;\n  let cutGrain=(rockNoise(texturePoint*24.0+vec3f(cutDepth*9.0))-0.5)*0.028*sin(cutDepth*3.14159265);\n  q.rest = unit * (ctx.params.radius * inner + 0.03*coarse + 0.018*fine + 0.012*mineralRidge + cutGrain);\n  q.radial = n;\n  q.seam = select(0.0,1.0,ring==11u);\n  let identity = fract(sin(f32(cell)*127.1+7.3)*43758.5453);\n  let energy = clamp(ctx.params.expansion,0.0,1.0);\n  // A dense central population preserves the sphere's memory at maximum expansion.\n  let allocation = mix(ctx.params.spreadFloor, 1.0, pow(identity, 2.0));\n  let drift = ctx.params.vibration * sin(ctx.absTime*2.2+f32(cell)*7.1) * energy;\n  // Reserve radial travel before the slow envelope saturates. A transient uses only\n  // this reserved budget: rigid stones remain lively without crossing the envelope.\n  let reserve = 0.12 + 0.06 * identity;\n  let impulse = clamp(ctx.params.impulse,0.0,1.0);\n  let displacement = clamp(ctx.params.reach * energy * allocation * (1.0-reserve+reserve*impulse) + drift,0.0,ctx.params.reach);\n  q.position = rotateAxis(q.rest + n * displacement,ctx.params.rotation) + vec3f(0,ctx.params.height,0);\n  let grain = rockNoise(q.rest*65.0);\n  let stone = (0.025 + 0.04*identity + 0.05*grain*grain) * select(1.0,1.25,ring>=11u && ring<=20u);\n  q.tint = vec4f(vec3f(0.85,0.88,0.94)*stone,1);\n  return q;\n}",
-          "radius": 3.3,
-          "reach": 1.7,
-          "rotation": {
+          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  radius:f32, // @default 3.3 Sphere radius at rest.\n  segments:f32, // @default 14 Plates around each belt.\n  spin:f32, // @default 0.05 Turns per second of the fastest belt.\n  split:f32, // @default 0 Punch lane: belts split apart along the axis.\n  morph:f32, // @default 0 Tail lane: twist, and sphere → superellipsoid.\n  ember:f32, // @default 0 Beat lane: lights the plate edges.\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%129u;\n  let row=ctx.index/129u;\n  let belt=f32(row/12u);\n  let axial=row%12u;\n  let onAxis=axial==0u || axial==11u;\n  let lip=select(1.0,0.9,axial==1u || axial==10u);\n  // Latitude: the belt's span, rows 1..10 across it; the poles stay open by 6%.\n  let t=clamp((f32(axial)-1.0)/9.0,0.0,1.0);\n  let theta=(0.06+(belt+t)/8.0*0.88)*3.14159265;\n  // Longitude: this belt's own turn — alternating direction, faster toward the equator —\n  // plus the Tail lane's twist, which shears the belts against each other.\n  let centreDistance=abs(belt-3.5)/3.5;\n  let direction=select(-1.0,1.0,(u32(belt)%2u)==0u);\n  let turn=ctx.absTime*ctx.params.spin*6.283185307*direction*(1.0-centreDistance*0.6)+ctx.params.morph*0.9*(belt-3.5)/3.5;\n  let phi=f32(column%128u)/128.0*6.283185307+turn;\n  // Sphere → superellipsoid: the exponent runs 2..4.4 with the Tail lane.\n  let n=2.0+ctx.params.morph*2.4;\n  let dir=vec3f(sin(theta)*cos(phi),cos(theta),sin(theta)*sin(phi));\n  let norm=pow(pow(abs(dir.x),n)+pow(abs(dir.y),n)+pow(abs(dir.z),n),1.0/n);\n  // Plates: recessed borders between segments and at the belt's lips.\n  let seg=fract(f32(column%128u)/128.0*ctx.params.segments+belt*0.37);\n  let border=1.0-smoothstep(0.0,0.08,min(seg,1.0-seg));\n  let recess=border*0.06+(1.0-lip)*0.4;\n  let radius=ctx.params.radius/max(norm,0.001)*(1.0-recess*0.12);\n  // The split: belts move apart along the axis on the hit, outer belts furthest.\n  let lift=ctx.params.split*(belt-3.5)/3.5*1.7;\n  var position=dir*radius+vec3f(0.0,lift,0.0);\n  if(onAxis){position=vec3f(0.0,cos(theta)*0.2+lift,0.0);}\n  q.position=position;\n  // Steel plates, an ember edge on the borders the Beat lane lights, hotter near the equator.\n  let steel=vec3f(0.5,0.52,0.58)*(0.55+0.45*mineral(dir*6.0+belt));\n  let edge=border*(0.15+ctx.params.ember*2.2)*(0.6+0.4*(1.0-centreDistance));\n  q.tint=vec4f(steel*(1.0-border*0.6)+vec3f(1.0,0.3,0.06)*edge,1);\n  return q;\n}",
+          "morph": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "abstime * 5"
+                "source": "op('tail1').chan.band968"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": 0.3
               }
             },
             "mode": "expression"
           },
-          "seed": 79,
-          "spreadFloor": 0.05,
-          "vibration": 0.01
+          "radius": 3.3,
+          "segments": 14,
+          "spin": 0.05,
+          "split": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('punch1').chan.band109"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.1
+              }
+            },
+            "mode": "expression"
+          }
         },
         "position": {
           "x": -1900,
@@ -1327,9 +1414,9 @@
         "id": "coreGrid",
         "label": "coregrid1",
         "parameters": {
-          "cols": 97,
-          "count": 397312,
-          "rows": 4096,
+          "cols": 129,
+          "count": 12384,
+          "rows": 96,
           "sizeX": 2,
           "sizeY": 2
         },
@@ -1345,13 +1432,13 @@
         "label": "coremat1",
         "parameters": {
           "color": [
-            0.5,
-            0.5,
+            0.55,
             0.56,
+            0.62,
             1
           ],
-          "metallic": 0.85,
-          "roughness": 0.32
+          "metallic": 0.8,
+          "roughness": 0.35
         },
         "position": {
           "x": -1000,
@@ -1391,6 +1478,43 @@
         },
         "type": "geometry"
       },
+      "cyanLight": {
+        "definitionVersion": 1,
+        "id": "cyanLight",
+        "label": "cyanlight1",
+        "parameters": {
+          "color": [
+            0.3,
+            0.7,
+            1,
+            1
+          ],
+          "intensity": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "3 + op('tail3400x1').chan.band3400 * 60"
+              },
+              "static": {
+                "kind": "static",
+                "value": 20
+              }
+            },
+            "mode": "expression"
+          },
+          "kind": "point",
+          "position": [
+            3,
+            -9,
+            -12
+          ]
+        },
+        "position": {
+          "x": -400,
+          "y": -950
+        },
+        "type": "light"
+      },
       "depthPack": {
         "definitionVersion": 1,
         "id": "depthPack",
@@ -1419,6 +1543,138 @@
           "y": 500
         },
         "type": "valueLag"
+      },
+      "dustForm": {
+        "definitionVersion": 1,
+        "id": "dustForm",
+        "label": "dustform1",
+        "parameters": {
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]}]",
+          "burst": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('beat1').chan.band109"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.1
+              }
+            },
+            "mode": "expression"
+          },
+          "capacity": 14400,
+          "highs": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "clamp(op('detail1').chan.hatCount, 0, 1)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "inner": 9,
+          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  rate:f32, // @default 0.05 Stream speed, spans per second.\n  inner:f32, // @default 1.6 Where a shard is born.\n  outer:f32, // @default 16 Where it dies.\n  size:f32, // @default 0.12 Typical shard size.\n  burst:f32, // @default 0 Beat lane: lights the embers.\n  highs:f32, // @default 0 Hat lane: sparkle.\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%9u;\n  let row=ctx.index/9u;\n  let shard=row/4u;\n  let axial=row%4u;\n  let id=f32(shard)+ctx.params.slot*400.0;\n  let h0=ihash(id*1.7+0.3);let h1=ihash(id*2.3+1.1);let h2=ihash(id*3.1+2.9);let h3=ihash(id*4.7+0.7);let h4=ihash(id*5.9+3.3);let h5=ihash(id*6.1+4.1);\n  let cap=select(1.0,0.0,axial==0u || axial==3u);\n  let v=select(-0.5,0.5,axial==2u);\n  let around=f32(column%8u)/2.0;\n  let face=floor(around);let along=fract(around);\n  let size=ctx.params.size*(0.4+h0*1.2);\n  let w=size*(0.4+h1*0.6);let d=size*(0.3+h2*0.5);let l=size*(0.8+h3*2.5);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-w,w,along);z=-d;}else if(face<2.0){x=w;z=mix(-d,d,along);}else if(face<3.0){x=mix(w,-w,along);z=d;}else{x=-w;z=mix(d,-d,along);}\n  let rest=vec3f(x*cap,v*l,z*cap);\n  // A ray per shard — kept off the lens axis (|z| of the direction under 0.3), so the\n  // stream crosses the frame beside the ring and never fills its hole — and a phase that\n  // streams with time and jumps with the burst.\n  let theta=h4*6.283185307;let phi=acos((h5*2.0-1.0)*0.3);\n  let ray=vec3f(sin(phi)*cos(theta),cos(phi),sin(phi)*sin(theta));\n  // The phase is absTime only: a lane in it made every shard jump on the hit (the owner\n  // saw blocks teleport on the beat). The Beat lane lights the embers and nothing else.\n  let phase=fract(h0*7.0+ctx.absTime*ctx.params.rate);\n  let dist=mix(ctx.params.inner,ctx.params.outer,phase*phase);\n  let tumble=h1*6.283185307;\n  var local=rotateZ(rotateX(rest,tumble),h2*6.283185307+tumble*0.7);\n  q.position=local+ray*dist+vec3f(sin(ctx.absTime*0.4+id)*0.15,0.0,0.0);\n  let ember=step(0.82,h3);\n  let glow=ember*(0.4+ctx.params.burst*4.0+ctx.params.highs*2.0)*(1.0-phase);\n  q.tint=vec4f(vec3f(0.22,0.2,0.18)*(0.5+h1)+vec3f(1.0,0.3,0.06)*glow,1);\n  return q;\n}",
+          "outer": 24,
+          "rate": 0.03,
+          "size": 0.05,
+          "slot": 0
+        },
+        "position": {
+          "x": -1900,
+          "y": 1600
+        },
+        "type": "pointKernel"
+      },
+      "dustGrid": {
+        "definitionVersion": 1,
+        "id": "dustGrid",
+        "label": "dustgrid1",
+        "parameters": {
+          "cols": 9,
+          "count": 14400,
+          "rows": 1600,
+          "sizeX": 2,
+          "sizeY": 2
+        },
+        "position": {
+          "x": -2200,
+          "y": 1600
+        },
+        "type": "pointGrid"
+      },
+      "dustMesh": {
+        "definitionVersion": 1,
+        "id": "dustMesh",
+        "label": "dustmesh1",
+        "parameters": {
+          "material": "hullpaint1",
+          "mode": "surface",
+          "tint": {
+            "bindings": {
+              "map": {
+                "attribute": "tint",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  1,
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            "mode": "map"
+          }
+        },
+        "position": {
+          "x": -1600,
+          "y": 1600
+        },
+        "type": "geometry"
+      },
+      "flashLight": {
+        "definitionVersion": 1,
+        "id": "flashLight",
+        "label": "flashlight1",
+        "parameters": {
+          "color": [
+            0.8,
+            0.85,
+            1,
+            1
+          ],
+          "intensity": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('beat1300x1').chan.band1300 * 90"
+              },
+              "static": {
+                "kind": "static",
+                "value": 12
+              }
+            },
+            "mode": "expression"
+          },
+          "kind": "point",
+          "position": [
+            9,
+            8,
+            2
+          ]
+        },
+        "position": {
+          "x": -700,
+          "y": -950
+        },
+        "type": "light"
       },
       "fxaa": {
         "definitionVersion": 1,
@@ -1542,11 +1798,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "6 + op('punch1').chan.band109 * 90"
+                "source": "24 + op('punch1').chan.band109 * 90"
               },
               "static": {
                 "kind": "static",
-                "value": 18
+                "value": 34
               }
             },
             "mode": "expression"
@@ -1663,7 +1919,7 @@
             },
             "mode": "expression"
           },
-          "density": 0.007,
+          "density": 0.012,
           "eye": [
             0,
             1,
@@ -1734,7 +1990,7 @@
             },
             "mode": "expression"
           },
-          "glow": 0.16,
+          "glow": 0.14,
           "level": {
             "bindings": {
               "expression": {
@@ -1778,23 +2034,23 @@
         "label": "heartform1",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]}]",
-          "capacity": 2080,
-          "energy": {
+          "capacity": 4656,
+          "flow": 0.12,
+          "heat": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('punch1').chan.band109 * 2.5"
+                "source": "op('punch1').chan.band109"
               },
               "static": {
                 "kind": "static",
-                "value": 0.3
+                "value": 0.1
               }
             },
             "mode": "expression"
           },
-          "height": 0,
-          "kernel": "struct Params{height:f32, // @default 5.6 Centre height.\nradius:f32, // @default 0.8 Sphere radius.\nenergy:f32, // @default 0 Audio pulse.\n};fn process(p:Point,ctx:PointCtx)->Point{var q=p;let u=f32(ctx.index%65u)/64.0;let row=ctx.index/65u;let v=f32(row)/31.0;let latitude=v*3.14159265;let longitude=u*6.283185307;let r=ctx.params.radius;q.position=vec3f(sin(latitude)*cos(longitude),cos(latitude),sin(latitude)*sin(longitude))*r+vec3f(0,ctx.params.height,0);q.tint=vec4f(vec3f(1,0.42,0.12)*(0.7+ctx.params.energy*0.8),1);return q;}",
-          "radius": 2.3
+          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  radius:f32, // @default 2.2 Sphere radius.\n  flow:f32, // @default 0.12 Speed of the surface flow.\n  heat:f32, // @default 0 Punch lane: the cracks' brightness.\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let u=f32(ctx.index%97u)/96.0;\n  let v=f32(ctx.index/97u)/47.0;\n  let theta=v*3.14159265;let phi=u*6.283185307;\n  let dir=vec3f(sin(theta)*cos(phi),cos(theta),sin(theta)*sin(phi));\n  let flow=vec3f(ctx.absTime*ctx.params.flow,ctx.absTime*ctx.params.flow*0.6,0.0);\n  let field=mineral(dir*3.0+flow)*0.6+mineral(dir*7.0-flow*1.7)*0.4;\n  let bulge=(field-0.5)*0.35+ctx.params.heat*0.1;\n  q.position=dir*ctx.params.radius*(1.0+bulge);\n  let crack=smoothstep(0.54,0.66,field);\n  let crust=vec3f(0.12,0.03,0.01)*(0.6+field);\n  let lava=vec3f(1.0,0.5,0.15)*(2.0+ctx.params.heat*4.0);\n  q.tint=vec4f(mix(crust,lava,crack),1);\n  return q;\n}",
+          "radius": 2.7
         },
         "position": {
           "x": -1900,
@@ -1807,9 +2063,9 @@
         "id": "heartGrid",
         "label": "heartgrid1",
         "parameters": {
-          "cols": 65,
-          "count": 2080,
-          "rows": 32,
+          "cols": 97,
+          "count": 4656,
+          "rows": 48,
           "sizeX": 2,
           "sizeY": 2
         },
@@ -1905,7 +2161,7 @@
             -0.55,
             -0.75
           ],
-          "intensity": 0.65,
+          "intensity": 0.5,
           "kind": "directional",
           "shadowExtent": 34,
           "shadowSoftness": 1,
@@ -1940,7 +2196,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(21 + 6 * sin(abstime * 0.012))"
+                "source": "(23 - 5 * sin(abstime * 0.01))"
               },
               "static": {
                 "kind": "static",
@@ -2003,6 +2259,57 @@
         },
         "type": "valueLag"
       },
+      "range1300": {
+        "definitionVersion": 1,
+        "id": "range1300",
+        "label": "range1300x1",
+        "parameters": {
+          "fromHigh": 0.58,
+          "fromLow": 0.46,
+          "outside": "clamp",
+          "toHigh": 1,
+          "toLow": 0
+        },
+        "position": {
+          "x": -3100,
+          "y": 1550
+        },
+        "type": "valueRange"
+      },
+      "range3400": {
+        "definitionVersion": 1,
+        "id": "range3400",
+        "label": "range3400x1",
+        "parameters": {
+          "fromHigh": 0.33,
+          "fromLow": 0.27,
+          "outside": "clamp",
+          "toHigh": 1,
+          "toLow": 0
+        },
+        "position": {
+          "x": -3100,
+          "y": 1800
+        },
+        "type": "valueRange"
+      },
+      "range380": {
+        "definitionVersion": 1,
+        "id": "range380",
+        "label": "range380x1",
+        "parameters": {
+          "fromHigh": 0.78,
+          "fromLow": 0.32,
+          "outside": "clamp",
+          "toHigh": 1,
+          "toLow": 0
+        },
+        "position": {
+          "x": -3100,
+          "y": 1300
+        },
+        "type": "valueRange"
+      },
       "rim": {
         "definitionVersion": 1,
         "id": "rim",
@@ -2049,216 +2356,6 @@
         },
         "type": "materialUnlit"
       },
-      "shardPaint": {
-        "definitionVersion": 1,
-        "id": "shardPaint",
-        "label": "shardpaint1",
-        "parameters": {
-          "color": [
-            0.8,
-            0.78,
-            0.76,
-            1
-          ],
-          "metallic": 0.2,
-          "roughness": 0.7
-        },
-        "position": {
-          "x": -1900,
-          "y": -700
-        },
-        "type": "materialPbr"
-      },
-      "shards0Form": {
-        "definitionVersion": 1,
-        "id": "shards0Form",
-        "label": "shards0form1",
-        "parameters": {
-          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]}]",
-          "burst": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('beat1').chan.band109"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0.1
-              }
-            },
-            "mode": "expression"
-          },
-          "capacity": 7920,
-          "highs": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "clamp(op('detail1').chan.hatCount, 0, 1)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "inner": 9.5,
-          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  rate:f32, // @default 0.05 Stream speed, spans per second.\n  inner:f32, // @default 1.6 Where a shard is born.\n  outer:f32, // @default 16 Where it dies.\n  size:f32, // @default 0.12 Typical shard size.\n  burst:f32, // @default 0 Beat lane: lights the embers.\n  highs:f32, // @default 0 Hat lane: sparkle.\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%9u;\n  let row=ctx.index/9u;\n  let shard=row/4u;\n  let axial=row%4u;\n  let id=f32(shard)+ctx.params.slot*220.0;\n  let h0=ihash(id*1.7+0.3);let h1=ihash(id*2.3+1.1);let h2=ihash(id*3.1+2.9);let h3=ihash(id*4.7+0.7);let h4=ihash(id*5.9+3.3);let h5=ihash(id*6.1+4.1);\n  let cap=select(1.0,0.0,axial==0u || axial==3u);\n  let v=select(-0.5,0.5,axial==2u);\n  let around=f32(column%8u)/2.0;\n  let face=floor(around);let along=fract(around);\n  let size=ctx.params.size*(0.3+pow(h0,2.0)*2.2);\n  let w=size*(0.4+h1*0.6);let d=size*(0.3+h2*0.5);let l=size*(0.8+h3*2.5);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-w,w,along);z=-d;}else if(face<2.0){x=w;z=mix(-d,d,along);}else if(face<3.0){x=mix(w,-w,along);z=d;}else{x=-w;z=mix(d,-d,along);}\n  let rest=vec3f(x*cap,v*l,z*cap);\n  // A ray per shard — kept off the lens axis (|z| of the direction under 0.3), so the\n  // stream crosses the frame beside the ring and never fills its hole — and a phase that\n  // streams with time and jumps with the burst.\n  let theta=h4*6.283185307;let phi=acos((h5*2.0-1.0)*0.3);\n  let ray=vec3f(sin(phi)*cos(theta),cos(phi),sin(phi)*sin(theta));\n  // The phase is absTime only: a lane in it made every shard jump on the hit (the owner\n  // saw blocks teleport on the beat). The Beat lane lights the embers and nothing else.\n  let phase=fract(h0*7.0+ctx.absTime*ctx.params.rate);\n  let dist=mix(ctx.params.inner,ctx.params.outer,phase*phase);\n  let tumble=ctx.absTime*(0.06+h1*0.18);\n  var local=rotateZ(rotateX(rest,tumble),h2*6.283185307+tumble*0.7);\n  q.position=local+ray*dist+vec3f(sin(ctx.absTime*0.4+id)*0.15,0.0,0.0);\n  let ember=step(0.82,h3);\n  let glow=ember*(0.4+ctx.params.burst*4.0+ctx.params.highs*2.0)*(1.0-phase);\n  q.tint=vec4f(vec3f(0.22,0.2,0.18)*(0.5+h1)+vec3f(1.0,0.3,0.06)*glow,1);\n  return q;\n}",
-          "outer": 22,
-          "rate": 0.07,
-          "size": 0.12,
-          "slot": 0
-        },
-        "position": {
-          "x": -1900,
-          "y": 2100
-        },
-        "type": "pointKernel"
-      },
-      "shards0Grid": {
-        "definitionVersion": 1,
-        "id": "shards0Grid",
-        "label": "shards0grid1",
-        "parameters": {
-          "cols": 9,
-          "count": 7920,
-          "rows": 880,
-          "sizeX": 2,
-          "sizeY": 2
-        },
-        "position": {
-          "x": -2200,
-          "y": 2100
-        },
-        "type": "pointGrid"
-      },
-      "shards0Mesh": {
-        "definitionVersion": 1,
-        "id": "shards0Mesh",
-        "label": "shards0mesh1",
-        "parameters": {
-          "material": "shardpaint1",
-          "mode": "surface",
-          "tint": {
-            "bindings": {
-              "map": {
-                "attribute": "tint",
-                "kind": "map"
-              },
-              "static": {
-                "kind": "static",
-                "value": [
-                  1,
-                  1,
-                  1,
-                  1
-                ]
-              }
-            },
-            "mode": "map"
-          }
-        },
-        "position": {
-          "x": -1600,
-          "y": 2100
-        },
-        "type": "geometry"
-      },
-      "shards1Form": {
-        "definitionVersion": 1,
-        "id": "shards1Form",
-        "label": "shards1form1",
-        "parameters": {
-          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]}]",
-          "burst": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('beat1').chan.band109"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0.1
-              }
-            },
-            "mode": "expression"
-          },
-          "capacity": 7920,
-          "highs": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "clamp(op('detail1').chan.hatCount, 0, 1)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "inner": 9.5,
-          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  rate:f32, // @default 0.05 Stream speed, spans per second.\n  inner:f32, // @default 1.6 Where a shard is born.\n  outer:f32, // @default 16 Where it dies.\n  size:f32, // @default 0.12 Typical shard size.\n  burst:f32, // @default 0 Beat lane: lights the embers.\n  highs:f32, // @default 0 Hat lane: sparkle.\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%9u;\n  let row=ctx.index/9u;\n  let shard=row/4u;\n  let axial=row%4u;\n  let id=f32(shard)+ctx.params.slot*220.0;\n  let h0=ihash(id*1.7+0.3);let h1=ihash(id*2.3+1.1);let h2=ihash(id*3.1+2.9);let h3=ihash(id*4.7+0.7);let h4=ihash(id*5.9+3.3);let h5=ihash(id*6.1+4.1);\n  let cap=select(1.0,0.0,axial==0u || axial==3u);\n  let v=select(-0.5,0.5,axial==2u);\n  let around=f32(column%8u)/2.0;\n  let face=floor(around);let along=fract(around);\n  let size=ctx.params.size*(0.3+pow(h0,2.0)*2.2);\n  let w=size*(0.4+h1*0.6);let d=size*(0.3+h2*0.5);let l=size*(0.8+h3*2.5);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-w,w,along);z=-d;}else if(face<2.0){x=w;z=mix(-d,d,along);}else if(face<3.0){x=mix(w,-w,along);z=d;}else{x=-w;z=mix(d,-d,along);}\n  let rest=vec3f(x*cap,v*l,z*cap);\n  // A ray per shard — kept off the lens axis (|z| of the direction under 0.3), so the\n  // stream crosses the frame beside the ring and never fills its hole — and a phase that\n  // streams with time and jumps with the burst.\n  let theta=h4*6.283185307;let phi=acos((h5*2.0-1.0)*0.3);\n  let ray=vec3f(sin(phi)*cos(theta),cos(phi),sin(phi)*sin(theta));\n  // The phase is absTime only: a lane in it made every shard jump on the hit (the owner\n  // saw blocks teleport on the beat). The Beat lane lights the embers and nothing else.\n  let phase=fract(h0*7.0+ctx.absTime*ctx.params.rate);\n  let dist=mix(ctx.params.inner,ctx.params.outer,phase*phase);\n  let tumble=ctx.absTime*(0.06+h1*0.18);\n  var local=rotateZ(rotateX(rest,tumble),h2*6.283185307+tumble*0.7);\n  q.position=local+ray*dist+vec3f(sin(ctx.absTime*0.4+id)*0.15,0.0,0.0);\n  let ember=step(0.82,h3);\n  let glow=ember*(0.4+ctx.params.burst*4.0+ctx.params.highs*2.0)*(1.0-phase);\n  q.tint=vec4f(vec3f(0.22,0.2,0.18)*(0.5+h1)+vec3f(1.0,0.3,0.06)*glow,1);\n  return q;\n}",
-          "outer": 27,
-          "rate": 0.05,
-          "size": 0.2,
-          "slot": 1
-        },
-        "position": {
-          "x": -1900,
-          "y": 2350
-        },
-        "type": "pointKernel"
-      },
-      "shards1Grid": {
-        "definitionVersion": 1,
-        "id": "shards1Grid",
-        "label": "shards1grid1",
-        "parameters": {
-          "cols": 9,
-          "count": 7920,
-          "rows": 880,
-          "sizeX": 2,
-          "sizeY": 2
-        },
-        "position": {
-          "x": -2200,
-          "y": 2350
-        },
-        "type": "pointGrid"
-      },
-      "shards1Mesh": {
-        "definitionVersion": 1,
-        "id": "shards1Mesh",
-        "label": "shards1mesh1",
-        "parameters": {
-          "material": "shardpaint1",
-          "mode": "surface",
-          "tint": {
-            "bindings": {
-              "map": {
-                "attribute": "tint",
-                "kind": "map"
-              },
-              "static": {
-                "kind": "static",
-                "value": [
-                  1,
-                  1,
-                  1,
-                  1
-                ]
-              }
-            },
-            "mode": "map"
-          }
-        },
-        "position": {
-          "x": -1600,
-          "y": 2350
-        },
-        "type": "geometry"
-      },
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
@@ -2270,7 +2367,7 @@
             0.7,
             1
           ],
-          "ambientIntensity": 0.008,
+          "ambientIntensity": 0.012,
           "antialias": "msaa",
           "background": [
             0,
@@ -2282,8 +2379,8 @@
           "depthOutput": true,
           "environmentIntensity": 0,
           "environmentTaps": 4,
-          "lights": "halolight1 accentlight1 key1 rim1",
-          "scenes": "halomesh1 coremesh1 heartmesh1 swarm0mesh1 swarm0glow1 swarm1mesh1 swarm1glow1 swarm2mesh1 swarm2glow1 swarm3mesh1 swarm3glow1 swarm4mesh1 swarm4glow1 swarm5mesh1 swarm5glow1 swarm6mesh1 swarm6glow1 swarm7mesh1 swarm7glow1 shards0mesh1 shards1mesh1"
+          "lights": "halolight1 accentlight1 amberlight1 flashlight1 cyanlight1 key1 rim1",
+          "scenes": "halomesh1 coremesh1 heartmesh1 swarm0mesh1 swarm0glow1 swarm1mesh1 swarm1glow1 swarm2mesh1 swarm2glow1 swarm3mesh1 swarm3glow1 swarm4mesh1 swarm4glow1 swarm5mesh1 swarm5glow1 dustmesh1"
         },
         "position": {
           "x": -700,
@@ -2296,7 +2393,7 @@
         "id": "swarm0Form",
         "label": "swarm0form1",
         "parameters": {
-          "accent": 0.18,
+          "accent": 0.2,
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"seam\",\"type\":\"f32\",\"default\":[0]}]",
           "bodies": 24,
           "burst": {
@@ -2313,29 +2410,30 @@
             "mode": "expression"
           },
           "capacity": 17280,
-          "depthFar": 2.5,
-          "depthNear": -2.5,
+          "density": 0.85,
+          "depthFar": 3,
+          "depthNear": -4,
           "drift": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('tail1').chan.band968"
+                "source": "op('tail380x1').chan.band380"
               },
               "static": {
                 "kind": "static",
-                "value": 0.4
+                "value": 0.3
               }
             },
             "mode": "expression"
           },
-          "far": 7.6,
-          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 Tail lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  q.position=local+centre;\n  q.end=q.position+axisDir*(length/17.0);\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
-          "large": 1.6,
-          "near": 6.2,
-          "sectors": 24,
+          "far": 8.2,
+          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 This tier's own lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  density:f32, // @default 1 Share of this grid's bodies that exist; the rest collapse away.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  // Composition is what is LEFT OUT: below 'density' a body collapses to a point inside the\n  // heart and draws nothing, which is how the tunnel keeps its dark gaps.\n  let present=step(ihash(id*17.3+5.5),ctx.params.density);\n  q.position=(local+centre)*present;\n  q.end=q.position+axisDir*(length/17.0)*present;\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
+          "large": 1.4,
+          "near": 6.4,
+          "sectors": 20,
           "slot": 0,
-          "small": 0.9,
-          "speed": 0.0035,
+          "small": 0.7,
+          "speed": 0.003,
           "tier": 0
         },
         "position": {
@@ -2435,7 +2533,7 @@
         "id": "swarm1Form",
         "label": "swarm1form1",
         "parameters": {
-          "accent": 0.12,
+          "accent": 0.15,
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"seam\",\"type\":\"f32\",\"default\":[0]}]",
           "bodies": 24,
           "burst": {
@@ -2452,28 +2550,29 @@
             "mode": "expression"
           },
           "capacity": 17280,
-          "depthFar": 3,
-          "depthNear": -3,
+          "density": 0.85,
+          "depthFar": 2,
+          "depthNear": -5,
           "drift": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('tail1').chan.band968"
+                "source": "op('tail380x1').chan.band380"
               },
               "static": {
                 "kind": "static",
-                "value": 0.4
+                "value": 0.3
               }
             },
             "mode": "expression"
           },
-          "far": 8.2,
-          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 Tail lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  q.position=local+centre;\n  q.end=q.position+axisDir*(length/17.0);\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
-          "large": 1.5,
-          "near": 6.6,
-          "sectors": 24,
+          "far": 8.8,
+          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 This tier's own lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  density:f32, // @default 1 Share of this grid's bodies that exist; the rest collapse away.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  // Composition is what is LEFT OUT: below 'density' a body collapses to a point inside the\n  // heart and draws nothing, which is how the tunnel keeps its dark gaps.\n  let present=step(ihash(id*17.3+5.5),ctx.params.density);\n  q.position=(local+centre)*present;\n  q.end=q.position+axisDir*(length/17.0)*present;\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
+          "large": 1.3,
+          "near": 6.8,
+          "sectors": 20,
           "slot": 1,
-          "small": 0.8,
+          "small": 0.6,
           "speed": 0.0035,
           "tier": 0
         },
@@ -2574,7 +2673,7 @@
         "id": "swarm2Form",
         "label": "swarm2form1",
         "parameters": {
-          "accent": 0.15,
+          "accent": 0.2,
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"seam\",\"type\":\"f32\",\"default\":[0]}]",
           "bodies": 24,
           "burst": {
@@ -2591,30 +2690,31 @@
             "mode": "expression"
           },
           "capacity": 17280,
-          "depthFar": 2,
-          "depthNear": -8,
+          "density": 0.8,
+          "depthFar": 1,
+          "depthNear": -6,
           "drift": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('tail1').chan.band968"
+                "source": "op('beat1300x1').chan.band1300"
               },
               "static": {
                 "kind": "static",
-                "value": 0.4
+                "value": 0.3
               }
             },
             "mode": "expression"
           },
-          "far": 12,
-          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 Tail lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  q.position=local+centre;\n  q.end=q.position+axisDir*(length/17.0);\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
-          "large": 3.2,
-          "near": 9,
-          "sectors": 16,
+          "far": 9.2,
+          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 This tier's own lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  density:f32, // @default 1 Share of this grid's bodies that exist; the rest collapse away.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  // Composition is what is LEFT OUT: below 'density' a body collapses to a point inside the\n  // heart and draws nothing, which is how the tunnel keeps its dark gaps.\n  let present=step(ihash(id*17.3+5.5),ctx.params.density);\n  q.position=(local+centre)*present;\n  q.end=q.position+axisDir*(length/17.0)*present;\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
+          "large": 1.6,
+          "near": 7.2,
+          "sectors": 20,
           "slot": 2,
-          "small": 1.8,
-          "speed": 0.002,
-          "tier": 1
+          "small": 0.8,
+          "speed": 0.0025,
+          "tier": 0
         },
         "position": {
           "x": -1900,
@@ -2713,7 +2813,7 @@
         "id": "swarm3Form",
         "label": "swarm3form1",
         "parameters": {
-          "accent": 0.1,
+          "accent": 0.15,
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"seam\",\"type\":\"f32\",\"default\":[0]}]",
           "bodies": 24,
           "burst": {
@@ -2730,29 +2830,30 @@
             "mode": "expression"
           },
           "capacity": 17280,
-          "depthFar": 3,
-          "depthNear": -7,
+          "density": 0.6,
+          "depthFar": -3,
+          "depthNear": -20,
           "drift": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('tail1').chan.band968"
+                "source": "op('beat1300x1').chan.band1300"
               },
               "static": {
                 "kind": "static",
-                "value": 0.4
+                "value": 0.3
               }
             },
             "mode": "expression"
           },
-          "far": 12.5,
-          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 Tail lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  q.position=local+centre;\n  q.end=q.position+axisDir*(length/17.0);\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
-          "large": 3,
-          "near": 9.5,
-          "sectors": 16,
+          "far": 14,
+          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 This tier's own lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  density:f32, // @default 1 Share of this grid's bodies that exist; the rest collapse away.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  // Composition is what is LEFT OUT: below 'density' a body collapses to a point inside the\n  // heart and draws nothing, which is how the tunnel keeps its dark gaps.\n  let present=step(ihash(id*17.3+5.5),ctx.params.density);\n  q.position=(local+centre)*present;\n  q.end=q.position+axisDir*(length/17.0)*present;\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
+          "large": 3.8,
+          "near": 10,
+          "sectors": 12,
           "slot": 3,
-          "small": 1.6,
-          "speed": 0.002,
+          "small": 2.2,
+          "speed": 0.0015,
           "tier": 1
         },
         "position": {
@@ -2869,29 +2970,30 @@
             "mode": "expression"
           },
           "capacity": 17280,
+          "density": 0.55,
           "depthFar": 1,
-          "depthNear": -9,
+          "depthNear": -14,
           "drift": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('tail1').chan.band968"
+                "source": "op('tail3400x1').chan.band3400"
               },
               "static": {
                 "kind": "static",
-                "value": 0.4
+                "value": 0.3
               }
             },
             "mode": "expression"
           },
-          "far": 13,
-          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 Tail lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  q.position=local+centre;\n  q.end=q.position+axisDir*(length/17.0);\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
-          "large": 3.4,
-          "near": 10,
-          "sectors": 16,
+          "far": 14.5,
+          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 This tier's own lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  density:f32, // @default 1 Share of this grid's bodies that exist; the rest collapse away.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  // Composition is what is LEFT OUT: below 'density' a body collapses to a point inside the\n  // heart and draws nothing, which is how the tunnel keeps its dark gaps.\n  let present=step(ihash(id*17.3+5.5),ctx.params.density);\n  q.position=(local+centre)*present;\n  q.end=q.position+axisDir*(length/17.0)*present;\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
+          "large": 3.6,
+          "near": 10.5,
+          "sectors": 12,
           "slot": 4,
           "small": 2,
-          "speed": 0.002,
+          "speed": 0.0015,
           "tier": 1
         },
         "position": {
@@ -3008,30 +3110,31 @@
             "mode": "expression"
           },
           "capacity": 17280,
-          "depthFar": 4,
-          "depthNear": -6,
+          "density": 0.35,
+          "depthFar": 9,
+          "depthNear": 1,
           "drift": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('tail1').chan.band968"
+                "source": "op('tail3400x1').chan.band3400"
               },
               "static": {
                 "kind": "static",
-                "value": 0.4
+                "value": 0.3
               }
             },
             "mode": "expression"
           },
-          "far": 12.2,
-          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 Tail lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  q.position=local+centre;\n  q.end=q.position+axisDir*(length/17.0);\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
-          "large": 3.1,
-          "near": 9.2,
-          "sectors": 16,
+          "far": 18,
+          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 This tier's own lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  density:f32, // @default 1 Share of this grid's bodies that exist; the rest collapse away.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  // Composition is what is LEFT OUT: below 'density' a body collapses to a point inside the\n  // heart and draws nothing, which is how the tunnel keeps its dark gaps.\n  let present=step(ihash(id*17.3+5.5),ctx.params.density);\n  q.position=(local+centre)*present;\n  q.end=q.position+axisDir*(length/17.0)*present;\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
+          "large": 7,
+          "near": 14,
+          "sectors": 6,
           "slot": 5,
-          "small": 1.7,
-          "speed": 0.002,
-          "tier": 1
+          "small": 4.5,
+          "speed": 0.001,
+          "tier": 2
         },
         "position": {
           "x": -1900,
@@ -3125,284 +3228,6 @@
         },
         "type": "geometry"
       },
-      "swarm6Form": {
-        "definitionVersion": 1,
-        "id": "swarm6Form",
-        "label": "swarm6form1",
-        "parameters": {
-          "accent": 0.15,
-          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"seam\",\"type\":\"f32\",\"default\":[0]}]",
-          "bodies": 24,
-          "burst": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('beat1').chan.band109"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0.1
-              }
-            },
-            "mode": "expression"
-          },
-          "capacity": 17280,
-          "depthFar": 10,
-          "depthNear": 2,
-          "drift": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('tail1').chan.band968"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0.4
-              }
-            },
-            "mode": "expression"
-          },
-          "far": 16,
-          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 Tail lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  q.position=local+centre;\n  q.end=q.position+axisDir*(length/17.0);\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
-          "large": 5,
-          "near": 13,
-          "sectors": 10,
-          "slot": 6,
-          "small": 3.5,
-          "speed": 0.0012,
-          "tier": 2
-        },
-        "position": {
-          "x": -1900,
-          "y": 1600
-        },
-        "type": "pointKernel"
-      },
-      "swarm6Glow": {
-        "definitionVersion": 1,
-        "id": "swarm6Glow",
-        "label": "swarm6glow1",
-        "parameters": {
-          "blend": "additive",
-          "endpoint": "end",
-          "group": "p.seam > 0.5",
-          "material": "seamglow1",
-          "mode": "beam",
-          "scale": 0.045,
-          "soft": 0.6,
-          "tint": {
-            "bindings": {
-              "map": {
-                "attribute": "emission",
-                "kind": "map"
-              },
-              "static": {
-                "kind": "static",
-                "value": [
-                  1,
-                  1,
-                  1,
-                  1
-                ]
-              }
-            },
-            "mode": "map"
-          }
-        },
-        "position": {
-          "x": -1300,
-          "y": 1600
-        },
-        "type": "geometry"
-      },
-      "swarm6Grid": {
-        "definitionVersion": 1,
-        "id": "swarm6Grid",
-        "label": "swarm6grid1",
-        "parameters": {
-          "cols": 36,
-          "count": 17280,
-          "rows": 480,
-          "sizeX": 2,
-          "sizeY": 2
-        },
-        "position": {
-          "x": -2200,
-          "y": 1600
-        },
-        "type": "pointGrid"
-      },
-      "swarm6Mesh": {
-        "definitionVersion": 1,
-        "id": "swarm6Mesh",
-        "label": "swarm6mesh1",
-        "parameters": {
-          "material": "hullpaint1",
-          "mode": "surface",
-          "tint": {
-            "bindings": {
-              "map": {
-                "attribute": "tint",
-                "kind": "map"
-              },
-              "static": {
-                "kind": "static",
-                "value": [
-                  1,
-                  1,
-                  1,
-                  1
-                ]
-              }
-            },
-            "mode": "map"
-          }
-        },
-        "position": {
-          "x": -1600,
-          "y": 1600
-        },
-        "type": "geometry"
-      },
-      "swarm7Form": {
-        "definitionVersion": 1,
-        "id": "swarm7Form",
-        "label": "swarm7form1",
-        "parameters": {
-          "accent": 0.12,
-          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"seam\",\"type\":\"f32\",\"default\":[0]}]",
-          "bodies": 24,
-          "burst": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('beat1').chan.band109"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0.1
-              }
-            },
-            "mode": "expression"
-          },
-          "capacity": 17280,
-          "depthFar": 11,
-          "depthNear": 3,
-          "drift": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('tail1').chan.band968"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0.4
-              }
-            },
-            "mode": "expression"
-          },
-          "far": 17,
-          "kernel": "\nfn ihash(n:f32)->f32{return fract(sin(n*127.1)*43758.5453);}\nfn mineral(p:vec3f)->f32 {\n let cell=floor(p);let f=fract(p);let u=f*f*(3.0-2.0*f);\n let n=dot(cell,vec3f(1,57,113));\n return mix(mix(mix(ihash(n),ihash(n+1.0),u.x),mix(ihash(n+57.0),ihash(n+58.0),u.x),u.y),mix(mix(ihash(n+113.0),ihash(n+114.0),u.x),mix(ihash(n+170.0),ihash(n+171.0),u.x),u.y),u.z);\n}\nfn rotateY(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}\nfn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.y-s*p.z,s*p.y+c*p.z);}\nfn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}\n\nstruct Params {\n  slot:f32, // @default 0 Which hash range this node draws from.\n  tier:f32, // @default 1 0 inner ring of modules, 1 mid teeth, 2 foreground giants.\n  near:f32, // @default 8 Closest orbit radius.\n  far:f32, // @default 12 Farthest orbit radius.\n  small:f32, // @default 0.8 Smallest body size.\n  large:f32, // @default 2.4 Largest body size.\n  depthNear:f32, // @default -4 Depth band start along the lens axis.\n  depthFar:f32, // @default 4 Depth band end along the lens axis.\n  speed:f32, // @default 0.004 Turns per second of the whole tier about the ring axis.\n  sectors:f32, // @default 16 Angular sectors the bodies snap to.\n  drift:f32, // @default 0 Tail lane: breathes the lit strips.\n  burst:f32, // @default 0 Beat lane: lights the seams.\n  accent:f32, // @default 0.25 Share of bodies with green strips.\n  bodies:f32, // @default 24 Bodies in this grid (matches the grid rows).\n};\nfn process(p:Point,ctx:PointCtx)->Point{\n  var q=p;\n  let column=ctx.index%36u;\n  let row=ctx.index/36u;\n  let body=row/20u;\n  let axial=row%20u;\n  let id=f32(body)+ctx.params.slot*24.0;\n  let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));\n  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes\n  // (an inset ring and the full profile), so the end cap is a flat face with its own normal\n  // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.\n  let v=clamp((f32(axial)-3.0)/13.0,0.0,1.0);\n  let cap=select(1.0,0.0,axial==0u || axial==19u);\n  let inset=select(1.0,0.9,axial==1u || axial==18u);\n  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both\n  // faces that meet there — the surface renderer's finite differences then keep each\n  // face's own hard normal instead of rounding the edge over one column. Nine, not\n  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.\n  let face=f32(column/9u);let along=f32(column%9u)/8.0;\n  // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with\n  // a recessed channel down each broad face and lit strips at regular stations. Sizes\n  // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.\n  let size=mix(ctx.params.small,ctx.params.large,h[4]);\n  let width=size*0.42;let depth=size*(0.22+h[6]*0.1);let length=size*(1.6+h[7]*0.6);\n  var x=0.0;var z=0.0;\n  if(face<1.0){x=mix(-width,width,along);z=-depth;}\n  else if(face<2.0){x=width;z=mix(-depth,depth,along);}\n  else if(face<3.0){x=mix(width,-width,along);z=depth;}\n  else{x=-width;z=mix(depth,-depth,along);}\n  x*=cap*inset;z*=cap*inset;\n  let broad=select(0.0,1.0,face<1.0 || (face>=2.0 && face<3.0));\n  // Ribs across the length (a station every ~1/7 of it), a channel down the broad faces,\n  // and a shallow chamfer at the ends: relief a light can rake across.\n  let ribs=3.0+floor(h[5]*3.0);\n  let rib=smoothstep(0.4,0.5,abs(fract(v*ribs)-0.5))*0.018*size;\n  let channel=(1.0-smoothstep(0.1,0.16,abs(along-0.5)))*broad*0.035*size;\n  let chamfer=0.0;\n  let outward=normalize(vec3f(x/max(width,0.01),0.0,z/max(depth,0.01))+vec3f(0.00001,0,0));\n  let rest=vec3f(x,(v-0.5)*length,z)-outward*(rib+channel+chamfer)*cap;\n  // THE LAYOUT. Bodies snap to angular sectors (a designed symmetry, jittered a little),\n  // sit on a tier's radius and depth band, and point at the ring: the long axis is RADIAL\n  // for the teeth and the giants, tangential for the inner modules. The whole tier turns\n  // slowly as one — no tumble, no per-body jitter in time.\n  let sector=floor(h[3]*ctx.params.sectors);\n  let angle=(sector+0.5)/ctx.params.sectors*6.283185307+(h[1]-0.5)*0.35+ctx.absTime*ctx.params.speed*6.283185307;\n  // Each sector's radius breathes slowly and the giants drift in depth: life without jitter.\n  let radius=mix(ctx.params.near,ctx.params.far,h[0])+sin(ctx.absTime*0.045+sector*0.7)*0.7;\n  let depthAlong=mix(ctx.params.depthNear,ctx.params.depthFar,h[2])+sin(ctx.absTime*0.03+sector)*select(0.3,1.2,ctx.params.tier>1.5);\n  let centre=vec3f(cos(angle)*radius,sin(angle)*radius,depthAlong);\n  let radialDir=vec3f(cos(angle),sin(angle),0.0);\n  let tangentDir=vec3f(-sin(angle),cos(angle),0.0);\n  let axisDir=select(radialDir,tangentDir,ctx.params.tier<0.5);\n  // A gentle lean out of the ring plane, fixed per body, so the teeth fan toward the lens.\n  let lean=(h[8]-0.5)*0.5+select(0.3,0.0,ctx.params.tier>1.5);\n  // rest's long axis is Y: roll about it, then swing it onto the axis direction.\n  var local=rotateY(rest,h[10]*3.1415926*0.5);\n  local=rotateZ(local,atan2(axisDir.y,axisDir.x)-1.5707963);\n  local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));\n  q.position=local+centre;\n  q.end=q.position+axisDir*(length/17.0);\n  // Lit strips: a continuous emissive line down the centre of each broad face, present on\n  // half the stations (a hash decides which), green on the accent bodies and amber on the\n  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,\n  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted\n  // ladder on the coarse grid. The Beat lane lights the same line as an ember.\n  let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));\n  // The lit stations chase along the body, one station every ~8 s.\n  let lit=broad*step(0.5,fract(floor(v*ribs+ctx.absTime*0.12)*0.5+h[9]));\n  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<16u;\n  q.seam=select(0.0,1.0,onStrip);\n  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));\n  let accented=h[11]<ctx.params.accent;\n  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;\n  let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);\n  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);\n  let paint=0.14+0.1*h[5];\n  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);\n  q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);\n  return q;\n}",
-          "large": 5.4,
-          "near": 14,
-          "sectors": 10,
-          "slot": 7,
-          "small": 3.8,
-          "speed": 0.0012,
-          "tier": 2
-        },
-        "position": {
-          "x": -1900,
-          "y": 1850
-        },
-        "type": "pointKernel"
-      },
-      "swarm7Glow": {
-        "definitionVersion": 1,
-        "id": "swarm7Glow",
-        "label": "swarm7glow1",
-        "parameters": {
-          "blend": "additive",
-          "endpoint": "end",
-          "group": "p.seam > 0.5",
-          "material": "seamglow1",
-          "mode": "beam",
-          "scale": 0.045,
-          "soft": 0.6,
-          "tint": {
-            "bindings": {
-              "map": {
-                "attribute": "emission",
-                "kind": "map"
-              },
-              "static": {
-                "kind": "static",
-                "value": [
-                  1,
-                  1,
-                  1,
-                  1
-                ]
-              }
-            },
-            "mode": "map"
-          }
-        },
-        "position": {
-          "x": -1300,
-          "y": 1850
-        },
-        "type": "geometry"
-      },
-      "swarm7Grid": {
-        "definitionVersion": 1,
-        "id": "swarm7Grid",
-        "label": "swarm7grid1",
-        "parameters": {
-          "cols": 36,
-          "count": 17280,
-          "rows": 480,
-          "sizeX": 2,
-          "sizeY": 2
-        },
-        "position": {
-          "x": -2200,
-          "y": 1850
-        },
-        "type": "pointGrid"
-      },
-      "swarm7Mesh": {
-        "definitionVersion": 1,
-        "id": "swarm7Mesh",
-        "label": "swarm7mesh1",
-        "parameters": {
-          "material": "hullpaint1",
-          "mode": "surface",
-          "tint": {
-            "bindings": {
-              "map": {
-                "attribute": "tint",
-                "kind": "map"
-              },
-              "static": {
-                "kind": "static",
-                "value": [
-                  1,
-                  1,
-                  1,
-                  1
-                ]
-              }
-            },
-            "mode": "map"
-          }
-        },
-        "position": {
-          "x": -1600,
-          "y": 1850
-        },
-        "type": "geometry"
-      },
       "tail": {
         "definitionVersion": 1,
         "id": "tail",
@@ -3414,6 +3239,34 @@
         "position": {
           "x": -2500,
           "y": 1050
+        },
+        "type": "valueTail"
+      },
+      "tail3400": {
+        "definitionVersion": 1,
+        "id": "tail3400",
+        "label": "tail3400x1",
+        "parameters": {
+          "decay": "linear",
+          "tail": 0.35
+        },
+        "position": {
+          "x": -2800,
+          "y": 1800
+        },
+        "type": "valueTail"
+      },
+      "tail380": {
+        "definitionVersion": 1,
+        "id": "tail380",
+        "label": "tail380x1",
+        "parameters": {
+          "decay": "exponential",
+          "tail": 0.6
+        },
+        "position": {
+          "x": -2800,
+          "y": 1300
         },
         "type": "valueTail"
       },

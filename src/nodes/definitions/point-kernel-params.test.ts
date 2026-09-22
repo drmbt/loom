@@ -502,7 +502,7 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
   "E78-Aether-Orrery.loom.json": "2a989d66bce14a28",
   // T1349b — E79 Crucible (second cut): one halo torus, eight swarm grids of 24 hulls each
   // (one grid, many bodies), and two shard streams.
-  "E79-Crucible.loom.json": "5c359b80e0c1f1b3",
+  "E79-Crucible.loom.json": "ac1ef142d3ab5092",
 };
 
 const POINT_KERNEL_TYPES = new Set(["pointKernel", "pointKernelAdvanced"]);
@@ -526,9 +526,8 @@ describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
   it("covers exactly the looms that carry kernels — a shrinking gate is a passing gate", () => {
     expect([...digests.keys()].sort()).toEqual(Object.keys(FRAME_ZERO_DIGESTS).sort());
     // 63 existing kernels, 51 family kernels, two E75 core-occlusion kernels, and E79's
-    // thirteen (T1349b): the halo, eight swarm grids, two shard streams, the core shell and
-    // its heart.
-    expect(kernelCount).toBe(129);
+    // ten (T1349b): the halo, six swarm grids, the dust, the core and its heart.
+    expect(kernelCount).toBe(126);
   });
 
   it.each(Object.keys(FRAME_ZERO_DIGESTS))("%s is unchanged at frame 0", (fileName) => {
