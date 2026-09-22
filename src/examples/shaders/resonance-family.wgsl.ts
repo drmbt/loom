@@ -1,7 +1,7 @@
 import { RESONANCE_ENV_WGSL, RESONANCE_ROOM_WGSL } from "./resonance.wgsl.ts";
 
-export type ResonanceHallKind = "lotus" | "monoliths" | "orrery" | "crucible";
-const PALETTE:Record<ResonanceHallKind,string>={lotus:"vec3f(0.34,0.68,0.46)",monoliths:"vec3f(0.85,0.38,0.14)",orrery:"vec3f(0.48,0.57,0.85)",crucible:"vec3f(1.0,0.2,0.05)"};
+export type ResonanceHallKind = "lotus" | "monoliths" | "orrery";
+const PALETTE:Record<ResonanceHallKind,string>={lotus:"vec3f(0.34,0.68,0.46)",monoliths:"vec3f(0.85,0.38,0.14)",orrery:"vec3f(0.48,0.57,0.85)"};
 
 function replaceExact(source:string,anchor:string,replacement:string,label:string):string{
   const first=source.indexOf(anchor);
@@ -30,8 +30,6 @@ const SHAPES:Record<ResonanceHallKind,HallShape>={
   lotus:{count:28,halfCount:"14.0",step:"0.224399475",panel:"smoothstep(0.31,0.33,fraction)*(1.0-smoothstep(0.72,0.74,fraction))*smoothstep(1.35,1.55,p.y)*(1.0-smoothstep(12.35,12.55,p.y))",oculus:"6.75",pedestal:"3.35"},
   monoliths:{count:12,halfCount:"6.0",step:"0.523598776",panel:"smoothstep(0.16,0.18,fraction)*(1.0-smoothstep(0.84,0.86,fraction))*smoothstep(0.85,1.05,p.y)*(1.0-smoothstep(12.65,12.85,p.y))",oculus:"4.65",pedestal:"4.7"},
   orrery:{count:18,halfCount:"9.0",step:"0.349065850",panel:"smoothstep(panelLeft,panelLeft+0.02,fraction)*(1.0-smoothstep(0.98-panelLeft,1.0-panelLeft,fraction))*smoothstep(1.6,1.8,p.y)*(1.0-smoothstep(panelTop-0.2,panelTop,p.y))",oculus:"7.6",pedestal:"3.15"},
-  // T1349b — E79: eight tall narrow bays, a small oculus, a wide plinth: a hangar, not a temple.
-  crucible:{count:8,halfCount:"4.0",step:"0.785398163",panel:"smoothstep(0.34,0.36,fraction)*(1.0-smoothstep(0.64,0.66,fraction))*smoothstep(2.2,2.4,p.y)*(1.0-smoothstep(11.8,12.0,p.y))",oculus:"4.2",pedestal:"4.4"},
 };
 
 function architecture(source:string,kind:ResonanceHallKind):string{
@@ -52,8 +50,6 @@ function architecture(source:string,kind:ResonanceHallKind):string{
     next=next.replaceAll("col+=warm*rings*(1.2+params.atmosphere*0.8+params.highs*0.25+params.beatPulse*0.2);","col+=warm*rings*0.18*(1.2+params.atmosphere*0.8+params.highs*0.25+params.beatPulse*0.2);");
   }
   if(kind==="lotus") next=next.replaceAll("paletteWarm()*beam*8.0","paletteWarm()*beam*2.5");
-  // T1349b — a hangar has no audience: the terraces stay (they are the floor), the figures go.
-  if(kind==="crucible" && next.includes("fn audience(")) next=replaceExact(next,"fn audience(ro:vec3f,rd:vec3f)->f32 {\n  var closest=1000.0;","fn audience(ro:vec3f,rd:vec3f)->f32 {return 1000.0;}\nfn audienceTerraces(ro:vec3f,rd:vec3f)->f32 {\n  var closest=1000.0;","crucible audience");
   if(kind==="orrery"){
     next=next.replaceAll("13.0-p.y", "18.0-p.y");
     next=next.replaceAll("(13.0-ro.y)/rd.y","(18.0-ro.y)/rd.y");
@@ -81,7 +77,7 @@ function architecture(source:string,kind:ResonanceHallKind):string{
   if(id==6.0){
     let angle=atan2(p.x,p.z);
     col=vec3f(0.014,0.016,0.018)*(0.5+rock);
-    col+=warm*0.15*pow(max(0.0,cos(angle*${kind==="monoliths"?"12.0":kind==="lotus"?"28.0":kind==="crucible"?"8.0":"18.0"})),32.0);
+    col+=warm*0.15*pow(max(0.0,cos(angle*${kind==="monoliths"?"12.0":kind==="lotus"?"28.0":"18.0"})),32.0);
   }
   let spill=2.0/(1.0+dot(p-CENTRE,p-CENTRE));`);
   next=next.replaceAll("exp(-(13.0-p.y)*0.7)","exp(-max(13.0-p.y,0.0)*0.7)").replaceAll("exp(-(13.0-p.y)*0.6)","exp(-max(13.0-p.y,0.0)*0.6)");
@@ -108,14 +104,6 @@ function replaceShafts(source:string,kind:ResonanceHallKind):string{
     if(denom>0.00001){let t=-dot(origin,direction)/denom;let v=ro+rd*t;let d=length(origin+direction*t);if(t>0.0&&t<distance&&v.y>0.2&&v.y<14.0){let surge=0.04+params.bass*0.55+params.transient*0.35;let dust=0.25+0.75*noise(vec3f(f32(i)*3.0,v.y*1.4-frameU.absTime*2.0,2));color+=mix(paletteWarm(),vec3f(1),0.28)*exp(-d*d/0.04)*dust*surge*0.09;}}
   }
   let laserHeight=3.1+sin(frameU.absTime*0.37)*1.4;let laser=exp(-abs((ro.y+rd.y*min(distance,20.0)*0.55)-laserHeight)/0.018)*(0.05+params.highs*0.55+params.transient*0.8);color+=paletteWarm()*laser*0.04;
-`,
-    crucible:`  // T1349b — ember dust rising through the ring's red light, and a floor haze the bass lifts.
-  for(var i=0u;i<6u;i++){
-    let a=f32(i)*1.0471976+frameU.absTime*0.05;let centre=vec2f(cos(a),sin(a))*(2.4+f32(i%3u)*1.1);
-    let origin=ro.xz-centre;let direction=rd.xz;let denom=dot(direction,direction);
-    if(denom>0.00001){let t=-dot(origin,direction)/denom;let v=ro+rd*t;let d=length(origin+direction*t);
-      if(t>0.0&&t<distance&&v.y>0.3&&v.y<11.0){let ember=0.3+0.7*pow(noise(vec3f(f32(i)*5.0,v.y*1.6-frameU.absTime*1.4,4)),3.0);let surge=0.05+params.bass*0.5+params.energy*0.3;color+=paletteWarm()*exp(-d*d/0.05)*ember*surge*0.07;}}
-  }
 `,
     orrery:`  // Three slow helical light ribbons trace the moving orbital planes in the taller vault.
   for(var i=0u;i<30u;i++){

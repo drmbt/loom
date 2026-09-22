@@ -52,7 +52,7 @@ function add(doc:ProjectDocument,nodes:GraphNode[],edges:GraphEdge[]):void{
  * architecture vary. This keeps Resonance as executable reference instead of copying a
  * cheap full-screen approximation of its result.
  */
-export function resonanceStage(kind:ResonanceHallKind,slug:string,name:string,seed:number):ProjectDocument{
+function resonanceStage(kind:ResonanceHallKind,slug:string,name:string,seed:number):ProjectDocument{
   const doc=structuredClone(resonanceDocument);
   doc.projectId=`example-${slug}`;doc.name=name;doc.settings.randomSeed=seed;
   for(const id of RESONANCE_INSTALLATION_NODES) delete doc.graph.nodes[id];
@@ -64,16 +64,16 @@ export function resonanceStage(kind:ResonanceHallKind,slug:string,name:string,se
   doc.graph.nodes.room!.parameters.projectionSeed=seed;
   doc.graph.nodes.timeWall!.parameters.seed=seed;
   const camera=doc.graph.nodes.cam!;
-  const cameraSpec=kind==="lotus"?{eye:[0,2.7,17],lookAt:[0,5.4,0],fov:44}:kind==="monoliths"?{eye:[0,2.2,17],lookAt:[0,5.2,0],fov:47}:kind==="crucible"?{eye:[0,3.4,15],lookAt:[0,5.5,0],fov:50}:{eye:[0,2.7,18],lookAt:[0,5.8,0],fov:47};
+  const cameraSpec=kind==="lotus"?{eye:[0,2.7,17],lookAt:[0,5.4,0],fov:44}:kind==="monoliths"?{eye:[0,2.2,17],lookAt:[0,5.2,0],fov:47}:{eye:[0,2.7,18],lookAt:[0,5.8,0],fov:47};
   Object.assign(camera.parameters,cameraSpec);
   Object.assign(doc.graph.nodes.room!.parameters,{eye:cameraSpec.eye,aim:cameraSpec.lookAt,fov:cameraSpec.fov});
-  doc.graph.nodes.room!.parameters.exposure=kind==="lotus"?1.08:kind==="monoliths"?0.86:kind==="crucible"?0.7:1.24;
+  doc.graph.nodes.room!.parameters.exposure=kind==="lotus"?1.08:kind==="monoliths"?0.86:1.24;
   doc.graph.nodes.room!.parameters.haze=0.022;
   doc.graph.nodes.room!.parameters.panelBrightness=0.45;
   doc.graph.nodes.lens!.parameters.chromatic=0.035;
   doc.graph.nodes.shot!.parameters.environmentIntensity=0.16;
-  doc.graph.nodes.room!.parameters.panelStyle=kind==="lotus"?3:kind==="monoliths"?1:kind==="crucible"?1:4;
-  doc.graph.nodes.shot!.parameters.ambientIntensity=kind==="monoliths"?0.085:kind==="lotus"?0.1:kind==="crucible"?0.03:0.12;
+  doc.graph.nodes.room!.parameters.panelStyle=kind==="lotus"?3:kind==="monoliths"?1:4;
+  doc.graph.nodes.shot!.parameters.ambientIntensity=kind==="monoliths"?0.085:kind==="lotus"?0.1:0.12;
   return doc;
 }
 
