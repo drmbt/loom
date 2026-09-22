@@ -3,7 +3,7 @@ import type { ParameterSlot } from "../../domain/types/parameters.ts";
 import { document, edge, expressionSlot, graph, node as buildNode, settings } from "./builders.ts";
 import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from "../build-showcase-beat.ts";
 import { FXAA_WGSL } from "../shaders/fxaa.wgsl.ts";
-import { RESONANCE_BLOOM_WGSL } from "../shaders/resonance.wgsl.ts";
+import { RESONANCE_BLOOM_WGSL, RESONANCE_DOF_WGSL } from "../shaders/resonance.wgsl.ts";
 import { HALO_CAPACITY, HALO_COLUMNS, HALO_KERNEL, HALO_ROWS, INSTALLATION_ATTRIBUTES } from "../shaders/resonance-installations.ts";
 import {
   CRUCIBLE_HAZE_WGSL,
@@ -70,14 +70,14 @@ const CAMERA = { eye: [0, 1, 25.5], lookAt: [0, 0.2, 0], fov: 58 } as const;
 // THE CAMERA SWOOPS. A spherical orbit about the ring whose radius breathes 15..27, whose
 // azimuth swings ±1.1 rad across the front and whose elevation dips to a low angle looking
 // up through the teeth — the reference's shots, one continuous path, on absolute time.
-const ORBIT_R = "(21 + 6 * sin(abstime * 0.017))";
-const ORBIT_AZ = "(1.1 * sin(abstime * 0.02))";
-const ORBIT_EL = "(0.45 * sin(abstime * 0.013 + 1))";
+const ORBIT_R = "(21 + 6 * sin(abstime * 0.012))";
+const ORBIT_AZ = "(1.1 * sin(abstime * 0.014))";
+const ORBIT_EL = "(0.45 * sin(abstime * 0.009 + 1))";
 const EYE_X = `${ORBIT_R} * sin(${ORBIT_AZ}) * cos(${ORBIT_EL})`;
 const EYE_Y = `${ORBIT_R} * sin(${ORBIT_EL})`;
 const EYE_Z = `${ORBIT_R} * cos(${ORBIT_AZ}) * cos(${ORBIT_EL})`;
-const AIM_X = "0.8 * sin(abstime * 0.031)";
-const AIM_Y = "0.5 * sin(abstime * 0.027)";
+const AIM_X = "0.8 * sin(abstime * 0.021)";
+const AIM_Y = "0.5 * sin(abstime * 0.019)";
 
 function crucibleDocumentBuild(): ProjectDocument {
   const nodes: GraphNode[] = [
@@ -103,15 +103,15 @@ function crucibleDocumentBuild(): ProjectDocument {
       eye: [...CAMERA.eye], lookAt: [...CAMERA.lookAt], fov: CAMERA.fov, near: 0.1, far: 100,
       "eye.x": expressionSlot(EYE_X, 0), "eye.y": expressionSlot(EYE_Y, 1), "eye.z": expressionSlot(EYE_Z, 25.5),
       "lookAt.x": expressionSlot(AIM_X, 0), "lookAt.y": expressionSlot(AIM_Y, 0.2),
-      roll: expressionSlot("sin(abstime * 0.011) * 6", 0),
+      roll: expressionSlot("sin(abstime * 0.008) * 6", 0),
     }, { label: "cam1" }),
-    node("hullPaint", "materialPbr", [-2200, -700], { color: [0.85, 0.85, 0.88, 1], metallic: 0.45, roughness: 0.55 }, { label: "hullpaint1" }),
+    node("hullPaint", "materialPbr", [-2200, -700], { color: [0.8, 0.82, 0.88, 1], metallic: 0.55, roughness: 0.5 }, { label: "hullpaint1" }),
     node("shardPaint", "materialPbr", [-1900, -700], { color: [0.8, 0.78, 0.76, 1], metallic: 0.2, roughness: 0.7 }, { label: "shardpaint1" }),
     node("seamGlow", "materialUnlit", [-1600, -700], { color: [1, 1, 1, 1] }, { label: "seamglow1" }),
     node("haloMat", "materialUnlit", [-1300, -700], { color: [1, 1, 1, 1] }, { label: "halomat1" }),
-    node("haloLight", "light", [-2200, -450], { kind: "point", color: [1, 0.3, 0.08, 1], intensity: expressionSlot(`8 + ${PUNCH} * 110`, 22), position: [0, 0, 0] }, { label: "halolight1" }),
+    node("haloLight", "light", [-2200, -450], { kind: "point", color: [1, 0.3, 0.08, 1], intensity: expressionSlot(`6 + ${PUNCH} * 90`, 18), position: [0, 0, 0] }, { label: "halolight1" }),
     node("accentLight", "light", [-1900, -450], { kind: "point", color: [0.2, 1, 0.45, 1], intensity: expressionSlot(`8 + ${TAIL} * 50`, 26), position: [12, 5, -8] }, { label: "accentlight1" }),
-    node("key", "light", [-1600, -450], { kind: "directional", color: [0.55, 0.62, 0.9, 1], intensity: 0.5, shadows: true, shadowExtent: 34, shadowSoftness: 1, direction: [-0.35, -0.55, -0.75] }, { label: "key1" }),
+    node("key", "light", [-1600, -450], { kind: "directional", color: [0.55, 0.62, 0.9, 1], intensity: 0.65, shadows: true, shadowExtent: 34, shadowSoftness: 1, direction: [-0.35, -0.55, -0.75] }, { label: "key1" }),
     node("rim", "light", [-1300, -450], { kind: "directional", color: [1, 0.4, 0.12, 1], intensity: 2.4, shadows: true, shadowExtent: 34, shadowSoftness: 1, direction: [0.15, 0.25, 1] }, { label: "rim1" }),
     // ── The halo ──
     node("haloGrid", "pointGrid", [-2200, -200], { cols: HALO_COLUMNS, rows: HALO_ROWS, count: HALO_CAPACITY, sizeX: 2, sizeY: 2 }, { label: "halogrid1" }),
@@ -128,11 +128,14 @@ function crucibleDocumentBuild(): ProjectDocument {
       "aim.x": expressionSlot("op('cam1').par.lookAt.x", 0), "aim.y": expressionSlot("op('cam1').par.lookAt.y", 0.2), "aim.z": expressionSlot("op('cam1').par.lookAt.z", 0),
       density: 0.007, glow: 0.16, pulse: expressionSlot(PUNCH, 0.1), level: expressionSlot(LEVEL, 0.3),
     }, { label: "haze1", resolution: { mode: "project" } }),
+    // Depth of field: focus rides the lens's own orbit radius, so the ring stays sharp and
+    // the nearest giants and the far teeth soften — the reference's shallow look.
+    node("lens", "customWgsl", [500, 0], { source: RESONANCE_DOF_WGSL, chromatic: 0.25, focusDistance: expressionSlot(ORBIT_R, 21), focusRange: 5, strength: 0.09, maxRadius: 1.8, far: expressionSlot("op('cam1').par.far", 100) }, { label: "lens1", resolution: { mode: "project" } }),
     node("bloom", "customWgsl", [200, 300], { source: RESONANCE_BLOOM_WGSL, threshold: 0.9, strength: 0.16 }, { label: "bloom1", resolution: { mode: "scale", factor: 0.5 } }),
-    node("blur", "blur", [500, 300], { size: 18, filter: "gaussian", extend: "hold" }, { label: "blur1" }),
-    node("glow", "add", [800, 0], { opacity: 1 }, { label: "glow1", resolution: { mode: "project" } }),
-    node("fxaa", "customWgsl", [1100, 0], { source: FXAA_WGSL, amount: 1 }, { label: "fxaa1", resolution: { mode: "project" } }),
-    node("out", "output", [1400, 0], { toneMap: "filmic" }, { label: "out1" }),
+    node("blur", "blur", [800, 300], { size: 18, filter: "gaussian", extend: "hold" }, { label: "blur1" }),
+    node("glow", "add", [1100, 0], { opacity: 1 }, { label: "glow1", resolution: { mode: "project" } }),
+    node("fxaa", "customWgsl", [1400, 0], { source: FXAA_WGSL, amount: 1 }, { label: "fxaa1", resolution: { mode: "project" } }),
+    node("out", "output", [1700, 0], { toneMap: "filmic" }, { label: "out1" }),
   ];
   const edges: GraphEdge[] = [
     edge("clip-analysis", ["clip", "out"], ["analysis", "audio"]), edge("analysis-body", ["analysis", "levels"], ["body", "in"]), edge("analysis-detail", ["analysis", "hits"], ["detail", "in"]),
@@ -140,8 +143,8 @@ function crucibleDocumentBuild(): ProjectDocument {
     edge("clip-band968", ["clip", "out"], ["band968", "in"]), edge("band968-range", ["band968", "out"], ["tailRange", "in"]), edge("range-tail", ["tailRange", "out"], ["tail", "in"]),
     edge("halo-grid", ["haloGrid", "out"], ["haloForm", "in"]), edge("halo-mesh", ["haloForm", "out"], ["haloMesh", "points"]),
     edge("shot-alpha", ["shot", "out"], ["opaqueAlpha", "in1"]), edge("alpha-depth", ["opaqueAlpha", "out"], ["depthPack", "input"]), edge("depth-pack", ["shot", "depth"], ["depthPack", "mask"]),
-    edge("pack-haze", ["depthPack", "out"], ["haze", "input"]), edge("haze-bloom", ["haze", "out"], ["bloom", "input"]), edge("bloom-blur", ["bloom", "out"], ["blur", "input"]),
-    edge("blur-glow", ["blur", "out"], ["glow", "in1"]), edge("haze-glow", ["haze", "out"], ["glow", "in2"]), edge("glow-fxaa", ["glow", "out"], ["fxaa", "input"]), edge("fxaa-out", ["fxaa", "out"], ["out", "input"]),
+    edge("pack-haze", ["depthPack", "out"], ["haze", "input"]), edge("haze-lens", ["haze", "out"], ["lens", "input"]), edge("lens-bloom", ["lens", "out"], ["bloom", "input"]), edge("bloom-blur", ["bloom", "out"], ["blur", "input"]),
+    edge("blur-glow", ["blur", "out"], ["glow", "in1"]), edge("lens-glow", ["lens", "out"], ["glow", "in2"]), edge("glow-fxaa", ["glow", "out"], ["fxaa", "input"]), edge("fxaa-out", ["fxaa", "out"], ["out", "input"]),
   ];
   const scenes: string[] = ["halomesh1"];
   // Eight swarms: six of the mid-field, two of foreground giants that cut the frame.
@@ -149,14 +152,14 @@ function crucibleDocumentBuild(): ProjectDocument {
   // radial teeth. Outer: foreground giants, nearest the lens, sparse. Each tier turns as
   // one, the inner faster than the outer; nothing tumbles.
   const swarms = [
-    { tier: 0, near: 6.2, far: 7.6, small: 0.9, large: 1.6, depthNear: -2.5, depthFar: 2.5, speed: 0.006, sectors: 24, accent: 0.35 },
-    { tier: 0, near: 6.6, far: 8.2, small: 0.8, large: 1.5, depthNear: -3, depthFar: 3, speed: 0.006, sectors: 24, accent: 0.25 },
-    { tier: 1, near: 9, far: 12, small: 1.8, large: 3.2, depthNear: -8, depthFar: 2, speed: 0.0035, sectors: 16, accent: 0.3 },
-    { tier: 1, near: 9.5, far: 12.5, small: 1.6, large: 3.0, depthNear: -7, depthFar: 3, speed: 0.0035, sectors: 16, accent: 0.2 },
-    { tier: 1, near: 10, far: 13, small: 2.0, large: 3.4, depthNear: -9, depthFar: 1, speed: 0.0035, sectors: 16, accent: 0.25 },
-    { tier: 1, near: 9.2, far: 12.2, small: 1.7, large: 3.1, depthNear: -6, depthFar: 4, speed: 0.0035, sectors: 16, accent: 0.3 },
-    { tier: 2, near: 13, far: 16, small: 3.5, large: 5.0, depthNear: 2, depthFar: 10, speed: 0.002, sectors: 10, accent: 0.3 },
-    { tier: 2, near: 14, far: 17, small: 3.8, large: 5.4, depthNear: 3, depthFar: 11, speed: 0.002, sectors: 10, accent: 0.25 },
+    { tier: 0, near: 6.2, far: 7.6, small: 0.9, large: 1.6, depthNear: -2.5, depthFar: 2.5, speed: 0.0035, sectors: 24, accent: 0.18 },
+    { tier: 0, near: 6.6, far: 8.2, small: 0.8, large: 1.5, depthNear: -3, depthFar: 3, speed: 0.0035, sectors: 24, accent: 0.12 },
+    { tier: 1, near: 9, far: 12, small: 1.8, large: 3.2, depthNear: -8, depthFar: 2, speed: 0.002, sectors: 16, accent: 0.15 },
+    { tier: 1, near: 9.5, far: 12.5, small: 1.6, large: 3.0, depthNear: -7, depthFar: 3, speed: 0.002, sectors: 16, accent: 0.1 },
+    { tier: 1, near: 10, far: 13, small: 2.0, large: 3.4, depthNear: -9, depthFar: 1, speed: 0.002, sectors: 16, accent: 0.12 },
+    { tier: 1, near: 9.2, far: 12.2, small: 1.7, large: 3.1, depthNear: -6, depthFar: 4, speed: 0.002, sectors: 16, accent: 0.15 },
+    { tier: 2, near: 13, far: 16, small: 3.5, large: 5.0, depthNear: 2, depthFar: 10, speed: 0.0012, sectors: 10, accent: 0.15 },
+    { tier: 2, near: 14, far: 17, small: 3.8, large: 5.4, depthNear: 3, depthFar: 11, speed: 0.0012, sectors: 10, accent: 0.12 },
   ] as const;
   swarms.forEach((swarm, index) => {
     const id = `swarm${String(index)}`, grid = `${id}Grid`, form = `${id}Form`, mesh = `${id}Mesh`, glow = `${id}Glow`;
@@ -165,7 +168,7 @@ function crucibleDocumentBuild(): ProjectDocument {
       node(grid, "pointGrid", [-2200, y], { cols: SWARM_COLUMNS, rows: SWARM_ROWS * SWARM_BODIES, count: SWARM_CAPACITY, sizeX: 2, sizeY: 2 }, { label: `${id}grid1` }),
       node(form, "pointKernel", [-1900, y], { capacity: SWARM_CAPACITY, attributes: SWARM_ATTRIBUTES, kernel: SWARM_KERNEL, slot: index, bodies: SWARM_BODIES, ...swarm, drift: expressionSlot(TAIL, 0.4), burst: expressionSlot(BEAT, 0.1) }, { label: `${id}form1` }),
       node(mesh, "geometry", [-1600, y], { mode: "surface", material: "hullpaint1", tint: mappedTint }, { label: `${id}mesh1` }),
-      node(glow, "geometry", [-1300, y], { mode: "beam", endpoint: "end", material: "seamglow1", tint: mappedEmission, scale: 0.02, soft: 1, blend: "additive", group: "p.seam > 0.5" }, { label: `${id}glow1` }),
+      node(glow, "geometry", [-1300, y], { mode: "beam", endpoint: "end", material: "seamglow1", tint: mappedEmission, scale: 0.045, soft: 0.6, blend: "additive", group: "p.seam > 0.5" }, { label: `${id}glow1` }),
     );
     edges.push(edge(`${id}-grid`, [grid, "out"], [form, "in"]), edge(`${id}-mesh`, [form, "out"], [mesh, "points"]), edge(`${id}-glow`, [form, "out"], [glow, "points"]));
     scenes.push(`${id}mesh1`, `${id}glow1`);

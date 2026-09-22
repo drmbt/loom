@@ -16,7 +16,7 @@ import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
  * A `geometry` surface is one grid, so a kernel that wants N bodies puts them in ONE grid
  * and collapses the first and last row of each body to a point (the lotus petals' trick):
  * adjacent bodies then touch through a degenerate strip that draws nothing. Rows per body
- * are `SWARM_ROWS`, columns are four faces of seventeen (corners duplicated). 24 bodies per
+ * are `SWARM_ROWS`, columns are four faces of nine (corners duplicated). 24 bodies per
  * node, six nodes, plus two nodes of foreground giants — ~160 hulls, each with its own
  * orbit, plane, size, tumble, plate layout and lit strips, from one hash per body.
  */
@@ -32,8 +32,8 @@ fn rotateX(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(p.x,c*p.
 fn rotateZ(p:vec3f,a:f32)->vec3f{let c=cos(a);let s=sin(a);return vec3f(c*p.x-s*p.y,s*p.x+c*p.y,p.z);}
 `;
 
-export const SWARM_COLUMNS = 68;
-export const SWARM_ROWS = 34;
+export const SWARM_COLUMNS = 36;
+export const SWARM_ROWS = 20;
 export const SWARM_BODIES = 24;
 export const SWARM_CAPACITY = SWARM_COLUMNS * SWARM_ROWS * SWARM_BODIES;
 
@@ -77,16 +77,17 @@ fn process(p:Point,ctx:PointCtx)->Point{
   let axial=row%${SWARM_ROWS}u;
   let id=f32(body)+ctx.params.slot*${SWARM_BODIES}.0;
   let h=array<f32,12>(ihash(id*1.3+0.1),ihash(id*2.1+0.7),ihash(id*3.7+1.9),ihash(id*5.3+2.3),ihash(id*7.1+3.1),ihash(id*1.9+4.7),ihash(id*2.9+5.3),ihash(id*4.1+6.1),ihash(id*6.7+7.9),ihash(id*8.3+8.1),ihash(id*9.1+9.7),ihash(id*11.3+0.4));
-  // Along the body: rows 3..30 span the length; rows 1–2 and 31–32 lie IN the end planes
+  // Along the body: rows 3..16 span the length; rows 1–2 and 17–18 lie IN the end planes
   // (an inset ring and the full profile), so the end cap is a flat face with its own normal
   // rather than a fan whose shading blends into the sides; rows 0 and 33 collapse to a point.
   let v=clamp((f32(axial)-3.0)/${SWARM_ROWS - 7}.0,0.0,1.0);
   let cap=select(1.0,0.0,axial==0u || axial==${SWARM_ROWS - 1}u);
-  let inset=select(1.0,0.72,axial==1u || axial==${SWARM_ROWS - 2}u);
-  // Around the body: four faces of seventeen columns each, the corner column DUPLICATED
-  // on both faces that meet there — the surface renderer's finite differences then keep
-  // each face's own hard normal instead of rounding the edge over one column.
-  let face=f32(column/17u);let along=f32(column%17u)/16.0;
+  let inset=select(1.0,0.9,axial==1u || axial==${SWARM_ROWS - 2}u);
+  // Around the body: four faces of nine columns each, the corner column DUPLICATED on both
+  // faces that meet there — the surface renderer's finite differences then keep each
+  // face's own hard normal instead of rounding the edge over one column. Nine, not
+  // seventeen: the owner measured the app sluggish, and a slab's face needs no more.
+  let face=f32(column/9u);let along=f32(column%9u)/8.0;
   // STRUCTURE, NOT NOISE. A body is a MODULE: a long slab, ribbed along its length, with
   // a recessed channel down each broad face and lit strips at regular stations. Sizes
   // come from the tier, not a heavy-tailed draw; proportions are slab-like and shared.
@@ -127,27 +128,29 @@ fn process(p:Point,ctx:PointCtx)->Point{
   local=rotateX(local,lean*select(1.0,-1.0,sin(angle)<0.0));
   q.position=local+centre;
   q.end=q.position+axisDir*(length/${SWARM_ROWS - 3}.0);
-  // Seams: the rib edges carry an ember the Beat lane lights; lit strips sit at every
-  // second station on the broad faces — green on the accent bodies, amber on the rest —
-  // and breathe with the Tail lane.
+  // Lit strips: a continuous emissive line down the centre of each broad face, present on
+  // half the stations (a hash decides which), green on the accent bodies and amber on the
+  // rest, breathing with the Tail lane. Drawn as BEAMS from the centre column of the face,
+  // row to row, so the line is continuous — a per-row dot at rib borders read as a dotted
+  // ladder on the coarse grid. The Beat lane lights the same line as an ember.
   let atRib=smoothstep(0.42,0.5,abs(fract(v*ribs)-0.5));
-  let onSeam=atRib>0.5 && cap>0.5 && axial>0u && axial<${SWARM_ROWS - 1}u && (row%${SWARM_ROWS}u)%4u==1u;
-  q.seam=select(0.0,1.0,onSeam);
-  let station=fract(v*ribs+0.5);
-  let strip=broad*step(0.5,fract(floor(v*ribs)*0.5+h[9]))*smoothstep(0.42,0.46,station)*(1.0-smoothstep(0.54,0.58,station))*(1.0-smoothstep(0.3,0.36,abs(along-0.5)))*step(0.1,abs(along-0.5));
+  let lit=broad*step(0.5,fract(floor(v*ribs)*0.5+h[9]));
+  let onStrip=lit>0.5 && column%9u==4u && axial>=3u && axial<${SWARM_ROWS - 4}u;
+  q.seam=select(0.0,1.0,onStrip);
+  let strip=lit*(1.0-smoothstep(0.06,0.12,abs(along-0.5)));
   let accented=h[11]<ctx.params.accent;
-  let stripColour=select(vec3f(1.0,0.45,0.12),vec3f(0.18,1.0,0.45),accented);
+  let stripColour=select(vec3f(1.0,0.5,0.15),vec3f(0.2,1.0,0.5),accented)*0.7;
   let ember=vec3f(1.0,0.22,0.04)*(0.1+ctx.params.burst*2.5);
-  q.emission=vec4f(ember+stripColour*strip*(1.5+ctx.params.drift*2.0),1);
+  q.emission=vec4f(ember*0.4+stripColour*(1.2+ctx.params.drift*1.6),1);
   let paint=0.14+0.1*h[5];
-  let rust=mix(vec3f(0.55,0.5,0.46),vec3f(0.45,0.2,0.1),h[6]*0.6);
+  let rust=mix(vec3f(0.5,0.53,0.6),vec3f(0.5,0.28,0.16),h[6]*0.45);
   q.tint=vec4f(rust*paint*(0.7+0.3*mineral(rest*1.5+id))+stripColour*strip*0.4+vec3f(0.4,0.08,0.02)*atRib*ctx.params.burst*0.3,1);
   return q;
 }`;
 
 export const SHARD_COLUMNS = 9;
 export const SHARD_ROWS = 4;
-export const SHARD_COUNT = 320;
+export const SHARD_COUNT = 220;
 export const SHARD_CAPACITY = SHARD_COLUMNS * SHARD_ROWS * SHARD_COUNT;
 
 /**
@@ -250,6 +253,8 @@ struct Params {
   // smear was tried and refused — a THIN bright ring sampled at twenty taps echoes as
   // concentric arcs across the whole frame (measured at f120/f292 of the clip).
   let flare=fogColour*halo*params.pulse*0.6;
-  let colour=sample.rgb*(1.0-fog)+fogColour*fog+flare;
-  return vec4f(max(colour,vec3f(0)),1);
+  // A vignette, and the depth stays in alpha for the DOF pass behind this one.
+  let vignette=1.0-0.35*smoothstep(0.35,0.95,length((uv-0.5)*vec2f(aspect,1.0)));
+  let colour=(sample.rgb*(1.0-fog)+fogColour*fog+flare)*vignette;
+  return vec4f(max(colour,vec3f(0)),sample.a);
 }`;
