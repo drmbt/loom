@@ -25,26 +25,35 @@ interface Move {
   readonly orbit?: number;
 }
 
-/** The v1 cut: every framing once, the moves chosen per shot. The director replaces the ORDER. */
+/**
+ * Every framing with its move, CLOSE pool first, WIDE pool after — the director (§T1370b)
+ * picks from the close, dynamic set when the music is energetic and from the wide, slow set
+ * when it is not, by index range; the time-driven cut plays them in this order.
+ */
 export const CUT: readonly Move[] = [
+  // Close and dynamic.
   { shot: "shot.hero_low_furnace", dolly: 3.0, crane: 0.8 },
   { shot: "shot.electrode_closeup", orbit: 0.35 },
   { shot: "shot.crane_eye", truck: 5.0 },
   { shot: "shot.slag_door", push: -6, dolly: 0.8 },
   { shot: "shot.under_deck", dolly: 5.0 },
-  { shot: "shot.establish_wide", truck: 8.0, dolly: 2.0 },
   { shot: "shot.ladle_pour", orbit: -0.3 },
   { shot: "shot.pipe_corridor", dolly: 7.0 },
   { shot: "shot.through_grating", crane: 2.0 },
   { shot: "shot.caster_strand", dolly: 5.0, truck: -1.0 },
   { shot: "shot.over_shoulder_ladle", truck: 3.0, push: -4 },
+  { shot: "shot.cable_festoon", truck: 4.0 },
+  // Wide and slow.
+  { shot: "shot.establish_wide", truck: 8.0, dolly: 2.0 },
   { shot: "shot.conveyor_climb", crane: 3.0, dolly: 2.0 },
   { shot: "shot.scrap_bay", orbit: 0.25 },
-  { shot: "shot.cable_festoon", truck: 4.0 },
   { shot: "shot.top_down", crane: -3.0 },
   { shot: "shot.ladle_furnace", dolly: 3.0 },
   { shot: "shot.pulpit_window", truck: 2.5 },
 ];
+
+/** How many CUT entries, from the start, form the close pool; the rest are the wide pool. */
+export const CLOSE_POOL = 11;
 
 /** How far ahead of the eye the aim point sits, metres (the orbit's pivot). */
 const AIM_DISTANCE = 12;
@@ -126,10 +135,31 @@ export function cameraPath(
   blockers: readonly Blocker[] = [],
 ): CameraPath {
   const shotSeconds = (bars * 4 * 60) / beatsPerMinute;
-  const count = CUT.length;
-  const index = `(floor(${time} / ${n(shotSeconds)}) % ${count})`;
-  const local = `((${time} % ${n(shotSeconds)}) / ${n(shotSeconds)})`;
-  // Smoothstep, centred on zero: −0.5 at the cut in, +0.5 at the cut out.
+  return {
+    ...shotPath(facts, {
+      index: `(floor(${time} / ${n(shotSeconds)}) % ${CUT.length})`,
+      progress: `((${time} % ${n(shotSeconds)}) / ${n(shotSeconds)})`,
+      time,
+      blockers,
+    }),
+    shotSeconds,
+  };
+}
+
+/**
+ * The same shots driven from OUTSIDE (T1370b's director): `index` is an expression naming
+ * which CUT entry is live, `progress` an expression from 0 (the cut) to 1 (the end of the
+ * move), `time` the clock the handheld drift reads. Returned without a shot length — the
+ * music decides it.
+ */
+export function shotPath(
+  facts: FurnaceSceneFacts,
+  drive: { readonly index: string; readonly progress: string; readonly time: string; readonly blockers?: readonly Blocker[] },
+): Omit<CameraPath, "shotSeconds"> {
+  const { index, time } = drive;
+  const blockers = drive.blockers ?? [];
+  const local = `clamp(${drive.progress}, 0, 1)`;
+  // Smoothstep, centred on zero: −0.5 at the cut in, +0.5 at the end of the move.
   const ease = `((${local}) ^ 2 * (3 - 2 * (${local})) - 0.5)`;
   // A faint handheld drift: two incommensurate sines per axis, a few centimetres.
   const shake = [
@@ -178,7 +208,6 @@ export function cameraPath(
     fovTerms.push(`${active} * (${n(camera.fovDeg)} + ${n(move.push ?? 0)} * ${ease})`);
   });
   return {
-    shotSeconds,
     eye: [0, 1, 2].map((axis) => `${eyeTerms[axis as 0 | 1 | 2].join(" + ")} + ${shake[axis]}`) as unknown as [string, string, string],
     aim: [0, 1, 2].map((axis) => aimTerms[axis as 0 | 1 | 2].join(" + ")) as unknown as [string, string, string],
     fov: fovTerms.join(" + "),

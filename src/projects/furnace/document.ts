@@ -11,10 +11,8 @@ import { KEY_DIRECTION, SCATTER_LIGHTS, atmosphereWgsl } from "./atmosphere.ts";
 import { BRIGHT_PASS_WGSL, GRADE_WGSL } from "./post.ts";
 import { SHOP_ENVIRONMENT_WGSL } from "./environment.ts";
 import { DOF_WGSL, GTAO_WGSL, MOTION_BLUR_WGSL, SSR_WGSL } from "./screen-space.ts";
-import { cameraPath } from "./camera-path.ts";
-
-/** The working track's tempo, measured by the app's own analysis (Clankz 3). */
-const TRACK_BPM = 97.418;
+import { shotPath } from "./camera-path.ts";
+import { director } from "./director.ts";
 
 /**
  * T1354b — THE FURNACE DOCUMENT: the melt shop, lit, running, in smoke, graded.
@@ -53,9 +51,23 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   if (camera === undefined) {
     throw new Error(`furnaceDocument: no camera "${shotName}"; the GLB has ${[...facts.cameras.keys()].join(", ")}.`);
   }
-  // The cut: 4-bar shots at the working track's tempo (measured, 97.418 bpm).
-  const path = options.shot === undefined ? cameraPath(facts, "abstime", TRACK_BPM, 4, facts.blockers) : undefined;
-  const previousPath = options.shot === undefined ? cameraPath(facts, "(abstime - delta)", TRACK_BPM, 4, facts.blockers) : undefined;
+  // The director (T1370b) decides the cut from the music; moves run on time since the cut,
+  // faster through a build-up. The previous camera is the director one frame back.
+  const direction = director("clip", [-4200, 2200]);
+  const moveSeconds = `(10 / (1 + ${direction.build} * 1.5))`;
+  const path =
+    options.shot === undefined
+      ? shotPath(facts, { index: direction.shot, progress: `${direction.since} / ${moveSeconds}`, time: "abstime", blockers: facts.blockers })
+      : undefined;
+  const previousPath =
+    options.shot === undefined
+      ? shotPath(facts, {
+          index: direction.previousShot,
+          progress: `${direction.previousSince} / ${moveSeconds}`,
+          time: "(abstime - delta)",
+          blockers: facts.blockers,
+        })
+      : undefined;
   const eye = camera.eye;
   const aim: [number, number, number] = [eye[0] + camera.forward[0] * 12, eye[1] + camera.forward[1] * 12, eye[2] + camera.forward[2] * 12];
   const drift = (axis: 0 | 1 | 2, rate: number, depth: number): StoredParameter =>
@@ -78,7 +90,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   };
   // The furnace breathes with the low band; the arc flickers on the hats (and never quite
   // steadies — a real arc hunts); the high bays are dim sodium, the shop's only steady light.
-  pointLight("furnace", "light.furnace_glow", [1, 0.5, 0.2], expressionSlot(`120 + ${LEVEL("low")} * 120`, 160), -2400, 35);
+  pointLight("furnace", "light.furnace_glow", [1, 0.5, 0.2], expressionSlot(`90 + ${direction.energy} * 150 + ${direction.build} * 80`, 160), -2400, 35);
   pointLight("arc", "light.arc", [0.6, 0.7, 1], expressionSlot(`40 + ${HIT("hatCount")} * 420 + sin(abstime * 37) * 18`, 60), -2200);
   pointLight("slag", "light.slag_door", [1, 0.42, 0.12], 110, -2000, 25);
   pointLight("tap", "light.tap", [1, 0.55, 0.2], expressionSlot(`30 + ${HIT("kickCount")} * 120`, 45), -1800, 20);
@@ -129,7 +141,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       casting: expressionSlot("abstime * 0.4", 0),
       conveyor: expressionSlot("abstime * 1.2", 0),
     }, { label: "rig1" }),
-    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: PLANT_SURFACE_WGSL, heatPulse: expressionSlot(`${LEVEL("low")} * 0.35`, 0.1) }, { label: "steel1" }),
+    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: PLANT_SURFACE_WGSL, heatPulse: expressionSlot(`${direction.energy} * 0.25 + ${direction.build} * 0.35`, 0.1) }, { label: "steel1" }),
     node("plantGeo", "geometry", [-3000, -300], { mode: "surface", material: "steel1" }, { label: "plantgeo1" }),
     node("machineGeo", "geometry", [-3000, 0], { mode: "surface", material: "steel1" }, { label: "machinegeo1" }),
     // ── Sparks ──
@@ -137,9 +149,9 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       capacity: 8000,
       attributes: SPARK_ATTRIBUTES,
       kernel: sparksKernel(facts),
-      tapRate: expressionSlot(`0.08 + ${HIT("kickCount")} * 0.8`, 0.15),
+      tapRate: expressionSlot(`0.05 + ${direction.build} * 0.35 + ${HIT("kickCount")} * 0.8`, 0.15),
       slagRate: 0.12,
-      arcRate: expressionSlot(`0.05 + ${HIT("hatCount")} * 0.5`, 0.12),
+      arcRate: expressionSlot(`0.03 + ${direction.density} * 0.15 + ${HIT("hatCount")} * 0.5`, 0.12),
       torchRate: 0.35,
       pourRate: expressionSlot("max(sin(abstime * 0.05), 0.0) * 0.6", 0),
       brightness: 9,
@@ -304,6 +316,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("adaptation", "valueLag", [300, 300], { lag: 0.35, releaseRatio: 3 }, { label: "adaptation1" }),
     node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0.2, adapt: expressionSlot("clamp(0.075 / max(op('adaptation1').chan.value, 0.0005), 0.35, 10)", 1), punch: 1.3, punchSaturation: 1.05, contrast: 1.1, grain: 0.016, saturation: 0.9, split: 0.12, shadowTint: [0.94, 1, 1, 1], highlightTint: [1.03, 1, 0.96, 1] }, { label: "grade1", resolution: { mode: "project" } }),
     node("out", "output", [300, 0], { toneMap: "none" }, { label: "out1" }),
+    ...direction.nodes,
   ];
 
   const edges: GraphEdge[] = [
@@ -342,6 +355,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("glow-meter", ["glow", "out"], ["meter", "input"]),
     edge("metered-adaptation", ["metered", "out"], ["adaptation", "in"]),
     edge("grade-out", ["grade", "out"], ["out", "input"]),
+    ...direction.edges,
   ];
 
   return {
