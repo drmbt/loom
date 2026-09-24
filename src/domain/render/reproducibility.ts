@@ -358,6 +358,7 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   valueNovelty: "pure",
   valueCount: "pure",
   valueDelay: "pure",
+  valueExpression: "pure",
   valueBeat: "pure",
   valueSelect: "pure",
   audioPattern: "pure",

@@ -1,5 +1,7 @@
 import type { CompiledNodeDescription, NodeDefinition, StatefulDeclaration } from "../../domain/types/node-definition.ts";
 import { VALUE_PORT } from "./common-ports.ts";
+import { evaluateExpression, parseExpression, scopeFromFrame } from "../../domain/expressions/evaluate.ts";
+import { readCompileInputs } from "./compile-context.ts";
 
 /**
  * T1370b — the STRUCTURE nodes: what a track is doing over seconds, not over a frame.
@@ -18,7 +20,10 @@ import { VALUE_PORT } from "./common-ports.ts";
  *  - Count    rising crossings of a threshold, with a hold-off, and the seconds since the
  *             last one — a cut counter and a shot clock;
  *  - Delay    each channel as it was N frames ago — the previous camera for motion blur
- *             once the camera is driven by the music rather than by the clock alone.
+ *             once the camera is driven by the music rather than by the clock alone;
+ *  - Expression  new channels computed from the WIRED channels by named expressions — the
+ *             logic between them (a cut gate, a shot pick), because a value node's own
+ *             parameters resolve without channels (value-graph.ts): wiring, not references.
  *
  * All are DELTA-DRIVEN (§V436): they keep their own clock by summing the frame step, so a
  * timeline loop passes through them intact, and they reset with the transport (§V181).
@@ -267,10 +272,76 @@ export const valueDelayNode: NodeDefinition = {
   compile: noPasses,
 };
 
+/** `name = expr; name2 = expr2` → [name, expr] pairs, in order. Blank statements are skipped. */
+export function parseExpressionStatements(source: string): Array<{ name: string; expression: string } | { error: string }> {
+  return source
+    .split(/[;\n]/)
+    .map((statement) => statement.trim())
+    .filter((statement) => statement !== "")
+    .map((statement) => {
+      const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*(.+)$/.exec(statement);
+      if (match === null) return { error: `"${statement}" is not \`name = expression\`` };
+      const parsed = parseExpression(match[2]!);
+      if (!parsed.ok) return { error: `${match[1]}: ${parsed.reason}` };
+      return { name: match[1]!, expression: match[2]! };
+    });
+}
+
+export const valueExpressionNode: NodeDefinition = {
+  type: "valueExpression",
+  version: 1,
+  title: "Expression",
+  category: "value",
+  description:
+    "New channels computed from the channels wired into In, one per statement: `cut = (beatCount % 16 == 0) * (beatCountSince < 0.04); pool = level > 0.5`. Every incoming channel is a name the expressions can read (bags from several wires merge), beside the clocks (time, abstime, delta, frame). The logic BETWEEN value nodes — a gate, a pick, a blend — which a value node's own parameters cannot express, because they resolve without channels. A statement that fails this frame (an unknown name) publishes nothing.",
+  tags: ["value", "expression", "math", "logic", "gate", "chop"],
+  inputs: [{ id: "in", label: "In", type: VALUE_PORT, optional: true, variadic: true }],
+  outputs: [{ id: "out", label: "Out", type: VALUE_PORT }],
+  parameters: {
+    expressions: {
+      type: "string",
+      label: "Expressions",
+      default: "value = 0",
+      description: "Statements `name = expression`, separated by `;` or new lines. Each name becomes an output channel, in order.",
+    },
+  },
+  valueEvaluate: ({ inputs, values, frame }) => {
+    const source = typeof values["expressions"] === "string" ? (values["expressions"] as string) : "";
+    const channels: Record<string, number> = { ...(inputs["in"] ?? {}) };
+    const out: Record<string, number> = {};
+    for (const statement of parseExpressionStatements(source)) {
+      if ("error" in statement) continue;
+      // Earlier statements are readable by later ones, like lines of a small program.
+      const result = evaluateExpression(statement.expression, scopeFromFrame(frame, { ...channels, ...out }));
+      if (result.ok && Number.isFinite(result.value)) out[statement.name] = result.value;
+    }
+    return out;
+  },
+  compile(context): CompiledNodeDescription {
+    const { nodeId, parameters } = readCompileInputs(context as Parameters<typeof readCompileInputs>[0]);
+    const source = typeof parameters["expressions"] === "string" ? (parameters["expressions"] as string) : "";
+    const errors = parseExpressionStatements(source).flatMap((statement) => ("error" in statement ? [statement.error] : []));
+    return {
+      passes: [],
+      ...(errors.length === 0
+        ? {}
+        : {
+            diagnostics: errors.map((error) => ({
+              severity: "error" as const,
+              code: "node.valueExpression.syntax",
+              message: `Node "${nodeId}": ${error}.`,
+              nodeId,
+            })),
+          }),
+    };
+  },
+};
+
 export const valueStructureNodeDefinitions: readonly NodeDefinition[] = [
   valueTrendNode,
   valueRateNode,
   valueNoveltyNode,
   valueCountNode,
   valueDelayNode,
+  valueExpressionNode,
 ];

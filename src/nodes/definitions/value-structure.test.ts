@@ -88,3 +88,17 @@ describe("T1370b — the structure nodes", () => {
     expect(read.map((bag) => bag["value"])).toEqual([10, 10, 10, 20, 30]);
   });
 });
+
+describe("T1370b — Expression computes channels from wired channels", () => {
+  it("reads every incoming channel and earlier statements, and publishes one channel per statement", () => {
+    const read = run("valueExpression", { expressions: "twice = value * 2; gate = (twice % 4 == 0) * (value > 1)" }, [1, 2, 3, 4]);
+    expect(read.map((bag) => [bag["twice"], bag["gate"]])).toEqual([[2, 0], [4, 1], [6, 0], [8, 1]]);
+  });
+
+  it("refuses a statement that does not parse, by name, at compile", () => {
+    const registryView = createNodeRegistry(allNodeDefinitions).view();
+    const definition = registryView.get("valueExpression")!;
+    const compiled = definition.compile({ nodeId: "x", parameters: { expressions: "ok = 1; bad = (1 +" } } as never);
+    expect(compiled.diagnostics?.map((d) => d.message)).toEqual([expect.stringMatching(/bad:/)]);
+  });
+});

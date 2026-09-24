@@ -262,6 +262,7 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   valueNovelty: "none",
   valueCount: "none",
   valueDelay: "none",
+  valueExpression: "none",
   valueBeat: "none",
   valueSelect: "none",
   audioPattern: "none",

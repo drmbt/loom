@@ -184,6 +184,7 @@ describe("core catalogue (T70, T40)", () => {
       "valueNovelty",
       "valueCount",
       "valueDelay",
+      "valueExpression",
       // T414: sound as channels — the value family's third input source after Mouse
       // and the trio. Deliberately named for what it IS, not a TD analog.
       "audioIn",
@@ -427,6 +428,7 @@ describe("T438 (§V316) — the channel publishers are DECLARED, not a category"
         "valueNovelty",
         "valueCount",
         "valueDelay",
+        "valueExpression",
         "valueStep",
         "valueSwitch",
         "valueTrigger",

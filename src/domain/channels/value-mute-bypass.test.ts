@@ -402,6 +402,8 @@ describe("EVERY value node honours mute and bypass (T541, §V437)", () => {
      */
     recent: 0.01,
     reference: 0.01,
+    // T1370b: Expression publishes what its statements compute; the default is `value = 0`.
+    expressions: "loud = 1.25",
   };
 
   const evaluateOne = (

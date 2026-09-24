@@ -307,6 +307,9 @@ const CLOCK_OWNERSHIP: Readonly<Record<string, "free-running" | "timeline-anchor
   valueNovelty: "delta-driven",
   valueCount: "delta-driven",
   valueDelay: "delta-driven",
+  // T1370b: clockless like Constant — it reads a clock only if a statement names one, and
+  // then reads it exactly as a parameter expression would.
+  valueExpression: "clockless",
   valueBeat: "delta-driven",
   // CLOCKLESS: reads no clock. A loop cannot reach them.
   constant: "clockless",
