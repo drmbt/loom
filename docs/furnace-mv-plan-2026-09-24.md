@@ -226,6 +226,7 @@ engine 5". The gap is techniques, not tuning:
 | T1375b | Shadowed froxel volumetrics |
 | T1376b | Physically based bloom, AgX, bokeh DOF, lens effects |
 | T1377b | Procedural surface detail modules for Material · WGSL |
+| T1378b | Auto-exposure (luminance reduction → adapted exposure) |
 
 Order: T1377b and the Blender bevel pass first (no engine change, biggest material win), then
 T1362b, then T1371b and the post passes it unlocks.
