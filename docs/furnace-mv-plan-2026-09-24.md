@@ -209,3 +209,23 @@ something is deferred.
 
 The Blender side's open items (retopology, area prefixes, weak close-ups, lamp markers) are
 tracked on T1354b.
+
+### The renderer gap (owner review of v0, 2026-09-24)
+
+The owner's verdict on v0: "far far from production look … not HDR enough … materials lacking
+… PS1 level vibe rather than a super high end 2026 visualizer trying to compete with unreal
+engine 5". The gap is techniques, not tuning:
+
+| Row | What |
+|-----|------|
+| T1362b | Point-light shadows |
+| T1371b | Render outputs a G-buffer (normal, material, motion vectors) |
+| T1372b | Screen-space reflections |
+| T1373b | GTAO + screen-space GI |
+| T1374b | TAA + motion blur |
+| T1375b | Shadowed froxel volumetrics |
+| T1376b | Physically based bloom, AgX, bokeh DOF, lens effects |
+| T1377b | Procedural surface detail modules for Material · WGSL |
+
+Order: T1377b and the Blender bevel pass first (no engine change, biggest material win), then
+T1362b, then T1371b and the post passes it unlocks.
