@@ -182,3 +182,30 @@ It is detailed through instancing: bolts, rollers and grating.
 
 Every phase ends with rendered frames compared against the reference board, not against earlier
 examples.
+
+## Backlog: everything deferred is a SPEC row
+
+The owner's rule (2026-09-24): nothing deferred lives only in a session. Every "not yet" from
+building this piece is an open §T row. Close a row when it lands; add one the moment
+something is deferred.
+
+| Row | What |
+|-----|------|
+| T1356b | Mesh preview tile frames the mesh's bounds and draws it |
+| T1357b | Glass on a mesh (pulpit windows) |
+| T1358b | GLB image textures (baseColor, metallicRoughness, normal, emissive) |
+| T1359b | GLB decode in a Worker |
+| T1360b | Material · WGSL preview tile runs the code |
+| T1361b | Material · WGSL on instances, points and beams |
+| T1362b | Point-light shadows (the furnace's local lights leak without them) |
+| T1363b | Part hierarchy (`loom_parent`) and marker extras (lamp colour, lumens) decoded |
+| T1364b | GLB cameras and markers as live graph data (not baked at build time) |
+| T1365b | Custom WGSL with more than one input (colour + depth without alpha packing) |
+| T1366b | Mesh binding headroom: attribute packing, or a larger device binding |
+| T1367b | A Mesh File In inside a component |
+| T1368b | Emissive on the stock materials |
+| T1369b | Glitch nodes: datamosh, pixel sort, lens flare, block tear, RGB split |
+| T1370b | The director: the `structure` lane on AudioAnalysis |
+
+The Blender side's open items (retopology, area prefixes, weak close-ups, lamp markers) are
+tracked on T1354b.
