@@ -28,6 +28,7 @@ import {
   shadowSurfaceWgsl,
   shadowMeshWgsl,
   cubeShadowVariant,
+  GBUFFER_CLEAR_WGSL,
   CUSTOM_SURFACE_FRAME_BINDING,
   materialParamUniformKey,
 } from "../shaders/scene-render.wgsl.ts";
@@ -925,12 +926,24 @@ export const renderNode: NodeDefinition = {
       description:
         "Camera-space depth as data: R = linear view distance ÷ far plane (0 eye, 1 far). Enable with Depth Output — off, this port produces nothing. Feed it to a blur-by-depth chain for depth of field, a mix for fog, or an edge for silhouettes.",
     },
+    {
+      /* T1371b — the G-BUFFER half the screen-space passes need beside depth: the shaded
+         world normal (after a WGSL material's bump) and roughness. Data, like depth. */
+      id: "normal",
+      label: "Normal",
+      type: DATA_TEXTURE,
+      description:
+        "World-space shaded normal as data, encoded n·0.5+0.5 in rgb, and roughness in a (0 = no surface). Surface geometry only; enable with Normal Output — off, this port produces nothing. Feed it, with Depth, to reflections, occlusion and edge passes.",
+    },
   ],
-  depthOutputs: ["out", "depth"],
+  depthOutputs: ["out", "depth", "normal"],
   /* T939: MSAA is structural (a different render signature), so it is declared like
      depth — and the backend's patched vgpu keeps samples across the multi-pass chain. */
   msaaWhen: { out: (parameters) => parameters["antialias"] === "msaa" },
-  outputWhen: { depth: (parameters) => parameters["depthOutput"] === true },
+  outputWhen: {
+    depth: (parameters) => parameters["depthOutput"] === true,
+    normal: (parameters) => parameters["normalOutput"] === true,
+  },
   sourceReferences: [
     { parameter: "scenes", input: "scenes", list: true },
     { parameter: "camera", input: "camera" },
@@ -1030,6 +1043,14 @@ export const renderNode: NodeDefinition = {
       ],
       description:
         "T939: smooths geometry edges BEFORE bloom amplifies them, on the scene pass where the aliasing is made. MSAA 4x: hardware multisampling on this target — 4 coverage samples per pixel, shading cost unchanged (the usual choice). SSAA 2x: the whole scene renders at double resolution and box-resolves — 4 SHADED samples per pixel, heavier but also antialiases shader-thin detail inside surfaces. Both cost roughly 4x this pass's fill.",
+    },
+    normalOutput: {
+      type: "boolean",
+      label: "Normal Output",
+      default: false,
+      compileTime: true,
+      description:
+        "T1371b: renders the shaded world normal and roughness into the Normal output — one extra pass per SURFACE geometry, through the same material code as the lit draw. Instances, points and beams do not write it. Off, the port allocates nothing.",
     },
     depthOutput: {
       type: "boolean",
@@ -1781,6 +1802,21 @@ export const renderNode: NodeDefinition = {
       clear: true,
     } as DrawPassDescriptor);
 
+    /* T1371b: the G-buffer target, cleared to "no surface" before any geometry writes it. */
+    const normalTarget = parameters["normalOutput"] === true ? outputs["normal"] : undefined;
+    if (normalTarget !== undefined) {
+      passes.push({
+        kind: "draw",
+        id: `${nodeId}:gbuffer:clear`,
+        nodeId,
+        shader: GBUFFER_CLEAR_WGSL,
+        target: normalTarget,
+        topology: "triangle-list",
+        instances: 1,
+        vertexCount: 6,
+        clear: true,
+      } as DrawPassDescriptor);
+    }
     geometries.forEach(({ payload, source }, index) => {
       /* T725: transmissive geometry draws in its own phase AFTER the opaques — it
          samples what they drew. Skipped here, emitted below the pyramid. */
@@ -2110,7 +2146,18 @@ export const renderNode: NodeDefinition = {
         ...(material.maps.albedo === undefined ? {} : { albedo: true }),
         ...(material.maps.roughness === undefined ? {} : { roughness: true }),
       };
-      passes.push({
+      const surfaceMaterialOptions = {
+        model: model as "unlit" | "lambert" | "phong" | "pbr",
+        maps,
+        ...(tintAttribute === undefined ? {} : { pointColor: true }),
+        ...(meshTopology === undefined
+          ? {}
+          : { mesh: { uv: meshUv !== undefined, surface: meshSurfacePair !== undefined, emissive: meshEmissive !== undefined } }),
+        ...(material.custom === undefined
+          ? {}
+          : { custom: { code: material.custom.code, paramsDeclaration: material.custom.paramsDeclaration, fields: material.custom.fields } }),
+      };
+      const litPass: DrawPassDescriptor = {
         kind: "draw",
         id: `${nodeId}:scene:${index}`,
         nodeId,
@@ -2209,7 +2256,28 @@ export const renderNode: NodeDefinition = {
         },
         uniformBinding: "params",
         clear: false,
-      });
+      };
+      passes.push(litPass);
+      /* T1371b: the same surface into the G-buffer — same material, same buffers, only the
+         uniforms that generator declares (no lights, shadows, environment or projectors). */
+      if (normalTarget !== undefined) {
+        const lighting = /^(light\d|shadow\d|environment|projector)/;
+        passes.push({
+          ...litPass,
+          id: `${nodeId}:gbuffer:${index}`,
+          shader: sceneSurfaceWgsl({ ...surfaceMaterialOptions, lightCount: 0, gbuffer: true }),
+          target: normalTarget,
+          ...(material.maps.albedo === undefined && material.maps.roughness === undefined
+            ? { textures: [] }
+            : {
+                textures: [
+                  ...(material.maps.albedo === undefined ? [] : [{ binding: "albedoMap", resourceId: material.maps.albedo, sampled: "unfiltered" as const }]),
+                  ...(material.maps.roughness === undefined ? [] : [{ binding: "roughnessMap", resourceId: material.maps.roughness, sampled: "unfiltered" as const }]),
+                ],
+              }),
+          uniforms: Object.fromEntries(Object.entries(litPass.uniforms ?? {}).filter(([key]) => !lighting.test(key))),
+        });
+      }
     });
 
     /*

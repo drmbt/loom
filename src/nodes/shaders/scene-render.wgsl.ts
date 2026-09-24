@@ -92,6 +92,14 @@ export interface SceneShadingOptions {
    * stock text byte for byte (§V309).
    */
   readonly custom?: SceneCustomSurface;
+  /**
+   * T1371b: the G-BUFFER variant — the same vertex stage and the same material (maps, mesh
+   * rows, a WGSL material's surface code), but instead of lighting the fragment writes what
+   * the screen-space passes read: the shaded world normal encoded as n·0.5+0.5 in rgb, and
+   * roughness in a (floored at 0.04, so 0 means "no surface here"). Lights, shadows,
+   * environment, AO and projectors are not bound.
+   */
+  readonly gbuffer?: boolean;
 }
 
 /** T1355b: the author's surface code, placed into the lit surface generator. */
@@ -149,6 +157,18 @@ export interface SceneMeshOption {
   readonly surface: boolean;
   readonly emissive: boolean;
 }
+
+/** T1371b: the G-buffer's clear — "no surface" (all zero) behind everything, depth at the far plate. */
+export const GBUFFER_CLEAR_WGSL = wgsl`@vertex
+fn vs(@builtin(vertex_index) v: u32) -> @builtin(position) vec4f {
+  var corners = array<vec2f, 6>(
+    vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0),
+    vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0),
+  );
+  return vec4f(corners[v], 0.9999, 1.0);
+}
+@fragment
+fn fs() -> @location(0) vec4f { return vec4f(0.0); }`;
 
 /** T1353b: fixed binding slots for the mesh buffers — clear of every other numbered slot. */
 export const MESH_BINDINGS = { indices: 100, normals: 101, uvs: 102, surface: 103, emissive: 104 } as const;
@@ -1017,7 +1037,7 @@ ${options.mesh === undefined ? surfaceMeshWgsl(pointColor) : meshVertexWgsl(poin
 
 @fragment
 fn fs(input: VertexOut) -> @location(0) vec4f {
-${fragmentHead}${surfaceLocals}${shading}
+${fragmentHead}${options.gbuffer === true ? `  return vec4f(normal * 0.5 + vec3f(0.5), ${options.model === "unlit" ? "1.0" : "max(roughness, 0.04)"});` : `${surfaceLocals}${shading}`}
 }`;
 }
 
