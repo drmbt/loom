@@ -164,7 +164,9 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     for (var i = 0u; i < LIGHT_COUNT; i = i + 1u) {
       let toLight = LIGHT_POSITION[i] - x;
       let d2 = dot(toLight, toLight);
-      inscatter = inscatter + lightRadiance(i) * phase(dot(direction, toLight / sqrt(max(d2, 1e-4)))) / (1.0 + d2);
+      // A light is a small source, not a point: no sample within ~2 m of it sees more than a
+      // bounded radiance, so a camera near the slag door is not engulfed.
+      inscatter = inscatter + lightRadiance(i) * phase(dot(direction, toLight / sqrt(max(d2, 1e-4)))) / (4.0 + d2);
     }
     inscatter = inscatter + params.shaftColor * params.shafts * shaftDensity(x) * phase(dot(direction, -SHAFT_DIRECTION));
     scatter = scatter + transmittance * sigma * inscatter * step;

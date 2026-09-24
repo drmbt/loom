@@ -7,7 +7,7 @@ import numpy as np
 
 from util import (MB, Xf, v3, norm, frame, rot_z, rot_x, box, box_minmax, beam, ibeam, cyl, lathe, disk, torus,
                   sweep, catenary, bezier, hexbolt, bolt_circle, flange, prism, profile_beam, angle_prof,
-                  chamfer_rect, pipe_run, handrail, grating, strip_bars, circle, rock, TAU)
+                  chamfer_rect, pipe_run, handrail, grating, strip_bars, circle, rock, lump, sweep_profile, weld, TAU)
 import layout as L
 
 R = L.SHELL_R
@@ -16,6 +16,15 @@ D2R = math.pi / 180.0
 
 def pol(r, a, z):
     return v3(r * math.cos(a), r * math.sin(a), z)
+
+
+def dented_r(a, z, r=R, nz=0.02, nfreq=1.1, seed=2.1):
+    """Radius of a dented lathe surface (util.lathe's noise) at angle a, height z."""
+    from mathutils import Vector, noise
+    x, y = r * math.cos(a), r * math.sin(a)
+    n = noise.noise(Vector((x * nfreq + seed, y * nfreq, z * nfreq)))
+    n += 0.5 * noise.noise(Vector((x * nfreq * 2.7, y * nfreq * 2.7 + seed, z * nfreq * 2.7)))
+    return r + nz * n
 
 
 # --------------------------------------------------------------------- shell
@@ -34,7 +43,7 @@ def shell(ctx):
         a = k * TAU / 36 + 0.05
         c = pol(R + 0.2, a, zb)
         box(mb, (0.22, 0.14, 0.42), Xf(rot_z(a), c), "steel_dark")
-        hexbolt(mb, pol(R + 0.31, a, zb + 0.1), (math.cos(a), math.sin(a), 0), 0.04, "steel_worn")
+        hexbolt(mb, pol(R + 0.31, a, zb + 0.1), (math.cos(a), math.sin(a), 0), 0.04, "steel_worn", washer=True)
     # lower shell (refractory zone) with vertical rib stiffeners + ring stiffener
     z1 = 9.3
     lathe(mb, [(R, zb), (R, z1)], Xf(), "steel_heat", seg=96, nz=0.02, nfreq=1.1, seed=2.1)
@@ -42,7 +51,11 @@ def shell(ctx):
         a = k * TAU / 48
         if abs(((a / D2R) + 360) % 360 - 180) < 14:   # slag door zone
             continue
-        box(mb, (0.22, 0.03, z1 - zb - 0.1), Xf(rot_z(a), pol(R + 0.11, a, (zb + z1) / 2)), "steel_heat")
+        # rib roots sink 6 cm into the dented plate so no dent lifts them off; fillet welds follow the dents
+        box(mb, (0.28, 0.03, z1 - zb - 0.1), Xf(rot_z(a), pol(R + 0.08, a, (zb + z1) / 2)), "steel_heat")
+        for sd in (-1, 1):
+            aw = a + sd * 0.022 / R
+            weld(mb, [pol(dented_r(aw, zz) + 0.003, aw, zz) for zz in np.linspace(zb + 0.1, z1 - 0.1, 7)], "steel_heat", r=0.009)
     lathe(mb, [(R, 8.62), (R + 0.24, 8.62), (R + 0.24, 8.7), (R, 8.7)], Xf(), "steel_heat", seg=96)
     # upper shell: water-cooled cage + pipe-coil panels
     zt = L.SHELL_TOP_Z
@@ -136,15 +149,19 @@ def slag_door(mb, rng):
                    "slag_cold")
     box_minmax(mb, (x - 0.95, -w / 2, zt + 0.17), (x + 0.35, w / 2, zt + 0.25), "slag_cold")
     box_minmax(mb, (x - 0.9, -w / 2 + 0.05, zs - 0.01), (x + 0.35, w / 2 - 0.05, zs + 0.08), "slag_hot")
+    # foaming slag at the sill and the spill over the apron: cracked crust, the hot ones with glowing fissures
     for k in range(10):
-        rock(mb, (x - 0.9 + rng.random() * 1.2, rng.uniform(-w / 2 + 0.1, w / 2 - 0.1), zs + 0.08), (0.18, 0.25, 0.08),
-             "slag_hot" if rng.random() < 0.5 else "slag_cold", rng, seg=8, rings=4)
-    # slag spill cascading down over the apron (crusty lumps)
+        c = (x - 0.9 + rng.random() * 1.2, rng.uniform(-w / 2 + 0.1, w / 2 - 0.1), zs + 0.08)
+        hot = rng.random() < 0.5
+        lump(mb, c, (0.18, 0.25, 0.08), "slag_cold", rng, seg=12, rings=7, rough=0.25, crack=0.1,
+             glow_mat="slag_hot" if hot else None)
     for k in range(40):
         t = rng.random()
         p = v3(x - 1.05 - t * 0.5, rng.uniform(-0.8, 0.8), zs - 0.45 - t * 1.6)
         s = rng.uniform(0.1, 0.3)
-        rock(mb, p, (s, s * 1.4, s * 0.8), "slag_cold" if rng.random() < 0.85 else "slag_hot", rng, seg=9, rings=5, rough=0.35)
+        hot = rng.random() >= 0.85
+        lump(mb, p, (s, s * 1.4, s * 0.8), "slag_cold", rng, seg=12, rings=7, rough=0.3, crack=0.09,
+             glow_mat="slag_hot" if hot else None)
 
 
 def ebt(mb, rng):
@@ -158,6 +175,10 @@ def ebt(mb, rng):
     # stiffeners on the bay
     for a in np.linspace(-1.1, 1.1, 7):
         box(mb, (0.26, 0.03, z1 - z0 - 0.2), Xf(rot_z(a), (ex - 0.1 + 1.02 * math.cos(a), 1.02 * math.sin(a), (z0 + z1) / 2)), "steel_heat")
+        for sd in (-1, 1):
+            aw = a + sd * 0.023 / 0.95
+            c = v3(ex - 0.1 + 0.955 * math.cos(aw), 0.955 * math.sin(aw), 0)
+            weld(mb, [c + v3(0, 0, z0 + 0.12), c + v3(0, 0, z1 - 0.12)], "steel_heat", r=0.009)
     # sloped bottom into the dish
     lathe(mb, [(0.0, z0 - 0.35), (0.7, z0 - 0.35), (1.05, z0)], Xf(None, (ex - 0.1, 0, 0)), "steel_heat", seg=16)
     # tap hole nozzle + slide gate block
@@ -208,7 +229,7 @@ def cradle(mb, rng):
     for y in (-3.6, 3.6, 5.6, 7.9):
         ibeam(mb, (-4.6, y, 6.8), (4.6, y, 6.8), 0.7, 0.4, "steel_dark")
     # platform plate at +Y (mast area) with checker-ish plating
-    box_minmax(mb, (-4.6, 4.9, 7.15), (5.8, 8.6, 7.25), "steel_dark")
+    box_minmax(mb, (-4.6, 4.9, 7.15), (5.8, 8.6, 7.25), "steel_chequer")
     handrail(mb, [(-4.5, 8.5, 7.25), (5.7, 8.5, 7.25), (5.7, 5.0, 7.25)], mat="steel_painted_yellow")
     # tilt cylinder clevises
     for s in (-1, 1):
@@ -256,7 +277,7 @@ def mast_guides(mb):
     for k in range(8):
         a = k * TAU / 8
         box(mb, (0.6, 0.05, 1.2), Xf(rot_z(a), (px + math.cos(a) * 1.05, py + math.sin(a) * 1.05, 7.95)), "steel_painted_grey")
-    bolt_circle(mb, (px, py, 7.45), (0, 0, 1), 1.2, 16, 0.04, "steel_dark")
+    bolt_circle(mb, (px, py, 7.45), (0, 0, 1), 1.2, 16, 0.04, "steel_dark", washer=True)
 
 
 # ---------------------------------------------------------------------- roof
@@ -336,7 +357,7 @@ def roof(ctx):
     px, py = L.ROOF_SWING_PIVOT
     cyl(mb, (px, py, 12.9), (px, py, 15.2), 0.95, "steel_painted_grey", seg=32)
     lathe(mb, [(0.0, 15.2), (1.2, 15.2), (1.2, 15.75), (0.0, 15.75)], Xf(None, (px, py, 0)), "steel_painted_grey", seg=32)
-    bolt_circle(mb, (px, py, 15.75), (0, 0, 1), 1.05, 20, 0.045, "steel_dark")
+    bolt_circle(mb, (px, py, 15.75), (0, 0, 1), 1.05, 20, 0.045, "steel_dark", washer=True)
     hang = [pol(R + 0.1, 160 * D2R, z0 + 0.35), pol(R + 0.1, 290 * D2R, z0 + 0.35), pol(R + 0.1, 45 * D2R, z0 + 0.35)]
     col = v3(px, py, 15.45)
     for h in hang[:2]:
@@ -424,6 +445,180 @@ def electrode(ctx, i):
 
 # --------------------------------------------------------- static surroundings
 
+RX = np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0]], dtype=float)   # local x -> Y, y -> Z, z (extrusion) -> X
+
+
+def rocker_pier(mb, y, s, rng):
+    """Concrete rocker pier: stepped footing, chamfered shaft with form-tie holes and pour joints, an irregular grout
+    pad, a sole plate held by anchor bolts (washer, nut, stud), the embedded rocker rail between keeper bars with
+    clamp plates, the tooth rack the rocker teeth engage, and buffer stops at both ends."""
+    zt = L.ROCKER_RAIL_Z - 0.3                                  # pier top (grout underside)
+    # footing steps out on the outboard side only (the ladle-car rails pass 0.1 m inboard)
+    foot = [(-0.9 * s, 0.0), (1.3 * s, 0.0), (1.3 * s, 0.5), (1.18 * s, 0.62), (-0.9 * s, 0.62)]
+    prism(mb, foot, 10.8, Xf(RX, (-5.4, y, 0.0)), "concrete")
+    shaft = [(-0.8, 0.62), (0.8, 0.62), (0.8, zt - 0.07), (0.73, zt), (-0.73, zt), (-0.8, zt - 0.07)]
+    prism(mb, shaft, 9.2, Xf(RX, (-4.6, y, 0.0)), "concrete")
+    for sd in (-1, 1):                                          # both long faces
+        yf = y + sd * 0.803
+        for zj in (1.95, 3.25, 4.45):                           # pour joints
+            box_minmax(mb, (-4.6, yf - 0.004, zj - 0.012), (4.6, yf + 0.004, zj + 0.012), "slag_cold")
+        for xx in np.arange(-4.05, 4.1, 0.9):                   # form-tie cones
+            for zz in (1.3, 2.6, 3.85):
+                disk(mb, (xx, yf + sd * 0.002, zz), 0.024, "slag_cold", seg=8, normal=(0, sd, 0))
+    # grout pad with a ragged edge
+    pts = []
+    for (x0, y0), (x1, y1) in (((-4.55, -0.6), (4.55, -0.6)), ((4.55, -0.6), (4.55, 0.6)), ((4.55, 0.6), (-4.55, 0.6)),
+                               ((-4.55, 0.6), (-4.55, -0.6))):
+        n = max(2, int(math.hypot(x1 - x0, y1 - y0) / 0.35))
+        nx, ny = (y1 - y0), -(x1 - x0)
+        ln = math.hypot(nx, ny)
+        for k in range(n):
+            t = k / n
+            j = 0.015 + 0.02 * (math.sin(k * 2.3 + x0) * 0.5 + 0.5)
+            pts.append((x0 + (x1 - x0) * t + nx / ln * j, y0 + (y1 - y0) * t + ny / ln * j))
+    prism(mb, [(px, py) for px, py in pts], 0.05, Xf(None, (0, y, zt)), "concrete", cap0=False)
+    zp = zt + 0.05
+    box_minmax(mb, (-4.4, y - 0.5, zp), (4.4, y + 0.5, zp + 0.08), "steel_dark")                 # sole plate
+    zp += 0.08
+    for xx in np.arange(-4.1, 4.15, 0.82):                      # anchor bolts both sides
+        for sd in (-1, 1):
+            c = v3(xx, y + sd * 0.42, zp)
+            cyl(mb, c, c + v3(0, 0, 0.012), 0.055, "steel_worn", seg=12, cap0=False)
+            hexbolt(mb, c + v3(0, 0, 0.012), (0, 0, 1), 0.042, "steel_dark", h=0.045)
+            cyl(mb, c + v3(0, 0, 0.05), c + v3(0, 0, 0.12), 0.022, "steel_worn", seg=8, cap0=False)
+    # rail: flat rolling bar with chamfered head, keeper bars and clamp plates
+    rail = [(-0.25, 0.0), (0.25, 0.0), (0.25, L.ROCKER_RAIL_Z - zp - 0.025), (0.225, L.ROCKER_RAIL_Z - zp),
+            (-0.225, L.ROCKER_RAIL_Z - zp), (-0.25, L.ROCKER_RAIL_Z - zp - 0.025)]
+    prism(mb, rail, 8.8, Xf(RX, (-4.4, y, zp)), "steel_worn")
+    for sd in (-1, 1):
+        box_minmax(mb, (-4.4, y + sd * 0.25 - (0.05 if sd < 0 else 0), zp), (4.4, y + sd * 0.25 + (0.05 if sd > 0 else 0), zp + 0.07),
+                   "steel_dark")
+        for xx in np.arange(-4.05, 4.1, 0.7):
+            box_minmax(mb, (xx - 0.07, y + sd * 0.19 - 0.06, zp + 0.07), (xx + 0.07, y + sd * 0.19 + 0.06, zp + 0.095), "steel_dark")
+            hexbolt(mb, (xx, y + sd * 0.2, zp + 0.095), (0, 0, 1), 0.028, "steel_worn")
+    # tooth rack outboard of the rail (the rocker's teeth run at y + s*0.34)
+    yr = y + s * 0.34
+    box_minmax(mb, (-4.4, yr - 0.09, zp), (4.4, yr + 0.09, zp + 0.08), "steel_dark")
+    tooth = [(-0.065, 0.0), (0.065, 0.0), (0.03, 0.1), (-0.03, 0.1)]
+    Ry = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]], dtype=float)   # profile in XZ, extruded along -Y
+    for xx in np.arange(-4.2, 4.3, 0.28):
+        prism(mb, tooth, 0.16, Xf(Ry, (xx, yr + 0.08, zp + 0.08)), "steel_worn", cap0=True)
+    # buffer stops at the rail ends
+    for sx in (-1, 1):
+        box_minmax(mb, (sx * 4.4 - (0.3 if sx > 0 else 0.0), y - 0.45, zp), (sx * 4.4 + (0.0 if sx > 0 else 0.3), y + 0.45, zp + 0.55),
+                   "steel_painted_yellow")
+        box_minmax(mb, (sx * 4.1 - (0.1 if sx > 0 else 0.0), y - 0.25, zp + 0.18), (sx * 4.1 + (0.0 if sx > 0 else 0.1), y + 0.25, zp + 0.45),
+                   "rubber_belt")
+
+
+LANCE_TIP = v3(-5.05, 0.3, 9.6)        # lance nozzles, inside the slag door opening
+LANCE_HEAD = v3(-9.2, 2.2, L.DECK_Z + 2.3)
+
+
+def lance_axes():
+    d = norm(LANCE_TIP - (LANCE_HEAD + v3(0, 0, 0.45)))      # lances run 0.45 m above the boom pivot line
+    side = norm(np.cross(v3(0, 0, 1), d))
+    return d, side, np.cross(d, side)
+
+
+def lance_manipulator(ctx):
+    """Slag-door oxygen lance manipulator: base frame and slewing ring on the deck, column, luffing yoke and cylinder,
+    box boom with carriage rails, supply pipes and hose loops (static); the carriage with two water-cooled lances
+    is the part `lance_carriage` (it slides along the boom)."""
+    z = L.DECK_Z
+    bx, by = LANCE_HEAD[0], LANCE_HEAD[1]
+    d, side, upv = lance_axes()
+    head = LANCE_HEAD
+    st = MB("furnace_lance")
+    box_minmax(st, (bx - 0.8, by - 0.8, z), (bx + 0.8, by + 0.8, z + 0.28), "steel_painted_blue")
+    for sx in (-0.68, 0.68):
+        for sy in (-0.68, 0.68):
+            hexbolt(st, (bx + sx, by + sy, z + 0.28), (0, 0, 1), 0.04, "steel_dark", washer=True)
+    cyl(st, (bx, by, z + 0.28), (bx, by, z + 0.42), 0.64, "steel_dark", seg=32)
+    bolt_circle(st, (bx, by, z + 0.42), (0, 0, 1), 0.56, 16, 0.028, "steel_worn")
+    cyl(st, (bx, by, z + 0.42), (bx, by, head[2] - 0.35), 0.4, "steel_painted_blue", seg=24)
+    for k in range(6):                                         # column ribs
+        a = k * TAU / 6 + 0.3
+        box(st, (0.2, 0.03, 0.9), Xf(rot_z(a), (bx + math.cos(a) * 0.5, by + math.sin(a) * 0.5, z + 0.9)), "steel_painted_blue", cap0=False)
+    box(st, (0.42, 0.36, 0.36), Xf(None, (bx + 0.62, by - 0.2, z + 0.62)), "steel_painted_blue")        # slew drive
+    cyl(st, (bx + 0.62, by - 0.2, z + 0.8), (bx + 0.62, by - 0.2, z + 1.3), 0.14, "steel_painted_grey", seg=16, cap0=False)
+    # head yoke: turntable + two cheek plates around the boom + pivot pin
+    cyl(st, (bx, by, head[2] - 0.35), (bx, by, head[2] - 0.22), 0.52, "steel_dark", seg=24)
+    for sd in (-1, 1):
+        c = head + side * sd * 0.3 - v3(0, 0, 0.05)
+        Rk = np.stack([side, norm(np.cross(v3(0, 0, 1), side)), v3(0, 0, 1)], axis=1)
+        box(st, (0.06, 0.62, 0.72), Xf(Rk, c), "steel_painted_blue")
+    cyl(st, head - side * 0.42, head + side * 0.42, 0.085, "steel_worn", seg=16)
+    # boom (box girder) along the lance axis, carriage rails on top, side stiffeners, counterweight
+    b0, b1 = head - d * 1.7, LANCE_TIP - d * 1.35 - upv * 0.45
+    beam(st, b0, b1, 0.4, 0.46, "steel_painted_blue", up=upv, chamfer=0.035)
+    Lb = float(np.linalg.norm(b1 - b0))
+    for sd in (-1, 1):
+        beam(st, b0 + upv * 0.255 + side * sd * 0.14, b1 + upv * 0.255 + side * sd * 0.14, 0.05, 0.05, "steel_worn", up=upv)
+        for t in np.arange(0.5, Lb - 0.2, 0.75):
+            box(st, (0.02, 0.4, 0.03), Xf(frame(d, upv) @ rot_x(math.pi / 2), b0 + d * t + side * sd * 0.205), "steel_painted_blue")
+    box(st, (0.55, 0.6, 0.7), Xf(frame(d, upv), b0 - d * 0.1 - upv * 0.05), "steel_dark")
+    # luffing cylinder: column bracket -> boom underside
+    c0 = v3(bx, by, z + 1.05) - v3(d[0], d[1], 0) * 0.42
+    c1 = head + d * 1.25 - upv * 0.24
+    box(st, (0.3, 0.3, 0.25), Xf(None, c0), "steel_dark")
+    dc = norm(c1 - c0)
+    Lc = float(np.linalg.norm(c1 - c0))
+    cyl(st, c0, c0 + dc * Lc * 0.62, 0.1, "steel_painted_yellow", seg=16)
+    cyl(st, c0 + dc * Lc * 0.6, c1, 0.045, "steel_worn", seg=12)
+    box(st, (0.22, 0.2, 0.16), Xf(frame(d, upv), c1 + upv * 0.03), "steel_dark")
+    # supply: water in/out + oxygen up the column rear to a manifold, hose loops to the carriage chain
+    rear = v3(bx, by, 0) - v3(d[0], d[1], 0) * 0.55
+    for k, (mat, off) in enumerate((("pipe_green", -0.16), ("steel_primer_red", 0.0), ("steel_painted_blue", 0.16))):
+        p0 = v3(rear[0] + side[0] * off, rear[1] + side[1] * off, z + 0.05)
+        pipe_run(st, [p0, p0 + v3(0, 0, 1.55)], 0.04, mat, seg=10, flange_every=0.9)
+    man = v3(rear[0], rear[1], z + 1.7)
+    box(st, (0.5, 0.25, 0.22), Xf(rot_z(math.atan2(side[1], side[0])), man), "steel_dark")
+    # energy chain lower run lies on the boom top (static half; the upper run rides the carriage)
+    ch0 = b0 + d * 0.4 + upv * 0.3
+    beam(st, ch0, ch0 + d * 2.2, 0.16, 0.08, "paint_black", up=upv)
+    for k, (mat, off) in enumerate((("hose_red", -0.06), ("cable_rubber", 0.06))):
+        p0 = man + side * off + v3(0, 0, 0.12)
+        p3 = ch0 + side * off + upv * 0.06
+        sweep(st, bezier(p0, p0 + v3(0, 0, 0.9), p3 - d * 0.9 + v3(0, 0, 0.5), p3, 12), 0.035, mat, seg=8)
+    # ---- carriage part: trolley, lance clamps, two water-cooled lances, swivel heads, energy-chain upper run
+    car = MB("lance_carriage")
+    cc = head + d * 0.5 + upv * 0.45
+    Rc = frame(d, upv)
+    box(car, (0.46, 0.34, 0.75), Xf(Rc, cc), "steel_painted_grey")
+    for sd in (-1, 1):
+        for t in (-0.26, 0.26):
+            w = cc + d * t + side * sd * 0.14 - upv * 0.17
+            cyl(car, w - side * sd * 0.03, w + side * sd * 0.05, 0.055, "steel_dark", seg=12)
+    for t in (-0.2, 0.3):                                       # clamp blocks
+        box(car, (0.4, 0.1, 0.14), Xf(Rc, cc + d * t + upv * 0.2), "steel_dark")
+        for sd in (-1, 1):
+            hexbolt(car, cc + d * t + upv * 0.27 + side * sd * 0.15, upv, 0.03, "steel_worn")
+    for sd in (-1, 1):
+        a = cc + upv * 0.2 + side * sd * 0.09 - d * 0.55
+        tip = LANCE_TIP + side * sd * 0.09
+        cyl(car, a, tip - d * 0.9, 0.06, "steel_worn", seg=16)
+        cyl(car, tip - d * 0.9, tip - d * 0.18, 0.06, "steel_heat", seg=16, cap0=False)
+        cyl(car, tip - d * 0.18, tip, 0.068, "copper_busbar", seg=16, cap0=False, cap1=False)
+        lathe(car, [(0.068, 0.0), (0.05, 0.04), (0.0, 0.045)], Xf(frame(d), tip), "graphite_warm", seg=16)
+        L_ = float(np.linalg.norm(tip - a))
+        for t in np.arange(0.9, L_ - 1.0, 1.6):                  # couplings
+            cyl(car, a + d * t, a + d * (t + 0.12), 0.078, "steel_dark", seg=16)
+        # swivel head with O2 + water in/out couplings at the back
+        box(car, (0.16, 0.16, 0.22), Xf(Rc, a - d * 0.1), "steel_dark")
+        for q, mat in enumerate(("hose_red", "cable_rubber", "cable_rubber")):
+            h0 = a - d * 0.2 + upv * (0.02 + 0.05 * q) + side * sd * 0.03
+            h3 = cc - d * 0.9 + upv * 0.1 + side * (sd * 0.05)
+            sweep(car, bezier(h0, h0 - d * 0.35 + upv * 0.1, h3 + upv * 0.35, h3, 8), 0.022, mat, seg=8)
+    # energy chain upper run + 180-degree loop back down to the static lower run
+    loop_c = cc - d * 0.95 - upv * 0.05
+    pts = [cc - d * 0.45 + upv * 0.08, loop_c + upv * 0.13]
+    for a_ in np.linspace(0.0, math.pi, 7)[1:]:
+        pts.append(loop_c - d * math.sin(a_) * 0.13 + upv * math.cos(a_) * 0.13)
+    sweep_profile(car, pts, [(-0.08, -0.04), (0.08, -0.04), (0.08, 0.04), (-0.08, 0.04)], "paint_black", up=side, uv_len=False)
+    return st, car, cc
+
+
 def deck(ctx):
     rng = ctx["rng"]
     mb = MB("furnace_deck")
@@ -440,7 +635,7 @@ def deck(ctx):
         (-6.3, 9.8, 6.3, 11.0),         # strip at the vault
     ]
     for x0, y0, x1, y1 in slabs:
-        box_minmax(mb, (x0, y0, z - 0.03), (x1, y1, z), "steel_dark")
+        box_minmax(mb, (x0, y0, z - 0.03), (x1, y1, z), "steel_chequer")
         # plate seams: raised weld beads (thin strips)
         for xx in np.arange(x0 + 2.0, x1, 2.0):
             box_minmax(mb, (xx - 0.01, y0, z), (xx + 0.01, y1, z + 0.006), "steel_worn")
@@ -473,11 +668,7 @@ def deck(ctx):
     # rocker foundation piers + rocker rails with rack
     for s in (-1, 1):
         y = s * L.ROCKER_Y
-        box_minmax(mb, (-4.6, y - 0.8, 0), (4.6, y + 0.8, L.ROCKER_RAIL_Z - 0.3), "concrete")
-        box_minmax(mb, (-4.4, y - 0.5, L.ROCKER_RAIL_Z - 0.3), (4.4, y + 0.5, L.ROCKER_RAIL_Z - 0.06), "steel_dark")
-        box_minmax(mb, (-4.4, y - 0.26, L.ROCKER_RAIL_Z - 0.06), (4.4, y + 0.26, L.ROCKER_RAIL_Z), "steel_worn")
-        for xx in np.arange(-4.2, 4.3, 0.28):
-            box(mb, (0.1, 0.16, 0.12), Xf(None, (xx, y + s * 0.34, L.ROCKER_RAIL_Z + 0.02)), "steel_worn")
+        rocker_pier(mb, y, s, rng)
         # tilt cylinders from floor pedestal to cradle
         box_minmax(mb, (-6.4, s * 4.3 - 0.5, 0), (-5.2, s * 4.3 + 0.5, 1.6), "concrete")
         cyl(mb, (-5.8, s * 4.3, 1.6), (-4.8, s * 4.3, 4.7), 0.3, "steel_painted_yellow", seg=16)
@@ -488,25 +679,13 @@ def deck(ctx):
         tt = rng.random()
         p = v3(-5.3 - tt * 3.3, rng.uniform(-0.9, 0.9), 7.9 - tt * 4.3 + 0.12)
         s = rng.uniform(0.12, 0.35)
-        rock(mb, p, (s, s, s * 0.5), "slag_cold", rng)
+        lump(mb, p, (s, s, s * 0.5), "slag_cold", rng, seg=10, rings=6, rough=0.3, crack=0.08)
     # slag pit walls + floor crust
     box_minmax(mb, (-10.4, -2.8, 0), (-10.1, 2.8, 3.0), "concrete")
     for k in range(60):
         p = v3(rng.uniform(-10, -6.4), rng.uniform(-2.6, 2.6), 0.02)
         s = rng.uniform(0.2, 0.8)
-        rock(mb, p, (s, s * rng.uniform(0.5, 1.5), rng.uniform(0.05, 0.3)), "slag_cold", rng)
-    # oxygen lance manipulator at the slag door
-    bx, by = -9.2, 2.2
-    cyl(mb, (bx, by, z), (bx, by, z + 1.6), 0.45, "steel_painted_blue", seg=20)
-    box_minmax(mb, (bx - 0.7, by - 0.7, z), (bx + 0.7, by + 0.7, z + 0.35), "steel_painted_blue")
-    tipp = v3(-5.1, 0.35, 9.4)
-    basep = v3(bx, by, z + 1.9)
-    beam(mb, basep - norm(tipp - basep) * 1.5, tipp - norm(tipp - basep) * 0.6, 0.35, 0.45, "steel_painted_blue", chamfer=0.06)
-    for k in range(2):
-        off = v3(0, 0, 0.3 + k * 0.14)
-        cyl(mb, basep + off - norm(tipp - basep) * 1.2, tipp + off - v3(0, 0, 0.35), 0.035, "copper_busbar", seg=8)
-    sweep(mb, bezier(basep - norm(tipp - basep) * 1.5 + v3(0, 0, 0.2), basep + v3(-1.0, 0, 1.0),
-                     v3(bx - 2.0, by + 1.0, z + 0.8), v3(bx - 2.5, by + 1.6, z + 0.05), 12), 0.05, "hose_red", seg=8)
+        lump(mb, p, (s, s * rng.uniform(0.5, 1.5), rng.uniform(0.05, 0.3)), "slag_cold", rng, seg=10, rings=5, rough=0.3, crack=0.08)
     return mb
 
 
@@ -567,6 +746,7 @@ def vault(ctx):
     for xc in (-4.9, 4.9):
         box(mb, (0.5, 0.35, 0.3), Xf(None, (xc, fy - 0.5, 16.8)), "steel_dark")
         box(mb, (0.42, 0.02, 0.22), Xf(rot_x(0.5), (xc, fy - 0.68, 16.72)), "lamp")
+        ctx.setdefault("fixtures", []).append(("furnace", "wall_pack", (xc, fy - 0.7, 16.71), tuple(rot_x(0.5) @ v3(0, -1, 0)), None))
     # hazard board + fire hose cabinet
     box_minmax(mb, (1.6, fy - 0.06, z0 + 1.2), (2.6, fy, z0 + 2.2), "steel_primer_red")
     box_minmax(mb, (-6.2, fy - 0.1, z0 + 0.9), (-5.3, fy, z0 + 1.9), "steel_painted_yellow")
@@ -661,24 +841,32 @@ def fume_duct(ctx):
 def build(ctx):
     items = []
     sh = shell(ctx)
-    items.append((sh, dict(pivot=L.TILT_PIVOT, bevel=0.012,
+    items.append((sh, dict(pivot=L.TILT_PIVOT,
                            props={"loom_part": "furnace_shell", "loom_parent": "",
                                   "loom_motion": "rotate_y (tilt; + tilts the EBT/tap side down)"})))
     rf, z0 = roof(ctx)
     px, py = L.ROOF_SWING_PIVOT
-    items.append((rf, dict(pivot=(px, py, L.ROOF_RING_Z + 0.16), parent="furnace_shell", bevel=0.012,
+    items.append((rf, dict(pivot=(px, py, L.ROOF_RING_Z + 0.16), parent="furnace_shell",
                            props={"loom_part": "furnace_roof", "loom_parent": "furnace_shell",
                                   "loom_motion": "translate_z (lift ~0.5 m) then rotate_z (swing ~70 deg)"})))
     for i in range(3):
         ex, ey = L.ELEC_XY[i]
         el = electrode(ctx, i)
-        items.append((el, dict(pivot=(ex, ey, L.TIP_Z), parent="furnace_shell", bevel=0.008,
+        items.append((el, dict(pivot=(ex, ey, L.TIP_Z), parent="furnace_shell",
                                props={"loom_part": f"electrode_{i + 1}", "loom_parent": "furnace_shell",
                                       "loom_motion": "translate_z (regulation, ~ -0.6..+3.5 m)"})))
-    items.append((deck(ctx), dict(bevel=0.01)))
-    items.append((vault(ctx), dict(bevel=0.015)))
+    items.append((deck(ctx), dict()))
+    lst, lcar, lcc = lance_manipulator(ctx)
+    items.append((lst, dict()))
+    ld, _, _ = lance_axes()
+    items.append((lcar, dict(pivot=tuple(lcc),
+                             props={"loom_part": "lance_carriage", "loom_parent": "",
+                                    "loom_motion": "translate along loom_axis (the boom): 0 = lances in the slag door, "
+                                                   "-2.4 m = retracted clear of the door",
+                                    "loom_axis": [float(ld[0]), float(ld[2]), float(-ld[1])]})))
+    items.append((vault(ctx), dict()))
     items.append(cables(ctx))
-    items.append((fume_duct(ctx), dict(bevel=0.0)))
+    items.append((fume_duct(ctx), dict()))
     ctx.setdefault("emitters", {}).update({
         "tap_stream": ((L.EBT_XY[0], 0.0, 6.5), "furnace_shell"),
         "slag_door": ((-L.SHELL_R - 1.0, 0.0, 8.95), "furnace_shell"),
@@ -689,5 +877,6 @@ def build(ctx):
         "fume_duct_mouth": ((-6.8, L.FOURTH_HOLE[1] * 0.3, 16.4), None),
         "fume_duct_exit": ((-13.5, L.HY + 0.5, 16.4), None),
         "slag_fall": ((-8.4, 0.0, 3.8), None),
+        "lance_tip": (tuple(LANCE_TIP), "lance_carriage"),
     })
     return items

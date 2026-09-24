@@ -6,7 +6,7 @@ import math
 import numpy as np
 
 from util import (MB, Xf, v3, norm, rot_z, rot_x, rot_y, box, box_minmax, beam, ibeam, cyl, lathe, disk, torus,
-                  sweep, rock, handrail, bezier, TAU)
+                  sweep, rock, lump, handrail, bezier, profile_beam, angle_prof, channel_prof, TAU)
 import layout as L
 
 
@@ -23,8 +23,17 @@ def scrap_pile(mb, c, radius, height, n, rng):
             box(mb, (rng.uniform(0.4, 1.8), rng.uniform(0.3, 1.2), rng.uniform(0.01, 0.04)), Xf(R, p), "scrap_mix")
         elif kind < 0.55:
             L_ = rng.uniform(0.8, 3.2)
-            ibeam(mb, p - R[:, 0] * L_ / 2, p + R[:, 0] * L_ / 2, rng.uniform(0.12, 0.35), rng.uniform(0.08, 0.2),
-                  "rust", up=R[:, 2])
+            h = rng.uniform(0.12, 0.35)
+            b = rng.uniform(0.08, 0.2)
+            # section mix (angles, channels, I-beams) picked from L_ so the seeded stream is unchanged
+            v = (L_ * 7.31) % 1.0
+            p0, p1 = p - R[:, 0] * L_ / 2, p + R[:, 0] * L_ / 2
+            if v < 0.4:
+                profile_beam(mb, angle_prof(b, 0.012), p0, p1, "rust", up=R[:, 2])
+            elif v < 0.7:
+                profile_beam(mb, channel_prof(h, b * 0.6, 0.008, 0.012), p0, p1, "rust", up=R[:, 2])
+            else:
+                ibeam(mb, p0, p1, h, b, "rust", up=R[:, 2])
         elif kind < 0.7:
             L_ = rng.uniform(0.6, 2.5)
             cyl(mb, p - R[:, 0] * L_ / 2, p + R[:, 0] * L_ / 2, rng.uniform(0.03, 0.2), "scrap_mix", seg=8)
@@ -104,13 +113,15 @@ def drums(mb, c, n, rng):
     box_minmax(mb, (x - 0.4, y - 0.4, 0), (x + 2.2, y + 1.6, 0.12), "rust")
 
 
-def floodlights(mb):
+def floodlights(mb, fixtures):
     for x in L.COLS_X[1:-1:2]:
         for s in (-1, 1):
             y = s * (L.RAIL_Y - 0.7)
             z = 14.0
             box(mb, (0.5, 0.25, 0.4), Xf(rot_x(s * 0.5), (x + 0.6, y, z)), "steel_dark")
             box(mb, (0.42, 0.02, 0.32), Xf(rot_x(s * 0.5), (x + 0.6, y - s * 0.13, z - 0.06)), "lamp")
+            aim = rot_x(s * 0.5) @ v3(0, -s, 0)
+            fixtures.append(("props", "flood", tuple(v3(x + 0.6, y - s * 0.15, z - 0.06)), tuple(aim), None))
 
 
 def floor_markings(mb):
@@ -161,7 +172,7 @@ def build(ctx):
     gas_cage(mb2, (12.5, -15.6))
     drums(mb2, (-24.0, 13.8), 8, rng)
     drums(mb2, (52.0, 14.0), 6, rng)
-    floodlights(mb2)
+    floodlights(mb2, ctx.setdefault("fixtures", []))
     floor_markings(mb2)
     slag_crust(mb2, rng)
     return [mb, mb2]

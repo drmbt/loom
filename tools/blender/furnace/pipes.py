@@ -133,4 +133,4 @@ def furnace_feed(ctx):
 
 
 def build(ctx):
-    return [(rack(ctx), dict(bevel=0.0)), trays_north(ctx), furnace_feed(ctx)]
+    return [(rack(ctx), dict()), trays_north(ctx), furnace_feed(ctx)]

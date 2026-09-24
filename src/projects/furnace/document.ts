@@ -197,7 +197,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("bloomFar", "blur", [-900, 450], { size: 14, filter: "gaussian", extend: "hold" }, { label: "bloomfar1", resolution: { mode: "scale", factor: 0.25 } }),
     node("bloomSum", "add", [-600, 350], { opacity: 1 }, { label: "bloomsum1", resolution: { mode: "scale", factor: 0.5 } }),
     node("glow", "add", [-300, 0], { opacity: 0.2 }, { label: "glow1", resolution: { mode: "project" } }),
-    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0.2, punch: 1.35, punchSaturation: 1.25, contrast: 1.12, grain: 0.016, saturation: 0.85, split: 0.5, shadowTint: [0.8, 0.95, 1.1, 1], highlightTint: [1.08, 0.98, 0.88, 1] }, { label: "grade1", resolution: { mode: "project" } }),
+    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0.2, punch: 1.3, punchSaturation: 1.05, contrast: 1.1, grain: 0.016, saturation: 0.9, split: 0.25, shadowTint: [0.88, 1, 1.04, 1], highlightTint: [1.05, 1, 0.92, 1] }, { label: "grade1", resolution: { mode: "project" } }),
     node("out", "output", [300, 0], { toneMap: "none" }, { label: "out1" }),
   ];
 

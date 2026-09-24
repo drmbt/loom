@@ -5,7 +5,7 @@ import math
 import numpy as np
 
 from util import (MB, Xf, v3, norm, frame, rot_z, rot_x, rot_y, box, box_minmax, beam, ibeam, cyl, lathe, disk,
-                  torus, sweep, bezier, catenary, hexbolt, bolt_circle, prism, handrail, pipe_run, TAU)
+                  torus, sweep, bezier, catenary, hexbolt, bolt_circle, prism, handrail, pipe_run, weld, TAU)
 import layout as L
 
 CAR_DECK = 1.15
@@ -43,10 +43,22 @@ def ladle_body(mb, c, rng, hot=True, seed=0.0, lip_dir=(1, 0)):
         z = z0 + H * f
         r = rb + (rt - rb) * f
         lathe(mb, [(r, z - 0.12), (r + 0.12, z - 0.1), (r + 0.12, z + 0.1), (r, z + 0.12)], X, "steel_heat", seg=64)
+    from mathutils import Vector, noise
     for k in range(24):
         a = k * TAU / 24
         box(mb, (0.12, 0.04, H - 0.4), Xf(rot_z(a) @ rot_y(-0.06), (x + math.cos(a) * (rb + rt) / 2 + math.cos(a) * 0.05,
                                                                     y + math.sin(a) * (rb + rt) / 2 + math.sin(a) * 0.05, z0 + H / 2)), "steel_heat")
+        # fillet welds at the rib root, following the dented cone (util.lathe noise: nz 0.03, nfreq 1.0)
+        for sd in (-1, 1):
+            aw = a + sd * 0.028 / rb
+            pts = []
+            for zz in np.linspace(z0 + 0.35, z0 + H - 0.35, 7):
+                rr = rb + (rt - rb) * (zz - z0 - 0.1) / (H - 0.15)
+                px, py = rr * math.cos(aw), rr * math.sin(aw)
+                nn = noise.noise(Vector((px + seed, py, zz))) + 0.5 * noise.noise(Vector((px * 2.7, py * 2.7 + seed, zz * 2.7)))
+                rr += 0.03 * nn + 0.004
+                pts.append(v3(x + rr * math.cos(aw), y + rr * math.sin(aw), zz))
+            weld(mb, pts, "steel_heat", r=0.01)
     # trunnion belt + trunnions (axis Y)
     tz = z0 + H * 0.64
     rtz = rb + (rt - rb) * 0.64
@@ -265,18 +277,18 @@ def ladle_furnace(ctx):
 
 def build(ctx):
     items = [rails(ctx)]
-    items.append((car(ctx), dict(pivot=(L.CAR_X, 0.0, 0.0), bevel=0.01,
+    items.append((car(ctx), dict(pivot=(L.CAR_X, 0.0, 0.0),
                                  props={"loom_part": "ladle_car", "loom_parent": "", "loom_motion": "translate_x (rail travel, x 4.9..34)"})))
     lmb, tz, lip = ladle(ctx)
-    items.append((lmb, dict(pivot=(L.CAR_X, 0.0, tz), parent="ladle_car", bevel=0.01,
+    items.append((lmb, dict(pivot=(L.CAR_X, 0.0, tz), parent="ladle_car",
                             props={"loom_part": "ladle", "loom_parent": "ladle_car",
                                    "loom_motion": "rotate_y about the trunnions (pour; + tips the lip at +X down)"})))
     smb, piv = slag_pot(ctx)
-    items.append((smb, dict(pivot=piv, bevel=0.01,
+    items.append((smb, dict(pivot=piv,
                             props={"loom_part": "slag_pot", "loom_parent": "", "loom_motion": "rotate_y about the trunnions (dump)"})))
     items.append(pot_stand(ctx))
-    items.append((spare_ladle(ctx), dict(bevel=0.01)))
-    items.append((ladle_furnace(ctx), dict(bevel=0.01)))
+    items.append((spare_ladle(ctx), dict()))
+    items.append((ladle_furnace(ctx), dict()))
     ctx.setdefault("emitters", {}).update({
         "ladle_lip": (tuple(lip), "ladle"),
         "ladle_surface": ((L.CAR_X, 0.0, LADLE_BOT + LADLE_H - 0.55), "ladle"),

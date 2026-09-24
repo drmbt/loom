@@ -105,7 +105,7 @@ def structure(ctx):
     hood0 = head + T * 0.5
     box_minmax(mb, (hood0[0] - 0.3, B[1] - 1.0, B[2] - 1.5), (hood0[0] + 1.4, B[1] + 0.9, B[2] + 1.2), "steel_painted_grey")
     # head platform
-    box_minmax(mb, (B[0] - 2.0, B[1] - 1.4, B[2] - 1.6), (B[0] + 2.2, B[1] + 2.4, B[2] - 1.5), "steel_dark")
+    box_minmax(mb, (B[0] - 2.0, B[1] - 1.4, B[2] - 1.6), (B[0] + 2.2, B[1] + 2.4, B[2] - 1.5), "steel_chequer")
     handrail(mb, [(B[0] - 2.0, B[1] + 2.4, B[2] - 1.5), (B[0] + 2.2, B[1] + 2.4, B[2] - 1.5), (B[0] + 2.2, B[1] - 1.4, B[2] - 1.5)],
              mat="steel_painted_yellow")
     for dx in (-1.9, 2.1):
@@ -132,7 +132,7 @@ def build(ctx):
     items = [(belt(ctx), dict(pivot=tuple(A), props={
         "loom_part": "conveyor_belt", "loom_parent": "",
         "loom_motion": "belt travel = scroll TEXCOORD_0.u (metres; carrying run 0..L, return run L+0.6..2L+0.6)"}))]
-    items.append((structure(ctx), dict(bevel=0.006)))
+    items.append((structure(ctx), dict()))
     ctx.setdefault("emitters", {}).update({
         "conveyor_head": (tuple(B + v3(0.8, 0, -1.0)), None),
         "conveyor_tail": (tuple(A + v3(0, 0, 1.0)), None),

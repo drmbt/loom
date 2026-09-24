@@ -28,7 +28,8 @@ export interface FurnaceSceneFacts {
   readonly markers: ReadonlyMap<string, DecodedMarker>;
 }
 
-export const PLANT_SELECT = "!part:*";
+// The pulpit glass is left out until a mesh can wear glass (§T1357b); drawn opaque it walls the pulpit in.
+export const PLANT_SELECT = "!part:* !material:glass_pulpit";
 export const MACHINES_SELECT = "part:*";
 
 export function sceneFactsFrom(

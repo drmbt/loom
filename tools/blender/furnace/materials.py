@@ -19,6 +19,8 @@ LIB = {
     "steel_worn":           ((0.42, 0.40, 0.38), 0.95, 0.32, None, 0, None),
     "steel_galvanized":     ((0.38, 0.39, 0.39), 0.85, 0.42, None, 0, None),
     "grating":              ((0.20, 0.20, 0.19), 0.80, 0.58, None, 0, None),
+    # walkway / deck floor plate: loom draws the raised chequer (lozenge) relief procedurally on this material
+    "steel_chequer":        ((0.085, 0.085, 0.088), 0.85, 0.46, None, 0, None),
     "rust":                 ((0.20, 0.075, 0.03), 0.35, 0.85, None, 0, None),
     "roof_sheet":           ((0.22, 0.23, 0.24), 0.65, 0.50, None, 0, None),
     "concrete":             ((0.30, 0.285, 0.27), 0.00, 0.90, None, 0, None),

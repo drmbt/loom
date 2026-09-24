@@ -6,7 +6,8 @@ import math
 import numpy as np
 
 from util import (MB, Xf, v3, norm, frame, rot_z, rot_x, rot_y, box, box_minmax, beam, ibeam, cyl, lathe, disk,
-                  torus, sweep, sweep_profile, bezier, hexbolt, bolt_circle, prism, handrail, pipe_run, grating, rock, TAU)
+                  torus, sweep, sweep_profile, bezier, hexbolt, bolt_circle, prism, handrail, pipe_run, grating, rock, loft,
+                  chamfer_rect, TAU)
 import layout as L
 from ladle import ladle_body, LADLE_H
 
@@ -62,12 +63,12 @@ def turret(ctx):
     z = L.CAST_FLOOR_Z
     lathe(mb, [(0.0, z), (2.2, z), (2.2, z + 0.5), (1.4, z + 0.8), (1.25, z + 4.3), (1.6, z + 4.5), (1.6, z + 5.0), (0.0, z + 5.0)],
           Xf(None, (tx, ty, 0)), "steel_painted_grey", seg=40)
-    bolt_circle(mb, (tx, ty, z + 0.5), (0, 0, 1), 1.9, 24, 0.05, "steel_dark")
+    bolt_circle(mb, (tx, ty, z + 0.5), (0, 0, 1), 1.9, 24, 0.05, "steel_dark", washer=True)
     # two fork arms (+Y empty, -Y holding the casting ladle)
     ladle_c = (X0, Y0, z + 2.6)
     tz, lip = ladle_body(mb, ladle_c, rng, hot=True, seed=6.6, lip_dir=(-1, 0))
     # slewing ring bolts, arm lift cylinders, access ladder, hose loop
-    bolt_circle(mb, (tx, ty, z + 4.5), (0, 0, 1), 1.45, 32, 0.04, "steel_dark")
+    bolt_circle(mb, (tx, ty, z + 4.5), (0, 0, 1), 1.45, 32, 0.04, "steel_dark", washer=True)
     for sy in (-1, 1):
         cyl(mb, (tx, ty + sy * 1.3, z + 3.0), (tx, ty + sy * 3.2, z + 4.9), 0.16, "steel_painted_yellow", seg=12)
     for k in range(int(4.3 / 0.3)):
@@ -91,53 +92,94 @@ def turret(ctx):
 
 
 def tundish(ctx):
+    """Tundish on its car: sloped-wall vessel with rim flange, ribs and belt, lifting lugs on four lift cylinders,
+    three lid segments with shroud / stopper / burner ports, the stopper-rod mechanism (guide post, actuator,
+    crosshead, arm), slide-gate box and SEN into the mould, and a car of two wheeled bogies on the floor rails
+    (x = X0 +/- 1.3, travel along Y) joined by cross girders."""
     mb = MB("caster_tundish")
     z = L.CAST_FLOOR_Z
-    # car
-    box_minmax(mb, (X0 - 3.5, Y0 - 1.6, z + 0.35), (X0 + 3.5, Y0 + 1.6, z + 0.75), "steel_painted_blue")
+    zb, zr = z + 0.75, z + 1.98                     # vessel bottom, rim
+    X = Xf(None, (X0, Y0, 0.0))
+    # ---- car: bogies on the rails, cross girders, lift cylinders
     for sx in (-1.3, 1.3):
-        for yy in (-1.3, 1.3):
-            cyl(mb, (X0 + sx - 0.1, Y0 + yy, z + 0.3), (X0 + sx + 0.1, Y0 + yy, z + 0.3), 0.28, "steel_dark", seg=16)
-    # trough body (trapezoid section extruded along X)
-    Rm = np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0]], dtype=float)
-    prof = [(-0.55, 0.0), (0.55, 0.0), (0.9, 1.3), (-0.9, 1.3)]
-    prism(mb, prof, 5.4, Xf(Rm, (X0 - 2.7, Y0, z + 0.75)), "steel_heat")
-    for xx in np.linspace(X0 - 2.5, X0 + 2.5, 8):
-        prism(mb, [(-0.6, 0.0), (0.6, 0.0), (0.97, 1.35), (-0.97, 1.35)], 0.08, Xf(Rm, (xx, Y0, z + 0.72)), "steel_heat")
-    # lid segments with inspection holes glowing
-    for k in range(4):
-        xx = X0 - 2.0 + k * 1.33
-        box(mb, (1.2, 2.0, 0.18), Xf(None, (xx, Y0, z + 2.14)), "refractory")
-    lathe(mb, [(0.22, z + 2.24), (0.0, z + 2.24)], Xf(None, (X0 + 0.8, Y0, 0)), "molten_steel", seg=16)
-    lathe(mb, [(0.18, z + 2.24), (0.0, z + 2.24)], Xf(None, (X0 - 1.5, Y0, 0)), "molten_steel", seg=16)
-    # car detail: legs with lift cylinders, wheel bogies, hazard stripes, hose festoon
-    for sx in (-3.2, 3.2):
-        for sy in (-1.45, 1.45):
-            box_minmax(mb, (X0 + sx - 0.25, Y0 + sy - 0.2, z + 0.05), (X0 + sx + 0.25, Y0 + sy + 0.2, z + 0.75), "steel_painted_blue")
-            cyl(mb, (X0 + sx, Y0 + sy, z + 0.75), (X0 + sx, Y0 + sy, z + 1.35), 0.12, "steel_worn", seg=10)
-            cyl(mb, (X0 + sx, Y0 + sy, z + 1.35), (X0 + sx, Y0 + sy, z + 1.9), 0.17, "steel_painted_yellow", seg=12)
+        box_minmax(mb, (X0 + sx - 0.17, Y0 - 1.65, z + 0.5), (X0 + sx + 0.17, Y0 + 1.65, z + 0.9), "steel_painted_blue")
+        for yy in (-1.15, 1.15):
+            c = v3(X0 + sx, Y0 + yy, z + 0.42)
+            cyl(mb, c - v3(0.07, 0, 0), c + v3(0.07, 0, 0), 0.28, "steel_dark", seg=20)
+            fl = -0.08 if sx < 0 else 0.08                 # wheel flange on the inboard side of the rail
+            cyl(mb, c - v3(fl, 0, 0) - v3(0.015, 0, 0), c - v3(fl, 0, 0) + v3(0.015, 0, 0), 0.32, "steel_worn", seg=20)
+            box(mb, (0.16, 0.34, 0.26), Xf(None, c + v3(0.25 if sx > 0 else -0.25, 0, 0.05)), "steel_dark")
+    box(mb, (0.5, 0.45, 0.4), Xf(None, (X0 + 1.62, Y0 + 1.95, z + 0.72)), "steel_painted_blue")          # travel drive
+    cyl(mb, (X0 + 1.62, Y0 + 2.18, z + 0.72), (X0 + 1.62, Y0 + 2.7, z + 0.72), 0.17, "steel_painted_grey", seg=16)
+    for sy in (-1.42, 1.42):
+        box_minmax(mb, (X0 - 2.45, Y0 + sy - 0.17, z + 0.9), (X0 + 2.45, Y0 + sy + 0.17, z + 1.25), "steel_painted_blue")
+        for sx in (-2.05, 2.05):
+            c = v3(X0 + sx, Y0 + sy, z + 1.25)
+            cyl(mb, c, c + v3(0, 0, 0.36), 0.13, "steel_painted_yellow", seg=16, cap0=False)
+            cyl(mb, c + v3(0, 0, 0.36), c + v3(0, 0, 0.52), 0.07, "steel_worn", seg=12, cap0=False)
+            box(mb, (0.3, 0.3, 0.05), Xf(None, c + v3(0, 0, 0.545)), "steel_dark")
     for k in range(9):
-        box(mb, (0.3, 0.03, 0.12), Xf(rot_y(0.7), (X0 - 3.2 + k * 0.8, Y0 - 1.61, z + 0.55)), "paint_black")
-    sweep(mb, bezier((X0 - 3.5, Y0 + 1.6, z + 0.6), (X0 - 4.6, Y0 + 2.2, z + 0.4), (X0 - 4.8, Y0 + 3.5, z + 0.2),
+        box(mb, (0.3, 0.03, 0.12), Xf(rot_y(0.7), (X0 - 2.2 + k * 0.55, Y0 - 1.6, z + 1.07)), "paint_black")
+    sweep(mb, bezier((X0 - 2.45, Y0 + 1.3, z + 1.05), (X0 - 3.6, Y0 + 2.2, z + 0.8), (X0 - 4.8, Y0 + 3.5, z + 0.2),
                      (X0 - 4.6, Y0 + 4.5, z + 0.05), 10), 0.05, "cable_rubber", seg=8)
-    # tundish rim crust + lid lifting lugs + overflow spout + temperature lance arm
+    # ---- vessel
+    loft(mb, chamfer_rect(4.6, 0.9, 0.2), zb, chamfer_rect(5.4, 1.8, 0.3), zr, X, "steel_heat", cap1=False)
+    cover = chamfer_rect(5.2, 1.6, 0.34)                                            # flux cover, seen through the ports
+    mb.add([(X0 + px, Y0 + py, zr - 0.1) for px, py in cover], [list(range(len(cover)))], "slag_hot")
+    prism(mb, chamfer_rect(5.62, 2.02, 0.34), 0.08, Xf(None, (X0, Y0, zr - 0.02)), "steel_dark")          # rim flange
+    loft(mb, chamfer_rect(5.12, 1.4, 0.27), z + 1.3, chamfer_rect(5.2, 1.48, 0.28), z + 1.42, X, "steel_heat")  # belt
+    for xx in np.linspace(X0 - 2.2, X0 + 2.2, 7):                                    # side ribs follow the wall slope
+        for sy in (-1, 1):
+            beam(mb, (xx, Y0 + sy * 0.47, zb + 0.05), (xx, Y0 + sy * 0.92, zr - 0.02), 0.03, 0.12, "steel_heat",
+                 up=(0, sy, 0))
+    for sx in (-1, 1):
+        for yy in (-0.3, 0.3):
+            beam(mb, (X0 + sx * 2.32, Y0 + yy, zb + 0.05), (X0 + sx * 2.72, Y0 + yy * 1.4, zr - 0.02), 0.03, 0.12, "steel_heat",
+                 up=(sx, 0, 0))
+    for sx in (-2.05, 2.05):                                                          # lifting lugs on the pads
+        for sy in (-1, 1):
+            box_minmax(mb, (X0 + sx - 0.16, Y0 + sy * 0.9, z + 1.6), (X0 + sx + 0.16, Y0 + sy * 1.5 + (0.0), z + 1.85), "steel_dark")
+    box_minmax(mb, (X0 + 2.7, Y0 - 0.3, z + 1.7), (X0 + 3.3, Y0 + 0.3, z + 1.95), "steel_heat")          # overflow spout
+    # ---- lid: three segments, ports with collars glowing inside
+    for k, (x0, x1) in enumerate(((-2.75, -0.95), (-0.92, 0.9), (0.93, 2.75))):
+        box_minmax(mb, (X0 + x0, Y0 - 0.98, zr + 0.06), (X0 + x1, Y0 + 0.98, zr + 0.2), "refractory")
+        box_minmax(mb, (X0 + x0, Y0 - 1.0, zr + 0.2), (X0 + x1, Y0 + 1.0, zr + 0.26), "steel_dark")
+        for sy in (-0.6, 0.6):
+            torus(mb, Xf(rot_x(math.pi / 2), ((X0 + (x0 + x1) / 2), Y0 + sy, zr + 0.36)), 0.1, 0.025, "steel_dark", seg=10, rseg=4)
+    for px, r in ((X0 + 0.8, 0.24), (X0, 0.2), (X0 - 1.6, 0.16)):
+        cyl(mb, (px, Y0, zr + 0.26), (px, Y0, zr + 0.36), r, "steel_heat", seg=20, cap0=False, cap1=False)
+        cyl(mb, (px, Y0, zr + 0.26), (px, Y0, zr + 0.36), r - 0.04, "steel_heat", seg=20, cap0=False, cap1=False)
+        lathe(mb, [(r - 0.04, zr + 0.27), (0.0, zr + 0.27)], Xf(None, (px, Y0, 0)), "molten_steel", seg=16)
+    # ---- stopper rod mechanism over the outlet (X0): rod, holder, arm, crosshead on a guide post, actuator
+    cyl(mb, (X0, Y0, zb + 0.15), (X0, Y0, z + 3.05), 0.075, "refractory", seg=12)
+    cyl(mb, (X0, Y0, z + 3.05), (X0, Y0, z + 3.25), 0.05, "steel_worn", seg=10)
+    post, act = v3(X0 + 0.22, Y0 - 1.18, 0), v3(X0 - 0.22, Y0 - 1.18, 0)
+    box_minmax(mb, (X0 - 0.45, Y0 - 1.4, zr + 0.06), (X0 + 0.45, Y0 - 0.98, zr + 0.3), "steel_dark")
+    cyl(mb, post + v3(0, 0, zr + 0.3), post + v3(0, 0, z + 3.6), 0.07, "steel_worn", seg=12)
+    cyl(mb, act + v3(0, 0, zr + 0.3), act + v3(0, 0, zr + 1.05), 0.075, "steel_painted_yellow", seg=12)
+    cyl(mb, act + v3(0, 0, zr + 1.05), act + v3(0, 0, z + 3.1), 0.035, "steel_worn", seg=10)
+    box_minmax(mb, (X0 - 0.34, Y0 - 1.32, z + 3.05), (X0 + 0.34, Y0 - 1.04, z + 3.35), "steel_dark")           # crosshead
+    beam(mb, (X0, Y0 - 1.1, z + 3.2), (X0, Y0 + 0.08, z + 3.2), 0.16, 0.2, "steel_painted_blue", chamfer=0.025)  # arm
+    cyl(mb, (X0 - 0.1, Y0, z + 3.2), (X0 + 0.1, Y0, z + 3.2), 0.09, "steel_dark", seg=12)
+    sweep(mb, [(X0 + 0.22, Y0 - 1.2, z + 3.3), (X0 + 0.7, Y0 - 1.5, z + 3.9), (X0 + 1.2, Y0 - 1.7, z + 4.1)], 0.02,
+          "steel_worn", seg=6, bend=0.3)                                            # manual lever
+    sweep(mb, bezier(act + v3(0, -0.07, zr + 0.4), act + v3(-0.2, -0.5, zr + 0.4), (X0 - 2.2, Y0 - 1.6, z + 1.4),
+                     (X0 - 2.3, Y0 - 1.5, z + 1.1), 8), 0.02, "hose_red", seg=6)
+    # ---- outlet: slide-gate box under the bottom, SEN into the mould, argon line
+    box_minmax(mb, (X0 - 0.3, Y0 - 0.22, zb - 0.2), (X0 + 0.3, Y0 + 0.22, zb), "steel_dark")
+    cyl(mb, (X0 + 0.3, Y0, zb - 0.1), (X0 + 0.75, Y0, zb - 0.1), 0.05, "steel_painted_yellow", seg=10)
+    cyl(mb, (X0, Y0, zb - 0.2), (X0, Y0, z - 0.8), 0.08, "refractory", seg=12)
+    cyl(mb, (X0, Y0, zb - 0.32), (X0, Y0, zb - 0.2), 0.12, "steel_dark", seg=12)
+    sweep(mb, bezier((X0 - 0.3, Y0 + 0.1, zb - 0.1), (X0 - 0.9, Y0 + 0.4, zb - 0.1), (X0 - 1.4, Y0 + 1.0, z + 1.0),
+                     (X0 - 1.5, Y0 + 1.3, z + 1.1), 8), 0.012, "steel_worn", seg=6)
+    # tundish rim crust (same seeded draws as v1)
     rng = ctx["rng"]
     for k in range(26):
         rock(mb, (X0 - 2.6 + rng.random() * 5.2, Y0 + rng.choice((-0.93, 0.93)), z + 2.05), (0.12, 0.2, 0.08), "slag_cold", rng, seg=5, rings=2)
-    for k in range(4):
-        xx = X0 - 2.0 + k * 1.33
-        for sy in (-0.6, 0.6):
-            torus(mb, Xf(rot_x(math.pi / 2), (xx, Y0 + sy, z + 2.35)), 0.1, 0.025, "steel_dark", seg=10, rseg=4)
-    box_minmax(mb, (X0 + 2.7, Y0 - 0.3, z + 1.7), (X0 + 3.3, Y0 + 0.3, z + 1.95), "steel_heat")
+    # temperature / sampling lance arm
     cyl(mb, (X0 - 1.5, Y0 - 3.5, z), (X0 - 1.5, Y0 - 3.5, z + 3.2), 0.18, "steel_painted_grey", seg=12)
     beam(mb, (X0 - 1.5, Y0 - 3.5, z + 3.1), (X0 - 1.5, Y0 - 0.6, z + 3.1), 0.2, 0.25, "steel_painted_grey")
     cyl(mb, (X0 - 1.5, Y0 - 0.6, z + 3.1), (X0 - 1.5, Y0 - 0.6, z + 2.1), 0.05, "copper_busbar", seg=8)
-    # stopper rod mechanism over the mould
-    cyl(mb, (X0, Y0, z + 2.2), (X0, Y0, z + 3.6), 0.09, "refractory", seg=10)
-    box_minmax(mb, (X0 - 0.1, Y0 - 0.1, z + 3.4), (X0 + 1.4, Y0 + 0.1, z + 3.65), "steel_dark")
-    box_minmax(mb, (X0 + 1.2, Y0 - 0.25, z + 2.2), (X0 + 1.5, Y0 + 0.25, z + 3.7), "steel_dark")
-    # submerged entry nozzle down into the mould
-    cyl(mb, (X0, Y0, z + 0.75), (X0, Y0, z - 0.8), 0.08, "refractory", seg=10)
     return mb
 
 
@@ -266,16 +308,16 @@ def strand(ctx):
 
 
 def build(ctx):
-    items = [(floor_platform(ctx), dict(bevel=0.0))]
+    items = [(floor_platform(ctx), dict())]
     tmb, pour = turret(ctx)
-    items.append((tmb, dict(pivot=(L.TURRET_XY[0], L.TURRET_XY[1], L.CAST_FLOOR_Z), bevel=0.01,
+    items.append((tmb, dict(pivot=(L.TURRET_XY[0], L.TURRET_XY[1], L.CAST_FLOOR_Z),
                             props={"loom_part": "ladle_turret", "loom_parent": "", "loom_motion": "rotate_z (swap ladles, 180 deg)"})))
-    items.append((tundish(ctx), dict(bevel=0.01)))
-    items.append((mould(ctx), dict(bevel=0.008)))
+    items.append((tundish(ctx), dict()))
+    items.append((mould(ctx), dict()))
     items += segments(ctx)
-    items.append((frames(ctx), dict(bevel=0.01)))
+    items.append((frames(ctx), dict()))
     rmb, torch = runout(ctx)
-    items.append((rmb, dict(bevel=0.008)))
+    items.append((rmb, dict()))
     items.append((strand(ctx), dict(pivot=(X0, Y0, CZ), props={"loom_part": "caster_strand", "loom_parent": "",
                                            "loom_motion": "withdrawal = scroll TEXCOORD_0.u (metres along the strand)"})))
     ctx.setdefault("emitters", {}).update({

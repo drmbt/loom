@@ -70,3 +70,16 @@ CONV_B = (-9.5, -11.0, 20.0)
 BUNKER = (-6.2, -7.8)
 
 FURNACE_C = (0.0, 0.0, 10.0)
+
+# daylight: the preview sun and the direction loom's louvre shafts follow (Blender XYZ euler, degrees)
+SUN_EULER_DEG = (38.0, -18.0, 60.0)
+
+# fixture photometrics for the lamp.* markers: linear rgb, lumens, cone (full angle, degrees)
+LAMP_WARM = (1.0, 0.86, 0.66)          # = the `lamp` material's emission colour
+FIXTURES = {
+    "high_bay": (LAMP_WARM, 36000.0, 110.0),     # 400 W metal-halide high-bay under the trusses
+    "flood": (LAMP_WARM, 20000.0, 70.0),         # 250 W floods on columns, catwalks, crane bridges
+    "wall_pack": (LAMP_WARM, 9000.0, 100.0),     # vault face lamps
+    "panel": ((0.92, 0.95, 1.0), 4500.0, 120.0),  # pulpit ceiling panels
+    "beacon": ((1.0, 0.45, 0.04), 600.0, 360.0),  # amber rotating beacon on the pulpit roof
+}

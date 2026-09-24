@@ -52,6 +52,15 @@ def setup(scene, quick=False):
     nt.links.new(vol.outputs[0], out.inputs["Volume"])
     _lights(scene)
     _compositor(scene)
+    # preview-only: see through the pulpit / cab glazing (the exported material stays an opaque factor set)
+    g = bpy.data.materials.get("glass_pulpit")
+    if g is not None:
+        b = g.node_tree.nodes["Principled BSDF"]
+        b.inputs["Alpha"].default_value = 0.12
+        try:
+            g.surface_render_method = "BLENDED"
+        except Exception:
+            pass
 
 
 def _light(scene, name, kind, loc, energy, color, size=1.0, rot=None, spot=None):
@@ -79,8 +88,9 @@ def _lights(scene):
     # light.* reference lights from cameras.py also render; these add fill only
     _light(scene, "pv_strand", "AREA", (CAST_X + 8, CAST_Y, 3.0), 3000, (1.0, 0.4, 0.12), size=6.0)
     # cold daylight through the monitor louvres (sun, gives shafts in the haze)
+    from layout import SUN_EULER_DEG
     sun = _light(scene, "pv_sun", "SUN", (0, 0, 50), 1.5, (0.75, 0.82, 1.0),
-                 rot=(math.radians(38), math.radians(-18), math.radians(60)))
+                 rot=tuple(math.radians(a) for a in SUN_EULER_DEG))
     sun.data.angle = math.radians(1.5)
     # high-bay fill (cool), weak
     for x in (-48, -24, 0, 24, 48):

@@ -1,4 +1,4 @@
-"""shot.* cameras, emit.* empties, light.* punctual lights."""
+"""shot.* cameras, emit.* empties, lamp.* / louvre.* lighting-rig markers, light.* punctual lights."""
 import math
 
 import bpy
@@ -66,6 +66,47 @@ def empty(coll, name, loc, parent=None, follow=None, size=0.3):
     return ob
 
 
+def gl(v):
+    """Blender (x, y, z) -> glTF (x, z, -y): extras vectors are written in the exported (Y-up) space."""
+    return [round(float(v[0]), 5), round(float(v[2]), 5), round(float(-v[1]), 5)]
+
+
+def marker(coll, name, loc, direction, parent=None, follow=None, props=None):
+    """Meshless, childless node (loom decodes it as a marker): position + direction = the node's -Z."""
+    ob = empty(coll, name, loc, parent=parent, follow=follow, size=0.25)
+    ob.empty_display_type = "SINGLE_ARROW"
+    d = Vector(direction).normalized()
+    ob.rotation_mode = "QUATERNION"
+    ob.rotation_quaternion = d.to_track_quat("-Z", "Y")
+    for k, v in (props or {}).items():
+        ob[k] = v
+    return ob
+
+
+def rig_markers(ctx):
+    """lamp.<area>.<nn> at every real fixture, louvre.<nn> at every daylight opening (see README)."""
+    from mathutils import Euler
+    coll, objs = ctx["coll"], ctx["objects"]
+    count = {}
+    for area, kind, pos, aim, follow in ctx.get("fixtures", []):
+        count[area] = count.get(area, 0) + 1
+        col, lm, cone = L.FIXTURES[kind]
+        marker(coll, f"lamp.{area}.{count[area]:02d}", tuple(float(c) for c in pos), aim,
+               parent=objs.get(follow) if follow else None, follow=follow,
+               props={"loom_light_kind": kind, "loom_light_color": list(col), "loom_light_lumens": lm,
+                      "loom_light_cone_deg": cone, "loom_light_dir": gl(Vector(aim).normalized())})
+    sun = Euler([math.radians(a) for a in L.SUN_EULER_DEG], "XYZ").to_matrix() @ Vector((0.0, 0.0, -1.0))
+    for k, (kind, pos, inward, size) in enumerate(ctx.get("openings", [])):
+        inward = Vector(inward).normalized()
+        lit = sun.dot(inward) > 0.05                   # the sun shines in through this opening
+        # sun-side openings throw parallel sun shafts; the others a steep, soft skylight shaft
+        d = sun if lit else (inward * 0.45 + Vector((0.0, 0.0, -1.0))).normalized()
+        marker(coll, f"louvre.{k + 1:02d}", tuple(float(c) for c in pos), d,
+               props={"loom_opening": kind, "loom_sunlit": bool(lit), "loom_opening_size": [float(size[0]), float(size[1])],
+                      "loom_opening_normal": gl(inward), "loom_shaft_dir": gl(d),
+                      "loom_light_color": [0.62, 0.72, 0.88] if not lit else [1.0, 0.95, 0.86]})
+
+
 def light(coll, name, kind, loc, watts, color, target=None, radius=0.5, spot_deg=None):
     ld = bpy.data.lights.new(name, kind)
     ld.energy = watts
@@ -108,6 +149,8 @@ def build(ctx):
     for k, x in enumerate(range(-54, 55, 12)):
         s = -1 if k % 2 else 1
         empty(coll, f"emit.louvre_shaft_{k + 1:02d}", (float(x), s * 3.9, L.MONITOR_Z - 1.6))
+
+    rig_markers(ctx)
 
     # reference lights (loom may ignore)
     light(coll, "light.furnace_glow", "POINT", (0.0, 0.0, L.ROOF_RING_Z + 0.8), 6000, (1.0, 0.45, 0.15), radius=3.0)

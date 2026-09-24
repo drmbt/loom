@@ -18,7 +18,7 @@ def build(ctx):
     mb = MB("pulpit")
     z1 = Z0 + H
     # raised plinth
-    box_minmax(mb, (PX0 - 0.2, PY0 - 0.2, L.DECK_Z), (PX1 + 0.2, PY1 + 0.3, Z0), "steel_dark")
+    box_minmax(mb, (PX0 - 0.2, PY0 - 0.2, L.DECK_Z), (PX1 + 0.2, PY1 + 0.3, Z0), "steel_chequer")
     # back and side walls (ribbed panels)
     t = 0.08
     box_minmax(mb, (PX0, PY0, Z0), (PX1, PY0 + t, z1), "steel_painted_grey")
@@ -32,8 +32,18 @@ def build(ctx):
     # front: sill wall, raked window frames (no panes), header
     box_minmax(mb, (PX0, PY1 - t, Z0), (PX1, PY1, Z0 + 0.95), "steel_painted_grey")
     box_minmax(mb, (PX0, PY1 - 0.1, z1 - 0.45), (PX1, PY1 + 0.45, z1), "steel_painted_grey")
-    for x in np.linspace(PX0 + 0.05, PX1 - 0.05, 6):
+    mull = np.linspace(PX0 + 0.05, PX1 - 0.05, 6)
+    for x in mull:
         beam(mb, (x, PY1 - 0.05, Z0 + 0.95), (x, PY1 + 0.4, z1 - 0.45), 0.08, 0.1, "paint_black")
+    # glazing: one thin pane per bay in the raked plane (material glass_pulpit, so loom can select it on its own)
+    d = v3(0.0, 0.45, (z1 - 0.45) - (Z0 + 0.95))
+    n = norm(np.cross(d, v3(1.0, 0.0, 0.0)))
+    for x0, x1 in zip(mull[:-1], mull[1:]):
+        xc = (x0 + x1) / 2
+        beam(mb, v3(xc, PY1 - 0.05, Z0 + 0.95) + norm(d) * 0.05 + n * 0.01, v3(xc, PY1 + 0.4, z1 - 0.45) - norm(d) * 0.05 + n * 0.01,
+             x1 - x0 - 0.075, 0.012, "glass_pulpit", up=n)
+    # door vision panel
+    box_minmax(mb, (PX1 + 0.02, PY0 + 1.45, Z0 + 1.2), (PX1 + 0.035, PY0 + 1.95, Z0 + 1.8), "glass_pulpit")
     beam(mb, (PX0, PY1 - 0.05, Z0 + 0.95), (PX1, PY1 - 0.05, Z0 + 0.95), 0.1, 0.1, "paint_black")
     beam(mb, (PX0, PY1 + 0.4, z1 - 0.45), (PX1, PY1 + 0.4, z1 - 0.45), 0.1, 0.1, "paint_black")
     # heat-shield mesh frame hinged above the windows (propped open)
@@ -63,8 +73,11 @@ def build(ctx):
         cyl(mb, (cx, PY1 - 1.8, Z0), (cx, PY1 - 1.8, Z0 + 0.45), 0.04, "steel_dark", seg=6)
         box(mb, (0.5, 0.5, 0.08), Xf(None, (cx, PY1 - 1.8, Z0 + 0.5)), "cable_rubber")
         box(mb, (0.5, 0.08, 0.55), Xf(None, (cx, PY1 - 2.05, Z0 + 0.8)), "cable_rubber")
+    fx = ctx.setdefault("fixtures", [])
     for x in (PX0 + 1.5, PX1 - 1.5):
         box_minmax(mb, (x - 0.6, PY0 + 1.6, z1 - 0.06), (x + 0.6, PY0 + 1.8, z1 - 0.02), "lamp")
+        fx.append(("pulpit", "panel", (x, PY0 + 1.7, z1 - 0.07), (0.0, 0.0, -1.0), None))
+    fx.append(("pulpit", "beacon", (PX1 - 0.3, PY1 + 0.2, z1 + 0.58), (0.0, 0.0, 1.0), None))
     # cabinet row at the back wall
     for k in range(5):
         x = PX0 + 0.7 + k * 1.3
@@ -75,4 +88,4 @@ def build(ctx):
     box_minmax(mb, (PX1 - 0.02, PY0 + 1.2, Z0), (PX1 + 0.02, PY0 + 2.2, Z0 + 2.1), "steel_painted_blue")
     for k in range(2):
         box_minmax(mb, (PX1 + 0.1 + k * 0.28, PY0 + 1.1, L.DECK_Z), (PX1 + 0.38 + k * 0.28, PY0 + 2.3, Z0 - k * 0.22), "steel_worn")
-    return [(mb, dict(bevel=0.008))]
+    return [(mb, dict())]

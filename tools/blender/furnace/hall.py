@@ -80,17 +80,25 @@ def build_floor(rng):
             x0 = HX0 + i * tx
             y0 = -HY + j * ty
             dz = rng.uniform(-0.012, 0.012)
-            box_minmax(mb, (x0 + 0.012, y0 + 0.012, -0.4), (x0 + tx - 0.012, y0 + ty - 0.012, dz), "concrete")
-    # joint filler under tiles
-    box_minmax(mb, (HX0, -HY, -0.45), (HX1, HY, -0.03), "slag_cold")
+            box_minmax(mb, (x0 + 0.012, y0 + 0.012, -0.06), (x0 + tx - 0.012, y0 + ty - 0.012, dz), "concrete")
+    # joint filler under the tile gaps (one sheet: only its top shows between the slabs)
+    mb.add([(HX0, -HY, -0.03), (HX1, -HY, -0.03), (HX1, HY, -0.03), (HX0, HY, -0.03)], [[0, 1, 2, 3]], "slag_cold")
     # lower walls (concrete) all round
     t = 0.35
     box_minmax(mb, (HX0 - t, HY, 0), (HX1 + t, HY + t, 3.0), "concrete")
     box_minmax(mb, (HX0 - t, -HY - t, 0), (HX1 + t, -HY, 3.0), "concrete")
     box_minmax(mb, (HX0 - t, -HY, 0), (HX0, HY, 3.0), "concrete")
     box_minmax(mb, (HX1, -HY, 0), (HX1 + t, HY, 3.0), "concrete")
-    # outer apron beyond walls (so gable openings don't show void)
-    box_minmax(mb, (HX0 - 40, -HY - 40, -0.6), (HX1 + 40, HY + 40, -0.45), "concrete")
+    return mb
+
+
+def build_apron():
+    """Outer apron beyond the walls (so gable openings don't show void): four flat strips, no underside."""
+    mb = MB("hall_apron")
+    t, W, z = 0.35, 40.0, -0.02
+    for x0, y0, x1, y1 in ((HX0 - W, -HY - W, HX1 + W, -HY - t), (HX0 - W, HY + t, HX1 + W, HY + W),
+                           (HX0 - W, -HY - t, HX0 - t, HY + t), (HX1 + t, -HY - t, HX1 + W, HY + t)):
+        mb.add([(x0, y0, z), (x1, y0, z), (x1, y1, z), (x0, y1, z)], [[0, 1, 2, 3]], "concrete")
     return mb
 
 
@@ -109,7 +117,7 @@ def column(mb, X, side, rng):
         box(mb, (0.9, w + 0.3, 0.05), Xf(None, (X, yy, 0.475)), "steel_dark")
         for dx in (-0.35, 0.35):
             for dy in (-(w + 0.3) / 2 + 0.08, (w + 0.3) / 2 - 0.08):
-                hexbolt(mb, (X + dx, yy + dy, 0.5), (0, 0, 1), 0.035, "steel_dark", h=0.05)
+                hexbolt(mb, (X + dx, yy + dy, 0.5), (0, 0, 1), 0.035, "steel_dark", h=0.05, washer=True)
                 cyl(mb, (X + dx, yy + dy, 0.5), (X + dx, yy + dy, 0.62), 0.016, "steel_dark", seg=6)
     # cap / crane bracket: deep box on crane leg + stiffeners
     box_minmax(mb, (X - 0.35, min(ry, cy) - 0.1, top_c), (X + 0.35, max(ry, cy) + 0.1, top_c + 0.9), "steel_painted_grey")
@@ -153,7 +161,7 @@ def runway(mb, side):
     prism(mb, rail, HX1 - HX0, Xf(R, (HX0, y, top)), "steel_worn")
     for xc in np.arange(HX0 + 0.4, HX1, 0.8):
         for sd in (-1, 1):
-            box(mb, (0.12, 0.09, 0.04), Xf(None, (xc, y + sd * 0.13, top + 0.045)), "steel_dark")
+            box(mb, (0.12, 0.09, 0.04), Xf(None, (xc, y + sd * 0.13, top + 0.045)), "steel_dark", cap0=False)
     # surge plate / walkway to wall
     wy0, wy1 = (y + s * 0.45, s * (HY - 0.45))
     lo, hi = min(wy0, wy1), max(wy0, wy1)
@@ -194,10 +202,10 @@ def truss(mb, X, rng):
         for p, zoff in ((bot[k], 0.35), (topc[k], -0.4)):
             c = v3(p) + v3(0, 0, zoff)
             box(mb, (0.018, 0.7, 0.55), Xf(None, c), "steel_painted_grey")
-            for by in (-0.2, 0.0, 0.2):
-                for bz in (-0.12, 0.12):
-                    for sd in (-1, 1):
-                        hexbolt(mb, c + v3(sd * 0.009, by, bz), (sd, 0, 0), 0.022, "steel_dark", h=0.018)
+            # 3 bolts a face (a triangle): at 30 m they are sub-pixel from every shot; v1's 6 a face cost 80k vertices
+            for by, bz in ((-0.2, -0.12), (0.2, -0.12), (0.0, 0.12)):
+                for sd in (-1, 1):
+                    hexbolt(mb, c + v3(sd * 0.009, by, bz), (sd, 0, 0), 0.022, "steel_dark", h=0.018)
     # bearing on roof legs
     for s in (-1, 1):
         box(mb, (0.6, 0.9, 0.5), Xf(None, (X, s * ROOF_LEG_Y, TRUSS_Z + 0.4)), "steel_painted_grey")
@@ -255,7 +263,7 @@ def roof(mb, trusses_ys, rng):
             cyl(mb, (x0, yb, top_chord_z(yb) + 0.25), (x1, ya, top_chord_z(ya) + 0.25), 0.025, "steel_dark", seg=6)
 
 
-def walls(mb, rng):
+def walls(mb, rng, openings):
     mat = "roof_sheet"
     z0, z1 = 3.0, EAVE_Z + 1.4
     win0, win1 = 16.0, 18.4
@@ -268,11 +276,14 @@ def walls(mb, rng):
             prof = [(u, y + s * w) for u, w in prof]
             ribbon(mb, prof, z0, win0, mat, axis="x", flip=(s < 0))
             if rng.random() < 0.12:
+                openings.append(("wall_gap", (x + 3.0, y, z1 - 2.0), (0.0, -float(s), 0.0), (6.0, 4.0)))
                 # a missing sheet high up
                 ribbon(mb, prof, win1, z1 - 4.0, mat, axis="x", flip=(s < 0))
                 ribbon(mb, [(x, y + s * 0.3), (x + 6.0, y + s * 0.3)], z1 - 4.0, z1, "sky_opening", axis="x", flip=(s > 0))
             else:
                 ribbon(mb, prof, win1, z1, mat, axis="x", flip=(s < 0))
+        for xw in np.arange(HX0 + 6.0, HX1, BAY):
+            openings.append(("window_band", (float(xw), y, (win0 + win1) / 2), (0.0, -float(s), 0.0), (BAY, win1 - win0)))
         # window band: dirty translucent panels (emissive dim) + mullions
         ribbon(mb, [(HX0, y + s * 0.02), (HX1, y + s * 0.02)], win0, win1, "sky_opening", axis="x", flip=(s > 0))
         for x in np.arange(HX0, HX1 + 0.01, 1.5):
@@ -303,6 +314,8 @@ def walls(mb, rng):
             else:
                 ribbon(mb, prof, door_z, ztop, mat, axis="y", flip=(s > 0))
         # door opening: sky
+        openings.append(("gable_door", (gx, (door_y[0] + door_y[1]) / 2, (door_z + 0.0) / 2), (-float(s), 0.0, 0.0),
+                         (door_y[1] - door_y[0], door_z)))
         ribbon(mb, [(door_y[0], gx + s * 6), (door_y[1], gx + s * 6)], -0.5, door_z + 2, "sky_opening", axis="y", flip=(s < 0))
         # gable columns + door lintel
         for y in np.arange(-HY + 6.0, HY - 1, 6.0):
@@ -318,12 +331,13 @@ def eave_and_bracing(mb):
         ibeam(mb, (HX0, y, 11.5), (HX1, y, 11.5), 0.4, 0.22, "steel_painted_grey")
 
 
-def lamps(mb):
+def lamps(mb, fixtures):
     for X in COLS_X[1:-1]:
         for y in (-11.0, -5.0, 5.0, 11.0):
             for xo in (-6.0,):
                 x = X + xo
                 z = TRUSS_Z - 0.2
+                fixtures.append(("hall", "high_bay", (x, y, z - 0.56), (0.0, 0.0, -1.0), None))
                 cyl(mb, (x, y, z), (x, y, z + 0.5), 0.02, "steel_dark", seg=6)
                 lathe(mb, [(0.0, 0.5), (0.12, 0.5), (0.14, 0.35), (0.36, 0.05), (0.38, 0.0), (0.33, 0.0), (0.0, 0.26)][::-1],
                       Xf(None, (x, y, z - 0.55)), "steel_galvanized", seg=16)
@@ -350,7 +364,12 @@ def build(ctx):
     roof(rf, ys, rng)
     eave_and_bracing(struct)
     wl = MB("hall_walls")
-    walls(wl, rng)
+    openings = ctx.setdefault("openings", [])
+    for x in np.arange(HX0 + 6.0, HX1, BAY):                    # monitor louvres, one marker per bay and side
+        for sd in (-1, 1):
+            openings.append(("monitor_louvre", (float(x), sd * 3.75, (top_chord_z(3.6) + 0.5 + MONITOR_Z - 0.75) / 2),
+                             (0.0, -float(sd), 0.0), (BAY, MONITOR_Z - 0.75 - top_chord_z(3.6) - 0.5)))
+    walls(wl, rng, openings)
     lp = MB("hall_lamps")
-    lamps(lp)
-    return [floor, struct, run, tr, rf, wl, lp]
+    lamps(lp, ctx.setdefault("fixtures", []))
+    return [floor, build_apron(), struct, run, tr, rf, wl, lp]

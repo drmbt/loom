@@ -5,7 +5,7 @@ import math
 import numpy as np
 
 from util import (MB, Xf, v3, norm, frame, rot_z, rot_x, rot_y, box, box_minmax, beam, ibeam, cyl, lathe, disk,
-                  torus, sweep, hexbolt, bolt_circle, prism, handrail, strip_bars, TAU)
+                  torus, sweep, bezier, hexbolt, bolt_circle, prism, handrail, strip_bars, flood, weld, TAU)
 import layout as L
 
 GIRDER_DX = 2.7           # girders at CRANE_X +/- GIRDER_DX
@@ -37,6 +37,11 @@ def fishbelly_girder(mb, x, rng):
     for k in range(len(ys) - 1):
         beam(mb, (x, ys[k], bots[k] + 0.02), (x, ys[k + 1], bots[k + 1] + 0.02), w + 0.12, 0.04, "steel_painted_yellow",
              up=(0, 0, 1), caps=False)
+    # web-to-flange fillet welds, top and bottom, both sides
+    for sx in (-1, 1):
+        xw = x + sx * (w / 2 + 0.007)
+        weld(mb, [(xw, y, G_TOP - 0.047) for y in ys], "steel_painted_yellow", r=0.01)
+        weld(mb, [(xw, y, zb + 0.047) for y, zb in zip(ys, bots)], "steel_painted_yellow", r=0.01)
     # outside stiffener ribs (diaphragm lines) + splice plates
     for k in range(1, len(ys) - 1):
         for sx in (-1, 1):
@@ -104,6 +109,12 @@ def bridge(ctx, X=L.CRANE_X, name="crane_bridge"):
             box(mb, (0.7, 1.8, 1.9), Xf(None, (xw, y, G_TOP - 1.3 + 0.95)), "steel_painted_grey")
             for k in range(6):
                 box(mb, (0.72, 1.5, 0.02), Xf(None, (xw, y, G_TOP - 1.3 + 0.35 + k * 0.25)), "steel_dark")
+    # two floodlights under each girder, aimed down at the bay
+    for sx in (-1, 1):
+        for yy in (-6.0, 6.0):
+            c = v3(X + sx * GIRDER_DX, yy, G_TOP - 2.95)
+            flood(mb, c, (0.0, 0.0, -1.0), ctx.setdefault("fixtures", []), "crane", follow=name,
+                  mount=(X + sx * GIRDER_DX, yy, G_TOP - 2.75))
     # operator cab under the -Y end of a girder
     cx, cy, cz = X + GIRDER_DX, -L.RAIL_Y + 3.4, G_TOP - 4.4
     box_minmax(mb, (cx - 1.1, cy - 1.3, cz), (cx + 1.1, cy + 1.3, cz + 2.4), "steel_painted_yellow")
@@ -129,7 +140,7 @@ def trolley(ctx, X=L.CRANE_X, Y=L.TROLLEY_Y, name="crane_trolley"):
                 "steel_dark", seg=20)
     for sy in (-2.8, -0.9, 0.9, 2.8):
         box_minmax(mb, (X - GIRDER_DX, Y + sy - 0.3, z0 + 0.05), (X + GIRDER_DX, Y + sy + 0.3, z0 + 0.75), "steel_painted_yellow")
-    box_minmax(mb, (X - GIRDER_DX - 0.3, Y - 3.0, z0 + 0.8), (X + GIRDER_DX + 0.3, Y + 3.0, z0 + 0.84), "steel_dark")
+    box_minmax(mb, (X - GIRDER_DX - 0.3, Y - 3.0, z0 + 0.8), (X + GIRDER_DX + 0.3, Y + 3.0, z0 + 0.84), "steel_chequer")
     # main hoist: two grooved drums (axes along X), gearbox, motors, brakes
     for sy in (-1.6, 1.6):
         dc = v3(X, Y + sy, z0 + 1.5)
@@ -232,7 +243,31 @@ def bucket(ctx):
             ibeam(mb, p - R[:, 0] * 0.7, p + R[:, 0] * 0.7, 0.2, 0.12, "rust", up=R[:, 2])
         else:
             cyl(mb, p - R[:, 0] * 0.6, p + R[:, 0] * 0.6, rng.uniform(0.03, 0.15), "scrap_mix", seg=8)
+    # jaw hydraulics, bucket half: per jaw two cylinder barrels on clevis brackets, a valve block, hoses
+    for sx in (1, -1):
+        blk = v3(X + sx * (r + 0.24), Y, zb + 2.95)
+        box(mb, (0.3, 0.9, 0.42), Xf(None, blk), "steel_painted_blue")
+        for yy in (-JAW_CYL_Y, JAW_CYL_Y):
+            top_p, rod_p = jaw_cyl_points(X, Y, zb, r, sx, yy)
+            dc = norm(rod_p - top_p)
+            box(mb, (0.46, 0.3, 0.32), Xf(None, top_p + v3(-sx * 0.16, 0, 0.02)), "steel_dark")
+            cyl(mb, top_p - v3(0, 0.17, 0), top_p + v3(0, 0.17, 0), 0.05, "steel_worn", seg=10)
+            cyl(mb, top_p + dc * 0.05, top_p + dc * JAW_BARREL, 0.12, "steel_painted_yellow", seg=16)
+            cyl(mb, top_p + dc * JAW_BARREL, top_p + dc * (JAW_BARREL + 0.06), 0.135, "steel_dark", seg=16)
+            for q, t in enumerate((0.2, JAW_BARREL - 0.12)):
+                h0 = top_p + dc * t + v3(sx * 0.12, 0, 0)
+                h3 = blk + v3(sx * 0.0, yy * 0.25 + (q - 0.5) * 0.12, -0.21)
+                sweep(mb, bezier(h0, h0 + v3(sx * 0.25, 0, 0.05), h3 + v3(sx * 0.2, 0, -0.35), h3, 8), 0.022, "cable_rubber", seg=6)
     return mb, zb, r, pin
+
+
+JAW_CYL_Y = 1.6          # the two jaw cylinders sit at Y +/- this
+JAW_BARREL = 1.05        # barrel length along the cylinder axis
+
+
+def jaw_cyl_points(X, Y, zb, r, sx, yy):
+    """(bucket clevis pin, jaw lever pin) of one jaw cylinder, in the rest (closed) pose."""
+    return v3(X + sx * (r + 0.36), Y + yy, zb + 2.3), v3(X + sx * (r + 0.3), Y + yy, zb + 0.62)
 
 
 def jaws(ctx, zb, r):
@@ -252,7 +287,17 @@ def jaws(ctx, zb, r):
         hinge = v3(X + sx * (r - 0.1), Y, zb + 0.2)
         for yy in (-1.2, 1.2):
             cyl(mb, hinge + v3(0, yy - 0.2, 0), hinge + v3(0, yy + 0.2, 0), 0.16, "steel_worn", seg=12)
-        out.append((mb, dict(pivot=tuple(hinge), parent="scrap_bucket", bevel=0.008,
+        # jaw half of the hydraulics: lever cheeks from the hinge line out to the rod pin, rod + eye
+        for yy in (-JAW_CYL_Y, JAW_CYL_Y):
+            top_p, rod_p = jaw_cyl_points(X, Y, zb, r, sx, yy)
+            dc = norm(top_p - rod_p)
+            for cy in (-0.1, 0.1):
+                beam(mb, v3(hinge[0] - sx * 0.1, Y + yy + cy, zb - 0.2), rod_p + v3(0, cy, 0), 0.03, 0.3, "steel_dark",
+                     up=(sx, 0, 0.4))
+            cyl(mb, rod_p - v3(0, 0.14, 0), rod_p + v3(0, 0.14, 0), 0.05, "steel_worn", seg=10)
+            cyl(mb, rod_p, rod_p + dc * (float(np.linalg.norm(top_p - rod_p)) - JAW_BARREL + 0.25), 0.055, "steel_worn", seg=12)
+            cyl(mb, rod_p - v3(0, 0.06, 0), rod_p + v3(0, 0.06, 0), 0.1, "steel_dark", seg=12)
+        out.append((mb, dict(pivot=tuple(hinge), parent="scrap_bucket",
                              props={"loom_part": f"scrap_bucket_jaw_{j + 1}", "loom_parent": "scrap_bucket",
                                     "loom_motion": "rotate_y about the hinge (opens %s)" % ("+x outward" if sx > 0 else "-x outward")})))
     return out
@@ -271,41 +316,41 @@ def lifting_beam(ctx, X, Y, Z):
         pts = [(X, y, Z - 3.9), (X, y - sy * 0.55, Z - 4.3), (X, y - sy * 0.9, Z - 3.9), (X, y - sy * 0.9, Z - 3.5)]
         sweep(mb, pts, 0.16, "steel_dark", seg=8, bend=0.25, caps=True)
         for zz in np.arange(Z - 3.8, Z - 1.6, 0.35):
-            hexbolt(mb, (X + 0.35, y, zz), (1, 0, 0), 0.04, "steel_worn")
+            hexbolt(mb, (X + 0.35, y, zz), (1, 0, 0), 0.04, "steel_worn", washer=True)
     return mb
 
 
 def build(ctx):
     X, Y = L.CRANE_X, L.TROLLEY_Y
     items = [
-        (bridge(ctx), dict(pivot=(X, 0.0, L.RAIL_Z), bevel=0.012,
+        (bridge(ctx), dict(pivot=(X, 0.0, L.RAIL_Z),
                            props={"loom_part": "crane_bridge", "loom_parent": "", "loom_motion": "translate_x (runway travel)"})),
-        (trolley(ctx), dict(pivot=(X, Y, T_RAIL), parent="crane_bridge", bevel=0.01,
+        (trolley(ctx), dict(pivot=(X, Y, T_RAIL), parent="crane_bridge",
                             props={"loom_part": "crane_trolley", "loom_parent": "crane_bridge",
                                    "loom_motion": "translate_y (along the bridge)"})),
         (ropes(ctx), dict(pivot=(X, Y, T_RAIL + 1.8), parent="crane_trolley",
                           props={"loom_part": "crane_ropes", "loom_parent": "crane_trolley",
                                  "loom_motion": "scale_z about the pivot so the lower ends follow crane_hook"})),
-        (hook(ctx), dict(pivot=(X, Y, L.HOOK_Z), parent="crane_trolley", bevel=0.01,
+        (hook(ctx), dict(pivot=(X, Y, L.HOOK_Z), parent="crane_trolley",
                          props={"loom_part": "crane_hook", "loom_parent": "crane_trolley", "loom_motion": "translate_z (hoist)"})),
     ]
     bmb, zb, r, pin = bucket(ctx)
-    items.append((bmb, dict(pivot=tuple(pin), parent="crane_hook", bevel=0.01,
+    items.append((bmb, dict(pivot=tuple(pin), parent="crane_hook",
                             props={"loom_part": "scrap_bucket", "loom_parent": "crane_hook",
                                    "loom_motion": "rotate_x/rotate_y small swing about the bail pin"})))
     items += jaws(ctx, zb, r)
     # second (ladle) crane parked over the ladle bay, carrying a ladle lifting beam
     X2, Y2, Z2 = 27.0, 2.5, 19.5
     items += [
-        (bridge(ctx, X2, "crane2_bridge"), dict(pivot=(X2, 0.0, L.RAIL_Z), bevel=0.012,
+        (bridge(ctx, X2, "crane2_bridge"), dict(pivot=(X2, 0.0, L.RAIL_Z),
                                                props={"loom_part": "crane2_bridge", "loom_parent": "", "loom_motion": "translate_x"})),
-        (trolley(ctx, X2, Y2, "crane2_trolley"), dict(pivot=(X2, Y2, T_RAIL), parent="crane2_bridge", bevel=0.01,
+        (trolley(ctx, X2, Y2, "crane2_trolley"), dict(pivot=(X2, Y2, T_RAIL), parent="crane2_bridge",
                                                       props={"loom_part": "crane2_trolley", "loom_parent": "crane2_bridge",
                                                              "loom_motion": "translate_y"})),
         (ropes(ctx, X2, Y2, Z2, "crane2_ropes"), dict(pivot=(X2, Y2, T_RAIL + 1.8), parent="crane2_trolley",
                                                       props={"loom_part": "crane2_ropes", "loom_parent": "crane2_trolley",
                                                              "loom_motion": "scale_z about the pivot so the lower ends follow crane2_hook"})),
-        (lifting_beam(ctx, X2, Y2, Z2), dict(pivot=(X2, Y2, Z2), parent="crane2_trolley", bevel=0.01,
+        (lifting_beam(ctx, X2, Y2, Z2), dict(pivot=(X2, Y2, Z2), parent="crane2_trolley",
                                              props={"loom_part": "crane2_hook", "loom_parent": "crane2_trolley",
                                                     "loom_motion": "translate_z (hoist)"})),
     ]

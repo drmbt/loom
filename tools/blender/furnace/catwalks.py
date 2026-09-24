@@ -5,7 +5,7 @@ import math
 import numpy as np
 
 from util import (MB, Xf, v3, norm, frame, rot_z, box, box_minmax, beam, ibeam, cyl, sweep, handrail, grating,
-                  strip_bars, profile_beam, channel_prof, pipe_run, TAU)
+                  strip_bars, profile_beam, channel_prof, pipe_run, flood, TAU)
 import layout as L
 
 
@@ -96,7 +96,15 @@ def build(ctx):
         y0p = -L.HY + 0.5
         pipe_run(mb, [(xb - 0.45 + k * 0.3, y0p, zc - 1.7), (xb - 0.45 + k * 0.3, L.HY - 0.5, zc - 1.7)], r, mat, seg=10, flange_every=6.0)
     stair(mb, (xb + 1.5, -L.HY + 1.2, 0.0), (1, 0), zc / 2, width=0.9)
+    # floodlights clamped to the catwalk handrails: ladle-bay bridge (aimed at the car rails / turret) and mast platform
+    fx = ctx.setdefault("fixtures", [])
+    for y, tgt in ((-9.0, (30.0, -6.0, 12.0)), (-3.0, (16.0, 0.0, 1.0)), (4.0, (16.0, 0.0, 1.0)), (10.0, (30.0, 9.0, 3.0))):
+        c = v3(xb + 0.85, y, zc + 1.25)
+        flood(mb, c, v3(tgt) - c, fx, "catwalk", mount=(xb + 0.72, y, zc + 1.1))
+    for x in (-3.3, 3.3):
+        c = v3(x, 5.5, 14.75 + 1.3)
+        flood(mb, c, v3(0.0, 0.0, 12.6) - c, fx, "catwalk", mount=(x, 5.45, 14.75 + 1.1))
     # runway access ladders on two columns
     for x in (-36.0, 36.0):
         cage_ladder(mb, (x + 0.8, -L.HY + 0.9, 0.0), 23.8, facing=(0, 1))
-    return [(mb, dict(bevel=0.0))]
+    return [(mb, dict())]
