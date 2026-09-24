@@ -72,8 +72,10 @@ function errorsOf(diagnostics: ReadonlyArray<{ severity: string; message: string
  * Nodes whose entire compiled output is an EDGE PAYLOAD — no passes. pointTopology's
  * claim rewrite (T302), and the scene THINGS (T447): a camera, a light or a geometry
  * publishes resolved CPU values the Render consumes; the render pass is the Render's.
+ * meshFileIn (T1353b) too: its buffers are FED by a registered source, never written by a
+ * pass, so its whole output is the pointset payload naming them.
  */
-const PAYLOAD_ONLY: ReadonlySet<string> = new Set(["pointTopology", "camera", "light", "projector", "geometry", "materialUnlit", "materialPhong", "materialPbr", "materialGlass"]);
+const PAYLOAD_ONLY: ReadonlySet<string> = new Set(["pointTopology", "meshFileIn", "camera", "light", "projector", "geometry", "materialUnlit", "materialPhong", "materialPbr", "materialGlass"]);
 
 describe("the catalogue compiles through the real compiler", () => {
   it("registers the whole catalogue in one registry with no type collisions", () => {

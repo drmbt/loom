@@ -65,6 +65,8 @@ const ASSET_ACCEPT: Readonly<Record<string, string>> = {
   video: "video/*",
   image: "image/*",
   picture: PICTURE_FILE_ACCEPT,
+  // T1353b: Mesh File In reads glTF BINARY only; a .gltf with side files is refused.
+  gltf: ".glb,model/gltf-binary",
 };
 
 /**

@@ -208,6 +208,7 @@ describe("core catalogue (T70, T40)", () => {
       "renderInstances",
       "renderSurface",
       "pointTopology",
+      "meshFileIn",
       "pointGather",
       "pointProximity",
       "pointRange",

@@ -173,6 +173,11 @@ export interface ScratchBufferRequest {
   capacity: number;
   /** T322: "indirect" marks a buffer holding dispatch/draw arguments the GPU consumes. */
   usage?: "indirect";
+  /**
+   * T1353b: the bytes come from a registered source (a decoded mesh), not from a pass —
+   * the buffer twin of `ScratchExternalTextureRequest.sourceId`. Never bytes (§V135).
+   */
+  sourceId?: string;
 }
 
 /**

@@ -92,6 +92,7 @@ import { helperFactFrom, useRequirementDiagnostics } from "./use-requirement-dia
 import { pageHostFacts } from "@devices/host-shell.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { useMediaSources } from "./use-media-sources.ts";
+import { useMeshSources } from "./use-mesh-sources.ts";
 import { useNativeInputs } from "./use-native-inputs.ts";
 import { useNativeOutputs } from "./use-native-outputs.ts";
 import { drainNativeViewerOutputs } from "./native-viewer-outputs.ts";
@@ -800,6 +801,8 @@ export function App({
     mediaControls,
   );
   const nativeInputs = useNativeInputs(runtime, backend ?? null, compile.flatGraph, compile.compiled);
+  // T1353b: Mesh File In — reads the file, feeds its buffers, writes its measured size.
+  const meshes = useMeshSources(runtime, backend ?? null, compile.flatGraph);
 
   // T214/§V125: an expression on a pulse parameter fires it on its rising edge. The
   // watcher needs a frame, so it rides the frame loop's observer seam.
@@ -1388,6 +1391,7 @@ export function App({
       ...compile.diagnostics,
       ...valueGraph.diagnostics,
       ...media.diagnostics,
+      ...meshes.diagnostics,
       ...nativeInputs.diagnostics,
       ...nativeOutputs.diagnostics,
       // T1340b — the host-level limitation a node declares about itself. Same list as
@@ -1421,6 +1425,7 @@ export function App({
     frameLoop.diagnostics,
     valueGraph.diagnostics,
     media.diagnostics,
+    meshes.diagnostics,
     nativeInputs.diagnostics,
     nativeOutputs.diagnostics,
     osc.diagnostics,

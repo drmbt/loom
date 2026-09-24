@@ -834,6 +834,12 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       for (const buffer of activeProgram.resources.buffers.values()) {
         buffer.write(new Uint8Array(buffer.size));
       }
+      // T1353b: a FED buffer was just zeroed with the rest, and its source's frameId has
+      // not moved — reset the cursor with the bytes (T773's pairing, for buffers), or a
+      // mesh would stay degenerate after every seek until its file was re-picked.
+      for (const cursor of activeProgram.resources.externalBuffers.values()) {
+        cursor.lastFrameId = undefined;
+      }
       // T510: tell the kernels — every dispatch's next frame reads firstRun = 1u.
       activeProgram.pendingBufferClear = true;
     }
@@ -1290,7 +1296,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
    * frame samples what was just written. No source registered, or no frame yet, or the
    * source ended: the texture keeps its contents (black until the first frame).
    */
-  function uploadExternalTextures(active: Program): ReadonlySet<string> {
+  function uploadExternalTextures(active: Program): Set<string> {
     // T253 (§V136): the CHANGED set is the return value, not a discard — the cook gate
     // (T254) reads it, so a 30fps source in a 60fps graph dirties its downstream 30
     // times, not 60. Computed here because this is the one place that knows whether an
@@ -1339,6 +1345,50 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       }
     }
     return changed;
+  }
+
+  /**
+   * T1353b — the buffer twin of `uploadExternalTextures`: the same registry, the same
+   * frameId cursor (§V136), `MediaSourceFrame.bytes` written from offset 0. A payload
+   * larger than the buffer, or not a whole number of 4-byte words, is refused by name
+   * and not written — a truncated vertex list is a plausible wrong shape. Changed ids
+   * join the media-dirty set, so the idle skip sees a mesh arrive.
+   */
+  function uploadExternalBuffers(active: Program, changed: Set<string>): void {
+    if (active.resources.externalBuffers.size === 0) return;
+    for (const [resourceId, cursor] of active.resources.externalBuffers) {
+      const registered = mediaSources.get(cursor.sourceId);
+      if (registered === undefined) continue;
+      const frame = registered.source.currentFrame();
+      if (frame === undefined || frame.bytes === undefined ||
+          (frame.frameId === cursor.lastFrameId && registered.token === cursor.lastSourceToken)) continue;
+      cursor.lastSourceToken = registered.token;
+      cursor.lastFrameId = frame.frameId;
+      const buffer = active.resources.buffers.get(resourceId);
+      if (buffer === undefined) continue;
+      if (frame.bytes.byteLength > buffer.size || frame.bytes.byteLength % 4 !== 0) {
+        hub.report(
+          backendDiagnostic(
+            "warning",
+            BackendDiagnosticCode.frameError,
+            `Buffer source "${cursor.sourceId}" supplied ${frame.bytes.byteLength} bytes for a ${buffer.size}-byte buffer ("${resourceId}"); not written. The payload must fit and be a multiple of 4 bytes.`,
+          ),
+        );
+        continue;
+      }
+      try {
+        buffer.write(frame.bytes as BufferSource);
+        changed.add(resourceId);
+      } catch (error) {
+        hub.report(
+          backendDiagnostic(
+            "warning",
+            BackendDiagnosticCode.frameError,
+            `Buffer upload for source "${cursor.sourceId}" failed: ${describeError(error)}`,
+          ),
+        );
+      }
+    }
   }
 
   function lookupTargets(outputId: string): ReadonlyArray<Target> {
@@ -1557,6 +1607,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       externalTextures: new Map(),
       buffers: new Map(),
       bufferPairs: new Map(),
+      externalBuffers: new Map(),
       freshStorage: new Set(),
       effects: new Map(),
       computes: new Map(),
@@ -2041,7 +2092,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         });
       }
       rebindDynamicTextures(active);
-      active.mediaDirty = uploadExternalTextures(active);
+      const mediaDirty = uploadExternalTextures(active);
+      uploadExternalBuffers(active, mediaDirty);
+      active.mediaDirty = mediaDirty;
 
       // T254 (§V157): the whole-plan idle skip — the gate the census justified. A fully
       // static plan (nothing reads the clock, nothing holds state) with nothing dirty
@@ -2816,6 +2869,7 @@ function computeCarryOver(
   const externalTextures = new Map<string, NonNullable<ReturnType<ResourceSet["externalTextures"]["get"]>>>();
   const buffers = new Map<string, NonNullable<ReturnType<ResourceSet["buffers"]["get"]>>>();
   const bufferPairs = new Map<string, NonNullable<ReturnType<ResourceSet["bufferPairs"]["get"]>>>();
+  const externalBuffers = new Map<string, NonNullable<ReturnType<ResourceSet["externalBuffers"]["get"]>>>();
   for (const id of reusable) {
     const target = previous.resources.targets.get(id);
     if (target) targets.set(id, target);
@@ -2832,6 +2886,8 @@ function computeCarryOver(
     if (buffer) buffers.set(id, buffer);
     const bufferPair = previous.resources.bufferPairs.get(id);
     if (bufferPair) bufferPairs.set(id, bufferPair);
+    const cursor = previous.resources.externalBuffers.get(id);
+    if (cursor) externalBuffers.set(id, cursor);
   }
 
   const oldPassKeys = new Map(previous.passes.map((pass) => [pass.id, passStructureKey(pass)]));
@@ -2877,6 +2933,7 @@ function computeCarryOver(
     externalTextures,
     buffers,
     bufferPairs,
+    externalBuffers,
     effects,
     computes,
     draws,

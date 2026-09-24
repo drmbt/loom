@@ -197,6 +197,8 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   renderInstances: "none",
   renderSurface: "none",
   pointTopology: "none",
+  // T1353b: a file decode inside the page; nothing leaves the process.
+  meshFileIn: "none",
   pointProximity: "none",
   pointGather: "none",
   pointRange: "none",

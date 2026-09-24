@@ -26,6 +26,7 @@ import {
   sceneSurfaceWgsl,
   shadowInstancesWgsl,
   shadowSurfaceWgsl,
+  shadowMeshWgsl,
 } from "../shaders/scene-render.wgsl.ts";
 import { aoBlurWgsl, aoResolveWgsl, aoSampleCount } from "../shaders/scene-ao.wgsl.ts";
 
@@ -1443,6 +1444,28 @@ export const renderNode: NodeDefinition = {
           return;
         }
         const topology = typeof payload.topology === "string" ? parseTopology(payload.topology) : null;
+        /* T1353b: an indexed mesh sweeps through its index list — the same draw, the
+           same depth contract, positions pulled instead of gridded. */
+        if (topology !== null && topology.kind === "mesh") {
+          passes.push({
+            kind: "draw",
+            id: `${nodeId}:${options.prefix}:${geometryIndex}`,
+            nodeId,
+            shader: shadowMeshWgsl(depthOptions),
+            target: options.target,
+            topology: "triangle-list",
+            instances: 1,
+            vertexCount: topology.triangles * 3,
+            buffers: [attributeBinding("positions", position), { binding: "meshIndices", resourceId: topology.indexBuffer }],
+            uniforms: {
+              lightViewProjection: Array.from(options.matrix ?? []),
+              ...options.extraUniforms,
+            },
+            uniformBinding: "params",
+            clear: false,
+          });
+          return;
+        }
         if (topology === null || topology.kind !== "grid") return; // lit loop refuses
         if (gridPointCount(topology) > payload.capacity) return;
         const { cellsU, cellsV } = gridCellCounts(topology);
@@ -1922,16 +1945,31 @@ export const renderNode: NodeDefinition = {
         return;
       }
       const topology = typeof payload.topology === "string" ? parseTopology(payload.topology) : null;
-      if (topology === null || topology.kind !== "grid") {
+      if (topology === null || (topology.kind !== "grid" && topology.kind !== "mesh")) {
         diagnostics.push({
           severity: "error",
           code: "node.scene.topology",
-          message: `Node "${nodeId}": geometry "${source}" carries no analytic grid topology; a surface cannot be built.`,
+          message: `Node "${nodeId}": geometry "${source}" carries neither an analytic grid nor a mesh topology; a surface cannot be built.`,
           nodeId,
         });
         return;
       }
-      if (gridPointCount(topology) > payload.capacity) {
+      /* T1353b: an indexed mesh (Mesh File In, or anything downstream of one). Its
+         normal is an attribute, so a mesh without one is refused by name — a surface
+         lit by a zero normal is black in a way that reads as broken lights. */
+      const meshTopology = topology.kind === "mesh" ? topology : undefined;
+      const meshNormal = meshTopology === undefined ? undefined : payload.pairs["normal"];
+      if (meshTopology !== undefined && (meshNormal === undefined || meshNormal.type !== "vec3f")) {
+        diagnostics.push({
+          severity: "error",
+          code: "node.scene.topology",
+          message: `Node "${nodeId}": geometry "${source}" is a mesh without a vec3f \`normal\` attribute; a mesh surface is lit by its vertex normals.`,
+          nodeId,
+          suggestion: "Keep the normal attribute through any kernel between the Mesh File In and the Geometry.",
+        });
+        return;
+      }
+      if (topology.kind === "grid" && gridPointCount(topology) > payload.capacity) {
         diagnostics.push({
           severity: "error",
           code: "node.scene.topology",
@@ -1962,7 +2000,18 @@ export const renderNode: NodeDefinition = {
           nodeId,
         });
       }
-      const { cellsU, cellsV } = gridCellCounts(topology);
+      const vertexCount =
+        topology.kind === "mesh" ? topology.triangles * 3 : gridCellCounts(topology).cellsU * gridCellCounts(topology).cellsV * 6;
+      const meshAttribute = (name: string, type: string): ScenePairRef | undefined => {
+        const pair = payload.pairs[name];
+        return pair !== undefined && pair.type === type ? pair : undefined;
+      };
+      const meshUv = meshTopology === undefined ? undefined : meshAttribute("uv", "vec2f");
+      const meshSurfacePair = meshTopology === undefined ? undefined : meshAttribute("surface", "vec4f");
+      const meshEmissive = meshTopology === undefined ? undefined : meshAttribute("emissive", "vec3f");
+      /* A mesh's attributes ARE its material (the file's, flattened per vertex), so its
+         `color` tints by default; an explicit tint map on the Geometry still wins. */
+      const tintAttribute = payload.colorAttribute ?? (meshTopology === undefined ? undefined : meshAttribute("color", "vec4f"));
       const model =
         material.model === "unlit"
           ? "unlit"
@@ -2009,21 +2058,33 @@ export const renderNode: NodeDefinition = {
           model,
           lightCount: lights.length,
           maps,
-          ...(payload.colorAttribute === undefined ? {} : { pointColor: true }),
+          ...(tintAttribute === undefined ? {} : { pointColor: true }),
           ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness }),
           ...(environmentResource === undefined ? {} : { environment: true, environmentTaps }),
           ...(aoActive ? { ambientOcclusion: true } : {}),
           ...(projActive ? { projectors: projectorOptions } : {}),
+          ...(meshTopology === undefined
+            ? {}
+            : { mesh: { uv: meshUv !== undefined, surface: meshSurfacePair !== undefined, emissive: meshEmissive !== undefined } }),
         }),
         target,
         topology: "triangle-list",
         instances: 1,
-        vertexCount: cellsU * cellsV * 6,
+        vertexCount,
         buffers: [
           attributeBinding("positions", position),
-          ...(payload.colorAttribute === undefined
+          ...(tintAttribute === undefined
             ? []
-            : [attributeBinding("pointColors", payload.colorAttribute)]),
+            : [attributeBinding("pointColors", tintAttribute)]),
+          ...(meshTopology === undefined
+            ? []
+            : [
+                { binding: "meshIndices", resourceId: meshTopology.indexBuffer },
+                attributeBinding("meshNormals", meshNormal as ScenePairRef),
+                ...(meshUv === undefined ? [] : [attributeBinding("meshUvs", meshUv)]),
+                ...(meshSurfacePair === undefined ? [] : [attributeBinding("meshSurface", meshSurfacePair)]),
+                ...(meshEmissive === undefined ? [] : [attributeBinding("meshEmissive", meshEmissive)]),
+              ]),
         ],
         ...(material.maps.albedo === undefined &&
         material.maps.roughness === undefined &&
@@ -2061,7 +2122,7 @@ export const renderNode: NodeDefinition = {
           baseColor: [...material.baseColor],
           specular: [...specularColor, shininess],
           material: [material.metallic, material.roughness, 0, 0],
-          grid: [topology.cols, topology.rows, topology.wrapU ? 1 : 0, topology.wrapV ? 1 : 0],
+          grid: topology.kind === "grid" ? [topology.cols, topology.rows, topology.wrapU ? 1 : 0, topology.wrapV ? 1 : 0] : [0, 0, 0, 0],
           ...Object.fromEntries(
             lights.flatMap((light, lightIndex) => [
               [`light${lightIndex}Meta`, [light.type === "point" ? 1 : 0, light.intensity, 0, 0]],

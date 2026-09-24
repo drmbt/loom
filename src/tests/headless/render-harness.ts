@@ -9,6 +9,7 @@ import { projectFps } from "../../domain/types/graph.ts";
 import type { NodeDefinition, TextureFormat } from "../../domain/types/node-definition.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
+import { meshSourceIdsFor, prepareMesh } from "../../points/mesh.ts";
 import { createVgpuBackend } from "../../runtime/backend/vgpu/vgpu-backend.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { createUniformAnimator } from "../../app/animate-parameters.ts";
@@ -153,6 +154,15 @@ export interface HeadlessRenderRequest {
    * it looks like. Same role `components` plays for instances.
    */
   readonly nodes?: Iterable<NodeDefinition>;
+  /**
+   * T1353b — GLB bytes per Mesh File In node id. Each one is prepared through
+   * `prepareMesh` — the app loader's own path — under the node's Select, and fed to the
+   * node's two sources. The node's Vertices/Triangles must already match the file (the
+   * app's loader writes them through the bus); a mismatch THROWS here, because a buffer
+   * sized for another file is exactly the silent wrong shape the facts exist to prevent.
+   * A mesh node absent from this map is fed nothing and draws nothing.
+   */
+  readonly meshes?: Readonly<Record<string, Uint8Array>>;
 }
 
 export interface HarnessControl {
@@ -722,6 +732,22 @@ export async function renderHeadless(request: HeadlessRenderRequest): Promise<He
 
     // T650: media draws SOMETHING attributable in headless, or nothing by stated design.
     registerSyntheticMediaSources(backend, plan, logicalGraph, () => steppingFrame);
+    // T1353b: the mesh feed — one static frame per source, prepared the loader's way.
+    for (const [nodeId, glb] of Object.entries(request.meshes ?? {})) {
+      const node = logicalGraph.nodes[nodeId as keyof typeof logicalGraph.nodes];
+      if (node?.type !== "meshFileIn") throw new Error(`meshes: "${nodeId}" is not a Mesh File In node.`);
+      const select = typeof node.parameters["select"] === "string" ? (node.parameters["select"] as string) : "";
+      const prepared = prepareMesh(glb, select);
+      if (prepared === null) continue;
+      if (node.parameters["vertices"] !== prepared.facts.vertices || node.parameters["triangles"] !== prepared.facts.triangles) {
+        throw new Error(
+          `meshes: "${nodeId}" is sized for ${String(node.parameters["vertices"])} vertices / ${String(node.parameters["triangles"])} triangles but the file holds ${prepared.facts.vertices} / ${prepared.facts.triangles}. Set its facts from prepareMesh(...).facts.`,
+        );
+      }
+      const ids = meshSourceIdsFor(nodeId);
+      backend.registerMediaSource(ids.points, { currentFrame: () => ({ frameId: 1, bytes: prepared.points }) });
+      backend.registerMediaSource(ids.indices, { currentFrame: () => ({ frameId: 1, bytes: prepared.indices }) });
+    }
     // T715: the inference feed, beside the media one and claiming a different prefix.
     registerInferenceSources(
       backend,

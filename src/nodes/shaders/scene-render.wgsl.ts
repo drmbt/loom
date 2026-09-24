@@ -66,7 +66,26 @@ export interface SceneShadingOptions {
    * lights. Empty or absent emits byte-identical text (§V309).
    */
   readonly projectors?: ReadonlyArray<SceneProjectorOption>;
+  /**
+   * T1353b: the surface is an INDEXED MESH (a `mesh:` topology), not a grid. The vertex
+   * stage reads `meshIndices[vertex_index]` and pulls that vertex's attributes; the
+   * normal is the `normal` attribute, never a grid difference. Each flag says an
+   * attribute is bound: `uv` feeds the maps, `surface` makes roughness/metallic (and
+   * the pbr F0) PER VERTEX in place of the material's, `emissive` adds unlit radiance
+   * after lighting. Absent emits the grid text byte for byte (§V309).
+   */
+  readonly mesh?: SceneMeshOption;
 }
+
+/** T1353b: which per-vertex attributes an indexed surface binds. */
+export interface SceneMeshOption {
+  readonly uv: boolean;
+  readonly surface: boolean;
+  readonly emissive: boolean;
+}
+
+/** T1353b: fixed binding slots for the mesh buffers — clear of every other numbered slot. */
+export const MESH_BINDINGS = { indices: 100, normals: 101, uvs: 102, surface: 103, emissive: 104 } as const;
 
 /** T704: what is STRUCTURAL about one referenced projector — its bindings. */
 export interface SceneProjectorOption {
@@ -507,6 +526,50 @@ fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
 }
 
 /**
+ * T1353b — the INDEXED mesh chunk: the grid chunk's contract (same VertexOut fields, so
+ * the fragment stage is shared) plus the two per-vertex material rows. The index list
+ * is zero until the file's bytes arrive, which makes every triangle degenerate — no
+ * fragments, rather than a shape made of whatever vertex 0 happens to be.
+ */
+function meshVertexWgsl(pointColor: boolean, mesh: SceneMeshOption): EmittedWgsl {
+  return wgsl`struct VertexOut {
+  @builtin(position) position: vec4f,
+  @location(0) normal: vec3f,
+  @location(1) world: vec3f,
+  @location(2) uv: vec2f,
+  @location(3) tint: vec4f,
+  @location(4) surface: vec4f,
+  @location(5) emissive: vec3f,
+};
+
+@vertex
+fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
+  let index = meshIndices[vertex];
+  let world = positions[index];
+  var out: VertexOut;
+  out.position = params.viewProjection * vec4f(world, 1.0);
+  out.normal = meshNormals[index];
+  out.world = world;
+  out.uv = ${mesh.uv ? "meshUvs[index]" : "vec2f(0.0)"};
+  out.tint = ${pointColor ? "pointColors[index]" : "vec4f(1.0)"};
+  out.surface = ${mesh.surface ? "meshSurface[index]" : "vec4f(0.0)"};
+  out.emissive = ${mesh.emissive ? "meshEmissive[index]" : "vec3f(0.0)"};
+  return out;
+}`;
+}
+
+/** T1353b: the mesh storage declarations, at `MESH_BINDINGS`. */
+function meshBindingsWgsl(mesh: SceneMeshOption): string {
+  return [
+    `@group(0) @binding(${MESH_BINDINGS.indices}) var<storage, read> meshIndices: array<u32>;\n`,
+    `@group(0) @binding(${MESH_BINDINGS.normals}) var<storage, read> meshNormals: array<vec3f>;\n`,
+    mesh.uv ? `@group(0) @binding(${MESH_BINDINGS.uvs}) var<storage, read> meshUvs: array<vec2f>;\n` : "",
+    mesh.surface ? `@group(0) @binding(${MESH_BINDINGS.surface}) var<storage, read> meshSurface: array<vec4f>;\n` : "",
+    mesh.emissive ? `@group(0) @binding(${MESH_BINDINGS.emissive}) var<storage, read> meshEmissive: array<vec3f>;\n` : "",
+  ].join("");
+}
+
+/**
  * T481/T1285 — the shadow term for one slot, SHARED VERBATIM by the surface and the
  * instances generators (§V349, the rule FRESNEL_WGSL and INSTANCE_SHAPES_WGSL already
  * live under). The two copies of this block were identical to the byte before PCF; a
@@ -670,9 +733,20 @@ ${IRRADIANCE_WGSL}  lit += irradiance * albedo.rgb * (1.0 - envFresnel) * (1.0 -
     `textureLoad(${name}, vec2i(clamp(input.uv, vec2f(0.0), vec2f(1.0)) * (vec2f(textureDimensions(${name})) - vec2f(1.0))), 0)`;
 
   const albedoExpr = `${albedoMap ? `params.baseColor * ${mapLoad("albedoMap")}` : "params.baseColor"}${pointColor ? " * input.tint" : ""}`;
+  /* T1353b: a mesh with a `surface` row carries its OWN roughness and metallic per
+     vertex (the file's material, flattened), and the pbr F0 follows its metallic — the
+     same mix(white, albedo, metallic) the CPU does per object, done per fragment. The
+     generated terms below read three names; in mesh mode they are rebound to locals.
+     Grid surfaces never reach this and emit their text unchanged. */
+  const meshSurface = options.mesh?.surface === true;
+  const perVertex = (text: string): string =>
+    meshSurface
+      ? text.replaceAll("params.material.x", "surfaceMetallic").replaceAll("params.specular.rgb", "surfaceSpecular")
+      : text;
+  const roughnessBase = meshSurface ? "clamp(input.surface.x, 0.04, 1.0)" : "params.material.y";
   const roughnessExpr = roughnessMap
-    ? `clamp(params.material.y * ${mapLoad("roughnessMap")}.r, 0.04, 1.0)`
-    : "params.material.y";
+    ? `clamp(${roughnessBase} * ${mapLoad("roughnessMap")}.r, 0.04, 1.0)`
+    : roughnessBase;
 
   const lightBlock = (index: number): string => `  {
     let lightMeta = params.light${index}Meta;
@@ -713,20 +787,29 @@ ${
 `;
 
   const needsViewDir = lightCount > 0 || environment;
+  const emissiveTerm = options.mesh?.emissive === true ? "  lit += input.emissive;\n" : "";
   const aoLookup = ambientOcclusion
     ? `  let occlusion = textureLoad(occlusionMap, vec2i(input.position.xy), 0).r;\n`
     : "";
   const shading =
     options.model === "unlit"
-      ? `  return vec4f(albedo.rgb * cover, albedo.a * cover);`
+      ? options.mesh?.emissive === true
+        ? `  return vec4f((albedo.rgb + input.emissive) * cover, albedo.a * cover);`
+        : `  return vec4f(albedo.rgb * cover, albedo.a * cover);`
       : `${aoLookup}  let ambient = params.ambientColor.rgb * params.ambientColor.a${aoTerm};
   var lit = albedo.rgb * ambient;
 ${
   !needsViewDir
     ? ""
     : `  let viewDir = normalize(params.eye.xyz - input.world);
-${Array.from({ length: lightCount }, (_, index) => lightBlock(index)).join("")}`
-}${projectors.term}${envTerm}  return vec4f(lit * cover, albedo.a * cover);`;
+${Array.from({ length: lightCount }, (_, index) => perVertex(lightBlock(index))).join("")}`
+}${projectors.term}${perVertex(envTerm)}${emissiveTerm}  return vec4f(lit * cover, albedo.a * cover);`;
+  const surfaceLocals = meshSurface && options.model !== "unlit"
+    ? `  let surfaceMetallic = clamp(input.surface.y, 0.0, 1.0);
+  let surfaceSpecular = mix(vec3f(1.0), albedo.rgb, surfaceMetallic);
+  _ = surfaceSpecular;
+`
+    : "";
 
   return wgsl`struct SceneParams {
   viewProjection: mat4x4f,
@@ -740,8 +823,8 @@ ${lightField}${shadowFields}${envField}${projectors.fields}};
 
 @group(0) @binding(0) var<uniform> params: SceneParams;
 @group(0) @binding(1) var<storage, read> positions: array<vec3f>;
-${pointColor ? "@group(0) @binding(2) var<storage, read> pointColors: array<vec4f>;\n" : ""}${mapBindings}${shadowBindings}${envDeclarations}${aoDeclarations}${projectors.bindings}
-${surfaceMeshWgsl(pointColor)}
+${pointColor ? "@group(0) @binding(2) var<storage, read> pointColors: array<vec4f>;\n" : ""}${mapBindings}${shadowBindings}${envDeclarations}${aoDeclarations}${projectors.bindings}${options.mesh === undefined ? "" : meshBindingsWgsl(options.mesh)}
+${options.mesh === undefined ? surfaceMeshWgsl(pointColor) : meshVertexWgsl(pointColor, options.mesh)}
 
 @fragment
 fn fs(input: VertexOut) -> @location(0) vec4f {
@@ -751,7 +834,7 @@ fn fs(input: VertexOut) -> @location(0) vec4f {
      so its coverage is the constant 1 and the shared shading tail multiplies by nothing. */
   let cover = 1.0;
   let albedo = ${albedoExpr};
-${options.model === "unlit" ? "" : `  let roughness = ${roughnessExpr};\n  _ = roughness;\n`}${shading}
+${options.model === "unlit" ? "" : `  let roughness = ${roughnessExpr};\n  _ = roughness;\n`}${surfaceLocals}${shading}
 }`;
 }
 
@@ -1334,6 +1417,48 @@ fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
   let gx = (quad % cellsU) + corner.x;
   let gy = (quad / cellsU) + corner.y;
   let clip = params.lightViewProjection * vec4f(gridPosition(gx, gy), 1.0);
+  var out: VertexOut;
+  out.position = clip;
+  out.depth = ${depthExpr};
+  return out;
+}
+
+@fragment
+fn fs(input: VertexOut) -> @location(0) vec4f {
+  return vec4f(${options.perspective === true ? "input.position.z" : "input.depth"}, 0.0, 0.0, 1.0);
+}`;
+}
+
+/**
+ * T1353b — the indexed mesh from the light's (or the camera's) view: the same depth
+ * contract as `shadowSurfaceWgsl`, with positions pulled through the index list. Shares
+ * the MESH_BINDINGS slot for indices, so the draw's buffer list is the lit draw's prefix.
+ */
+export function shadowMeshWgsl(options: DepthPassOptions = {}): EmittedWgsl {
+  const linear = options.linearDepth === true;
+  const depthExpr = linear ? `dot(params.depthRow, vec4f(world, 1.0)) / max(params.depthRange.x, 1e-6)` : `clip.z`;
+  const linearFields = linear
+    ? `  depthRow: vec4f,         // dot(depthRow, vec4f(world,1)) = linear view distance
+  depthRange: vec4f,       // x = far plane
+`
+    : "";
+  return wgsl`struct ShadowParams {
+  lightViewProjection: mat4x4f,
+${linearFields}};
+
+@group(0) @binding(0) var<uniform> params: ShadowParams;
+@group(0) @binding(1) var<storage, read> positions: array<vec3f>;
+@group(0) @binding(${MESH_BINDINGS.indices}) var<storage, read> meshIndices: array<u32>;
+
+struct VertexOut {
+  @builtin(position) position: vec4f,
+  @location(0) depth: f32,
+};
+
+@vertex
+fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
+  let world = positions[meshIndices[vertex]];
+  let clip = params.lightViewProjection * vec4f(world, 1.0);
   var out: VertexOut;
   out.position = clip;
   out.depth = ${depthExpr};

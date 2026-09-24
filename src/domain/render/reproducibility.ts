@@ -242,6 +242,9 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   renderInstances: "pure",
   renderSurface: "pure",
   pointTopology: "pure",
+  // T1353b. PURE, for movieFileIn's reason: a file is part of the document, its bytes
+  // upload once and never change with the frame, and the decode is deterministic.
+  meshFileIn: "pure",
   // T819. PURE: one compute pass that scans a pointset for each point's K nearest
   // neighbours and writes them as links. It reads no clock and no channel, issues no
   // async, and touches no RNG at all — the output is a function of the input positions

@@ -39,6 +39,19 @@ export interface ExternalTextureEntry {
 }
 
 /**
+ * T1353b — a plain storage buffer whose BYTES come from a registered source (a decoded
+ * mesh). The buffer itself lives in `buffers` like any other; this is only the upload
+ * cursor, with the same meaning `ExternalTextureEntry.lastFrameId` has (§V136).
+ */
+export interface ExternalBufferEntry {
+  readonly sourceId: string;
+  /** Mutable: the frameId last written, so an unchanged frame writes nothing. */
+  lastFrameId: number | undefined;
+  /** Registration lifetime, without retaining the producer or its payload. */
+  lastSourceToken?: object;
+}
+
+/**
  * N textures, one written per frame, older ones readable by tap (T237, §V226).
  *
  * `pingPong` with a bigger modulus: `head` is the slice this frame writes, `rotate()`
@@ -193,6 +206,8 @@ export interface ResourceSet {
   /** SoA point storage (T118, §V75): one packed buffer per producer (T1076), plus counters. */
   readonly buffers: ReadonlyMap<string, StorageBuffer>;
   readonly bufferPairs: ReadonlyMap<string, PingPongStorage>;
+  /** T1353b: upload cursors of the fed buffers in `buffers`, keyed by resource id. */
+  readonly externalBuffers: ReadonlyMap<string, ExternalBufferEntry>;
   /**
    * T510: storage ids ALLOCATED by this build (zero-filled), as opposed to carried — the
    * backend hands the passes that bind them one frame of `firstRun = 1u`, then clears
@@ -238,6 +253,11 @@ export interface CarryOver {
   /** A carried buffer keeps its CONTENTS — a sim's state survives unrelated edits (§V22). */
   readonly buffers: ReadonlyMap<string, StorageBuffer>;
   readonly bufferPairs: ReadonlyMap<string, PingPongStorage>;
+  /**
+   * T1353b: a carried fed buffer keeps its upload cursor with its contents — a mesh is
+   * not re-uploaded because an unrelated node was edited. Optional: absent carries none.
+   */
+  readonly externalBuffers?: ReadonlyMap<string, ExternalBufferEntry>;
   readonly effects: ReadonlyMap<string, Effect>;
   readonly computes: ReadonlyMap<string, Compute>;
   readonly draws: ReadonlyMap<string, Draw>;
@@ -384,6 +404,7 @@ export function buildResources(
   const externalTextures = new Map<string, ExternalTextureEntry>();
   const buffers = new Map<string, StorageBuffer>();
   const bufferPairs = new Map<string, PingPongStorage>();
+  const externalBuffers = new Map<string, ExternalBufferEntry>();
   const freshStorage = new Set<string>();
   const effects = new Map<string, Effect>();
   const computes = new Map<string, Compute>();
@@ -517,6 +538,12 @@ export function buildResources(
           continue;
         }
         const carried = carry.buffers.get(resource.id);
+        if (resource.sourceId !== undefined) {
+          // T1353b: the cursor rides with the contents. The structure key carries the
+          // sourceId, so a carried buffer was fed by this same source.
+          const cursor = carried === undefined ? undefined : carry.externalBuffers?.get(resource.id);
+          externalBuffers.set(resource.id, cursor ?? { sourceId: resource.sourceId, lastFrameId: undefined });
+        }
         if (carried) {
           buffers.set(resource.id, carried);
           note("resourcesReused");
@@ -880,6 +907,7 @@ export function buildResources(
     externalTextures,
     buffers,
     bufferPairs,
+    externalBuffers,
     freshStorage,
     effects,
     computes,

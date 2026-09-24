@@ -1454,6 +1454,8 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
             // T322: "indirect" marks GPU-consumed dispatch/draw arguments.
             usage: entry.usage === "indirect" ? "indirect" : "storage",
             label: `${nodeId} ${key}`,
+            // T1353b: a fed buffer — its bytes arrive from the source registry.
+            ...(typeof entry.sourceId === "string" && entry.sourceId !== "" ? { sourceId: entry.sourceId } : {}),
           });
           continue;
         }

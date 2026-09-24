@@ -73,6 +73,16 @@ export interface BufferResourceDescriptor {
   readonly capacity: number;
   readonly usage: "storage" | "storage-read" | "indirect" | "uniform";
   readonly label?: string;
+  /**
+   * T1353b — WHO supplies this buffer's bytes, when they come from outside the GPU: a
+   * decoded mesh's packed vertex attributes, its index list. The same registry and the
+   * same frame-ready contract an `externalTexture` uses (§V135/§V136): the plan carries
+   * the key, never the bytes; the backend writes `MediaSourceFrame.bytes` from offset 0
+   * when — and only when — the source's frameId advances, and again after a clear zeroed
+   * the buffer. No source, or no frame yet: the buffer stays zero, which a consumer must
+   * read as "nothing" (an all-zero index list is degenerate triangles, never a shape).
+   */
+  readonly sourceId?: string;
 }
 
 /** Ping-pong pair of storage buffers, for a simulation that reads last frame (§V22). */
@@ -565,7 +575,9 @@ function readResource(value: unknown): ResourceDescriptor | undefined {
     if (usage !== "storage" && usage !== "storage-read" && usage !== "indirect" && usage !== "uniform") {
       return undefined;
     }
-    return { kind: "buffer", usage, ...base };
+    const sourceId = value["sourceId"];
+    if (sourceId !== undefined && (typeof sourceId !== "string" || sourceId.length === 0)) return undefined;
+    return { kind: "buffer", usage, ...base, ...(sourceId === undefined ? {} : { sourceId }) };
   }
 
   return undefined;
@@ -1047,7 +1059,16 @@ export function resourceStructureKey(resource: ResourceDescriptor): string {
     case "pingPong":
       return JSON.stringify([resource.kind, resource.id, resource.size[0], resource.size[1], resource.format]);
     case "buffer":
-      return JSON.stringify([resource.kind, resource.id, resource.stride, resource.capacity, resource.usage]);
+      // T1353b: a fed buffer keys on its source like an external texture does — re-pointed
+      // at a different source is new contents, never a carry. Absent, the key is unchanged.
+      return JSON.stringify([
+        resource.kind,
+        resource.id,
+        resource.stride,
+        resource.capacity,
+        resource.usage,
+        ...(resource.sourceId === undefined ? [] : [resource.sourceId]),
+      ]);
     case "bufferPair":
       return JSON.stringify([resource.kind, resource.id, resource.stride, resource.capacity]);
     case "externalTexture":

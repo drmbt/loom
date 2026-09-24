@@ -70,6 +70,11 @@ const RAW_READ = /store\.getGraph/g;
  */
 const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
   {
+    file: "app/use-mesh-sources.ts",
+    reads: 1,
+    why: "T1353b: NOT per frame — once per file load, to find the AUTHORED node its measured Vertices/Triangles are written to through the bus. A mesh inside a component has no authored node of that id, and the hook says so instead of writing.",
+  },
+  {
     file: "app/flattened-graph.ts",
     reads: 1,
     why: "THE declared read. This is the memo that produces the flattened document every frame path reads instead; it is called per frame and answers from cache unless the document or the catalogue moved (§V529).",

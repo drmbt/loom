@@ -23,12 +23,31 @@ export interface PointsTopology {
   readonly kind: "points";
 }
 
-export type PointTopology = GridTopology | PointsTopology;
+/**
+ * T1353b — INDEXED triangles: the connectivity a decoded mesh carries. Unlike a grid it
+ * is not analytic — it lives in an index buffer the producer owns, and the claim names
+ * that buffer's resource id so a renderer can bind it without a naming convention
+ * (§V197's rule for attributes, applied to connectivity). `triangles × 3` indices.
+ */
+export interface MeshTopology {
+  readonly kind: "mesh";
+  readonly triangles: number;
+  readonly indexBuffer: string;
+}
+
+export type PointTopology = GridTopology | PointsTopology | MeshTopology;
 
 const GRID = /^grid:(\d+)x(\d+)(?::(wrapU|wrapV|wrapUV))?$/;
+const MESH = /^mesh:(\d+)@(.+)$/;
 
 export function parseTopology(value: string | undefined): PointTopology | null {
   if (value === undefined || value === "points") return { kind: "points" };
+  const mesh = MESH.exec(value);
+  if (mesh !== null) {
+    const triangles = Number(mesh[1]);
+    if (!Number.isInteger(triangles) || triangles < 1) return null;
+    return { kind: "mesh", triangles, indexBuffer: mesh[2] as string };
+  }
   const match = GRID.exec(value);
   if (match === null) return null;
   const cols = Number(match[1]);
@@ -46,6 +65,7 @@ export function parseTopology(value: string | undefined): PointTopology | null {
 
 export function formatTopology(topology: PointTopology): string {
   if (topology.kind === "points") return "points";
+  if (topology.kind === "mesh") return `mesh:${topology.triangles}@${topology.indexBuffer}`;
   const wrap = topology.wrapU && topology.wrapV ? ":wrapUV" : topology.wrapU ? ":wrapU" : topology.wrapV ? ":wrapV" : "";
   return `grid:${topology.cols}x${topology.rows}${wrap}`;
 }
