@@ -573,14 +573,24 @@ describe("shadows are opt-in per light, priced in the open (T481, §V309)", () =
     expect(off.passes.some((pass) => String((pass as { id: string }).id).includes(":shadow:"))).toBe(false);
   });
 
-  it("a casting POINT light refuses by name — six faces is a different feature", () => {
+  it("a casting POINT light casts a cube: one atlas, one clear, six face sweeps, priced by name (T1362b)", () => {
     const graph = sceneGraph();
     ((graph.nodes["sun"] as GraphNode).parameters as Record<string, unknown>)["kind"] = "point";
     ((graph.nodes["sun"] as GraphNode).parameters as Record<string, unknown>)["shadows"] = true;
     const compiled = compile(graph);
-    const refusal = compiled.diagnostics.find((d) => d.code === "node.scene.shadow");
-    expect(refusal?.message).toContain("POINT");
-    expect(refusal?.suggestion).toContain("Directional");
+    expect(compiled.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const ids = compiled.passes.map((pass) => (pass as { id: string }).id);
+    // Six sweeps, one per face, each named so the performance panel attributes it; ONE
+    // clear, because the six share the atlas the first one cleared.
+    for (let face = 0; face < 6; face += 1) {
+      expect(ids.some((id) => id.includes(`:shadow:0:face${face}:`) && !id.endsWith(":clear"))).toBe(true);
+    }
+    expect(ids.filter((id) => id.includes(":shadow:0:") && id.endsWith(":clear"))).toHaveLength(1);
+    // The lit draw reads the slot as a POINT slot: position + range, and six face matrices.
+    const lit = compiled.passes.find((pass) => (pass as { id: string }).id.includes(":scene:")) as { uniforms?: Record<string, unknown> } | undefined;
+    expect(Object.keys(lit?.uniforms ?? {}).filter((key) => key.startsWith("shadow0")).sort()).toEqual([
+      "shadow0Face0", "shadow0Face1", "shadow0Face2", "shadow0Face3", "shadow0Face4", "shadow0Face5", "shadow0Light",
+    ]);
   });
 });
 

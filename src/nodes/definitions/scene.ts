@@ -4,7 +4,7 @@ import type { DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/b
 import type { CameraPayload, GeometryPayload, LightPayload, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
 import { resolveGroupPredicate } from "./points.ts";
 import { DEFAULT_MATERIAL } from "../../domain/types/scene.ts";
-import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, projectorMatrix } from "../../domain/geometry/camera.ts";
+import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, pointShadowFaceMatrices, projectorMatrix } from "../../domain/geometry/camera.ts";
 import { gridCellCounts, gridPointCount, parseTopology } from "../../points/topology.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { DATA_TEXTURE, RGBA_TEXTURE } from "./common-ports.ts";
@@ -27,6 +27,7 @@ import {
   shadowInstancesWgsl,
   shadowSurfaceWgsl,
   shadowMeshWgsl,
+  cubeShadowVariant,
   CUSTOM_SURFACE_FRAME_BINDING,
   materialParamUniformKey,
 } from "../shaders/scene-render.wgsl.ts";
@@ -314,7 +315,7 @@ export const lightNode: NodeDefinition = {
       default: false,
       compileTime: true,
       description:
-        "T481: this light casts — ADDS ONE FULL SCENE PASS per render that lists it. Directional only in this build; the pass is named per light in the performance panel so its cost is visible.",
+        "T481: this light casts — ADDS ONE FULL SCENE PASS per render that lists it (a directional light), or SIX (a point light: one per cube face, T1362b). The passes are named per light in the performance panel so their cost is visible.",
     },
     shadowExtent: {
       type: "number",
@@ -323,7 +324,7 @@ export const lightNode: NodeDefinition = {
       min: 0.1,
       range: "floor",
       description:
-        "World-units half-extent of the shadow volume around the origin. Explicit on purpose: nothing knows your scene's bounds, and a guessed box would crop shadows plausibly-wrong (V426).",
+        "Directional: world-units half-extent of the shadow volume around the origin. Point (T1362b): the shadow RANGE in world units — casters and receivers beyond it are unshadowed, and depth precision is spread over it, so keep it close to how far the light visibly reaches. Explicit on purpose: nothing knows your scene's bounds, and a guessed box would crop shadows plausibly-wrong (V426).",
       inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light frames a shadow volume."),
     },
     shadowSoftness: {
@@ -1156,17 +1157,26 @@ export const renderNode: NodeDefinition = {
     const casting = lights
       .map((light, index) => ({ light, index }))
       .filter(({ light }) => light.shadows);
-    const castingPoint = casting.find(({ light }) => light.type === "point");
-    if (castingPoint !== undefined) {
-      return refuse(
-        "node.scene.shadow",
-        `light ${castingPoint.index + 1} is a POINT light with Cast Shadows on — directional lights cast in this build (a point caster needs six faces).`,
-        "Switch the light to Directional, or turn its Cast Shadows off.",
-      );
-    }
+    /* T1362b: a casting POINT light renders a cube — six 90° sweeps into one 3×2 atlas —
+       and its slot carries a position, a range and six face matrices where a directional
+       slot carries one matrix. */
     const shadowMatrices = casting.map(({ light }) =>
       directionalShadowMatrix(light.direction, Math.max(0.1, light.shadowExtent), aspect),
     );
+    const pointSlots = casting.flatMap(({ light }, slot) => (light.type === "point" ? [slot] : []));
+    const pointFaces = casting.map(({ light }) =>
+      light.type === "point" ? pointShadowFaceMatrices(light.position, Math.max(0.1, light.shadowExtent)) : [],
+    );
+    /** The uniforms every lit draw writes for the shadow slots, directional or point. */
+    const shadowUniforms = (): Array<[string, number[]]> =>
+      casting.flatMap(({ light }, slot): Array<[string, number[]]> =>
+        light.type === "point"
+          ? [
+              [`shadow${slot}Light`, [light.position[0], light.position[1], light.position[2], Math.max(0.1, light.shadowExtent)]],
+              ...(pointFaces[slot] ?? []).map((matrix, face): [string, number[]] => [`shadow${slot}Face${face}`, Array.from(matrix)]),
+            ]
+          : [[`shadow${slot}Matrix`, Array.from(shadowMatrices[slot] ?? [])]],
+      );
     const shadowTargetOf = (slot: number): string => `scratch:${nodeId}:shadow${casting[slot]?.index ?? slot}`;
     const castingIndices = casting.map(({ index }) => index);
     /* T1285: the PCF radius per casting slot, in the same slot order `shadowMatrices`
@@ -1261,10 +1271,17 @@ export const renderNode: NodeDefinition = {
       /** T704: store fragment-z (z ÷ w) — a projector's frustum is perspective. */
       readonly perspective?: boolean;
       readonly extraUniforms: Readonly<Record<string, ReadonlyArray<number>>>;
+      /** T1362b: one face of a point light's cube — draws into its atlas tile, stores radial distance. */
+      readonly cube?: { readonly light: readonly number[]; readonly tile: readonly number[] };
+      /** T1362b: faces after the first share the atlas the first one cleared. */
+      readonly skipClear?: boolean;
     }): void => {
+      const depthShader = (shader: ReturnType<typeof shadowSurfaceWgsl>): ReturnType<typeof shadowSurfaceWgsl> =>
+        options.cube === undefined ? shader : cubeShadowVariant(shader);
+      const cubeUniforms = options.cube === undefined ? {} : { cubeLight: [...options.cube.light], cubeTile: [...options.cube.tile] };
       // The far plate: depth 1.0 everywhere first, the backdrop pattern (T444) —
       // a cleared map must read "nothing here" and the clear colour is not ours.
-      passes.push({
+      if (options.skipClear !== true) passes.push({
         kind: "draw",
         id: `${nodeId}:${options.prefix}:clear`,
         nodeId,
@@ -1344,6 +1361,7 @@ export const renderNode: NodeDefinition = {
               instance: [instance.scale, 0, instance.taper ?? 0, instance.soft ?? 0],
               ...(billboard ? { billboardRight: [...bbRight, 0], billboardUp: [...bbUp, 0] } : {}),
               ...options.extraUniforms,
+              ...cubeUniforms,
             },
             uniformBinding: "params",
             clear: false,
@@ -1400,7 +1418,7 @@ export const renderNode: NodeDefinition = {
             kind: "draw",
             id: `${nodeId}:${options.prefix}:${geometryIndex}`,
             nodeId,
-            shader: shadowInstancesWgsl({
+            shader: depthShader(shadowInstancesWgsl({
               ...depthOptions,
               ...(payload.group === undefined ? {} : { group: payload.group }),
               /* T721: the depth sweep sizes each primitive exactly as the lit draw does,
@@ -1417,7 +1435,7 @@ export const renderNode: NodeDefinition = {
                  shadow is the shadow of the right shape, a wrongly-oriented one is the
                  silhouette of a thing that is not in the picture. */
               ...(payload.orientAttribute === undefined ? {} : { pointOrient: true }),
-            }),
+            })),
             target: options.target,
             topology: "triangle-list",
             instances: counted?.instances ?? payload.capacity,
@@ -1439,6 +1457,7 @@ export const renderNode: NodeDefinition = {
               lightViewProjection: Array.from(options.matrix ?? []),
               instance: [instance.scale, instanceShapeIndex(instance.shape), 0, 0],
               ...options.extraUniforms,
+              ...cubeUniforms,
             },
             uniformBinding: "params",
             clear: false,
@@ -1453,7 +1472,7 @@ export const renderNode: NodeDefinition = {
             kind: "draw",
             id: `${nodeId}:${options.prefix}:${geometryIndex}`,
             nodeId,
-            shader: shadowMeshWgsl(depthOptions),
+            shader: depthShader(shadowMeshWgsl(depthOptions)),
             target: options.target,
             topology: "triangle-list",
             instances: 1,
@@ -1462,6 +1481,7 @@ export const renderNode: NodeDefinition = {
             uniforms: {
               lightViewProjection: Array.from(options.matrix ?? []),
               ...options.extraUniforms,
+              ...cubeUniforms,
             },
             uniformBinding: "params",
             clear: false,
@@ -1475,7 +1495,7 @@ export const renderNode: NodeDefinition = {
           kind: "draw",
           id: `${nodeId}:${options.prefix}:${geometryIndex}`,
           nodeId,
-          shader: shadowSurfaceWgsl(depthOptions),
+          shader: depthShader(shadowSurfaceWgsl(depthOptions)),
           target: options.target,
           topology: "triangle-list",
           instances: 1,
@@ -1485,6 +1505,7 @@ export const renderNode: NodeDefinition = {
             lightViewProjection: Array.from(options.matrix ?? []),
             grid: [topology.cols, topology.rows, topology.wrapU ? 1 : 0, topology.wrapV ? 1 : 0],
             ...options.extraUniforms,
+              ...cubeUniforms,
           },
           uniformBinding: "params",
           clear: false,
@@ -1496,7 +1517,31 @@ export const renderNode: NodeDefinition = {
        Zero casting lights emits nothing here and nothing below changes: §V309 holds as
        byte-identical passes and shaders. */
     const emitShadowPasses = (): void => {
-      casting.forEach(({ index: lightIndex }, slot) => {
+      casting.forEach(({ index: lightIndex, light }, slot) => {
+        if (light.type === "point") {
+          /* T1362b: the cube — one atlas (3×2 tiles, each face's frustum squeezed into its
+             tile) cleared once, then six sweeps, one per face, each storing radial distance
+             ÷ range. 1.5× the output keeps a tile near the output's own texel density. */
+          scratch.push({ key: `shadow${lightIndex}`, scale: 1.5, format: "r32float", depth: true });
+          const range = Math.max(0.1, light.shadowExtent);
+          (pointFaces[slot] ?? []).forEach((matrix, face) => {
+            const tileX = face % 3;
+            const tileY = Math.floor(face / 3);
+            emitDepthSweep({
+              prefix: `shadow:${lightIndex}:face${face}`,
+              target: shadowTargetOf(slot),
+              matrix,
+              linearDepth: false,
+              extraUniforms: {},
+              cube: {
+                light: [light.position[0], light.position[1], light.position[2], range],
+                tile: [1 / 3, 1 / 2, -1 + (2 * tileX + 1) / 3, 1 - (2 * tileY + 1) / 2],
+              },
+              ...(face === 0 ? {} : { skipClear: true }),
+            });
+          });
+          return;
+        }
         scratch.push({ key: `shadow${lightIndex}`, scale: 2, format: "r32float", depth: true });
         emitDepthSweep({
           prefix: `shadow:${lightIndex}`,
@@ -1858,7 +1903,7 @@ export const renderNode: NodeDefinition = {
                     ...(payload.scaleAttribute.channel === undefined ? {} : { channel: payload.scaleAttribute.channel }),
                   },
                 }),
-            ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness }),
+            ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
             ...(environmentResource === undefined ? {} : { environment: true, environmentTaps }),
             ...(aoActive ? { ambientOcclusion: true } : {}),
             ...(projActive ? { projectors: projectorOptions } : {}),
@@ -1929,7 +1974,7 @@ export const renderNode: NodeDefinition = {
               ]),
             ),
             ...Object.fromEntries(
-              shadowMatrices.map((matrix, slot) => [`shadow${slot}Matrix`, Array.from(matrix)]),
+              shadowUniforms(),
             ),
             ...(environmentResource === undefined || !envLit(model)
               ? {}
@@ -2074,7 +2119,7 @@ export const renderNode: NodeDefinition = {
           lightCount: lights.length,
           maps,
           ...(tintAttribute === undefined ? {} : { pointColor: true }),
-          ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness }),
+          ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
           ...(environmentResource === undefined ? {} : { environment: true, environmentTaps }),
           ...(aoActive ? { ambientOcclusion: true } : {}),
           ...(projActive ? { projectors: projectorOptions } : {}),
@@ -2155,7 +2200,7 @@ export const renderNode: NodeDefinition = {
             ]),
           ),
           ...Object.fromEntries(
-            shadowMatrices.map((matrix, slot) => [`shadow${slot}Matrix`, Array.from(matrix)]),
+            shadowUniforms(),
           ),
           ...(environmentResource === undefined || !envLit(model)
             ? {}

@@ -54,20 +54,27 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
 
   const lightNodes: GraphNode[] = [];
   const lightLabels: string[] = [];
-  const pointLight = (label: string, marker: string, color: readonly [number, number, number], intensity: StoredParameter, x: number): void => {
+  /** `shadowRange` casts a cube shadow over that many metres (T1362b); absent, the light does not cast. */
+  const pointLight = (label: string, marker: string, color: readonly [number, number, number], intensity: StoredParameter, x: number, shadowRange?: number): void => {
     lightNodes.push(
-      node(label, "light", [x, -900], { kind: "point", color: [color[0], color[1], color[2], 1], intensity, position: vec(markerAt(facts, marker)) }, { label: `${label}1` }),
+      node(label, "light", [x, -900], {
+        kind: "point",
+        color: [color[0], color[1], color[2], 1],
+        intensity,
+        position: vec(markerAt(facts, marker)),
+        ...(shadowRange === undefined ? {} : { shadows: true, shadowExtent: shadowRange, shadowSoftness: 1 }),
+      }, { label: `${label}1` }),
     );
     lightLabels.push(`${label}1`);
   };
   // The furnace breathes with the low band; the arc flickers on the hats (and never quite
   // steadies — a real arc hunts); the high bays are dim sodium, the shop's only steady light.
-  pointLight("furnace", "light.furnace_glow", [1, 0.5, 0.2], expressionSlot(`120 + ${LEVEL("low")} * 120`, 160), -2400);
+  pointLight("furnace", "light.furnace_glow", [1, 0.5, 0.2], expressionSlot(`120 + ${LEVEL("low")} * 120`, 160), -2400, 35);
   pointLight("arc", "light.arc", [0.6, 0.7, 1], expressionSlot(`40 + ${HIT("hatCount")} * 420 + sin(abstime * 37) * 18`, 60), -2200);
-  pointLight("slag", "light.slag_door", [1, 0.42, 0.12], 110, -2000);
-  pointLight("tap", "light.tap", [1, 0.55, 0.2], expressionSlot(`30 + ${HIT("kickCount")} * 120`, 45), -1800);
+  pointLight("slag", "light.slag_door", [1, 0.42, 0.12], 110, -2000, 25);
+  pointLight("tap", "light.tap", [1, 0.55, 0.2], expressionSlot(`30 + ${HIT("kickCount")} * 120`, 45), -1800, 20);
   pointLight("tundish", "light.tundish", [1, 0.5, 0.18], 45, -1600);
-  for (let bay = 1; bay <= 4; bay += 1) pointLight(`bay${bay}`, `light.high_bay_${bay}`, [1, 0.68, 0.38], 380, -1400 + bay * 200);
+  for (let bay = 1; bay <= 4; bay += 1) pointLight(`bay${bay}`, `light.high_bay_${bay}`, [1, 0.68, 0.38], 380, -1400 + bay * 200, 45);
 
   const atmosphereScatter: Record<string, StoredParameter> = {};
   for (const light of SCATTER_LIGHTS) atmosphereScatter[light.param] = light.rest;

@@ -39,6 +39,13 @@ export interface SceneShadingOptions {
    */
   readonly shadowSoftness?: ReadonlyArray<number>;
   /**
+   * T1362b: the shadow SLOTS (indices into `shadows`) whose light is a POINT light. Such a
+   * slot owns `shadow{s}Light` (xyz position, w range) and six `shadow{s}Face{f}` matrices
+   * instead of `shadow{s}Matrix`, and its map is a 3×2 atlas of cube faces holding radial
+   * distance ÷ range. Absent: every slot is directional, the text unchanged (§V309).
+   */
+  readonly pointShadows?: ReadonlyArray<number>;
+  /**
    * T482: an equirect ENVIRONMENT is wired on the render. Phong (and pbr-through-
    * phong) adds its reflection — sampled along R, scaled by (1−roughness), the
    * specular tint and (T632) a SCHLICK FRESNEL factor, per T428's preserved IBL-lite
@@ -661,6 +668,58 @@ function meshBindingsWgsl(mesh: SceneMeshOption): string {
  * Outside the volume (uv or depth out of range) means UNSHADOWED: the volume is
  * explicit (V426), and beyond it the light simply shines.
  */
+/**
+ * T1362b — the shadow term of a POINT light's slot: pick the cube face by the dominant axis
+ * of light → fragment, project with that face's own matrix (the one the sweep drew it with),
+ * and compare RADIAL distance ÷ range against the atlas tile, PCF taps clamped inside the
+ * tile so a kernel never reads a neighbouring face. Beyond the range the light is too faint
+ * to matter and the fragment is unshadowed. The bias follows the directional one's slope
+ * term, in the same normalised units.
+ */
+function pointShadowFactorWgsl(slot: number, radius: number): EmittedWgsl {
+  const r = Math.max(0, Math.min(4, Math.floor(radius)));
+  const taps = (2 * r + 1) * (2 * r + 1);
+  const faceCases = [1, 2, 3, 4, 5].map((face) => `        case ${face}u: { faceMatrix = params.shadow${slot}Face${face}; }`).join("\n");
+  return wgsl`    var shadow = 1.0;
+    {
+      let lightToFragment = input.world - params.shadow${slot}Light.xyz;
+      let current = length(lightToFragment) / max(params.shadow${slot}Light.w, 1e-4);
+      if (current < 1.0) {
+        let axes = abs(lightToFragment);
+        var face = 0u;
+        if (axes.x >= axes.y && axes.x >= axes.z) {
+          face = select(1u, 0u, lightToFragment.x > 0.0);
+        } else if (axes.y >= axes.z) {
+          face = select(3u, 2u, lightToFragment.y > 0.0);
+        } else {
+          face = select(5u, 4u, lightToFragment.z > 0.0);
+        }
+        var faceMatrix = params.shadow${slot}Face0;
+        switch face {
+${faceCases}
+          default: {}
+        }
+        let sc = faceMatrix * vec4f(input.world, 1.0);
+        let suv = clamp(vec2f(sc.x / sc.w * 0.5 + 0.5, 0.5 - sc.y / sc.w * 0.5), vec2f(0.0), vec2f(1.0));
+        let atlas = vec2f(textureDimensions(shadowMap${slot}, 0));
+        let tile = floor(atlas / vec2f(3.0, 2.0));
+        let origin = vec2i(vec2f(f32(face % 3u), f32(face / 3u)) * tile);
+        let last = origin + vec2i(tile) - vec2i(1);
+        let centre = origin + vec2i(suv * (tile - vec2f(1.0)));
+        let bias = 0.002 + 0.01 * (1.0 - lambert) * ${r + 1}.0;
+        var lit = 0.0;
+        for (var oy = -${r}; oy <= ${r}; oy = oy + 1) {
+          for (var ox = -${r}; ox <= ${r}; ox = ox + 1) {
+            let stored = textureLoad(shadowMap${slot}, clamp(centre + vec2i(ox, oy), origin, last), 0).r;
+            lit = lit + select(1.0, 0.0, current - bias > stored);
+          }
+        }
+        shadow = lit / ${taps}.0;
+      }
+    }
+`;
+}
+
 function shadowFactorWgsl(slot: number, radius: number): EmittedWgsl {
   const r = Math.max(0, Math.floor(radius));
   /* The reach factor is r+1 texels — see the docblock. It is a substitution in CODE, never
@@ -728,7 +787,14 @@ export function sceneSurfaceWgsl(options: SceneShadingOptions): EmittedWgsl {
   const roughnessMap = options.maps?.roughness === true;
   const shadows = options.shadows ?? [];
   const shadowSlotOf = (index: number): number => shadows.indexOf(index);
-  const shadowFields = shadows.map((_, slot) => `  shadow${slot}Matrix: mat4x4f,\n`).join("");
+  const pointSlots = new Set(options.pointShadows ?? []);
+  const shadowFields = shadows
+    .map((_, slot) =>
+      pointSlots.has(slot)
+        ? `  shadow${slot}Light: vec4f,\n${[0, 1, 2, 3, 4, 5].map((face) => `  shadow${slot}Face${face}: mat4x4f,\n`).join("")}`
+        : `  shadow${slot}Matrix: mat4x4f,\n`,
+    )
+    .join("");
   const shadowBindings = shadows
     .map((_, slot) => `@group(0) @binding(${5 + slot}) var shadowMap${slot}: texture_2d<f32>;\n`)
     .join("");
@@ -736,7 +802,9 @@ export function sceneSurfaceWgsl(options: SceneShadingOptions): EmittedWgsl {
   const shadowFactor = (index: number): string => {
     const slot = shadowSlotOf(index);
     if (slot < 0) return "";
-    return shadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0);
+    return pointSlots.has(slot)
+      ? pointShadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0)
+      : shadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0);
   };
   const environment = options.environment === true && lit(options.model);
   /* T1289: the shipped default is 8 — measured enough to read as a blur at roughness 1
@@ -1090,6 +1158,8 @@ export function sceneInstancesWgsl(options: {
   shadows?: ReadonlyArray<number>;
   /** T1285: PCF kernel radius per slot — see SceneShadingOptions.shadowSoftness. */
   shadowSoftness?: ReadonlyArray<number>;
+  /** T1362b: shadow slots that are point lights (see SceneShadingOptions.pointShadows). */
+  pointShadows?: ReadonlyArray<number>;
   /** T482: equirect environment wired — see SceneShadingOptions.environment. */
   environment?: boolean;
   /**
@@ -1176,7 +1246,14 @@ export function sceneInstancesWgsl(options: {
   const lightCount = Math.max(0, Math.floor(options.lightCount));
   const shadows = options.shadows ?? [];
   const shadowSlotOf = (index: number): number => shadows.indexOf(index);
-  const shadowFields = shadows.map((_, slot) => `  shadow${slot}Matrix: mat4x4f,\n`).join("");
+  const pointSlots = new Set(options.pointShadows ?? []);
+  const shadowFields = shadows
+    .map((_, slot) =>
+      pointSlots.has(slot)
+        ? `  shadow${slot}Light: vec4f,\n${[0, 1, 2, 3, 4, 5].map((face) => `  shadow${slot}Face${face}: mat4x4f,\n`).join("")}`
+        : `  shadow${slot}Matrix: mat4x4f,\n`,
+    )
+    .join("");
   const shadowBindings = shadows
     .map((_, slot) => `@group(0) @binding(${5 + slot}) var shadowMap${slot}: texture_2d<f32>;\n`)
     .join("");
@@ -1246,7 +1323,9 @@ ${IRRADIANCE_WGSL}  lit += irradiance * albedo.rgb * (1.0 - envFresnel) * (1.0 -
   const shadowFactor = (index: number): string => {
     const slot = shadowSlotOf(index);
     if (slot < 0) return "";
-    return shadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0);
+    return pointSlots.has(slot)
+      ? pointShadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0)
+      : shadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0);
   };
   const lightField = Array.from({ length: lightCount }, (_, index) =>
     `  light${index}Meta: vec4f,\n  light${index}Color: vec4f,\n  light${index}Vector: vec4f,\n`,
@@ -2118,3 +2197,37 @@ export const SURFACE_RESERVED_NAMES: ReadonlySet<string> = new Set(
     ),
   ).filter((name) => name !== "surface"),
 );
+
+/**
+ * T1362b — a depth sweep's CUBE-FACE variant, made from the directional one's own text so
+ * every generator (grid surface, mesh, instances) gets it without a second copy of itself.
+ * The face's clip position is squeezed into its tile of the 3×2 atlas (`cubeTile`: scale
+ * xy, centre zw in NDC), a fragment that falls outside its face's frustum is discarded (it
+ * belongs to a neighbouring tile), and what is stored is RADIAL distance from the light ÷
+ * range (`cubeLight`), which is what the lit lookup compares. Throws if an anchor it
+ * rewrites is missing, so a generator that changes shape fails here, loudly.
+ */
+export function cubeShadowVariant(shader: EmittedWgsl): EmittedWgsl {
+  let text = String(shader);
+  const swap = (from: string, to: string): void => {
+    if (!text.includes(from)) throw new Error(`cubeShadowVariant: depth shader lacks "${from.slice(0, 60)}"`);
+    text = text.replace(from, to);
+  };
+  swap("  lightViewProjection: mat4x4f,\n", "  lightViewProjection: mat4x4f,\n  cubeLight: vec4f,\n  cubeTile: vec4f,\n");
+  swap("  @location(0) depth: f32,\n};", "  @location(0) depth: f32,\n  @location(1) world: vec3f,\n  @location(2) faceClip: vec3f,\n};");
+  if (text.includes("let clip = params.lightViewProjection * vec4f(gridPosition(gx, gy), 1.0);")) {
+    swap(
+      "let clip = params.lightViewProjection * vec4f(gridPosition(gx, gy), 1.0);",
+      "let world = gridPosition(gx, gy);\n  let clip = params.lightViewProjection * vec4f(world, 1.0);",
+    );
+  }
+  swap(
+    "  out.position = clip;\n",
+    "  out.position = vec4f(clip.x * params.cubeTile.x + params.cubeTile.z * clip.w, clip.y * params.cubeTile.y + params.cubeTile.w * clip.w, clip.z, clip.w);\n  out.world = world;\n  out.faceClip = clip.xyw;\n",
+  );
+  swap(
+    "return vec4f(input.depth, 0.0, 0.0, 1.0);",
+    "let faceNdc = input.faceClip.xy / input.faceClip.z;\n  if (abs(faceNdc.x) > 1.0 || abs(faceNdc.y) > 1.0) { discard; }\n  return vec4f(length(input.world - params.cubeLight.xyz) / max(params.cubeLight.w, 1e-4), 0.0, 0.0, 1.0);",
+  );
+  return wgsl`${text}`;
+}

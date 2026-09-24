@@ -309,3 +309,30 @@ export function directionalShadowMatrix(
   const projection = orthographic(height, safeAspect, 0.01, 3 * extent);
   return multiply(projection, view);
 }
+
+/**
+ * T1362b — the six 90° frusta of a point light's cube shadow, in atlas face order
+ * +X, −X, +Y, −Y, +Z, −Z. The lit pass picks a face by the dominant axis of light→fragment
+ * and projects with the same matrix, so the two sides cannot disagree about which texel a
+ * direction lands on. Near is a fixed fraction of the range: a caster closer than that to
+ * the light is inside the lamp.
+ */
+export function pointShadowFaceMatrices(position: readonly [number, number, number], range: number): Mat4[] {
+  const far = Math.max(0.1, range);
+  const near = Math.max(0.01, far * 0.002);
+  const projection = perspective(Math.PI / 2, 1, near, far);
+  const faces: ReadonlyArray<{ readonly axis: readonly [number, number, number]; readonly up: readonly [number, number, number] }> = [
+    { axis: [1, 0, 0], up: [0, 1, 0] },
+    { axis: [-1, 0, 0], up: [0, 1, 0] },
+    { axis: [0, 1, 0], up: [0, 0, -1] },
+    { axis: [0, -1, 0], up: [0, 0, 1] },
+    { axis: [0, 0, 1], up: [0, 1, 0] },
+    { axis: [0, 0, -1], up: [0, 1, 0] },
+  ];
+  return faces.map(({ axis, up }) =>
+    multiply(
+      projection,
+      lookAt(position, [position[0] + axis[0], position[1] + axis[1], position[2] + axis[2]], up),
+    ),
+  );
+}
