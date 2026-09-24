@@ -251,3 +251,51 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   }
   return vec4f(sum / weight, centre.a);
 }`;
+
+/**
+ * CAMERA MOTION BLUR, by reprojection: rebuild each pixel's world point from depth under
+ * this frame's camera, project it with the PREVIOUS frame's camera, and smear along the
+ * screen path between the two for the shutter's share of the frame. The previous camera
+ * arrives as parameters (the path evaluated a frame earlier). A path longer than a quarter
+ * of the frame is a CUT, not a move, and is not blurred. Object motion (the rig, the sparks)
+ * is not in it — the sparks already streak — and waits on motion vectors (§T1371b).
+ * Inputs: Input = colour, More = Depth.
+ */
+export const MOTION_BLUR_WGSL = `struct Params {
+${CAMERA_PARAMS}
+  prevEye: vec3f, // @default 0  The camera's position one frame ago.
+  prevAim: vec3f, // @default 0  The camera's look-at one frame ago.
+  prevFov: f32, // @default 50  The camera's fov one frame ago.
+  shutter: f32, // @default 0.5  Shutter as a share of the frame (0.5 = a 180° shutter).
+};
+${BINDINGS}${VIEW}
+const SAMPLES: u32 = 16u;
+
+fn projectWith(eye: vec3f, aim: vec3f, fov: f32, aspect: f32, world: vec3f) -> vec2f {
+  let forward = normalize(aim - eye);
+  let right = normalize(cross(forward, vec3f(0.0, 1.0, 0.0)));
+  let up = cross(right, forward);
+  let tanHalf = tan(radians(fov) * 0.5);
+  let rel = world - eye;
+  let z = max(dot(rel, forward), 1e-4);
+  return vec2f(dot(rel, right) / (z * tanHalf * aspect) * 0.5 + 0.5, 0.5 - dot(rel, up) / (z * tanHalf) * 0.5);
+}
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let centre = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
+  let v = makeView();
+  var z = viewDepth(uv);
+  if (z < 0.0) { z = params.far * 0.5; }
+  let world = worldAt(v, uv, z);
+  let previous = projectWith(params.prevEye, params.prevAim, params.prevFov, v.aspect, world);
+  let velocity = (uv - previous) * params.shutter;
+  if (length(velocity) > 0.25 || length(velocity * frameU.resolution) < 0.5) { return centre; }
+  let jitter = ignHash(uv * frameU.resolution + vec2f(frameU.absFrame * 1.7)) - 0.5;
+  var sum = vec3f(0.0);
+  for (var i = 0u; i < SAMPLES; i = i + 1u) {
+    let t = (f32(i) + 0.5 + jitter) / f32(SAMPLES) - 0.5;
+    sum = sum + textureSampleLevel(inputTexture, inputSampler, uv + velocity * t, 0.0).rgb;
+  }
+  return vec4f(sum / f32(SAMPLES), centre.a);
+}`;

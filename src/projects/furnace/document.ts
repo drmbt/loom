@@ -10,7 +10,11 @@ import { PLANT_SURFACE_WGSL } from "./surface-material.ts";
 import { KEY_DIRECTION, SCATTER_LIGHTS, atmosphereWgsl } from "./atmosphere.ts";
 import { BRIGHT_PASS_WGSL, GRADE_WGSL } from "./post.ts";
 import { SHOP_ENVIRONMENT_WGSL } from "./environment.ts";
-import { DOF_WGSL, GTAO_WGSL, SSR_WGSL } from "./screen-space.ts";
+import { DOF_WGSL, GTAO_WGSL, MOTION_BLUR_WGSL, SSR_WGSL } from "./screen-space.ts";
+import { cameraPath } from "./camera-path.ts";
+
+/** The working track's tempo, measured by the app's own analysis (Clankz 3). */
+const TRACK_BPM = 97.418;
 
 /**
  * T1354b — THE FURNACE DOCUMENT: the melt shop, lit, running, in smoke, graded.
@@ -23,8 +27,8 @@ import { DOF_WGSL, GTAO_WGSL, SSR_WGSL } from "./screen-space.ts";
  */
 
 export interface FurnaceDocumentOptions {
-  /** A `shot.*` camera from the GLB. */
-  readonly shot: string;
+  /** A `shot.*` camera from the GLB, held with a drift; absent, the camera runs the cut (camera-path.ts). */
+  readonly shot?: string;
   readonly width?: number;
   readonly height?: number;
   /** The track, as a path under public/. Absent: the owner's working track (Clankz 3), which build.ts copies there. */
@@ -44,10 +48,14 @@ function vec(value: readonly [number, number, number]): number[] {
 }
 
 export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocumentOptions): ProjectDocument {
-  const camera = facts.cameras.get(options.shot);
+  const shotName = options.shot ?? "shot.hero_low_furnace";
+  const camera = facts.cameras.get(shotName);
   if (camera === undefined) {
-    throw new Error(`furnaceDocument: no camera "${options.shot}"; the GLB has ${[...facts.cameras.keys()].join(", ")}.`);
+    throw new Error(`furnaceDocument: no camera "${shotName}"; the GLB has ${[...facts.cameras.keys()].join(", ")}.`);
   }
+  // The cut: 4-bar shots at the working track's tempo (measured, 97.418 bpm).
+  const path = options.shot === undefined ? cameraPath(facts, "abstime", TRACK_BPM, 4, facts.blockers) : undefined;
+  const previousPath = options.shot === undefined ? cameraPath(facts, "(abstime - delta)", TRACK_BPM, 4, facts.blockers) : undefined;
   const eye = camera.eye;
   const aim: [number, number, number] = [eye[0] + camera.forward[0] * 12, eye[1] + camera.forward[1] * 12, eye[2] + camera.forward[2] * 12];
   const drift = (axis: 0 | 1 | 2, rate: number, depth: number): StoredParameter =>
@@ -153,9 +161,17 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       fov: camera.fovDeg,
       near: 0.1,
       far: 400,
-      "eye.x": drift(0, 0.07, 0.35),
-      "eye.y": drift(1, 0.05, 0.15),
-      "eye.z": drift(2, 0.06, 0.3),
+      ...(path === undefined
+        ? { "eye.x": drift(0, 0.07, 0.35), "eye.y": drift(1, 0.05, 0.15), "eye.z": drift(2, 0.06, 0.3) }
+        : {
+            "eye.x": expressionSlot(path.eye[0], eye[0]),
+            "eye.y": expressionSlot(path.eye[1], eye[1]),
+            "eye.z": expressionSlot(path.eye[2], eye[2]),
+            "lookAt.x": expressionSlot(path.aim[0], aim[0]),
+            "lookAt.y": expressionSlot(path.aim[1], aim[1]),
+            "lookAt.z": expressionSlot(path.aim[2], aim[2]),
+            fov: expressionSlot(path.fov, camera.fovDeg),
+          }),
     }, { label: "cam1" }),
     node("key", "light", [-2600, -900], {
       kind: "directional",
@@ -240,6 +256,41 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
     }, { label: "lens1", resolution: { mode: "project" } }),
+    // Camera motion blur: the path one frame earlier is the previous camera (exact, stateless).
+    node("shutter", "customWgslMulti", [-1200, 0], {
+      source: MOTION_BLUR_WGSL,
+      eye: vec(eye),
+      aim,
+      "eye.x": cameraRef("eye.x", eye[0]),
+      "eye.y": cameraRef("eye.y", eye[1]),
+      "eye.z": cameraRef("eye.z", eye[2]),
+      "aim.x": cameraRef("lookAt.x", aim[0]),
+      "aim.y": cameraRef("lookAt.y", aim[1]),
+      "aim.z": cameraRef("lookAt.z", aim[2]),
+      fov: cameraRef("fov", camera.fovDeg),
+      far: cameraRef("far", 400),
+      prevEye: vec(eye),
+      prevAim: aim,
+      ...(previousPath === undefined
+        ? {
+            "prevEye.x": cameraRef("eye.x", eye[0]),
+            "prevEye.y": cameraRef("eye.y", eye[1]),
+            "prevEye.z": cameraRef("eye.z", eye[2]),
+            "prevAim.x": cameraRef("lookAt.x", aim[0]),
+            "prevAim.y": cameraRef("lookAt.y", aim[1]),
+            "prevAim.z": cameraRef("lookAt.z", aim[2]),
+            prevFov: cameraRef("fov", camera.fovDeg),
+          }
+        : {
+            "prevEye.x": expressionSlot(previousPath.eye[0], eye[0]),
+            "prevEye.y": expressionSlot(previousPath.eye[1], eye[1]),
+            "prevEye.z": expressionSlot(previousPath.eye[2], eye[2]),
+            "prevAim.x": expressionSlot(previousPath.aim[0], aim[0]),
+            "prevAim.y": expressionSlot(previousPath.aim[1], aim[1]),
+            "prevAim.z": expressionSlot(previousPath.aim[2], aim[2]),
+            prevFov: expressionSlot(previousPath.fov, camera.fovDeg),
+          }),
+    }, { label: "shutter1", resolution: { mode: "project" } }),
     node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 2.2, knee: 1 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }),
     node("bloomNear", "blur", [-900, 250], { size: 10, filter: "gaussian", extend: "hold" }, { label: "bloomnear1", resolution: { mode: "scale", factor: 0.5 } }),
     node("bloomFar", "blur", [-900, 450], { size: 14, filter: "gaussian", extend: "hold" }, { label: "bloomfar1", resolution: { mode: "scale", factor: 0.25 } }),
@@ -278,12 +329,14 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("depth-air", ["shot", "depth"], ["air", "more"], 0),
     edge("air-lens", ["air", "out"], ["lens", "input"]),
     edge("depth-lens", ["shot", "depth"], ["lens", "more"], 0),
-    edge("lens-bright", ["lens", "out"], ["bright", "input"]),
+    edge("lens-shutter", ["lens", "out"], ["shutter", "input"]),
+    edge("depth-shutter", ["shot", "depth"], ["shutter", "more"], 0),
+    edge("shutter-bright", ["shutter", "out"], ["bright", "input"]),
     edge("bright-near", ["bright", "out"], ["bloomNear", "input"]),
     edge("bright-far", ["bright", "out"], ["bloomFar", "input"]),
     edge("near-sum", ["bloomNear", "out"], ["bloomSum", "in1"]),
     edge("far-sum", ["bloomFar", "out"], ["bloomSum", "in2"]),
-    edge("lens-glow", ["lens", "out"], ["glow", "in1"]),
+    edge("shutter-glow", ["shutter", "out"], ["glow", "in1"]),
     edge("sum-glow", ["bloomSum", "out"], ["glow", "in2"]),
     edge("glow-grade", ["glow", "out"], ["grade", "input"]),
     edge("glow-meter", ["glow", "out"], ["meter", "input"]),

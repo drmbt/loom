@@ -1,4 +1,5 @@
 import type { DecodedCamera, DecodedMarker, DecodedMesh } from "../../domain/mesh/glb.ts";
+import type { Blocker } from "./camera-path.ts";
 
 /**
  * T1354b — what the furnace document needs to know about the Blender export, measured from
@@ -26,6 +27,8 @@ export interface FurnaceSceneFacts {
   readonly parts: ReadonlyMap<string, { readonly index: number; readonly pivot: readonly [number, number, number] }>;
   readonly cameras: ReadonlyMap<string, DecodedCamera>;
   readonly markers: ReadonlyMap<string, DecodedMarker>;
+  /** The plant's triangles at rest, for build-time camera collision (camera-path.ts). */
+  readonly blockers: readonly Blocker[];
 }
 
 // The pulpit glass is left out until a mesh can wear glass (§T1357b); drawn opaque it walls the pulpit in.
@@ -50,6 +53,7 @@ export function sceneFactsFrom(
     parts: new Map(machines.parts.map((part) => [part.name, { index: part.index, pivot: part.pivot }])),
     cameras: new Map(machines.cameras.map((camera) => [camera.name, camera])),
     markers: new Map(machines.markers.map((marker) => [marker.name, marker])),
+    blockers: [plant, machines].map((mesh) => ({ positions: mesh.positions, indices: mesh.indices })),
   };
 }
 

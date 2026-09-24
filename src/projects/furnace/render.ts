@@ -42,7 +42,8 @@ const toRgba8 = (frame: RenderedFrame) =>
   toRgba8At({ ...frame, rowStride: frame.width * (frame.format === "rgba16float" ? 8 : 4) } as never, frame.width, frame.height, { space: "encoded" });
 
 for (const shot of shots) {
-  const document = furnaceDocument(facts, { shot, width, height });
+  // `cut` runs the camera path (every framing, a move each, cuts on bars) instead of one held shot.
+  const document = furnaceDocument(facts, { ...(shot === "cut" ? {} : { shot }), width, height });
   const started = performance.now();
   const runUp = 3;
   const start = clip !== undefined ? (clip[0] ?? 0) : Math.max(0, at - runUp);
