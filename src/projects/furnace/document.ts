@@ -12,6 +12,7 @@ import { BRIGHT_PASS_WGSL, GRADE_WGSL } from "./post.ts";
 import { SHOP_ENVIRONMENT_WGSL } from "./environment.ts";
 import { DOF_WGSL, GTAO_WGSL, MOTION_BLUR_WGSL, SSR_WGSL } from "./screen-space.ts";
 import { shotPath } from "./camera-path.ts";
+import { GLITCH_WGSL } from "./glitch.ts";
 import { director } from "./director.ts";
 
 /**
@@ -109,6 +110,41 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   atmosphereScatter["tapGlow"] = expressionSlot(`10 + ${HIT("kickCount")} * 30`, 15);
 
   const cameraRef = (field: string, fallback: number): StoredParameter => expressionSlot(`op('cam1').par.${field}`, fallback);
+
+  /** The camera now and one frame ago, as the screen-space passes that reproject read it. */
+  const cameraNowAndBefore: Record<string, StoredParameter> = {
+      eye: vec(eye),
+      aim,
+      "eye.x": cameraRef("eye.x", eye[0]),
+      "eye.y": cameraRef("eye.y", eye[1]),
+      "eye.z": cameraRef("eye.z", eye[2]),
+      "aim.x": cameraRef("lookAt.x", aim[0]),
+      "aim.y": cameraRef("lookAt.y", aim[1]),
+      "aim.z": cameraRef("lookAt.z", aim[2]),
+      fov: cameraRef("fov", camera.fovDeg),
+      far: cameraRef("far", 400),
+      prevEye: vec(eye),
+      prevAim: aim,
+      ...(previousPath === undefined
+        ? {
+            "prevEye.x": cameraRef("eye.x", eye[0]),
+            "prevEye.y": cameraRef("eye.y", eye[1]),
+            "prevEye.z": cameraRef("eye.z", eye[2]),
+            "prevAim.x": cameraRef("lookAt.x", aim[0]),
+            "prevAim.y": cameraRef("lookAt.y", aim[1]),
+            "prevAim.z": cameraRef("lookAt.z", aim[2]),
+            prevFov: cameraRef("fov", camera.fovDeg),
+          }
+        : {
+            "prevEye.x": expressionSlot(previousPath.eye[0], eye[0]),
+            "prevEye.y": expressionSlot(previousPath.eye[1], eye[1]),
+            "prevEye.z": expressionSlot(previousPath.eye[2], eye[2]),
+            "prevAim.x": expressionSlot(previousPath.aim[0], aim[0]),
+            "prevAim.y": expressionSlot(previousPath.aim[1], aim[1]),
+            "prevAim.z": expressionSlot(previousPath.aim[2], aim[2]),
+            prevFov: expressionSlot(previousPath.fov, camera.fovDeg),
+          }),
+  };
 
   const nodes: GraphNode[] = [
     // ── Audio (a stand-in track until the song arrives) ──
@@ -271,38 +307,20 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     // Camera motion blur: the path one frame earlier is the previous camera (exact, stateless).
     node("shutter", "customWgslMulti", [-1200, 0], {
       source: MOTION_BLUR_WGSL,
-      eye: vec(eye),
-      aim,
-      "eye.x": cameraRef("eye.x", eye[0]),
-      "eye.y": cameraRef("eye.y", eye[1]),
-      "eye.z": cameraRef("eye.z", eye[2]),
-      "aim.x": cameraRef("lookAt.x", aim[0]),
-      "aim.y": cameraRef("lookAt.y", aim[1]),
-      "aim.z": cameraRef("lookAt.z", aim[2]),
-      fov: cameraRef("fov", camera.fovDeg),
-      far: cameraRef("far", 400),
-      prevEye: vec(eye),
-      prevAim: aim,
-      ...(previousPath === undefined
-        ? {
-            "prevEye.x": cameraRef("eye.x", eye[0]),
-            "prevEye.y": cameraRef("eye.y", eye[1]),
-            "prevEye.z": cameraRef("eye.z", eye[2]),
-            "prevAim.x": cameraRef("lookAt.x", aim[0]),
-            "prevAim.y": cameraRef("lookAt.y", aim[1]),
-            "prevAim.z": cameraRef("lookAt.z", aim[2]),
-            prevFov: cameraRef("fov", camera.fovDeg),
-          }
-        : {
-            "prevEye.x": expressionSlot(previousPath.eye[0], eye[0]),
-            "prevEye.y": expressionSlot(previousPath.eye[1], eye[1]),
-            "prevEye.z": expressionSlot(previousPath.eye[2], eye[2]),
-            "prevAim.x": expressionSlot(previousPath.aim[0], aim[0]),
-            "prevAim.y": expressionSlot(previousPath.aim[1], aim[1]),
-            "prevAim.z": expressionSlot(previousPath.aim[2], aim[2]),
-            prevFov: expressionSlot(previousPath.fov, camera.fovDeg),
-          }),
+      ...cameraNowAndBefore,
     }, { label: "shutter1", resolution: { mode: "project" } }),
+    // The glitch layer (glitch.ts), after the grade, reading its own previous output and depth.
+    node("glitch", "customWgslMulti", [600, 0], {
+      source: GLITCH_WGSL,
+      ...cameraNowAndBefore,
+      mosh: expressionSlot(`clamp(1 - ${direction.since} / 0.45, 0, 1) * (0.2 + 0.5 * ${direction.energy})`, 0),
+      tear: expressionSlot(`${HIT("hatCount")} * (0.3 + 0.7 * ${direction.density})`, 0),
+      split: expressionSlot(`${HIT("snareCount")} * 0.7 + ${direction.build} * 0.2`, 0),
+      sort: expressionSlot(`${direction.build} * 0.7`, 0),
+      crush: expressionSlot(`(${direction.density} > 0.8) * ${HIT("kickCount")} * 0.8`, 0),
+      freeze: expressionSlot(`(${direction.energy} > 0.85) * (${HIT("kickCount")} > 0.9)`, 0),
+    }, { label: "glitch1", resolution: { mode: "project" } }),
+    node("history", "feedback", [900, 300], { source: "glitch1" }, { label: "history1" }),
     node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 2.2, knee: 1 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }),
     node("bloomNear", "blur", [-900, 250], { size: 10, filter: "gaussian", extend: "hold" }, { label: "bloomnear1", resolution: { mode: "scale", factor: 0.5 } }),
     node("bloomFar", "blur", [-900, 450], { size: 14, filter: "gaussian", extend: "hold" }, { label: "bloomfar1", resolution: { mode: "scale", factor: 0.25 } }),
@@ -354,7 +372,10 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("glow-grade", ["glow", "out"], ["grade", "input"]),
     edge("glow-meter", ["glow", "out"], ["meter", "input"]),
     edge("metered-adaptation", ["metered", "out"], ["adaptation", "in"]),
-    edge("grade-out", ["grade", "out"], ["out", "input"]),
+    edge("grade-glitch", ["grade", "out"], ["glitch", "input"]),
+    edge("history-glitch", ["history", "out"], ["glitch", "more"], 0),
+    edge("depth-glitch", ["shot", "depth"], ["glitch", "more"], 1),
+    edge("glitch-out", ["glitch", "out"], ["out", "input"]),
     ...direction.edges,
   ];
 
