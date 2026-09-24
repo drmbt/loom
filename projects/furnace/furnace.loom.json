@@ -1,0 +1,1530 @@
+{
+  "assets": [],
+  "createdAt": "2026-09-24T00:00:00.000Z",
+  "graph": {
+    "edges": {
+      "air-bright": {
+        "id": "air-bright",
+        "source": {
+          "nodeId": "air",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bright",
+          "portId": "input"
+        }
+      },
+      "air-glow": {
+        "id": "air-glow",
+        "source": {
+          "nodeId": "air",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "glow",
+          "portId": "in1"
+        }
+      },
+      "bright-far": {
+        "id": "bright-far",
+        "source": {
+          "nodeId": "bright",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomFar",
+          "portId": "input"
+        }
+      },
+      "bright-near": {
+        "id": "bright-near",
+        "source": {
+          "nodeId": "bright",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomNear",
+          "portId": "input"
+        }
+      },
+      "clip-hits": {
+        "id": "clip-hits",
+        "source": {
+          "nodeId": "clip",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "pickHits",
+          "portId": "in"
+        }
+      },
+      "clip-levels": {
+        "id": "clip-levels",
+        "source": {
+          "nodeId": "clip",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "pickLevels",
+          "portId": "in"
+        }
+      },
+      "depth-pack": {
+        "id": "depth-pack",
+        "source": {
+          "nodeId": "shot",
+          "portId": "depth"
+        },
+        "target": {
+          "nodeId": "depthPack",
+          "portId": "mask"
+        }
+      },
+      "env-shot": {
+        "id": "env-shot",
+        "source": {
+          "nodeId": "env",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "shot",
+          "portId": "environment"
+        }
+      },
+      "far-sum": {
+        "id": "far-sum",
+        "source": {
+          "nodeId": "bloomFar",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomSum",
+          "portId": "in2"
+        }
+      },
+      "glow-grade": {
+        "id": "glow-grade",
+        "source": {
+          "nodeId": "glow",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "grade",
+          "portId": "input"
+        }
+      },
+      "grade-out": {
+        "id": "grade-out",
+        "source": {
+          "nodeId": "grade",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "out",
+          "portId": "input"
+        }
+      },
+      "hits-lag": {
+        "id": "hits-lag",
+        "source": {
+          "nodeId": "pickHits",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "hits",
+          "portId": "in"
+        }
+      },
+      "levels-smooth": {
+        "id": "levels-smooth",
+        "source": {
+          "nodeId": "pickLevels",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "smooth",
+          "portId": "in"
+        }
+      },
+      "machines-rig": {
+        "id": "machines-rig",
+        "source": {
+          "nodeId": "machines",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "rig",
+          "portId": "in"
+        }
+      },
+      "near-sum": {
+        "id": "near-sum",
+        "source": {
+          "nodeId": "bloomNear",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomSum",
+          "portId": "in1"
+        }
+      },
+      "opaque-pack": {
+        "id": "opaque-pack",
+        "source": {
+          "nodeId": "opaque",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "depthPack",
+          "portId": "input"
+        }
+      },
+      "pack-air": {
+        "id": "pack-air",
+        "source": {
+          "nodeId": "depthPack",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "air",
+          "portId": "input"
+        }
+      },
+      "plant-geo": {
+        "id": "plant-geo",
+        "source": {
+          "nodeId": "plant",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "plantGeo",
+          "portId": "points"
+        }
+      },
+      "rank-levels": {
+        "id": "rank-levels",
+        "source": {
+          "nodeId": "rank",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "levels",
+          "portId": "in"
+        }
+      },
+      "rig-geo": {
+        "id": "rig-geo",
+        "source": {
+          "nodeId": "rig",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "machineGeo",
+          "portId": "points"
+        }
+      },
+      "seed-env": {
+        "id": "seed-env",
+        "source": {
+          "nodeId": "envSeed",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "env",
+          "portId": "input"
+        }
+      },
+      "shot-opaque": {
+        "id": "shot-opaque",
+        "source": {
+          "nodeId": "shot",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "opaque",
+          "portId": "in1"
+        }
+      },
+      "smooth-rank": {
+        "id": "smooth-rank",
+        "source": {
+          "nodeId": "smooth",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "rank",
+          "portId": "in"
+        }
+      },
+      "sparks-geo": {
+        "id": "sparks-geo",
+        "source": {
+          "nodeId": "sparks",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "sparkGeo",
+          "portId": "points"
+        }
+      },
+      "sum-glow": {
+        "id": "sum-glow",
+        "source": {
+          "nodeId": "bloomSum",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "glow",
+          "portId": "in2"
+        }
+      }
+    },
+    "groups": {},
+    "nodes": {
+      "air": {
+        "definitionVersion": 1,
+        "id": "air",
+        "label": "air1",
+        "parameters": {
+          "aim": [
+            -3.2996658811118564,
+            11.718181177593383,
+            1.6117890758372528
+          ],
+          "aim.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": -3.2996658811118564
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 11.718181177593383
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.6117890758372528
+              }
+            },
+            "mode": "expression"
+          },
+          "ambientSmoke": [
+            0.008,
+            0.01,
+            0.014
+          ],
+          "arcFlash": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "6 + op('hits1').chan.hatCount * 60"
+              },
+              "static": {
+                "kind": "static",
+                "value": 10
+              }
+            },
+            "mode": "expression"
+          },
+          "density": 0.011,
+          "eye": [
+            -12.5,
+            6.75,
+            7.5
+          ],
+          "eye.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": -12.5
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 6.75
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 7.5
+              }
+            },
+            "mode": "expression"
+          },
+          "far": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.far"
+              },
+              "static": {
+                "kind": "static",
+                "value": 400
+              }
+            },
+            "mode": "expression"
+          },
+          "fov": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.fov"
+              },
+              "static": {
+                "kind": "static",
+                "value": 64.65228146628893
+              }
+            },
+            "mode": "expression"
+          },
+          "furnaceGlow": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "14 + op('levels1').chan.low * 16"
+              },
+              "static": {
+                "kind": "static",
+                "value": 20
+              }
+            },
+            "mode": "expression"
+          },
+          "lamps": 2.5,
+          "slagGlow": 10,
+          "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n// T1354b — furnace atmosphere (generated by src/projects/furnace/atmosphere.ts from the GLB).\nstruct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane — depth arrives as distance ÷ far.\n  density: f32, // @default 0.018  Smoke extinction per metre at the floor.\n  roofSmoke: f32, // @default 0.6  Extra smoke pooled under the roof.\n  turbulence: f32, // @default 0.7  How lumpy and drifting the smoke is.\n  ambientSmoke: vec3f, // @default 0.012  Base light the smoke carries everywhere (linear).\n  furnaceGlow: f32, // @default 60  Glow of the open furnace in the smoke.\n  arcFlash: f32, // @default 10  The arc's blue-white flash in the smoke (flicker it).\n  slagGlow: f32, // @default 25  Slag door glow.\n  tapGlow: f32, // @default 15  Tapping stream glow.\n  tundishGlow: f32, // @default 12  Caster tundish glow.\n  lamps: f32, // @default 8  Sodium high-bay lamps.\n  shafts: f32, // @default 2.5  Brightness of the light shafts under the roof louvres.\n  shaftColor: vec3f, // @default 0.75  Colour of the shafts (daylight through smoke).\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\nconst LIGHT_COUNT: u32 = 9u;\nconst LIGHT_POSITION = array<vec3f, 9>(vec3f(0.0000, 13.2000, 0.0000), vec3f(0.0000, 10.4500, 0.0000), vec3f(-5.1000, 9.2000, 0.0000), vec3f(5.2500, 4.4000, 0.0000), vec3f(38.0000, 14.2000, 6.0000), vec3f(-36.0000, 28.7000, 0.0000), vec3f(-12.0000, 28.7000, 0.0000), vec3f(12.0000, 28.7000, 0.0000), vec3f(36.0000, 28.7000, 0.0000));\nconst SHAFT_COUNT: u32 = 10u;\nconst SHAFT_TOP = array<vec3f, 10>(vec3f(-54.0000, 35.6000, -3.9000), vec3f(-42.0000, 35.6000, 3.9000), vec3f(-30.0000, 35.6000, -3.9000), vec3f(-18.0000, 35.6000, 3.9000), vec3f(-6.0000, 35.6000, -3.9000), vec3f(6.0000, 35.6000, 3.9000), vec3f(18.0000, 35.6000, -3.9000), vec3f(30.0000, 35.6000, 3.9000), vec3f(42.0000, 35.6000, -3.9000), vec3f(54.0000, 35.6000, 3.9000));\nconst SHAFT_DIRECTION: vec3f = vec3f(0.2210, -0.5525, -0.8037);\nconst SHAFT_RADIUS: f32 = 1.8;\nconst STEPS: u32 = 28u;\n\nfn lightRadiance(index: u32) -> vec3f {\n  switch index {\n    case 0u: { return vec3f(1.0000, 0.4200, 0.1200) * params.furnaceGlow; }\n    case 1u: { return vec3f(0.6200, 0.7200, 1.0000) * params.arcFlash; }\n    case 2u: { return vec3f(1.0000, 0.3500, 0.0800) * params.slagGlow; }\n    case 3u: { return vec3f(1.0000, 0.5000, 0.1500) * params.tapGlow; }\n    case 4u: { return vec3f(1.0000, 0.4500, 0.1400) * params.tundishGlow; }\n    case 5u: { return vec3f(1.0000, 0.6200, 0.3000) * params.lamps; }\n    case 6u: { return vec3f(1.0000, 0.6200, 0.3000) * params.lamps; }\n    case 7u: { return vec3f(1.0000, 0.6200, 0.3000) * params.lamps; }\n    case 8u: { return vec3f(1.0000, 0.6200, 0.3000) * params.lamps; }\n    default: { return vec3f(0.0); }\n  }\n}\n\nfn airHash(p: vec3f) -> f32 {\n  var q = fract(p * vec3f(0.1031, 0.1030, 0.0973));\n  q = q + dot(q, q.yxz + 33.33);\n  return fract((q.x + q.y) * q.z);\n}\n\nfn airNoise(p: vec3f) -> f32 {\n  let i = floor(p);\n  let f = fract(p);\n  let u = f * f * (3.0 - 2.0 * f);\n  return mix(\n    mix(mix(airHash(i), airHash(i + vec3f(1.0, 0.0, 0.0)), u.x), mix(airHash(i + vec3f(0.0, 1.0, 0.0)), airHash(i + vec3f(1.0, 1.0, 0.0)), u.x), u.y),\n    mix(mix(airHash(i + vec3f(0.0, 0.0, 1.0)), airHash(i + vec3f(1.0, 0.0, 1.0)), u.x), mix(airHash(i + vec3f(0.0, 1.0, 1.0)), airHash(i + vec3f(1.0, 1.0, 1.0)), u.x), u.y),\n    u.z,\n  );\n}\n\nfn smoke(x: vec3f, time: f32) -> f32 {\n  let floorLayer = exp(-max(x.y, 0.0) * 0.07);\n  let roofLayer = smoothstep(18.0, 32.0, x.y) * params.roofSmoke;\n  let drift = vec3f(time * 0.35, time * 0.12, time * 0.2);\n  let lumps = airNoise(x * 0.09 + drift * 0.09) * 0.65 + airNoise(x * 0.23 - drift * 0.2) * 0.35;\n  let shape = mix(1.0, lumps * 2.0, params.turbulence);\n  return params.density * (floorLayer + roofLayer) * max(shape, 0.0);\n}\n\n// Henyey-Greenstein, g = 0.35: smoke scatters mostly forward, so a light behind the haze blooms.\nfn phase(cosTheta: f32) -> f32 {\n  let g = 0.35;\n  let denominator = 1.0 + g * g - 2.0 * g * cosTheta;\n  return (1.0 - g * g) / (12.566371 * pow(denominator, 1.5));\n}\n\nfn shaftDensity(x: vec3f) -> f32 {\n  var total = 0.0;\n  for (var i = 0u; i < SHAFT_COUNT; i = i + 1u) {\n    let offset = x - SHAFT_TOP[i];\n    let along = dot(offset, SHAFT_DIRECTION);\n    if (along < 0.0 || along > 70.0) { continue; }\n    let across = length(offset - SHAFT_DIRECTION * along);\n    total = total + exp(-(across * across) / (SHAFT_RADIUS * SHAFT_RADIUS)) * (1.0 - along / 70.0);\n  }\n  return total;\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let sample = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  let forward = normalize(params.aim - params.eye);\n  let right = normalize(cross(forward, vec3f(0.0, 1.0, 0.0)));\n  let up = cross(right, forward);\n  let tanHalf = tan(radians(params.fov) * 0.5);\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  let direction = normalize(forward + right * ndc.x * tanHalf * aspect + up * ndc.y * tanHalf);\n  // Depth is linear view distance ÷ far; the background (depth 1) marches to a fixed horizon.\n  let depth = sample.a;\n  let distance = select(depth * params.far, 140.0, depth >= 0.9999);\n  let step = distance / f32(STEPS);\n  // Interleaved gradient noise: a dither the eye reads as texture, not as speckle.\n  let pixel = uv * frameU.resolution + vec2f(frameU.absFrame * 5.588238);\n  let jitter = fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n  var transmittance = 1.0;\n  var scatter = vec3f(0.0);\n  for (var k = 0u; k < STEPS; k = k + 1u) {\n    let x = params.eye + direction * (f32(k) + jitter) * step;\n    let sigma = smoke(x, frameU.absTime);\n    var inscatter = params.ambientSmoke;\n    for (var i = 0u; i < LIGHT_COUNT; i = i + 1u) {\n      let toLight = LIGHT_POSITION[i] - x;\n      let d2 = dot(toLight, toLight);\n      inscatter = inscatter + lightRadiance(i) * phase(dot(direction, toLight / sqrt(max(d2, 1e-4)))) / (1.0 + d2);\n    }\n    inscatter = inscatter + params.shaftColor * params.shafts * shaftDensity(x) * phase(dot(direction, -SHAFT_DIRECTION));\n    scatter = scatter + transmittance * sigma * inscatter * step;\n    transmittance = transmittance * exp(-sigma * step);\n  }\n  return vec4f(sample.rgb * transmittance + scatter, 1.0);\n}",
+          "tapGlow": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "10 + op('hits1').chan.kickCount * 30"
+              },
+              "static": {
+                "kind": "static",
+                "value": 15
+              }
+            },
+            "mode": "expression"
+          },
+          "tundishGlow": 8
+        },
+        "position": {
+          "x": -1500,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgsl"
+      },
+      "arc": {
+        "definitionVersion": 1,
+        "id": "arc",
+        "label": "arc1",
+        "parameters": {
+          "color": [
+            0.6,
+            0.7,
+            1,
+            1
+          ],
+          "intensity": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "40 + op('hits1').chan.hatCount * 420 + sin(abstime * 37) * 18"
+              },
+              "static": {
+                "kind": "static",
+                "value": 60
+              }
+            },
+            "mode": "expression"
+          },
+          "kind": "point",
+          "position": [
+            0,
+            10.449999809265137,
+            0
+          ]
+        },
+        "position": {
+          "x": -2200,
+          "y": -900
+        },
+        "type": "light"
+      },
+      "bay1": {
+        "definitionVersion": 1,
+        "id": "bay1",
+        "label": "bay11",
+        "parameters": {
+          "color": [
+            1,
+            0.68,
+            0.38,
+            1
+          ],
+          "intensity": 380,
+          "kind": "point",
+          "position": [
+            -36,
+            28.700000762939453,
+            0
+          ]
+        },
+        "position": {
+          "x": -1200,
+          "y": -900
+        },
+        "type": "light"
+      },
+      "bay2": {
+        "definitionVersion": 1,
+        "id": "bay2",
+        "label": "bay21",
+        "parameters": {
+          "color": [
+            1,
+            0.68,
+            0.38,
+            1
+          ],
+          "intensity": 380,
+          "kind": "point",
+          "position": [
+            -12,
+            28.700000762939453,
+            0
+          ]
+        },
+        "position": {
+          "x": -1000,
+          "y": -900
+        },
+        "type": "light"
+      },
+      "bay3": {
+        "definitionVersion": 1,
+        "id": "bay3",
+        "label": "bay31",
+        "parameters": {
+          "color": [
+            1,
+            0.68,
+            0.38,
+            1
+          ],
+          "intensity": 380,
+          "kind": "point",
+          "position": [
+            12,
+            28.700000762939453,
+            0
+          ]
+        },
+        "position": {
+          "x": -800,
+          "y": -900
+        },
+        "type": "light"
+      },
+      "bay4": {
+        "definitionVersion": 1,
+        "id": "bay4",
+        "label": "bay41",
+        "parameters": {
+          "color": [
+            1,
+            0.68,
+            0.38,
+            1
+          ],
+          "intensity": 380,
+          "kind": "point",
+          "position": [
+            36,
+            28.700000762939453,
+            0
+          ]
+        },
+        "position": {
+          "x": -600,
+          "y": -900
+        },
+        "type": "light"
+      },
+      "bloomFar": {
+        "definitionVersion": 1,
+        "id": "bloomFar",
+        "label": "bloomfar1",
+        "parameters": {
+          "extend": "hold",
+          "filter": "gaussian",
+          "size": 14
+        },
+        "position": {
+          "x": -900,
+          "y": 450
+        },
+        "resolution": {
+          "factor": 0.25,
+          "mode": "scale"
+        },
+        "type": "blur"
+      },
+      "bloomNear": {
+        "definitionVersion": 1,
+        "id": "bloomNear",
+        "label": "bloomnear1",
+        "parameters": {
+          "extend": "hold",
+          "filter": "gaussian",
+          "size": 10
+        },
+        "position": {
+          "x": -900,
+          "y": 250
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "blur"
+      },
+      "bloomSum": {
+        "definitionVersion": 1,
+        "id": "bloomSum",
+        "label": "bloomsum1",
+        "parameters": {
+          "opacity": 1
+        },
+        "position": {
+          "x": -600,
+          "y": 350
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "add"
+      },
+      "bright": {
+        "definitionVersion": 1,
+        "id": "bright",
+        "label": "bright1",
+        "parameters": {
+          "knee": 1,
+          "source": "struct Params {\n  threshold: f32, // @default 1.2  Linear radiance where bloom starts.\n  knee: f32, // @default 0.8  Softness of the threshold.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n  let brightness = max(color.r, max(color.g, color.b));\n  let soft = clamp(brightness - params.threshold + params.knee, 0.0, 2.0 * params.knee);\n  let weight = max(soft * soft / (4.0 * params.knee + 1e-4), brightness - params.threshold) / max(brightness, 1e-4);\n  return vec4f(color * weight, 1.0);\n}",
+          "threshold": 2.2
+        },
+        "position": {
+          "x": -1200,
+          "y": 300
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "cam": {
+        "definitionVersion": 1,
+        "id": "cam",
+        "label": "cam1",
+        "parameters": {
+          "eye": [
+            -12.5,
+            6.75,
+            7.5
+          ],
+          "eye.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "-12.500 + sin(abstime * 0.07) * 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": -12.5
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "6.750 + sin(abstime * 0.05) * 0.15"
+              },
+              "static": {
+                "kind": "static",
+                "value": 6.75
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "7.500 + sin(abstime * 0.06) * 0.3"
+              },
+              "static": {
+                "kind": "static",
+                "value": 7.5
+              }
+            },
+            "mode": "expression"
+          },
+          "far": 400,
+          "fov": 64.65228146628893,
+          "lookAt": [
+            -3.2996658811118564,
+            11.718181177593383,
+            1.6117890758372528
+          ],
+          "near": 0.1
+        },
+        "position": {
+          "x": -2700,
+          "y": -900
+        },
+        "type": "camera"
+      },
+      "clip": {
+        "definitionVersion": 1,
+        "id": "clip",
+        "label": "clip1",
+        "parameters": {
+          "file": "media/showcase-beat.m4a",
+          "playMode": "timeline"
+        },
+        "position": {
+          "x": -4200,
+          "y": 1400
+        },
+        "type": "audioFileIn"
+      },
+      "depthPack": {
+        "definitionVersion": 1,
+        "id": "depthPack",
+        "label": "depthpack1",
+        "parameters": {
+          "apply": "alpha",
+          "channel": "red",
+          "invert": 0
+        },
+        "position": {
+          "x": -1800,
+          "y": 0
+        },
+        "type": "mask"
+      },
+      "env": {
+        "definitionVersion": 1,
+        "id": "env",
+        "label": "env1",
+        "parameters": {
+          "source": "struct Params {\n  windows: f32, // @default 1.4  Radiance of the side-window bands.\n  skylights: f32, // @default 0.9  Radiance of the roof skylights.\n  roof: f32, // @default 0.012  Radiance of the dark roof.\n  floorBounce: f32, // @default 0.035  Warm light bounced off the floor.\n  sun: f32, // @default 6  Radiance of the sun seen through the windows.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nconst SUN_DIRECTION: vec3f = vec3f(-0.2210, 0.5525, 0.8037);\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  // Keep the input bound (the node requires one); its value never reaches the picture.\n  let unused = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).a * 0.0;\n  let phi = (uv.x - 0.5) * 6.2831853;\n  let theta = uv.y * 3.1415927;\n  let d = vec3f(sin(theta) * sin(phi), cos(theta), -sin(theta) * cos(phi));\n  var radiance = mix(vec3f(0.035, 0.022, 0.014) * params.floorBounce / 0.035, vec3f(0.6, 0.66, 0.78) * params.roof, smoothstep(-0.2, 0.3, d.y));\n  // Side windows: horizontal bands facing ±Z, between low and high elevation, mullioned.\n  let side = abs(d.z);\n  let band = smoothstep(0.05, 0.12, d.y) * (1.0 - smoothstep(0.32, 0.42, d.y)) * smoothstep(0.55, 0.8, side);\n  let mullions = step(0.18, fract(atan2(d.x, side) * 7.0));\n  radiance = radiance + vec3f(0.7, 0.8, 1.0) * params.windows * band * mullions;\n  // Skylights: a strip along the roof ridge (X).\n  let ridge = smoothstep(0.85, 0.97, d.y) * (1.0 - smoothstep(0.08, 0.2, abs(d.z)));\n  radiance = radiance + vec3f(0.75, 0.82, 1.0) * params.skylights * ridge * step(0.4, fract(d.x * 3.0));\n  // The sun, low, seen through the window side.\n  radiance = radiance + vec3f(1.0, 0.9, 0.75) * params.sun * pow(max(dot(d, SUN_DIRECTION), 0.0), 900.0);\n  return vec4f(radiance + vec3f(unused), 1.0);\n}"
+        },
+        "position": {
+          "x": -2700,
+          "y": 500
+        },
+        "type": "customWgsl"
+      },
+      "envSeed": {
+        "definitionVersion": 2,
+        "id": "envSeed",
+        "label": "envseed1",
+        "parameters": {},
+        "position": {
+          "x": -2700,
+          "y": 300
+        },
+        "resolution": {
+          "height": 512,
+          "mode": "fixed",
+          "width": 1024
+        },
+        "type": "ramp"
+      },
+      "furnace": {
+        "definitionVersion": 1,
+        "id": "furnace",
+        "label": "furnace1",
+        "parameters": {
+          "color": [
+            1,
+            0.5,
+            0.2,
+            1
+          ],
+          "intensity": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "120 + op('levels1').chan.low * 120"
+              },
+              "static": {
+                "kind": "static",
+                "value": 160
+              }
+            },
+            "mode": "expression"
+          },
+          "kind": "point",
+          "position": [
+            0,
+            13.199999809265137,
+            0
+          ]
+        },
+        "position": {
+          "x": -2400,
+          "y": -900
+        },
+        "type": "light"
+      },
+      "glow": {
+        "definitionVersion": 1,
+        "id": "glow",
+        "label": "glow1",
+        "parameters": {
+          "opacity": 0.2
+        },
+        "position": {
+          "x": -300,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "add"
+      },
+      "grade": {
+        "definitionVersion": 1,
+        "id": "grade",
+        "label": "grade1",
+        "parameters": {
+          "exposure": 0,
+          "grain": 0.016,
+          "highlightTint": [
+            1.08,
+            0.98,
+            0.88,
+            1
+          ],
+          "saturation": 0.85,
+          "shadowTint": [
+            0.8,
+            0.95,
+            1.1,
+            1
+          ],
+          "source": "struct Params {\n  exposure: f32, // @default 0  Exposure in stops.\n  contrast: f32, // @default 1.08  Contrast around mid-grey after the curve.\n  saturation: f32, // @default 0.92  1 keeps colour; lower desaturates the steel.\n  shadowTint: vec3f, // @default 0.9  Colour pushed into the shadows (teal-steel).\n  highlightTint: vec3f, // @default 1  Colour pushed into the highlights (warm).\n  split: f32, // @default 0.35  Strength of the shadow / highlight split.\n  aberration: f32, // @default 0.0025  Lateral chromatic aberration at the frame edge.\n  vignette: f32, // @default 0.45  Darkening toward the corners.\n  grain: f32, // @default 0.035  Film grain amount.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n\nfn gradeHash(p: vec3f) -> f32 {\n  var q = fract(p * vec3f(0.1031, 0.1030, 0.0973));\n  q = q + dot(q, q.yxz + 33.33);\n  return fract((q.x + q.y) * q.z);\n}\n\n// Narkowicz's ACES fit with the input pre-scaled, so 1.0 in lands near 0.8 out.\nfn filmic(x: vec3f) -> vec3f {\n  let a = x * 0.6;\n  return clamp((a * (2.51 * a + 0.03)) / (a * (2.43 * a + 0.59) + 0.14), vec3f(0.0), vec3f(1.0));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let centre = uv - vec2f(0.5);\n  let edge = dot(centre, centre);\n  let shift = centre * params.aberration * (1.0 + edge * 4.0);\n  let r = textureSampleLevel(inputTexture, inputSampler, uv + shift, 0.0).r;\n  let g = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).g;\n  let b = textureSampleLevel(inputTexture, inputSampler, uv - shift, 0.0).b;\n  var color = vec3f(r, g, b) * exp2(params.exposure);\n  color = filmic(color);\n  let luma = dot(color, vec3f(0.2126, 0.7152, 0.0722));\n  color = mix(vec3f(luma), color, params.saturation);\n  let shadowWeight = (1.0 - smoothstep(0.0, 0.45, luma)) * params.split;\n  let highlightWeight = smoothstep(0.4, 1.0, luma) * params.split;\n  color = color * mix(vec3f(1.0), params.shadowTint, shadowWeight) * mix(vec3f(1.0), params.highlightTint, highlightWeight);\n  color = clamp((color - 0.18) * params.contrast + 0.18, vec3f(0.0), vec3f(1.0));\n  color = color * (1.0 - params.vignette * smoothstep(0.08, 0.5, edge));\n  let noise = gradeHash(vec3f(uv * frameU.resolution, frameU.absFrame)) - 0.5;\n  color = color + noise * params.grain * (0.4 + 0.6 * (1.0 - luma));\n  return vec4f(clamp(color, vec3f(0.0), vec3f(1.0)), 1.0);\n}",
+          "split": 0.5
+        },
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgsl"
+      },
+      "hits": {
+        "definitionVersion": 1,
+        "id": "hits",
+        "label": "hits1",
+        "parameters": {
+          "lag": 0.001,
+          "releaseRatio": 250
+        },
+        "position": {
+          "x": -3600,
+          "y": 1550
+        },
+        "type": "valueLag"
+      },
+      "key": {
+        "definitionVersion": 1,
+        "id": "key",
+        "label": "key1",
+        "parameters": {
+          "color": [
+            0.55,
+            0.68,
+            1,
+            1
+          ],
+          "direction": [
+            0.22100788404893446,
+            -0.5525197101223362,
+            -0.8036650329052163
+          ],
+          "intensity": 3.2,
+          "kind": "directional",
+          "shadowExtent": 80,
+          "shadowSoftness": 1,
+          "shadows": true
+        },
+        "position": {
+          "x": -2600,
+          "y": -900
+        },
+        "type": "light"
+      },
+      "levels": {
+        "definitionVersion": 1,
+        "id": "levels",
+        "label": "levels1",
+        "parameters": {
+          "lag": 0.15,
+          "releaseRatio": 1
+        },
+        "position": {
+          "x": -3000,
+          "y": 1300
+        },
+        "type": "valueLag"
+      },
+      "machineGeo": {
+        "definitionVersion": 1,
+        "id": "machineGeo",
+        "label": "machinegeo1",
+        "parameters": {
+          "material": "steel1",
+          "mode": "surface"
+        },
+        "position": {
+          "x": -3000,
+          "y": 0
+        },
+        "type": "geometry"
+      },
+      "machines": {
+        "definitionVersion": 1,
+        "id": "machines",
+        "label": "machines1",
+        "parameters": {
+          "file": "media/furnace/furnace.glb",
+          "parts": "1:furnace_shell 2:electrode_1 3:electrode_2 4:electrode_3 5:furnace_roof 6:crane_bridge 7:crane_trolley 8:crane_hook 9:scrap_bucket 10:scrap_bucket_jaw_1 11:scrap_bucket_jaw_2 12:crane_ropes 13:crane2_bridge 14:crane2_trolley 15:crane2_hook 16:crane2_ropes 17:ladle_car 18:ladle 19:slag_pot 20:ladle_turret 21:caster_rollers_1 22:caster_rollers_2 23:caster_rollers_3 24:caster_rollers_4 25:caster_rollers_5 26:caster_strand 27:conveyor_belt",
+          "select": "part:*",
+          "triangles": 474674,
+          "vertices": 604647
+        },
+        "position": {
+          "x": -3600,
+          "y": 0
+        },
+        "type": "meshFileIn"
+      },
+      "opaque": {
+        "definitionVersion": 1,
+        "id": "opaque",
+        "label": "opaque1",
+        "parameters": {
+          "outa": "one"
+        },
+        "position": {
+          "x": -2100,
+          "y": 0
+        },
+        "type": "reorder"
+      },
+      "out": {
+        "definitionVersion": 1,
+        "id": "out",
+        "label": "out1",
+        "parameters": {
+          "toneMap": "none"
+        },
+        "position": {
+          "x": 300,
+          "y": 0
+        },
+        "type": "output"
+      },
+      "pickHits": {
+        "definitionVersion": 1,
+        "id": "pickHits",
+        "label": "pickhits1",
+        "parameters": {
+          "channels": "kickCount snareCount hatCount"
+        },
+        "position": {
+          "x": -3900,
+          "y": 1550
+        },
+        "type": "valueSelect"
+      },
+      "pickLevels": {
+        "definitionVersion": 1,
+        "id": "pickLevels",
+        "label": "picklevels1",
+        "parameters": {
+          "channels": "level low high"
+        },
+        "position": {
+          "x": -3900,
+          "y": 1300
+        },
+        "type": "valueSelect"
+      },
+      "plant": {
+        "definitionVersion": 1,
+        "id": "plant",
+        "label": "plant1",
+        "parameters": {
+          "file": "media/furnace/furnace.glb",
+          "parts": "1:furnace_shell 2:electrode_1 3:electrode_2 4:electrode_3 5:furnace_roof 6:crane_bridge 7:crane_trolley 8:crane_hook 9:scrap_bucket 10:scrap_bucket_jaw_1 11:scrap_bucket_jaw_2 12:crane_ropes 13:crane2_bridge 14:crane2_trolley 15:crane2_hook 16:crane2_ropes 17:ladle_car 18:ladle 19:slag_pot 20:ladle_turret 21:caster_rollers_1 22:caster_rollers_2 23:caster_rollers_3 24:caster_rollers_4 25:caster_rollers_5 26:caster_strand 27:conveyor_belt",
+          "select": "!part:*",
+          "triangles": 1099750,
+          "vertices": 1483340
+        },
+        "position": {
+          "x": -3600,
+          "y": -300
+        },
+        "type": "meshFileIn"
+      },
+      "plantGeo": {
+        "definitionVersion": 1,
+        "id": "plantGeo",
+        "label": "plantgeo1",
+        "parameters": {
+          "material": "steel1",
+          "mode": "surface"
+        },
+        "position": {
+          "x": -3000,
+          "y": -300
+        },
+        "type": "geometry"
+      },
+      "rank": {
+        "definitionVersion": 1,
+        "id": "rank",
+        "label": "rank1",
+        "parameters": {
+          "window": 16
+        },
+        "position": {
+          "x": -3300,
+          "y": 1300
+        },
+        "type": "valueNormalize"
+      },
+      "rig": {
+        "definitionVersion": 1,
+        "id": "rig",
+        "label": "rig1",
+        "parameters": {
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"normal\",\"type\":\"vec3f\",\"qualifier\":\"direction\",\"default\":[0,1,0]},{\"name\":\"uv\",\"type\":\"vec2f\",\"default\":[0,0]},{\"name\":\"surface\",\"type\":\"vec4f\",\"default\":[1,0,0,0]}]",
+          "bucketSway": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "sin(abstime * 0.9) * 0.03"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "capacity": 604647,
+          "casting": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "abstime * 0.4"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "conveyor": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "abstime * 1.2"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "crane2X": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "sin(abstime * 0.03 + 2.0) * 6"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "craneX": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "sin(abstime * 0.045) * 9"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "electrode1": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "-0.35 + op('hits1').chan.snareCount * 0.18 + sin(abstime * 3.1) * 0.03"
+              },
+              "static": {
+                "kind": "static",
+                "value": -0.35
+              }
+            },
+            "mode": "expression"
+          },
+          "electrode2": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "-0.3 + op('hits1').chan.snareCount * 0.14 + sin(abstime * 2.7 + 1.0) * 0.03"
+              },
+              "static": {
+                "kind": "static",
+                "value": -0.3
+              }
+            },
+            "mode": "expression"
+          },
+          "electrode3": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "-0.4 + op('hits1').chan.snareCount * 0.16 + sin(abstime * 3.4 + 2.0) * 0.03"
+              },
+              "static": {
+                "kind": "static",
+                "value": -0.4
+              }
+            },
+            "mode": "expression"
+          },
+          "hook": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "-2.5 + sin(abstime * 0.11) * 1.8"
+              },
+              "static": {
+                "kind": "static",
+                "value": -2.5
+              }
+            },
+            "mode": "expression"
+          },
+          "hook2": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "-1 + sin(abstime * 0.09) * 1.2"
+              },
+              "static": {
+                "kind": "static",
+                "value": -1
+              }
+            },
+            "mode": "expression"
+          },
+          "kernel": "// T1354b — the machine rig (generated by src/projects/furnace/rig-kernel.ts from the GLB).\n// Each vertex's part is surface.w; its motion applies about the part's REST pivot, then its\n// parent's, child first. Stateless: the rest pose is read from upstream every frame.\nstruct Params {\n  shellTilt: f32, // @default 0  Furnace shell tilt about the rocker, radians (+ tips toward the tap).\n  roofLift: f32, // @default 0  Roof lift, metres.\n  roofSwing: f32, // @default 0  Roof swing about its column, radians.\n  electrode1: f32, // @default 0  Electrode 1 travel, metres (negative = down into the bath).\n  electrode2: f32, // @default 0  Electrode 2 travel, metres.\n  electrode3: f32, // @default 0  Electrode 3 travel, metres.\n  craneX: f32, // @default 0  Scrap crane bridge travel along the bay, metres.\n  trolley: f32, // @default 0  Scrap crane trolley travel across the bridge, metres.\n  hook: f32, // @default 0  Scrap crane hook height, metres (negative lowers).\n  bucketSway: f32, // @default 0  Scrap bucket sway on the hook, radians.\n  bucketOpen: f32, // @default 0  Clamshell jaw opening, radians.\n  crane2X: f32, // @default 0  Ladle crane bridge travel, metres.\n  trolley2: f32, // @default 0  Ladle crane trolley travel, metres.\n  hook2: f32, // @default 0  Ladle crane hook height, metres.\n  ladleCar: f32, // @default 0  Ladle transfer car travel on its rails, metres.\n  ladleTilt: f32, // @default 0  Ladle pour tilt about the trunnions, radians.\n  slagTilt: f32, // @default 0  Slag pot tilt, radians.\n  turret: f32, // @default 0  Ladle turret rotation, radians.\n  casting: f32, // @default 0  Caster strand travel (uv scroll), metres.\n  conveyor: f32, // @default 0  Conveyor belt travel (uv scroll), metres.\n};\n\nconst RIG_PARTS: u32 = 28u;\nconst RIG_PARENT = array<u32, 28>(0u, 0u, 1u, 1u, 1u, 1u, 0u, 6u, 7u, 8u, 9u, 9u, 7u, 0u, 13u, 14u, 14u, 0u, 17u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u);\nconst RIG_PIVOT = array<vec3f, 28>(vec3f(0.0), vec3f(0.0000, 10.8000, 0.0000), vec3f(-0.5889, 9.4500, 0.3400), vec3f(0.0000, 9.4500, -0.6800), vec3f(0.5889, 9.4500, 0.3400), vec3f(4.4000, 12.5600, -5.9000), vec3f(-10.5000, 24.0000, 0.0000), vec3f(-10.5000, 26.6500, 4.2000), vec3f(-10.5000, 21.0000, 4.2000), vec3f(-10.5000, 19.5500, 4.2000), vec3f(-8.2500, 14.4500, 4.2000), vec3f(-12.7500, 14.4500, 4.2000), vec3f(-10.5000, 28.4500, 4.2000), vec3f(27.0000, 24.0000, 0.0000), vec3f(27.0000, 26.6500, -2.5000), vec3f(27.0000, 19.5000, -2.5000), vec3f(27.0000, 28.4500, -2.5000), vec3f(16.0000, 0.0000, 0.0000), vec3f(16.0000, 4.1200, 0.0000), vec3f(-8.3000, 2.4940, 0.0000), vec3f(38.0000, 12.0000, 0.4000), vec3f(38.1067, 9.5803, 6.0000), vec3f(38.9875, 6.7825, 6.0000), vec3f(40.7798, 4.2852, 6.0000), vec3f(43.1908, 2.5335, 6.0000), vec3f(45.9827, 1.6219, 6.0000), vec3f(38.0000, 11.0000, 6.0000), vec3f(-46.0000, 1.6000, 11.0000));\n\nfn axisAngle(axis: vec3f, angle: f32) -> mat3x3f {\n  let c = cos(angle);\n  let s = sin(angle);\n  let t = 1.0 - c;\n  let a = normalize(axis);\n  return mat3x3f(\n    vec3f(t * a.x * a.x + c, t * a.x * a.y + s * a.z, t * a.x * a.z - s * a.y),\n    vec3f(t * a.x * a.y - s * a.z, t * a.y * a.y + c, t * a.y * a.z + s * a.x),\n    vec3f(t * a.x * a.z + s * a.y, t * a.y * a.z - s * a.x, t * a.z * a.z + c),\n  );\n}\n\nfn moveOne(part: u32, p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let pivot = RIG_PIVOT[part];\n  switch part {\n    case 1u: { let r = axisAngle(vec3f(0.0, 0.0, 1.0), ctx.params.shellTilt); q.position = pivot + r * (q.position - pivot); q.normal = r * q.normal; }\n    case 5u: { let r = axisAngle(vec3f(0.0, 1.0, 0.0), ctx.params.roofSwing); q.position = pivot + r * (q.position - pivot) + vec3f(0.0, ctx.params.roofLift, 0.0); q.normal = r * q.normal; }\n    case 2u: { q.position = q.position + vec3f(0.0, 1.0, 0.0) * ctx.params.electrode1; }\n    case 3u: { q.position = q.position + vec3f(0.0, 1.0, 0.0) * ctx.params.electrode2; }\n    case 4u: { q.position = q.position + vec3f(0.0, 1.0, 0.0) * ctx.params.electrode3; }\n    case 6u: { q.position = q.position + vec3f(1.0, 0.0, 0.0) * ctx.params.craneX; }\n    case 7u: { q.position = q.position + vec3f(0.0, 0.0, -1.0) * ctx.params.trolley; }\n    case 8u: { q.position = q.position + vec3f(0.0, 1.0, 0.0) * ctx.params.hook; }\n    case 12u: { let stretch = max(0.01, (7.4500 - ctx.params.hook) / 7.4500); q.position.y = pivot.y + (q.position.y - pivot.y) * stretch; }\n    case 9u: { let r = axisAngle(vec3f(0.0, 0.0, 1.0), ctx.params.bucketSway); q.position = pivot + r * (q.position - pivot); q.normal = r * q.normal; }\n    case 10u: { let r = axisAngle(vec3f(0.0, 0.0, 1.0), ctx.params.bucketOpen); q.position = pivot + r * (q.position - pivot); q.normal = r * q.normal; }\n    case 11u: { let r = axisAngle(vec3f(0.0, 0.0, -1.0), ctx.params.bucketOpen); q.position = pivot + r * (q.position - pivot); q.normal = r * q.normal; }\n    case 13u: { q.position = q.position + vec3f(1.0, 0.0, 0.0) * ctx.params.crane2X; }\n    case 14u: { q.position = q.position + vec3f(0.0, 0.0, -1.0) * ctx.params.trolley2; }\n    case 15u: { q.position = q.position + vec3f(0.0, 1.0, 0.0) * ctx.params.hook2; }\n    case 16u: { let stretch = max(0.01, (8.9500 - ctx.params.hook2) / 8.9500); q.position.y = pivot.y + (q.position.y - pivot.y) * stretch; }\n    case 17u: { q.position = q.position + vec3f(1.0, 0.0, 0.0) * ctx.params.ladleCar; }\n    case 18u: { let r = axisAngle(vec3f(0.0, 0.0, 1.0), ctx.params.ladleTilt); q.position = pivot + r * (q.position - pivot); q.normal = r * q.normal; }\n    case 19u: { let r = axisAngle(vec3f(0.0, 0.0, 1.0), ctx.params.slagTilt); q.position = pivot + r * (q.position - pivot); q.normal = r * q.normal; }\n    case 20u: { let r = axisAngle(vec3f(0.0, 1.0, 0.0), ctx.params.turret); q.position = pivot + r * (q.position - pivot); q.normal = r * q.normal; }\n    case 21u: { q.uv.y = q.uv.y + ctx.params.casting; }\n    case 22u: { q.uv.y = q.uv.y + ctx.params.casting; }\n    case 23u: { q.uv.y = q.uv.y + ctx.params.casting; }\n    case 24u: { q.uv.y = q.uv.y + ctx.params.casting; }\n    case 25u: { q.uv.y = q.uv.y + ctx.params.casting; }\n    case 26u: { q.uv.x = q.uv.x + ctx.params.casting; }\n    case 27u: { q.uv.x = q.uv.x + ctx.params.conveyor; }\n    default: {}\n  }\n  return q;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  var part = u32(max(p.surface.w, 0.0) + 0.5);\n  // Child first, then each ancestor — at most six levels (hook ← trolley ← bridge).\n  for (var level = 0u; level < 6u; level = level + 1u) {\n    if (part == 0u || part >= RIG_PARTS) { break; }\n    q = moveOne(part, q, ctx);\n    part = RIG_PARENT[part];\n  }\n  return q;\n}",
+          "ladleTilt": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "max(sin(abstime * 0.05), 0.0) * 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "trolley": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "sin(abstime * 0.07 + 1.3) * 2.5"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -3300,
+          "y": 0
+        },
+        "type": "pointKernel"
+      },
+      "shot": {
+        "definitionVersion": 1,
+        "id": "shot",
+        "label": "shot1",
+        "parameters": {
+          "ambientColor": [
+            0.5,
+            0.55,
+            0.65,
+            1
+          ],
+          "ambientIntensity": 0.03,
+          "ambientOcclusion": true,
+          "antialias": "msaa",
+          "aoRadius": 0.8,
+          "background": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "camera": "cam1",
+          "depthOutput": true,
+          "environmentIntensity": 1,
+          "environmentTaps": 12,
+          "lights": "key1 furnace1 arc1 slag1 tap1 tundish1 bay11 bay21 bay31 bay41",
+          "scenes": "plantgeo1 machinegeo1 sparkgeo1"
+        },
+        "position": {
+          "x": -2400,
+          "y": 0
+        },
+        "type": "render"
+      },
+      "slag": {
+        "definitionVersion": 1,
+        "id": "slag",
+        "label": "slag1",
+        "parameters": {
+          "color": [
+            1,
+            0.42,
+            0.12,
+            1
+          ],
+          "intensity": 110,
+          "kind": "point",
+          "position": [
+            -5.099999904632568,
+            9.199999809265137,
+            0
+          ]
+        },
+        "position": {
+          "x": -2000,
+          "y": -900
+        },
+        "type": "light"
+      },
+      "smooth": {
+        "definitionVersion": 1,
+        "id": "smooth",
+        "label": "smooth1",
+        "parameters": {
+          "lag": 0.08,
+          "releaseRatio": 1
+        },
+        "position": {
+          "x": -3600,
+          "y": 1300
+        },
+        "type": "valueLag"
+      },
+      "sparkGeo": {
+        "definitionVersion": 1,
+        "id": "sparkGeo",
+        "label": "sparkgeo1",
+        "parameters": {
+          "blend": "additive",
+          "endpoint": "endpoint",
+          "material": "sparkmat1",
+          "mode": "beam",
+          "scale": 0.012,
+          "taper": 0.3,
+          "tint": {
+            "bindings": {
+              "map": {
+                "attribute": "tint",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  1,
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            "mode": "map"
+          }
+        },
+        "position": {
+          "x": -3000,
+          "y": 400
+        },
+        "type": "geometry"
+      },
+      "sparkMat": {
+        "definitionVersion": 1,
+        "id": "sparkMat",
+        "label": "sparkmat1",
+        "parameters": {
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "position": {
+          "x": -3000,
+          "y": 700
+        },
+        "type": "materialUnlit"
+      },
+      "sparks": {
+        "definitionVersion": 1,
+        "id": "sparks",
+        "label": "sparks1",
+        "parameters": {
+          "arcRate": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.05 + op('hits1').chan.hatCount * 0.5"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.12
+              }
+            },
+            "mode": "expression"
+          },
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"endpoint\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0,0,0,0]}]",
+          "brightness": 9,
+          "capacity": 8000,
+          "kernel": "// T1354b — furnace sparks (generated by src/projects/furnace/sparks-kernel.ts from the GLB markers).\nstruct Params {\n  tapRate: f32, // @default 0.3  Share of this emitter's sparks alive (0..1).\n  slagRate: f32, // @default 0.3  Share of this emitter's sparks alive (0..1).\n  arcRate: f32, // @default 0.3  Share of this emitter's sparks alive (0..1).\n  torchRate: f32, // @default 0.3  Share of this emitter's sparks alive (0..1).\n  pourRate: f32, // @default 0.3  Share of this emitter's sparks alive (0..1).\n  brightness: f32, // @default 6  HDR radiance of a fresh spark.\n  streak: f32, // @default 0.035  Streak length in seconds of flight.\n  gravity: f32, // @default 9.81  Metres per second squared.\n};\n\nconst EMITTER_COUNT: u32 = 8u;\nconst EMITTER_ORIGIN = array<vec3f, 8>(vec3f(4.9500, 6.3000, 0.0000), vec3f(-5.0000, 9.3000, 0.0000), vec3f(-0.5889, 9.4500, 0.3400), vec3f(0.0000, 9.4500, -0.6800), vec3f(0.5889, 9.4500, 0.3400), vec3f(3.9000, 12.5500, 0.0000), vec3f(56.5000, 1.3750, 6.0000), vec3f(18.3300, 5.7000, 0.0000));\nconst EMITTER_DIRECTION = array<vec3f, 8>(vec3f(0.9439, 0.3304, 0.0000), vec3f(-0.8944, 0.4472, 0.0000), vec3f(0.0000, 1.0000, 0.0000), vec3f(0.0000, 1.0000, 0.0000), vec3f(0.0000, 1.0000, 0.0000), vec3f(0.2873, 0.9578, 0.0000), vec3f(0.0000, 0.1961, 0.9806), vec3f(0.9806, 0.1961, 0.0000));\n// spread (radians), speed min, speed max, life min\nconst EMITTER_TUNING = array<vec4f, 8>(vec4f(0.550, 4.00, 9.00, 0.80), vec4f(0.700, 3.00, 8.00, 0.70), vec4f(1.100, 6.00, 14.00, 0.25), vec4f(1.100, 6.00, 14.00, 0.25), vec4f(1.100, 6.00, 14.00, 0.25), vec4f(0.600, 4.00, 9.00, 0.30), vec4f(0.350, 3.00, 7.00, 0.50), vec4f(0.600, 2.00, 6.00, 0.80));\nconst EMITTER_LIFE_MAX = array<f32, 8>(1.80, 1.60, 0.70, 0.70, 0.70, 0.80, 1.20, 1.60);\nconst DRAG: f32 = 0.9;\nconst FLOOR: f32 = 0.03;\n\nfn emitterRate(index: u32, ctx: PointCtx) -> f32 {\n  switch index {\n    case 0u: { return ctx.params.tapRate; }\n    case 1u: { return ctx.params.slagRate; }\n    case 2u: { return ctx.params.arcRate; }\n    case 3u: { return ctx.params.arcRate; }\n    case 4u: { return ctx.params.arcRate; }\n    case 5u: { return ctx.params.arcRate; }\n    case 6u: { return ctx.params.torchRate; }\n    case 7u: { return ctx.params.pourRate; }\n    default: { return 0.0; }\n  }\n}\n\nfn sparkHash(a: u32, b: u32) -> f32 {\n  var h = a * 747796405u + b * 2891336453u + 12345u;\n  h = ((h >> ((h >> 28u) + 4u)) ^ h) * 277803737u;\n  h = (h >> 22u) ^ h;\n  return f32(h) / 4294967295.0;\n}\n\n// Blackbody-ish ramp for a cooling spark: white-yellow fresh, deep orange, then red.\nfn sparkHeat(heat: f32) -> vec3f {\n  let h = clamp(heat, 0.0, 1.0);\n  return mix(vec3f(1.0, 0.18, 0.02), mix(vec3f(1.0, 0.55, 0.12), vec3f(1.0, 0.92, 0.7), smoothstep(0.55, 1.0, h)), smoothstep(0.0, 0.55, h));\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let id = ctx.index;\n  let emitter = id % EMITTER_COUNT;\n  let tuning = EMITTER_TUNING[emitter];\n  let life = mix(tuning.w, EMITTER_LIFE_MAX[emitter], sparkHash(id, 1u));\n  let clock = ctx.absTime / life + sparkHash(id, 2u);\n  let cycle = u32(floor(clock));\n  let t = fract(clock) * life;\n  let origin = EMITTER_ORIGIN[emitter];\n  let alive = sparkHash(id, cycle * 7u + 3u) < clamp(emitterRate(emitter, ctx), 0.0, 1.0);\n  if (!alive) {\n    q.position = origin;\n    q.endpoint = origin;\n    q.tint = vec4f(0.0);\n    return q;\n  }\n  // Launch: a cone around the emitter's direction, re-rolled every cycle.\n  let axis = EMITTER_DIRECTION[emitter];\n  let helper = select(vec3f(0.0, 1.0, 0.0), vec3f(1.0, 0.0, 0.0), abs(axis.y) > 0.9);\n  let side = normalize(cross(axis, helper));\n  let up = cross(side, axis);\n  let angle = sparkHash(id, cycle * 7u + 4u) * 6.2831853;\n  let tilt = sqrt(sparkHash(id, cycle * 7u + 5u)) * tuning.x;\n  let direction = normalize(axis * cos(tilt) + (side * cos(angle) + up * sin(angle)) * sin(tilt));\n  let speed = mix(tuning.y, tuning.z, sparkHash(id, cycle * 7u + 6u));\n  let v0 = direction * speed;\n  // Linear drag, closed form: x(t) = x0 + (v0 + g/k)(1 − e^{−kt})/k − (g/k) t.\n  let g = vec3f(0.0, -ctx.params.gravity, 0.0);\n  let decay = exp(-DRAG * t);\n  var position = origin + (v0 + g / DRAG) * (1.0 - decay) / DRAG - (g / DRAG) * t;\n  var velocity = (v0 + g / DRAG) * decay - g / DRAG;\n  // One bounce: fold below the floor, keep a third of the height and slow the skid.\n  if (position.y < FLOOR) {\n    position = vec3f(origin.x + (position.x - origin.x) * 0.85, FLOOR + (FLOOR - position.y) * 0.3, origin.z + (position.z - origin.z) * 0.85);\n    velocity = vec3f(velocity.x * 0.5, -velocity.y * 0.3, velocity.z * 0.5);\n  }\n  let heat = 1.0 - t / life;\n  q.position = position;\n  q.endpoint = position - velocity * ctx.params.streak;\n  // Cooling is fast: a spark is white-hot on the way up and nearly out by the time it falls.\n  q.tint = vec4f(sparkHeat(heat) * ctx.params.brightness * heat * heat * heat, 1.0);\n  return q;\n}",
+          "pourRate": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "max(sin(abstime * 0.05), 0.0) * 0.6"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "slagRate": 0.12,
+          "tapRate": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.08 + op('hits1').chan.kickCount * 0.8"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.15
+              }
+            },
+            "mode": "expression"
+          },
+          "torchRate": 0.35
+        },
+        "position": {
+          "x": -3300,
+          "y": 400
+        },
+        "type": "pointKernel"
+      },
+      "steel": {
+        "definitionVersion": 1,
+        "id": "steel",
+        "label": "steel1",
+        "parameters": {
+          "heatPulse": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('levels1').chan.low * 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.1
+              }
+            },
+            "mode": "expression"
+          },
+          "model": "pbr",
+          "source": "struct Params {\n  soot: f32, // @default 0.55  Soot darkening overall (0 clean .. 1 black).\n  sootHeight: f32, // @default 18  Height in metres where soot is heaviest.\n  furnaceSoot: f32, // @default 0.5  Extra soot near the furnace (within ~25 m).\n  dust: f32, // @default 0.35  Pale dust on up-facing surfaces.\n  streaks: f32, // @default 0.45  Rust-dark streaks down vertical faces.\n  heatGlow: f32, // @default 3.5  Radiance of the hottest molten steel.\n  heatFlow: f32, // @default 0.35  How fast the molten surface flows, metres per second.\n  heatPulse: f32, // @default 0  Extra heat on the whole melt (the audio's handle).\n  crust: f32, // @default 0.8  How much cooling crust (floating slag) forms over the molten surface.\n};\n\nfn furnaceHash3(p: vec3f) -> f32 {\n  var q = fract(p * vec3f(0.1031, 0.1030, 0.0973));\n  q = q + dot(q, q.yxz + 33.33);\n  return fract((q.x + q.y) * q.z);\n}\n\nfn furnaceNoise3(p: vec3f) -> f32 {\n  let i = floor(p);\n  let f = fract(p);\n  let u = f * f * (3.0 - 2.0 * f);\n  let n000 = furnaceHash3(i);\n  let n100 = furnaceHash3(i + vec3f(1.0, 0.0, 0.0));\n  let n010 = furnaceHash3(i + vec3f(0.0, 1.0, 0.0));\n  let n110 = furnaceHash3(i + vec3f(1.0, 1.0, 0.0));\n  let n001 = furnaceHash3(i + vec3f(0.0, 0.0, 1.0));\n  let n101 = furnaceHash3(i + vec3f(1.0, 0.0, 1.0));\n  let n011 = furnaceHash3(i + vec3f(0.0, 1.0, 1.0));\n  let n111 = furnaceHash3(i + vec3f(1.0, 1.0, 1.0));\n  return mix(\n    mix(mix(n000, n100, u.x), mix(n010, n110, u.x), u.y),\n    mix(mix(n001, n101, u.x), mix(n011, n111, u.x), u.y),\n    u.z,\n  );\n}\n\nfn furnaceFbm(p: vec3f) -> f32 {\n  var sum = 0.0;\n  var amplitude = 0.5;\n  var q = p;\n  for (var octave = 0; octave < 4; octave = octave + 1) {\n    sum = sum + amplitude * furnaceNoise3(q);\n    q = q * 2.03 + vec3f(17.1, 3.7, 9.2);\n    amplitude = amplitude * 0.5;\n  }\n  return sum;\n}\n\n// Temperature 0..1 to linear radiance colour: dull red, orange, yellow, near-white.\nfn blackbody(t: f32) -> vec3f {\n  let x = clamp(t, 0.0, 1.0);\n  let red = vec3f(0.55, 0.04, 0.005);\n  let orange = vec3f(1.0, 0.28, 0.03);\n  let yellow = vec3f(1.0, 0.66, 0.2);\n  let white = vec3f(1.0, 0.93, 0.78);\n  return mix(mix(red, orange, smoothstep(0.0, 0.35, x)), mix(yellow, white, smoothstep(0.75, 1.0, x)), smoothstep(0.35, 0.75, x));\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let heat = s.attr.z;\n  if (heat > 0.01 && heat < 0.9) {\n    // HOT SOLID (refractory, graphite, hot slag): glows where it is hottest, cracks glow\n    // brighter, and nothing flows — a lining, not a liquid.\n    let grain = furnaceFbm(s.world * 2.2);\n    let cracks = 1.0 - smoothstep(0.015, 0.06, abs(furnaceFbm(s.world * 0.9) - 0.5));\n    let temperature = clamp(heat * (0.7 + 0.5 * grain) + cracks * 0.3 * heat + p.heatPulse * 0.25, 0.0, 1.0);\n    o.emissive = blackbody(temperature * 0.85) * p.heatGlow * 0.6 * temperature * temperature * temperature;\n    o.albedo = vec4f(s.albedo.rgb * 0.5, s.albedo.a);\n    o.roughness = 0.9;\n    o.metallic = 0.0;\n    return o;\n  }\n  if (heat >= 0.9) {\n    // MOLTEN: a field advected along the surface, domain-warped so it folds and cracks.\n    let flow = vec3f(s.absTime * p.heatFlow, 0.0, s.absTime * p.heatFlow * 0.6);\n    let warp = furnaceFbm(s.world * 0.6 + flow * 0.5);\n    let field = furnaceFbm(s.world * 1.3 + vec3f(warp * 2.0) - flow);\n    let cracks = 1.0 - smoothstep(0.02, 0.09, abs(field - 0.5));\n    // Liquid steel is near-uniformly white-hot; the field only ripples it.\n    let temperature = clamp(heat * (0.85 + 0.2 * field) + cracks * 0.1 + p.heatPulse * 0.3, 0.0, 1.2);\n    // Slag floats in rafts: a slower, larger field decides where the skin is thick.\n    let rafts = smoothstep(0.42, 0.62, furnaceFbm(s.world * 0.45 - flow * 0.3));\n    let skin = clamp(max(smoothstep(0.35, 0.6, field) * 0.6, rafts) * p.crust * (1.0 - p.heatPulse * 0.6) * (1.0 - cracks * 0.8), 0.0, 1.0);\n    let glow = blackbody(temperature * (1.0 - skin * 0.45)) * p.heatGlow * temperature * temperature * (1.0 - skin * 0.96);\n    o.emissive = glow;\n    o.albedo = vec4f(mix(vec3f(0.05, 0.045, 0.04), s.albedo.rgb * 0.3, 0.3) * (0.4 + skin), s.albedo.a);\n    o.roughness = mix(0.25, 0.85, skin);\n    o.metallic = 0.0;\n    return o;\n  }\n  // COLD STEEL: soot by height and by nearness to the furnace, dust on top faces, streaks down walls.\n  let up = clamp(s.normal.y, -1.0, 1.0);\n  let heightSoot = smoothstep(2.0, p.sootHeight, s.world.y);\n  let nearFurnace = 1.0 - smoothstep(6.0, 26.0, length(s.world.xz));\n  let blotch = furnaceFbm(s.world * 0.35);\n  let sootAmount = clamp(p.soot * (0.35 + 0.65 * heightSoot) * (0.6 + 0.8 * blotch) + p.furnaceSoot * nearFurnace * blotch, 0.0, 0.95);\n  let vertical = 1.0 - abs(up);\n  let streak = smoothstep(0.55, 0.8, furnaceFbm(vec3f(s.world.x * 3.1, s.world.y * 0.18, s.world.z * 3.1))) * vertical * p.streaks;\n  let dustAmount = smoothstep(0.55, 0.95, up) * p.dust * (0.5 + blotch);\n  var albedo = s.albedo.rgb;\n  albedo = mix(albedo, albedo * vec3f(0.55, 0.42, 0.32), streak);\n  albedo = mix(albedo, vec3f(0.018, 0.016, 0.015), sootAmount);\n  albedo = mix(albedo, vec3f(0.34, 0.31, 0.27), dustAmount);\n  o.albedo = vec4f(albedo, s.albedo.a);\n  o.roughness = clamp(s.roughness + sootAmount * 0.3 + dustAmount * 0.4 - streak * 0.1, 0.05, 1.0);\n  o.metallic = s.metallic * (1.0 - dustAmount) * (1.0 - sootAmount * 0.5);\n  return o;\n}"
+        },
+        "position": {
+          "x": -3000,
+          "y": -600
+        },
+        "type": "materialWgsl"
+      },
+      "tap": {
+        "definitionVersion": 1,
+        "id": "tap",
+        "label": "tap1",
+        "parameters": {
+          "color": [
+            1,
+            0.55,
+            0.2,
+            1
+          ],
+          "intensity": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "30 + op('hits1').chan.kickCount * 120"
+              },
+              "static": {
+                "kind": "static",
+                "value": 45
+              }
+            },
+            "mode": "expression"
+          },
+          "kind": "point",
+          "position": [
+            5.25,
+            4.400000095367432,
+            0
+          ]
+        },
+        "position": {
+          "x": -1800,
+          "y": -900
+        },
+        "type": "light"
+      },
+      "tundish": {
+        "definitionVersion": 1,
+        "id": "tundish",
+        "label": "tundish1",
+        "parameters": {
+          "color": [
+            1,
+            0.5,
+            0.18,
+            1
+          ],
+          "intensity": 45,
+          "kind": "point",
+          "position": [
+            38,
+            14.199999809265137,
+            6
+          ]
+        },
+        "position": {
+          "x": -1600,
+          "y": -900
+        },
+        "type": "light"
+      }
+    },
+    "revision": 1
+  },
+  "name": "Furnace",
+  "projectId": "project-furnace",
+  "schemaVersion": 3,
+  "settings": {
+    "limits": {
+      "maxBufferBytes": 268435456,
+      "maxDispatch": 65535,
+      "maxResolution": 4096,
+      "memoryBudgetBytes": 1073741824
+    },
+    "outputResolution": {
+      "height": 1080,
+      "width": 1920
+    },
+    "previewFps": 30,
+    "previewLongEdge": 192,
+    "randomSeed": 11,
+    "workingFormat": "rgba16float"
+  },
+  "updatedAt": "2026-09-24T00:00:00.000Z"
+}

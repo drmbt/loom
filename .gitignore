@@ -83,3 +83,6 @@ scratchpad/
 renders/
 exports/
 *.loomz
+
+# T1354b: the furnace GLB is a build product of tools/blender/furnace (~100 MB)
+public/media/furnace/
