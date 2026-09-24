@@ -300,6 +300,13 @@ const CLOCK_OWNERSHIP: Readonly<Record<string, "free-running" | "timeline-anchor
   // T1348b: Tail's fall and Beat's hold-off both count `deltaSeconds` and read no clock
   // position, so a lap is one real step through a tail or a hold-off, never a restart.
   valueTail: "delta-driven",
+  // T1370b: the structure set keeps its own clock from the frame step (window history, a
+  // counter's "since"); Delay counts frames, not seconds.
+  valueTrend: "delta-driven",
+  valueRate: "delta-driven",
+  valueNovelty: "delta-driven",
+  valueCount: "delta-driven",
+  valueDelay: "delta-driven",
   valueBeat: "delta-driven",
   // CLOCKLESS: reads no clock. A loop cannot reach them.
   constant: "clockless",

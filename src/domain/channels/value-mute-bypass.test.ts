@@ -394,6 +394,14 @@ describe("EVERY value node honours mute and bypass (T541, §V437)", () => {
      */
     controls: "cutoff",
     cutoffRest: 0.53,
+    /*
+     * T1370b: Novelty compares a RECENT window against the REFERENCE before it, and with
+     * nothing in the reference it honestly reads 0. Windows shorter than one frame put the
+     * first frame in the reference and the second in the recent, so the moving pointer is
+     * novel on frame two. No other node has these parameters.
+     */
+    recent: 0.01,
+    reference: 0.01,
   };
 
   const evaluateOne = (

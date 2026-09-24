@@ -177,6 +177,13 @@ describe("core catalogue (T70, T40)", () => {
       "valueRange",
       "valueTail",
       "valueBeat",
+      // T1370b: the structure set — what a track does over seconds (trend, rate, novelty,
+      // a cut counter with its clock, a frame delay), the director's parts.
+      "valueTrend",
+      "valueRate",
+      "valueNovelty",
+      "valueCount",
+      "valueDelay",
       // T414: sound as channels — the value family's third input source after Mouse
       // and the trio. Deliberately named for what it IS, not a TD analog.
       "audioIn",
@@ -325,6 +332,11 @@ describe("reset is exposed where it is declared (§V123, T216)", () => {
     valueSpeed: "no command can reach one value node's state; the feedback table holds textures",
     valueTail: "no command can reach one value node's state; the feedback table holds textures",
     valueBeat: "no command can reach one value node's state; the feedback table holds textures",
+    valueTrend: "no command can reach one value node's state; the feedback table holds textures",
+    valueRate: "no command can reach one value node's state; the feedback table holds textures",
+    valueNovelty: "no command can reach one value node's state; the feedback table holds textures",
+    valueCount: "no command can reach one value node's state; the feedback table holds textures",
+    valueDelay: "no command can reach one value node's state; the feedback table holds textures",
   };
 
   it("every stateful node either fires a reset or is a listed gap", () => {
@@ -410,6 +422,11 @@ describe("T438 (§V316) — the channel publishers are DECLARED, not a category"
         "valueSlope",
         "valueTail",
         "valueBeat",
+        "valueTrend",
+        "valueRate",
+        "valueNovelty",
+        "valueCount",
+        "valueDelay",
         "valueStep",
         "valueSwitch",
         "valueTrigger",

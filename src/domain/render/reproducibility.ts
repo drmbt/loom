@@ -352,6 +352,12 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   // replays deterministically from a reset, Lag's shape exactly.
   valueRange: "pure",
   valueTail: "pure",
+  // T1370b: the structure set — stateful, delta-driven, deterministic replay from a reset.
+  valueTrend: "pure",
+  valueRate: "pure",
+  valueNovelty: "pure",
+  valueCount: "pure",
+  valueDelay: "pure",
   valueBeat: "pure",
   valueSelect: "pure",
   audioPattern: "pure",
