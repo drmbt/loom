@@ -106,11 +106,11 @@ describe("§T1210 — a freshly created node already has knobs", () => {
    */
   it("finds the shipped starter shaders at all", () => {
     expect(STARTERS.map((starter) => `${starter.definition.type}.${starter.key}`).sort()).toEqual(
-      expect.arrayContaining(["customWgsl.source", "materialWgsl.source", "pointKernel.kernel", "pointKernelAdvanced.kernel"]),
+      expect.arrayContaining(["customWgsl.source", "customWgslMulti.source", "materialWgsl.source", "pointKernel.kernel", "pointKernelAdvanced.kernel"]),
     );
     // The empty-defaulted `wgsl` parameters are NOT subjects: `group` and `spawn` are opt-in
     // predicates. If the filter ever stopped excluding them this count would move.
-    expect(STARTERS).toHaveLength(4);
+    expect(STARTERS).toHaveLength(5);
   });
 
   it.each(STARTERS.map((starter) => [starter.definition.type, starter] as const))(

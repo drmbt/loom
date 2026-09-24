@@ -148,6 +148,7 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   rectangle: "none",
   text: "none",
   customWgsl: "none",
+  customWgslMulti: "none",
   // Geometry, colour, filters, composites.
   transform: "none",
   flip: "none",

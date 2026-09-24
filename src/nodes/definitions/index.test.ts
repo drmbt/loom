@@ -28,6 +28,8 @@ describe("the code-parameter census (T492)", () => {
       .sort();
     expect(census).toEqual([
       "customWgsl.source:wgsl",
+      // T1365b: Custom WGSL with more inputs carries the same source parameter.
+      "customWgslMulti.source:wgsl",
       // T1355b: a material whose surface is authored code.
       "materialWgsl.source:wgsl",
       // T942: the MIDI-learn table. Declared code/json for the same reason the attribute

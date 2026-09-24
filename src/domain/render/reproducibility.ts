@@ -186,6 +186,8 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   // same graph and the same compiler, not about font portability).
   text: "pure",
   customWgsl: "pure",
+  // T1365b: Custom WGSL with more inputs — the same shader contract, the same clocks.
+  customWgslMulti: "pure",
   // Geometry, colour, filters, composites: all sampled functions of their inputs.
   transform: "pure",
   flip: "pure",

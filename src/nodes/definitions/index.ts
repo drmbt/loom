@@ -1,6 +1,6 @@
 import type { NodeDefinition } from "../../domain/types/node-definition.ts";
 import { solidNode } from "./solid.ts";
-import { customWgslNode } from "./custom-wgsl.ts";
+import { customWgslMultiNode, customWgslNode } from "./custom-wgsl.ts";
 import { outputNode } from "./output.ts";
 import { noiseNode } from "./noise.ts";
 import { generatorNodes } from "./generators.ts";
@@ -131,7 +131,7 @@ export {
   valueBeatNode,
   valueGraphNodeDefinitions,
 } from "./value-graph-nodes.ts";
-export { customWgslNode } from "./custom-wgsl.ts";
+export { customWgslMultiNode, customWgslNode } from "./custom-wgsl.ts";
 export { outputNode } from "./output.ts";
 export { isSinkNode, SINK_TAG } from "./sink.ts";
 export { RGBA_TEXTURE, MAX_TEXTURE_INPUTS } from "./common-ports.ts";
@@ -301,5 +301,6 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
  */
 export const allNodeDefinitions: readonly NodeDefinition[] = [
   ...spikeNodeDefinitions,
+  customWgslMultiNode,
   ...coreNodeDefinitions,
 ];

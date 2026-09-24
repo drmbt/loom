@@ -2,7 +2,7 @@ import type { NodeDefinition, CompiledNodeDescription } from "../../domain/types
 import type { EffectPassDescriptor } from "../../runtime/backend/plan.ts";
 import { SHADER_SOURCE_PARAMETER } from "../../domain/commands/apply-patch.ts";
 import { codeParametersLast } from "../../domain/parameters/code.ts";
-import { RGBA_TEXTURE } from "./common-ports.ts";
+import { DATA_TEXTURE, RGBA_TEXTURE } from "./common-ports.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { declaredNames, resolveSharedModules, SHARED_WGSL_MODULES } from "../shaders/shared-modules.ts";
 import {
@@ -221,7 +221,7 @@ export const customWgslNode: NodeDefinition = {
   resolutionPolicy: { kind: "inherit", input: "input" },
   formatPolicy: { kind: "inherit", input: "input" },
   compile(context): CompiledNodeDescription {
-    const { nodeId, outputs, inputs, parameters } = readCompileInputs(context);
+    const { nodeId, outputs, inputs, inputEdges, parameters } = readCompileInputs(context);
     const target = outputs["out"];
     const source = inputs["input"];
     if (target === undefined || source === undefined) {
@@ -337,12 +337,41 @@ export const customWgslNode: NodeDefinition = {
     // control lands here.
     const uniforms: Record<string, number | readonly number[]> = reflectedUniforms(fields, parameters);
 
+    /* T1365b: the extra inputs the source declares. A declared one with nothing wired is
+       refused by name — it would read an unbound texture, which is a pipeline error with no
+       node attached, or worse a silent black. */
+    const extraTextures: Array<{ binding: string; resourceId: string; sampled: "unfiltered" }> = [];
+    const more = inputEdges["more"] ?? [];
+    for (const index of [1, 2, 3]) {
+      const binding = `inputTexture${index}`;
+      if (!new RegExp(`var\\s+${binding}\\s*:`).test(expanded.toString())) continue;
+      const wired = more[index - 1];
+      if (wired === undefined) {
+        return {
+          passes: [],
+          diagnostics: [
+            {
+              severity: "error",
+              code: CUSTOM_WGSL_MODULE_CODE,
+              message: `Node "${nodeId}": the source reads \`${binding}\` but More has only ${more.length} connection(s).`,
+              nodeId,
+              suggestion:
+                more.length === 0 && inputEdges["more"] === undefined
+                  ? `Use Custom WGSL · Multi (its More input feeds inputTexture1..3), or remove the \`${binding}\` declaration.`
+                  : `Wire ${index} texture(s) into More (edge order is binding order), or remove the \`${binding}\` declaration.`,
+            },
+          ],
+        };
+      }
+      extraTextures.push({ binding, resourceId: wired.resource, sampled: "unfiltered" });
+    }
+
     const pass: EffectPassDescriptor = {
       kind: "effect",
       id: `${nodeId}:custom`,
       shader: expanded,
       target,
-      textures: [{ binding: CUSTOM_WGSL_TEXTURE_BINDING, resourceId: source.resource }],
+      textures: [{ binding: CUSTOM_WGSL_TEXTURE_BINDING, resourceId: source.resource }, ...extraTextures],
       samplers: [{ binding: CUSTOM_WGSL_SAMPLER_BINDING, resourceId: source.sampler }],
       ...(Object.keys(uniforms).length > 0
         ? { uniformBinding: CUSTOM_WGSL_UNIFORM_BINDING, uniforms }
@@ -355,4 +384,34 @@ export const customWgslNode: NodeDefinition = {
     };
     return viewDiagnostics.length === 0 ? { passes: [pass] } : { passes: [pass], diagnostics: viewDiagnostics };
   },
+};
+
+/**
+ * T1365b — CUSTOM WGSL · MULTI: the same node with up to three more images. A depth, a
+ * normal buffer, a history — so a pass that needs more than one image no longer packs depth
+ * into alpha. A SIBLING rather than a port on Custom WGSL on purpose: node cards are sized by
+ * their sockets and shipped layouts are gated on those sizes (§V389), so one more socket on
+ * every Custom WGSL would move every shipped document that holds one. Same compile, same
+ * reflection, same contract; `More` is one variadic, DATA-typed socket (read raw, whatever
+ * the source space, §V57c) whose edges bind in order as inputTexture1..3, unfilterable, so
+ * the shader reads them with textureLoad. Each binds only when the source declares it.
+ */
+export const customWgslMultiNode: NodeDefinition = {
+  ...customWgslNode,
+  type: "customWgslMulti",
+  title: "Custom WGSL · Multi",
+  description:
+    "Custom WGSL with up to three more texture inputs: edges into More bind, in order, as inputTexture1..3 (declare them, read them with textureLoad — depth and other float data work). Otherwise identical to Custom WGSL.",
+  inputs: [
+    { id: "input", label: "Input", type: RGBA_TEXTURE },
+    {
+      id: "more",
+      label: "More",
+      optional: true,
+      variadic: true,
+      type: DATA_TEXTURE,
+      description:
+        "Up to three more textures, in edge order, as inputTexture1, inputTexture2, inputTexture3. Declare `var inputTexture1: texture_2d<f32>;` and read it with textureLoad (bound unfilterable). Each keeps its own resolution.",
+    },
+  ],
 };

@@ -97,6 +97,7 @@ describe("T1052 — a node's code editors sort last", () => {
   it("covers every node type in the catalogue that declares one", () => {
     expect(WITH_CODE.map((definition) => definition.type).sort()).toEqual([
       "customWgsl",
+      "customWgslMulti",
       "materialWgsl",
       "midiIn",
       "pointKernel",
@@ -104,6 +105,7 @@ describe("T1052 — a node's code editors sort last", () => {
     ]);
     expect(REFLECTING.map((definition) => definition.type).sort()).toEqual([
       "customWgsl",
+      "customWgslMulti",
       "materialWgsl",
       "pointKernel",
       "pointKernelAdvanced",
