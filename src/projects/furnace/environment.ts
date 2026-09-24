@@ -30,12 +30,12 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let phi = (uv.x - 0.5) * 6.2831853;
   let theta = uv.y * 3.1415927;
   let d = vec3f(sin(theta) * sin(phi), cos(theta), -sin(theta) * cos(phi));
-  var radiance = mix(vec3f(0.035, 0.022, 0.014) * params.floorBounce / 0.035, vec3f(0.6, 0.66, 0.78) * params.roof, smoothstep(-0.2, 0.3, d.y));
+  var radiance = mix(vec3f(0.035, 0.026, 0.018) * params.floorBounce / 0.035, vec3f(0.62, 0.64, 0.68) * params.roof, smoothstep(-0.2, 0.3, d.y));
   // Side windows: horizontal bands facing ±Z, between low and high elevation, mullioned.
   let side = abs(d.z);
   let band = smoothstep(0.05, 0.12, d.y) * (1.0 - smoothstep(0.32, 0.42, d.y)) * smoothstep(0.55, 0.8, side);
   let mullions = step(0.18, fract(atan2(d.x, side) * 7.0));
-  radiance = radiance + vec3f(0.7, 0.8, 1.0) * params.windows * band * mullions;
+  radiance = radiance + vec3f(0.82, 0.88, 1.0) * params.windows * band * mullions;
   // Skylights: a strip along the roof ridge (X).
   let ridge = smoothstep(0.85, 0.97, d.y) * (1.0 - smoothstep(0.08, 0.2, abs(d.z)));
   radiance = radiance + vec3f(0.75, 0.82, 1.0) * params.skylights * ridge * step(0.4, fract(d.x * 3.0));

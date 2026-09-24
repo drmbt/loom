@@ -10,6 +10,7 @@ import { PLANT_SURFACE_WGSL } from "./surface-material.ts";
 import { KEY_DIRECTION, SCATTER_LIGHTS, atmosphereWgsl } from "./atmosphere.ts";
 import { BRIGHT_PASS_WGSL, GRADE_WGSL } from "./post.ts";
 import { SHOP_ENVIRONMENT_WGSL } from "./environment.ts";
+import { DOF_WGSL, GTAO_WGSL, SSR_WGSL } from "./screen-space.ts";
 
 /**
  * T1354b — THE FURNACE DOCUMENT: the melt shop, lit, running, in smoke, graded.
@@ -74,7 +75,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   pointLight("slag", "light.slag_door", [1, 0.42, 0.12], 110, -2000, 25);
   pointLight("tap", "light.tap", [1, 0.55, 0.2], expressionSlot(`30 + ${HIT("kickCount")} * 120`, 45), -1800, 20);
   pointLight("tundish", "light.tundish", [1, 0.5, 0.18], 45, -1600);
-  for (let bay = 1; bay <= 4; bay += 1) pointLight(`bay${bay}`, `light.high_bay_${bay}`, [1, 0.68, 0.38], 380, -1400 + bay * 200, 45);
+  for (let bay = 1; bay <= 4; bay += 1) pointLight(`bay${bay}`, `light.high_bay_${bay}`, [1, 0.74, 0.46], 380, -1400 + bay * 200);
 
   const atmosphereScatter: Record<string, StoredParameter> = {};
   for (const light of SCATTER_LIGHTS) atmosphereScatter[light.param] = light.rest;
@@ -159,7 +160,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("key", "light", [-2600, -900], {
       kind: "directional",
       direction: [KEY_DIRECTION[0], KEY_DIRECTION[1], KEY_DIRECTION[2]],
-      color: [0.55, 0.68, 1, 1],
+      color: [0.82, 0.88, 1, 1],
       intensity: 3.2,
       shadows: true,
       shadowExtent: 80,
@@ -172,20 +173,46 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       scenes: "plantgeo1 machinegeo1 sparkgeo1",
       camera: "cam1",
       lights: ["key1", ...lightLabels].join(" "),
-      ambientColor: [0.5, 0.55, 0.65, 1],
+      ambientColor: [0.56, 0.58, 0.6, 1],
       ambientIntensity: 0.012,
       background: [0, 0, 0, 1],
       antialias: "msaa",
       depthOutput: true,
+      normalOutput: true,
       environmentIntensity: 0.6,
       environmentTaps: 12,
       ambientOcclusion: true,
       aoRadius: 0.8,
     }, { label: "shot1" }),
     // ── Air, bloom, grade ──
-    node("opaque", "reorder", [-2100, 0], { outa: "one" }, { label: "opaque1" }),
-    node("depthPack", "mask", [-1800, 0], { channel: "red", apply: "alpha", invert: 0 }, { label: "depthpack1" }),
-    node("air", "customWgsl", [-1500, 0], {
+    // Screen space on the G-buffer (T1371b): contact occlusion, then reflections, then air.
+    node("occlusion", "customWgslMulti", [-2100, 0], {
+      source: GTAO_WGSL,
+      eye: vec(eye),
+      aim,
+      "eye.x": cameraRef("eye.x", eye[0]),
+      "eye.y": cameraRef("eye.y", eye[1]),
+      "eye.z": cameraRef("eye.z", eye[2]),
+      "aim.x": cameraRef("lookAt.x", aim[0]),
+      "aim.y": cameraRef("lookAt.y", aim[1]),
+      "aim.z": cameraRef("lookAt.z", aim[2]),
+      fov: cameraRef("fov", camera.fovDeg),
+      far: cameraRef("far", 400),
+    }, { label: "occlusion1", resolution: { mode: "project" } }),
+    node("reflections", "customWgslMulti", [-1800, 0], {
+      source: SSR_WGSL,
+      eye: vec(eye),
+      aim,
+      "eye.x": cameraRef("eye.x", eye[0]),
+      "eye.y": cameraRef("eye.y", eye[1]),
+      "eye.z": cameraRef("eye.z", eye[2]),
+      "aim.x": cameraRef("lookAt.x", aim[0]),
+      "aim.y": cameraRef("lookAt.y", aim[1]),
+      "aim.z": cameraRef("lookAt.z", aim[2]),
+      fov: cameraRef("fov", camera.fovDeg),
+      far: cameraRef("far", 400),
+    }, { label: "reflections1", resolution: { mode: "project" } }),
+    node("air", "customWgslMulti", [-1500, 0], {
       source: atmosphereWgsl(facts),
       ...atmosphereScatter,
       eye: vec(eye),
@@ -199,12 +226,26 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
     }, { label: "air1", resolution: { mode: "project" } }),
+    node("lens", "customWgslMulti", [-1350, 0], {
+      source: DOF_WGSL,
+      aperture: 0.22,
+      eye: vec(eye),
+      aim,
+      "eye.x": cameraRef("eye.x", eye[0]),
+      "eye.y": cameraRef("eye.y", eye[1]),
+      "eye.z": cameraRef("eye.z", eye[2]),
+      "aim.x": cameraRef("lookAt.x", aim[0]),
+      "aim.y": cameraRef("lookAt.y", aim[1]),
+      "aim.z": cameraRef("lookAt.z", aim[2]),
+      fov: cameraRef("fov", camera.fovDeg),
+      far: cameraRef("far", 400),
+    }, { label: "lens1", resolution: { mode: "project" } }),
     node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 2.2, knee: 1 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }),
     node("bloomNear", "blur", [-900, 250], { size: 10, filter: "gaussian", extend: "hold" }, { label: "bloomnear1", resolution: { mode: "scale", factor: 0.5 } }),
     node("bloomFar", "blur", [-900, 450], { size: 14, filter: "gaussian", extend: "hold" }, { label: "bloomfar1", resolution: { mode: "scale", factor: 0.25 } }),
     node("bloomSum", "add", [-600, 350], { opacity: 1 }, { label: "bloomsum1", resolution: { mode: "scale", factor: 0.5 } }),
-    node("glow", "add", [-300, 0], { opacity: 0.2 }, { label: "glow1", resolution: { mode: "project" } }),
-    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0.2, punch: 1.3, punchSaturation: 1.05, contrast: 1.1, grain: 0.016, saturation: 0.9, split: 0.25, shadowTint: [0.88, 1, 1.04, 1], highlightTint: [1.05, 1, 0.92, 1] }, { label: "grade1", resolution: { mode: "project" } }),
+    node("glow", "add", [-300, 0], { opacity: 0.14 }, { label: "glow1", resolution: { mode: "project" } }),
+    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0.2, punch: 1.3, punchSaturation: 1.05, contrast: 1.1, grain: 0.016, saturation: 0.9, split: 0.12, shadowTint: [0.94, 1, 1, 1], highlightTint: [1.03, 1, 0.96, 1] }, { label: "grade1", resolution: { mode: "project" } }),
     node("out", "output", [300, 0], { toneMap: "none" }, { label: "out1" }),
   ];
 
@@ -221,16 +262,22 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("machines-rig", ["machines", "out"], ["rig", "in"]),
     edge("rig-geo", ["rig", "out"], ["machineGeo", "points"]),
     edge("sparks-geo", ["sparks", "out"], ["sparkGeo", "points"]),
-    edge("shot-opaque", ["shot", "out"], ["opaque", "in1"]),
-    edge("opaque-pack", ["opaque", "out"], ["depthPack", "input"]),
-    edge("depth-pack", ["shot", "depth"], ["depthPack", "mask"]),
-    edge("pack-air", ["depthPack", "out"], ["air", "input"]),
-    edge("air-bright", ["air", "out"], ["bright", "input"]),
+    edge("shot-occlusion", ["shot", "out"], ["occlusion", "input"]),
+    edge("depth-occlusion", ["shot", "depth"], ["occlusion", "more"], 0),
+    edge("normal-occlusion", ["shot", "normal"], ["occlusion", "more"], 1),
+    edge("occlusion-reflections", ["occlusion", "out"], ["reflections", "input"]),
+    edge("depth-reflections", ["shot", "depth"], ["reflections", "more"], 0),
+    edge("normal-reflections", ["shot", "normal"], ["reflections", "more"], 1),
+    edge("reflections-air", ["reflections", "out"], ["air", "input"]),
+    edge("depth-air", ["shot", "depth"], ["air", "more"], 0),
+    edge("air-lens", ["air", "out"], ["lens", "input"]),
+    edge("depth-lens", ["shot", "depth"], ["lens", "more"], 0),
+    edge("lens-bright", ["lens", "out"], ["bright", "input"]),
     edge("bright-near", ["bright", "out"], ["bloomNear", "input"]),
     edge("bright-far", ["bright", "out"], ["bloomFar", "input"]),
     edge("near-sum", ["bloomNear", "out"], ["bloomSum", "in1"]),
     edge("far-sum", ["bloomFar", "out"], ["bloomSum", "in2"]),
-    edge("air-glow", ["air", "out"], ["glow", "in1"]),
+    edge("lens-glow", ["lens", "out"], ["glow", "in1"]),
     edge("sum-glow", ["bloomSum", "out"], ["glow", "in2"]),
     edge("glow-grade", ["glow", "out"], ["grade", "input"]),
     edge("grade-out", ["grade", "out"], ["out", "input"]),

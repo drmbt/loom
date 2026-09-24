@@ -5,8 +5,8 @@ import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 /**
  * T1354b — the shop's AIR: smoke that the lights live in.
  *
- * A Custom WGSL post pass over the lit render, with linear depth packed into alpha (the
- * `reorder` + `mask` idiom, until §T1365b gives Custom WGSL a second input). Per pixel it
+ * A Custom WGSL · Multi post pass (§T1365b) over the lit render, reading the Render's Depth
+ * output as its second image. Per pixel it
  * rebuilds the view ray from the camera parameters, marches it to the surface through a
  * participating medium — thick near the floor and under the roof, drifting, turbulent — and
  * accumulates in-scattered light from two kinds of source:
@@ -75,6 +75,7 @@ ${params.map((light) => `  ${light.param}: f32, // @default ${light.rest}  ${lig
 @group(0) @binding(1) var inputTexture: texture_2d<f32>;
 @group(0) @binding(2) var<uniform> frameU: SharedFrame;
 @group(0) @binding(3) var<uniform> params: Params;
+@group(0) @binding(4) var inputTexture1: texture_2d<f32>;
 
 const LIGHT_COUNT: u32 = ${lights.length}u;
 const LIGHT_POSITION = array<vec3f, ${lights.length}>(${lights.map((light) => wgslVec3(light.position)).join(", ")});
@@ -148,9 +149,11 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let tanHalf = tan(radians(params.fov) * 0.5);
   let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
   let direction = normalize(forward + right * ndc.x * tanHalf * aspect + up * ndc.y * tanHalf);
-  // Depth is linear view distance ÷ far; the background (depth 1) marches to a fixed horizon.
-  let depth = sample.a;
-  let distance = select(depth * params.far, 140.0, depth >= 0.9999);
+  // Depth is VIEW-PLANE distance ÷ far; along this ray that is z ÷ cos. The background
+  // (depth 1, or nothing written) marches to a fixed horizon.
+  let depthSize = vec2f(textureDimensions(inputTexture1));
+  let depth = textureLoad(inputTexture1, clamp(vec2i(uv * depthSize), vec2i(0), vec2i(depthSize) - vec2i(1)), 0).r;
+  let distance = select(depth * params.far / max(dot(direction, forward), 1e-3), 140.0, depth >= 0.9999 || depth <= 0.0);
   let step = distance / f32(STEPS);
   // Interleaved gradient noise: a dither the eye reads as texture, not as speckle.
   let pixel = uv * frameU.resolution + vec2f(frameU.absFrame * 5.588238);
