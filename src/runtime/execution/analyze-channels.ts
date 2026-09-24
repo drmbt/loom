@@ -32,8 +32,8 @@ export interface AnalyzeEntry {
   readonly nodeId: NodeId;
   /** The reduction buffer's resource id in the current plan. */
   readonly resourceId: string;
-  /** Which of [average, minimum, maximum] the channel publishes. */
-  readonly operation: "average" | "minimum" | "maximum";
+  /** Which of [average, minimum, maximum, logAverage] the channel publishes. */
+  readonly operation: "average" | "minimum" | "maximum" | "logAverage";
 }
 
 /** The entries the current document declares — recomputed after each compile. */
@@ -53,7 +53,7 @@ export function analyzeChannelEntries(
       channel: node.label,
       nodeId,
       resourceId: scratchResourceId(nodeId, resultKey),
-      operation: operation === "minimum" || operation === "maximum" ? operation : "average",
+      operation: operation === "minimum" || operation === "maximum" || operation === "logAverage" ? operation : "average",
     });
   }
   return entries;
@@ -111,7 +111,7 @@ export interface AnalyzeChannels {
   resultAges(frameIndex: number): readonly AnalyzeAge[];
 }
 
-const OPERATION_INDEX = { average: 0, minimum: 1, maximum: 2 } as const;
+const OPERATION_INDEX = { average: 0, minimum: 1, maximum: 2, logAverage: 3 } as const;
 
 export function createAnalyzeChannels(options: {
   readBuffer: (resourceId: string) => Promise<ArrayBuffer>;

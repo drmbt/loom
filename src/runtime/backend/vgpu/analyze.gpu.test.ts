@@ -122,6 +122,64 @@ describe("Analyze on Dawn (T236)", () => {
   });
 });
 
+describe("Analyze meters a log-average (T1378b)", () => {
+  it("half 0.25, half 1.0 meters a geometric mean of 0.5 where the arithmetic mean is 0.625", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    // Left half 0.25, right half 1.0, in linear: the 64-wide sampling grid puts exactly 32
+    // columns on each side, so both means are exact — and they differ by what the log does.
+    const split = `@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let keep = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).a * 0.0;
+  let v = select(1.0, 0.25, uv.x < 0.5) + keep;
+  return vec4f(v, v, v, 1.0);
+}`;
+    const graph = {
+      revision: 1,
+      nodes: {
+        gen: node("gen", "solid"),
+        halves: node("halves", "customWgsl", { parameters: { source: split } }),
+        meter: node("meter", "analyze", { label: "meter1", parameters: { channel: "luminance", operation: "logAverage" } }),
+      },
+      edges: {
+        e0: { id: "e0", source: { nodeId: "gen", portId: "out" }, target: { nodeId: "halves", portId: "input" } },
+        e1: { id: "e1", source: { nodeId: "halves", portId: "out" }, target: { nodeId: "meter", portId: "input" } },
+      },
+      groups: {},
+    } as unknown as GraphDocument;
+    const registry = createNodeRegistry(allNodeDefinitions).view();
+    const plan = compileGraph({ graph, settings, registry, capabilities });
+    expect(plan.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const backend = createVgpuBackend({ host: nodeGpuHost() });
+    try {
+      await backend.initialize({});
+      const compiled = await backend.compile(plan);
+      backend.render(compiled, {
+        frame: { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "offline", randomSeed: 1 },
+        pointer: { x: 0, y: 0, buttons: 0 },
+        resolution: [64, 64],
+      });
+      const values = new Float32Array(await backend.readBuffer(scratchResourceId("meter", "result")), 0, 4);
+      expect(values[0]).toBeCloseTo(0.625, 5);
+      expect(values[3]).toBeCloseTo(0.5, 5);
+      // And the channel publishes the log-average when asked for it.
+      const channels = createAnalyzeChannels({ readBuffer: (id) => backend.readBuffer(id) });
+      channels.track(analyzeChannelEntries(graph, registry));
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        if (channels.resolver("meter1", {} as never) !== undefined) break;
+        channels.sample(attempt);
+        await backend.whenSettled();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      expect(channels.resolver("meter1", {} as never)).toBeCloseTo(0.5, 5);
+    } finally {
+      backend.dispose();
+    }
+  });
+});
+
 /**
  * T480: the loop CLOSED TO THE PIXEL. The test above proves image→number; this proves
  * number→parameter→image — the readback channel drives a uniform through the real

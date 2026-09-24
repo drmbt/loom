@@ -245,7 +245,13 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("bloomFar", "blur", [-900, 450], { size: 14, filter: "gaussian", extend: "hold" }, { label: "bloomfar1", resolution: { mode: "scale", factor: 0.25 } }),
     node("bloomSum", "add", [-600, 350], { opacity: 1 }, { label: "bloomsum1", resolution: { mode: "scale", factor: 0.5 } }),
     node("glow", "add", [-300, 0], { opacity: 0.14 }, { label: "glow1", resolution: { mode: "project" } }),
-    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0.2, punch: 1.3, punchSaturation: 1.05, contrast: 1.1, grain: 0.016, saturation: 0.9, split: 0.12, shadowTint: [0.94, 1, 1, 1], highlightTint: [1.03, 1, 0.96, 1] }, { label: "grade1", resolution: { mode: "project" } }),
+    // Auto-exposure (T1378b): meter the frame's log-average luminance, adapt toward a key
+    // like an eye does — faster when the scene brightens than when it darkens — and hand the
+    // grade the gain. One frame late by the meter's contract; the lag hides it.
+    node("meter", "analyze", [-300, 300], { channel: "luminance", operation: "logAverage" }, { label: "meter1" }),
+    node("metered", "channelIn", [0, 300], { channel: "meter1", fallback: 0.05 }, { label: "metered1" }),
+    node("adaptation", "valueLag", [300, 300], { lag: 0.35, releaseRatio: 3 }, { label: "adaptation1" }),
+    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0.2, adapt: expressionSlot("clamp(0.075 / max(op('adaptation1').chan.value, 0.0005), 0.35, 10)", 1), punch: 1.3, punchSaturation: 1.05, contrast: 1.1, grain: 0.016, saturation: 0.9, split: 0.12, shadowTint: [0.94, 1, 1, 1], highlightTint: [1.03, 1, 0.96, 1] }, { label: "grade1", resolution: { mode: "project" } }),
     node("out", "output", [300, 0], { toneMap: "none" }, { label: "out1" }),
   ];
 
@@ -280,6 +286,8 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("lens-glow", ["lens", "out"], ["glow", "in1"]),
     edge("sum-glow", ["bloomSum", "out"], ["glow", "in2"]),
     edge("glow-grade", ["glow", "out"], ["grade", "input"]),
+    edge("glow-meter", ["glow", "out"], ["meter", "input"]),
+    edge("metered-adaptation", ["metered", "out"], ["adaptation", "in"]),
     edge("grade-out", ["grade", "out"], ["out", "input"]),
   ];
 

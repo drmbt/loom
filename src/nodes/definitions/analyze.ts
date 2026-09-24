@@ -35,6 +35,7 @@ export const ANALYZE_WGSL = wgsl`struct AnalyzeParams {
 fn main() {
   let dims = vec2i(textureDimensions(sourceTexture, 0));
   var sum = 0.0;
+  var logSum = 0.0;
   var lo = 3.4e38;
   var hi = -3.4e38;
   let grid = 64;
@@ -50,11 +51,14 @@ fn main() {
       else if (ch == 2) { v = c.b; }
       else if (ch == 3) { v = c.a; }
       sum = sum + v;
+      // T1378b: the log-average (geometric mean) — what a camera meters, so one bright
+      // emitter does not drag the whole reading up the way it drags the arithmetic mean.
+      logSum = logSum + log2(max(v, 1e-5));
       lo = min(lo, v);
       hi = max(hi, v);
     }
   }
-  result[0] = vec4f(sum / f32(grid * grid), lo, hi, 1.0);
+  result[0] = vec4f(sum / f32(grid * grid), lo, hi, exp2(logSum / f32(grid * grid)));
 }`;
 
 const CHANNEL_INDEX: Record<string, number> = { r: 0, g: 1, b: 2, a: 3, luminance: 4 };
@@ -96,8 +100,10 @@ export const analyzeNode: NodeDefinition = {
         { value: "average", label: "Average" },
         { value: "minimum", label: "Minimum" },
         { value: "maximum", label: "Maximum" },
+        { value: "logAverage", label: "Log Average" },
       ],
-      description: "Which reduction the channel publishes. All three are computed; this picks one, with no recompile.",
+      description:
+        "Which reduction the channel publishes. All four are computed; this picks one, with no recompile. Log Average is the geometric mean (values floored at 1e-5) — what a camera meters for exposure, where one bright light should not dominate.",
     },
   },
   resolutionPolicy: { kind: "inherit", input: "input" },

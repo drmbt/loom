@@ -32,7 +32,8 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
 }`;
 
 export const GRADE_WGSL = `struct Params {
-  exposure: f32, // @default 0  Exposure in stops.
+  exposure: f32, // @default 0  Exposure compensation in stops, on top of the adaptation.
+  adapt: f32, // @default 1  Auto-exposure gain (driven by the meter: key ÷ metered log-average).
   punch: f32, // @default 1.15  AgX look: contrast slope (1 = the base curve).
   punchSaturation: f32, // @default 1.2  AgX look: saturation in the curve.
   contrast: f32, // @default 1.08  Contrast around mid-grey after the curve.
@@ -90,7 +91,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let r = textureSampleLevel(inputTexture, inputSampler, uv + shift, 0.0).r;
   let g = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).g;
   let b = textureSampleLevel(inputTexture, inputSampler, uv - shift, 0.0).b;
-  var color = vec3f(r, g, b) * exp2(params.exposure);
+  var color = vec3f(r, g, b) * params.adapt * exp2(params.exposure);
   color = agx(color);
   let luma = dot(color, vec3f(0.2126, 0.7152, 0.0722));
   color = mix(vec3f(luma), color, params.saturation);
