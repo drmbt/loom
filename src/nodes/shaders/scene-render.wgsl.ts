@@ -116,6 +116,11 @@ const CUSTOM_SURFACE_PRELUDE = `struct SurfaceIn {
   roughness: f32,
   metallic: f32,
   absTime: f32,
+  // T1377b: world metres per pixel here (filter detail finer than it), and how fast the
+  // normal turns per metre (convex edges and bevels high, flats zero) — both derivatives,
+  // taken by the generator in uniform control flow so the author's code may branch freely.
+  footprint: f32,
+  curvature: f32,
 };
 
 struct SurfaceOut {
@@ -907,6 +912,8 @@ ${unlitModel ? "" : `  let roughness = ${roughnessExpr};\n  _ = roughness;\n`}`
   surfaceIn.roughness = ${roughnessExpr};
   surfaceIn.metallic = ${meshSurface ? "clamp(input.surface.y, 0.0, 1.0)" : "params.material.x"};
   surfaceIn.absTime = ${CUSTOM_SURFACE_FRAME_BINDING}.absTime;
+  surfaceIn.footprint = length(fwidth(input.world));
+  surfaceIn.curvature = length(fwidth(geometryNormal)) / max(surfaceIn.footprint, 1e-5);
   let shaded = surface(surfaceIn, ${customParams});
   let shadedLength = length(shaded.normal);
   let normal = select(geometryNormal, shaded.normal / max(shadedLength, 1e-6), shadedLength > 1e-6);

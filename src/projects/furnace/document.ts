@@ -26,7 +26,7 @@ export interface FurnaceDocumentOptions {
   readonly shot: string;
   readonly width?: number;
   readonly height?: number;
-  /** The track. Absent: the shipped showcase clip, a stand-in until the real song arrives. */
+  /** The track, as a path under public/. Absent: the owner's working track (Clankz 3), which build.ts copies there. */
   readonly audioUrl?: string;
 }
 
@@ -75,8 +75,8 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   atmosphereScatter["slagGlow"] = 10;
   atmosphereScatter["tundishGlow"] = 8;
   atmosphereScatter["lamps"] = 2.5;
-  atmosphereScatter["density"] = 0.011;
-  atmosphereScatter["ambientSmoke"] = [0.008, 0.01, 0.014];
+  atmosphereScatter["density"] = 0.009;
+  atmosphereScatter["ambientSmoke"] = [0.002, 0.0025, 0.0035];
   atmosphereScatter["arcFlash"] = expressionSlot(`6 + ${HIT("hatCount")} * 60`, 10);
   atmosphereScatter["tapGlow"] = expressionSlot(`10 + ${HIT("kickCount")} * 30`, 15);
 
@@ -84,7 +84,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
 
   const nodes: GraphNode[] = [
     // ── Audio (a stand-in track until the song arrives) ──
-    node("clip", "audioFileIn", [-4200, 1400], { file: options.audioUrl ?? "media/showcase-beat.m4a", playMode: "timeline" }, { label: "clip1" }),
+    node("clip", "audioFileIn", [-4200, 1400], { file: options.audioUrl ?? "media/furnace/clankz3.wav", playMode: "timeline" }, { label: "clip1" }),
     node("pickLevels", "valueSelect", [-3900, 1300], { channels: "level low high" }, { label: "picklevels1" }),
     node("smooth", "valueLag", [-3600, 1300], { lag: 0.08, releaseRatio: 1 }, { label: "smooth1" }),
     node("rank", "valueNormalize", [-3300, 1300], { window: 16 }, { label: "rank1" }),
@@ -166,11 +166,11 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       camera: "cam1",
       lights: ["key1", ...lightLabels].join(" "),
       ambientColor: [0.5, 0.55, 0.65, 1],
-      ambientIntensity: 0.03,
+      ambientIntensity: 0.012,
       background: [0, 0, 0, 1],
       antialias: "msaa",
       depthOutput: true,
-      environmentIntensity: 1,
+      environmentIntensity: 0.6,
       environmentTaps: 12,
       ambientOcclusion: true,
       aoRadius: 0.8,
@@ -197,7 +197,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("bloomFar", "blur", [-900, 450], { size: 14, filter: "gaussian", extend: "hold" }, { label: "bloomfar1", resolution: { mode: "scale", factor: 0.25 } }),
     node("bloomSum", "add", [-600, 350], { opacity: 1 }, { label: "bloomsum1", resolution: { mode: "scale", factor: 0.5 } }),
     node("glow", "add", [-300, 0], { opacity: 0.2 }, { label: "glow1", resolution: { mode: "project" } }),
-    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0, grain: 0.016, saturation: 0.85, split: 0.5, shadowTint: [0.8, 0.95, 1.1, 1], highlightTint: [1.08, 0.98, 0.88, 1] }, { label: "grade1", resolution: { mode: "project" } }),
+    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0.2, punch: 1.35, punchSaturation: 1.25, contrast: 1.12, grain: 0.016, saturation: 0.85, split: 0.5, shadowTint: [0.8, 0.95, 1.1, 1], highlightTint: [1.08, 0.98, 0.88, 1] }, { label: "grade1", resolution: { mode: "project" } }),
     node("out", "output", [300, 0], { toneMap: "none" }, { label: "out1" }),
   ];
 

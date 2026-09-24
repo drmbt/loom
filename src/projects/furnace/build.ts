@@ -7,11 +7,12 @@ import { loadFurnaceFacts } from "./load-facts.ts";
 /**
  * T1354b — build the furnace project from a GLB export.
  *
- *   node --import ./src/tooling/alias-hooks.ts src/projects/furnace/build.ts -- <furnace.glb> [shot.name]
+ *   node --import ./src/tooling/alias-hooks.ts src/projects/furnace/build.ts -- <furnace.glb> [shot.name] [track.wav]
  *
  * Copies the GLB to public/media/furnace/furnace.glb (gitignored — it is a build product of
  * tools/blender/furnace/) and writes projects/furnace/furnace.loom.json through the real
- * save path, pointing at it. Open that file in the app.
+ * save path, pointing at it. A track given as the third argument is copied to
+ * public/media/furnace/clankz3.wav, the path the document plays. Open the file in the app.
  */
 const args = process.argv.slice(2).filter((arg) => arg !== "--");
 const source = args[0];
@@ -21,6 +22,8 @@ const url = "media/furnace/furnace.glb";
 const target = `public/${url}`;
 mkdirSync(dirname(target), { recursive: true });
 copyFileSync(source, target);
+const track = args[2];
+if (track !== undefined) copyFileSync(track, "public/media/furnace/clankz3.wav");
 const { facts } = loadFurnaceFacts(target, url);
 const document = furnaceDocument(facts, { shot });
 mkdirSync("projects/furnace", { recursive: true });

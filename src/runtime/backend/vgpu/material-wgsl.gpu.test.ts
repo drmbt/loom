@@ -143,6 +143,30 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
     expect(rgb(hot.bytes)).toEqual([255, byte(0.5 * 1.12 + 0.1), byte(0.25 * 1.12 + 0.1)]);
   });
 
+  it("the surface-detail module compiles under @use, and an fbm finer than the footprint fades to exactly 0.5", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    const faded = await render(
+      graph({
+        type: "materialWgsl",
+        parameters: {
+          model: "unlit",
+          source: `// @use surface-detail
+fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
+  var o = surfaceDefaults(s);
+  // A footprint of 1 km per pixel: every octave is finer than it, so every octave fades.
+  let v = detailFbm(s.world * 3.0, 4, 1000.0).value;
+  o.albedo = vec4f(0.0, 0.0, 0.0, 1.0);
+  o.emissive = vec3f(v, v, v);
+  return o;
+}`,
+        },
+      }),
+    );
+    expect(faded.errors).toEqual([]);
+    expect(rgb(faded.bytes)).toEqual([byte(0.5), byte(0.5), byte(0.5)]);
+  });
+
   it("refuses by name on a non-surface draw, and a source without fn surface", async () => {
     const probe = await probeDawn();
     if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);

@@ -163,6 +163,13 @@ export interface HeadlessRenderRequest {
    * A mesh node absent from this map is fed nothing and draws nothing.
    */
   readonly meshes?: Readonly<Record<string, Uint8Array>>;
+  /**
+   * T1354b — STREAM captured frames instead of returning them. Each captured frame is handed
+   * here (awaited, so a consumer can back-pressure, e.g. an encoder pipe) and NOT retained,
+   * so a thirty-second clip does not hold a gigabyte of readbacks. `frames` in the result is
+   * then empty.
+   */
+  readonly onCapture?: (frame: RenderedFrame) => void | Promise<void>;
 }
 
 export interface HarnessControl {
@@ -941,13 +948,15 @@ export async function renderHeadless(request: HeadlessRenderRequest): Promise<He
         // T173: readOutput returns the full descriptor now — width/format/stride come
         // from the thing that did the copy, not from a lookup beside it (§V60).
         const image = await backend.readOutput(outputResourceId);
-        captured.push({
+        const frame: RenderedFrame = {
           frameIndex: index,
           width: image.width,
           height: image.height,
           format: image.format,
           bytes: image.bytes,
-        });
+        };
+        if (request.onCapture === undefined) captured.push(frame);
+        else await request.onCapture(frame);
       }
       request.betweenFrames?.(control, index);
     }

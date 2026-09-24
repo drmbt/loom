@@ -93,9 +93,99 @@ fn gridCellAt(uv: vec2f, grid: vec2f) -> GridCell {
 }`,
 };
 
+/**
+ * T1377b — SURFACE DETAIL for Material · WGSL: the micro-structure textures would carry,
+ * built procedurally in world space so an untextured mesh still has dents, grain, seams and
+ * wear. Integer-hashed value noise with an ANALYTIC gradient (so a bump costs no extra
+ * taps), an fbm that drops octaves finer than the pixel footprint (so detail fades instead
+ * of aliasing as the camera pulls back), a bump that tilts a normal by a height field's
+ * gradient projected onto the surface, and wear masks keyed to curvature.
+ *
+ * Parameter-free per this file's rule: scale, strength, footprint and curvature arrive as
+ * arguments (a Material · WGSL passes `s.footprint` and `s.curvature`).
+ */
+const SURFACE_DETAIL_MODULE: SharedWgslModule = {
+  summary: "world-space surface detail: noise with gradient, footprint-filtered fbm, bump, wear masks",
+  requires: ["hash"],
+  source: `struct DetailSample {
+  value: f32,
+  gradient: vec3f,
+};
+
+fn detailLattice(cell: vec3f) -> f32 {
+  return unitFloat(hash3i(vec3i(cell), 0x9e37u));
+}
+
+// Value noise in [0, 1] with its analytic gradient (quintic fade).
+fn detailNoise(p: vec3f) -> DetailSample {
+  let i = floor(p);
+  let f = p - i;
+  let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  let du = 30.0 * f * f * (f * (f - 2.0) + 1.0);
+  let a = detailLattice(i);
+  let b = detailLattice(i + vec3f(1.0, 0.0, 0.0));
+  let c = detailLattice(i + vec3f(0.0, 1.0, 0.0));
+  let d = detailLattice(i + vec3f(1.0, 1.0, 0.0));
+  let e = detailLattice(i + vec3f(0.0, 0.0, 1.0));
+  let g = detailLattice(i + vec3f(1.0, 0.0, 1.0));
+  let h = detailLattice(i + vec3f(0.0, 1.0, 1.0));
+  let k = detailLattice(i + vec3f(1.0, 1.0, 1.0));
+  let k0 = a;
+  let k1 = b - a;
+  let k2 = c - a;
+  let k3 = e - a;
+  let k4 = a - b - c + d;
+  let k5 = a - c - e + h;
+  let k6 = a - b - e + g;
+  let k7 = -a + b + c - d + e - g - h + k;
+  var sample: DetailSample;
+  sample.value = k0 + k1 * u.x + k2 * u.y + k3 * u.z + k4 * u.x * u.y + k5 * u.y * u.z + k6 * u.z * u.x + k7 * u.x * u.y * u.z;
+  sample.gradient = du * vec3f(
+    k1 + k4 * u.y + k6 * u.z + k7 * u.y * u.z,
+    k2 + k5 * u.z + k4 * u.x + k7 * u.z * u.x,
+    k3 + k6 * u.x + k5 * u.y + k7 * u.x * u.y,
+  );
+  return sample;
+}
+
+// fbm with gradient; an octave whose wavelength is under ~2 pixels (footprint = world metres
+// per pixel) is faded out rather than sampled, so distant detail averages instead of sparkling.
+fn detailFbm(p: vec3f, octaves: i32, footprint: f32) -> DetailSample {
+  var total: DetailSample;
+  total.value = 0.0;
+  total.gradient = vec3f(0.0);
+  var amplitude = 0.5;
+  var frequency = 1.0;
+  var weight = 0.0;
+  for (var octave = 0; octave < octaves; octave = octave + 1) {
+    let fade = 1.0 - smoothstep(0.25, 0.5, footprint * frequency);
+    let n = detailNoise(p * frequency + vec3f(f32(octave) * 17.13));
+    total.value = total.value + (n.value - 0.5) * amplitude * fade;
+    total.gradient = total.gradient + n.gradient * amplitude * frequency * fade;
+    weight = weight + amplitude;
+    amplitude = amplitude * 0.5;
+    frequency = frequency * 2.07;
+  }
+  total.value = total.value / max(weight, 1e-4) + 0.5;
+  return total;
+}
+
+// Tilt a unit normal by a height field's world gradient, projected onto the surface.
+fn detailBump(normal: vec3f, gradient: vec3f, strength: f32) -> vec3f {
+  let tangential = gradient - normal * dot(gradient, normal);
+  return normalize(normal - tangential * strength);
+}
+
+// 0..1 wear on convex edges: curvature is |d normal| / |d position| (1/metres).
+fn detailEdgeWear(curvature: f32, threshold: f32, noise: f32) -> f32 {
+  return smoothstep(threshold * 0.6, threshold * 1.6, curvature * (0.6 + 0.8 * noise));
+}`,
+};
+
 export const SHARED_WGSL_MODULES: Readonly<Record<string, SharedWgslModule>> = {
   hash: HASH_MODULE,
   grid: GRID_MODULE,
+  "surface-detail": SURFACE_DETAIL_MODULE,
 };
 
 /** The directive a source writes, in the file's own `// @` comment idiom. */

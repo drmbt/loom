@@ -1,46 +1,98 @@
+import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { renderHeadless } from "../../tests/headless/render-harness.ts";
+import { renderHeadless, type RenderedFrame } from "../../tests/headless/render-harness.ts";
 import { nodeGpuHost } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { encodePng } from "../../runtime/export/png.ts";
 import { toRgba8At } from "../../runtime/export/image.ts";
 import { furnaceDocument } from "./document.ts";
 import { loadFurnaceFacts } from "./load-facts.ts";
+import { walkTrack } from "./load-audio.ts";
 
 /**
- * T1354b — render furnace stills headless, through the same mesh feed the app uses.
+ * T1354b — render the furnace headless, hearing the track, through the app's own mesh feed.
  *
- *   node --import ./src/tooling/alias-hooks.ts src/projects/furnace/render.ts -- <furnace.glb> <out dir> [shot,shot] [seconds] [width]
+ *   node --import ./src/tooling/alias-hooks.ts src/projects/furnace/render.ts -- \
+ *     --glb <furnace.glb> --out <dir> [--audio <track.wav>] [--shots a,b] [--width 1280]
+ *     [--at <seconds>]                 stills at that point of the track (after a 3 s run-up)
+ *     [--clip <start>,<seconds>]       an MP4 of that span, the track muxed in (needs ffmpeg)
  *
- * `seconds` is the absolute time of the still (the rig, sparks and smoke all run on absTime);
- * the audio is silent here, so every lane sits at its retained value.
+ * Every animated thing runs on absTime from 0; the TRACK is offset so frame 0 hears
+ * `start`. Without --audio every lane sits at its retained value.
  */
-const args = process.argv.slice(2).filter((arg) => arg !== "--");
-const [glbPath, outDir, shotList, secondsArg, widthArg] = args;
-if (glbPath === undefined || outDir === undefined) throw new Error("usage: render.ts -- <furnace.glb> <out dir> [shots] [seconds] [width]");
-const width = Number(widthArg ?? 1280);
-const height = Math.round((width * 9) / 16);
+const argv = process.argv.slice(2).filter((arg) => arg !== "--");
+const flag = (name: string): string | undefined => {
+  const at = argv.indexOf(`--${name}`);
+  return at < 0 ? undefined : argv[at + 1];
+};
+const glbPath = flag("glb");
+const outDir = flag("out");
+if (glbPath === undefined || outDir === undefined) throw new Error("usage: render.ts -- --glb <furnace.glb> --out <dir> [--audio wav] [--shots a,b] [--width n] [--at s | --clip start,seconds]");
+const audioPath = flag("audio");
+const width = Number(flag("width") ?? 1280);
+const height = Math.round((width * 9) / 16) & ~1;
 const fps = 30;
-const frames = Math.max(2, Math.round(Number(secondsArg ?? 4) * fps));
+const clip = flag("clip")?.split(",").map(Number);
+const at = Number(flag("at") ?? 3);
+const shots = (flag("shots") ?? "shot.hero_low_furnace").split(",");
 const { facts, glb } = loadFurnaceFacts(glbPath, "media/furnace/furnace.glb");
+const track = audioPath === undefined ? undefined : walkTrack(audioPath, fps);
 mkdirSync(outDir, { recursive: true });
-for (const shot of (shotList ?? "shot.hero_low_furnace").split(",")) {
+
+const toRgba8 = (frame: RenderedFrame) =>
+  toRgba8At({ ...frame, rowStride: frame.width * (frame.format === "rgba16float" ? 8 : 4) } as never, frame.width, frame.height, { space: "encoded" });
+
+for (const shot of shots) {
   const document = furnaceDocument(facts, { shot, width, height });
   const started = performance.now();
+  const runUp = 3;
+  const start = clip !== undefined ? (clip[0] ?? 0) : Math.max(0, at - runUp);
+  const frames = clip !== undefined ? Math.round((clip[1] ?? 10) * fps) : Math.round((at - start) * fps) + 1;
+  let encoder: ReturnType<typeof spawn> | undefined;
+  const clipPath = `${outDir}/${shot}${clip === undefined ? "" : `@${start}s`}.mp4`;
+  if (clip !== undefined) {
+    const audioArgs = audioPath === undefined ? [] : ["-ss", String(start), "-t", String(frames / fps), "-i", audioPath];
+    encoder = spawn("ffmpeg", [
+      "-y", "-loglevel", "error",
+      "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${width}x${height}`, "-r", String(fps), "-i", "-",
+      ...audioArgs,
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-preset", "medium",
+      ...(audioPath === undefined ? [] : ["-c:a", "aac", "-b:a", "256k", "-shortest"]),
+      clipPath,
+    ], { stdio: ["pipe", "inherit", "inherit"] });
+  }
   const result = await renderHeadless({
     host: nodeGpuHost(),
     graph: document.graph,
     settings: document.settings,
     frames,
-    capture: [frames - 1],
+    capture: clip === undefined ? [frames - 1] : Array.from({ length: frames }, (_, index) => index),
     fps,
     outputNodeId: "out",
+    // The value graph and the expressions (rig, lanes, camera drift) only run when asked.
+    animate: true,
     meshes: { plant: glb, machines: glb },
+    ...(track === undefined ? {} : { audio: track.seam(fps, start) }),
+    ...(encoder === undefined
+      ? {}
+      : {
+          onCapture: async (frame: RenderedFrame) => {
+            const stdin = encoder?.stdin;
+            if (stdin === undefined || stdin === null) return;
+            if (!stdin.write(Buffer.from(toRgba8(frame).data))) await new Promise((resolve) => stdin.once("drain", resolve));
+          },
+        }),
   });
-  const problems = result.diagnostics.filter((d) => d.severity !== "info").map((d) => `${d.severity} ${d.code}: ${d.message}`);
-  if (problems.length > 0) console.log(problems.slice(0, 10).join("\n"));
-  const frame = result.frames.at(-1);
-  if (frame === undefined) throw new Error("no frame");
-  const image = toRgba8At({ ...frame, rowStride: frame.width * (frame.format === "rgba16float" ? 8 : 4) } as never, frame.width, frame.height, { space: "encoded" });
-  writeFileSync(`${outDir}/${shot}.png`, encodePng(image).bytes);
-  console.log(`${shot}: ${frames} frames in ${Math.round(performance.now() - started)} ms`);
+  const problems = result.diagnostics.filter((d) => d.severity === "error" || d.severity === "warning").map((d) => `${d.severity} ${d.code}: ${d.message}`);
+  if (problems.length > 0) console.log([...new Set(problems)].slice(0, 10).join("\n"));
+  if (encoder !== undefined) {
+    encoder.stdin?.end();
+    await new Promise((resolve) => encoder?.on("close", resolve));
+    console.log(`${shot}: ${frames} frames → ${clipPath} in ${Math.round(performance.now() - started)} ms`);
+  } else {
+    const frame = result.frames.at(-1);
+    if (frame === undefined) throw new Error("no frame");
+    const path = `${outDir}/${shot}@${at}s.png`;
+    writeFileSync(path, encodePng(toRgba8(frame)).bytes);
+    console.log(`${shot}: ${path} (${frames} frames, ${Math.round(performance.now() - started)} ms)`);
+  }
 }

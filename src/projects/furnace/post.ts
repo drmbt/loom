@@ -2,7 +2,7 @@ import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 
 /**
  * T1354b — the furnace's post: a bright pass for the bloom chain, and the GRADE that turns
- * linear HDR into the film look — exposure, a filmic shoulder, a teal-shadow / warm-highlight
+ * linear HDR into the film look — exposure, AgX, a teal-shadow / warm-highlight
  * split, saturation, lateral chromatic aberration, vignette and moving grain. The Output then
  * runs with its tone map OFF: the curve lives here, where the grade can sit on either side
  * of it.
@@ -33,6 +33,8 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
 
 export const GRADE_WGSL = `struct Params {
   exposure: f32, // @default 0  Exposure in stops.
+  punch: f32, // @default 1.15  AgX look: contrast slope (1 = the base curve).
+  punchSaturation: f32, // @default 1.2  AgX look: saturation in the curve.
   contrast: f32, // @default 1.08  Contrast around mid-grey after the curve.
   saturation: f32, // @default 0.92  1 keeps colour; lower desaturates the steel.
   shadowTint: vec3f, // @default 0.9  Colour pushed into the shadows (teal-steel).
@@ -49,10 +51,35 @@ fn gradeHash(p: vec3f) -> f32 {
   return fract((q.x + q.y) * q.z);
 }
 
-// Narkowicz's ACES fit with the input pre-scaled, so 1.0 in lands near 0.8 out.
-fn filmic(x: vec3f) -> vec3f {
-  let a = x * 0.6;
-  return clamp((a * (2.51 * a + 0.03)) / (a * (2.43 * a + 0.59) + 0.14), vec3f(0.0), vec3f(1.0));
+// AgX (Troy Sobotka's, via Benjamin Wrensch's minimal fit): a log encoding into a
+// sigmoid, so hot sources roll toward white through their own hue instead of clipping or
+// skewing salmon — what separates molten steel from an orange lamp at the top of the range.
+fn agxContrast(x: vec3f) -> vec3f {
+  let x2 = x * x;
+  let x4 = x2 * x2;
+  return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
+}
+
+fn agx(color: vec3f) -> vec3f {
+  let inset = mat3x3f(0.842479062253094, 0.0423282422610123, 0.0423756549057051,
+                      0.0784335999999992, 0.878468636469772, 0.0784336,
+                      0.0792237451477643, 0.0791661274605434, 0.879142973793104);
+  let outset = mat3x3f(1.19687900512017, -0.0528968517574562, -0.0529716355144438,
+                       -0.0980208811401368, 1.15190312990417, -0.0980434501171241,
+                       -0.0990297440797205, -0.0989611768448433, 1.15107367264116);
+  let minEv = -12.47393;
+  let maxEv = 4.026069;
+  var v = inset * max(color, vec3f(1e-10));
+  v = clamp(log2(v), vec3f(minEv), vec3f(maxEv));
+  v = (v - minEv) / (maxEv - minEv);
+  v = agxContrast(v);
+  // The "punchy" look: a touch more slope and saturation before leaving the log space.
+  let luma = dot(v, vec3f(0.2126, 0.7152, 0.0722));
+  v = pow(max(v, vec3f(0.0)), vec3f(params.punch));
+  v = luma + (v - luma) * params.punchSaturation;
+  v = outset * v;
+  // Back to linear display light; the Output encodes it.
+  return pow(clamp(v, vec3f(0.0), vec3f(1.0)), vec3f(2.2));
 }
 
 @fragment
@@ -64,7 +91,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let g = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).g;
   let b = textureSampleLevel(inputTexture, inputSampler, uv - shift, 0.0).b;
   var color = vec3f(r, g, b) * exp2(params.exposure);
-  color = filmic(color);
+  color = agx(color);
   let luma = dot(color, vec3f(0.2126, 0.7152, 0.0722));
   color = mix(vec3f(luma), color, params.saturation);
   let shadowWeight = (1.0 - smoothstep(0.0, 0.45, luma)) * params.split;
