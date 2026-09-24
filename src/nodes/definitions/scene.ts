@@ -27,6 +27,8 @@ import {
   shadowInstancesWgsl,
   shadowSurfaceWgsl,
   shadowMeshWgsl,
+  CUSTOM_SURFACE_FRAME_BINDING,
+  materialParamUniformKey,
 } from "../shaders/scene-render.wgsl.ts";
 import { aoBlurWgsl, aoResolveWgsl, aoSampleCount } from "../shaders/scene-ao.wgsl.ts";
 
@@ -1739,6 +1741,19 @@ export const renderNode: NodeDefinition = {
          samples what they drew. Skipped here, emitted below the pyramid. */
       if (payload.material.model === "glass") return;
       if (payload.mode === "instances" || payload.mode === "points" || payload.mode === "beam") {
+        /* T1355b: a Material · WGSL is placed into the SURFACE generator; these three draw
+           through another one, and a material whose code silently did not run would teach
+           that the code is broken. Refused by name. */
+        if (payload.material.custom !== undefined) {
+          diagnostics.push({
+            severity: "error",
+            code: "node.scene.material",
+            message: `Node "${nodeId}": geometry "${source}" is drawn as ${payload.mode} but wears a Material · WGSL, which runs on surface geometry only.`,
+            nodeId,
+            suggestion: "Switch the Geometry to Surface mode, or give it a stock material.",
+          });
+          return;
+        }
         const billboard = payload.mode === "points";
         /* T680: a beam is a quad like a billboard is — six vertices, one instance per
            point — so it rides this whole branch and differs only in the generator flag
@@ -2066,7 +2081,11 @@ export const renderNode: NodeDefinition = {
           ...(meshTopology === undefined
             ? {}
             : { mesh: { uv: meshUv !== undefined, surface: meshSurfacePair !== undefined, emissive: meshEmissive !== undefined } }),
+          ...(material.custom === undefined
+            ? {}
+            : { custom: { code: material.custom.code, paramsDeclaration: material.custom.paramsDeclaration, fields: material.custom.fields } }),
         }),
+        ...(material.custom === undefined ? {} : { sharedBinding: CUSTOM_SURFACE_FRAME_BINDING }),
         target,
         topology: "triangle-list",
         instances: 1,
@@ -2122,6 +2141,11 @@ export const renderNode: NodeDefinition = {
           baseColor: [...material.baseColor],
           specular: [...specularColor, shininess],
           material: [material.metallic, material.roughness, 0, 0],
+          ...(material.custom === undefined
+            ? {}
+            : Object.fromEntries(
+                material.custom.fields.map((field) => [materialParamUniformKey(field.name), material.custom?.uniforms[field.name] ?? 0]),
+              )),
           grid: topology.kind === "grid" ? [topology.cols, topology.rows, topology.wrapU ? 1 : 0, topology.wrapV ? 1 : 0] : [0, 0, 0, 0],
           ...Object.fromEntries(
             lights.flatMap((light, lightIndex) => [

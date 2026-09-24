@@ -1,5 +1,7 @@
 import { wgsl } from "../../runtime/backend/wgsl.ts";
 import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
+import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
+import { declaredNames } from "./shared-modules.ts";
 /**
  * The scene Render shader (T377/T428): the surface mesh machinery of T301 with the
  * SHADING GENERATED per material model — the V349 fix. The legacy renderers keep their
@@ -75,7 +77,59 @@ export interface SceneShadingOptions {
    * after lighting. Absent emits the grid text byte for byte (§V309).
    */
   readonly mesh?: SceneMeshOption;
+  /**
+   * T1355b: a Material · WGSL's code runs per fragment BEFORE lighting — its
+   * `surface(SurfaceIn, Params) -> SurfaceOut` replaces the albedo, roughness, metallic,
+   * normal and emissive the lighting reads. Its `Params` fields ride this pass's uniform
+   * block as `m_<name>` members (the point kernels' prefix rule, T900). Absent emits the
+   * stock text byte for byte (§V309).
+   */
+  readonly custom?: SceneCustomSurface;
 }
+
+/** T1355b: the author's surface code, placed into the lit surface generator. */
+export interface SceneCustomSurface {
+  /** The source minus its `struct Params` (shared-module prelude included). */
+  readonly code: string;
+  /** The author's `struct Params` declaration, verbatim, or "" when none. */
+  readonly paramsDeclaration: string;
+  readonly fields: ReadonlyArray<{ readonly name: string; readonly wgsl: string }>;
+}
+
+/** T1355b: the uniform member a Material · WGSL field is carried under. */
+export function materialParamUniformKey(name: string): string {
+  return `m_${name}`;
+}
+
+/** T1355b: the binding the shared frame block rides on a custom-material draw. */
+export const CUSTOM_SURFACE_FRAME_BINDING = "frameU";
+
+const CUSTOM_SURFACE_PRELUDE = `struct SurfaceIn {
+  world: vec3f,
+  normal: vec3f,
+  uv: vec2f,
+  tint: vec4f,
+  attr: vec4f,
+  emissive: vec3f,
+  eye: vec3f,
+  albedo: vec4f,
+  roughness: f32,
+  metallic: f32,
+  absTime: f32,
+};
+
+struct SurfaceOut {
+  albedo: vec4f,
+  roughness: f32,
+  metallic: f32,
+  normal: vec3f,
+  emissive: vec3f,
+};
+
+fn surfaceDefaults(s: SurfaceIn) -> SurfaceOut {
+  return SurfaceOut(s.albedo, s.roughness, s.metallic, s.normal, s.emissive);
+}
+`;
 
 /** T1353b: which per-vertex attributes an indexed surface binds. */
 export interface SceneMeshOption {
@@ -739,10 +793,14 @@ ${IRRADIANCE_WGSL}  lit += irradiance * albedo.rgb * (1.0 - envFresnel) * (1.0 -
      generated terms below read three names; in mesh mode they are rebound to locals.
      Grid surfaces never reach this and emit their text unchanged. */
   const meshSurface = options.mesh?.surface === true;
-  const perVertex = (text: string): string =>
-    meshSurface
-      ? text.replaceAll("params.material.x", "surfaceMetallic").replaceAll("params.specular.rgb", "surfaceSpecular")
-      : text;
+  const custom = options.custom;
+  /* Only PBR derives its specular tint from metallic (the CPU does the same per object);
+     Phong's specular colour is AUTHORED, so it stays the material's own. */
+  const perVertex = (text: string): string => {
+    if (!meshSurface && custom === undefined) return text;
+    const metallic = text.replaceAll("params.material.x", "surfaceMetallic");
+    return options.model === "pbr" ? metallic.replaceAll("params.specular.rgb", "surfaceSpecular") : metallic;
+  };
   const roughnessBase = meshSurface ? "clamp(input.surface.x, 0.04, 1.0)" : "params.material.y";
   const roughnessExpr = roughnessMap
     ? `clamp(${roughnessBase} * ${mapLoad("roughnessMap")}.r, 0.04, 1.0)`
@@ -787,13 +845,16 @@ ${
 `;
 
   const needsViewDir = lightCount > 0 || environment;
-  const emissiveTerm = options.mesh?.emissive === true ? "  lit += input.emissive;\n" : "";
+  const emissiveTerm =
+    custom !== undefined ? "  lit += shaded.emissive;\n" : options.mesh?.emissive === true ? "  lit += input.emissive;\n" : "";
   const aoLookup = ambientOcclusion
     ? `  let occlusion = textureLoad(occlusionMap, vec2i(input.position.xy), 0).r;\n`
     : "";
   const shading =
     options.model === "unlit"
-      ? options.mesh?.emissive === true
+      ? custom !== undefined
+        ? `  return vec4f((albedo.rgb + shaded.emissive) * cover, albedo.a * cover);`
+        : options.mesh?.emissive === true
         ? `  return vec4f((albedo.rgb + input.emissive) * cover, albedo.a * cover);`
         : `  return vec4f(albedo.rgb * cover, albedo.a * cover);`
       : `${aoLookup}  let ambient = params.ambientColor.rgb * params.ambientColor.a${aoTerm};
@@ -804,7 +865,60 @@ ${
     : `  let viewDir = normalize(params.eye.xyz - input.world);
 ${Array.from({ length: lightCount }, (_, index) => perVertex(lightBlock(index))).join("")}`
 }${projectors.term}${perVertex(envTerm)}${emissiveTerm}  return vec4f(lit * cover, albedo.a * cover);`;
-  const surfaceLocals = meshSurface && options.model !== "unlit"
+  /* T1355b — the custom surface: its uniform members, its module text, and the fragment
+     head that calls it. Without `custom` the head is the stock text, character for
+     character, so every existing scene's shader is unchanged. */
+  const customFields =
+    custom === undefined
+      ? ""
+      : custom.fields.map((field) => `  ${materialParamUniformKey(field.name)}: ${field.wgsl},\n`).join("");
+  const customDeclarations =
+    custom === undefined
+      ? ""
+      : `${SHARED_UNIFORMS_WGSL}\n@group(0) @binding(120) var<uniform> ${CUSTOM_SURFACE_FRAME_BINDING}: SharedFrame;\n\n${CUSTOM_SURFACE_PRELUDE}\n${
+          custom.paramsDeclaration === "" ? "struct Params {\n  unused: f32,\n};" : custom.paramsDeclaration
+        }\n\n${custom.code}\n`;
+  const customParams =
+    custom === undefined || custom.fields.length === 0
+      ? "Params(0.0)"
+      : `Params(${custom.fields.map((field) => `params.${materialParamUniformKey(field.name)}`).join(", ")})`;
+  const unlitModel = options.model === "unlit";
+  const fragmentHead =
+    custom === undefined
+      ? `  let magnitude = length(input.normal);
+  let normal = select(vec3f(0.0, 0.0, 1.0), input.normal / max(magnitude, 1e-6), magnitude > 1e-6);
+  /* T917: the soft profile lives on the point primitives; a SURFACE has no across axis,
+     so its coverage is the constant 1 and the shared shading tail multiplies by nothing. */
+  let cover = 1.0;
+  let albedo = ${albedoExpr};
+${unlitModel ? "" : `  let roughness = ${roughnessExpr};\n  _ = roughness;\n`}`
+      : `  let magnitude = length(input.normal);
+  let geometryNormal = select(vec3f(0.0, 0.0, 1.0), input.normal / max(magnitude, 1e-6), magnitude > 1e-6);
+  let cover = 1.0;
+  var surfaceIn: SurfaceIn;
+  surfaceIn.world = input.world;
+  surfaceIn.normal = geometryNormal;
+  surfaceIn.uv = input.uv;
+  surfaceIn.tint = input.tint;
+  surfaceIn.attr = ${meshSurface ? "input.surface" : "vec4f(params.material.y, params.material.x, 0.0, 0.0)"};
+  surfaceIn.emissive = ${options.mesh?.emissive === true ? "input.emissive" : "vec3f(0.0)"};
+  surfaceIn.eye = params.eye.xyz;
+  surfaceIn.albedo = ${albedoExpr};
+  surfaceIn.roughness = ${roughnessExpr};
+  surfaceIn.metallic = ${meshSurface ? "clamp(input.surface.y, 0.0, 1.0)" : "params.material.x"};
+  surfaceIn.absTime = ${CUSTOM_SURFACE_FRAME_BINDING}.absTime;
+  let shaded = surface(surfaceIn, ${customParams});
+  let shadedLength = length(shaded.normal);
+  let normal = select(geometryNormal, shaded.normal / max(shadedLength, 1e-6), shadedLength > 1e-6);
+  _ = normal;
+  let albedo = shaded.albedo;
+${unlitModel ? "" : `  let roughness = clamp(shaded.roughness, 0.04, 1.0);
+  _ = roughness;
+  let surfaceMetallic = clamp(shaded.metallic, 0.0, 1.0);
+  let surfaceSpecular = mix(vec3f(1.0), albedo.rgb, surfaceMetallic);
+  _ = surfaceSpecular;
+`}`;
+  const surfaceLocals = meshSurface && custom === undefined && options.model !== "unlit"
     ? `  let surfaceMetallic = clamp(input.surface.y, 0.0, 1.0);
   let surfaceSpecular = mix(vec3f(1.0), albedo.rgb, surfaceMetallic);
   _ = surfaceSpecular;
@@ -819,22 +933,16 @@ ${Array.from({ length: lightCount }, (_, index) => perVertex(lightBlock(index)))
   specular: vec4f,          // rgb specular colour, w = shininess
   material: vec4f,          // x = metallic, y = roughness, zw reserved
   grid: vec4f,              // cols, rows, wrapU, wrapV
-${lightField}${shadowFields}${envField}${projectors.fields}};
+${lightField}${shadowFields}${envField}${projectors.fields}${customFields}};
 
 @group(0) @binding(0) var<uniform> params: SceneParams;
 @group(0) @binding(1) var<storage, read> positions: array<vec3f>;
-${pointColor ? "@group(0) @binding(2) var<storage, read> pointColors: array<vec4f>;\n" : ""}${mapBindings}${shadowBindings}${envDeclarations}${aoDeclarations}${projectors.bindings}${options.mesh === undefined ? "" : meshBindingsWgsl(options.mesh)}
+${pointColor ? "@group(0) @binding(2) var<storage, read> pointColors: array<vec4f>;\n" : ""}${mapBindings}${shadowBindings}${envDeclarations}${aoDeclarations}${projectors.bindings}${options.mesh === undefined ? "" : meshBindingsWgsl(options.mesh)}${customDeclarations}
 ${options.mesh === undefined ? surfaceMeshWgsl(pointColor) : meshVertexWgsl(pointColor, options.mesh)}
 
 @fragment
 fn fs(input: VertexOut) -> @location(0) vec4f {
-  let magnitude = length(input.normal);
-  let normal = select(vec3f(0.0, 0.0, 1.0), input.normal / max(magnitude, 1e-6), magnitude > 1e-6);
-  /* T917: the soft profile lives on the point primitives; a SURFACE has no across axis,
-     so its coverage is the constant 1 and the shared shading tail multiplies by nothing. */
-  let cover = 1.0;
-  let albedo = ${albedoExpr};
-${options.model === "unlit" ? "" : `  let roughness = ${roughnessExpr};\n  _ = roughness;\n`}${surfaceLocals}${shading}
+${fragmentHead}${surfaceLocals}${shading}
 }`;
 }
 
@@ -1977,3 +2085,29 @@ fn vs(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance: u32
 ${glassPyramidWgsl()}
 ${glassFragmentWgsl(options)}`;
 }
+
+/**
+ * T1355b — every name the lit surface generator declares around a Material · WGSL's code,
+ * read off a generator run with EVERY feature on (so a feature's helper is never missed),
+ * minus the one function the author is required to declare. A Material · WGSL refuses a
+ * source that declares any of these rather than shadowing one.
+ */
+export const SURFACE_RESERVED_NAMES: ReadonlySet<string> = new Set(
+  declaredNames(
+    String(
+      sceneSurfaceWgsl({
+        model: "pbr",
+        lightCount: 1,
+        maps: { albedo: true, roughness: true },
+        pointColor: true,
+        shadows: [0],
+        shadowSoftness: [1],
+        environment: true,
+        ambientOcclusion: true,
+        projectors: [{ cookie: true, occlusion: true }],
+        mesh: { uv: true, surface: true, emissive: true },
+        custom: { code: "fn surface(s: SurfaceIn, p: Params) -> SurfaceOut { return surfaceDefaults(s); }", paramsDeclaration: "", fields: [] },
+      }),
+    ),
+  ).filter((name) => name !== "surface"),
+);

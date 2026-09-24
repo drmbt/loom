@@ -293,6 +293,8 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   materialPhong: "pure",
   materialPbr: "pure",
   materialGlass: "pure",
+  // T1355b: authored surface code; its only clock is frameU (absTime), which offline is f(frame).
+  materialWgsl: "pure",
   // Structure: no state, no clock, no device.
   output: "pure",
   null: "pure",

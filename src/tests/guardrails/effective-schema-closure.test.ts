@@ -128,6 +128,13 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
       "and the read is what makes a newly added owned parameter reserved by construction.",
     reads: ["customWgslNode.parameters"],
   },
+  "src/nodes/definitions/material-wgsl.ts": {
+    reason:
+      `${REFLECTOR_SELF_READ} T1355b: the same derivation custom-wgsl.ts makes — the names a ` +
+      "material's `struct Params` may not take are this node's own manifest keys, read off the " +
+      "manifest so a newly added owned parameter is reserved by construction.",
+    reads: ["materialWgslNode.parameters"],
+  },
   "src/nodes/definitions/custom-wgsl.test.ts": {
     reason:
       `${TYPE_ONLY_UNIT_TEST} ${HOOK_UNDER_TEST} SIX hook calls now, not two — each drives ` +

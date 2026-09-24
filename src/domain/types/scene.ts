@@ -217,6 +217,18 @@ export interface MaterialPayload {
     /** Spectral IOR spread across the visible band. 0 = no dispersion. */
     readonly dispersion: number;
   };
+  /**
+   * T1355b — present exactly when the material is a Material · WGSL: the author's surface
+   * code, run per fragment before lighting (`model` is the lighting it feeds). `uniforms`
+   * are the reflected `Params` values by field name — re-resolved like every other material
+   * value, so a driven knob is a uniform write (§V5); `code` and `fields` are structural.
+   */
+  readonly custom?: {
+    readonly code: string;
+    readonly paramsDeclaration: string;
+    readonly fields: ReadonlyArray<{ readonly name: string; readonly wgsl: string }>;
+    readonly uniforms: Readonly<Record<string, number | readonly number[]>>;
+  };
 }
 
 /**

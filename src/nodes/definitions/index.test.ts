@@ -28,6 +28,8 @@ describe("the code-parameter census (T492)", () => {
       .sort();
     expect(census).toEqual([
       "customWgsl.source:wgsl",
+      // T1355b: a material whose surface is authored code.
+      "materialWgsl.source:wgsl",
       // T942: the MIDI-learn table. Declared code/json for the same reason the attribute
       // schemas are (§V458) — it is hand-editable structured data, so it gets the JSON
       // editor and the code pane from the manifest rather than from a UI special case.
@@ -196,6 +198,7 @@ describe("core catalogue (T70, T40)", () => {
       "materialPhong",
       "materialPbr",
       "materialGlass",
+      "materialWgsl",
       "pointGenerator",
       "pointGrid",
       "pointLine",

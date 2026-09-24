@@ -227,6 +227,7 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   materialPhong: "none",
   materialPbr: "none",
   materialGlass: "none",
+  materialWgsl: "none",
   // Structure.
   output: "none",
   null: "none",
