@@ -266,7 +266,7 @@ ${CAMERA_PARAMS}
   prevEye: vec3f, // @default 0  The camera's position one frame ago.
   prevAim: vec3f, // @default 0  The camera's look-at one frame ago.
   prevFov: f32, // @default 50  The camera's fov one frame ago.
-  shutter: f32, // @default 0.5  Shutter as a share of the frame (0.5 = a 180° shutter).
+  shutter: f32, // @default 0.35  Shutter as a share of the frame (0.5 = a 180° shutter).
 };
 ${BINDINGS}${VIEW}
 const SAMPLES: u32 = 16u;

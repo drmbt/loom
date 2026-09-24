@@ -1,7 +1,7 @@
 import type { GraphEdge, GraphNode, ProjectDocument } from "../../domain/types/graph.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { SCHEMA_VERSION } from "../../domain/types/schemas.ts";
-import { edge, expressionSlot, graph, node as buildNode, settings } from "../../examples/documents/builders.ts";
+import { LIMITS, edge, expressionSlot, graph, node as buildNode, settings } from "../../examples/documents/builders.ts";
 import type { FurnaceSceneFacts } from "./scene-facts.ts";
 import { markerAt } from "./scene-facts.ts";
 import { RIG_ATTRIBUTES, rigKernel } from "./rig-kernel.ts";
@@ -92,7 +92,8 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   // The furnace breathes with the low band; the arc flickers on the hats (and never quite
   // steadies — a real arc hunts); the high bays are dim sodium, the shop's only steady light.
   pointLight("furnace", "light.furnace_glow", [1, 0.5, 0.2], expressionSlot(`90 + ${direction.energy} * 150 + ${direction.build} * 80`, 160), -2400, 35);
-  pointLight("arc", "light.arc", [0.6, 0.7, 1], expressionSlot(`40 + ${HIT("hatCount")} * 420 + sin(abstime * 37) * 18`, 60), -2200);
+  // Shadowed, so the arc flashes out of the slag door and the roof gaps, not through the shell.
+  pointLight("arc", "light.arc", [0.6, 0.7, 1], expressionSlot(`60 + ${HIT("hatCount")} * 900 + ${direction.density} * 200 + sin(abstime * 37) * 30`, 90), -2200, 20);
   pointLight("slag", "light.slag_door", [1, 0.42, 0.12], 110, -2000, 25);
   pointLight("tap", "light.tap", [1, 0.55, 0.2], expressionSlot(`30 + ${HIT("kickCount")} * 120`, 45), -1800, 20);
   pointLight("tundish", "light.tundish", [1, 0.5, 0.18], 45, -1600);
@@ -103,13 +104,19 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   atmosphereScatter["furnaceGlow"] = expressionSlot(`14 + ${LEVEL("low")} * 16`, 20);
   atmosphereScatter["slagGlow"] = 10;
   atmosphereScatter["tundishGlow"] = 8;
-  atmosphereScatter["lamps"] = 2.5;
+  atmosphereScatter["lamps"] = 1;
   atmosphereScatter["density"] = 0.009;
   atmosphereScatter["ambientSmoke"] = [0.002, 0.0025, 0.0035];
   atmosphereScatter["arcFlash"] = expressionSlot(`6 + ${HIT("hatCount")} * 60`, 10);
   atmosphereScatter["tapGlow"] = expressionSlot(`10 + ${HIT("kickCount")} * 30`, 15);
 
   const cameraRef = (field: string, fallback: number): StoredParameter => expressionSlot(`op('cam1').par.${field}`, fallback);
+
+  /**
+   * The GLITCH BUDGET, a boundary: heavy glitching is allowed in every third section and
+   * through a build-up; elsewhere it is damped to 30%, so the breaks are accents, not a coat.
+   */
+  const glitchBudget = `clamp(0.3 + 0.7 * ((op('dirSections1').chan.novelty % 3) == 1) + ${direction.build} * 0.6, 0, 1)`;
 
   /** The camera now and one frame ago, as the screen-space passes that reproject read it. */
   const cameraNowAndBefore: Record<string, StoredParameter> = {
@@ -177,7 +184,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       casting: expressionSlot("abstime * 0.4", 0),
       conveyor: expressionSlot("abstime * 1.2", 0),
     }, { label: "rig1" }),
-    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: PLANT_SURFACE_WGSL, heatPulse: expressionSlot(`${direction.energy} * 0.25 + ${direction.build} * 0.35`, 0.1) }, { label: "steel1" }),
+    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: PLANT_SURFACE_WGSL, heatGlow: 8, heatPulse: expressionSlot(`${direction.energy} * 0.25 + ${direction.build} * 0.35`, 0.1) }, { label: "steel1" }),
     node("plantGeo", "geometry", [-3000, -300], { mode: "surface", material: "steel1" }, { label: "plantgeo1" }),
     node("machineGeo", "geometry", [-3000, 0], { mode: "surface", material: "steel1" }, { label: "machinegeo1" }),
     // ── Sparks ──
@@ -314,18 +321,24 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       source: GLITCH_WGSL,
       ...cameraNowAndBefore,
       mosh: expressionSlot(`clamp(1 - ${direction.since} / 0.45, 0, 1) * (0.2 + 0.5 * ${direction.energy})`, 0),
-      tear: expressionSlot(`${HIT("hatCount")} * (0.3 + 0.7 * ${direction.density})`, 0),
-      split: expressionSlot(`${HIT("snareCount")} * 0.7 + ${direction.build} * 0.2`, 0),
-      sort: expressionSlot(`${direction.build} * 0.7`, 0),
-      crush: expressionSlot(`(${direction.density} > 0.8) * ${HIT("kickCount")} * 0.8`, 0),
+      tear: expressionSlot(`${glitchBudget} * ${HIT("hatCount")} * (${direction.density} > 0.6) * ${direction.density}`, 0),
+      split: expressionSlot(`${glitchBudget} * (${HIT("snareCount")} * 0.6 + ${direction.build} * 0.2)`, 0),
+      sort: expressionSlot(`${glitchBudget} * ${direction.build} * 0.7`, 0),
+      crush: expressionSlot(`${glitchBudget} * (${direction.density} > 0.85) * ${HIT("kickCount")} * 0.5`, 0),
       freeze: expressionSlot(`(${direction.energy} > 0.85) * (${HIT("kickCount")} > 0.9)`, 0),
     }, { label: "glitch1", resolution: { mode: "project" } }),
     node("history", "feedback", [900, 300], { source: "glitch1" }, { label: "history1" }),
-    node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 2.2, knee: 1 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }),
-    node("bloomNear", "blur", [-900, 250], { size: 10, filter: "gaussian", extend: "hold" }, { label: "bloomnear1", resolution: { mode: "scale", factor: 0.5 } }),
-    node("bloomFar", "blur", [-900, 450], { size: 14, filter: "gaussian", extend: "hold" }, { label: "bloomfar1", resolution: { mode: "scale", factor: 0.25 } }),
-    node("bloomSum", "add", [-600, 350], { opacity: 1 }, { label: "bloomsum1", resolution: { mode: "scale", factor: 0.5 } }),
-    node("glow", "add", [-300, 0], { opacity: 0.14 }, { label: "glow1", resolution: { mode: "project" } }),
+    node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 4, knee: 1.5 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }),
+    // A four-level chain — each level blurred from the one above at half its resolution, then
+    // summed with falling weights: a glow that falls off smoothly instead of a blob (T1376b's shape).
+    node("bloomNear", "blur", [-900, 250], { size: 6, filter: "gaussian", extend: "hold" }, { label: "bloomnear1", resolution: { mode: "scale", factor: 0.5 } }),
+    node("bloomMid", "blur", [-900, 400], { size: 8, filter: "gaussian", extend: "hold" }, { label: "bloommid1", resolution: { mode: "scale", factor: 0.25 } }),
+    node("bloomFar", "blur", [-900, 550], { size: 10, filter: "gaussian", extend: "hold" }, { label: "bloomfar1", resolution: { mode: "scale", factor: 0.125 } }),
+    node("bloomVast", "blur", [-900, 700], { size: 12, filter: "gaussian", extend: "hold" }, { label: "bloomvast1", resolution: { mode: "scale", factor: 0.0625 } }),
+    node("bloomSumMid", "add", [-600, 350], { opacity: 0.8 }, { label: "bloomsummid1", resolution: { mode: "scale", factor: 0.5 } }),
+    node("bloomSumFar", "add", [-450, 450], { opacity: 0.6 }, { label: "bloomsumfar1", resolution: { mode: "scale", factor: 0.5 } }),
+    node("bloomSum", "add", [-300, 550], { opacity: 0.45 }, { label: "bloomsum1", resolution: { mode: "scale", factor: 0.5 } }),
+    node("glow", "add", [-300, 0], { opacity: 0.11 }, { label: "glow1", resolution: { mode: "project" } }),
     // Auto-exposure (T1378b): meter the frame's log-average luminance, adapt toward a key
     // like an eye does — faster when the scene brightens than when it darkens — and hand the
     // grade the gain. One frame late by the meter's contract; the lag hides it.
@@ -364,9 +377,15 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("depth-shutter", ["shot", "depth"], ["shutter", "more"], 0),
     edge("shutter-bright", ["shutter", "out"], ["bright", "input"]),
     edge("bright-near", ["bright", "out"], ["bloomNear", "input"]),
-    edge("bright-far", ["bright", "out"], ["bloomFar", "input"]),
-    edge("near-sum", ["bloomNear", "out"], ["bloomSum", "in1"]),
-    edge("far-sum", ["bloomFar", "out"], ["bloomSum", "in2"]),
+    edge("near-mid", ["bloomNear", "out"], ["bloomMid", "input"]),
+    edge("mid-far", ["bloomMid", "out"], ["bloomFar", "input"]),
+    edge("far-vast", ["bloomFar", "out"], ["bloomVast", "input"]),
+    edge("near-summid", ["bloomNear", "out"], ["bloomSumMid", "in1"]),
+    edge("mid-summid", ["bloomMid", "out"], ["bloomSumMid", "in2"]),
+    edge("summid-sumfar", ["bloomSumMid", "out"], ["bloomSumFar", "in1"]),
+    edge("far-sumfar", ["bloomFar", "out"], ["bloomSumFar", "in2"]),
+    edge("sumfar-sum", ["bloomSumFar", "out"], ["bloomSum", "in1"]),
+    edge("vast-sum", ["bloomVast", "out"], ["bloomSum", "in2"]),
     edge("shutter-glow", ["shutter", "out"], ["glow", "in1"]),
     edge("sum-glow", ["bloomSum", "out"], ["glow", "in2"]),
     edge("glow-grade", ["glow", "out"], ["grade", "input"]),
@@ -384,7 +403,13 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     projectId: "project-furnace",
     name: "Furnace",
     graph: graph(nodes, edges),
-    settings: settings({ outputResolution: { width: options.width ?? 1920, height: options.height ?? 1080 }, randomSeed: 11 }),
+    settings: settings({
+      outputResolution: { width: options.width ?? 1920, height: options.height ?? 1080 },
+      randomSeed: 11,
+      // Many full-resolution HDR passes (G-buffer, screen space, bloom chain) at 1080p: the
+      // default 1 GB texture budget is ~15% short, and this piece is made for a real GPU.
+      limits: { ...LIMITS, memoryBudgetBytes: 3_221_225_472 },
+    }),
     assets: [],
     createdAt: "2026-09-24T00:00:00.000Z",
     updatedAt: "2026-09-24T00:00:00.000Z",
