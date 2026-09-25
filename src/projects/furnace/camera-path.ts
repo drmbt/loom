@@ -60,14 +60,33 @@ const offset = (base: Vec3, by: Vec3): Vec3 => [base[0] + by[0], base[1] + by[1]
  * first candidate offset whose sightline is clear for three-quarters of the way — so a
  * re-export that moves a column moves the camera, instead of parking it behind the column.
  */
-const seek = (subject: string, lift: Vec3, fov: number, candidates: readonly Vec3[]) => (facts: FurnaceSceneFacts): Pose => {
+const seek = (subject: string, lift: Vec3, fov: number, candidates: readonly Vec3[], ringed = true) => (facts: FurnaceSceneFacts): Pose => {
   const aim = offset(at(facts, subject), lift);
-  for (const candidate of candidates) {
-    const eye = offset(aim, candidate);
-    const near: Vec3 = [eye[0] + (aim[0] - eye[0]) * 0.75, eye[1] + (aim[1] - eye[1]) * 0.75, eye[2] + (aim[2] - eye[2]) * 0.75];
-    if (firstHit(facts.blockers, eye, near) >= 1) return toward(eye, aim, fov);
+  // The given candidates first, in order; then a ring at their distances and heights, every 15°.
+  const ring: Vec3[] = [];
+  for (const candidate of ringed ? candidates : []) {
+    const radius = Math.hypot(candidate[0], candidate[2]);
+    for (let angle = 0; angle < 360; angle += 15) {
+      ring.push([Math.cos((angle * Math.PI) / 180) * radius, candidate[1], Math.sin((angle * Math.PI) / 180) * radius]);
+    }
   }
-  throw new Error(`cameraPath: no clear eye on "${subject}" among ${candidates.length} candidates.`);
+  for (const candidate of [...candidates, ...ring]) {
+    const eye = offset(aim, candidate);
+    // Clear down the centre AND toward the frame's inner half on all four sides: a column
+    // beside the subject is as bad as one in front of it.
+    const d: Vec3 = [aim[0] - eye[0], aim[1] - eye[1], aim[2] - eye[2]];
+    const reach = Math.hypot(d[0], d[1], d[2]);
+    const flat = Math.hypot(d[0], d[2]) || 1;
+    const right: Vec3 = [-d[2] / flat, 0, d[0] / flat];
+    const spread = reach * Math.tan((fov * Math.PI) / 360) * 0.5;
+    const targets: Vec3[] = [aim, offset(aim, [right[0] * spread, 0, right[2] * spread]), offset(aim, [-right[0] * spread, 0, -right[2] * spread]), offset(aim, [0, spread, 0]), offset(aim, [0, -spread, 0])];
+    const clear = targets.every((target) => {
+      const near: Vec3 = [eye[0] + (target[0] - eye[0]) * 0.75, eye[1] + (target[1] - eye[1]) * 0.75, eye[2] + (target[2] - eye[2]) * 0.75];
+      return firstHit(facts.blockers, eye, near) >= 1;
+    });
+    if (clear) return toward(eye, aim, fov);
+  }
+  throw new Error(`cameraPath: no clear eye on "${subject}" among ${candidates.length} candidates and their rings.`);
 };
 
 /**
@@ -84,7 +103,10 @@ export const CUT: readonly Move[] = [
   // The ladle lip pouring, from below and close: the stream against black.
   { name: "ladle_lip_low", pose: seek("emit.ladle_lip", [0, -0.5, 0], 34, [[5, -3, 5], [5, -3, -5], [6, -2, 2], [4, -3.5, 7]]), dolly: 2, push: -6, ease: "whip" },
   // Into the furnace through the slag door, a long lens from the dark: the bath inside.
-  { name: "slag_door_into", pose: seek("emit.bath", [0, 0, 0], 16, [[-16, 1.2, 3], [-16, 1.2, -3], [-18, 2, 0], [-14, 0.5, 4]]), push: -4, dolly: 2, ease: "creep" },
+  { name: "slag_door_into", pose: seek("emit.slag_door", [0, -0.3, 0], 20, [
+    // The door faces −X: only eyes on that side see INTO the furnace.
+    [-14, 0.5, 2], [-14, 0.5, -2], [-12, -0.5, 4], [-12, -0.5, -4], [-17, 1.5, 0], [-10, -1, 5], [-10, -1, -5], [-18, 2.5, 3], [-18, 2.5, -3], [-9, 0, 2], [-9, 0, -2], [-8, -1, 0],
+  ], false), push: -4, dolly: 2, ease: "creep" },
   // The tap: the stream and its spray, close and low.
   { name: "tap_close", pose: seek("emit.tap_stream", [0, -0.5, 0], 42, [[4, -2.5, 5], [4, -2.5, -5], [6, -1.5, 3], [3, -3, 6]]), orbit: 0.6, ease: "smooth" },
   // The slag falling into the pot.

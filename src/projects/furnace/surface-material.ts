@@ -76,6 +76,7 @@ struct Params {
   flicker: f32, // @default 0  Hats: panels light up as corrupt blocks, hash-picked per 1.5 m panel.
   heatGlow: f32, // @default 14  (Legacy; the liquid and solid glows below replace it.)
   liquidGlow: f32, // @default 2  Radiance of liquid steel at its hottest.
+  fire: f32, // @default 18  Radiance of the flames inside the furnace (the audio's handle).
   liningGlow: f32, // @default 12  Radiance of hot SOLIDS — the strand, hot slag, graphite, linings.
   heatFlow: f32, // @default 0.3  How fast the molten surface flows, metres per second.
   heatPulse: f32, // @default 0  Extra heat on the whole melt (the audio's handle).
@@ -283,7 +284,36 @@ fn classSkin(kind: u32, s: SurfaceIn, base: vec3f, normal: vec3f, p: Params) -> 
   return k;
 }
 
+// Inside the furnace shell (radius ~4.2 m about the vertical axis, between the hearth and the
+// roof): flames licking up the walls and a foaming, boiling slag line — what the slag door
+// and the roof gaps show. Advected upward, broken by noise, flickering with the music.
+fn furnaceInterior(s: SurfaceIn, p: Params) -> vec3f {
+  let r = length(s.world.xz);
+  // Only the LINING: a surface inside the radius whose normal faces the axis (the shell's
+  // outer skin faces away, and must stay steel).
+  let inward = smoothstep(0.2, 0.6, dot(s.normal.xz, -s.world.xz / max(r, 1e-3)));
+  let floorOfBath = smoothstep(0.7, 0.95, s.normal.y) * (1.0 - smoothstep(2.5, 3.8, r));
+  let inside = (1.0 - smoothstep(3.6, 4.2, r)) * max(inward, floorOfBath) * smoothstep(6.0, 7.0, s.world.y) * (1.0 - smoothstep(12.0, 13.0, s.world.y));
+  if (inside <= 0.0 || p.fire <= 0.0) { return vec3f(0.0); }
+  let t = s.absTime;
+  let rise = vec3f(s.world.x * 1.3, s.world.y * 0.9 - t * 2.6, s.world.z * 1.3);
+  let tongues = detailFbm(rise, 4, s.footprint).value;
+  let flicker = detailFbm(vec3f(s.world.xz * 0.7, t * 3.0), 2, s.footprint).value;
+  let height = 1.0 - smoothstep(8.0, 12.5, s.world.y);
+  let flame = smoothstep(0.42, 0.75, tongues * (0.6 + 0.6 * flicker) + height * 0.3);
+  // The slag line: a boiling band around the bath level.
+  let foam = smoothstep(0.45, 0.7, detailFbm(vec3f(s.world.xz * 2.2, t * 1.8), 3, s.footprint).value) * (1.0 - smoothstep(0.0, 0.9, abs(s.world.y - 8.9)));
+  let temperature = clamp(0.55 + 0.45 * flame + 0.3 * foam, 0.0, 1.0);
+  return blackbody(temperature) * p.fire * inside * (flame * flame + foam * 0.8);
+}
+
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
+  var o = surfaceBody(s, p);
+  o.emissive = o.emissive + furnaceInterior(s, p);
+  return o;
+}
+
+fn surfaceBody(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceDefaults(s);
   let heat = s.attr.z;
 

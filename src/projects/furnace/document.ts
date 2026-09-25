@@ -236,7 +236,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       casting: expressionSlot("abstime * 0.4", 0),
       conveyor: expressionSlot("abstime * 1.2", 0),
     }, { label: "rig1" }),
-    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, liquidGlow: 1, liningGlow: 12, chalk: 0.12, soot: 0.38,
+    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, liquidGlow: 1, liningGlow: 12, fire: expressionSlot(`5 + ${LEVEL("low")} * 12 + ${direction.build} * 10`, 9), chalk: 0.12, soot: 0.38,
       fx: expressionSlot(`clamp((${direction.energy} - 0.4) / 0.5, 0, 1)`, 0),
       kickSince: expressionSlot("op('kicks1').chan.kickCountSince", 100),
       snareSince: expressionSlot("op('snares1').chan.snareCountSince", 100),
