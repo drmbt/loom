@@ -71,7 +71,7 @@ const EMITTER_DIRECTION = array<vec3f, ${EMITTERS.length}>(${directions.join(", 
 // spread (radians), speed min, speed max, life min
 const EMITTER_TUNING = array<vec4f, ${EMITTERS.length}>(${tuning.join(", ")});
 const EMITTER_LIFE_MAX = array<f32, ${EMITTERS.length}>(${lifeMax.join(", ")});
-const DRAG: f32 = 0.9;
+const DRAG: f32 = 1.4;
 const FLOOR: f32 = 0.03;
 
 fn emitterRate(index: u32, ctx: PointCtx) -> f32 {
@@ -121,11 +121,13 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let direction = normalize(axis * cos(tilt) + (side * cos(angle) + up * sin(angle)) * sin(tilt));
   let speed = mix(tuning.y, tuning.z, sparkHash(id, cycle * 7u + 6u));
   let v0 = direction * speed;
-  // Linear drag, closed form: x(t) = x0 + (v0 + g/k)(1 − e^{−kt})/k − (g/k) t.
+  // Linear drag, closed form of dv/dt = g − k·v: v(t) = (v0 − g/k)e^{−kt} + g/k and
+  // x(t) = x0 + (v0 − g/k)(1 − e^{−kt})/k + (g/k)·t. (The signs were once flipped, which
+  // made gravity pull UP: sparks curling skyward.) At v0 = 0 and small t this is x0 + g·t²/2.
   let g = vec3f(0.0, -ctx.params.gravity, 0.0);
   let decay = exp(-DRAG * t);
-  var position = origin + (v0 + g / DRAG) * (1.0 - decay) / DRAG - (g / DRAG) * t;
-  var velocity = (v0 + g / DRAG) * decay - g / DRAG;
+  var position = origin + (v0 - g / DRAG) * (1.0 - decay) / DRAG + (g / DRAG) * t;
+  var velocity = (v0 - g / DRAG) * decay + g / DRAG;
   // One bounce: fold below the floor, keep a third of the height and slow the skid.
   if (position.y < FLOOR) {
     position = vec3f(origin.x + (position.x - origin.x) * 0.85, FLOOR + (FLOOR - position.y) * 0.3, origin.z + (position.z - origin.z) * 0.85);
