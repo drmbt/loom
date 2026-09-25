@@ -87,7 +87,7 @@ for (const shot of shots) {
     outputNodeId: "out",
     // The value graph and the expressions (rig, lanes, camera drift) only run when asked.
     animate: true,
-    meshes: { plant: glb, machines: glb },
+    meshes: { plant: glb, machines: glb, sky: glb },
     ...(track === undefined ? {} : { audio: track.seam(fps, start) }),
     ...(encoder === undefined
       ? {}

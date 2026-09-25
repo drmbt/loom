@@ -2,6 +2,8 @@ import type { FurnaceSceneFacts } from "./scene-facts.ts";
 import { markerAt, wgslVec3 } from "./scene-facts.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 import { fixtureTableWgsl, fixturesOf, LAMP_FUNCTIONS, LAMP_PARAMS } from "./fixtures.ts";
+import type { SunView } from "./sun.ts";
+import { sunLitWgsl } from "./sun.ts";
 
 /**
  * T1354b — the shop's AIR: smoke that the lights live in.
@@ -17,8 +19,10 @@ import { fixtureTableWgsl, fixturesOf, LAMP_FUNCTIONS, LAMP_PARAMS } from "./fix
  *    knob so the audio can flare one without the others;
  *  - the 65 lamp FIXTURES (fixtures.ts) — each a cone of light hanging in the smoke, with
  *    the same dimmers, crane travel and failing ballasts as the deferred lamp pass;
- *  - light SHAFTS under the roof louvres: analytic cylinders slanting along the key light,
- *    denser at the core, which is what reads as god rays through smoke.
+ *  - the SUN, wherever it reaches the smoke: every march step asks the sun's own depth view
+ *    (sun.ts) whether the plant stands between — so the shafts are cut by the windows, the
+ *    louvres and the trusses, not painted;
+ *  - soft skylight SHAFTS under the roof louvres: analytic cylinders, the diffuse half.
  *
  * The surface colour is attenuated by the transmittance on the way. Unshadowed in-scatter
  * (a lamp's glow passes through the crane bridge) is the stated limit until §T1362b.
@@ -42,12 +46,12 @@ export const SCATTER_LIGHTS: readonly ScatterLight[] = [
 
 /** The key light's travel direction; the louvre shafts slant along it. */
 export const KEY_DIRECTION: readonly [number, number, number] = (() => {
-  const [x, y, z] = [0.22, -0.55, -0.8];
+  const [x, y, z] = [0.3, -0.85, -0.43];
   const length = Math.hypot(x, y, z);
   return [x / length, y / length, z / length] as const;
 })();
 
-export function atmosphereWgsl(facts: FurnaceSceneFacts): string {
+export function atmosphereWgsl(facts: FurnaceSceneFacts, sun: SunView): string {
   const lights = SCATTER_LIGHTS.map((light) => ({ ...light, position: markerAt(facts, light.marker) }));
   const params = [...new Map(lights.map((light) => [light.param, light])).values()];
   const louvres = [...facts.markers.values()].filter((marker) => marker.name.startsWith("emit.louvre_shaft"));
@@ -69,6 +73,9 @@ ${params.map((light) => `  ${light.param}: f32, // @default ${light.rest}  ${lig
 ${LAMP_PARAMS}
   lampScatter: f32, // @default 1  How much of the fixtures' light the smoke catches.
   shafts: f32, // @default 2.5  Brightness of the light shafts under the roof louvres.
+  sunShafts: f32, // @default 120  Radiance of sunlight in the smoke where the sun reaches it.
+  sunColor: vec3f, // @default 1  Colour of the sunlight in the smoke.
+  sunForward: f32, // @default 0.6  How strongly the smoke throws sunlight forward (HG g).
   shaftColor: vec3f, // @default 0.75  Colour of the shafts (daylight through smoke).
 };
 
@@ -77,6 +84,7 @@ ${LAMP_PARAMS}
 @group(0) @binding(2) var<uniform> frameU: SharedFrame;
 @group(0) @binding(3) var<uniform> params: Params;
 @group(0) @binding(4) var inputTexture1: texture_2d<f32>;
+@group(0) @binding(5) var inputTexture2: texture_2d<f32>;
 
 const LIGHT_COUNT: u32 = ${lights.length}u;
 const LIGHT_POSITION = array<vec3f, ${lights.length}>(${lights.map((light) => wgslVec3(light.position)).join(", ")});
@@ -87,7 +95,7 @@ const SHAFT_TOP = array<vec3f, ${Math.max(1, louvres.length)}>(${
 const SHAFT_DIRECTION: vec3f = ${wgslVec3(KEY_DIRECTION)};
 const SHAFT_RADIUS: f32 = 1.8;
 const STEPS: u32 = 28u;
-${fixtureTableWgsl(fixturesOf(facts))}${LAMP_FUNCTIONS}
+${sunLitWgsl(sun, "inputTexture2")}${fixtureTableWgsl(fixturesOf(facts))}${LAMP_FUNCTIONS}
 
 fn lightRadiance(index: u32) -> vec3f {
   switch index {
@@ -127,6 +135,11 @@ fn phase(cosTheta: f32) -> f32 {
   let g = 0.35;
   let denominator = 1.0 + g * g - 2.0 * g * cosTheta;
   return (1.0 - g * g) / (12.566371 * pow(denominator, 1.5));
+}
+
+fn phaseG(cosTheta: f32, g: f32) -> f32 {
+  let denominator = 1.0 + g * g - 2.0 * g * cosTheta;
+  return (1.0 - g * g) / (12.566371 * pow(max(denominator, 1e-4), 1.5));
 }
 
 fn shaftDensity(x: vec3f) -> f32 {
@@ -182,9 +195,13 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
       let cone = lampCone(i, -l, frameU.absTime);
       if (cone <= 0.0) { continue; }
       let fade = 1.0 - d2 / 1600.0;
-      inscatter = inscatter + LAMP_COLOR[i] * (lampGain(i, frameU.absTime) * params.lampScatter * cone * fade * fade) * phase(dot(direction, l)) / (1.0 + d2);
+      inscatter = inscatter + lampFlux(i, frameU.absTime) * (params.lampScatter * cone * fade * fade) * phase(dot(direction, l)) / (1.0 + d2);
     }
     inscatter = inscatter + params.shaftColor * params.shafts * shaftDensity(x) * phase(dot(direction, -SHAFT_DIRECTION));
+    // Two shadow taps across the step: the shafts' edges are the sharpest thing in the air,
+    // and one binary tap per step is what reads as speckle.
+    let sunSeen = 0.5 * (sunLit(x) + sunLit(x + direction * step * 0.5));
+    inscatter = inscatter + params.sunColor * (params.sunShafts * sunSeen) * phaseG(dot(direction, -SHAFT_DIRECTION), params.sunForward);
     scatter = scatter + transmittance * sigma * inscatter * step;
     transmittance = transmittance * exp(-sigma * step);
   }

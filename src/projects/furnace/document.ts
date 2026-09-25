@@ -16,6 +16,7 @@ import { GLITCH_WGSL } from "./glitch.ts";
 import { director } from "./director.ts";
 import { fixturesOf } from "./fixtures.ts";
 import { lampsWgsl } from "./lamps.ts";
+import { sunView } from "./sun.ts";
 
 /**
  * T1354b — THE FURNACE DOCUMENT: the melt shop, lit, running, in smoke, graded.
@@ -110,16 +111,23 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   atmosphereScatter["slagGlow"] = 10;
   atmosphereScatter["tundishGlow"] = 8;
   atmosphereScatter["lampScatter"] = 3;
+  atmosphereScatter["sunColor"] = [0.62, 0.86, 1, 1];
   atmosphereScatter["density"] = 0.009;
   atmosphereScatter["ambientSmoke"] = [0.002, 0.0025, 0.0035];
   atmosphereScatter["arcFlash"] = expressionSlot(`6 + ${HIT("hatCount")} * 60`, 10);
   atmosphereScatter["tapGlow"] = expressionSlot(`10 + ${HIT("kickCount")} * 30`, 15);
 
+  /** The sun's depth view (sun.ts): what the smoke asks before it lights a shaft. */
+  const sun = sunView(facts, KEY_DIRECTION);
+  const SUN_MAP = 2048;
+
   const cameraRef = (field: string, fallback: number): StoredParameter => expressionSlot(`op('cam1').par.${field}`, fallback);
 
   /** The fixtures as the lamp pass and the smoke both see them: one gain, the crane travel. */
   const lampDrive: Record<string, StoredParameter> = {
-    gain: 0.006,
+    gain: 0.003,
+    // The export's warm lamps retinted to neutral steel-blue (0.85, 0.9, 1): only the melt is warm.
+    tint: [0.85, 1.05, 1.5, 1],
     craneX: expressionSlot("op('rig1').par.craneX", 0),
     crane2X: expressionSlot("op('rig1').par.crane2X", 0),
   };
@@ -197,6 +205,10 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       conveyor: expressionSlot("abstime * 1.2", 0),
     }, { label: "rig1" }),
     node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: PLANT_SURFACE_WGSL, heatGlow: 8, heatPulse: expressionSlot(`${direction.energy} * 0.25 + ${direction.build} * 0.35`, 0.1) }, { label: "steel1" }),
+    // The sky through the openings: emissive, unlit — so it neither shades nor casts (T666).
+    node("sky", "meshFileIn", [-3600, -600], { file: facts.glbUrl, select: facts.sky.select, vertices: facts.sky.vertices, triangles: facts.sky.triangles, parts: facts.sky.parts }, { label: "sky1" }),
+    node("skyMat", "materialUnlit", [-3300, -700], { color: [0, 0, 0, 1] }, { label: "skymat1" }),
+    node("skyGeo", "geometry", [-3000, -750], { mode: "surface", material: "skymat1" }, { label: "skygeo1" }),
     node("plantGeo", "geometry", [-3000, -300], { mode: "surface", material: "steel1" }, { label: "plantgeo1" }),
     node("machineGeo", "geometry", [-3000, 0], { mode: "surface", material: "steel1" }, { label: "machinegeo1" }),
     // ── Sparks ──
@@ -253,8 +265,17 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     ...lightNodes,
     node("envSeed", "ramp", [-2700, 300], {}, { label: "envseed1", resolution: { mode: "fixed", width: 1024, height: 512 } }),
     node("env", "customWgsl", [-2700, 500], { source: SHOP_ENVIRONMENT_WGSL }, { label: "env1" }),
+    // ── The sun's view: depth only, for the shafts ──
+    node("sunCam", "camera", [-2700, 900], { eye: vec(sun.eye), lookAt: vec(sun.aim), ortho: true, orthoHeight: sun.height, near: sun.near, far: sun.far }, { label: "suncam1" }),
+    node("sunMat", "materialUnlit", [-3300, 1100], { color: [1, 1, 1, 1] }, { label: "sunmat1" }),
+    node("plantSun", "geometry", [-3000, 900], { mode: "surface", material: "sunmat1" }, { label: "plantsun1" }),
+    node("machineSun", "geometry", [-3000, 1050], { mode: "surface", material: "sunmat1" }, { label: "machinesun1" }),
+    node("sunShot", "render", [-2400, 900], { scenes: "plantsun1 machinesun1", camera: "suncam1", lights: "", depthOutput: true }, {
+      label: "sunshot1",
+      resolution: { mode: "fixed", width: SUN_MAP, height: Math.max(64, Math.round((SUN_MAP * sun.height) / sun.width)) },
+    }),
     node("shot", "render", [-2400, 0], {
-      scenes: "plantgeo1 machinegeo1 sparkgeo1",
+      scenes: "plantgeo1 skygeo1 machinegeo1 sparkgeo1",
       camera: "cam1",
       lights: ["key1", ...lightLabels].join(" "),
       ambientColor: [0.56, 0.58, 0.6, 1],
@@ -314,7 +335,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       far: cameraRef("far", 400),
     }, { label: "reflections1", resolution: { mode: "project" } }),
     node("air", "customWgslMulti", [-1500, 0], {
-      source: atmosphereWgsl(facts),
+      source: atmosphereWgsl(facts, sun),
       ...atmosphereScatter,
       ...lampDrive,
       eye: vec(eye),
@@ -406,6 +427,10 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("normal-reflections", ["shot", "normal"], ["reflections", "more"], 1),
     edge("reflections-air", ["reflections", "out"], ["air", "input"]),
     edge("depth-air", ["shot", "depth"], ["air", "more"], 0),
+    edge("sun-air", ["sunShot", "depth"], ["air", "more"], 1),
+    edge("plant-sun", ["plant", "out"], ["plantSun", "points"]),
+    edge("sky-geo", ["sky", "out"], ["skyGeo", "points"]),
+    edge("rig-sun", ["rig", "out"], ["machineSun", "points"]),
     edge("air-lens", ["air", "out"], ["lens", "input"]),
     edge("depth-lens", ["shot", "depth"], ["lens", "more"], 0),
     edge("lens-shutter", ["lens", "out"], ["shutter", "input"]),

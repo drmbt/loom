@@ -132,6 +132,11 @@ fn lampGain(i: u32, time: f32) -> f32 {
   return params.gain * areaGain[u32(LAMP_SHAPE[i].z)] * (1.0 - failing * stutter);
 }
 
+// A fixture's radiant colour this frame: its exported colour × lumens, retinted, dimmed.
+fn lampFlux(i: u32, time: f32) -> vec3f {
+  return LAMP_COLOR[i] * params.tint * lampGain(i, time);
+}
+
 // The spot cone: full inside the inner angle, falling to zero at the outer.
 fn lampCone(i: u32, fromLamp: vec3f, time: f32) -> f32 {
   return smoothstep(LAMP_SHAPE[i].x, LAMP_SHAPE[i].y, dot(fromLamp, lampDirection(i, time)));
@@ -147,6 +152,7 @@ export const LAMP_PARAMS = `  gain: f32, // @default 0.004  Lumens to scene radi
   pulpit: f32, // @default 1  Dimmer: the pulpit panels and its beacon.
   props: f32, // @default 1  Dimmer: the floods on columns and props.
   failing: f32, // @default 0.06  Share of fixtures whose ballast stutters.
+  tint: vec3f, // @default 1  Retint of every fixture (the export's lamps are warm; metal halide is not).
   beaconRate: f32, // @default 0.8  Beacon turns per second.
   craneX: f32, // @default 0  Scrap crane bridge travel (drive from the rig).
   crane2X: f32, // @default 0  Ladle crane bridge travel (drive from the rig).`;

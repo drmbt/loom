@@ -23,22 +23,29 @@ export interface FurnaceSceneFacts {
   readonly glbUrl: string;
   readonly plant: MeshSelectionFacts;
   readonly machines: MeshSelectionFacts;
+  /** The sky seen through the windows and louvres: emissive planes, drawn UNLIT so they cast no shadow. */
+  readonly sky: MeshSelectionFacts;
   /** Part name → index (1-based, as `surface.w` carries it) and rest pivot. */
   readonly parts: ReadonlyMap<string, { readonly index: number; readonly pivot: readonly [number, number, number] }>;
   readonly cameras: ReadonlyMap<string, DecodedCamera>;
   readonly markers: ReadonlyMap<string, DecodedMarker>;
   /** The plant's triangles at rest, for build-time camera collision (camera-path.ts). */
   readonly blockers: readonly Blocker[];
+  /** The static plant's world bounds — what the sun's shadow camera frames (sun.ts). */
+  readonly bounds: DecodedMesh["bounds"];
 }
 
 // The pulpit glass is left out until a mesh can wear glass (§T1357b); drawn opaque it walls the pulpit in.
-export const PLANT_SELECT = "!part:* !material:glass_pulpit";
+// The sky-opening planes are their own selection: lit, they would CAST, and seal the hall from the sun.
+export const PLANT_SELECT = "!part:* !material:glass_pulpit !material:sky_opening";
 export const MACHINES_SELECT = "part:*";
+export const SKY_SELECT = "material:sky_opening";
 
 export function sceneFactsFrom(
   glbUrl: string,
   plant: DecodedMesh,
   machines: DecodedMesh,
+  sky: DecodedMesh,
 ): FurnaceSceneFacts {
   const facts = (mesh: DecodedMesh, select: string): MeshSelectionFacts => ({
     select,
@@ -50,10 +57,12 @@ export function sceneFactsFrom(
     glbUrl,
     plant: facts(plant, PLANT_SELECT),
     machines: facts(machines, MACHINES_SELECT),
+    sky: facts(sky, SKY_SELECT),
     parts: new Map(machines.parts.map((part) => [part.name, { index: part.index, pivot: part.pivot }])),
     cameras: new Map(machines.cameras.map((camera) => [camera.name, camera])),
     markers: new Map(machines.markers.map((marker) => [marker.name, marker])),
     blockers: [plant, machines].map((mesh) => ({ positions: mesh.positions, indices: mesh.indices })),
+    bounds: plant.bounds,
   };
 }
 

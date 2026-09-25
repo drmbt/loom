@@ -77,8 +77,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
 
   var sum = vec3f(0.0);
   for (var i = 0u; i < LAMP_COUNT; i = i + 1u) {
-    let gain = lampGain(i, time);
-    let flux = LAMP_COLOR[i] * gain;
+    let flux = lampFlux(i, time);
     let peak = max(flux.r, max(flux.g, flux.b));
     // Reach: where inverse-square falls to the cutoff; windowed smoothly to zero there.
     let range2 = peak / max(params.cutoff, 1e-6);
