@@ -31,6 +31,11 @@ struct Params {
   puddles: f32, // @default 0.8  Oily, glossy patches on the floor.
   floorGrime: f32, // @default 0.85  Scale, soot and slag ground into the floor.
   chalk: f32, // @default 0.45  How much chroma weathered paint has lost.
+  paintPop: f32, // @default 0.35  Extra chroma on painted steel (fresh safety paint).
+  fx: f32, // @default 0  Master level of the surface effects below (the director's intensity).
+  kickSince: f32, // @default 100  Seconds since the kick: a shockwave runs out from the furnace along the panel seams.
+  snareSince: f32, // @default 100  Seconds since the snare: a hot scanline sweeps up every wall.
+  flicker: f32, // @default 0  Hats: panels light up as corrupt blocks, hash-picked per 1.5 m panel.
   heatGlow: f32, // @default 14  Radiance of the hottest molten steel.
   heatFlow: f32, // @default 0.3  How fast the molten surface flows, metres per second.
   heatPulse: f32, // @default 0  Extra heat on the whole melt (the audio's handle).
@@ -45,6 +50,31 @@ fn blackbody(t: f32) -> vec3f {
   let yellow = vec3f(1.0, 0.66, 0.2);
   let white = vec3f(1.0, 0.93, 0.78);
   return mix(mix(red, orange, smoothstep(0.0, 0.35, x)), mix(yellow, white, smoothstep(0.75, 1.0, x)), smoothstep(0.35, 0.75, x));
+}
+
+// The audio's marks ON the steel — light running through the structure, not over the picture.
+fn surfaceFx(s: SurfaceIn, p: Params) -> vec3f {
+  if (p.fx <= 0.0) { return vec3f(0.0); }
+  // Panel seams: distance to the nearest edge of the 1.5 m panel grid, on the face's plane.
+  let cell = fract(s.world / 1.5);
+  let edge = min(cell, vec3f(1.0) - cell);
+  let across = abs(s.normal);
+  let seamDistance = min(min(select(edge.x, 1.0, across.x > 0.7), select(edge.y, 1.0, across.y > 0.7)), select(edge.z, 1.0, across.z > 0.7));
+  let seam = 1.0 - smoothstep(0.0, 0.04, seamDistance);
+  // KICK: a ring leaving the furnace at 60 m/s, fading within a second; it lights the seams
+  // hard and the panels faintly, so the structure itself carries the beat.
+  let radius = p.kickSince * 60.0;
+  let ring = exp(-pow((length(s.world.xz) - radius) / 0.8, 2.0)) * exp(-p.kickSince * 3.0);
+  var fx = vec3f(1.0, 0.42, 0.12) * ring * (seam * 2.5 + 0.1);
+  // SNARE: a thin scanline climbing the walls at 30 m/s, cold.
+  let line = exp(-pow((s.world.y - p.snareSince * 30.0) / 0.25, 2.0)) * exp(-p.snareSince * 3.0) * (1.0 - across.y);
+  fx = fx + vec3f(0.35, 0.8, 1.0) * line * 3.0;
+  // HATS: a few 3 m panels switching on as flat blocks, a new pick twelve times a second —
+  // sparse, or it reads as confetti rather than a fault in the structure.
+  let panel = floor(s.world / 3.0);
+  let pick = fract(sin(dot(panel, vec3f(12.9898, 78.233, 37.719)) + floor(s.absTime * 12.0) * 7.13) * 43758.5453);
+  fx = fx + vec3f(0.3, 0.75, 1.0) * step(1.0 - p.flicker * 0.012, pick) * 0.9;
+  return fx * p.fx;
 }
 
 fn panelShade(world: vec3f) -> f32 {
@@ -107,6 +137,8 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   // Paint in a melt shop is chalked and filmed with dust: it keeps its hue but loses its
   // chroma, which is also what stops blue paint under orange light going violet.
   albedo = mix(vec3f(dot(albedo, vec3f(0.2126, 0.7152, 0.0722))), albedo, 1.0 - painted * p.chalk);
+  // …and where it is fresh it is the loudest colour in the shop: safety yellow, primer red.
+  albedo = mix(albedo, albedo * albedo / max(dot(albedo, vec3f(0.2126, 0.7152, 0.0722)), 1e-3) * 0.9, painted * p.paintPop);
 
   // Paint worn back to bare steel on edges, and a little everywhere it gets knocked.
   let chips = detailFbm(s.world * 3.2, 3, s.footprint).value;
@@ -147,5 +179,6 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   o.roughness = roughness;
   o.metallic = metallic;
   o.normal = normal;
+  o.emissive = o.emissive + surfaceFx(s, p);
   return o;
 }`;

@@ -15,6 +15,7 @@ import { walkTrack } from "./load-audio.ts";
  *     --glb <furnace.glb> --out <dir> [--audio <track.wav>] [--shots a,b] [--width 1280]
  *     [--at <seconds>]                 stills at that point of the track (after a 3 s run-up)
  *     [--clip <start>,<seconds>]       an MP4 of that span, the track muxed in (needs ffmpeg)
+ *     --shots cut:N                    holds CUT entry N (camera-path.ts), its move from t = 0
  *     [--clean]                        the glitch layer bypassed, to judge the look underneath
  *     [--set lamps.gain=0.01,grade.exposure=1]   parameter overrides by node id, for tuning
  *
@@ -51,7 +52,9 @@ const toRgba8 = (frame: RenderedFrame) =>
 
 for (const shot of shots) {
   // `cut` runs the camera path (every framing, a move each, cuts on bars) instead of one held shot.
-  const built = furnaceDocument(facts, { ...(shot === "cut" ? {} : { shot }), width, height });
+  // `cut:N` holds CUT entry N of the camera path, its move playing from t = 0.
+  const held = /^cut:(\d+)$/.exec(shot);
+  const built = furnaceDocument(facts, { ...(shot === "cut" ? {} : held !== null ? { cutIndex: Number(held[1]) } : { shot }), width, height });
   const nodes = { ...built.graph.nodes };
   if (clean) nodes["glitch"] = { ...nodes["glitch"]!, ui: { ...nodes["glitch"]!.ui, bypassed: true } };
   for (const { nodeId, parameter, value } of overrides) {

@@ -61,7 +61,8 @@ export function sceneFactsFrom(
     parts: new Map(machines.parts.map((part) => [part.name, { index: part.index, pivot: part.pivot }])),
     cameras: new Map(machines.cameras.map((camera) => [camera.name, camera])),
     markers: new Map(machines.markers.map((marker) => [marker.name, marker])),
-    blockers: [plant, machines].map((mesh) => ({ positions: mesh.positions, indices: mesh.indices })),
+    // The sky planes stand in the openings: a camera must not look through one from outside.
+    blockers: [plant, machines, sky].map((mesh) => ({ positions: mesh.positions, indices: mesh.indices })),
     bounds: plant.bounds,
   };
 }

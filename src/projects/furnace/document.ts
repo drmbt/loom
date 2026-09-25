@@ -8,7 +8,7 @@ import { RIG_ATTRIBUTES, rigKernel } from "./rig-kernel.ts";
 import { SPARK_ATTRIBUTES, sparksKernel } from "./sparks-kernel.ts";
 import { PLANT_SURFACE_WGSL } from "./surface-material.ts";
 import { KEY_DIRECTION, SCATTER_LIGHTS, atmosphereWgsl } from "./atmosphere.ts";
-import { BRIGHT_PASS_WGSL, GRADE_WGSL } from "./post.ts";
+import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL, GRADE_WGSL } from "./post.ts";
 import { SHOP_ENVIRONMENT_WGSL } from "./environment.ts";
 import { DOF_WGSL, GTAO_WGSL, MOTION_BLUR_WGSL, SSR_WGSL } from "./screen-space.ts";
 import { shotPath } from "./camera-path.ts";
@@ -33,6 +33,8 @@ export interface FurnaceDocumentOptions {
   readonly shot?: string;
   readonly width?: number;
   readonly height?: number;
+  /** Hold one CUT entry and play its move from t = 0 (the director still drives everything else): previewing a framing. */
+  readonly cutIndex?: number;
   /** The track, as a path under public/. Absent: the owner's working track (Clankz 3), which build.ts copies there. */
   readonly audioUrl?: string;
 }
@@ -59,17 +61,23 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   // faster through a build-up. The previous camera is the director one frame back.
   const direction = director("clip", [-4200, 2200]);
   const moveSeconds = `(10 / (1 + ${direction.build} * 1.5))`;
+  // The operator's hands: steady in the calm, loose when the track pushes; a kick jolts the
+  // rig forward and punches the lens, fading in a fifth of a second — only when it is loud.
+  const handheld = `(0.6 + ${direction.energy} * ${direction.energy} * 4 + ${direction.build} * 2)`;
+  const kickPunch = `(clamp(1 - op('kicks1').chan.kickCountSince * 5, 0, 1) ^ 2 * clamp((${direction.energy} - 0.45) / 0.4, 0, 1))`;
   const path =
     options.shot === undefined
-      ? shotPath(facts, { index: direction.shot, progress: `${direction.since} / ${moveSeconds}`, time: "abstime", blockers: facts.blockers })
+      ? shotPath(facts, { index: options.cutIndex === undefined ? direction.shot : String(options.cutIndex), progress: options.cutIndex === undefined ? `${direction.since} / ${moveSeconds}` : `abstime / ${moveSeconds}`, time: "abstime", blockers: facts.blockers, shake: handheld, punch: kickPunch })
       : undefined;
   const previousPath =
     options.shot === undefined
       ? shotPath(facts, {
-          index: direction.previousShot,
-          progress: `${direction.previousSince} / ${moveSeconds}`,
+          index: options.cutIndex === undefined ? direction.previousShot : String(options.cutIndex),
+          progress: options.cutIndex === undefined ? `${direction.previousSince} / ${moveSeconds}` : `(abstime - delta) / ${moveSeconds}`,
           time: "(abstime - delta)",
           blockers: facts.blockers,
+          shake: handheld,
+          punch: kickPunch,
         })
       : undefined;
   const eye = camera.eye;
@@ -94,12 +102,12 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   };
   // The furnace breathes with the low band; the arc flickers on the hats (and never quite
   // steadies — a real arc hunts); the high bays are dim sodium, the shop's only steady light.
-  pointLight("furnace", "light.furnace_glow", [1, 0.5, 0.2], expressionSlot(`90 + ${direction.energy} * 150 + ${direction.build} * 80`, 160), -2400, 80);
+  pointLight("furnace", "light.furnace_glow", [1, 0.6, 0.28], expressionSlot(`25 + ${direction.energy} * 60 + ${direction.build} * 40`, 50), -2400, 80);
   // Shadowed, so the arc flashes out of the slag door and the roof gaps, not through the shell.
   // Every range spans the hall: beyond its range a light is UNSHADOWED (T1362b), and an arc
   // flare leaking 40 m through the plant is what turned the caster violet.
   pointLight("arc", "light.arc", [0.6, 0.7, 1], expressionSlot(`60 + ${HIT("hatCount")} * 900 + ${direction.density} * 200 + sin(abstime * 37) * 30`, 90), -2200, 80);
-  pointLight("slag", "light.slag_door", [1, 0.42, 0.12], 110, -2000, 60);
+  pointLight("slag", "light.slag_door", [1, 0.42, 0.12], expressionSlot(`35 + ${LEVEL("low")} * 40`, 45), -2000, 60);
   pointLight("tap", "light.tap", [1, 0.55, 0.2], expressionSlot(`30 + ${HIT("kickCount")} * 120`, 45), -1800, 50);
   pointLight("tundish", "light.tundish", [1, 0.5, 0.18], 45, -1600);
   // The high bays and floods are not forward lights: 65 fixtures light the frame from the
@@ -126,6 +134,17 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   /** The fixtures as the lamp pass and the smoke both see them: one gain, the crane travel. */
   const lampDrive: Record<string, StoredParameter> = {
     gain: 0.003,
+    // THE LIGHT PROGRAMME. The hall is near-black at rest — the melt and the slag carry the
+    // frame — and the music switches it: the high bays rise with energy, strobe on alternate
+    // beats through a build, and black out at a section change before fading back in.
+    hall: expressionSlot(`(0.14 + 0.5 * ${direction.energy} ^ 2 + ${direction.build} * 0.6 * ((op('dirBeats1').chan.beatCount % 2) == 0)) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 0.1),
+    crane: expressionSlot(`0.3 + ${HIT("hatCount")} * 2`, 0.3),
+    furnace: expressionSlot(`0.3 + ${LEVEL("low")} * 1.2`, 0.5),
+    catwalk: expressionSlot(`0.25 + ${direction.density} * 0.9`, 0.4),
+    props: expressionSlot(`0.15 + ${direction.energy} * 0.5`, 0.2),
+    failing: expressionSlot(`0.08 + ${direction.density} * 0.25`, 0.1),
+    beaconRate: expressionSlot(`0.6 + ${direction.build} * 2`, 0.6),
+    chase: expressionSlot(`clamp(${direction.build} * 1.5 - 0.3, 0, 1)`, 0),
     // The export's warm lamps retinted to neutral steel-blue (0.85, 0.9, 1): only the melt is warm.
     tint: [0.85, 1.05, 1.5, 1],
     craneX: expressionSlot("op('rig1').par.craneX", 0),
@@ -136,7 +155,9 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
    * The GLITCH BUDGET, a boundary: heavy glitching is allowed in every third section and
    * through a build-up; elsewhere it is damped to 30%, so the breaks are accents, not a coat.
    */
-  const glitchBudget = `clamp(0.3 + 0.7 * ((op('dirSections1').chan.novelty % 3) == 1) + ${direction.build} * 0.6, 0, 1)`;
+  const glitchBudget = `clamp(0.15 + 0.85 * ((op('dirSections1').chan.novelty % 3) == 1) + ${direction.build} * 0.6, 0, 1)`;
+  /** How hard the track is pushing: nothing below a third of its range, full at the top. Every glitch scales by it. */
+  const intensity = `clamp((${direction.energy} - 0.35) / 0.5, 0, 1)`;
 
   /** The camera now and one frame ago, as the screen-space passes that reproject read it. */
   const cameraNowAndBefore: Record<string, StoredParameter> = {
@@ -181,6 +202,11 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("rank", "valueNormalize", [-3300, 1300], { window: 16 }, { label: "rank1" }),
     node("levels", "valueLag", [-3000, 1300], { lag: 0.15, releaseRatio: 1 }, { label: "levels1" }),
     node("pickHits", "valueSelect", [-3900, 1550], { channels: "kickCount snareCount hatCount" }, { label: "pickhits1" }),
+    // Seconds since the last kick and snare, for the shockwave and the scanline on the steel.
+    node("kickPick", "valueSelect", [-3900, 1750], { channels: "kickCount" }, { label: "kickpick1" }),
+    node("kicks", "valueCount", [-3600, 1750], { threshold: 0.5, holdoff: 0.1 }, { label: "kicks1" }),
+    node("snarePick", "valueSelect", [-3900, 1900], { channels: "snareCount" }, { label: "snarepick1" }),
+    node("snares", "valueCount", [-3600, 1900], { threshold: 0.5, holdoff: 0.1 }, { label: "snares1" }),
     node("hits", "valueLag", [-3600, 1550], { lag: 0.001, releaseRatio: 250 }, { label: "hits1" }),
     // ── The shop ──
     node("plant", "meshFileIn", [-3600, -300], { file: facts.glbUrl, select: facts.plant.select, vertices: facts.plant.vertices, triangles: facts.plant.triangles, parts: facts.plant.parts }, { label: "plant1" }),
@@ -204,7 +230,12 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       casting: expressionSlot("abstime * 0.4", 0),
       conveyor: expressionSlot("abstime * 1.2", 0),
     }, { label: "rig1" }),
-    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: PLANT_SURFACE_WGSL, heatGlow: 8, heatPulse: expressionSlot(`${direction.energy} * 0.25 + ${direction.build} * 0.35`, 0.1) }, { label: "steel1" }),
+    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: PLANT_SURFACE_WGSL, heatGlow: 8, chalk: 0.12, soot: 0.38,
+      fx: expressionSlot(`clamp((${direction.energy} - 0.4) / 0.5, 0, 1)`, 0),
+      kickSince: expressionSlot("op('kicks1').chan.kickCountSince", 100),
+      snareSince: expressionSlot("op('snares1').chan.snareCountSince", 100),
+      flicker: expressionSlot(`${HIT("hatCount")} * (${direction.density} > 0.5)`, 0),
+      heatPulse: expressionSlot(`${direction.energy} * 0.25 + ${direction.build} * 0.35`, 0.1) }, { label: "steel1" }),
     // The sky through the openings: emissive, unlit — so it neither shades nor casts (T666).
     node("sky", "meshFileIn", [-3600, -600], { file: facts.glbUrl, select: facts.sky.select, vertices: facts.sky.vertices, triangles: facts.sky.triangles, parts: facts.sky.parts }, { label: "sky1" }),
     node("skyMat", "materialUnlit", [-3300, -700], { color: [0, 0, 0, 1] }, { label: "skymat1" }),
@@ -279,13 +310,13 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       camera: "cam1",
       lights: ["key1", ...lightLabels].join(" "),
       ambientColor: [0.56, 0.58, 0.6, 1],
-      ambientIntensity: 0.006,
+      ambientIntensity: 0.002,
       background: [0, 0, 0, 1],
       antialias: "msaa",
       depthOutput: true,
       normalOutput: true,
       albedoOutput: true,
-      environmentIntensity: 0.35,
+      environmentIntensity: 0.2,
       environmentTaps: 12,
       ambientOcclusion: true,
       aoRadius: 0.8,
@@ -372,32 +403,38 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("glitch", "customWgslMulti", [600, 0], {
       source: GLITCH_WGSL,
       ...cameraNowAndBefore,
-      mosh: expressionSlot(`clamp(1 - ${direction.since} / 0.45, 0, 1) * (0.2 + 0.5 * ${direction.energy})`, 0),
-      tear: expressionSlot(`${glitchBudget} * ${HIT("hatCount")} * (${direction.density} > 0.6) * ${direction.density}`, 0),
-      split: expressionSlot(`${glitchBudget} * (${HIT("snareCount")} * 0.6 + ${direction.build} * 0.2)`, 0),
-      sort: expressionSlot(`${glitchBudget} * ${direction.build} * 0.7`, 0),
-      crush: expressionSlot(`${glitchBudget} * (${direction.density} > 0.85) * ${HIT("kickCount")} * 0.5`, 0),
+      // A cut moshes only when the music is pushing, never in the opening bars.
+      mosh: expressionSlot(`clamp(1 - ${direction.since} / 0.45, 0, 1) * ${intensity} * ${intensity} * 0.7 * (abstime > 4)`, 0),
+      tear: expressionSlot(`${glitchBudget} * ${intensity} * ${HIT("hatCount")} * (${direction.density} > 0.6) * ${direction.density}`, 0),
+      split: expressionSlot(`${glitchBudget} * ${intensity} * (${HIT("snareCount")} * 0.6 + ${direction.build} * 0.2)`, 0),
+      sort: expressionSlot(`${glitchBudget} * ${intensity} * ${direction.build} * 0.7`, 0),
+      crush: expressionSlot(`${glitchBudget} * ${intensity} * (${direction.density} > 0.85) * ${HIT("kickCount")} * 0.5`, 0),
       freeze: expressionSlot(`(${direction.energy} > 0.85) * (${HIT("kickCount")} > 0.9)`, 0),
     }, { label: "glitch1", resolution: { mode: "project" } }),
     node("history", "feedback", [900, 300], { source: "glitch1" }, { label: "history1" }),
     node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 4, knee: 1.5 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }),
-    // A four-level chain — each level blurred from the one above at half its resolution, then
-    // summed with falling weights: a glow that falls off smoothly instead of a blob (T1376b's shape).
-    node("bloomNear", "blur", [-900, 250], { size: 6, filter: "gaussian", extend: "hold" }, { label: "bloomnear1", resolution: { mode: "scale", factor: 0.5 } }),
-    node("bloomMid", "blur", [-900, 400], { size: 8, filter: "gaussian", extend: "hold" }, { label: "bloommid1", resolution: { mode: "scale", factor: 0.25 } }),
-    node("bloomFar", "blur", [-900, 550], { size: 10, filter: "gaussian", extend: "hold" }, { label: "bloomfar1", resolution: { mode: "scale", factor: 0.125 } }),
-    node("bloomVast", "blur", [-900, 700], { size: 12, filter: "gaussian", extend: "hold" }, { label: "bloomvast1", resolution: { mode: "scale", factor: 0.0625 } }),
-    node("bloomSumMid", "add", [-600, 350], { opacity: 0.8 }, { label: "bloomsummid1", resolution: { mode: "scale", factor: 0.5 } }),
-    node("bloomSumFar", "add", [-450, 450], { opacity: 0.6 }, { label: "bloomsumfar1", resolution: { mode: "scale", factor: 0.5 } }),
-    node("bloomSum", "add", [-300, 550], { opacity: 0.45 }, { label: "bloomsum1", resolution: { mode: "scale", factor: 0.5 } }),
-    node("glow", "add", [-300, 0], { opacity: 0.11 }, { label: "glow1", resolution: { mode: "project" } }),
+    // The bloom PYRAMID (post.ts): four 13-tap downsamples, then tent upsamples back up,
+    // each adding its own level — a round glow at every width, never a stretched texel.
+    ...[1, 2, 3, 4].map((level) =>
+      node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, {
+        label: `bloomdown${level}1`,
+        resolution: { mode: "scale", factor: 0.5 / 2 ** level },
+      }),
+    ),
+    ...[0, 1, 2, 3].map((level) =>
+      node(`bloomUp${level}`, "customWgslMulti", [-600, 150 + level * 150], { source: BLOOM_UP_WGSL }, {
+        label: `bloomup${level}1`,
+        resolution: { mode: "scale", factor: 0.5 / 2 ** level },
+      }),
+    ),
+    node("glow", "add", [-300, 0], { opacity: 0.05 }, { label: "glow1", resolution: { mode: "project" } }),
     // Auto-exposure (T1378b): meter the frame's log-average luminance, adapt toward a key
     // like an eye does — faster when the scene brightens than when it darkens — and hand the
     // grade the gain. One frame late by the meter's contract; the lag hides it.
     node("meter", "analyze", [-300, 300], { channel: "luminance", operation: "logAverage" }, { label: "meter1" }),
     node("metered", "channelIn", [0, 300], { channel: "meter1", fallback: 0.05 }, { label: "metered1" }),
     node("adaptation", "valueLag", [300, 300], { lag: 0.35, releaseRatio: 3 }, { label: "adaptation1" }),
-    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0.2, adapt: expressionSlot("clamp(0.075 / max(op('adaptation1').chan.value, 0.0005), 0.35, 10)", 1), punch: 1.4, punchSaturation: 1.05, contrast: 1.2, grain: 0.016, saturation: 0.9, split: 0.12, shadowTint: [0.94, 1, 1, 1], highlightTint: [1.03, 1, 0.96, 1] }, { label: "grade1", resolution: { mode: "project" } }),
+    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0.7, adapt: expressionSlot("clamp((0.075 / max(op('adaptation1').chan.value, 0.0005)) ^ 0.72, 0.03, 10)", 1), punch: 1.35, punchSaturation: 1.25, contrast: 1.1, grain: 0.016, saturation: 1.1, split: 0.3, shadowTint: [0.88, 0.98, 1.06, 1], highlightTint: [1.1, 1, 0.86, 1] }, { label: "grade1", resolution: { mode: "project" } }),
     node("out", "output", [300, 0], { toneMap: "none" }, { label: "out1" }),
     ...direction.nodes,
   ];
@@ -408,6 +445,10 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("smooth-rank", ["smooth", "out"], ["rank", "in"]),
     edge("rank-levels", ["rank", "out"], ["levels", "in"]),
     edge("clip-hits", ["clip", "out"], ["pickHits", "in"]),
+    edge("clip-kicks", ["clip", "out"], ["kickPick", "in"]),
+    edge("kicks-count", ["kickPick", "out"], ["kicks", "in"]),
+    edge("clip-snares", ["clip", "out"], ["snarePick", "in"]),
+    edge("snares-count", ["snarePick", "out"], ["snares", "in"]),
     edge("hits-lag", ["pickHits", "out"], ["hits", "in"]),
     edge("seed-env", ["envSeed", "out"], ["env", "input"]),
     edge("env-shot", ["env", "out"], ["shot", "environment"]),
@@ -436,18 +477,15 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("lens-shutter", ["lens", "out"], ["shutter", "input"]),
     edge("depth-shutter", ["shot", "depth"], ["shutter", "more"], 0),
     edge("shutter-bright", ["shutter", "out"], ["bright", "input"]),
-    edge("bright-near", ["bright", "out"], ["bloomNear", "input"]),
-    edge("near-mid", ["bloomNear", "out"], ["bloomMid", "input"]),
-    edge("mid-far", ["bloomMid", "out"], ["bloomFar", "input"]),
-    edge("far-vast", ["bloomFar", "out"], ["bloomVast", "input"]),
-    edge("near-summid", ["bloomNear", "out"], ["bloomSumMid", "in1"]),
-    edge("mid-summid", ["bloomMid", "out"], ["bloomSumMid", "in2"]),
-    edge("summid-sumfar", ["bloomSumMid", "out"], ["bloomSumFar", "in1"]),
-    edge("far-sumfar", ["bloomFar", "out"], ["bloomSumFar", "in2"]),
-    edge("sumfar-sum", ["bloomSumFar", "out"], ["bloomSum", "in1"]),
-    edge("vast-sum", ["bloomVast", "out"], ["bloomSum", "in2"]),
+    ...[1, 2, 3, 4].map((level) =>
+      edge(`bloom-down${level}`, [level === 1 ? "bright" : `bloomDown${level - 1}`, "out"], [`bloomDown${level}`, "input"]),
+    ),
+    ...[0, 1, 2, 3].flatMap((level) => [
+      edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]),
+      edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0),
+    ]),
     edge("shutter-glow", ["shutter", "out"], ["glow", "in1"]),
-    edge("sum-glow", ["bloomSum", "out"], ["glow", "in2"]),
+    edge("sum-glow", ["bloomUp0", "out"], ["glow", "in2"]),
     edge("glow-grade", ["glow", "out"], ["grade", "input"]),
     edge("glow-meter", ["glow", "out"], ["meter", "input"]),
     edge("metered-adaptation", ["metered", "out"], ["adaptation", "in"]),

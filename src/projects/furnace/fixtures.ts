@@ -129,7 +129,10 @@ fn lampGain(i: u32, time: f32) -> f32 {
   var areaGain = array<f32, 6>(params.hall, params.crane, params.furnace, params.catwalk, params.pulpit, params.props);
   let failing = step(1.0 - params.failing, lampHash(i));
   let stutter = step(0.55, fract(sin(floor(time * 13.0 + f32(i) * 7.0) * 12.9898) * 43758.5453));
-  return params.gain * areaGain[u32(LAMP_SHAPE[i].z)] * (1.0 - failing * stutter);
+  // The CHASE: a wave running down the hall along X, the build-up's light pattern.
+  let wave = 0.5 + 0.5 * sin(LAMP_POSITION[i].x * 0.22 - time * params.chaseSpeed);
+  let chase = mix(1.0, wave * wave * 1.8, params.chase);
+  return params.gain * areaGain[u32(LAMP_SHAPE[i].z)] * (1.0 - failing * stutter) * chase;
 }
 
 // A fixture's radiant colour this frame: its exported colour × lumens, retinted, dimmed.
@@ -154,5 +157,7 @@ export const LAMP_PARAMS = `  gain: f32, // @default 0.004  Lumens to scene radi
   failing: f32, // @default 0.06  Share of fixtures whose ballast stutters.
   tint: vec3f, // @default 1  Retint of every fixture (the export's lamps are warm; metal halide is not).
   beaconRate: f32, // @default 0.8  Beacon turns per second.
+  chase: f32, // @default 0  0..1: a wave of light running down the hall (the build-up).
+  chaseSpeed: f32, // @default 6  How fast the chase runs, radians per second.
   craneX: f32, // @default 0  Scrap crane bridge travel (drive from the rig).
   crane2X: f32, // @default 0  Ladle crane bridge travel (drive from the rig).`;
