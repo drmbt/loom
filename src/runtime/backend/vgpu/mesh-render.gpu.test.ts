@@ -159,6 +159,25 @@ describe("Mesh File In end to end on Dawn (T1353b, §V147)", () => {
       light: { direction: [0, 0, -1] },
     });
     expect(rgb(hot, centre)).toEqual([byte(0.4 * 1.12 + 0.1), byte(0.4 * 1.12 + 0.2), byte(0.4 * 1.12 + 0.3)]);
+    // Three full renders: under a whole-suite GPU queue the 5 s default is not enough.
+  }, 30_000);
+
+  it("B227: a single-sided sheet is lit on the side facing the light only — its back is the ambient floor", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    // One quad in z = 0 whose file normal is +Z, lit from +Z — cladding with the sun on it.
+    const sheet = encodeFixtureGlb({
+      materials: [{ name: "grey", baseColor: [1, 1, 1, 1] }],
+      nodes: [{ mesh: [{ positions: [-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 1, 2, 0, 2, 3], material: 0 }] }],
+    });
+    const front: Vec3 = [0, 0, 3];
+    const back: Vec3 = [0, 0, -3];
+    const lit = await render({ glb: sheet, eye: front, light: { direction: [0, 0, -1] } });
+    expect(rgb(lit, texelOf(front, [0, 0, 0], [0, 0, 0]))).toEqual([byte(0.8 * 1.12), byte(0.8 * 1.12), byte(0.8 * 1.12)]);
+    // From behind, the same sheet: the sun is on its OTHER side. Two-sided lambert lit it
+    // as brightly as the front — the inside of every sunlit wall glowing.
+    const behind = await render({ glb: sheet, eye: back, light: { direction: [0, 0, -1] } });
+    expect(rgb(behind, texelOf(back, [0, 0, 0], [0, 0, 0]))).toEqual([byte(0.8 * 0.12), byte(0.8 * 0.12), byte(0.8 * 0.12)]);
   });
 
   it("the index list is the connectivity: a face turned away from the light is the ambient floor", async () => {

@@ -946,6 +946,8 @@ export const renderNode: NodeDefinition = {
     },
   ],
   depthOutputs: ["out", "depth", "normal", "albedo"],
+  /* B226: depth, normal and albedo are drawn against `out`'s depth attachment. */
+  anchorOutput: "out",
   /* T939: MSAA is structural (a different render signature), so it is declared like
      depth — and the backend's patched vgpu keeps samples across the multi-pass chain. */
   msaaWhen: { out: (parameters) => parameters["antialias"] === "msaa" },

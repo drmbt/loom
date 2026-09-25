@@ -150,6 +150,34 @@ describe("the render's depth output (T722, §V147, §V309)", () => {
     } finally { backend.dispose(); }
   }, 120_000);
 
+  it("B226: a Render read ONLY through its Depth (a light's-eye depth view) compiles and writes depth", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    const graph = depthGraph(true);
+    // Nothing reads `out`: the displace's source is a ramp, only its disp is the render.
+    graph.nodes["ramp"] = node("ramp", "ramp", {}, "ramp1") as never;
+    graph.edges["e2"] = { id: "e2", source: { nodeId: "ramp", portId: "out" }, target: { nodeId: "push", portId: "source" } };
+    const plan = planFor(graph);
+    expect(plan.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const backend = createVgpuBackend({ host: nodeGpuHost() });
+    try {
+      await backend.initialize({});
+      const compiled = await backend.compile(plan);
+      backend.render(compiled, {
+        frame: { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "offline", randomSeed: 7 },
+        pointer: { x: 0, y: 0, buttons: 0 },
+        resolution: [64, 64],
+      } as never);
+      const depth = await backend.readOutput("target:shot:depth");
+      const half = new Uint16Array(depth.bytes.buffer, depth.bytes.byteOffset, depth.bytes.byteLength / 2);
+      // The wall 3 in front of a far-10 camera: 0.3 lies between half encodings .2998 and .3003.
+      expect(half[(32 * 64 + 32) * 4]).toBeGreaterThanOrEqual(0x34cc);
+      expect(half[(32 * 64 + 32) * 4]).toBeLessThanOrEqual(0x34cd);
+    } finally {
+      backend.dispose();
+    }
+  }, 120_000);
+
   it("off: no depth target, no sweep — the switch is the price", () => {
     const plan = planFor(depthGraph(false));
     expect(plan.diagnostics.filter((d) => d.severity === "error")).toEqual([]);

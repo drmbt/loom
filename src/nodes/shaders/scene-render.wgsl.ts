@@ -656,6 +656,8 @@ function meshBindingsWgsl(mesh: SceneMeshOption): string {
     mesh.uv ? `@group(0) @binding(${MESH_BINDINGS.uvs}) var<storage, read> meshUvs: array<vec2f>;\n` : "",
     mesh.surface ? `@group(0) @binding(${MESH_BINDINGS.surface}) var<storage, read> meshSurface: array<vec4f>;\n` : "",
     mesh.emissive ? `@group(0) @binding(${MESH_BINDINGS.emissive}) var<storage, read> meshEmissive: array<vec3f>;\n` : "",
+    // B227: the normal of the side the viewer sees.
+    "fn faceViewer(n: vec3f, toEye: vec3f) -> vec3f { return select(-n, n, dot(n, toEye) >= 0.0); }\n",
   ].join("");
 }
 
@@ -923,9 +925,17 @@ ${IRRADIANCE_WGSL}  lit += irradiance * albedo.rgb * (1.0 - envFresnel) * (1.0 -
       toLight = offset / distance;
       attenuation = 1.0 / (1.0 + distance * distance);
     }
-    /* Two-sided lambert: a surface has no wrong side (T301's rule, kept). */
+${
+  options.mesh === undefined
+    ? `    /* Two-sided lambert: a surface has no wrong side (T301's rule, kept). */
     let lambert = abs(dot(normal, toLight));
-${shadowFactor(index)}    let radiance = lightColor.rgb * lightMeta.y * attenuation${shadowSlotOf(index) >= 0 ? " * shadow" : ""};
+`
+    : `    /* B227: a FILE mesh has authored sides — its normal already faces the viewer, and the
+       side facing away from the light is dark (else a wall glows inside where the sun
+       strikes its outside). */
+    let lambert = max(dot(normal, toLight), 0.0);
+`
+}${shadowFactor(index)}    let radiance = lightColor.rgb * lightMeta.y * attenuation${shadowSlotOf(index) >= 0 ? " * shadow" : ""}${options.mesh === undefined ? "" : " * sign(lambert)"};
 ${
   options.model === "pbr"
     ? ggxSpecularWgsl("roughness") +
@@ -986,17 +996,21 @@ ${Array.from({ length: lightCount }, (_, index) => perVertex(lightBlock(index)))
       ? "Params(0.0)"
       : `Params(${custom.fields.map((field) => `params.${materialParamUniformKey(field.name)}`).join(", ")})`;
   const unlitModel = options.model === "unlit";
+  /* B227: a file mesh's normal turned to face the viewer, so its back side reads as the
+     side it is — the one-sided lambert below then lights only what faces the light. */
+  const meshFacing = (expression: string): string =>
+    options.mesh === undefined ? expression : `faceViewer(${expression}, params.eye.xyz - input.world)`;
   const fragmentHead =
     custom === undefined
       ? `  let magnitude = length(input.normal);
-  let normal = select(vec3f(0.0, 0.0, 1.0), input.normal / max(magnitude, 1e-6), magnitude > 1e-6);
+  let normal = ${meshFacing("select(vec3f(0.0, 0.0, 1.0), input.normal / max(magnitude, 1e-6), magnitude > 1e-6)")};
   /* T917: the soft profile lives on the point primitives; a SURFACE has no across axis,
      so its coverage is the constant 1 and the shared shading tail multiplies by nothing. */
   let cover = 1.0;
   let albedo = ${albedoExpr};
 ${unlitModel ? "" : `  let roughness = ${roughnessExpr};\n  _ = roughness;\n`}`
       : `  let magnitude = length(input.normal);
-  let geometryNormal = select(vec3f(0.0, 0.0, 1.0), input.normal / max(magnitude, 1e-6), magnitude > 1e-6);
+  let geometryNormal = ${meshFacing("select(vec3f(0.0, 0.0, 1.0), input.normal / max(magnitude, 1e-6), magnitude > 1e-6)")};
   let cover = 1.0;
   var surfaceIn: SurfaceIn;
   surfaceIn.world = input.world;

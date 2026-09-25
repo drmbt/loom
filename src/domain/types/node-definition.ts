@@ -453,6 +453,13 @@ export interface NodeDefinition {
    */
   outputWhen?: Readonly<Record<PortId, (parameters: Readonly<Record<string, unknown>>) => boolean>>;
   /**
+   * B226: the output every other output of this node is drawn AGAINST — the Render's colour
+   * target, which owns the depth attachment its Depth, Normal and Albedo passes test with.
+   * It materializes whenever any output of the node does, so wiring only a Render's Depth
+   * (a light's-eye depth view, say) compiles instead of refusing for a port nobody read.
+   */
+  anchorOutput?: PortId;
+  /**
    * T350 (§V285): this node's source is a NAME, not a wire — the named parameter
    * holds another node's name and the compiler synthesizes the edge into `input`.
    * The declaration of record; `SOURCE_REFERENCE_PARAMETERS` (domain/graph) is its

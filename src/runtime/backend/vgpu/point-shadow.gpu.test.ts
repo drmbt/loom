@@ -58,20 +58,27 @@ const node = (id: string, type: string, parameters: Record<string, unknown>, lab
   label,
 });
 
-const PLATE_GLB = encodeFixtureGlb({
+const SCREEN_GLB = encodeFixtureGlb({
   materials: [{ name: "grey", baseColor: [1, 1, 1, 1] }],
-  nodes: [{ name: "plate", translation: [0, 2, 0], scale: [3, 0.1, 3], mesh: [cubePrimitive(0)] }],
+  nodes: [
+    // The screen spans x 0.95..1.05, y −0.5..2.5, z −1.5..1.5; the wall's lit face is x = 1.35.
+    { name: "screen", translation: [1, 1, 0], scale: [0.1, 3, 3], mesh: [cubePrimitive(0)] },
+    { name: "wall", translation: [1.4, 1, 0], scale: [0.1, 6, 8], mesh: [cubePrimitive(0)] },
+  ],
 });
-const PLATE_FACTS = prepareMesh(PLATE_GLB, "")!.facts;
-const UNDER_PLATE: [number, number, number] = [0, 1, 0];
+const SCREEN_FACTS = prepareMesh(SCREEN_GLB, "")!.facts;
+const SCREEN_LAMP: [number, number, number] = [0, 1, 0];
+const SCREEN_EYE: [number, number, number] = [-3, 1, 7];
+/** On the wall, in the screen's shadow (the lamp's ray crosses the screen at z ≈ 1.4), and visible past its edge. */
+const SHADED_WALL: [number, number, number] = [1.35, 1, 1.9];
 
-function graph(shadows: boolean, plate = false): GraphDocument {
-  const facts = plate ? PLATE_FACTS : FACTS;
+function graph(shadows: boolean, screen = false): GraphDocument {
+  const facts = screen ? SCREEN_FACTS : FACTS;
   const nodes = [
     node("mesh", "meshFileIn", { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts }, "mesh1"),
     node("geo", "geometry", { mode: "surface" }, "geo1"),
-    node("cam", "camera", { eye: EYE, lookAt: [0, 0, 0] }, "cam1"),
-    node("bulb", "light", { kind: "point", position: plate ? UNDER_PLATE : LIGHT, intensity: INTENSITY, shadows, shadowExtent: plate ? 80 : 10, shadowSoftness: 0 }, "bulb1"),
+    node("cam", "camera", screen ? { eye: SCREEN_EYE, lookAt: SHADED_WALL } : { eye: EYE, lookAt: [0, 0, 0] }, "cam1"),
+    node("bulb", "light", { kind: "point", position: screen ? SCREEN_LAMP : LIGHT, intensity: INTENSITY, shadows, shadowExtent: screen ? 200 : 10, shadowSoftness: 0 }, "bulb1"),
     node("shot", "render", { scenes: "geo1", camera: "cam1", lights: "bulb1", ambientColor: [1, 1, 1, 1], ambientIntensity: 0.12 }, "shot1"),
     node("out", "output", {}, "out1"),
   ];
@@ -86,15 +93,15 @@ function graph(shadows: boolean, plate = false): GraphDocument {
   } as never;
 }
 
-async function render(shadows: boolean, plate = false): Promise<Uint8Array> {
+async function render(shadows: boolean, screen = false): Promise<Uint8Array> {
   const result = await renderHeadless({
     host: nodeGpuHost(),
-    graph: graph(shadows, plate),
+    graph: graph(shadows, screen),
     settings: SETTINGS,
     frames: 2,
     outputNodeId: "shot",
     outputPortId: "out",
-    meshes: { mesh: plate ? PLATE_GLB : GLB },
+    meshes: { mesh: screen ? SCREEN_GLB : GLB },
   });
   expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   const frame = result.frames[result.frames.length - 1];
@@ -168,16 +175,15 @@ describe("point-light shadows on Dawn (T1362b, §V147)", () => {
     expect(rgb(uncast, texelOf(shadowed))).toEqual([shadowedLit, shadowedLit, shadowedLit]);
   });
 
-  it("a thin plate stays dark on its far side under an 80 m shadow range", async () => {
+  it("a wall 30 cm behind a thin screen stays in its shadow under a 200 m shadow range", async () => {
     const probe = await probeDawn();
     if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
-    // The plate spans y 1.95..2.05; the light is 0.95 m under it, the eye looks down on its
-    // top, 1.05 m from the light. Two-sided lambert lights that top unless the shadow holds.
-    const top: [number, number, number] = [0, 2.05, 0];
+    // The camera looks straight at the shaded wall point: it is the centre texel.
+    const centre = ((SIZE / 2) * SIZE + SIZE / 2) * 4;
     const floorOnly = Math.round(0.8 * 0.12 * 255);
-    expect(rgb(await render(true, true), texelOf(top))).toEqual([floorOnly, floorOnly, floorOnly]);
-    // The cut: without the shadow the same texel is lit — the light does reach it.
-    const lit = Math.round(0.8 * (0.12 + INTENSITY / (1 + 1.05 * 1.05)) * 255);
-    expect(rgb(await render(false, true), texelOf(top))).toEqual([Math.min(255, lit), Math.min(255, lit), Math.min(255, lit)]);
+    expect(rgb(await render(true, true), centre)).toEqual([floorOnly, floorOnly, floorOnly]);
+    // The cut: without the shadow the lamp lights that wall (N·L ≈ 0.58 at 2.3 m).
+    const [r] = rgb(await render(false, true), centre);
+    expect(r).toBeGreaterThan(150);
   });
 });

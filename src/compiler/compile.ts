@@ -1057,6 +1057,16 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
     if (portId === undefined) continue;
     materialized.add(outputKey(sink.nodeId, portId));
   }
+  // B226: a node whose outputs are drawn against one anchor target needs the anchor as soon
+  // as any of them is read.
+  const readNodes = new Set([
+    ...[...topology.currentFrameEdges, ...topology.temporalEdges].map((edge) => edge.source.nodeId),
+    ...sinkResolution.sinks.map((sink) => sink.nodeId),
+  ]);
+  for (const nodeId of readNodes) {
+    const anchor = validated.nodes.get(nodeId)?.definition?.anchorOutput;
+    if (anchor !== undefined && kept.has(nodeId)) materialized.add(outputKey(nodeId, anchor));
+  }
 
   // T546: read the §V372/§V373 synthesized camera edges back, so a camera's preview can
   // follow the link that already exists. KEPT edges only — a renderer the prune dropped
