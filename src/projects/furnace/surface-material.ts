@@ -19,7 +19,45 @@
  * (refractory, graphite, hot slag) glow in their cracks without flowing. `heatPulse` is the
  * audio's handle on the whole melt.
  */
-export const PLANT_SURFACE_WGSL = `// @use surface-detail
+import type { FurnaceSceneFacts, MaterialFacts } from "./scene-facts.ts";
+
+/** Surface classes the plant material draws differently; 0 falls through to the generic surface. */
+const CLASS_OF: ReadonlyArray<readonly [RegExp, number, string]> = [
+  [/paint|pipe_green|primer/, 1, "painted steel"],
+  [/steel_dark|steel_worn|steel_heat|panel_cooled|graphite/, 2, "bare steel"],
+  [/galvani|roof/, 3, "galvanized sheet"],
+  [/chequer|grating/, 4, "chequer plate and grating"],
+  [/rust|scrap/, 5, "rust"],
+  [/concrete/, 6, "concrete"],
+  [/refractory/, 7, "refractory brick"],
+  [/rubber|cable|hose/, 8, "rubber"],
+  [/copper/, 9, "copper"],
+  [/slag_cold/, 10, "cold slag"],
+];
+
+function classOf(material: MaterialFacts): number {
+  return CLASS_OF.find(([pattern]) => pattern.test(material.name))?.[1] ?? 0;
+}
+
+/**
+ * The CLASSIFIER, generated from the GLB's own material table: a vertex carries its
+ * material's exact metallic and roughness factors (the decoder flattens them), which are
+ * near-unique per material — the nearest pair names the class, heat breaking the ties.
+ */
+function classifierWgsl(materials: readonly MaterialFacts[]): string {
+  const known = materials.filter((material) => classOf(material) !== 0);
+  const rows = known.map((material) => `  if (abs(metal - ${material.metallic.toFixed(4)}) < 0.004 && abs(rough - ${material.roughness.toFixed(4)}) < 0.004 && abs(heat - ${material.heat.toFixed(4)}) < 0.02) { return ${classOf(material)}u; } // ${material.name}`);
+  return `fn materialClass(metal: f32, rough: f32, heat: f32) -> u32 {
+${rows.join("\n")}
+  return 0u;
+}`;
+}
+
+export function plantSurfaceWgsl(facts: FurnaceSceneFacts): string {
+  return PLANT_SURFACE_WGSL.replace("// @classifier", classifierWgsl(facts.materials));
+}
+
+const PLANT_SURFACE_WGSL = `// @use surface-detail
 struct Params {
   soot: f32, // @default 0.5  Soot darkening overall (0 clean .. 1 black).
   sootHeight: f32, // @default 18  Height in metres where soot is heaviest.
@@ -83,6 +121,166 @@ fn panelShade(world: vec3f) -> f32 {
   return detailNoise(floor(world / 1.5) + vec3f(0.5)).value;
 }
 
+// @classifier
+
+struct Skin {
+  albedo: vec3f,
+  roughness: f32,
+  metallic: f32,
+  normal: vec3f,
+  // 1 where paint has flaked to the metal beneath (the generic wear then leaves it alone).
+  exposed: f32,
+};
+
+// Two coordinates ON the face: the world projected along the face's dominant axis.
+fn faceUv(world: vec3f, normal: vec3f) -> vec2f {
+  let a = abs(normal);
+  if (a.x > a.y && a.x > a.z) { return world.zy; }
+  if (a.z > a.y) { return world.xy; }
+  return world.xz;
+}
+
+fn cellHash(c: vec2f) -> f32 {
+  return fract(sin(dot(c, vec2f(127.1, 311.7))) * 43758.5453);
+}
+
+// Rust, in three layers: dark iron oxide, orange bloom, ochre dust.
+fn rustColour(n: f32) -> vec3f {
+  return mix(mix(vec3f(0.09, 0.035, 0.015), vec3f(0.34, 0.11, 0.03), smoothstep(0.3, 0.6, n)), vec3f(0.42, 0.24, 0.08), smoothstep(0.7, 0.9, n));
+}
+
+fn classSkin(kind: u32, s: SurfaceIn, base: vec3f, normal: vec3f, p: Params) -> Skin {
+  var k: Skin;
+  k.albedo = base;
+  k.roughness = s.roughness;
+  k.metallic = s.metallic;
+  k.normal = normal;
+  k.exposed = 0.0;
+  let w = s.world;
+  let fp = s.footprint;
+  switch kind {
+    case 1u: {
+      // PAINT: chips flake down to RUST (not bright metal), rust bleeds in streaks below them,
+      // and runs of thicker paint catch the light.
+      let chip = detailFbm(w * 2.6, 4, fp).value;
+      let edge = detailEdgeWear(s.curvature, 5.0, chip);
+      let flake = clamp(max(edge, smoothstep(0.66, 0.74, chip)) * p.wear, 0.0, 1.0);
+      let bleed = smoothstep(0.62, 0.8, detailFbm(vec3f(w.x * 5.0, w.y * 0.35, w.z * 5.0), 3, fp).value) * (1.0 - abs(normal.y));
+      let rust = rustColour(detailFbm(w * 7.0, 3, fp).value);
+      k.albedo = mix(mix(base, base * vec3f(0.62, 0.42, 0.3), bleed * 0.7), rust, flake);
+      k.roughness = mix(0.42 + 0.2 * chip, 0.85, flake);
+      k.metallic = mix(0.05, 0.3, flake);
+      k.normal = detailBump(normal, detailFbm(w * 2.6, 3, fp).gradient, 0.05 + flake * 0.12);
+      k.exposed = flake;
+    }
+    case 2u: {
+      // BARE STEEL: brushed along the part, blue-black mill scale in islands, and TEMPER
+      // colours near the furnace — straw, bronze, purple, blue with rising heat.
+      let brush = detailFbm(vec3f(w.x * 40.0, w.y * 1.5, w.z * 40.0), 2, fp).value;
+      let scale = smoothstep(0.45, 0.62, detailFbm(w * 1.1, 4, fp).value);
+      let near = 1.0 - smoothstep(4.0, 16.0, length(w.xz));
+      let temper = clamp(near * (0.55 + 0.6 * detailFbm(w * 0.6, 3, fp).value) + p.heatPulse * near * 0.3, 0.0, 1.0);
+      let tint = mix(mix(vec3f(0.62, 0.5, 0.26), vec3f(0.5, 0.26, 0.12), smoothstep(0.2, 0.45, temper)), mix(vec3f(0.3, 0.12, 0.32), vec3f(0.12, 0.2, 0.42), smoothstep(0.7, 0.9, temper)), smoothstep(0.45, 0.7, temper));
+      var steel = base * (0.75 + 0.5 * brush);
+      steel = mix(steel, vec3f(0.035, 0.04, 0.05), scale * 0.8);
+      k.albedo = mix(steel, tint * (0.6 + 0.4 * brush), smoothstep(0.12, 0.3, temper) * 0.85);
+      k.roughness = clamp(mix(0.28 + 0.25 * brush, 0.7, scale), 0.08, 1.0);
+      k.metallic = mix(0.95, 0.55, scale);
+      k.normal = detailBump(normal, detailFbm(w * 3.0, 3, fp).gradient, 0.04);
+    }
+    case 3u: {
+      // GALVANIZED: spangle — crystal cells of slightly different sheen — and white rust.
+      let uv = faceUv(w, normal) * 9.0;
+      let spangle = cellHash(floor(uv + detailNoise(vec3f(uv, 0.0) * 0.5).value));
+      let whiteRust = smoothstep(0.6, 0.78, detailFbm(w * 1.4, 4, fp).value);
+      k.albedo = mix(base * (0.8 + 0.45 * spangle), vec3f(0.55, 0.56, 0.55), whiteRust * 0.7);
+      k.roughness = mix(0.22 + 0.3 * spangle, 0.9, whiteRust);
+      k.metallic = mix(0.9, 0.2, whiteRust);
+    }
+    case 4u: {
+      // CHEQUER PLATE: raised lozenges in alternating directions, polished bright by boots on
+      // top, grime packed between them.
+      let uv = faceUv(w, normal) * 3.2;
+      let cell = floor(uv);
+      let f = fract(uv) - 0.5;
+      let turn = select(vec2f(f.x + f.y, f.x - f.y), vec2f(f.x - f.y, f.x + f.y), (i32(cell.x + cell.y) & 1) == 1) * 0.7071;
+      let lozenge = 1.0 - smoothstep(0.06, 0.1, length(vec2f(turn.x * 0.28, turn.y)));
+      let grad = vec3f(-turn.x, 0.0, -turn.y) * lozenge * 3.0;
+      let worn = lozenge * abs(normal.y);
+      k.albedo = mix(base * 0.7, vec3f(0.5, 0.5, 0.5), worn * 0.8);
+      k.roughness = mix(0.62, 0.22, worn);
+      k.metallic = 0.9;
+      k.normal = detailBump(normal, grad, 0.18);
+    }
+    case 5u: {
+      // RUST: flaky, layered, pitted.
+      let n = detailFbm(w * 4.0, 4, fp);
+      k.albedo = rustColour(n.value) * (0.7 + 0.6 * detailFbm(w * 0.8, 2, fp).value);
+      k.roughness = 0.9;
+      k.metallic = 0.15;
+      k.normal = detailBump(normal, n.gradient, 0.3);
+    }
+    case 6u: {
+      // CONCRETE: aggregate, cracks, oil stains, and painted walkway lines on the floor.
+      let aggregate = detailFbm(w * 14.0, 2, fp).value;
+      let crackField = detailFbm(vec3f(w.x, 0.0, w.z) * 0.35, 4, fp).value;
+      let crack = 1.0 - smoothstep(0.004, 0.018, abs(crackField - 0.5));
+      let oil = smoothstep(0.55, 0.7, detailFbm(w * 0.25 + vec3f(7.0), 4, fp).value);
+      let floorFace = smoothstep(0.9, 0.97, normal.y);
+      let lane = floorFace * (1.0 - smoothstep(0.07, 0.1, abs(fract(w.z / 9.0 + 0.5) - 0.5) * 9.0 - 3.6)) * step(0.25, fract(w.x / 3.0));
+      var c = base * (0.8 + 0.4 * aggregate);
+      c = mix(c, vec3f(0.02, 0.018, 0.016), crack * 0.85);
+      c = mix(c, c * 0.3, oil * floorFace);
+      c = mix(c, vec3f(0.6, 0.45, 0.05) * (0.6 + 0.4 * aggregate), lane * 0.85);
+      k.albedo = c;
+      k.roughness = mix(mix(0.9, 0.12, oil * floorFace), 0.5, lane);
+      k.metallic = 0.0;
+      k.normal = detailBump(normal, detailFbm(w * 6.0, 3, fp).gradient, 0.08);
+    }
+    case 7u: {
+      // REFRACTORY: brick courses in running bond, each brick its own shade, dark mortar.
+      let uv = faceUv(w, normal) / vec2f(0.46, 0.14);
+      let row = floor(uv.y);
+      let brickUv = vec2f(uv.x + 0.5 * (row % 2.0), uv.y);
+      let brick = floor(brickUv);
+      let f = fract(brickUv);
+      let mortar = 1.0 - smoothstep(0.03, 0.07, min(min(f.x, 1.0 - f.x) * 0.46 / 0.14, min(f.y, 1.0 - f.y)));
+      let shade = cellHash(brick);
+      k.albedo = mix(base * (0.65 + 0.6 * shade) * vec3f(1.0, 0.92, 0.85), vec3f(0.05, 0.045, 0.04), mortar);
+      k.roughness = 0.92;
+      k.metallic = 0.0;
+      k.normal = detailBump(normal, vec3f(f.x - 0.5, f.y - 0.5, 0.0) * mortar * 2.0, 0.2);
+    }
+    case 8u: {
+      // RUBBER: dark satin, dust in the grain.
+      let grainy = detailFbm(w * 20.0, 2, fp).value;
+      k.albedo = base * (0.8 + 0.4 * grainy);
+      k.roughness = 0.55 + 0.2 * grainy;
+      k.metallic = 0.0;
+    }
+    case 9u: {
+      // COPPER: bright on the edges, verdigris and dark tarnish in the flats.
+      let tarnish = detailFbm(w * 2.0, 3, fp).value;
+      let edge = detailEdgeWear(s.curvature, 4.0, tarnish);
+      let verdigris = smoothstep(0.62, 0.75, tarnish) * (1.0 - edge);
+      k.albedo = mix(mix(base * 0.45, base * 1.25, edge), vec3f(0.12, 0.3, 0.24), verdigris);
+      k.roughness = mix(mix(0.45, 0.2, edge), 0.8, verdigris);
+      k.metallic = mix(1.0, 0.1, verdigris);
+    }
+    case 10u: {
+      // COLD SLAG: glassy black, bubbled, an oil-slick sheen where it is smooth.
+      let bubbles = detailFbm(w * 9.0, 3, fp);
+      let sheen = 0.5 + 0.5 * sin(bubbles.value * 18.0 + vec3f(0.0, 2.1, 4.2));
+      k.albedo = mix(vec3f(0.02), sheen * 0.08, smoothstep(0.5, 0.7, bubbles.value));
+      k.roughness = mix(0.25, 0.9, bubbles.value);
+      k.metallic = 0.3;
+      k.normal = detailBump(normal, bubbles.gradient, 0.35);
+    }
+    default: {}
+  }
+  return k;
+}
+
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceDefaults(s);
   let heat = s.attr.z;
@@ -142,12 +340,26 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   // …and where it is fresh it is the loudest colour in the shop: safety yellow, primer red.
   albedo = mix(albedo, albedo * albedo / max(dot(albedo, vec3f(0.2126, 0.7152, 0.0722)), 1e-3) * 0.9, painted * p.paintPop);
 
-  // Paint worn back to bare steel on edges, and a little everywhere it gets knocked.
-  let chips = detailFbm(s.world * 3.2, 3, s.footprint).value;
-  let wear = painted * p.wear * max(detailEdgeWear(s.curvature, 6.0, chips), smoothstep(0.72, 0.85, chips) * 0.5);
-  albedo = mix(albedo, vec3f(0.42, 0.41, 0.4), wear);
-  var metallic = mix(s.metallic, 0.95, wear);
-  var roughness = mix(s.roughness, 0.32, wear);
+  // The surface CLASS (from the file's own material table) draws its own texture.
+  let kind = materialClass(s.metallic, s.roughness, s.attr.z);
+  var metallic = s.metallic;
+  var roughness = s.roughness;
+  var wear = 0.0;
+  if (kind != 0u) {
+    let skin = classSkin(kind, s, albedo, normal, p);
+    albedo = skin.albedo;
+    roughness = skin.roughness;
+    metallic = skin.metallic;
+    normal = skin.normal;
+    wear = skin.exposed;
+  } else {
+    // Unclassified: paint worn back to bare steel on edges, and a little where it is knocked.
+    let chips = detailFbm(s.world * 3.2, 3, s.footprint).value;
+    wear = painted * p.wear * max(detailEdgeWear(s.curvature, 6.0, chips), smoothstep(0.72, 0.85, chips) * 0.5);
+    albedo = mix(albedo, vec3f(0.42, 0.41, 0.4), wear);
+    metallic = mix(s.metallic, 0.95, wear);
+    roughness = mix(s.roughness, 0.32, wear);
+  }
 
   // Soot by height and by the furnace; dust on top faces; streaks down walls.
   let heightSoot = smoothstep(2.0, p.sootHeight, s.world.y);

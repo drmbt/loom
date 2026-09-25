@@ -18,6 +18,14 @@ export interface MeshSelectionFacts {
   readonly parts: string;
 }
 
+/** One GLB material: its name and the factors every one of its vertices carries. */
+export interface MaterialFacts {
+  readonly name: string;
+  readonly metallic: number;
+  readonly roughness: number;
+  readonly heat: number;
+}
+
 export interface FurnaceSceneFacts {
   /** Where the app fetches the GLB (a path under public/). */
   readonly glbUrl: string;
@@ -31,6 +39,8 @@ export interface FurnaceSceneFacts {
   readonly markers: ReadonlyMap<string, DecodedMarker>;
   /** The plant's triangles at rest, for build-time camera collision (camera-path.ts). */
   readonly blockers: readonly Blocker[];
+  /** The GLB's material table, as factors — what the plant material classifies surfaces by. */
+  readonly materials: readonly MaterialFacts[];
   /** The static plant's world bounds — what the sun's shadow camera frames (sun.ts). */
   readonly bounds: DecodedMesh["bounds"];
 }
@@ -46,6 +56,7 @@ export function sceneFactsFrom(
   plant: DecodedMesh,
   machines: DecodedMesh,
   sky: DecodedMesh,
+  materials: readonly MaterialFacts[] = [],
 ): FurnaceSceneFacts {
   const facts = (mesh: DecodedMesh, select: string): MeshSelectionFacts => ({
     select,
@@ -64,6 +75,7 @@ export function sceneFactsFrom(
     // The sky planes stand in the openings: a camera must not look through one from outside.
     blockers: [plant, machines, sky].map((mesh) => ({ positions: mesh.positions, indices: mesh.indices })),
     bounds: plant.bounds,
+    materials,
   };
 }
 

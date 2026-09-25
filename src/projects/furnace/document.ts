@@ -6,7 +6,7 @@ import type { FurnaceSceneFacts } from "./scene-facts.ts";
 import { markerAt } from "./scene-facts.ts";
 import { RIG_ATTRIBUTES, rigKernel } from "./rig-kernel.ts";
 import { SPARK_ATTRIBUTES, sparksKernel } from "./sparks-kernel.ts";
-import { PLANT_SURFACE_WGSL, SKY_SURFACE_WGSL } from "./surface-material.ts";
+import { SKY_SURFACE_WGSL, plantSurfaceWgsl } from "./surface-material.ts";
 import { KEY_DIRECTION, SCATTER_LIGHTS, atmosphereWgsl } from "./atmosphere.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL, GRADE_WGSL } from "./post.ts";
 import { SHOP_ENVIRONMENT_WGSL } from "./environment.ts";
@@ -236,7 +236,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       casting: expressionSlot("abstime * 0.4", 0),
       conveyor: expressionSlot("abstime * 1.2", 0),
     }, { label: "rig1" }),
-    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: PLANT_SURFACE_WGSL, heatGlow: 3.2, chalk: 0.12, soot: 0.38,
+    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, chalk: 0.12, soot: 0.38,
       fx: expressionSlot(`clamp((${direction.energy} - 0.4) / 0.5, 0, 1)`, 0),
       kickSince: expressionSlot("op('kicks1').chan.kickCountSince", 100),
       snareSince: expressionSlot("op('snares1').chan.snareCountSince", 100),
