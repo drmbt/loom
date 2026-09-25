@@ -72,6 +72,7 @@ struct Params {
 ${params.map((light) => `  ${light.param}: f32, // @default ${light.rest}  ${light.help}`).join("\n")}
 ${LAMP_PARAMS}
   lampScatter: f32, // @default 1  How much of the fixtures' light the smoke catches.
+  beam: f32, // @default 0.45  Width of a fixture's visible beam, as a share of its cone.
   shafts: f32, // @default 2.5  Brightness of the light shafts under the roof louvres.
   sunShafts: f32, // @default 120  Radiance of sunlight in the smoke where the sun reaches it.
   sunColor: vec3f, // @default 1  Colour of the sunlight in the smoke.
@@ -192,7 +193,11 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
       let d2 = dot(toLamp, toLamp);
       if (d2 > 1600.0) { continue; }
       let l = toLamp * inverseSqrt(max(d2, 1e-4));
-      let cone = lampCone(i, -l, frameU.absTime);
+      // In the smoke a fixture shows as a BEAM, the core of its cone — the whole cone lit
+      // uniformly reads as haze, not as light coming out of a lamp.
+      let facing = dot(-l, lampDirection(i, frameU.absTime));
+      let half = select(acos(clamp(LAMP_SHAPE[i].x, -1.0, 1.0)), 3.1415927, LAMP_SHAPE[i].x < -1.0);
+      let cone = select(smoothstep(cos(half * params.beam), cos(half * params.beam * 0.5), facing) * 2.5, lampCone(i, -l, frameU.absTime), LAMP_SHAPE[i].x < -1.0);
       if (cone <= 0.0) { continue; }
       let fade = 1.0 - d2 / 1600.0;
       inscatter = inscatter + lampFlux(i, frameU.absTime) * (params.lampScatter * cone * fade * fade) * phase(dot(direction, l)) / (1.0 + d2);

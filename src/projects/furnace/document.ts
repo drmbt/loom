@@ -6,7 +6,7 @@ import type { FurnaceSceneFacts } from "./scene-facts.ts";
 import { markerAt } from "./scene-facts.ts";
 import { RIG_ATTRIBUTES, rigKernel } from "./rig-kernel.ts";
 import { SPARK_ATTRIBUTES, sparksKernel } from "./sparks-kernel.ts";
-import { PLANT_SURFACE_WGSL } from "./surface-material.ts";
+import { PLANT_SURFACE_WGSL, SKY_SURFACE_WGSL } from "./surface-material.ts";
 import { KEY_DIRECTION, SCATTER_LIGHTS, atmosphereWgsl } from "./atmosphere.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL, GRADE_WGSL } from "./post.ts";
 import { SHOP_ENVIRONMENT_WGSL } from "./environment.ts";
@@ -118,10 +118,15 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   atmosphereScatter["furnaceGlow"] = expressionSlot(`14 + ${LEVEL("low")} * 16`, 20);
   atmosphereScatter["slagGlow"] = 10;
   atmosphereScatter["tundishGlow"] = 8;
-  atmosphereScatter["lampScatter"] = 3;
+  atmosphereScatter["lampScatter"] = 0.8;
+  // The sun is programmed with the windows: its shafts dim at rest, flare through a build and
+  // go out at a section change.
+  atmosphereScatter["sunShafts"] = expressionSlot(`(60 + ${direction.energy} * 60 + ${direction.build} * 140) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 80);
   atmosphereScatter["sunColor"] = [0.62, 0.86, 1, 1];
   atmosphereScatter["density"] = 0.009;
-  atmosphereScatter["ambientSmoke"] = [0.002, 0.0025, 0.0035];
+  // Low and cold: at a blackout this is all the smoke carries, and the camera must not
+  // lift it into a beige wall (the exposure boost is capped at 3× for the same reason).
+  atmosphereScatter["ambientSmoke"] = [0.0006, 0.0009, 0.0014];
   atmosphereScatter["arcFlash"] = expressionSlot(`6 + ${HIT("hatCount")} * 60`, 10);
   atmosphereScatter["tapGlow"] = expressionSlot(`10 + ${HIT("kickCount")} * 30`, 15);
 
@@ -198,9 +203,10 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     // ── Audio (a stand-in track until the song arrives) ──
     node("clip", "audioFileIn", [-4200, 1400], { file: options.audioUrl ?? "media/furnace/clankz3.wav", playMode: "timeline" }, { label: "clip1" }),
     node("pickLevels", "valueSelect", [-3900, 1300], { channels: "level low high" }, { label: "picklevels1" }),
-    node("smooth", "valueLag", [-3600, 1300], { lag: 0.08, releaseRatio: 1 }, { label: "smooth1" }),
+    node("smooth", "valueLag", [-3600, 1300], { lag: 0.02, releaseRatio: 4 }, { label: "smooth1" }),
     node("rank", "valueNormalize", [-3300, 1300], { window: 16 }, { label: "rank1" }),
-    node("levels", "valueLag", [-3000, 1300], { lag: 0.15, releaseRatio: 1 }, { label: "levels1" }),
+    // Fast attack, slow release: a level that rises late reads as the picture lagging the music.
+    node("levels", "valueLag", [-3000, 1300], { lag: 0.03, releaseRatio: 5 }, { label: "levels1" }),
     node("pickHits", "valueSelect", [-3900, 1550], { channels: "kickCount snareCount hatCount" }, { label: "pickhits1" }),
     // Seconds since the last kick and snare, for the shockwave and the scanline on the steel.
     node("kickPick", "valueSelect", [-3900, 1750], { channels: "kickCount" }, { label: "kickpick1" }),
@@ -230,7 +236,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       casting: expressionSlot("abstime * 0.4", 0),
       conveyor: expressionSlot("abstime * 1.2", 0),
     }, { label: "rig1" }),
-    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: PLANT_SURFACE_WGSL, heatGlow: 8, chalk: 0.12, soot: 0.38,
+    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: PLANT_SURFACE_WGSL, heatGlow: 3.2, chalk: 0.12, soot: 0.38,
       fx: expressionSlot(`clamp((${direction.energy} - 0.4) / 0.5, 0, 1)`, 0),
       kickSince: expressionSlot("op('kicks1').chan.kickCountSince", 100),
       snareSince: expressionSlot("op('snares1').chan.snareCountSince", 100),
@@ -238,7 +244,13 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       heatPulse: expressionSlot(`${direction.energy} * 0.25 + ${direction.build} * 0.35`, 0.1) }, { label: "steel1" }),
     // The sky through the openings: emissive, unlit — so it neither shades nor casts (T666).
     node("sky", "meshFileIn", [-3600, -600], { file: facts.glbUrl, select: facts.sky.select, vertices: facts.sky.vertices, triangles: facts.sky.triangles, parts: facts.sky.parts }, { label: "sky1" }),
-    node("skyMat", "materialUnlit", [-3300, -700], { color: [0, 0, 0, 1] }, { label: "skymat1" }),
+    // The windows are PROGRAMMED: their glow follows the light programme (dim at rest, a
+    // flare through a build, black at a section change).
+    node("skyMat", "materialWgsl", [-3300, -700], {
+      model: "unlit",
+      source: SKY_SURFACE_WGSL,
+      sky: expressionSlot(`(0.35 + ${direction.energy} * 0.6 + ${direction.build} * 1.5 * ((op('dirBeats1').chan.beatCount % 2) == 0)) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 0.5),
+    }, { label: "skymat1" }),
     node("skyGeo", "geometry", [-3000, -750], { mode: "surface", material: "skymat1" }, { label: "skygeo1" }),
     node("plantGeo", "geometry", [-3000, -300], { mode: "surface", material: "steel1" }, { label: "plantgeo1" }),
     node("machineGeo", "geometry", [-3000, 0], { mode: "surface", material: "steel1" }, { label: "machinegeo1" }),
@@ -252,7 +264,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       arcRate: expressionSlot(`0.03 + ${direction.density} * 0.15 + ${HIT("hatCount")} * 0.5`, 0.12),
       torchRate: 0.35,
       pourRate: expressionSlot("max(sin(abstime * 0.05), 0.0) * 0.6", 0),
-      brightness: 9,
+      brightness: 28,
     }, { label: "sparks1" }),
     node("sparkMat", "materialUnlit", [-3000, 700], { color: [1, 1, 1, 1] }, { label: "sparkmat1" }),
     node("sparkGeo", "geometry", [-3000, 400], {
@@ -261,7 +273,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       endpoint: "endpoint",
       blend: "additive",
       scale: 0.012,
-      taper: 0.3,
+      taper: 0.25,
       tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
     }, { label: "sparkgeo1" }),
     // ── Camera and light ──
@@ -434,7 +446,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("meter", "analyze", [-300, 300], { channel: "luminance", operation: "logAverage" }, { label: "meter1" }),
     node("metered", "channelIn", [0, 300], { channel: "meter1", fallback: 0.05 }, { label: "metered1" }),
     node("adaptation", "valueLag", [300, 300], { lag: 0.35, releaseRatio: 3 }, { label: "adaptation1" }),
-    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0.7, adapt: expressionSlot("clamp((0.075 / max(op('adaptation1').chan.value, 0.0005)) ^ 0.72, 0.03, 10)", 1), punch: 1.35, punchSaturation: 1.25, contrast: 1.1, grain: 0.016, saturation: 1.1, split: 0.3, shadowTint: [0.88, 0.98, 1.06, 1], highlightTint: [1.1, 1, 0.86, 1] }, { label: "grade1", resolution: { mode: "project" } }),
+    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: -0.6, adapt: expressionSlot("clamp((0.075 / max(op('adaptation1').chan.value, 0.0005)) ^ 0.72, 0.03, 3)", 1), punch: 1.2, punchSaturation: 1.15, contrast: 1.05, grain: 0.016, saturation: 1.1, split: 0.3, shadowTint: [0.88, 0.98, 1.06, 1], highlightTint: [1.1, 1, 0.86, 1] }, { label: "grade1", resolution: { mode: "project" } }),
     node("out", "output", [300, 0], { toneMap: "none" }, { label: "out1" }),
     ...direction.nodes,
   ];
@@ -484,8 +496,9 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]),
       edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0),
     ]),
-    edge("shutter-glow", ["shutter", "out"], ["glow", "in1"]),
-    edge("sum-glow", ["bloomUp0", "out"], ["glow", "in2"]),
+    // The bloom is the FRONT layer: Add's opacity scales in1, so it must be the glow, never the picture.
+    edge("shutter-glow", ["shutter", "out"], ["glow", "in2"]),
+    edge("sum-glow", ["bloomUp0", "out"], ["glow", "in1"]),
     edge("glow-grade", ["glow", "out"], ["grade", "input"]),
     edge("glow-meter", ["glow", "out"], ["meter", "input"]),
     edge("metered-adaptation", ["metered", "out"], ["adaptation", "in"]),

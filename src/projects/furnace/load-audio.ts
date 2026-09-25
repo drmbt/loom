@@ -77,10 +77,12 @@ export interface TrackSeam {
  * frame before it, so a transient reaches the lanes late. Measured on the working track
  * (82 kicks, low-band PCM onsets against the lane's kick frames, 2026-09-25): +27 ms median,
  * +47 ms p90 — and end to end the picture fires on the lane's own frame, so that is the whole
- * lag. Reading one analysis frame ahead moves the median to about −6 ms: the picture a hair
- * early, which the eye forgives, rather than late, which it does not.
+ * lag. Reading one analysis frame ahead moves the median to −3 ms; the owner still read the
+ * picture as late (smoothed lanes add their own lag on top), so it reads TWO ahead: the picture
+ * about 30 ms early — inside what the eye forgives when light leads sound (a flash seen before
+ * its bang is physical; the reverse is not).
  */
-export const ANALYSIS_LOOKAHEAD_FRAMES = 1;
+export const ANALYSIS_LOOKAHEAD_FRAMES = 2;
 
 export function walkTrack(path: string, fps: number): TrackSeam {
   const wav = decodeWav(path);

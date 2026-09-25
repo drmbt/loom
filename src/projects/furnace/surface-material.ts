@@ -45,11 +45,13 @@ struct Params {
 // Temperature 0..1 to linear radiance colour: dull red, orange, yellow, near-white.
 fn blackbody(t: f32) -> vec3f {
   let x = clamp(t, 0.0, 1.0);
-  let red = vec3f(0.55, 0.04, 0.005);
-  let orange = vec3f(1.0, 0.28, 0.03);
-  let yellow = vec3f(1.0, 0.66, 0.2);
-  let white = vec3f(1.0, 0.93, 0.78);
-  return mix(mix(red, orange, smoothstep(0.0, 0.35, x)), mix(yellow, white, smoothstep(0.75, 1.0, x)), smoothstep(0.35, 0.75, x));
+  // Saturated through the orange: a camera sees molten steel as orange-yellow with a white
+  // core only at the very top — and the grade's curve whitens whatever is left past it.
+  let red = vec3f(0.6, 0.03, 0.0);
+  let orange = vec3f(1.0, 0.22, 0.01);
+  let yellow = vec3f(1.0, 0.5, 0.06);
+  let white = vec3f(1.0, 0.82, 0.5);
+  return mix(mix(red, orange, smoothstep(0.0, 0.35, x)), mix(yellow, white, smoothstep(0.9, 1.1, x)), smoothstep(0.35, 0.8, x));
 }
 
 // The audio's marks ON the steel — light running through the structure, not over the picture.
@@ -180,5 +182,18 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   o.metallic = metallic;
   o.normal = normal;
   o.emissive = o.emissive + surfaceFx(s, p);
+  return o;
+}`;
+
+
+/** T1354b — the sky seen through the openings: the file's emissive, scaled by the light programme. */
+export const SKY_SURFACE_WGSL = `struct Params {
+  sky: f32, // @default 1  Brightness of the sky in the openings (the director drives it).
+};
+
+fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
+  var o = surfaceDefaults(s);
+  o.albedo = vec4f(0.0, 0.0, 0.0, 1.0);
+  o.emissive = s.emissive * p.sky;
   return o;
 }`;

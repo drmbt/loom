@@ -2,7 +2,7 @@ import type { GraphEdge, GraphNode } from "../../domain/types/graph.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { SPECTRUM_BAND_NAMES } from "../../domain/audio/spectrum-bands.ts";
 import { edge, node as buildNode } from "../../examples/documents/builders.ts";
-import { CLOSE_POOL, CUT } from "./camera-path.ts";
+import { CLOSE_POOL, CUT, HOT_POOL } from "./camera-path.ts";
 
 /**
  * T1370b — THE DIRECTOR: the music chooses, inside boundaries the document states.
@@ -60,6 +60,8 @@ export function director(source: string, origin: readonly [number, number]): Dir
   const density = chan("dirDensity", "onsetCount");
   const nodes: GraphNode[] = [
     node("dirPick", "valueSelect", at(0, 0), { channels: "level centroid onsetCount beatCount" }),
+    // The tempo grid alone, so its channels shadow nothing in the gate.
+    node("dirGrid", "valueSelect", at(4, 3), { channels: "beat beatPhase" }),
     node("dirBands", "valueSelect", at(0, 3), { channels: SPECTRUM_BAND_NAMES.join(" ") }),
     // Energy and brightness: follow, then rank over the arrangement.
     node("dirLevel", "valueSelect", at(1, 0), { channels: "level" }),
@@ -81,22 +83,41 @@ export function director(source: string, origin: readonly [number, number]): Dir
     // A running beat counter (the record's beatCount is 1 on a beat's frame, not a total).
     node("dirBeatPick", "valueSelect", at(4, 1), { channels: "beatCount" }),
     node("dirBeats", "valueCount", at(5, 1), { threshold: 0.5, holdoff: 0.2 }),
+    // The kick itself — the cut lands ON it, not on the tracker's beat, which drifts from it.
+    node("dirKickPick", "valueSelect", at(4, 2), { channels: "kickCount" }),
+    node("dirKicks", "valueCount", at(5, 2), { threshold: 0.5, holdoff: 0.1 }),
     // The cut gate, as an Expression over WIRED channels (a value node's own parameters do
-    // not see channels): 1 on the frame of a downbeat whose bar number is a multiple of the
-    // shot length the music asks for — 8 bars calm, 4 energetic, 2 energetic AND dense — or on
-    // a section change.
+    // not see channels). A shot runs a number of bars the music asks for — 4 calm, 2 loud, 1
+    // loud AND dense — and the cut fires on the first KICK in the beat that closes it (the
+    // tracker's bar clock only says WHICH beat; a kick a hair before the counted beat still
+    // counts); in a breakdown with no kicks, on the counted beat. A section change cuts on the
+    // first kick after it.
     node("dirGate", "valueExpression", at(6, 1), {
       expressions: [
-        "bars = 8 - 4 * (level > 0.55) - 2 * (level > 0.55) * (onsetCount > 0.7)",
-        "cut = (beatCount % (4 * bars) == 0) * (beatCountSince < 0.04) + (noveltySince < 0.04) * (novelty > 0)",
+        "bars = 4 - 2 * (level > 0.55) - (level > 0.55) * (onsetCount > 0.7)",
+        "span = 4 * bars",
+        // The tempo grid is the bar clock: it keeps time through breakdowns, where kicks stop.
+        "onBar = (beat % span == 0) * (beatPhase < 0.3) + (beat % span == span - 1) * (beatPhase > 0.8)",
+        "kick = kickCountSince < 0.02",
+        // No kick by a third of the way into the beat: cut on the grid anyway (the Count's
+        // holdoff drops this if the kick already cut).
+        "late = (beat % span == 0) * (beatPhase >= 0.3) * (beatPhase < 0.36)",
+        "cut = kick * onBar + late + kick * (noveltySince < 1.5) * (novelty > 0)",
       ].join("; "),
     }),
-    node("dirCuts", "valueCount", at(7, 1), { threshold: 0.5, holdoff: 1 }),
+    node("dirCuts", "valueCount", at(7, 1), { threshold: 0.5, holdoff: 1.5 }),
     node("dirCutPick", "valueSelect", at(6.5, 0.5), { channels: "cut" }),
     // Which framing: energetic → the close pool, calm → the wide pool, the pick a hash of the
     // cut and section counts so it never repeats predictably and always reproduces.
     node("dirShot", "valueExpression", at(8, 1), {
-      expressions: `shot = (level > 0.5) * ((cut * 7 + novelty * 3) % ${CLOSE_POOL}) + (level <= 0.5) * (${CLOSE_POOL} + (cut * 5 + novelty * 2) % ${CUT.length - CLOSE_POOL})`,
+      // Loud: every other cut is a HOT shot (the melt, the pour, the tap), the rest the dynamic
+      // close set. Calm: every third cut is still hot; the others go wide.
+      expressions: [
+        `hot = (cut * 5 + novelty * 3) % ${HOT_POOL}`,
+        `close = ${HOT_POOL} + (cut * 7 + novelty) % ${CLOSE_POOL - HOT_POOL}`,
+        `wide = ${CLOSE_POOL} + (cut * 5 + novelty * 2) % ${CUT.length - CLOSE_POOL}`,
+        `shot = (level > 0.5) * ((cut % 2 == 0) * hot + (cut % 2 == 1) * close) + (level <= 0.5) * ((cut % 3 == 0) * hot + (cut % 3 != 0) * wide)`,
+      ].join("; "),
     }),
     // One frame back, for the motion blur's previous camera.
     node("dirPreviousCut", "valueDelay", at(7, 2), { frames: 1 }),
@@ -124,6 +145,11 @@ export function director(source: string, origin: readonly [number, number]): Dir
     edge("dir-energy-gate", ["dirEnergy", "out"], ["dirGate", "in"], 1),
     edge("dir-density-gate", ["dirDensity", "out"], ["dirGate", "in"], 2),
     edge("dir-sections-gate", ["dirSections", "out"], ["dirGate", "in"], 3),
+    edge("dir-src-kicks", [source, "out"], ["dirKickPick", "in"]),
+    edge("dir-kickpick-kicks", ["dirKickPick", "out"], ["dirKicks", "in"]),
+    edge("dir-kicks-gate", ["dirKicks", "out"], ["dirGate", "in"], 4),
+    edge("dir-src-grid", [source, "out"], ["dirGrid", "in"]),
+    edge("dir-grid-gate", ["dirGrid", "out"], ["dirGate", "in"], 5),
     edge("dir-gate-pick", ["dirGate", "out"], ["dirCutPick", "in"]),
     edge("dir-pick-cuts", ["dirCutPick", "out"], ["dirCuts", "in"]),
     edge("dir-cuts-shot", ["dirCuts", "out"], ["dirShot", "in"], 0),

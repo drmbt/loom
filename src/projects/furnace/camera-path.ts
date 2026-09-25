@@ -56,46 +56,66 @@ const at = (facts: FurnaceSceneFacts, name: string): Vec3 => {
 const offset = (base: Vec3, by: Vec3): Vec3 => [base[0] + by[0], base[1] + by[1], base[2] + by[2]];
 
 /**
+ * A framing that FINDS its eye: the subject (a marker or part, nudged by `lift`) seen from the
+ * first candidate offset whose sightline is clear for three-quarters of the way — so a
+ * re-export that moves a column moves the camera, instead of parking it behind the column.
+ */
+const seek = (subject: string, lift: Vec3, fov: number, candidates: readonly Vec3[]) => (facts: FurnaceSceneFacts): Pose => {
+  const aim = offset(at(facts, subject), lift);
+  for (const candidate of candidates) {
+    const eye = offset(aim, candidate);
+    const near: Vec3 = [eye[0] + (aim[0] - eye[0]) * 0.75, eye[1] + (aim[1] - eye[1]) * 0.75, eye[2] + (aim[2] - eye[2]) * 0.75];
+    if (firstHit(facts.blockers, eye, near) >= 1) return toward(eye, aim, fov);
+  }
+  throw new Error(`cameraPath: no clear eye on "${subject}" among ${candidates.length} candidates.`);
+};
+
+/**
  * Every framing with its move, CLOSE pool first, WIDE pool after — the director (§T1370b)
  * picks from the close, dynamic set when the music is energetic and from the wide, slow set
- * when it is not, by index range; the time-driven cut plays them in this order.
+ * when it is not, by index range; the time-driven cut plays them in this order. The close
+ * pool opens with the HOT shots — the melt, the pour, the tap, the slag — because orange
+ * light in black steel is what this film is.
  */
 export const CUT: readonly Move[] = [
-  // Close and dynamic.
+  // Hot: looking INTO the process.
+  // Down into the full ladle from the crane's height: molten steel, rafts of slag, the rim black.
+  { name: "ladle_down", pose: seek("emit.ladle_surface", [0, 0, 0], 38, [[3, 9, 4], [-3, 9, 4], [3, 9, -4], [0, 11, 5], [5, 7, 0]]), crane: -2.5, orbit: 0.5, ease: "creep" },
+  // The ladle lip pouring, from below and close: the stream against black.
+  { name: "ladle_lip_low", pose: seek("emit.ladle_lip", [0, -0.5, 0], 34, [[5, -3, 5], [5, -3, -5], [6, -2, 2], [4, -3.5, 7]]), dolly: 2, push: -6, ease: "whip" },
+  // Into the furnace through the slag door, a long lens from the dark: the bath inside.
+  { name: "slag_door_into", pose: seek("emit.bath", [0, 0, 0], 16, [[-16, 1.2, 3], [-16, 1.2, -3], [-18, 2, 0], [-14, 0.5, 4]]), push: -4, dolly: 2, ease: "creep" },
+  // The tap: the stream and its spray, close and low.
+  { name: "tap_close", pose: seek("emit.tap_stream", [0, -0.5, 0], 42, [[4, -2.5, 5], [4, -2.5, -5], [6, -1.5, 3], [3, -3, 6]]), orbit: 0.6, ease: "smooth" },
+  // The slag falling into the pot.
+  { name: "slag_fall", pose: seek("emit.slag_fall", [0, 0.5, 0], 40, [[-5, -1.5, 5], [-5, -1.5, -5], [-6, 0, 3], [-4, -2, 6]]), dolly: 2.5, ease: "whip" },
+  // The tundish pour on the caster, from across the platform.
+  { name: "tundish_pour", pose: seek("emit.tundish_pour", [0, -0.5, 0], 36, [[-6, 2, 6], [6, 2, 6], [-5, 1, -6], [0, 3, 8]]), truck: 3, ease: "creep" },
+  // Dynamic.
   { shot: "shot.hero_low_furnace", dolly: 4.0, crane: 1.5, ease: "whip" },
-  { shot: "shot.electrode_closeup", orbit: 0.7, crane: -1.0 },
-  // Circling the three electrodes from above the roof, a long lens, never letting go.
   { name: "electrode_orbit", pose: (f) => toward(offset(at(f, "electrode_2"), [11, 8, 9]), offset(at(f, "electrode_2"), [0, 5, 0.3]), 26), orbit: 1.3, ease: "creep" },
-  // The slag door as the one light in a black wall: far enough back that the sooty shell
-  // frames the glow, the lens tightening as the camera backs away.
   { name: "slag_door_vertigo", pose: (f) => toward(offset(at(f, "emit.slag_door"), [-13, -2.5, 6]), offset(at(f, "emit.slag_door"), [0, -0.5, 0]), 34), vertigo: -6, ease: "smooth" },
-  // The tap's sparks through a long lens from across the bay: compressed, flat, hot.
   { name: "tap_longlens", pose: (f) => toward(offset(at(f, "emit.spark_tap"), [17.4, 2, 4.7]), offset(at(f, "emit.spark_tap"), [0, 1.5, 0]), 24), truck: 3, push: -3, ease: "creep" },
-  // Riding the scrap crane: under the girder, looking down the bay as it travels.
   { name: "crane_ride", pose: (f) => toward(offset(at(f, "crane_bridge"), [0, -2.2, -7]), offset(at(f, "crane_bridge"), [10, -12, -2]), 72), follow: "craneX", dolly: 2 },
-  // Skimming the floor at 40 cm, ultra-wide, toward the furnace's base.
   { name: "floor_skim", pose: (f) => toward([-24.4, 0.45, 8.9], offset(at(f, "furnace_shell"), [0, -6, 0]), 84), dolly: 8, ease: "whip" },
-  { shot: "shot.ladle_pour", orbit: -0.6, crane: 0.8 },
-  { shot: "shot.under_deck", dolly: 6.0, ease: "whip" },
+  // The charge: the scrap bucket overhead, looking up past it into the roof.
+  { name: "bucket_under", pose: seek("scrap_bucket", [0, -1, 0], 55, [[-6, -9, 6], [6, -9, 6], [-6, -9, -6], [0, -11, 7], [-12, -8, 10], [12, -8, 10], [-14, -6, -8], [0, -12, 12], [-10, -4, 12], [10, -4, -12]]), orbit: -0.5, ease: "creep" },
+  { shot: "shot.electrode_closeup", orbit: 0.7, crane: -1.0 },
   { shot: "shot.caster_strand", dolly: 6.0, truck: -1.5 },
-  { shot: "shot.over_shoulder_ladle", truck: 4.0, push: -8 },
-  { shot: "shot.cable_festoon", truck: 5.0, ease: "creep" },
-  { shot: "shot.through_grating", crane: 3.0, orbit: 0.3 },
   { shot: "shot.pipe_corridor", dolly: 9.0, ease: "creep" },
   // Wide and slow.
   { shot: "shot.establish_wide", truck: 10.0, dolly: 3.0 },
   { shot: "shot.crane_eye", truck: 6.0, follow: "craneX" },
-  { shot: "shot.conveyor_climb", crane: 4.0, dolly: 3.0 },
   { shot: "shot.scrap_bay", orbit: 0.45 },
   { shot: "shot.top_down", crane: -4.0, orbit: 0.8, ease: "creep" },
   { shot: "shot.ladle_furnace", dolly: 4.0 },
-  { shot: "shot.pulpit_window", truck: 3.0 },
-  // Gliding under the roof trusses down the hall, the whole plant turning below.
   { name: "roof_glide", pose: (f) => toward([-44, 25, -9], offset(at(f, "furnace_shell"), [-8, -6, 2]), 50), dolly: 18, ease: "creep" },
 ];
 
+/** How many CUT entries, from the start, are HOT (the process itself); they open the close pool. */
+export const HOT_POOL = 6;
 /** How many CUT entries, from the start, form the close pool; the rest are the wide pool. */
-export const CLOSE_POOL = 14;
+export const CLOSE_POOL = 16;
 
 /** How far ahead of a Blender shot's eye its aim point sits, metres (the orbit's pivot). */
 const AIM_DISTANCE = 12;
