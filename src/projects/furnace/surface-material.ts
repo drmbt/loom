@@ -29,6 +29,8 @@ struct Params {
   dents: f32, // @default 0.35  Strength of the dented, cast surface relief.
   wear: f32, // @default 0.7  Paint worn back to bare steel on edges.
   puddles: f32, // @default 0.8  Oily, glossy patches on the floor.
+  floorGrime: f32, // @default 0.85  Scale, soot and slag ground into the floor.
+  chalk: f32, // @default 0.45  How much chroma weathered paint has lost.
   heatGlow: f32, // @default 14  Radiance of the hottest molten steel.
   heatFlow: f32, // @default 0.3  How fast the molten surface flows, metres per second.
   heatPulse: f32, // @default 0  Extra heat on the whole melt (the audio's handle).
@@ -102,6 +104,9 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   let panel = panelShade(s.world);
   let blotch = detailFbm(s.world * 0.3, 3, s.footprint).value;
   var albedo = base * (0.82 + 0.36 * panel);
+  // Paint in a melt shop is chalked and filmed with dust: it keeps its hue but loses its
+  // chroma, which is also what stops blue paint under orange light going violet.
+  albedo = mix(vec3f(dot(albedo, vec3f(0.2126, 0.7152, 0.0722))), albedo, 1.0 - painted * p.chalk);
 
   // Paint worn back to bare steel on edges, and a little everywhere it gets knocked.
   let chips = detailFbm(s.world * 3.2, 3, s.footprint).value;
@@ -120,6 +125,13 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   albedo = mix(albedo, vec3f(0.016, 0.014, 0.013), sootAmount * (1.0 - wear * 0.5));
   albedo = mix(albedo, vec3f(0.3, 0.28, 0.25), dustAmount);
   albedo = mix(albedo, albedo * vec3f(0.78, 0.74, 0.7), concrete * smoothstep(0.45, 0.75, blotch));
+  // A melt-shop floor is never clean concrete: ground-in scale and soot take it dark, with
+  // paler tracks where the traffic scuffs it and black slag spatter near the furnace.
+  let tracks = smoothstep(0.55, 0.75, detailFbm(vec3f(s.world.x * 0.12, 0.0, s.world.z * 0.9), 3, s.footprint).value);
+  let spatter = smoothstep(0.7, 0.78, detailFbm(s.world * 1.7, 3, s.footprint).value) * (1.0 - smoothstep(8.0, 22.0, length(s.world.xz)));
+  let grime = isFloor * p.floorGrime;
+  albedo = mix(albedo, albedo * vec3f(0.34, 0.32, 0.3) * (0.7 + 0.8 * tracks), grime);
+  albedo = mix(albedo, vec3f(0.02, 0.018, 0.017), spatter * grime);
 
   // Roughness breakup: nothing in a steel shop is evenly glossy.
   roughness = clamp(roughness * (0.72 + 0.56 * grain.value) + sootAmount * 0.25 + dustAmount * 0.35 - streak * 0.08, 0.06, 1.0);

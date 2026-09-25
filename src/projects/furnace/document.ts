@@ -14,6 +14,8 @@ import { DOF_WGSL, GTAO_WGSL, MOTION_BLUR_WGSL, SSR_WGSL } from "./screen-space.
 import { shotPath } from "./camera-path.ts";
 import { GLITCH_WGSL } from "./glitch.ts";
 import { director } from "./director.ts";
+import { fixturesOf } from "./fixtures.ts";
+import { lampsWgsl } from "./lamps.ts";
 
 /**
  * T1354b — THE FURNACE DOCUMENT: the melt shop, lit, running, in smoke, graded.
@@ -91,26 +93,36 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   };
   // The furnace breathes with the low band; the arc flickers on the hats (and never quite
   // steadies — a real arc hunts); the high bays are dim sodium, the shop's only steady light.
-  pointLight("furnace", "light.furnace_glow", [1, 0.5, 0.2], expressionSlot(`90 + ${direction.energy} * 150 + ${direction.build} * 80`, 160), -2400, 35);
+  pointLight("furnace", "light.furnace_glow", [1, 0.5, 0.2], expressionSlot(`90 + ${direction.energy} * 150 + ${direction.build} * 80`, 160), -2400, 80);
   // Shadowed, so the arc flashes out of the slag door and the roof gaps, not through the shell.
-  pointLight("arc", "light.arc", [0.6, 0.7, 1], expressionSlot(`60 + ${HIT("hatCount")} * 900 + ${direction.density} * 200 + sin(abstime * 37) * 30`, 90), -2200, 20);
-  pointLight("slag", "light.slag_door", [1, 0.42, 0.12], 110, -2000, 25);
-  pointLight("tap", "light.tap", [1, 0.55, 0.2], expressionSlot(`30 + ${HIT("kickCount")} * 120`, 45), -1800, 20);
+  // Every range spans the hall: beyond its range a light is UNSHADOWED (T1362b), and an arc
+  // flare leaking 40 m through the plant is what turned the caster violet.
+  pointLight("arc", "light.arc", [0.6, 0.7, 1], expressionSlot(`60 + ${HIT("hatCount")} * 900 + ${direction.density} * 200 + sin(abstime * 37) * 30`, 90), -2200, 80);
+  pointLight("slag", "light.slag_door", [1, 0.42, 0.12], 110, -2000, 60);
+  pointLight("tap", "light.tap", [1, 0.55, 0.2], expressionSlot(`30 + ${HIT("kickCount")} * 120`, 45), -1800, 50);
   pointLight("tundish", "light.tundish", [1, 0.5, 0.18], 45, -1600);
-  for (let bay = 1; bay <= 4; bay += 1) pointLight(`bay${bay}`, `light.high_bay_${bay}`, [1, 0.74, 0.46], 380, -1400 + bay * 200);
+  // The high bays and floods are not forward lights: 65 fixtures light the frame from the
+  // G-buffer in the deferred lamp pass (lamps.ts), below.
 
   const atmosphereScatter: Record<string, StoredParameter> = {};
   for (const light of SCATTER_LIGHTS) atmosphereScatter[light.param] = light.rest;
   atmosphereScatter["furnaceGlow"] = expressionSlot(`14 + ${LEVEL("low")} * 16`, 20);
   atmosphereScatter["slagGlow"] = 10;
   atmosphereScatter["tundishGlow"] = 8;
-  atmosphereScatter["lamps"] = 1;
+  atmosphereScatter["lampScatter"] = 3;
   atmosphereScatter["density"] = 0.009;
   atmosphereScatter["ambientSmoke"] = [0.002, 0.0025, 0.0035];
   atmosphereScatter["arcFlash"] = expressionSlot(`6 + ${HIT("hatCount")} * 60`, 10);
   atmosphereScatter["tapGlow"] = expressionSlot(`10 + ${HIT("kickCount")} * 30`, 15);
 
   const cameraRef = (field: string, fallback: number): StoredParameter => expressionSlot(`op('cam1').par.${field}`, fallback);
+
+  /** The fixtures as the lamp pass and the smoke both see them: one gain, the crane travel. */
+  const lampDrive: Record<string, StoredParameter> = {
+    gain: 0.006,
+    craneX: expressionSlot("op('rig1').par.craneX", 0),
+    crane2X: expressionSlot("op('rig1').par.crane2X", 0),
+  };
 
   /**
    * The GLITCH BUDGET, a boundary: heavy glitching is allowed in every third section and
@@ -231,7 +243,8 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("key", "light", [-2600, -900], {
       kind: "directional",
       direction: [KEY_DIRECTION[0], KEY_DIRECTION[1], KEY_DIRECTION[2]],
-      color: [0.82, 0.88, 1, 1],
+      // Daylight reads TEAL against the melt, never lavender: red held under green.
+      color: [0.7, 0.88, 1, 1],
       intensity: 3.2,
       shadows: true,
       shadowExtent: 80,
@@ -245,17 +258,34 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       camera: "cam1",
       lights: ["key1", ...lightLabels].join(" "),
       ambientColor: [0.56, 0.58, 0.6, 1],
-      ambientIntensity: 0.012,
+      ambientIntensity: 0.006,
       background: [0, 0, 0, 1],
       antialias: "msaa",
       depthOutput: true,
       normalOutput: true,
-      environmentIntensity: 0.6,
+      albedoOutput: true,
+      environmentIntensity: 0.35,
       environmentTaps: 12,
       ambientOcclusion: true,
       aoRadius: 0.8,
     }, { label: "shot1" }),
     // ── Air, bloom, grade ──
+    // The fixtures, deferred on the G-buffer (T1371b/T1380b); then contact occlusion darkens
+    // what they lit, then reflections, then air.
+    node("lamps", "customWgslMulti", [-2250, 0], {
+      source: lampsWgsl(fixturesOf(facts)),
+      eye: vec(eye),
+      aim,
+      "eye.x": cameraRef("eye.x", eye[0]),
+      "eye.y": cameraRef("eye.y", eye[1]),
+      "eye.z": cameraRef("eye.z", eye[2]),
+      "aim.x": cameraRef("lookAt.x", aim[0]),
+      "aim.y": cameraRef("lookAt.y", aim[1]),
+      "aim.z": cameraRef("lookAt.z", aim[2]),
+      fov: cameraRef("fov", camera.fovDeg),
+      far: cameraRef("far", 400),
+      ...lampDrive,
+    }, { label: "lamps1", resolution: { mode: "project" } }),
     // Screen space on the G-buffer (T1371b): contact occlusion, then reflections, then air.
     node("occlusion", "customWgslMulti", [-2100, 0], {
       source: GTAO_WGSL,
@@ -286,6 +316,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("air", "customWgslMulti", [-1500, 0], {
       source: atmosphereWgsl(facts),
       ...atmosphereScatter,
+      ...lampDrive,
       eye: vec(eye),
       aim,
       "eye.x": cameraRef("eye.x", eye[0]),
@@ -345,7 +376,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("meter", "analyze", [-300, 300], { channel: "luminance", operation: "logAverage" }, { label: "meter1" }),
     node("metered", "channelIn", [0, 300], { channel: "meter1", fallback: 0.05 }, { label: "metered1" }),
     node("adaptation", "valueLag", [300, 300], { lag: 0.35, releaseRatio: 3 }, { label: "adaptation1" }),
-    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0.2, adapt: expressionSlot("clamp(0.075 / max(op('adaptation1').chan.value, 0.0005), 0.35, 10)", 1), punch: 1.3, punchSaturation: 1.05, contrast: 1.1, grain: 0.016, saturation: 0.9, split: 0.12, shadowTint: [0.94, 1, 1, 1], highlightTint: [1.03, 1, 0.96, 1] }, { label: "grade1", resolution: { mode: "project" } }),
+    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: 0.2, adapt: expressionSlot("clamp(0.075 / max(op('adaptation1').chan.value, 0.0005), 0.35, 10)", 1), punch: 1.4, punchSaturation: 1.05, contrast: 1.2, grain: 0.016, saturation: 0.9, split: 0.12, shadowTint: [0.94, 1, 1, 1], highlightTint: [1.03, 1, 0.96, 1] }, { label: "grade1", resolution: { mode: "project" } }),
     node("out", "output", [300, 0], { toneMap: "none" }, { label: "out1" }),
     ...direction.nodes,
   ];
@@ -363,7 +394,11 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("machines-rig", ["machines", "out"], ["rig", "in"]),
     edge("rig-geo", ["rig", "out"], ["machineGeo", "points"]),
     edge("sparks-geo", ["sparks", "out"], ["sparkGeo", "points"]),
-    edge("shot-occlusion", ["shot", "out"], ["occlusion", "input"]),
+    edge("shot-lamps", ["shot", "out"], ["lamps", "input"]),
+    edge("depth-lamps", ["shot", "depth"], ["lamps", "more"], 0),
+    edge("normal-lamps", ["shot", "normal"], ["lamps", "more"], 1),
+    edge("albedo-lamps", ["shot", "albedo"], ["lamps", "more"], 2),
+    edge("lamps-occlusion", ["lamps", "out"], ["occlusion", "input"]),
     edge("depth-occlusion", ["shot", "depth"], ["occlusion", "more"], 0),
     edge("normal-occlusion", ["shot", "normal"], ["occlusion", "more"], 1),
     edge("occlusion-reflections", ["occlusion", "out"], ["reflections", "input"]),

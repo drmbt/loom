@@ -35,10 +35,10 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let side = abs(d.z);
   let band = smoothstep(0.05, 0.12, d.y) * (1.0 - smoothstep(0.32, 0.42, d.y)) * smoothstep(0.55, 0.8, side);
   let mullions = step(0.18, fract(atan2(d.x, side) * 7.0));
-  radiance = radiance + vec3f(0.82, 0.88, 1.0) * params.windows * band * mullions;
+  radiance = radiance + vec3f(0.7, 0.88, 1.0) * params.windows * band * mullions;
   // Skylights: a strip along the roof ridge (X).
   let ridge = smoothstep(0.85, 0.97, d.y) * (1.0 - smoothstep(0.08, 0.2, abs(d.z)));
-  radiance = radiance + vec3f(0.75, 0.82, 1.0) * params.skylights * ridge * step(0.4, fract(d.x * 3.0));
+  radiance = radiance + vec3f(0.68, 0.86, 1.0) * params.skylights * ridge * step(0.4, fract(d.x * 3.0));
   // The sun, low, seen through the window side.
   radiance = radiance + vec3f(1.0, 0.9, 0.75) * params.sun * pow(max(dot(d, SUN_DIRECTION), 0.0), 900.0);
   return vec4f(radiance + vec3f(unused), 1.0);

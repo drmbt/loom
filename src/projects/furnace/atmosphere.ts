@@ -1,6 +1,7 @@
 import type { FurnaceSceneFacts } from "./scene-facts.ts";
 import { markerAt, wgslVec3 } from "./scene-facts.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
+import { fixtureTableWgsl, fixturesOf, LAMP_FUNCTIONS, LAMP_PARAMS } from "./fixtures.ts";
 
 /**
  * T1354b — the shop's AIR: smoke that the lights live in.
@@ -11,9 +12,11 @@ import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
  * participating medium — thick near the floor and under the roof, drifting, turbulent — and
  * accumulates in-scattered light from two kinds of source:
  *
- *  - the fixture lights (furnace glow, arc, slag door, tap, tundish, high bays), at their GLB
+ *  - the process lights (furnace glow, arc, slag door, tap, tundish), at their GLB
  *    positions, inverse-square with a forward-scattering phase, each with its own intensity
  *    knob so the audio can flare one without the others;
+ *  - the 65 lamp FIXTURES (fixtures.ts) — each a cone of light hanging in the smoke, with
+ *    the same dimmers, crane travel and failing ballasts as the deferred lamp pass;
  *  - light SHAFTS under the roof louvres: analytic cylinders slanting along the key light,
  *    denser at the core, which is what reads as god rays through smoke.
  *
@@ -35,10 +38,6 @@ export const SCATTER_LIGHTS: readonly ScatterLight[] = [
   { marker: "light.slag_door", param: "slagGlow", color: [1, 0.35, 0.08], rest: 25, help: "Slag door glow." },
   { marker: "light.tap", param: "tapGlow", color: [1, 0.5, 0.15], rest: 15, help: "Tapping stream glow." },
   { marker: "light.tundish", param: "tundishGlow", color: [1, 0.45, 0.14], rest: 12, help: "Caster tundish glow." },
-  { marker: "light.high_bay_1", param: "lamps", color: [1, 0.62, 0.3], rest: 8, help: "Sodium high-bay lamps." },
-  { marker: "light.high_bay_2", param: "lamps", color: [1, 0.62, 0.3], rest: 8, help: "Sodium high-bay lamps." },
-  { marker: "light.high_bay_3", param: "lamps", color: [1, 0.62, 0.3], rest: 8, help: "Sodium high-bay lamps." },
-  { marker: "light.high_bay_4", param: "lamps", color: [1, 0.62, 0.3], rest: 8, help: "Sodium high-bay lamps." },
 ];
 
 /** The key light's travel direction; the louvre shafts slant along it. */
@@ -67,6 +66,8 @@ struct Params {
   turbulence: f32, // @default 0.7  How lumpy and drifting the smoke is.
   ambientSmoke: vec3f, // @default 0.012  Base light the smoke carries everywhere (linear).
 ${params.map((light) => `  ${light.param}: f32, // @default ${light.rest}  ${light.help}`).join("\n")}
+${LAMP_PARAMS}
+  lampScatter: f32, // @default 1  How much of the fixtures' light the smoke catches.
   shafts: f32, // @default 2.5  Brightness of the light shafts under the roof louvres.
   shaftColor: vec3f, // @default 0.75  Colour of the shafts (daylight through smoke).
 };
@@ -86,6 +87,7 @@ const SHAFT_TOP = array<vec3f, ${Math.max(1, louvres.length)}>(${
 const SHAFT_DIRECTION: vec3f = ${wgslVec3(KEY_DIRECTION)};
 const SHAFT_RADIUS: f32 = 1.8;
 const STEPS: u32 = 28u;
+${fixtureTableWgsl(fixturesOf(facts))}${LAMP_FUNCTIONS}
 
 fn lightRadiance(index: u32) -> vec3f {
   switch index {
@@ -170,6 +172,17 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
       // A light is a small source, not a point: no sample within ~2 m of it sees more than a
       // bounded radiance, so a camera near the slag door is not engulfed.
       inscatter = inscatter + lightRadiance(i) * phase(dot(direction, toLight / sqrt(max(d2, 1e-4)))) / (4.0 + d2);
+    }
+    // The fixtures: cones in the smoke, reach windowed as in the lamp pass.
+    for (var i = 0u; i < LAMP_COUNT; i = i + 1u) {
+      let toLamp = lampPosition(i) - x;
+      let d2 = dot(toLamp, toLamp);
+      if (d2 > 1600.0) { continue; }
+      let l = toLamp * inverseSqrt(max(d2, 1e-4));
+      let cone = lampCone(i, -l, frameU.absTime);
+      if (cone <= 0.0) { continue; }
+      let fade = 1.0 - d2 / 1600.0;
+      inscatter = inscatter + LAMP_COLOR[i] * (lampGain(i, frameU.absTime) * params.lampScatter * cone * fade * fade) * phase(dot(direction, l)) / (1.0 + d2);
     }
     inscatter = inscatter + params.shaftColor * params.shafts * shaftDensity(x) * phase(dot(direction, -SHAFT_DIRECTION));
     scatter = scatter + transmittance * sigma * inscatter * step;

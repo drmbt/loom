@@ -15,6 +15,8 @@ import { walkTrack } from "./load-audio.ts";
  *     --glb <furnace.glb> --out <dir> [--audio <track.wav>] [--shots a,b] [--width 1280]
  *     [--at <seconds>]                 stills at that point of the track (after a 3 s run-up)
  *     [--clip <start>,<seconds>]       an MP4 of that span, the track muxed in (needs ffmpeg)
+ *     [--clean]                        the glitch layer bypassed, to judge the look underneath
+ *     [--set lamps.gain=0.01,grade.exposure=1]   parameter overrides by node id, for tuning
  *
  * Every animated thing runs on absTime from 0; the TRACK is offset so frame 0 hears
  * `start`. Without --audio every lane sits at its retained value.
@@ -34,6 +36,12 @@ const fps = 30;
 const clip = flag("clip")?.split(",").map(Number);
 const at = Number(flag("at") ?? 3);
 const shots = (flag("shots") ?? "shot.hero_low_furnace").split(",");
+const clean = argv.includes("--clean");
+const overrides = (flag("set") ?? "").split(",").filter((entry) => entry !== "").map((entry) => {
+  const match = /^([^.=]+)\.([^=]+)=(.+)$/.exec(entry);
+  if (match === null) throw new Error(`--set expects node.param=value, got "${entry}".`);
+  return { nodeId: match[1]!, parameter: match[2]!, value: JSON.parse(match[3]!) as unknown };
+});
 const { facts, glb } = loadFurnaceFacts(glbPath, "media/furnace/furnace.glb");
 const track = audioPath === undefined ? undefined : walkTrack(audioPath, fps);
 mkdirSync(outDir, { recursive: true });
@@ -43,7 +51,15 @@ const toRgba8 = (frame: RenderedFrame) =>
 
 for (const shot of shots) {
   // `cut` runs the camera path (every framing, a move each, cuts on bars) instead of one held shot.
-  const document = furnaceDocument(facts, { ...(shot === "cut" ? {} : { shot }), width, height });
+  const built = furnaceDocument(facts, { ...(shot === "cut" ? {} : { shot }), width, height });
+  const nodes = { ...built.graph.nodes };
+  if (clean) nodes["glitch"] = { ...nodes["glitch"]!, ui: { ...nodes["glitch"]!.ui, bypassed: true } };
+  for (const { nodeId, parameter, value } of overrides) {
+    const target = nodes[nodeId];
+    if (target === undefined) throw new Error(`--set: no node "${nodeId}".`);
+    nodes[nodeId] = { ...target, parameters: { ...target.parameters, [parameter]: value } } as typeof target;
+  }
+  const document = { ...built, graph: { ...built.graph, nodes } };
   const started = performance.now();
   const runUp = 3;
   const start = clip !== undefined ? (clip[0] ?? 0) : Math.max(0, at - runUp);
