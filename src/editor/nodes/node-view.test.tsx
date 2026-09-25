@@ -506,8 +506,9 @@ describe("T457 (V387) — reference-fed inputs render NO socket", () => {
     // into it while the switch is off reports as an ordinary missing-resource
     // diagnostic that names the switch.
     const outputs = [...container.querySelectorAll('[data-handlepos="right"]')];
-    // T1371b: `normal` is conditional the same way (Normal Output), drawn for the same reason.
-    expect(outputs.map((handle) => handle.getAttribute("data-handleid"))).toEqual(["out", "depth", "normal"]);
+    // T1371b/T1380b: `normal` and `albedo` are conditional the same way (Normal Output,
+    // Albedo Output), drawn for the same reason.
+    expect(outputs.map((handle) => handle.getAttribute("data-handleid"))).toEqual(["out", "depth", "normal", "albedo"]);
   });
 
   it("a wireable input on the same node keeps its socket (renderSurface: points yes, camera no)", () => {

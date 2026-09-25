@@ -229,7 +229,7 @@ export const pulseDocument = document(
         label: "camA1",
         parameters: { "eye.x": drivenSlot("orbAx1", 0), "eye.z": drivenSlot("orbAz1", 2.9) },
       }),
-      node("shotA", "render", [-1400, -300], {
+      node("shotA", "render", [-1400, -330], {
         scenes: "dots1 links1", camera: "camA1", lights: "",
       }, { label: "shotA1" }),
 

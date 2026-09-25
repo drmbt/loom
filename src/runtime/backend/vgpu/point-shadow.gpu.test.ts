@@ -14,6 +14,11 @@ import { nodeGpuHost, probeDawn } from "./node-gpu-host.ts";
  * the floor, seen from above past the box's own top, must be the AMBIENT FLOOR to the byte;
  * open floor further out must be the analytic inverse-square lambert; and the CUT — the same
  * light with Cast Shadows off — must light the shadowed texel. All three read one frame.
+ *
+ * And the bias must stay thinner than a wall at any RANGE: a lamp under a 10 cm plate, with
+ * an 80 m shadow range (a light that has to shadow across a whole hall), must leave the
+ * plate's far side dark. A bias that grew with the range (0.2% of it, 16 cm here) let the
+ * furnace arc shine through its own shell.
  */
 
 const SIZE = 64;
@@ -53,12 +58,20 @@ const node = (id: string, type: string, parameters: Record<string, unknown>, lab
   label,
 });
 
-function graph(shadows: boolean): GraphDocument {
+const PLATE_GLB = encodeFixtureGlb({
+  materials: [{ name: "grey", baseColor: [1, 1, 1, 1] }],
+  nodes: [{ name: "plate", translation: [0, 2, 0], scale: [3, 0.1, 3], mesh: [cubePrimitive(0)] }],
+});
+const PLATE_FACTS = prepareMesh(PLATE_GLB, "")!.facts;
+const UNDER_PLATE: [number, number, number] = [0, 1, 0];
+
+function graph(shadows: boolean, plate = false): GraphDocument {
+  const facts = plate ? PLATE_FACTS : FACTS;
   const nodes = [
-    node("mesh", "meshFileIn", { vertices: FACTS.vertices, triangles: FACTS.triangles, parts: FACTS.parts }, "mesh1"),
+    node("mesh", "meshFileIn", { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts }, "mesh1"),
     node("geo", "geometry", { mode: "surface" }, "geo1"),
     node("cam", "camera", { eye: EYE, lookAt: [0, 0, 0] }, "cam1"),
-    node("bulb", "light", { kind: "point", position: LIGHT, intensity: INTENSITY, shadows, shadowExtent: 10, shadowSoftness: 0 }, "bulb1"),
+    node("bulb", "light", { kind: "point", position: plate ? UNDER_PLATE : LIGHT, intensity: INTENSITY, shadows, shadowExtent: plate ? 80 : 10, shadowSoftness: 0 }, "bulb1"),
     node("shot", "render", { scenes: "geo1", camera: "cam1", lights: "bulb1", ambientColor: [1, 1, 1, 1], ambientIntensity: 0.12 }, "shot1"),
     node("out", "output", {}, "out1"),
   ];
@@ -73,15 +86,15 @@ function graph(shadows: boolean): GraphDocument {
   } as never;
 }
 
-async function render(shadows: boolean): Promise<Uint8Array> {
+async function render(shadows: boolean, plate = false): Promise<Uint8Array> {
   const result = await renderHeadless({
     host: nodeGpuHost(),
-    graph: graph(shadows),
+    graph: graph(shadows, plate),
     settings: SETTINGS,
     frames: 2,
     outputNodeId: "shot",
     outputPortId: "out",
-    meshes: { mesh: GLB },
+    meshes: { mesh: plate ? PLATE_GLB : GLB },
   });
   expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   const frame = result.frames[result.frames.length - 1];
@@ -153,5 +166,18 @@ describe("point-light shadows on Dawn (T1362b, §V147)", () => {
     const uncast = await render(false);
     const shadowedLit = litFloor(floorAtTexelCentre(shadowed));
     expect(rgb(uncast, texelOf(shadowed))).toEqual([shadowedLit, shadowedLit, shadowedLit]);
+  });
+
+  it("a thin plate stays dark on its far side under an 80 m shadow range", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    // The plate spans y 1.95..2.05; the light is 0.95 m under it, the eye looks down on its
+    // top, 1.05 m from the light. Two-sided lambert lights that top unless the shadow holds.
+    const top: [number, number, number] = [0, 2.05, 0];
+    const floorOnly = Math.round(0.8 * 0.12 * 255);
+    expect(rgb(await render(true, true), texelOf(top))).toEqual([floorOnly, floorOnly, floorOnly]);
+    // The cut: without the shadow the same texel is lit — the light does reach it.
+    const lit = Math.round(0.8 * (0.12 + INTENSITY / (1 + 1.05 * 1.05)) * 255);
+    expect(rgb(await render(false, true), texelOf(top))).toEqual([Math.min(255, lit), Math.min(255, lit), Math.min(255, lit)]);
   });
 });

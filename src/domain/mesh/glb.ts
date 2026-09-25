@@ -35,6 +35,8 @@ export interface DecodedPart {
   readonly rotation: readonly [number, number, number, number];
   readonly vertexStart: number;
   readonly vertexCount: number;
+  /** T1363b: the enclosing part's name (`extras.loom_parent`); absent at the top of a rig. */
+  readonly parent?: string;
 }
 
 export interface DecodedCamera {
@@ -56,6 +58,11 @@ export interface DecodedMarker {
   readonly name: string;
   readonly position: readonly [number, number, number];
   readonly direction: readonly [number, number, number];
+  /**
+   * T1363b: the node's `extras`, verbatim — what the exporter said about the marker (a
+   * lamp's colour, lumens and cone; an opening's size). Absent when the node carries none.
+   */
+  readonly extras?: Readonly<Record<string, unknown>>;
 }
 
 export interface DecodedMesh {
@@ -419,7 +426,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
 
   interface Visit { readonly node: number; readonly world: Mat4; readonly part: number }
   const partNames = new Map<string, number>();
-  const parts: Array<{ name: string; index: number; pivot: Vec3; rotation: Quat; vertexStart: number; vertexCount: number }> = [];
+  const parts: Array<{ name: string; index: number; pivot: Vec3; rotation: Quat; vertexStart: number; vertexCount: number; parent?: string }> = [];
   const visits: Visit[] = [];
   const cameras: DecodedCamera[] = [];
   const markers: DecodedMarker[] = [];
@@ -440,6 +447,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
       } else {
         part = parts.length + 1;
         partNames.set(partName, part);
+        const parentName = node.extras?.["loom_parent"];
         parts.push({
           name: partName,
           index: part,
@@ -447,6 +455,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
           rotation: matrixRotation(world),
           vertexStart: 0,
           vertexCount: 0,
+          ...(typeof parentName === "string" && parentName !== "" ? { parent: parentName } : {}),
         });
       }
     }
@@ -469,6 +478,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
         name: node.name,
         position: transformPoint(world, 0, 0, 0),
         direction: normalize3(transformDirection(world, 0, 0, -1)),
+        ...(node.extras === undefined || Object.keys(node.extras).length === 0 ? {} : { extras: node.extras }),
       });
     }
     for (const child of [...(node.children ?? [])].reverse()) {

@@ -111,11 +111,13 @@ describe("decodeGlb (T1353b)", () => {
           // The child mesh inherits the part — a Blender object parented under the pivot.
           children: [{ name: "ladle_shell", translation: [0, -1, 0], mesh: [cubePrimitive()] }],
         },
-        { name: "crane", extras: { loom_part: "crane" }, mesh: [cubePrimitive()] },
+        { name: "crane", extras: { loom_part: "crane", loom_parent: "ladle" }, mesh: [cubePrimitive()] },
       ],
     });
     const mesh = decodeGlb(glb);
     expect(mesh.parts.map((part) => [part.name, part.index])).toEqual([["ladle", 1], ["crane", 2]]);
+    // T1363b: the exporter's hierarchy, by name — a rig composes child under parent from it.
+    expect(mesh.parts.map((part) => part.parent)).toEqual([undefined, "ladle"]);
     expect(mesh.parts[0]?.pivot).toEqual([3, 4, 5]);
     const rotation = mesh.parts[0]?.rotation ?? [];
     expect(rotation[2]).toBeCloseTo(SQRT1_2, 6);
@@ -135,6 +137,8 @@ describe("decodeGlb (T1353b)", () => {
         // Turned 90° about Y: the camera's −Z looks down world −X.
         { name: "shot.hero", translation: [1, 2, 3], rotation: [0, SQRT1_2, 0, SQRT1_2], camera: { yfovDeg: 40, near: 0.1, far: 500 } },
         { name: "emit.tap", translation: [0, 7, 0] },
+        // T1363b: what the exporter says about a fixture rides on the marker, verbatim.
+        { name: "lamp.hall.01", translation: [4, 20, 0], extras: { loom_light_kind: "high_bay", loom_light_lumens: 36000, loom_light_color: [1, 0.86, 0.66] } },
       ],
     });
     const mesh = decodeGlb(glb);
@@ -146,7 +150,15 @@ describe("decodeGlb (T1353b)", () => {
     expect(camera.up[1]).toBeCloseTo(1, 6);
     expect(camera.fovDeg).toBeCloseTo(40, 4);
     expect(camera.far).toBe(500);
-    expect(mesh.markers).toEqual([{ name: "emit.tap", position: [0, 7, 0], direction: [0, 0, -1] }]);
+    expect(mesh.markers).toEqual([
+      { name: "emit.tap", position: [0, 7, 0], direction: [0, 0, -1] },
+      {
+        name: "lamp.hall.01",
+        position: [4, 20, 0],
+        direction: [0, 0, -1],
+        extras: { loom_light_kind: "high_bay", loom_light_lumens: 36000, loom_light_color: [1, 0.86, 0.66] },
+      },
+    ]);
     expect(mesh.vertexCount).toBe(0);
   });
 

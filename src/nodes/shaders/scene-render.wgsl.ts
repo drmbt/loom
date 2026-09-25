@@ -98,8 +98,12 @@ export interface SceneShadingOptions {
    * the screen-space passes read: the shaded world normal encoded as n·0.5+0.5 in rgb, and
    * roughness in a (floored at 0.04, so 0 means "no surface here"). Lights, shadows,
    * environment, AO and projectors are not bound.
+   *
+   * `"albedo"` writes the other half a deferred pass needs to LIGHT the surface: the shaded
+   * base colour (after the material) in rgb, linear, and metallic in a. Where nothing drew,
+   * the clear leaves zero — the Normal output's alpha is the coverage test.
    */
-  readonly gbuffer?: boolean;
+  readonly gbuffer?: "normal" | "albedo";
 }
 
 /** T1355b: the author's surface code, placed into the lit surface generator. */
@@ -693,8 +697,13 @@ function meshBindingsWgsl(mesh: SceneMeshOption): string {
  * of light → fragment, project with that face's own matrix (the one the sweep drew it with),
  * and compare RADIAL distance ÷ range against the atlas tile, PCF taps clamped inside the
  * tile so a kernel never reads a neighbouring face. Beyond the range the light is too faint
- * to matter and the fragment is unshadowed. The bias follows the directional one's slope
- * term, in the same normalised units.
+ * to matter and the fragment is unshadowed.
+ *
+ * The bias is measured in SHADOW-MAP TEXELS at the fragment, not in a share of the range: a
+ * face texel covers 2·d ÷ tile metres at distance d, so the bias is one texel plus the slope
+ * term over the kernel's reach, converted to the stored units (÷ range). A fixed share of
+ * the range grows with it — at an 80 m range it was over a metre, thicker than a furnace
+ * shell, and the arc shone through the wall it sits behind.
  */
 function pointShadowFactorWgsl(slot: number, radius: number): EmittedWgsl {
   const r = Math.max(0, Math.min(4, Math.floor(radius)));
@@ -726,7 +735,8 @@ ${faceCases}
         let origin = vec2i(vec2f(f32(face % 3u), f32(face / 3u)) * tile);
         let last = origin + vec2i(tile) - vec2i(1);
         let centre = origin + vec2i(suv * (tile - vec2f(1.0)));
-        let bias = 0.002 + 0.01 * (1.0 - lambert) * ${r + 1}.0;
+        let texelWorld = 2.0 * length(lightToFragment) / max(tile.y, 1.0);
+        let bias = (texelWorld * (1.0 + 2.0 * (1.0 - lambert) * ${r + 1}.0) + 1e-3) / max(params.shadow${slot}Light.w, 1e-4);
         var lit = 0.0;
         for (var oy = -${r}; oy <= ${r}; oy = oy + 1) {
           for (var ox = -${r}; ox <= ${r}; ox = ox + 1) {
@@ -1020,6 +1030,15 @@ ${unlitModel ? "" : `  let roughness = clamp(shaded.roughness, 0.04, 1.0);
 `
     : "";
 
+  const gbufferMetallic =
+    options.model === "unlit" ? "0.0" : custom !== undefined ? "surfaceMetallic" : meshSurface ? "clamp(input.surface.y, 0.0, 1.0)" : "params.material.x";
+  const gbufferWrite =
+    options.gbuffer === "normal"
+      ? `  return vec4f(normal * 0.5 + vec3f(0.5), ${options.model === "unlit" ? "1.0" : "max(roughness, 0.04)"});`
+      : options.gbuffer === "albedo"
+        ? `  return vec4f(albedo.rgb, ${gbufferMetallic});`
+        : undefined;
+
   return wgsl`struct SceneParams {
   viewProjection: mat4x4f,
   eye: vec4f,
@@ -1037,7 +1056,7 @@ ${options.mesh === undefined ? surfaceMeshWgsl(pointColor) : meshVertexWgsl(poin
 
 @fragment
 fn fs(input: VertexOut) -> @location(0) vec4f {
-${fragmentHead}${options.gbuffer === true ? `  return vec4f(normal * 0.5 + vec3f(0.5), ${options.model === "unlit" ? "1.0" : "max(roughness, 0.04)"});` : `${surfaceLocals}${shading}`}
+${fragmentHead}${gbufferWrite ?? `${surfaceLocals}${shading}`}
 }`;
 }
 

@@ -935,14 +935,24 @@ export const renderNode: NodeDefinition = {
       description:
         "World-space shaded normal as data, encoded n·0.5+0.5 in rgb, and roughness in a (0 = no surface). Surface geometry only; enable with Normal Output — off, this port produces nothing. Feed it, with Depth, to reflections, occlusion and edge passes.",
     },
+    {
+      /* T1380b — the G-buffer's colour half: with depth and normal it is everything a
+         DEFERRED pass needs to light the surface again (many unshadowed lamps, GI). */
+      id: "albedo",
+      label: "Albedo",
+      type: DATA_TEXTURE,
+      description:
+        "The shaded base colour as data — linear rgb after the material — and metallic in a. Surface geometry only; enable with Albedo Output — off, this port produces nothing. With Depth and Normal, a deferred pass can light the frame from any number of lamps.",
+    },
   ],
-  depthOutputs: ["out", "depth", "normal"],
+  depthOutputs: ["out", "depth", "normal", "albedo"],
   /* T939: MSAA is structural (a different render signature), so it is declared like
      depth — and the backend's patched vgpu keeps samples across the multi-pass chain. */
   msaaWhen: { out: (parameters) => parameters["antialias"] === "msaa" },
   outputWhen: {
     depth: (parameters) => parameters["depthOutput"] === true,
     normal: (parameters) => parameters["normalOutput"] === true,
+    albedo: (parameters) => parameters["albedoOutput"] === true,
   },
   sourceReferences: [
     { parameter: "scenes", input: "scenes", list: true },
@@ -1051,6 +1061,14 @@ export const renderNode: NodeDefinition = {
       compileTime: true,
       description:
         "T1371b: renders the shaded world normal and roughness into the Normal output — one extra pass per SURFACE geometry, through the same material code as the lit draw. Instances, points and beams do not write it. Off, the port allocates nothing.",
+    },
+    albedoOutput: {
+      type: "boolean",
+      label: "Albedo Output",
+      default: false,
+      compileTime: true,
+      description:
+        "T1380b: renders the shaded base colour (rgb) and metallic (a) into the Albedo output — one extra pass per SURFACE geometry, through the same material code as the lit draw. Instances, points and beams do not write it. Off, the port allocates nothing.",
     },
     depthOutput: {
       type: "boolean",
@@ -1802,15 +1820,20 @@ export const renderNode: NodeDefinition = {
       clear: true,
     } as DrawPassDescriptor);
 
-    /* T1371b: the G-buffer target, cleared to "no surface" before any geometry writes it. */
-    const normalTarget = parameters["normalOutput"] === true ? outputs["normal"] : undefined;
-    if (normalTarget !== undefined) {
+    /* T1371b/T1380b: the G-buffer targets, cleared to "no surface" before any geometry writes them. */
+    const gbufferTargets = (
+      [
+        ["normal", parameters["normalOutput"] === true ? outputs["normal"] : undefined],
+        ["albedo", parameters["albedoOutput"] === true ? outputs["albedo"] : undefined],
+      ] as const
+    ).flatMap(([layer, target]) => (target === undefined ? [] : [{ layer, target }]));
+    for (const { layer, target } of gbufferTargets) {
       passes.push({
         kind: "draw",
-        id: `${nodeId}:gbuffer:clear`,
+        id: layer === "normal" ? `${nodeId}:gbuffer:clear` : `${nodeId}:gbuffer:${layer}:clear`,
         nodeId,
         shader: GBUFFER_CLEAR_WGSL,
-        target: normalTarget,
+        target,
         topology: "triangle-list",
         instances: 1,
         vertexCount: 6,
@@ -2258,15 +2281,16 @@ export const renderNode: NodeDefinition = {
         clear: false,
       };
       passes.push(litPass);
-      /* T1371b: the same surface into the G-buffer — same material, same buffers, only the
-         uniforms that generator declares (no lights, shadows, environment or projectors). */
-      if (normalTarget !== undefined) {
+      /* T1371b/T1380b: the same surface into each G-buffer layer — same material, same
+         buffers, only the uniforms that generator declares (no lights, shadows, environment
+         or projectors). */
+      for (const { layer, target } of gbufferTargets) {
         const lighting = /^(light\d|shadow\d|environment|projector)/;
         passes.push({
           ...litPass,
-          id: `${nodeId}:gbuffer:${index}`,
-          shader: sceneSurfaceWgsl({ ...surfaceMaterialOptions, lightCount: 0, gbuffer: true }),
-          target: normalTarget,
+          id: layer === "normal" ? `${nodeId}:gbuffer:${index}` : `${nodeId}:gbuffer:${layer}:${index}`,
+          shader: sceneSurfaceWgsl({ ...surfaceMaterialOptions, lightCount: 0, gbuffer: layer }),
+          target,
           ...(material.maps.albedo === undefined && material.maps.roughness === undefined
             ? { textures: [] }
             : {
