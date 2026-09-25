@@ -58,15 +58,11 @@ def build():
         m.use_nodes = True
         nt = m.node_tree
         bsdf = nt.nodes["Principled BSDF"]
-        attr = nt.nodes.new("ShaderNodeVertexColor")
-        attr.layer_name = "grime"
-        mix = nt.nodes.new("ShaderNodeMix")
-        mix.data_type = "RGBA"
-        mix.blend_type = "MULTIPLY"
-        mix.inputs[0].default_value = 1.0
-        mix.inputs[6].default_value = (*base, 1.0)
-        nt.links.new(attr.outputs[0], mix.inputs[7])
-        nt.links.new(mix.outputs[2], bsdf.inputs["Base Color"])
+        # The colour goes on the BSDF as a plain value. glTF multiplies COLOR_0 (the grime
+        # layer, exported as the active colour attribute) by baseColorFactor itself — a Mix
+        # node computing colour × grime here is NOT expressible in glTF, and the exporter
+        # silently wrote the 0.8 default instead: every surface arrived grey.
+        bsdf.inputs["Base Color"].default_value = (*base, 1.0)
         bsdf.inputs["Metallic"].default_value = met
         bsdf.inputs["Roughness"].default_value = rough
         if ecol is not None and estr > 0:
