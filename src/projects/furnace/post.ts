@@ -169,5 +169,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;
   let size = vec2f(textureDimensions(inputTexture1));
   let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;
-  return vec4f(own + wide / 16.0 * params.lower, 1.0);
+  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×
+  // on its way up, and the glow washed the frame.
+  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);
 }`;

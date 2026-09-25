@@ -236,7 +236,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       casting: expressionSlot("abstime * 0.4", 0),
       conveyor: expressionSlot("abstime * 1.2", 0),
     }, { label: "rig1" }),
-    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, chalk: 0.12, soot: 0.38,
+    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, liquidGlow: 1, liningGlow: 12, chalk: 0.12, soot: 0.38,
       fx: expressionSlot(`clamp((${direction.energy} - 0.4) / 0.5, 0, 1)`, 0),
       kickSince: expressionSlot("op('kicks1').chan.kickCountSince", 100),
       snareSince: expressionSlot("op('snares1').chan.snareCountSince", 100),
@@ -424,7 +424,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       freeze: expressionSlot(`(${direction.energy} > 0.92) * (${HIT("kickCount")} > 0.9) * ${glitchBudget}`, 0),
     }, { label: "glitch1", resolution: { mode: "project" } }),
     node("history", "feedback", [900, 300], { source: "glitch1" }, { label: "history1" }),
-    node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 4, knee: 1.5 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }),
+    node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 10, knee: 3 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }),
     // The bloom PYRAMID (post.ts): four 13-tap downsamples, then tent upsamples back up,
     // each adding its own level — a round glow at every width, never a stretched texel.
     ...[1, 2, 3, 4].map((level) =>
@@ -434,12 +434,12 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       }),
     ),
     ...[0, 1, 2, 3].map((level) =>
-      node(`bloomUp${level}`, "customWgslMulti", [-600, 150 + level * 150], { source: BLOOM_UP_WGSL }, {
+      node(`bloomUp${level}`, "customWgslMulti", [-600, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 0.3 }, {
         label: `bloomup${level}1`,
         resolution: { mode: "scale", factor: 0.5 / 2 ** level },
       }),
     ),
-    node("glow", "add", [-300, 0], { opacity: 0.05 }, { label: "glow1", resolution: { mode: "project" } }),
+    node("glow", "add", [-300, 0], { opacity: 0.4 }, { label: "glow1", resolution: { mode: "project" } }),
     // Auto-exposure (T1378b): meter the frame's log-average luminance, adapt toward a key
     // like an eye does — faster when the scene brightens than when it darkens — and hand the
     // grade the gain. One frame late by the meter's contract; the lag hides it.

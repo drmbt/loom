@@ -74,7 +74,9 @@ struct Params {
   kickSince: f32, // @default 100  Seconds since the kick: a shockwave runs out from the furnace along the panel seams.
   snareSince: f32, // @default 100  Seconds since the snare: a hot scanline sweeps up every wall.
   flicker: f32, // @default 0  Hats: panels light up as corrupt blocks, hash-picked per 1.5 m panel.
-  heatGlow: f32, // @default 14  Radiance of the hottest molten steel.
+  heatGlow: f32, // @default 14  (Legacy; the liquid and solid glows below replace it.)
+  liquidGlow: f32, // @default 2  Radiance of liquid steel at its hottest.
+  liningGlow: f32, // @default 12  Radiance of hot SOLIDS — the strand, hot slag, graphite, linings.
   heatFlow: f32, // @default 0.3  How fast the molten surface flows, metres per second.
   heatPulse: f32, // @default 0  Extra heat on the whole melt (the audio's handle).
   crust: f32, // @default 0.8  How much slag floats on the molten surface.
@@ -286,29 +288,37 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   let heat = s.attr.z;
 
   if (heat >= 0.9) {
-    // LIQUID STEEL: near-uniformly white-hot, rippling, carrying rafts of dark slag.
+    // LIQUID STEEL: churning, not a flat white disc — convection cells (hot upwellings,
+    // cooler orange margins), a skin that wrinkles and splits, rafts of black slag. The
+    // exposure must LAND on it: the white core only where an upwelling peaks.
     let flow = vec3f(s.absTime * p.heatFlow, 0.0, s.absTime * p.heatFlow * 0.6);
-    let field = detailFbm(s.world * 1.4 - flow, 4, s.footprint);
-    let rafts = smoothstep(0.5, 0.66, detailFbm(s.world * 0.5 - flow * 0.35, 3, s.footprint).value);
+    let cells = detailFbm(s.world * 0.9 - flow * 0.5, 3, s.footprint);
+    let churn = detailFbm(s.world * 3.2 - flow * 1.7 + vec3f(0.0, s.absTime * 0.4, 0.0), 4, s.footprint);
+    let rafts = smoothstep(0.52, 0.64, detailFbm(s.world * 0.55 - flow * 0.3, 3, s.footprint).value);
     let skin = clamp(rafts * p.crust * (1.0 - p.heatPulse * 0.6), 0.0, 1.0);
-    let temperature = clamp(heat * (0.86 + 0.18 * field.value) + p.heatPulse * 0.3, 0.0, 1.2);
-    o.emissive = blackbody(temperature * (1.0 - skin * 0.5)) * p.heatGlow * temperature * temperature * (1.0 - skin * 0.97);
-    o.albedo = vec4f(vec3f(0.035, 0.03, 0.028) * (0.5 + skin), s.albedo.a);
-    o.roughness = mix(0.15, 0.8, skin);
+    // Cracks in a raft glow through it.
+    let raftCracks = (1.0 - smoothstep(0.02, 0.07, abs(churn.value - 0.5))) * skin;
+    let temperature = clamp(heat * (0.55 + 0.35 * cells.value + 0.25 * churn.value) + p.heatPulse * 0.25, 0.0, 1.15);
+    let glow = blackbody(temperature) * p.liquidGlow * temperature * temperature;
+    o.emissive = glow * (1.0 - skin * 0.985) + blackbody(0.55) * p.liquidGlow * 0.5 * raftCracks;
+    o.albedo = vec4f(vec3f(0.03, 0.026, 0.024) * (0.5 + skin), s.albedo.a);
+    o.roughness = mix(0.12, 0.85, skin);
     o.metallic = 0.0;
-    o.normal = detailBump(s.normal, field.gradient, 0.06 + skin * 0.1);
+    o.normal = detailBump(s.normal, churn.gradient * (1.0 - skin) + cells.gradient * skin, 0.12 + skin * 0.2);
     return o;
   }
 
   if (heat > 0.01) {
-    // HOT LINING (refractory, graphite, hot slag): glows hottest in its cracks, never flows.
+    // HOT SOLIDS (the strand, hot slag, graphite, refractory): BLAZING — a solid at 1200 °C is
+    // a light source. Orange-yellow body, brighter cracks, a darker oxide scale that breaks.
     let grain = detailFbm(s.world * 2.4, 4, s.footprint);
     let crackField = detailFbm(s.world * 0.9, 3, s.footprint).value;
     let cracks = 1.0 - smoothstep(0.012, 0.05, abs(crackField - 0.5));
-    let temperature = clamp(heat * (0.6 + 0.5 * grain.value) + cracks * 0.35 * heat + p.heatPulse * 0.25, 0.0, 1.0);
-    o.emissive = blackbody(temperature * 0.85) * p.heatGlow * 0.35 * temperature * temperature * temperature;
-    o.albedo = vec4f(s.albedo.rgb * 0.45, s.albedo.a);
-    o.roughness = 0.92;
+    let oxide = smoothstep(0.55, 0.75, detailFbm(s.world * 1.6, 3, s.footprint).value) * (1.0 - heat * 0.6);
+    let temperature = clamp(heat * (0.75 + 0.35 * grain.value) + cracks * 0.3 * heat + p.heatPulse * 0.25, 0.0, 1.0);
+    o.emissive = blackbody(temperature) * p.liningGlow * temperature * temperature * (1.0 - oxide * 0.8);
+    o.albedo = vec4f(s.albedo.rgb * 0.4, s.albedo.a);
+    o.roughness = mix(0.6, 0.95, oxide);
     o.metallic = 0.0;
     o.normal = detailBump(s.normal, grain.gradient, 0.25);
     return o;
