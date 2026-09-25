@@ -162,26 +162,70 @@ export interface Blocker {
  * fraction of the segment (Möller–Trumbore; 1 = clear). Build-time only — a few rays per shot
  * over the whole plant, which is what keeps a centred move from backing into a beam.
  */
+/** Triangles in runs of CHUNK with the run's bounding box: a ray skips a whole run it misses. */
+const CHUNK = 256;
+const chunkBoxes = new WeakMap<Blocker, Float32Array>();
+function boxesOf(blocker: Blocker): Float32Array {
+  const cached = chunkBoxes.get(blocker);
+  if (cached !== undefined) return cached;
+  const { positions: p, indices } = blocker;
+  const triangles = indices.length / 3;
+  const boxes = new Float32Array(Math.ceil(triangles / CHUNK) * 6);
+  for (let c = 0; c * CHUNK < triangles; c++) {
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for (let t = c * CHUNK; t < Math.min(triangles, (c + 1) * CHUNK); t++) {
+      for (let k = 0; k < 3; k++) {
+        const v = indices[t * 3 + k]! * 3;
+        const x = p[v]!, y = p[v + 1]!, z = p[v + 2]!;
+        if (x < x0) x0 = x; if (y < y0) y0 = y; if (z < z0) z0 = z;
+        if (x > x1) x1 = x; if (y > y1) y1 = y; if (z > z1) z1 = z;
+      }
+    }
+    boxes.set([x0, y0, z0, x1, y1, z1], c * 6);
+  }
+  chunkBoxes.set(blocker, boxes);
+  return boxes;
+}
+
+/**
+ * The nearest hit of the segment from `from` to `to` against every blocker triangle, as a
+ * fraction of the segment (Möller–Trumbore; 1 = clear). Build-time only. Runs of triangles
+ * whose bounding box the segment misses (slab test) are skipped whole.
+ */
 export function firstHit(blockers: readonly Blocker[], from: readonly number[], to: readonly number[]): number {
   const dir = [to[0]! - from[0]!, to[1]! - from[1]!, to[2]! - from[2]!];
+  const inv = dir.map((d) => (Math.abs(d) < 1e-12 ? 1e12 : 1 / d));
   let nearest = 1;
-  for (const { positions: p, indices } of blockers) {
-    for (let t = 0; t < indices.length; t += 3) {
-      const a = indices[t]! * 3, b = indices[t + 1]! * 3, c = indices[t + 2]! * 3;
-      const e1x = p[b]! - p[a]!, e1y = p[b + 1]! - p[a + 1]!, e1z = p[b + 2]! - p[a + 2]!;
-      const e2x = p[c]! - p[a]!, e2y = p[c + 1]! - p[a + 1]!, e2z = p[c + 2]! - p[a + 2]!;
-      const hx = dir[1]! * e2z - dir[2]! * e2y, hy = dir[2]! * e2x - dir[0]! * e2z, hz = dir[0]! * e2y - dir[1]! * e2x;
-      const det = e1x * hx + e1y * hy + e1z * hz;
-      if (Math.abs(det) < 1e-12) continue;
-      const inv = 1 / det;
-      const sx = from[0]! - p[a]!, sy = from[1]! - p[a + 1]!, sz = from[2]! - p[a + 2]!;
-      const u = (sx * hx + sy * hy + sz * hz) * inv;
-      if (u < 0 || u > 1) continue;
-      const qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x;
-      const v = (dir[0]! * qx + dir[1]! * qy + dir[2]! * qz) * inv;
-      if (v < 0 || u + v > 1) continue;
-      const hit = (e2x * qx + e2y * qy + e2z * qz) * inv;
-      if (hit >= 0 && hit < nearest) nearest = hit;
+  for (const blocker of blockers) {
+    const { positions: p, indices } = blocker;
+    const boxes = boxesOf(blocker);
+    const triangles = indices.length / 3;
+    for (let c = 0; c * CHUNK < triangles; c++) {
+      let tmin = 0, tmax = nearest;
+      for (let axis = 0; axis < 3 && tmin <= tmax; axis++) {
+        const a = (boxes[c * 6 + axis]! - from[axis]!) * inv[axis]!;
+        const b = (boxes[c * 6 + 3 + axis]! - from[axis]!) * inv[axis]!;
+        tmin = Math.max(tmin, Math.min(a, b));
+        tmax = Math.min(tmax, Math.max(a, b));
+      }
+      if (tmin > tmax) continue;
+      for (let t = c * CHUNK * 3; t < Math.min(indices.length, (c + 1) * CHUNK * 3); t += 3) {
+        const a = indices[t]! * 3, b = indices[t + 1]! * 3, cc = indices[t + 2]! * 3;
+        const e1x = p[b]! - p[a]!, e1y = p[b + 1]! - p[a + 1]!, e1z = p[b + 2]! - p[a + 2]!;
+        const e2x = p[cc]! - p[a]!, e2y = p[cc + 1]! - p[a + 1]!, e2z = p[cc + 2]! - p[a + 2]!;
+        const hx = dir[1]! * e2z - dir[2]! * e2y, hy = dir[2]! * e2x - dir[0]! * e2z, hz = dir[0]! * e2y - dir[1]! * e2x;
+        const det = e1x * hx + e1y * hy + e1z * hz;
+        if (Math.abs(det) < 1e-12) continue;
+        const id = 1 / det;
+        const sx = from[0]! - p[a]!, sy = from[1]! - p[a + 1]!, sz = from[2]! - p[a + 2]!;
+        const u = (sx * hx + sy * hy + sz * hz) * id;
+        if (u < 0 || u > 1) continue;
+        const qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x;
+        const v = (dir[0]! * qx + dir[1]! * qy + dir[2]! * qz) * id;
+        if (v < 0 || u + v > 1) continue;
+        const hit = (e2x * qx + e2y * qy + e2z * qz) * id;
+        if (hit >= 0 && hit < nearest) nearest = hit;
+      }
     }
   }
   return nearest;

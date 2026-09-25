@@ -16,8 +16,10 @@ import { walkTrack } from "./load-audio.ts";
  *     [--at <seconds>]                 stills at that point of the track (after a 3 s run-up)
  *     [--clip <start>,<seconds>]       an MP4 of that span, the track muxed in (needs ffmpeg)
  *     --shots cut:N                    holds CUT entry N (camera-path.ts), its move from t = 0
+ *     [--encoder x264]                 CPU x264 instead of the hardware H.264 encoder
  *     [--portrait]                     9:16 for social; --width is the short side
  *     [--clean]                        the glitch layer bypassed, to judge the look underneath
+ *     [--bypass air,lens]              bypass nodes by id (timing, isolating a look)
  *     [--set lamps.gain=0.01,grade.exposure=1]   parameter overrides by node id, for tuning
  *
  * Every animated thing runs on absTime from 0; the TRACK is offset so frame 0 hears
@@ -59,7 +61,11 @@ for (const shot of shots) {
   const held = /^cut:(\d+)$/.exec(shot);
   const built = furnaceDocument(facts, { ...(shot === "cut" ? {} : held !== null ? { cutIndex: Number(held[1]) } : { shot }), width: frameWidth, height: frameHeight, portrait });
   const nodes = { ...built.graph.nodes };
-  if (clean) nodes["glitch"] = { ...nodes["glitch"]!, ui: { ...nodes["glitch"]!.ui, bypassed: true } };
+  const bypass = [...(clean ? ["glitch"] : []), ...(flag("bypass") ?? "").split(",").filter((id) => id !== "")];
+  for (const id of bypass) {
+    if (nodes[id] === undefined) throw new Error(`--bypass: no node "${id}".`);
+    nodes[id] = { ...nodes[id]!, ui: { ...nodes[id]!.ui, bypassed: true } };
+  }
   for (const { nodeId, parameter, value } of overrides) {
     const target = nodes[nodeId];
     if (target === undefined) throw new Error(`--set: no node "${nodeId}".`);
@@ -78,7 +84,12 @@ for (const shot of shots) {
       "-y", "-loglevel", "error",
       "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${frameWidth}x${frameHeight}`, "-r", String(fps), "-i", "-",
       ...audioArgs,
-      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-preset", "medium",
+      // The hardware encoder by default: x264 on the CPU competed with the renderer for the
+      // cores and doubled the frame time (145 → 337 ms at 1080p, measured). 80 Mbit/s H.264
+      // is visually lossless at 1080p; --encoder x264 restores the CPU encoder.
+      ...(flag("encoder") === "x264"
+        ? ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "16", "-preset", "medium"]
+        : ["-c:v", "h264_videotoolbox", "-b:v", "80M", "-pix_fmt", "yuv420p", "-profile:v", "high"]),
       ...(audioPath === undefined ? [] : ["-c:a", "aac", "-b:a", "256k", "-shortest"]),
       clipPath,
     ], { stdio: ["pipe", "inherit", "inherit"] });

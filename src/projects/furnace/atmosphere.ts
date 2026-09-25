@@ -52,6 +52,9 @@ export const KEY_DIRECTION: readonly [number, number, number] = (() => {
   return [x / length, y / length, z / length] as const;
 })();
 
+/** Register budget for culled fixtures per ray; `FURNACE_AIR_CANDIDATES` overrides it (the exactness check renders with 65). */
+const MAX_CANDIDATES = Number(process.env["FURNACE_AIR_CANDIDATES"] ?? 16);
+
 export function atmosphereWgsl(facts: FurnaceSceneFacts, sun: SunView): string {
   const lights = SCATTER_LIGHTS.map((light) => ({ ...light, position: markerAt(facts, light.marker) }));
   const params = [...new Map(lights.map((light) => [light.param, light])).values()];
@@ -74,6 +77,7 @@ struct Params {
 ${params.map((light) => `  ${light.param}: f32, // @default ${light.rest}  ${light.help}`).join("\n")}
 ${LAMP_PARAMS}
   lampScatter: f32, // @default 1  How much of the fixtures' light the smoke catches.
+  cullCutoff: f32, // @default 0.0005  A fixture whose best case on a ray is below this (linear radiance) is skipped.
   beam: f32, // @default 0.45  Width of a fixture's visible beam, as a share of its cone.
   shafts: f32, // @default 2.5  Brightness of the light shafts under the roof louvres.
   sunShafts: f32, // @default 120  Radiance of sunlight in the smoke where the sun reaches it.
@@ -97,7 +101,8 @@ const SHAFT_TOP = array<vec3f, ${Math.max(1, louvres.length)}>(${
   });
 const SHAFT_DIRECTION: vec3f = ${wgslVec3(KEY_DIRECTION)};
 const SHAFT_RADIUS: f32 = 1.8;
-const STEPS: u32 = 28u;
+const STEPS: u32 = 24u;
+const MAX_CANDIDATES: u32 = ${MAX_CANDIDATES}u;
 ${sunLitWgsl(sun, "inputTexture2")}${fixtureTableWgsl(fixturesOf(facts))}${LAMP_FUNCTIONS}
 
 fn lightRadiance(index: u32) -> vec3f {
@@ -186,6 +191,49 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   // Interleaved gradient noise: a dither the eye reads as texture, not as speckle.
   let pixel = uv * frameU.resolution + vec2f(frameU.absFrame * 5.588238);
   let jitter = fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));
+  // CULL the fixtures once per pixel, by what they can CONTRIBUTE: a lamp's best case on this
+  // ray is its flux over (1 + closest-approach²), through the phase peak, over the smoke's
+  // path — below the cutoff it cannot move the picture, and it is dropped. The survivors keep
+  // their placement, aim and flux evaluated once, not at every step (the 65 × steps loop was
+  // 40% of the frame). MAX_CANDIDATES is only a register budget; the gate that proves it never
+  // drops a visible lamp compares against a render with every fixture (render.ts --set).
+  var candPos: array<vec3f, MAX_CANDIDATES>;
+  var candDir: array<vec3f, MAX_CANDIDATES>;
+  var candFlux: array<vec3f, MAX_CANDIDATES>;
+  var candCone: array<vec2f, MAX_CANDIDATES>;
+  var candDist: array<f32, MAX_CANDIDATES>;
+  var candCount = 0u;
+  let time = frameU.absTime;
+  for (var i = 0u; i < LAMP_COUNT; i = i + 1u) {
+    let at = lampPosition(i);
+    let along = clamp(dot(at - params.eye, direction), 0.0, distance);
+    let gap = length(params.eye + direction * along - at);
+    if (gap > 40.0) { continue; }
+    let flux = lampFlux(i, time);
+    let peak = max(flux.r, max(flux.g, flux.b));
+    // Best case: phase peak (g = 0.35 → 0.0795) × smoke density × the path it can light (≤ 2·gap + 8 m).
+    let bound = peak * params.lampScatter * 0.0795 * params.density * 2.0 * (2.0 * gap + 8.0) / (1.0 + gap * gap);
+    if (bound < params.cullCutoff) { continue; }
+    // Rank by that bound, not by distance: a bright far lamp outranks a dim near one.
+    let rank = -bound;
+    var slot = candCount;
+    if (candCount == MAX_CANDIDATES) {
+      var worst = 0u;
+      for (var j = 1u; j < MAX_CANDIDATES; j = j + 1u) { if (candDist[j] > candDist[worst]) { worst = j; } }
+      if (rank >= candDist[worst]) { continue; }
+      slot = worst;
+    } else {
+      candCount = candCount + 1u;
+    }
+    let spot = LAMP_SHAPE[i].x >= -1.0;
+    let half = select(3.1415927, acos(clamp(LAMP_SHAPE[i].x, -1.0, 1.0)), spot);
+    candPos[slot] = at;
+    candDir[slot] = lampDirection(i, time);
+    candFlux[slot] = flux;
+    // The visible BEAM: the cone's core; an omni lamp keeps its full sphere.
+    candCone[slot] = select(vec2f(-2.0, -1.0), vec2f(cos(half * params.beam), cos(half * params.beam * 0.5)), spot);
+    candDist[slot] = rank;
+  }
   var transmittance = 1.0;
   var scatter = vec3f(0.0);
   for (var k = 0u; k < STEPS; k = k + 1u) {
@@ -199,20 +247,16 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
       // bounded radiance, so a camera near the slag door is not engulfed.
       inscatter = inscatter + lightRadiance(i) * phase(dot(direction, toLight / sqrt(max(d2, 1e-4)))) / (4.0 + d2);
     }
-    // The fixtures: cones in the smoke, reach windowed as in the lamp pass.
-    for (var i = 0u; i < LAMP_COUNT; i = i + 1u) {
-      let toLamp = lampPosition(i) - x;
+    // The culled fixtures: beams in the smoke, reach windowed as in the lamp pass.
+    for (var c = 0u; c < candCount; c = c + 1u) {
+      let toLamp = candPos[c] - x;
       let d2 = dot(toLamp, toLamp);
       if (d2 > 1600.0) { continue; }
       let l = toLamp * inverseSqrt(max(d2, 1e-4));
-      // In the smoke a fixture shows as a BEAM, the core of its cone — the whole cone lit
-      // uniformly reads as haze, not as light coming out of a lamp.
-      let facing = dot(-l, lampDirection(i, frameU.absTime));
-      let half = select(acos(clamp(LAMP_SHAPE[i].x, -1.0, 1.0)), 3.1415927, LAMP_SHAPE[i].x < -1.0);
-      let cone = select(smoothstep(cos(half * params.beam), cos(half * params.beam * 0.5), facing) * 2.5, lampCone(i, -l, frameU.absTime), LAMP_SHAPE[i].x < -1.0);
+      let cone = select(smoothstep(candCone[c].x, candCone[c].y, dot(-l, candDir[c])) * 2.5, 1.0, candCone[c].x < -1.0);
       if (cone <= 0.0) { continue; }
       let fade = 1.0 - d2 / 1600.0;
-      inscatter = inscatter + lampFlux(i, frameU.absTime) * (params.lampScatter * cone * fade * fade) * phase(dot(direction, l)) / (1.0 + d2);
+      inscatter = inscatter + candFlux[c] * (params.lampScatter * cone * fade * fade) * phase(dot(direction, l)) / (1.0 + d2);
     }
     inscatter = inscatter + params.shaftColor * params.shafts * shaftDensity(x) * phase(dot(direction, -SHAFT_DIRECTION));
     // Two shadow taps across the step: the shafts' edges are the sharpest thing in the air,
@@ -222,6 +266,33 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     scatter = scatter + transmittance * sigma * inscatter * step;
     transmittance = transmittance * exp(-sigma * step);
   }
-  return vec4f(sample.rgb * transmittance + scatter, 1.0);
+  // Half resolution: the light in the smoke and its transmittance, composited at full
+  // resolution by AIR_COMPOSITE_WGSL (the march was 40% of a 1080p frame at full size).
+  _ = sample;
+  return vec4f(scatter, transmittance);
 }`;
 }
+
+/** Full resolution: the picture through the smoke — colour × transmittance + in-scatter, the half-size march upsampled bilinearly. */
+export const AIR_COMPOSITE_WGSL = `struct Params {
+  unused: f32, // @default 0
+};
+@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+@group(0) @binding(3) var<uniform> params: Params;
+@group(0) @binding(4) var inputTexture1: texture_2d<f32>;
+
+fn airAt(p: vec2i, size: vec2i) -> vec4f {
+  return textureLoad(inputTexture1, clamp(p, vec2i(0), size - vec2i(1)), 0);
+}
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let colour = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
+  let size = vec2i(textureDimensions(inputTexture1));
+  let at = uv * vec2f(size) - 0.5;
+  let base = vec2i(floor(at));
+  let f = fract(at);
+  let air = mix(mix(airAt(base, size), airAt(base + vec2i(1, 0), size), f.x), mix(airAt(base + vec2i(0, 1), size), airAt(base + vec2i(1, 1), size), f.x), f.y);
+  return vec4f(colour.rgb * air.a + air.rgb + params.unused * 0.0, 1.0);
+}`;

@@ -7,7 +7,7 @@ import { markerAt } from "./scene-facts.ts";
 import { RIG_ATTRIBUTES, rigKernel } from "./rig-kernel.ts";
 import { SPARK_ATTRIBUTES, sparksKernel } from "./sparks-kernel.ts";
 import { SKY_SURFACE_WGSL, plantSurfaceWgsl } from "./surface-material.ts";
-import { KEY_DIRECTION, SCATTER_LIGHTS, atmosphereWgsl } from "./atmosphere.ts";
+import { AIR_COMPOSITE_WGSL, KEY_DIRECTION, SCATTER_LIGHTS, atmosphereWgsl } from "./atmosphere.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL, GRADE_WGSL } from "./post.ts";
 import { SHOP_ENVIRONMENT_WGSL } from "./environment.ts";
 import { DOF_WGSL, GTAO_WGSL, MOTION_BLUR_WGSL, SSR_WGSL } from "./screen-space.ts";
@@ -441,7 +441,8 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
       roll: cameraRef("roll", 0),
-    }, { label: "air1", resolution: { mode: "project" } }),
+    }, { label: "air1", resolution: { mode: "scale", factor: 0.5 } }),
+    node("airComposite", "customWgslMulti", [-1450, 150], { source: AIR_COMPOSITE_WGSL }, { label: "aircomposite1", resolution: { mode: "project" } }),
     node("lens", "customWgslMulti", [-1350, 0], {
       source: DOF_WGSL,
       // In PIXELS per unit defocus: the tall frame is narrower, so the same number blurred more of it.
@@ -537,7 +538,9 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("plant-sun", ["plant", "out"], ["plantSun", "points"]),
     edge("sky-geo", ["sky", "out"], ["skyGeo", "points"]),
     edge("rig-sun", ["rig", "out"], ["machineSun", "points"]),
-    edge("air-lens", ["air", "out"], ["lens", "input"]),
+    edge("reflections-composite", ["reflections", "out"], ["airComposite", "input"]),
+    edge("air-composite", ["air", "out"], ["airComposite", "more"], 0),
+    edge("composite-lens", ["airComposite", "out"], ["lens", "input"]),
     edge("depth-lens", ["shot", "depth"], ["lens", "more"], 0),
     edge("lens-shutter", ["lens", "out"], ["shutter", "input"]),
     edge("depth-shutter", ["shot", "depth"], ["shutter", "more"], 0),
