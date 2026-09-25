@@ -95,6 +95,16 @@ describe("T1370b — Expression computes channels from wired channels", () => {
     expect(read.map((bag) => [bag["twice"], bag["gate"]])).toEqual([[2, 0], [4, 1], [6, 0], [8, 1]]);
   });
 
+  it("a missing channel reads its default, so the statements using it still publish; a wired channel beats its default", () => {
+    // `since` is not wired — a counter before its first event. Without the default the
+    // whole `late` statement publishes nothing, and so does everything reading it: the
+    // furnace director's cut gate deadlocked on exactly this.
+    const unset = run("valueExpression", { expressions: "late = (since > 10) + value" }, [1]);
+    expect(unset[0]?.["late"]).toBeUndefined();
+    const read = run("valueExpression", { expressions: "late = (since > 10) + value", defaults: "since = 99; value = 100" }, [1, 2]);
+    expect(read.map((bag) => bag["late"])).toEqual([2, 3]);
+  });
+
   it("refuses a statement that does not parse, by name, at compile", () => {
     const registryView = createNodeRegistry(allNodeDefinitions).view();
     const definition = registryView.get("valueExpression")!;

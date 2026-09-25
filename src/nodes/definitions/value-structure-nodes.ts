@@ -304,10 +304,25 @@ export const valueExpressionNode: NodeDefinition = {
       default: "value = 0",
       description: "Statements `name = expression`, separated by `;` or new lines. Each name becomes an output channel, in order.",
     },
+    defaults: {
+      type: "string",
+      label: "Defaults",
+      default: "",
+      description:
+        "Statements `name = expression` giving a name its value when no wire carries it: a channel that does not exist yet (a counter before its first event, a tempo the analysis could not claim) reads this instead of failing the statements that use it. A wired channel of the same name always wins.",
+    },
   },
   valueEvaluate: ({ inputs, values, frame }) => {
     const source = typeof values["expressions"] === "string" ? (values["expressions"] as string) : "";
-    const channels: Record<string, number> = { ...(inputs["in"] ?? {}) };
+    // Defaults first, so every wired channel of the same name overrides its default.
+    const fallback: Record<string, number> = {};
+    const defaults = typeof values["defaults"] === "string" ? (values["defaults"] as string) : "";
+    for (const statement of parseExpressionStatements(defaults)) {
+      if ("error" in statement) continue;
+      const result = evaluateExpression(statement.expression, scopeFromFrame(frame, fallback));
+      if (result.ok && Number.isFinite(result.value)) fallback[statement.name] = result.value;
+    }
+    const channels: Record<string, number> = { ...fallback, ...(inputs["in"] ?? {}) };
     const out: Record<string, number> = {};
     for (const statement of parseExpressionStatements(source)) {
       if ("error" in statement) continue;
@@ -320,7 +335,8 @@ export const valueExpressionNode: NodeDefinition = {
   compile(context): CompiledNodeDescription {
     const { nodeId, parameters } = readCompileInputs(context as Parameters<typeof readCompileInputs>[0]);
     const source = typeof parameters["expressions"] === "string" ? (parameters["expressions"] as string) : "";
-    const errors = parseExpressionStatements(source).flatMap((statement) => ("error" in statement ? [statement.error] : []));
+    const defaults = typeof parameters["defaults"] === "string" ? (parameters["defaults"] as string) : "";
+    const errors = [...parseExpressionStatements(source), ...parseExpressionStatements(defaults)].flatMap((statement) => ("error" in statement ? [statement.error] : []));
     return {
       passes: [],
       ...(errors.length === 0

@@ -121,7 +121,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   atmosphereScatter["lampScatter"] = 0.8;
   // The sun is programmed with the windows: its shafts dim at rest, flare through a build and
   // go out at a section change.
-  atmosphereScatter["sunShafts"] = expressionSlot(`(60 + ${direction.energy} * 60 + ${direction.build} * 140) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 80);
+  atmosphereScatter["sunShafts"] = expressionSlot(`(25 + ${direction.energy} ^ 2 * 80 + ${direction.build} * 140) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 80);
   atmosphereScatter["sunColor"] = [0.62, 0.86, 1, 1];
   atmosphereScatter["density"] = 0.009;
   // Low and cold: at a blackout this is all the smoke carries, and the camera must not
@@ -160,9 +160,9 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
    * The GLITCH BUDGET, a boundary: heavy glitching is allowed in every third section and
    * through a build-up; elsewhere it is damped to 30%, so the breaks are accents, not a coat.
    */
-  const glitchBudget = `clamp(0.15 + 0.85 * ((op('dirSections1').chan.novelty % 3) == 1) + ${direction.build} * 0.6, 0, 1)`;
+  const glitchBudget = `clamp(0.05 + 0.75 * ((op('dirSections1').chan.novelty % 3) == 1) + ${direction.build} * 0.6, 0, 1)`;
   /** How hard the track is pushing: nothing below a third of its range, full at the top. Every glitch scales by it. */
-  const intensity = `clamp((${direction.energy} - 0.35) / 0.5, 0, 1)`;
+  const intensity = `clamp((${direction.energy} - 0.55) / 0.4, 0, 1)`;
 
   /** The camera now and one frame ago, as the screen-space passes that reproject read it. */
   const cameraNowAndBefore: Record<string, StoredParameter> = {
@@ -249,7 +249,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("skyMat", "materialWgsl", [-3300, -700], {
       model: "unlit",
       source: SKY_SURFACE_WGSL,
-      sky: expressionSlot(`(0.35 + ${direction.energy} * 0.6 + ${direction.build} * 1.5 * ((op('dirBeats1').chan.beatCount % 2) == 0)) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 0.5),
+      sky: expressionSlot(`(0.1 + ${direction.energy} ^ 2 * 0.7 + ${direction.build} * 1.5 * ((op('dirBeats1').chan.beatCount % 2) == 0)) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 0.5),
     }, { label: "skymat1" }),
     node("skyGeo", "geometry", [-3000, -750], { mode: "surface", material: "skymat1" }, { label: "skygeo1" }),
     node("plantGeo", "geometry", [-3000, -300], { mode: "surface", material: "steel1" }, { label: "plantgeo1" }),
@@ -421,7 +421,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       split: expressionSlot(`${glitchBudget} * ${intensity} * (${HIT("snareCount")} * 0.6 + ${direction.build} * 0.2)`, 0),
       sort: expressionSlot(`${glitchBudget} * ${intensity} * ${direction.build} * 0.7`, 0),
       crush: expressionSlot(`${glitchBudget} * ${intensity} * (${direction.density} > 0.85) * ${HIT("kickCount")} * 0.5`, 0),
-      freeze: expressionSlot(`(${direction.energy} > 0.85) * (${HIT("kickCount")} > 0.9)`, 0),
+      freeze: expressionSlot(`(${direction.energy} > 0.92) * (${HIT("kickCount")} > 0.9) * ${glitchBudget}`, 0),
     }, { label: "glitch1", resolution: { mode: "project" } }),
     node("history", "feedback", [900, 300], { source: "glitch1" }, { label: "history1" }),
     node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 4, knee: 1.5 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }),
