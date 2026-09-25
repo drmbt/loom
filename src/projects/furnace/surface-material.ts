@@ -73,6 +73,7 @@ struct Params {
   fx: f32, // @default 0  Master level of the surface effects below (the director's intensity).
   kickSince: f32, // @default 100  Seconds since the kick: a shockwave runs out from the furnace along the panel seams.
   snareSince: f32, // @default 100  Seconds since the snare: a hot scanline sweeps up every wall.
+  kickCount: f32, // @default 0  Running kick count: each kick re-picks WHICH parts of the plant the wave lights.
   flicker: f32, // @default 0  Hats: panels light up as corrupt blocks, hash-picked per 1.5 m panel.
   heatGlow: f32, // @default 14  (Legacy; the liquid and solid glows below replace it.)
   liquidGlow: f32, // @default 2  Radiance of liquid steel at its hottest.
@@ -114,8 +115,18 @@ fn surfaceFx(s: SurfaceIn, p: Params) -> vec3f {
   let wake = exp(-pow((length(s.world.xz) - radius + 3.0) / 2.5, 2.0));
   let echo = exp(-pow((length(s.world.xz) - radius * 0.6) / 0.6, 2.0)) * exp(-p.kickSince * 3.5);
   let fade = exp(-p.kickSince * 3.0);
-  var fx = (vec3f(1.0, 0.9, 0.7) * lead * 6.0 + vec3f(1.0, 0.35, 0.05) * wake * 2.5) * fade * (seam * 1.5 + 0.08)
-    + vec3f(0.2, 0.7, 1.0) * echo * seam * 2.5;
+  // SELECTIVE: each kick picks what answers, rotating through three ways of choosing —
+  // scattered 6 m blocks, one horizontal band of the building, or only the machines — so the
+  // whole plant never lights the same way twice in a row.
+  let mode = u32(p.kickCount) % 3u;
+  let block = floor(s.world / 6.0);
+  let pickBlock = step(0.62, fract(sin(dot(block, vec3f(12.9898, 78.233, 37.719)) + p.kickCount * 3.17) * 43758.5453));
+  let bandCentre = 2.0 + fract(p.kickCount * 0.618) * 24.0;
+  let pickBand = 1.0 - smoothstep(1.5, 3.5, abs(s.world.y - bandCentre));
+  let pickMachine = step(0.5, s.attr.w);
+  let chosen = select(select(pickMachine, pickBand, mode == 1u), pickBlock, mode == 0u);
+  var fx = ((vec3f(1.0, 0.9, 0.7) * lead * 6.0 + vec3f(1.0, 0.35, 0.05) * wake * 2.5) * fade * (seam * 1.5 + 0.08)
+    + vec3f(0.2, 0.7, 1.0) * echo * seam * 2.5) * chosen;
   // SNARE: a thin scanline climbing the walls at 30 m/s, cold.
   let line = exp(-pow((s.world.y - p.snareSince * 30.0) / 0.25, 2.0)) * exp(-p.snareSince * 3.0) * (1.0 - across.y);
   fx = fx + vec3f(0.35, 0.8, 1.0) * line * 3.0;

@@ -184,7 +184,9 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
    */
   const glitchBudget = `clamp(0.05 + 0.75 * ((op('dirSections1').chan.novelty % 3) == 1) + ${direction.build} * 0.6, 0, 1)`;
   /** How hard the track is pushing: nothing below a third of its range, full at the top. Every glitch scales by it. */
-  const intensity = `clamp((${direction.energy} - 0.55) / 0.4, 0, 1)`;
+  const intensity = `clamp((${direction.energy} - 0.45) / 0.45, 0, 1)`;
+  /** RARE BURSTS: half a second of hard glitch at a section change, and on a kick at a loud peak — sprinkled, never a coat. */
+  const burst = `clamp((op('dirSections1').chan.noveltySince < 0.5) + (${direction.energy} > 0.82) * (${HIT("kickCount")} > 0.9) * (op('dirCuts1').chan.cut % 3 == 0), 0, 1)`;
 
   /** The camera now and one frame ago, as the screen-space passes that reproject read it. */
   const cameraNowAndBefore: Record<string, StoredParameter> = {
@@ -246,10 +248,13 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       kernel: rigKernel(facts),
       // The shop at work, slowly: the scrap crane crosses the bay, the ladle crane waits,
       // the electrodes hunt with the snare, the belt and the strand run.
-      craneX: expressionSlot("sin(abstime * 0.045) * 9", 0),
+      // The scrap crane works the SCRAP BAY (bridge 9.5–19.5 m from the furnace), bucket held
+      // high: sweeping it over the furnace with the hook down dragged it through the roof,
+      // the fume duct and the columns.
+      craneX: expressionSlot("-4 + sin(abstime * 0.045) * 5", -4),
       trolley: expressionSlot("sin(abstime * 0.07 + 1.3) * 2.5", 0),
-      hook: expressionSlot("-2.5 + sin(abstime * 0.11) * 1.8", -2.5),
-      bucketSway: expressionSlot("sin(abstime * 0.9) * 0.03", 0),
+      hook: expressionSlot("sin(abstime * 0.11) * 0.4", 0),
+      bucketSway: expressionSlot("sin(abstime * 0.9) * 0.015", 0),
       crane2X: expressionSlot("sin(abstime * 0.03 + 2.0) * 6", 0),
       hook2: expressionSlot("-1 + sin(abstime * 0.09) * 1.2", -1),
       electrode1: expressionSlot(`-0.35 + ${HIT("snareCount")} * 0.18 + sin(abstime * 3.1) * 0.03`, -0.35),
@@ -264,6 +269,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       fx: expressionSlot(`0.4 + 0.6 * clamp((${direction.energy} - 0.3) / 0.5, 0, 1)`, 0.4),
       kickSince: expressionSlot("op('kicks1').chan.kickCountSince", 100),
       snareSince: expressionSlot("op('snares1').chan.snareCountSince", 100),
+      kickCount: expressionSlot("op('kicks1').chan.kickCount", 0),
       flicker: expressionSlot(`${HIT("hatCount")} * (${direction.density} > 0.5)`, 0),
       heatPulse: expressionSlot(`${direction.energy} * 0.25 + ${direction.build} * 0.35`, 0.1) }, { label: "steel1" }),
     // The sky through the openings: emissive, unlit — so it neither shades nor casts (T666).
@@ -419,7 +425,8 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     }, { label: "air1", resolution: { mode: "project" } }),
     node("lens", "customWgslMulti", [-1350, 0], {
       source: DOF_WGSL,
-      aperture: 0.22,
+      // In PIXELS per unit defocus: the tall frame is narrower, so the same number blurred more of it.
+      aperture: options.portrait === true ? 0.2 : 0.32,
       eye: vec(eye),
       aim,
       "eye.x": cameraRef("eye.x", eye[0]),
@@ -442,10 +449,10 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       ...cameraNowAndBefore,
       // A cut moshes only when the music is pushing, never in the opening bars.
       mosh: expressionSlot(`clamp(1 - ${direction.since} / 0.45, 0, 1) * ${intensity} * ${intensity} * 0.7 * (abstime > 4)`, 0),
-      tear: expressionSlot(`${glitchBudget} * ${intensity} * ${HIT("hatCount")} * (${direction.density} > 0.6) * ${direction.density}`, 0),
-      split: expressionSlot(`${glitchBudget} * ${intensity} * (${HIT("snareCount")} * 0.6 + ${direction.build} * 0.2)`, 0),
+      tear: expressionSlot(`(${glitchBudget} * ${intensity} + ${burst}) * ${HIT("hatCount")} * (${direction.density} > 0.6) * ${direction.density}`, 0),
+      split: expressionSlot(`(${glitchBudget} * ${intensity} + ${burst} * 1.5) * (${HIT("snareCount")} * 0.6 + ${direction.build} * 0.2)`, 0),
       sort: expressionSlot(`${glitchBudget} * ${intensity} * ${direction.build} * 0.7`, 0),
-      crush: expressionSlot(`${glitchBudget} * ${intensity} * (${direction.density} > 0.85) * ${HIT("kickCount")} * 0.5`, 0),
+      crush: expressionSlot(`${burst} * 0.6 + ${glitchBudget} * ${intensity} * (${direction.density} > 0.85) * ${HIT("kickCount")} * 0.5`, 0),
       freeze: expressionSlot(`(${direction.energy} > 0.92) * (${HIT("kickCount")} > 0.9) * ${glitchBudget}`, 0),
     }, { label: "glitch1", resolution: { mode: "project" } }),
     node("history", "feedback", [900, 300], { source: "glitch1" }, { label: "history1" }),

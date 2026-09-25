@@ -511,7 +511,7 @@ def rocker_pier(mb, y, s, rng):
                    "rubber_belt")
 
 
-LANCE_TIP = v3(-5.05, 0.3, 9.6)        # lance nozzles, inside the slag door opening
+LANCE_TIP = v3(-3.85, 0.3, 9.35)       # lance nozzles, reaching INTO the slag door opening (past the frame, above the sill)
 LANCE_HEAD = v3(-9.2, 2.2, L.DECK_Z + 2.3)
 
 

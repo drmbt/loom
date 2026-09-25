@@ -105,7 +105,11 @@ for (const shot of shots) {
           },
         }),
   });
-  const problems = result.diagnostics.filter((d) => d.severity === "error" || d.severity === "warning").map((d) => `${d.severity} ${d.code}: ${d.message}`);
+  // An ERROR is a broken graph (a statement that does not parse drops its whole node): stop
+  // loud, before a 13-minute render of a camera parked on its rest pose.
+  const errors = [...new Set(result.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code}: ${d.message}`))];
+  if (errors.length > 0) throw new Error(`the furnace graph has errors:\n${errors.join("\n")}`);
+  const problems = result.diagnostics.filter((d) => d.severity === "warning").map((d) => `${d.severity} ${d.code}: ${d.message}`);
   if (problems.length > 0) console.log([...new Set(problems)].slice(0, 10).join("\n"));
   if (encoder !== undefined) {
     encoder.stdin?.end();

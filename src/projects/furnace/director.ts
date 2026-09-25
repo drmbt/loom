@@ -136,11 +136,11 @@ export function director(source: string, origin: readonly [number, number]): Dir
       // jumped between two framings with no cut. Every other cut is HOT; the rest alternate
       // close and wide, the section count shifting the phase so sections differ.
       expressions: [
-        `hot = (cut * 5 + novelty * 3) % ${HOT_POOL}`,
-        `close = ${HOT_POOL} + (cut * 7 + novelty) % ${CLOSE_POOL - HOT_POOL}`,
-        `wide = ${CLOSE_POOL} + (cut * 5 + novelty * 2) % ${CUT.length - CLOSE_POOL}`,
+        `hot = (floor(cut / 2) * 5 + novelty) % ${HOT_POOL}`,
+        `close = ${HOT_POOL} + (floor(cut / 4) * 3 + novelty) % ${CLOSE_POOL - HOT_POOL}`,
+        `wide = ${CLOSE_POOL} + (floor(cut / 4) * 3 + novelty * 2) % ${CUT.length - CLOSE_POOL}`,
         `phase = (cut + novelty) % 4`,
-        `shot = (phase == 0 || phase == 2) * hot + (phase == 1) * close + (phase == 3) * wide`,
+        `shot = ((phase == 0) + (phase == 2)) * hot + (phase == 1) * close + (phase == 3) * wide`,
       ].join("; "),
     }),
     // One frame back, for the motion blur's previous camera.
