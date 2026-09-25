@@ -33,6 +33,8 @@ export interface FurnaceDocumentOptions {
   readonly shot?: string;
   readonly width?: number;
   readonly height?: number;
+  /** 9:16 for social (T1385b): the lens widens so the tall frame holds what the wide one held across. */
+  readonly portrait?: boolean;
   /** Hold one CUT entry and play its move from t = 0 (the director still drives everything else): previewing a framing. */
   readonly cutIndex?: number;
   /** The track, as a path under public/. Absent: the owner's working track (Clankz 3), which build.ts copies there. */
@@ -51,7 +53,24 @@ function vec(value: readonly [number, number, number]): number[] {
   return [value[0], value[1], value[2]];
 }
 
+/**
+ * Portrait lens: tan(v′/2) = tan(v/2) · 16/9 — the tall frame sees vertically what the wide
+ * frame saw across. The expression engine has sin and cos but no tan or atan: tan is sin/cos,
+ * and atan is the two-piece fit x·π/4 + 0.273·x·(1 − x) on [0, 1], π/2 − atan(1/x) above.
+ */
+const PORTRAIT_STRETCH = 16 / 9;
+function portraitFovExpression(fov: string): string {
+  const half = `((${fov}) * 0.00872665)`;
+  const x = `(sin(${half}) / cos(${half}) * ${PORTRAIT_STRETCH.toFixed(6)})`;
+  const low = `(${x} * 0.785398 + 0.273 * ${x} * (1 - ${x}))`;
+  const inv = `(1 / max(${x}, 1e-3))`;
+  const high = `(1.570796 - (${inv} * 0.785398 + 0.273 * ${inv} * (1 - ${inv})))`;
+  return `(114.591559 * ((${x} <= 1) * ${low} + (${x} > 1) * ${high}))`;
+}
+
 export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocumentOptions): ProjectDocument {
+  const portraitFov = (degrees: number): number =>
+    options.portrait === true ? (2 * Math.atan(Math.tan((degrees * Math.PI) / 360) * PORTRAIT_STRETCH) * 180) / Math.PI : degrees;
   const shotName = options.shot ?? "shot.hero_low_furnace";
   const camera = facts.cameras.get(shotName);
   if (camera === undefined) {
@@ -64,7 +83,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   // The operator's hands: steady in the calm, loose when the track pushes; a kick jolts the
   // rig forward and punches the lens, fading in a fifth of a second — only when it is loud.
   const handheld = `(0.6 + ${direction.energy} * ${direction.energy} * 4 + ${direction.build} * 2)`;
-  const kickPunch = `(clamp(1 - op('kicks1').chan.kickCountSince * 5, 0, 1) ^ 2 * clamp((${direction.energy} - 0.45) / 0.4, 0, 1))`;
+  const kickPunch = `(clamp(1 - op('kicks1').chan.kickCountSince * 5, 0, 1) ^ 2 * (0.35 + 0.65 * clamp((${direction.energy} - 0.3) / 0.4, 0, 1)))`;
   const path =
     options.shot === undefined
       ? shotPath(facts, { index: options.cutIndex === undefined ? direction.shot : String(options.cutIndex), progress: options.cutIndex === undefined ? `${direction.since} / ${moveSeconds}` : `abstime / ${moveSeconds}`, time: "abstime", blockers: facts.blockers, shake: handheld, punch: kickPunch })
@@ -109,6 +128,8 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   pointLight("arc", "light.arc", [0.6, 0.7, 1], expressionSlot(`60 + ${HIT("hatCount")} * 900 + ${direction.density} * 200 + sin(abstime * 37) * 30`, 90), -2200, 80);
   pointLight("slag", "light.slag_door", [1, 0.42, 0.12], expressionSlot(`35 + ${LEVEL("low")} * 40`, 45), -2000, 60);
   pointLight("tap", "light.tap", [1, 0.55, 0.2], expressionSlot(`30 + ${HIT("kickCount")} * 120`, 45), -1800, 50);
+  // The full ladle is a light source: it throws orange up its rim, over the car and the floor.
+  pointLight("ladle", "emit.ladle_surface", [1, 0.5, 0.15], expressionSlot(`30 + ${LEVEL("low")} * 25`, 40), -1700);
   pointLight("tundish", "light.tundish", [1, 0.5, 0.18], 45, -1600);
   // The high bays and floods are not forward lights: 65 fixtures light the frame from the
   // G-buffer in the deferred lamp pass (lamps.ts), below.
@@ -142,7 +163,8 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     // THE LIGHT PROGRAMME. The hall is near-black at rest — the melt and the slag carry the
     // frame — and the music switches it: the high bays rise with energy, strobe on alternate
     // beats through a build, and black out at a section change before fading back in.
-    hall: expressionSlot(`(0.14 + 0.5 * ${direction.energy} ^ 2 + ${direction.build} * 0.6 * ((op('dirBeats1').chan.beatCount % 2) == 0)) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 0.1),
+    // …and every kick flashes the bays, at any energy: the hall breathes with the beat.
+    hall: expressionSlot(`(0.14 + ${HIT("kickCount")} * 0.35 + 0.5 * ${direction.energy} ^ 2 + ${direction.build} * 0.6 * ((op('dirBeats1').chan.beatCount % 2) == 0)) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 0.1),
     crane: expressionSlot(`0.3 + ${HIT("hatCount")} * 2`, 0.3),
     furnace: expressionSlot(`0.3 + ${LEVEL("low")} * 1.2`, 0.5),
     catwalk: expressionSlot(`0.25 + ${direction.density} * 0.9`, 0.4),
@@ -151,7 +173,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     beaconRate: expressionSlot(`0.6 + ${direction.build} * 2`, 0.6),
     chase: expressionSlot(`clamp(${direction.build} * 1.5 - 0.3, 0, 1)`, 0),
     // The export's warm lamps retinted to neutral steel-blue (0.85, 0.9, 1): only the melt is warm.
-    tint: [0.85, 1.05, 1.5, 1],
+    tint: [0.9, 0.95, 1.35, 1],
     craneX: expressionSlot("op('rig1').par.craneX", 0),
     crane2X: expressionSlot("op('rig1').par.crane2X", 0),
   };
@@ -195,7 +217,8 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
             "prevAim.x": expressionSlot(previousPath.aim[0], aim[0]),
             "prevAim.y": expressionSlot(previousPath.aim[1], aim[1]),
             "prevAim.z": expressionSlot(previousPath.aim[2], aim[2]),
-            prevFov: expressionSlot(previousPath.fov, camera.fovDeg),
+            // The previous lens must be the SAME lens: a landscape fov here read as a zoom and smeared every pixel.
+            prevFov: expressionSlot(options.portrait === true ? portraitFovExpression(previousPath.fov) : previousPath.fov, portraitFov(camera.fovDeg)),
           }),
   };
 
@@ -236,8 +259,9 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       casting: expressionSlot("abstime * 0.4", 0),
       conveyor: expressionSlot("abstime * 1.2", 0),
     }, { label: "rig1" }),
-    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, liquidGlow: 1, liningGlow: 12, fire: expressionSlot(`5 + ${LEVEL("low")} * 12 + ${direction.build} * 10`, 9), chalk: 0.12, soot: 0.38,
-      fx: expressionSlot(`clamp((${direction.energy} - 0.4) / 0.5, 0, 1)`, 0),
+    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, liquidGlow: 2.2, liningGlow: 12, fire: expressionSlot(`5 + ${LEVEL("low")} * 12 + ${direction.build} * 10`, 9), chalk: 0.12, soot: 0.38,
+      // The steel answers every kick and snare, loud or quiet: a floor of 0.4 even in the calm.
+      fx: expressionSlot(`0.4 + 0.6 * clamp((${direction.energy} - 0.3) / 0.5, 0, 1)`, 0.4),
       kickSince: expressionSlot("op('kicks1').chan.kickCountSince", 100),
       snareSince: expressionSlot("op('snares1').chan.snareCountSince", 100),
       flicker: expressionSlot(`${HIT("hatCount")} * (${direction.density} > 0.5)`, 0),
@@ -263,7 +287,8 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       slagRate: 0.12,
       arcRate: expressionSlot(`0.03 + ${direction.density} * 0.15 + ${HIT("hatCount")} * 0.5`, 0.12),
       torchRate: 0.35,
-      pourRate: expressionSlot("max(sin(abstime * 0.05), 0.0) * 0.6", 0),
+      // No pour stream exists yet (T1386b): a spray from the lip would come out of nothing.
+      pourRate: 0,
       brightness: 28,
     }, { label: "sparks1" }),
     node("sparkMat", "materialUnlit", [-3000, 700], { color: [1, 1, 1, 1] }, { label: "sparkmat1" }),
@@ -280,7 +305,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("cam", "camera", [-2700, -900], {
       eye: vec(eye),
       lookAt: aim,
-      fov: camera.fovDeg,
+      fov: portraitFov(camera.fovDeg),
       near: 0.1,
       far: 400,
       ...(path === undefined
@@ -292,7 +317,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
             "lookAt.x": expressionSlot(path.aim[0], aim[0]),
             "lookAt.y": expressionSlot(path.aim[1], aim[1]),
             "lookAt.z": expressionSlot(path.aim[2], aim[2]),
-            fov: expressionSlot(path.fov, camera.fovDeg),
+            fov: expressionSlot(options.portrait === true ? portraitFovExpression(path.fov) : path.fov, portraitFov(camera.fovDeg)),
           }),
     }, { label: "cam1" }),
     node("key", "light", [-2600, -900], {
@@ -446,7 +471,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("meter", "analyze", [-300, 300], { channel: "luminance", operation: "logAverage" }, { label: "meter1" }),
     node("metered", "channelIn", [0, 300], { channel: "meter1", fallback: 0.05 }, { label: "metered1" }),
     node("adaptation", "valueLag", [300, 300], { lag: 0.35, releaseRatio: 3 }, { label: "adaptation1" }),
-    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: -0.6, adapt: expressionSlot("clamp((0.075 / max(op('adaptation1').chan.value, 0.0005)) ^ 0.72, 0.03, 3)", 1), punch: 1.2, punchSaturation: 1.15, contrast: 1.05, grain: 0.016, saturation: 1.1, split: 0.3, shadowTint: [0.88, 0.98, 1.06, 1], highlightTint: [1.1, 1, 0.86, 1] }, { label: "grade1", resolution: { mode: "project" } }),
+    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: -0.6, adapt: expressionSlot("clamp((0.075 / max(op('adaptation1').chan.value, 0.0005)) ^ 0.72, 0.03, 3)", 1), punch: 1.3, punchSaturation: 1.2, contrast: 1.15, grain: 0.016, saturation: 1.1, split: 0.3, shadowTint: [0.88, 0.98, 1.06, 1], highlightTint: [1.1, 1, 0.86, 1] }, { label: "grade1", resolution: { mode: "project" } }),
     node("out", "output", [300, 0], { toneMap: "none" }, { label: "out1" }),
     ...direction.nodes,
   ];

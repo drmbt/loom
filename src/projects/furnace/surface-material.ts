@@ -108,7 +108,14 @@ fn surfaceFx(s: SurfaceIn, p: Params) -> vec3f {
   // hard and the panels faintly, so the structure itself carries the beat.
   let radius = p.kickSince * 60.0;
   let ring = exp(-pow((length(s.world.xz) - radius) / 0.8, 2.0)) * exp(-p.kickSince * 3.0);
-  var fx = vec3f(1.0, 0.42, 0.12) * ring * (seam * 2.5 + 0.1);
+  // The ring is hot at its leading edge and cools behind it — white, orange, deep red —
+  // with a second, cold echo ring running a beat behind.
+  let lead = exp(-pow((length(s.world.xz) - radius) / 0.5, 2.0));
+  let wake = exp(-pow((length(s.world.xz) - radius + 3.0) / 2.5, 2.0));
+  let echo = exp(-pow((length(s.world.xz) - radius * 0.6) / 0.6, 2.0)) * exp(-p.kickSince * 3.5);
+  let fade = exp(-p.kickSince * 3.0);
+  var fx = (vec3f(1.0, 0.9, 0.7) * lead * 6.0 + vec3f(1.0, 0.35, 0.05) * wake * 2.5) * fade * (seam * 1.5 + 0.08)
+    + vec3f(0.2, 0.7, 1.0) * echo * seam * 2.5;
   // SNARE: a thin scanline climbing the walls at 30 m/s, cold.
   let line = exp(-pow((s.world.y - p.snareSince * 30.0) / 0.25, 2.0)) * exp(-p.snareSince * 3.0) * (1.0 - across.y);
   fx = fx + vec3f(0.35, 0.8, 1.0) * line * 3.0;
@@ -234,7 +241,8 @@ fn classSkin(kind: u32, s: SurfaceIn, base: vec3f, normal: vec3f, p: Params) -> 
       var c = base * (0.8 + 0.4 * aggregate);
       c = mix(c, vec3f(0.02, 0.018, 0.016), crack * 0.85);
       c = mix(c, c * 0.3, oil * floorFace);
-      c = mix(c, vec3f(0.6, 0.45, 0.05) * (0.6 + 0.4 * aggregate), lane * 0.85);
+      // Walkway lines: worn, dirty — a trace of paint, not a fresh yellow stripe.
+      c = mix(c, vec3f(0.42, 0.3, 0.06) * (0.5 + 0.5 * aggregate), lane * 0.45 * smoothstep(0.35, 0.6, aggregate));
       k.albedo = c;
       k.roughness = mix(mix(0.9, 0.12, oil * floorFace), 0.5, lane);
       k.metallic = 0.0;
@@ -307,8 +315,49 @@ fn furnaceInterior(s: SurfaceIn, p: Params) -> vec3f {
   return blackbody(temperature) * p.fire * inside * (flame * flame + foam * 0.8);
 }
 
+// The slag door's back plate is a PORTAL (interior mapping): the view ray continues through
+// it into a virtual furnace, and what it meets there is shaded — the churning bath at the
+// slag line, flames boiling up off it, the far wall glowing. A flat hot plate in the model
+// becomes a hole into a furnace.
+fn doorPortal(s: SurfaceIn, p: Params) -> vec4f {
+  let w = s.world;
+  let onPlate = step(-3.62, w.x) * step(w.x, -3.2) * step(abs(w.z), 0.78) * step(8.8, w.y) * step(w.y, 10.55) * step(0.6, -s.normal.x);
+  if (onPlate <= 0.0) { return vec4f(0.0); }
+  let ray = normalize(w - s.eye);
+  // The bath, 0.25 m below the sill, reaching deep into the shell.
+  let bathY = 8.6;
+  var colour = vec3f(0.0);
+  if (ray.y < -0.02) {
+    let t = (bathY - w.y) / ray.y;
+    let hit = w + ray * t;
+    let flow = vec3f(s.absTime * 0.35, 0.0, s.absTime * 0.2);
+    let cells = detailFbm(hit * 1.1 - flow, 3, s.footprint).value;
+    let churn = detailFbm(hit * 3.5 - flow * 1.8, 3, s.footprint).value;
+    let temperature = clamp(0.45 + 0.4 * cells + 0.25 * churn, 0.0, 1.1);
+    colour = blackbody(temperature) * p.liquidGlow * 6.0 * temperature * temperature * exp(-t * 0.08);
+  }
+  // Flames: a slab of turbulent fire filling the space, sampled along the ray.
+  var flames = 0.0;
+  for (var k = 1; k <= 6; k = k + 1) {
+    let x = w + ray * f32(k) * 0.55;
+    let rise = vec3f(x.x * 1.4, x.y * 1.1 - s.absTime * 3.2, x.z * 1.4);
+    let tongue = smoothstep(0.5, 0.8, detailFbm(rise, 3, s.footprint).value) * (1.0 - smoothstep(9.0, 11.5, x.y));
+    flames = flames + tongue * 0.3;
+  }
+  colour = colour + blackbody(0.8) * p.fire * 0.35 * flames;
+  return vec4f(colour, 1.0);
+}
+
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceBody(s, p);
+  let portal = doorPortal(s, p);
+  if (portal.w > 0.0) {
+    o.albedo = vec4f(vec3f(0.0), s.albedo.a);
+    o.emissive = portal.rgb;
+    o.roughness = 1.0;
+    o.metallic = 0.0;
+    return o;
+  }
   o.emissive = o.emissive + furnaceInterior(s, p);
   return o;
 }
@@ -318,23 +367,36 @@ fn surfaceBody(s: SurfaceIn, p: Params) -> SurfaceOut {
   let heat = s.attr.z;
 
   if (heat >= 0.9) {
-    // LIQUID STEEL: churning, not a flat white disc — convection cells (hot upwellings,
-    // cooler orange margins), a skin that wrinkles and splits, rafts of black slag. The
-    // exposure must LAND on it: the white core only where an upwelling peaks.
+    // LIQUID STEEL, read at a camera's distance: a surface of CELLS — bright upwellings
+    // bounded by darker, cooling seams (Voronoi-like, from the distance to the nearest of a
+    // jittered grid), crossed by black slag rafts that drift and tear, fume lifting off.
     let flow = vec3f(s.absTime * p.heatFlow, 0.0, s.absTime * p.heatFlow * 0.6);
-    let cells = detailFbm(s.world * 0.9 - flow * 0.5, 3, s.footprint);
-    let churn = detailFbm(s.world * 3.2 - flow * 1.7 + vec3f(0.0, s.absTime * 0.4, 0.0), 4, s.footprint);
-    let rafts = smoothstep(0.52, 0.64, detailFbm(s.world * 0.55 - flow * 0.3, 3, s.footprint).value);
+    let q = s.world.xz * 1.3 + vec2f(detailNoise(vec3f(s.world.xz * 0.8, s.absTime * 0.3)).value) * 0.9;
+    let cell = floor(q);
+    var nearest = 9.0;
+    var second = 9.0;
+    for (var j = -1; j <= 1; j = j + 1) {
+      for (var i = -1; i <= 1; i = i + 1) {
+        let c = cell + vec2f(f32(i), f32(j));
+        let h = fract(sin(vec2f(dot(c, vec2f(127.1, 311.7)), dot(c, vec2f(269.5, 183.3)))) * 43758.5453);
+        let site = c + 0.5 + 0.4 * sin(h * 6.2831 + s.absTime * (0.6 + h));
+        let d = length(q - site);
+        if (d < nearest) { second = nearest; nearest = d; } else if (d < second) { second = d; }
+      }
+    }
+    let seam = 1.0 - smoothstep(0.02, 0.22, second - nearest);
+    let churn = detailFbm(s.world * 3.2 - flow * 1.7 + vec3f(0.0, s.absTime * 0.4, 0.0), 3, s.footprint);
+    let rafts = smoothstep(0.5, 0.6, detailFbm(s.world * 0.7 - flow * 0.4, 3, s.footprint).value);
     let skin = clamp(rafts * p.crust * (1.0 - p.heatPulse * 0.6), 0.0, 1.0);
-    // Cracks in a raft glow through it.
-    let raftCracks = (1.0 - smoothstep(0.02, 0.07, abs(churn.value - 0.5))) * skin;
-    let temperature = clamp(heat * (0.55 + 0.35 * cells.value + 0.25 * churn.value) + p.heatPulse * 0.25, 0.0, 1.15);
-    let glow = blackbody(temperature) * p.liquidGlow * temperature * temperature;
-    o.emissive = glow * (1.0 - skin * 0.985) + blackbody(0.55) * p.liquidGlow * 0.5 * raftCracks;
+    let raftCracks = (1.0 - smoothstep(0.02, 0.06, abs(churn.value - 0.5))) * skin;
+    let core = 1.0 - smoothstep(0.0, 0.55, nearest);
+    let temperature = clamp(heat * (0.45 + 0.35 * core + 0.3 * churn.value - 0.18 * seam) + p.heatPulse * 0.25, 0.0, 1.1);
+    let glow = blackbody(temperature) * p.liquidGlow * temperature * temperature * (1.0 - 0.3 * seam);
+    o.emissive = glow * (1.0 - skin * 0.985) + blackbody(0.6) * p.liquidGlow * 0.6 * raftCracks;
     o.albedo = vec4f(vec3f(0.03, 0.026, 0.024) * (0.5 + skin), s.albedo.a);
-    o.roughness = mix(0.12, 0.85, skin);
+    o.roughness = mix(0.1, 0.85, skin);
     o.metallic = 0.0;
-    o.normal = detailBump(s.normal, churn.gradient * (1.0 - skin) + cells.gradient * skin, 0.12 + skin * 0.2);
+    o.normal = detailBump(s.normal, churn.gradient * (1.0 - skin) * 0.5 + vec3f(q.x - cell.x - 0.5, 0.0, q.y - cell.y - 0.5) * seam, 0.15 + skin * 0.2);
     return o;
   }
 
@@ -344,7 +406,10 @@ fn surfaceBody(s: SurfaceIn, p: Params) -> SurfaceOut {
     let grain = detailFbm(s.world * 2.4, 4, s.footprint);
     let crackField = detailFbm(s.world * 0.9, 3, s.footprint).value;
     let cracks = 1.0 - smoothstep(0.012, 0.05, abs(crackField - 0.5));
-    let oxide = smoothstep(0.55, 0.75, detailFbm(s.world * 1.6, 3, s.footprint).value) * (1.0 - heat * 0.6);
+    // Hot SLAG (dielectric, rough) is a black crust that glows only in its fissures; hot steel
+    // (the strand, graphite) glows through a thin, breaking oxide.
+    let slag = step(s.metallic, 0.05) * step(0.65, s.roughness) * step(heat, 0.8);
+    let oxide = mix(smoothstep(0.55, 0.75, detailFbm(s.world * 1.6, 3, s.footprint).value) * (1.0 - heat * 0.6), 1.0 - cracks, slag);
     let temperature = clamp(heat * (0.75 + 0.35 * grain.value) + cracks * 0.3 * heat + p.heatPulse * 0.25, 0.0, 1.0);
     o.emissive = blackbody(temperature) * p.liningGlow * temperature * temperature * (1.0 - oxide * 0.8);
     o.albedo = vec4f(s.albedo.rgb * 0.4, s.albedo.a);
@@ -446,6 +511,8 @@ export const SKY_SURFACE_WGSL = `struct Params {
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceDefaults(s);
   o.albedo = vec4f(0.0, 0.0, 0.0, 1.0);
-  o.emissive = s.emissive * p.sky;
+  // Openings near the floor (the hall's doors to the yard) stay dim: at full sky brightness
+  // they leaked white light under the machinery.
+  o.emissive = s.emissive * p.sky * mix(0.12, 1.0, smoothstep(6.0, 14.0, s.world.y));
   return o;
 }`;

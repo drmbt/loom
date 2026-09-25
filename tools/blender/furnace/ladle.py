@@ -29,13 +29,10 @@ def ladle_body(mb, c, rng, hot=True, seed=0.0, lip_dir=(1, 0)):
     lathe(mb, [(rt - 0.35, z0 + H + 0.1), (rt - 0.38, z0 + H - 0.6)], X, "refractory" if not hot else "refractory_hot", seg=48)
     if hot:
         lathe(mb, [(rt - 0.38, z0 + H - 0.6), (0.0, z0 + H - 0.6)], X, "molten_steel", seg=48)
+        # No slag discs on the melt: flat 10-sided islands floating 5 mm above it read as holes.
+        # loom's melt material draws the slag rafts, moving, with glowing cracks.
         for k in range(14):
-            a = rng.uniform(0, TAU)
-            r = rng.uniform(0.2, rt - 0.7)
-            s = rng.uniform(0.18, 0.5)
-            lathe(mb, [(0.0, z0 + H - 0.595), (s, z0 + H - 0.59), (s * 0.6, z0 + H - 0.55), (0.0, z0 + H - 0.54)],
-                  Xf(rot_z(rng.uniform(0, 3)) @ np.diag([1.0, rng.uniform(0.5, 1.0), 1.0]),
-                     (x + r * math.cos(a), y + r * math.sin(a), 0)), "slag_cold" if rng.random() < 0.6 else "slag_hot", seg=10)
+            rng.uniform(0, TAU), rng.uniform(0.2, rt - 0.7), rng.uniform(0.18, 0.5), rng.uniform(0, 3), rng.uniform(0.5, 1.0), rng.random()
     else:
         lathe(mb, [(rt - 0.38, z0 + H - 0.6), (0.0, z0 + H - 0.6)], X, "slag_cold", seg=32)
     # reinforcing bands + vertical ribs

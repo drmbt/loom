@@ -41,6 +41,7 @@ export const SCATTER_LIGHTS: readonly ScatterLight[] = [
   { marker: "light.arc", param: "arcFlash", color: [0.62, 0.72, 1], rest: 10, help: "The arc's blue-white flash in the smoke (flicker it)." },
   { marker: "light.slag_door", param: "slagGlow", color: [1, 0.35, 0.08], rest: 25, help: "Slag door glow." },
   { marker: "light.tap", param: "tapGlow", color: [1, 0.5, 0.15], rest: 15, help: "Tapping stream glow." },
+  { marker: "emit.ladle_surface", param: "ladleGlow", color: [1, 0.45, 0.12], rest: 14, help: "Glow of the full ladle in the fume above it." },
   { marker: "light.tundish", param: "tundishGlow", color: [1, 0.45, 0.14], rest: 12, help: "Caster tundish glow." },
 ];
 

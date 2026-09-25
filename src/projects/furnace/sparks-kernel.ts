@@ -27,7 +27,8 @@ interface Emitter {
 
 const EMITTERS: readonly Emitter[] = [
   { marker: "emit.spark_tap", rate: "tapRate", direction: [1, 0.35, 0], spread: 0.55, speed: [4, 9], life: [0.8, 1.8] },
-  { marker: "emit.spark_slag_door", rate: "slagRate", direction: [-1, 0.5, 0], spread: 0.7, speed: [3, 8], life: [0.7, 1.6] },
+  // Oxygen lancing: the spray leaves the lance TIP, blown back out of the door.
+  { marker: "emit.lance_tip", rate: "slagRate", direction: [-1, 0.35, 0], spread: 0.6, speed: [3, 9], life: [0.6, 1.5] },
   { marker: "emit.arc_1", rate: "arcRate", direction: [0, 1, 0], spread: 1.1, speed: [6, 14], life: [0.25, 0.7] },
   { marker: "emit.arc_2", rate: "arcRate", direction: [0, 1, 0], spread: 1.1, speed: [6, 14], life: [0.25, 0.7] },
   { marker: "emit.arc_3", rate: "arcRate", direction: [0, 1, 0], spread: 1.1, speed: [6, 14], life: [0.25, 0.7] },

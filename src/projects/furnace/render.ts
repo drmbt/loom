@@ -16,6 +16,7 @@ import { walkTrack } from "./load-audio.ts";
  *     [--at <seconds>]                 stills at that point of the track (after a 3 s run-up)
  *     [--clip <start>,<seconds>]       an MP4 of that span, the track muxed in (needs ffmpeg)
  *     --shots cut:N                    holds CUT entry N (camera-path.ts), its move from t = 0
+ *     [--portrait]                     9:16 for social; --width is the short side
  *     [--clean]                        the glitch layer bypassed, to judge the look underneath
  *     [--set lamps.gain=0.01,grade.exposure=1]   parameter overrides by node id, for tuning
  *
@@ -32,7 +33,9 @@ const outDir = flag("out");
 if (glbPath === undefined || outDir === undefined) throw new Error("usage: render.ts -- --glb <furnace.glb> --out <dir> [--audio wav] [--shots a,b] [--width n] [--at s | --clip start,seconds]");
 const audioPath = flag("audio");
 const width = Number(flag("width") ?? 1280);
-const height = Math.round((width * 9) / 16) & ~1;
+// --portrait: 9:16 for social (T1385b); --width is then the short side.
+const portrait = argv.includes("--portrait");
+const [frameWidth, frameHeight] = portrait ? [width, Math.round((width * 16) / 9) & ~1] : [width, Math.round((width * 9) / 16) & ~1];
 const fps = 30;
 const clip = flag("clip")?.split(",").map(Number);
 const at = Number(flag("at") ?? 3);
@@ -54,7 +57,7 @@ for (const shot of shots) {
   // `cut` runs the camera path (every framing, a move each, cuts on bars) instead of one held shot.
   // `cut:N` holds CUT entry N of the camera path, its move playing from t = 0.
   const held = /^cut:(\d+)$/.exec(shot);
-  const built = furnaceDocument(facts, { ...(shot === "cut" ? {} : held !== null ? { cutIndex: Number(held[1]) } : { shot }), width, height });
+  const built = furnaceDocument(facts, { ...(shot === "cut" ? {} : held !== null ? { cutIndex: Number(held[1]) } : { shot }), width: frameWidth, height: frameHeight, portrait });
   const nodes = { ...built.graph.nodes };
   if (clean) nodes["glitch"] = { ...nodes["glitch"]!, ui: { ...nodes["glitch"]!.ui, bypassed: true } };
   for (const { nodeId, parameter, value } of overrides) {
@@ -73,7 +76,7 @@ for (const shot of shots) {
     const audioArgs = audioPath === undefined ? [] : ["-ss", String(start), "-t", String(frames / fps), "-i", audioPath];
     encoder = spawn("ffmpeg", [
       "-y", "-loglevel", "error",
-      "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${width}x${height}`, "-r", String(fps), "-i", "-",
+      "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${frameWidth}x${frameHeight}`, "-r", String(fps), "-i", "-",
       ...audioArgs,
       "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-preset", "medium",
       ...(audioPath === undefined ? [] : ["-c:a", "aac", "-b:a", "256k", "-shortest"]),

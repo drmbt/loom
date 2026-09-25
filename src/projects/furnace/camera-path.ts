@@ -118,26 +118,23 @@ export const CUT: readonly Move[] = [
   { name: "electrode_orbit", pose: (f) => toward(offset(at(f, "electrode_2"), [11, 8, 9]), offset(at(f, "electrode_2"), [0, 5, 0.3]), 26), orbit: 1.3, ease: "creep" },
   { name: "slag_door_vertigo", pose: (f) => toward(offset(at(f, "emit.slag_door"), [-13, -2.5, 6]), offset(at(f, "emit.slag_door"), [0, -0.5, 0]), 34), vertigo: -6, ease: "smooth" },
   { name: "tap_longlens", pose: (f) => toward(offset(at(f, "emit.spark_tap"), [17.4, 2, 4.7]), offset(at(f, "emit.spark_tap"), [0, 1.5, 0]), 24), truck: 3, push: -3, ease: "creep" },
-  { name: "crane_ride", pose: (f) => toward(offset(at(f, "crane_bridge"), [0, -2.2, -7]), offset(at(f, "crane_bridge"), [10, -12, -2]), 72), follow: "craneX", dolly: 2 },
-  { name: "floor_skim", pose: (f) => toward([-24.4, 0.45, 8.9], offset(at(f, "furnace_shell"), [0, -6, 0]), 84), dolly: 8, ease: "whip" },
-  // The charge: the scrap bucket overhead, looking up past it into the roof.
-  { name: "bucket_under", pose: seek("scrap_bucket", [0, -1, 0], 55, [[-6, -9, 6], [6, -9, 6], [-6, -9, -6], [0, -11, 7], [-12, -8, 10], [12, -8, 10], [-14, -6, -8], [0, -12, 12], [-10, -4, 12], [10, -4, -12]]), orbit: -0.5, ease: "creep" },
-  { shot: "shot.electrode_closeup", orbit: 0.7, crane: -1.0 },
+  // The slag pot, brimming: a crusted black surface cracked open to orange.
+  { name: "slag_pot", pose: seek("emit.slag_pot_surface", [0, 0, 0], 36, [[-4, 4, 4], [-4, 4, -4], [-5, 3, 0], [-3, 5, 5], [0, 5, 5]]), crane: 1, ease: "creep" },
+  // The strand leaving the caster's bend, glowing, from below the runout.
+  { name: "strand_glow", pose: seek("caster_rollers_4", [0, 0.5, 0], 40, [[3, -1, -6], [-3, -1, -6], [4, 0, -5], [6, 1, -4], [2, -1.5, -8], [5, 2, 6], [-5, 2, 6]]), dolly: 2, truck: 1.5, ease: "smooth" },
   { shot: "shot.caster_strand", dolly: 6.0, truck: -1.5 },
   { shot: "shot.pipe_corridor", dolly: 9.0, ease: "creep" },
   // Wide and slow.
   { shot: "shot.establish_wide", truck: 10.0, dolly: 3.0 },
-  { shot: "shot.crane_eye", truck: 6.0, follow: "craneX" },
   { shot: "shot.scrap_bay", orbit: 0.45 },
   { shot: "shot.top_down", crane: -4.0, orbit: 0.8, ease: "creep" },
-  { shot: "shot.ladle_furnace", dolly: 4.0 },
   { name: "roof_glide", pose: (f) => toward([-44, 25, -9], offset(at(f, "furnace_shell"), [-8, -6, 2]), 50), dolly: 18, ease: "creep" },
 ];
 
 /** How many CUT entries, from the start, are HOT (the process itself); they open the close pool. */
 export const HOT_POOL = 6;
 /** How many CUT entries, from the start, form the close pool; the rest are the wide pool. */
-export const CLOSE_POOL = 16;
+export const CLOSE_POOL = 14;
 
 /** How far ahead of a Blender shot's eye its aim point sits, metres (the orbit's pivot). */
 const AIM_DISTANCE = 12;

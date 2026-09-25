@@ -131,13 +131,16 @@ export function director(source: string, origin: readonly [number, number]): Dir
     // Which framing: energetic → the close pool, calm → the wide pool, the pick a hash of the
     // cut and section counts so it never repeats predictably and always reproduces.
     node("dirShot", "valueExpression", at(8, 1), {
-      // Loud: every other cut is a HOT shot (the melt, the pour, the tap), the rest the dynamic
-      // close set. Calm: every third cut is still hot; the others go wide.
+      // The pick reads ONLY what changes at a cut (the cut and section counts): reading live
+      // energy flipped the pool mid-shot whenever energy crossed its threshold, and the camera
+      // jumped between two framings with no cut. Every other cut is HOT; the rest alternate
+      // close and wide, the section count shifting the phase so sections differ.
       expressions: [
         `hot = (cut * 5 + novelty * 3) % ${HOT_POOL}`,
         `close = ${HOT_POOL} + (cut * 7 + novelty) % ${CLOSE_POOL - HOT_POOL}`,
         `wide = ${CLOSE_POOL} + (cut * 5 + novelty * 2) % ${CUT.length - CLOSE_POOL}`,
-        `shot = (level > 0.62) * ((cut % 2 == 0) * hot + (cut % 2 == 1) * close) + (level <= 0.62) * ((cut % 3 == 0) * hot + (cut % 3 != 0) * wide)`,
+        `phase = (cut + novelty) % 4`,
+        `shot = (phase == 0 || phase == 2) * hot + (phase == 1) * close + (phase == 3) * wide`,
       ].join("; "),
     }),
     // One frame back, for the motion blur's previous camera.
@@ -182,7 +185,6 @@ export function director(source: string, origin: readonly [number, number]): Dir
     edge("dir-pick-cuts", ["dirCutPick", "out"], ["dirCuts", "in"]),
     edge("dir-cuts-shot", ["dirCuts", "out"], ["dirShot", "in"], 0),
     edge("dir-sections-shot", ["dirSections", "out"], ["dirShot", "in"], 1),
-    edge("dir-energy-shot", ["dirIntensity", "out"], ["dirShot", "in"], 2),
     edge("dir-cuts-previous", ["dirCuts", "out"], ["dirPreviousCut", "in"]),
     edge("dir-shot-previous", ["dirShot", "out"], ["dirPreviousShot", "in"]),
   ];
