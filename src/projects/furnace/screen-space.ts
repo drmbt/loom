@@ -14,7 +14,8 @@ import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 const CAMERA_PARAMS = `  eye: vec3f, // @default 0  Camera position (drive from the camera).
   aim: vec3f, // @default 0  Camera look-at (drive from the camera).
   fov: f32, // @default 50  Camera vertical field of view, degrees.
-  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).`;
+  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).
+  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).`;
 
 const BINDINGS = `${SHARED_UNIFORMS_WGSL}
 @group(0) @binding(0) var inputSampler: sampler;
@@ -26,6 +27,15 @@ const BINDINGS = `${SHARED_UNIFORMS_WGSL}
 
 /** The view basis and the helpers every pass shares: ray, world position, reprojection. */
 const VIEW = `
+// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by
+// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.
+fn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {
+  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);
+  let t = radians(rollDeg);
+  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));
+  return normalize(cross(forward, up));
+}
+
 struct View {
   forward: vec3f,
   right: vec3f,
@@ -37,7 +47,7 @@ struct View {
 fn makeView() -> View {
   var v: View;
   v.forward = normalize(params.aim - params.eye);
-  v.right = normalize(cross(v.forward, vec3f(0.0, 1.0, 0.0)));
+  v.right = rolledRight(v.forward, params.roll);
   v.up = cross(v.right, v.forward);
   v.tanHalf = tan(radians(params.fov) * 0.5);
   v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);
@@ -266,14 +276,15 @@ ${CAMERA_PARAMS}
   prevEye: vec3f, // @default 0  The camera's position one frame ago.
   prevAim: vec3f, // @default 0  The camera's look-at one frame ago.
   prevFov: f32, // @default 50  The camera's fov one frame ago.
+  prevRoll: f32, // @default 0  The camera's roll one frame ago, degrees.
   shutter: f32, // @default 0.35  Shutter as a share of the frame (0.5 = a 180° shutter).
 };
 ${BINDINGS}${VIEW}
 const SAMPLES: u32 = 16u;
 
-fn projectWith(eye: vec3f, aim: vec3f, fov: f32, aspect: f32, world: vec3f) -> vec2f {
+fn projectWith(eye: vec3f, aim: vec3f, fov: f32, roll: f32, aspect: f32, world: vec3f) -> vec2f {
   let forward = normalize(aim - eye);
-  let right = normalize(cross(forward, vec3f(0.0, 1.0, 0.0)));
+  let right = rolledRight(forward, roll);
   let up = cross(right, forward);
   let tanHalf = tan(radians(fov) * 0.5);
   let rel = world - eye;
@@ -288,7 +299,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   var z = viewDepth(uv);
   if (z < 0.0) { z = params.far * 0.5; }
   let world = worldAt(v, uv, z);
-  let previous = projectWith(params.prevEye, params.prevAim, params.prevFov, v.aspect, world);
+  let previous = projectWith(params.prevEye, params.prevAim, params.prevFov, params.prevRoll, v.aspect, world);
   let velocity = (uv - previous) * params.shutter;
   if (length(velocity) > 0.25 || length(velocity * frameU.resolution) < 0.5) { return centre; }
   let jitter = ignHash(uv * frameU.resolution + vec2f(frameU.absFrame * 1.7)) - 0.5;

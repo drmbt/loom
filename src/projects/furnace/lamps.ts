@@ -24,6 +24,7 @@ struct Params {
   eye: vec3f, // @default 0  Camera position (drive from the camera).
   aim: vec3f, // @default 0  Camera look-at (drive from the camera).
   fov: f32, // @default 50  Camera vertical field of view, degrees.
+  roll: f32, // @default 0  Camera roll, degrees.
   far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).
 ${LAMP_PARAMS}
   cutoff: f32, // @default 0.004  Radiance below which a fixture's reach ends (sets each range).
@@ -45,6 +46,16 @@ fn texel(size: vec2u, uv: vec2f) -> vec2i {
   return clamp(vec2i(uv * extent), vec2i(0), vec2i(extent) - vec2i(1));
 }
 
+
+// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by
+// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.
+fn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {
+  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);
+  let t = radians(rollDeg);
+  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));
+  return normalize(cross(forward, up));
+}
+
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let lit = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
@@ -55,7 +66,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let base = textureLoad(inputTexture3, texel(textureDimensions(inputTexture3), uv), 0);
 
   let forward = normalize(params.aim - params.eye);
-  let right = normalize(cross(forward, vec3f(0.0, 1.0, 0.0)));
+  let right = rolledRight(forward, params.roll);
   let up = cross(right, forward);
   let tanHalf = tan(radians(params.fov) * 0.5);
   let aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);

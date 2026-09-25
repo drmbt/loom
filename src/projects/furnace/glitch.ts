@@ -26,6 +26,8 @@ export const GLITCH_WGSL = `struct Params {
   prevEye: vec3f, // @default 0  The camera's position one frame ago.
   prevAim: vec3f, // @default 0  The camera's look-at one frame ago.
   prevFov: f32, // @default 50  The camera's fov one frame ago.
+  roll: f32, // @default 0  Camera roll, degrees.
+  prevRoll: f32, // @default 0  The camera's roll one frame ago, degrees.
   mosh: f32, // @default 0  Datamosh: share of blocks that keep the moving previous frame.
   tear: f32, // @default 0  Horizontal block-row displacement.
   split: f32, // @default 0  Colour channel separation.
@@ -60,21 +62,31 @@ fn viewDepth(uv: vec2f) -> f32 {
   return select(d * params.far, params.far * 0.5, d >= 0.9999 || d <= 0.0);
 }
 
-fn basisOf(eye: vec3f, aim: vec3f) -> mat3x3f {
+
+// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by
+// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.
+fn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {
+  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);
+  let t = radians(rollDeg);
+  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));
+  return normalize(cross(forward, up));
+}
+
+fn basisOf(eye: vec3f, aim: vec3f, roll: f32) -> mat3x3f {
   let forward = normalize(aim - eye);
-  let right = normalize(cross(forward, vec3f(0.0, 1.0, 0.0)));
+  let right = rolledRight(forward, roll);
   return mat3x3f(right, cross(right, forward), forward);
 }
 
 // Screen motion of the surface at uv between the previous camera and this one.
 fn cameraMotion(uv: vec2f) -> vec2f {
   let aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);
-  let now = basisOf(params.eye, params.aim);
+  let now = basisOf(params.eye, params.aim, params.roll);
   let tanNow = tan(radians(params.fov) * 0.5);
   let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
   let ray = normalize(now[2] + now[0] * ndc.x * tanNow * aspect + now[1] * ndc.y * tanNow);
   let world = params.eye + ray * (viewDepth(uv) / max(dot(ray, now[2]), 1e-3));
-  let before = basisOf(params.prevEye, params.prevAim);
+  let before = basisOf(params.prevEye, params.prevAim, params.prevRoll);
   let tanBefore = tan(radians(params.prevFov) * 0.5);
   let rel = world - params.prevEye;
   let z = max(dot(rel, before[2]), 1e-3);

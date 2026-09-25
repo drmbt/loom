@@ -82,7 +82,13 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   const moveSeconds = `(10 / (1 + ${direction.build} * 1.5))`;
   // The operator's hands: steady in the calm, loose when the track pushes; a kick jolts the
   // rig forward and punches the lens, fading in a fifth of a second — only when it is loud.
-  const handheld = `(0.6 + ${direction.energy} * ${direction.energy} * 4 + ${direction.build} * 2)`;
+  /**
+   * The ARC: acts counted by section changes (0 → 1 over the first five). The film starts
+   * restrained and gets wilder — rougher hands, more glitch, louder steel — so the song's
+   * shape reads in the picture, not only its beats.
+   */
+  const act = "clamp(op('dirSections1').chan.novelty / 5, 0, 1)";
+  const handheld = `((0.6 + ${direction.energy} * ${direction.energy} * 4 + ${direction.build} * 2) * (1 + ${act}))`;
   const kickPunch = `(clamp(1 - op('kicks1').chan.kickCountSince * 5, 0, 1) ^ 2 * (0.35 + 0.65 * clamp((${direction.energy} - 0.3) / 0.4, 0, 1)))`;
   const path =
     options.shot === undefined
@@ -184,9 +190,9 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
    */
   const glitchBudget = `clamp(0.05 + 0.75 * ((op('dirSections1').chan.novelty % 3) == 1) + ${direction.build} * 0.6, 0, 1)`;
   /** How hard the track is pushing: nothing below a third of its range, full at the top. Every glitch scales by it. */
-  const intensity = `clamp((${direction.energy} - 0.45) / 0.45, 0, 1)`;
+  const intensity = `clamp((${direction.energy} - 0.35) / 0.45 + ${act} * 0.2, 0, 1)`;
   /** RARE BURSTS: half a second of hard glitch at a section change, and on a kick at a loud peak — sprinkled, never a coat. */
-  const burst = `clamp((op('dirSections1').chan.noveltySince < 0.5) + (${direction.energy} > 0.82) * (${HIT("kickCount")} > 0.9) * (op('dirCuts1').chan.cut % 3 == 0), 0, 1)`;
+  const burst = `clamp((op('dirSections1').chan.noveltySince < 1) + (${direction.energy} > 0.7) * (${HIT("kickCount")} > 0.9) * (op('dirCuts1').chan.cut % 2 == 0) * (0.5 + ${act}), 0, 1)`;
 
   /** The camera now and one frame ago, as the screen-space passes that reproject read it. */
   const cameraNowAndBefore: Record<string, StoredParameter> = {
@@ -200,6 +206,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       "aim.z": cameraRef("lookAt.z", aim[2]),
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
+      roll: cameraRef("roll", 0),
       prevEye: vec(eye),
       prevAim: aim,
       ...(previousPath === undefined
@@ -211,6 +218,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
             "prevAim.y": cameraRef("lookAt.y", aim[1]),
             "prevAim.z": cameraRef("lookAt.z", aim[2]),
             prevFov: cameraRef("fov", camera.fovDeg),
+            prevRoll: cameraRef("roll", 0),
           }
         : {
             "prevEye.x": expressionSlot(previousPath.eye[0], eye[0]),
@@ -221,6 +229,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
             "prevAim.z": expressionSlot(previousPath.aim[2], aim[2]),
             // The previous lens must be the SAME lens: a landscape fov here read as a zoom and smeared every pixel.
             prevFov: expressionSlot(options.portrait === true ? portraitFovExpression(previousPath.fov) : previousPath.fov, portraitFov(camera.fovDeg)),
+            prevRoll: expressionSlot(previousPath.roll, 0),
           }),
   };
 
@@ -266,7 +275,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     }, { label: "rig1" }),
     node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, liquidGlow: 2.2, liningGlow: 12, arcFlash: expressionSlot(`${HIT("hatCount")} * 6 + ${direction.density} * 0.5`, 0), fire: expressionSlot(`5 + ${LEVEL("low")} * 12 + ${direction.build} * 10`, 9), chalk: 0.12, soot: 0.38,
       // The steel answers every kick and snare, loud or quiet: a floor of 0.4 even in the calm.
-      fx: expressionSlot(`0.4 + 0.6 * clamp((${direction.energy} - 0.3) / 0.5, 0, 1)`, 0.4),
+      fx: expressionSlot(`0.25 + 0.35 * ${act} + 0.5 * clamp((${direction.energy} - 0.3) / 0.5, 0, 1)`, 0.3),
       kickSince: expressionSlot("op('kicks1').chan.kickCountSince", 100),
       snareSince: expressionSlot("op('snares1').chan.snareCountSince", 100),
       kickCount: expressionSlot("op('kicks1').chan.kickCount", 0),
@@ -300,7 +309,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       torchRate: 0.35,
       // No pour stream exists yet (T1386b): a spray from the lip would come out of nothing.
       pourRate: 0,
-      brightness: 28,
+      brightness: expressionSlot(`28 * (0.7 + 0.6 * ${act})`, 28),
     }, { label: "sparks1" }),
     node("sparkMat", "materialUnlit", [-3000, 700], { color: [1, 1, 1, 1] }, { label: "sparkmat1" }),
     node("sparkGeo", "geometry", [-3000, 400], {
@@ -329,6 +338,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
             "lookAt.y": expressionSlot(path.aim[1], aim[1]),
             "lookAt.z": expressionSlot(path.aim[2], aim[2]),
             fov: expressionSlot(options.portrait === true ? portraitFovExpression(path.fov) : path.fov, portraitFov(camera.fovDeg)),
+            roll: expressionSlot(path.roll, 0),
           }),
     }, { label: "cam1" }),
     node("key", "light", [-2600, -900], {
@@ -384,6 +394,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       "aim.z": cameraRef("lookAt.z", aim[2]),
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
+      roll: cameraRef("roll", 0),
       ...lampDrive,
     }, { label: "lamps1", resolution: { mode: "project" } }),
     // Screen space on the G-buffer (T1371b): contact occlusion, then reflections, then air.
@@ -399,6 +410,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       "aim.z": cameraRef("lookAt.z", aim[2]),
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
+      roll: cameraRef("roll", 0),
     }, { label: "occlusion1", resolution: { mode: "project" } }),
     node("reflections", "customWgslMulti", [-1800, 0], {
       source: SSR_WGSL,
@@ -412,6 +424,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       "aim.z": cameraRef("lookAt.z", aim[2]),
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
+      roll: cameraRef("roll", 0),
     }, { label: "reflections1", resolution: { mode: "project" } }),
     node("air", "customWgslMulti", [-1500, 0], {
       source: atmosphereWgsl(facts, sun),
@@ -427,11 +440,13 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       "aim.z": cameraRef("lookAt.z", aim[2]),
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
+      roll: cameraRef("roll", 0),
     }, { label: "air1", resolution: { mode: "project" } }),
     node("lens", "customWgslMulti", [-1350, 0], {
       source: DOF_WGSL,
       // In PIXELS per unit defocus: the tall frame is narrower, so the same number blurred more of it.
-      aperture: options.portrait === true ? 0.2 : 0.32,
+      aperture: options.portrait === true ? 0.38 : 0.62,
+      maxRadius: 22,
       eye: vec(eye),
       aim,
       "eye.x": cameraRef("eye.x", eye[0]),
@@ -442,6 +457,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       "aim.z": cameraRef("lookAt.z", aim[2]),
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
+      roll: cameraRef("roll", 0),
     }, { label: "lens1", resolution: { mode: "project" } }),
     // Camera motion blur: the path one frame earlier is the previous camera (exact, stateless).
     node("shutter", "customWgslMulti", [-1200, 0], {
@@ -483,7 +499,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("meter", "analyze", [-300, 300], { channel: "luminance", operation: "logAverage" }, { label: "meter1" }),
     node("metered", "channelIn", [0, 300], { channel: "meter1", fallback: 0.05 }, { label: "metered1" }),
     node("adaptation", "valueLag", [300, 300], { lag: 0.35, releaseRatio: 3 }, { label: "adaptation1" }),
-    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: -0.6, adapt: expressionSlot("clamp((0.075 / max(op('adaptation1').chan.value, 0.0005)) ^ 0.72, 0.03, 3)", 1), punch: 1.3, punchSaturation: 1.2, contrast: 1.15, grain: 0.016, saturation: 1.1, split: 0.3, shadowTint: [0.88, 0.98, 1.06, 1], highlightTint: [1.1, 1, 0.86, 1] }, { label: "grade1", resolution: { mode: "project" } }),
+    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: -0.6, adapt: expressionSlot("clamp((0.075 / max(op('adaptation1').chan.value, 0.0005)) ^ 0.72, 0.03, 3)", 1), punch: 1.3, punchSaturation: 1.2, contrast: 1.15, grain: 0.016, saturation: expressionSlot(`1.0 + 0.3 * ${act}`, 1.1), split: 0.3, shadowTint: [0.88, 0.98, 1.06, 1], highlightTint: [1.1, 1, 0.86, 1] }, { label: "grade1", resolution: { mode: "project" } }),
     node("out", "output", [300, 0], { toneMap: "none" }, { label: "out1" }),
     ...direction.nodes,
   ];

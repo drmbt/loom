@@ -106,7 +106,7 @@ export function director(source: string, origin: readonly [number, number]): Dir
       // A song with no claimable tempo has no grid; a counter before its first event has no clock.
       defaults: "beat = -1; beatPhase = 0.5; kickCount = 0; kickCountSince = 99; beatCountSince = 99; novelty = 0; noveltySince = 99; onsetTotal = 0; onsetSince = 99; beatCount = 0",
       expressions: [
-        "bars = 4 - 2 * (level > 0.7) - (level > 0.7) * (onsetCount > 0.8)",
+        "bars = 2 - (level > 0.7) - 0.5 * (level > 0.7) * (onsetCount > 0.8)",
         "span = 4 * bars",
         // The tempo grid is the bar clock: it keeps time through breakdowns, where kicks stop.
         "onBar = (beat % span == 0) * (beatPhase < 0.3) + (beat % span == span - 1) * (beatPhase > 0.8)",
@@ -136,11 +136,11 @@ export function director(source: string, origin: readonly [number, number]): Dir
       // jumped between two framings with no cut. Every other cut is HOT; the rest alternate
       // close and wide, the section count shifting the phase so sections differ.
       expressions: [
-        `hot = (floor(cut / 2) * 5 + novelty) % ${HOT_POOL}`,
-        `close = ${HOT_POOL} + (floor(cut / 4) * 3 + novelty) % ${CLOSE_POOL - HOT_POOL}`,
-        `wide = ${CLOSE_POOL} + (floor(cut / 4) * 3 + novelty * 2) % ${CUT.length - CLOSE_POOL}`,
-        `phase = (cut + novelty) % 4`,
-        `shot = ((phase == 0) + (phase == 2)) * hot + (phase == 1) * close + (phase == 3) * wide`,
+        `hot = (floor(cut / 3) * 2 + novelty) % ${HOT_POOL}`,
+        `close = ${HOT_POOL} + (floor(cut / 3) * 3 + novelty) % ${CLOSE_POOL - HOT_POOL}`,
+        `wide = ${CLOSE_POOL} + (floor(cut / 3) + novelty * 2) % ${CUT.length - CLOSE_POOL}`,
+        `phase = (cut + novelty) % 3`,
+        `shot = (phase == 0) * hot + (phase == 1) * close + (phase == 2) * wide`,
       ].join("; "),
     }),
     // One frame back, for the motion blur's previous camera.

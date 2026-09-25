@@ -137,12 +137,12 @@ fn surfaceFx(s: SurfaceIn, p: Params) -> vec3f {
   var fx = ((vec3f(1.0, 0.9, 0.7) * lead * 6.0 + vec3f(1.0, 0.35, 0.05) * wake * 2.5) * fade * (seam * 1.5 + 0.08)
     + vec3f(0.2, 0.7, 1.0) * echo * seam * 2.5) * chosen;
   // SNARE: a thin scanline climbing the walls at 30 m/s, cold.
-  // Each snare draws its own line: a hair or a band (0.06–0.5 m), cold cyan, steel white or
-  // amber, faint to bright — so the climbing scanline never lands the same way twice.
+  // Each snare draws its own RED line: a hair or a band (0.06–0.5 m), blood red, crimson or
+  // hot red-orange, faint to bright — so the climbing scanline never lands the same way twice.
   let h1 = fract(sin(p.snareCount * 12.9898) * 43758.5453);
   let h2 = fract(sin(p.snareCount * 78.233) * 43758.5453);
   let width = mix(0.06, 0.5, h1 * h1);
-  let shade = select(select(vec3f(1.0, 0.55, 0.15), vec3f(0.75, 0.8, 0.85), h2 > 0.66), vec3f(0.3, 0.75, 1.0), h2 < 0.4);
+  let shade = select(select(vec3f(1.0, 0.25, 0.04), vec3f(0.9, 0.02, 0.08), h2 > 0.66), vec3f(1.0, 0.05, 0.02), h2 < 0.4);
   let strength = mix(0.6, 2.4, fract(h1 * 7.31 + h2));
   let line = exp(-pow((s.world.y - p.snareSince * mix(18.0, 36.0, h2)) / width, 2.0)) * exp(-p.snareSince * 3.0) * (1.0 - across.y);
   fx = fx + shade * line * strength;

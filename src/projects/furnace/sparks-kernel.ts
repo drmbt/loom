@@ -36,7 +36,6 @@ const EMITTERS: readonly Emitter[] = [
   { marker: "emit.arc_1", lift: 3.35, rate: "arcRate", direction: [0, 1, 0], spread: 0.7, speed: [3, 9], life: [0.4, 1.0] },
   { marker: "emit.arc_2", lift: 3.35, rate: "arcRate", direction: [0, 1, 0], spread: 0.7, speed: [3, 9], life: [0.4, 1.0] },
   { marker: "emit.arc_3", lift: 3.35, rate: "arcRate", direction: [0, 1, 0], spread: 0.7, speed: [3, 9], life: [0.4, 1.0] },
-  { marker: "emit.spark_roof_gap", rate: "arcRate", direction: [0.3, 1, 0], spread: 0.6, speed: [4, 9], life: [0.3, 0.8] },
   { marker: "emit.spark_torch", rate: "torchRate", direction: [0, 0.2, 1], spread: 0.35, speed: [3, 7], life: [0.5, 1.2] },
   { marker: "emit.ladle_lip", rate: "pourRate", direction: [1, 0.2, 0], spread: 0.6, speed: [2, 6], life: [0.8, 1.6] },
 ];

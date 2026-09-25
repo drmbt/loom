@@ -41,6 +41,10 @@ interface Move {
   readonly vertigo?: number;
   /** smooth: in-and-out; whip: fast off the cut, settling; creep: constant, relentless. */
   readonly ease?: "smooth" | "whip" | "creep";
+  /** Degrees of ROLL across the move (360 = a barrel roll), centred on the framing. */
+  readonly roll?: number;
+  /** How deep the sightline must be clear, metres (a scale shot looks THROUGH the plant). */
+  readonly foreground?: number;
   /** Rides a crane bridge along X (the rig's travel parameter). */
   readonly follow?: "craneX" | "crane2X";
 }
@@ -60,7 +64,8 @@ const offset = (base: Vec3, by: Vec3): Vec3 => [base[0] + by[0], base[1] + by[1]
  * first candidate offset whose sightline is clear for three-quarters of the way — so a
  * re-export that moves a column moves the camera, instead of parking it behind the column.
  */
-const seek = (subject: string, lift: Vec3, fov: number, candidates: readonly Vec3[], ringed = true) => (facts: FurnaceSceneFacts): Pose => {
+/** `foreground`: how deep the frame must be clear, metres — a scale shot WANTS the plant between it and its subject, only not in its lap. */
+const seek = (subject: string, lift: Vec3, fov: number, candidates: readonly Vec3[], ringed = true, foreground = Infinity) => (facts: FurnaceSceneFacts): Pose => {
   const aim = offset(at(facts, subject), lift);
   // The given candidates first, in order; then a ring at their distances and heights, every 15°.
   const ring: Vec3[] = [];
@@ -81,7 +86,8 @@ const seek = (subject: string, lift: Vec3, fov: number, candidates: readonly Vec
     const spread = reach * Math.tan((fov * Math.PI) / 360) * 0.5;
     const targets: Vec3[] = [aim, offset(aim, [right[0] * spread, 0, right[2] * spread]), offset(aim, [-right[0] * spread, 0, -right[2] * spread]), offset(aim, [0, spread, 0]), offset(aim, [0, -spread, 0])];
     const clear = targets.every((target) => {
-      const near: Vec3 = [eye[0] + (target[0] - eye[0]) * 0.75, eye[1] + (target[1] - eye[1]) * 0.75, eye[2] + (target[2] - eye[2]) * 0.75];
+      const share = Math.min(0.75, foreground / Math.max(reach, 1e-3));
+      const near: Vec3 = [eye[0] + (target[0] - eye[0]) * share, eye[1] + (target[1] - eye[1]) * share, eye[2] + (target[2] - eye[2]) * share];
       return firstHit(facts.blockers, eye, near) >= 1;
     });
     if (clear) return toward(eye, aim, fov);
@@ -100,8 +106,6 @@ export const CUT: readonly Move[] = [
   // Hot: looking INTO the process.
   // Down into the full ladle from the crane's height: molten steel, rafts of slag, the rim black.
   { name: "ladle_down", pose: seek("emit.ladle_surface", [0, 0, 0], 38, [[3, 9, 4], [-3, 9, 4], [3, 9, -4], [0, 11, 5], [5, 7, 0]]), crane: -2.5, orbit: 0.5, ease: "creep" },
-  // The ladle lip pouring, from below and close: the stream against black.
-  { name: "ladle_lip_low", pose: seek("emit.ladle_lip", [0, -0.5, 0], 34, [[5, -3, 5], [5, -3, -5], [6, -2, 2], [4, -3.5, 7]]), dolly: 2, push: -6, ease: "whip" },
   // Into the furnace through the slag door, a long lens from the dark: the bath inside.
   { name: "slag_door_into", pose: seek("emit.slag_door", [0, -0.3, 0], 20, [
     // The door faces −X: only eyes on that side see INTO the furnace.
@@ -111,30 +115,36 @@ export const CUT: readonly Move[] = [
   { name: "tap_close", pose: seek("emit.tap_stream", [0, -0.5, 0], 42, [[4, -2.5, 5], [4, -2.5, -5], [6, -1.5, 3], [3, -3, 6]]), orbit: 0.6, ease: "smooth" },
   // The slag falling into the pot.
   { name: "slag_fall", pose: seek("emit.slag_fall", [0, 0.5, 0], 40, [[-5, -1.5, 5], [-5, -1.5, -5], [-6, 0, 3], [-4, -2, 6]]), dolly: 2.5, ease: "whip" },
-  // The tundish pour on the caster, from across the platform.
-  { name: "tundish_pour", pose: seek("emit.tundish_pour", [0, -0.5, 0], 36, [[-6, 2, 6], [6, 2, 6], [-5, 1, -6], [0, 3, 8]]), truck: 3, ease: "creep" },
+  // The slag pot, brimming: a crusted black surface cracked open to orange.
+  { name: "slag_pot", pose: seek("emit.slag_pot_surface", [0, 0, 0], 36, [[-4, 4, 4], [-4, 4, -4], [-5, 3, 0], [-3, 5, 5], [0, 5, 5]]), crane: 1, ease: "creep" },
   // Dynamic.
   { shot: "shot.hero_low_furnace", dolly: 4.0, crane: 1.5, ease: "whip" },
   { name: "electrode_orbit", pose: (f) => toward(offset(at(f, "electrode_2"), [11, 8, 9]), offset(at(f, "electrode_2"), [0, 5, 0.3]), 26), orbit: 1.3, ease: "creep" },
   { name: "slag_door_vertigo", pose: (f) => toward(offset(at(f, "emit.slag_door"), [-13, -2.5, 6]), offset(at(f, "emit.slag_door"), [0, -0.5, 0]), 34), vertigo: -6, ease: "smooth" },
   { name: "tap_longlens", pose: (f) => toward(offset(at(f, "emit.spark_tap"), [17.4, 2, 4.7]), offset(at(f, "emit.spark_tap"), [0, 1.5, 0]), 24), truck: 3, push: -3, ease: "creep" },
-  // The slag pot, brimming: a crusted black surface cracked open to orange.
-  { name: "slag_pot", pose: seek("emit.slag_pot_surface", [0, 0, 0], 36, [[-4, 4, 4], [-4, 4, -4], [-5, 3, 0], [-3, 5, 5], [0, 5, 5]]), crane: 1, ease: "creep" },
-  // The strand leaving the caster's bend, glowing, from below the runout.
-  { name: "strand_glow", pose: seek("caster_rollers_4", [0, 0.5, 0], 40, [[3, -1, -6], [-3, -1, -6], [4, 0, -5], [6, 1, -4], [2, -1.5, -8], [5, 2, 6], [-5, 2, 6]]), dolly: 2, truck: 1.5, ease: "smooth" },
   { shot: "shot.caster_strand", dolly: 6.0, truck: -1.5 },
   { shot: "shot.pipe_corridor", dolly: 9.0, ease: "creep" },
+  // A BARREL ROLL down the melt bay: flying the length of the hall at gantry height, the
+  // whole plant turning over once around the lens.
+  { name: "barrel_fly", pose: () => toward([-30, 15, -9], [30, 11, -7], 62), dolly: 30, roll: 360, ease: "smooth" },
+  // Over the furnace like a drone: rising off the charging side, banking as it crosses.
+  { name: "furnace_flyover", pose: seek("furnace_shell", [0, -1, 0], 55, [[-24, 8, 12], [-24, 8, -12], [24, 8, 12], [0, 9, 26], [-26, 10, 0]]), dolly: 16, crane: 3, roll: 35, ease: "creep" },
   // Wide and slow.
   { shot: "shot.establish_wide", truck: 10.0, dolly: 3.0 },
   { shot: "shot.scrap_bay", orbit: 0.45 },
   { shot: "shot.top_down", crane: -4.0, orbit: 0.8, ease: "creep" },
   { name: "roof_glide", pose: (f) => toward([-44, 25, -9], offset(at(f, "furnace_shell"), [-8, -6, 2]), 50), dolly: 18, ease: "creep" },
+  // SCALE: the full length of the hall through a long lens from the floor at the scrap-bay end —
+  // columns stacking, the furnace small in the middle distance, the roof lost in smoke.
+  { name: "hall_length", pose: seek("furnace_shell", [0, -3, 0], 24, [[-55, -7, -8], [-50, -6, 8], [55, -7, -6], [50, -6, 8], [-40, -5, -10], [40, -5, 10]], false, 12), foreground: 12, dolly: 5, push: -3, ease: "creep" },
+  // A slow flight down the hall from the scrap-bay end toward the furnace, the cranes passing.
+  { name: "hall_flythrough", pose: seek("furnace_shell", [0, 2, 0], 58, [[-50, 8, 6], [-50, 8, -6], [50, 8, 6], [50, 8, -6], [-38, 10, 0], [38, 10, 0], [-30, 12, 10]], false, 12), foreground: 12, dolly: 30, roll: -18, ease: "creep" },
 ];
 
 /** How many CUT entries, from the start, are HOT (the process itself); they open the close pool. */
-export const HOT_POOL = 6;
+export const HOT_POOL = 5;
 /** How many CUT entries, from the start, form the close pool; the rest are the wide pool. */
-export const CLOSE_POOL = 14;
+export const CLOSE_POOL = 13;
 
 /** How far ahead of a Blender shot's eye its aim point sits, metres (the orbit's pivot). */
 const AIM_DISTANCE = 12;
@@ -193,6 +203,8 @@ export interface CameraPath {
   readonly eye: readonly [string, string, string];
   readonly aim: readonly [string, string, string];
   readonly fov: string;
+  /** Roll in degrees (T1383b). */
+  readonly roll: string;
 }
 
 /** The view direction and its level right-hand side (forward × world up). */
@@ -211,7 +223,8 @@ function framing(facts: FurnaceSceneFacts, move: Move): { eye: Vec3; forward: Ve
     const reach = Math.hypot(d[0], d[1], d[2]) || 1;
     // A pose must SEE its subject: the plant between eye and aim is a black frame, loudly.
     // The last quarter is the subject's own clutter (an electrode's arms, a ladle's rim).
-    const near: Vec3 = [pose.eye[0] + d[0] * 0.75, pose.eye[1] + d[1] * 0.75, pose.eye[2] + d[2] * 0.75];
+    const share = Math.min(0.75, (move.foreground ?? Infinity) / reach);
+    const near: Vec3 = [pose.eye[0] + d[0] * share, pose.eye[1] + d[1] * share, pose.eye[2] + d[2] * share];
     const hit = firstHit(facts.blockers, pose.eye, near);
     if (hit < 1) throw new Error(`cameraPath: pose "${move.name ?? "?"}" is blocked ${(hit * reach * 0.75).toFixed(1)} m from its eye, before its subject at ${reach.toFixed(1)} m.`);
     return { eye: pose.eye, forward: [d[0] / reach, d[1] / reach, d[2] / reach], reach, fov: pose.fov };
@@ -283,6 +296,7 @@ export function shotPath(facts: FurnaceSceneFacts, drive: ShotDrive): Omit<Camer
   const eyeTerms: [string[], string[], string[]] = [[], [], []];
   const aimTerms: [string[], string[], string[]] = [[], [], []];
   const fovTerms: string[] = [];
+  const rollTerms: string[] = [];
   CUT.forEach((move, k) => {
     const shot = framing(facts, move);
     const { forward, right } = basis(shot.forward);
@@ -333,10 +347,12 @@ export function shotPath(facts: FurnaceSceneFacts, drive: ShotDrive): Omit<Camer
         : // The expression engine has no tan/atan; at a telephoto lens the angle is its tangent.
           `(${n(shot.fov)} * ${n(shot.reach)} / (${n(shot.reach)} - ${n(move.vertigo)} * ${ease}))`;
     fovTerms.push(`${active} * (${vertigoFov} + ${n(move.push ?? 0)} * ${ease} - 4 * ${punch})`);
+    if (move.roll !== undefined) rollTerms.push(`${active} * ${n(move.roll)} * ${ease}`);
   });
   return {
     eye: [0, 1, 2].map((axis) => `${eyeTerms[axis as 0 | 1 | 2].join(" + ")} + ${hand[axis]}`) as unknown as [string, string, string],
     aim: [0, 1, 2].map((axis) => aimTerms[axis as 0 | 1 | 2].join(" + ")) as unknown as [string, string, string],
     fov: fovTerms.join(" + "),
+    roll: rollTerms.length === 0 ? "0" : rollTerms.join(" + "),
   };
 }

@@ -65,6 +65,7 @@ struct Params {
   eye: vec3f, // @default 0  Camera position (drive from the camera).
   aim: vec3f, // @default 0  Camera look-at (drive from the camera).
   fov: f32, // @default 50  Camera vertical field of view, degrees.
+  roll: f32, // @default 0  Camera roll, degrees.
   far: f32, // @default 400  Camera far plane — depth arrives as distance ÷ far.
   density: f32, // @default 0.018  Smoke extinction per metre at the floor.
   roofSmoke: f32, // @default 0.6  Extra smoke pooled under the roof.
@@ -156,12 +157,22 @@ fn shaftDensity(x: vec3f) -> f32 {
   return total;
 }
 
+
+// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by
+// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.
+fn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {
+  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);
+  let t = radians(rollDeg);
+  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));
+  return normalize(cross(forward, up));
+}
+
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let sample = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
   let aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);
   let forward = normalize(params.aim - params.eye);
-  let right = normalize(cross(forward, vec3f(0.0, 1.0, 0.0)));
+  let right = rolledRight(forward, params.roll);
   let up = cross(right, forward);
   let tanHalf = tan(radians(params.fov) * 0.5);
   let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
