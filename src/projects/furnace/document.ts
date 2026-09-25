@@ -142,7 +142,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   atmosphereScatter["lampScatter"] = 0.8;
   // The sun is programmed with the windows: its shafts dim at rest, flare through a build and
   // go out at a section change.
-  atmosphereScatter["sunShafts"] = expressionSlot(`(25 + ${direction.energy} ^ 2 * 80 + ${direction.build} * 140) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 80);
+  atmosphereScatter["sunShafts"] = expressionSlot(`(90 + ${direction.energy} * 70 + ${direction.build} * 140) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 80);
   atmosphereScatter["sunColor"] = [0.62, 0.86, 1, 1];
   atmosphereScatter["density"] = 0.009;
   // Low and cold: at a blackout this is all the smoke carries, and the camera must not
@@ -264,12 +264,13 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       casting: expressionSlot("abstime * 0.4", 0),
       conveyor: expressionSlot("abstime * 1.2", 0),
     }, { label: "rig1" }),
-    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, liquidGlow: 2.2, liningGlow: 12, fire: expressionSlot(`5 + ${LEVEL("low")} * 12 + ${direction.build} * 10`, 9), chalk: 0.12, soot: 0.38,
+    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, liquidGlow: 2.2, liningGlow: 12, arcFlash: expressionSlot(`${HIT("hatCount")} * 6 + ${direction.density} * 0.5`, 0), fire: expressionSlot(`5 + ${LEVEL("low")} * 12 + ${direction.build} * 10`, 9), chalk: 0.12, soot: 0.38,
       // The steel answers every kick and snare, loud or quiet: a floor of 0.4 even in the calm.
       fx: expressionSlot(`0.4 + 0.6 * clamp((${direction.energy} - 0.3) / 0.5, 0, 1)`, 0.4),
       kickSince: expressionSlot("op('kicks1').chan.kickCountSince", 100),
       snareSince: expressionSlot("op('snares1').chan.snareCountSince", 100),
       kickCount: expressionSlot("op('kicks1').chan.kickCount", 0),
+      snareCount: expressionSlot("op('snares1').chan.snareCount", 0),
       flicker: expressionSlot(`${HIT("hatCount")} * (${direction.density} > 0.5)`, 0),
       heatPulse: expressionSlot(`${direction.energy} * 0.25 + ${direction.build} * 0.35`, 0.1) }, { label: "steel1" }),
     // The sky through the openings: emissive, unlit — so it neither shades nor casts (T666).
@@ -280,6 +281,10 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       model: "unlit",
       source: SKY_SURFACE_WGSL,
       sky: expressionSlot(`(0.1 + ${direction.energy} ^ 2 * 0.7 + ${direction.build} * 1.5 * ((op('dirBeats1').chan.beatCount % 2) == 0)) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 0.5),
+      chase: expressionSlot(`clamp(${direction.build} * 1.5 - 0.2, 0, 1)`, 0),
+      strobe: expressionSlot(`${HIT("snareCount")} * clamp((${direction.energy} - 0.35) / 0.4, 0, 1)`, 0),
+      pick: expressionSlot("op('kicks1').chan.kickCount", 0),
+      warm: expressionSlot(`clamp((${direction.energy} - 0.75) / 0.2, 0, 1) * 0.7`, 0),
     }, { label: "skymat1" }),
     node("skyGeo", "geometry", [-3000, -750], { mode: "surface", material: "skymat1" }, { label: "skygeo1" }),
     node("plantGeo", "geometry", [-3000, -300], { mode: "surface", material: "steel1" }, { label: "plantgeo1" }),

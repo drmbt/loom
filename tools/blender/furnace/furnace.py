@@ -162,6 +162,11 @@ def slag_door(mb, rng):
         hot = rng.random() >= 0.85
         lump(mb, p, (s, s * 1.4, s * 0.8), "slag_cold", rng, seg=12, rings=7, rough=0.3, crack=0.09,
              glow_mat="slag_hot" if hot else None)
+    # the slag running over the apron: a molten tongue from the sill down the face, under the
+    # crust lumps — loom flows it downhill (slag_hot + the plant material's downhill advection)
+    path = [v3(x - 0.9 + 0.02, 0.0, zs + 0.03)] + [v3(x - 1.05 - t * 0.5, 0.0, zs - 0.45 - t * 1.6 + 0.02) for t in np.linspace(0.0, 1.0, 12)]
+    tongue = [(-0.62, 0.0), (-0.3, 0.04), (0.3, 0.04), (0.62, 0.0), (0.62, 0.01), (-0.62, 0.01)]
+    sweep_profile(mb, path, tongue, "slag_hot", up=(1, 0, 0.3), uv_len=True)
 
 
 def ebt(mb, rng):

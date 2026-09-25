@@ -30,6 +30,7 @@ const CLASS_OF: ReadonlyArray<readonly [RegExp, number, string]> = [
   [/rust|scrap/, 5, "rust"],
   [/concrete/, 6, "concrete"],
   [/refractory/, 7, "refractory brick"],
+  [/rubber_belt/, 11, "conveyor belt"],
   [/rubber|cable|hose/, 8, "rubber"],
   [/copper/, 9, "copper"],
   [/slag_cold/, 10, "cold slag"],
@@ -54,7 +55,13 @@ ${rows.join("\n")}
 }
 
 export function plantSurfaceWgsl(facts: FurnaceSceneFacts): string {
-  return PLANT_SURFACE_WGSL.replace("// @classifier", classifierWgsl(facts.materials));
+  const ports = [1, 2, 3].map((k) => {
+    const part = facts.parts.get(`electrode_${k}`);
+    if (part === undefined) throw new Error(`plantSurfaceWgsl: the GLB has no part "electrode_${k}".`);
+    return `vec2f(${part.pivot[0].toFixed(4)}, ${part.pivot[2].toFixed(4)})`;
+  });
+  return PLANT_SURFACE_WGSL.replace("// @classifier", `${classifierWgsl(facts.materials)}
+const ELECTRODE_PORT = array<vec2f, 3>(${ports.join(", ")});`);
 }
 
 const PLANT_SURFACE_WGSL = `// @use surface-detail
@@ -73,10 +80,12 @@ struct Params {
   fx: f32, // @default 0  Master level of the surface effects below (the director's intensity).
   kickSince: f32, // @default 100  Seconds since the kick: a shockwave runs out from the furnace along the panel seams.
   snareSince: f32, // @default 100  Seconds since the snare: a hot scanline sweeps up every wall.
+  snareCount: f32, // @default 0  Running snare count: each snare's scanline gets its own width, shade and strength.
   kickCount: f32, // @default 0  Running kick count: each kick re-picks WHICH parts of the plant the wave lights.
   flicker: f32, // @default 0  Hats: panels light up as corrupt blocks, hash-picked per 1.5 m panel.
   heatGlow: f32, // @default 14  (Legacy; the liquid and solid glows below replace it.)
   liquidGlow: f32, // @default 2  Radiance of liquid steel at its hottest.
+  arcFlash: f32, // @default 0  The arc's flash at the electrode ports (drive from the hats).
   fire: f32, // @default 18  Radiance of the flames inside the furnace (the audio's handle).
   liningGlow: f32, // @default 12  Radiance of hot SOLIDS — the strand, hot slag, graphite, linings.
   heatFlow: f32, // @default 0.3  How fast the molten surface flows, metres per second.
@@ -128,8 +137,15 @@ fn surfaceFx(s: SurfaceIn, p: Params) -> vec3f {
   var fx = ((vec3f(1.0, 0.9, 0.7) * lead * 6.0 + vec3f(1.0, 0.35, 0.05) * wake * 2.5) * fade * (seam * 1.5 + 0.08)
     + vec3f(0.2, 0.7, 1.0) * echo * seam * 2.5) * chosen;
   // SNARE: a thin scanline climbing the walls at 30 m/s, cold.
-  let line = exp(-pow((s.world.y - p.snareSince * 30.0) / 0.25, 2.0)) * exp(-p.snareSince * 3.0) * (1.0 - across.y);
-  fx = fx + vec3f(0.35, 0.8, 1.0) * line * 3.0;
+  // Each snare draws its own line: a hair or a band (0.06–0.5 m), cold cyan, steel white or
+  // amber, faint to bright — so the climbing scanline never lands the same way twice.
+  let h1 = fract(sin(p.snareCount * 12.9898) * 43758.5453);
+  let h2 = fract(sin(p.snareCount * 78.233) * 43758.5453);
+  let width = mix(0.06, 0.5, h1 * h1);
+  let shade = select(select(vec3f(1.0, 0.55, 0.15), vec3f(0.75, 0.8, 0.85), h2 > 0.66), vec3f(0.3, 0.75, 1.0), h2 < 0.4);
+  let strength = mix(0.6, 2.4, fract(h1 * 7.31 + h2));
+  let line = exp(-pow((s.world.y - p.snareSince * mix(18.0, 36.0, h2)) / width, 2.0)) * exp(-p.snareSince * 3.0) * (1.0 - across.y);
+  fx = fx + shade * line * strength;
   // HATS: a few 3 m panels switching on as flat blocks, a new pick twelve times a second —
   // sparse, or it reads as confetti rather than a fault in the structure.
   let panel = floor(s.world / 3.0);
@@ -298,6 +314,24 @@ fn classSkin(kind: u32, s: SurfaceIn, base: vec3f, normal: vec3f, p: Params) -> 
       k.metallic = 0.3;
       k.normal = detailBump(normal, bubbles.gradient, 0.35);
     }
+    case 11u: {
+      // CONVEYOR BELT: its u runs along travel in metres and the rig scrolls it, so everything
+      // drawn in u rides the belt — cleats every 0.6 m and a load of scrap chunks, bumped and
+      // shadowed, some still glowing from the bay's torch-cut pieces.
+      let u = s.uv.x;
+      let across = s.uv.y;
+      let cleat = 1.0 - smoothstep(0.02, 0.05, abs(fract(u / 0.6) - 0.5) * 0.6);
+      let chunkCell = vec2f(floor(u * 2.5), floor(across * 6.0));
+      let chunkHash = cellHash(chunkCell);
+      let local = vec2f(fract(u * 2.5), fract(across * 6.0)) - 0.5;
+      let chunk = step(0.35, chunkHash) * (1.0 - smoothstep(0.2, 0.42, length(local * vec2f(1.0, 1.4))));
+      let bump = vec3f(local.x, 0.0, local.y) * chunk * 3.0;
+      k.albedo = mix(mix(base, base * 2.5, cleat), vec3f(0.12, 0.09, 0.07) * (0.6 + 0.8 * chunkHash), chunk);
+      k.roughness = mix(0.8, 0.7, chunk);
+      k.metallic = chunk * 0.6;
+      k.normal = detailBump(normal, bump, 0.35);
+      k.exposed = 0.0;
+    }
     default: {}
   }
   return k;
@@ -359,8 +393,26 @@ fn doorPortal(s: SurfaceIn, p: Params) -> vec4f {
   return vec4f(colour, 1.0);
 }
 
+// Burning gas at the electrode PORTS (where each electrode passes the roof): a ring of
+// flickering flame hugging the electrode, flaring white-blue with the arc.
+fn electrodePorts(s: SurfaceIn, p: Params) -> vec3f {
+  if (s.world.y < 12.0 || s.world.y > 14.2) { return vec3f(0.0); }
+  var glow = vec3f(0.0);
+  for (var k = 0u; k < 3u; k = k + 1u) {
+    let d = length(s.world.xz - ELECTRODE_PORT[k]);
+    let ring = 1.0 - smoothstep(0.35, 1.0, d);
+    if (ring <= 0.0) { continue; }
+    let lick = detailFbm(vec3f(s.world.xz * 3.0, s.world.y * 2.0 - s.absTime * 4.0 + f32(k) * 7.0), 3, s.footprint).value;
+    let low = 1.0 - smoothstep(12.6, 14.0, s.world.y);
+    let flame = smoothstep(0.35, 0.75, lick) * ring * low;
+    glow = glow + blackbody(0.7 + 0.3 * lick) * flame * p.fire * 0.45 + vec3f(0.6, 0.75, 1.0) * ring * low * p.arcFlash;
+  }
+  return glow;
+}
+
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceBody(s, p);
+  o.emissive = o.emissive + electrodePorts(s, p);
   let portal = doorPortal(s, p);
   if (portal.w > 0.0) {
     o.albedo = vec4f(vec3f(0.0), s.albedo.a);
@@ -414,8 +466,12 @@ fn surfaceBody(s: SurfaceIn, p: Params) -> SurfaceOut {
   if (heat > 0.01) {
     // HOT SOLIDS (the strand, hot slag, graphite, refractory): BLAZING — a solid at 1200 °C is
     // a light source. Orange-yellow body, brighter cracks, a darker oxide scale that breaks.
-    let grain = detailFbm(s.world * 2.4, 4, s.footprint);
-    let crackField = detailFbm(s.world * 0.9, 3, s.footprint).value;
+    // Hot SLAG creeps DOWNHILL: its pattern advects along the surface's own fall line (gravity
+    // projected into the tangent plane), so a spill over the apron runs, a flat pool barely moves.
+    let fall = vec3f(0.0, -1.0, 0.0) - s.normal * dot(vec3f(0.0, -1.0, 0.0), s.normal);
+    let slagFlow = select(vec3f(0.0), fall * s.absTime * 0.8, step(s.metallic, 0.05) * step(0.65, s.roughness) > 0.5);
+    let grain = detailFbm((s.world - slagFlow) * 2.4, 4, s.footprint);
+    let crackField = detailFbm((s.world - slagFlow) * 0.9, 3, s.footprint).value;
     let cracks = 1.0 - smoothstep(0.012, 0.05, abs(crackField - 0.5));
     // Hot SLAG (dielectric, rough) is a black crust that glows only in its fissures; hot steel
     // (the strand, graphite) glows through a thin, breaking oxide.
@@ -516,14 +572,39 @@ fn surfaceBody(s: SurfaceIn, p: Params) -> SurfaceOut {
 
 /** T1354b — the sky seen through the openings: the file's emissive, scaled by the light programme. */
 export const SKY_SURFACE_WGSL = `struct Params {
-  sky: f32, // @default 1  Brightness of the sky in the openings (the director drives it).
+  sky: f32, // @default 1  Base brightness of the sky in the openings (the director drives it).
+  chase: f32, // @default 0  0..1: a bright band running along the hall through the windows (the build).
+  strobe: f32, // @default 0  Snares: alternate windows blink hard.
+  pick: f32, // @default 0  Running kick count: each kick flares a few windows, a new few each time.
+  warm: f32, // @default 0  0..1: the daylight turns to sodium orange (the peaks).
 };
+
+fn skyHash(c: f32) -> f32 {
+  return fract(sin(c * 91.345 + 7.13) * 43758.5453);
+}
 
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceDefaults(s);
   o.albedo = vec4f(0.0, 0.0, 0.0, 1.0);
+  // One "window" is a 6 m bay along the hall (X) on either side (Z sign).
+  let bay = floor(s.world.x / 6.0) + select(0.0, 100.0, s.world.z > 0.0);
+  let chase = pow(0.5 + 0.5 * sin(s.world.x * 0.12 - s.absTime * 5.0), 6.0) * p.chase * 3.0;
+  let strobe = p.strobe * step(0.5, fract(bay * 0.5)) * 2.5;
+  let flare = step(0.82, skyHash(bay + p.pick * 13.0)) * 3.0 * step(0.5, p.pick);
+  let level = p.sky + chase + strobe + flare;
+  let tint = mix(vec3f(1.0), vec3f(1.6, 0.75, 0.3), p.warm);
   // Openings near the floor (the hall's doors to the yard) stay dim: at full sky brightness
   // they leaked white light under the machinery.
-  o.emissive = s.emissive * p.sky * mix(0.12, 1.0, smoothstep(6.0, 14.0, s.world.y));
+  // Old wired glass, not a light panel: a pane grid with dark mullions, soot and streaks
+  // thickest at the bottom of each pane, and here and there a pane boarded or black.
+  let a = abs(s.normal);
+  let uv = select(select(s.world.xy, s.world.zy, a.x > a.z), s.world.xz, a.y > 0.8) / vec2f(1.2, 0.9);
+  let pane = floor(uv);
+  let f = fract(uv);
+  let mullion = smoothstep(0.03, 0.07, min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)));
+  let paneHash = skyHash(pane.x * 17.0 + pane.y * 131.0 + bay);
+  let grime = mix(0.35, 1.0, smoothstep(0.0, 0.9, f.y)) * mix(0.55, 1.0, fract(paneHash * 7.7));
+  let dead = step(0.93, paneHash);
+  o.emissive = s.emissive * 0.4 * tint * level * mullion * grime * (1.0 - dead) * mix(0.12, 1.0, smoothstep(6.0, 14.0, s.world.y));
   return o;
 }`;

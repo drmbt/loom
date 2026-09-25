@@ -17,6 +17,8 @@ import { markerAt, wgslVec3 } from "./scene-facts.ts";
 
 interface Emitter {
   readonly marker: string;
+  /** Metres above the marker the sparks leave from. */
+  readonly lift?: number;
   readonly rate: string;
   /** Launch direction (pre-normalisation) and cone half-width. */
   readonly direction: readonly [number, number, number];
@@ -29,9 +31,11 @@ const EMITTERS: readonly Emitter[] = [
   { marker: "emit.spark_tap", rate: "tapRate", direction: [1, 0.35, 0], spread: 0.55, speed: [4, 9], life: [0.8, 1.8] },
   // Oxygen lancing: the spray leaves the lance TIP, blown back out of the door.
   { marker: "emit.lance_tip", rate: "slagRate", direction: [-1, 0.35, 0], spread: 0.6, speed: [3, 9], life: [0.6, 1.5] },
-  { marker: "emit.arc_1", rate: "arcRate", direction: [0, 1, 0], spread: 1.1, speed: [6, 14], life: [0.25, 0.7] },
-  { marker: "emit.arc_2", rate: "arcRate", direction: [0, 1, 0], spread: 1.1, speed: [6, 14], life: [0.25, 0.7] },
-  { marker: "emit.arc_3", rate: "arcRate", direction: [0, 1, 0], spread: 1.1, speed: [6, 14], life: [0.25, 0.7] },
+  // The arc is hidden under the roof; what BLASTS OUT is at the electrode PORTS, where each
+  // electrode passes through the roof — sparks from there, not from the hidden tips.
+  { marker: "emit.arc_1", lift: 3.35, rate: "arcRate", direction: [0, 1, 0], spread: 0.7, speed: [3, 9], life: [0.4, 1.0] },
+  { marker: "emit.arc_2", lift: 3.35, rate: "arcRate", direction: [0, 1, 0], spread: 0.7, speed: [3, 9], life: [0.4, 1.0] },
+  { marker: "emit.arc_3", lift: 3.35, rate: "arcRate", direction: [0, 1, 0], spread: 0.7, speed: [3, 9], life: [0.4, 1.0] },
   { marker: "emit.spark_roof_gap", rate: "arcRate", direction: [0.3, 1, 0], spread: 0.6, speed: [4, 9], life: [0.3, 0.8] },
   { marker: "emit.spark_torch", rate: "torchRate", direction: [0, 0.2, 1], spread: 0.35, speed: [3, 7], life: [0.5, 1.2] },
   { marker: "emit.ladle_lip", rate: "pourRate", direction: [1, 0.2, 0], spread: 0.6, speed: [2, 6], life: [0.8, 1.6] },
@@ -46,7 +50,10 @@ export const SPARK_ATTRIBUTES = JSON.stringify([
 export const SPARK_RATES: readonly string[] = [...new Set(EMITTERS.map((emitter) => emitter.rate))];
 
 export function sparksKernel(facts: FurnaceSceneFacts): string {
-  const origins = EMITTERS.map((emitter) => wgslVec3(markerAt(facts, emitter.marker)));
+  const origins = EMITTERS.map((emitter) => {
+    const at = markerAt(facts, emitter.marker);
+    return wgslVec3([at[0], at[1] + (emitter.lift ?? 0), at[2]]);
+  });
   const directions = EMITTERS.map((emitter) => {
     const [x, y, z] = emitter.direction;
     const length = Math.hypot(x, y, z);
