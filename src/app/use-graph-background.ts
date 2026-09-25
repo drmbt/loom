@@ -42,6 +42,8 @@ const BACKGROUND_TILE_CAPACITY = 8;
 
 /** Refresh a background at preview cadence — it is ambience, not the picture. */
 export interface GraphBackgroundInputs {
+  /** Live export ownership: retain resources/sinks, but suspend preview submissions. */
+  readonly isExporting?: () => boolean;
   readonly backend: LoomBackend | null;
   readonly canvasRef: RefObject<HTMLCanvasElement | null>;
   readonly graph: GraphDocument;
@@ -226,6 +228,8 @@ export function useGraphBackground(inputs: GraphBackgroundInputs): void {
       // The commit-time effect below normally gets here first; this is the same call, for
       // the case where it did not (a load that never re-rendered this pane).
       crossDocumentBoundary(current.documentIdentity);
+      // Keep §V23/document invalidation above this guard; export owns the GPU cadence.
+      if (current.isExporting?.()) return;
       const marks = current.marks;
       // Marking IS watching (T252): the refs keep their nodes materialized. The sink
       // store merges callers, so this coexists with the tile scheduler's own set.

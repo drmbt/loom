@@ -4,6 +4,7 @@ import { boundedSize, toRgba8At } from "../image.ts";
 import type { ExportOutput } from "../types.ts";
 import { ExportDiagnosticCode, ExportError, exportDiagnostic, outputRefKey } from "../types.ts";
 import type {
+  EncoderFrameTiming,
   FrameRecorderOptions,
   RecorderState,
   RecordingReport,
@@ -158,6 +159,18 @@ export function createFrameRecorder(options: FrameRecorderOptions): FrameRecorde
   async function run(capture: Capture): Promise<void> {
     if (state !== "recording" || size === null) return;
     const [width, height] = size;
+    const micros = 1_000_000 / options.fps;
+    const timing: EncoderFrameTiming = {
+      frameIndex: capture.frameIndex,
+      timestampMicros: Math.round(capture.frameIndex * micros),
+      durationMicros: Math.round(micros),
+      keyFrame: capture.keyFrame,
+    };
+    if (options.encoder.encodeCapturedFrame !== undefined) {
+      await options.encoder.encodeCapturedFrame(timing);
+      frames += 1;
+      return;
+    }
     // Reason "recording" is what tells the export interface this read is expected to happen
     // while the loop runs (§V7). It is counted, not waved through.
     const image = await options.api.read(options.ref, { reason: "recording" });
@@ -168,14 +181,10 @@ export function createFrameRecorder(options: FrameRecorderOptions): FrameRecorde
       space: described?.space ?? "linear",
       ...(options.transfer === undefined ? {} : { transfer: options.transfer }),
     });
-    const micros = 1_000_000 / options.fps;
     await options.encoder.encode({
       image: rgba,
-      frameIndex: capture.frameIndex,
       // Derived from the frame index, never from elapsed time: this is the whole point.
-      timestampMicros: Math.round(capture.frameIndex * micros),
-      durationMicros: Math.round(micros),
-      keyFrame: capture.keyFrame,
+      ...timing,
     });
     frames += 1;
   }

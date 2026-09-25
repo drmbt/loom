@@ -1,4 +1,4 @@
-import type { GraphDocument, GraphNode } from "../types/graph.ts";
+import type { GraphDocument, GraphNode, ValuePlotMode } from "../types/graph.ts";
 import type { NodeId, Revision } from "../types/ids.ts";
 import type { StoredParameter } from "../types/parameters.ts";
 import type { GraphPatchOperation, GraphPatchResult } from "../types/patch.ts";
@@ -36,6 +36,12 @@ export interface RenameInput {
   label: string | null;
 }
 
+export interface ValuePlotModeInput {
+  nodeId: NodeId;
+  /** null clears the choice, so the node draws the default for what it IS. */
+  mode: ValuePlotMode | null;
+}
+
 declare module "../types/commands.ts" {
   interface CommandMap {
     /** Delete nodes and their incident edges (§V40). */
@@ -61,6 +67,8 @@ declare module "../types/commands.ts" {
     "node.bringToFront": { input: NodeSelectionInput; output: GraphPatchResult };
     /** TD `n` — rename a node. `label: null` clears it back to the definition's title. */
     "node.rename": { input: RenameInput; output: GraphPatchResult };
+    /** Bar or curve in a value node's body. `mode: null` restores the default. */
+    "node.setValuePlotMode": { input: ValuePlotModeInput; output: GraphPatchResult };
   }
 }
 
@@ -458,6 +466,30 @@ export function registerEditorCommands(bus: LoomBus): void {
     handler: (input, context) =>
       patchThrough(context, input.label === null ? "Clear name" : "Rename", [
         { op: "setNodeLabel", nodeId: input.nodeId, label: input.label },
+      ]),
+    rejectionOutput: rejection,
+  });
+
+  /*
+   * Bar or curve in a value node's body.
+   *
+   * ONE NODE, not the selection, unlike every `registerToggle` above it. Those are flags
+   * a user sets across a group of nodes at once — mute these four, bypass those three —
+   * whereas this answers "what do I want to see in THIS body", a question asked while
+   * looking at one node's output. Taking the selection would mean clicking a bar on a
+   * node that happens to be unselected silently reformats the five nodes that are.
+   *
+   * A SET rather than a toggle, and that is what `mode: null` buys: with two positions a
+   * toggle would be equivalent, but the stored value has three states — bar, trail, and
+   * absent-so-follow-the-default — and a toggle cannot reach the third. Absent is the
+   * state every node ships in, so it must be returnable to.
+   */
+  bus.registerCommand({
+    name: "node.setValuePlotMode",
+    description: "Draw a value node's body as a bar or as a curve (null: follow the default).",
+    handler: (input, context) =>
+      patchThrough(context, input.mode === null ? "Default value plot" : "Set value plot", [
+        { op: "setNodeUi", nodeId: input.nodeId, ui: { valuePlotMode: input.mode } },
       ]),
     rejectionOutput: rejection,
   });

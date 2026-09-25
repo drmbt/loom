@@ -1,0 +1,346 @@
+{
+  "browser": "151.0.7922.34",
+  "parity": [
+    {
+      "format": "rgba16float",
+      "canvasKind": "offscreen",
+      "varyingAlpha": false,
+      "maxChannelError": 0,
+      "meanChannelError": 0,
+      "snapshots": 12,
+      "errors": [],
+      "passed": true
+    },
+    {
+      "format": "rgba8unorm",
+      "canvasKind": "offscreen",
+      "varyingAlpha": false,
+      "maxChannelError": 0,
+      "meanChannelError": 0,
+      "snapshots": 12,
+      "errors": [],
+      "passed": true
+    },
+    {
+      "format": "rgba8unorm-srgb",
+      "canvasKind": "offscreen",
+      "varyingAlpha": false,
+      "maxChannelError": 0,
+      "meanChannelError": 0,
+      "snapshots": 12,
+      "errors": [],
+      "passed": true
+    },
+    {
+      "format": "rgba16float",
+      "canvasKind": "offscreen",
+      "varyingAlpha": true,
+      "maxChannelError": 0,
+      "meanChannelError": 0,
+      "snapshots": 12,
+      "errors": [],
+      "passed": true
+    },
+    {
+      "format": "rgba8unorm",
+      "canvasKind": "offscreen",
+      "varyingAlpha": true,
+      "maxChannelError": 0,
+      "meanChannelError": 0,
+      "snapshots": 12,
+      "errors": [],
+      "passed": true
+    },
+    {
+      "format": "rgba8unorm-srgb",
+      "canvasKind": "offscreen",
+      "varyingAlpha": true,
+      "maxChannelError": 0,
+      "meanChannelError": 0,
+      "snapshots": 12,
+      "errors": [],
+      "passed": true
+    }
+  ],
+  "encoded": {
+    "metadata": [
+      {
+        "mode": "readback",
+        "inputColorSpace": {
+          "fullRange": true,
+          "matrix": "rgb",
+          "primaries": "bt709",
+          "transfer": "iec61966-2-1"
+        },
+        "inputFormat": "RGBA",
+        "decoderColorSpace": {
+          "fullRange": false,
+          "matrix": "smpte170m",
+          "primaries": "smpte170m",
+          "transfer": "bt709"
+        }
+      },
+      {
+        "mode": "canvas",
+        "inputColorSpace": {
+          "fullRange": true,
+          "matrix": "rgb",
+          "primaries": "bt709",
+          "transfer": "iec61966-2-1"
+        },
+        "inputFormat": "BGRX",
+        "decoderColorSpace": {
+          "fullRange": false,
+          "matrix": "bt709",
+          "primaries": "bt709",
+          "transfer": "bt709"
+        }
+      }
+    ],
+    "patches": [
+      {
+        "readback": [
+          2,
+          254,
+          78,
+          255
+        ],
+        "canvas": [
+          1,
+          254,
+          78,
+          255
+        ]
+      },
+      {
+        "readback": [
+          1,
+          243,
+          75,
+          255
+        ],
+        "canvas": [
+          0,
+          243,
+          74,
+          255
+        ]
+      },
+      {
+        "readback": [
+          9,
+          187,
+          77,
+          255
+        ],
+        "canvas": [
+          8,
+          187,
+          75,
+          255
+        ]
+      },
+      {
+        "readback": [
+          45,
+          129,
+          76,
+          255
+        ],
+        "canvas": [
+          46,
+          129,
+          73,
+          255
+        ]
+      },
+      {
+        "readback": [
+          126,
+          49,
+          75,
+          255
+        ],
+        "canvas": [
+          126,
+          46,
+          74,
+          255
+        ]
+      },
+      {
+        "readback": [
+          185,
+          11,
+          74,
+          255
+        ],
+        "canvas": [
+          185,
+          11,
+          74,
+          255
+        ]
+      },
+      {
+        "readback": [
+          241,
+          1,
+          77,
+          255
+        ],
+        "canvas": [
+          241,
+          2,
+          79,
+          255
+        ]
+      },
+      {
+        "readback": [
+          254,
+          0,
+          77,
+          255
+        ],
+        "canvas": [
+          253,
+          0,
+          76,
+          255
+        ]
+      }
+    ],
+    "sourceQuality": {
+      "mean": 0.9521964391072592,
+      "p95": 3,
+      "p99": 6,
+      "maximum": 53,
+      "psnr": 40.52467152846343
+    },
+    "canvasQuality": {
+      "mean": 0.8761037190755209,
+      "p95": 3,
+      "p99": 6,
+      "maximum": 60,
+      "psnr": 40.20235569726502
+    },
+    "frames": 12,
+    "sequence": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ],
+    "maxChannelError": 13,
+    "meanChannelError": 0.5984848340352377,
+    "passed": true
+  },
+  "benchmarks": [
+    {
+      "mode": "readback",
+      "width": 2160,
+      "height": 3840,
+      "count": 60,
+      "elapsedMs": 2563.8349999934435,
+      "fps": 23.402442044887223,
+      "readbacks": 60,
+      "maxQueue": 0,
+      "bytes": 961156,
+      "inputColorSpace": {
+        "fullRange": true,
+        "matrix": "rgb",
+        "primaries": "bt709",
+        "transfer": "iec61966-2-1"
+      },
+      "inputFormat": "RGBA",
+      "decoderColorSpace": {
+        "fullRange": false,
+        "matrix": "smpte170m",
+        "primaries": "smpte170m",
+        "transfer": "bt709"
+      }
+    },
+    {
+      "mode": "canvas",
+      "width": 2160,
+      "height": 3840,
+      "count": 60,
+      "elapsedMs": 987.5,
+      "fps": 60.75949367088607,
+      "readbacks": 0,
+      "maxQueue": 2,
+      "bytes": 1062533,
+      "inputColorSpace": {
+        "fullRange": true,
+        "matrix": "rgb",
+        "primaries": "bt709",
+        "transfer": "iec61966-2-1"
+      },
+      "inputFormat": "BGRX",
+      "decoderColorSpace": {
+        "fullRange": false,
+        "matrix": "bt709",
+        "primaries": "bt709",
+        "transfer": "bt709"
+      }
+    },
+    {
+      "mode": "canvas",
+      "width": 2160,
+      "height": 3840,
+      "count": 60,
+      "elapsedMs": 987.625,
+      "fps": 60.75180356916846,
+      "readbacks": 0,
+      "maxQueue": 2,
+      "bytes": 1062533,
+      "inputColorSpace": {
+        "fullRange": true,
+        "matrix": "rgb",
+        "primaries": "bt709",
+        "transfer": "iec61966-2-1"
+      },
+      "inputFormat": "BGRX",
+      "decoderColorSpace": {
+        "fullRange": false,
+        "matrix": "bt709",
+        "primaries": "bt709",
+        "transfer": "bt709"
+      }
+    },
+    {
+      "mode": "readback",
+      "width": 2160,
+      "height": 3840,
+      "count": 60,
+      "elapsedMs": 2488.2599999904633,
+      "fps": 24.113235755198396,
+      "readbacks": 60,
+      "maxQueue": 0,
+      "bytes": 961156,
+      "inputColorSpace": {
+        "fullRange": true,
+        "matrix": "rgb",
+        "primaries": "bt709",
+        "transfer": "iec61966-2-1"
+      },
+      "inputFormat": "RGBA",
+      "decoderColorSpace": {
+        "fullRange": false,
+        "matrix": "smpte170m",
+        "primaries": "smpte170m",
+        "transfer": "bt709"
+      }
+    }
+  ],
+  "passed": true
+}

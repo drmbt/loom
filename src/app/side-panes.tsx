@@ -1,3 +1,4 @@
+import { renderRangeHolderFor } from "./render-range.ts";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isComponentNodeType } from "@domain/components/component-type.ts";
 import { previewablePort } from "@domain/graph/previewable.ts";
@@ -701,6 +702,8 @@ export function ViewerPane({
   );
   const synthesisCanvasRef = useRef<HTMLCanvasElement | null>(null);
   useViewerSynthesis({
+    // The viewer remains on the root runtime even when the graph pane dives into a component.
+    isExporting: () => renderRangeHolderFor(bus).current?.busy() === true,
     backend,
     canvasRef: synthesisCanvasRef,
     output: synthesisRow,

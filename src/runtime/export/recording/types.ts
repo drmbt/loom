@@ -19,8 +19,7 @@ export interface EncoderConfig {
   readonly bitrate?: number;
 }
 
-export interface EncoderFrame {
-  readonly image: Rgba8Image;
+export interface EncoderFrameTiming {
   /**
    * The DETERMINISTIC frame index from `FrameEvaluationInput` (§I.frame, §V44).
    *
@@ -32,6 +31,19 @@ export interface EncoderFrame {
   readonly timestampMicros: number;
   readonly durationMicros: number;
   readonly keyFrame: boolean;
+}
+
+export interface EncoderFrame extends EncoderFrameTiming {
+  readonly image: Rgba8Image;
+}
+
+/** Browser-neutral shape of a frame captured from a GPU presentation surface. */
+export interface CapturedVideoFrame {
+  readonly codedWidth: number;
+  readonly codedHeight: number;
+  readonly timestamp: number;
+  readonly duration: number | null;
+  close(): void;
 }
 
 export interface EncodedVideo {
@@ -71,6 +83,8 @@ export type EncoderFinishProgress =
 export interface VideoEncoderSink {
   configure(config: EncoderConfig): Promise<void> | void;
   encode(frame: EncoderFrame): Promise<void> | void;
+  /** Present only when the encoder was explicitly configured with a surface capture. */
+  encodeCapturedFrame?(timing: EncoderFrameTiming): Promise<void> | void;
   /** Flushes and muxes. Called once. */
   finish(): Promise<EncodedVideo>;
   /** Releases resources after a cancelled take. */
@@ -104,7 +118,7 @@ export interface RecordingResult {
 }
 
 export interface FrameRecorderOptions {
-  /** The sole readback surface (§V48). The recorder has no other way to see a pixel. */
+  /** Output discovery and the sole CPU readback surface (§V48); explicit surface capture bypasses reads. */
   readonly api: ExportInterface;
   readonly ref: OutputRef;
   readonly encoder: VideoEncoderSink;

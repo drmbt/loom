@@ -47,6 +47,8 @@ import type { PreviewOrbitStore } from "@editor/viewer/index.ts";
  * §V998 half-fix that looks complete from the display side.
  */
 export interface ViewerSynthesisInputs {
+  /** Live export ownership: retain resources/sinks, but suspend preview submissions. */
+  readonly isExporting?: () => boolean;
   readonly backend: LoomBackend | null;
   readonly canvasRef: RefObject<HTMLCanvasElement | null>;
   /**
@@ -118,6 +120,8 @@ export function useViewerSynthesis(inputs: ViewerSynthesisInputs): void {
         lastDocumentIdentity = current.documentIdentity;
         system.reset();
       }
+
+      if (current.isExporting?.()) return;
 
       const rect = canvas.getBoundingClientRect();
       const width = Math.max(1, Math.round(rect.width));

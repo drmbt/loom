@@ -116,6 +116,16 @@ describe("ValuePlot renders for the eyes on it (T1239)", () => {
  * route. Four curves in two centimetres is the real constraint (§V90-§V92); twenty-one
  * `<dt>/<dd>` pairs in a fixed, scrolled window is not.
  */
+/*
+ * These mount with `mode="trail"` STATED rather than defaulted.
+ *
+ * T1297's subject is the CURVE's readout — seven names beside four strokes, and only the
+ * four wearing a stroke's colour. The bar is now the default picture for a node like this
+ * one, and it lists all seven too, so left implicit these would go on passing while
+ * testing a different component. Naming the mode keeps each test pointed at the thing it
+ * was written about; the bar's own version of "every channel is reachable" is asserted
+ * separately below.
+ */
 describe("ValuePlot shows every channel, not just the plotted four (T1297)", () => {
   const wide: ValueHistory = {
     channels: ["level", "low", "lowMid", "highMid", "high", "centroid", "bpm"],
@@ -139,7 +149,7 @@ describe("ValuePlot shows every channel, not just the plotted four (T1297)", () 
     ]);
 
   it("prints all seven readings while drawing four lines", () => {
-    render(<ValuePlot nodeId="lag" history={fakeHistory(wide).source} />);
+    render(<ValuePlot nodeId="lag" history={fakeHistory(wide).source} mode="trail" />);
     expect(rows()).toEqual([
       ["level", "0.200"],
       ["low", "0.400"],
@@ -154,7 +164,7 @@ describe("ValuePlot shows every channel, not just the plotted four (T1297)", () 
   });
 
   it("tints only the channels that HAVE a line, so a name never claims a stroke that is absent", () => {
-    render(<ValuePlot nodeId="lag" history={fakeHistory(wide).source} />);
+    render(<ValuePlot nodeId="lag" history={fakeHistory(wide).source} mode="trail" />);
     const terms = [...screen.getByLabelText("Channels of lag").querySelectorAll("dt")];
     const classOf = (index: number) => terms[index]?.className ?? "";
     // The first four wear their stroke's class; `high` and beyond wear none of them.
@@ -165,7 +175,7 @@ describe("ValuePlot shows every channel, not just the plotted four (T1297)", () 
   });
 
   it("scrolls the readout in place rather than growing the node (and opts out of canvas zoom)", () => {
-    render(<ValuePlot nodeId="lag" history={fakeHistory(wide).source} />);
+    render(<ValuePlot nodeId="lag" history={fakeHistory(wide).source} mode="trail" />);
     // A node whose HEIGHT depends on its bag shoves a dense network around; a fixed
     // window keeps every node the same size whatever it publishes. React Flow reads
     // `nowheel` off the wheel target, so without it the wheel zooms the canvas instead of
@@ -174,7 +184,7 @@ describe("ValuePlot shows every channel, not just the plotted four (T1297)", () 
   });
 
   it("a bag that FITS is a plain row — no scroll box, and the canvas still zooms over it", () => {
-    render(<ValuePlot nodeId="lag" history={fakeHistory(window(0.5)).source} />);
+    render(<ValuePlot nodeId="lag" history={fakeHistory(window(0.5)).source} mode="trail" />);
     // The opt-out is a cost every node would otherwise pay to solve `audioIn`'s problem.
     expect(screen.getByLabelText("Channels of lag").className).not.toContain("nowheel");
   });

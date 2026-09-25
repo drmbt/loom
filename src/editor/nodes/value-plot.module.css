@@ -183,3 +183,163 @@
 .playdot {
   fill: var(--signal);
 }
+
+/*
+ * THE BAR MODE (bar, not curve) — one row per channel, every channel.
+ *
+ * A column rather than the wrapping row `.values` uses, because bars only read when
+ * their tracks line up: two half-filled tracks at different x offsets are two different
+ * pictures of the same fraction. The cost is vertical space, which is why the row count
+ * is capped by scrolling rather than by dropping channels (§V90-§V92, T1297's call).
+ */
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+/*
+ * The same fixed window `.valuesScroll` uses, and the same height as `.canvas`, so a
+ * value node is the SAME SIZE in both modes. Toggling the mode must not move the node,
+ * or the button moves out from under the cursor that just pressed it.
+ */
+.barsScroll {
+  max-block-size: var(--space-48);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.barRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/*
+ * The name is fixed-width so every track starts at the same x. `ch` rather than a pixel
+ * value because the thing being reserved is a count of characters at `--fs-micro`, and
+ * the names are short and lowercase (`x`, `y`, `buttons`, `centroid`); a name longer than
+ * the box is clipped rather than allowed to shove the tracks out of alignment.
+ */
+.barRow > .channel {
+  flex: 0 0 7ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barTrack {
+  position: relative;
+  flex: 1 1 auto;
+  block-size: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-void);
+  overflow: hidden;
+}
+
+/*
+ * OBSERVED is drawn differently from DECLARED, and that difference is the point.
+ *
+ * A declared track is a fact about the node: full means the top of a range the node
+ * published. An observed track is a fact about this session: full means the most this
+ * channel has done since the pane opened, and it moves as the signal explores. Drawing
+ * them alike would make the second look like the first, which is the one misreading a
+ * bar can produce that a number cannot.
+ */
+.barTrack[data-state="observed"] {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--bg-void) 0 3px,
+    transparent 3px 6px
+  );
+  box-shadow: inset 0 0 0 1px var(--divider);
+}
+
+/* Nothing to draw against yet — an empty frame, not an empty VALUE (§V91). */
+.barTrack[data-state="unscaled"] {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--divider);
+}
+
+.barFill {
+  position: absolute;
+  inset-block: 0;
+  background: var(--signal);
+  border-radius: var(--radius-sm);
+}
+
+/* The value left the range the bar is drawn against — a broken declaration, or a node
+   past its own bound. It must not look like a bar legitimately at full scale. */
+.barTrack[data-clipped="true"] .barFill {
+  background: var(--warn);
+}
+
+/*
+ * Zero, marked, and ONLY where zero falls inside the track (`bipolar` in `value-bars`).
+ * Without it a centre-anchored bar is just a floating segment and the reader has to infer
+ * where it is growing from.
+ */
+.barZero {
+  position: absolute;
+  inset-block: 0;
+  inline-size: 1px;
+  background: var(--text-dim);
+  opacity: 0.8;
+}
+
+/*
+ * A BOOLEAN is on or off. Not a track filled to 100% — that invites the reader to look
+ * for the partial states it does not have, and makes a `1.0` float and a `true` look
+ * identical when they are different kinds of claim.
+ */
+.pill {
+  flex: 0 0 auto;
+  inline-size: var(--space-3);
+  block-size: var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--bg-void);
+  box-shadow: inset 0 0 0 1px var(--divider);
+}
+
+.pill[data-state="on"] {
+  background: var(--signal);
+  box-shadow: none;
+}
+
+/*
+ * The mode button. Hidden ink until the pointer or the keyboard asks for it (§V90), but
+ * never unmounted — see `PlotModeButton` for why that distinction is the whole design.
+ */
+.modeButton {
+  position: absolute;
+  inset-block-start: var(--space-1);
+  inset-inline-end: var(--space-1);
+  z-index: var(--z-canvas-chrome);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--bg-raise);
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.plot:hover .modeButton,
+.modeButton:focus-visible {
+  opacity: 1;
+}
+
+.modeButton:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}

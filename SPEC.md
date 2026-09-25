@@ -799,6 +799,7 @@ V45: ∀ random generator seeded from `randomSeed` (project|node). same seed + s
 V46: stateful node declares `{reset, deterministicReplay, checkpoint, randomAccess}` ∈ manifest.
 V47: execution plan renders to offscreen target w/o visible surface. headless path = same graph + same compiler.
 V48: ∀ readback isolated behind export interface. ⊥ readback call outside it.
+- Offline browser video captures the display-encoded Output through an app-owned, exact-size OffscreenCanvas presentation. The existing encoder accepts its snapshot with deterministic timestamps; no scene readback or CPU pixel conversion. Canvas/frame lifecycle stays at the browser adapter; recorder/loader types remain headless-safe. Device loss or invalid presentation fails the take explicitly, with no automatic capture fallback.
 V49: runtime ⊥ couple graph eval to rAF | wall clock. scheduler = swappable transport source.
 V51: node format override = instance state, @ compile, ⊥ per-frame. absent → definition `formatPolicy`. ! validated vs capability report (V12) — unsupported → diagnostic + documented fallback, ⊥ crash, ⊥ silent swap. depth format ⊥ on color output. change → recreate targets + reset feedback (V22).
 V56: project working space = linear RGB. import|media node decodes → linear. encode + tonemap ONLY @ output|display node. texture carrying non-color data flagged `data`, bypasses ∀ conversion. ⊥ node silently mixes encoded & linear.

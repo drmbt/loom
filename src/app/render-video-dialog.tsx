@@ -97,6 +97,9 @@ export function RenderVideoDialog({
           : "Saving MP4…";
   const canRender = !session.rendering && session.frames > 0 && session.outputReady &&
     support?.supported === true && audioReady;
+  const performanceText = session.progress.stage === "frames" && session.recentFramesPerSecond !== null
+    ? `Elapsed ${(session.elapsedMilliseconds / 1000).toFixed(1)} s · recent ${session.recentFramesPerSecond.toFixed(1)} frames/s`
+    : `Elapsed ${(session.elapsedMilliseconds / 1000).toFixed(1)} s`;
 
   return (
     <DialogRoot
@@ -212,6 +215,9 @@ export function RenderVideoDialog({
               </div>
               <span className={styles.progressText}>
                 {progressText}
+              </span>
+              <span className={styles.progressText}>
+                {performanceText}
               </span>
               <span className={styles.progressText}>
                 Temporary storage · {(session.spooledBytes / (1024 * 1024)).toFixed(1)} MB

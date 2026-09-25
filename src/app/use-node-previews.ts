@@ -85,6 +85,8 @@ export interface NodeStackBox {
 }
 
 export interface NodePreviewInputs {
+  /** Live export ownership: retain resources/sinks, but suspend preview submissions. */
+  readonly isExporting?: () => boolean;
   /**
    * T252 (§V158): where the scheduler's kept set goes, so the COMPILER materializes
    * exactly what is watched. Optional: absent means nobody is gating on previews.
@@ -527,6 +529,8 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
       // The commit-time effect below normally gets here first; this is the same call, for
       // the case where it did not (a load that never re-rendered this pane).
       crossDocumentBoundary(current.documentIdentity);
+      // Keep §V23/document invalidation above this guard; export owns the GPU cadence.
+      if (current.isExporting?.()) return;
 
       const rect = canvas.getBoundingClientRect();
       const surface = { x: 0, y: 0, width: rect.width, height: rect.height };

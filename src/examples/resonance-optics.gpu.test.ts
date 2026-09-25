@@ -252,7 +252,7 @@ ${SHARED_UNIFORMS_WGSL}
     expect(fullSum).toBeGreaterThan(quietSum*1.5);
   },60_000);
 
-  it("moves low-energy shaft accents slowly and increases travel speed at peaks",async(ctx)=>{
+  it("moves shaft accents upward by default, supports reversal and hold, and accelerates at peaks",async(ctx)=>{
     if(unavailable){ctx.skip();return;}
     const source="\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {return vec4f(shaftPacket(uv.x*12.0,0),shaftPacket(uv.x*12.0,1),0,1);}";
     const crest=(image:Uint8Array|Uint8ClampedArray,channel=0)=>{
@@ -262,10 +262,16 @@ ${SHARED_UNIFORMS_WGSL}
     const lowLater=await pixels(source,"room",{energy:0.1,beatPosition:11});
     const high=await pixels(source,"room",{energy:0.9,beatPosition:10});
     const highLater=await pixels(source,"room",{energy:0.9,beatPosition:11});
-    const slow=crest(low)-crest(lowLater),fast=crest(high)-crest(highLater);
+    const slow=crest(lowLater)-crest(low),fast=crest(highLater)-crest(high);
     expect(slow).toBeGreaterThan(7);expect(slow).toBeLessThan(14);
     expect(fast).toBeGreaterThan(slow*2.4);expect(fast).toBeLessThan(slow*3.2);
     expect(Math.abs(crest(high)-crest(high,1))).toBeGreaterThan(20);
+    const down=await pixels(source,"room",{energy:0.9,beatPosition:10,shaftDirection:-1});
+    const downLater=await pixels(source,"room",{energy:0.9,beatPosition:11,shaftDirection:-1});
+    expect(crest(down)-crest(downLater)).toBeGreaterThan(20);
+    const held=await pixels(source,"room",{energy:0.9,beatPosition:10,shaftDirection:0});
+    const heldLater=await pixels(source,"room",{energy:0.9,beatPosition:11,shaftDirection:0});
+    expect(heldLater).toEqual(held);
     const boundary=await pixels(source,"room",{energy:0.5,beatPosition:10.9999});
     const next=await pixels(source,"room",{energy:0.5,beatPosition:11.0001});
     expect(Math.max(...Array.from(boundary,(value,i)=>Math.abs(value-next[i]!)))).toBeLessThanOrEqual(1);

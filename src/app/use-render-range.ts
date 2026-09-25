@@ -10,8 +10,9 @@ import type { GraphDocument } from "@domain/types/graph.ts";
 import { nonReproducibleRenderWarning } from "@domain/render/reproducibility.ts";
 import type { CompiledGraph } from "@compiler/index.ts";
 import { presentsPicture } from "@compiler/index.ts";
-import type { AudioEncoderSupport, AudioPcmProvider, EncoderFinishProgress, ExportInterface, OutputRef, VideoEncoderSupport } from "@runtime/export/index.ts";
+import type { AudioEncoderSupport, AudioPcmProvider, EncoderFinishProgress, ExportInterface, ExportOutput, OutputRef, VideoEncoderSupport } from "@runtime/export/index.ts";
 import { ExportError, loadVideoEncoder, probeAudioEncoderSupport, probeVideoEncoderSupport } from "@runtime/export/index.ts";
+import type { RenderCanvasCapture } from "./render-canvas-capture.ts";
 import type { RenderAudioRequirement } from "./use-audio-input.ts";
 import { transportHolderFor } from "./transport-commands.ts";
 import type { RenderRangeOutcome, RenderRangeProgress } from "./render-range.ts";
@@ -57,6 +58,10 @@ export interface RenderRangeSession {
    */
   readonly diagnostics: readonly RuntimeDiagnostic[];
   readonly progress: RenderExportProgress;
+  /** Wall time since this take started, including setup, pre-roll, encoding and save. */
+  readonly elapsedMilliseconds: number;
+  /** Throughput across at most the latest 32 completed output frames. */
+  readonly recentFramesPerSecond: number | null;
   /** Encoded media already written to bounded temporary disk storage. */
   readonly spooledBytes: number;
   readonly encoderSupport: VideoEncoderSupport | null;
@@ -90,6 +95,8 @@ export interface RenderJobSettings {
 
 export interface UseRenderRangeInputs {
   readonly bus: LoomBus;
+  /** Browser-owned surface for the take. No scene readback or CPU colour conversion. */
+  readonly createCapture: (output: ExportOutput) => RenderCanvasCapture;
   readonly exports: ExportInterface | undefined;
   readonly compiled: CompiledGraph | null;
   readonly graph: GraphDocument;
@@ -184,6 +191,8 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
     frameIndex: null,
   });
   const [spooledBytes, setSpooledBytes] = useState(0);
+  const [elapsedMilliseconds, setElapsedMilliseconds] = useState(0);
+  const [recentFramesPerSecond, setRecentFramesPerSecond] = useState<number | null>(null);
   const [encoderSupport, setEncoderSupport] = useState<VideoEncoderSupport | null>(null);
   const [audioSupport, setAudioSupport] = useState<AudioEncoderSupport | null>(null);
   const [includeAudio, setIncludeAudioState] = useState(initialAudioRequirement.kind !== "none");
@@ -196,7 +205,18 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
   inputsRef.current = inputs;
   renderSettingsRef.current = renderSettings;
   const renderingRef = useRef(false);
+  const renderStartedAtRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const refreshElapsed = useCallback((now = performance.now()): void => {
+    const startedAt = renderStartedAtRef.current;
+    if (startedAt !== null) setElapsedMilliseconds(Math.max(0, now - startedAt));
+  }, []);
+
+  useEffect(() => {
+    if (!rendering) return;
+    const interval = setInterval(refreshElapsed, 500);
+    return () => clearInterval(interval);
+  }, [refreshElapsed, rendering]);
 
   const sink = declaredSink(inputs.compiled, inputs.graph, inputs.registry);
   const audioRequirement = inputs.audioRequirement?.() ?? { kind: "none" };
@@ -279,6 +299,13 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
         }
         const described = api.describe(ref);
         const wanted = renderSettingsRef.current.resolution;
+        if (wanted.width % 2 !== 0 || wanted.height % 2 !== 0) {
+          return refuse(
+            "export.invalidVideoSize",
+            "H.264 video export requires an even width and height.",
+            "Set both render dimensions to multiples of two.",
+          );
+        }
         if (described === null || described.width !== wanted.width || described.height !== wanted.height) {
           return refuse(
             "export.planUpdating",
@@ -321,6 +348,7 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
         const controller = new AbortController();
         abortRef.current = controller;
         renderingRef.current = true;
+        renderStartedAtRef.current = performance.now();
         setRendering(true);
         setCancelling(false);
         setCancelAvailable(true);
@@ -331,6 +359,8 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
           frameIndex: null,
         });
         setSpooledBytes(0);
+        setElapsedMilliseconds(0);
+        setRecentFramesPerSecond(null);
         // Cleared at the START of a take, so a warning that is still on screen always
         // describes the take you are looking at — a stale one from two renders ago would
         // be worse than none (§V421's shape, on a live surface).
@@ -339,8 +369,13 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
           collected.push(diagnostic);
         };
         let lastProgressAt = 0;
+        const recentCompletions: Array<{ readonly completedFrames: number; readonly at: number }> = [];
         const onProgress = (next: RenderRangeProgress): void => {
           const now = performance.now();
+          if (next.completedFrames > 0) {
+            recentCompletions.push({ completedFrames: next.completedFrames, at: now });
+            if (recentCompletions.length > 32) recentCompletions.shift();
+          }
           if (
             next.completedFrames === 0 ||
             next.completedFrames === next.totalFrames ||
@@ -348,10 +383,19 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
           ) {
             lastProgressAt = now;
             setProgress({ stage: "frames", ...next });
+            refreshElapsed(now);
+            const first = recentCompletions[0];
+            const last = recentCompletions[recentCompletions.length - 1];
+            setRecentFramesPerSecond(
+              first !== undefined && last !== undefined && last.at > first.at
+                ? ((last.completedFrames - first.completedFrames) * 1000) / (last.at - first.at)
+                : null,
+            );
           }
         };
         const yieldToBrowser = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0));
         const onPreRollProgress = (completedPreRollFrames: number, totalPreRollFrames: number): void => {
+          refreshElapsed();
           setProgress({
             stage: "preroll",
             completedFrames: 0,
@@ -371,6 +415,8 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
           setSpooledBytes(writtenBytes);
         };
         const onFinishProgress = (next: EncoderFinishProgress): void => {
+          refreshElapsed();
+          setRecentFramesPerSecond(null);
           setSpooledBytes(latestSpoolBytes);
           const frameProgress = {
             completedFrames: renderedFrameCount(liveRange),
@@ -413,6 +459,7 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
         let preparedAudio: Awaited<ReturnType<NonNullable<UseRenderRangeInputs["prepareAudio"]>>> = null;
         let restoreAudioMonitor: (() => void) | null = null;
         let disposeRendered: (() => Promise<void>) | null = null;
+        let capture: RenderCanvasCapture | null = null;
         try {
           restoreAudioMonitor = live.muteAudioMonitor?.() ?? null;
           await live.beforeRender?.();
@@ -432,9 +479,11 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
             throw new Error("The timeline audio file is not ready for deterministic export.");
           }
           if (controller.signal.aborted) throw new RenderRangeCancelledError();
+          capture = live.createCapture(described);
           const encoder = await (live.loadEncoder ?? loadVideoEncoder)(
             {
               ...(includeSoundtrack && preparedAudio !== null ? { audio: preparedAudio.pcm } : {}),
+              captureFrame: capture.captureFrame,
               onFinishProgress,
               onSpoolProgress,
               yieldControl: yieldToBrowser,
@@ -489,6 +538,7 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
             totalFrames: renderedFrameCount(liveRange),
             frameIndex: liveRange.end,
           });
+          refreshElapsed();
           await yieldToBrowser();
           if (controller.signal.aborted) throw new RenderRangeCancelledError();
           const output = {
@@ -545,10 +595,13 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
               message: `The temporary render file could not be removed: ${error instanceof Error ? error.message : String(error)}`,
             });
           } finally {
+            capture?.dispose();
             preparedAudio?.close();
             restoreAudioMonitor?.();
             if (abortRef.current === controller) abortRef.current = null;
             renderingRef.current = false;
+            refreshElapsed();
+            renderStartedAtRef.current = null;
             setRendering(false);
             setCancelling(false);
             setCancelAvailable(false);
@@ -563,7 +616,7 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
     return () => {
       if (holder.current === handlers) holder.current = null;
     };
-  }, [inputs.bus]);
+  }, [inputs.bus, refreshElapsed]);
 
   const cancel = useCallback(() => {
     if (abortRef.current === null) return;
@@ -627,6 +680,8 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
     frames: sink === null ? 0 : totalFrames,
     diagnostics,
     progress,
+    elapsedMilliseconds,
+    recentFramesPerSecond,
     spooledBytes,
     encoderSupport,
     audioSupport,

@@ -296,6 +296,7 @@ export async function renderFrameRange(inputs: RenderFrameRangeInputs): Promise<
       }
       stopIfCancelled();
       await recorder.captureFrame({ ...frame.frame, frameIndex: outputFrameIndex });
+      if (recorder.error !== null) throw recorder.error;
       stopIfCancelled();
       completedFrames += 1;
       inputs.onProgress?.({ completedFrames, totalFrames, frameIndex: outputFrameIndex });

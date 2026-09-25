@@ -90,6 +90,8 @@ describe("command bus — registration surface (§V39)", () => {
       "node.rename",
       "node.setFormat",
       "node.setResolution",
+      // Bar or curve in a value node's body, persisted in `ui.valuePlotMode`.
+      "node.setValuePlotMode",
       // T463: the graph-background flag — TD's network background as node ui state.
       "node.toggleBackground",
       "node.toggleBypass",

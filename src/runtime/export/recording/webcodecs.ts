@@ -3,7 +3,7 @@ import { avcCodecString, mp4FileTypeBox, mp4StreamParts, sampleDurationFor, time
 import type { Mp4AudioSample, Mp4AudioTrack, Mp4Sample } from "./mp4-muxer.ts";
 import { createMediaSpool } from "./media-spool.ts";
 import type { MediaSpool, MediaSpoolMode } from "./media-spool.ts";
-import type { EncodedVideo, EncoderConfig, EncoderFinishProgress, EncoderFrame, VideoEncoderSink } from "./types.ts";
+import type { CapturedVideoFrame, EncodedVideo, EncoderConfig, EncoderFinishProgress, EncoderFrame, EncoderFrameTiming, VideoEncoderSink } from "./types.ts";
 
 /**
  * The WebCodecs encoder — the ONLY browser-only module in `src/runtime/export/**` (T111).
@@ -33,6 +33,7 @@ export interface WebCodecsEncoderOptions {
   readonly codec?: string;
   readonly bitrate?: number;
   readonly latencyMode?: "quality" | "realtime";
+  readonly captureFrame?: ((timing: EncoderFrameTiming) => CapturedVideoFrame) | undefined;
   readonly audio?: import("./types.ts").AudioPcmProvider;
   readonly audioBitrate?: number;
   readonly spool?: MediaSpoolMode;
@@ -201,6 +202,7 @@ export async function probeWebCodecsEncoder(
 }
 
 export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): VideoEncoderSink {
+  const captureFrame = options.captureFrame;
   let encoder: VideoEncoder | null = null;
   let audioEncoder: AudioEncoder | null = null;
   let audioDecoder: AudioDecoder | null = null;
@@ -235,6 +237,25 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
         failure = cause;
       },
     );
+  };
+
+  const encodeVideoFrame = (video: VideoFrame, keyFrame: boolean): Promise<void> | undefined => {
+    throwIfCancelled(options.signal);
+    if (!encoder) throw new Error("Encoder used before configure().");
+    if (failure) throw failure;
+    encoder.encode(video, { keyFrame });
+    // Backpressure: the recorder's in-flight limit governs readback, but the encoder has
+    // its own queue, and letting it grow unbounded is how a long take runs out of memory.
+    const waitForEncoder = encoder.encodeQueueSize >= maxQueuedFrames;
+    const waitForSpool = pendingWriteBytes >= 16 * 1024 * 1024;
+    if (!waitForEncoder && !waitForSpool) return undefined;
+    const activeEncoder = encoder;
+    return awaitWithCancellation(async () => {
+      const waits: Promise<unknown>[] = [];
+      if (waitForEncoder) waits.push(drain(activeEncoder));
+      if (waitForSpool) waits.push(writeChain);
+      await Promise.all(waits);
+    }, options.signal);
   };
 
   return {
@@ -278,8 +299,7 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
     },
 
     encode(frame: EncoderFrame) {
-      if (!encoder) throw new Error("Encoder used before configure().");
-      if (failure) throw failure;
+      throwIfCancelled(options.signal);
       const video = new VideoFrame(frame.image.data, {
         format: "RGBA",
         codedWidth: frame.image.width,
@@ -288,19 +308,47 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
         duration: frame.durationMicros,
       });
       try {
-        encoder.encode(video, { keyFrame: frame.keyFrame });
+        return encodeVideoFrame(video, frame.keyFrame);
       } finally {
         // A VideoFrame holds a GPU/media resource until closed. Leaking them stalls the
         // encoder within a few dozen frames.
         video.close();
       }
-      // Backpressure: the recorder's in-flight limit governs readback, but the encoder has
-      // its own queue, and letting it grow unbounded is how a long take runs out of memory.
-      const waits: Promise<unknown>[] = [];
-      if (encoder.encodeQueueSize >= maxQueuedFrames) waits.push(drain(encoder));
-      if (pendingWriteBytes >= 16 * 1024 * 1024) waits.push(writeChain);
-      return waits.length === 0 ? undefined : Promise.all(waits).then(() => undefined);
     },
+
+    ...(captureFrame === undefined ? {} : {
+      encodeCapturedFrame(timing: EncoderFrameTiming) {
+        throwIfCancelled(options.signal);
+        const captured = captureFrame(timing);
+        try {
+          if (!(captured instanceof VideoFrame)) {
+            throw new TypeError("The configured video capture did not return a VideoFrame.");
+          }
+          if (config === null) throw new Error("Encoder used before configure().");
+          if (captured.codedWidth !== config.width || captured.codedHeight !== config.height) {
+            throw new RangeError(
+              `Captured VideoFrame is ${String(captured.codedWidth)}x${String(captured.codedHeight)}; ` +
+              `encoder requires ${String(config.width)}x${String(config.height)}.`,
+            );
+          }
+          if (captured.timestamp !== timing.timestampMicros) {
+            throw new RangeError(
+              `Captured VideoFrame timestamp ${String(captured.timestamp)} does not match ` +
+              `${String(timing.timestampMicros)} microseconds.`,
+            );
+          }
+          if (captured.duration !== timing.durationMicros) {
+            throw new RangeError(
+              `Captured VideoFrame duration ${String(captured.duration)} does not match ` +
+              `${String(timing.durationMicros)} microseconds.`,
+            );
+          }
+          return encodeVideoFrame(captured, timing.keyFrame);
+        } finally {
+          captured.close();
+        }
+      },
+    }),
 
     async finish(): Promise<EncodedVideo> {
       if (!encoder || !config) throw new Error("Encoder finished before configure().");

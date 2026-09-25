@@ -34,6 +34,8 @@ function session(overrides: Partial<RenderRangeSession> = {}): RenderRangeSessio
     frames: 600,
     diagnostics: [],
     progress: { stage: "frames", completedFrames: 0, totalFrames: 600, frameIndex: null },
+    elapsedMilliseconds: 0,
+    recentFramesPerSecond: null,
     spooledBytes: 0,
     encoderSupport: { supported: true, codec: "avc1.42002a", reason: null },
     audioSupport: null,
@@ -125,6 +127,8 @@ it("shows exact progress and exposes cancellation while a render runs", () => {
       session={session({
         rendering: true,
         progress: { stage: "frames", completedFrames: 150, totalFrames: 600, frameIndex: 149 },
+        elapsedMilliseconds: 12_300,
+        recentFramesPerSecond: 6.75,
         cancel,
       })}
       onRender={vi.fn()}
@@ -134,6 +138,7 @@ it("shows exact progress and exposes cancellation while a render runs", () => {
   const progress = screen.getByRole("progressbar", { name: "Video render progress" });
   expect(progress.getAttribute("aria-valuenow")).toBe("25");
   expect(screen.getByText("150 / 600 frames (25%)")).toBeTruthy();
+  expect(screen.getByText("Elapsed 12.3 s · recent 6.8 frames/s")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Cancel render" }));
   expect(cancel).toHaveBeenCalledOnce();
 });
@@ -170,6 +175,8 @@ it.each([
     />,
   );
   expect(screen.getByText(label)).toBeTruthy();
+  expect(screen.getByText("Elapsed 0.0 s")).toBeTruthy();
+  expect(screen.queryByText(/frames\/s/)).toBeNull();
   expect(screen.getByText("Temporary storage · 0.0 MB")).toBeTruthy();
   expect(screen.getByRole("progressbar", { name: "Video render progress" }).getAttribute("aria-valuenow")).toBe(valueNow);
   cleanup();

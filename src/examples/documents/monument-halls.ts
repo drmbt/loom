@@ -62,6 +62,7 @@ function resonanceStage(kind:ResonanceHallKind,slug:string,name:string,seed:numb
   doc.graph.nodes.room!.parameters.source=resonanceHallRoom(kind);
   doc.graph.nodes.environment!.parameters.source=resonanceHallEnvironment(kind);
   doc.graph.nodes.room!.parameters.projectionSeed=seed;
+  doc.graph.nodes.room!.parameters.shaftDirection=-1;
   doc.graph.nodes.timeWall!.parameters.seed=seed;
   const camera=doc.graph.nodes.cam!;
   const cameraSpec=kind==="lotus"?{eye:[0,2.7,17],lookAt:[0,5.4,0],fov:44}:kind==="monoliths"?{eye:[0,2.2,17],lookAt:[0,5.2,0],fov:47}:{eye:[0,2.7,18],lookAt:[0,5.8,0],fov:47};

@@ -84,6 +84,8 @@ export type {
   EncodedVideo,
   EncoderConfig,
   EncoderFrame,
+  EncoderFrameTiming,
+  CapturedVideoFrame,
   EncoderFinishProgress,
   AudioPcmProvider,
   AudioPcmSource,

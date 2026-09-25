@@ -1,3 +1,4 @@
+import { renderRangeHolderFor } from "./render-range.ts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent as ReactDragEvent, ReactNode, RefObject } from "react";
 import { ReactFlowProvider, useConnection, useNodesInitialized, useReactFlow } from "@xyflow/react";
@@ -202,6 +203,7 @@ function GraphPaneInner({
   const { bus, components, documentIdentity, invocation, nodeRuntime, registry, settings } = useAppRuntime();
   // T969(b): the same object as `bus` unless the caller is showing a component's internals.
   const rootBus = rootBusProp ?? bus;
+  const isExporting = useCallback(() => renderRangeHolderFor(rootBus).current?.busy() === true, [rootBus]);
   const doorBuses = useMemo(() => [rootBus], [rootBus]);
   // T601: the component catalogue view, for resolving an instance's preview target.
   const componentsView = useMemo(() => components.view(), [components]);
@@ -315,6 +317,7 @@ function GraphPaneInner({
   // preview machinery on a second canvas one z-layer down (see use-graph-background).
 
   useGraphBackground({
+    isExporting,
     backend: previewBackend,
     canvasRef: backgroundCanvasRef,
     graph,
@@ -326,6 +329,7 @@ function GraphPaneInner({
   });
 
   useNodePreviews({
+    isExporting,
     ...(previewSinks === undefined ? {} : { previewSinks }),
     backend: previewBackend,
     canvasRef: previewCanvasRef,
@@ -605,7 +609,23 @@ function GraphPaneInner({
          */
         const historyId = (flatPrefix === "" ? nodeId : `${flatPrefix}/${nodeId}`) as NodeId;
         return (
-          <ValuePlot nodeId={historyId} history={valueHistory} source={source} silence={silence} />
+          <ValuePlot
+            nodeId={historyId}
+            history={valueHistory}
+            source={source}
+            silence={silence}
+            mode={node?.ui?.valuePlotMode}
+            /*
+             * The DOCUMENT id, not the history id. The plot subscribes by flat id (T1031)
+             * because that is what the ring is keyed by inside a dived component, but the
+             * thing being edited is a node in this document, and `setNodeUi` resolves
+             * against the document the session bus is editing. Handing it the flat id
+             * would fail to find the node at the root and address the wrong one below it.
+             */
+            onSetMode={(next) => {
+              void bus.execute("node.setValuePlotMode", { nodeId, mode: next }, invocation);
+            }}
+          />
         );
       }
       const orbitable = orbitableNodes.has(nodeId);
@@ -621,7 +641,7 @@ function GraphPaneInner({
         />
       );
     },
-    [cameraGizmoNodes, cameraGizmos, flatPrefix, nodeRuntime, orbitableNodes, previewBounds, previewOrbits, previewViews, readCameraPose, registry, settings, valueHistory],
+    [bus, cameraGizmoNodes, cameraGizmos, flatPrefix, invocation, nodeRuntime, orbitableNodes, previewBounds, previewOrbits, previewViews, readCameraPose, registry, settings, valueHistory],
   );
 
   /** Hands back the applied result, for the one caller that needs `createdIds`. */

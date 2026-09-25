@@ -184,13 +184,19 @@ function readout(): ReadonlyArray<readonly [string, string]> {
   ]);
 }
 
+/*
+ * `mode="trail"` where a READOUT is scraped, for the reason `value-plot.test.tsx` states
+ * at the same describe: these assert the curve's `<dt>`/`<dd>` list, the bar is now the
+ * default picture for an instance like this, and an implicit mode would leave them green
+ * against a component they were not written about.
+ */
 describe("T1297 — the instance's own plot", () => {
   it("shows the channels its component publishes, where the user is looking", () => {
     const { registry, flattened } = world(analysisComponent());
     const store = createValueHistoryStore();
     sampleOneFrame(registry, flattened, store);
 
-    render(<ValuePlot nodeId={"inst" as NodeId} history={store} />);
+    render(<ValuePlot nodeId={"inst" as NodeId} history={store} mode="trail" />);
 
     // The defect, stated as its symptom: this is what the instance showed, forever.
     expect(screen.queryByText("no signal yet")).toBeNull();
@@ -235,7 +241,7 @@ describe("T1297 — the instance's own plot", () => {
     const { registry, flattened } = world(singleComponent());
     const store = createValueHistoryStore();
     sampleOneFrame(registry, flattened, store);
-    render(<ValuePlot nodeId={"inst" as NodeId} history={store} />);
+    render(<ValuePlot nodeId={"inst" as NodeId} history={store} mode="trail" />);
     // One socket is one bag; `pointer:x` would be ceremony over a component that IS a
     // Mouse, and the common case is the one worth keeping unadorned.
     expect(readout()).toEqual([

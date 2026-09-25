@@ -12,6 +12,7 @@ struct Params {
   highs: f32, // @default 0 Fine light and dust energy.
   transient: f32, // @default 0 Short internal light impulse.
   atmosphere: f32, // @default 0 Slow atmosphere envelope.
+  shaftDirection: f32, // @default 1 Light travel: 1 upward, -1 downward, 0 stationary.
   eye: vec3f, // @default 0 2.6 17 Camera position shared with the geometry camera.
   aim: vec3f, // @default 0 4.2 0 Camera target shared with the geometry camera.
   far: f32, // @default 100 Camera far plane for the packed linear view depth.
@@ -283,7 +284,7 @@ fn ceilingVeil(p:vec3f)->f32 {
 fn shaftOpening()->f32 {return smoothstep(0.0,0.15,clamp(params.energy,0.0,1.0));}
 fn shaftDrive()->f32 {return smoothstep(0.15,0.85,clamp(params.energy,0.0,1.0));}
 fn shaftWave(height:f32,identity:f32,rate:f32)->f32 {
-  let phase=params.beatPosition*rate+height*0.05+0.18-identity*0.07;
+  let phase=-params.shaftDirection*params.beatPosition*rate+height*0.05+0.18-identity*0.07;
   // GPU cosine may undershoot -1 slightly; pow requires a nonnegative base.
   return pow(clamp(0.5+0.5*cos(phase*6.2831853),0.0,1.0),36.0);
 }
@@ -637,7 +638,7 @@ fn sceneAt(uv:vec2f)->vec4f {return layerAt(uv,vec2f(0));}
       if(t>0.0 && (distance-t)*sqrt(denom)>-sqrt(tailVariance)*1.5 && v.y>0.1 && v.y<15.0 && d*d<tailVariance*20.0){
         let landing=select(0.02,0.32,length(v.xz)<2.8);
         let vertical=shaftEnvelope(v.y,landing);
-        let flow=v.y+frameU.absTime*(0.55+h*0.6);
+        let flow=v.y-params.shaftDirection*frameU.absTime*(0.55+h*0.6);
         let breakup=0.25+0.75*noise(vec3f(f32(i)*5.0,flow*0.38,0));
         let fine=0.82+0.18*noise(vec3f(f32(i)*11.0,flow*4.0,3));
         let travelling=packet*accent*shaftPulseGain()*vertical;

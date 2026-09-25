@@ -1376,7 +1376,7 @@ describe("the tick skips itself when nothing it reads has moved (T1241)", () => 
    * reads (§V939), so each of those reads must be able to wake it on its own, and
    * nothing else may.
    */
-  function mount(options: { readonly withLayoutSignal?: boolean } = {}) {
+  function mount(options: { readonly withLayoutSignal?: boolean; readonly isExporting?: () => boolean } = {}) {
     const registry = createTestRegistry().view();
     const graph = graphWith("test.blur");
     const nodeRuntime = createNodeRuntimeStore();
@@ -1391,13 +1391,14 @@ describe("the tick skips itself when nothing it reads has moved (T1241)", () => 
 
     const status = { ...fakeBackend().status } as { framesSubmitted: number; resourceBuilds: number };
     const presents: PreviewFrameCommand[] = [];
+    const setPreviewProgram = vi.fn(), releaseHost = vi.fn(), createHost = vi.fn();
+    const previewSinks = {set:vi.fn()};
     const backend = {
       status,
-      previewHost: () => ({
-        setPreviewProgram: () => {},
-        presentPreviews: (command: PreviewFrameCommand) => presents.push(command),
-        dispose: () => {},
-      }),
+      previewHost: () => {
+        createHost();
+        return {setPreviewProgram, presentPreviews: (command: PreviewFrameCommand) => presents.push(command), dispose: releaseHost};
+      },
     } as unknown as LoomBackend;
 
     const viewport = { x: 0, y: 0, zoom: 1 };
@@ -1436,6 +1437,8 @@ describe("the tick skips itself when nothing it reads has moved (T1241)", () => 
             return boxes;
           },
           ...(options.withLayoutSignal === true ? { nodeLayoutRevision: () => revision } : {}),
+          ...(options.isExporting === undefined ? {} : {isExporting: options.isExporting}),
+          previewSinks,
           previewFps: 60,
           previewLongEdge: 192,
           documentIdentity: identity,
@@ -1446,7 +1449,7 @@ describe("the tick skips itself when nothing it reads has moved (T1241)", () => 
       for (let index = 0; index < count; index += 1) vi.advanceTimersToNextFrame();
     };
     return {
-      presents,
+      presents, setPreviewProgram, releaseHost, createHost, previewSinks,
       status,
       viewport,
       size,
@@ -1465,6 +1468,25 @@ describe("the tick skips itself when nothing it reads has moved (T1241)", () => 
       dispose: () => nodeRuntime.dispose(),
     };
   }
+
+  it("pauses export submissions live despite advancing frames, retaining tiles and sinks until the next tick resumes", () => {
+    let exporting=false;
+    const t=mount({isExporting:()=>exporting});
+    t.ticks(1);
+    const builds=t.setPreviewProgram.mock.calls.length,sinks=t.previewSinks.set.mock.calls.length;
+    expect(t.presents).toHaveLength(1);
+    exporting=true;
+    for(let i=0;i<5;i++){t.status.framesSubmitted++;t.ticks(1);}
+    expect(t.presents).toHaveLength(1);
+    expect(t.setPreviewProgram).toHaveBeenCalledTimes(builds);
+    expect(t.previewSinks.set).toHaveBeenCalledTimes(sinks);
+    expect(t.releaseHost).not.toHaveBeenCalled();
+    exporting=false;t.ticks(1);
+    expect(t.presents).toHaveLength(2);
+    expect(t.setPreviewProgram).toHaveBeenCalledTimes(builds);
+    expect(t.createHost).toHaveBeenCalledOnce();
+    t.dispose();
+  });
 
   it("paused and untouched: the first tick presents, the next hundred present nothing", () => {
     const t = mount();

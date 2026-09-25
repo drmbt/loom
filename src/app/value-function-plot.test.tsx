@@ -315,6 +315,13 @@ describe("T576 — a muted value node's body says it is off, whichever plot it h
   it("stops the stateful node's FROZEN TAIL, so both halves agree", async () => {
     const runtime = newRuntime();
     const { lag } = await seedPlots(runtime, 1);
+    /*
+     * The Lag is put on the CURVE explicitly: its default picture is now the bar, and
+     * this test's subject is the history TAIL — "whichever plot it had" means both
+     * halves, so the half that draws a curve has to be the one mounted. Left implicit it
+     * would assert an empty `d` attribute against a node that draws no path by design.
+     */
+    await setUi(runtime, lag, { valuePlotMode: "trail" });
     const gpu = fixture();
     await mount(runtime, gpu.backend);
     await run(gpu, 24);
@@ -353,6 +360,13 @@ describe("T576 — a muted value node's body says it is off, whichever plot it h
     // survive. A rule that blanked on any flag would fail here.
     const runtime = newRuntime();
     const { lag } = await seedPlots(runtime, 1);
+    /*
+     * The Lag is put on the CURVE explicitly: its default picture is now the bar, and
+     * this test's subject is the history TAIL — "whichever plot it had" means both
+     * halves, so the half that draws a curve has to be the one mounted. Left implicit it
+     * would assert an empty `d` attribute against a node that draws no path by design.
+     */
+    await setUi(runtime, lag, { valuePlotMode: "trail" });
     const gpu = fixture();
     await mount(runtime, gpu.backend);
     await run(gpu, 24);

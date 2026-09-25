@@ -4,11 +4,12 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { ResolvedOutput } from "@compiler/index.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
+import { useViewerSynthesis } from "./use-viewer-synthesis.ts";
 import { useGraphBackground } from "./use-graph-background.ts";
 
-const calls = vi.hoisted(() => ({ update: vi.fn(), reset: vi.fn() }));
+const calls = vi.hoisted(() => ({ update: vi.fn(), reset: vi.fn(), create: vi.fn() }));
 vi.mock("@runtime/previews/index.ts", () => ({
-  DEFAULT_PREVIEW_VIEW: {}, EMPTY_PREVIEW_PROGRAM: {}, createPreviewSystem: () => calls,
+  DEFAULT_PREVIEW_VIEW: {}, EMPTY_PREVIEW_PROGRAM: {}, createPreviewSystem: () => {calls.create();return calls;},
 }));
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
@@ -42,4 +43,37 @@ it("background selection scans only on graph/output changes, while rendering sti
   expect(calls.update.mock.lastCall?.[0].requests).toEqual([]);
   expect(host.setPreviewProgram).toHaveBeenCalled();
   view.unmount(); expect(host.dispose).toHaveBeenCalledOnce();
+});
+
+it.each(["background","viewer"] as const)("%s pauses live during export and resumes without recreating its preview system", kind => {
+  let tick!:FrameRequestCallback,exporting=false;
+  vi.stubGlobal("requestAnimationFrame",(callback:FrameRequestCallback)=>{tick=callback;return 1;});
+  vi.stubGlobal("cancelAnimationFrame",vi.fn());
+  const host={dispose:vi.fn(),setPreviewProgram:vi.fn()};
+  const previewHost=vi.fn(()=>host);
+  const status={deviceGeneration:0,framesSubmitted:0};
+  const backend={previewHost,status} as unknown as LoomBackend;
+  const graph={revision:1,nodes:{a:{id:"a",type:"noise",definitionVersion:1,position:{x:0,y:0},parameters:{},ui:{background:true}}},edges:{},groups:{}} as GraphDocument;
+  const output={nodeId:"a",portId:"out",resourceId:"target:a:out",resourceKind:"target",size:[64,64],format:"rgba8unorm",space:"linear",temporal:false} as ResolvedOutput;
+  const previewSinks={set:vi.fn()};
+  const inputs={backend,canvasRef:{current:document.createElement("canvas")},graph,compiledOutputs:[output],output,
+    previewSinks,previewFps:30,previewLongEdge:320,documentIdentity:"one",isExporting:()=>exporting};
+  const usePreview=kind==="background"?useGraphBackground:useViewerSynthesis;
+  const view=renderHook(()=>usePreview(inputs));
+  act(()=>tick(0));
+  const updates=calls.update.mock.calls.length,registrations=previewSinks.set.mock.calls.length;
+  expect(updates).toBeGreaterThan(0);
+  exporting=true;
+  act(()=>{for(let i=1;i<=5;i++){status.framesSubmitted++;tick(i);}});
+  expect(calls.update).toHaveBeenCalledTimes(updates);
+  expect(previewSinks.set).toHaveBeenCalledTimes(registrations);
+  expect(host.dispose).not.toHaveBeenCalled();
+  exporting=false;act(()=>tick(6));
+  expect(calls.update).toHaveBeenCalledTimes(updates+1);
+  expect(previewHost).toHaveBeenCalledOnce();expect(calls.create).toHaveBeenCalledOnce();
+  // Export suspension must not suppress device-loss invalidation (§V23).
+  exporting=true;status.deviceGeneration++;act(()=>tick(7));
+  expect(calls.reset).toHaveBeenCalled();
+  expect(calls.update).toHaveBeenCalledTimes(updates+1);
+  view.unmount();expect(host.dispose).toHaveBeenCalledOnce();
 });

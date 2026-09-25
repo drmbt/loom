@@ -1,3 +1,4 @@
+import { createRenderCanvasCapture } from "./render-canvas-capture.ts";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { scopeFromFrame } from "@domain/expressions/index.ts";
 import type { ExpressionScope } from "@domain/expressions/index.ts";
@@ -1344,6 +1345,10 @@ export function App({
    */
   const nativeOutputs = useNativeOutputs(runtime, backend ?? null, compile.flatGraph, frameLoop.installedPlan);
   const renderRange = useRenderRange({
+    createCapture: output => {
+      if (backend === undefined || backend === null) throw new Error("No GPU device for video capture.");
+      return createRenderCanvasCapture(backend, output);
+    },
     beforeRender: async () => { await Promise.all([nativeOutputs.suspend(), drainNativeViewerOutputs(backend ?? null), vision.prepareForRender()]); },
     bus: runtime.bus,
     exports: agentPorts.exports,

@@ -39,14 +39,74 @@ import type { LoomBackend } from "@runtime/backend/index.ts";
  * different take), and the diagnostic is `severity: "warning"`, not `"error"`.
  */
 
+function unusedCapture() {
+  return { captureFrame: () => { throw new Error("This test injects a CPU encoder"); }, dispose() {} };
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
+it.each(["success", "failure", "cancel"] as const)("owns canvas capture through %s without reading pixels", async outcome => {
+  const { bus } = createHarness();
+  let current = 0;
+  transportHolderFor(bus).current = {
+    isPlaying: () => false, togglePlay() {}, resetAbsoluteClock() {},
+    seek: (frame: number) => { current = frame; return frame; },
+    stepOnce: () => frameInputs(++current),
+  } as never;
+  const api = fakeExports();
+  const read = vi.fn(api.read);
+  const dispose = vi.fn();
+  const captureFrame = vi.fn((timing: { timestampMicros: number; durationMicros: number }) => ({
+    codedWidth: 2, codedHeight: 2, timestamp: timing.timestampMicros, duration: timing.durationMicros, close() {},
+  }));
+  const write = vi.fn(async () => ({ kind: "cancelled" as const }));
+  const view = renderHook(() => useRenderRange({
+    createCapture: () => ({ captureFrame, dispose }),
+    bus, exports: { ...api, read }, compiled: COMPILED, graph: graphWith("timeline"),
+    registry: REGISTRY, settings: SETTINGS, latestFrame: () => frameInputs(current), name: () => "test", write,
+    loadEncoder: async options => ({
+      ...fakeEncoder(),
+      encodeCapturedFrame(timing) {
+        options!.captureFrame!(timing).close();
+        if (outcome === "failure") throw new Error("Capture failed");
+        if (outcome === "cancel") renderRangeHolderFor(bus).current?.cancel?.();
+      },
+    }),
+  }));
+  await act(async () => { await bus.execute("export.renderRange", {}, contextFor(alice)); });
+  expect(read).not.toHaveBeenCalled();
+  expect(captureFrame).toHaveBeenCalledTimes(outcome === "success" ? 3 : 1);
+  expect(dispose).toHaveBeenCalledOnce();
+  expect(view.result.current.rendering).toBe(false);
+  expect(write).toHaveBeenCalledTimes(outcome === "success" ? 1 : 0);
+  if (outcome === "failure") expect(view.result.current.diagnostics.some(d => d.message.includes("Capture failed"))).toBe(true);
+});
+
+it("refuses odd render dimensions before audio preparation or capture allocation", async () => {
+  const { bus } = createHarness();
+  const createCapture = vi.fn(unusedCapture);
+  const prepareAudio = vi.fn(async () => null);
+  const view = renderHook(() => useRenderRange({
+    createCapture, prepareAudio, bus, exports: fakeExports(), compiled: COMPILED,
+    graph: graphWith("timeline"), registry: REGISTRY,
+    settings: { ...SETTINGS, outputResolution: { width: 641, height: 480 } },
+    latestFrame: () => frameInputs(0), name: () => "test", write: async () => ({ kind: "cancelled" }),
+  }));
+  let result: unknown;
+  await act(async () => { result = await renderRangeHolderFor(bus).current!.render(); });
+  expect(result).toMatchObject({ kind: "refused", diagnostic: { code: "export.invalidVideoSize" } });
+  expect(createCapture).not.toHaveBeenCalled();
+  expect(prepareAudio).not.toHaveBeenCalled();
+  expect(view.result.current.rendering).toBe(false);
+});
+
 it("uses output-frame units after an FPS change while preserving time during the change itself", () => {
   const { bus } = createHarness();
   const view = renderHook(() => useRenderRange({
+    createCapture: unusedCapture,
     bus,
     exports: fakeExports(),
     compiled: COMPILED,
@@ -81,6 +141,7 @@ it("offers the selected render dimensions in the destination filename", async ()
   });
   const { bus } = createHarness();
   const view = renderHook(() => useRenderRange({
+    createCapture: unusedCapture,
     bus,
     exports: fakeExports(),
     compiled: COMPILED,
@@ -96,6 +157,74 @@ it("offers the selected render dimensions in the destination filename", async ()
   expect(suggestedName).toBe("take.2x2.0-2.mp4");
 });
 
+it("reports throughput from only the latest 32 completed output frames", async () => {
+  let now = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  const { bus } = createHarness();
+  let current = 0;
+  transportHolderFor(bus).current = {
+    isPlaying: () => false,
+    togglePlay() {},
+    resetAbsoluteClock() {},
+    seek: (frame: number) => { current = frame; return frame; },
+    stepOnce: () => frameInputs(++current),
+  } as never;
+  let finishEntered!: () => void;
+  let releaseFinish!: () => void;
+  const entered = new Promise<void>(resolve => { finishEntered = resolve; });
+  const heldFinish = new Promise<Awaited<ReturnType<VideoEncoderSink["finish"]>>>(resolve => {
+    releaseFinish = () => resolve({
+      mimeType: "video/mp4",
+      bytes: new Uint8Array([1]),
+      frameCount: 68,
+      durationSeconds: 68 / 60,
+    });
+  });
+  const encoder = fakeEncoder();
+  encoder.finish = () => {
+    finishEntered();
+    return heldFinish;
+  };
+  const exports = fakeExports();
+  let reads = 0;
+  const view = renderHook(() => useRenderRange({
+    createCapture: unusedCapture,
+    bus,
+    exports: {
+      ...exports,
+      read: async () => {
+        reads += 1;
+        now += reads <= 36 ? 10 : 500;
+        return {
+          width: 2,
+          height: 2,
+          format: "rgba8unorm" as const,
+          rowStride: 8,
+          bytes: new Uint8Array(16),
+        };
+      },
+    },
+    compiled: COMPILED,
+    graph: graphWith("timeline"),
+    registry: REGISTRY,
+    settings: { ...SETTINGS, frameRange: { start: 0, end: 67 } },
+    latestFrame: () => frameInputs(current),
+    name: () => "test",
+    loadEncoder: async () => encoder,
+    write: async () => ({ kind: "cancelled" }),
+  }));
+
+  let pending!: Promise<unknown>;
+  await act(async () => { pending = bus.execute("export.renderRange", {}, contextFor(alice)); });
+  await act(async () => { await entered; });
+
+  expect(view.result.current.progress).toMatchObject({ stage: "frames", completedFrames: 68 });
+  expect(view.result.current.recentFramesPerSecond).toBeCloseTo(2);
+  expect(view.result.current.elapsedMilliseconds).toBe(16_360);
+
+  await act(async () => { releaseFinish(); await pending; });
+});
+
 it("blocks the take and awaits output shutdown before evaluating its first frame", async () => {
   const { bus } = createHarness();
   const seek = vi.fn((frame: number) => frame);
@@ -108,7 +237,8 @@ it("blocks the take and awaits output shutdown before evaluating its first frame
   const viewerDrain = new Promise<void>(resolve => { releaseViewer = resolve; });
   const stopViewer = vi.fn(() => trackNativeViewerDrain(backend, viewerDrain));
   registerNativeViewerOutput(backend, stopViewer);
-  renderHook(() => useRenderRange({ bus, exports: fakeExports(), compiled: COMPILED, graph: graphWith("timeline"),
+  renderHook(() => useRenderRange({
+    createCapture: unusedCapture, bus, exports: fakeExports(), compiled: COMPILED, graph: graphWith("timeline"),
     registry: REGISTRY, settings: { ...SETTINGS, frameRange: { start: 0, end: 0 } }, latestFrame: () => frameInputs(0),
     name: () => "test", beforeRender: async () => { await Promise.all([beforeRender(), drainNativeViewerOutputs(backend)]); }, loadEncoder: async () => fakeEncoder(),
     write: async () => ({ kind: "cancelled" }) }));
@@ -152,6 +282,7 @@ it("cancels an active take and restores hook state without saving a partial file
     method: "download" as const,
   }));
   const view = renderHook(() => useRenderRange({
+    createCapture: unusedCapture,
     bus,
     exports: fakeExports(),
     compiled: COMPILED,
@@ -211,6 +342,7 @@ it("passes deterministic range audio to the MP4 encoder", async () => {
     return encoder;
   });
   renderHook(() => useRenderRange({
+    createCapture: unusedCapture,
     bus,
     exports: fakeExports(),
     compiled: COMPILED,
@@ -253,6 +385,7 @@ it("renders video-only when audio is excluded, even if the source is not reprodu
   const restoreAudioMonitor = vi.fn();
   const muteAudioMonitor = vi.fn(() => restoreAudioMonitor);
   const view = renderHook(() => useRenderRange({
+    createCapture: unusedCapture,
     bus,
     exports: fakeExports(),
     compiled: COMPILED,
@@ -304,6 +437,7 @@ it("awaits timeline-file analysis for video-only reactivity without encoding its
   const prepareAudio = vi.fn(async () => ({ pcm, close }));
   const loadEncoder = vi.fn(async () => fakeEncoder());
   const view = renderHook(() => useRenderRange({
+    createCapture: unusedCapture,
     bus,
     exports: fakeExports(),
     compiled: COMPILED,
@@ -345,6 +479,7 @@ it("releases prepared audio after an encoder failure so monitoring can be restor
   const close = vi.fn();
   const restoreAudioMonitor = vi.fn();
   renderHook(() => useRenderRange({
+    createCapture: unusedCapture,
     bus,
     exports: fakeExports(),
     compiled: COMPILED,
@@ -396,6 +531,7 @@ it("releases prepared audio after cancellation so monitoring can be restored", a
   const close = vi.fn();
   const restoreAudioMonitor = vi.fn();
   const view = renderHook(() => useRenderRange({
+    createCapture: unusedCapture,
     bus,
     exports: { ...exports, read: () => { enterRead(); return heldRead; } },
     compiled: COMPILED,
@@ -576,6 +712,7 @@ async function takeOver(graph: GraphDocument, stall = false) {
   const saved: { fileName: string | null } = { fileName: null };
   const view = renderHook(() =>
     useRenderRange({
+    createCapture: unusedCapture,
       bus,
       exports: fakeExports(),
       compiled: COMPILED,

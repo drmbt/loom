@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { FrameEvaluationInput } from "../../../domain/types/frame.ts";
 import { offlineTransport } from "../../execution/offline-transport.ts";
 import { createExportInterface } from "../export-interface.ts";
 import type { ExportInterface, ExportOutput } from "../types.ts";
 import { outputRef } from "../types.ts";
 import { createFrameRecorder, recordSequence } from "./recorder.ts";
-import type { EncodedVideo, EncoderConfig, EncoderFrame, VideoEncoderSink } from "./types.ts";
+import type { EncodedVideo, EncoderConfig, EncoderFrame, EncoderFrameTiming, VideoEncoderSink } from "./types.ts";
 
 /**
  * T111's load-bearing claim is not "it produces an mp4" — it is that the mp4 contains exactly
@@ -128,6 +128,83 @@ describe("exact-frame capture", () => {
     for (let index = 0; index < 5; index += 1) await recorder.captureFrame(frame(index));
     await recorder.finish();
     expect(encoder.frames.map((f) => f.keyFrame)).toEqual([true, false, true, false, true]);
+  });
+
+  it("captures a presented frame without reading pixels back", async () => {
+    const api = frameStampedApi(() => 0);
+    const read = vi.fn(api.read);
+    const timings: EncoderFrameTiming[] = [];
+    const encoder: VideoEncoderSink = {
+      configure: () => undefined,
+      encode: () => { throw new Error("CPU image path must not run"); },
+      encodeCapturedFrame(timing) { timings.push(timing); },
+      finish: async () => ({
+        mimeType: "video/mp4",
+        bytes: new Uint8Array([1]),
+        frameCount: timings.length,
+        durationSeconds: timings.length / 30,
+      }),
+    };
+    const recorder = createFrameRecorder({ api: { ...api, read }, ref: REF, encoder, fps: 30 });
+
+    await recorder.start();
+    await recorder.captureFrame(frame(0));
+    await recorder.captureFrame(frame(1));
+    await recorder.finish();
+
+    expect(read).not.toHaveBeenCalled();
+    expect(timings).toEqual([
+      { frameIndex: 0, timestampMicros: 0, durationMicros: 33_333, keyFrame: true },
+      { frameIndex: 1, timestampMicros: 33_333, durationMicros: 33_333, keyFrame: false },
+    ]);
+  });
+
+  it("publishes a presented-frame capture failure before the caller advances", async () => {
+    const encoder: VideoEncoderSink = {
+      configure: () => undefined,
+      encode: () => undefined,
+      encodeCapturedFrame: () => { throw new Error("surface capture failed"); },
+      finish: async () => ({
+        mimeType: "video/mp4",
+        bytes: new Uint8Array(),
+        frameCount: 0,
+        durationSeconds: 0,
+      }),
+    };
+    const recorder = createFrameRecorder({ api: frameStampedApi(() => 0), ref: REF, encoder, fps: 30 });
+
+    await recorder.start();
+    await recorder.captureFrame(frame(0));
+
+    expect(recorder.state).toBe("failed");
+    expect(recorder.error?.message).toContain("surface capture failed");
+    await expect(recorder.finish()).rejects.toThrow("surface capture failed");
+  });
+
+  it("stops presented-frame capture and closes the encoder on cancellation", async () => {
+    const timings: EncoderFrameTiming[] = [];
+    const close = vi.fn();
+    const encoder: VideoEncoderSink = {
+      configure: () => undefined,
+      encode: () => undefined,
+      encodeCapturedFrame: timing => { timings.push(timing); },
+      finish: async () => ({
+        mimeType: "video/mp4",
+        bytes: new Uint8Array(),
+        frameCount: timings.length,
+        durationSeconds: timings.length / 30,
+      }),
+      close,
+    };
+    const recorder = createFrameRecorder({ api: frameStampedApi(() => 0), ref: REF, encoder, fps: 30 });
+
+    await recorder.start();
+    await recorder.captureFrame(frame(0));
+    await recorder.cancel();
+    await recorder.captureFrame(frame(1));
+
+    expect(timings.map(timing => timing.frameIndex)).toEqual([0]);
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it("drives a deterministic take straight off the frame driver's step()", async () => {

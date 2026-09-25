@@ -1,4 +1,4 @@
-import type { VideoEncoderSink } from "./types.ts";
+import type { CapturedVideoFrame, EncoderFrameTiming, VideoEncoderSink } from "./types.ts";
 import type { AudioPcmProvider, EncoderConfig, EncoderFinishProgress } from "./types.ts";
 import type { MediaSpoolMode } from "./media-spool.ts";
 
@@ -27,6 +27,8 @@ export interface LoadEncoderOptions {
   readonly codec?: string;
   readonly bitrate?: number;
   readonly latencyMode?: "quality" | "realtime";
+  /** Captures the already-presented output without a GPU-to-CPU readback. */
+  readonly captureFrame?: ((timing: EncoderFrameTiming) => CapturedVideoFrame) | undefined;
   /** When present, the flushed H.264 take is muxed with this deterministic PCM source. */
   readonly audio?: AudioPcmProvider;
   readonly audioBitrate?: number;

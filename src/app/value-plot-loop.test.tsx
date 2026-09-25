@@ -230,6 +230,13 @@ describe("T344 — a value node shows its signal in the composed app", () => {
       ]);
       mouse = result.output.createdIds["$mouse"] ?? "";
     });
+    // The CURVE is this test's subject and a Mouse now defaults to the bar, so the mode is
+    // named. Through the real bus, because that is the only way the document changes.
+    await act(async () => {
+      await seed(runtime, [
+        { op: "setNodeUi", nodeId: mouse, ui: { valuePlotMode: "trail" } },
+      ]);
+    });
     const gpu = fixture();
     await mount(runtime, gpu.backend);
 
@@ -245,6 +252,45 @@ describe("T344 — a value node shows its signal in the composed app", () => {
     expect(plot.textContent).toContain("y");
     expect(plot.textContent).toContain("buttons");
     expect(plot.querySelectorAll("path").length).toBe(3);
+    runtime.dispose();
+  });
+
+  it("draws a Mouse as BARS by default, on the range the definition declares", async () => {
+    /*
+     * The whole chain, end to end, in the app the user runs: a definition's
+     * `valueChannelMeta` reaching a rendered track. Every piece of this has its own unit
+     * test and none of them can see the wiring between them — which is this project's
+     * dominant failure (§V220, composition-seams): built, tested, reached by nothing.
+     *
+     * The DISCRIMINATING part is `buttons`. It is a bitmask, so Mouse deliberately does
+     * NOT declare it, and it must land in the observed lane while x and y land in the
+     * declared one. A version that declared everything, or nothing, passes an assertion
+     * about x alone and fails this.
+     */
+    const runtime = newRuntime();
+    let mouse = "";
+    await act(async () => {
+      const result = await seed(runtime, [
+        { op: "addNode", ref: "$mouse", type: "mouse", position: { x: 0, y: 0 } },
+      ]);
+      mouse = result.output.createdIds["$mouse"] ?? "";
+    });
+    const gpu = fixture();
+    await mount(runtime, gpu.backend);
+
+    await act(async () => {
+      for (let frame = 0; frame < 5; frame += 1) gpu.tick();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    });
+
+    expect(screen.getByTestId(`value-bars-${mouse}`)).toBeTruthy();
+    expect(screen.getByTestId(`value-track-${mouse}-x`).dataset["state"]).toBe("declared");
+    expect(screen.getByTestId(`value-track-${mouse}-y`).dataset["state"]).toBe("declared");
+    expect(screen.getByTestId(`value-track-${mouse}-buttons`).dataset["state"]).not.toBe(
+      "declared",
+    );
+    // And no curve is built alongside it — the per-tick path work is genuinely not done.
+    expect(screen.getByTestId(`value-plot-${mouse}`).querySelectorAll("path")).toHaveLength(0);
     runtime.dispose();
   });
 

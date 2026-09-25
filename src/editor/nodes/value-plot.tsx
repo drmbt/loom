@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef } from "react";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import type { NodeId } from "@domain/types/ids.ts";
 import { useStoreSelector } from "@ui/hooks/use-store-selector.ts";
 import { useVisibleSubscribe } from "@ui/hooks/use-visible-subscribe.ts";
@@ -8,6 +8,9 @@ import type { PlotRange } from "./plot-range.ts";
 import type { ValueHistory, ValueHistorySource } from "./value-history.ts";
 import { FUNCTION_PLOT_SAMPLES, sampleValueFunction } from "./value-function.ts";
 import { sampleValueChainPlot } from "./value-plot-chain.ts";
+import { formatValue, resolveValuePlotMode } from "./value-plot-mode.ts";
+import { ValueBars } from "./value-bars.tsx";
+import type { ValuePlotMode } from "@domain/types/graph.ts";
 import type { ValuePlotChain } from "./value-plot-chain.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { ValueFunctionPlot } from "./value-function.ts";
@@ -25,7 +28,10 @@ import styles from "./value-plot.module.css";
  *
  * This is CONTENT, not chrome. §V90-§V92 push decoration out of a dense pane, and a plot
  * of what the node produces is the same kind of thing a texture preview is: the node's
- * output, in the node. A row of buttons here would not earn its place; this does.
+ * output, in the node. A ROW of buttons here would still not earn its place — and there
+ * is not one. There is ONE button, it appears on hover and focus, and what it switches
+ * between are two renderings of the same content rather than two pieces of chrome. The
+ * original claim was about a toolbar; it survives.
  *
  * ## Every channel, overlaid — the decision, stated
  *
@@ -131,6 +137,23 @@ export interface ValuePlotProps {
    * body, beside a running graph, is not where it belongs.
    */
   readonly silence?: ValueSilence | null;
+  /**
+   * The mode this node is STORED as, or undefined to follow the default for its kind.
+   *
+   * Read from the document by the caller rather than from a store here, because it IS
+   * document state (`GraphNode.ui.valuePlotMode`) and this component has no route to the
+   * graph — §V29 keeps store internals out of the editor, and the one mutation path runs
+   * back out through `onSetMode`.
+   */
+  readonly mode?: ValuePlotMode | undefined;
+  /**
+   * Ask for a different picture. Null means "back to the default for this kind of node".
+   *
+   * Absent, and no button is drawn at all — which is what a read-only surface (a test
+   * mounting the plot directly, a future printed view) gets, rather than a control that
+   * silently does nothing when pressed.
+   */
+  readonly onSetMode?: ((mode: ValuePlotMode | null) => void) | undefined;
 }
 
 /** Why a value node is off. The word the body prints, and the reason it is off. */
@@ -204,13 +227,6 @@ function phaseAt(timeSeconds: number | null, periodSeconds: number): number | nu
   return Number.isFinite(phase) ? phase : null;
 }
 
-function formatValue(value: number): string {
-  if (Number.isNaN(value)) return "NaN";
-  if (!Number.isFinite(value)) return value > 0 ? "+Inf" : "-Inf";
-  if (Math.abs(value) >= 1000) return value.toFixed(0);
-  return value.toFixed(3);
-}
-
 /** The window's range across EVERY channel, so overlaid series stay comparable. */
 function rangeOf(history: ValueHistory): PlotRange {
   let low = Number.POSITIVE_INFINITY;
@@ -225,7 +241,14 @@ function rangeOf(history: ValueHistory): PlotRange {
   return { low, high };
 }
 
-export function ValuePlot({ nodeId, history, source = null, silence = null }: ValuePlotProps) {
+export function ValuePlot({
+  nodeId,
+  history,
+  source = null,
+  silence = null,
+  mode,
+  onSetMode,
+}: ValuePlotProps) {
   const root = useRef<HTMLDivElement>(null);
   const subscribe = useVisibleSubscribe(
     root,
@@ -263,6 +286,34 @@ export function ValuePlot({ nodeId, history, source = null, silence = null }: Va
     [source],
   );
 
+  /*
+   * WHICH PICTURE — decided here because `curve` is the purity test, already computed,
+   * and already the thing the graph-pane comment refuses to duplicate. A second predicate
+   * for "is this node pure" would be a second thing to keep in step with T459.
+   *
+   * Above the silence branch on purpose: a muted node draws neither picture, so the mode
+   * is irrelevant to it, but the BUTTON is not — the hook order has to be fixed whichever
+   * branch returns, and `resolvedMode` is a plain call with no hook in it.
+   */
+  const isPurePeriodic = curve !== null;
+  const resolvedMode = resolveValuePlotMode(mode, isPurePeriodic);
+  const control =
+    onSetMode === undefined ? null : (
+      <PlotModeButton
+        nodeId={nodeId}
+        mode={resolvedMode}
+        /*
+         * Toggling BACK to the default clears the field rather than writing the default
+         * into it. Two documents that draw identically should be the same bytes — an
+         * example regenerated after someone toggled a node twice would otherwise carry a
+         * `valuePlotMode` that changes nothing, and `sync.test.ts` compares bytes.
+         */
+        onSelect={(next) =>
+          onSetMode(next === resolveValuePlotMode(undefined, isPurePeriodic) ? null : next)
+        }
+      />
+    );
+
   // T576: OFF, before either picture. Ahead of the function plot because that one does
   // not need the value graph to draw and would otherwise keep running; ahead of the
   // history plot because the ring holds the window this node had when it was switched off
@@ -271,7 +322,40 @@ export function ValuePlot({ nodeId, history, source = null, silence = null }: Va
   if (silence !== null) {
     return (
       <div ref={root} className={styles.plot} data-testid={`value-plot-${nodeId}`}>
+        {control}
         <span className={styles.empty}>{silence}</span>
+      </div>
+    );
+  }
+
+  if (resolvedMode === "bar") {
+    /*
+     * `channels` as well as `latest`, and the two are NOT the same question.
+     *
+     * `latest` is null before the first sample; an empty BAG is a node that ran and
+     * published nothing — a Select with nothing selected, a Switch with no live input —
+     * and it arrives as `{}` with no channels. Bar mode used to check only the first, so
+     * that node rendered an empty list: no rows, no message, just a gap where a picture
+     * goes. The trail branch below has always tested both (`series.length === 0`), and
+     * §V91 is one rule for one question, so the answer has to be the same on both sides.
+     */
+    if (value.latest === null || value.channels.length === 0) {
+      return (
+        <div ref={root} className={styles.plot} data-testid={`value-plot-${nodeId}`}>
+          {control}
+          <span className={styles.empty}>no signal yet</span>
+        </div>
+      );
+    }
+    return (
+      <div ref={root} className={styles.plot} data-testid={`value-plot-${nodeId}`}>
+        {control}
+        <ValueBars
+          nodeId={nodeId}
+          channels={value.channels}
+          latest={value.latest}
+          meta={source?.definition.valueChannelMeta}
+        />
       </div>
     );
   }
@@ -288,6 +372,7 @@ export function ValuePlot({ nodeId, history, source = null, silence = null }: Va
         fn={curve}
         phase={phaseAt(timeSeconds, curve.periodSeconds)}
         latest={value.latest}
+        control={control}
       />
     );
   }
@@ -297,6 +382,7 @@ export function ValuePlot({ nodeId, history, source = null, silence = null }: Va
     // a different fact from producing zero.
     return (
       <div ref={root} className={styles.plot} data-testid={`value-plot-${nodeId}`}>
+        {control}
         <span className={styles.empty}>no signal yet</span>
       </div>
     );
@@ -309,6 +395,7 @@ export function ValuePlot({ nodeId, history, source = null, silence = null }: Va
 
   return (
     <div ref={root} className={styles.plot} data-testid={`value-plot-${nodeId}`}>
+      {control}
       <svg
         className={styles.canvas}
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
@@ -377,7 +464,9 @@ function FunctionPlot({
   fn,
   phase,
   latest,
+  control,
 }: {
+  readonly control: ReactNode;
   readonly rootRef: RefObject<HTMLDivElement | null>;
   readonly nodeId: NodeId;
   /** The cycle; its own `phase` is null and unused — the live one is the prop. */
@@ -420,6 +509,7 @@ function FunctionPlot({
 
   return (
     <div ref={rootRef} className={styles.plot} data-testid={`value-plot-${nodeId}`}>
+      {control}
       <svg
         className={styles.canvas}
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
@@ -454,6 +544,57 @@ function FunctionPlot({
         </div>
       </dl>
     </div>
+  );
+}
+
+/**
+ * The ONE control in the node body — bar, or curve.
+ *
+ * ## Why it is here and not in the header
+ *
+ * T892 took the camera button OUT of the node header and `preview-inspect-chrome.test.ts`
+ * pins the header at exactly P, B, M, with the count asserted: a conditional fourth
+ * member made the title's width depend on a fact about the node, and the owner's report
+ * was a name truncated to `ha…`. That argument is about the header's budget and it still
+ * holds, so this does not go there. It belongs to the plot anyway — it changes what the
+ * plot draws, not what the node IS, which is what the three flags do.
+ *
+ * ## Hidden until asked for
+ *
+ * Opacity, revealed on hover and on `:focus-visible`, never unmounted. Unmounting would
+ * make it unreachable by keyboard and invisible to a test that does not know to simulate
+ * a pointer, and §V90's complaint is about INK in a dense pane rather than about DOM — a
+ * button nobody can see costs nothing on screen, which is the whole of what was being
+ * protected. The plot it sits on is `position: relative` already.
+ */
+function PlotModeButton({
+  nodeId,
+  mode,
+  onSelect,
+}: {
+  readonly nodeId: NodeId;
+  readonly mode: ValuePlotMode;
+  readonly onSelect: (mode: ValuePlotMode) => void;
+}) {
+  const next: ValuePlotMode = mode === "bar" ? "trail" : "bar";
+  const label = next === "bar" ? "Show current value as a bar" : "Show the signal over time";
+  return (
+    <button
+      type="button"
+      className={styles.modeButton}
+      data-testid={`value-plot-mode-${nodeId}`}
+      data-mode={mode}
+      aria-label={label}
+      title={label}
+      onClick={(event) => {
+        // The canvas treats a click on a node as a selection gesture and a double click
+        // as a dive; neither is what pressing a control inside the body means.
+        event.stopPropagation();
+        onSelect(next);
+      }}
+    >
+      {next === "bar" ? "\u25ae" : "\u223f"}
+    </button>
   );
 }
 

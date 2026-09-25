@@ -1181,3 +1181,61 @@ describe("setNodeUi carries componentPreview (T601)", () => {
     expect("componentPreview" in (bus.store.getGraph().nodes[nodeId]?.ui ?? {})).toBe(false);
   });
 });
+
+describe("setNodeUi carries valuePlotMode", () => {
+  async function seed() {
+    const { bus } = createHarness();
+    const created = await bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: bus.store.getRevision(),
+        label: "seed",
+        operations: [{ op: "addNode", ref: "$n", type: "test.solid", position: { x: 0, y: 0 } }],
+      },
+      ctx(),
+    );
+    return { bus, nodeId: created.output.createdIds["$n"] as string };
+  }
+
+  const setUi = (bus: Awaited<ReturnType<typeof seed>>["bus"], nodeId: string, value: unknown) =>
+    bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: bus.store.getRevision(),
+        label: "mode",
+        operations: [{ op: "setNodeUi", nodeId, ui: { valuePlotMode: value } }],
+      },
+      ctx(),
+    );
+
+  it("stores either of the two modes", async () => {
+    // The legitimate case the guard below could swallow — a closed set that refuses its
+    // own members is the way this kind of check fails silently.
+    const { bus, nodeId } = await seed();
+    expect((await setUi(bus, nodeId, "bar")).status).toBe("applied");
+    expect(bus.store.getGraph().nodes[nodeId]?.ui?.valuePlotMode).toBe("bar");
+    expect((await setUi(bus, nodeId, "trail")).status).toBe("applied");
+    expect(bus.store.getGraph().nodes[nodeId]?.ui?.valuePlotMode).toBe("trail");
+  });
+
+  it("refuses a string that is not one of them", async () => {
+    /*
+     * The value reaches a comparison in the renderer, and an unrecognised one falls
+     * through to whatever the default arm draws — a node showing the wrong picture from a
+     * document that validates, with nothing to point at.
+     */
+    const { bus, nodeId } = await seed();
+    expect((await setUi(bus, nodeId, "sparkline")).status).toBe("rejected");
+    expect((await setUi(bus, nodeId, 3)).status).toBe("rejected");
+    expect("valuePlotMode" in (bus.store.getGraph().nodes[nodeId]?.ui ?? {})).toBe(false);
+  });
+
+  it("clears back to the default on null rather than storing it", async () => {
+    // Absent means "the default for this kind of node", which is the state every node
+    // ships in and therefore has to be returnable to.
+    const { bus, nodeId } = await seed();
+    await setUi(bus, nodeId, "trail");
+    expect((await setUi(bus, nodeId, null)).status).toBe("applied");
+    expect("valuePlotMode" in (bus.store.getGraph().nodes[nodeId]?.ui ?? {})).toBe(false);
+  });
+});
