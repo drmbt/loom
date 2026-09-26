@@ -150,23 +150,14 @@ def slag_door(mb, rng):
     box_minmax(mb, (x - 0.95, -w / 2, zt + 0.17), (x + 0.35, w / 2, zt + 0.25), "slag_cold")
     box_minmax(mb, (x - 0.9, -w / 2 + 0.05, zs - 0.01), (x + 0.35, w / 2 - 0.05, zs + 0.08), "slag_hot")
     # foaming slag at the sill and the spill over the apron: cracked crust, the hot ones with glowing fissures
+    # No crust lumps and no spill sheet: static blobs and a flat glowing ribbon read as props in
+    # a close-up. The RNG draws the lumps made are consumed unchanged, so every seeded layout
+    # after this one stays put.
+    # (lump() draws three from the outer rng: its turn, its tilt, its own seed.)
     for k in range(10):
-        c = (x - 0.9 + rng.random() * 1.2, rng.uniform(-w / 2 + 0.1, w / 2 - 0.1), zs + 0.08)
-        hot = rng.random() < 0.5
-        lump(mb, c, (0.18, 0.25, 0.08), "slag_cold", rng, seg=12, rings=7, rough=0.25, crack=0.1,
-             glow_mat="slag_hot" if hot else None)
+        rng.random(); rng.uniform(0, 1); rng.random(); rng.uniform(0, 1); rng.uniform(0, 1); rng.uniform(0, 1)
     for k in range(40):
-        t = rng.random()
-        p = v3(x - 1.05 - t * 0.5, rng.uniform(-0.8, 0.8), zs - 0.45 - t * 1.6)
-        s = rng.uniform(0.1, 0.3)
-        hot = rng.random() >= 0.85
-        lump(mb, p, (s, s * 1.4, s * 0.8), "slag_cold", rng, seg=12, rings=7, rough=0.3, crack=0.09,
-             glow_mat="slag_hot" if hot else None)
-    # the slag running over the apron: a molten tongue from the sill down the face, under the
-    # crust lumps — loom flows it downhill (slag_hot + the plant material's downhill advection)
-    path = [v3(x - 0.9 + 0.02, 0.0, zs + 0.03)] + [v3(x - 1.05 - t * 0.5, 0.0, zs - 0.45 - t * 1.6 + 0.02) for t in np.linspace(0.0, 1.0, 12)]
-    tongue = [(-0.62, 0.0), (-0.3, 0.04), (0.3, 0.04), (0.62, 0.0), (0.62, 0.01), (-0.62, 0.01)]
-    sweep_profile(mb, path, tongue, "slag_hot", up=(1, 0, 0.3), uv_len=True)
+        rng.random(); rng.uniform(0, 1); rng.uniform(0, 1); rng.random(); rng.uniform(0, 1); rng.uniform(0, 1); rng.uniform(0, 1)
 
 
 def ebt(mb, rng):
@@ -678,13 +669,32 @@ def deck(ctx):
         box_minmax(mb, (-6.4, s * 4.3 - 0.5, 0), (-5.2, s * 4.3 + 0.5, 1.6), "concrete")
         cyl(mb, (-5.8, s * 4.3, 1.6), (-4.8, s * 4.3, 4.7), 0.3, "steel_painted_yellow", seg=16)
         cyl(mb, (-4.8, s * 4.3, 4.7), (-4.45, s * 4.3, 6.3), 0.15, "steel_worn", seg=12)
-    # slag chute below the door (crusted plate into the pit)
-    beam(mb, (-5.2, 0, 7.9), (-8.6, 0, 3.6), 2.2, 0.12, "slag_cold", up=(0, 0, 1))
+    # SLAG TROUGH under the door: a steel U-channel with crusted rims and cross ribs, a molten
+    # stream running down it (loom flows slag_hot downhill and surges it on the beat), falling
+    # off the lip into the slag pot below. (The RNG draws of the lumps this replaced are consumed.)
     for k in range(30):
-        tt = rng.random()
-        p = v3(-5.3 - tt * 3.3, rng.uniform(-0.9, 0.9), 7.9 - tt * 4.3 + 0.12)
-        s = rng.uniform(0.12, 0.35)
-        lump(mb, p, (s, s, s * 0.5), "slag_cold", rng, seg=10, rings=6, rough=0.3, crack=0.08)
+        rng.random(); rng.uniform(0, 1); rng.uniform(0, 1); rng.uniform(0, 1); rng.uniform(0, 1); rng.uniform(0, 1)
+    top, lip = v3(-5.15, 0.0, 8.3), v3(-7.9, 0.0, 4.4)
+    run = [top + (lip - top) * (k / 16.0) for k in range(17)]
+    fall_dir = norm(lip - top)
+    plate_up = norm(np.cross(np.cross(fall_dir, v3(0, 0, 1)), fall_dir))
+    channel = [(-0.95, 0.42), (-0.95, 0.0), (0.95, 0.0), (0.95, 0.42), (0.85, 0.42), (0.85, 0.1), (-0.85, 0.1), (-0.85, 0.42)]
+    sweep_profile(mb, run, channel, "steel_heat", up=tuple(plate_up), uv_len=True)
+    for side in (-1, 1):
+        rim = [q + v3(0, side * 0.9, 0) + plate_up * 0.44 for q in run]
+        sweep_profile(mb, rim, [(-0.08, -0.03), (0.08, -0.03), (0.08, 0.05), (-0.08, 0.05)], "slag_cold", up=tuple(plate_up), uv_len=True)
+    stream = [(-0.72, 0.12), (-0.4, 0.2), (0.4, 0.2), (0.72, 0.12), (0.72, 0.13), (-0.72, 0.13)]
+    sweep_profile(mb, run, stream, "slag_hot", up=tuple(plate_up), uv_len=True)
+    # the fall off the lip into the pot: a narrowing ribbon of slag
+    fall = [lip + fall_dir * 0.25 + v3(-0.05 * k * k, 0, -0.3 * k) for k in range(5)]
+    sweep_profile(mb, fall, [(-0.35, -0.05), (0.35, -0.05), (0.2, 0.05), (-0.2, 0.05)], "slag_hot", up=(1, 0, 0), uv_len=True)
+    for k in range(1, 8):
+        c = top + (lip - top) * (k / 8.0) - plate_up * 0.05
+        beam(mb, c + v3(0, -1.05, 0), c + v3(0, 1.05, 0), 0.14, 0.2, "steel_dark", up=tuple(plate_up))
+    for side in (-1, 1):
+        for t in (0.3, 0.7):
+            c = top + (lip - top) * t + v3(0, side * 0.9, 0)
+            beam(mb, c - plate_up * 0.1, v3(c[0], c[1], 0.0), 0.22, 0.22, "steel_painted_grey")
     # slag pit walls + floor crust
     box_minmax(mb, (-10.4, -2.8, 0), (-10.1, 2.8, 3.0), "concrete")
     for k in range(60):

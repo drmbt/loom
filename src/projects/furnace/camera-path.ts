@@ -64,6 +64,11 @@ const offset = (base: Vec3, by: Vec3): Vec3 => [base[0] + by[0], base[1] + by[1]
  * first candidate offset whose sightline is clear for three-quarters of the way — so a
  * re-export that moves a column moves the camera, instead of parking it behind the column.
  */
+/** The hall's inside, from tools/blender/furnace/layout.py (HX ±60, HY 17; the eaves below the roof trusses). */
+const HALL_HALF_LENGTH = 60;
+const HALL_HALF_WIDTH = 17;
+const HALL_EAVES = 30;
+
 /** `foreground`: how deep the frame must be clear, metres — a scale shot WANTS the plant between it and its subject, only not in its lap. */
 const seek = (subject: string, lift: Vec3, fov: number, candidates: readonly Vec3[], ringed = true, foreground = Infinity) => (facts: FurnaceSceneFacts): Pose => {
   const aim = offset(at(facts, subject), lift);
@@ -77,6 +82,8 @@ const seek = (subject: string, lift: Vec3, fov: number, candidates: readonly Vec
   }
   for (const candidate of [...candidates, ...ring]) {
     const eye = offset(aim, candidate);
+    // Inside the building: an eye past a wall films the wall's outside.
+    if (Math.abs(eye[0]) > HALL_HALF_LENGTH - 1 || Math.abs(eye[2]) > HALL_HALF_WIDTH - 1 || eye[1] > HALL_EAVES) continue;
     // Clear down the centre AND toward the frame's inner half on all four sides: a column
     // beside the subject is as bad as one in front of it.
     const d: Vec3 = [aim[0] - eye[0], aim[1] - eye[1], aim[2] - eye[2]];
@@ -104,15 +111,11 @@ const seek = (subject: string, lift: Vec3, fov: number, candidates: readonly Vec
  */
 export const CUT: readonly Move[] = [
   // Hot: looking INTO the process.
-  // Down into the full ladle from the crane's height: molten steel, rafts of slag, the rim black.
-  { name: "ladle_down", pose: seek("emit.ladle_surface", [0, 0, 0], 38, [[3, 9, 4], [-3, 9, 4], [3, 9, -4], [0, 11, 5], [5, 7, 0]]), crane: -2.5, orbit: 0.5, ease: "creep" },
   // Into the furnace through the slag door, a long lens from the dark: the bath inside.
   { name: "slag_door_into", pose: seek("emit.slag_door", [0, -0.3, 0], 20, [
     // The door faces −X: only eyes on that side see INTO the furnace.
     [-14, 0.5, 2], [-14, 0.5, -2], [-12, -0.5, 4], [-12, -0.5, -4], [-17, 1.5, 0], [-10, -1, 5], [-10, -1, -5], [-18, 2.5, 3], [-18, 2.5, -3], [-9, 0, 2], [-9, 0, -2], [-8, -1, 0],
   ], false), push: -4, dolly: 2, ease: "creep" },
-  // The tap: the stream and its spray, close and low.
-  { name: "tap_close", pose: seek("emit.tap_stream", [0, -0.5, 0], 42, [[4, -2.5, 5], [4, -2.5, -5], [6, -1.5, 3], [3, -3, 6]]), orbit: 0.6, ease: "smooth" },
   // The slag falling into the pot.
   { name: "slag_fall", pose: seek("emit.slag_fall", [0, 0.5, 0], 40, [[-5, -1.5, 5], [-5, -1.5, -5], [-6, 0, 3], [-4, -2, 6]]), dolly: 2.5, ease: "whip" },
   // The slag pot, brimming: a crusted black surface cracked open to orange.
@@ -120,10 +123,16 @@ export const CUT: readonly Move[] = [
   // Dynamic.
   { shot: "shot.hero_low_furnace", dolly: 4.0, crane: 1.5, ease: "whip" },
   { name: "electrode_orbit", pose: (f) => toward(offset(at(f, "electrode_2"), [11, 8, 9]), offset(at(f, "electrode_2"), [0, 5, 0.3]), 26), orbit: 1.3, ease: "creep" },
+  // The ELECTRODES from the side at roof level: three columns pumping into the roof, their
+  // ports burning — the machine's heartbeat, from where the pumping reads.
+  { name: "electrodes_side", pose: seek("electrode_2", [0, 7, 0], 40, [[10, 1.5, 6], [-10, 1.5, 6], [10, 1.5, -6], [6, 2, 10], [-6, 2, -10]], true, 6), foreground: 6, truck: 2, ease: "creep" },
   { name: "slag_door_vertigo", pose: (f) => toward(offset(at(f, "emit.slag_door"), [-13, -2.5, 6]), offset(at(f, "emit.slag_door"), [0, -0.5, 0]), 34), vertigo: -6, ease: "smooth" },
-  { name: "tap_longlens", pose: (f) => toward(offset(at(f, "emit.spark_tap"), [17.4, 2, 4.7]), offset(at(f, "emit.spark_tap"), [0, 1.5, 0]), 24), truck: 3, push: -3, ease: "creep" },
   { shot: "shot.caster_strand", dolly: 6.0, truck: -1.5 },
   { shot: "shot.pipe_corridor", dolly: 9.0, ease: "creep" },
+  // A DRONE dropping out of the roof over the scrap bay toward the charging floor.
+  { name: "drone_descend", pose: seek("emit.scrap_bucket_drop", [0, -6, 0], 60, [[-14, 12, 10], [-14, 12, -10], [-18, 10, 0], [-10, 14, 12]], false, 12), foreground: 12, crane: -7, dolly: 6, roll: 14, ease: "smooth" },
+  // Across the caster from its far side, trucking along the strands.
+  { name: "caster_across", pose: seek("caster_strand", [0, 0, 0], 50, [[0, 8, -20], [-8, 8, -19], [8, 7, -19], [0, 9, 9], [-18, 6, -10], [-20, 9, 0]], true, 12), foreground: 12, dolly: 4, ease: "creep" },
   // A BARREL ROLL down the melt bay: flying the length of the hall at gantry height, the
   // whole plant turning over once around the lens.
   { name: "barrel_fly", pose: () => toward([-30, 15, -9], [30, 11, -7], 62), dolly: 30, roll: 360, ease: "smooth" },
@@ -134,6 +143,10 @@ export const CUT: readonly Move[] = [
   { shot: "shot.scrap_bay", orbit: 0.45 },
   { shot: "shot.top_down", crane: -4.0, orbit: 0.8, ease: "creep" },
   { name: "roof_glide", pose: (f) => toward([-44, 25, -9], offset(at(f, "furnace_shell"), [-8, -6, 2]), 50), dolly: 18, ease: "creep" },
+  // ACROSS THE HALL from the far wall's gallery: the furnace, the cranes, the caster in one line, panning.
+  { name: "across_hall", pose: seek("furnace_shell", [0, -2, 0], 62, [[0, 12, -15], [0, 12, 15], [-10, 11, -15], [10, 11, 15], [-18, 13, 15], [18, 13, -15]], false, 12), foreground: 12, dolly: 5, crane: 1.5, ease: "creep" },
+  // A wide ORBIT round the whole melt shop from crane height.
+  { name: "plant_orbit", pose: seek("furnace_shell", [0, 0, 0], 50, [[-42, 18, 0], [0, 18, 42], [42, 18, 0], [0, 18, -42]], false, 12), foreground: 12, orbit: 0.5, ease: "smooth" },
   // SCALE: the full length of the hall through a long lens from the floor at the scrap-bay end —
   // columns stacking, the furnace small in the middle distance, the roof lost in smoke.
   { name: "hall_length", pose: seek("furnace_shell", [0, -3, 0], 24, [[-55, -7, -8], [-50, -6, 8], [55, -7, -6], [50, -6, 8], [-40, -5, -10], [40, -5, 10]], false, 12), foreground: 12, dolly: 5, push: -3, ease: "creep" },
@@ -142,7 +155,7 @@ export const CUT: readonly Move[] = [
 ];
 
 /** How many CUT entries, from the start, are HOT (the process itself); they open the close pool. */
-export const HOT_POOL = 5;
+export const HOT_POOL = 3;
 /** How many CUT entries, from the start, form the close pool; the rest are the wide pool. */
 export const CLOSE_POOL = 13;
 

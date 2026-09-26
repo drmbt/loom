@@ -31,6 +31,7 @@ const CLASS_OF: ReadonlyArray<readonly [RegExp, number, string]> = [
   [/concrete/, 6, "concrete"],
   [/refractory/, 7, "refractory brick"],
   [/rubber_belt/, 11, "conveyor belt"],
+  [/^lamp$/, 12, "lamp head"],
   [/rubber|cable|hose/, 8, "rubber"],
   [/copper/, 9, "copper"],
   [/slag_cold/, 10, "cold slag"],
@@ -81,10 +82,16 @@ struct Params {
   kickSince: f32, // @default 100  Seconds since the kick: a shockwave runs out from the furnace along the panel seams.
   snareSince: f32, // @default 100  Seconds since the snare: a hot scanline sweeps up every wall.
   snareCount: f32, // @default 0  Running snare count: each snare's scanline gets its own width, shade and strength.
+  beltTravel: f32, // @default 0  Conveyor belt travel, metres (drive with the rig's conveyor).
+  lampHall: f32, // @default 1  The high-bay dimmer, as the lamp pass sees it.
+  lampProps: f32, // @default 1  The low fixtures' dimmer.
+  lampChase: f32, // @default 0  The chase running down the hall.
+  lampFailing: f32, // @default 0.1  Share of failing ballasts.
   kickCount: f32, // @default 0  Running kick count: each kick re-picks WHICH parts of the plant the wave lights.
   flicker: f32, // @default 0  Hats: panels light up as corrupt blocks, hash-picked per 1.5 m panel.
   heatGlow: f32, // @default 14  (Legacy; the liquid and solid glows below replace it.)
   liquidGlow: f32, // @default 2  Radiance of liquid steel at its hottest.
+  arcGlow: f32, // @default 6  Blue-white arc light leaking through the roof rings.
   arcFlash: f32, // @default 0  The arc's flash at the electrode ports (drive from the hats).
   fire: f32, // @default 18  Radiance of the flames inside the furnace (the audio's handle).
   liningGlow: f32, // @default 12  Radiance of hot SOLIDS — the strand, hot slag, graphite, linings.
@@ -141,9 +148,10 @@ fn surfaceFx(s: SurfaceIn, p: Params) -> vec3f {
   // hot red-orange, faint to bright — so the climbing scanline never lands the same way twice.
   let h1 = fract(sin(p.snareCount * 12.9898) * 43758.5453);
   let h2 = fract(sin(p.snareCount * 78.233) * 43758.5453);
-  let width = mix(0.06, 0.5, h1 * h1);
+  let width = mix(0.04, 0.22, h1 * h1);
   let shade = select(select(vec3f(1.0, 0.25, 0.04), vec3f(0.9, 0.02, 0.08), h2 > 0.66), vec3f(1.0, 0.05, 0.02), h2 < 0.4);
-  let strength = mix(0.6, 2.4, fract(h1 * 7.31 + h2));
+  // Restrained: most lines a whisper, now and then one that burns.
+  let strength = mix(0.2, 0.9, fract(h1 * 7.31 + h2)) + step(0.88, h2) * 0.8;
   let line = exp(-pow((s.world.y - p.snareSince * mix(18.0, 36.0, h2)) / width, 2.0)) * exp(-p.snareSince * 3.0) * (1.0 - across.y);
   fx = fx + shade * line * strength;
   // HATS: a few 3 m panels switching on as flat blocks, a new pick twelve times a second —
@@ -315,10 +323,10 @@ fn classSkin(kind: u32, s: SurfaceIn, base: vec3f, normal: vec3f, p: Params) -> 
       k.normal = detailBump(normal, bubbles.gradient, 0.35);
     }
     case 11u: {
-      // CONVEYOR BELT: its u runs along travel in metres and the rig scrolls it, so everything
-      // drawn in u rides the belt — cleats every 0.6 m and a load of scrap chunks, bumped and
-      // shadowed, some still glowing from the bay's torch-cut pieces.
-      let u = s.uv.x;
+      // CONVEYOR BELT: its u runs along travel in metres, and the belt's travel is added HERE —
+      // the mesh draw reads the file's UVs, not the rig's, so a rig scroll never reached it.
+      // Everything drawn in u rides the belt: cleats every 0.6 m and a load of scrap chunks.
+      let u = s.uv.x - p.beltTravel;
       let across = s.uv.y;
       let cleat = 1.0 - smoothstep(0.02, 0.05, abs(fract(u / 0.6) - 0.5) * 0.6);
       let chunkCell = vec2f(floor(u * 2.5), floor(across * 6.0));
@@ -345,8 +353,10 @@ fn furnaceInterior(s: SurfaceIn, p: Params) -> vec3f {
   // Only the LINING: a surface inside the radius whose normal faces the axis (the shell's
   // outer skin faces away, and must stay steel).
   let inward = smoothstep(0.2, 0.6, dot(s.normal.xz, -s.world.xz / max(r, 1e-3)));
-  let floorOfBath = smoothstep(0.7, 0.95, s.normal.y) * (1.0 - smoothstep(2.5, 3.8, r));
-  let inside = (1.0 - smoothstep(3.6, 4.2, r)) * max(inward, floorOfBath) * smoothstep(6.0, 7.0, s.world.y) * (1.0 - smoothstep(12.0, 13.0, s.world.y));
+  // (No up-facing term: the bath is the liquid material's own; an up-facing test lit the
+  // working platform's tops white under the shell.)
+  // Above the bath only (8.8 m): below it the inward faces are the platform's beams under the shell.
+  let inside = (1.0 - smoothstep(3.6, 4.2, r)) * inward * smoothstep(8.8, 9.2, s.world.y) * (1.0 - smoothstep(12.0, 13.0, s.world.y));
   if (inside <= 0.0 || p.fire <= 0.0) { return vec3f(0.0); }
   let t = s.absTime;
   let rise = vec3f(s.world.x * 1.3, s.world.y * 0.9 - t * 2.6, s.world.z * 1.3);
@@ -410,8 +420,39 @@ fn electrodePorts(s: SurfaceIn, p: Params) -> vec3f {
   return glow;
 }
 
+// A lamp HEAD glows as its light does: the hall dimmer (with its kick flashes, strobes and
+// blackouts), the chase down the hall, and the failing ballasts — the file's fixed emission
+// never followed the programme, so the light changed while the lamp did not.
+fn lampHeadLevel(s: SurfaceIn, p: Params) -> f32 {
+  let cell = floor(s.world / 2.0);
+  let hash = fract(sin(dot(cell, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);
+  let failing = step(1.0 - p.lampFailing, hash) * step(0.55, fract(sin(floor(s.absTime * 13.0 + hash * 50.0) * 12.9898) * 43758.5453));
+  let wave = 0.5 + 0.5 * sin(s.world.x * 0.22 - s.absTime * 6.0);
+  let chase = mix(1.0, wave * wave * 1.8, p.lampChase);
+  let dimmer = select(p.lampProps, p.lampHall, s.world.y > 22.0);
+  return dimmer * chase * (1.0 - failing) * 2.0;
+}
+
+// The ARC seen through the roof: blue-white light leaking between the water-cooled coil
+// rings of the roof, flickering like an arc hunts and flaring on the hats — the cold light
+// of the process against the orange of the melt. Bright enough to bloom.
+fn roofArcGlow(s: SurfaceIn, p: Params) -> vec3f {
+  let r = length(s.world.xz);
+  if (s.world.y < 12.0 || s.world.y > 14.8 || r > 4.3 || s.normal.y < 0.2) { return vec3f(0.0); }
+  let gap = smoothstep(0.82, 0.96, abs(fract(r * 5.0) - 0.5) * 2.0);
+  let hunt = detailFbm(vec3f(s.world.xz * 1.5, s.absTime * 6.0), 2, s.footprint).value;
+  let edge = 1.0 - smoothstep(3.6, 4.3, r);
+  return vec3f(0.42, 0.62, 1.0) * gap * edge * p.arcGlow * (0.45 + 0.9 * hunt) * (1.0 + p.arcFlash * 0.5);
+}
+
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceBody(s, p);
+  o.emissive = o.emissive + roofArcGlow(s, p);
+  if (materialClass(s.metallic, s.roughness, s.attr.z) == 12u) {
+    // The file's lamp emission (40) is a Blender-Cycles figure; here a head at full dimmer reads as a bright lens, not a white slab.
+    o.emissive = s.emissive * lampHeadLevel(s, p) * 0.12;
+    return o;
+  }
   o.emissive = o.emissive + electrodePorts(s, p);
   let portal = doorPortal(s, p);
   if (portal.w > 0.0) {
@@ -469,7 +510,28 @@ fn surfaceBody(s: SurfaceIn, p: Params) -> SurfaceOut {
     // Hot SLAG creeps DOWNHILL: its pattern advects along the surface's own fall line (gravity
     // projected into the tangent plane), so a spill over the apron runs, a flat pool barely moves.
     let fall = vec3f(0.0, -1.0, 0.0) - s.normal * dot(vec3f(0.0, -1.0, 0.0), s.normal);
-    let slagFlow = select(vec3f(0.0), fall * s.absTime * 0.8, step(s.metallic, 0.05) * step(0.65, s.roughness) > 0.5);
+    let isSlag = step(s.metallic, 0.05) * step(0.65, s.roughness);
+    let slagFlow = select(vec3f(0.0), fall * s.absTime * 0.8, isSlag > 0.5);
+    // Each kick sends a SURGE of fresh slag down the fall line: a bright band leaving the sill
+    // (y ≈ 8.9 m) and running down the apron at 3 m/s, cooling as it goes.
+    let drop = 8.9 - s.world.y;
+    let surge = isSlag * exp(-pow((drop - p.kickSince * 3.0) / 0.35, 2.0)) * exp(-p.kickSince * 1.2) * step(-0.2, drop);
+    if (isSlag > 0.5 && length(fall) > 0.2) {
+      // A RUNNING slag stream: the pattern stretched along the fall line and advected down it —
+      // hot orange ropes between dark, cooling crust, never a flat lit sheet.
+      let down = normalize(fall);
+      let across = normalize(cross(s.normal, down));
+      let q = vec3f(dot(s.world, across) * 5.0, dot(s.world, down) * 1.1 - s.absTime * 2.2, dot(s.world, s.normal));
+      let ropes = detailFbm(q, 4, s.footprint);
+      let hot = smoothstep(0.4, 0.78, ropes.value) + surge;
+      let temperature = clamp(0.3 + 0.4 * ropes.value + surge * 0.3, 0.0, 1.0);
+      o.emissive = blackbody(temperature) * p.liningGlow * 0.3 * hot * hot;
+      o.albedo = vec4f(vec3f(0.03, 0.025, 0.022), s.albedo.a);
+      o.roughness = mix(0.9, 0.3, hot);
+      o.metallic = 0.0;
+      o.normal = detailBump(s.normal, ropes.gradient, 0.3);
+      return o;
+    }
     let grain = detailFbm((s.world - slagFlow) * 2.4, 4, s.footprint);
     let crackField = detailFbm((s.world - slagFlow) * 0.9, 3, s.footprint).value;
     let cracks = 1.0 - smoothstep(0.012, 0.05, abs(crackField - 0.5));
@@ -478,7 +540,9 @@ fn surfaceBody(s: SurfaceIn, p: Params) -> SurfaceOut {
     let slag = step(s.metallic, 0.05) * step(0.65, s.roughness) * step(heat, 0.8);
     let oxide = mix(smoothstep(0.55, 0.75, detailFbm(s.world * 1.6, 3, s.footprint).value) * (1.0 - heat * 0.6), 1.0 - cracks, slag);
     let temperature = clamp(heat * (0.75 + 0.35 * grain.value) + cracks * 0.3 * heat + p.heatPulse * 0.25, 0.0, 1.0);
-    o.emissive = blackbody(temperature) * p.liningGlow * temperature * temperature * (1.0 - oxide * 0.8);
+    // Slag glows in its fissures and its surges, dim elsewhere; a hot SOLID blazes.
+    let body = mix(1.0, 0.25, isSlag);
+    o.emissive = blackbody(temperature) * p.liningGlow * body * temperature * temperature * (1.0 - oxide * 0.8) + blackbody(0.85) * p.liningGlow * surge * 1.2;
     o.albedo = vec4f(s.albedo.rgb * 0.4, s.albedo.a);
     o.roughness = mix(0.6, 0.95, oxide);
     o.metallic = 0.0;

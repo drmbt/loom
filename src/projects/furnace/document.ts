@@ -13,6 +13,7 @@ import { SHOP_ENVIRONMENT_WGSL } from "./environment.ts";
 import { DOF_WGSL, GTAO_WGSL, MOTION_BLUR_WGSL, SSR_WGSL } from "./screen-space.ts";
 import { shotPath } from "./camera-path.ts";
 import { GLITCH_WGSL } from "./glitch.ts";
+import { SEGMENT_WGSL } from "./segments.ts";
 import { director } from "./director.ts";
 import { fixturesOf } from "./fixtures.ts";
 import { lampsWgsl } from "./lamps.ts";
@@ -266,19 +267,25 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       bucketSway: expressionSlot("sin(abstime * 0.9) * 0.015", 0),
       crane2X: expressionSlot("sin(abstime * 0.03 + 2.0) * 6", 0),
       hook2: expressionSlot("-1 + sin(abstime * 0.09) * 1.2", -1),
-      electrode1: expressionSlot(`-0.35 + ${HIT("snareCount")} * 0.18 + sin(abstime * 3.1) * 0.03`, -0.35),
-      electrode2: expressionSlot(`-0.3 + ${HIT("snareCount")} * 0.14 + sin(abstime * 2.7 + 1.0) * 0.03`, -0.3),
-      electrode3: expressionSlot(`-0.4 + ${HIT("snareCount")} * 0.16 + sin(abstime * 3.4 + 2.0) * 0.03`, -0.4),
+      // The electrodes PUMP: they drive into the bath and kick back up on the beat.
+      electrode1: expressionSlot(`-0.45 + ${HIT("kickCount")} * 0.45 + ${HIT("snareCount")} * 0.2 + sin(abstime * 3.1) * 0.05`, -0.45),
+      electrode2: expressionSlot(`-0.4 + ${HIT("kickCount")} * 0.35 + ${HIT("hatCount")} * 0.15 + sin(abstime * 2.7 + 1.0) * 0.05`, -0.4),
+      electrode3: expressionSlot(`-0.5 + ${HIT("kickCount")} * 0.4 + ${HIT("snareCount")} * 0.25 + sin(abstime * 3.4 + 2.0) * 0.05`, -0.5),
       ladleTilt: expressionSlot("max(sin(abstime * 0.05), 0.0) * 0.35", 0),
       casting: expressionSlot("abstime * 0.4", 0),
       conveyor: expressionSlot("abstime * 1.2", 0),
     }, { label: "rig1" }),
-    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, liquidGlow: 2.2, liningGlow: 12, arcFlash: expressionSlot(`${HIT("hatCount")} * 6 + ${direction.density} * 0.5`, 0), fire: expressionSlot(`5 + ${LEVEL("low")} * 12 + ${direction.build} * 10`, 9), chalk: 0.12, soot: 0.38,
+    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, liquidGlow: 2.2, liningGlow: 12, arcGlow: expressionSlot(`1.6 + ${direction.density} * 1.2 + ${HIT("hatCount")} * 3`, 2), arcFlash: expressionSlot(`${HIT("hatCount")} * 6 + ${direction.density} * 0.5`, 0), fire: expressionSlot(`5 + ${LEVEL("low")} * 12 + ${direction.build} * 10`, 9), chalk: 0.12, soot: 0.38,
       // The steel answers every kick and snare, loud or quiet: a floor of 0.4 even in the calm.
       fx: expressionSlot(`0.25 + 0.35 * ${act} + 0.5 * clamp((${direction.energy} - 0.3) / 0.5, 0, 1)`, 0.3),
       kickSince: expressionSlot("op('kicks1').chan.kickCountSince", 100),
       snareSince: expressionSlot("op('snares1').chan.snareCountSince", 100),
       kickCount: expressionSlot("op('kicks1').chan.kickCount", 0),
+      beltTravel: expressionSlot("op('rig1').par.conveyor", 0),
+      lampHall: expressionSlot("op('lamps1').par.hall", 1),
+      lampProps: expressionSlot("op('lamps1').par.props", 1),
+      lampChase: expressionSlot("op('lamps1').par.chase", 0),
+      lampFailing: expressionSlot("op('lamps1').par.failing", 0.1),
       snareCount: expressionSlot("op('snares1').chan.snareCount", 0),
       flicker: expressionSlot(`${HIT("hatCount")} * (${direction.density} > 0.5)`, 0),
       heatPulse: expressionSlot(`${direction.energy} * 0.25 + ${direction.build} * 0.35`, 0.1) }, { label: "steel1" }),
@@ -304,7 +311,8 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       attributes: SPARK_ATTRIBUTES,
       kernel: sparksKernel(facts),
       tapRate: expressionSlot(`0.05 + ${direction.build} * 0.35 + ${HIT("kickCount")} * 0.8`, 0.15),
-      slagRate: 0.12,
+      // The oxygen lance never stops cutting: a steady spray, bursting on kicks.
+      slagRate: expressionSlot(`0.25 + ${HIT("kickCount")} * 0.6 + ${direction.energy} * 0.2`, 0.3),
       arcRate: expressionSlot(`0.03 + ${direction.density} * 0.15 + ${HIT("hatCount")} * 0.5`, 0.12),
       torchRate: 0.35,
       // No pour stream exists yet (T1386b): a spray from the lip would come out of nothing.
@@ -446,7 +454,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     node("lens", "customWgslMulti", [-1350, 0], {
       source: DOF_WGSL,
       // In PIXELS per unit defocus: the tall frame is narrower, so the same number blurred more of it.
-      aperture: options.portrait === true ? 0.38 : 0.62,
+      aperture: options.portrait === true ? 0.3 : 0.48,
       maxRadius: 22,
       eye: vec(eye),
       aim,
@@ -466,6 +474,28 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       ...cameraNowAndBefore,
     }, { label: "shutter1", resolution: { mode: "project" } }),
     // The glitch layer (glitch.ts), after the grade, reading its own previous output and depth.
+    // The SEGMENT FILTER (segments.ts): in one section of every three a slab of the hall is
+    // re-drawn — wireframe, mono-with-reds, or thermal — drifting along the hall, fixed to the
+    // plant as the camera moves. Taste over noise: it only runs in its sections.
+    node("segments", "customWgslMulti", [450, 0], {
+      source: SEGMENT_WGSL,
+      eye: vec(eye),
+      aim,
+      "eye.x": cameraRef("eye.x", eye[0]),
+      "eye.y": cameraRef("eye.y", eye[1]),
+      "eye.z": cameraRef("eye.z", eye[2]),
+      "aim.x": cameraRef("lookAt.x", aim[0]),
+      "aim.y": cameraRef("lookAt.y", aim[1]),
+      "aim.z": cameraRef("lookAt.z", aim[2]),
+      fov: cameraRef("fov", camera.fovDeg),
+      far: cameraRef("far", 400),
+      roll: cameraRef("roll", 0),
+      amount: expressionSlot(`((op('dirSections1').chan.novelty % 3) == 2) * clamp(0.55 + ${act} * 0.3 + ${direction.build} * 0.4, 0, 1) * clamp(op('dirSections1').chan.noveltySince / 1.5, 0, 1)`, 0),
+      mode: expressionSlot("floor(op('dirSections1').chan.novelty / 3) % 3", 0),
+      centre: expressionSlot("-45 + 90 * fract(abstime * 0.02 + op('dirSections1').chan.novelty * 0.37)", 0),
+      width: expressionSlot(`10 + ${direction.energy} * 22`, 16),
+      edgeColour: [1, 0.12, 0.04, 1],
+    }, { label: "segments1", resolution: { mode: "project" } }),
     node("glitch", "customWgslMulti", [600, 0], {
       source: GLITCH_WGSL,
       ...cameraNowAndBefore,
@@ -558,7 +588,10 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("glow-grade", ["glow", "out"], ["grade", "input"]),
     edge("glow-meter", ["glow", "out"], ["meter", "input"]),
     edge("metered-adaptation", ["metered", "out"], ["adaptation", "in"]),
-    edge("grade-glitch", ["grade", "out"], ["glitch", "input"]),
+    edge("grade-segments", ["grade", "out"], ["segments", "input"]),
+    edge("depth-segments", ["shot", "depth"], ["segments", "more"], 0),
+    edge("normal-segments", ["shot", "normal"], ["segments", "more"], 1),
+    edge("segments-glitch", ["segments", "out"], ["glitch", "input"]),
     edge("history-glitch", ["history", "out"], ["glitch", "more"], 0),
     edge("depth-glitch", ["shot", "depth"], ["glitch", "more"], 1),
     edge("glitch-out", ["glitch", "out"], ["out", "input"]),
