@@ -263,6 +263,12 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   valueCount: "none",
   valueDelay: "none",
   valueExpression: "none",
+  // T1388b: live controls — a hand-set value, or a layout; nothing leaves the process.
+  slider: "none",
+  toggle: "none",
+  button: "none",
+  xyPad: "none",
+  panel: "none",
   valueBeat: "none",
   valueSelect: "none",
   audioPattern: "none",

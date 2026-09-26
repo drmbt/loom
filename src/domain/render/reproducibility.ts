@@ -359,6 +359,12 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   valueCount: "pure",
   valueDelay: "pure",
   valueExpression: "pure",
+  // T1388b: a control's value is a PARAMETER — what the document says, set by hand; replayed exactly.
+  slider: "pure",
+  toggle: "pure",
+  button: "pure",
+  xyPad: "pure",
+  panel: "pure",
   valueBeat: "pure",
   valueSelect: "pure",
   audioPattern: "pure",

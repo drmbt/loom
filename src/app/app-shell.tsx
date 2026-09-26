@@ -144,6 +144,8 @@ export interface AppShellProps {
   agent?: ReactNode;
   /** T1263: a shell pane. Two tabs of this role are two instances, so two shells. */
   terminal?: ReactNode;
+  /** T1388b: live controls (a Panel's widgets). */
+  controls?: ReactNode;
   problemCount?: number;
   /**
    * Layout store override. Defaults to `localStorage` (V18); pass `null` to run
@@ -207,6 +209,7 @@ export function AppShell({
   exampleLibrary,
   agent,
   terminal,
+  controls,
   problemCount = 0,
   storage,
   openPaneWindow,
@@ -455,10 +458,12 @@ export function AppShell({
       examples: exampleLibrary ?? <PaneEmpty label="No examples" />,
       agent: agent ?? <PaneEmpty label="No agent connected" />,
       terminal: terminal ?? <PaneEmpty label="No terminal" />,
+      controls: controls ?? <PaneEmpty label="No controls" />,
     }),
     [
       agent,
       terminal,
+      controls,
       componentLibrary,
       exampleLibrary,
       graphCanvas,

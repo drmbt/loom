@@ -210,6 +210,8 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
    * — true, and blind to the display side where the break was.
    */
   const producesPreviewable = previewablePort(definition?.outputs ?? []) !== undefined;
+  /** T1388b: the inline control, when the composition root has one for this node — no empty box otherwise. */
+  const controls = renderControls?.(id);
   const hasPreview = producesPreviewable || producesValue || presentsTexture;
   /** T685: §V70a's "this picture is not the node's output" warning, same seam shape. */
   const lens = hasPreview ? (previewLens?.(id) ?? null) : null;
@@ -489,8 +491,8 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
           </div>
         ) : null}
 
-        {renderControls === undefined ? null : (
-          <div className={cx(styles.controls, "nodrag", "nopan")}>{renderControls(id)}</div>
+        {controls === null || controls === undefined ? null : (
+          <div className={cx(styles.controls, "nodrag", "nopan")}>{controls}</div>
         )}
 
         <div className={styles.ports} ref={portsRef}>

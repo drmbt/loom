@@ -16,6 +16,8 @@ import type { ResolvedOutput } from "@compiler/index.ts";
 import { GraphCanvas } from "@editor/graph-canvas/index.ts";
 import { type CameraPose, createCameraGizmoStore } from "@editor/viewer/camera-gizmo-store.ts";
 import { movableChannels, poseFromFacts, readCameraPoseFacts } from "@editor/viewer/camera-pose.ts";
+import { ControlWidget, type ControlWrite } from "@editor/controls/control-widget.tsx";
+import { CONTROL_WIDGET_TYPES } from "@nodes/definitions/controls.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { useKeymapPane } from "@editor/keymap/index.ts";
 import { readNodeDragPayload } from "@editor/library/index.ts";
@@ -434,6 +436,24 @@ function GraphPaneInner({
     [bus, invocation],
   );
   useEffect(() => () => parameterEditor.dispose(), [parameterEditor]);
+  /**
+   * T1388b — a live control's body IS the control: a slider, toggle, button or XY pad on
+   * the node itself, writing through the same parameter editor the inspector uses (one
+   * undo group per gesture). Read from the ref like `renderPreview`, so the callback does
+   * not move with the document; the node re-renders on its own slice when its value does.
+   */
+  const controlWrite = useCallback<ControlWrite>(
+    (nodeId, entries, phase) => parameterEditor.setStored(nodeId, entries, phase),
+    [parameterEditor],
+  );
+  const renderControls = useCallback(
+    (nodeId: NodeId) => {
+      const node = graphRef.current.nodes[nodeId];
+      if (node === undefined || !CONTROL_WIDGET_TYPES.has(node.type)) return null;
+      return <ControlWidget nodeId={nodeId} type={node.type} parameters={node.parameters} write={controlWrite} />;
+    },
+    [controlWrite],
+  );
   const cameraGizmos = useMemo(
     () => createCameraGizmoStore({ editor: parameterEditor, readPose: readCameraPose }),
     [parameterEditor, readCameraPose],
@@ -1024,6 +1044,7 @@ function GraphPaneInner({
           invocation={invocation}
           runtime={nodeRuntime}
           renderPreview={renderPreview}
+          renderControls={renderControls}
           previewLens={previewLens}
           {...(valueChannels === undefined ? {} : { valueChannels })}
           onSelectionChange={onSelectionChange}

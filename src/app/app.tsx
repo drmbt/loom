@@ -1,4 +1,5 @@
 import { createRenderCanvasCapture } from "./render-canvas-capture.ts";
+import { ControlsPane } from "@editor/controls/controls-pane.tsx";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { scopeFromFrame } from "@domain/expressions/index.ts";
 import type { ExpressionScope } from "@domain/expressions/index.ts";
@@ -2206,6 +2207,11 @@ export function App({
           performance={performancePane}
           agent={agentPane}
           terminal={terminalPane}
+          controls={
+            <ErrorBoundary name="Controls">
+              <ControlsPane graph={compile.graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation} />
+            </ErrorBoundary>
+          }
         />
         {/* T359/§V307: opened by `ui.openSettings`, never by a flag set from here. The
             host owns the open state; the top bar, `mod+,` and the palette all execute the

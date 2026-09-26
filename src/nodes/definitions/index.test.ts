@@ -185,6 +185,13 @@ describe("core catalogue (T70, T40)", () => {
       "valueCount",
       "valueDelay",
       "valueExpression",
+      // T1388b: live controls — hand-set values under a chosen channel name, and the Panel
+      // that lays them out as a performance surface.
+      "slider",
+      "toggle",
+      "button",
+      "xyPad",
+      "panel",
       // T414: sound as channels — the value family's third input source after Mouse
       // and the trio. Deliberately named for what it IS, not a TD analog.
       "audioIn",
@@ -402,6 +409,11 @@ describe("T438 (§V316) — the channel publishers are DECLARED, not a category"
         "componentInValue", // T822: the value boundary forwards a channel bag, so it publishes
         "componentOutValue",
         "constant",
+        // T1388b: widgets publish their hand-set value; the Panel publishes nothing.
+        "button",
+        "slider",
+        "toggle",
+        "xyPad",
         "lfo",
         // T942: a controller's learned controls are a channel bag, so the node plots and
         // previews exactly as Mouse does — no special case anywhere for it being hardware.

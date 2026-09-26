@@ -1,0 +1,88 @@
+/* T1388b — live control widgets. Tokens only (no literal colours). */
+.widget {
+  display: grid;
+  gap: var(--space-2);
+  align-items: center;
+  font-family: var(--font-ui);
+  color: var(--text);
+  user-select: none;
+  touch-action: none;
+}
+.node {
+  grid-template-columns: 1fr;
+  font-size: var(--fs-micro);
+  min-width: var(--space-48);
+}
+.panel {
+  grid-template-columns: 1fr;
+  font-size: var(--fs-ui);
+  min-width: calc(var(--space-48) * 3);
+}
+.caption {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.readout {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.track {
+  position: relative;
+  height: var(--space-6);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  cursor: ew-resize;
+  overflow: hidden;
+}
+.panel .track {
+  height: var(--space-32);
+}
+.fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--signal);
+  opacity: 0.85;
+}
+.pad {
+  position: relative;
+  aspect-ratio: 1;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  cursor: crosshair;
+}
+.puck {
+  position: absolute;
+  width: var(--space-4);
+  height: var(--space-4);
+  margin: calc(var(--space-4) / -2) 0 0 calc(var(--space-4) / -2);
+  transform: translateY(50%);
+  border-radius: var(--radius-pill);
+  background: var(--signal);
+}
+.toggle,
+.button {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-raise);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+.panel .toggle,
+.panel .button {
+  padding: var(--space-4) var(--space-5);
+}
+.on {
+  background: var(--signal);
+  color: var(--bg-void);
+}
+.driven {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

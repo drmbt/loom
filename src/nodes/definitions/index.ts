@@ -34,6 +34,7 @@ export { syphonInNode, SYPHON_IN_TYPE } from "./syphon-in.ts";
 export { ndiInNode, NDI_IN_TYPE } from "./ndi-in.ts";
 import { valueGraphNodeDefinitions } from "./value-graph-nodes.ts";
 import { valueStructureNodeDefinitions } from "./value-structure-nodes.ts";
+import { controlNodeDefinitions } from "./controls.ts";
 export { audioFileInNode, audioInNode, audioPatternNode } from "./audio.ts";
 export { cameraNode, geometryNode, lightNode, renderNode, sceneNodeDefinitions } from "./scene.ts";
 import { audioFileInNode, audioInNode, audioPatternNode } from "./audio.ts";
@@ -262,6 +263,7 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   spoutOutNode,
   ...valueGraphNodeDefinitions,
   ...valueStructureNodeDefinitions,
+  ...controlNodeDefinitions,
   audioInNode,
   audioFileInNode,
   audioPatternNode,

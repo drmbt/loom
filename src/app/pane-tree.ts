@@ -740,6 +740,8 @@ export const DEFAULT_PANE_TREE: PaneTreeLayout = {
           { key: "problems-3", role: "problems" },
           { key: "performance-4", role: "performance" },
           { key: "agent-6", role: "agent" },
+          // T1388b: live controls, before the terminal (which stays last); never the active tab by default.
+          { key: "controls-12", role: "controls" },
           // T1263: last, and never active by default — a shell is spawned only when the
           // tab is shown (`terminal-pane.tsx`), so a fresh profile starts none.
           { key: "terminal-11", role: "terminal" },
@@ -762,7 +764,7 @@ export const DEFAULT_PANE_TREE: PaneTreeLayout = {
     },
   },
   floating: [],
-  nextKey: 12,
+  nextKey: 13,
 };
 
 /**
