@@ -103,6 +103,110 @@ const seek = (subject: string, lift: Vec3, fov: number, candidates: readonly Vec
 };
 
 /**
+ * DISCOVERED framings: instead of hand-placing every angle, search the hall. Candidate eyes on
+ * a grid through the whole building (floor level to the crane rails) look at each point of
+ * interest — the process — and are scored by what a frame of it would show:
+ *
+ *  - the subject must be in clear sight and the foreground clear;
+ *  - every OTHER point of interest also in shot adds (layering — the plant in depth);
+ *  - an unconventional angle adds: very low, very high, or steeply up or down;
+ *  - distance costs a little.
+ *
+ * The best are taken greedily, no two eyes within 12 m and each subject once, so the
+ * set spreads over the hall. Build-time only, from the plant's own geometry.
+ */
+// The HOT points only: a frame built on an unlit subject is a black frame.
+const INTEREST = [
+  "emit.slag_door", "emit.ladle_surface", "emit.slag_pot_surface", "emit.tundish_pour", "emit.caster_mould",
+  "emit.furnace_mouth", "emit.slag_fall",
+] as const;
+export const DISCOVERED = 6;
+let discoveredCache: { key: FurnaceSceneFacts; poses: Pose[] } | undefined;
+
+function discover(facts: FurnaceSceneFacts): Pose[] {
+  if (discoveredCache?.key === facts) return discoveredCache.poses;
+  const targets = INTEREST.flatMap((name) => (facts.markers.has(name) ? [at(facts, name)] : []));
+  const clear = (from: Vec3, to: Vec3, share: number): boolean =>
+    firstHit(facts.blockers, from, [from[0] + (to[0] - from[0]) * share, from[1] + (to[1] - from[1]) * share, from[2] + (to[2] - from[2]) * share]) >= 1;
+  const scored: Array<{ eye: Vec3; aim: Vec3; target: number; score: number }> = [];
+  for (let x = -54; x <= 54; x += 6) {
+    for (let z = -14; z <= 14; z += 7) {
+      for (const y of [0.8, 3, 8, 14, 20, 26]) {
+        const eye: Vec3 = [x, y, z];
+        // Room around the lens: nothing within 1.5 m in any of 14 directions (inside a machine,
+        // against a wall or a window pane, the frame is one flat colour).
+        const room = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1], [1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1], [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1]]
+          .every(([a, b, c]) => { const k = 1.5 / Math.hypot(a!, b!, c!); return clear(eye, [x + a! * k, y + b! * k, z + c! * k], 1); });
+        if (!room) continue;
+        targets.forEach((target, t) => {
+          const d: Vec3 = [target[0] - x, target[1] - y, target[2] - z];
+          const dist = Math.hypot(d[0], d[1], d[2]);
+          if (dist < 8 || dist > 28) return;
+          if (!clear(eye, target, 0.97)) return;
+          // Foreground: 6 m clear straight ahead and toward the frame's sides.
+          const flat = Math.hypot(d[0], d[2]) || 1;
+          const side: Vec3 = [-d[2] / flat, 0, d[0] / flat];
+          const ahead = (sx: number, sy: number): Vec3 => [x + (d[0] / dist + side[0] * sx) * 6, y + (d[1] / dist + sy) * 6, z + (d[2] / dist + side[2] * sx) * 6];
+          if (![[0, 0], [0.35, 0], [-0.35, 0], [0, 0.2], [0, -0.2]].every(([sx, sy]) => clear(eye, ahead(sx!, sy!), 1))) return;
+          let context = 0;
+          targets.forEach((other, o) => {
+            if (o === t) return;
+            const e: Vec3 = [other[0] - x, other[1] - y, other[2] - z];
+            const len = Math.hypot(e[0], e[1], e[2]);
+            const cos = (e[0] * d[0] + e[1] * d[1] + e[2] * d[2]) / (len * dist);
+            if (cos > Math.cos((24 * Math.PI) / 180) && len < 60 && clear(eye, other, 0.97)) context += 1;
+          });
+          const pitch = Math.asin(d[1] / dist);
+          const unconventional = (y < 1.5 ? 1 : 0) + (y > 18 ? 1 : 0) + (Math.abs(pitch) > 0.6 ? 1 : 0);
+          scored.push({ eye, aim: target, target: t, score: 1 + context * 1.2 + unconventional * 0.8 - dist / 25 });
+        });
+      }
+    }
+  }
+  scored.sort((a, b) => b.score - a.score);
+  const picked: typeof scored = [];
+  // Where the move assigned to the next pick ends must be as clear as where it starts.
+  const endOf = (candidate: (typeof scored)[number], move: Omit<Move, "pose" | "name">): Vec3 => {
+    const e = candidate.eye, a = candidate.aim;
+    const d: Vec3 = [a[0] - e[0], a[1] - e[1], a[2] - e[2]];
+    const len = Math.hypot(d[0], d[1], d[2]);
+    const f: Vec3 = [d[0] / len, d[1] / len, d[2] / len];
+    const flat = Math.hypot(f[0], f[2]) || 1;
+    const r: Vec3 = [-f[2] / flat, 0, f[0] / flat];
+    const turn = (move.orbit ?? 0) * 0.5;
+    const ox = e[0] - a[0], oz = e[2] - a[2];
+    const orbited: Vec3 = [a[0] + ox * Math.cos(turn) + oz * Math.sin(turn), e[1], a[2] - ox * Math.sin(turn) + oz * Math.cos(turn)];
+    const k = 0.5;
+    return [orbited[0] + (f[0] * (move.dolly ?? 0) + r[0] * (move.truck ?? 0)) * k, orbited[1] + (f[1] * (move.dolly ?? 0) + (move.crane ?? 0)) * k, orbited[2] + (f[2] * (move.dolly ?? 0) + r[2] * (move.truck ?? 0)) * k];
+  };
+  // Each subject once; if some subject has no clear framing, a second framing of another fills.
+  for (const perSubject of [1, 2]) {
+    for (const candidate of scored) {
+      if (picked.length === DISCOVERED) break;
+      if (picked.includes(candidate)) continue;
+      const move = DISCOVERED_MOVES[picked.length % DISCOVERED_MOVES.length]!;
+      const end = endOf(candidate, move);
+      if (!clear(candidate.eye, end, 1) || !clear(end, candidate.aim, 0.9)) continue;
+      if (picked.some((p) => Math.hypot(p.eye[0] - candidate.eye[0], p.eye[1] - candidate.eye[1], p.eye[2] - candidate.eye[2]) < 12)) continue;
+      if (picked.filter((p) => p.target === candidate.target).length >= perSubject) continue;
+      picked.push(candidate);
+    }
+  }
+  if (picked.length < DISCOVERED) throw new Error(`cameraPath: the hall search found only ${picked.length} of ${DISCOVERED} framings.`);
+  const poses = picked.map((p) => toward(p.eye, p.aim, p.eye[1] > 18 || p.eye[1] < 1.5 ? 58 : 44));
+  discoveredCache = { key: facts, poses };
+  return poses;
+}
+
+/** Drone moves for the discovered framings, in turn: a push with a bank, a rising reveal, an orbit, a banking drift. */
+const DISCOVERED_MOVES: ReadonlyArray<Omit<Move, "pose" | "name">> = [
+  { dolly: 9, roll: 22, ease: "smooth" },
+  { crane: 5, dolly: 3, roll: -12, ease: "whip" },
+  { orbit: 0.7, roll: 8, ease: "creep" },
+  { truck: 7, dolly: 4, roll: -25, ease: "smooth" },
+];
+
+/**
  * Every framing with its move, CLOSE pool first, WIDE pool after — the director (§T1370b)
  * picks from the close, dynamic set when the music is energetic and from the wide, slow set
  * when it is not, by index range; the time-driven cut plays them in this order. The close
@@ -110,6 +214,13 @@ const seek = (subject: string, lift: Vec3, fov: number, candidates: readonly Vec
  * light in black steel is what this film is.
  */
 export const CUT: readonly Move[] = [
+  // The hall search's framings (discover()), each flown as a drone move.
+  ...Array.from({ length: DISCOVERED }, (_, k): Move => ({
+    name: `discovered_${k}`,
+    pose: (f) => discover(f)[k]!,
+    foreground: 6,
+    ...DISCOVERED_MOVES[k % DISCOVERED_MOVES.length]!,
+  })),
   // Hot: looking INTO the process.
   // Into the furnace through the slag door, a long lens from the dark: the bath inside.
   { name: "slag_door_into", pose: seek("emit.slag_door", [0, -0.3, 0], 20, [
@@ -156,6 +267,8 @@ export const CUT: readonly Move[] = [
 
 /** How many CUT entries, from the start, are HOT (the process itself); they open the close pool. */
 export const HOT_POOL = 3;
+/** CUT opens with the DISCOVERED framings; the hot pool starts after them. */
+export const HOT_START = DISCOVERED;
 /** How many CUT entries, from the start, form the close pool; the rest are the wide pool. */
 export const CLOSE_POOL = 13;
 
@@ -345,10 +458,14 @@ export function shotPath(facts: FurnaceSceneFacts, drive: ShotDrive): Omit<Camer
   const punch = drive.punch ?? "0";
   // Handheld: two incommensurate sines per axis, a few centimetres at rest, more when the
   // music pushes — the operator's hands getting less steady.
+  // A per-frame JITTER of a centimetre, a pseudo-random function of the clock (so the previous
+  // frame's camera is exactly reproducible): it moves every surface a fraction of a pixel frame
+  // to frame, which is what gives the TAA history new samples to average.
+  const jitter = (salt: number): string => `((fract(sin(${time} * ${7919.37 + salt}) * 43758.5453) - 0.5) * 0.012)`;
   const hand = [
-    `((sin(${time} * 1.7) * 0.018 + sin(${time} * 4.1) * 0.006 + sin(${time} * 11.3) * 0.004) * ${shake})`,
-    `((sin(${time} * 2.3 + 1.0) * 0.014 + sin(${time} * 5.3) * 0.005 + sin(${time} * 13.7) * 0.004) * ${shake})`,
-    `((sin(${time} * 1.9 + 2.0) * 0.016 + sin(${time} * 9.1) * 0.004) * ${shake})`,
+    `((sin(${time} * 1.7) * 0.018 + sin(${time} * 4.1) * 0.006 + sin(${time} * 11.3) * 0.004) * ${shake} + ${jitter(0)})`,
+    `((sin(${time} * 2.3 + 1.0) * 0.014 + sin(${time} * 5.3) * 0.005 + sin(${time} * 13.7) * 0.004) * ${shake} + ${jitter(13.1)})`,
+    `((sin(${time} * 1.9 + 2.0) * 0.016 + sin(${time} * 9.1) * 0.004) * ${shake} + ${jitter(29.7)})`,
   ];
   const eyeTerms: [string[], string[], string[]] = [[], [], []];
   const aimTerms: [string[], string[], string[]] = [[], [], []];

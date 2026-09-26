@@ -2,7 +2,7 @@ import type { GraphEdge, GraphNode } from "../../domain/types/graph.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { SPECTRUM_BAND_NAMES } from "../../domain/audio/spectrum-bands.ts";
 import { edge, node as buildNode } from "../../examples/documents/builders.ts";
-import { CLOSE_POOL, CUT, HOT_POOL } from "./camera-path.ts";
+import { CLOSE_POOL, CUT, DISCOVERED, HOT_POOL } from "./camera-path.ts";
 
 /**
  * T1370b — THE DIRECTOR: the music chooses, inside boundaries the document states.
@@ -136,11 +136,13 @@ export function director(source: string, origin: readonly [number, number]): Dir
       // jumped between two framings with no cut. Every other cut is HOT; the rest alternate
       // close and wide, the section count shifting the phase so sections differ.
       expressions: [
-        `hot = (floor(cut / 4) + novelty) % ${HOT_POOL}`,
-        `close = ${HOT_POOL} + (floor(cut / 2) * 3 + novelty) % ${CLOSE_POOL - HOT_POOL}`,
-        `wide = ${CLOSE_POOL} + (floor(cut / 4) * 3 + novelty) % ${CUT.length - CLOSE_POOL}`,
-        `phase = (cut + novelty) % 4`,
-        `shot = (phase == 0) * hot + ((phase == 1) + (phase == 3)) * close + (phase == 2) * wide`,
+        // CUT: the hall search's drone framings first, then hot, close and wide.
+        `disc = (floor(cut / 2) * 3 + novelty) % ${DISCOVERED}`,
+        `hot = ${DISCOVERED} + (floor(cut / 5) + novelty) % ${HOT_POOL}`,
+        `close = ${DISCOVERED + HOT_POOL} + (floor(cut / 5) * 3 + novelty) % ${CLOSE_POOL - HOT_POOL}`,
+        `wide = ${DISCOVERED + CLOSE_POOL} + (floor(cut / 5) * 3 + novelty) % ${CUT.length - DISCOVERED - CLOSE_POOL}`,
+        `phase = (cut + novelty) % 5`,
+        `shot = (phase == 0) * hot + ((phase == 1) + (phase == 3)) * disc + (phase == 2) * close + (phase == 4) * wide`,
       ].join("; "),
     }),
     // One frame back, for the motion blur's previous camera.

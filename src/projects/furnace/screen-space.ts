@@ -11,7 +11,7 @@ import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
  * Render's contract), so a pixel's world position is eye + ray · (z ÷ dot(ray, forward)).
  */
 
-const CAMERA_PARAMS = `  eye: vec3f, // @default 0  Camera position (drive from the camera).
+export const CAMERA_PARAMS = `  eye: vec3f, // @default 0  Camera position (drive from the camera).
   aim: vec3f, // @default 0  Camera look-at (drive from the camera).
   fov: f32, // @default 50  Camera vertical field of view, degrees.
   far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).
@@ -26,7 +26,7 @@ const BINDINGS = `${SHARED_UNIFORMS_WGSL}
 `;
 
 /** The view basis and the helpers every pass shares: ray, world position, reprojection. */
-const VIEW = `
+export const VIEW = `
 // T1383b: the camera's right vector with its ROLL — world up turned about the view axis by
 // roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.
 fn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {

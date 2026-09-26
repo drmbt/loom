@@ -14,6 +14,8 @@ import { DOF_WGSL, GTAO_WGSL, MOTION_BLUR_WGSL, SSR_WGSL } from "./screen-space.
 import { shotPath } from "./camera-path.ts";
 import { GLITCH_WGSL } from "./glitch.ts";
 import { SEGMENT_WGSL } from "./segments.ts";
+import { GI_COMPOSITE_WGSL, SSGI_WGSL } from "./gi.ts";
+import { TAA_WGSL } from "./taa.ts";
 import { director } from "./director.ts";
 import { fixturesOf } from "./fixtures.ts";
 import { lampsWgsl } from "./lamps.ts";
@@ -275,7 +277,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       casting: expressionSlot("abstime * 0.4", 0),
       conveyor: expressionSlot("abstime * 1.2", 0),
     }, { label: "rig1" }),
-    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, liquidGlow: 2.2, liningGlow: 12, arcGlow: expressionSlot(`1.6 + ${direction.density} * 1.2 + ${HIT("hatCount")} * 3`, 2), arcFlash: expressionSlot(`${HIT("hatCount")} * 6 + ${direction.density} * 0.5`, 0), fire: expressionSlot(`5 + ${LEVEL("low")} * 12 + ${direction.build} * 10`, 9), chalk: 0.12, soot: 0.38,
+    node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, liquidGlow: 2.2, liningGlow: 24, arcGlow: expressionSlot(`1.6 + ${direction.density} * 1.2 + ${HIT("hatCount")} * 3`, 2), arcFlash: expressionSlot(`${HIT("hatCount")} * 6 + ${direction.density} * 0.5`, 0), fire: expressionSlot(`5 + ${LEVEL("low")} * 12 + ${direction.build} * 10`, 9), chalk: 0.12, soot: 0.38,
       // The steel answers every kick and snare, loud or quiet: a floor of 0.4 even in the calm.
       fx: expressionSlot(`0.25 + 0.35 * ${act} + 0.5 * clamp((${direction.energy} - 0.3) / 0.5, 0, 1)`, 0.3),
       kickSince: expressionSlot("op('kicks1').chan.kickCountSince", 100),
@@ -406,6 +408,27 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       ...lampDrive,
     }, { label: "lamps1", resolution: { mode: "project" } }),
     // Screen space on the G-buffer (T1371b): contact occlusion, then reflections, then air.
+    // GI (gi.ts): the lit frame at quarter size is the light source for one bounce — hot
+    // things light what is around them. Gathered at half size, blurred, added at full size.
+    node("litQuarter", "customWgsl", [-2250, 250], { source: BLOOM_DOWN_WGSL, clampLuma: 1 }, { label: "litquarter1", resolution: { mode: "scale", factor: 0.25 } }),
+    node("gather", "customWgslMulti", [-2200, 350], {
+      source: SSGI_WGSL,
+      eye: vec(eye),
+      aim,
+      "eye.x": cameraRef("eye.x", eye[0]),
+      "eye.y": cameraRef("eye.y", eye[1]),
+      "eye.z": cameraRef("eye.z", eye[2]),
+      "aim.x": cameraRef("lookAt.x", aim[0]),
+      "aim.y": cameraRef("lookAt.y", aim[1]),
+      "aim.z": cameraRef("lookAt.z", aim[2]),
+      fov: cameraRef("fov", camera.fovDeg),
+      far: cameraRef("far", 400),
+      roll: cameraRef("roll", 0),
+      radius: 9,
+      strength: 20,
+    }, { label: "gather1", resolution: { mode: "scale", factor: 0.5 } }),
+    node("gatherBlur", "blur", [-2150, 450], { size: 4, filter: "gaussian", extend: "hold" }, { label: "gatherblur1", resolution: { mode: "scale", factor: 0.5 } }),
+    node("bounce", "customWgslMulti", [-2150, 0], { source: GI_COMPOSITE_WGSL, amount: 1 }, { label: "bounce1", resolution: { mode: "project" } }),
     node("occlusion", "customWgslMulti", [-2100, 0], {
       source: GTAO_WGSL,
       eye: vec(eye),
@@ -469,6 +492,13 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       roll: cameraRef("roll", 0),
     }, { label: "lens1", resolution: { mode: "project" } }),
     // Camera motion blur: the path one frame earlier is the previous camera (exact, stateless).
+    // TAA (taa.ts): the history reprojected through last frame's camera, clamped, blended.
+    node("taa", "customWgslMulti", [-1400, 150], {
+      source: TAA_WGSL,
+      ...cameraNowAndBefore,
+      reset: expressionSlot("op('dirCuts1').chan.cutSince < 0.05", 0),
+    }, { label: "taa1", resolution: { mode: "project" } }),
+    node("taaHistory", "feedback", [-1400, 300], { source: "taa1" }, { label: "taahistory1" }),
     node("shutter", "customWgslMulti", [-1200, 0], {
       source: MOTION_BLUR_WGSL,
       ...cameraNowAndBefore,
@@ -508,7 +538,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       freeze: expressionSlot(`(${direction.energy} > 0.92) * (${HIT("kickCount")} > 0.9) * ${glitchBudget}`, 0),
     }, { label: "glitch1", resolution: { mode: "project" } }),
     node("history", "feedback", [900, 300], { source: "glitch1" }, { label: "history1" }),
-    node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 10, knee: 3 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }),
+    node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 2, knee: 1.5 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }),
     // The bloom PYRAMID (post.ts): four 13-tap downsamples, then tent upsamples back up,
     // each adding its own level — a round glow at every width, never a stretched texel.
     ...[1, 2, 3, 4].map((level) =>
@@ -518,12 +548,12 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       }),
     ),
     ...[0, 1, 2, 3].map((level) =>
-      node(`bloomUp${level}`, "customWgslMulti", [-600, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 0.3 }, {
+      node(`bloomUp${level}`, "customWgslMulti", [-600, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, {
         label: `bloomup${level}1`,
         resolution: { mode: "scale", factor: 0.5 / 2 ** level },
       }),
     ),
-    node("glow", "add", [-300, 0], { opacity: 0.4 }, { label: "glow1", resolution: { mode: "project" } }),
+    node("glow", "add", [-300, 0], { opacity: 0.35 }, { label: "glow1", resolution: { mode: "project" } }),
     // Auto-exposure (T1378b): meter the frame's log-average luminance, adapt toward a key
     // like an eye does — faster when the scene brightens than when it darkens — and hand the
     // grade the gain. One frame late by the meter's contract; the lag hides it.
@@ -556,7 +586,15 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("depth-lamps", ["shot", "depth"], ["lamps", "more"], 0),
     edge("normal-lamps", ["shot", "normal"], ["lamps", "more"], 1),
     edge("albedo-lamps", ["shot", "albedo"], ["lamps", "more"], 2),
-    edge("lamps-occlusion", ["lamps", "out"], ["occlusion", "input"]),
+    edge("lamps-quarter", ["lamps", "out"], ["litQuarter", "input"]),
+    edge("quarter-gather", ["litQuarter", "out"], ["gather", "input"]),
+    edge("depth-gather", ["shot", "depth"], ["gather", "more"], 0),
+    edge("normal-gather", ["shot", "normal"], ["gather", "more"], 1),
+    edge("gather-blur", ["gather", "out"], ["gatherBlur", "input"]),
+    edge("lamps-bounce", ["lamps", "out"], ["bounce", "input"]),
+    edge("blur-bounce", ["gatherBlur", "out"], ["bounce", "more"], 0),
+    edge("albedo-bounce", ["shot", "albedo"], ["bounce", "more"], 1),
+    edge("bounce-occlusion", ["bounce", "out"], ["occlusion", "input"]),
     edge("depth-occlusion", ["shot", "depth"], ["occlusion", "more"], 0),
     edge("normal-occlusion", ["shot", "normal"], ["occlusion", "more"], 1),
     edge("occlusion-reflections", ["occlusion", "out"], ["reflections", "input"]),
@@ -570,7 +608,10 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("rig-sun", ["rig", "out"], ["machineSun", "points"]),
     edge("reflections-composite", ["reflections", "out"], ["airComposite", "input"]),
     edge("air-composite", ["air", "out"], ["airComposite", "more"], 0),
-    edge("composite-lens", ["airComposite", "out"], ["lens", "input"]),
+    edge("composite-taa", ["airComposite", "out"], ["taa", "input"]),
+    edge("depth-taa", ["shot", "depth"], ["taa", "more"], 0),
+    edge("history-taa", ["taaHistory", "out"], ["taa", "more"], 1),
+    edge("taa-lens", ["taa", "out"], ["lens", "input"]),
     edge("depth-lens", ["shot", "depth"], ["lens", "more"], 0),
     edge("lens-shutter", ["lens", "out"], ["shutter", "input"]),
     edge("depth-shutter", ["shot", "depth"], ["shutter", "more"], 0),
