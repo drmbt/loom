@@ -913,7 +913,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.019999999552965164 + (sin(abstime * 0.9 + 0.3) * 0.5 + sin(abstime * 2.3 + 0.51) * 0.3 + sin(abstime * 5.1 + 0.69) * 0.2) * 0.05"
+                "source": "0.019999999552965164 + (sin(abstime * 0.9 + 0.3) * 0.5 + sin(abstime * 2.3 + 0.51) * 0.3 + sin(abstime * 5.1 + 0.69) * 0.2) * 0.05 + 0 * abstime * 0.12"
               },
               "static": {
                 "kind": "static",
@@ -939,7 +939,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "15.140000343322754 - abstime * 0.12"
+                "source": "15.140000343322754 + -1 * abstime * 0.12"
               },
               "static": {
                 "kind": "static",
@@ -999,11 +999,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(sin(abstime * 0.5 + 0.9) * 0.5 + sin(abstime * 1.4 + 1.53) * 0.3 + sin(abstime * 3.3 + 2.07) * 0.2) * 1.6"
+                "source": "-2.6 + (-0.9 - -2.6) * (clamp(abstime / 1.5, 0, 1) ^ 2 * (3 - 2 * clamp(abstime / 1.5, 0, 1))) + (sin(abstime * 0.5 + 0.9) * 0.5 + sin(abstime * 1.4 + 1.53) * 0.3 + sin(abstime * 3.3 + 2.07) * 0.2) * 1.4"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": -0.9
               }
             },
             "mode": "expression"
@@ -1874,7 +1874,7 @@
             },
             "mode": "expression"
           },
-          "focusDistance": 11.4,
+          "focusDistance": 11,
           "fov": {
             "bindings": {
               "expression": {

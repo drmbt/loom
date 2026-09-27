@@ -395,6 +395,31 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
    * an arc about the grille, never a straight dolly — with a breath of handheld.
    */
   const WHIP = "clamp(1 - abstime / 0.35, 0, 1) ^ 2";
+  /** The tableau's operator; the zoom CONTINUES it (its clock picks up where the tableau's 5 s ended). */
+  const TABLEAU_HANDHELD = { tiltIn: -2.6, tilt: -0.9, settle: 1.5, shake: 1, creep: 0.12 } as const;
+  const TABLEAU_SECONDS = 5;
+  const wideFov = camera.fovDeg;
+  /**
+   * zoom (0:24): the tableau's camera carrying on (same operator, same tilt, same creep), then a
+   * violent crash-zoom at 1.4 s onto the raised-arms back — the lens racks from the wide to 7.5°
+   * and the aim lands on the upper back; the handheld keeps working through and after the snap.
+   */
+  function zoomMove(): Record<string, StoredParameter> {
+    const hh = handheld(eye, aim, { ...TABLEAU_HANDHELD, timeOffset: TABLEAU_SECONDS });
+    const src = (key: string): string => (hh[key] as unknown as { bindings: { expression: { source: string } } }).bindings.expression.source;
+    const back: [number, number, number] = [face[0], 1.42, face[2]];
+    const blend = (key: string, target: number): StoredParameter => expressionSlot(`(${src(key)}) * (1 - ${SNAP}) + (${target} + (${src(key)}) - ${key.startsWith("lookAt.x") ? aim[0] : key.startsWith("lookAt.y") ? aim[1] : aim[2]}) * ${SNAP}`, target);
+    return {
+      "eye.x": hh["eye.x"]!,
+      "eye.y": hh["eye.y"]!,
+      "eye.z": hh["eye.z"]!,
+      roll: hh["roll"]!,
+      fov: expressionSlot(`${wideFov.toFixed(3)} + (7.5 - ${wideFov.toFixed(3)}) * ${SNAP}`, wideFov),
+      "lookAt.x": blend("lookAt.x", back[0]),
+      "lookAt.y": blend("lookAt.y", back[1]),
+      "lookAt.z": blend("lookAt.z", back[2]),
+    };
+  }
 
   function titleMove(): Record<string, StoredParameter> {
     const centre: [number, number, number] = [0, 0.74, 0.13];
@@ -416,12 +441,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   }
   const cameraMove: Record<string, StoredParameter> =
     shot === "zoom"
-      ? {
-          fov: expressionSlot(`${camera.fovDeg.toFixed(3)} + (7.5 - ${camera.fovDeg.toFixed(3)}) * ${SNAP}`, camera.fovDeg),
-          "lookAt.x": expressionSlot(`${aim[0]} + (${face[0]} - ${aim[0]}) * ${SNAP} + sin(abstime * 7.3) * 0.006 * ${SNAP}`, aim[0]),
-          "lookAt.y": expressionSlot(`${aim[1]} + (${face[1]} - ${aim[1]}) * ${SNAP} + sin(abstime * 5.1 + 1) * 0.005 * ${SNAP}`, aim[1]),
-          "lookAt.z": expressionSlot(`${aim[2]} + (${face[2]} - ${aim[2]}) * ${SNAP}`, aim[2]),
-        }
+      ? zoomMove()
       : shot === "title"
         ? titleMove()
         : shot === "prism"
@@ -429,7 +449,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
         : base === "wheel" && driven !== undefined
           ? { ...follow("eye", eye, driven.forward), ...follow("lookAt", aim, driven.forward) }
           : shot === "tableau"
-            ? handheld(eye, aim, { tiltIn: -2.6, tilt: -0.9, settle: 1.5, shake: 1, creep: 0.12 })
+            ? handheld(eye, aim, TABLEAU_HANDHELD)
             : {};
   nodes.push(node("cam", "camera", [-2700, -900], { eye: vec(eye), lookAt: aim, fov: camera.fovDeg, near: 0.05, far: 200, ...cameraMove }, { label: "cam1" }));
   nodes.push(node("shot", "render", [-2400, 0], {
@@ -470,7 +490,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   }
   if (plan.dof) {
     // focus: the title's script at 1.3 m; the tableau's figure (the rear row falls soft)
-    const focus = base === "title" ? 1.3 : shot === "tableau" ? 11.4 : 0;
+    const focus = base === "title" ? 1.3 : base === "tableau" ? 11.0 : 0;
     pass("lens_dof", DOF_WGSL, { ...cameraParams, aperture: base === "title" ? 0.5 : 0.45, maxRadius: 16, focusDistance: focus }, [depth], [-1500, 0]);
   }
   const scene = last;
