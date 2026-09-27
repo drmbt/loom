@@ -11,7 +11,7 @@ import type { Area, OnNothingFacts } from "./scene-facts.ts";
 import { carAreas } from "./scene-facts.ts";
 import { markerOf } from "./scene-facts.ts";
 import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "./skin-kernel.ts";
-import { GLASS_COMPOSITE_WGSL, LAMP_GLASS_WGSL, OCCLUDER_WGSL, SURFACE_WGSL } from "./surface.ts";
+import { GLASS_COMPOSITE_WGSL, LAMP_GLASS_WGSL, OCCLUDER_WGSL, surfaceWgsl, type Footprint } from "./surface.ts";
 import { CAR_RIG_ATTRIBUTES, carRigKernel } from "./car-rig.ts";
 import { WHEEL_DOF, WHEEL_DRIVE, WHEEL_TURN, WHEEL_GLYPHS, WHEEL_GLYPHS_WGSL, placedHaze, riding, wheelCamera, wheelLights, wheelRig } from "./shots/wheel.ts";
 import { titleDocument } from "./shots/title.ts";
@@ -202,7 +202,14 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
 
   // ── The material every surface wears ──
   // The title frames the grille from a metre: its own headlights would blow the frame out, so they idle.
-  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: base === "title" ? 0.04 : 1, wet: 0, wetGloss: 0.32, dryGloss: 0.6 }, { label: "surf1" }));
+  // every parked car darkens the floor under it (the driven car of the wheel shot moves: skip it)
+  const footprints: Footprint[] = plan.areas.includes("cars")
+    ? carAreas(facts).filter((area) => area !== rig?.area).map((area) => {
+        const b = facts.areas.get(area)!.bounds;
+        return [(b.min[0] + b.max[0]) / 2, (b.min[2] + b.max[2]) / 2, (b.max[0] - b.min[0]) / 2 - 0.12, (b.max[2] - b.min[2]) / 2 - 0.25] as const;
+      })
+    : [];
+  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: surfaceWgsl(footprints), headGain: base === "title" ? 0.04 : 1, wet: 0, wetGloss: 0.32, dryGloss: 0.6 }, { label: "surf1" }));
 
   // ── Meshes ──
   plan.areas.flatMap((entry) => (entry === "cars" ? carAreas(facts) : [entry])).forEach((area, index) => {

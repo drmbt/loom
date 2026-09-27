@@ -18,6 +18,8 @@ export interface MeshSelectionFacts {
   readonly joints: string;
   /** The rig parts in this selection (index as `surface.w` carries it, pivot, rest rotation, parent). */
   readonly partTable: readonly PartFacts[];
+  /** World bounds of the area's geometry at rest (the floor contact shadows use the cars'). */
+  readonly bounds: { readonly min: readonly [number, number, number]; readonly max: readonly [number, number, number] };
 }
 
 export interface PartFacts {
@@ -104,6 +106,7 @@ export function factsFrom(glbUrl: string, meshes: ReadonlyMap<Area, DecodedMesh>
       triangles: mesh.triangleCount,
       parts: mesh.parts.map((part) => `${part.index}:${part.name}`).join(" "),
       joints: formatJointTable(mesh.skin?.joints ?? []),
+      bounds: mesh.bounds,
       partTable: mesh.parts.map((part) => ({ index: part.index, name: part.name, pivot: part.pivot, rotation: part.rotation, ...(part.parent === undefined || part.parent === "" ? {} : { parent: part.parent }) })),
     });
   }

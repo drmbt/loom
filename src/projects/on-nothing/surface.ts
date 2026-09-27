@@ -16,13 +16,26 @@
  *    handle the lanes drive;
  *  - skin, cloth, denim, shoes: rough dielectrics, skin desaturated toward the grade.
  */
-export const SURFACE_WGSL = `// @use surface-detail
+/** The floor contact-shadow footprints: centre (x, z) and half extents, glTF metres. */
+export type Footprint = readonly [number, number, number, number];
+
+/** SURFACE_WGSL with the parked cars' footprints baked in (none: no contact shadows). */
+export function surfaceWgsl(footprints: readonly Footprint[] = []): string {
+  const count = Math.max(1, footprints.length);
+  const list = footprints.length === 0 ? "vec4f(0.0, 0.0, -1.0, -1.0)" : footprints.map((f) => `vec4f(${f.map((v) => v.toFixed(4)).join(", ")})`).join(", ");
+  return SURFACE_BASE_WGSL.replace("// @contact", `const CONTACT_COUNT: u32 = ${footprints.length}u;\nconst CONTACT = array<vec4f, ${count}>(${list});`);
+}
+
+const SURFACE_BASE_WGSL = `// @use surface-detail
+// @contact
 struct Params {
   headGain: f32, // @default 1  Headlight and DRL radiance multiplier.
   tubeGain: f32, // @default 1  LED tube radiance multiplier.
   tailGain: f32, // @default 1  Tail light radiance multiplier.
   wet: f32, // @default 0.4  Share of the floor that is damp and glossy.
   wetGloss: f32, // @default 0.22  Roughness of the damp patches.
+  contactDepth: f32, // @default 0.93  How dark the floor gets under a parked car (0 off).
+  contactReach: f32, // @default 1.1  How far the contact shadow reaches beyond the footprint, metres.
   dryGloss: f32, // @default 0.62  Roughness of the dry floor (worn concrete: past the reflections' cutoff).
   peel: f32, // @default 0.25  Orange-peel strength on the clear coat.
   cycAlbedo: f32, // @default 0.9  Albedo of the white cyc.
@@ -45,6 +58,21 @@ fn scratchAt(w: vec2f, scale: f32, seed: u32) -> f32 {
   return smoothstep(0.012, 0.0, abs(across)) * seg;
 }
 
+// CONTACT SHADOWS under the parked cars: each footprint (generated from the GLB, see
+// contactFootprints) darkens the floor with a soft falloff — near black under the body, a
+// short penumbra beyond it — the sky/room occlusion a screen-space pass cannot reach at 15 m.
+fn contactShadow(q: vec2f, p: Params) -> f32 {
+  var k = 1.0;
+  for (var i = 0u; i < CONTACT_COUNT; i = i + 1u) {
+    let f = CONTACT[i];
+    let d = abs(q - f.xy) - f.zw;
+    let outside = length(max(d, vec2f(0.0))) + min(max(d.x, d.y), 0.0);
+    let shadow = pow(1.0 - smoothstep(-0.6, p.contactReach, outside), 1.6);
+    k = k * (1.0 - shadow * p.contactDepth);
+  }
+  return k;
+}
+
 fn floorSurface(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {
   // DRY, WORN warehouse concrete: satin, never glossy. A traffic-polished lane catches the
   // lamps as a soft sheen; scuffs, stains, aggregate and scratches break it everywhere.
@@ -63,7 +91,7 @@ fn floorSurface(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {
   let crack = smoothstep(0.006, 0.0, abs(detailNoise(vec3f(w.x * 0.9, 3.0, w.z * 0.9)).value - 0.5)) * 0.5;
   let scratches = max(scratchAt(w.xz, 0.6, 3u), scratchAt(w.xz + vec2f(0.21, 0.37), 0.35, 11u) * 0.6) * (1.0 - smoothstep(0.004, 0.02, s.footprint));
   let shade = (0.88 + 0.24 * fine.value + stone) * (0.85 + 0.3 * large.value);
-  r.albedo = vec4f(o.albedo.rgb * shade * mix(1.0, 0.6, damp) * (1.0 - scuff * 0.5) * (1.0 - stain) * (1.0 - crack * 0.6) * (1.0 + scratches * 0.5), 1.0);
+  r.albedo = vec4f(o.albedo.rgb * shade * mix(1.0, 0.6, damp) * (1.0 - scuff * 0.5) * (1.0 - stain) * (1.0 - crack * 0.6) * (1.0 + scratches * 0.5) * contactShadow(w.xz, p), 1.0);
   // satin, never a mirror: polished where traffic ran, rough where it did not
   let polish = smoothstep(0.35, 0.75, large.value);
   r.roughness = clamp(mix(p.dryGloss + 0.12, p.dryGloss - 0.08, polish) + (grit.value - 0.5) * 0.1 + stain * 0.1 - scratches * 0.15, 0.3, 0.95);
@@ -145,6 +173,9 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   }
   return o;
 }`;
+
+/** The surface without contact shadows (every shot but the parked-car sets). */
+export const SURFACE_WGSL = surfaceWgsl([]);
 
 /**
  * T1407b — LAMP GLASS, drawn ADDITIVELY over the lamp (loom has no transmissive mesh glass,
