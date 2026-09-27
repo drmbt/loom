@@ -5,7 +5,7 @@ docs/on-nothing-shotlist-2026-09-27.md) with the loom shot that plays it (`shot`
 `from`, the shot time it starts at). A row with no shot yet plays black, labelled NOT BUILT, so
 the cut always runs the reference's full length and every row sits on the reference's own frames.
 
-    python3 tools/on-nothing/cut.py render [--rows 1-20,35] [--shots quad] [--final] [--force]
+    python3 tools/on-nothing/cut.py render [--rows 1-20,35] [--shots quad] [--final] [--force] [--glb f] [--width 960]
     python3 tools/on-nothing/cut.py assemble [--tag 05] [--rows ...]
 
 render    renders each built row to renders/on-nothing/rows/row-NNN.mp4: exactly the row's frame
@@ -76,6 +76,10 @@ def render(args):
                "--width", str(W), "--shots", r["shot"], "--frames", str(r["f1"] - r["f0"]),
                "--from", str(r["from"]), "--take", str(r["take"]), "--out", path,
                "--audio", SONG_WAV, "--audio-start", str(r["start"]), *r.get("args", [])]
+        if args.glb:
+            cmd += ["--glb", args.glb]
+        if args.width:
+            cmd[cmd.index("--width") + 1] = str(args.width)
         if args.final:
             cmd.append("--final")
         print(f"row {r['row']:3d}: {r['shot']} take {r['take']} from {r['from']} ({r['f1'] - r['f0']} frames)", flush=True)
@@ -200,6 +204,8 @@ def main():
     parser.add_argument("--final", action="store_true")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--tag", default="wip")
+    parser.add_argument("--glb", help="render.ts --glb (a GLB built elsewhere)")
+    parser.add_argument("--width", type=int, help="a draft width; assemble scales every row to 1920 either way")
     args = parser.parse_args()
     {"render": render, "assemble": assemble}[args.command](args)
 
