@@ -775,6 +775,14 @@ export async function renderHeadless(request: HeadlessRenderRequest): Promise<He
           `meshes: "${nodeId}" is sized for ${String(node.parameters["vertices"])} vertices / ${String(node.parameters["triangles"])} triangles but the file holds ${prepared.facts.vertices} / ${prepared.facts.triangles}. Set its facts from prepareMesh(...).facts.`,
         );
       }
+      // T1401b: a skin adds two attributes, so a node sized unskinned for a skinned file (or
+      // the reverse) has the wrong buffer even when the counts agree.
+      const joints = typeof node.parameters["joints"] === "string" ? node.parameters["joints"] : "";
+      if ((joints.trim() === "") !== (prepared.facts.joints === "")) {
+        throw new Error(
+          `meshes: "${nodeId}" is sized ${joints.trim() === "" ? "unskinned" : "skinned"} but the file's selection is ${prepared.facts.joints === "" ? "unskinned" : "skinned"}. Set its joints from prepareMesh(...).facts.`,
+        );
+      }
       const ids = meshSourceIdsFor(nodeId);
       backend.registerMediaSource(ids.points, { currentFrame: () => ({ frameId: 1, bytes: prepared.points }) });
       backend.registerMediaSource(ids.indices, { currentFrame: () => ({ frameId: 1, bytes: prepared.indices }) });

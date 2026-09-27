@@ -24,6 +24,14 @@ import { readNumber } from "./parameter-readers.ts";
  * time under `meshSourceIdsFor(nodeId)` (§V135: the plan carries keys, never bytes). Until
  * they do the index buffer is zero — every triangle degenerate — so the node draws nothing
  * rather than garbage.
+ *
+ * ## A skinned file (T1401b)
+ *
+ * When the selection holds a glTF skin the loader also writes Joints — the decoded joint
+ * table, `index:name<parent@head` — and a non-empty Joints is what sizes the buffer for two
+ * more attributes: `joints` (four table indices, as floats) and `weights` (their weights,
+ * sum 1; zero on a vertex nothing skins). The vertices stay at the bind pose; posing is a
+ * Point Kernel's work, reading `p.joints`/`p.weights` and turning each joint about its head.
  */
 
 const POINTS_KEY = "meshPoints";
@@ -36,8 +44,8 @@ export const meshFileInNode: NodeDefinition = {
   title: "Mesh File In",
   category: "points",
   description:
-    "Loads a glTF binary (.glb) as a pointset: one point per vertex with position, normal, uv, color, surface (roughness, metallic, heat, part) and emissive, in world space, with the triangles riding the edge as mesh topology. Wire it to a Geometry in Surface mode to draw it, or through a Point Kernel first to move its parts — objects exported with a loom_part property carry their part's index in surface.w. Select keeps only matching object, part or material names (globs), which is how a scene bigger than one buffer splits across several of these. Vertices, Triangles and Parts are measured from the file by the loader. Draws nothing until a file is loaded.",
-  tags: ["mesh", "gltf", "glb", "file", "import", "blender", "geometry", "points"],
+    "Loads a glTF binary (.glb) as a pointset: one point per vertex with position, normal, uv, color, surface (roughness, metallic, heat, part) and emissive, in world space, with the triangles riding the edge as mesh topology. Wire it to a Geometry in Surface mode to draw it, or through a Point Kernel first to move its parts — objects exported with a loom_part property carry their part's index in surface.w. Select keeps only matching object, part or material names (globs), which is how a scene bigger than one buffer splits across several of these. A skinned file also carries joints (four joint indices) and weights per vertex, with the joint table (index:name<parent@head) in Joints, for a Point Kernel to pose. Vertices, Triangles, Parts and Joints are measured from the file by the loader. Draws nothing until a file is loaded.",
+  tags: ["mesh", "gltf", "glb", "file", "import", "blender", "geometry", "points", "skin", "skeleton", "rig"],
   inputs: [],
   outputs: [
     {
@@ -88,6 +96,16 @@ export const meshFileInNode: NodeDefinition = {
       description: "index:name for every loom_part the selection holds — the numbers a kernel branches on (surface.w).",
       inactiveWhen: () => MEASURED,
     },
+    joints: {
+      type: "string",
+      label: "Joints",
+      default: "",
+      group: "File",
+      compileTime: true,
+      description:
+        "The skin's joint table, index:name<parent@x,y,z (the rest head in world metres) — the numbers p.joints holds. Empty when the selection is unskinned; non-empty adds the joints and weights attributes.",
+      inactiveWhen: () => MEASURED,
+    },
   },
   compile(context): CompiledNodeDescription {
     const { nodeId, parameters } = readCompileInputs(context as Parameters<typeof readCompileInputs>[0]);
@@ -100,7 +118,8 @@ export const meshFileInNode: NodeDefinition = {
     const empty = measuredVertices === 0 || measuredTriangles === 0;
     const vertices = empty ? 1 : measuredVertices;
     const triangles = empty ? 1 : measuredTriangles;
-    const layout = meshLayout(vertices);
+    const skinned = typeof parameters["joints"] === "string" && parameters["joints"].trim() !== "";
+    const layout = meshLayout(vertices, skinned);
     if (!layout.ok) {
       return {
         passes: [],

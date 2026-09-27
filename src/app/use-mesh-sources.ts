@@ -38,7 +38,7 @@ interface MeshRequest {
   readonly nodeId: NodeId;
   readonly file: string;
   readonly select: string;
-  /** The node's stored facts, `vertices/triangles`, so a written measurement re-runs the effect. */
+  /** The node's stored facts, so a written measurement re-runs the effect (T1401b: joints too — a skin changes the layout, not the counts). */
   readonly sized: string;
 }
 
@@ -53,7 +53,7 @@ function meshRequests(graph: GraphDocument): MeshRequest[] {
       nodeId: node.id,
       file,
       select: typeof select === "string" ? select : "",
-      sized: `${String(node.parameters["vertices"])}/${String(node.parameters["triangles"])}`,
+      sized: `${String(node.parameters["vertices"])}/${String(node.parameters["triangles"])}/${String(node.parameters["parts"])}/${String(node.parameters["joints"])}`,
     });
   }
   return requests.sort((a, b) => (a.nodeId < b.nodeId ? -1 : a.nodeId > b.nodeId ? 1 : 0));
@@ -111,13 +111,15 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
         return false;
       }
       const parameters = stored.parameters;
-      if (parameters["vertices"] === facts.vertices && parameters["triangles"] === facts.triangles && parameters["parts"] === facts.parts) return true;
+      // An unskinned node may never have stored Joints at all: absent reads as the empty table.
+      const joints = typeof parameters["joints"] === "string" ? parameters["joints"] : "";
+      if (parameters["vertices"] === facts.vertices && parameters["triangles"] === facts.triangles && parameters["parts"] === facts.parts && joints === facts.joints) return true;
       void bus.execute(
         "graph.applyPatch",
         {
           baseRevision: bus.store.getRevision(),
           label: "Measure mesh",
-          operations: [{ op: "setParameters", nodeId, parameters: { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts } }],
+          operations: [{ op: "setParameters", nodeId, parameters: { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts, joints: facts.joints } }],
         },
         runtimeRef.current.invocation,
       );

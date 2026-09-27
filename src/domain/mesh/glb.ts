@@ -11,9 +11,11 @@
  * shape: TRIANGLES primitives; float32 positions/normals/uvs; u8/u16/u32 indices; COLOR_0
  * as float or normalized u8/u16; the metallic-roughness FACTORS; `emissiveFactor` with
  * `KHR_materials_emissive_strength`; node TRS/matrix hierarchies; perspective cameras;
- * `extras`. Refused: Draco, meshopt, sparse accessors, skins, morph targets, and any
+ * `extras`; skins with four influences (T1401b, below). Refused: Draco, meshopt, sparse
+ * accessors, morph targets, more than four influences (JOINTS_1), and any
  * `extensionsRequired` entry not on the list above. Image textures are IGNORED with a
- * warning (the factors still apply) — v1 materials are factor + vertex colour.
+ * warning (the factors still apply) — v1 materials are factor + vertex colour. Animation
+ * clips are ignored: the file's node pose is what is read.
  *
  * ## What comes out
  *
@@ -23,7 +25,37 @@
  * COLOR_0, roughness, metallic, emissive, heat), so one draw carries a whole scene with
  * many materials. Nodes carrying `extras.loom_part` become PARTS: every vertex under
  * such a node carries its part index, and the part's pivot is the node's world origin.
+ *
+ * ## Skins (T1401b)
+ *
+ * A skinned primitive is placed the way glTF skins it — Σ weight × joint world × inverse
+ * bind — so its vertices land in world space at the file's pose (the bind pose, for a file
+ * exported at rest), exactly where an unskinned export of the same mesh would put them, and
+ * the skinned node's own transform is ignored as the spec says. What comes out beside them
+ * is what a kernel needs to pose them: per vertex four joint indices and four weights
+ * (normalised to sum 1), and ONE joint table for the whole selection — every joint of every
+ * skin a selected primitive uses, in scene-walk order, so a joint's parent (its nearest
+ * ancestor node that is also in the table) always has a smaller index. A vertex the
+ * selection holds unskinned carries weights of zero: nothing moves it.
  */
+
+export interface DecodedJoint {
+  readonly name: string;
+  /** Table index of the nearest ancestor node that is also a joint; −1 at a root. Always less than the joint's own index. */
+  readonly parent: number;
+  /** World position of the joint node's origin at rest — the head a kernel turns the joint about. */
+  readonly head: readonly [number, number, number];
+  /** The joint node's world matrix at rest, column-major 4×4 (glTF order). */
+  readonly bind: readonly number[];
+}
+
+export interface DecodedSkin {
+  readonly joints: ReadonlyArray<DecodedJoint>;
+  /** Four indices into `joints` per vertex. */
+  readonly indices: Uint16Array;
+  /** Four weights per vertex, summing to 1 on a skinned vertex; all zero on an unskinned one. */
+  readonly weights: Float32Array;
+}
 
 export interface DecodedPart {
   readonly name: string;
@@ -87,6 +119,8 @@ export interface DecodedMesh {
   readonly bounds: { readonly min: readonly [number, number, number]; readonly max: readonly [number, number, number] };
   /** Non-fatal notes (ignored textures, generated normals). */
   readonly warnings: ReadonlyArray<string>;
+  /** T1401b: present only when a selected primitive is skinned. */
+  readonly skin?: DecodedSkin;
 }
 
 export interface DecodeOptions {
@@ -185,11 +219,12 @@ interface GltfJson {
   bufferViews?: GltfBufferView[];
   buffers?: Array<{ byteLength: number; uri?: string }>;
   cameras?: Array<{ name?: string; type: string; perspective?: { yfov: number; znear: number; zfar?: number } }>;
+  skins?: Array<{ joints: number[]; inverseBindMatrices?: number; name?: string }>;
   extensionsRequired?: string[];
   extensionsUsed?: string[];
 }
 
-const COMPONENTS: Readonly<Record<string, number>> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
+const COMPONENTS: Readonly<Record<string, number>> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
 const COMPONENT_BYTES: Readonly<Record<number, number>> = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 };
 
 /** Splits the container into its JSON and BIN chunks. */
@@ -430,14 +465,21 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
   const visits: Visit[] = [];
   const cameras: DecodedCamera[] = [];
   const markers: DecodedMarker[] = [];
-  const stack: Array<{ node: number; parent: Mat4; part: number; depth: number }> = roots.map((node) => ({ node, parent: identity(), part: 0, depth: 0 })).reverse();
+  // T1401b: a skin joint is a bone, not a marker; and the skin needs every node's world
+  // matrix, its parent and its place in the walk (the joint table's order).
+  const skins = json.skins ?? [];
+  const jointNodes = new Set(skins.flatMap((skin) => skin.joints));
+  const walked = new Map<number, { world: Mat4; parent: number; order: number }>();
+  const stack: Array<{ node: number; parent: Mat4; parentNode: number; part: number; depth: number }> = roots
+    .map((node) => ({ node, parent: identity(), parentNode: -1, part: 0, depth: 0 }))
+    .reverse();
   while (stack.length > 0) {
-    const { node: nodeIndex, parent, part: inherited, depth } = stack.pop() as { node: number; parent: Mat4; part: number; depth: number };
+    const { node: nodeIndex, parent, parentNode, part: inherited, depth } = stack.pop() as (typeof stack)[number];
     const node = nodes[nodeIndex];
     if (node === undefined) throw new GlbDecodeError(`The scene names node ${nodeIndex}, which does not exist.`);
     if (depth > 256) throw new GlbDecodeError("The node hierarchy is deeper than 256 levels (a cycle?).");
-    if (node.skin !== undefined) throw new GlbDecodeError(`Node "${node.name ?? nodeIndex}" is skinned; skins are not decoded. Apply the armature on export.`);
     const world = multiply(parent, localMatrix(node));
+    walked.set(nodeIndex, { world, parent: parentNode, order: walked.size });
     let part = inherited;
     const partName = node.extras?.["loom_part"];
     if (typeof partName === "string" && partName !== "") {
@@ -473,7 +515,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
           far: camera.perspective.zfar ?? 1000,
         });
       }
-    } else if (node.mesh === undefined && node.name !== undefined && (node.children ?? []).length === 0) {
+    } else if (node.mesh === undefined && node.name !== undefined && (node.children ?? []).length === 0 && !jointNodes.has(nodeIndex)) {
       markers.push({
         name: node.name,
         position: transformPoint(world, 0, 0, 0),
@@ -482,13 +524,13 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
       });
     }
     for (const child of [...(node.children ?? [])].reverse()) {
-      stack.push({ node: child, parent: world, part, depth: depth + 1 });
+      stack.push({ node: child, parent: world, parentNode: nodeIndex, part, depth: depth + 1 });
     }
   }
 
   // Pass 1: size the output so pass 2 writes straight into final arrays.
   const materials = json.materials ?? [];
-  interface Plan { visit: Visit; primitive: GltfPrimitive; vertices: number; indices: number }
+  interface Plan { visit: Visit; primitive: GltfPrimitive; vertices: number; indices: number; skin?: number }
   const plans: Plan[] = [];
   const textured = new Set<string>();
   for (const visit of visits) {
@@ -525,12 +567,78 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
           textured.add(material.name ?? String(primitive.material));
         }
       }
-      plans.push({ visit, primitive, vertices, indices });
+      if (node.skin === undefined) {
+        plans.push({ visit, primitive, vertices, indices });
+        continue;
+      }
+      const where = `Skinned mesh "${mesh.name ?? node.name ?? node.mesh}"`;
+      if (skins[node.skin] === undefined) throw new GlbDecodeError(`${where} names skin ${node.skin}, which does not exist.`);
+      if (primitive.attributes["JOINTS_0"] === undefined || primitive.attributes["WEIGHTS_0"] === undefined) {
+        throw new GlbDecodeError(`${where} has a primitive without JOINTS_0 and WEIGHTS_0.`);
+      }
+      const more = Object.keys(primitive.attributes).find((name) => /^(JOINTS|WEIGHTS)_[1-9]/.test(name));
+      if (more !== undefined) throw new GlbDecodeError(`${where} has ${more}: more than four influences per vertex are not decoded. Export with four (Blender: Bone Influences 4).`);
+      plans.push({ visit, primitive, vertices, indices, skin: node.skin });
     }
+  }
+
+  // T1401b: ONE joint table for the selection — every joint of every skin a selected
+  // primitive uses, in walk order, so a parent always precedes its children.
+  const usedSkins = [...new Set(plans.flatMap((plan) => (plan.skin === undefined ? [] : [plan.skin])))];
+  const tableNodes = [...new Set(usedSkins.flatMap((skin) => (skins[skin] as { joints: number[] }).joints))];
+  for (const jointNode of tableNodes) {
+    if (!walked.has(jointNode)) throw new GlbDecodeError(`Skin joint node ${jointNode} ("${nodes[jointNode]?.name ?? ""}") is not in the scene, so it has no pose.`);
+  }
+  tableNodes.sort((a, b) => (walked.get(a) as { order: number }).order - (walked.get(b) as { order: number }).order);
+  if (tableNodes.length > 0xffff) throw new GlbDecodeError(`The selection's skins name ${tableNodes.length} joints; at most 65535 are decoded.`);
+  const tableIndex = new Map(tableNodes.map((jointNode, index) => [jointNode, index]));
+  const joints: DecodedJoint[] = tableNodes.map((jointNode) => {
+    const entry = walked.get(jointNode) as { world: Mat4; parent: number };
+    let ancestor = entry.parent;
+    while (ancestor >= 0 && !tableIndex.has(ancestor)) ancestor = (walked.get(ancestor) as { parent: number }).parent;
+    return {
+      name: nodes[jointNode]?.name ?? `joint${jointNode}`,
+      parent: ancestor >= 0 ? (tableIndex.get(ancestor) as number) : -1,
+      head: transformPoint(entry.world, 0, 0, 0),
+      bind: Array.from(entry.world),
+    };
+  });
+  /** Per used skin: each skin-local joint's table index and its skinning matrix (joint world × inverse bind). */
+  const skinning = new Map<number, { table: number[]; matrices: Mat4[] }>();
+  for (const skinIndex of usedSkins) {
+    const skin = skins[skinIndex] as { joints: number[]; inverseBindMatrices?: number };
+    const ibm = skin.inverseBindMatrices === undefined ? undefined : readFloats(skin.inverseBindMatrices, `skin ${skinIndex} inverseBindMatrices`);
+    if (ibm !== undefined && (ibm.components !== 16 || ibm.count < skin.joints.length)) {
+      throw new GlbDecodeError(`Skin ${skinIndex}: inverseBindMatrices must be one MAT4 per joint (${skin.joints.length}).`);
+    }
+    skinning.set(skinIndex, {
+      table: skin.joints.map((jointNode) => tableIndex.get(jointNode) as number),
+      matrices: skin.joints.map((jointNode, j) =>
+        multiply((walked.get(jointNode) as { world: Mat4 }).world, ibm === undefined ? identity() : Float64Array.from(ibm.data.subarray(j * 16, j * 16 + 16))),
+      ),
+    });
   }
   if (textured.size > 0) {
     warnings.push(`Image textures are ignored in this build (factors and vertex colours apply): ${[...textured].sort().join(", ")}.`);
   }
+
+  /** JOINTS_0 as u8/u16 and WEIGHTS_0 as float or normalized u8/u16 — the glTF-legal encodings, refused otherwise. */
+  const readSkinAttribute = (primitive: GltfPrimitive, name: "JOINTS_0" | "WEIGHTS_0"): Float32Array => {
+    const index = primitive.attributes[name] as number;
+    const accessor = accessors[index];
+    const legal =
+      accessor !== undefined &&
+      accessor.type === "VEC4" &&
+      (name === "JOINTS_0"
+        ? (accessor.componentType === 5121 || accessor.componentType === 5123) && accessor.normalized !== true
+        : accessor.componentType === 5126 || ((accessor.componentType === 5121 || accessor.componentType === 5123) && accessor.normalized === true));
+    if (!legal) {
+      throw new GlbDecodeError(
+        `${name}: accessor ${index} is ${accessor?.type ?? "missing"}/${accessor?.componentType ?? "?"}${accessor?.normalized === true ? " normalized" : ""}; ${name === "JOINTS_0" ? "joints are VEC4 of u8 or u16" : "weights are VEC4 of float or normalized u8/u16"}.`,
+      );
+    }
+    return readFloats(index, name).data;
+  };
 
   const vertexCount = plans.reduce((sum, plan) => sum + plan.vertices, 0);
   const indexCount = plans.reduce((sum, plan) => sum + plan.indices, 0);
@@ -542,6 +650,10 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
   const surface = new Float32Array(vertexCount * 4);
   const emissive = new Float32Array(vertexCount * 3);
   const indices = new Uint32Array(indexCount);
+  const skinned = usedSkins.length > 0;
+  const jointIndices = new Uint16Array(skinned ? vertexCount * 4 : 0);
+  const jointWeights = new Float32Array(skinned ? vertexCount * 4 : 0);
+  let unweighted = 0;
   const min: Vec3 = [Infinity, Infinity, Infinity];
   const max: Vec3 = [-Infinity, -Infinity, -Infinity];
 
@@ -550,8 +662,12 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
   let generatedNormals = 0;
   for (const plan of plans) {
     const { primitive, visit } = plan;
-    const world = visit.world;
+    const skin = plan.skin === undefined ? undefined : (skinning.get(plan.skin) as { table: number[]; matrices: Mat4[] });
+    // A skinned node's own transform is ignored (glTF); its winding follows its skinning.
+    const world = skin === undefined ? visit.world : (skin.matrices[0] ?? visit.world);
     const nm = normalMatrix(world);
+    const jointsIn = skin === undefined ? undefined : readSkinAttribute(primitive, "JOINTS_0");
+    const weightsIn = skin === undefined ? undefined : readSkinAttribute(primitive, "WEIGHTS_0");
     const pos = readFloats(primitive.attributes["POSITION"] as number, "POSITION");
     const nrmIndex = primitive.attributes["NORMAL"];
     const nrm = nrmIndex === undefined ? undefined : readFloats(nrmIndex, "NORMAL");
@@ -571,7 +687,20 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
 
     for (let v = 0; v < plan.vertices; v += 1) {
       const o = vertexBase + v;
-      const p = transformPoint(world, pos.data[v * 3] as number, pos.data[v * 3 + 1] as number, pos.data[v * 3 + 2] as number);
+      let m = world;
+      let mn = nm;
+      if (skin !== undefined && jointsIn !== undefined && weightsIn !== undefined) {
+        const blended = blendSkin(skin, jointsIn, weightsIn, v, o, jointIndices, jointWeights);
+        if (blended === undefined) {
+          // No weight at all: placed by the skin's first joint (at rest, where every
+          // skinned vertex is placed), zero weights, so no joint moves it.
+          unweighted += 1;
+        } else {
+          m = blended;
+          mn = normalMatrix(blended);
+        }
+      }
+      const p = transformPoint(m, pos.data[v * 3] as number, pos.data[v * 3 + 1] as number, pos.data[v * 3 + 2] as number);
       positions.set(p, o * 3);
       for (let axis = 0; axis < 3; axis += 1) {
         min[axis] = Math.min(min[axis] as number, p[axis] as number);
@@ -580,9 +709,9 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
       if (nrm !== undefined) {
         const [x, y, z] = [nrm.data[v * 3] as number, nrm.data[v * 3 + 1] as number, nrm.data[v * 3 + 2] as number];
         const n = normalize3([
-          nm[0][0] * x + nm[1][0] * y + nm[2][0] * z,
-          nm[0][1] * x + nm[1][1] * y + nm[2][1] * z,
-          nm[0][2] * x + nm[1][2] * y + nm[2][2] * z,
+          mn[0][0] * x + mn[1][0] * y + mn[2][0] * z,
+          mn[0][1] * x + mn[1][1] * y + mn[2][1] * z,
+          mn[0][2] * x + mn[1][2] * y + mn[2][2] * z,
         ]);
         normals.set(n, o * 3);
       }
@@ -658,6 +787,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
     indexBase += plan.indices;
   }
   if (generatedNormals > 0) warnings.push(`${generatedNormals} primitive(s) had no NORMAL; smooth normals were generated.`);
+  if (unweighted > 0) warnings.push(`${unweighted} skinned vertex(es) had no joint weight; they are placed by the skin's first joint and no joint moves them.`);
 
   return {
     vertexCount,
@@ -674,5 +804,41 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
     markers,
     bounds: vertexCount === 0 ? { min: [0, 0, 0], max: [0, 0, 0] } : { min, max },
     warnings,
+    ...(skinned ? { skin: { joints, indices: jointIndices, weights: jointWeights } } : {}),
   };
+}
+
+/**
+ * T1401b — one skinned vertex: writes its four table indices and normalised weights at
+ * output vertex `o`, and returns Σ weight × skinning matrix, the vertex's placement. A
+ * vertex whose weights sum to nothing returns `undefined` and keeps zero weights.
+ */
+function blendSkin(
+  skin: { readonly table: readonly number[]; readonly matrices: readonly Mat4[] },
+  joints: Float32Array,
+  weights: Float32Array,
+  v: number,
+  o: number,
+  outIndices: Uint16Array,
+  outWeights: Float32Array,
+): Mat4 | undefined {
+  let sum = 0;
+  for (let k = 0; k < 4; k += 1) {
+    const weight = weights[v * 4 + k] as number;
+    if (weight > 0) sum += weight;
+  }
+  if (!(sum > 0)) return undefined;
+  const blended = new Float64Array(16);
+  for (let k = 0; k < 4; k += 1) {
+    const raw = weights[v * 4 + k] as number;
+    if (!(raw > 0)) continue;
+    const local = joints[v * 4 + k] as number;
+    const matrix = skin.matrices[local];
+    if (matrix === undefined) throw new GlbDecodeError(`JOINTS_0 names joint ${local} of a skin with ${skin.matrices.length}.`);
+    const weight = raw / sum;
+    outIndices[o * 4 + k] = skin.table[local] as number;
+    outWeights[o * 4 + k] = weight;
+    for (let e = 0; e < 16; e += 1) blended[e] = (blended[e] as number) + weight * (matrix[e] as number);
+  }
+  return blended;
 }

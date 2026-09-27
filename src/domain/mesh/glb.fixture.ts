@@ -12,6 +12,16 @@ export interface FixturePrimitive {
   readonly colors?: ReadonlyArray<number>;
   readonly indices?: ReadonlyArray<number>;
   readonly material?: number;
+  /** T1401b: JOINTS_0, four skin-joint indices per vertex, written as u16 (or u8). */
+  readonly joints?: ReadonlyArray<number>;
+  readonly jointsComponent?: 5121 | 5123;
+  /** T1401b: WEIGHTS_0, four per vertex, written as float (or normalized u8/u16, quantized here). */
+  readonly weights?: ReadonlyArray<number>;
+  readonly weightsComponent?: 5126 | 5121 | 5123;
+  /** Extra attribute names (JOINTS_1, …) aliasing JOINTS_0's accessor — for refusal tests. */
+  readonly extraAttributes?: ReadonlyArray<string>;
+  /** Writes one morph target (aliasing POSITION) — for refusal tests. */
+  readonly morphTargets?: boolean;
 }
 
 export interface FixtureNode {
@@ -24,6 +34,14 @@ export interface FixtureNode {
   readonly extras?: Record<string, unknown>;
   readonly camera?: { readonly yfovDeg: number; readonly near: number; readonly far: number };
   readonly children?: ReadonlyArray<FixtureNode>;
+  /** T1401b: index into `FixtureScene.skins`. */
+  readonly skin?: number;
+}
+
+/** T1401b: a glTF skin, its joints named by node name; IBMs column-major, absent = identity. */
+export interface FixtureSkin {
+  readonly joints: ReadonlyArray<string>;
+  readonly inverseBindMatrices?: ReadonlyArray<ReadonlyArray<number>>;
 }
 
 export interface FixtureMaterial {
@@ -40,6 +58,7 @@ export interface FixtureScene {
   readonly nodes: ReadonlyArray<FixtureNode>;
   readonly materials?: ReadonlyArray<FixtureMaterial>;
   readonly extensionsRequired?: ReadonlyArray<string>;
+  readonly skins?: ReadonlyArray<FixtureSkin>;
 }
 
 export function encodeFixtureGlb(scene: FixtureScene): Uint8Array {
@@ -51,8 +70,16 @@ export function encodeFixtureGlb(scene: FixtureScene): Uint8Array {
   const cameras: Array<Record<string, unknown>> = [];
   const nodes: Array<Record<string, unknown>> = [];
 
-  const addAccessor = (data: ReadonlyArray<number>, type: string, componentType: 5126 | 5125): number => {
-    const typed = componentType === 5126 ? new Float32Array(data) : new Uint32Array(data);
+  const addAccessor = (data: ReadonlyArray<number>, type: string, componentType: 5126 | 5125 | 5123 | 5121, normalized = false): number => {
+    const values = normalized ? data.map((value) => Math.round(value * (componentType === 5121 ? 255 : 65535))) : data;
+    const typed =
+      componentType === 5126
+        ? new Float32Array(values)
+        : componentType === 5125
+          ? new Uint32Array(values)
+          : componentType === 5123
+            ? new Uint16Array(values)
+            : new Uint8Array(values);
     const bytes = new Uint8Array(typed.buffer);
     const padded = (bytes.byteLength + 3) & ~3;
     const chunk = new Uint8Array(padded);
@@ -60,12 +87,13 @@ export function encodeFixtureGlb(scene: FixtureScene): Uint8Array {
     bufferViews.push({ buffer: 0, byteOffset: binLength, byteLength: bytes.byteLength });
     chunks.push(chunk);
     binLength += padded;
-    const components = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 }[type] ?? 1;
+    const components = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 }[type] ?? 1;
     const accessor: Record<string, unknown> = {
       bufferView: bufferViews.length - 1,
       componentType,
       count: data.length / components,
       type,
+      ...(normalized ? { normalized: true } : {}),
     };
     if (type === "VEC3" && componentType === 5126) {
       const min = [Infinity, Infinity, Infinity];
@@ -90,13 +118,21 @@ export function encodeFixtureGlb(scene: FixtureScene): Uint8Array {
     if (node.rotation !== undefined) out["rotation"] = [...node.rotation];
     if (node.scale !== undefined) out["scale"] = [...node.scale];
     if (node.extras !== undefined) out["extras"] = node.extras;
+    if (node.skin !== undefined) out["skin"] = node.skin;
     if (node.mesh !== undefined) {
       const primitives = node.mesh.map((primitive) => {
         const attributes: Record<string, number> = { POSITION: addAccessor(primitive.positions, "VEC3", 5126) };
         if (primitive.normals !== undefined) attributes["NORMAL"] = addAccessor(primitive.normals, "VEC3", 5126);
         if (primitive.uvs !== undefined) attributes["TEXCOORD_0"] = addAccessor(primitive.uvs, "VEC2", 5126);
         if (primitive.colors !== undefined) attributes["COLOR_0"] = addAccessor(primitive.colors, "VEC4", 5126);
+        if (primitive.joints !== undefined) attributes["JOINTS_0"] = addAccessor(primitive.joints, "VEC4", primitive.jointsComponent ?? 5123);
+        if (primitive.weights !== undefined) {
+          const component = primitive.weightsComponent ?? 5126;
+          attributes["WEIGHTS_0"] = addAccessor(primitive.weights, "VEC4", component, component !== 5126);
+        }
+        for (const name of primitive.extraAttributes ?? []) attributes[name] = attributes["JOINTS_0"] ?? (attributes["POSITION"] as number);
         const encoded: Record<string, unknown> = { attributes };
+        if (primitive.morphTargets === true) encoded["targets"] = [{ POSITION: attributes["POSITION"] }];
         if (primitive.indices !== undefined) encoded["indices"] = addAccessor(primitive.indices, "SCALAR", 5125);
         if (primitive.material !== undefined) encoded["material"] = primitive.material;
         return encoded;
@@ -120,6 +156,14 @@ export function encodeFixtureGlb(scene: FixtureScene): Uint8Array {
   };
 
   const roots = scene.nodes.map(addNode);
+  const skins = (scene.skins ?? []).map((skin) => ({
+    joints: skin.joints.map((name) => {
+      const index = nodes.findIndex((entry) => entry["name"] === name);
+      if (index < 0) throw new Error(`encodeFixtureGlb: skin joint "${name}" names no node.`);
+      return index;
+    }),
+    ...(skin.inverseBindMatrices === undefined ? {} : { inverseBindMatrices: addAccessor(skin.inverseBindMatrices.flat(), "MAT4", 5126) }),
+  }));
   const materials = (scene.materials ?? []).map((material) => ({
     name: material.name,
     pbrMetallicRoughness: {
@@ -142,6 +186,7 @@ export function encodeFixtureGlb(scene: FixtureScene): Uint8Array {
     ...(meshes.length === 0 ? {} : { meshes }),
     ...(cameras.length === 0 ? {} : { cameras }),
     ...(materials.length === 0 ? {} : { materials }),
+    ...(skins.length === 0 ? {} : { skins }),
     ...(accessors.length === 0 ? {} : { accessors, bufferViews, buffers: [{ byteLength: binLength }] }),
     ...(scene.extensionsRequired === undefined ? {} : { extensionsRequired: [...scene.extensionsRequired], extensionsUsed: [...scene.extensionsRequired] }),
   };
