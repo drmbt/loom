@@ -56,8 +56,8 @@ export interface OnNothingFacts {
 
 /** The GLB's areas, one Mesh File In each (every object is named `<area>.<name>`). */
 export const AREAS = ["wh", "title", "fig", "figbare", "fignocap", "cyc"] as const;
-/** Areas a GLB may or may not hold (older builds lack them; T1407b cyc: the walker's wardrobe, the wide's studio; T1407b mirror: the curled hands; `pend` and `shoe`, the close-ups' props, closeups.py). */
-export const OPTIONAL_AREAS = ["lampglass", "figcyc", "cycwide", "fighand", "pend", "shoe"] as const;
+/** Areas a GLB may or may not hold (older builds lack them; T1407b cyc: the walker's wardrobe, the wide's studio; T1407b mirror: the curled hands; `pend` and `shoe`, the close-ups' props, closeups.py; T1428b: `figcap`, the figure in the brimmed cap, see DERIVED). */
+export const OPTIONAL_AREAS = ["lampglass", "figcyc", "cycwide", "fighand", "pend", "shoe", "figcap"] as const;
 /** The fixed areas, plus one `car<n>` per car (each car its own Mesh File In: five real models overflow one buffer). */
 export type Area = (typeof AREAS)[number] | (typeof OPTIONAL_AREAS)[number] | `car${number}`;
 
@@ -80,7 +80,12 @@ export function carAreas(facts: OnNothingFacts): Area[] {
 }
 
 /** Areas cut from another by material. T1407b: the quad's figure, bare-headed (the beanie dropped). */
-const DERIVED: Partial<Record<Area, string>> = { fignocap: "fig.* !material:knit_black" };
+/** T1428b: the `fig` body carries a brimmed cap beside the beanie (materials `cap_*`): `fig` wears the beanie, `figcap` the cap, `fignocap` neither. */
+const DERIVED: Partial<Record<Area, string>> = {
+  fig: "fig.* !material:cap_*",
+  fignocap: "fig.* !material:knit_black !material:cap_*",
+  figcap: "fig.* !material:knit_black",
+};
 
 export function selectOf(area: Area): string {
   return DERIVED[area] ?? `${area}.*`;
@@ -99,6 +104,8 @@ export function factsFrom(glbUrl: string, meshes: ReadonlyMap<Area, DecodedMesh>
   const areas = new Map<Area, MeshSelectionFacts>();
   for (const [area, mesh] of meshes) {
     if (mesh.vertexCount === 0 && (OPTIONAL_AREAS as readonly string[]).includes(area)) continue;
+    // T1428b: a GLB built before the cap has none: its `figcap` would be `fignocap` under another name
+    if (area === "figcap" && mesh.vertexCount === meshes.get("fignocap")?.vertexCount) continue;
     if (mesh.vertexCount === 0) throw new Error(`On Nothing GLB: area "${area}" is empty — was the Blender build run with every module?`);
     areas.set(area, {
       select: selectOf(area),

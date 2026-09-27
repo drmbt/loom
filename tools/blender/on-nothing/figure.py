@@ -18,6 +18,7 @@ import bmesh
 import bpy
 from mathutils import Vector
 
+import head as headkit  # T1418b/T1428b (a local `head` is a bone head below)
 import util
 
 # index, name, parent, head, tail (Blender metres, the figure faces -Y)
@@ -310,7 +311,8 @@ for _s, _m in (("L", "l"), ("R", "r")):
         f"hand.{_s}": [f"hand_{_m}"] + [f"{f}_{i:02d}_{_m}" for f in ("thumb", "index", "middle", "ring", "pinky") for i in (1, 2, 3)],
         f"thigh.{_s}": [f"thigh_{_m}"], f"shin.{_s}": [f"calf_{_m}"], f"foot.{_s}": [f"foot_{_m}", f"ball_{_m}"],
     })
-MPFB_MATERIALS = {"body": "skin", "casualsuit": "cloth_black", "shoes": "shoe_black", "high-poly": "lens_black"}
+# T1418b: the body wears the baked CC0 skin and the eyes their baked iris (head.py)
+MPFB_MATERIALS = {"body": "skin_tex", "casualsuit": "cloth_black", "shoes": "shoe_black", "high-poly": "eye"}
 MPFB_DROP = ("eyelashes", "eyebrow", "short02")
 
 
@@ -332,7 +334,7 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None, pre_pos
     rest heads. `extra_parts(coll, mats)` returns more accessories to join and skin (jewels.py).
     """
     waist = 1.0
-    coll, mats = ctx["coll"], ctx["mats"]
+    coll, mats = ctx["coll"], headkit.materials(ctx["mats"])
     with bpy.data.libraries.load(blend_path) as (src, dst):
         dst.objects = list(src.objects)
     rig = None
@@ -451,6 +453,11 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None, pre_pos
     brow_z = eye_z + 0.032
     print(f"[figure] head top {htop:.3f}  eyes z {eye_z:.3f} x±{eye_x:.3f} front y {ey0:.3f}  beanie brim {brow_z:.3f}", flush=True)
     cx, cy = (hx0 + hx1) / 2, (hy0 + hy1) / 2
+    face = headkit.landmarks(body, cx, eye_z, ey0)  # T1418b: where the beard and brows grow
+    if eyes is not None:
+        # T1418b: loom draws nothing transparent, and the iris is under the cornea shell
+        # (dropped after the glasses are fitted to the eyes' front, so they sit where they did)
+        headkit.drop_cornea(eyes)
     rx, ry = (hx1 - hx0) / 2 + 0.012, (hy1 - hy0) / 2 + 0.012
 
     def beanie(mb):
@@ -484,21 +491,41 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None, pre_pos
         for j in range(seg):
             faces.append((rings * seg + j, rings * seg + (j + 1) % seg, top))
         mb.add(verts, faces, "knit_black")
-        # the cuff: a ribbed band 4 cm tall, 5 mm proud of the knit, rolled at its top edge
+        # the cuff: a ribbed band 4 cm tall, 5 mm proud of the knit, rolled at its top edge.
+        # T1418b: dense and smooth for the close-ups: the knit's 64-point rings are resampled
+        # (periodic Catmull-Rom) to 768, the 1x1 rib is a sine of ~3.3 mm, and the band has a
+        # thickness: its lower edge turns in under the knit, its top edge rolls back onto it.
         brow = verts[:seg]
         ring_up = [verts[3 * seg + j] for j in range(seg)]
+        dense = 768
+
+        def resample(ring, k):
+            t = k * seg / dense
+            i = int(t)
+            f = t - i
+            p0, p1, p2, p3 = (ring[(i + d) % seg] for d in (-1, 0, 1, 2))
+            return 0.5 * ((2 * p1) + (-p0 + p2) * f + (2 * p0 - 5 * p1 + 4 * p2 - p3) * f * f + (-p0 + 3 * p1 - 3 * p2 + p3) * f ** 3)
+
+        # (ring, extra height, offset from the knit, rib share): tuck under, lower lip, upper face, roll, back onto the knit
+        profile = ((brow, -0.002, 0.0005, 0.0), (brow, -0.0045, 0.0045, 0.7), (ring_up, -0.002, 0.0055, 1.0),
+                   (ring_up, 0.0015, 0.0045, 0.6), (ring_up, 0.003, 0.0008, 0.0))
         cverts, cfaces = [], []
-        for r_, ring in enumerate((brow, ring_up)):
-            for j, q in enumerate(ring):
+        for ring, dz, off, rib_share in profile:
+            for k in range(dense):
+                q = resample(ring, k)
                 out = Vector((q.x - cx, q.y - cy, 0)).normalized()
-                rib = 0.0015 if j % 2 == 0 else 0.0
-                cverts.append(q + out * (0.005 + rib) + Vector((0, 0, -0.004 if r_ == 0 else 0)))
-        for j in range(seg):
-            j2 = (j + 1) % seg
-            cfaces.append((j, j2, seg + j2, seg + j))
+                rib = 0.0008 * (1.0 + math.cos(2 * math.pi * k / 4)) * rib_share
+                cverts.append(q + out * (off + rib) + Vector((0, 0, dz)))
+        for r_ in range(len(profile) - 1):
+            for k in range(dense):
+                k2 = (k + 1) % dense
+                a_, b_ = r_ * dense, (r_ + 1) * dense
+                cfaces.append((a_ + k, a_ + k2, b_ + k2, b_ + k))
         mb.add(cverts, cfaces, "knit_black")
 
     def glasses(mb):
+        from mathutils.bvhtree import BVHTree
+        skull = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
         # Wraparound sunglasses: two superellipse lenses turned to follow the face, a rim
         # round each, a bridge, and temples running back over the ears.
         fy = ey0 - 0.014
@@ -532,10 +559,22 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None, pre_pos
             for k in range(n):
                 mb.beam(rim[k], rim[(k + 1) % n], 0.0028, 0.0028, "paint_black", up=(0, -1, 0))
             hinge = place(a_ * 1.08, b_ * 0.6, -0.001)
-            # temples: thin, black, along the side of the head to the top of the ear, then down behind it
-            ear = Vector((cx + sx * (rx - 0.006), cy + 0.01, eye_z + 0.004))
-            mb.beam(hinge, ear, 0.0025, 0.006, "paint_black")
-            mb.beam(ear, ear + Vector((0, 0.025, -0.02)), 0.0025, 0.005, "paint_black")
+            # temples: thin, black, LYING ON the side of the head (T1418b: the close-ups showed a
+            # straight bar standing off it), over the root of the ear, then curling down behind it.
+            # Each point is the skull found from INSIDE the head (a ray from the centre line out),
+            # so the ear, further out, never lifts the arm off the head.
+            ear_y = cy + 0.012
+            path = []
+            for k in range(15):
+                t = k / 14
+                y = hinge.y + (ear_y - hinge.y) * min(t / 0.75, 1.0) + 0.028 * max(0.0, (t - 0.75) / 0.25)
+                z = hinge.z + (eye_z + 0.006 - hinge.z) * min(t / 0.75, 1.0) - 0.024 * max(0.0, (t - 0.75) / 0.25) ** 1.4
+                h = skull.ray_cast(Vector((cx, y, z)), Vector((sx, 0, 0)), 0.2)
+                surface = h[0] if h[0] is not None else Vector((cx + sx * (rx - 0.012), y, z))
+                path.append(surface + Vector((sx * 0.0024, 0, 0)))
+            path[0] = hinge
+            for k in range(len(path) - 1):
+                mb.beam(path[k], path[k + 1], 0.0022, 0.0045 - 0.0015 * k / 14, "paint_black", up=(0, 0, 1))
         mb.beam(Vector((cx + eye_x - a_ + 0.003, fy - 0.001, eye_z + 0.012)), Vector((cx - eye_x + a_ - 0.003, fy - 0.001, eye_z + 0.012)), 0.005, 0.005, "paint_black", up=(0, -1, 0))
 
     nx0, nx1, ny0, ny1, _, _ = neck
@@ -634,6 +673,9 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None, pre_pos
         _accessory(coll, mats, f"{prefix}.chain", chain, "chest"),
         _accessory(coll, mats, f"{prefix}.bracelet", bracelet, "forearm.L"),
     ]
+    if prefix == "fig":
+        # T1428b: the brimmed cap beside the beanie; loom's areas wear one or the other (scene-facts.ts)
+        parts.append(_accessory(coll, mats, f"{prefix}.cap", lambda mb: headkit.cap(mb, body, cx, cy, eye_z, brow_z), "head"))
     if extra_parts is not None:
         parts += extra_parts(coll, mats)
     for x in bpy.context.selected_objects:
@@ -644,6 +686,7 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None, pre_pos
     bpy.ops.object.join()
     body.name = f"{prefix}.body"
     body.data.name = f"{prefix}.body"
+    headkit.bake(body, cx, cy, eye_z, ey0, face)  # T1418b: skin, iris and hair density into COLOR_0
     _bind(body, _armature(coll, f"{prefix}.rig"))
     body["loom_area"] = prefix
     print(f"[figure] MPFB human: {len(body.data.vertices):,} vertices", flush=True)

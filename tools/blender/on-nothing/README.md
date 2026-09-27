@@ -71,6 +71,26 @@ Both are kept in `renders/on-nothing/assets/`.
   the ball into the foot, spine_01 and spine_02 into the spine.
 - It fits the beanie, the sunglasses, the chain and the bracelet to the measured head, eyes, neck
   and chest.
+- The `fig` body also wears a brimmed cap (T1428b, `head.py`) beside the beanie. loom's areas pick
+  one: `fig` has the beanie, `figcap` has the cap, and `fignocap` has neither
+  (`src/projects/on-nothing/scene-facts.ts`).
+
+## The head (head.py, T1418b)
+
+loom samples no image textures on a mesh, so the head carries its textures in COLOR_0 and
+TEXCOORD_0:
+
+- MakeHuman's CC0 skin (`young_african_male`), toned to a mid-dark complexion, and the CC0 brown
+  iris are baked into COLOR_0 at each face corner's UV. The texture is prefiltered to the head's
+  ~2 mm vertex spacing first. The eyes' cornea shell is dropped.
+- COLOR_0's alpha is 1 − the facial-hair density: a goatee joined to a thin moustache, light jaw
+  stubble, and the brows. It is placed from the face's measured profile (nose, lips, chin).
+- The surface (`src/projects/on-nothing/surface-head.ts`, classes 36 and 37) draws pores, hairs, a
+  wet eye, and a crisp iris and pupil from the UV, so the detail stays on the skin as the figure
+  moves.
+
+`HEAD_DEBUG=hair` bakes the density as the albedo. `HEAD_DEBUG=uv` prints the UV landmarks the
+surface's constants come from.
 
 ## Skinning
 

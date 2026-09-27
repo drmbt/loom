@@ -14,8 +14,11 @@
  *  - glass: black mirror; tyres: rough rubber with a faint sidewall sheen;
  *  - emissive (headlights, DRLs, LED tubes): the export's emission × a gain per group, the
  *    handle the lanes drive;
- *  - skin, cloth, denim, shoes: rough dielectrics, skin desaturated toward the grade.
+ *  - skin, cloth, denim, shoes: rough dielectrics, skin desaturated toward the grade;
+ *  - T1418b: the performer's baked skin (36) and eyes (37), drawn by surface-head.ts.
  */
+import { HEAD_SURFACE_WGSL } from "./surface-head.ts";
+
 /** The floor contact-shadow footprints: centre (x, z) and half extents, glTF metres. */
 export type Footprint = readonly [number, number, number, number];
 
@@ -137,7 +140,7 @@ fn jewel(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {
   r.albedo = vec4f(0.98, 0.98, 1.0, 1.0);
   return r;
 }
-
+${HEAD_SURFACE_WGSL}
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceDefaults(s);
   let c = classOf(s);
@@ -168,6 +171,8 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
       o.normal = detailBump(s.normal, n.gradient * 0.0012, 1.0);
     }
     case 35u: { return jewel(s, o); }
+    case 36u: { return headSkin(s, o); }
+    case 37u: { return headEye(s, o); }
     case 40u: { o.albedo = vec4f(vec3f(p.cycAlbedo), 1.0); o.roughness = 0.95; o.metallic = 0.0; }
     default: {}
   }

@@ -10,7 +10,7 @@ import { SKIN_ATTRIBUTES, boneParam, skinKernel } from "../skin-kernel.ts";
  * about the rest axes, skin-kernel.ts); `place` components may be expressions too.
  */
 export interface FigureSpec {
-  readonly area: "fig" | "figbare" | "fignocap";
+  readonly area: "fig" | "figbare" | "fignocap" | "figcap";
   readonly material: string;
   readonly yaw: number | string;
   readonly place: readonly [number | string, number | string, number | string];
