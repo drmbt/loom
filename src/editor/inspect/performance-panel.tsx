@@ -13,6 +13,7 @@ import { useStoreSelector } from "@ui/hooks/use-store-selector.ts";
 import { useVisibleSubscribe } from "@ui/hooks/use-visible-subscribe.ts";
 import type { Subscribe } from "@ui/hooks/use-visible-subscribe.ts";
 import { formatBytes, formatCost, formatMs } from "./format.ts";
+import { PerfTimeline } from "./perf-timeline.tsx";
 import type { FormattedMs } from "./format.ts";
 import styles from "./inspect.module.css";
 
@@ -78,6 +79,8 @@ export interface PerformancePanelProps {
    */
   readonly cookPolicy?: CookPolicyValue | undefined;
   readonly onCookPolicyChange?: ((policy: CookPolicyValue) => void) | undefined;
+  /** §T1392b: the project's frame rate, for the timeline's budget line. Default 60. */
+  readonly fps?: number | undefined;
 }
 
 function Stat({
@@ -157,6 +160,7 @@ export function PerformancePanel({
   telemetry,
   cookPolicy,
   onCookPolicyChange,
+  fps = 60,
 }: PerformancePanelProps) {
   const root = useRef<HTMLDivElement>(null);
   const subscribe = useVisibleSubscribe(
@@ -181,6 +185,9 @@ export function PerformancePanel({
 
   return (
     <div ref={root} className={styles.performance} data-testid="performance-panel">
+      {/* §T1392b: the last seconds of frames first — a spike is the question this tab
+          most often starts from, and the table below is where it is then answered. */}
+      <PerfTimeline telemetry={telemetry as TelemetrySource} fps={fps} />
       <PerformanceSections
         source={source}
         {...(cookPolicy === undefined ? {} : { cookPolicy })}

@@ -330,3 +330,33 @@
   border-color: var(--signal);
   color: var(--signal);
 }
+
+/* §T1392b — the frame timeline strip at the top of the performance tab. */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.timelineBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.timelineCanvas {
+  display: block;
+  width: 100%;
+  height: var(--space-48);
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  cursor: crosshair;
+}
+
+.timelineReadout {
+  min-height: 1.4em;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+}

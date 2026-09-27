@@ -1,3 +1,4 @@
+import type { TimelineWindow } from "./timeline.ts";
 import type { NodeId } from "../../domain/types/ids.ts";
 import type { ReadbackBudget, ReadbackPlanBudget } from "./readback.ts";
 import type { CategoryRollup, NodeCostRow } from "./cost.ts";
@@ -333,6 +334,11 @@ export interface TelemetrySource {
   componentTiming(instanceId: NodeId): ComponentTimingView;
   /** Notified at most once per metric tick (§V16). */
   subscribe(listener: () => void): () => void;
+  /**
+   * §T1392b: every frame of the last `spanMs`, for the perf tab's timeline. Optional so a
+   * hand-written fixture source need not keep one; absent, the timeline is not drawn.
+   */
+  timeline?(spanMs: number): TimelineWindow;
 }
 
 /**

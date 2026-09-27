@@ -4,6 +4,7 @@ import { SHADER_SOURCE_PARAMETER } from "@domain/commands/index.ts";
 import type { AdapterIdentity } from "@domain/types/backend.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
+import { projectFps } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { AgentPresencePanel, McpConnectionPanel, useAgentPresence } from "@editor/agent/index.ts";
 import { PerformancePanel, TimingUnavailableNote } from "@editor/inspect/index.ts";
@@ -365,7 +366,7 @@ export function PerformancePane({
   cookPolicy?: CookPolicyValue | undefined;
   onCookPolicyChange?: ((policy: CookPolicyValue) => void) | undefined;
 }) {
-  const { telemetry } = useAppRuntime();
+  const { telemetry, settings } = useAppRuntime();
   /*
    * B172: the reason lives in the hub and the row it qualifies lives in the card, so the
    * pane reads the one value and hands it over. Selected rather than snapshotted whole —
@@ -382,6 +383,7 @@ export function PerformancePane({
       <GpuStatusCard status={status} timingUnavailableReason={timingUnavailableReason} />
       <PerformancePanel
         telemetry={telemetry}
+        fps={projectFps(settings)}
         {...(cookPolicy === undefined ? {} : { cookPolicy })}
         {...(onCookPolicyChange === undefined ? {} : { onCookPolicyChange })}
       />

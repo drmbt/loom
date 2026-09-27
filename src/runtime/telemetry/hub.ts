@@ -1,3 +1,4 @@
+import { createFrameTimeline } from "./timeline.ts";
 import type { NodeId } from "../../domain/types/ids.ts";
 import type {
   CpuSpanResults,
@@ -240,6 +241,9 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
   let lastFrameIndex: number | null = null;
   /** T304: see `recentFrameTimes` on the interface. */
   const frameTimes: number[] = [];
+  /** §T1392b: every recent frame, GPU extent and event, for the perf tab's timeline. */
+  const timeline = createFrameTimeline();
+  const perfNow = (): number => (typeof performance === "undefined" ? Date.now() : performance.now());
   let readbacksPerformed: number | null = null;
   let frameCompileReason: string | null = null;
 
@@ -491,6 +495,7 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
 
   return {
     setPlan(next) {
+      if (next !== null) timeline.mark(perfNow(), "compile");
       plan = next;
       indexPlan(next);
       // Spans belong to pass ids that may no longer exist. Dropping stale ones is what
@@ -555,6 +560,7 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
       const offDropped =
         source.onTimingsDropped?.(() => {
           droppedFrames += 1;
+          timeline.mark(perfNow(), "timing-lost");
           schedule();
         }) ?? null;
       const off = source.onPassTimings((results: PassSpanResults, frame?: FrameSpanExtent) => {
@@ -580,6 +586,7 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
           total.set(passId, (total.get(passId) ?? 0) + ms);
         }
         for (const [passId, ms] of total) spans.set(passId, ms);
+        if (frame !== undefined) timeline.noteGpu(perfNow(), frame.gpuMs, Object.fromEntries(total));
         schedule();
       });
       detachTiming = () => {
@@ -599,12 +606,16 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
     recentFrameTimes() {
       return [...frameTimes];
     },
+    timeline(spanMs) {
+      return timeline.window(perfNow(), spanMs);
+    },
     noteFrame(frameIndex, ran) {
       framesRendered += 1;
       lastFrameIndex = frameIndex;
       {
-        const at = typeof performance === "undefined" ? Date.now() : performance.now();
+        const at = perfNow();
         frameTimes.push(at);
+        timeline.noteFrame(at);
         // Prune anything past double the verdict window; the array stays tiny.
         const cutoff = at - 3000;
         while (frameTimes.length > 0 && (frameTimes[0] ?? 0) < cutoff) frameTimes.shift();

@@ -584,3 +584,18 @@ describe("T1254 — the per-frame compile's reason reaches the snapshot", () => 
     expect(notified).toBe(after + 1);
   });
 });
+
+describe("§T1392b — the hub feeds the perf timeline", () => {
+  it("records every noted frame and a compile mark, readable through the source", () => {
+    const hub = createTelemetryHub({ now });
+    hub.setPlan(telemetryPlan(planOf([{ id: "p1", nodeId: "blur" }])));
+    for (let frame = 0; frame < 3; frame += 1) {
+      hub.noteFrame(frame);
+      advance(16);
+    }
+    const window = hub.timeline?.(60_000);
+    expect(window?.frameAt).toHaveLength(3);
+    expect(window?.marks.map((mark) => mark.kind)).toEqual(["compile"]);
+    hub.dispose();
+  });
+});

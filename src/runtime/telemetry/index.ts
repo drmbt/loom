@@ -65,3 +65,6 @@ export type {
   ReadbackRow,
   SizedResource,
 } from "./readback.ts";
+
+export { createFrameTimeline, GAP_MS, TIMELINE_FRAME_CAPACITY } from "./timeline.ts";
+export type { FrameTimeline, TimelineGpuSample, TimelineMark, TimelineMarkKind, TimelineWindow } from "./timeline.ts";
