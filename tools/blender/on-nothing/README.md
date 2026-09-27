@@ -21,7 +21,15 @@ $B --background --factory-startup --python tools/blender/on-nothing/build.py -- 
 - Without `--human` the figure is the procedural mannequin (`figure.build`). It works, but it has far
   less fidelity.
 
-Then render in loom (see `src/projects/on-nothing/render.ts`):
+Then write the shots as loom projects, openable in the app (media go to gitignored
+`public/media/on-nothing/`):
+
+```bash
+node --import ./src/tooling/alias-hooks.ts src/projects/on-nothing/build.ts            # every shot → projects/on-nothing/<shot>.loom.json
+node --import ./src/tooling/alias-hooks.ts src/projects/on-nothing/build.ts -- --shots tableau
+```
+
+and render them headless (see `src/projects/on-nothing/render.ts`; `--final` for finished quality):
 
 ```bash
 node --import ./src/tooling/alias-hooks.ts src/projects/on-nothing/render.ts -- --width 1920 --at 2
