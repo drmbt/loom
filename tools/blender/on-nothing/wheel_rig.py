@@ -14,8 +14,9 @@ four wheels as their own parts, each pivoting at its hub, so loom's car rig
    tagged `loom_part` / `loom_parent`, and parented to the body, which becomes the rig's root
    part `car<n>` — the same contract cars.py's procedural `moving` path writes (README,
    "Cars").
-4. Each wheel wears a DISC COVER, as the reference's Rolls-Royce does: a dished, painted
-   disc over the rim face with five slots and a chrome centre cap. The model's own turbine rim
+4. Each wheel wears a DISC COVER, as the reference's Rolls-Royce does: a dished satin-silver
+   disc (`disc_satin`: grey, half metal, the matte clear-coat class, so it reads brushed
+   rather than white or mirror) over the rim face with five slots and a chrome centre cap. The model's own turbine rim
    reads as dark gaps at the wheel shot's grazing angle; the reference's reads as one bright
    brushed face with a few dark slots.
 5. Lamp faces in the car's rear half (lit as `headlight` by a model that names every lamp
@@ -40,9 +41,26 @@ DISH = 0.03
 CAP = 0.07
 
 
+def _satin():
+    """The disc's satin silver: made here (mats.py holds the shared library), in its convention."""
+    m = bpy.data.materials.get("disc_satin")
+    if m is not None:
+        return m
+    m = bpy.data.materials.new("disc_satin")
+    m.use_nodes = True
+    bsdf = m.node_tree.nodes["Principled BSDF"]
+    base = (0.46, 0.48, 0.49)
+    bsdf.inputs["Base Color"].default_value = (*base, 1.0)
+    bsdf.inputs["Metallic"].default_value = 0.55
+    bsdf.inputs["Roughness"].default_value = 0.4
+    m["loom_heat"] = 12 / 64.0  # the matte clear coat (surface.ts class 12)
+    m.diffuse_color = (*base, 1.0)
+    return m
+
+
 def _disc(bm, mats, x_face, out, radius):
     """A dished, slotted disc in the plane x = x_face (wheel-local, hub at the origin), facing `out` (±1)."""
-    silver = mats.index("paint_white")
+    silver = mats.index("disc_satin")
     chrome = mats.index("chrome")
     rings = [CAP] + [CAP + (radius - CAP) * k / 10 for k in range(1, 11)]
     steps = 90
@@ -156,9 +174,9 @@ def rig(car, n, report=None):
         wb.free()
         for m in me.materials:
             wme.materials.append(m)
-        for extra in ("paint_white", "chrome"):
+        for extra in ("disc_satin", "chrome"):
             if extra not in [m.name for m in wme.materials if m is not None]:
-                wme.materials.append(bpy.data.materials[extra])
+                wme.materials.append(_satin() if extra == "disc_satin" else bpy.data.materials[extra])
         wme.transform(Matrix.Translation(-hub))
         db = bmesh.new()
         db.from_mesh(wme)

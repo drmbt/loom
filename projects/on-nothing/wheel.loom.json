@@ -917,7 +917,7 @@
         "parameters": {
           "eye": [
             -2.386780236688605,
-            0.5,
+            0.55,
             9.746267234418983
           ],
           "eye.x": {
@@ -937,11 +937,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.50000 + (0.55 * sin(abstime * 2.14000 + 6.80000) + 0.3 * sin(abstime * 4.38000 + 10.20000) + 0.15 * sin(abstime * 8.22000 + 5.60000)) * 0.012"
+                "source": "0.55000 + (0.55 * sin(abstime * 2.14000 + 6.80000) + 0.3 * sin(abstime * 4.38000 + 10.20000) + 0.15 * sin(abstime * 8.22000 + 5.60000)) * 0.012"
               },
               "static": {
                 "kind": "static",
-                "value": 0.5
+                "value": 0.55
               }
             },
             "mode": "expression"
@@ -970,7 +970,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "-2.38678 + 0.00000 * ((abstime - 1.5) * 0.9) + 6 * (0.00000 * cos((0.31416 + (0.55 * sin(abstime * 1.51000 + 1.70000) + 0.3 * sin(abstime * 3.27000 + 3.30000) + 0.15 * sin(abstime * 6.63000 + 2.90000)) * 0.02)) + 1.00000 * sin((0.31416 + (0.55 * sin(abstime * 1.51000 + 1.70000) + 0.3 * sin(abstime * 3.27000 + 3.30000) + 0.15 * sin(abstime * 6.63000 + 2.90000)) * 0.02))) + 0 * (0.00000 + (0.55 * sin(abstime * 1.72000 + 3.40000) + 0.3 * sin(abstime * 3.64000 + 5.60000) + 0.15 * sin(abstime * 7.16000 + 3.80000)) * 0.014)"
+                "source": "-2.38678 + 0.00000 * ((abstime - 1.5) * 0.9) + 6 * (0.00000 * cos((0.31416 + (0.55 * sin(abstime * 1.51000 + 1.70000) + 0.3 * sin(abstime * 3.27000 + 3.30000) + 0.15 * sin(abstime * 6.63000 + 2.90000)) * 0.02)) + 1.00000 * sin((0.31416 + (0.55 * sin(abstime * 1.51000 + 1.70000) + 0.3 * sin(abstime * 3.27000 + 3.30000) + 0.15 * sin(abstime * 6.63000 + 2.90000)) * 0.02))) + 0 * (0.03491 + (0.55 * sin(abstime * 1.72000 + 3.40000) + 0.3 * sin(abstime * 3.64000 + 5.60000) + 0.15 * sin(abstime * 7.16000 + 3.80000)) * 0.014)"
               },
               "static": {
                 "kind": "static",
@@ -983,11 +983,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.50000 + 0.00000 * ((abstime - 1.5) * 0.9) + 6 * (0.00000 * cos((0.31416 + (0.55 * sin(abstime * 1.51000 + 1.70000) + 0.3 * sin(abstime * 3.27000 + 3.30000) + 0.15 * sin(abstime * 6.63000 + 2.90000)) * 0.02)) + 0.00000 * sin((0.31416 + (0.55 * sin(abstime * 1.51000 + 1.70000) + 0.3 * sin(abstime * 3.27000 + 3.30000) + 0.15 * sin(abstime * 6.63000 + 2.90000)) * 0.02))) + 6 * (0.00000 + (0.55 * sin(abstime * 1.72000 + 3.40000) + 0.3 * sin(abstime * 3.64000 + 5.60000) + 0.15 * sin(abstime * 7.16000 + 3.80000)) * 0.014)"
+                "source": "0.55000 + 0.00000 * ((abstime - 1.5) * 0.9) + 6 * (0.00000 * cos((0.31416 + (0.55 * sin(abstime * 1.51000 + 1.70000) + 0.3 * sin(abstime * 3.27000 + 3.30000) + 0.15 * sin(abstime * 6.63000 + 2.90000)) * 0.02)) + 0.00000 * sin((0.31416 + (0.55 * sin(abstime * 1.51000 + 1.70000) + 0.3 * sin(abstime * 3.27000 + 3.30000) + 0.15 * sin(abstime * 6.63000 + 2.90000)) * 0.02))) + 6 * (0.03491 + (0.55 * sin(abstime * 1.72000 + 3.40000) + 0.3 * sin(abstime * 3.64000 + 5.60000) + 0.15 * sin(abstime * 7.16000 + 3.80000)) * 0.014)"
               },
               "static": {
                 "kind": "static",
-                "value": 0.5
+                "value": 0.55
               }
             },
             "mode": "expression"
@@ -996,7 +996,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "9.74627 + -1.00000 * ((abstime - 1.5) * 0.9) + 6 * (-1.00000 * cos((0.31416 + (0.55 * sin(abstime * 1.51000 + 1.70000) + 0.3 * sin(abstime * 3.27000 + 3.30000) + 0.15 * sin(abstime * 6.63000 + 2.90000)) * 0.02)) + 0.00000 * sin((0.31416 + (0.55 * sin(abstime * 1.51000 + 1.70000) + 0.3 * sin(abstime * 3.27000 + 3.30000) + 0.15 * sin(abstime * 6.63000 + 2.90000)) * 0.02))) + 0 * (0.00000 + (0.55 * sin(abstime * 1.72000 + 3.40000) + 0.3 * sin(abstime * 3.64000 + 5.60000) + 0.15 * sin(abstime * 7.16000 + 3.80000)) * 0.014)"
+                "source": "9.74627 + -1.00000 * ((abstime - 1.5) * 0.9) + 6 * (-1.00000 * cos((0.31416 + (0.55 * sin(abstime * 1.51000 + 1.70000) + 0.3 * sin(abstime * 3.27000 + 3.30000) + 0.15 * sin(abstime * 6.63000 + 2.90000)) * 0.02)) + 0.00000 * sin((0.31416 + (0.55 * sin(abstime * 1.51000 + 1.70000) + 0.3 * sin(abstime * 3.27000 + 3.30000) + 0.15 * sin(abstime * 6.63000 + 2.90000)) * 0.02))) + 0 * (0.03491 + (0.55 * sin(abstime * 1.72000 + 3.40000) + 0.3 * sin(abstime * 3.64000 + 5.60000) + 0.15 * sin(abstime * 7.16000 + 3.80000)) * 0.014)"
               },
               "static": {
                 "kind": "static",
@@ -1314,7 +1314,7 @@
           "burstLength": 0.16,
           "gain": 1.8,
           "phase": 0.117,
-          "source": "struct Params {\n  gain: f32, // @default 1.8  Letter radiance at a beat's peak (HDR: just over the streak glass's threshold).\n  row: f32, // @default 0.54  Row height, fraction of the frame from the top.\n  pitch: f32, // @default 0.245  Letter spacing, fraction of the frame width.\n  size: f32, // @default 0.2  Letter height, fraction of the frame height.\n  stroke: f32, // @default 0.03  Stroke half-width, fraction of a letter's height.\n  soft: f32, // @default 0.08  Defocus of the row, fraction of a letter's height.\n  ghost: f32, // @default 0.04  Level the row idles at between beats.\n  beat: f32, // @default 0.2755  Seconds between pulses (an eighth note).\n  phase: f32, // @default 0.117  First pulse, seconds.\n  decay: f32, // @default 0.05  A pulse's 1/e fall, seconds.\n  burstAt: f32, // @default 0.375  The big burst, seconds.\n  burstLength: f32, // @default 0.16  Its length, seconds.\n  strobeFrom: f32, // @default 2.25  The strobe's start, seconds.\n  strobeTo: f32, // @default 3.2  Its end.\n  tint: vec3f, // @default 1  Letter colour.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn hash(n: f32) -> f32 { return fract(sin(n * 91.3458 + 1.7) * 47453.5453); }\n\nfn ellipse(p: vec2f, r: vec2f) -> f32 {\n  // Distance to an ellipse's outline, good near the curve (a thin stroke is all we need).\n  let k = length(p / r);\n  return (k - 1.0) * min(r.x, r.y);\n}\n\n// Signed distance (letter heights) from the stroke's centre line of one lowercase letter:\n// 0 = c, 1 = o, 2 = n. Origin at the letter's centre, y up, height 1.\nfn letter(p: vec2f, which: u32) -> f32 {\n  if (which == 2u) {\n    // n: two stems and an arch over them.\n    let stems = min(length(vec2f(abs(p.x + 0.3), max(abs(p.y + 0.18) - 0.32, 0.0))), length(vec2f(abs(p.x - 0.3), max(abs(p.y + 0.18) - 0.32, 0.0))));\n    let arch = select(1e3, abs(ellipse(p - vec2f(0.0, 0.14), vec2f(0.3, 0.36))), p.y > 0.14);\n    return min(stems, arch);\n  }\n  let r = vec2f(0.4, 0.5);\n  let ring = abs(ellipse(p, r));\n  if (which == 1u) { return ring; }\n  // c: the ring with its right side open, ends rounded.\n  let a = atan2(p.y, p.x);\n  if (abs(a) > 0.8) { return ring; }\n  let end = vec2f(cos(0.8) * r.x, sin(0.8) * r.y);\n  return min(length(p - end), length(p - vec2f(end.x, -end.y)));\n}\n\n// The word, a letter per slot: c o c o o n.\nfn slotLetter(i: i32) -> u32 {\n  switch (i) {\n    case 0, 2: { return 0u; }\n    case 5: { return 2u; }\n    default: { return 1u; }\n  }\n}\n\n// Glow of a stroke at distance d (letter heights): a soft core and a wide faint halo.\nfn glow(d: f32, stroke: f32, soft: f32) -> f32 {\n  let e = max(d - stroke, 0.0);\n  return (1.0 - smoothstep(0.0, soft, e)) + 0.05 * exp(-e / (soft * 4.0));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let base = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let t = frameU.absTime;\n  let aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  // Screen in frame heights, y up.\n  let s = vec2f(uv.x * aspect, 1.0 - uv.y);\n\n  // The beat: which pulse, and how far into it.\n  let k = floor(max(t - params.phase, 0.0) / params.beat);\n  let into = t - params.phase - k * params.beat;\n  let pulse = select(0.0, exp(-into / params.decay), t >= params.phase);\n  let frameIndex = floor(t * 24.0 + 0.5);\n  let strobe = step(params.strobeFrom, t) * step(t, params.strobeTo);\n  let strobeOn = strobe * (1.0 - fract(frameIndex * 0.5) * 2.0);\n  let burst = step(params.burstAt, t) * step(t, params.burstAt + params.burstLength);\n\n  // THE ROW: each beat tips every letter about its horizontal axis and nudges its size.\n  var light = 0.0;\n  let tip = select(0.0, 1.2, hash(k) > 0.5);\n  let squash = max(cos(tip + (hash(k + 7.0) - 0.5) * 0.4), 0.2);\n  let size = params.size * (0.85 + 0.35 * hash(k + 3.0));\n  // On the strobe the row holds dim between the big frames (the reference's 2.9 s).\n  let rowLevel = max(params.ghost, pulse * (1.0 - strobe)) + strobe * (1.0 - strobeOn) * 0.35;\n  let drift = t * 0.012;\n  for (var i = 0; i < 6; i = i + 1) {\n    let cx = (f32(i) + 0.5) * params.pitch * aspect + (hash(f32(i) + k * 3.1) - 0.5) * 0.05 - drift;\n    let cy = 1.0 - params.row + (hash(f32(i) * 1.7 + k) - 0.5) * 0.04;\n    var p = (s - vec2f(cx, cy)) / size;\n    p.y = p.y / squash;\n    let d = letter(p, slotLetter(i));\n    light = light + glow(d, params.stroke, params.soft) * rowLevel;\n    // A dim echo a little below each letter (the reference's doubled glyphs).\n    let q = p + vec2f(0.0, 0.42);\n    light = light + glow(letter(q, slotLetter(i)), params.stroke, params.soft * 1.6) * rowLevel * 0.22;\n  }\n\n  // THE BIG PAIR: a \"c\" left, an \"o\" right, half the frame tall, on the burst and the strobe.\n  let bigLevel = max(burst * (0.6 + 0.4 * pulse), strobeOn);\n  if (bigLevel > 0.0) {\n    let bigSize = 0.5 * (1.0 + 0.15 * hash(frameIndex));\n    let bigSquash = select(0.72, 1.0, hash(frameIndex + 11.0) > 0.5);\n    for (var j = 0; j < 2; j = j + 1) {\n      let cx = select(0.78, 0.2, j == 0) * aspect + (hash(frameIndex + f32(j) * 5.0) - 0.5) * 0.08;\n      var p = (s - vec2f(cx, 0.55)) / bigSize;\n      p.y = p.y / bigSquash;\n      p.x = p.x + 0.1 * sin(p.y * 4.0 + t * 29.0 + f32(j)) * strobe;\n      light = light + glow(letter(p, select(1u, 0u, j == 0)), params.stroke * 0.7, params.soft * 0.8) * bigLevel;\n    }\n  }\n  return vec4f(base.rgb + params.tint * light * params.gain, base.a);\n}",
+          "source": "struct Params {\n  gain: f32, // @default 1.8  Letter radiance at a beat's peak (HDR: just over the streak glass's threshold).\n  row: f32, // @default 0.54  Row height, fraction of the frame from the top.\n  pitch: f32, // @default 0.245  Letter spacing, fraction of the frame width.\n  size: f32, // @default 0.2  Letter height, fraction of the frame height.\n  stroke: f32, // @default 0.03  Stroke half-width, fraction of a letter's height.\n  soft: f32, // @default 0.09  Defocus of the row, fraction of a letter's height.\n  extrude: f32, // @default 1.1  Column above each letter, in letter heights.\n  column: f32, // @default 0.55  The column's brightness against the letter's.\n  ghost: f32, // @default 0.04  Level the row idles at between beats.\n  beat: f32, // @default 0.2755  Seconds between pulses (an eighth note).\n  phase: f32, // @default 0.117  First pulse, seconds.\n  decay: f32, // @default 0.05  A pulse's 1/e fall, seconds.\n  burstAt: f32, // @default 0.375  The big burst, seconds.\n  burstLength: f32, // @default 0.16  Its length, seconds.\n  strobeFrom: f32, // @default 2.25  The strobe's start, seconds.\n  strobeTo: f32, // @default 3.2  Its end.\n  tint: vec3f, // @default 1  Letter colour.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn hash(n: f32) -> f32 { return fract(sin(n * 91.3458 + 1.7) * 47453.5453); }\n\nfn ellipse(p: vec2f, r: vec2f) -> f32 {\n  // Distance to an ellipse's outline, good near the curve (a thin stroke is all we need).\n  let k = length(p / r);\n  return (k - 1.0) * min(r.x, r.y);\n}\n\n// Signed distance (letter heights) from the stroke's centre line of one lowercase letter:\n// 0 = c, 1 = o, 2 = n. Origin at the letter's centre, y up, height 1.\nfn letter(p: vec2f, which: u32) -> f32 {\n  if (which == 2u) {\n    // n: two stems and an arch over them.\n    let stems = min(length(vec2f(abs(p.x + 0.3), max(abs(p.y + 0.18) - 0.32, 0.0))), length(vec2f(abs(p.x - 0.3), max(abs(p.y + 0.18) - 0.32, 0.0))));\n    let arch = select(1e3, abs(ellipse(p - vec2f(0.0, 0.14), vec2f(0.3, 0.36))), p.y > 0.14);\n    return min(stems, arch);\n  }\n  let r = vec2f(0.4, 0.5);\n  let ring = abs(ellipse(p, r));\n  if (which == 1u) { return ring; }\n  // c: the ring with its right side open, ends rounded.\n  let a = atan2(p.y, p.x);\n  if (abs(a) > 0.8) { return ring; }\n  let end = vec2f(cos(0.8) * r.x, sin(0.8) * r.y);\n  return min(length(p - end), length(p - vec2f(end.x, -end.y)));\n}\n\n// The word, a letter per slot: c o c o o n.\nfn slotLetter(i: i32) -> u32 {\n  switch (i) {\n    case 0, 2: { return 0u; }\n    case 5: { return 2u; }\n    default: { return 1u; }\n  }\n}\n\n// Glow of a stroke at distance d (letter heights): a defocused, gaussian edge and a faint halo.\nfn glow(d: f32, stroke: f32, soft: f32) -> f32 {\n  let e = max(d - stroke, 0.0) / soft;\n  return exp(-e * e) + 0.03 * exp(-e * 0.3);\n}\n\n// The letter smeared upward over params.extrude letter heights, fading with the reach:\n// its sides stack into bright walls, its arcs into a faint filled band.\nfn column(p: vec2f, which: u32, stroke: f32, soft: f32, gain: f32) -> f32 {\n  var sum = 0.0;\n  for (var k = 1; k <= 12; k = k + 1) {\n    let f = f32(k) / 12.0;\n    sum = sum + glow(letter(p - vec2f(0.0, f * params.extrude), which), stroke, soft * 1.4) * (1.0 - f * 0.8);\n  }\n  return sum / 12.0 * params.column * gain;\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let base = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let t = frameU.absTime;\n  let aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  // Screen in frame heights, y up.\n  let s = vec2f(uv.x * aspect, 1.0 - uv.y);\n\n  // The beat: which pulse, and how far into it.\n  let k = floor(max(t - params.phase, 0.0) / params.beat);\n  let into = t - params.phase - k * params.beat;\n  let pulse = select(0.0, exp(-into / params.decay), t >= params.phase);\n  let frameIndex = floor(t * 24.0 + 0.5);\n  let strobe = step(params.strobeFrom, t) * step(t, params.strobeTo);\n  let strobeOn = strobe * (1.0 - fract(frameIndex * 0.5) * 2.0);\n  let burst = step(params.burstAt, t) * step(t, params.burstAt + params.burstLength);\n\n  // THE ROW: each beat tips every letter about its horizontal axis and nudges its size.\n  var light = 0.0;\n  let tip = select(0.0, 1.2, hash(k) > 0.5);\n  let squash = max(cos(tip + (hash(k + 7.0) - 0.5) * 0.4), 0.2);\n  let size = params.size * (0.85 + 0.35 * hash(k + 3.0));\n  // On the strobe the row holds dim between the big frames (the reference's 2.9 s).\n  let rowLevel = max(params.ghost, pulse * (1.0 - strobe)) + strobe * (1.0 - strobeOn) * 0.35;\n  let drift = t * 0.012;\n  for (var i = 0; i < 6; i = i + 1) {\n    let cx = (f32(i) + 0.5) * params.pitch * aspect + (hash(f32(i) + k * 3.1) - 0.5) * 0.05 - drift;\n    let cy = 1.0 - params.row + (hash(f32(i) * 1.7 + k) - 0.5) * 0.04;\n    var p = (s - vec2f(cx, cy)) / size;\n    p.y = p.y / squash;\n    let d = letter(p, slotLetter(i));\n    light = light + (glow(d, params.stroke, params.soft) + column(p, slotLetter(i), params.stroke, params.soft, 1.0)) * rowLevel;\n    // A dim echo a little below each letter (the reference's doubled glyphs).\n    let q = p + vec2f(0.0, 0.42);\n    light = light + glow(letter(q, slotLetter(i)), params.stroke, params.soft * 1.6) * rowLevel * 0.22;\n  }\n\n  // THE BIG PAIR: a \"c\" left, an \"o\" right, half the frame tall, on the burst and the strobe.\n  let bigLevel = max(burst * (0.6 + 0.4 * pulse), strobeOn);\n  if (bigLevel > 0.0) {\n    let bigSize = 0.5 * (1.0 + 0.15 * hash(frameIndex));\n    let bigSquash = select(0.72, 1.0, hash(frameIndex + 11.0) > 0.5);\n    for (var j = 0; j < 2; j = j + 1) {\n      let cx = select(0.78, 0.2, j == 0) * aspect + (hash(frameIndex + f32(j) * 5.0) - 0.5) * 0.08;\n      var p = (s - vec2f(cx, 0.64)) / bigSize;\n      p.y = p.y / bigSquash;\n      p.x = p.x + 0.1 * sin(p.y * 4.0 + t * 29.0 + f32(j)) * strobe;\n      let which = select(1u, 0u, j == 0);\n      // thinner and crisper than the row (they are nearer the focus), their columns stronger\n      light = light + (glow(letter(p, which), params.stroke * 0.45, params.soft * 0.35) + column(p, which, params.stroke * 0.45, params.soft * 0.5, 1.8)) * bigLevel;\n    }\n  }\n  return vec4f(base.rgb + params.tint * light * params.gain, base.a);\n}",
           "strobeFrom": 2.25,
           "strobeTo": 3.2
         },
@@ -1332,22 +1332,22 @@
         "id": "grade",
         "label": "grade1",
         "parameters": {
-          "black": 0.035,
-          "contrast": 1.18,
-          "exposure": 0.35,
-          "keepWarm": 0.9,
-          "saturation": 0.62,
+          "black": 0.03,
+          "contrast": 1.25,
+          "exposure": 0.1,
+          "keepWarm": 0.6,
+          "saturation": 0.55,
           "shadowTint": [
-            0.96,
-            1.02,
-            1.03,
+            0.9,
+            1.04,
+            1.06,
             1
           ],
           "source": "struct Params {\n  exposure: f32, // @default 0  Stops.\n  black: f32, // @default 0.035  Display level crushed to zero (the toe cut).\n  contrast: f32, // @default 1.25  S-curve slope around mid-grey.\n  saturation: f32, // @default 0.28  Chroma kept (the reference keeps almost none).\n  keepWarm: f32, // @default 0.5  Chroma kept on strongly saturated warm sources (flare contamination).\n  bleach: f32, // @default 0.35  Bleach-bypass mix.\n  steel: vec3f, // @default 1  Tint pushed into the upper mids.\n  shadowTint: vec3f, // @default 1  Tint in the shadows (neutral to cool only).\n  split: f32, // @default 0.5  Strength of both tints.\n  grain: f32, // @default 0.03  Grain amount.\n  grainSize: f32, // @default 1.3  Grain size in pixels.\n  lift: f32, // @default 0  Display-level lift (the cyc's overexposed floor).\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n\nfn gradeHash(p: vec3f) -> f32 {\n  var q = fract(p * vec3f(0.1031, 0.1030, 0.0973));\n  q = q + dot(q, q.yxz + 33.33);\n  return fract((q.x + q.y) * q.z);\n}\n\n// A filmic shoulder (Hable's) on scene-linear light, normalised to white at 11.2.\nfn hable(x: vec3f) -> vec3f {\n  let a = 0.15; let b = 0.5; let c = 0.1; let d = 0.2; let e = 0.02; let f = 0.3;\n  return ((x * (a * x + c * b) + d * e) / (x * (a * x + b) + d * f)) - e / f;\n}\n\nfn luma(c: vec3f) -> f32 {\n  return dot(c, vec3f(0.2126, 0.7152, 0.0722));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let hdr = max(textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb, vec3f(0.0)) * exp2(params.exposure);\n  // Chroma decision BEFORE the curve: a strongly saturated warm source keeps some colour.\n  let hl = luma(hdr);\n  let chroma = (max(hdr.r, max(hdr.g, hdr.b)) - min(hdr.r, min(hdr.g, hdr.b))) / max(max(hdr.r, max(hdr.g, hdr.b)), 1e-4);\n  let warm = smoothstep(0.35, 0.8, chroma) * step(hdr.b, hdr.r);\n  let keep = mix(params.saturation, max(params.saturation, params.keepWarm), warm);\n  var c = hable(hdr * 2.0) / hable(vec3f(11.2));\n  // display-ish space for the grade\n  c = pow(clamp(c, vec3f(0.0), vec3f(1.0)), vec3f(1.0 / 2.2));\n  let y0 = luma(c);\n  c = mix(vec3f(y0), c, keep);\n  // bleach bypass: overlay the picture with its own luma\n  let y = luma(c);\n  let overlay = select(1.0 - 2.0 * (1.0 - c) * (1.0 - y), 2.0 * c * y, c < vec3f(0.5));\n  c = mix(c, overlay, params.bleach);\n  // contrast S around mid-grey, then the black crush\n  c = clamp((c - 0.45) * params.contrast + 0.45, vec3f(0.0), vec3f(1.0));\n  c = clamp((c - params.black) / (1.0 - params.black), vec3f(0.0), vec3f(1.0));\n  // split: cool steel into the upper mids, neutral-to-cool shadows\n  let yl = luma(c);\n  let upper = smoothstep(0.35, 0.8, yl) * (1.0 - smoothstep(0.9, 1.0, yl));\n  let low = 1.0 - smoothstep(0.0, 0.3, yl);\n  c = c * mix(vec3f(1.0), params.steel, upper * params.split) * mix(vec3f(1.0), params.shadowTint, low * params.split);\n  c = c + vec3f(params.lift) * (1.0 - c);\n  // grain: luma-weighted, heavier in the blacks, a new pattern each frame\n  let px = floor(uv * frameU.resolution / max(params.grainSize, 0.5));\n  let n = gradeHash(vec3f(px, frameU.absFrame)) + gradeHash(vec3f(px + 17.0, frameU.absFrame * 1.7)) - 1.0;\n  c = c + vec3f(n) * params.grain * (0.35 + 0.65 * (1.0 - luma(c)));\n  c = clamp(c, vec3f(0.0), vec3f(1.0));\n  return vec4f(pow(c, vec3f(2.2)), 1.0);\n}",
-          "split": 0.4,
+          "split": 0.7,
           "steel": [
-            0.96,
-            1.01,
+            0.88,
+            1.03,
             1.03
           ]
         },
@@ -2455,7 +2455,7 @@
             "mode": "expression"
           },
           "blur": 1.6,
-          "dimShare": 0.1,
+          "dimShare": 0.05,
           "eye": [
             4.300000190734863,
             0.30000001192092896,
@@ -2526,7 +2526,7 @@
             },
             "mode": "expression"
           },
-          "keepBright": 4,
+          "keepBright": 12,
           "maxDistance": 30,
           "roll": {
             "bindings": {
@@ -2543,7 +2543,7 @@
           },
           "roughnessCutoff": 0.55,
           "source": "struct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  strength: f32, // @default 1  Overall reflection strength.\n  maxDistance: f32, // @default 30  Longest reflection ray, metres.\n  thickness: f32, // @default 0.4  How thick a surface is assumed behind the depth buffer, metres.\n  roughnessCutoff: f32, // @default 0.5  Surfaces rougher than this reflect nothing.\n  blur: f32, // @default 0.9  Blur at the hit per unit roughness × travel, as a fraction of the frame height per metre.\n  stretch: f32, // @default 3  How much longer the blur runs vertically than across.\n  keepBright: f32, // @default 3  Radiance above which a reflection keeps full strength; dimmer things (car bodies) reflect only dimShare of it.\n  dimShare: f32, // @default 0.15  Share of a dim reflection that shows: sealed concrete mirrors lamps, not paint.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n@group(0) @binding(5) var inputTexture2: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\nconst STEPS: u32 = 48u;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let encoded = textureLoad(inputTexture2, depthTexel(uv), 0);\n  let roughness = encoded.a;\n  let v = makeView();\n  let z = viewDepth(uv);\n  if (z < 0.0 || roughness <= 0.0 || roughness > params.roughnessCutoff) { return color; }\n  let n = normalize(encoded.rgb * 2.0 - 1.0);\n  let p = worldAt(v, uv, z);\n  let view = normalize(p - params.eye);\n  let r = reflect(view, n);\n  let fresnel = 0.04 + 0.96 * pow(1.0 - clamp(dot(-view, n), 0.0, 1.0), 5.0);\n  let gloss = 1.0 - smoothstep(0.02, params.roughnessCutoff, roughness);\n  if (fresnel * gloss < 0.005) { return color; }\n  // A fixed, per-pixel stagger of the march (no clock): no shimmer across frames.\n  let jitter = ignHash(uv * frameU.resolution);\n  var previous = 0.0;\n  var hit = vec3f(-1.0);\n  var travelled = 0.0;\n  for (var i = 1u; i <= STEPS; i = i + 1u) {\n    let travel = params.maxDistance * pow((f32(i) - 1.0 + jitter) / f32(STEPS), 2.0) + 0.05;\n    let probe = project(v, p + r * travel);\n    if (probe.z <= 0.0 || any(probe.xy < vec2f(0.0)) || any(probe.xy > vec2f(1.0))) { break; }\n    let sceneZ = viewDepth(probe.xy);\n    if (sceneZ > 0.0 && probe.z > sceneZ && probe.z - sceneZ < params.thickness + travel * 0.02) {\n      var lo = previous;\n      var hi = travel;\n      for (var k = 0; k < 5; k = k + 1) {\n        let mid = (lo + hi) * 0.5;\n        let q = project(v, p + r * mid);\n        let qz = viewDepth(q.xy);\n        if (qz > 0.0 && q.z > qz) { hi = mid; } else { lo = mid; }\n      }\n      hit = project(v, p + r * hi);\n      travelled = hi;\n      break;\n    }\n    previous = travel;\n  }\n  if (hit.z <= 0.0) { return color; }\n  let edge = smoothstep(0.0, 0.08, min(min(hit.x, 1.0 - hit.x), min(hit.y, 1.0 - hit.y)));\n  // The glossy fetch: a 5 × 9 tent around the hit, its size from roughness × travel.\n  let aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  let reach = params.blur * roughness * travelled / max(z, 0.5);\n  let span = vec2f(reach / aspect, reach * params.stretch);\n  var sum = vec3f(0.0);\n  var weight = 0.0;\n  for (var j = -4; j <= 4; j = j + 1) {\n    for (var i2 = -2; i2 <= 2; i2 = i2 + 1) {\n      let o = vec2f(f32(i2) / 2.0, f32(j) / 4.0);\n      let w = (1.0 - abs(o.x) * 0.6) * (1.0 - abs(o.y) * 0.8);\n      let at = clamp(hit.xy + o * span, vec2f(0.0), vec2f(1.0));\n      sum = sum + textureSampleLevel(inputTexture, inputSampler, at, 0.0).rgb * w;\n      weight = weight + w;\n    }\n  }\n  var reflected = sum / weight;\n  let rl = dot(reflected, vec3f(0.2126, 0.7152, 0.0722));\n  reflected = reflected * mix(params.dimShare, 1.0, smoothstep(params.keepBright * 0.3, params.keepBright, rl));\n  // A ray turning back toward the lens leaves what the frame knows: its \"hit\" is a false one\n  // (it drew bright slabs on the floor). Fade reflections out as the ray turns toward the camera.\n  let away = smoothstep(-0.05, 0.3, dot(r, v.forward));\n  let amount = clamp(fresnel * gloss * edge * away * params.strength, 0.0, 1.0);\n  return vec4f(color.rgb + reflected * amount, color.a);\n}",
-          "strength": 1.2,
+          "strength": 0.6,
           "stretch": 4,
           "thickness": 0.4
         },
@@ -2580,7 +2580,7 @@
           "depthOutput": true,
           "environmentIntensity": 0.1,
           "environmentTaps": 16,
-          "lights": "wheellight01 wheellight11 wheellight21",
+          "lights": "wheellight01 wheellight11",
           "normalOutput": true,
           "projectors": "head01 head11 head21 head31 head41",
           "scenes": "geowh1 geocar01 geocar11 geocar21 geocar31 geocar41"
@@ -2781,22 +2781,22 @@
             1,
             1
           ],
-          "intensity": 5,
+          "intensity": 16,
           "kind": "point",
           "position": [
-            -3.7867802366886045,
-            0.75,
-            7.546267234418983
+            -4.386780236688605,
+            0.5,
+            5.546267234418983
           ],
           "position.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "-3.78678 + 0.00000 * ((abstime - 1.5) * 0.9)"
+                "source": "-4.38678 + 0.00000 * ((abstime - 1.5) * 0.9)"
               },
               "static": {
                 "kind": "static",
-                "value": -3.7867802366886045
+                "value": -4.386780236688605
               }
             },
             "mode": "expression"
@@ -2805,11 +2805,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "7.54627 + -1.00000 * ((abstime - 1.5) * 0.9)"
+                "source": "5.54627 + -1.00000 * ((abstime - 1.5) * 0.9)"
               },
               "static": {
                 "kind": "static",
-                "value": 7.546267234418983
+                "value": 5.546267234418983
               }
             },
             "mode": "expression"
@@ -2835,68 +2835,17 @@
             1,
             1
           ],
-          "intensity": 0.35,
-          "kind": "point",
-          "position": [
-            -3.286780236688605,
-            0.35,
-            9.446267234418983
-          ],
-          "position.x": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "-3.28678 + 0.00000 * ((abstime - 1.5) * 0.9)"
-              },
-              "static": {
-                "kind": "static",
-                "value": -3.286780236688605
-              }
-            },
-            "mode": "expression"
-          },
-          "position.z": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "9.44627 + -1.00000 * ((abstime - 1.5) * 0.9)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 9.446267234418983
-              }
-            },
-            "mode": "expression"
-          }
-        },
-        "position": {
-          "x": -2600,
-          "y": 2100
-        },
-        "type": "light"
-      },
-      "wheelLight2": {
-        "definitionVersion": 1,
-        "id": "wheelLight2",
-        "label": "wheellight21",
-        "parameters": {
-          "color": [
-            0.85,
-            0.95,
-            1,
-            1
-          ],
           "direction": [
             0.25,
             -1,
             -0.2
           ],
-          "intensity": 0.05,
+          "intensity": 0.03,
           "kind": "directional"
         },
         "position": {
           "x": -2600,
-          "y": 2200
+          "y": 2100
         },
         "type": "light"
       }

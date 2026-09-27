@@ -13,7 +13,7 @@ import { markerOf } from "./scene-facts.ts";
 import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "./skin-kernel.ts";
 import { GLASS_COMPOSITE_WGSL, LAMP_GLASS_WGSL, OCCLUDER_WGSL, surfaceWgsl, type Footprint } from "./surface.ts";
 import { CAR_RIG_ATTRIBUTES, carRigKernel } from "./car-rig.ts";
-import { WHEEL_DOF, WHEEL_DRIVE, WHEEL_TURN, WHEEL_GLYPHS, WHEEL_GLYPHS_WGSL, placedHaze, riding, wheelCamera, wheelLights, wheelRig } from "./shots/wheel.ts";
+import { WHEEL_DOF, WHEEL_DRIVE, WHEEL_GRADE, WHEEL_SSR, WHEEL_TURN, WHEEL_GLYPHS, WHEEL_GLYPHS_WGSL, placedHaze, riding, wheelCamera, wheelLights, wheelRig } from "./shots/wheel.ts";
 import { titleDocument } from "./shots/title.ts";
 import { ringDocument } from "./shots/ring.ts";
 import { prismDocument } from "./shots/prism.ts";
@@ -477,7 +477,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   };
   const depth = ["shot", "depth"] as const;
   const normal = ["shot", "normal"] as const;
-  pass("reflections", GLOSSY_SSR_WGSL, { ...cameraParams, strength: 1.2, maxDistance: 30, roughnessCutoff: 0.55, thickness: 0.4, blur: 1.6, stretch: 4, keepBright: 4, dimShare: 0.1 }, [depth, normal], [-2100, 0]);
+  pass("reflections", GLOSSY_SSR_WGSL, { ...cameraParams, strength: 1.2, maxDistance: 30, roughnessCutoff: 0.55, thickness: 0.4, blur: 1.6, stretch: 4, keepBright: 4, dimShare: 0.1, ...(base === "wheel" ? WHEEL_SSR : {}) }, [depth, normal], [-2100, 0]);
   pass("occlusion", GTAO_WGSL, { ...cameraParams, radius: plan.whiteRoom ? 0.5 : 1.3, strength: plan.whiteRoom ? 0.6 : 0.95, power: 1.6 }, [depth, normal], [-1900, 0]);
   if (glassScenes.length > 0) {
     nodes.push(node("glassShot", "render", [-2400, 700], { scenes: glassScenes.join(" "), camera: "cam1", lights: "", ambientIntensity: 0, background: [0, 0, 0, 1], antialias: "msaa", normalOutput: true }, { label: "glassshot1" }));
@@ -555,7 +555,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     : {};
   pass("lens", LENS_WGSL, plan.whiteRoom ? { distortion: 0.03, edgeBlur: 0.012, vignette: 0.8, vignetteRound: 0.9 } : { distortion: 0.06, edgeBlur: 0.014, vignette: 0.6, ...snapBlur }, [], [-300, 0]);
   const grade: Record<Base, Record<string, StoredParameter>> = {
-    wheel: { exposure: 0.35, black: 0.035, contrast: 1.18, saturation: 0.62, keepWarm: 0.9, steel: [0.96, 1.01, 1.03], shadowTint: [0.96, 1.02, 1.03, 1], split: 0.4 },
+    wheel: WHEEL_GRADE,
     // Not black and white: sodium warmth in the floor pool, cyan in the LED spill and the haze,
     // cyan-green in the greys — measured from the reference (docs plan, 'colour').
     tableau: { exposure: 0.2, black: 0.035, contrast: 1.18, saturation: 0.62, keepWarm: 0.9, steel: [0.96, 1.01, 1.03], shadowTint: [0.96, 1.02, 1.03, 1], split: 0.4 },

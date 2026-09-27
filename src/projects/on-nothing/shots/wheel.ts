@@ -40,7 +40,7 @@ export const WHEEL_TURN = Math.PI;
 /** The camera, from the rear wheel's hub: behind it, outboard of it, above the floor (m). */
 const BEHIND = 0.77;
 const OUTBOARD = 0.35;
-const HEIGHT = 0.5;
+const HEIGHT = 0.55;
 /** The far car: which one (a white one, as the reference's), and where it must sit from the lens: distance (m) and azimuth off the flank toward the car (degrees). */
 const FAR_CAR = "1";
 const FAR_DISTANCE = 10;
@@ -54,7 +54,7 @@ const FAR_AZIMUTH = -3;
  * ~20 mm lens on the reference's 2.39:1 frame, as the breakdown's "18–28 mm primes".
  */
 const YAW = 18;
-const PITCH = 0;
+const PITCH = 2;
 const ROLL = -18;
 const FOV = 36;
 
@@ -178,10 +178,11 @@ export function wheelCamera(rig: WheelRig): Record<string, StoredParameter> {
 
 /**
  * The shot's light, besides the cars' headlight projectors, riding with the car as a film
- * crew's would: the far car's beams reaching the wheel (a cool point low ahead of the lens,
- * outboard, so the disc's face and the flank catch it from the front left, as in the
- * reference), a low cool bounce by the lens that lights the door panel beside it and the
- * tyre's shoulder, and a dim cool top. No sodium: the reference's floor here is cold.
+ * crew's would: ONE key, the far car's beams reaching the wheel — a cool point 4 m ahead of
+ * the lens and outboard, so the disc's face and the arch lip catch it from the front left and
+ * the panel beside the lens, lit at an ever flatter angle as it nears the lens, falls off to
+ * dark, as the reference's does. It casts, so the wheel throws its shadow back along the
+ * floor. A breath of cool top. No sodium: the reference's floor here is cold.
  */
 export function wheelLights(rig: WheelRig): Array<Record<string, StoredParameter>> {
   const eye = eyeOf(rig);
@@ -190,15 +191,39 @@ export function wheelLights(rig: WheelRig): Array<Record<string, StoredParameter
     "position.x": expressionSlot(`${f(at[0])} + ${f(rig.forward[0])} * ${WHEEL_DRIVE}`, at[0]),
     "position.z": expressionSlot(`${f(at[2])} + ${f(rig.forward[2])} * ${WHEEL_DRIVE}`, at[2]),
   });
-  const spill = add(add(eye, scale(rig.forward, 2.2)), scale(rig.side, 1.4));
-  const bounce = add(add(eye, scale(rig.forward, 0.3)), scale(rig.side, 0.9));
+  const key = add(add(eye, scale(rig.forward, KEY[0])), scale(rig.side, KEY[1]));
   return [
-    // it casts: the wheel and the flank throw their shadows onto the floor away from it
-    { kind: "point", ...riding([spill[0], 0.75, spill[2]]), color: [0.8, 0.93, 1, 1], intensity: 5, shadows: true, shadowExtent: 12, shadowSoftness: 2 },
-    { kind: "point", ...riding([bounce[0], 0.35, bounce[2]]), color: [0.85, 0.95, 1, 1], intensity: 0.35 },
-    { kind: "directional", direction: [0.25, -1, -0.2], color: [0.85, 0.95, 1, 1], intensity: 0.05 },
+    { kind: "point", ...riding([key[0], KEY[2], key[2]]), color: [0.8, 0.93, 1, 1], intensity: KEY[3], shadows: true, shadowExtent: 12, shadowSoftness: 2 },
+    { kind: "directional", direction: [0.25, -1, -0.2], color: [0.85, 0.95, 1, 1], intensity: 0.03 },
   ];
 }
+
+/** The key: metres ahead of the lens, outboard, above the floor; intensity. */
+const KEY = [4.2, 2.0, 0.5, 16] as const;
+
+/**
+ * The grade, set against the reference's frame: mids teal-grey (the disc and the lit panel at
+ * rgb 119,138,137 — green and blue a seventh over red), the floor near black (11,14,15), the
+ * blacks cool, the lamps neutral white.
+ */
+export const WHEEL_GRADE: Record<string, StoredParameter> = {
+  exposure: 0.1,
+  black: 0.03,
+  contrast: 1.25,
+  saturation: 0.55,
+  keepWarm: 0.6,
+  steel: [0.88, 1.03, 1.03],
+  shadowTint: [0.9, 1.04, 1.06, 1],
+  split: 0.7,
+};
+
+/**
+ * Screen-space reflections for this shot: the flank's white clear coat, seen at a grazing
+ * angle, catches lamp reflections through its orange-peel normals as bright specks (the
+ * pass's own fix is T1412b). Here the SSR keeps only what is rough enough to smear: the paint
+ * reflects the room through the Render's environment (the HDRI) instead.
+ */
+export const WHEEL_SSR: Record<string, StoredParameter> = { roughnessCutoff: 0.55, keepBright: 12, dimShare: 0.05, strength: 0.6 };
 
 /** Depth of field: the wheel's face in focus at ~1.1 m; the panel by the lens melts, the far car softens. */
 export const WHEEL_DOF: Record<string, StoredParameter> = { focusDistance: 1.15, aperture: 0.7, maxRadius: 22 };
@@ -219,9 +244,10 @@ export const WHEEL_GLYPHS: Record<string, StoredParameter> = {
  * word — in a row across the frame, and two big ones on the bursts. Measured: the row sits at
  * 0.54 of the height, a letter every 0.245 of the width, 0.2 of the height tall, soft as if
  * out of focus; each beat turns every letter about its horizontal axis (upright one beat, near
- * flat the next); the big pair fills half the height and wobbles on the strobe. Written into
- * the HDR picture BEFORE the optics, so the streak glass smears each lit letter upward into a
- * translucent column its own width — the reference's "extruded" glyphs.
+ * flat the next); the big pair fills half the height and wobbles on the strobe. Each letter is
+ * EXTRUDED upward — a translucent column its own width, brightest along its sides, as long as
+ * the letter is tall (the reference's glyphs read as glass cylinders) — and written into the
+ * HDR picture before the optics, so the streak glass lengthens it further.
  * Custom WGSL: Input = the frame.
  */
 export const WHEEL_GLYPHS_WGSL = `struct Params {
@@ -230,7 +256,9 @@ export const WHEEL_GLYPHS_WGSL = `struct Params {
   pitch: f32, // @default 0.245  Letter spacing, fraction of the frame width.
   size: f32, // @default 0.2  Letter height, fraction of the frame height.
   stroke: f32, // @default 0.03  Stroke half-width, fraction of a letter's height.
-  soft: f32, // @default 0.08  Defocus of the row, fraction of a letter's height.
+  soft: f32, // @default 0.09  Defocus of the row, fraction of a letter's height.
+  extrude: f32, // @default 1.1  Column above each letter, in letter heights.
+  column: f32, // @default 0.55  The column's brightness against the letter's.
   ghost: f32, // @default 0.04  Level the row idles at between beats.
   beat: f32, // @default 0.2755  Seconds between pulses (an eighth note).
   phase: f32, // @default 0.117  First pulse, seconds.
@@ -283,10 +311,21 @@ fn slotLetter(i: i32) -> u32 {
   }
 }
 
-// Glow of a stroke at distance d (letter heights): a soft core and a wide faint halo.
+// Glow of a stroke at distance d (letter heights): a defocused, gaussian edge and a faint halo.
 fn glow(d: f32, stroke: f32, soft: f32) -> f32 {
-  let e = max(d - stroke, 0.0);
-  return (1.0 - smoothstep(0.0, soft, e)) + 0.05 * exp(-e / (soft * 4.0));
+  let e = max(d - stroke, 0.0) / soft;
+  return exp(-e * e) + 0.03 * exp(-e * 0.3);
+}
+
+// The letter smeared upward over params.extrude letter heights, fading with the reach:
+// its sides stack into bright walls, its arcs into a faint filled band.
+fn column(p: vec2f, which: u32, stroke: f32, soft: f32, gain: f32) -> f32 {
+  var sum = 0.0;
+  for (var k = 1; k <= 12; k = k + 1) {
+    let f = f32(k) / 12.0;
+    sum = sum + glow(letter(p - vec2f(0.0, f * params.extrude), which), stroke, soft * 1.4) * (1.0 - f * 0.8);
+  }
+  return sum / 12.0 * params.column * gain;
 }
 
 @fragment
@@ -320,7 +359,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     var p = (s - vec2f(cx, cy)) / size;
     p.y = p.y / squash;
     let d = letter(p, slotLetter(i));
-    light = light + glow(d, params.stroke, params.soft) * rowLevel;
+    light = light + (glow(d, params.stroke, params.soft) + column(p, slotLetter(i), params.stroke, params.soft, 1.0)) * rowLevel;
     // A dim echo a little below each letter (the reference's doubled glyphs).
     let q = p + vec2f(0.0, 0.42);
     light = light + glow(letter(q, slotLetter(i)), params.stroke, params.soft * 1.6) * rowLevel * 0.22;
@@ -333,10 +372,12 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     let bigSquash = select(0.72, 1.0, hash(frameIndex + 11.0) > 0.5);
     for (var j = 0; j < 2; j = j + 1) {
       let cx = select(0.78, 0.2, j == 0) * aspect + (hash(frameIndex + f32(j) * 5.0) - 0.5) * 0.08;
-      var p = (s - vec2f(cx, 0.55)) / bigSize;
+      var p = (s - vec2f(cx, 0.64)) / bigSize;
       p.y = p.y / bigSquash;
       p.x = p.x + 0.1 * sin(p.y * 4.0 + t * 29.0 + f32(j)) * strobe;
-      light = light + glow(letter(p, select(1u, 0u, j == 0)), params.stroke * 0.7, params.soft * 0.8) * bigLevel;
+      let which = select(1u, 0u, j == 0);
+      // thinner and crisper than the row (they are nearer the focus), their columns stronger
+      light = light + (glow(letter(p, which), params.stroke * 0.45, params.soft * 0.35) + column(p, which, params.stroke * 0.45, params.soft * 0.5, 1.8)) * bigLevel;
     }
   }
   return vec4f(base.rgb + params.tint * light * params.gain, base.a);
