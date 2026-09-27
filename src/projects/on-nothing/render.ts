@@ -194,9 +194,11 @@ for (const shot of shots) {
   });
   // An expression that fails to evaluate is only a warning to the app (it holds the retained
   // value); here it is an error — an unknown function once froze a camera move without a word.
-  const errors = [...new Set(result.diagnostics.filter((d) => d.severity === "error" || d.code === "parameter.expression").map((d) => `${d.code}: ${d.message}`))];
+  // T1436b: name the node — a component diagnostic's message names the key, not the node
+  const line = (d: { code: string; message: string; nodeId?: string }): string => `${d.code}${d.nodeId === undefined ? "" : ` [${d.nodeId}]`}: ${d.message}`;
+  const errors = [...new Set(result.diagnostics.filter((d) => d.severity === "error" || d.code === "parameter.expression").map(line))];
   if (errors.length > 0) throw new Error(`the ${shot} graph has errors:\n${errors.join("\n")}`);
-  const warnings = [...new Set(result.diagnostics.filter((d) => d.severity === "warning").map((d) => `${d.code}: ${d.message}`))];
+  const warnings = [...new Set(result.diagnostics.filter((d) => d.severity === "warning").map(line))];
   if (warnings.length > 0) console.log(warnings.slice(0, 10).join("\n"));
   if (encoder !== undefined) {
     encoder.stdin?.end();
