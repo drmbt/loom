@@ -11,8 +11,10 @@ import type { PreviewOrbitStore, PreviewSlotBoundsStore, PreviewViewSource } fro
 import {
   DEFAULT_PREVIEW_VIEW,
   EMPTY_PREVIEW_PROGRAM,
+  MIN_ONSCREEN_LONG_EDGE_CSS,
   OFF_SURFACE_TILE_RECT,
   createPreviewSystem,
+  rectLongEdge,
   rectsIntersect,
   slotScreenRect,
   subtractRects,
@@ -368,6 +370,12 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
      * given its turn and must not hold a reserved slot forever.
      */
     const everMaterialized = new Set<string>();
+    /**
+     * B230 — the size each preview had the last time it was materialized, so a slot
+     * waiting for its sink again is judged on the image the scheduler will judge (the
+     * letterboxed region), not on the whole slot.
+     */
+    const lastOutputSize = new Map<string, readonly [number, number]>();
     let lastDeviceGeneration = backend.status.deviceGeneration;
     // T519: the load boundary, watched the same way the device boundary is — inside the
     // tick, so a load costs a comparison and never a teardown of the host.
@@ -728,6 +736,7 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
             (current.interest.get() === nodeId || current.interest.get() === sinkNodeId)
           ) {
             everMaterialized.add(`${nodeId}:${portId}`);
+        lastOutputSize.set(`${nodeId}:${portId}`, output.size);
             const longEdge = Math.max(output.size[0], output.size[1], 1);
             const areaScale = Math.min(1, current.previewLongEdge / longEdge);
             requests.push({
@@ -778,10 +787,23 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
             const screen = slotScreenRect(box, viewport);
             const onScreen =
               screen.x < surface.width && screen.y < surface.height && screen.x + screen.width > 0 && screen.y + screen.height > 0;
-            if (
-              !ungated.has(nodeId) &&
-              (onScreen || current.graph.nodes[nodeId]?.ui?.previewPinned === true)
-            ) {
+            /*
+             * B230 — ask for a sink only for a tile the scheduler would KEEP. It suspends a
+             * tile whose on-screen long edge is under MIN_ONSCREEN_LONG_EDGE_CSS
+             * ("too-small"), and a sink it will not draw ages out of the sink set, drops
+             * the target, lands the node back here, and is re-added — a full recompile
+             * every ~1.45 s on an idle document (E32 at fit zoom: 12–14 per 10 s, each a
+             * 50–130 ms frame). Judged on the letterboxed image once its size is known.
+             */
+            const known = lastOutputSize.get(`${nodeId}:${portId}`);
+            const fitted = known === undefined ? undefined : fitInsideRegion(offset, known);
+            const shown =
+              fitted === undefined
+                ? screen
+                : slotScreenRect({ x: box.x + fitted.x, y: box.y + fitted.y, width: fitted.width, height: fitted.height }, viewport);
+            const pinnedByUser = current.graph.nodes[nodeId]?.ui?.previewPinned === true;
+            const readable = rectLongEdge(shown) >= MIN_ONSCREEN_LONG_EDGE_CSS;
+            if (!ungated.has(nodeId) && ((onScreen && readable) || pinnedByUser)) {
               visibleIdle.push({
                 ref: { nodeId, portId },
                 sink: { nodeId: sinkNodeId, portId: sinkPortId },
@@ -906,9 +928,16 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
       const reserved = unpainted.slice(0, Math.min(FIRST_PAINT_RESERVE, system.capacity));
       const room = Math.max(0, system.capacity - reserved.length);
       const drawing = activeSinks.slice(0, room);
+      /*
+       * B230 (E79's variant) — a RETURNING tile is admitted only into budget the
+       * scheduler really has free. Its budget counts every tile it keeps, ungated ones
+       * included; counting only the gated sinks here re-admitted tiles the scheduler then
+       * suspended with `budget`, and they cycled (E79: 50 recompiles per 10 s).
+       */
+      const free = Math.max(0, system.capacity - result.schedule.active.length - reserved.length);
       const returning = visibleIdle
         .filter((entry) => !reserved.includes(entry))
-        .slice(0, Math.max(0, room - drawing.length));
+        .slice(0, Math.min(Math.max(0, room - drawing.length), free));
       const asSink = (entry: { sink: { nodeId: NodeId; portId: string } }) => ({
         nodeId: entry.sink.nodeId as string,
         portId: entry.sink.portId,

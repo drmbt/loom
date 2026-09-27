@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { createTestRegistry } from "@nodes/registry/test-nodes.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
@@ -1630,5 +1630,86 @@ describe("the tick skips itself when nothing it reads has moved (T1241)", () => 
       expect(t.boxReads()).toBe(before);
       t.dispose();
     });
+  });
+});
+
+/**
+ * B230 — a preview the scheduler will suspend as too small must not ask for a sink.
+ *
+ * The idle path used to admit any on-screen slot; the scheduler then suspended the
+ * materialized tile ("too-small"), its sink aged out, the recompile dropped the target, the
+ * node fell back to the idle path and was re-added — a full recompile every ~1.45 s on an
+ * idle, playing document (E32 at fit zoom), each a 50–130 ms frame. Asserted on the sink
+ * set the compiler is handed, which is what decides whether it recompiles.
+ */
+describe("B230 — no sink for a tile the scheduler will not keep", () => {
+  function mount(zoom: number, compiledOutputs: readonly unknown[]) {
+    const nodeRuntime = createNodeRuntimeStore();
+    const bounds = createPreviewSlotBounds();
+    bounds.publish("n1", { x: 0, y: 0, width: 200, height: 120 });
+    const canvas = document.createElement("canvas");
+    canvas.getBoundingClientRect = () =>
+      ({ x: 0, y: 0, top: 0, left: 0, right: 400, bottom: 300, width: 400, height: 300 }) as DOMRect;
+    const sinkSets: ReadonlyArray<{ nodeId: string; portId: string }>[] = [];
+    const hook = renderHook(
+      ({ outputs }: { outputs: readonly unknown[] }) =>
+        useNodePreviews({
+          backend: fakeBackend(),
+          canvasRef: { current: canvas },
+          bounds,
+          graph: graphWith("test.blur"),
+          registry: createTestRegistry().view(),
+          compiledOutputs: outputs as never,
+          nodeRuntime,
+          previewSinks: { set: (refs) => sinkSets.push(refs) },
+          getViewport: () => ({ x: 0, y: 0, zoom }),
+          getNodePosition: () => ({ x: 0, y: 0 }),
+          getNodeBoxes: () => [],
+          previewFps: 20,
+          previewLongEdge: 192,
+          documentIdentity: "b230",
+        }),
+      { initialProps: { outputs: compiledOutputs } },
+    );
+    const tick = () => {
+      vi.advanceTimersToNextFrame();
+      vi.advanceTimersByTime(150);
+    };
+    return { hook, tick, sinkSets, dispose: () => nodeRuntime.dispose() };
+  }
+  const materialized = [
+    {
+      nodeId: "n1", portId: "out", resourceId: "res:n1:out", resourceKind: "target" as const,
+      size: [64, 64] as const, format: "rgba8unorm" as const, space: "linear" as const, temporal: false,
+    },
+  ];
+  const named = (sets: ReadonlyArray<ReadonlyArray<{ nodeId: string }>>) => sets.some((set) => set.some((ref) => ref.nodeId === "n1"));
+
+  it("does not request a sink for a slot too small to draw, and does at a readable zoom", () => {
+    // 200×120 at 0.1 zoom is 20×12 on screen: under the scheduler's 24 px floor.
+    const small = mount(0.1, []);
+    small.tick();
+    small.tick();
+    expect(named(small.sinkSets)).toBe(false);
+    small.dispose();
+    cleanup();
+    // The control: the same slot at full zoom asks for its sink.
+    const readable = mount(1, []);
+    readable.tick();
+    expect(named(readable.sinkSets)).toBe(true);
+    readable.dispose();
+  });
+
+  it("does not re-add a suspended tile's sink after the recompile drops it — the cycle", () => {
+    const small = mount(0.1, materialized);
+    small.tick();
+    small.tick();
+    // The plan dropped the target (as the recompile after the sink aged out does).
+    act(() => small.hook.rerender({ outputs: [] }));
+    const before = small.sinkSets.length;
+    small.tick();
+    small.tick();
+    expect(named(small.sinkSets.slice(before))).toBe(false);
+    small.dispose();
   });
 });
