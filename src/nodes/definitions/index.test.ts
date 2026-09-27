@@ -104,6 +104,12 @@ describe("core catalogue (T70, T40)", () => {
       "displace",
       "remap",
       "slope",
+      // T1402b: the On Nothing project's optics and finish, as stock nodes.
+      "streak",
+      "halo",
+      "lens",
+      "filmGrade",
+      "crt",
       "composite",
       "cross",
       "over",
@@ -114,6 +120,8 @@ describe("core catalogue (T70, T40)", () => {
       "mask",
       "feedback",
       "cache",
+      // T1402b: a trail that owns its history (a ring), so no Feedback wiring.
+      "echo",
       "pointKernel",
       // T483: the Ray POP — one ray per point against a height field.
       "pointRay",

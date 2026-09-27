@@ -209,6 +209,13 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   displace: "pure",
   remap: "pure",
   slope: "pure",
+  // T1402b. Film Grade's grain and CRT's jitter and flicker read the frame clock, exactly
+  // as Noise's Time Speed does — a function of the frame, not of the wall.
+  streak: "pure",
+  halo: "pure",
+  lens: "pure",
+  filmGrade: "pure",
+  crt: "pure",
   composite: "pure",
   cross: "pure",
   over: "pure",
@@ -223,6 +230,7 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   feedback: "pure",
   cache: "pure",
   slitScan: "pure",
+  echo: "pure",
   // Points and their kernels: GPU compute with a seeded RNG (§V45).
   pointKernel: "pure",
   pointKernelAdvanced: "pure",

@@ -7,6 +7,9 @@ import { generatorNodes } from "./generators.ts";
 import { transformNodes } from "./transforms.ts";
 import { colorNodes } from "./color.ts";
 import { filterNodes } from "./filters.ts";
+import { opticsNodes } from "./optics.ts";
+import { filmNodes } from "./film.ts";
+import { echoNode } from "./echo.ts";
 import { compositeNodes } from "./composite.ts";
 import { temporalNodes } from "./feedback.ts";
 import { cacheNode } from "./cache.ts";
@@ -192,6 +195,9 @@ export {
 } from "./composite.ts";
 export { feedbackNode, temporalNodes } from "./feedback.ts";
 export { cacheNode, CACHE_RING_KEY } from "./cache.ts";
+export { streakNode, haloNode, lensNode, opticsNodes } from "./optics.ts";
+export { filmGradeNode, crtNode, filmNodes } from "./film.ts";
+export { echoNode, ECHO_RING_KEY } from "./echo.ts";
 export {
   depthNode,
   depthModelChoiceFor,
@@ -243,9 +249,13 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   ...transformNodes,
   ...colorNodes,
   ...filterNodes,
+  // T1402b: the look-building filters promoted from the On Nothing project's passes.
+  ...opticsNodes,
+  ...filmNodes,
   ...compositeNodes,
   ...temporalNodes,
   cacheNode,
+  echoNode,
   ...pointNodeDefinitions,
   nullNode,
   ...componentIoDefinitions,

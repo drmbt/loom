@@ -92,6 +92,8 @@ const CYCLIC = [
   "ramp.phase",
   "renderInstances.rotate",
   "slope.angle",
+  // T1402b: the streak's direction — past 180 is the same column from the other side.
+  "streak.angle",
   "transform.r",
 ] as const;
 
