@@ -4,10 +4,11 @@ import { SHARED_UNIFORMS_WGSL } from "../../../runtime/backend/shared-uniforms.t
 import { CAMERA_PARAMS, GTAO_WGSL, VIEW } from "../../furnace/screen-space.ts";
 import { ENVIRONMENT_WGSL } from "../atmosphere.ts";
 import { GRADE_WGSL, LENS_WGSL } from "../fx.ts";
-import type { OnNothingFacts } from "../scene-facts.ts";
+import type { Bone, OnNothingFacts } from "../scene-facts.ts";
 import { SURFACE_WGSL } from "../surface.ts";
 import { ShotGraph, cameraRefs } from "./chain.ts";
 import { figureNodes } from "./figure.ts";
+import { pistolPose } from "./hands.ts";
 import { handheld as operator } from "./handheld.ts";
 import { keyed } from "./motion.ts";
 
@@ -167,16 +168,15 @@ function flashCurve(t: string): string {
  * The performance: rising into the key (the pelvis lifts 0.42 m, eased out, by 0.55 s), the head
  * tipped back to look up past the lens, the right hand at the temple with the elbow out.
  */
-function performance(t: string): Record<string, string> {
+function performance(t: string, bones: readonly Bone[]): Record<string, string> {
   const tip = keyed(t, [[0, 0.6], [0.6, 1]]);
   return {
     "upperarmL.z": "-0.35",
     "upperarmL.x": "-0.45",
     "forearmL.x": "-0.2",
-    "upperarmR.z": "-1.55",
-    "upperarmR.x": "0.15",
-    "forearmR.z": "-2.55",
-    "forearmR.x": "0.9",
+    // T1407b (hands): the reference's hand is a PISTOL raised beside the head, the barrel out and
+    // up, so the key throws a big pistol shadow up the cyc (shots/hands.ts pistolPose)
+    ...pistolPose(bones, { wrist: [-0.36, 1.6, 0.12], point: [-0.8, 0.5, 0.25], palm: [0.45, 0.8, 0.1], elbow: [-0.44, 1.33, 0.0] }),
     "neck.x": `-0.1 * (${tip})`,
     "head.x": `-0.25 * (${tip})`,
     "head.y": "0.15",
@@ -195,7 +195,7 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
 
   const g = new ShotGraph();
   g.node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL }, { label: "surf1" });
-  const figure = figureNodes(facts, { area: "fig", material: "surf1", yaw: Math.PI, place: [ax, rise, az], pose: performance(t) });
+  const figure = figureNodes(facts, { area: "fig", material: "surf1", yaw: Math.PI, place: [ax, rise, az], pose: performance(t, facts.bones), gun: facts.areas.has("figgun") });
   g.nodes.push(...figure.nodes);
   g.edges.push(...figure.edges);
 

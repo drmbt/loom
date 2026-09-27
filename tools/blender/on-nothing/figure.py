@@ -19,6 +19,7 @@ import bpy
 from mathutils import Vector
 
 import head as headkit  # T1418b/T1428b (a local `head` is a bone head below)
+import hands
 import util
 
 # index, name, parent, head, tail (Blender metres, the figure faces -Y)
@@ -371,6 +372,7 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None, pre_pos
         if name.startswith("foot."):
             tail = arm_bones[MPFB_MAP[name][1]][1]
         BONES.append((i, name, order.index(parent[name]) if parent[name] else -1, tuple(head), tuple(tail)))
+    hands.fingers(BONES, MPFB_MAP, arm_bones)  # T1419b: a bone per finger joint (hands.py)
     to_ours = {mp: ours for ours, mps in MPFB_MAP.items() for mp in mps}
     keep = []
     for o in meshes:
@@ -676,6 +678,7 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None, pre_pos
     if prefix == "fig":
         # T1428b: the brimmed cap beside the beanie; loom's areas wear one or the other (scene-facts.ts)
         parts.append(_accessory(coll, mats, f"{prefix}.cap", lambda mb: headkit.cap(mb, body, cx, cy, eye_z, brow_z), "head"))
+    parts += hands.jewels(coll, mats, arm_bones, prefix, body)  # T1407b (hands): rings and a watch on fig
     if extra_parts is not None:
         parts += extra_parts(coll, mats)
     for x in bpy.context.selected_objects:

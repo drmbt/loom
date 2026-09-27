@@ -56,8 +56,8 @@ export interface OnNothingFacts {
 
 /** The GLB's areas, one Mesh File In each (every object is named `<area>.<name>`). */
 export const AREAS = ["wh", "title", "fig", "figbare", "fignocap", "cyc"] as const;
-/** Areas a GLB may or may not hold (older builds lack them; T1407b cyc: the walker's wardrobe, the wide's studio; T1407b mirror: the curled hands; `pend` and `shoe`, the close-ups' props, closeups.py; T1428b: `figcap`, the figure in the brimmed cap, see DERIVED). */
-export const OPTIONAL_AREAS = ["lampglass", "figcyc", "cycwide", "fighand", "pend", "shoe", "figcap", "cabin", "cabinglass"] as const;
+/** Areas a GLB may or may not hold (older builds lack them; T1407b cyc: the walker's wardrobe, the wide's studio; T1407b mirror: the curled hands; `pend` and `shoe`, the close-ups' props, closeups.py; T1428b: `figcap`, the figure in the brimmed cap, see DERIVED; T1407b hands: `fig` cut into its body and its ice, and the pistol, hands.py). */
+export const OPTIONAL_AREAS = ["lampglass", "figcyc", "cycwide", "fighand", "pend", "shoe", "figcap", "cabin", "cabinglass", "figbody", "figice", "figgun"] as const;
 /** The fixed areas, plus one `car<n>` per car (each car its own Mesh File In: five real models overflow one buffer). */
 export type Area = (typeof AREAS)[number] | (typeof OPTIONAL_AREAS)[number] | `car${number}`;
 
@@ -85,6 +85,9 @@ const DERIVED: Partial<Record<Area, string>> = {
   fig: "fig.* !material:cap_*",
   fignocap: "fig.* !material:knit_black !material:cap_*",
   figcap: "fig.* !material:knit_black",
+  // T1407b (hands): the close-ups draw the rings and the watch on their own pavé surface
+  figbody: "fig.* !material:cap_* !material:hand_*",
+  figice: "material:hand_*",
 };
 
 export function selectOf(area: Area): string {
