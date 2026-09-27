@@ -101,7 +101,9 @@ fn jewel(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {
   // throws its own glint instead of one smooth sheen.
   let cell = floor(s.world * 180.0);
   let h = vec3f(unitFloat(hash3i(vec3i(cell), 11u)), unitFloat(hash3i(vec3i(cell), 23u)), unitFloat(hash3i(vec3i(cell), 37u)));
-  r.normal = normalize(s.normal + (h - vec3f(0.5)) * 0.9);
+  // facets finer than a pixel sparkle and crawl frame to frame: fade them to the smooth normal
+  let resolved = 1.0 - smoothstep(0.002, 0.006, s.footprint);
+  r.normal = normalize(s.normal + (h - vec3f(0.5)) * 0.9 * resolved);
   r.roughness = 0.03;
   r.metallic = 1.0;
   r.albedo = vec4f(0.98, 0.98, 1.0, 1.0);

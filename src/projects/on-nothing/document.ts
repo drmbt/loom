@@ -491,7 +491,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   }
   const scene = last;
   const opticsGain: Record<Base, { streak: number; halo: number }> = {
-    tableau: { streak: 1.3, halo: 0.12 },
+    tableau: { streak: 1.3, halo: 0 },
     wheel: { streak: 0.9, halo: 0 },
     title: { streak: 0.35, halo: 0.15 },
     quad: { streak: 0.25, halo: 0 },
@@ -514,8 +514,10 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   // ONE direction per cut: the columns grow steadily through the shot, and the song only
   // leans on that very slowly (a 1 s lag) — never a jitter.
   const reachExpr = `(${reach} * (0.62 + 0.3 * clamp(abstime / 4, 0, 1) + 0.18 * ${LOUD}))`;
-  const STREAKS = [reach / 160, reach / 48, reach / 10] as const;
-  const STREAK_DIV = [160, 48, 10] as const;
+  // 16 taps a pass: each pass's span (16 steps) covers the next pass's step twice over, so the
+  // three convolve into one smooth column — no stepped tops, no banded copies of each LED.
+  const STREAKS = [reach / 400, reach / 60, reach / 20] as const;
+  const STREAK_DIV = [400, 60, 20] as const;
   STREAKS.forEach((step, index) => {
     const id = `streak${index}`;
     nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step: expressionSlot(`${reachExpr} / ${STREAK_DIV[index]}`, step), decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 ? 0.003 : 0, compress: index === 0 ? 4 : 0, down: 0, gain: 2.2, striation: 0.22, striationScale: 110 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } }));

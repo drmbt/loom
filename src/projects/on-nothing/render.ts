@@ -23,7 +23,9 @@ import { walkTrack } from "../furnace/load-audio.ts";
  *     [--tag name]                            appended to the file names (compare takes)
  *     [--probe streak2]                       show that node's output instead of the finished frame
  *     [--audio <song.wav>] [--audio-start <s>]  hear the song (the streaks breathe with it); a clip is muxed with it
- *     [--final]                               finished quality: the Render supersampled (SSAA 2x) instead of MSAA
+ *     [--final]                               finished quality: SSAA in the Render, the whole frame rendered at 2x and
+ *                                             box-downsampled, and --sub 4 sub-frames averaged per output frame
+ *     [--sub N]                               sub-frames per output frame (temporal AA + motion blur; 1 = off)
  *     [--hdri <file.hdr>]                     reflections from a real HDRI (Poly Haven, CC0) instead of the procedural room
  */
 const argv = process.argv.slice(2).filter((arg) => arg !== "--");
@@ -57,11 +59,53 @@ const outDir = "renders/on-nothing";
 mkdirSync(`${outDir}/stills`, { recursive: true });
 mkdirSync(`${outDir}/clips`, { recursive: true });
 
+const finalQuality = argv.includes("--final");
+/** Supersampling factor of the whole frame, and sub-frames averaged per output frame. */
+const ss = finalQuality ? 2 : 1;
+const sub = Number(flag("sub") ?? (finalQuality ? 4 : 1));
+
+/**
+ * Accumulates `sub` rendered frames (each `ss`× the output size) into one output frame: the
+ * mean of the sub-frames (a 360° shutter: temporal AA and motion blur, and the per-frame dither
+ * of haze and grain averages out), then a box downsample by `ss` (spatial AA).
+ */
+class Accumulator {
+  private readonly sum: Float32Array;
+  private readonly w: number;
+  private readonly h: number;
+  private count = 0;
+  constructor(w: number, h: number) {
+    this.w = w;
+    this.h = h;
+    this.sum = new Float32Array(w * ss * h * ss * 4);
+  }
+  add(rgba: Uint8Array | Uint8ClampedArray): Uint8Array | undefined {
+    for (let i = 0; i < this.sum.length; i++) this.sum[i]! += rgba[i]!;
+    this.count++;
+    if (this.count < sub) return undefined;
+    const out = new Uint8Array(this.w * this.h * 4);
+    const W = this.w * ss;
+    const norm = 1 / (this.count * ss * ss);
+    for (let y = 0; y < this.h; y++) {
+      for (let x = 0; x < this.w; x++) {
+        for (let c = 0; c < 4; c++) {
+          let acc = 0;
+          for (let dy = 0; dy < ss; dy++) for (let dx = 0; dx < ss; dx++) acc += this.sum[((y * ss + dy) * W + (x * ss + dx)) * 4 + c]!;
+          out[(y * this.w + x) * 4 + c] = Math.round(acc * norm);
+        }
+      }
+    }
+    this.sum.fill(0);
+    this.count = 0;
+    return out;
+  }
+}
+
 const toRgba8 = (frame: RenderedFrame) =>
   toRgba8At({ ...frame, rowStride: frame.width * (frame.format === "rgba16float" ? 8 : 4) } as never, frame.width, frame.height, { space: "encoded" });
 
 for (const shot of shots) {
-  const built = onNothingDocument(facts, { shot, width, height, crt, hdri: hdri !== undefined, audio: track !== undefined });
+  const built = onNothingDocument(facts, { shot, width: width * ss, height: height * ss, crt, hdri: hdri !== undefined, audio: track !== undefined });
   const nodes = { ...built.graph.nodes };
   for (const id of (flag("bypass") ?? "").split(",").filter((entry) => entry !== "")) {
     if (nodes[id] === undefined) throw new Error(`--bypass: no node "${id}".`);
@@ -72,7 +116,7 @@ for (const shot of shots) {
     if (target === undefined) continue;
     nodes[nodeId] = { ...target, parameters: { ...target.parameters, [parameter]: value } } as typeof target;
   }
-  if (argv.includes("--final")) {
+  if (finalQuality) {
     // SSAA shades 4 samples a pixel: it also cleans the shader-thin detail MSAA leaves (chrome bars, chain links)
     const shotNode = nodes["shot"];
     if (shotNode !== undefined) nodes["shot"] = { ...shotNode, parameters: { ...shotNode.parameters, antialias: "ssaa" } } as typeof shotNode;
@@ -89,6 +133,9 @@ for (const shot of shots) {
   for (const [id, entry] of Object.entries(nodes)) if (entry.type === "meshFileIn") meshes[id] = glb;
   const started = performance.now();
   const frames = clip !== undefined ? Math.round(clip * fps) : Math.round(at * fps) + 1;
+  const renderFrames = frames * sub;
+  const accumulator = new Accumulator(width, height);
+  let lastOut: Uint8Array | undefined;
   let encoder: ReturnType<typeof spawn> | undefined;
   const clipPath = `${outDir}/clips/${shot}${crt ? "-crt" : ""}${tag}.mp4`;
   if (clip !== undefined) {
@@ -105,23 +152,23 @@ for (const shot of shots) {
     host: nodeGpuHost(),
     graph: document.graph,
     settings: document.settings,
-    frames,
-    capture: clip === undefined ? [frames - 1] : Array.from({ length: frames }, (_, index) => index),
-    fps,
+    frames: renderFrames,
+    // every sub-frame goes through the accumulator (for a still: only the last output frame's)
+    capture: clip === undefined ? Array.from({ length: sub }, (_, index) => renderFrames - sub + index) : Array.from({ length: renderFrames }, (_, index) => index),
+    fps: fps * sub,
     outputNodeId: "out",
     animate: true,
     meshes,
-    ...(track === undefined ? {} : { audio: track.seam(fps, audioStart) }),
+    ...(track === undefined ? {} : { audio: track.seam(fps * sub, audioStart) }),
     ...(hdri !== undefined && nodes["hdri"] !== undefined ? { pictures: { hdri: (size: readonly [number, number]) => rgbmBytes(hdri, size) } } : {}),
-    ...(encoder === undefined
-      ? {}
-      : {
-          onCapture: async (frame: RenderedFrame) => {
-            const stdin = encoder?.stdin;
-            if (stdin === undefined || stdin === null) return;
-            if (!stdin.write(Buffer.from(toRgba8(frame).data))) await new Promise((resolve) => stdin.once("drain", resolve));
-          },
-        }),
+    onCapture: async (frame: RenderedFrame) => {
+      const out = accumulator.add(toRgba8(frame).data as Uint8Array);
+      if (out === undefined) return;
+      lastOut = out;
+      const stdin = encoder?.stdin;
+      if (stdin === undefined || stdin === null) return;
+      if (!stdin.write(Buffer.from(out))) await new Promise((resolve) => stdin.once("drain", resolve));
+    },
   });
   // An expression that fails to evaluate is only a warning to the app (it holds the retained
   // value); here it is an error — an unknown function once froze a camera move without a word.
@@ -134,10 +181,9 @@ for (const shot of shots) {
     await new Promise((resolve) => encoder?.on("close", resolve));
     console.log(`${shot}: ${frames} frames → ${clipPath} in ${Math.round(performance.now() - started)} ms`);
   } else {
-    const frame = result.frames.at(-1);
-    if (frame === undefined) throw new Error("no frame");
+    if (lastOut === undefined) throw new Error("no frame");
     const path = `${outDir}/stills/${shot}${crt ? "-crt" : ""}${tag}${probe === undefined ? "" : `-probe-${probe}`}@${at}s.png`;
-    writeFileSync(path, encodePng(toRgba8(frame)).bytes);
+    writeFileSync(path, encodePng({ width, height, data: lastOut } as never).bytes);
     console.log(`${shot}: ${path} (${frames} frames, ${Math.round(performance.now() - started)} ms)`);
   }
 }

@@ -41,7 +41,7 @@ export const STREAK_WGSL = `struct Params {
   compress: f32, // @default 0  First pass: roll each source off toward this radiance (0 off), so a clipped lamp smears a milky slab, not a white bar.
 };
 ${INPUT_AND_FRAME}
-const TAPS: i32 = 8;
+const TAPS: i32 = 16;
 
 fn stripe(x: f32) -> f32 {
   // Two incommensurate sine families, sharpened: uneven, glassy grooves.
