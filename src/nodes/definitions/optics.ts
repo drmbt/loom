@@ -102,6 +102,8 @@ function brightExtractPass(
   external: boolean,
   parameters: Params,
   size: readonly [number, number],
+  /** Streak's source-size gate in input pixels (T1422b); 0 is off, and Halo always passes 0. */
+  minSize: number,
 ): EffectPassDescriptor {
   return {
     kind: "effect",
@@ -116,6 +118,7 @@ function brightExtractPass(
       threshold: readNumber(parameters, "threshold", 1),
       knee: readNumber(parameters, "knee", 0.5),
       useBright: external ? 1 : 0,
+      minSize,
     },
     nodeId,
     label,
@@ -146,6 +149,18 @@ export const streakNode: NodeDefinition = {
   outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],
   parameters: {
     ...thresholdParameters,
+    minSize: {
+      type: "number",
+      label: "Min Size",
+      default: 0,
+      min: 0,
+      max: 32,
+      range: "floor",
+      unit: "px",
+      group: "Source",
+      description:
+        "Smallest source that streaks, in pixels: a source must fill most of a square this wide to pass the threshold, so a thin glint does not streak like a lamp. 0 is off. Ignored while the Bright input is wired.",
+    },
     length: {
       type: "number",
       label: "Length",
@@ -305,6 +320,7 @@ export const streakNode: NodeDefinition = {
       bright !== undefined,
       parameters,
       scratchSize(resolution, STREAK_SCALE),
+      readNumber(parameters, "minSize", 0),
     );
     return {
       passes: [extract, ...legs, add],
@@ -385,6 +401,7 @@ export const haloNode: NodeDefinition = {
       bright !== undefined,
       parameters,
       scratchSize(resolution, HALO_SCALE),
+      0,
     );
     const ring: EffectPassDescriptor = {
       kind: "effect",

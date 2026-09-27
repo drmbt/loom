@@ -525,7 +525,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   const STREAK_DIV = [400, 60, 20] as const;
   STREAKS.forEach((step, index) => {
     const id = `streak${index}`;
-    nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step: expressionSlot(`${reachExpr} / ${STREAK_DIV[index]}`, step), decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 ? 0.003 : 0, compress: index === 0 ? 3 : 0, down: 0, gain: 1.8, striation: 0.22, striationScale: 110 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } }));
+    nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step: expressionSlot(`${reachExpr} / ${STREAK_DIV[index]}`, step), decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 ? 0.003 : 0, compress: index === 0 ? 3 : 0, ...(index === 0 ? { minSize: 0.006 } : {}), down: 0, gain: 1.8, striation: 0.22, striationScale: 110 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } }));
     edges.push(edge(`into-${id}`, [index === 0 ? "streakSrc" : `streak${index - 1}`, "out"], [id, "input"]));
   });
   nodes.push(node("hot", "customWgsl", [-1300, 500], { source: BRIGHT_PASS_WGSL, threshold: 150, knee: 30 }, { label: "hot1", resolution: { mode: "scale", factor: 0.25 } }));

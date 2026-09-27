@@ -28,6 +28,15 @@ ${INPUT}@group(0) @binding(2) var<uniform> frameU: SharedFrame;
  * convolve into one long, smooth column with no ladder of copies, at 24 taps a pixel. The last
  * pass adds the striations and a short tail downward. Input: the glow of the bright sources
  * (a bloom level, so a column is as wide as the source's halo, as the reference's are).
+ *
+ * The SOURCE-SIZE GATE (T1422b, the stock Streak's Min Size in this chain's terms): on the
+ * first pass, `minSize` > 0 weighs every sample by the share of a `minSize`-wide square
+ * around it that is source (input brightness over `sourceLevel`, ramped), through
+ * smoothstep(0.5, 1, share) — so a chrome glint thinner than the square never streaks,
+ * however hot, and a lamp's inner texels pass whole. The input here is already thresholded,
+ * so "source" is any light at all. Sized in frame heights, so a 2x SSAA render gates the
+ * same sources. It is a box per sample (at most 8 x 8 reads): leave it 0 on the later
+ * passes, whose input is already gated.
  */
 export const STREAK_WGSL = `struct Params {
   step: f32, // @default 0.004  Distance between taps, as a fraction of the frame height (chained passes: each step under the previous pass's span).
@@ -39,9 +48,28 @@ export const STREAK_WGSL = `struct Params {
   gain: f32, // @default 1  Column brightness (last pass).
   spread: f32, // @default 0  Horizontal widening, fraction of the frame width (first pass).
   compress: f32, // @default 0  First pass: roll each source off toward this radiance (0 off), so a clipped lamp smears a milky slab, not a white bar.
+  minSize: f32, // @default 0  First pass: smallest source that streaks, as a fraction of the frame height (0 off); a thinner glint never streaks.
+  sourceLevel: f32, // @default 0.5  Brightness of the (thresholded) input at which a texel fully counts as source, for minSize.
 };
 ${INPUT_AND_FRAME}
 const TAPS: i32 = 16;
+
+// The share of a minSize-wide square around at that is source, through smoothstep(0.5, 1).
+fn sizeGate(at: vec2f) -> f32 {
+  if (params.minSize <= 0.0) { return 1.0; }
+  let size = vec2f(textureDimensions(inputTexture));
+  let n = i32(min(ceil(params.minSize * size.y), 8.0));
+  let side = vec2f(params.minSize * size.y) / size;
+  var share = 0.0;
+  for (var j = 0; j < n; j = j + 1) {
+    for (var i = 0; i < n; i = i + 1) {
+      let o = (vec2f(f32(i), f32(j)) + 0.5) / f32(n) - 0.5;
+      let c = max(textureSampleLevel(inputTexture, inputSampler, at + o * side, 0.0).rgb, vec3f(0.0));
+      share = share + clamp(max(c.r, max(c.g, c.b)) / max(params.sourceLevel, 1e-4), 0.0, 1.0);
+    }
+  }
+  return smoothstep(0.5, 1.0, share / f32(n * n));
+}
 
 fn stripe(x: f32) -> f32 {
   // Two incommensurate sine families, sharpened: uneven, glassy grooves.
@@ -60,15 +88,15 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     // Upward column: gather from BELOW (texture y grows downward).
     let at = uv + vec2f(0.0, f32(k) * params.step);
     if (at.y > 1.0) { break; }
-    var c = textureSampleLevel(inputTexture, inputSampler, at, 0.0).rgb;
+    var c = textureSampleLevel(inputTexture, inputSampler, at, 0.0).rgb * sizeGate(at);
     if (params.compress > 0.0) {
       c = c / (1.0 + max(c.r, max(c.g, c.b)) / params.compress);
     }
     if (params.spread > 0.0) {
       for (var j = 1; j <= 3; j = j + 1) {
         let o = vec2f(f32(j) / 3.0 * params.spread, 0.0);
-        var l = textureSampleLevel(inputTexture, inputSampler, at + o, 0.0).rgb;
-        var r = textureSampleLevel(inputTexture, inputSampler, at - o, 0.0).rgb;
+        var l = textureSampleLevel(inputTexture, inputSampler, at + o, 0.0).rgb * sizeGate(at + o);
+        var r = textureSampleLevel(inputTexture, inputSampler, at - o, 0.0).rgb * sizeGate(at - o);
         if (params.compress > 0.0) {
           l = l / (1.0 + max(l.r, max(l.g, l.b)) / params.compress);
           r = r / (1.0 + max(r.r, max(r.g, r.b)) / params.compress);

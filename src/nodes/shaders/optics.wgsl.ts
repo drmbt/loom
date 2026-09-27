@@ -22,12 +22,25 @@ import { wgsl } from "../../runtime/backend/wgsl.ts";
  *
  * `useBright` = 1 when the node's Bright input is wired: that image IS the source, and is
  * passed through without a threshold.
+ *
+ * THE SOURCE-SIZE GATE (T1422b). A threshold per pixel streaks a one-pixel chrome glint
+ * exactly like a lamp. `minSize` > 0 (pixels of the input) judges each tap over AREA: the
+ * soft-threshold mask (0 below the knee, 1 above it) is box-averaged over a `minSize`-wide
+ * square around the tap — the share of that square the source fills — and the tap's
+ * extract is scaled by smoothstep(0.5, 1, share). A source at least `minSize` across fills
+ * the square around its inner pixels and passes whole; a thinner one never fills more than
+ * (minSize - 1) / minSize of it, and a one-pixel line at minSize 3 fills a third: nothing.
+ * The share is of the MASK, not of radiance, so a glint cannot buy its way through by
+ * being hot. The square is sampled on a grid of ceil(minSize) taps a side (at most 8: past
+ * 8 px the grid spreads out and the bilinear reads fill between). `minSize` 0 skips it:
+ * the extract is the per-pixel threshold, bit for bit. Ignored while `useBright` is on.
  */
 export const BRIGHT_EXTRACT_WGSL = wgsl`struct Params {
   texel: vec2f,
   threshold: f32,
   knee: f32,
   useBright: f32,
+  minSize: f32,
 };
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var inputSampler: sampler;
@@ -43,13 +56,37 @@ fn bright(c: vec3f) -> vec3f {
   return color * max(weight, 0.0);
 }
 
+// 0 below the knee, 1 above it: whether a texel counts as source, whatever its radiance.
+fn sourceMask(c: vec3f) -> f32 {
+  let color = max(c, vec3f(0.0));
+  let brightness = max(color.r, max(color.g, color.b));
+  let knee = max(params.knee, 0.0);
+  return clamp((brightness - params.threshold + knee) / max(2.0 * knee, 1e-4), 0.0, 1.0);
+}
+
+// The tap's extract, gated by the share of a minSize-wide square around it that is source.
+fn gated(at: vec2f) -> vec3f {
+  let own = bright(textureSampleLevel(inputTexture, inputSampler, at, 0.0).rgb);
+  if (params.minSize <= 0.0 || params.useBright > 0.5) { return own; }
+  let pixel = 1.0 / vec2f(textureDimensions(inputTexture));
+  let n = i32(min(ceil(params.minSize), 8.0));
+  var share = 0.0;
+  for (var j = 0; j < n; j = j + 1) {
+    for (var i = 0; i < n; i = i + 1) {
+      let o = (vec2f(f32(i), f32(j)) + 0.5) / f32(n) - 0.5;
+      share = share + sourceMask(textureSampleLevel(inputTexture, inputSampler, at + o * params.minSize * pixel, 0.0).rgb);
+    }
+  }
+  return own * smoothstep(0.5, 1.0, share / f32(n * n));
+}
+
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let q = params.texel * 0.25;
-  var sum = bright(textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-q.x, -q.y), 0.0).rgb);
-  sum = sum + bright(textureSampleLevel(inputTexture, inputSampler, uv + vec2f(q.x, -q.y), 0.0).rgb);
-  sum = sum + bright(textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-q.x, q.y), 0.0).rgb);
-  sum = sum + bright(textureSampleLevel(inputTexture, inputSampler, uv + vec2f(q.x, q.y), 0.0).rgb);
+  var sum = gated(uv + vec2f(-q.x, -q.y));
+  sum = sum + gated(uv + vec2f(q.x, -q.y));
+  sum = sum + gated(uv + vec2f(-q.x, q.y));
+  sum = sum + gated(uv + vec2f(q.x, q.y));
   return vec4f(sum * 0.25, 1.0);
 }`;
 

@@ -122,6 +122,14 @@ describe("Streak", () => {
     expect(wired.uniforms!["useBright"]).toBe(1);
   });
 
+  it("gates by source size only when Min Size is turned: the extract reads it, default off (T1422b)", () => {
+    // Off by default, so a document saved before the knob existed streaks as it did.
+    expect(compile(streakNode).passes[0]!.uniforms!["minSize"]).toBe(0);
+    expect(compile(streakNode, { minSize: 3 }).passes[0]!.uniforms!["minSize"]).toBe(3);
+    // Halo shares the extract and has no such knob: its gate is always off.
+    expect(compile(haloNode, { minSize: 3 }).passes[0]!.uniforms!["minSize"]).toBe(0);
+  });
+
   it("the extract's taps sit a quarter of a HALF-size texel either side of centre", () => {
     const { passes } = compile(streakNode, {}, ["input"], [200, 100]);
     expect(passes[0]!.uniforms!["texel"]).toEqual([1 / 100, 1 / 50]);
@@ -133,6 +141,7 @@ describe("Streak", () => {
       compile(streakNode, {
         threshold: 3,
         knee: 0.1,
+        minSize: 6,
         length: 0.9,
         angle: 33,
         falloff: 9,

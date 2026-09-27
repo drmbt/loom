@@ -185,6 +185,62 @@ describe("Streak on a real device (T1402b)", () => {
     for (let y = 0; y < 96; y += 1) expect(at(21, y), `left column ${y}`).toEqual([0, 0, 0, 1]);
   }, 60_000);
 
+  /*
+   * THE SOURCE-SIZE GATE (T1422b). A one-pixel line and a 6 px disc of the same (hot)
+   * radiance, far enough apart that the disc's column (its 6 px plus the resampling smear)
+   * cannot reach the line's. Per pixel both clear the threshold and both streak; at Min Size
+   * 3 the line fills a third of every 3 px square it touches and must vanish, while the
+   * disc's inner pixels fill theirs and must still rise. 64 is sixteen times the dot above:
+   * the gate counts area, so heat alone must not get a glint through.
+   */
+  const LINE = { x0: 16, x1: 32, y: 96 };
+  const LINE_COLUMN = { x0: LINE.x0 - SMEAR_PX, x1: LINE.x1 + SMEAR_PX };
+  const lineAndDisc = fixture(
+    `${block(LINE.x0, LINE.y, LINE.x1, LINE.y + 1, 64)}
+  if (distance(p + 0.5, vec2f(96.0, 96.0)) <= 3.0) { color = vec4f(vec3f(64.0), 1.0); }`,
+  );
+
+  it("Min Size 3: a one-pixel line does not streak, a 6 px disc of the same radiance does", async () => {
+    requireDawn();
+    const open = await render(graph("streak", { ...quiet, minSize: 0 }, lineAndDisc));
+    const gated = await render(graph("streak", { ...quiet, minSize: 3 }, lineAndDisc));
+    // Ungated, both rise: the gate, not the fixture, is what removes the line's column.
+    expect(open(24, 80)[0]).toBeGreaterThan(0);
+    expect(open(96, 80)[0]).toBeGreaterThan(0);
+    // Gated: above the line, exactly the input (black) on every row, across its whole column.
+    for (let y = 0; y < LINE.y; y += 1) {
+      for (let x = LINE_COLUMN.x0; x < LINE_COLUMN.x1; x += 1) expect(gated(x, y), `above the line ${x},${y}`).toEqual([0, 0, 0, 1]);
+    }
+    // ...and the line itself is the picture, untouched by any glow of its own.
+    for (let x = LINE.x0; x < LINE.x1; x += 1) expect(gated(x, LINE.y), `line ${x}`).toEqual([64, 64, 64, 1]);
+    // The disc still streaks up its column.
+    for (const y of [88, 80, 64]) expect(gated(96, y)[0], `disc column ${y}`).toBeGreaterThan(0);
+  }, 60_000);
+
+  it("Min Size 0 is the per-pixel threshold, bit for bit: the old extract", async () => {
+    requireDawn();
+    // The old extract, spelled independently: the picture thresholded per pixel in a fixture
+    // and wired as the Bright input (which passes through untouched). 4 over threshold 1
+    // extracts 4 x 3/4 = 3, exact in every float involved, so the two graphs must agree on
+    // every pixel if Min Size 0 leaves the extract as it was.
+    const picture = `${block(DOT.x0, DOT.y0, DOT.x1, DOT.y1, 4)}
+  ${block(LINE.x0, LINE.y, LINE.x1, LINE.y + 1, 4)}`;
+    const perPixel = `${block(DOT.x0, DOT.y0, DOT.x1, DOT.y1, 3)}
+  ${block(LINE.x0, LINE.y, LINE.x1, LINE.y + 1, 3)}`;
+    const now = await render(graph("streak", { ...quiet, minSize: 0 }, fixture(picture)));
+    const old = await render(graph("streak", quiet, fixture(picture), { bright: fixture(perPixel) }));
+    let lit = 0;
+    for (let y = 0; y < H; y += 1) {
+      for (let x = 0; x < W; x += 1) {
+        expect(now(x, y), `${x},${y}`).toEqual(old(x, y));
+        if (now(x, y)[0] > 0) lit += 1;
+      }
+    }
+    // Not vacuous: both columns are there to compare.
+    expect(now(24, 80)[0]).toBeGreaterThan(0);
+    expect(lit).toBeGreaterThan(500);
+  }, 60_000);
+
   it("cuts striations across the column as the stripe function says, and tints it exactly", async () => {
     requireDawn();
     // A full-width bar, so the column covers every x and the grooves can be read along a row.
