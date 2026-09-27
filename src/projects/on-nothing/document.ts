@@ -14,6 +14,8 @@ import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "./skin-kernel.ts
 import { GLASS_COMPOSITE_WGSL, LAMP_GLASS_WGSL, OCCLUDER_WGSL, SURFACE_WGSL } from "./surface.ts";
 import { CAR_RIG_ATTRIBUTES, carRigKernel } from "./car-rig.ts";
 import { WHEEL_DOF, WHEEL_DRIVE, WHEEL_TURN, WHEEL_GLYPHS, WHEEL_GLYPHS_WGSL, placedHaze, riding, wheelCamera, wheelLights, wheelRig } from "./shots/wheel.ts";
+import { titleDocument } from "./shots/title.ts";
+import { ringDocument } from "./shots/ring.ts";
 import { prismDocument } from "./shots/prism.ts";
 import { quadDocument } from "./shots/quad.ts";
 import { handheld } from "./shots/handheld.ts";
@@ -28,11 +30,11 @@ import { handheld } from "./shots/handheld.ts";
  * docs/on-nothing-shots-plan-2026-09-27.md for what each shot is after.
  */
 
-export const SHOTS = ["tableau", "title", "quad", "cyc", "zoom", "prism", "wheel"] as const;
+export const SHOTS = ["tableau", "title", "ring", "quad", "cyc", "zoom", "prism", "wheel"] as const;
 export type Shot = (typeof SHOTS)[number];
 /** The four sets; `zoom` and `prism` are the tableau's set with their own camera and finish. */
 type Base = "tableau" | "title" | "quad" | "cyc" | "wheel";
-const BASE_OF: Record<Shot, Base> = { tableau: "tableau", title: "title", quad: "quad", cyc: "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel" };
+const BASE_OF: Record<Shot, Base> = { tableau: "tableau", title: "title", ring: "quad", quad: "quad", cyc: "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel" };
 
 export interface OnNothingOptions {
   readonly shot: Shot;
@@ -137,6 +139,9 @@ function performance(shot: Base): Record<string, string | number[]> {
 }
 
 export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptions): ProjectDocument {
+  // The title and the ring build their own graphs (shots/), apart from the shots below.
+  if (options.shot === "title") return titleDocument(facts, options);
+  if (options.shot === "ring") return ringDocument(facts, options);
   const shot = options.shot;
   // T1407b: the quad and the prism build their own graphs (shots/).
   if (shot === "quad") return quadDocument(facts, options);
@@ -391,12 +396,6 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     return stage === undefined ? aim : ([stage.position[0], 1.6, stage.position[2]] as [number, number, number]);
   })();
   const SNAP = "(clamp((abstime - 1.4) / 0.16, 0, 1) ^ 2 * (3 - 2 * clamp((abstime - 1.4) / 0.16, 0, 1)))";
-  /**
-   * The title (0:00): the camera WHIPS in from the right (a fast pan, smeared by the lens's
-   * whip blur, settling by 0.35 s), then pivots slowly round the script while it pushes in —
-   * an arc about the grille, never a straight dolly — with a breath of handheld.
-   */
-  const WHIP = "clamp(1 - abstime / 0.35, 0, 1) ^ 2";
   /** The tableau's operator; the zoom CONTINUES it (its clock picks up where the tableau's 5 s ended). */
   const TABLEAU_HANDHELD = { tiltIn: -2.6, tilt: -0.9, settle: 1.5, shake: 1, creep: 0.12 } as const;
   const TABLEAU_SECONDS = 5;
@@ -423,29 +422,9 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     };
   }
 
-  function titleMove(): Record<string, StoredParameter> {
-    const centre: [number, number, number] = [0, 0.74, 0.13];
-    const dx = eye[0] - centre[0];
-    const dz = eye[2] - centre[2];
-    const radius = Math.hypot(dx, dz);
-    const start = Math.atan2(dx, dz);
-    const angle = `(${start.toFixed(4)} - 0.16 + abstime * 0.07)`;
-    const r = `(${radius.toFixed(4)} * (1 - abstime * 0.025))`;
-    return {
-      "eye.x": expressionSlot(`${centre[0]} + ${r} * sin(${angle}) + sin(abstime * 1.7) * 0.004`, eye[0]),
-      "eye.y": expressionSlot(`${eye[1]} + abstime * 0.012 + sin(abstime * 2.3 + 1) * 0.003`, eye[1]),
-      "eye.z": expressionSlot(`${centre[2]} + ${r} * cos(${angle})`, eye[2]),
-      "lookAt.x": expressionSlot(`${centre[0]} + ${WHIP} * 2.2 + sin(abstime * 1.1) * 0.006`, centre[0]),
-      "lookAt.y": expressionSlot(`${centre[1]}`, centre[1]),
-      "lookAt.z": expressionSlot(`${centre[2]}`, centre[2]),
-      fov: 52,
-    };
-  }
   const cameraMove: Record<string, StoredParameter> =
     shot === "zoom"
       ? zoomMove()
-      : shot === "title"
-        ? titleMove()
         : rig !== undefined
           ? wheelCamera(rig)
           : shot === "tableau"
@@ -554,7 +533,6 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   // ── Lens and grade ──
   const snapBlur: Record<string, StoredParameter> =
     shot === "zoom" ? { zoomBlur: expressionSlot("0.22 * max(1 - abs(abstime - 1.5) / 0.12, 0) ^ 2", 0) }
-    : shot === "title" ? { whip: expressionSlot(`0.16 * ${WHIP}`, 0), distortion: 0.12, edgeBlur: 0.02 }
     : {};
   pass("lens", LENS_WGSL, plan.whiteRoom ? { distortion: 0.03, edgeBlur: 0.012, vignette: 0.8, vignetteRound: 0.9 } : { distortion: 0.06, edgeBlur: 0.014, vignette: 0.6, ...snapBlur }, [], [-300, 0]);
   const grade: Record<Base, Record<string, StoredParameter>> = {

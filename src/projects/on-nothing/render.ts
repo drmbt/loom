@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { renderHeadless, type RenderedFrame } from "../../tests/headless/render-harness.ts";
 import { nodeGpuHost } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { encodePng } from "../../runtime/export/png.ts";
@@ -26,8 +26,8 @@ import { walkTrack } from "../furnace/load-audio.ts";
  *     [--final]                               finished quality: SSAA in the Render, the whole frame rendered at 2x and
  *                                             box-downsampled, and --sub 4 sub-frames averaged per output frame
  *     [--sub N]                               sub-frames per output frame (temporal AA + motion blur; 1 = off; --final: 8)
- *     [--trail 0.3]                           echo trail: each output frame keeps this share of the previous one (smeared
- *                                             lights and limbs, the reference's ghosting); --final: 0.22
+ *     [--trail 0.5]                           echo trail: the previous frame decays by this factor and shows where brighter
+ *                                             (smeared lights, the reference's ghosting; resets on a cut); --final: 0.5
  *     [--hdri <file.hdr>]                     reflections from a real HDRI (Poly Haven, CC0) instead of the procedural room
  */
 const argv = process.argv.slice(2).filter((arg) => arg !== "--");
@@ -46,7 +46,9 @@ const crt = argv.includes("--crt");
 const audioPath = flag("audio");
 const audioStart = Number(flag("audio-start") ?? 0);
 const track = audioPath === undefined ? undefined : walkTrack(audioPath, fps);
-const hdriPath = flag("hdri");
+// the warehouse HDRI lights every shot's reflections by default (--hdri none turns it off)
+const hdriArg = flag("hdri") ?? "renders/on-nothing/assets/hdri/empty_warehouse_01_2k.hdr";
+const hdriPath = hdriArg === "none" || !existsSync(hdriArg) ? undefined : hdriArg;
 const hdri = hdriPath === undefined ? undefined : readHdr(hdriPath);
 const tag = flag("tag") === undefined ? "" : `-${flag("tag")}`;
 const shots = (flag("shots") ?? SHOTS.join(",")).split(",") as Shot[];
@@ -65,7 +67,7 @@ const finalQuality = argv.includes("--final");
 /** Supersampling factor of the whole frame, and sub-frames averaged per output frame. */
 const ss = finalQuality ? 2 : 1;
 const sub = Number(flag("sub") ?? (finalQuality ? 8 : 1));
-const trail = Number(flag("trail") ?? (finalQuality ? 0.22 : 0));
+const trail = Number(flag("trail") ?? (finalQuality ? 0.5 : 0));
 
 /**
  * Accumulates `sub` rendered frames (each `ss`× the output size) into one output frame: the
@@ -100,10 +102,15 @@ class Accumulator {
         }
       }
     }
-    // the trail: a bright thing that moved leaves a decaying ghost (max keeps the present sharp
-    // where it is brighter than the ghost, so still areas do not soften)
+    // the trail: the previous output decays by `trail` and shows only where it is brighter
+    // than the present (a moving light leaves a fading ghost; a still pixel is untouched,
+    // max(x, x * trail) = x). A CUT resets it: a frame that differs from the last on average by
+    // more than 18 levels starts a new trail, so no ghost of one shot bleeds into the next.
     if (trail > 0 && this.previous !== undefined) {
-      for (let i = 0; i < frame.length; i++) frame[i] = Math.max(frame[i]!, this.previous[i]! * trail * 2.2 + frame[i]! * (1 - trail));
+      let diff = 0;
+      for (let i = 0; i < frame.length; i += 16) diff += Math.abs(frame[i]! - this.previous[i]!);
+      const cut = diff / (frame.length / 16) > 18;
+      if (!cut) for (let i = 0; i < frame.length; i++) frame[i] = Math.max(frame[i]!, this.previous[i]! * trail);
     }
     this.previous = frame;
     for (let i = 0; i < frame.length; i++) out[i] = Math.min(255, Math.round(frame[i]!));
