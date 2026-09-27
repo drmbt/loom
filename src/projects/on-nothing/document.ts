@@ -3,9 +3,10 @@ import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { SCHEMA_VERSION } from "../../domain/types/schemas.ts";
 import { LIMITS, edge, expressionSlot, graph, node as buildNode, settings } from "../../examples/documents/builders.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
-import { DOF_WGSL, GTAO_WGSL, SSR_WGSL } from "../furnace/screen-space.ts";
+import { DOF_WGSL, GTAO_WGSL } from "../furnace/screen-space.ts";
+import { GLOSSY_SSR_WGSL } from "./reflections.ts";
 import { ENVIRONMENT_WGSL, HEADLIGHT_COOKIE_WGSL, hazeLights, hazeWgsl } from "./atmosphere.ts";
-import { CRT_WGSL, ECHO_WGSL, GRADE_WGSL, HALO_WGSL, LENS_WGSL, MIRROR_WGSL, OPTICS_COMPOSITE_WGSL, STREAK_WGSL } from "./fx.ts";
+import { CRT_WGSL, ECHO_WGSL, GRADE_WGSL, HALO_WGSL, LENS_WGSL, MIRROR_WGSL, OPTICS_COMPOSITE_WGSL, PRISM_WGSL, STREAK_WGSL } from "./fx.ts";
 import type { Area, OnNothingFacts } from "./scene-facts.ts";
 import { markerOf } from "./scene-facts.ts";
 import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "./skin-kernel.ts";
@@ -21,8 +22,11 @@ import { SURFACE_WGSL } from "./surface.ts";
  * docs/on-nothing-shots-plan-2026-09-27.md for what each shot is after.
  */
 
-export const SHOTS = ["tableau", "title", "quad", "cyc"] as const;
+export const SHOTS = ["tableau", "title", "quad", "cyc", "zoom", "prism"] as const;
 export type Shot = (typeof SHOTS)[number];
+/** The four sets; `zoom` and `prism` are the tableau's set with their own camera and finish. */
+type Base = "tableau" | "title" | "quad" | "cyc";
+const BASE_OF: Record<Shot, Base> = { tableau: "tableau", title: "title", quad: "quad", cyc: "cyc", zoom: "tableau", prism: "tableau" };
 
 export interface OnNothingOptions {
   readonly shot: Shot;
@@ -50,7 +54,7 @@ interface ShotPlan {
   readonly whiteRoom: boolean;
 }
 
-const PLANS: Record<Shot, ShotPlan> = {
+const PLANS: Record<Base, ShotPlan> = {
   tableau: { areas: ["wh", "car"], figure: true, headlights: true, tubes: true, haze: { density: 0.035, groups: ["head", "tube"], ambient: [0.004, 0.0042, 0.0045] }, dof: false, echo: false, mirror: false, whiteRoom: false },
   title: { areas: ["wh", "car", "title"], figure: false, headlights: true, tubes: true, haze: { density: 0.03, groups: ["head", "tube"], ambient: [0.006, 0.006, 0.0065] }, dof: true, echo: false, mirror: false, whiteRoom: false },
   quad: { areas: [], figure: true, headlights: false, tubes: false, haze: { density: 0.06, groups: ["back"], ambient: [0, 0, 0] }, dof: false, echo: false, mirror: true, whiteRoom: false },
@@ -62,7 +66,7 @@ const PLANS: Record<Shot, ShotPlan> = {
  * in radians about the rest axes (x = the figure's left, y = up, z = the way it faces);
  * a negative x swings a limb forward.
  */
-function performance(shot: Shot): Record<string, string | number[]> {
+function performance(shot: Base): Record<string, string | number[]> {
   // Arms from the export's A-pose down to the sides.
   const armsDown = { upperarmL: "z:-0.62", upperarmR: "z:0.62" };
   switch (shot) {
@@ -122,8 +126,9 @@ function performance(shot: Shot): Record<string, string | number[]> {
 
 export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptions): ProjectDocument {
   const shot = options.shot;
-  const plan = PLANS[shot];
-  const camera = facts.cameras.get(`shot.${shot}`);
+  const base = BASE_OF[shot];
+  const plan = PLANS[base];
+  const camera = facts.cameras.get(`shot.${base}`);
   if (camera === undefined) throw new Error(`onNothingDocument: the GLB has no camera "shot.${shot}".`);
   const eye = camera.eye;
   const aim: [number, number, number] = [eye[0] + camera.forward[0] * 6, eye[1] + camera.forward[1] * 6, eye[2] + camera.forward[2] * 6];
@@ -150,7 +155,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
 
   // ── The material every surface wears ──
   // The title frames the grille from a metre: its own headlights would blow the frame out, so they idle.
-  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: shot === "title" ? 0.04 : 1, wet: shot === "title" ? 0.2 : 0.4 }, { label: "surf1" }));
+  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: base === "title" ? 0.04 : 1, wet: base === "title" ? 0.2 : 0.4 }, { label: "surf1" }));
 
   // ── Meshes ──
   plan.areas.forEach((area, index) => {
@@ -166,11 +171,11 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   if (plan.figure) {
     const mesh = facts.areas.get("fig");
     if (mesh === undefined) throw new Error("onNothingDocument: no figure in the GLB.");
-    const stage = facts.stages.get(shot);
-    if (stage === undefined) throw new Error(`onNothingDocument: the GLB has no stage "stage.${shot}".`);
+    const stage = facts.stages.get(base);
+    if (stage === undefined) throw new Error(`onNothingDocument: the GLB has no stage "stage.${base}".`);
     const pose: Record<string, StoredParameter> = {};
     const known = new Set(facts.bones.map(boneParam));
-    for (const [key, value] of Object.entries(performance(shot))) {
+    for (const [key, value] of Object.entries(performance(base))) {
       if (typeof value === "string" && value.startsWith("z:")) {
         pose[key] = [0, 0, Number(value.slice(2))];
         continue;
@@ -181,7 +186,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
       if (pose[bone] === undefined) pose[bone] = [0, 0, 0];
       pose[key] = expressionSlot(String(value), 0);
     }
-    const walk = shot === "cyc";
+    const walk = base === "cyc";
     const [px, py, pz] = stage.position;
     const [fx, , fz] = stage.facing;
     const place: Record<string, StoredParameter> = walk
@@ -237,22 +242,22 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
       lights.push(`${id}1`);
     });
   }
-  if (shot === "tableau") {
+  if (base === "tableau") {
     // A dim, soft front key from high camera-left, so the face and the chain read at all.
     // A point, not a sun: it falls off before the foreground floor, so the floor stays dark.
     const stage = facts.stages.get("tableau")!.position;
-    nodes.push(node("fill", "light", [-2600, 1000], { kind: "point", position: [stage[0] - 1.6, 2.3, stage[2] + 2.0], color: [0.85, 0.9, 1, 1], intensity: 2.5 }, { label: "fill1" }));
+    nodes.push(node("fill", "light", [-2600, 1000], { kind: "point", position: [stage[0] - 1.1, 2.1, stage[2] + 1.5], color: [0.88, 0.92, 1, 1], intensity: 5 }, { label: "fill1" }));
     // The room's own light: a soft top, so the white bodies and the roof read at a few percent.
     nodes.push(node("top", "light", [-2600, 900], { kind: "directional", direction: [0.1, -1, 0.15], color: [0.9, 0.93, 1, 1], intensity: 0.12 }, { label: "top1" }));
     lights.push("fill1", "top1");
   }
-  if (shot === "title") {
+  if (base === "title") {
     // A soft top over the bonnet: the chrome script and the grille bars catch it; the room stays dim.
     nodes.push(node("fill", "light", [-2600, 1000], { kind: "point", position: [0, 2.6, 0.9], color: [1, 0.97, 0.92, 1], intensity: 5 }, { label: "fill1" }));
     nodes.push(node("top", "light", [-2600, 900], { kind: "directional", direction: [0.1, -1, 0.3], color: [1, 0.93, 0.85, 1], intensity: 0.12 }, { label: "top1" }));
     lights.push("fill1", "top1");
   }
-  if (shot === "quad") {
+  if (base === "quad") {
     const back = markerOf(facts, "lamp.back.quad");
     nodes.push(node("back", "light", [-2600, 1000], { kind: "point", color: [0.3, 0.8, 0.85, 1], intensity: 9, position: vec(back.position) }, { label: "back1" }));
     // Two rims just behind the figure, either side, grazing its edges: the thin bright outline.
@@ -261,7 +266,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     nodes.push(node("rimB", "light", [-2600, 1200], { kind: "point", color: [0.75, 0.95, 1, 1], intensity: 1.6, position: [stage[0] + 0.55, 1.55, stage[2] - 0.7] }, { label: "rimb1" }));
     lights.push("back1", "rima1", "rimb1");
   }
-  if (shot === "cyc") {
+  if (base === "cyc") {
     const key = markerOf(facts, "lamp.key.cyc");
     const dir = (key.extras?.["loom_light_dir"] as number[] | undefined) ?? [-0.4, -0.7, -0.6];
     nodes.push(node("key", "light", [-2600, 1000], { kind: "directional", direction: [dir[0]!, dir[1]!, dir[2]!], color: [1, 0.99, 0.97, 1], intensity: 3.2, shadows: true, shadowExtent: 9, shadowSoftness: 1 }, { label: "key1" }));
@@ -270,11 +275,29 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
 
   // ── Environment (reflections) ──
   nodes.push(node("envSeed", "ramp", [-2700, 300], {}, { label: "envseed1", resolution: { mode: "fixed", width: 1024, height: 512 } }));
-  nodes.push(node("env", "customWgsl", [-2700, 500], { source: ENVIRONMENT_WGSL, white: plan.whiteRoom ? 1 : 0, bars: shot === "title" ? 6 : shot === "quad" ? 0 : 1.5, roof: shot === "title" ? 0.35 : shot === "quad" ? 0 : 0.006 }, { label: "env1", resolution: { mode: "fixed", width: 1024, height: 512 } }));
+  nodes.push(node("env", "customWgsl", [-2700, 500], { source: ENVIRONMENT_WGSL, white: plan.whiteRoom ? 1 : 0, bars: base === "title" ? 6 : base === "quad" ? 0 : 1.5, roof: base === "title" ? 0.35 : base === "quad" ? 0 : 0.006 }, { label: "env1", resolution: { mode: "fixed", width: 1024, height: 512 } }));
   edges.push(edge("seed-env", ["envSeed", "out"], ["env", "input"]));
 
   // ── Camera and the Render ──
-  nodes.push(node("cam", "camera", [-2700, -900], { eye: vec(eye), lookAt: aim, fov: camera.fovDeg, near: 0.05, far: 200 }, { label: "cam1" }));
+  // zoom (0:24): the wide tableau, then a violent crash-zoom onto the face at 1.4 s.
+  // prism (0:29): the face, close, through the prism.
+  const face = (() => {
+    const stage = facts.stages.get("tableau");
+    return stage === undefined ? aim : ([stage.position[0], 1.6, stage.position[2]] as [number, number, number]);
+  })();
+  const SNAP = "(clamp((abstime - 1.4) / 0.16, 0, 1) ^ 2 * (3 - 2 * clamp((abstime - 1.4) / 0.16, 0, 1)))";
+  const cameraMove: Record<string, StoredParameter> =
+    shot === "zoom"
+      ? {
+          fov: expressionSlot(`${camera.fovDeg.toFixed(3)} + (7.5 - ${camera.fovDeg.toFixed(3)}) * ${SNAP}`, camera.fovDeg),
+          "lookAt.x": expressionSlot(`${aim[0]} + (${face[0]} - ${aim[0]}) * ${SNAP} + sin(abstime * 7.3) * 0.006 * ${SNAP}`, aim[0]),
+          "lookAt.y": expressionSlot(`${aim[1]} + (${face[1]} - ${aim[1]}) * ${SNAP} + sin(abstime * 5.1 + 1) * 0.005 * ${SNAP}`, aim[1]),
+          "lookAt.z": expressionSlot(`${aim[2]} + (${face[2]} - ${aim[2]}) * ${SNAP}`, aim[2]),
+        }
+      : shot === "prism"
+        ? { fov: 9, lookAt: vec(face), "lookAt.x": expressionSlot(`${face[0]} + sin(abstime * 0.6) * 0.01`, face[0]), "lookAt.y": expressionSlot(`${face[1]} + sin(abstime * 0.9) * 0.006`, face[1]) }
+        : {};
+  nodes.push(node("cam", "camera", [-2700, -900], { eye: vec(eye), lookAt: aim, fov: camera.fovDeg, near: 0.05, far: 200, ...cameraMove }, { label: "cam1" }));
   nodes.push(node("shot", "render", [-2400, 0], {
     scenes: scenes.join(" "),
     camera: "cam1",
@@ -287,7 +310,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     depthOutput: true,
     normalOutput: true,
     albedoOutput: true,
-    environmentIntensity: plan.whiteRoom ? 0.6 : shot === "title" ? 1 : shot === "quad" ? 0 : 0.4,
+    environmentIntensity: plan.whiteRoom ? 0.6 : base === "title" ? 1 : base === "quad" ? 0 : 0.4,
     environmentTaps: 16,
   }, { label: "shot1" }));
   edges.push(edge("env-shot", ["env", "out"], ["shot", "environment"]));
@@ -302,23 +325,23 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   };
   const depth = ["shot", "depth"] as const;
   const normal = ["shot", "normal"] as const;
-  pass("reflections", SSR_WGSL, { ...cameraParams, strength: 1, maxDistance: 30, roughnessCutoff: 0.3, thickness: 0.4 }, [depth, normal], [-2100, 0]);
+  pass("reflections", GLOSSY_SSR_WGSL, { ...cameraParams, strength: 1, maxDistance: 30, roughnessCutoff: 0.5, thickness: 0.4 }, [depth, normal], [-2100, 0]);
   pass("occlusion", GTAO_WGSL, { ...cameraParams, radius: 0.5, strength: plan.whiteRoom ? 0.6 : 0.8 }, [depth, normal], [-1900, 0]);
   if (plan.haze.density > 0) {
-    pass("haze", hazeWgsl(hazeLights(facts, plan.haze.groups)), { ...cameraParams, density: plan.haze.density, ambient: vec(plan.haze.ambient), anisotropy: 0.72, head: shot === "title" ? 0.01 : 0.25 }, [depth], [-1700, 0]);
+    pass("haze", hazeWgsl(hazeLights(facts, plan.haze.groups)), { ...cameraParams, density: plan.haze.density, ambient: vec(plan.haze.ambient), anisotropy: 0.72, head: base === "title" ? 0.01 : 0.25 }, [depth], [-1700, 0]);
   }
   if (plan.dof) {
     pass("lens_dof", DOF_WGSL, { ...cameraParams, aperture: 0.5, maxRadius: 16, focusDistance: 1.3 }, [depth], [-1500, 0]);
   }
   const scene = last;
-  const opticsGain: Record<Shot, { streak: number; halo: number }> = {
-    tableau: { streak: 0.5, halo: 0 },
+  const opticsGain: Record<Base, { streak: number; halo: number }> = {
+    tableau: { streak: 0.5, halo: 0.12 },
     title: { streak: 0.35, halo: 0.15 },
     quad: { streak: 0.25, halo: 0 },
     cyc: { streak: 0.1, halo: 0 },
   };
   /** How far each shot's streak slabs reach above their source, as a fraction of the frame height. */
-  const streakReach: Record<Shot, number> = { tableau: 0.36, title: 0.4, quad: 0.45, cyc: 0.2 };
+  const streakReach: Record<Base, number> = { tableau: 0.36, title: 0.4, quad: 0.45, cyc: 0.2 };
 
   // ── Optics: streak columns (half size), halo rings (quarter), bloom pyramid ──
   // A "scale" resolution is relative to the node's own INPUT, so each chained pass states its
@@ -329,16 +352,16 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   // source that holds its brightness and ends softly at the reach — three chained box passes
   // (each step under the span of the pass before) fed by the bloom's first level, so the slab
   // carries the lamp's clipped glare, not only its lens.
-  const reach = streakReach[shot];
+  const reach = streakReach[base];
   const STREAKS = [reach / 160, reach / 48, reach / 10] as const;
   STREAKS.forEach((step, index) => {
     const id = `streak${index}`;
     nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step, decay: index === 2 ? 1.2 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 ? 0.004 : 0 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } }));
     edges.push(edge(`into-${id}`, [index === 0 ? "bloomUp0" : `streak${index - 1}`, "out"], [id, "input"]));
   });
-  nodes.push(node("hot", "customWgsl", [-1300, 500], { source: BRIGHT_PASS_WGSL, threshold: 40, knee: 10 }, { label: "hot1", resolution: { mode: "scale", factor: 0.25 } }));
+  nodes.push(node("hot", "customWgsl", [-1300, 500], { source: BRIGHT_PASS_WGSL, threshold: 150, knee: 30 }, { label: "hot1", resolution: { mode: "scale", factor: 0.25 } }));
   edges.push(edge("scene-hot", scene, ["hot", "input"]));
-  nodes.push(node("halo", "customWgsl", [-1100, 500], { source: HALO_WGSL }, { label: "halo1", resolution: { mode: "scale", factor: 1 } }));
+  nodes.push(node("halo", "customWgsl", [-1100, 500], { source: HALO_WGSL, radius: 0.3, width: 0.006, dispersion: 0.14, axis: 0.08 }, { label: "halo1", resolution: { mode: "scale", factor: 1 } }));
   edges.push(edge("hot-halo", ["hot", "out"], ["halo", "input"]));
   for (const level of [1, 2, 3, 4]) {
     nodes.push(node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `bloomdown${level}1`, resolution: { mode: "scale", factor: 0.5 } }));
@@ -349,23 +372,27 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     edges.push(edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]));
     edges.push(edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0));
   }
-  pass("optics", OPTICS_COMPOSITE_WGSL, { streak: opticsGain[shot].streak, halo: opticsGain[shot].halo, bloom: 0.3, streakTint: [0.95, 0.98, 1, 1] }, [["streak2", "out"], ["halo", "out"], ["bloomUp0", "out"]], [-500, 0]);
+  pass("optics", OPTICS_COMPOSITE_WGSL, { streak: opticsGain[base].streak, halo: opticsGain[base].halo, bloom: 0.3, streakTint: [0.95, 0.98, 1, 1] }, [["streak2", "out"], ["halo", "out"], ["bloomUp0", "out"]], [-500, 0]);
 
   // ── Lens and grade ──
-  pass("lens", LENS_WGSL, plan.whiteRoom ? { distortion: 0.03, edgeBlur: 0.012, vignette: 0.8, vignetteRound: 0.9 } : { distortion: 0.06, edgeBlur: 0.014, vignette: 0.6 }, [], [-300, 0]);
-  const grade: Record<Shot, Record<string, StoredParameter>> = {
+  const snapBlur: Record<string, StoredParameter> = shot === "zoom" ? { zoomBlur: expressionSlot("0.22 * max(1 - abs(abstime - 1.5) / 0.12, 0) ^ 2", 0) } : {};
+  pass("lens", LENS_WGSL, plan.whiteRoom ? { distortion: 0.03, edgeBlur: 0.012, vignette: 0.8, vignetteRound: 0.9 } : { distortion: 0.06, edgeBlur: 0.014, vignette: 0.6, ...snapBlur }, [], [-300, 0]);
+  const grade: Record<Base, Record<string, StoredParameter>> = {
     tableau: { exposure: 0.2, black: 0.04, contrast: 1.2, saturation: 0.22, steel: [0.94, 0.99, 1.04], shadowTint: [0.97, 1, 1.03, 1] },
     title: { exposure: 0.4, black: 0.035, contrast: 1.15, saturation: 0.3, steel: [0.95, 0.99, 1.03], shadowTint: [0.98, 1, 1.02, 1] },
     quad: { exposure: 0.1, black: 0.05, contrast: 1.25, saturation: 0.75, keepWarm: 0.75, steel: [0.9, 1.02, 1.04], shadowTint: [0.9, 1.03, 1.06, 1] },
     cyc: { exposure: 0.9, black: 0.02, contrast: 1.1, saturation: 0.15, steel: [0.97, 1, 1.02], shadowTint: [1, 1, 1, 1], lift: 0.02, grain: 0.02 },
   };
-  pass("grade", GRADE_WGSL, grade[shot], [], [-100, 0]);
+  pass("grade", GRADE_WGSL, grade[base], [], [-100, 0]);
   if (plan.echo) {
     nodes.push(node("echoHistory", "feedback", [100, 300], { source: "echo1" }, { label: "echohistory1" }));
     pass("echo", ECHO_WGSL, { amount: 0.55, darken: 1 }, [["echoHistory", "out"]], [100, 0]);
   }
   if (plan.mirror) {
     pass("mirror", MIRROR_WGSL, { tiles: 4, crop: 0.3, centre: 0.527, flip: 1, phase: 1 }, [], [300, 0]);
+  }
+  if (shot === "prism") {
+    pass("prism", PRISM_WGSL, { centre: [0.5, 0.56], radius: 0.62, depth: 1, loss: 0.3, rotation: expressionSlot("sin(abstime * 0.4) * 0.06", 0) }, [], [400, 0]);
   }
   if (options.crt === true) {
     pass("crt", CRT_WGSL, { amount: 1 }, [], [500, 0]);

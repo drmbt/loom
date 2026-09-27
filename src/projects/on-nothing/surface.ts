@@ -22,7 +22,7 @@ struct Params {
   tubeGain: f32, // @default 1  LED tube radiance multiplier.
   tailGain: f32, // @default 1  Tail light radiance multiplier.
   wet: f32, // @default 0.4  Share of the floor that is damp and glossy.
-  wetGloss: f32, // @default 0.16  Roughness of the damp patches.
+  wetGloss: f32, // @default 0.22  Roughness of the damp patches.
   peel: f32, // @default 0.25  Orange-peel strength on the clear coat.
   cycAlbedo: f32, // @default 0.9  Albedo of the white cyc.
 };
@@ -43,7 +43,7 @@ fn floorSurface(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {
   let scuff = smoothstep(0.62, 0.8, detailNoise(vec3f(w.x * 1.7, 0.0, w.z * 0.12)).value) * 0.5;
   // Hairline cracks.
   let crack = smoothstep(0.006, 0.0, abs(detailNoise(vec3f(w.x * 0.9, 3.0, w.z * 0.9)).value - 0.5)) * 0.5;
-  let shade = 0.75 + 0.5 * fine.value + (grit.value - 0.5) * 0.3;
+  let shade = 0.85 + 0.3 * fine.value + (grit.value - 0.5) * 0.2;
   r.albedo = vec4f(o.albedo.rgb * shade * mix(1.0, 0.55, damp) * (1.0 - scuff * 0.6) * (1.0 - crack * 0.6), 1.0);
   r.roughness = mix(0.72 + (grit.value - 0.5) * 0.2, p.wetGloss + (fine.value - 0.5) * 0.04, damp);
   r.metallic = 0.0;

@@ -421,28 +421,72 @@ def build_mpfb(ctx, blend_path):
     rx, ry = (hx1 - hx0) / 2 + 0.012, (hy1 - hy0) / 2 + 0.012
 
     def beanie(mb):
-        c = Vector((cx, cy + 0.006, brow_z + 0.03))
-        rz = htop - c.z + 0.03
-        rings, seg = 10, 36
+        # A knit dome over the skull, then the folded cuff: a ribbed band a little proud of the
+        # dome, from the brow up, its top edge rolled.
+        c = Vector((cx, cy + 0.004, brow_z + 0.035))
+        rz = htop - c.z + 0.028
+        rings, seg = 12, 48
         verts, faces = [], []
         for i in range(rings + 1):
             t = (math.pi / 2) * i / rings
             for j in range(seg):
-                s = 2 * math.pi * j / seg
-                verts.append(c + Vector((rx * math.cos(t) * math.cos(s), ry * math.cos(t) * math.sin(s), rz * math.sin(t))))
+                s_ = 2 * math.pi * j / seg
+                verts.append(c + Vector((rx * math.cos(t) * math.cos(s_), ry * math.cos(t) * math.sin(s_), rz * math.sin(t))))
         for i in range(rings):
             for j in range(seg):
                 j2 = (j + 1) % seg
                 faces.append((i * seg + j, i * seg + j2, (i + 1) * seg + j2, (i + 1) * seg + j))
         mb.add(verts, faces, "cloth_black")
-        mb.torus(c + Vector((0, 0, 0.012)), (0, 0, 1), (rx + ry) / 2, 0.021, 36, 8, "cloth_black")
+        z0, z1 = brow_z - 0.004, brow_z + 0.052
+        verts, faces = [], []
+        for zi, z in enumerate((z0, z1)):
+            for j in range(seg * 2):
+                s_ = 2 * math.pi * j / (seg * 2)
+                rib = 0.0025 * (1 if j % 2 == 0 else -1)
+                verts.append(Vector((cx + (rx + 0.006 + rib) * math.cos(s_), cy + 0.004 + (ry + 0.006 + rib) * math.sin(s_), z)))
+        m = seg * 2
+        for j in range(m):
+            j2 = (j + 1) % m
+            faces.append((j, j2, m + j2, m + j))
+        mb.add(verts, faces, "cloth_black")
+        mb.torus(Vector((cx, cy + 0.004, z1)), (0, 0, 1), (rx + ry) / 2 + 0.006, 0.007, 48, 8, "cloth_black")
 
     def glasses(mb):
-        fy = ey0 - 0.014
+        # Wraparound sunglasses: two superellipse lenses turned to follow the face, a rim
+        # round each, a bridge, and temples running back over the ears.
+        fy = ey0 - 0.012
+        a_, b_, nexp = 0.028, 0.02, 3.2
+        outline = []
+        for k in range(28):
+            t = 2 * math.pi * k / 28
+            ct, st = math.cos(t), math.sin(t)
+            outline.append((a_ * math.copysign(abs(ct) ** (2 / nexp), ct), b_ * math.copysign(abs(st) ** (2 / nexp), st)))
         for sx in (1, -1):
-            mb.box((cx + sx * eye_x, fy, eye_z), (0.058, 0.01, 0.04), "lens_black")
-            mb.beam((cx + sx * (eye_x + 0.032), fy, eye_z + 0.012), (cx + sx * (rx - 0.004), cy + 0.02, eye_z + 0.02), 0.007, 0.011, "jewel")
-        mb.box((cx, fy - 0.002, eye_z + 0.012), (2 * eye_x - 0.056, 0.008, 0.008), "jewel")
+            centre = Vector((cx + sx * (eye_x + 0.002), fy, eye_z + 0.002))
+            wrap = math.radians(14) * sx
+
+            def place(u, v, depth=0.0):
+                # lens plane: x across, z up; turned about the vertical by `wrap`, bowed back at its outer edge
+                x = u * math.cos(wrap)
+                y = u * math.sin(wrap) * sx * sx + depth + 0.12 * u * u
+                return centre + Vector((x, y if sx > 0 else u * math.sin(wrap) + depth + 0.12 * u * u, v))
+
+            front = [place(u, v) for u, v in outline]
+            back = [place(u, v, 0.003) for u, v in outline]
+            base = len(mb.verts)
+            mb.verts.extend(front + back + [place(0, 0), place(0, 0, 0.003)])
+            n = len(outline)
+            cf, cb = base + 2 * n, base + 2 * n + 1
+            for k in range(n):
+                k2 = (k + 1) % n
+                mb.faces.append([cf, base + k2, base + k]); mb.fmats.append("lens_black")
+                mb.faces.append([cb, base + n + k, base + n + k2]); mb.fmats.append("lens_black")
+            rim = [place(u * 1.08, v * 1.1, -0.001) for u, v in outline]
+            for k in range(n):
+                mb.beam(rim[k], rim[(k + 1) % n], 0.0045, 0.0045, "paint_black", up=(0, -1, 0))
+            hinge = place(a_ * 1.08, b_ * 0.6, -0.001)
+            mb.beam(hinge, Vector((cx + sx * (rx - 0.002), cy + 0.03, eye_z + 0.014)), 0.004, 0.009, "jewel")
+        mb.beam(Vector((cx + eye_x - a_ + 0.003, fy - 0.001, eye_z + 0.012)), Vector((cx - eye_x + a_ - 0.003, fy - 0.001, eye_z + 0.012)), 0.005, 0.005, "paint_black", up=(0, -1, 0))
 
     nx0, nx1, ny0, ny1, _, _ = neck
     _, _, front, _, _, _ = chest

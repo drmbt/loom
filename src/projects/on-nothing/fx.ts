@@ -87,16 +87,19 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
 /**
  * The HALO (layer 2): an on-axis source wears a thin concentric ring, its colours split by
  * the lens's dispersion. A ring kernel over a hot bright pass: each channel gathers the bright
- * pass on a circle of its own radius. Run at quarter size; the ring is soft by nature.
+ * pass on a circle of its own radius, each tap weighted by how close its source sits to the
+ * frame centre — so only a light looking down the barrel rings, as in the reference, and a
+ * row of headlights across the frame does not. Run at quarter size; the ring is soft.
  */
 export const HALO_WGSL = `struct Params {
   radius: f32, // @default 0.14  Ring radius, as a fraction of the frame height.
   width: f32, // @default 0.012  Ring thickness, fraction of the frame height.
   dispersion: f32, // @default 0.06  Radius difference between red and blue (fraction of the radius).
   gain: f32, // @default 1  Ring brightness.
+  axis: f32, // @default 0.12  On-axis window: only sources within about this distance of the frame centre (fraction of the height) ring.
 };
 ${INPUT_AND_FRAME}
-const TAPS: i32 = 96;
+const TAPS: i32 = 160;
 
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
@@ -111,7 +114,10 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
       let r = textureSampleLevel(inputTexture, inputSampler, uv + dir * rr * (1.0 + params.dispersion * 0.5), 0.0).r;
       let g = textureSampleLevel(inputTexture, inputSampler, uv + dir * rr, 0.0).g;
       let b = textureSampleLevel(inputTexture, inputSampler, uv + dir * rr * (1.0 - params.dispersion * 0.5), 0.0).b;
-      sum = sum + vec3f(r, g, b) * select(0.5, 1.0, j == 0);
+      // A ring forms only when its SOURCE sits near the optical axis: weight by where the tap is.
+      let src = (uv + dir * rr - vec2f(0.5)) * vec2f(aspect, 1.0);
+      let onAxis = exp(-dot(src, src) / (2.0 * params.axis * params.axis));
+      sum = sum + vec3f(r, g, b) * select(0.5, 1.0, j == 0) * onAxis;
     }
   }
   return vec4f(sum / f32(TAPS) * params.gain, 1.0);
@@ -381,4 +387,63 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let tube = (c * beam * m * params.gain + glow * params.bloom * 0.5) * flicker;
   let corner = smoothstep(0.0, 0.02, min(min(w.x, 1.0 - w.x), min(w.y, 1.0 - w.y)));
   return vec4f(mix(direct.rgb, tube * corner, params.amount), 1.0);
+}`;
+
+/**
+ * The PRISM SLICE (layer 5, the reference's 0:29): a triangular glass prism held before the
+ * lens. Inside a central triangle the picture passes straight through; outside, each point is
+ * folded back into the triangle by reflecting it across the edge it lies beyond (up to three
+ * folds), so the frame fills with mirrored copies of the face meeting at bright, slightly
+ * dispersed seams. Each fold loses a little light, as a real mirror does.
+ */
+export const PRISM_WGSL = `struct Params {
+  amount: f32, // @default 1  0 bypasses the prism.
+  centre: vec2f, // @default 0.5  Centre of the clear triangle (uv).
+  radius: f32, // @default 0.32  Circumradius of the triangle, fraction of the frame height.
+  rotation: f32, // @default 0  Turn of the triangle, radians.
+  loss: f32, // @default 0.18  Light lost per reflection.
+  seam: f32, // @default 0.6  Brightness of the seams where the glass faces meet.
+  seamWidth: f32, // @default 0.004  Width of a seam, fraction of the frame height.
+  depth: f32, // @default 1  Reflections deep: 1 = each face mirrors once (a real prism), 3 = a kaleidoscope.
+};
+${INPUT_AND_FRAME}
+fn edgeNormal(k: i32) -> vec2f {
+  let a = params.rotation + 1.5707963 + f32(k) * 2.0943951;
+  return vec2f(cos(a), sin(a));
+}
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let direct = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
+  if (params.amount <= 0.0) { return direct; }
+  let size = vec2f(textureDimensions(inputTexture));
+  let aspect = size.x / size.y;
+  // Work in height units, centred on the triangle; y up.
+  var p = (uv - params.centre) * vec2f(aspect, -1.0);
+  let d = params.radius * 0.5; // inradius of an equilateral triangle
+  var folds = 0.0;
+  for (var i = 0; i < i32(params.depth); i = i + 1) {
+    for (var k = 0; k < 3; k = k + 1) {
+      // Edge k: points with dot(p, -n) > d are beyond it (n points to the edge's far vertex side).
+      let n = -edgeNormal(k);
+      let s = dot(p, n);
+      if (s > d) {
+        p = p - 2.0 * (s - d) * n;
+        folds = folds + 1.0;
+      }
+    }
+  }
+  let src = params.centre + p * vec2f(1.0 / aspect, -1.0);
+  var color = textureSampleLevel(inputTexture, inputSampler, clamp(src, vec2f(0.0), vec2f(1.0)), 0.0).rgb;
+  color = color * pow(1.0 - params.loss, folds);
+  // Seams: nearness to any edge of the triangle, measured in the ORIGINAL frame.
+  let q = (uv - params.centre) * vec2f(aspect, -1.0);
+  var near = 1e3;
+  for (var k = 0; k < 3; k = k + 1) {
+    near = min(near, abs(dot(q, -edgeNormal(k)) - d));
+  }
+  let ridge = exp(-(near * near) / (2.0 * params.seamWidth * params.seamWidth));
+  let luma = dot(color, vec3f(0.2126, 0.7152, 0.0722));
+  color = color + vec3f(1.0, 0.98, 0.95) * ridge * params.seam * (0.2 + luma);
+  return vec4f(mix(direct.rgb, color, params.amount), 1.0);
 }`;

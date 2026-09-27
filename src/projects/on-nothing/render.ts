@@ -104,7 +104,9 @@ for (const shot of shots) {
           },
         }),
   });
-  const errors = [...new Set(result.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code}: ${d.message}`))];
+  // An expression that fails to evaluate is only a warning to the app (it holds the retained
+  // value); here it is an error — an unknown function once froze a camera move without a word.
+  const errors = [...new Set(result.diagnostics.filter((d) => d.severity === "error" || d.code === "parameter.expression").map((d) => `${d.code}: ${d.message}`))];
   if (errors.length > 0) throw new Error(`the ${shot} graph has errors:\n${errors.join("\n")}`);
   const warnings = [...new Set(result.diagnostics.filter((d) => d.severity === "warning").map((d) => `${d.code}: ${d.message}`))];
   if (warnings.length > 0) console.log(warnings.slice(0, 10).join("\n"));
