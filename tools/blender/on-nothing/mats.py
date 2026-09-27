@@ -35,6 +35,8 @@ LIB = {
     # figure
     "skin":           ((0.32, 0.22, 0.17), 0.0, 0.48, None, 0, 30),
     "cloth_black":    ((0.018, 0.018, 0.019), 0.0, 0.85, None, 0, 31),
+    # the beanie: cloth, its own name so a shot can drop it (select !material:knit_black, T1407b)
+    "knit_black":     ((0.018, 0.018, 0.019), 0.0, 0.85, None, 0, 31),
     "denim_black":    ((0.022, 0.022, 0.024), 0.0, 0.8, None, 0, 32),
     "shoe_black":     ((0.015, 0.015, 0.016), 0.0, 0.4, None, 0, 33),
     "lens_black":     ((0.004, 0.004, 0.005), 0.0, 0.04, None, 0, 34),

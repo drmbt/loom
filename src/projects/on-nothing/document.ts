@@ -6,7 +6,7 @@ import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/pos
 import { DOF_WGSL, GTAO_WGSL } from "../furnace/screen-space.ts";
 import { GLOSSY_SSR_WGSL } from "./reflections.ts";
 import { ENVIRONMENT_HDRI_WGSL, ENVIRONMENT_WGSL, HEADLIGHT_COOKIE_WGSL, hazeLights, hazeWgsl } from "./atmosphere.ts";
-import { CRT_WGSL, ECHO_WGSL, GRADE_WGSL, HALO_WGSL, LENS_WGSL, MIRROR_WGSL, OPTICS_COMPOSITE_WGSL, PRISM_WGSL, STREAK_WGSL } from "./fx.ts";
+import { CRT_WGSL, ECHO_WGSL, GRADE_WGSL, HALO_WGSL, LENS_WGSL, MIRROR_WGSL, OPTICS_COMPOSITE_WGSL, STREAK_WGSL } from "./fx.ts";
 import type { Area, OnNothingFacts } from "./scene-facts.ts";
 import { carAreas } from "./scene-facts.ts";
 import { markerOf } from "./scene-facts.ts";
@@ -14,6 +14,8 @@ import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "./skin-kernel.ts
 import { GLASS_COMPOSITE_WGSL, LAMP_GLASS_WGSL, OCCLUDER_WGSL, SURFACE_WGSL } from "./surface.ts";
 import { CAR_RIG_ATTRIBUTES, carRigKernel, drivenCar } from "./car-rig.ts";
 import { GLYPHS_WGSL } from "./tracking.ts";
+import { prismDocument } from "./shots/prism.ts";
+import { quadDocument } from "./shots/quad.ts";
 import { handheld } from "./shots/handheld.ts";
 
 /** The wheel shot: how far the rigged car has driven, metres (a slow roll past the others). */
@@ -139,6 +141,9 @@ function performance(shot: Base): Record<string, string | number[]> {
 
 export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptions): ProjectDocument {
   const shot = options.shot;
+  // T1407b: the quad and the prism build their own graphs (shots/).
+  if (shot === "quad") return quadDocument(facts, options);
+  if (shot === "prism") return prismDocument(facts, options);
   const base = BASE_OF[shot];
   const plan = PLANS[base];
   /** The wheel shot's car drives `DRIVE` metres; what rides with it follows by this helper. */
@@ -389,7 +394,6 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
 
   // ── Camera and the Render ──
   // zoom (0:24): the wide tableau, then a violent crash-zoom onto the face at 1.4 s.
-  // prism (0:29): the face, close, through the prism.
   const face = (() => {
     const stage = facts.stages.get("tableau");
     return stage === undefined ? aim : ([stage.position[0], 1.6, stage.position[2]] as [number, number, number]);
@@ -450,8 +454,6 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
       ? zoomMove()
       : shot === "title"
         ? titleMove()
-        : shot === "prism"
-        ? { fov: 9, lookAt: vec(face), "lookAt.x": expressionSlot(`${face[0]} + sin(abstime * 0.6) * 0.01`, face[0]), "lookAt.y": expressionSlot(`${face[1]} + sin(abstime * 0.9) * 0.006`, face[1]) }
         : base === "wheel" && driven !== undefined
           ? { ...follow("eye", eye, driven.forward), ...follow("lookAt", aim, driven.forward) }
           : shot === "tableau"
@@ -587,9 +589,6 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   }
   if (plan.mirror) {
     pass("mirror", MIRROR_WGSL, { tiles: 4, crop: 0.3, centre: 0.527, flip: 1, phase: 1 }, [], [300, 0]);
-  }
-  if (shot === "prism") {
-    pass("prism", PRISM_WGSL, { centre: [0.5, 0.56], radius: 0.62, depth: 1, loss: 0.3, rotation: expressionSlot("sin(abstime * 0.4) * 0.06", 0) }, [], [400, 0]);
   }
   if (options.crt === true) {
     pass("crt", CRT_WGSL, { amount: 1 }, [], [500, 0]);

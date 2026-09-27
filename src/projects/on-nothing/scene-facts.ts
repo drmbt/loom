@@ -53,7 +53,7 @@ export interface OnNothingFacts {
 }
 
 /** The GLB's areas, one Mesh File In each (every object is named `<area>.<name>`). */
-export const AREAS = ["wh", "title", "fig", "figbare", "cyc"] as const;
+export const AREAS = ["wh", "title", "fig", "figbare", "fignocap", "cyc"] as const;
 /** Areas a GLB may or may not hold (older builds lack them). */
 export const OPTIONAL_AREAS = ["lampglass"] as const;
 /** The fixed areas, plus one `car<n>` per car (each car its own Mesh File In: five real models overflow one buffer). */
@@ -77,8 +77,11 @@ export function carAreas(facts: OnNothingFacts): Area[] {
   return [...facts.areas.keys()].filter((area) => area.startsWith("car")).sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)));
 }
 
+/** Areas cut from another by material. T1407b: the quad's figure, bare-headed (the beanie dropped). */
+const DERIVED: Partial<Record<Area, string>> = { fignocap: "fig.* !material:knit_black" };
+
 export function selectOf(area: Area): string {
-  return `${area}.*`;
+  return DERIVED[area] ?? `${area}.*`;
 }
 
 function vec3(value: unknown, what: string): [number, number, number] {

@@ -472,7 +472,7 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
         verts.append(sum(verts[-seg:], Vector()) / seg)
         for j in range(seg):
             faces.append((rings * seg + j, rings * seg + (j + 1) % seg, top))
-        mb.add(verts, faces, "cloth_black")
+        mb.add(verts, faces, "knit_black")
         # the cuff: a ribbed band 4 cm tall, 5 mm proud of the knit, rolled at its top edge
         brow = verts[:seg]
         ring_up = [verts[3 * seg + j] for j in range(seg)]
@@ -485,7 +485,7 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
         for j in range(seg):
             j2 = (j + 1) % seg
             cfaces.append((j, j2, seg + j2, seg + j))
-        mb.add(cverts, cfaces, "cloth_black")
+        mb.add(cverts, cfaces, "knit_black")
 
     def glasses(mb):
         # Wraparound sunglasses: two superellipse lenses turned to follow the face, a rim
