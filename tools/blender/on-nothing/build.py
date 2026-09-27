@@ -25,6 +25,7 @@ import cars  # noqa: E402
 import cyc_set  # noqa: E402
 import cyc_wardrobe  # noqa: E402
 import figure  # noqa: E402
+import jewels  # noqa: E402
 import mats as materials  # noqa: E402
 import sets  # noqa: E402
 import title  # noqa: E402
@@ -125,6 +126,8 @@ def main():
         figure.build_mpfb(ctx, os.path.abspath(a.human), prefix="figbare", bare=True)
         # the white limbo's walker: wide cropped trousers, socks, chunky shoes (T1407b cyc)
         figure.build_mpfb(ctx, os.path.abspath(a.human), prefix="figcyc", wardrobe=cyc_wardrobe)
+        # the mirror shot's close-up hands: fingers curled, the pyramid ring (T1407b mirror)
+        jewels.build(ctx, os.path.abspath(a.human))
     else:
         figure.build(ctx)
 

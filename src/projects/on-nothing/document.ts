@@ -22,6 +22,8 @@ import { crtDocument } from "./shots/crt.ts";
 import { cycDocument } from "./shots/cyc.ts";
 import { quadDocument } from "./shots/quad.ts";
 import { handheld } from "./shots/handheld.ts";
+import { splitDocument } from "./shots/split.ts";
+import { mirrorDocument } from "./shots/mirror.ts";
 
 /**
  * T1400b — THE ON NOTHING DOCUMENTS: one graph per shot, built from the GLB's measured facts.
@@ -33,11 +35,11 @@ import { handheld } from "./shots/handheld.ts";
  * docs/on-nothing-shots-plan-2026-09-27.md for what each shot is after.
  */
 
-export const SHOTS = ["tableau", "title", "ring", "quad", "cyc", "cyc-wide", "zoom", "prism", "wheel", "halo", "crt"] as const;
+export const SHOTS = ["tableau", "title", "ring", "quad", "cyc", "cyc-wide", "zoom", "prism", "wheel", "halo", "crt", "split", "mirror"] as const;
 export type Shot = (typeof SHOTS)[number];
 /** The four sets; `zoom` and `prism` are the tableau's set with their own camera and finish. */
 type Base = "tableau" | "title" | "quad" | "cyc" | "wheel";
-const BASE_OF: Record<Shot, Base> = { tableau: "tableau", title: "title", ring: "quad", quad: "quad", cyc: "cyc", "cyc-wide": "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel", halo: "tableau", crt: "tableau" };
+const BASE_OF: Record<Shot, Base> = { tableau: "tableau", title: "title", ring: "quad", quad: "quad", cyc: "cyc", "cyc-wide": "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel", halo: "tableau", crt: "tableau", split: "tableau", mirror: "cyc" };
 
 export interface OnNothingOptions {
   readonly shot: Shot;
@@ -146,6 +148,9 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   if (options.shot === "title") return titleDocument(facts, options);
   if (options.shot === "ring") return ringDocument(facts, options);
   const shot = options.shot;
+  // T1407b (split/mirror): composites of re-cut stock shots, built in shots/.
+  if (shot === "split") return splitDocument(facts, onNothingDocument, options);
+  if (shot === "mirror") return mirrorDocument(facts, onNothingDocument, options);
   // T1407b: the quad and the prism build their own graphs (shots/).
   if (shot === "quad") return quadDocument(facts, options);
   if (shot === "prism") return prismDocument(facts, options);

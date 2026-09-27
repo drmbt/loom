@@ -137,8 +137,11 @@ for (const shot of shots) {
   }
   if (finalQuality) {
     // SSAA shades 4 samples a pixel: it also cleans the shader-thin detail MSAA leaves (chrome bars, chain links)
-    const shotNode = nodes["shot"];
-    if (shotNode !== undefined) nodes["shot"] = { ...shotNode, parameters: { ...shotNode.parameters, antialias: "ssaa" } } as typeof shotNode;
+    // (the split's two plates prefix their Renders: car_shot, floor_shot)
+    for (const id of Object.keys(nodes).filter((key) => key === "shot" || key.endsWith("_shot"))) {
+      const shotNode = nodes[id]!;
+      nodes[id] = { ...shotNode, parameters: { ...shotNode.parameters, antialias: "ssaa" } } as typeof shotNode;
+    }
   }
   let graphEdges = built.graph.edges;
   const probe = flag("probe");

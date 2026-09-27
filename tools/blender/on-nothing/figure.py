@@ -322,11 +322,14 @@ def _measure(ob, zlo, zhi, xmax=None):
     return (min(p.x for p in sel), max(p.x for p in sel), min(p.y for p in sel), max(p.y for p in sel), min(p.z for p in sel), max(p.z for p in sel))
 
 
-def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None):
+def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None, pre_pose=None, extra_parts=None):
     """Append the MPFB human, bake it to rest, fold its bones onto BONES, join, accessorise.
 
     `bare`: shirtless (the reference's tableau, 0:16): the suit's shirt is cut away above the
     waist and the body under it is KEPT (MPFB's delete-under-clothes mask would leave a hole).
+    `pre_pose(rig)` (T1407b mirror): poses the MPFB rig (its finger bones) before the modifiers
+    are applied, so the pose is BAKED into this body's rest shape; the folded bones keep their
+    rest heads. `extra_parts(coll, mats)` returns more accessories to join and skin (jewels.py).
     """
     waist = 1.0
     coll, mats = ctx["coll"], ctx["mats"]
@@ -347,6 +350,10 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None):
     rig.data.pose_position = "REST"
     bpy.context.view_layer.update()
     arm_bones = {b.name: (rig.matrix_world @ b.head_local, rig.matrix_world @ b.tail_local) for b in rig.data.bones}
+    if pre_pose is not None:
+        pre_pose(rig)
+        rig.data.pose_position = "POSE"
+        bpy.context.view_layer.update()
     # our bone table from the MPFB rest heads and tails
     BONES.clear()
     order = ["pelvis", "spine", "chest", "neck", "head",
@@ -627,6 +634,8 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None):
         _accessory(coll, mats, f"{prefix}.chain", chain, "chest"),
         _accessory(coll, mats, f"{prefix}.bracelet", bracelet, "forearm.L"),
     ]
+    if extra_parts is not None:
+        parts += extra_parts(coll, mats)
     for x in bpy.context.selected_objects:
         x.select_set(False)
     for o in keep + parts:
