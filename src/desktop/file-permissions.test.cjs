@@ -112,3 +112,25 @@ test('simultaneous prompts are denied and restricted OS paths cannot be approved
   h.session.emit('file-system-access-restricted', {}, {}, result => { action = result; });
   assert.equal(action, 'deny');
 });
+
+test('T1408b: fullscreen and window-management are granted to Loom documents only', async () => {
+  const h = harness();
+  const ask = async (contents, permission, requestingUrl) => h.request(permission, { requestingUrl }, contents)[0];
+  // The editor, and an about:blank loom-* popup (main.cjs denies any other popup).
+  assert.equal(await ask(h.contents, 'fullscreen', `${origin}/`), true);
+  assert.equal(await ask(h.contents, 'window-management', `${origin}/`), true);
+  const popup = new EventEmitter();
+  popup.getURL = () => 'about:blank';
+  popup.isDestroyed = () => false;
+  assert.equal(await ask(popup, 'fullscreen', 'about:blank'), true);
+  // A foreign document never gets either, and nothing else is widened.
+  const foreign = new EventEmitter();
+  foreign.getURL = () => 'https://example.com/';
+  foreign.isDestroyed = () => false;
+  assert.equal(await ask(foreign, 'fullscreen', 'https://example.com/'), false);
+  assert.equal(await ask(h.contents, 'window-management', 'https://example.com/'), false);
+  assert.equal(await ask(h.contents, 'geolocation', `${origin}/`), false);
+  // The CHECK side (navigator.permissions.query) agrees with the request side.
+  assert.equal(h.check(h.contents, 'window-management', origin, { requestingUrl: `${origin}/` }), true);
+  assert.equal(h.check(foreign, 'window-management', 'https://example.com', { requestingUrl: 'https://example.com/' }), false);
+});

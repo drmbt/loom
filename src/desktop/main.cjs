@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { app, BrowserWindow, session, dialog, ipcMain, sharedTexture, systemPreferences, shell } = require('electron');
 const { isAbsolute, join } = require('node:path');
-const { webPreferences, validateOrigin, allowNavigation, allowPopup } = require('./policy.cjs');
+const { webPreferences, validateOrigin, allowNavigation, allowPopup, performWindowOptions } = require('./policy.cjs');
 const { installFilePermissions } = require('./file-permissions.cjs');
 const { installUnloadGate } = require('./unload-gate.cjs');
 const origin = validateOrigin(process.env.LOOM_DESKTOP_URL);
@@ -69,7 +69,7 @@ app.on('web-contents-created', (_event, contents) => {
       return { action: 'deny' }; // Native outputs are main-created, never popup-derived.
     }
     if (!allowPopup(details)) return { action: 'deny' };
-    return { action: 'allow', overrideBrowserWindowOptions: { webPreferences } };
+    return { action: 'allow', overrideBrowserWindowOptions: { webPreferences, ...performWindowOptions(details) } };
   });
   contents.on('render-process-gone', (_event, details) => fail(JSON.stringify(details)));
 });

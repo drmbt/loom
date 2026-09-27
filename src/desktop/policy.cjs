@@ -20,4 +20,15 @@ function allowPopup({ url, frameName }) {
   return url === 'about:blank' && /^loom-[a-z0-9-]+$/i.test(frameName);
 }
 
-module.exports = { webPreferences, validateOrigin, allowNavigation, allowPopup };
+/*
+ * T1408b: a Window Out's perform window is a bare output — no frame, no menu, black behind
+ * the picture, fullscreen when the page asked for it in the features string. Placement
+ * (left/top/width/height) comes from the same string, which Electron applies itself.
+ */
+function performWindowOptions({ frameName, features }) {
+  if (!/^loom-perform-[a-z0-9-]+$/i.test(frameName)) return {};
+  const fullscreen = String(features ?? '').split(',').some(part => /^\s*fullscreen\s*(=\s*(yes|1|true)\s*)?$/i.test(part));
+  return { frame: false, autoHideMenuBar: true, backgroundColor: '#000000', fullscreen };
+}
+
+module.exports = { webPreferences, validateOrigin, allowNavigation, allowPopup, performWindowOptions };
