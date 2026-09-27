@@ -287,6 +287,10 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   ndiIn: "none",
   spoutIn: "none",
   syphonOut: "emits",
+  // §T1391b: NOT `emits`, unlike Syphon/NDI Out — nothing leaves the process. The perform
+  // window is a browser window the app presents this node's target into, the same kind of
+  // surface as the viewer, and a headless build never opens one.
+  window: "none",
   ndiOut: "emits",
   spoutOut: "emits",
   audioIn: "none",

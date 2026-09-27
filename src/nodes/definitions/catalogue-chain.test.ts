@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { compileGraph } from "../../compiler/index.ts";
+import { compileGraph, isDisplaySink } from "../../compiler/index.ts";
 import { readExecutionPlan } from "../../runtime/backend/plan.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions, coreNodeDefinitions } from "./index.ts";
@@ -43,7 +43,23 @@ const capabilities: BackendCapabilities = {
 
 const registry = createNodeRegistry(allNodeDefinitions).view();
 
-const compile = (graph: GraphDocument) => compileGraph({ graph, settings, registry, capabilities });
+/**
+ * §T1391b: a DISPLAY sink (Window Out) renders only while a caller names it — its window
+ * is open. The sweep compiles every node as it runs when shown, so it names them.
+ */
+const compile = (graph: GraphDocument) => {
+  const shown = Object.values(graph.nodes).filter((entry) => {
+    const definition = registry.get(entry.type);
+    return definition !== undefined && isDisplaySink(definition);
+  });
+  return compileGraph({
+    graph,
+    settings,
+    registry,
+    capabilities,
+    ...(shown.length === 0 ? {} : { sinks: shown.map((entry) => ({ nodeId: entry.id, kind: "output" as const })) }),
+  });
+};
 
 /**
  * Nodes are stamped with the registry's CURRENT version. A hardcoded `1` made every

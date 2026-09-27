@@ -40,7 +40,7 @@ import { flattenComponents, redirectSink, withSourcePath } from "./flatten.ts";
 import type { ComponentSource } from "./flatten.ts";
 import { wgsl } from "../runtime/backend/wgsl.ts";
 import { resolveNodeFormat } from "./format.ts";
-import { presentsPicture, pruneToActiveSinks, resolveSinks } from "./prune.ts";
+import { ownsSinkTarget, pruneToActiveSinks, resolveSinks } from "./prune.ts";
 import { resolveNodeResolution } from "./resolution.ts";
 import {
   SHARED_SAMPLER_ID,
@@ -241,14 +241,15 @@ function outputSlots(definition: NodeDefinition): OutputSlot[] {
     const resourceKind = resourceKindForOutput(port.type, isTemporalOutput(definition, port.id));
     if (resourceKind !== undefined) slots.push({ portId: port.id, resourceKind });
   }
-  /* T1029 follow-up — `presentsPicture`, not `isDeclaredSink`: the synthesized target
+  /* T1029 follow-up — `ownsSinkTarget` (was `presentsPicture`, split by §T1391b so a
+     display sink draws without becoming the picture), not `isDeclaredSink`: the synthesized target
      exists so an OUTPUT has somewhere to render. Analyze (buffer writer) and Laser Out
      (DAC driver, no passes at all) got a full-size colour target no pass ever touched —
      `presentsPicture`'s own docblock recorded the waste, E14's black-frame hunt paid for
      it once, and the port-less data sink tripped the no-passes warning on every graph
      that wired one. The predicate that already knows who draws now decides who gets a
      canvas. */
-  if (slots.length === 0 && presentsPicture(definition)) {
+  if (slots.length === 0 && ownsSinkTarget(definition)) {
     slots.push({ portId: SINK_TARGET_PORT, resourceKind: "target" });
   }
   return slots;

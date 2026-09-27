@@ -92,6 +92,8 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   ndiIn: "external-live",
   spoutIn: "external-live",
   syphonOut: "pure",
+  // §T1391b: a function of its input like Output; the window it feeds is app-side.
+  window: "pure",
   ndiOut: "pure",
   spoutOut: "pure",
   // FOUND BY THIS EXERCISE, not by the brief. The session's microphone, read through

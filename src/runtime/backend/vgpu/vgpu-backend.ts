@@ -181,6 +181,8 @@ interface PresentationState {
   readonly canvas: PresentableCanvas;
   readonly label: string | undefined;
   readonly modelInputSize?: readonly [number, number];
+  /** §T1391b: `"source"` = backing store is the presented target's size, never the box's. */
+  readonly sizing: "layout" | "source";
   outputId: string;
   surface: Surface | undefined;
   blit: Effect | undefined;
@@ -361,9 +363,16 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
 
   /** The CSS box in device pixels, or undefined for a canvas with no layout (Offscreen). */
   function layoutSize(canvas: PresentableCanvas): readonly [number, number] | undefined {
-    const laidOut = canvas as PresentableCanvas & { clientWidth?: number; clientHeight?: number };
+    const laidOut = canvas as PresentableCanvas & {
+      clientWidth?: number;
+      clientHeight?: number;
+      ownerDocument?: { defaultView?: { devicePixelRatio?: number } | null };
+    };
     if (typeof laidOut.clientWidth !== "number" || typeof laidOut.clientHeight !== "number") return undefined;
-    const ratio = globalThis.devicePixelRatio ?? 1;
+    // §T1391b: the ratio of the window the canvas LIVES in. A floated viewer or a perform
+    // window on a second screen has its own; the editor's would size it wrong on a mixed-
+    // density pair (a 1× projector next to a 2× laptop panel).
+    const ratio = laidOut.ownerDocument?.defaultView?.devicePixelRatio ?? globalThis.devicePixelRatio ?? 1;
     return [Math.max(1, Math.floor(laidOut.clientWidth * ratio)), Math.max(1, Math.floor(laidOut.clientHeight * ratio))];
   }
 
@@ -379,6 +388,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // A native-model canvas is sized by its packed input extent, never by a CSS box —
       // `ensurePresentation` throws if the two disagree, and it has no layout anyway.
       if (p.disposed || p.surface === undefined || p.modelInputSize !== undefined) continue;
+      // §T1391b: a source-sized surface follows its target in `ensurePresentation`.
+      if (p.sizing === "source") continue;
       fitSurface(p.canvas, p.surface);
     }
     for (const h of previewHosts) {
@@ -1498,6 +1509,12 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       }
       presentSampler ??= sampler(active.gpu, { magFilter: "linear", minFilter: "linear" });
       const readTarget = isPair(source) ? source.read : source;
+      // §T1391b: a perform window shows its Window Out's target 1:1. Every caller of this
+      // function runs outside a frame (compile, present, setOutput), which is where a
+      // surface may be resized (§V8); a recompile that reallocates the target lands here.
+      if (p.sizing === "source" && p.surface !== undefined && (p.canvas.width !== readTarget.size[0] || p.canvas.height !== readTarget.size[1])) {
+        p.surface.resize([readTarget.size[0], readTarget.size[1]]);
+      }
       preparePresentationView(readTarget);
       if (isPair(source)) preparePresentationView(source.write);
       const bindValue = presentationBinding(readTarget);
@@ -2356,6 +2373,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         canvas,
         label: options.label,
         ...(options.modelInputSize ? { modelInputSize: options.modelInputSize } : {}),
+        sizing: options.sizing ?? "layout",
         outputId: options.outputId,
         surface: undefined,
         blit: undefined,

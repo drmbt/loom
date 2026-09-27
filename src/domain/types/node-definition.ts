@@ -479,6 +479,19 @@ export interface NodeDefinition {
    * is not the same claim, and a node with a side effect must survive pruning either way.
    */
   sink?: boolean;
+  /**
+   * §T1391b — what a declared sink's target is FOR. Absent means `"picture"`: THE image the
+   * viewer presents and render-out writes (`presentsPicture`). `"display"` is a sink that
+   * renders into its own target for a surface outside the document — a Window Out's perform
+   * window — and is two things a picture sink is not:
+   *
+   *  - never the picture: a Window Out whose id sorts before `out` must not take the viewer
+   *    or the export over, which is what "first matching sink by id" would do;
+   *  - active only while shown: §V25's "a declared sink is never pruned" is about the
+   *    picture. A display sink joins the active set only when the caller names it (its
+   *    window is open), so a Window Out nobody is looking at costs nothing.
+   */
+  sinkRole?: "picture" | "display";
   /** Preview this input's producer without allocating a render target for the node. */
   previewInput?: PortId;
   /**

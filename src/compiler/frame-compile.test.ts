@@ -5,6 +5,7 @@ import { loadProject } from "../domain/project/index.ts";
 import { hasAnimatedParameters, nodeHasAnimatedParameters, graphChannelResolver } from "../domain/channels/graph-channels.ts";
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import type { GraphDocument, GraphNode, ProjectSettings } from "../domain/types/graph.ts";
+import type { NodeId } from "../domain/types/ids.ts";
 import type { FrameEvaluationInput } from "../domain/types/frame.ts";
 import type { NodeDefinition, NodeCompileContext } from "../domain/types/node-definition.ts";
 import type { ParameterDefinition, ParameterSlot, ParameterValue } from "../domain/types/parameters.ts";
@@ -17,6 +18,7 @@ import { TIER_B_CAPABILITIES } from "../examples/runner.ts";
 import { compileGraph, compileGraphRetaining } from "./compile.ts";
 import { flattenComponents } from "./flatten.ts";
 import { animatedRootKeys, prepareFrameCompiler, structuralParameterKeys } from "./frame-compile.ts";
+import { isDisplaySink } from "./prune.ts";
 import { asCompilerContext } from "./types.ts";
 import type { CompileRequest } from "./types.ts";
 
@@ -297,7 +299,9 @@ describe("T1183: the structural parameter set is derived from the definitions", 
         if (parameter.compileTime !== true) continue;
         const retained = (parameter as { default?: ParameterValue }).default ?? 0;
         const graph = withParameter(base, "subject", key, expressionSlot("1", retained));
-        const prepared = prepareFrameCompiler(requestFor(graph));
+        // §T1391b: a display sink renders only while a caller names it (its window open).
+        const shown = isDisplaySink(definition) ? { sinks: [{ nodeId: "subject" as NodeId, kind: "output" as const }] } : {};
+        const prepared = prepareFrameCompiler(requestFor(graph, shown));
         expect(prepared.uniformOnly, `${definition.type}.${key}`).toBe(false);
         expect(prepared.reason, `${definition.type}.${key}`).toContain(`Node "subject" (${definition.type}) animates "${key}"`);
         expect(prepared.compileFrame({ frame: frameAt(1) })).toBeNull();

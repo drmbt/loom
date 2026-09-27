@@ -48,11 +48,25 @@ export function isDeclaredSink(definition: NodeDefinition): boolean {
  * states in `node-definition.ts`, applied to the other half of "what is a sink for".
  */
 export function presentsPicture(definition: NodeDefinition): boolean {
+  return ownsSinkTarget(definition) && definition.sinkRole !== "display";
+}
+
+/**
+ * A declared sink that DRAWS into a synthesized `$target` — the picture, or a display sink
+ * (§T1391b) that renders for a surface of its own. `presentsPicture` is this minus the
+ * display sinks: both get a target, only one of them is the image.
+ */
+export function ownsSinkTarget(definition: NodeDefinition): boolean {
   return (
     isDeclaredSink(definition) &&
     definition.measuredChannel !== true &&
     definition.sideEffect !== "emits"
   );
+}
+
+/** §T1391b: a sink that is active only while a caller names it — see `sinkRole`. */
+export function isDisplaySink(definition: NodeDefinition): boolean {
+  return isDeclaredSink(definition) && definition.sinkRole === "display";
 }
 
 export interface SinkResolution {
@@ -126,7 +140,9 @@ export function resolveSinks(
   for (const nodeId of [...nodes.keys()].sort()) {
     const resolved = nodes.get(nodeId);
     if (resolved === undefined) continue;
-    if (isDeclaredSink(resolved.definition)) add({ nodeId, kind: "output" });
+    // §T1391b: a DISPLAY sink is not a manifest sink — it is active only while its window
+    // is open, which only the caller knows, so it arrives through the explicit list.
+    if (isDeclaredSink(resolved.definition) && !isDisplaySink(resolved.definition)) add({ nodeId, kind: "output" });
     if (!callerProvided && resolved.node.ui?.previewPinned === true) add({ nodeId, kind: "preview" });
   }
 

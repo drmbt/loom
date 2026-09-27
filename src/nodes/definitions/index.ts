@@ -25,11 +25,13 @@ import { mediaNodeDefinitions } from "./media.ts";
 import { syphonInNode } from "./syphon-in.ts";
 import { ndiInNode } from "./ndi-in.ts";
 import { syphonOutNode } from "./syphon-out.ts";
+import { windowOutNode } from "./window-out.ts";
 import { ndiOutNode } from "./ndi-out.ts";
 import { spoutInNode, spoutOutNode } from "./spout.ts";
 export { spoutInNode, spoutOutNode, SPOUT_IN_TYPE, SPOUT_OUT_TYPE } from "./spout.ts";
 export { ndiOutNode, NDI_OUT_TYPE } from "./ndi-out.ts";
 export { syphonOutNode, SYPHON_OUT_TYPE } from "./syphon-out.ts";
+export { windowOutNode, WINDOW_OUT_TYPE } from "./window-out.ts";
 export { syphonInNode, SYPHON_IN_TYPE } from "./syphon-in.ts";
 export { ndiInNode, NDI_IN_TYPE } from "./ndi-in.ts";
 import { valueGraphNodeDefinitions } from "./value-graph-nodes.ts";
@@ -258,6 +260,7 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   syphonInNode,
   ndiInNode,
   syphonOutNode,
+  windowOutNode,
   ndiOutNode,
   spoutInNode,
   spoutOutNode,

@@ -57,6 +57,14 @@ export interface PresentationOptions {
   readonly label?: string;
   /** Present a vec4f model-input buffer as opaque packed RGBA8 data, not a viewer. */
   readonly modelInputSize?: readonly [number, number];
+  /**
+   * §T1391b — how the surface's backing store is sized. `"layout"` (the default): its CSS
+   * box × its window's device pixel ratio, refitted per frame, the blit scaling the source
+   * into it — a viewer pane. `"source"`: exactly the presented target's size, whatever the
+   * box — a perform window showing a Window Out's Width × Height 1:1, the browser scaling
+   * the bitmap into the window.
+   */
+  readonly sizing?: "layout" | "source";
 }
 
 /**

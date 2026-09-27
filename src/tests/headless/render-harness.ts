@@ -72,6 +72,11 @@ export interface HeadlessRenderRequest {
    * is how a test can stand where the editor stands and assert what the editor gets.
    */
   readonly sinks?: ReadonlyArray<{ readonly nodeId: string; readonly portId: string }>;
+  /**
+   * §T1391b: DISPLAY sinks to treat as shown — a Window Out renders only while the app
+   * names it (its window is open), so a render of one has to stand where the app stands.
+   */
+  readonly displaySinks?: ReadonlyArray<string>;
   readonly fps?: number;
   /**
    * §V47's control knob. Supplying a canvas must not change a single byte — the backend
@@ -725,9 +730,14 @@ export async function renderHeadless(request: HeadlessRenderRequest): Promise<He
       ...(flattened === undefined ? {} : { flattened }),
       // §T1311b(a): the editor's preview sinks, when a test is standing where the editor
       // stands. Absent is the export/thumbnail/claims state, and it stays the default.
-      ...(request.sinks === undefined
+      ...(request.sinks === undefined && request.displaySinks === undefined
         ? {}
-        : { sinks: request.sinks.map((sink) => ({ ...sink, kind: "preview" as const })) }),
+        : {
+            sinks: [
+              ...(request.sinks ?? []).map((sink) => ({ ...sink, kind: "preview" as const })),
+              ...(request.displaySinks ?? []).map((nodeId) => ({ nodeId, kind: "output" as const })),
+            ],
+          }),
     });
     const errors = plan.diagnostics.filter((d) => d.severity === "error");
     if (errors.length > 0) {

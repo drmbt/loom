@@ -802,6 +802,43 @@ describe("vgpu backend — presentation seam (T87, §V64/§V70)", () => {
     expect(second.presentedFrames()).toBeGreaterThan(0);
   });
 
+  /**
+   * §T1391b — a perform window shows its Window Out's target 1:1. The CSS box is whatever
+   * the OS window is; the backing store must be the target's W × H, and must follow a
+   * recompile that resizes the target. The layout-sized case beside it is the control: the
+   * same canvas, sized by its box, is a different number.
+   */
+  it("sizes a source-sized surface to its target, not its box, and follows a recompile", async () => {
+    const { backend, host } = await harness();
+    const small = await backend.compile(fixturePlan({ size: [640, 360] }));
+    const sourced = { ...stubCanvas(host).canvas, clientWidth: 800, clientHeight: 600 };
+    const boxed = { ...stubCanvas(host).canvas, clientWidth: 800, clientHeight: 600 };
+    backend.present(sourced, { outputId: "output", sizing: "source" });
+    backend.present(boxed, { outputId: "output" });
+    backend.render(small, frameInputs(0));
+    expect({ width: sourced.width, height: sourced.height }).toEqual({ width: 640, height: 360 });
+    expect({ width: boxed.width, height: boxed.height }).toEqual({ width: 800, height: 600 });
+
+    const large = await backend.compile(fixturePlan({ size: [1280, 720] }));
+    backend.render(large, frameInputs(1));
+    expect({ width: sourced.width, height: sourced.height }).toEqual({ width: 1280, height: 720 });
+  });
+
+  it("sizes a layout surface by the density of the window the canvas lives in (§T1391b)", async () => {
+    const { backend, host } = await harness();
+    const plan = await backend.compile(fixturePlan());
+    // A canvas in a second window on a 2× screen, while this realm reports no ratio (1).
+    const elsewhere = {
+      ...stubCanvas(host).canvas,
+      clientWidth: 800,
+      clientHeight: 600,
+      ownerDocument: { defaultView: { devicePixelRatio: 2 } },
+    };
+    backend.present(elsewhere, { outputId: "output" });
+    backend.render(plan, frameInputs(0));
+    expect({ width: elsewhere.width, height: elsewhere.height }).toEqual({ width: 1600, height: 1200 });
+  });
+
   it("a surface attached before any compile lights up after one", async () => {
     const { backend, host, diagnostics } = await harness();
     const { canvas, presentedFrames } = stubCanvas(host);

@@ -4,6 +4,7 @@ import { renderHeadless } from "../../../tests/headless/render-harness.ts";
 import { nodeGpuHost, probeDawn } from "./node-gpu-host.ts";
 import { allNodeDefinitions, coreNodeDefinitions } from "../../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../../nodes/registry/registry.ts";
+import { isDisplaySink } from "../../../compiler/index.ts";
 import { minimalGraphFor, outsidePlanByConstruction } from "../../../nodes/definitions/test-support.ts";
 import type { GraphDocument } from "../../../domain/types/graph.ts";
 
@@ -62,6 +63,8 @@ describe("every catalogue type compiles and steps on Dawn (T751, §B146)", () =>
       const result = await renderHeadless({
         host: nodeGpuHost(),
         graph: minimalGraphFor(definition, registry) as unknown as GraphDocument,
+        // §T1391b: a DISPLAY sink renders only while shown — stand where the app stands.
+        ...(isDisplaySink(definition) ? { displaySinks: ["subject"] } : {}),
         frames: 2,
         capture: pixelless ? [] : [1],
         /* T1029 follow-up: a port-less NON-PICTURE sink (analyze writes a buffer,
