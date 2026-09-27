@@ -491,8 +491,8 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   }
   const scene = last;
   const opticsGain: Record<Base, { streak: number; halo: number }> = {
-    tableau: { streak: 1.3, halo: 0 },
-    wheel: { streak: 0.9, halo: 0 },
+    tableau: { streak: 0.8, halo: 0 },
+    wheel: { streak: 0.55, halo: 0 },
     title: { streak: 0.35, halo: 0.15 },
     quad: { streak: 0.25, halo: 0 },
     cyc: { streak: 0.1, halo: 0 },
@@ -504,6 +504,10 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   // A "scale" resolution is relative to the node's own INPUT, so each chained pass states its
   // factor against the pass before it: the bloom halves on the way down and doubles back up.
   nodes.push(node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: plan.whiteRoom ? 3 : 1.4, knee: 0.8 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }));
+  // The streaks' OWN source, far above the bloom's: only clipped lamps streak in the reference —
+  // never chrome glints, lit paint or a sodium pool (the owner: "over the top… sensitivity").
+  nodes.push(node("streakSrc", "customWgsl", [-1300, 200], { source: BRIGHT_PASS_WGSL, threshold: plan.whiteRoom ? 6 : 4.5, knee: 1.2 }, { label: "streaksrc1", resolution: { mode: "scale", factor: 0.5 } }));
+  edges.push(edge("scene-streaksrc", scene, ["streakSrc", "input"]));
   edges.push(edge("scene-bright", scene, ["bright", "input"]));
   // The streak glass copies each bright SHAPE straight up: a flat-sided slab exactly the width
   // of the lamp that holds its brightness and ends softly at the reach — three chained box
@@ -520,8 +524,8 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   const STREAK_DIV = [400, 60, 20] as const;
   STREAKS.forEach((step, index) => {
     const id = `streak${index}`;
-    nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step: expressionSlot(`${reachExpr} / ${STREAK_DIV[index]}`, step), decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 ? 0.003 : 0, compress: index === 0 ? 4 : 0, down: 0, gain: 2.2, striation: 0.22, striationScale: 110 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } }));
-    edges.push(edge(`into-${id}`, [index === 0 ? "bright" : `streak${index - 1}`, "out"], [id, "input"]));
+    nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step: expressionSlot(`${reachExpr} / ${STREAK_DIV[index]}`, step), decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 ? 0.003 : 0, compress: index === 0 ? 3 : 0, down: 0, gain: 1.8, striation: 0.22, striationScale: 110 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } }));
+    edges.push(edge(`into-${id}`, [index === 0 ? "streakSrc" : `streak${index - 1}`, "out"], [id, "input"]));
   });
   nodes.push(node("hot", "customWgsl", [-1300, 500], { source: BRIGHT_PASS_WGSL, threshold: 150, knee: 30 }, { label: "hot1", resolution: { mode: "scale", factor: 0.25 } }));
   edges.push(edge("scene-hot", scene, ["hot", "input"]));

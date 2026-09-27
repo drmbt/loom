@@ -299,7 +299,7 @@
       "into-streak0": {
         "id": "into-streak0",
         "source": {
-          "nodeId": "bright",
+          "nodeId": "streakSrc",
           "portId": "out"
         },
         "target": {
@@ -664,6 +664,17 @@
         },
         "target": {
           "nodeId": "hot",
+          "portId": "input"
+        }
+      },
+      "scene-streaksrc": {
+        "id": "scene-streaksrc",
+        "source": {
+          "nodeId": "lens_dof",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "streakSrc",
           "portId": "input"
         }
       },
@@ -2288,7 +2299,7 @@
           "bloom": 0.12,
           "halo": 0,
           "source": "struct Params {\n  streak: f32, // @default 1  Streak columns.\n  halo: f32, // @default 1  Halo rings.\n  bloom: f32, // @default 0.25  Bloom glow.\n  streakTint: vec3f, // @default 1  Colour of the streaks (the glass is faintly cold).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n@group(0) @binding(5) var inputTexture2: texture_2d<f32>;\n@group(0) @binding(6) var inputTexture3: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let base = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let s = textureSampleLevel(inputTexture1, inputSampler, uv, 0.0).rgb;\n  let h = textureSampleLevel(inputTexture2, inputSampler, uv, 0.0).rgb;\n  let b = textureSampleLevel(inputTexture3, inputSampler, uv, 0.0).rgb;\n  return vec4f(base.rgb + s * params.streak * params.streakTint + h * params.halo + b * params.bloom, base.a);\n}",
-          "streak": 1.3,
+          "streak": 0.8,
           "streakTint": [
             0.9,
             0.97,
@@ -2886,11 +2897,11 @@
         "id": "streak0",
         "label": "streak01",
         "parameters": {
-          "compress": 4,
+          "compress": 3,
           "decay": 50,
           "down": 0,
           "finish": 0,
-          "gain": 2.2,
+          "gain": 1.8,
           "source": "struct Params {\n  step: f32, // @default 0.004  Distance between taps, as a fraction of the frame height (chained passes: each step under the previous pass's span).\n  decay: f32, // @default 50  1/e reach of this pass's weights, as a fraction of its span (large = a flat box).\n  finish: f32, // @default 0  1 on the last pass: striations and the downward tail.\n  down: f32, // @default 0.12  Downward tail reach, fraction of the frame height (last pass).\n  striation: f32, // @default 0.55  Depth of the glass's vertical striations (last pass).\n  striationScale: f32, // @default 140  Striations across the frame width.\n  gain: f32, // @default 1  Column brightness (last pass).\n  spread: f32, // @default 0  Horizontal widening, fraction of the frame width (first pass).\n  compress: f32, // @default 0  First pass: roll each source off toward this radiance (0 off), so a clipped lamp smears a milky slab, not a white bar.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n\nconst TAPS: i32 = 16;\n\nfn stripe(x: f32) -> f32 {\n  // Two incommensurate sine families, sharpened: uneven, glassy grooves.\n  let a = 0.5 + 0.5 * sin(x * 6.2831853 + sin(x * 0.37) * 3.0);\n  let b = 0.5 + 0.5 * sin(x * 2.618 * 6.2831853 + 1.3);\n  return pow(a * 0.6 + b * 0.4, 1.6);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let size = vec2f(textureDimensions(inputTexture));\n  var sum = vec3f(0.0);\n  var norm = 0.0;\n  for (var k = 0; k < TAPS; k = k + 1) {\n    let w = exp(-f32(k) / (f32(TAPS) * params.decay));\n    // Upward column: gather from BELOW (texture y grows downward).\n    let at = uv + vec2f(0.0, f32(k) * params.step);\n    if (at.y > 1.0) { break; }\n    var c = textureSampleLevel(inputTexture, inputSampler, at, 0.0).rgb;\n    if (params.compress > 0.0) {\n      c = c / (1.0 + max(c.r, max(c.g, c.b)) / params.compress);\n    }\n    if (params.spread > 0.0) {\n      for (var j = 1; j <= 3; j = j + 1) {\n        let o = vec2f(f32(j) / 3.0 * params.spread, 0.0);\n        var l = textureSampleLevel(inputTexture, inputSampler, at + o, 0.0).rgb;\n        var r = textureSampleLevel(inputTexture, inputSampler, at - o, 0.0).rgb;\n        if (params.compress > 0.0) {\n          l = l / (1.0 + max(l.r, max(l.g, l.b)) / params.compress);\n          r = r / (1.0 + max(r.r, max(r.g, r.b)) / params.compress);\n        }\n        c = c + (l + r) * (1.0 - f32(j) / 4.0);\n      }\n      c = c / 3.5;\n    }\n    sum = sum + c * w;\n    norm = norm + w;\n  }\n  var color = sum / norm;\n  if (params.finish > 0.5) {\n    var tail = vec3f(0.0);\n    for (var k = 1; k <= 8; k = k + 1) {\n      let d = f32(k) / 8.0 * params.down;\n      if (uv.y - d < 0.0) { break; }\n      tail = tail + textureSampleLevel(inputTexture, inputSampler, uv - vec2f(0.0, d), 0.0).rgb * exp(-f32(k) / 3.0);\n    }\n    color = color + tail * 0.12 * step(0.0001, params.down);\n    color = color * mix(1.0, stripe(uv.x * params.striationScale), params.striation) * params.gain;\n  }\n  return vec4f(color, 1.0);\n}",
           "spread": 0.003,
           "step": {
@@ -2928,7 +2939,7 @@
           "decay": 50,
           "down": 0,
           "finish": 0,
-          "gain": 2.2,
+          "gain": 1.8,
           "source": "struct Params {\n  step: f32, // @default 0.004  Distance between taps, as a fraction of the frame height (chained passes: each step under the previous pass's span).\n  decay: f32, // @default 50  1/e reach of this pass's weights, as a fraction of its span (large = a flat box).\n  finish: f32, // @default 0  1 on the last pass: striations and the downward tail.\n  down: f32, // @default 0.12  Downward tail reach, fraction of the frame height (last pass).\n  striation: f32, // @default 0.55  Depth of the glass's vertical striations (last pass).\n  striationScale: f32, // @default 140  Striations across the frame width.\n  gain: f32, // @default 1  Column brightness (last pass).\n  spread: f32, // @default 0  Horizontal widening, fraction of the frame width (first pass).\n  compress: f32, // @default 0  First pass: roll each source off toward this radiance (0 off), so a clipped lamp smears a milky slab, not a white bar.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n\nconst TAPS: i32 = 16;\n\nfn stripe(x: f32) -> f32 {\n  // Two incommensurate sine families, sharpened: uneven, glassy grooves.\n  let a = 0.5 + 0.5 * sin(x * 6.2831853 + sin(x * 0.37) * 3.0);\n  let b = 0.5 + 0.5 * sin(x * 2.618 * 6.2831853 + 1.3);\n  return pow(a * 0.6 + b * 0.4, 1.6);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let size = vec2f(textureDimensions(inputTexture));\n  var sum = vec3f(0.0);\n  var norm = 0.0;\n  for (var k = 0; k < TAPS; k = k + 1) {\n    let w = exp(-f32(k) / (f32(TAPS) * params.decay));\n    // Upward column: gather from BELOW (texture y grows downward).\n    let at = uv + vec2f(0.0, f32(k) * params.step);\n    if (at.y > 1.0) { break; }\n    var c = textureSampleLevel(inputTexture, inputSampler, at, 0.0).rgb;\n    if (params.compress > 0.0) {\n      c = c / (1.0 + max(c.r, max(c.g, c.b)) / params.compress);\n    }\n    if (params.spread > 0.0) {\n      for (var j = 1; j <= 3; j = j + 1) {\n        let o = vec2f(f32(j) / 3.0 * params.spread, 0.0);\n        var l = textureSampleLevel(inputTexture, inputSampler, at + o, 0.0).rgb;\n        var r = textureSampleLevel(inputTexture, inputSampler, at - o, 0.0).rgb;\n        if (params.compress > 0.0) {\n          l = l / (1.0 + max(l.r, max(l.g, l.b)) / params.compress);\n          r = r / (1.0 + max(r.r, max(r.g, r.b)) / params.compress);\n        }\n        c = c + (l + r) * (1.0 - f32(j) / 4.0);\n      }\n      c = c / 3.5;\n    }\n    sum = sum + c * w;\n    norm = norm + w;\n  }\n  var color = sum / norm;\n  if (params.finish > 0.5) {\n    var tail = vec3f(0.0);\n    for (var k = 1; k <= 8; k = k + 1) {\n      let d = f32(k) / 8.0 * params.down;\n      if (uv.y - d < 0.0) { break; }\n      tail = tail + textureSampleLevel(inputTexture, inputSampler, uv - vec2f(0.0, d), 0.0).rgb * exp(-f32(k) / 3.0);\n    }\n    color = color + tail * 0.12 * step(0.0001, params.down);\n    color = color * mix(1.0, stripe(uv.x * params.striationScale), params.striation) * params.gain;\n  }\n  return vec4f(color, 1.0);\n}",
           "spread": 0,
           "step": {
@@ -2966,7 +2977,7 @@
           "decay": 1.6,
           "down": 0,
           "finish": 1,
-          "gain": 2.2,
+          "gain": 1.8,
           "source": "struct Params {\n  step: f32, // @default 0.004  Distance between taps, as a fraction of the frame height (chained passes: each step under the previous pass's span).\n  decay: f32, // @default 50  1/e reach of this pass's weights, as a fraction of its span (large = a flat box).\n  finish: f32, // @default 0  1 on the last pass: striations and the downward tail.\n  down: f32, // @default 0.12  Downward tail reach, fraction of the frame height (last pass).\n  striation: f32, // @default 0.55  Depth of the glass's vertical striations (last pass).\n  striationScale: f32, // @default 140  Striations across the frame width.\n  gain: f32, // @default 1  Column brightness (last pass).\n  spread: f32, // @default 0  Horizontal widening, fraction of the frame width (first pass).\n  compress: f32, // @default 0  First pass: roll each source off toward this radiance (0 off), so a clipped lamp smears a milky slab, not a white bar.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n\nconst TAPS: i32 = 16;\n\nfn stripe(x: f32) -> f32 {\n  // Two incommensurate sine families, sharpened: uneven, glassy grooves.\n  let a = 0.5 + 0.5 * sin(x * 6.2831853 + sin(x * 0.37) * 3.0);\n  let b = 0.5 + 0.5 * sin(x * 2.618 * 6.2831853 + 1.3);\n  return pow(a * 0.6 + b * 0.4, 1.6);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let size = vec2f(textureDimensions(inputTexture));\n  var sum = vec3f(0.0);\n  var norm = 0.0;\n  for (var k = 0; k < TAPS; k = k + 1) {\n    let w = exp(-f32(k) / (f32(TAPS) * params.decay));\n    // Upward column: gather from BELOW (texture y grows downward).\n    let at = uv + vec2f(0.0, f32(k) * params.step);\n    if (at.y > 1.0) { break; }\n    var c = textureSampleLevel(inputTexture, inputSampler, at, 0.0).rgb;\n    if (params.compress > 0.0) {\n      c = c / (1.0 + max(c.r, max(c.g, c.b)) / params.compress);\n    }\n    if (params.spread > 0.0) {\n      for (var j = 1; j <= 3; j = j + 1) {\n        let o = vec2f(f32(j) / 3.0 * params.spread, 0.0);\n        var l = textureSampleLevel(inputTexture, inputSampler, at + o, 0.0).rgb;\n        var r = textureSampleLevel(inputTexture, inputSampler, at - o, 0.0).rgb;\n        if (params.compress > 0.0) {\n          l = l / (1.0 + max(l.r, max(l.g, l.b)) / params.compress);\n          r = r / (1.0 + max(r.r, max(r.g, r.b)) / params.compress);\n        }\n        c = c + (l + r) * (1.0 - f32(j) / 4.0);\n      }\n      c = c / 3.5;\n    }\n    sum = sum + c * w;\n    norm = norm + w;\n  }\n  var color = sum / norm;\n  if (params.finish > 0.5) {\n    var tail = vec3f(0.0);\n    for (var k = 1; k <= 8; k = k + 1) {\n      let d = f32(k) / 8.0 * params.down;\n      if (uv.y - d < 0.0) { break; }\n      tail = tail + textureSampleLevel(inputTexture, inputSampler, uv - vec2f(0.0, d), 0.0).rgb * exp(-f32(k) / 3.0);\n    }\n    color = color + tail * 0.12 * step(0.0001, params.down);\n    color = color * mix(1.0, stripe(uv.x * params.striationScale), params.striation) * params.gain;\n  }\n  return vec4f(color, 1.0);\n}",
           "spread": 0,
           "step": {
@@ -2991,6 +3002,25 @@
         },
         "resolution": {
           "factor": 1,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "streakSrc": {
+        "definitionVersion": 1,
+        "id": "streakSrc",
+        "label": "streaksrc1",
+        "parameters": {
+          "knee": 1.2,
+          "source": "struct Params {\n  threshold: f32, // @default 1.2  Linear radiance where bloom starts.\n  knee: f32, // @default 0.8  Softness of the threshold.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n  let brightness = max(color.r, max(color.g, color.b));\n  let soft = clamp(brightness - params.threshold + params.knee, 0.0, 2.0 * params.knee);\n  let weight = max(soft * soft / (4.0 * params.knee + 1e-4), brightness - params.threshold) / max(brightness, 1e-4);\n  return vec4f(color * weight, 1.0);\n}",
+          "threshold": 4.5
+        },
+        "position": {
+          "x": -1300,
+          "y": 200
+        },
+        "resolution": {
+          "factor": 0.5,
           "mode": "scale"
         },
         "type": "customWgsl"
