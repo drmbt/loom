@@ -2,7 +2,8 @@
 
 `src/projects/on-nothing/edl.json` holds every shot of the reference (the 110 rows of
 docs/on-nothing-shotlist-2026-09-27.md) with the loom shot that plays it (`shot`, `take`, and
-`from`, the shot time it starts at). A row with no shot yet plays black, labelled NOT BUILT, so
+`from`, the shot time it starts at). A row or part may carry "post", an ffmpeg filter applied to its clip (a flash frame is
+`curves=all='0/0.55 1/1'`: the reference's strobe flashes lift the blacks and blow the frame out). A row with no shot yet plays black, labelled NOT BUILT, so
 the cut always runs the reference's full length and every row sits on the reference's own frames.
 
     python3 tools/on-nothing/cut.py render [--rows 1-20,35] [--shots quad] [--final] [--force] [--glb f] [--width 960]
@@ -144,7 +145,7 @@ def assemble(args):
         # our half, normalised to the reference's size and rate, exactly n frames (black when not built)
         src = ["-i", clip] if have else ["-f", "lavfi", "-i", f"color=c=black:s={W}x{H}:r={rate}"]
         subprocess.run(["ffmpeg", "-v", "error", "-y", *src, "-vf",
-                        f"scale={W}:{H},setsar=1,setpts=N/({rate})/TB,fps={rate}", "-frames:v", str(n),
+                        f"scale={W}:{H},setsar=1,setpts=N/({rate})/TB,fps={rate}" + (f",{r['post']}" if have and r.get("post") else ""), "-frames:v", str(n),
                         "-r", rate, "-an", "-c:v", "h264_videotoolbox", "-b:v", "24M", "-pix_fmt", "yuv420p", ours], check=True)
         graph = (f"[0:v]trim=start_frame={r['f0']}:end_frame={r['f1']},setpts=PTS-STARTPTS,scale={HALF_W}:{HALF_H},setsar=1[ref];"
                  f"[1:v]scale={HALF_W}:{HALF_H},setsar=1[our];[ref][2:v]overlay=0:0[t];[our][3:v]overlay=0:0[b];[t][b]vstack=inputs=2[v]")
