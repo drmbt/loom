@@ -1703,6 +1703,7 @@ export const STARTER_COMPONENT_SPECS: readonly StarterComponentSpec[] = [
         definition: {
           type: "string",
           label: "Levels",
+          channelsFrom: "audio",
           default: AUDIO_ANALYSIS_LEVELS,
           description:
             "Which channels the levels lane carries, as Select patterns (space-separated; * any run, ^ removes). The default is the handful the examples read; add a spectrum row (band109), all of them (band*), or the tempo claim (bpm beatPhase) here.",
@@ -1714,6 +1715,7 @@ export const STARTER_COMPONENT_SPECS: readonly StarterComponentSpec[] = [
         definition: {
           type: "string",
           label: "Hits",
+          channelsFrom: "audio",
           default: AUDIO_ANALYSIS_HITS,
           description: "Which channels the hits lane carries, as Select patterns. Counts and the detector envelopes belong here — a count through levels rests at its mid-rank, not at 0.",
         },

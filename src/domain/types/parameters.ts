@@ -146,6 +146,14 @@ export interface StringParameter extends ParameterBase {
   type: "string";
   default: string;
   multiline?: boolean;
+  /**
+   * §T1390b — the value is a list of Select patterns over the channels arriving on THIS
+   * value input (a port id of the same node), and the inspector offers those channels as
+   * a picker. Declared, never inferred (§V437): a string that happens to hold `*` is not
+   * thereby a channel list. The stored value stays the plain pattern text, so a document
+   * written before the picker existed reads identically.
+   */
+  channelsFrom?: string;
 }
 
 /**

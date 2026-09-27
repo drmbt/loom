@@ -82,6 +82,9 @@ export const parameterDefinitionSchema = z.discriminatedUnion("type", [
     type: z.literal("string"),
     default: z.string(),
     multiline: z.boolean().optional(),
+    // §T1390b — an arm key the parse would otherwise strip (§B111's shape), leaving a
+    // loaded component's published channel list a plain text box.
+    channelsFrom: z.string().optional(),
   }),
   // T856 follow-up. The arm was MISSING, and unlike §B111's stripped `range` this one
   // was not a lost key but a lost COMPONENT: a discriminated union with no arm for

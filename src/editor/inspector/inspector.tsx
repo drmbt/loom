@@ -24,6 +24,7 @@ import { CommonReadout, CommonSection } from "./common-section.tsx";
 import { ConnectionsSection } from "./connections-section.tsx";
 import { connectionModel } from "./connections.ts";
 import { parameterSources, referenceParameters } from "./reference-parameters.ts";
+import { channelPickAvailable } from "./channel-pick-parameters.ts";
 import { AudioSection, audioSectionParameters } from "./audio-section.tsx";
 import { SyncOffsetSuggestion } from "./sync-offset-suggestion.tsx";
 import { WebcamSection, webcamSectionParameters } from "./webcam-section.tsx";
@@ -647,6 +648,11 @@ export function Inspector({
    */
   const referenceRows = referenceParameters(graph, bus.registry, node);
   /*
+   * §T1390b — the channels each channel-list row may pick from, rebuilt per render for
+   * the reason above: what arrives changes while the panel is open.
+   */
+  const channelPickRows = channelPickAvailable(graph, node, resolved.entries, channelNames);
+  /*
    * T1336b — WHO each row's bindings read, so an expression names its source at rest.
    *
    * The same walk the canvas draws its dashed lines from (`dependenciesFrom`, §V154), so
@@ -922,6 +928,7 @@ export function Inspector({
                  * field it has always had.
                  */
                 reference={referenceRows.get(entry.key)}
+                channelsAvailable={channelPickRows.get(entry.key)}
                 /*
                  * T1336b: the nodes this row reads, named under the field in the hue of
                  * the line they cause. Absent on every row bound to nothing.

@@ -162,3 +162,29 @@ describe("instance state round trip (§V79, §V84)", () => {
     expect(componentInstanceStateSchema.parse(state)).toEqual(state);
   });
 });
+
+/**
+ * §T1390b — a published channel list keeps `channelsFrom` through save and load. The key
+ * is optional on the `string` arm, so a schema without it would STRIP it (§B111's shape)
+ * and a loaded AudioAnalysis would show its Levels as a plain text box again.
+ */
+describe("a published channel-list parameter (§T1390b)", () => {
+  it("survives the round trip with the input it picks from", () => {
+    const withPicker: GraphComponentDefinition = bloomComponent("picker", 1, [
+      {
+        key: "levels",
+        definition: { type: "string", label: "Levels", default: "level low", channelsFrom: "audio" },
+        targets: [{ nodeId: "blurA", key: "channels" }],
+      },
+    ]);
+    const parsed = parseComponentDefinition(JSON.parse(JSON.stringify(withPicker)) as unknown);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) throw new Error(parsed.issues.join("; "));
+    expect(parsed.definition.parameters[0]?.definition).toEqual({
+      type: "string",
+      label: "Levels",
+      default: "level low",
+      channelsFrom: "audio",
+    });
+  });
+});

@@ -1209,6 +1209,7 @@ export const valueSelectNode: NodeDefinition = {
       label: "Channels",
       default: "*",
       description: "Channel-name patterns, space-separated. * any run, ? one character, [a-z] a set, [1-4] a number range, ^ removes. The output follows this order.",
+      channelsFrom: "in",
     },
   },
   valueEvaluate: ({ inputs, values }) => {

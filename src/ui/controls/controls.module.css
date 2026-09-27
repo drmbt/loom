@@ -1445,3 +1445,23 @@
 .referenceRemove:disabled {
   color: var(--text-disabled);
 }
+
+/* §T1390b — a Select PATTERN (`band*`, `^hat`) reads as a rule, not as one channel's name. */
+.channelPattern {
+  font-style: italic;
+}
+
+.channelPickToggle {
+  flex: 0 0 auto;
+  padding: 0 var(--space-2);
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: var(--fs-meta);
+}
+
+.channelPickToggle:hover:not(:disabled) {
+  color: var(--text);
+}

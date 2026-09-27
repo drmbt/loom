@@ -235,6 +235,7 @@
         "parameters": [
           {
             "definition": {
+              "channelsFrom": "audio",
               "default": "level low lowMid highMid high centroid",
               "description": "Which channels the levels lane carries, as Select patterns (space-separated; * any run, ^ removes). The default is the handful the examples read; add a spectrum row (band109), all of them (band*), or the tempo claim (bpm beatPhase) here.",
               "label": "Levels",
@@ -250,6 +251,7 @@
           },
           {
             "definition": {
+              "channelsFrom": "audio",
               "default": "onsetCount kickCount snareCount hatCount beatCount kick snare hat",
               "description": "Which channels the hits lane carries, as Select patterns. Counts and the detector envelopes belong here — a count through levels rests at its mid-rank, not at 0.",
               "label": "Hits",

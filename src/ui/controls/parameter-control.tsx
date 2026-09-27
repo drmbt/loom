@@ -33,6 +33,7 @@ import { NumberField } from "./number-field.tsx";
 import { PulseField } from "./pulse-field.tsx";
 import type { ParameterSourceView } from "./parameter-sources.tsx";
 import { ReferenceField } from "./reference-field.tsx";
+import { ChannelPickField } from "./channel-pick-field.tsx";
 import type { ReferenceFieldProps } from "./reference-field.tsx";
 import { StopsField } from "./stops-field.tsx";
 import { ParameterModePanel } from "./parameter-mode.tsx";
@@ -138,6 +139,13 @@ export interface ParameterControlProps {
    */
   reference?: ReferenceParameter | undefined;
   /**
+   * §T1390b — the channels arriving on the input this string parameter declares in
+   * `channelsFrom`, for the picker to offer. Injected like `reference`: which channels
+   * arrive is a question about the running document, which this kit cannot reach. Absent,
+   * a `channelsFrom` parameter still gets the picker, with nothing to offer.
+   */
+  channelsAvailable?: readonly string[] | undefined;
+  /**
    * T1336b — the nodes THIS row's bindings read, for the row to name under the field.
    *
    * Injected exactly as `reference` and `codeField` are: the fact is real, and this kit
@@ -217,6 +225,7 @@ function ParameterControlImpl({
   onPulse,
   slot: storedSlot,
   reference,
+  channelsAvailable,
   sources,
   codeField,
   components,
@@ -622,6 +631,19 @@ function ParameterControlImpl({
             onChange={(next, phase) => emit(next, phase)}
           />,
           { hint: reference.noun },
+        );
+      }
+      if (definition.channelsFrom !== undefined) {
+        return row(
+          <ChannelPickField
+            {...shared}
+            id={controlId}
+            value={typeof shown === "string" ? shown : definition.default}
+            available={channelsAvailable ?? []}
+            readOnly={drivenBy !== null}
+            onChange={(next, phase) => emit(next, phase)}
+          />,
+          { stacked: true },
         );
       }
       return row(
