@@ -205,6 +205,25 @@ describe("§V16 — consumers are notified at most once per tick", () => {
     store.dispose();
   });
 
+  it("keeps the channel LIST identical across pushes until the set changes (B228)", () => {
+    /*
+     * The view is new per push — its numbers moved — but the list of names did not. A
+     * consumer that keys on `channels` (a memo, an effect dependency, a row per channel)
+     * re-rendered on every tick while it was copied per read; on E32 that was every wide
+     * node, ten times a second. It must still change when the set does, or a node that
+     * starts publishing a new channel would keep drawing the old rows.
+     */
+    const store = createValueHistoryStore({ frames: 4, now });
+    store.push("a", { low: 1, high: 2 });
+    const first = store.get("a").channels;
+    store.push("a", { low: 3, high: 4 });
+    expect(store.get("a").channels).toBe(first);
+    store.push("a", { low: 3, high: 4, kick: 1 });
+    expect(store.get("a").channels).not.toBe(first);
+    expect(store.get("a").channels).toEqual(["low", "high", "kick"]);
+    store.dispose();
+  });
+
   it("notifies only the nodes that changed", () => {
     const store = createValueHistoryStore({ frames: 4, now });
     let a = 0;

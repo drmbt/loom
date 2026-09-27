@@ -113,17 +113,6 @@ export function variadicHandleId(portId: PortId, slot: number): string {
 }
 
 /**
- * T1350b — the handle id for ONE CHANNEL of a value output: `out@band109`. The projection
- * stamps the same id on an edge that carries `channel`, so a wire dragged from the row
- * lands as a per-channel wire and draws back to the row it came from. `@` is not in any
- * port id and not in any channel name the value graph publishes (identifiers only).
- */
-const CHANNEL_SEPARATOR = "@";
-export function channelHandleId(portId: PortId, channel: string): string {
-  return `${portId}${CHANNEL_SEPARATOR}${channel}`;
-}
-
-/**
  * A React Flow handle id back into the port it belongs to, and the slot if it names one.
  *
  * Total, and deliberately so: every handle id in the app goes through here, including the
@@ -131,13 +120,7 @@ export function channelHandleId(portId: PortId, channel: string): string {
  * handle id and wants a port asks this rather than passing the raw string to
  * `registry.port`, which would answer `undefined` for `in2#1` and refuse a legal drop.
  */
-export function parseHandleId(handleId: string): { portId: PortId; slot: number | undefined; channel?: string } {
-  // T1350b: a per-channel socket — `out@band109`. Checked first: a channel name may hold
-  // digits after a `#`-free port id, and a slot never holds an `@`.
-  const at = handleId.indexOf(CHANNEL_SEPARATOR);
-  if (at > 0 && at < handleId.length - 1) {
-    return { portId: handleId.slice(0, at), slot: undefined, channel: handleId.slice(at + 1) };
-  }
+export function parseHandleId(handleId: string): { portId: PortId; slot: number | undefined } {
   const cut = handleId.lastIndexOf(SLOT_SEPARATOR);
   if (cut <= 0) return { portId: handleId, slot: undefined };
   const suffix = handleId.slice(cut + 1);

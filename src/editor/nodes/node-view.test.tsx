@@ -12,9 +12,6 @@ import { createTestRegistry } from "@nodes/registry/test-nodes.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import type { NodeRegistry } from "@nodes/registry/registry.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
-import { EMPTY_VALUE_HISTORY } from "./value-history.ts";
-import type { GraphCanvasContextValue } from "@editor/graph-canvas/canvas-context.ts";
-import type { NodeId } from "@domain/types/ids.ts";
 import {
   fixtureContext,
   installFlowStubs,
@@ -49,8 +46,6 @@ interface Options {
   diveIn?: (nodeId: string) => void;
   /** T603: catalogue view for instance marks. */
   components?: unknown;
-  /** T1350b: the channel names a value output grows sockets for. */
-  valueChannels?: GraphCanvasContextValue["valueChannels"];
 }
 
 /**
@@ -92,7 +87,6 @@ function mountNode(type: string, options: Options = {}) {
     ...(options.showProblems === undefined ? {} : { showProblems: options.showProblems }),
     ...(options.diveIn === undefined ? {} : { diveIn: options.diveIn }),
     ...(options.components === undefined ? {} : { components: options.components as never }),
-    ...(options.valueChannels === undefined ? {} : { valueChannels: options.valueChannels }),
   });
 
   const view = render(
@@ -896,54 +890,18 @@ describe("T954 — the graph header names the node BEFORE its type", () => {
 });
 
 /**
- * T1350b — a value output grows one socket per channel the node PUBLISHED, and a texture
- * output grows none. The names come from the value history the host hands the canvas
- * (the same ring the plot reads), so the sockets are what the node is actually saying —
- * not what its definition might say — and they follow the bag when it changes shape.
+ * §V1026 (B228) — a value output is ONE socket, however many channels the node publishes.
+ * §T1350b drew a socket per published channel; E32 carried 1124 of them and the editor's
+ * main thread sat at 100%. A channel is picked with a Select (§T1390b), not dragged from a
+ * socket of its own.
  */
-describe("T1350b — per-channel sockets on a value output", () => {
-  function channelSource(initial: readonly string[]) {
-    let channels = initial;
-    const listeners = new Set<() => void>();
-    const history = () => ({ ...EMPTY_VALUE_HISTORY, channels });
-    return {
-      source: {
-        get: () => history(),
-        subscribe: (_nodeId: NodeId, listener: () => void) => {
-          listeners.add(listener);
-          return () => listeners.delete(listener);
-        },
-      },
-      set(next: readonly string[]) {
-        channels = next;
-        for (const listener of listeners) listener();
-      },
-    };
-  }
-
-  it("draws one socket per published channel, addressed `out@<channel>`, after the port's own socket", () => {
-    const channels = channelSource(["x", "y", "buttons"]);
-    const view = mountNode("mouse", { graph: graphWith("mouse"), registry: createNodeRegistry(allNodeDefinitions).view(), valueChannels: channels.source });
-    const rightHandles = () => [...view.container.querySelectorAll('[data-handlepos="right"]')].map((handle) => handle.getAttribute("data-handleid"));
-    expect(rightHandles()).toEqual(["out", "out@x", "out@y", "out@buttons"]);
-    expect(view.getByLabelText("Output channel buttons of Out, value")).toBeTruthy();
-    // The rows follow the bag: a source that stops publishing a channel loses its socket.
-    act(() => channels.set(["x"]));
-    expect(rightHandles()).toEqual(["out", "out@x"]);
-  });
-
-  it("an audio SOURCE stays one plug however many channels it publishes (T1352b, channelSockets: false)", () => {
-    const channels = channelSource(["level", "low", "lowMid", "band109", "band968"]);
-    const view = mountNode("audioPattern", { graph: graphWith("audioPattern"), registry: createNodeRegistry(allNodeDefinitions).view(), valueChannels: channels.source });
-    expect([...view.container.querySelectorAll('[data-handlepos="right"]')].map((handle) => handle.getAttribute("data-handleid"))).toEqual(["out"]);
-  });
-
-  it("gives a texture output no channel sockets, and a value output none when no history is wired", () => {
-    const channels = channelSource(["r", "g", "b"]);
-    const texture = mountNode("test.solid", { graph: graphWith("test.solid"), valueChannels: channels.source });
-    expect([...texture.container.querySelectorAll('[data-handlepos="right"]')].map((handle) => handle.getAttribute("data-handleid"))).toEqual(["out"]);
-    cleanup();
-    const bare = mountNode("mouse", { graph: graphWith("mouse"), registry: createNodeRegistry(allNodeDefinitions).view() });
-    expect([...bare.container.querySelectorAll('[data-handlepos="right"]')].map((handle) => handle.getAttribute("data-handleid"))).toEqual(["out"]);
+describe("§V1026 — a value output is one socket", () => {
+  it("draws only the declared output for a value node and for an audio source", () => {
+    for (const type of ["mouse", "audioPattern"]) {
+      const view = mountNode(type, { graph: graphWith(type), registry: createNodeRegistry(allNodeDefinitions).view() });
+      expect([...view.container.querySelectorAll('[data-handlepos="right"]')].map((handle) => handle.getAttribute("data-handleid"))).toEqual(["out"]);
+      expect(view.container.querySelectorAll("[data-channel]")).toHaveLength(0);
+      cleanup();
+    }
   });
 });

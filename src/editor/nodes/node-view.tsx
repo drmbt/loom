@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, Fragment } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { RefObject } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
@@ -18,7 +18,7 @@ import type { CommandResult } from "@domain/types/commands.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { MIN_NODE_SIZE } from "@domain/types/graph.ts";
 import { previewablePort } from "@domain/graph/previewable.ts";
-import { channelHandleId, incomingEdgesInOrder, variadicHandleId } from "@domain/graph/edge-order.ts";
+import { incomingEdgesInOrder, variadicHandleId } from "@domain/graph/edge-order.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import { publishesValueChannels } from "@domain/types/node-definition.ts";
 import { nodeFamilyOf } from "./node-family.ts";
@@ -517,18 +517,13 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
               )}
           </ul>
           <ul className={cx(styles.column, styles.outputs)}>
-            {(definition?.outputs ?? []).map((port) =>
-              // T1350b: a value output is the bag's socket PLUS one socket per channel it
-              // published — the owner's equaliser rows, each a thing you drag from.
-              port.type.kind === "value" && definition?.channelSockets !== false ? (
-                <Fragment key={port.id}>
-                  <PortRow port={port} side="output" />
-                  <ChannelPortRows nodeId={id as NodeId} port={port} />
-                </Fragment>
-              ) : (
-                <PortRow key={port.id} port={port} side="output" />
-              ),
-            )}
+            {/* §V1026: a card's sockets are its declared ports. §T1350b grew one socket per
+                published channel under a value output; on E32 that was 1124 rows and the
+                main thread at 100% (§B228). A channel is picked with a Select, not dragged
+                from a socket of its own. */}
+            {(definition?.outputs ?? []).map((port) => (
+              <PortRow key={port.id} port={port} side="output" />
+            ))}
           </ul>
         </div>
 
@@ -979,54 +974,6 @@ function VariadicPortRows({ nodeId, port }: { nodeId: NodeId; port: PortDefiniti
     </>
   );
 }
-
-const NO_CHANNELS: readonly string[] = [];
-
-/**
- * T1350b — one socket per PUBLISHED channel under a value output.
- *
- * The rows come from the value history (what the node actually published, in order), not
- * from the definition: an audio source's eighteen spectrum rows, a Select's picked few, a
- * Math's whatever-came-in. So the list is live — it appears when the node first publishes
- * and follows the bag's shape — and `useHandleBoundsInSync` already re-measures the card
- * whenever the handles move. Absent a source (a fixture, a host without history) the port
- * stands alone, which is the card before this task.
- */
-const ChannelPortRows = memo(function ChannelPortRows({ nodeId, port }: { nodeId: NodeId; port: PortDefinition }) {
-  const { valueChannels } = useGraphCanvas();
-  const subscribe = useCallback(
-    (listener: () => void) => (valueChannels === undefined ? () => {} : valueChannels.subscribe(nodeId, listener)),
-    [valueChannels, nodeId],
-  );
-  const channels = useSyncExternalStore(subscribe, () => (valueChannels === undefined ? NO_CHANNELS : valueChannels.get(nodeId).channels));
-  if (channels.length === 0) return null;
-  const description = describePortType(port.type);
-  return (
-    <>
-      {channels.map((channel) => (
-        <li
-          key={channel}
-          className={cx(styles.port, styles.portOut, styles.portChannel)}
-          data-kind={port.type.kind}
-          data-channel={channel}
-          style={cssVars({ "--port-color": portFamilyColor(port.type.kind) })}
-        >
-          <Handle
-            type="source"
-            position={Position.Right}
-            id={channelHandleId(port.id, channel)}
-            className={styles.handle}
-            tabIndex={0}
-            aria-label={`Output channel ${channel} of ${port.label}, ${description}`}
-            title={`${port.label} › ${channel} — one channel of the ${description}`}
-            isConnectable
-          />
-          <span className={styles.portLabel}>{channel}</span>
-        </li>
-      ))}
-    </>
-  );
-});
 
 interface PortRowProps {
   port: PortDefinition;

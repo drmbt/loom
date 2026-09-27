@@ -181,7 +181,6 @@ export interface FixtureContextOptions {
   renderPreview?: GraphCanvasContextValue["renderPreview"];
   renderControls?: GraphCanvasContextValue["renderControls"];
   previewLens?: GraphCanvasContextValue["previewLens"];
-  valueChannels?: GraphCanvasContextValue["valueChannels"];
   /** T1010: OFF by default here too, so a fixture sees what a user sees. */
   timingOverlay?: TimingOverlayStore;
   timingScale?: NodeTimingScaleStore;
@@ -225,7 +224,6 @@ export function fixtureContext(options: FixtureContextOptions): {
       renderPreview: options.renderPreview,
       renderControls: options.renderControls,
       previewLens: options.previewLens,
-      ...(options.valueChannels === undefined ? {} : { valueChannels: options.valueChannels }),
       timingOverlay,
       timingScale,
       edgeFlow,

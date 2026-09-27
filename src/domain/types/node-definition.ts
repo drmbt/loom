@@ -586,14 +586,6 @@ export interface NodeDefinition {
    * the clock, or if it reads anything outside the value graph.
    */
   plotPeriodFollowsInputs?: boolean;
-  /**
-   * T1352b — `false` keeps the card's value output to ONE socket, the whole bag, instead of
-   * a socket per published channel (T1350b). For the audio SOURCES: the record they publish
-   * is forty channels, and forty handles on the source card is not the reference's picture
-   * — there the source is one plug and the ANALYSIS breaks the channels out. Absent means
-   * per-channel sockets, which is what every other value node wants.
-   */
-  channelSockets?: false;
   compile(context: NodeCompileContext): CompiledNodeDescription;
   migrate?(oldVersion: number, data: unknown): MigrationResult;
 }

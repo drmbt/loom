@@ -535,22 +535,6 @@
   right: 0;
 }
 
-/* T1350b — a channel socket under its value port: the same dot, a quieter label, indented. */
-.portChannel {
-  padding-right: var(--space-3);
-  opacity: 0.85;
-}
-
-.portChannel .portLabel {
-  font-size: var(--fs-micro);
-  color: var(--text-dim);
-}
-
-.portChannel .handle {
-  width: 6px;
-  height: 6px;
-}
-
 .port .handle:hover {
   box-shadow: 0 0 0 3px var(--bg-active);
 }

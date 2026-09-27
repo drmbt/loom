@@ -146,3 +146,38 @@ export function channelScale(
   if (observed === undefined) return null;
   return { kind: "bounded", low: observed.low, high: observed.high, declared: false };
 }
+
+/** The rows a scrolled bar list actually mounts: `[start, end)` into its channels. */
+export interface BarWindow {
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * Which rows of a scrolling bar list are on screen, plus one row either side (§V1026).
+ *
+ * B228: every row of every wide node re-rendered on every history tick — E32 carries forty
+ * channels through ~28 value nodes, 1198 bar rows, and the editor's main thread sat at
+ * 100%. The list already scrolls in a four-row box, so all but ~five of those rows were
+ * out of sight. Mounting only the rows in the box keeps every channel reachable (T1297's
+ * point: scroll to it) while the per-tick cost stops growing with the bag.
+ *
+ * `stride` is the distance between two rows' tops, measured from the DOM. Until it is
+ * known (the first paint, or a host with no layout) every row is mounted: a window
+ * computed from a guessed row height would hide rows nobody can scroll to.
+ */
+export function barWindow(
+  count: number,
+  scrollTop: number,
+  viewport: number,
+  stride: number,
+): BarWindow {
+  if (!(stride > 0) || !(viewport > 0)) return { start: 0, end: count };
+  const visible = Math.ceil(viewport / stride);
+  // Clamped so a scroll position past the end (an overscroll, a list that just shrank)
+  // still mounts the LAST rows rather than an empty box.
+  const first = Math.min(Math.floor(Math.max(0, scrollTop) / stride), Math.max(0, count - visible));
+  const start = Math.max(0, first - 1);
+  const end = Math.min(count, first + visible + 1);
+  return { start, end };
+}

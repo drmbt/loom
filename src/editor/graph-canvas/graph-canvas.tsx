@@ -1,7 +1,6 @@
 // Library chrome first, then our overrides, then (transitively, below) the component
 // modules — so a token override never loses a specificity tie to React Flow's default.
 import "@xyflow/react/dist/style.css";
-import type { ValueHistorySource } from "@editor/nodes/value-history.ts";
 import "./xyflow-theme.css";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -42,7 +41,6 @@ import {
   createEdgeGeometry,
 } from "@editor/edges/edge-geometry.ts";
 import { connectDropOperations } from "@editor/edges/connect-drop.ts";
-import { parameterDropOperations } from "@editor/edges/parameter-drop.ts";
 import { replaceEdgeOperations, spliceNodeOperations } from "@editor/edges/edge-drop.ts";
 import { ReferenceLines } from "@editor/edges/reference-lines.tsx";
 import { registerReferenceLinesCommand } from "@editor/edges/reference-lines-command.ts";
@@ -150,8 +148,6 @@ export interface GraphCanvasProps {
      The graph pane draws it over the tiles; see `preview-inspect-overlay.tsx`. */
   /** T685: the preview lens marker's source — §V70a's warning, out from under the tile. */
   previewLens?: (nodeId: NodeId) => PreviewLensSource | null;
-  /** T1350b: per-channel sockets on value outputs read the channel names from here. */
-  valueChannels?: ValueHistorySource;
   /** Patch outcomes, so a rejected gesture can surface instead of failing silently. */
   onPatchResult?: (result: CommandResult<"graph.applyPatch">) => void;
   /**
@@ -188,7 +184,6 @@ export function GraphCanvas({
   renderPreview,
   renderControls,
   previewLens,
-  valueChannels,
   onPatchResult,
   onSelectionChange,
   underlay,
@@ -525,8 +520,7 @@ export function GraphCanvas({
       // T695: a variadic input's handles are addressed by SLOT, so the handle id is not
       // the port id. Everything below works in port-and-slot terms from here.
       const { portId: targetPortId, slot } = parseHandleId(targetHandle);
-      // T1350b: dragged from a per-channel socket, the wire carries that channel.
-      const { portId: sourcePortId, channel } = parseHandleId(sourceHandle);
+      const { portId: sourcePortId } = parseHandleId(sourceHandle);
 
       /*
        * T1049 — what the drop MEANS is decided in `connect-drop.ts`, not here.
@@ -540,7 +534,7 @@ export function GraphCanvas({
       const drop = connectDropOperations({
         graph: { nodes: domainNodes, edges: domainEdges },
         registry,
-        source: { nodeId: source, portId: sourcePortId, ...(channel === undefined ? {} : { channel }) },
+        source: { nodeId: source, portId: sourcePortId },
         target: { nodeId: target, portId: targetPortId, ...(slot === undefined ? {} : { slot }) },
       });
       if (drop.kind !== "connect") return;
@@ -582,28 +576,7 @@ export function GraphCanvas({
       const zoom = flow.getZoom();
       if (!(zoom > 0)) return;
       const edgeId = edgeGeometry.nearest(point, EDGE_HIT_TOLERANCE_PX / zoom);
-      if (edgeId === null) {
-        // T1351b — not a wire: was it a PARAMETER ROW? A channel socket released over a
-        // row in the inspector drives that parameter (§T897's expression). The rows are
-        // outside the canvas, so the hit is a DOM one, by the attributes the inspector
-        // already stamps for its context menu (`data-parameter-key`, `data-node-id`).
-        if (from.type !== "source") return;
-        const under = document.elementFromPoint(client.clientX, client.clientY);
-        const row = under?.closest<HTMLElement>("[data-parameter-key]");
-        const pane = row?.closest<HTMLElement>("[data-node-id]");
-        const key = row?.dataset["parameterKey"];
-        const targetNodeId = pane?.dataset["nodeId"];
-        if (key === undefined || targetNodeId === undefined) return;
-        const handle = parseHandleId(fromPortId);
-        const operations = parameterDropOperations(
-          bus.store.getGraph(),
-          registry,
-          { nodeId: from.nodeId, portId: handle.portId, ...(handle.channel === undefined ? {} : { channel: handle.channel }) },
-          { nodeId: targetNodeId as NodeId, key },
-        );
-        if (operations.length > 0) dispatch(operations, "Drive parameter");
-        return;
-      }
+      if (edgeId === null) return;
 
       const graph = bus.store.getGraph();
       const edge = graph.edges[edgeId];
@@ -613,8 +586,6 @@ export function GraphCanvas({
         // T695 — the grabbed end may be one SOCKET of a variadic input; what the document
         // records is the port.
         portId: parseHandleId(fromPortId).portId,
-        // T1350b — grabbed from a per-channel socket, the replacement wire carries it.
-        ...(parseHandleId(fromPortId).channel === undefined ? {} : { channel: parseHandleId(fromPortId).channel }),
         // React Flow's "source" handle is our output; "target" is our input.
         direction: from.type === "source" ? "output" : "input",
       });
@@ -858,7 +829,6 @@ export function GraphCanvas({
       renderPreview,
       renderControls,
       previewLens,
-      valueChannels,
       showProblems,
       diveIn,
       components,
@@ -880,7 +850,6 @@ export function GraphCanvas({
       renderPreview,
       renderControls,
       previewLens,
-      valueChannels,
       showProblems,
       diveIn,
       components,

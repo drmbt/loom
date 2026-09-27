@@ -1,8 +1,9 @@
-import { useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ValueChannelMeta } from "@domain/types/node-definition.ts";
 import {
   barGeometry,
+  barWindow,
   channelScale,
   formatValue,
   isChannelOn,
@@ -58,6 +59,16 @@ export interface ValueBarsProps {
  */
 export const BAR_ROWS_BEFORE_SCROLL = 4;
 
+interface BarLayout {
+  readonly scrollTop: number;
+  readonly viewport: number;
+  /** Row top to row top; 0 = not measured yet, and every row is mounted. */
+  readonly stride: number;
+  readonly gap: number;
+}
+
+const UNMEASURED: BarLayout = { scrollTop: 0, viewport: 0, stride: 0, gap: 0 };
+
 export function ValueBars({ nodeId, channels, latest, meta }: ValueBarsProps) {
   /*
    * Running extremes, held across ticks. A ref rather than state on purpose: widening a
@@ -68,15 +79,68 @@ export function ValueBars({ nodeId, channels, latest, meta }: ValueBarsProps) {
   observeChannels(observed.current, latest);
 
   const scroll = channels.length > BAR_ROWS_BEFORE_SCROLL;
+  const list = useRef<HTMLDListElement>(null);
+  const [layout, setLayout] = useState<BarLayout>(UNMEASURED);
+
+  /*
+   * The row pitch, measured once the first rows exist. Two rows' offsetTop difference
+   * rather than one row's height, because it includes the list's gap without parsing a
+   * token; the gap itself is what is left of the pitch after the row. Re-measured only
+   * while unknown, so this is not a per-tick layout read.
+   */
+  useLayoutEffect(() => {
+    const element = list.current;
+    if (!scroll || element === null || layout.stride > 0) return;
+    const mounted = element.querySelectorAll<HTMLElement>("[data-bar-row]");
+    const first = mounted[0];
+    const second = mounted[1];
+    if (first === undefined || second === undefined) return;
+    const stride = second.offsetTop - first.offsetTop;
+    if (stride > 0) {
+      setLayout({
+        scrollTop: element.scrollTop,
+        viewport: element.clientHeight,
+        stride,
+        gap: Math.max(0, stride - first.offsetHeight),
+      });
+    }
+  }, [scroll, layout.stride, channels]);
+
+  const rows = scroll
+    ? barWindow(channels.length, layout.scrollTop, layout.viewport, layout.stride)
+    : { start: 0, end: channels.length };
+  // Each spacer is followed or preceded by one flex gap of its own, so it stands for its
+  // rows' pitch minus that gap: the list's scroll height is then exactly what it was with
+  // every row mounted.
+  const before = Math.max(0, rows.start * layout.stride - layout.gap);
+  const after = Math.max(0, (channels.length - rows.end) * layout.stride - layout.gap);
+
   return (
     <dl
+      ref={list}
       /* T1297's rule exactly: `nowheel` only when the list really scrolls, or every value
          node becomes a dead zone for canvas zoom to solve a problem the wide ones have. */
       className={scroll ? `${styles.bars} ${styles.barsScroll} nowheel` : styles.bars}
       aria-label={`Channels of ${nodeId}`}
       data-testid={`value-bars-${nodeId}`}
+      onScroll={
+        scroll
+          ? (event) => {
+              const element = event.currentTarget;
+              const next = barWindow(channels.length, element.scrollTop, element.clientHeight, layout.stride);
+              // Only a change of WHICH rows are mounted is worth a render; a scroll inside
+              // one row's pitch is the browser's to paint.
+              if (next.start !== rows.start || next.end !== rows.end) {
+                setLayout({ ...layout, scrollTop: element.scrollTop, viewport: element.clientHeight });
+              }
+            }
+          : undefined
+      }
     >
-      {channels.map((channel) => (
+      {/* Spacers keep the scroll height every row would have had, so the scrollbar and
+          the scroll position mean the same thing they did with all rows mounted. */}
+      {before > 0 ? <div aria-hidden="true" style={{ blockSize: `${before}px`, flexShrink: 0 }} /> : null}
+      {channels.slice(rows.start, rows.end).map((channel) => (
         <ChannelBar
           key={channel}
           nodeId={nodeId}
@@ -88,6 +152,7 @@ export function ValueBars({ nodeId, channels, latest, meta }: ValueBarsProps) {
           observed={observed.current.get(channel)}
         />
       ))}
+      {after > 0 ? <div aria-hidden="true" style={{ blockSize: `${after}px`, flexShrink: 0 }} /> : null}
     </dl>
   );
 }
@@ -107,7 +172,7 @@ function ChannelBar({
 }) {
   const scale = channelScale(meta, observed);
   return (
-    <div className={styles.barRow} data-testid={`value-bar-${nodeId}-${channel}`}>
+    <div className={styles.barRow} data-bar-row="" data-testid={`value-bar-${nodeId}-${channel}`}>
       <dt className={styles.channel}>{channel}</dt>
       {value === null || scale === null ? (
         // No reading, or nothing to draw it against. The number's own box still holds the

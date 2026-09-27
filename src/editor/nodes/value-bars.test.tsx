@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { ValuePlot } from "./value-plot.tsx";
+import { barWindow } from "./value-plot-mode.ts";
 import type { ValueHistory, ValueHistorySource } from "./value-history.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import type { ValuePlotMode } from "@domain/types/graph.ts";
@@ -262,5 +263,72 @@ describe("a node with nothing to show", () => {
     );
     expect(screen.getByText("no signal yet")).toBeTruthy();
     expect(screen.queryByTestId("value-bars-lag")).toBeNull();
+  });
+});
+
+describe("a wide node mounts only the bar rows in its scroll box (B228, §V1026)", () => {
+  it("windows the rows to the box plus one either side", () => {
+    // 40 rows at a 10 px pitch in a 40 px box: rows 0-3 visible, one spare below.
+    expect(barWindow(40, 0, 40, 10)).toEqual({ start: 0, end: 5 });
+    // Scrolled to row 20: row 19 above as the spare, rows 20-23 visible, 24 below.
+    expect(barWindow(40, 200, 40, 10)).toEqual({ start: 19, end: 25 });
+    // Scrolled past the end (an overscroll, a list that just shrank): the LAST rows, never
+    // an empty box.
+    expect(barWindow(40, 1000, 40, 10)).toEqual({ start: 35, end: 40 });
+  });
+
+  it("mounts EVERY row until the pitch is measured — never hides rows it cannot place", () => {
+    expect(barWindow(40, 0, 40, 0)).toEqual({ start: 0, end: 40 });
+    expect(barWindow(40, 0, 0, 10)).toEqual({ start: 0, end: 40 });
+  });
+
+  it("keeps a far channel reachable by scrolling to it, with the scroll height intact", () => {
+    /*
+     * The cost fix must not undo T1297: every channel is still reachable where the user
+     * is looking. jsdom has no layout, so the pitch (12 px rows, 2 px gap) and the box
+     * (48 px) are stated here; the component measures them in a real browser.
+     */
+    const offsetTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetTop");
+    const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    const clientHeight = Object.getOwnPropertyDescriptor(Element.prototype, "clientHeight");
+    Object.defineProperty(HTMLElement.prototype, "offsetTop", {
+      configurable: true,
+      get(this: HTMLElement) {
+        const index = [...(this.parentElement?.querySelectorAll("[data-bar-row]") ?? [])].indexOf(this);
+        return index < 0 ? 0 : index * 14;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 12 });
+    Object.defineProperty(Element.prototype, "clientHeight", { configurable: true, get: () => 48 });
+    try {
+      const latest = Object.fromEntries(Array.from({ length: 40 }, (_, index) => [`c${index}`, index]));
+      mount(latest);
+      const list = screen.getByTestId("value-bars-lag");
+      expect(list.querySelectorAll("[data-bar-row]").length).toBeLessThanOrEqual(6);
+      expect(screen.queryByTestId("value-bar-lag-c30")).toBeNull();
+
+      list.scrollTop = 30 * 14;
+      fireEvent.scroll(list);
+      expect(screen.getByTestId("value-bar-lag-c30")).toBeTruthy();
+      expect(screen.queryByTestId("value-bar-lag-c0")).toBeNull();
+      expect(list.querySelectorAll("[data-bar-row]").length).toBeLessThanOrEqual(6);
+
+      // The spacers stand for the rows that are not mounted: 29 above and 5 below the
+      // mounted six, each at the 14 px pitch, minus the one flex gap each spacer brings.
+      const spacers = [...list.children].filter((child) => !child.hasAttribute("data-bar-row"));
+      expect(spacers.map((spacer) => (spacer as HTMLElement).style.blockSize)).toEqual([
+        `${29 * 14 - 2}px`,
+        `${(40 - 35) * 14 - 2}px`,
+      ]);
+    } finally {
+      for (const [target, name, descriptor] of [
+        [HTMLElement.prototype, "offsetTop", offsetTop],
+        [HTMLElement.prototype, "offsetHeight", offsetHeight],
+        [Element.prototype, "clientHeight", clientHeight],
+      ] as const) {
+        if (descriptor === undefined) delete (target as unknown as Record<string, unknown>)[name];
+        else Object.defineProperty(target, name, descriptor);
+      }
+    }
   });
 });

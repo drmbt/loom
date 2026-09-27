@@ -229,15 +229,6 @@ function GraphPaneInner({
      preview hook and the value plots: the canvas speaks inner ids, everything keyed
      off the compiled/flattened document speaks prefixed ones. */
   const flatPrefix = (componentPath ?? []).join("/");
-  /*
-   * T1350b — the per-channel sockets read the SAME ring the plot reads, and by the same
-   * key (T1031: the history is keyed by flat id, the canvas hands out document ids).
-   */
-  const valueChannels = useMemo<ValueHistorySource | undefined>(() => {
-    if (valueHistory === undefined) return undefined;
-    const flat = (nodeId: NodeId): NodeId => (flatPrefix === "" ? nodeId : (`${flatPrefix}/${nodeId}` as NodeId));
-    return { get: (nodeId) => valueHistory.get(flat(nodeId)), subscribe: (nodeId, listener) => valueHistory.subscribe(flat(nodeId), listener) };
-  }, [flatPrefix, valueHistory]);
   const localOrbits = usePerDocument(documentIdentity, createPreviewOrbitStore);
   /* T1051 follow-up: the SHARED store, addressed by this pane's flat prefix — an
      interior `grid` orbits under `wall/grid`, never the root `grid` (see the
@@ -1046,7 +1037,6 @@ function GraphPaneInner({
           renderPreview={renderPreview}
           renderControls={renderControls}
           previewLens={previewLens}
-          {...(valueChannels === undefined ? {} : { valueChannels })}
           onSelectionChange={onSelectionChange}
           onHoveredNodeChange={onHoveredNodeChange}
           onNodeLayoutChange={bumpNodeLayout}

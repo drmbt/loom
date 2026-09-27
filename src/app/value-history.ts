@@ -49,9 +49,9 @@ export interface ValueHistoryOptions {
 
 interface Ring {
   /** EVERY channel name the node publishes, in publication order (T1297). */
-  channels: string[];
+  channels: readonly string[];
   /** The `MAX_PLOTTED_CHANNELS` prefix of `channels` that gets a curve. */
-  plotted: string[];
+  plotted: readonly string[];
   /** Parallel to `plotted`; each is a preallocated buffer used circularly. */
   buffers: Float64Array[];
   /** Samples written so far, saturating at the window size. */
@@ -158,9 +158,13 @@ export function createValueHistoryStore(options: ValueHistoryOptions = {}): Valu
         }
         return out;
       });
+      // The ring's own arrays, not copies: `reshape` replaces them and nothing mutates
+      // them in place, so their identity changes exactly when the channel SET does. A
+      // copy per read made every consumer that keys on `channels` re-render per tick
+      // (B228: the per-channel socket rows did, on every wide node).
       ring.view = {
-        channels: [...ring.channels],
-        plotted: [...ring.plotted],
+        channels: ring.channels,
+        plotted: ring.plotted,
         series,
         latest: ring.latest,
         timeSeconds: ring.time,

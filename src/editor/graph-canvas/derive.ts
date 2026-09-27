@@ -1,5 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
-import { incomingEdgesInOrder, variadicHandleId, channelHandleId } from "@domain/graph/edge-order.ts";
+import { incomingEdgesInOrder, variadicHandleId } from "@domain/graph/edge-order.ts";
 import type { GraphEdge, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { PortKind } from "@domain/types/ports.ts";
@@ -244,8 +244,9 @@ export function projectEdges(
         sourceNodeId: domain.source.nodeId,
         inactive: isInactive(sourceNode),
       };
-      // T1350b: a per-channel wire draws from the channel's own socket.
-      const sourceHandle = domain.channel === undefined ? domain.source.portId : channelHandleId(domain.source.portId, domain.channel);
+      // §V1026: there are no per-channel sockets, so a wire that carries a channel (a
+      // §T1350b document not yet migrated, §T1390b) draws from its port's one socket.
+      const sourceHandle = domain.source.portId;
       const prior = before.get(edgeId);
       if (
         prior !== undefined &&
