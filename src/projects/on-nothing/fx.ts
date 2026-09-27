@@ -159,6 +159,7 @@ export const LENS_WGSL = `struct Params {
   aberration: f32, // @default 0.0015  Lateral chromatic aberration at the corners.
   zoomBlur: f32, // @default 0  Snap-zoom radial blur reach (0 off).
   zoomCentre: vec2f, // @default 0.5  Where the snap-zoom converges (uv).
+  whip: f32, // @default 0  Whip-pan blur: horizontal smear, fraction of the frame width.
   vignette: f32, // @default 0.55  Darkening toward the corners.
   vignetteRound: f32, // @default 0.75  1 = round vignette, 0 = follows the frame's shape.
 };
@@ -187,7 +188,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   var sum = vec3f(0.0);
   for (var k = 0; k < TAPS; k = k + 1) {
     let t = (f32(k) + 0.5) / f32(TAPS) - 0.5;
-    let o = src + blurDir * t - zoomDir * (t + 0.5);
+    let o = src + blurDir * t - zoomDir * (t + 0.5) + vec2f(params.whip * t, 0.0);
     let rch = textureSampleLevel(inputTexture, inputSampler, o + ca, 0.0).r;
     let gch = textureSampleLevel(inputTexture, inputSampler, o, 0.0).g;
     let bch = textureSampleLevel(inputTexture, inputSampler, o - ca, 0.0).b;

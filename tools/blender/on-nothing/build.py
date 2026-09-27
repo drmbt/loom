@@ -13,7 +13,7 @@ import os
 import sys
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -33,7 +33,7 @@ RES = (1920, 818)
 CARS = [
     dict(loc=(0.0, 0.0, 0.0), yaw=0, paint="paint_matte", grille="bars", ornament=True),
     dict(loc=(-3.3, 1.5, 0.0), yaw=11, paint="paint_white", grille="slats"),
-    dict(loc=(3.3, 1.5, 0.0), yaw=-11, paint="paint_silver", grille="bars"),
+    dict(loc=(3.3, 1.5, 0.0), yaw=-11, paint="paint_silver", grille="bars", moving=True),
     dict(loc=(-6.7, 0.3, 0.0), yaw=21, paint="paint_white", grille="bars", height=1.03),
     dict(loc=(6.7, 0.3, 0.0), yaw=-21, paint="paint_white", grille="slats", height=0.97),
 ]
@@ -52,6 +52,10 @@ SHOTS = {
     "title": ((0.0, -1.3, 0.8), (0.0, 0.0, 0.74), 18),
     "quad": ((-60.0, -2.7, 1.42), (-60.0, 0.0, 1.36), 40),
     "cyc": ((-1.1, -6.8, 1.25), (0.4, 0.0, 0.8), 32),
+}
+# shots framed in a car's own frame: name -> (car index, eye, target, focal mm), car-local metres
+CAR_SHOTS = {
+    "wheel": (2, (1.45, -0.55, 0.3), (0.9, 2.2, 0.45), 18),
 }
 
 
@@ -121,6 +125,13 @@ def main():
         util.link_empty(coll, f"stage.{name}", pos, facing, props={"loom_dir": util.gl(Vector(facing).normalized())})
     for name, (loc, target, lens) in SHOTS.items():
         util.camera(coll, f"shot.{name}", loc, target, lens)
+    for name, (n, eye, target, lens) in CAR_SHOTS.items():
+        car = CARS[n]
+        rot = Matrix.Rotation(math.radians(car["yaw"]), 3, "Z")
+        base = Vector(car["loc"])
+        fwd = rot @ Vector((0, -1, 0))
+        util.camera(coll, f"shot.{name}", base + rot @ Vector(eye), base + rot @ Vector(target), lens,
+                    props={"loom_car": n, "loom_car_forward": util.gl(fwd)})
 
     out = os.path.abspath(a.out)
     os.makedirs(os.path.dirname(out), exist_ok=True)
@@ -159,6 +170,7 @@ def preview(scene, outdir):
     util.camera(scene.collection, "dbg.carside", (-9.0, 2.6, 1.0), (0.0, 2.6, 0.9), 35)
     util.camera(scene.collection, "dbg.nose", (1.6, -2.0, 1.0), (0.4, 0.0, 0.8), 35)
     util.camera(scene.collection, "dbg.fig", (-2.0, -3.2, 1.1), (0.0, 0.0, 0.95), 35)
+    util.camera(scene.collection, "dbg.chest", (0.35, -1.1, 1.45), (0.0, 0.0, 1.38), 50)
     for ob in scene.objects:
         if ob.type == "CAMERA" and (ob.name.startswith("shot.") or ob.name.startswith("dbg.")):
             scene.camera = ob

@@ -409,7 +409,8 @@ def build_mpfb(ctx, blend_path):
     head_top = _measure(body, 1.6, 2.1)
     hx0, hx1, hy0, hy1, _, htop = head_top
     brow_z = htop - 0.115
-    neck = _measure(body, 1.5, 1.54)
+    # the neck COLUMN, above the trapezius (a lower band takes the shoulders in and widens the loop)
+    neck = _measure(body, 1.555, 1.585, xmax=0.1)
     chest = _measure(suit, 1.27, 1.31, xmax=0.05)
     if eyes is not None:
         ex0, ex1, ey0, _, ez0, ez1 = _measure(eyes, 0.0, 3.0)
@@ -491,22 +492,78 @@ def build_mpfb(ctx, blend_path):
     nx0, nx1, ny0, ny1, _, _ = neck
     _, _, front, _, _, _ = chest
 
+    # The chain LIES ON the body: a Cuban link, snug at the back of the neck, draped over the
+    # trapezius and resting on the shirt at mid-chest. Its path is found by casting rays at the
+    # shirt and body from outside and sitting each link just proud of what they hit.
+    from mathutils.bvhtree import BVHTree
+    dg = bpy.context.evaluated_depsgraph_get()
+    surfaces = [BVHTree.FromObject(o, dg) for o in (suit, body)]
+
+    def hit(start, direction):
+        """Nearest shirt-or-body surface along a ray, or None."""
+        best = None
+        for tree in surfaces:
+            h = tree.ray_cast(start, direction, 1.0)
+            if h[0] is not None and (best is None or (h[0] - start).length < (best - start).length):
+                best = h[0]
+        return best
+
     def chain(mb):
-        n = 34
-        pts = []
-        for k in range(n):
-            s = 2 * math.pi * k / n
-            t = (1 - math.cos(s)) / 2
-            half = (nx1 - nx0) / 2 + 0.025 + 0.035 * t
-            pts.append(Vector((half * math.sin(s), (ny1 + 0.008) + (front - 0.012 - ny1 - 0.008) * t, 1.52 - (1.52 - 1.27) * t ** 1.4)))
-        for k in range(n):
-            a, b = pts[k], pts[(k + 1) % n]
-            d = (b - a).normalized()
-            up = Vector((0, 0, 1)) if k % 2 else d.cross(Vector((0, 0, 1))).normalized()
-            axis = d.cross(up).normalized() if k % 2 else up
-            mb.torus((a + b) / 2, axis, 0.017, 0.0068, 16, 6, "jewel")
-        low = pts[n // 2]
-        mb.box(low + Vector((0, -0.012, -0.05)), (0.09, 0.014, 0.065), "jewel")
+        # Top view: a loop hugging the neck. Behind and beside the neck the chain RESTS on the
+        # trapezius (found by a ray straight down); in front it HANGS down the chest (found by a
+        # ray from the front), narrowing to its lowest point like a real necklace.
+        half_n = 60
+        cxn, cyn = (nx0 + nx1) / 2, (ny0 + ny1) / 2
+        a_ = (nx1 - nx0) / 2 + 0.022
+        back_y = ny1 + 0.012
+        half = []
+        collar_z = None
+        for k in range(half_n + 1):
+            s_ = math.pi * k / half_n                # one side, nape (0) to the lowest point (pi)
+            t = (1 - math.cos(s_)) / 2
+            side = math.sin(s_)
+            if t < 0.5:
+                y = back_y + (ny0 - 0.01 - back_y) * (t / 0.5)
+                p = Vector((cxn + a_ * side, y, 1.545))  # below the jaw: a ray from higher lands on the head
+                h = hit(p, Vector((0, 0, -1)))
+                q = (h if h is not None else Vector((p.x, y, 1.48))) + Vector((0, 0, 0.006))
+                collar_z = q.z
+            else:
+                # a U, not a V: the sides fall and swing in together, the bottom rounds off
+                u = (t - 0.5) / 0.5
+                z0 = collar_z if collar_z is not None else 1.46
+                z = z0 + (1.345 - z0) * math.sin(u * math.pi / 2)
+                x = cxn + (a_ + 0.012) * side * math.cos(u * math.pi / 2) ** 0.6
+                h = hit(Vector((x, -0.6, z)), Vector((0, 1, 0)))
+                if h is not None and h.y < front - 0.03:
+                    h = None  # an arm or a hand in front of the chest, not the chest
+                # a miss keeps the chain at its previous point's depth
+                q = (h + Vector((0, -0.006, 0))) if h is not None else Vector((x, half[-1].y if half else front, z))
+            half.append(q)
+        # the other side is the mirror image about the neck's centre line
+        mirror = [Vector((2 * cxn - q.x, q.y, q.z)) for q in reversed(half[1:-1])]
+        guide = half + mirror
+        n = len(guide)
+        # resample to even spacing, then alternate the links flat and upright
+        lengths = [0.0]
+        for k in range(1, n + 1):
+            lengths.append(lengths[-1] + (guide[k % n] - guide[k - 1]).length)
+        total = lengths[-1]
+        pitch = 0.0125
+        links = int(total / pitch)
+        j = 0
+        for i in range(links):
+            d_ = i * total / links
+            while lengths[j + 1] < d_:
+                j += 1
+            f = (d_ - lengths[j]) / max(lengths[j + 1] - lengths[j], 1e-9)
+            p = guide[j].lerp(guide[(j + 1) % n], f)
+            tangent = (guide[(j + 1) % n] - guide[j]).normalized()
+            outward = (p - Vector((cxn, cyn, p.z - 0.05))).normalized()
+            normal = tangent.cross(outward).normalized() if i % 2 else outward
+            mb.torus(p, normal, 0.0085, 0.0036, 14, 6, "jewel")
+        low = guide[n // 2]
+        mb.box(low + Vector((0, -0.006, -0.024)), (0.032, 0.006, 0.036), "jewel")
 
     wrist_h, wrist_t = arm_bones["lowerarm_l"][1], arm_bones["hand_l"][1]
     along = (wrist_t - wrist_h).normalized()

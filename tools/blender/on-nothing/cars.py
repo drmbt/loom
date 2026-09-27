@@ -167,8 +167,9 @@ def lamps(mb, v):
     return heads
 
 
-def wheel(mb, a, side):
-    c = Vector((side * 0.87, a, WHEEL_R))
+def wheel(mb, a, side, at_origin=False):
+    """One wheel at its hub; `at_origin` builds it about (0, 0, 0) for a wheel that is its own part."""
+    c = Vector((0.0, 0.0, 0.0)) if at_origin else Vector((side * 0.87, a, WHEEL_R))
     ax = Vector((1, 0, 0))
     mb.torus(c, ax, 0.33, 0.1, 40, 10, "tyre", scale_minor_axis=1.3)
     face = c + ax * side * 0.1
@@ -198,17 +199,40 @@ def build(ctx, variants):
         bm = util.MB(f"car.{n}_body")
         body(bm, v)
         mirrors(bm, v)
-        bm.to_object(mats, coll, smooth_deg=None, subsurf=2, location=loc, yaw=yaw, props={"loom_area": "car"})
+        moving = bool(v.get("moving"))
+        # A car that drives is a rig: its body is the part `car<n>` (pivot at the car's origin),
+        # its trim rides on it, and each wheel is its own part turning about its hub.
+        body_props = {"loom_area": "car", **({"loom_part": f"car{n}", "loom_parent": ""} if moving else {})}
+        body_ob = bm.to_object(mats, coll, smooth_deg=None, subsurf=2, location=loc, yaw=yaw, props=body_props)
         pm = util.MB(f"car.{n}_parts")
         grille(pm, v)
         heads = lamps(pm, v)
-        for a in AXLES:
-            wheel(pm, a, 1)
-            wheel(pm, a, -1)
+        if not moving:
+            for a in AXLES:
+                wheel(pm, a, 1)
+                wheel(pm, a, -1)
         if v.get("ornament"):
             pm.cylinder((0, 0.16, 1.02), (0, 0.16, 1.1), 0.012, 12, "chrome")
             pm.torus((0, 0.16, 1.14), (0, 1, 0), 0.035, 0.006, 24, 6, "chrome")
-        pm.to_object(mats, coll, smooth_deg=35, location=loc, yaw=yaw, props={"loom_area": "car"})
+        trim_props = {"loom_area": "car", **({"loom_part": f"car{n}_trim", "loom_parent": f"car{n}"} if moving else {})}
+        trim_ob = pm.to_object(mats, coll, smooth_deg=35, location=loc, yaw=yaw, props=trim_props)
+        if moving:
+            import bpy
+            rot0 = Matrix.Rotation(yaw, 3, "Z")
+            children = [trim_ob]
+            for a in AXLES:
+                for side in (1, -1):
+                    tag = f"{'f' if a < 2 else 'r'}{'r' if side > 0 else 'l'}"
+                    wm = util.MB(f"car.{n}_wheel_{tag}")
+                    wheel(wm, a, side, at_origin=True)
+                    hub = loc + rot0 @ Vector((side * 0.87, a, WHEEL_R))
+                    children.append(wm.to_object(mats, coll, smooth_deg=35, location=hub, yaw=yaw,
+                                                 props={"loom_area": "car", "loom_part": f"car{n}_wheel_{tag}", "loom_parent": f"car{n}"}))
+            bpy.context.view_layer.update()
+            for child in children:
+                world = child.matrix_world.copy()
+                child.parent = body_ob
+                child.matrix_world = world
         rot = Matrix.Rotation(yaw, 3, "Z")
         fwd = rot @ Vector((0, -1, 0))
         for side, h in zip("lr", heads):

@@ -206,5 +206,36 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     value = value + exp(-(r * r) / (2.0 * params.hotspot * params.hotspot)) + 0.25 * exp(-(r * r) / (2.0 * params.spill * params.spill));
   }
   value = value * mix(0.15, 1.0, smoothstep(0.38, 0.44, uv.y));
+  // Fade to nothing at the image's border: a projector's frame edge must never draw a hard rectangle.
+  let border = smoothstep(0.0, 0.12, uv.x) * smoothstep(1.0, 0.88, uv.x) * smoothstep(0.0, 0.15, uv.y) * smoothstep(1.0, 0.85, uv.y);
+  value = value * border;
   return vec4f(vec3f(value) + vec3f(unused), 1.0);
+}`;
+
+/**
+ * T1407b — the environment from a real HDRI (Poly Haven, CC0), arriving RGBM-packed through a
+ * Movie File In (hdri.ts): rgb × a × `range`, turned by `turn` (fraction of a revolution) and
+ * scaled by `gain`, with a `crush` that pulls the dim room down while keeping its windows and
+ * lamps — the reference's room is near black but its chrome still catches bright shapes.
+ */
+export const ENVIRONMENT_HDRI_WGSL = `struct Params {
+  range: f32, // @default 16  RGBM range the picture was packed with.
+  gain: f32, // @default 1  Radiance scale.
+  turn: f32, // @default 0  Rotation about the vertical, fraction of a revolution.
+  crush: f32, // @default 0  0 keeps the room; 1 keeps only what is brighter than 1.
+  desaturate: f32, // @default 0.6  Chroma removed (the grade wants steel, not sunset).
+};
+
+@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let p = textureSampleLevel(inputTexture, inputSampler, vec2f(fract(uv.x + params.turn), uv.y), 0.0);
+  var c = p.rgb * p.a * params.range;
+  let luma = dot(c, vec3f(0.2126, 0.7152, 0.0722));
+  c = mix(c, vec3f(luma), params.desaturate);
+  c = c * mix(1.0, smoothstep(0.3, 1.5, luma), params.crush);
+  return vec4f(c * params.gain, 1.0);
 }`;

@@ -90,6 +90,9 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     }
   }
   let reflected = sum / weight;
-  let amount = clamp(fresnel * gloss * edge * params.strength, 0.0, 1.0);
+  // A ray turning back toward the lens leaves what the frame knows: its "hit" is a false one
+  // (it drew bright slabs on the floor). Fade reflections out as the ray turns toward the camera.
+  let away = smoothstep(-0.05, 0.3, dot(r, v.forward));
+  let amount = clamp(fresnel * gloss * edge * away * params.strength, 0.0, 1.0);
   return vec4f(color.rgb + reflected * amount, color.a);
 }`;

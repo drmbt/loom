@@ -5,12 +5,17 @@ import { LIMITS, edge, expressionSlot, graph, node as buildNode, settings } from
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
 import { DOF_WGSL, GTAO_WGSL } from "../furnace/screen-space.ts";
 import { GLOSSY_SSR_WGSL } from "./reflections.ts";
-import { ENVIRONMENT_WGSL, HEADLIGHT_COOKIE_WGSL, hazeLights, hazeWgsl } from "./atmosphere.ts";
+import { ENVIRONMENT_HDRI_WGSL, ENVIRONMENT_WGSL, HEADLIGHT_COOKIE_WGSL, hazeLights, hazeWgsl } from "./atmosphere.ts";
 import { CRT_WGSL, ECHO_WGSL, GRADE_WGSL, HALO_WGSL, LENS_WGSL, MIRROR_WGSL, OPTICS_COMPOSITE_WGSL, PRISM_WGSL, STREAK_WGSL } from "./fx.ts";
 import type { Area, OnNothingFacts } from "./scene-facts.ts";
 import { markerOf } from "./scene-facts.ts";
 import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "./skin-kernel.ts";
 import { SURFACE_WGSL } from "./surface.ts";
+import { CAR_RIG_ATTRIBUTES, carRigKernel, drivenCar } from "./car-rig.ts";
+import { GLYPHS_WGSL } from "./tracking.ts";
+
+/** The wheel shot: how far the rigged car has driven, metres (a slow roll past the others). */
+const DRIVE = "(abstime * 2.2)";
 
 /**
  * T1400b — THE ON NOTHING DOCUMENTS: one graph per shot, built from the GLB's measured facts.
@@ -22,11 +27,11 @@ import { SURFACE_WGSL } from "./surface.ts";
  * docs/on-nothing-shots-plan-2026-09-27.md for what each shot is after.
  */
 
-export const SHOTS = ["tableau", "title", "quad", "cyc", "zoom", "prism"] as const;
+export const SHOTS = ["tableau", "title", "quad", "cyc", "zoom", "prism", "wheel"] as const;
 export type Shot = (typeof SHOTS)[number];
 /** The four sets; `zoom` and `prism` are the tableau's set with their own camera and finish. */
-type Base = "tableau" | "title" | "quad" | "cyc";
-const BASE_OF: Record<Shot, Base> = { tableau: "tableau", title: "title", quad: "quad", cyc: "cyc", zoom: "tableau", prism: "tableau" };
+type Base = "tableau" | "title" | "quad" | "cyc" | "wheel";
+const BASE_OF: Record<Shot, Base> = { tableau: "tableau", title: "title", quad: "quad", cyc: "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel" };
 
 export interface OnNothingOptions {
   readonly shot: Shot;
@@ -34,6 +39,8 @@ export interface OnNothingOptions {
   readonly height?: number;
   /** Run the CRT re-scan over the finished frame. */
   readonly crt?: boolean;
+  /** Light reflections from a real HDRI (a Movie File In `hdri`, fed RGBM; see hdri.ts). */
+  readonly hdri?: boolean;
 }
 
 function node(id: string, type: string, position: readonly [number, number], parameters: Record<string, StoredParameter>, extra: Partial<GraphNode> = {}): GraphNode {
@@ -55,9 +62,10 @@ interface ShotPlan {
 }
 
 const PLANS: Record<Base, ShotPlan> = {
-  tableau: { areas: ["wh", "car"], figure: true, headlights: true, tubes: true, haze: { density: 0.035, groups: ["head", "tube"], ambient: [0.004, 0.0042, 0.0045] }, dof: false, echo: false, mirror: false, whiteRoom: false },
-  title: { areas: ["wh", "car", "title"], figure: false, headlights: true, tubes: true, haze: { density: 0.03, groups: ["head", "tube"], ambient: [0.006, 0.006, 0.0065] }, dof: true, echo: false, mirror: false, whiteRoom: false },
+  tableau: { areas: ["wh", "car"], figure: true, headlights: true, tubes: false, haze: { density: 0.035, groups: ["head"], ambient: [0.004, 0.0042, 0.0045] }, dof: false, echo: false, mirror: false, whiteRoom: false },
+  title: { areas: ["wh", "car", "title"], figure: false, headlights: true, tubes: false, haze: { density: 0.03, groups: ["head"], ambient: [0.006, 0.006, 0.0065] }, dof: true, echo: false, mirror: false, whiteRoom: false },
   quad: { areas: [], figure: true, headlights: false, tubes: false, haze: { density: 0.06, groups: ["back"], ambient: [0, 0, 0] }, dof: false, echo: false, mirror: true, whiteRoom: false },
+  wheel: { areas: ["wh", "car"], figure: false, headlights: true, tubes: false, haze: { density: 0.03, groups: ["head"], ambient: [0.004, 0.0042, 0.0045] }, dof: false, echo: false, mirror: false, whiteRoom: false },
   cyc: { areas: ["cyc"], figure: true, headlights: false, tubes: false, haze: { density: 0, groups: [], ambient: [0, 0, 0] }, dof: false, echo: true, mirror: false, whiteRoom: true },
 };
 
@@ -128,6 +136,17 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   const shot = options.shot;
   const base = BASE_OF[shot];
   const plan = PLANS[base];
+  /** The wheel shot's car drives `DRIVE` metres; what rides with it follows by this helper. */
+  const carParts = facts.areas.get("car")?.partTable ?? [];
+  const driven = base === "wheel" && carParts.length > 0 ? (() => {
+    const car = drivenCar(carParts);
+    return { car: car.body.name.slice(3), forward: car.forward, right: car.right, pivot: car.body.pivot };
+  })() : undefined;
+  const follow = (key: string, at: readonly [number, number, number], forward: readonly [number, number, number]): Record<string, StoredParameter> => ({
+    [`${key}.x`]: expressionSlot(`${at[0]} + ${forward[0].toFixed(5)} * ${DRIVE}`, at[0]),
+    [`${key}.y`]: expressionSlot(`${at[1]} + ${forward[1].toFixed(5)} * ${DRIVE}`, at[1]),
+    [`${key}.z`]: expressionSlot(`${at[2]} + ${forward[2].toFixed(5)} * ${DRIVE}`, at[2]),
+  });
   const camera = facts.cameras.get(`shot.${base}`);
   if (camera === undefined) throw new Error(`onNothingDocument: the GLB has no camera "shot.${shot}".`);
   const eye = camera.eye;
@@ -163,7 +182,14 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     if (mesh === undefined) throw new Error(`onNothingDocument: no "${area}" area in the GLB.`);
     nodes.push(node(`mesh_${area}`, "meshFileIn", [-3600, index * 250], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts }, { label: `mesh${area}1` }));
     nodes.push(node(`geo_${area}`, "geometry", [-3300, index * 250], { mode: "surface", material: "surf1" }, { label: `geo${area}1` }));
-    edges.push(edge(`mesh-geo-${area}`, [`mesh_${area}`, "out"], [`geo_${area}`, "points"]));
+    if (base === "wheel" && area === "car") {
+      // The rigged car drives; its wheels roll (car-rig.ts).
+      nodes.push(node("carRig", "pointKernel", [-3450, index * 250], { capacity: mesh.vertices, attributes: CAR_RIG_ATTRIBUTES, kernel: carRigKernel(mesh.partTable), drive: expressionSlot(DRIVE, 0) }, { label: "carrig1" }));
+      edges.push(edge("mesh-rig-car", [`mesh_${area}`, "out"], ["carRig", "in"]));
+      edges.push(edge("rig-geo-car", ["carRig", "out"], [`geo_${area}`, "points"]));
+    } else {
+      edges.push(edge(`mesh-geo-${area}`, [`mesh_${area}`, "out"], [`geo_${area}`, "points"]));
+    }
     scenes.push(`geo${area}1`);
   });
 
@@ -223,6 +249,8 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
       nodes.push(node(id, "projector", [-2600, 1400 + index * 60], {
         eye: vec(centre),
         lookAt: [centre[0] + dir[0]! * 2, centre[1] + dir[1]! * 2, centre[2] + dir[2]! * 2],
+        ...(base === "wheel" && driven !== undefined && car === driven.car ? follow("eye", centre, driven.forward) : {}),
+        ...(base === "wheel" && driven !== undefined && car === driven.car ? follow("lookAt", [centre[0] + dir[0]! * 2, centre[1] + dir[1]! * 2, centre[2] + dir[2]! * 2], driven.forward) : {}),
         throwRatio: 0.5,
         aspect: 2.4,
         brightness: 2.5,
@@ -277,6 +305,11 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   nodes.push(node("envSeed", "ramp", [-2700, 300], {}, { label: "envseed1", resolution: { mode: "fixed", width: 1024, height: 512 } }));
   nodes.push(node("env", "customWgsl", [-2700, 500], { source: ENVIRONMENT_WGSL, white: plan.whiteRoom ? 1 : 0, bars: base === "title" ? 6 : base === "quad" ? 0 : 1.5, roof: base === "title" ? 0.35 : base === "quad" ? 0 : 0.006 }, { label: "env1", resolution: { mode: "fixed", width: 1024, height: 512 } }));
   edges.push(edge("seed-env", ["envSeed", "out"], ["env", "input"]));
+  if (options.hdri === true && !plan.whiteRoom) {
+    nodes.push(node("hdri", "movieFileIn", [-2900, 700], { file: "media/on-nothing/hdri.png" }, { label: "hdri1", resolution: { mode: "fixed", width: 2048, height: 1024 } }));
+    nodes.push(node("envHdri", "customWgsl", [-2700, 700], { source: ENVIRONMENT_HDRI_WGSL, gain: base === "title" ? 1.2 : 0.6, crush: base === "title" ? 0.3 : 0.7 }, { label: "envhdri1", resolution: { mode: "fixed", width: 2048, height: 1024 } }));
+    edges.push(edge("hdri-env", ["hdri", "out"], ["envHdri", "input"]));
+  }
 
   // ── Camera and the Render ──
   // zoom (0:24): the wide tableau, then a violent crash-zoom onto the face at 1.4 s.
@@ -286,6 +319,30 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     return stage === undefined ? aim : ([stage.position[0], 1.6, stage.position[2]] as [number, number, number]);
   })();
   const SNAP = "(clamp((abstime - 1.4) / 0.16, 0, 1) ^ 2 * (3 - 2 * clamp((abstime - 1.4) / 0.16, 0, 1)))";
+  /**
+   * The title (0:00): the camera WHIPS in from the right (a fast pan, smeared by the lens's
+   * whip blur, settling by 0.35 s), then pivots slowly round the script while it pushes in —
+   * an arc about the grille, never a straight dolly — with a breath of handheld.
+   */
+  const WHIP = "clamp(1 - abstime / 0.35, 0, 1) ^ 2";
+  function titleMove(): Record<string, StoredParameter> {
+    const centre: [number, number, number] = [0, 0.74, 0.13];
+    const dx = eye[0] - centre[0];
+    const dz = eye[2] - centre[2];
+    const radius = Math.hypot(dx, dz);
+    const start = Math.atan2(dx, dz);
+    const angle = `(${start.toFixed(4)} - 0.16 + abstime * 0.07)`;
+    const r = `(${radius.toFixed(4)} * (1 - abstime * 0.025))`;
+    return {
+      "eye.x": expressionSlot(`${centre[0]} + ${r} * sin(${angle}) + sin(abstime * 1.7) * 0.004`, eye[0]),
+      "eye.y": expressionSlot(`${eye[1]} + abstime * 0.012 + sin(abstime * 2.3 + 1) * 0.003`, eye[1]),
+      "eye.z": expressionSlot(`${centre[2]} + ${r} * cos(${angle})`, eye[2]),
+      "lookAt.x": expressionSlot(`${centre[0]} + ${WHIP} * 2.2 + sin(abstime * 1.1) * 0.006`, centre[0]),
+      "lookAt.y": expressionSlot(`${centre[1]}`, centre[1]),
+      "lookAt.z": expressionSlot(`${centre[2]}`, centre[2]),
+      fov: 52,
+    };
+  }
   const cameraMove: Record<string, StoredParameter> =
     shot === "zoom"
       ? {
@@ -294,9 +351,13 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
           "lookAt.y": expressionSlot(`${aim[1]} + (${face[1]} - ${aim[1]}) * ${SNAP} + sin(abstime * 5.1 + 1) * 0.005 * ${SNAP}`, aim[1]),
           "lookAt.z": expressionSlot(`${aim[2]} + (${face[2]} - ${aim[2]}) * ${SNAP}`, aim[2]),
         }
-      : shot === "prism"
+      : shot === "title"
+        ? titleMove()
+        : shot === "prism"
         ? { fov: 9, lookAt: vec(face), "lookAt.x": expressionSlot(`${face[0]} + sin(abstime * 0.6) * 0.01`, face[0]), "lookAt.y": expressionSlot(`${face[1]} + sin(abstime * 0.9) * 0.006`, face[1]) }
-        : {};
+        : base === "wheel" && driven !== undefined
+          ? { ...follow("eye", eye, driven.forward), ...follow("lookAt", aim, driven.forward) }
+          : {};
   nodes.push(node("cam", "camera", [-2700, -900], { eye: vec(eye), lookAt: aim, fov: camera.fovDeg, near: 0.05, far: 200, ...cameraMove }, { label: "cam1" }));
   nodes.push(node("shot", "render", [-2400, 0], {
     scenes: scenes.join(" "),
@@ -313,7 +374,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     environmentIntensity: plan.whiteRoom ? 0.6 : base === "title" ? 1 : base === "quad" ? 0 : 0.4,
     environmentTaps: 16,
   }, { label: "shot1" }));
-  edges.push(edge("env-shot", ["env", "out"], ["shot", "environment"]));
+  edges.push(edge("env-shot", [options.hdri === true && !plan.whiteRoom ? "envHdri" : "env", "out"], ["shot", "environment"]));
 
   // ── Screen space: reflections, contact occlusion, haze ──
   let last: readonly [string, string] = ["shot", "out"];
@@ -336,12 +397,13 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   const scene = last;
   const opticsGain: Record<Base, { streak: number; halo: number }> = {
     tableau: { streak: 0.5, halo: 0.12 },
+    wheel: { streak: 0.5, halo: 0 },
     title: { streak: 0.35, halo: 0.15 },
     quad: { streak: 0.25, halo: 0 },
     cyc: { streak: 0.1, halo: 0 },
   };
   /** How far each shot's streak slabs reach above their source, as a fraction of the frame height. */
-  const streakReach: Record<Base, number> = { tableau: 0.36, title: 0.4, quad: 0.45, cyc: 0.2 };
+  const streakReach: Record<Base, number> = { wheel: 0.3, tableau: 0.36, title: 0.4, quad: 0.45, cyc: 0.2 };
 
   // ── Optics: streak columns (half size), halo rings (quarter), bloom pyramid ──
   // A "scale" resolution is relative to the node's own INPUT, so each chained pass states its
@@ -375,9 +437,26 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   pass("optics", OPTICS_COMPOSITE_WGSL, { streak: opticsGain[base].streak, halo: opticsGain[base].halo, bloom: 0.3, streakTint: [0.95, 0.98, 1, 1] }, [["streak2", "out"], ["halo", "out"], ["bloomUp0", "out"]], [-500, 0]);
 
   // ── Lens and grade ──
-  const snapBlur: Record<string, StoredParameter> = shot === "zoom" ? { zoomBlur: expressionSlot("0.22 * max(1 - abs(abstime - 1.5) / 0.12, 0) ^ 2", 0) } : {};
+  if (base === "wheel" && driven !== undefined) {
+    // Counter digits floating off the door, locked to the car as it drives (tracking.ts).
+    const up: [number, number, number] = [0, 1, 0];
+    // The row stands across the camera's view, just behind the front wheel, off the car's side:
+    // along the car's right (screen left to right from this camera), upright.
+    const across: [number, number, number] = [driven.right[0], driven.right[1], driven.right[2]];
+    const o: [number, number, number] = [
+      driven.pivot[0] + driven.right[0] * 1.02 - driven.forward[0] * 1.5,
+      0.08,
+      driven.pivot[2] + driven.right[2] * 1.02 - driven.forward[2] * 1.5,
+    ];
+    pass("glyphs", GLYPHS_WGSL, { ...cameraParams, origin: o, ...follow("origin", o, driven.forward), axisU: across, axisV: up, value: expressionSlot("floor(abstime * 7) * 13 % 1000", 0), digits: 3, height: 0.55, gain: 3 }, [depth], [-400, 0]);
+  }
+  const snapBlur: Record<string, StoredParameter> =
+    shot === "zoom" ? { zoomBlur: expressionSlot("0.22 * max(1 - abs(abstime - 1.5) / 0.12, 0) ^ 2", 0) }
+    : shot === "title" ? { whip: expressionSlot(`0.16 * ${WHIP}`, 0), distortion: 0.12, edgeBlur: 0.02 }
+    : {};
   pass("lens", LENS_WGSL, plan.whiteRoom ? { distortion: 0.03, edgeBlur: 0.012, vignette: 0.8, vignetteRound: 0.9 } : { distortion: 0.06, edgeBlur: 0.014, vignette: 0.6, ...snapBlur }, [], [-300, 0]);
   const grade: Record<Base, Record<string, StoredParameter>> = {
+    wheel: { exposure: 0.35, black: 0.04, contrast: 1.2, saturation: 0.22, steel: [0.94, 0.99, 1.04], shadowTint: [0.97, 1, 1.03, 1] },
     tableau: { exposure: 0.2, black: 0.04, contrast: 1.2, saturation: 0.22, steel: [0.94, 0.99, 1.04], shadowTint: [0.97, 1, 1.03, 1] },
     title: { exposure: 0.4, black: 0.035, contrast: 1.15, saturation: 0.3, steel: [0.95, 0.99, 1.03], shadowTint: [0.98, 1, 1.02, 1] },
     quad: { exposure: 0.1, black: 0.05, contrast: 1.25, saturation: 0.75, keepWarm: 0.75, steel: [0.9, 1.02, 1.04], shadowTint: [0.9, 1.03, 1.06, 1] },

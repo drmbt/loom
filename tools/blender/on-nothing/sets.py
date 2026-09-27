@@ -1,8 +1,8 @@
 """The two worlds of the On Nothing scene (T1400b): the industrial void and the white limbo.
 
 - `wh.*`: a dark warehouse around the origin — concrete floor, brick walls, steel columns,
-  pitched roof trusses with purlins, roof sheet, and a row of vertical LED tubes on the floor
-  behind the cars (`wh.tube_*`, each also a `lamp.tube.<nn>` marker).
+  pitched roof trusses with purlins and roof sheet. Nothing else lights it: the columns of
+  light in the reference are the streak filter over the cars' headlights.
 - `cyc.*`: a white infinity cyc at the origin (drawn only in its own shot): floor, a coved back wall and a coved left wall.
 
 The silhouette shot needs no set: it is the figure in black at x = -60 (see build.py's stages).
@@ -14,9 +14,6 @@ from mathutils import Vector
 import util
 
 W, D, H = 40.0, 36.0, 7.0      # warehouse width (x), depth (y), eave height
-TUBE_X = (-10.4, -9.7, -6.6, -6.0, -2.9, 2.9, 6.0, 6.6, 9.7, 10.4)
-TUBE_Y = 5.4
-TUBE_Z = (0.22, 1.32)
 # At the origin like the warehouse (never drawn in the same shot): a directional light's
 # shadow volume is framed around the world origin, so the cyc must sit there to get shadows.
 CYC_X = 0.0
@@ -76,15 +73,9 @@ def warehouse(ctx):
     roof.add([(0, -D / 2, z1), (W / 2, -D / 2, z0), (W / 2, D / 2, z0), (0, D / 2, z1)], [(0, 3, 2, 1)], "roof_sheet")
     util.face_toward(roof.to_object(mats, coll, smooth_deg=None, props={"loom_area": "wh"}), (0, 0, 3))
 
-    tubes = util.MB("wh.tubes")
+    # No LED tubes: the first cut read the reference's light columns as floor tubes; they are
+    # the streak filter smearing the headlights (owner, 2026-09-27: "its all just cars").
     markers = []
-    for k, x in enumerate(TUBE_X):
-        tubes.cylinder((x, TUBE_Y, TUBE_Z[0]), (x, TUBE_Y, TUBE_Z[1]), 0.025, 12, "tube_led")
-        tubes.cylinder((x, TUBE_Y, TUBE_Z[0] - 0.04), (x, TUBE_Y, TUBE_Z[0]), 0.03, 12, "tube_cap")
-        tubes.cylinder((x, TUBE_Y, TUBE_Z[1]), (x, TUBE_Y, TUBE_Z[1] + 0.04), 0.03, 12, "tube_cap")
-        tubes.cylinder((x, TUBE_Y, 0.0), (x, TUBE_Y, TUBE_Z[0] - 0.04), 0.008, 6, "tube_cap")
-        markers.append((f"lamp.tube.{k:02d}", Vector((x, TUBE_Y, (TUBE_Z[0] + TUBE_Z[1]) / 2))))
-    tubes.to_object(mats, coll, smooth_deg=40, props={"loom_area": "wh"})
     return markers
 
 

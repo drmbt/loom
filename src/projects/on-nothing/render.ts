@@ -6,6 +6,7 @@ import { encodePng } from "../../runtime/export/png.ts";
 import { toRgba8At } from "../../runtime/export/image.ts";
 import { SHOTS, onNothingDocument, type Shot } from "./document.ts";
 import { loadOnNothingFacts } from "./load-facts.ts";
+import { readHdr, rgbmBytes } from "./hdri.ts";
 
 /**
  * T1400b — render the On Nothing shots headless. Everything lands in the gitignored
@@ -20,6 +21,7 @@ import { loadOnNothingFacts } from "./load-facts.ts";
  *     [--set grade.exposure=0.5,halo.gain=2]  parameter overrides by node id
  *     [--tag name]                            appended to the file names (compare takes)
  *     [--probe streak2]                       show that node's output instead of the finished frame
+ *     [--hdri <file.hdr>]                     reflections from a real HDRI (Poly Haven, CC0) instead of the procedural room
  */
 const argv = process.argv.slice(2).filter((arg) => arg !== "--");
 const flag = (name: string): string | undefined => {
@@ -34,6 +36,8 @@ const fps = 24;
 const clip = flag("clip") === undefined ? undefined : Number(flag("clip"));
 const at = Number(flag("at") ?? 2);
 const crt = argv.includes("--crt");
+const hdriPath = flag("hdri");
+const hdri = hdriPath === undefined ? undefined : readHdr(hdriPath);
 const tag = flag("tag") === undefined ? "" : `-${flag("tag")}`;
 const shots = (flag("shots") ?? SHOTS.join(",")).split(",") as Shot[];
 for (const shot of shots) if (!SHOTS.includes(shot)) throw new Error(`--shots: no shot "${shot}" (known: ${SHOTS.join(", ")}).`);
@@ -51,7 +55,7 @@ const toRgba8 = (frame: RenderedFrame) =>
   toRgba8At({ ...frame, rowStride: frame.width * (frame.format === "rgba16float" ? 8 : 4) } as never, frame.width, frame.height, { space: "encoded" });
 
 for (const shot of shots) {
-  const built = onNothingDocument(facts, { shot, width, height, crt });
+  const built = onNothingDocument(facts, { shot, width, height, crt, hdri: hdri !== undefined });
   const nodes = { ...built.graph.nodes };
   for (const id of (flag("bypass") ?? "").split(",").filter((entry) => entry !== "")) {
     if (nodes[id] === undefined) throw new Error(`--bypass: no node "${id}".`);
@@ -94,6 +98,7 @@ for (const shot of shots) {
     outputNodeId: "out",
     animate: true,
     meshes,
+    ...(hdri !== undefined && nodes["hdri"] !== undefined ? { pictures: { hdri: (size: readonly [number, number]) => rgbmBytes(hdri, size) } } : {}),
     ...(encoder === undefined
       ? {}
       : {

@@ -12,6 +12,17 @@ export interface MeshSelectionFacts {
   readonly vertices: number;
   readonly triangles: number;
   readonly parts: string;
+  /** The rig parts in this selection (index as `surface.w` carries it, pivot, rest rotation, parent). */
+  readonly partTable: readonly PartFacts[];
+}
+
+export interface PartFacts {
+  readonly index: number;
+  readonly name: string;
+  readonly pivot: readonly [number, number, number];
+  /** Rest world rotation, unit quaternion (x, y, z, w). */
+  readonly rotation: readonly [number, number, number, number];
+  readonly parent?: string;
 }
 
 /** One bone of the figure: its rest head (glTF metres), parent (−1 at the root) and tail. */
@@ -64,6 +75,7 @@ export function factsFrom(glbUrl: string, meshes: ReadonlyMap<Area, DecodedMesh>
       vertices: mesh.vertexCount,
       triangles: mesh.triangleCount,
       parts: mesh.parts.map((part) => `${part.index}:${part.name}`).join(" "),
+      partTable: mesh.parts.map((part) => ({ index: part.index, name: part.name, pivot: part.pivot, rotation: part.rotation, ...(part.parent === undefined || part.parent === "" ? {} : { parent: part.parent }) })),
     });
   }
   const markers = new Map(any.markers.map((marker) => [marker.name, marker]));
@@ -97,6 +109,15 @@ export function markerOf(facts: OnNothingFacts, name: string): DecodedMarker {
   const marker = facts.markers.get(name);
   if (marker === undefined) throw new Error(`The On Nothing GLB has no marker "${name}".`);
   return marker;
+}
+
+/** Rotate a vector by a unit quaternion (x, y, z, w). */
+export function rotateByQuaternion(q: readonly [number, number, number, number], v: readonly [number, number, number]): [number, number, number] {
+  const [x, y, z, w] = q;
+  const tx = 2 * (y * v[2] - z * v[1]);
+  const ty = 2 * (z * v[0] - x * v[2]);
+  const tz = 2 * (x * v[1] - y * v[0]);
+  return [v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx)];
 }
 
 export function wgslVec3(value: readonly [number, number, number]): string {

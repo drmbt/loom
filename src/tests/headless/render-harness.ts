@@ -169,6 +169,12 @@ export interface HeadlessRenderRequest {
    */
   readonly meshes?: Readonly<Record<string, Uint8Array>>;
   /**
+   * T1407b — REAL PICTURES for Movie File In nodes, by node id, in place of the T650 test card:
+   * given the texture's size, return its RGBA8 bytes (row-major, top row first). A still: one
+   * frame, uploaded once. What an offline render of a document that loads an image needs.
+   */
+  readonly pictures?: Readonly<Record<string, (size: readonly [number, number]) => Uint8Array>>;
+  /**
    * T1354b — STREAM captured frames instead of returning them. Each captured frame is handed
    * here (awaited, so a consumer can back-pressure, e.g. an encoder pipe) and NOT retained,
    * so a thirty-second clip does not hold a gigabyte of readbacks. `frames` in the result is
@@ -749,6 +755,14 @@ export async function renderHeadless(request: HeadlessRenderRequest): Promise<He
 
     // T650: media draws SOMETHING attributable in headless, or nothing by stated design.
     registerSyntheticMediaSources(backend, plan, logicalGraph, () => steppingFrame);
+    // T1407b: a real picture replaces the card for the nodes the caller names.
+    for (const [nodeId, bytesFor] of Object.entries(request.pictures ?? {})) {
+      const resource = plan.resources.find((entry) => (entry as { sourceId?: string }).sourceId === `media:${nodeId}`) as { size?: readonly [number, number] } | undefined;
+      if (resource?.size === undefined) throw new Error(`pictures: "${nodeId}" has no media texture in the plan (is it a Movie File In?).`);
+      const bytes = bytesFor(resource.size);
+      if (bytes.length !== resource.size[0] * resource.size[1] * 4) throw new Error(`pictures: "${nodeId}" returned ${bytes.length} bytes for a ${resource.size[0]}×${resource.size[1]} RGBA8 texture.`);
+      backend.registerMediaSource(`media:${nodeId}`, { currentFrame: () => ({ frameId: 1, bytes }) });
+    }
     // T1353b: the mesh feed — one static frame per source, prepared the loader's way.
     for (const [nodeId, glb] of Object.entries(request.meshes ?? {})) {
       const node = logicalGraph.nodes[nodeId as keyof typeof logicalGraph.nodes];
