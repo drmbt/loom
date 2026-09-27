@@ -614,6 +614,131 @@
     },
     "groups": {},
     "nodes": {
+      "bay0": {
+        "definitionVersion": 1,
+        "id": "bay0",
+        "label": "bay01",
+        "parameters": {
+          "color": [
+            1,
+            0.72,
+            0.5,
+            1
+          ],
+          "intensity": 6,
+          "kind": "point",
+          "position": [
+            -3.5,
+            6.6,
+            -5
+          ]
+        },
+        "position": {
+          "x": -2600,
+          "y": 2120
+        },
+        "type": "light"
+      },
+      "bay1": {
+        "definitionVersion": 1,
+        "id": "bay1",
+        "label": "bay11",
+        "parameters": {
+          "color": [
+            1,
+            0.72,
+            0.5,
+            1
+          ],
+          "intensity": 6,
+          "kind": "point",
+          "position": [
+            3,
+            6.6,
+            -5
+          ]
+        },
+        "position": {
+          "x": -2600,
+          "y": 2200
+        },
+        "type": "light"
+      },
+      "bay2": {
+        "definitionVersion": 1,
+        "id": "bay2",
+        "label": "bay21",
+        "parameters": {
+          "color": [
+            1,
+            0.72,
+            0.5,
+            1
+          ],
+          "intensity": 6,
+          "kind": "point",
+          "position": [
+            -1,
+            6.6,
+            -10
+          ]
+        },
+        "position": {
+          "x": -2600,
+          "y": 2280
+        },
+        "type": "light"
+      },
+      "bay3": {
+        "definitionVersion": 1,
+        "id": "bay3",
+        "label": "bay31",
+        "parameters": {
+          "color": [
+            1,
+            0.72,
+            0.5,
+            1
+          ],
+          "intensity": 6,
+          "kind": "point",
+          "position": [
+            5.5,
+            6.6,
+            -10
+          ]
+        },
+        "position": {
+          "x": -2600,
+          "y": 2360
+        },
+        "type": "light"
+      },
+      "bay4": {
+        "definitionVersion": 1,
+        "id": "bay4",
+        "label": "bay41",
+        "parameters": {
+          "color": [
+            1,
+            0.72,
+            0.5,
+            1
+          ],
+          "intensity": 6,
+          "kind": "point",
+          "position": [
+            -6,
+            6.6,
+            -10
+          ]
+        },
+        "position": {
+          "x": -2600,
+          "y": 2440
+        },
+        "type": "light"
+      },
       "bloomDown1": {
         "definitionVersion": 1,
         "id": "bloomDown1",
@@ -784,14 +909,14 @@
         "parameters": {
           "eye": [
             0,
-            0.92,
-            0.88
+            0.72,
+            0.7
           ],
           "eye.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((0.3 - abstime * 0.4) * (1 - clamp((abstime - 0.312500) * 1000, 0, 1)) + ((0 + (sin((abstime - 0.333333) * 0.9 + 0.3) * 0.5 + sin((abstime - 0.333333) * 2.3 + 0.51) * 0.3 + sin((abstime - 0.333333) * 5.1 + 0.69) * 0.2) * 0.011000000000000001 + 0 * (abstime - 0.333333) * 0.02) - 0.03 * (clamp(((abstime - 0.333333) - 0.3) / 0.9, 0, 1) ^ 2 * (3 - 2 * clamp(((abstime - 0.333333) - 0.3) / 0.9, 0, 1)))) * clamp((abstime - 0.312500) * 1000, 0, 1))"
+                "source": "((0.3 - abstime * 0.4) * (1 - clamp((abstime - 0.3329167) * 100000, 0, 1)) + ((0 + (sin((abstime - 0.333333) * 0.9 + 0.3) * 0.5 + sin((abstime - 0.333333) * 2.3 + 0.51) * 0.3 + sin((abstime - 0.333333) * 5.1 + 0.69) * 0.2) * 0.011000000000000001 + 0 * (abstime - 0.333333) * 0.02) - 0.03 * (clamp(((abstime - 0.333333) - 0.3) / 0.9, 0, 1) ^ 2 * (3 - 2 * clamp(((abstime - 0.333333) - 0.3) / 0.9, 0, 1)))) * clamp((abstime - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
@@ -804,11 +929,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((0.74 - abstime * 0.1) * (1 - clamp((abstime - 0.312500) * 1000, 0, 1)) + ((0.92 + (sin((abstime - 0.333333) * 1.3 + 1.1) * 0.5 + sin((abstime - 0.333333) * 3.1 + 1.87) * 0.3 + sin((abstime - 0.333333) * 6.7 + 2.53) * 0.2) * 0.0066) + 0.045 * (1 - (1 - (1 - clamp((abstime - 0.333333) / 0.75, 0, 1)) ^ 3)) + 0.012 * (clamp(((abstime - 0.333333) - 0.85) / 0.5, 0, 1) ^ 2 * (3 - 2 * clamp(((abstime - 0.333333) - 0.85) / 0.5, 0, 1)))) * clamp((abstime - 0.312500) * 1000, 0, 1))"
+                "source": "((0.74 - abstime * 0.1) * (1 - clamp((abstime - 0.3329167) * 100000, 0, 1)) + ((0.72 + (sin((abstime - 0.333333) * 1.3 + 1.1) * 0.5 + sin((abstime - 0.333333) * 3.1 + 1.87) * 0.3 + sin((abstime - 0.333333) * 6.7 + 2.53) * 0.2) * 0.0066) + 0.045 * (1 - (1 - (1 - clamp((abstime - 0.333333) / 0.75, 0, 1)) ^ 3)) + 0.012 * (clamp(((abstime - 0.333333) - 0.85) / 0.5, 0, 1) ^ 2 * (3 - 2 * clamp(((abstime - 0.333333) - 0.85) / 0.5, 0, 1)))) * clamp((abstime - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
-                "value": 0.92
+                "value": 0.72
               }
             },
             "mode": "expression"
@@ -817,11 +942,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((0.95) * (1 - clamp((abstime - 0.312500) * 1000, 0, 1)) + ((0.88 + -1 * (abstime - 0.333333) * 0.02) + 0.064 * (1 - (1 - (1 - clamp((abstime - 0.333333) / 0.75, 0, 1)) ^ 3))) * clamp((abstime - 0.312500) * 1000, 0, 1))"
+                "source": "((0.95) * (1 - clamp((abstime - 0.3329167) * 100000, 0, 1)) + ((0.7 + -1 * (abstime - 0.333333) * 0.02) + 0.064 * (1 - (1 - (1 - clamp((abstime - 0.333333) / 0.75, 0, 1)) ^ 3))) * clamp((abstime - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
-                "value": 0.88
+                "value": 0.7
               }
             },
             "mode": "expression"
@@ -831,25 +956,25 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "50"
+                "source": "62"
               },
               "static": {
                 "kind": "static",
-                "value": 50
+                "value": 62
               }
             },
             "mode": "expression"
           },
           "lookAt": [
             0,
-            0.835,
+            0.87,
             -0.03
           ],
           "lookAt.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((0.3 - abstime * 0.4 + sin((0.42 - (2.5 * abstime + 64 * abstime ^ 3) * 0.82)) * cos((0.14 - (2.5 * abstime + 64 * abstime ^ 3) * 0.42))) * (1 - clamp((abstime - 0.312500) * 1000, 0, 1)) + ((0 + (sin((abstime - 0.333333) * 0.7 + 2) * 0.5 + sin((abstime - 0.333333) * 1.9 + 3.4) * 0.3 + sin((abstime - 0.333333) * 4.3 + 4.6) * 0.2) * 0.015400000000000002) + 0.007 * (1 - (1 - clamp((abstime - 0.333333) / 0.37, 0, 1)) ^ 3) - 0.024 * (clamp(((abstime - 0.333333) - 0.3) / 0.9, 0, 1) ^ 2 * (3 - 2 * clamp(((abstime - 0.333333) - 0.3) / 0.9, 0, 1)))) * clamp((abstime - 0.312500) * 1000, 0, 1))"
+                "source": "((0.3 - abstime * 0.4 + sin((0.42 - (2.5 * abstime + 64 * abstime ^ 3) * 0.82)) * cos((0.14 - (2.5 * abstime + 64 * abstime ^ 3) * 0.42))) * (1 - clamp((abstime - 0.3329167) * 100000, 0, 1)) + ((0 + (sin((abstime - 0.333333) * 0.7 + 2) * 0.5 + sin((abstime - 0.333333) * 1.9 + 3.4) * 0.3 + sin((abstime - 0.333333) * 4.3 + 4.6) * 0.2) * 0.015400000000000002) + 0.007 * (1 - (1 - clamp((abstime - 0.333333) / 0.37, 0, 1)) ^ 3) - 0.024 * (clamp(((abstime - 0.333333) - 0.3) / 0.9, 0, 1) ^ 2 * (3 - 2 * clamp(((abstime - 0.333333) - 0.3) / 0.9, 0, 1)))) * clamp((abstime - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
@@ -862,11 +987,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((0.74 - abstime * 0.1 + sin((0.14 - (2.5 * abstime + 64 * abstime ^ 3) * 0.42))) * (1 - clamp((abstime - 0.312500) * 1000, 0, 1)) + ((0.835 + (sin((abstime - 0.333333) * 0.8 + 2.7) * 0.5 + sin((abstime - 0.333333) * 2.1 + 4.59) * 0.3 + sin((abstime - 0.333333) * 4.9 + 6.21) * 0.2) * 0.0088) + 0.014 * (clamp(((abstime - 0.333333) - 0.85) / 0.5, 0, 1) ^ 2 * (3 - 2 * clamp(((abstime - 0.333333) - 0.85) / 0.5, 0, 1)))) * clamp((abstime - 0.312500) * 1000, 0, 1))"
+                "source": "((0.74 - abstime * 0.1 + sin((0.14 - (2.5 * abstime + 64 * abstime ^ 3) * 0.42))) * (1 - clamp((abstime - 0.3329167) * 100000, 0, 1)) + ((0.87 + (sin((abstime - 0.333333) * 0.8 + 2.7) * 0.5 + sin((abstime - 0.333333) * 2.1 + 4.59) * 0.3 + sin((abstime - 0.333333) * 4.9 + 6.21) * 0.2) * 0.0088) + 0.014 * (clamp(((abstime - 0.333333) - 0.85) / 0.5, 0, 1) ^ 2 * (3 - 2 * clamp(((abstime - 0.333333) - 0.85) / 0.5, 0, 1)))) * clamp((abstime - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
-                "value": 0.835
+                "value": 0.87
               }
             },
             "mode": "expression"
@@ -875,7 +1000,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((0.95 - cos((0.42 - (2.5 * abstime + 64 * abstime ^ 3) * 0.82)) * cos((0.14 - (2.5 * abstime + 64 * abstime ^ 3) * 0.42))) * (1 - clamp((abstime - 0.312500) * 1000, 0, 1)) + ((-0.03)) * clamp((abstime - 0.312500) * 1000, 0, 1))"
+                "source": "((0.95 - cos((0.42 - (2.5 * abstime + 64 * abstime ^ 3) * 0.82)) * cos((0.14 - (2.5 * abstime + 64 * abstime ^ 3) * 0.42))) * (1 - clamp((abstime - 0.3329167) * 100000, 0, 1)) + ((-0.03)) * clamp((abstime - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
@@ -889,7 +1014,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((((2.5 * abstime + 64 * abstime ^ 3) * 22)) * (1 - clamp((abstime - 0.312500) * 1000, 0, 1)) + ((-2.8 + (0.8 - -2.8) * (clamp((abstime - 0.333333) / 1, 0, 1) ^ 2 * (3 - 2 * clamp((abstime - 0.333333) / 1, 0, 1))) + (sin((abstime - 0.333333) * 0.5 + 0.9) * 0.5 + sin((abstime - 0.333333) * 1.4 + 1.53) * 0.3 + sin((abstime - 0.333333) * 3.3 + 2.07) * 0.2) * 0.308)) * clamp((abstime - 0.312500) * 1000, 0, 1))"
+                "source": "((((2.5 * abstime + 64 * abstime ^ 3) * 22)) * (1 - clamp((abstime - 0.3329167) * 100000, 0, 1)) + ((-2.8 + (0.8 - -2.8) * (clamp((abstime - 0.333333) / 1, 0, 1) ^ 2 * (3 - 2 * clamp((abstime - 0.333333) / 1, 0, 1))) + (sin((abstime - 0.333333) * 0.5 + 0.9) * 0.5 + sin((abstime - 0.333333) * 1.4 + 1.53) * 0.3 + sin((abstime - 0.333333) * 3.3 + 2.07) * 0.2) * 0.308)) * clamp((abstime - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
@@ -946,7 +1071,7 @@
         "parameters": {
           "aim": [
             0,
-            0.835,
+            0.87,
             -0.03
           ],
           "aim.x": {
@@ -970,7 +1095,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.835
+                "value": 0.87
               }
             },
             "mode": "expression"
@@ -988,11 +1113,11 @@
             },
             "mode": "expression"
           },
-          "aperture": 1.1,
+          "aperture": 0.18,
           "eye": [
             0,
-            0.92,
-            0.88
+            0.72,
+            0.7
           ],
           "eye.x": {
             "bindings": {
@@ -1015,7 +1140,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.92
+                "value": 0.72
               }
             },
             "mode": "expression"
@@ -1028,7 +1153,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.88
+                "value": 0.7
               }
             },
             "mode": "expression"
@@ -1046,7 +1171,19 @@
             },
             "mode": "expression"
           },
-          "focusDistance": 1.08,
+          "focusDistance": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.z - 0.04"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.6599999999999999
+              }
+            },
+            "mode": "expression"
+          },
           "fov": {
             "bindings": {
               "expression": {
@@ -1055,12 +1192,12 @@
               },
               "static": {
                 "kind": "static",
-                "value": 50
+                "value": 62
               }
             },
             "mode": "expression"
           },
-          "maxRadius": 18,
+          "maxRadius": 5,
           "roll": {
             "bindings": {
               "expression": {
@@ -1181,7 +1318,7 @@
         },
         "position": {
           "x": -2600,
-          "y": 2280
+          "y": 2680
         },
         "type": "light"
       },
@@ -1209,7 +1346,7 @@
         },
         "position": {
           "x": -2600,
-          "y": 2360
+          "y": 2760
         },
         "type": "light"
       },
@@ -1318,8 +1455,10 @@
         "id": "glassMat",
         "label": "glassmat1",
         "parameters": {
+          "glint": 0.8,
           "model": "unlit",
           "roughness": 0.02,
+          "sheen": 0.03,
           "source": "struct Params {\n  sheen: f32, // @default 0.06  Fresnel sheen radiance.\n  glint: f32, // @default 3  Radiance of the glints (the room's bright shapes in the glass).\n  tint: vec3f, // @default 1  Colour of the reflection.\n};\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let v = normalize(s.eye - s.world);\n  let n = normalize(s.normal);\n  let nv = clamp(abs(dot(n, v)), 0.0, 1.0);\n  let fresnel = 0.04 + 0.96 * pow(1.0 - nv, 5.0);\n  let r = reflect(-v, n);\n  // the room: a bright horizon band (the other cars' lamps, the doors) and two overhead fittings\n  let band = smoothstep(0.12, 0.02, abs(r.y - 0.05)) * (0.6 + 0.4 * sin(atan2(r.x, r.z) * 7.0));\n  let top = pow(max(dot(r, normalize(vec3f(0.3, 1.0, 0.2))), 0.0), 400.0) + pow(max(dot(r, normalize(vec3f(-0.4, 0.9, -0.3))), 0.0), 300.0);\n  o.albedo = vec4f(0.0, 0.0, 0.0, 1.0);\n  o.emissive = p.tint * (fresnel * p.sheen * 10.0 + (band + top) * p.glint * (0.25 + fresnel));\n  return o;\n}"
         },
         "position": {
@@ -1394,7 +1533,7 @@
         "parameters": {
           "aim": [
             0,
-            0.835,
+            0.87,
             -0.03
           ],
           "aim.x": {
@@ -1418,7 +1557,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.835
+                "value": 0.87
               }
             },
             "mode": "expression"
@@ -1442,11 +1581,12 @@
             0.005
           ],
           "anisotropy": 0.72,
+          "core": 0.4,
           "density": 0.02,
           "eye": [
             0,
-            0.92,
-            0.88
+            0.72,
+            0.7
           ],
           "eye.x": {
             "bindings": {
@@ -1469,7 +1609,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.92
+                "value": 0.72
               }
             },
             "mode": "expression"
@@ -1482,7 +1622,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.88
+                "value": 0.7
               }
             },
             "mode": "expression"
@@ -1508,7 +1648,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 50
+                "value": 62
               }
             },
             "mode": "expression"
@@ -1527,7 +1667,8 @@
             },
             "mode": "expression"
           },
-          "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n// T1400b — On Nothing haze (generated by src/projects/on-nothing/atmosphere.ts from the GLB's lamps).\nstruct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  density: f32, // @default 0.02  Scattering per metre.\n  anisotropy: f32, // @default 0.7  Henyey-Greenstein g: how forward-peaked (toward the lens) the scatter is.\n  ambient: vec3f, // @default 0  Radiance the haze carries everywhere (the room's own faint light).\n  reach: f32, // @default 40  Longest march where a ray hits nothing, metres.\n  head: f32, // @default 1  Headlight scatter gain.\n  tube: f32, // @default 1  LED tube scatter gain.\n  back: f32, // @default 1  Backlight scatter gain.\n  drift: f32, // @default 0.25  Depth of the slow density variation.\n  core: f32, // @default 0.08  Metres: the soft core radius around each source (caps 1/d²).\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\nconst LIGHTS: u32 = 6u;\nconst L_POS = array<vec3f, 6>(\n  vec3f(0.70081, 0.93676, -0.26165),\n  vec3f(-0.70080, 0.93676, -0.26162),\n  vec3f(-2.51070, 0.92948, 0.26008),\n  vec3f(-3.80958, 0.92947, 0.25986),\n  vec3f(4.57927, 0.69717, -2.69343),\n  vec3f(3.48068, 0.69690, -2.69342));\nconst L_DIR = array<vec3f, 6>(\n  vec3f(0.00000, -0.05989, 0.99820),\n  vec3f(0.00000, -0.05989, 0.99820),\n  vec3f(0.00000, -0.05989, 0.99820),\n  vec3f(0.00000, -0.05989, 0.99820),\n  vec3f(0.00000, -0.05989, 0.99820),\n  vec3f(0.00000, -0.05989, 0.99820));\nconst L_COLOR = array<vec3f, 6>(\n  vec3f(2.41800, 2.49600, 2.60000),\n  vec3f(2.41800, 2.49600, 2.60000),\n  vec3f(2.41800, 2.49600, 2.60000),\n  vec3f(2.41800, 2.49600, 2.60000),\n  vec3f(2.41800, 2.49600, 2.60000),\n  vec3f(2.41800, 2.49600, 2.60000));\nconst L_SHAPE = array<vec4f, 6>(\n  vec4f(0.88701, 0.97677, 0.0, 0.0),\n  vec4f(0.88701, 0.97677, 0.0, 0.0),\n  vec4f(0.88701, 0.97677, 0.0, 0.0),\n  vec4f(0.88701, 0.97677, 0.0, 0.0),\n  vec4f(0.88701, 0.97677, 0.0, 0.0),\n  vec4f(0.88701, 0.97677, 0.0, 0.0));\nconst STEPS: u32 = 72u;\n\nfn hg(cosTheta: f32, g: f32) -> f32 {\n  let g2 = g * g;\n  return (1.0 - g2) / (12.566371 * pow(max(1.0 + g2 - 2.0 * g * cosTheta, 1e-4), 1.5));\n}\n\nfn groupGain(group: f32) -> f32 {\n  return select(select(params.back, params.tube, group < 1.5), params.head, group < 0.5);\n}\n\nfn driftDensity(p: vec3f, t: f32) -> f32 {\n  let q = p * 0.35 + vec3f(t * 0.05, 0.0, t * 0.03);\n  let n = sin(q.x * 1.3 + sin(q.z * 0.9)) * sin(q.z * 1.1 + sin(q.y * 1.7 + q.x * 0.4)) * 0.5 + 0.5;\n  return 1.0 + (n - 0.5) * 2.0 * params.drift;\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let lit = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let v = makeView();\n  let ray = rayAt(v, uv);\n  let z = viewDepth(uv);\n  let distance = select(params.reach, z / max(dot(ray, v.forward), 1e-4), z > 0.0);\n  let jitter = ignHash(uv * frameU.resolution + vec2f(frameU.absFrame * 5.3, 0.0));\n  let dt = distance / f32(STEPS);\n  var scatter = vec3f(0.0);\n  var optical = 0.0;\n  for (var i = 0u; i < STEPS; i = i + 1u) {\n    let travel = (f32(i) + jitter) * dt;\n    let p = params.eye + ray * travel;\n    let sigma = params.density * driftDensity(p, frameU.absTime);\n    var inscatter = params.ambient;\n    for (var k = 0u; k < LIGHTS; k = k + 1u) {\n      let toP = p - L_POS[k];\n      let d2 = dot(toP, toP);\n      let l = toP * inverseSqrt(max(d2, 1e-6));\n      let shape = L_SHAPE[k];\n      let cone = select(smoothstep(shape.x, shape.y, dot(l, L_DIR[k])), 1.0, shape.x < -1.5);\n      if (cone <= 0.0) { continue; }\n      inscatter = inscatter + L_COLOR[k] * groupGain(shape.z) * cone * hg(dot(l, -ray), params.anisotropy) / (d2 + params.core * params.core);\n    }\n    scatter = scatter + inscatter * sigma * exp(-optical) * dt;\n    optical = optical + sigma * dt;\n  }\n  return vec4f(lit.rgb * exp(-optical) + scatter, lit.a);\n}"
+          "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n// T1400b — On Nothing haze (generated by src/projects/on-nothing/atmosphere.ts from the GLB's lamps).\nstruct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  density: f32, // @default 0.02  Scattering per metre.\n  anisotropy: f32, // @default 0.7  Henyey-Greenstein g: how forward-peaked (toward the lens) the scatter is.\n  ambient: vec3f, // @default 0  Radiance the haze carries everywhere (the room's own faint light).\n  reach: f32, // @default 40  Longest march where a ray hits nothing, metres.\n  head: f32, // @default 1  Headlight scatter gain.\n  tube: f32, // @default 1  LED tube scatter gain.\n  back: f32, // @default 1  Backlight scatter gain.\n  drift: f32, // @default 0.25  Depth of the slow density variation.\n  core: f32, // @default 0.08  Metres: the soft core radius around each source (caps 1/d²).\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\nconst LIGHTS: u32 = 11u;\nconst L_POS = array<vec3f, 11>(\n  vec3f(0.70081, 0.93676, -0.26165),\n  vec3f(-0.70080, 0.93676, -0.26162),\n  vec3f(-3.20056, 0.92948, -1.12989),\n  vec3f(-4.49944, 0.92947, -1.13011),\n  vec3f(4.26930, 0.69717, -0.97001),\n  vec3f(3.17070, 0.69690, -0.96999),\n  vec3f(-3.50000, 6.60000, -5.00000),\n  vec3f(3.00000, 6.60000, -5.00000),\n  vec3f(-1.00000, 6.60000, -10.00000),\n  vec3f(5.50000, 6.60000, -10.00000),\n  vec3f(-6.00000, 6.60000, -10.00000));\nconst L_DIR = array<vec3f, 11>(\n  vec3f(0.00000, -0.05989, 0.99820),\n  vec3f(0.00000, -0.05989, 0.99820),\n  vec3f(0.00000, -0.05989, 0.99820),\n  vec3f(0.00000, -0.05989, 0.99820),\n  vec3f(0.00000, -0.05989, 0.99820),\n  vec3f(0.00000, -0.05989, 0.99820),\n  vec3f(0.00000, -1.00000, 0.00000),\n  vec3f(0.00000, -1.00000, 0.00000),\n  vec3f(0.00000, -1.00000, 0.00000),\n  vec3f(0.00000, -1.00000, 0.00000),\n  vec3f(0.00000, -1.00000, 0.00000));\nconst L_COLOR = array<vec3f, 11>(\n  vec3f(2.41800, 2.49600, 2.60000),\n  vec3f(2.41800, 2.49600, 2.60000),\n  vec3f(2.41800, 2.49600, 2.60000),\n  vec3f(2.41800, 2.49600, 2.60000),\n  vec3f(2.41800, 2.49600, 2.60000),\n  vec3f(2.41800, 2.49600, 2.60000),\n  vec3f(1.00000, 0.72000, 0.50000),\n  vec3f(1.00000, 0.72000, 0.50000),\n  vec3f(1.00000, 0.72000, 0.50000),\n  vec3f(1.00000, 0.72000, 0.50000),\n  vec3f(1.00000, 0.72000, 0.50000));\nconst L_SHAPE = array<vec4f, 11>(\n  vec4f(0.88701, 0.97677, 0.0, 0.0),\n  vec4f(0.88701, 0.97677, 0.0, 0.0),\n  vec4f(0.88701, 0.97677, 0.0, 0.0),\n  vec4f(0.88701, 0.97677, 0.0, 0.0),\n  vec4f(0.88701, 0.97677, 0.0, 0.0),\n  vec4f(0.88701, 0.97677, 0.0, 0.0),\n  vec4f(-2.00000, -1.00000, 1.0, 0.0),\n  vec4f(-2.00000, -1.00000, 1.0, 0.0),\n  vec4f(-2.00000, -1.00000, 1.0, 0.0),\n  vec4f(-2.00000, -1.00000, 1.0, 0.0),\n  vec4f(-2.00000, -1.00000, 1.0, 0.0));\nconst STEPS: u32 = 72u;\n\nfn hg(cosTheta: f32, g: f32) -> f32 {\n  let g2 = g * g;\n  return (1.0 - g2) / (12.566371 * pow(max(1.0 + g2 - 2.0 * g * cosTheta, 1e-4), 1.5));\n}\n\nfn groupGain(group: f32) -> f32 {\n  return select(select(params.back, params.tube, group < 1.5), params.head, group < 0.5);\n}\n\nfn driftDensity(p: vec3f, t: f32) -> f32 {\n  let q = p * 0.35 + vec3f(t * 0.05, 0.0, t * 0.03);\n  let n = sin(q.x * 1.3 + sin(q.z * 0.9)) * sin(q.z * 1.1 + sin(q.y * 1.7 + q.x * 0.4)) * 0.5 + 0.5;\n  return 1.0 + (n - 0.5) * 2.0 * params.drift;\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let lit = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let v = makeView();\n  let ray = rayAt(v, uv);\n  let z = viewDepth(uv);\n  let distance = select(params.reach, z / max(dot(ray, v.forward), 1e-4), z > 0.0);\n  let jitter = ignHash(uv * frameU.resolution + vec2f(frameU.absFrame * 5.3, 0.0));\n  let dt = distance / f32(STEPS);\n  var scatter = vec3f(0.0);\n  var optical = 0.0;\n  for (var i = 0u; i < STEPS; i = i + 1u) {\n    let travel = (f32(i) + jitter) * dt;\n    let p = params.eye + ray * travel;\n    let sigma = params.density * driftDensity(p, frameU.absTime);\n    var inscatter = params.ambient;\n    for (var k = 0u; k < LIGHTS; k = k + 1u) {\n      let toP = p - L_POS[k];\n      let d2 = dot(toP, toP);\n      let l = toP * inverseSqrt(max(d2, 1e-6));\n      let shape = L_SHAPE[k];\n      let cone = select(smoothstep(shape.x, shape.y, dot(l, L_DIR[k])), 1.0, shape.x < -1.5);\n      if (cone <= 0.0) { continue; }\n      inscatter = inscatter + L_COLOR[k] * groupGain(shape.z) * cone * hg(dot(l, -ray), params.anisotropy) / (d2 + params.core * params.core);\n    }\n    scatter = scatter + inscatter * sigma * exp(-optical) * dt;\n    optical = optical + sigma * dt;\n  }\n  return vec4f(lit.rgb * exp(-optical) + scatter, lit.a);\n}",
+          "tube": 0.6
         },
         "position": {
           "x": -1700,
@@ -1613,7 +1754,7 @@
         },
         "position": {
           "x": -2600,
-          "y": 2120
+          "y": 2520
         },
         "type": "light"
       },
@@ -1624,7 +1765,7 @@
         "parameters": {
           "aberration": 0.004,
           "edgeBlur": 0.02,
-          "k": 0.13,
+          "k": 0.2,
           "source": "struct Params {\n  k: f32, // @default 0.13  Barrel distortion (height units², normalised at the side edges).\n  edgeBlur: f32, // @default 0.018  Edge smear at the side edges, fraction of the frame height.\n  swirl: f32, // @default 0.7  0 radial .. 1 tangential edge smear.\n  aberration: f32, // @default 0.004  Lateral colour at the side edges, fraction of the radius.\n  vignette: f32, // @default 0.5  Darkening at the corners.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\nconst TAPS: i32 = 16;\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let size = vec2f(textureDimensions(inputTexture));\n  let aspect = size.x / size.y;\n  let scaleXY = vec2f(aspect, 1.0);\n  let c = (uv - vec2f(0.5)) * scaleXY;\n  let r2 = dot(c, c);\n  let e2 = aspect * aspect * 0.25;\n  let src = c * (1.0 + params.k * r2) / (1.0 + params.k * e2);\n  // Edge smear: nothing in the centre third, growing to edgeBlur at the side edges.\n  let edge = smoothstep(0.08, 1.0, r2 / e2);\n  let radial = normalize(src + vec2f(1e-5));\n  let tangent = vec2f(-radial.y, radial.x);\n  let dir = normalize(mix(radial, tangent, params.swirl)) * params.edgeBlur * edge * edge;\n  let jitter = ignHash(uv * size) - 0.5;\n  var sum = vec3f(0.0);\n  for (var i = 0; i < TAPS; i = i + 1) {\n    let t = (f32(i) + 0.5 + jitter) / f32(TAPS) - 0.5;\n    let p = src + dir * t;\n    let ca = p * params.aberration * edge;\n    let rch = textureSampleLevel(inputTexture, inputSampler, (p + ca) / scaleXY + 0.5, 0.0).r;\n    let gch = textureSampleLevel(inputTexture, inputSampler, p / scaleXY + 0.5, 0.0).g;\n    let bch = textureSampleLevel(inputTexture, inputSampler, (p - ca) / scaleXY + 0.5, 0.0).b;\n    sum = sum + vec3f(rch, gch, bch);\n  }\n  var color = sum / f32(TAPS);\n  let q = (uv - vec2f(0.5)) * 2.0;\n  let vr = dot(q * vec2f(1.0, 0.8), q * vec2f(1.0, 0.8));\n  color = color * mix(1.0, 1.0 - smoothstep(0.35, 1.6, vr), params.vignette);\n  return vec4f(color, 1.0);\n}",
           "swirl": 0.7,
           "vignette": 0.55
@@ -1747,7 +1888,7 @@
         "parameters": {
           "aim": [
             0,
-            0.835,
+            0.87,
             -0.03
           ],
           "aim.x": {
@@ -1771,7 +1912,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.835
+                "value": 0.87
               }
             },
             "mode": "expression"
@@ -1791,8 +1932,8 @@
           },
           "eye": [
             0,
-            0.92,
-            0.88
+            0.72,
+            0.7
           ],
           "eye.x": {
             "bindings": {
@@ -1815,7 +1956,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.92
+                "value": 0.72
               }
             },
             "mode": "expression"
@@ -1828,7 +1969,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.88
+                "value": 0.7
               }
             },
             "mode": "expression"
@@ -1854,7 +1995,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 50
+                "value": 62
               }
             },
             "mode": "expression"
@@ -1862,14 +2003,14 @@
           "maxBlur": 1.6,
           "prevAim": [
             0,
-            0.835,
+            0.87,
             -0.03
           ],
           "prevAim.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((0.3 - (abstime - 0.004) * 0.4 + sin((0.42 - (2.5 * (abstime - 0.004) + 64 * (abstime - 0.004) ^ 3) * 0.82)) * cos((0.14 - (2.5 * (abstime - 0.004) + 64 * (abstime - 0.004) ^ 3) * 0.42))) * (1 - clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1)) + ((0 + (sin(((abstime - 0.004) - 0.333333) * 0.7 + 2) * 0.5 + sin(((abstime - 0.004) - 0.333333) * 1.9 + 3.4) * 0.3 + sin(((abstime - 0.004) - 0.333333) * 4.3 + 4.6) * 0.2) * 0.015400000000000002) + 0.007 * (1 - (1 - clamp(((abstime - 0.004) - 0.333333) / 0.37, 0, 1)) ^ 3) - 0.024 * (clamp((((abstime - 0.004) - 0.333333) - 0.3) / 0.9, 0, 1) ^ 2 * (3 - 2 * clamp((((abstime - 0.004) - 0.333333) - 0.3) / 0.9, 0, 1)))) * clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1))"
+                "source": "((0.3 - (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) * 0.4 + sin((0.42 - (2.5 * (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) + 64 * (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) ^ 3) * 0.82)) * cos((0.14 - (2.5 * (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) + 64 * (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) ^ 3) * 0.42))) * (1 - clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1)) + ((0 + (sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 0.7 + 2) * 0.5 + sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 1.9 + 3.4) * 0.3 + sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 4.3 + 4.6) * 0.2) * 0.015400000000000002) + 0.007 * (1 - (1 - clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) / 0.37, 0, 1)) ^ 3) - 0.024 * (clamp((((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) - 0.3) / 0.9, 0, 1) ^ 2 * (3 - 2 * clamp((((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) - 0.3) / 0.9, 0, 1)))) * clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
@@ -1882,11 +2023,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((0.74 - (abstime - 0.004) * 0.1 + sin((0.14 - (2.5 * (abstime - 0.004) + 64 * (abstime - 0.004) ^ 3) * 0.42))) * (1 - clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1)) + ((0.835 + (sin(((abstime - 0.004) - 0.333333) * 0.8 + 2.7) * 0.5 + sin(((abstime - 0.004) - 0.333333) * 2.1 + 4.59) * 0.3 + sin(((abstime - 0.004) - 0.333333) * 4.9 + 6.21) * 0.2) * 0.0088) + 0.014 * (clamp((((abstime - 0.004) - 0.333333) - 0.85) / 0.5, 0, 1) ^ 2 * (3 - 2 * clamp((((abstime - 0.004) - 0.333333) - 0.85) / 0.5, 0, 1)))) * clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1))"
+                "source": "((0.74 - (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) * 0.1 + sin((0.14 - (2.5 * (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) + 64 * (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) ^ 3) * 0.42))) * (1 - clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1)) + ((0.87 + (sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 0.8 + 2.7) * 0.5 + sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 2.1 + 4.59) * 0.3 + sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 4.9 + 6.21) * 0.2) * 0.0088) + 0.014 * (clamp((((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) - 0.85) / 0.5, 0, 1) ^ 2 * (3 - 2 * clamp((((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) - 0.85) / 0.5, 0, 1)))) * clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
-                "value": 0.835
+                "value": 0.87
               }
             },
             "mode": "expression"
@@ -1895,7 +2036,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((0.95 - cos((0.42 - (2.5 * (abstime - 0.004) + 64 * (abstime - 0.004) ^ 3) * 0.82)) * cos((0.14 - (2.5 * (abstime - 0.004) + 64 * (abstime - 0.004) ^ 3) * 0.42))) * (1 - clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1)) + ((-0.03)) * clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1))"
+                "source": "((0.95 - cos((0.42 - (2.5 * (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) + 64 * (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) ^ 3) * 0.82)) * cos((0.14 - (2.5 * (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) + 64 * (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) ^ 3) * 0.42))) * (1 - clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1)) + ((-0.03)) * clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
@@ -1906,14 +2047,14 @@
           },
           "prevEye": [
             0,
-            0.92,
-            0.88
+            0.72,
+            0.7
           ],
           "prevEye.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((0.3 - (abstime - 0.004) * 0.4) * (1 - clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1)) + ((0 + (sin(((abstime - 0.004) - 0.333333) * 0.9 + 0.3) * 0.5 + sin(((abstime - 0.004) - 0.333333) * 2.3 + 0.51) * 0.3 + sin(((abstime - 0.004) - 0.333333) * 5.1 + 0.69) * 0.2) * 0.011000000000000001 + 0 * ((abstime - 0.004) - 0.333333) * 0.02) - 0.03 * (clamp((((abstime - 0.004) - 0.333333) - 0.3) / 0.9, 0, 1) ^ 2 * (3 - 2 * clamp((((abstime - 0.004) - 0.333333) - 0.3) / 0.9, 0, 1)))) * clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1))"
+                "source": "((0.3 - (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) * 0.4) * (1 - clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1)) + ((0 + (sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 0.9 + 0.3) * 0.5 + sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 2.3 + 0.51) * 0.3 + sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 5.1 + 0.69) * 0.2) * 0.011000000000000001 + 0 * ((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 0.02) - 0.03 * (clamp((((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) - 0.3) / 0.9, 0, 1) ^ 2 * (3 - 2 * clamp((((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) - 0.3) / 0.9, 0, 1)))) * clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
@@ -1926,11 +2067,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((0.74 - (abstime - 0.004) * 0.1) * (1 - clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1)) + ((0.92 + (sin(((abstime - 0.004) - 0.333333) * 1.3 + 1.1) * 0.5 + sin(((abstime - 0.004) - 0.333333) * 3.1 + 1.87) * 0.3 + sin(((abstime - 0.004) - 0.333333) * 6.7 + 2.53) * 0.2) * 0.0066) + 0.045 * (1 - (1 - (1 - clamp(((abstime - 0.004) - 0.333333) / 0.75, 0, 1)) ^ 3)) + 0.012 * (clamp((((abstime - 0.004) - 0.333333) - 0.85) / 0.5, 0, 1) ^ 2 * (3 - 2 * clamp((((abstime - 0.004) - 0.333333) - 0.85) / 0.5, 0, 1)))) * clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1))"
+                "source": "((0.74 - (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) * 0.1) * (1 - clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1)) + ((0.72 + (sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 1.3 + 1.1) * 0.5 + sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 3.1 + 1.87) * 0.3 + sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 6.7 + 2.53) * 0.2) * 0.0066) + 0.045 * (1 - (1 - (1 - clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) / 0.75, 0, 1)) ^ 3)) + 0.012 * (clamp((((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) - 0.85) / 0.5, 0, 1) ^ 2 * (3 - 2 * clamp((((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) - 0.85) / 0.5, 0, 1)))) * clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
-                "value": 0.92
+                "value": 0.72
               }
             },
             "mode": "expression"
@@ -1939,11 +2080,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((0.95) * (1 - clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1)) + ((0.88 + -1 * ((abstime - 0.004) - 0.333333) * 0.02) + 0.064 * (1 - (1 - (1 - clamp(((abstime - 0.004) - 0.333333) / 0.75, 0, 1)) ^ 3))) * clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1))"
+                "source": "((0.95) * (1 - clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1)) + ((0.7 + -1 * ((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 0.02) + 0.064 * (1 - (1 - (1 - clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) / 0.75, 0, 1)) ^ 3))) * clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
-                "value": 0.88
+                "value": 0.7
               }
             },
             "mode": "expression"
@@ -1952,11 +2093,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "50"
+                "source": "62"
               },
               "static": {
                 "kind": "static",
-                "value": 50
+                "value": 62
               }
             },
             "mode": "expression"
@@ -1965,7 +2106,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((((2.5 * (abstime - 0.004) + 64 * (abstime - 0.004) ^ 3) * 22)) * (1 - clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1)) + ((-2.8 + (0.8 - -2.8) * (clamp(((abstime - 0.004) - 0.333333) / 1, 0, 1) ^ 2 * (3 - 2 * clamp(((abstime - 0.004) - 0.333333) / 1, 0, 1))) + (sin(((abstime - 0.004) - 0.333333) * 0.5 + 0.9) * 0.5 + sin(((abstime - 0.004) - 0.333333) * 1.4 + 1.53) * 0.3 + sin(((abstime - 0.004) - 0.333333) * 3.3 + 2.07) * 0.2) * 0.308)) * clamp(((abstime - 0.004) - 0.312500) * 1000, 0, 1))"
+                "source": "((((2.5 * (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) + 64 * (abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) ^ 3) * 22)) * (1 - clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1)) + ((-2.8 + (0.8 - -2.8) * (clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) / 1, 0, 1) ^ 2 * (3 - 2 * clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) / 1, 0, 1))) + (sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 0.5 + 0.9) * 0.5 + sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 1.4 + 1.53) * 0.3 + sin(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.333333) * 3.3 + 2.07) * 0.2) * 0.308)) * clamp(((abstime - 0.004 + clamp((abstime - 0.3329167) * 100000, 0, 1) * max(0, 0.3329267 - abstime + 0.004)) - 0.3329167) * 100000, 0, 1))"
               },
               "static": {
                 "kind": "static",
@@ -1991,7 +2132,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(0.5 + 9 * (clamp((abstime - 0.09) / 0.12, 0, 1) ^ 2 * (3 - 2 * clamp((abstime - 0.09) / 0.12, 0, 1))) * (1 - clamp((abstime - 0.312500) * 1000, 0, 1))) / 24 / 0.004"
+                "source": "(0.5 + 9 * (clamp((abstime - 0.09) / 0.12, 0, 1) ^ 2 * (3 - 2 * clamp((abstime - 0.09) / 0.12, 0, 1))) * (1 - clamp((abstime - 0.3329167) * 100000, 0, 1))) / 24 / 0.004"
               },
               "static": {
                 "kind": "static",
@@ -2075,7 +2216,7 @@
         "parameters": {
           "aim": [
             0,
-            0.835,
+            0.87,
             -0.03
           ],
           "aim.x": {
@@ -2099,7 +2240,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.835
+                "value": 0.87
               }
             },
             "mode": "expression"
@@ -2119,8 +2260,8 @@
           },
           "eye": [
             0,
-            0.92,
-            0.88
+            0.72,
+            0.7
           ],
           "eye.x": {
             "bindings": {
@@ -2143,7 +2284,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.92
+                "value": 0.72
               }
             },
             "mode": "expression"
@@ -2156,7 +2297,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.88
+                "value": 0.7
               }
             },
             "mode": "expression"
@@ -2182,7 +2323,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 50
+                "value": 62
               }
             },
             "mode": "expression"
@@ -2251,9 +2392,9 @@
         "parameters": {
           "pivot": "origin",
           "translate": [
-            -0.25,
+            -0.9398602008819581,
             0,
-            0.5
+            -0.8899718868732451
           ]
         },
         "position": {
@@ -2269,9 +2410,9 @@
         "parameters": {
           "pivot": "origin",
           "translate": [
-            5.45,
+            5.140023918151856,
             0,
-            4.8
+            6.523424892425537
           ]
         },
         "position": {
@@ -2287,7 +2428,7 @@
         "parameters": {
           "aim": [
             0,
-            0.835,
+            0.87,
             -0.03
           ],
           "aim.x": {
@@ -2311,7 +2452,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.835
+                "value": 0.87
               }
             },
             "mode": "expression"
@@ -2333,8 +2474,8 @@
           "dimShare": 0.1,
           "eye": [
             0,
-            0.92,
-            0.88
+            0.72,
+            0.7
           ],
           "eye.x": {
             "bindings": {
@@ -2357,7 +2498,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.92
+                "value": 0.72
               }
             },
             "mode": "expression"
@@ -2370,7 +2511,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.88
+                "value": 0.7
               }
             },
             "mode": "expression"
@@ -2396,7 +2537,7 @@
               },
               "static": {
                 "kind": "static",
-                "value": 50
+                "value": 62
               }
             },
             "mode": "expression"
@@ -2455,7 +2596,7 @@
           "depthOutput": true,
           "environmentIntensity": 1,
           "environmentTaps": 32,
-          "lights": "sodiuml1 sodiumc1 sodiumr1 sodiumw1 key1 under1 flankl1 flankr1",
+          "lights": "sodiuml1 sodiumc1 sodiumr1 sodiumw1 bay01 bay11 bay21 bay31 bay41 key1 under1 flankl1 flankr1",
           "normalOutput": true,
           "projectors": "head01",
           "scenes": "geo_wh1 geo_car01 geo_car11 geo_car31 geo_title1"
@@ -2578,7 +2719,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "-(((((2.5 * abstime + 64 * abstime ^ 3) * 22)) * (1 - clamp((abstime - 0.312500) * 1000, 0, 1)) + ((-2.8 + (0.8 - -2.8) * (clamp((abstime - 0.333333) / 1, 0, 1) ^ 2 * (3 - 2 * clamp((abstime - 0.333333) / 1, 0, 1))) + (sin((abstime - 0.333333) * 0.5 + 0.9) * 0.5 + sin((abstime - 0.333333) * 1.4 + 1.53) * 0.3 + sin((abstime - 0.333333) * 3.3 + 2.07) * 0.2) * 0.308)) * clamp((abstime - 0.312500) * 1000, 0, 1)))"
+                "source": "-(((((2.5 * abstime + 64 * abstime ^ 3) * 22)) * (1 - clamp((abstime - 0.3329167) * 100000, 0, 1)) + ((-2.8 + (0.8 - -2.8) * (clamp((abstime - 0.333333) / 1, 0, 1) ^ 2 * (3 - 2 * clamp((abstime - 0.333333) / 1, 0, 1))) + (sin((abstime - 0.333333) * 0.5 + 0.9) * 0.5 + sin((abstime - 0.333333) * 1.4 + 1.53) * 0.3 + sin((abstime - 0.333333) * 3.3 + 2.07) * 0.2) * 0.308)) * clamp((abstime - 0.3329167) * 100000, 0, 1)))"
               },
               "static": {
                 "kind": "static",
@@ -2653,9 +2794,12 @@
           "dryGloss": 0.6,
           "floorGain": 0.35,
           "headGain": 0.06,
+          "matteAlbedo": 0.2,
+          "matteRoughness": 0.5,
           "model": "pbr",
           "peel": 0,
-          "source": "// @use surface-detail\nconst CONTACT_COUNT: u32 = 0u;\nconst CONTACT = array<vec4f, 1>(vec4f(0.0, 0.0, -1.0, -1.0));\nstruct Params {\n  headGain: f32, // @default 1  Headlight and DRL radiance multiplier.\n  tubeGain: f32, // @default 1  LED tube radiance multiplier.\n  tailGain: f32, // @default 1  Tail light radiance multiplier.\n  wet: f32, // @default 0.4  Share of the floor that is damp and glossy.\n  wetGloss: f32, // @default 0.22  Roughness of the damp patches.\n  contactDepth: f32, // @default 0.93  How dark the floor gets under a parked car (0 off).\n  contactReach: f32, // @default 1.1  How far the contact shadow reaches beyond the footprint, metres.\n  dryGloss: f32, // @default 0.62  Roughness of the dry floor (worn concrete: past the reflections' cutoff).\n  peel: f32, // @default 0.25  Orange-peel strength on the clear coat.\n  floorGain: f32, // @default 1  The title's floor albedo scale.\n  cycAlbedo: f32, // @default 0.9  Albedo of the white cyc.\n};\n\nfn classOf(s: SurfaceIn) -> u32 {\n  return u32(s.attr.z * 64.0 + 0.5);\n}\n\n// Scratch lines: per 0.6 m cell, a random direction and offset; thin, broken, short.\nfn scratchAt(w: vec2f, scale: f32, seed: u32) -> f32 {\n  let q = w / scale;\n  let cell = floor(q);\n  let h = vec3f(unitFloat(hash3i(vec3i(vec3f(cell, 1.0)), seed)), unitFloat(hash3i(vec3i(vec3f(cell, 2.0)), seed + 7u)), unitFloat(hash3i(vec3i(vec3f(cell, 3.0)), seed + 13u)));\n  let a = h.x * 3.14159;\n  let local = q - cell - vec2f(0.5);\n  let across = dot(local, vec2f(-sin(a), cos(a))) - (h.y - 0.5) * 0.6;\n  let along = dot(local, vec2f(cos(a), sin(a)));\n  let seg = smoothstep(0.45, 0.2, abs(along)) * step(0.35, h.z);\n  return smoothstep(0.012, 0.0, abs(across)) * seg;\n}\n\n// CONTACT SHADOWS under the parked cars: each footprint (generated from the GLB, see\n// contactFootprints) darkens the floor with a soft falloff — near black under the body, a\n// short penumbra beyond it — the sky/room occlusion a screen-space pass cannot reach at 15 m.\nfn contactShadow(q: vec2f, p: Params) -> f32 {\n  var k = 1.0;\n  for (var i = 0u; i < CONTACT_COUNT; i = i + 1u) {\n    let f = CONTACT[i];\n    let d = abs(q - f.xy) - f.zw;\n    let outside = length(max(d, vec2f(0.0))) + min(max(d.x, d.y), 0.0);\n    let shadow = pow(1.0 - smoothstep(-0.6, p.contactReach, outside), 1.6);\n    k = k * (1.0 - shadow * p.contactDepth);\n  }\n  return k;\n}\n\nfn floorSurface(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {\n  // DRY, WORN warehouse concrete: satin, never glossy. A traffic-polished lane catches the\n  // lamps as a soft sheen; scuffs, stains, aggregate and scratches break it everywhere.\n  var r = o;\n  let w = s.world;\n  let large = detailFbm(vec3f(w.x * 0.18, 0.0, w.z * 0.18), 4, s.footprint);\n  let mid = detailFbm(vec3f(w.x * 0.9, 5.0, w.z * 0.9), 4, s.footprint);\n  let fine = detailFbm(w * 3.1, 5, s.footprint);\n  let grit = detailFbm(w * 21.0, 3, s.footprint);\n  let damp = smoothstep(1.0 - p.wet - 0.15, 1.0 - p.wet + 0.15, large.value + (fine.value - 0.5) * 0.25);\n  // tyre scuffs and oil stains\n  let scuff = smoothstep(0.6, 0.8, detailNoise(vec3f(w.x * 1.7, 0.0, w.z * 0.12)).value) * 0.45;\n  let stain = smoothstep(0.62, 0.78, mid.value) * 0.35;\n  // aggregate: a speckle of lighter and darker stones in the cement\n  let stone = smoothstep(0.7, 0.85, grit.value) * 0.18 - smoothstep(0.3, 0.15, grit.value) * 0.12;\n  let crack = smoothstep(0.006, 0.0, abs(detailNoise(vec3f(w.x * 0.9, 3.0, w.z * 0.9)).value - 0.5)) * 0.5;\n  let scratches = max(scratchAt(w.xz, 0.6, 3u), scratchAt(w.xz + vec2f(0.21, 0.37), 0.35, 11u) * 0.6) * (1.0 - smoothstep(0.004, 0.02, s.footprint));\n  let shade = (0.88 + 0.24 * fine.value + stone) * (0.85 + 0.3 * large.value);\n  r.albedo = vec4f(o.albedo.rgb * shade * mix(1.0, 0.6, damp) * (1.0 - scuff * 0.5) * (1.0 - stain) * (1.0 - crack * 0.6) * (1.0 + scratches * 0.5) * contactShadow(w.xz, p), 1.0);\n  // satin, never a mirror: polished where traffic ran, rough where it did not\n  let polish = smoothstep(0.35, 0.75, large.value);\n  r.roughness = clamp(mix(p.dryGloss + 0.12, p.dryGloss - 0.08, polish) + (grit.value - 0.5) * 0.1 + stain * 0.1 - scratches * 0.15, 0.3, 0.95);\n  r.roughness = mix(r.roughness, p.wetGloss, damp);\n  r.albedo = vec4f(r.albedo.rgb * p.floorGain, 1.0);\n  r.metallic = 0.0;\n  r.normal = detailBump(s.normal, grit.gradient * 0.006 + fine.gradient * 0.015 + mid.gradient * 0.02, 1.0);\n  return r;\n}\n\nfn brickSurface(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  let w = s.world;\n  let course = w.y / 0.075;\n  let row = floor(course);\n  let along = (w.x + w.z) / 0.23 + row * 0.5;\n  let mortar = max(smoothstep(0.1, 0.0, fract(course)), smoothstep(0.06, 0.0, fract(along)));\n  let n = detailFbm(w * 6.0, 4, s.footprint);\n  r.albedo = vec4f(o.albedo.rgb * (0.7 + 0.6 * n.value) * mix(1.0, 1.6, mortar), 1.0);\n  r.roughness = 0.9;\n  r.normal = detailBump(s.normal, n.gradient * 0.01, 1.0);\n  return r;\n}\n\nfn clearCoat(s: SurfaceIn, p: Params, o: SurfaceOut, roughness: f32) -> SurfaceOut {\n  var r = o;\n  let peel = detailFbm(s.world * 90.0, 2, s.footprint);\n  r.roughness = roughness;\n  r.normal = detailBump(s.normal, peel.gradient * 0.00045 * p.peel, 1.0);\n  return r;\n}\n\nfn jewel(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  // Facets: the normal snaps to a coarse lattice of directions, cell by cell, so each stone\n  // throws its own glint instead of one smooth sheen.\n  let cell = floor(s.world * 180.0);\n  let h = vec3f(unitFloat(hash3i(vec3i(cell), 11u)), unitFloat(hash3i(vec3i(cell), 23u)), unitFloat(hash3i(vec3i(cell), 37u)));\n  // facets finer than a pixel sparkle and crawl frame to frame: fade them to the smooth normal\n  let resolved = 1.0 - smoothstep(0.002, 0.006, s.footprint);\n  r.normal = normalize(s.normal + (h - vec3f(0.5)) * 0.9 * resolved);\n  r.roughness = 0.03;\n  r.metallic = 1.0;\n  r.albedo = vec4f(0.98, 0.98, 1.0, 1.0);\n  return r;\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let c = classOf(s);\n  switch c {\n    case 1u: { return floorSurface(s, p, o); }\n    case 2u: { return brickSurface(s, o); }\n    case 4u: { o.emissive = s.emissive * p.tubeGain; }\n    case 10u, 13u: { return clearCoat(s, p, o, 0.035); }\n    case 11u: { return clearCoat(s, p, o, 0.16); }\n    case 12u: { return clearCoat(s, p, o, 0.42); }\n    case 14u, 19u: { o.roughness = 0.035; o.metallic = 1.0; }\n    case 15u: { o.roughness = 0.015; o.metallic = 0.0; }\n    case 17u: {\n      let n = detailFbm(s.world * 40.0, 3, s.footprint);\n      o.roughness = 0.65 + 0.2 * n.value;\n      o.normal = detailBump(s.normal, n.gradient * 0.002, 1.0);\n    }\n    case 18u: { o.emissive = s.emissive * p.headGain; }\n    case 20u: { o.emissive = s.emissive * p.tailGain; }\n    case 30u: {\n      let luma = dot(o.albedo.rgb, vec3f(0.2126, 0.7152, 0.0722));\n      o.albedo = vec4f(mix(vec3f(luma), o.albedo.rgb, 0.6), 1.0);\n      o.roughness = 0.45;\n    }\n    case 31u, 32u: {\n      let n = detailFbm(s.world * 55.0, 3, s.footprint);\n      o.roughness = 0.9;\n      o.normal = detailBump(s.normal, n.gradient * 0.0012, 1.0);\n    }\n    case 35u: { return jewel(s, o); }\n    case 40u: { o.albedo = vec4f(vec3f(p.cycAlbedo), 1.0); o.roughness = 0.95; o.metallic = 0.0; }\n    default: {}\n  }\n  return o;\n}",
+          "source": "// @use surface-detail\nconst CONTACT_COUNT: u32 = 0u;\nconst CONTACT = array<vec4f, 1>(vec4f(0.0, 0.0, -1.0, -1.0));\nstruct Params {\n  headGain: f32, // @default 1  Headlight and DRL radiance multiplier.\n  tubeGain: f32, // @default 1  LED tube radiance multiplier.\n  tailGain: f32, // @default 1  Tail light radiance multiplier.\n  wet: f32, // @default 0.4  Share of the floor that is damp and glossy.\n  wetGloss: f32, // @default 0.22  Roughness of the damp patches.\n  contactDepth: f32, // @default 0.93  How dark the floor gets under a parked car (0 off).\n  contactReach: f32, // @default 1.1  How far the contact shadow reaches beyond the footprint, metres.\n  dryGloss: f32, // @default 0.62  Roughness of the dry floor (worn concrete: past the reflections' cutoff).\n  peel: f32, // @default 0.25  Orange-peel strength on the clear coat.\n  floorGain: f32, // @default 1  The title's floor albedo scale.\n  matteAlbedo: f32, // @default 0.2  The hero's matte paint albedo (linear).\n  matteRoughness: f32, // @default 0.5  The hero's matte paint roughness (satin).\n  specularAA: f32, // @default 1  Geometric specular antialiasing strength.\n  cycAlbedo: f32, // @default 0.9  Albedo of the white cyc.\n};\n\nfn classOf(s: SurfaceIn) -> u32 {\n  return u32(s.attr.z * 64.0 + 0.5);\n}\n\n// Scratch lines: per 0.6 m cell, a random direction and offset; thin, broken, short.\nfn scratchAt(w: vec2f, scale: f32, seed: u32) -> f32 {\n  let q = w / scale;\n  let cell = floor(q);\n  let h = vec3f(unitFloat(hash3i(vec3i(vec3f(cell, 1.0)), seed)), unitFloat(hash3i(vec3i(vec3f(cell, 2.0)), seed + 7u)), unitFloat(hash3i(vec3i(vec3f(cell, 3.0)), seed + 13u)));\n  let a = h.x * 3.14159;\n  let local = q - cell - vec2f(0.5);\n  let across = dot(local, vec2f(-sin(a), cos(a))) - (h.y - 0.5) * 0.6;\n  let along = dot(local, vec2f(cos(a), sin(a)));\n  let seg = smoothstep(0.45, 0.2, abs(along)) * step(0.35, h.z);\n  return smoothstep(0.012, 0.0, abs(across)) * seg;\n}\n\n// CONTACT SHADOWS under the parked cars: each footprint (generated from the GLB, see\n// contactFootprints) darkens the floor with a soft falloff — near black under the body, a\n// short penumbra beyond it — the sky/room occlusion a screen-space pass cannot reach at 15 m.\nfn contactShadow(q: vec2f, p: Params) -> f32 {\n  var k = 1.0;\n  for (var i = 0u; i < CONTACT_COUNT; i = i + 1u) {\n    let f = CONTACT[i];\n    let d = abs(q - f.xy) - f.zw;\n    let outside = length(max(d, vec2f(0.0))) + min(max(d.x, d.y), 0.0);\n    let shadow = pow(1.0 - smoothstep(-0.6, p.contactReach, outside), 1.6);\n    k = k * (1.0 - shadow * p.contactDepth);\n  }\n  return k;\n}\n\nfn floorSurface(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {\n  // DRY, WORN warehouse concrete: satin, never glossy. A traffic-polished lane catches the\n  // lamps as a soft sheen; scuffs, stains, aggregate and scratches break it everywhere.\n  var r = o;\n  let w = s.world;\n  let large = detailFbm(vec3f(w.x * 0.18, 0.0, w.z * 0.18), 4, s.footprint);\n  let mid = detailFbm(vec3f(w.x * 0.9, 5.0, w.z * 0.9), 4, s.footprint);\n  let fine = detailFbm(w * 3.1, 5, s.footprint);\n  let grit = detailFbm(w * 21.0, 3, s.footprint);\n  let damp = smoothstep(1.0 - p.wet - 0.15, 1.0 - p.wet + 0.15, large.value + (fine.value - 0.5) * 0.25);\n  // tyre scuffs and oil stains\n  let scuff = smoothstep(0.6, 0.8, detailNoise(vec3f(w.x * 1.7, 0.0, w.z * 0.12)).value) * 0.45;\n  let stain = smoothstep(0.62, 0.78, mid.value) * 0.35;\n  // aggregate: a speckle of lighter and darker stones in the cement\n  let stone = smoothstep(0.7, 0.85, grit.value) * 0.18 - smoothstep(0.3, 0.15, grit.value) * 0.12;\n  let crack = smoothstep(0.006, 0.0, abs(detailNoise(vec3f(w.x * 0.9, 3.0, w.z * 0.9)).value - 0.5)) * 0.5;\n  let scratches = max(scratchAt(w.xz, 0.6, 3u), scratchAt(w.xz + vec2f(0.21, 0.37), 0.35, 11u) * 0.6) * (1.0 - smoothstep(0.004, 0.02, s.footprint));\n  let shade = (0.88 + 0.24 * fine.value + stone) * (0.85 + 0.3 * large.value);\n  r.albedo = vec4f(o.albedo.rgb * shade * mix(1.0, 0.6, damp) * (1.0 - scuff * 0.5) * (1.0 - stain) * (1.0 - crack * 0.6) * (1.0 + scratches * 0.5) * contactShadow(w.xz, p), 1.0);\n  // satin, never a mirror: polished where traffic ran, rough where it did not\n  let polish = smoothstep(0.35, 0.75, large.value);\n  r.roughness = clamp(mix(p.dryGloss + 0.12, p.dryGloss - 0.08, polish) + (grit.value - 0.5) * 0.1 + stain * 0.1 - scratches * 0.15, 0.3, 0.95);\n  r.roughness = mix(r.roughness, p.wetGloss, damp);\n  r.albedo = vec4f(r.albedo.rgb * p.floorGain, 1.0);\n  r.metallic = 0.0;\n  r.normal = detailBump(s.normal, grit.gradient * 0.006 + fine.gradient * 0.015 + mid.gradient * 0.02, 1.0);\n  return r;\n}\n\nfn brickSurface(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  let w = s.world;\n  let course = w.y / 0.075;\n  let row = floor(course);\n  let along = (w.x + w.z) / 0.23 + row * 0.5;\n  let mortar = max(smoothstep(0.1, 0.0, fract(course)), smoothstep(0.06, 0.0, fract(along)));\n  let n = detailFbm(w * 6.0, 4, s.footprint);\n  r.albedo = vec4f(o.albedo.rgb * (0.7 + 0.6 * n.value) * mix(1.0, 1.6, mortar), 1.0);\n  r.roughness = 0.9;\n  r.normal = detailBump(s.normal, n.gradient * 0.01, 1.0);\n  return r;\n}\n\nfn clearCoat(s: SurfaceIn, p: Params, o: SurfaceOut, roughness: f32) -> SurfaceOut {\n  var r = o;\n  let peel = detailFbm(s.world * 90.0, 2, s.footprint);\n  r.roughness = roughness;\n  r.normal = detailBump(s.normal, peel.gradient * 0.00045 * p.peel, 1.0);\n  return r;\n}\n\nfn jewel(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  // Facets: the normal snaps to a coarse lattice of directions, cell by cell, so each stone\n  // throws its own glint instead of one smooth sheen.\n  let cell = floor(s.world * 180.0);\n  let h = vec3f(unitFloat(hash3i(vec3i(cell), 11u)), unitFloat(hash3i(vec3i(cell), 23u)), unitFloat(hash3i(vec3i(cell), 37u)));\n  // facets finer than a pixel sparkle and crawl frame to frame: fade them to the smooth normal\n  let resolved = 1.0 - smoothstep(0.002, 0.006, s.footprint);\n  r.normal = normalize(s.normal + (h - vec3f(0.5)) * 0.9 * resolved);\n  r.roughness = 0.03;\n  r.metallic = 1.0;\n  r.albedo = vec4f(0.98, 0.98, 1.0, 1.0);\n  return r;\n}\n\nfn sharedSurface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let c = classOf(s);\n  switch c {\n    case 1u: { return floorSurface(s, p, o); }\n    case 2u: { return brickSurface(s, o); }\n    case 4u: { o.emissive = s.emissive * p.tubeGain; }\n    case 10u, 13u: { return clearCoat(s, p, o, 0.035); }\n    case 11u: { return clearCoat(s, p, o, 0.16); }\n    case 12u: { return clearCoat(s, p, o, 0.42); }\n    case 14u, 19u: { o.roughness = 0.035; o.metallic = 1.0; }\n    case 15u: { o.roughness = 0.015; o.metallic = 0.0; }\n    case 17u: {\n      let n = detailFbm(s.world * 40.0, 3, s.footprint);\n      o.roughness = 0.65 + 0.2 * n.value;\n      o.normal = detailBump(s.normal, n.gradient * 0.002, 1.0);\n    }\n    case 18u: { o.emissive = s.emissive * p.headGain; }\n    case 20u: { o.emissive = s.emissive * p.tailGain; }\n    case 30u: {\n      let luma = dot(o.albedo.rgb, vec3f(0.2126, 0.7152, 0.0722));\n      o.albedo = vec4f(mix(vec3f(luma), o.albedo.rgb, 0.6), 1.0);\n      o.roughness = 0.45;\n    }\n    case 31u, 32u: {\n      let n = detailFbm(s.world * 55.0, 3, s.footprint);\n      o.roughness = 0.9;\n      o.normal = detailBump(s.normal, n.gradient * 0.0012, 1.0);\n    }\n    case 35u: { return jewel(s, o); }\n    case 40u: { o.albedo = vec4f(vec3f(p.cycAlbedo), 1.0); o.roughness = 0.95; o.metallic = 0.0; }\n    default: {}\n  }\n  return o;\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = sharedSurface(s, p);\n  // the hero wears the silver (11) in the tableau build, the matte (12) before it: both are the hero\n  let paint = classOf(s);\n  if (paint == 11u || paint == 12u) {\n    o.albedo = vec4f(vec3f(p.matteAlbedo) * vec3f(0.98, 1.0, 1.02), 1.0);\n    o.roughness = p.matteRoughness;\n    o.metallic = 0.08;\n  }\n  // The normal's turn across this pixel, as a slope variance, added to alpha squared.\n  let turn = s.curvature * s.footprint;\n  let variance = min(turn * turn * 0.5 * p.specularAA, 0.25);\n  o.roughness = sqrt(clamp(o.roughness * o.roughness + variance, 0.0, 1.0));\n  return o;\n}",
+          "specularAA": 1,
           "tailGain": 1,
           "wet": 0,
           "wetGloss": 0.32
@@ -2687,7 +2831,7 @@
         },
         "position": {
           "x": -2600,
-          "y": 2200
+          "y": 2600
         },
         "type": "light"
       }

@@ -34,6 +34,8 @@ const FACING: V3 = [0, 0, 1];
 const EYE: V3 = [-60.03, 1.08, 0.95];
 const AIM: V3 = [-60, 1.52, 0];
 const FOV = 38;
+/** The lamp's bright pass and the halo: a fixed size, whatever the frame's (2.35:1). */
+const HOT_SIZE = [480, 204] as const;
 /** The lamp: on the line from the lens past the crown, three metres behind. */
 const LAMP: V3 = [-60.2, 3.8, -3.0];
 
@@ -79,7 +81,7 @@ const G_RADIUS = array<f32, 4>(0.98, 0.9, 0.075, 0.05);
 const G_RIM = array<f32, 4>(0.022, 0.012, 0.02, 0.012);
 const G_FILL = array<f32, 4>(0.05, 0.0, 0.6, 0.5);
 const G_COLOR = array<vec3f, 4>(vec3f(0.85, 0.9, 1.0), vec3f(0.7, 0.8, 0.95), vec3f(1.0, 0.55, 0.3), vec3f(0.6, 0.85, 1.0));
-const G_GAIN = array<f32, 4>(0.2, 0.09, 0.15, 0.0);
+const G_GAIN = array<f32, 4>(0.2, 0.09, 0.07, 0.0);
 
 fn ring(d: f32, radius: f32, rim: f32, fill: f32) -> f32 {
   let edge = exp(-pow((d - radius) / rim, 2.0));
@@ -235,10 +237,17 @@ export function ringDocument(facts: OnNothingFacts, options: RingOptions): Proje
   // ── Optics: bloom, the halo round the lamp, the ghosts ──
   const scene = chain.last;
   const glow = chain.bloom(scene, 1.2, -1500);
-  chain.add("hot", "customWgsl", [-1300, 700], { source: HALO_BRIGHT, threshold: 30 }, { resolution: { mode: "scale", factor: 0.25 } });
+  // The lamp's bright pass at a FIXED size, softened: the ring taps and the ghosts' brightness
+  // probe sample it at fixed spacings in frame units, so it must not get sharper when the frame
+  // is rendered larger. At a scale of the frame, render.ts --final (2x) halved the lamp's size
+  // in texels against the ring's tap spacing — the rings broke into dots and the ghosts' probe
+  // missed the eclipsed lamp between its taps (T1429b).
+  chain.add("hot", "customWgsl", [-1300, 700], { source: HALO_BRIGHT, threshold: 30 }, { resolution: { mode: "fixed", width: HOT_SIZE[0], height: HOT_SIZE[1] } });
   chain.link(lampLit, ["hot", "input"]);
-  chain.add("halo", "customWgsl", [-1100, 700], { source: HALO_WGSL, radius: 0.22, width: 0.08, dispersion: 0.04, axis: 0.9, gain: 0.03 }, { resolution: { mode: "scale", factor: 1 } });
-  chain.link(["hot", "out"], ["halo", "input"]);
+  chain.add("hotSoft", "blur", [-1200, 700], { size: 3, filter: "gaussian", extend: "zero" });
+  chain.link(["hot", "out"], ["hotSoft", "input"]);
+  chain.add("halo", "customWgsl", [-1100, 700], { source: HALO_WGSL, radius: 0.22, width: 0.08, dispersion: 0.04, axis: 0.9, gain: 0.03 }, { resolution: { mode: "fixed", width: HOT_SIZE[0], height: HOT_SIZE[1] } });
+  chain.link(["hotSoft", "out"], ["halo", "input"]);
   chain.pass("optics", `struct Params {
   bloom: f32, // @default 0.3  Bloom glow added back.
   halo: f32, // @default 1  Halo ring added back.
@@ -256,7 +265,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let h = textureSampleLevel(inputTexture2, inputSampler, uv, 0.0).rgb;
   return vec4f(base.rgb + b * params.bloom + h * params.halo, base.a);
 }`, { bloom: 0.35, halo: 1 }, [glow, ["halo", "out"]], [-700, 0]);
-  chain.pass("ghosts", GHOSTS_WGSL, { ...cam, lamp: vec3(LAMP), gain: 1 }, [["hot", "out"]], [-500, 0]);
+  chain.pass("ghosts", GHOSTS_WGSL, { ...cam, lamp: vec3(LAMP), gain: 0.3 }, [["hotSoft", "out"]], [-500, 0]);
   chain.pass("lens", TITLE_LENS_WGSL, { k: 0.05, edgeBlur: 0.025, swirl: 0.8, aberration: 0.004, vignette: 0.7 }, [], [-300, 0]);
   chain.pass("grade", GRADE_WGSL, { exposure: 0.2, black: 0.035, contrast: 1.15, saturation: 0.55, keepWarm: 0.6, bleach: 0.2, steel: [0.94, 1.0, 1.05], shadowTint: [0.9, 1.0, 1.08, 1], split: 0.5, grain: 0.03 }, [], [-100, 0]);
   if (options.crt === true) chain.pass("crt", CRT_WGSL, { amount: 1 }, [], [500, 0]);

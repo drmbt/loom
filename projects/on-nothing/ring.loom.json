@@ -229,11 +229,22 @@
           "portId": "input"
         }
       },
-      "hot.out-ghosts.more#0": {
-        "id": "hot.out-ghosts.more#0",
-        "order": 0,
+      "hot.out-hotSoft.input": {
+        "id": "hot.out-hotSoft.input",
         "source": {
           "nodeId": "hot",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "hotSoft",
+          "portId": "input"
+        }
+      },
+      "hotSoft.out-ghosts.more#0": {
+        "id": "hotSoft.out-ghosts.more#0",
+        "order": 0,
+        "source": {
+          "nodeId": "hotSoft",
           "portId": "out"
         },
         "target": {
@@ -241,10 +252,10 @@
           "portId": "more"
         }
       },
-      "hot.out-halo.input": {
-        "id": "hot.out-halo.input",
+      "hotSoft.out-halo.input": {
+        "id": "hotSoft.out-halo.input",
         "source": {
-          "nodeId": "hot",
+          "nodeId": "hotSoft",
           "portId": "out"
         },
         "target": {
@@ -933,7 +944,7 @@
             },
             "mode": "expression"
           },
-          "gain": 1,
+          "gain": 0.3,
           "lamp": [
             -60.2,
             3.8,
@@ -952,7 +963,7 @@
             },
             "mode": "expression"
           },
-          "source": "struct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  lamp: vec3f, // @default 0  The source's world position.\n  gain: f32, // @default 1  Overall ghost brightness.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\n// ratio f, radius (frame heights), rim width, fill, colour\nconst GHOSTS: u32 = 4u;\nconst G_RATIO = array<f32, 4>(-1.9, -0.1, -1.0, 0.45);\nconst G_RADIUS = array<f32, 4>(0.98, 0.9, 0.075, 0.05);\nconst G_RIM = array<f32, 4>(0.022, 0.012, 0.02, 0.012);\nconst G_FILL = array<f32, 4>(0.05, 0.0, 0.6, 0.5);\nconst G_COLOR = array<vec3f, 4>(vec3f(0.85, 0.9, 1.0), vec3f(0.7, 0.8, 0.95), vec3f(1.0, 0.55, 0.3), vec3f(0.6, 0.85, 1.0));\nconst G_GAIN = array<f32, 4>(0.2, 0.09, 0.15, 0.0);\n\nfn ring(d: f32, radius: f32, rim: f32, fill: f32) -> f32 {\n  let edge = exp(-pow((d - radius) / rim, 2.0));\n  let disc = (1.0 - smoothstep(radius - rim, radius + rim * 0.5, d)) * fill;\n  return edge + disc;\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let base = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let v = makeView();\n  let at = project(v, params.lamp);\n  if (at.z <= 0.0) { return base; }\n  // How much of the source still shows (the head eclipses most of it): the bright pass summed\n  // over a patch round where it stands.\n  let aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  var seen = vec3f(0.0);\n  for (var j = -3; j <= 3; j = j + 1) {\n    for (var i = -3; i <= 3; i = i + 1) {\n      let o = vec2f(f32(i) / aspect, f32(j)) * 0.012;\n      seen = seen + textureSampleLevel(inputTexture1, inputSampler, clamp(at.xy + o, vec2f(0.0), vec2f(1.0)), 0.0).rgb;\n    }\n  }\n  let power = dot(seen / 49.0, vec3f(0.2126, 0.7152, 0.0722));\n  var add = vec3f(0.0);\n  for (var g = 0u; g < GHOSTS; g = g + 1u) {\n    let centre = vec2f(0.5) + (at.xy - vec2f(0.5)) * G_RATIO[g];\n    let q = (uv - centre) * vec2f(aspect, 1.0);\n    let d = length(q);\n    // dispersion: red a little larger than blue\n    let r = ring(d, G_RADIUS[g] * 1.012, G_RIM[g], G_FILL[g]);\n    let gg = ring(d, G_RADIUS[g], G_RIM[g], G_FILL[g]);\n    let b = ring(d, G_RADIUS[g] * 0.988, G_RIM[g], G_FILL[g]);\n    add = add + vec3f(r, gg, b) * G_COLOR[g] * G_GAIN[g];\n  }\n  return vec4f(base.rgb + add * power * params.gain, base.a);\n}"
+          "source": "struct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  lamp: vec3f, // @default 0  The source's world position.\n  gain: f32, // @default 1  Overall ghost brightness.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\n// ratio f, radius (frame heights), rim width, fill, colour\nconst GHOSTS: u32 = 4u;\nconst G_RATIO = array<f32, 4>(-1.9, -0.1, -1.0, 0.45);\nconst G_RADIUS = array<f32, 4>(0.98, 0.9, 0.075, 0.05);\nconst G_RIM = array<f32, 4>(0.022, 0.012, 0.02, 0.012);\nconst G_FILL = array<f32, 4>(0.05, 0.0, 0.6, 0.5);\nconst G_COLOR = array<vec3f, 4>(vec3f(0.85, 0.9, 1.0), vec3f(0.7, 0.8, 0.95), vec3f(1.0, 0.55, 0.3), vec3f(0.6, 0.85, 1.0));\nconst G_GAIN = array<f32, 4>(0.2, 0.09, 0.07, 0.0);\n\nfn ring(d: f32, radius: f32, rim: f32, fill: f32) -> f32 {\n  let edge = exp(-pow((d - radius) / rim, 2.0));\n  let disc = (1.0 - smoothstep(radius - rim, radius + rim * 0.5, d)) * fill;\n  return edge + disc;\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let base = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let v = makeView();\n  let at = project(v, params.lamp);\n  if (at.z <= 0.0) { return base; }\n  // How much of the source still shows (the head eclipses most of it): the bright pass summed\n  // over a patch round where it stands.\n  let aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  var seen = vec3f(0.0);\n  for (var j = -3; j <= 3; j = j + 1) {\n    for (var i = -3; i <= 3; i = i + 1) {\n      let o = vec2f(f32(i) / aspect, f32(j)) * 0.012;\n      seen = seen + textureSampleLevel(inputTexture1, inputSampler, clamp(at.xy + o, vec2f(0.0), vec2f(1.0)), 0.0).rgb;\n    }\n  }\n  let power = dot(seen / 49.0, vec3f(0.2126, 0.7152, 0.0722));\n  var add = vec3f(0.0);\n  for (var g = 0u; g < GHOSTS; g = g + 1u) {\n    let centre = vec2f(0.5) + (at.xy - vec2f(0.5)) * G_RATIO[g];\n    let q = (uv - centre) * vec2f(aspect, 1.0);\n    let d = length(q);\n    // dispersion: red a little larger than blue\n    let r = ring(d, G_RADIUS[g] * 1.012, G_RIM[g], G_FILL[g]);\n    let gg = ring(d, G_RADIUS[g], G_RIM[g], G_FILL[g]);\n    let b = ring(d, G_RADIUS[g] * 0.988, G_RIM[g], G_FILL[g]);\n    add = add + vec3f(r, gg, b) * G_COLOR[g] * G_GAIN[g];\n  }\n  return vec4f(base.rgb + add * power * params.gain, base.a);\n}"
         },
         "position": {
           "x": -500,
@@ -1015,8 +1026,9 @@
           "y": 700
         },
         "resolution": {
-          "factor": 1,
-          "mode": "scale"
+          "height": 204,
+          "mode": "fixed",
+          "width": 480
         },
         "type": "customWgsl"
       },
@@ -1185,10 +1197,26 @@
           "y": 700
         },
         "resolution": {
-          "factor": 0.25,
-          "mode": "scale"
+          "height": 204,
+          "mode": "fixed",
+          "width": 480
         },
         "type": "customWgsl"
+      },
+      "hotSoft": {
+        "definitionVersion": 1,
+        "id": "hotSoft",
+        "label": "hotsoft1",
+        "parameters": {
+          "extend": "zero",
+          "filter": "gaussian",
+          "size": 3
+        },
+        "position": {
+          "x": -1200,
+          "y": 700
+        },
+        "type": "blur"
       },
       "lamp": {
         "definitionVersion": 1,

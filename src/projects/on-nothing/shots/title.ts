@@ -34,8 +34,12 @@ import { handheld } from "./handheld.ts";
  */
 
 const FPS = 24;
-/** The switch from the whip to the title: between frames 8 and 9. */
-const CUT = 7.5 / FPS;
+/**
+ * The switch from the whip to the title: on the boundary between frames 8 and 9, a hair before
+ * frame 9's own instant, so a frame rendered as sub-frames (render.ts --final: 8 a frame, at
+ * k/192 s) never mixes the two shots — every sub-frame of frame 8 is whip, of frame 9 title.
+ */
+const CUT = 7.99 / FPS;
 /** Frame 9, where the title's own move starts (τ = 0). */
 const LAND = 8 / FPS;
 /** The motion blur's derivative step, seconds (the camera path is differentiated, not differenced a frame apart). */
@@ -43,13 +47,23 @@ const EPS = 0.004;
 
 type V3 = readonly [number, number, number];
 
+/** 0 before the cut, 1 from it on: a hard step (100 µs wide), not a blend of the two shots. */
+const cutGate = (t: string): string => `clamp((${t} - ${CUT.toFixed(7)}) * 100000, 0, 1)`;
+/**
+ * The time the motion blur differentiates back to: EPS earlier, but never across the cut — the
+ * landing's first frame differentiated into the whip read a 40° swing and smeared the grille.
+ */
+const PREVIOUS_T = `(abstime - ${EPS} + ${cutGate("abstime")} * max(0, ${(CUT + 1e-5).toFixed(7)} - abstime + ${EPS}))`;
+
 /** The title's framing at τ = 0 (glTF: x right, y up, +z toward the camera; the hero's nose at z ≈ 0). */
-const EYE: V3 = [0, 0.92, 0.88];
-const AIM: V3 = [0, 0.835, -0.03];
+const EYE: V3 = [0, 0.72, 0.7];
+const AIM: V3 = [0, 0.87, -0.03];
 /** Vertical fov of the RENDER, degrees — the lens then bows it (DISTORTION), magnifying the centre. */
-const FOV = 50;
+const FOV = 62;
+/** Where the script's strokes stand (glTF z), for the focus. */
+const SCRIPT_Z = 0.04;
 /** Barrel distortion of the title's lens (TITLE_LENS_WGSL `k`). */
-const DISTORTION = 0.13;
+const DISTORTION = 0.2;
 
 /** The whip's first frame: low at the hero's nose, looking across its headlight to the right. */
 const WHIP_EYE: V3 = [0.3, 0.74, 0.95];
@@ -57,13 +71,38 @@ const WHIP_HEADING = 0.42; // radians right of straight at the car
 const WHIP_PITCH = 0.14;
 
 /** Where the flanking cars stand for the title (glTF translation of their whole area). */
-const PLACEMENT: Partial<Record<Area, V3>> = {
-  // the white SUV left: its front ~1 m behind the hero's, its flank ~0.9 m clear of it
-  car1: [-0.25, 0, 0.5],
+/**
+ * Where the flanking cars' FRONTS stand for the title (the midpoint of their headlight markers,
+ * glTF x and z). The move is computed from wherever the build put the car, so a change to the
+ * tableau's layout (build.py CARS) does not carry the title's cars away with it.
+ */
+const FRONTS: Partial<Record<Area, readonly [number, number]>> = {
+  // the white SUV left: its front ~1.1 m behind the hero's, its flank ~0.9 m clear of it
+  car1: [-3.85, -1.13],
   // the white saloon right, on turbine wheels (the Maybach S), pulled up from the back row
-  car3: [5.45, 0, 4.8],
+  car3: [3.72, -0.97],
 };
+
+/** The glTF translation that brings each flanking car's front to FRONTS. */
+function placements(facts: OnNothingFacts): Partial<Record<Area, V3>> {
+  const out: Partial<Record<Area, V3>> = {};
+  for (const [area, target] of Object.entries(FRONTS) as [Area, readonly [number, number]][]) {
+    const n = area.slice(3);
+    const pair = [facts.markers.get(`lamp.head.${n}l`), facts.markers.get(`lamp.head.${n}r`)];
+    if (pair[0] === undefined || pair[1] === undefined) throw new Error(`titleDocument: no headlight markers for ${area}.`);
+    const x = (pair[0].position[0] + pair[1].position[0]) / 2;
+    const z = (pair[0].position[2] + pair[1].position[2]) / 2;
+    out[area] = [target[0] - x, 0, target[1] - z];
+  }
+  return out;
+}
 const TITLE_CARS: readonly Area[] = ["car0", "car1", "car3"];
+
+/** The high-bays under the trusses behind the hero (glTF metres; the trusses run across x every 5 m of z). */
+const HIGH_BAYS: readonly V3[] = [[-3.5, 6.6, -5], [3, 6.6, -5], [-1, 6.6, -10], [5.5, 6.6, -10], [-6, 6.6, -10]];
+const BAY_INTENSITY = 6;
+/** How much of their light the haze scatters. */
+const BAY_HAZE = 0.6;
 
 /**
  * The operator after the cut: the horizon lands tilted and eases level-ish over a second (the
@@ -124,7 +163,7 @@ function titlePath(t: string): Path {
   ];
   const roll = held("roll");
 
-  const gate = `clamp((${t} - ${CUT.toFixed(6)}) * 1000, 0, 1)`;
+  const gate = cutGate(t);
   const pick = (a: string, b: string): string => `((${a}) * (1 - ${gate}) + (${b}) * ${gate})`;
   return {
     eye: [pick(whipEye[0]!, eye[0]!), pick(whipEye[1]!, eye[1]!), pick(whipEye[2]!, eye[2]!)],
@@ -138,7 +177,7 @@ function titlePath(t: string): Path {
  * The shutter, as a share of a frame: a 180° shutter on the title; in the whip it opens far
  * past a frame (a post whip-transition smear), so frames 5–8 are nothing but streaked grey.
  */
-const SHUTTER = `(0.5 + 9 * ${smooth(`(abstime - 0.09) / 0.12`)} * (1 - clamp((abstime - ${CUT.toFixed(6)}) * 1000, 0, 1)))`;
+const SHUTTER = `(0.5 + 9 * ${smooth(`(abstime - 0.09) / 0.12`)} * (1 - ${cutGate("abstime")}))`;
 
 /**
  * CAMERA MOTION BLUR from the path's own velocity: each pixel's world point (from depth; the
@@ -275,18 +314,48 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
 }`;
 
 /**
- * The shared surface with one knob more: the floor's albedo scaled (`floorGain`). In the
- * reference's title the floor at the frame's bottom corners is near black while the car's
- * matte paint beside it reads mid-grey under the same soft key; one albedo cannot do both.
+ * The shared surface with the title's own finish on top:
+ *
+ * - `floorGain` scales the floor's albedo: in the reference's title the floor at the frame's
+ *   bottom corners is near black while the car's matte paint beside it reads mid-grey under the
+ *   same soft key; one albedo cannot do both.
+ * - The hero's paint (class 11 or 12, whichever the build gives it) is the reference's SATIN MID-GREY: a neutral albedo
+ *   (`matteAlbedo`), a broad sheen (`matteRoughness`), barely metallic — in place of the shared
+ *   dark semi-metallic coat, which read glossy near-black.
+ * - GEOMETRIC SPECULAR ANTIALIASING on every surface: where the normal turns within a pixel
+ *   (a grille bar's round edge, the script's tube, seen from a metre) the roughness widens by
+ *   that turn, so a highlight too thin for the pixel spreads to its width instead of crawling
+ *   and stair-stepping (Kaplanyan & Hoffman's normal-variance filter). `specularAA` scales it.
  */
 function titleSurface(): string {
-  const anchors = ["  cycAlbedo: f32,", "  r.metallic = 0.0;\n  r.normal = detailBump(s.normal, grit.gradient"];
+  const anchors = ["  cycAlbedo: f32,", "  r.metallic = 0.0;\n  r.normal = detailBump(s.normal, grit.gradient", "fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {"];
   for (const anchor of anchors) {
-    if (!SURFACE_WGSL.includes(anchor)) throw new Error(`titleSurface: surface.ts no longer has "${anchor.split("\n")[0]}" — re-anchor the title's floor gain.`);
+    if (!SURFACE_WGSL.includes(anchor)) throw new Error(`titleSurface: surface.ts no longer has "${anchor.split("\n")[0]}" — re-anchor the title's finish.`);
   }
-  return SURFACE_WGSL
-    .replace(anchors[0]!, `  floorGain: f32, // @default 1  The title's floor albedo scale.\n${anchors[0]!}`)
-    .replace(anchors[1]!, `  r.albedo = vec4f(r.albedo.rgb * p.floorGain, 1.0);\n${anchors[1]!}`);
+  return `${SURFACE_WGSL
+    .replace(anchors[0]!, `  floorGain: f32, // @default 1  The title's floor albedo scale.
+  matteAlbedo: f32, // @default 0.2  The hero's matte paint albedo (linear).
+  matteRoughness: f32, // @default 0.5  The hero's matte paint roughness (satin).
+  specularAA: f32, // @default 1  Geometric specular antialiasing strength.
+${anchors[0]!}`)
+    .replace(anchors[1]!, `  r.albedo = vec4f(r.albedo.rgb * p.floorGain, 1.0);\n${anchors[1]!}`)
+    .replace(anchors[2]!, "fn sharedSurface(s: SurfaceIn, p: Params) -> SurfaceOut {")}
+
+fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
+  var o = sharedSurface(s, p);
+  // the hero wears the silver (11) in the tableau build, the matte (12) before it: both are the hero
+  let paint = classOf(s);
+  if (paint == 11u || paint == 12u) {
+    o.albedo = vec4f(vec3f(p.matteAlbedo) * vec3f(0.98, 1.0, 1.02), 1.0);
+    o.roughness = p.matteRoughness;
+    o.metallic = 0.08;
+  }
+  // The normal's turn across this pixel, as a slope variance, added to alpha squared.
+  let turn = s.curvature * s.footprint;
+  let variance = min(turn * turn * 0.5 * p.specularAA, 0.25);
+  o.roughness = sqrt(clamp(o.roughness * o.roughness + variance, 0.0, 1.0));
+  return o;
+}`;
 }
 
 export interface TitleOptions {
@@ -297,12 +366,13 @@ export interface TitleOptions {
 }
 
 export function titleDocument(facts: OnNothingFacts, options: TitleOptions): ProjectDocument {
+  const PLACEMENT = placements(facts);
   const chain = new Chain(["shot", "out"]);
   const scenes: string[] = [];
   const path = titlePath("abstime");
-  const before = titlePath(`(abstime - ${EPS})`);
+  const before = titlePath(PREVIOUS_T);
 
-  chain.add("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: titleSurface(), floorGain: 0.35, headGain: 0.06, tailGain: 1, wet: 0, wetGloss: 0.32, dryGloss: 0.6, peel: 0 }, { label: "surf1" });
+  chain.add("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: titleSurface(), floorGain: 0.35, matteAlbedo: 0.2, matteRoughness: 0.5, specularAA: 1, headGain: 0.06, tailGain: 1, wet: 0, wetGloss: 0.32, dryGloss: 0.6, peel: 0 }, { label: "surf1" });
 
   // ── Meshes: the warehouse, the hero and the two white cars beside it, the title ──
   /** A Mesh File In of `select` (sized by `area`'s facts), moved by `move`: its points port. */
@@ -333,7 +403,7 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
   const glassScenes: string[] = [];
   const glassArea = facts.areas.get("lampglass");
   if (glassArea !== undefined) {
-    chain.add("glassMat", "materialWgsl", [-3300, 1900], { model: "unlit", source: LAMP_GLASS_WGSL, roughness: 0.02 }, { label: "glassmat1" });
+    chain.add("glassMat", "materialWgsl", [-3300, 1900], { model: "unlit", source: LAMP_GLASS_WGSL, roughness: 0.02, glint: 0.8, sheen: 0.03 }, { label: "glassmat1" });
     chain.add("occMat", "materialWgsl", [-3300, 2000], { model: "unlit", source: OCCLUDER_WGSL, roughness: 1 }, { label: "occmat1" });
     const glass = load("lampglass", "lampglass", glassArea.select, undefined, 2100);
     chain.add("geo_lampglass", "geometry", [-3000, 2100], { mode: "surface", material: "glassmat1" });
@@ -382,6 +452,10 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
   point("sodiumC", [0.5, 6.2, -11], warm, 22, { extent: 20, softness: 2 });
   point("sodiumR", [7, 5.5, -9], warm, 12);
   point("sodiumW", [-12, 4, -2], warm, 7);
+  // High-bays hung just under the trusses (their bottom chord is at 7 m): in the reference the
+  // trusses and the roof over the hero read warm, lit from below by old lamps, and the haze
+  // glows round them. Each lights the steel near it; the haze catches them (HIGH_BAYS below).
+  HIGH_BAYS.forEach((position, index) => point(`bay${index}`, position, warm, BAY_INTENSITY));
   // The key and the flank lamps CAST (owner: the cars floated): each car sits in its own dark.
   point("key", [0.2, 2.6, 2.4], [0.95, 0.97, 1, 1], 3.5, { extent: 10, softness: 2 });
   point("under", [0, 0.35, 2.2], [0.9, 0.95, 1, 1], 0.25);
@@ -455,8 +529,14 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
     const move = PLACEMENT[area] ?? [0, 0, 0];
     return [[name, { ...marker, position: [marker.position[0] + move[0], marker.position[1] + move[1], marker.position[2] + move[2]] as [number, number, number] }] as const];
   }));
-  chain.pass("haze", hazeWgsl(hazeLights({ ...facts, markers }, ["head"])), { ...cam, density: 0.02, ambient: [0.006, 0.0055, 0.005], anisotropy: 0.72, head: 0.02 }, [depth], [-1700, 0]);
-  chain.pass("dof", DOF_WGSL, { ...cam, focusDistance: 1.08, aperture: 1.1, maxRadius: 18 }, [depth], [-1500, 0]);
+  HIGH_BAYS.forEach((position, index) => {
+    const name = `lamp.tube.bay${index}`;
+    markers.set(name, { name, position: [...position] as [number, number, number], direction: [0, -1, 0], extras: { loom_light_kind: "tube", loom_light_color: [1, 0.72, 0.5], loom_light_lumens: 1000, loom_light_cone_deg: 360 } });
+  });
+  chain.pass("haze", hazeWgsl(hazeLights({ ...facts, markers }, ["head", "tube"])), { ...cam, density: 0.02, ambient: [0.006, 0.0055, 0.005], anisotropy: 0.72, head: 0.02, tube: BAY_HAZE, core: 0.4 }, [depth], [-1700, 0]);
+  // Focus rides the script (its strokes stand ~4 cm in front of the grille, z ≈ 0.04): the focus
+  // puller follows the push-in, so the title stays sharp while the flanks and the room go soft.
+  chain.pass("dof", DOF_WGSL, { ...cam, focusDistance: slot(`op('cam1').par.eye.z - ${SCRIPT_Z}`, EYE[2] - SCRIPT_Z), aperture: 0.18, maxRadius: 5 }, [depth], [-1500, 0]);
 
   // ── Optics: the streak glass (turning with the roll), bloom ──
   // What the glass smears is judged over AREA (a quarter-size box average, then the threshold):
