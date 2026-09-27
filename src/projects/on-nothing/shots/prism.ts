@@ -1,7 +1,7 @@
 import type { ProjectDocument } from "../../../domain/types/graph.ts";
 import { expressionSlot } from "../../../examples/documents/builders.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../../runtime/backend/shared-uniforms.ts";
-import { CAMERA_PARAMS, VIEW } from "../../furnace/screen-space.ts";
+import { CAMERA_PARAMS, GTAO_WGSL, VIEW } from "../../furnace/screen-space.ts";
 import { ENVIRONMENT_WGSL } from "../atmosphere.ts";
 import { GRADE_WGSL, LENS_WGSL } from "../fx.ts";
 import type { OnNothingFacts } from "../scene-facts.ts";
@@ -237,6 +237,7 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
     background: [0, 0, 0, 0],
     antialias: "msaa",
     depthOutput: true,
+    normalOutput: true,
     environmentIntensity: 0.22,
     environmentTaps: 16,
   }, { label: "shot1" });
@@ -252,6 +253,10 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
     depthOutput: true,
     environmentIntensity: 0,
   }, { label: "keyview1", resolution: { mode: "fixed", width: 2048, height: 2048 } });
+
+  // Occlusion on the figure itself: its creases, the arm against the head, the chain on the
+  // tee — a small radius, this is a close-up (a hand's width is 0.1 m).
+  g.pass("occlusion", GTAO_WGSL, { ...cameraRefs("cam1", eye, aim, fov, 20), radius: 0.2, strength: 0.85, power: 1.4 }, ["shot", "out"], [["shot", "depth"], ["shot", "normal"]], [-2250, 0]);
 
   const wallZ = az + 0.12;
   g.pass("wall", PRISM_WALL_WGSL, {
@@ -275,7 +280,7 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
     // eaten (2026-09-27), so he stands whole in front of it. matte: 1 restores the matte.
     matte: 0,
     clip: 3,
-  }, ["shot", "out"], [["shot", "depth"], ["keyView", "depth"]], [-2100, 0]);
+  }, ["occlusion", "out"], [["shot", "depth"], ["keyView", "depth"]], [-2100, 0]);
 
   g.optics(g.last, { threshold: 1.6, knee: 0.8, reach: 0.4, streak: 0.12, bloom: 0.1, compress: 3 });
   g.pass("lens", LENS_WGSL, { distortion: 0.02, edgeBlur: 0.012, aberration: 0.0012, vignette: 0.5, vignetteRound: 0.7 }, g.last, [], [-100, 0]);

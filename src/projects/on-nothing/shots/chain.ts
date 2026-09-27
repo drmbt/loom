@@ -36,15 +36,20 @@ export class ShotGraph {
    * `reach` of the frame height) and the bloom pyramid, added back by the optics composite,
    * which becomes `last`.
    */
-  optics(scene: readonly [string, string], o: { readonly threshold: number; readonly knee: number; readonly reach: number; readonly streak: number; readonly bloom: number; readonly compress?: number }): void {
+  optics(scene: readonly [string, string], o: { readonly threshold: number; readonly knee: number; readonly reach: number; readonly streak: number; readonly bloom: number; readonly compress?: number; readonly streakThreshold?: number }): void {
     this.node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: o.threshold, knee: o.knee }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } });
     this.edge("scene-bright", scene, ["bright", "input"]);
-    [o.reach / 160, o.reach / 48, o.reach / 10].forEach((step, index) => {
+    // The streaks' OWN source, far above the bloom's (as document.ts): only clipped sources
+    // streak — never a lit shoulder or a chain link.
+    this.node("streakSrc", "customWgsl", [-1300, 200], { source: BRIGHT_PASS_WGSL, threshold: o.streakThreshold ?? 4.5, knee: 1.2 }, { label: "streaksrc1", resolution: { mode: "scale", factor: 0.5 } });
+    this.edge("scene-streaksrc", scene, ["streakSrc", "input"]);
+    // 16 taps a pass: each pass's span covers the next pass's step twice over.
+    [o.reach / 400, o.reach / 60, o.reach / 20].forEach((step, index) => {
       const id = `streak${index}`;
       // The first pass rolls each source off toward `compress`, so a glinting pendant smears a
       // soft line, not a white bar.
-      this.node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step, decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, compress: index === 0 ? o.compress ?? 0 : 0, down: 0, gain: 2.2, striation: 0.45, striationScale: 150 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } });
-      this.edge(`into-${id}`, [index === 0 ? "bright" : `streak${index - 1}`, "out"], [id, "input"]);
+      this.node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step, decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, compress: index === 0 ? o.compress ?? 3 : 0, down: 0, gain: 1.8, striation: 0.22, striationScale: 110 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } });
+      this.edge(`into-${id}`, [index === 0 ? "streakSrc" : `streak${index - 1}`, "out"], [id, "input"]);
     });
     for (const level of [1, 2, 3, 4]) {
       this.node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `bloomdown${level}1`, resolution: { mode: "scale", factor: 0.5 } });
