@@ -25,7 +25,9 @@ import { walkTrack } from "../furnace/load-audio.ts";
  *     [--audio <song.wav>] [--audio-start <s>]  hear the song (the streaks breathe with it); a clip is muxed with it
  *     [--final]                               finished quality: SSAA in the Render, the whole frame rendered at 2x and
  *                                             box-downsampled, and --sub 4 sub-frames averaged per output frame
- *     [--sub N]                               sub-frames per output frame (temporal AA + motion blur; 1 = off)
+ *     [--sub N]                               sub-frames per output frame (temporal AA + motion blur; 1 = off; --final: 8)
+ *     [--trail 0.3]                           echo trail: each output frame keeps this share of the previous one (smeared
+ *                                             lights and limbs, the reference's ghosting); --final: 0.22
  *     [--hdri <file.hdr>]                     reflections from a real HDRI (Poly Haven, CC0) instead of the procedural room
  */
 const argv = process.argv.slice(2).filter((arg) => arg !== "--");
@@ -62,7 +64,8 @@ mkdirSync(`${outDir}/clips`, { recursive: true });
 const finalQuality = argv.includes("--final");
 /** Supersampling factor of the whole frame, and sub-frames averaged per output frame. */
 const ss = finalQuality ? 2 : 1;
-const sub = Number(flag("sub") ?? (finalQuality ? 4 : 1));
+const sub = Number(flag("sub") ?? (finalQuality ? 8 : 1));
+const trail = Number(flag("trail") ?? (finalQuality ? 0.22 : 0));
 
 /**
  * Accumulates `sub` rendered frames (each `ss`× the output size) into one output frame: the
@@ -74,6 +77,7 @@ class Accumulator {
   private readonly w: number;
   private readonly h: number;
   private count = 0;
+  private previous: Float32Array | undefined;
   constructor(w: number, h: number) {
     this.w = w;
     this.h = h;
@@ -86,15 +90,23 @@ class Accumulator {
     const out = new Uint8Array(this.w * this.h * 4);
     const W = this.w * ss;
     const norm = 1 / (this.count * ss * ss);
+    const frame = new Float32Array(this.w * this.h * 4);
     for (let y = 0; y < this.h; y++) {
       for (let x = 0; x < this.w; x++) {
         for (let c = 0; c < 4; c++) {
           let acc = 0;
           for (let dy = 0; dy < ss; dy++) for (let dx = 0; dx < ss; dx++) acc += this.sum[((y * ss + dy) * W + (x * ss + dx)) * 4 + c]!;
-          out[(y * this.w + x) * 4 + c] = Math.round(acc * norm);
+          frame[(y * this.w + x) * 4 + c] = acc * norm;
         }
       }
     }
+    // the trail: a bright thing that moved leaves a decaying ghost (max keeps the present sharp
+    // where it is brighter than the ghost, so still areas do not soften)
+    if (trail > 0 && this.previous !== undefined) {
+      for (let i = 0; i < frame.length; i++) frame[i] = Math.max(frame[i]!, this.previous[i]! * trail * 2.2 + frame[i]! * (1 - trail));
+    }
+    this.previous = frame;
+    for (let i = 0; i < frame.length; i++) out[i] = Math.min(255, Math.round(frame[i]!));
     this.sum.fill(0);
     this.count = 0;
     return out;
