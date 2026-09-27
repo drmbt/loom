@@ -17,7 +17,7 @@ A frame-0 floor once made that look like a defect, because *a gallery thumbnail 
 had been written down as though it were a law; seeding the plate would have bought a
 thumbnail by breaking the one sentence this example is for — the claim is testable at every
 frame, and a seed makes it false at all of them. The card is now sourced a second in, where
-this file reads 0.7036 and shows the four herds' lace it is about. Frame 0 stays a bare pasture, which
+this file reads 0.8179 and shows the four herds' lace it is about. Frame 0 stays a bare pasture, which
 is what it is.
 
 ## The thing that is new
@@ -47,14 +47,14 @@ by T512), and `renderPoints → texture → the reaction's input` closes the oth
               deep blue, 0.9 px          amber, size ┄ graze.w      cyan, size ┄ spark1:high
 
  eat1 ─┐
-       ├─► look1(add, PINNED 1280×720) ─► tint1(lookup ◄ palette1, scale ┄ grade1:highMid + hit1)
+       ├─► look1(add, PINNED 1280×720) ─► tint1(lookup ◄ palette1, scale ┄ grade1:highMid)
  chem1 ┘        │
                 ├─► liftscout1 ─► liftgraze1 ─► liftfind1 ─┬─► halo1(blur 18) ─┐
-                                                           └───────────────────┴─► burn1(add, opacity ┄ glow1:level + hit1)
+                                                           └───────────────────┴─► burn1(add, opacity ┄ glow1:level)
                                      ─► mixtrail1(screen) ◄─ loop1(feedback ← hue1, persistence ┄ trail1:level)
-                                     ─► hue1(hsv, hue ┄ drift1 @ 0.028 Hz, ±24°) ─► spin1(transform, scale ┄ hit1) ─► out1
+                                     ─► hue1(hsv, hue ┄ drift1 @ 0.028 Hz, ±24°) ─► spin1(transform, sway ┄ sway1) ─► out1
 
- source1 ─► hitsel1(valueSelect onsetCount) ─► hit1(valueBeat, 0.4 s tail) ┄ tint1, burn1, spin1, flow1(displace, the medium)
+ source1 ─► hitsel1(valueSelect onsetCount) ─► hit1(valueBeat, 0.4 s tail) ┄ sowin1(screen, the deposit, + 0.35 on the hit)
 ```
 
 Read the cycle as a sentence: **the animals deposit where they walk, the deposit reacts, and
@@ -69,19 +69,18 @@ somewhere else, and the herd comes back and eats what it invented.
 **The field changes where the animals went.** With the deposit's opacity set to zero, the
 field at frame 900 measures **mean V = 0.00000 with zero texels above 0.05** — the reaction
 kernel answers a cleared pair with a *bare* plate (U = 1, V = 0) rather than the sprinkled
-one E2 uses, so the herd is the only seed there is. With the deposit on, 15.8% of the grid
+one E2 uses, so the herd is the only seed there is. With the deposit on, 17.7% of the grid
 carries V above 0.05 at the same frame. And the sign of the coupling is the interesting
-part: taking the herd's footprint at frame 900 (the 7 625 texels `sow1` covers) and watching
-the next ninety frames, V falls by **−0.245** inside that footprint and rises by **+0.013**
+part: taking the herd's footprint at frame 900 (the 6 280 texels `sow1` covers) and watching
+the next ninety frames, V falls by **−0.396** inside that footprint and rises by **+0.016**
 outside it. Where the herd has been, the field is eaten; where it has not, the field grows
 back.
 
-**The animals change course because of the field.** The obvious test — delete the steering
-term from the kernel and nothing else, and compare the reaction rate under the herd with the
-frame's mean — is confounded, because the herd makes the field it is standing on, and since
-T1399b it says nothing at all: **2.37×** with steering, **2.64×** with it deleted (mean of
-frames 600, 900 and 1200). A herd that cannot steer still sits in the chemistry it just
-laid. So the claim rests on the test with the confound removed: hand the herd `terrain1`, a
+**The animals change course because of the field.** Delete the steering term from the kernel
+and nothing else, and the reaction rate under the herd falls from **2.31×** the frame's mean
+to **1.95×** (mean of frames 600, 900 and 1200 — per frame it is 1.87/2.84/2.21 against
+1.81/1.85/2.18). That test is confounded, though — the herd makes the field it is standing
+on — so there is a second one with the confound removed: hand the herd `terrain1`, a
 field it cannot write, and ask whether it ends up on the high ground. Steering on, the herd
 sits at **1.054×** the frame mean; steering deleted, **0.997×**, which is chance — and the
 steered herd is higher at each of the three frames, not only on average. Its footprint also
@@ -109,8 +108,8 @@ composition (§V532). The reaction is E2's kernel in shape and not in its number
 
 ## Where the audio goes, and the answer is BOTH HALVES
 
-Ten properties ride the envelope, plus four more on the beat since T1399b. Five are inside
-the simulation and only four are on the picture — and of the beat's four, one is inside too.
+Ten properties ride the envelope, plus one on the beat since T1399b. Five are inside the
+simulation and only four are on the picture — and the beat's one is inside too.
 
 | band | property | half |
 | --- | --- | --- |
@@ -124,10 +123,7 @@ the simulation and only four are on the picture — and of the beat's four, one 
 | `high` → `spark1` | the pioneers' size | the picture |
 | `level` → `glow1` | the bloom's weight | the picture |
 | `level` → `trail1` | the trail's persistence | the picture |
-| `onsetCount` → `hit1` → `flow1` | the medium lurches along the swell: advection 0.0025 → 0.0085 on the hit | the field |
-| `onsetCount` → `hit1` → `tint1` | +0.45 on the palette scale: the fronts flare into the gold | the picture |
-| `onsetCount` → `hit1` → `burn1` | +0.6 on the bloom's weight | the picture |
-| `onsetCount` → `hit1` → `spin1` | the camera's scale, 1.12 → 1.17 | the picture |
+| `onsetCount` → `hit1` → `sowin1` | +0.35 on the deposit: a hit lays a thicker footstep where the herds stand | the field |
 
 A beat is therefore visible at three timescales at once. The herd scatters **this frame**; the
 spore that scatter lays becomes structure over the next few **seconds**; and the regime it
@@ -139,9 +135,15 @@ The fourth timescale is the one you see without knowing any of that. `env1` is a
 from a five-second average — right for a swell, and nearly silent on a steady beat (0.018 on
 average over the pattern's run), which is why the audio used to read as a 2% tint. `hit1` is
 a Beat node on the same onsets `trig1` fires on — 1 on the hit, a 0.4-second exponential
-tail, a 0.2-second hold-off — and it lands on four large things at once. The flash is on the
-bloom and not on `hue1`, because `hue1` is where the trail loop closes and a gain there is
-fed back into itself for the whole tail.
+tail, a 0.2-second hold-off — and it lands on ONE thing, the deposit. A hit lays a thicker
+footstep, so the herds' fronts flare up the palette on the beat and the fresh spore grows on
+after the flash is gone; the dark ground and the spot colonies never hear it.
+
+That is the second cut. The first put `hit1` on four frame-wide things — the palette scale,
+the bloom, the camera's scale and the medium's advection — and every hit pumped the whole
+picture at once. Measured by 40-pixel blocks, the share of lit blocks whose brightness
+follows the onsets (correlation above 0.3) was 63% for that cut; it is 1.0% for this one,
+against 0.3% before T1399b.
 
 ## The five readings, and what each animal knows about itself
 
@@ -332,23 +334,27 @@ are four activity centres, each with the density the single one had; the chemist
 all eight steps, with a map (`shape1` over `terrain1`, `bowl1` centred as a vignette) that
 puts the band's dead corner inside the frame — so the surround is islands of worms and spot
 colonies drifting with the terrain, between dark ground that opens and closes; and **`hit1`**
-on the tint, the bloom, the camera and the medium's advection.
+on the deposit, so the beat shows up where the herds are and nowhere else.
 
 Measured on this file, same run, same instrument (the before numbers are the T671 file):
 
 | | before | after |
 | --- | --- | --- |
-| brightness swing, rms, pattern | 7.5% | 30.8% |
-| brightness vs onset envelope, pattern | 0.09 | 0.43 |
-| brightness vs onset envelope, the shipped showcase clip on `track1` | 0.34 | 0.61 |
-| median block motion per frame | 0.0015 | 0.0073 |
-| blocks moving more than a quarter of the busiest | 17% | 40% |
+| brightness vs onset envelope, pattern | 0.09 | 0.28 |
+| brightness vs onset envelope, the shipped showcase clip on `track1` | 0.34 | 0.49 |
+| lit 40-px blocks following the onsets (correlation > 0.3), pattern | 0.3% | 1.0% |
+| median block's onset correlation, pattern | 0.11 | 0.09 |
+| median block motion per frame | 0.0015 | 0.0040 |
+| blocks moving more than a quarter of the busiest | 17% | 26% |
 | motion between beats, flash excluded | 0.0023 | 0.0043 |
-| dark share of the frame (linear luma < 0.004) | 49.2% | 31.7% |
+| dark share of the frame (linear luma < 0.004) | 49.2% | 45.0% |
 | GPU time per frame, Dawn (mean of five alternating runs; each run 1.60–1.97) | 1.74 ms | 1.76 ms |
 
-The dark share fell because the surround is no longer uniformly lit lattice or uniformly
-nothing: what is dark now is dark ground that moves, and what is lit is colonies and herds.
+The frame follows the beat three times as closely, and the blocks say where: the median
+block is no more beat-locked than before, so the response is the herds and not the frame.
+
+What is dark now is dark ground that moves, and what is lit is colonies and herds, where it
+used to be one lit lattice beside one dead region.
 The loop is the owner's constraint once more, and it holds: deposit off still gives mean V
 0.00000 with zero texels above 0.05, and on a field the herd cannot write the herd sits at
 1.054× the frame mean with steering against 0.997× with it deleted.

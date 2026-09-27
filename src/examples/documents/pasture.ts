@@ -381,10 +381,16 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
  * seconds, and the regime it lands in was set by the bar before.
  *
  * T1399b added the fourth way, the one you see without knowing any of the above: `hit1`,
- * a Beat node on the onsets (1 on the hit, a 0.4 s exponential tail), lands on four large
- * things at once — the palette scale (`tint1`, fronts flare toward the gold), the bloom's
- * weight (`burn1`), the camera's scale (`spin1`, a 5% push) and the medium's advection
- * (`flow1`, the whole field lurches along the swell on the beat and keeps the shear).
+ * a Beat node on the onsets (1 on the hit, a 0.4 s exponential tail), raises how much spore
+ * a footstep leaves (`sowin1`'s opacity). It lands only where the animals are: on each
+ * onset the herds' fronts flare up the palette as fresh spore is laid under them, and that
+ * spore grows on after the flash has gone. The dark ground and the colonies do not move.
+ * An earlier cut of T1399b put `hit1` on four FRAME-WIDE things instead — the palette
+ * scale, the bloom, the camera's scale and the medium's advection — and the owner's verdict
+ * was "super irritating pumping with the beat … way too ugly": every hit, everything
+ * pulsed together. Measured by 40-px blocks, that cut lifted 63% of lit blocks in step
+ * with the onsets (block correlation > 0.3); this one lifts 1.0%, against 0.3% before
+ * T1399b.
  *
  * ## T671 — a lattice needs a stationary substrate, so deny it one
  *
@@ -436,14 +442,16 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
  * steps and a map drawn to put the band's dead corner inside the frame (`shape1`,
  * `bowl1`), so the surround is islands of worms and spot colonies drifting with
  * `terrain1` between open dark ground — negative space that opens and closes; and
- * `hit1`, above. MEASURED on this file, same run, same instrument: brightness swing 30.8%
- * rms, onset correlation 0.43 (0.61 on the shipped showcase clip, from 0.34); median
- * block motion 0.0073 and 40% of blocks above a quarter of the busiest; motion between
- * beats, with the flash excluded, 0.0043 against 0.0023. GPU time per frame on Dawn
- * 1.74 → 1.76 ms, the mean of five alternating runs whose spread is 1.60–1.97 — the
- * three extra roosts' 7 000 animals cost less than the noise. The loop is the owner's constraint again and it holds: deposit off →
- * mean V 0.00000 with zero texels above 0.05, and on a field the herd cannot write the
- * herd sits at 1.054× the frame mean with steering and 0.997× with it deleted.
+ * `hit1` on the deposit, above. MEASURED on this file, same run, same instrument: the
+ * frame's brightness correlates 0.28 with the onset envelope (0.49 on the shipped showcase
+ * clip, from 0.34), and the response is LOCAL — 1.0% of lit blocks follow the onsets, the
+ * median block's correlation is 0.09 against 0.11 before. Median block motion 0.0040 and
+ * 26% of blocks above a quarter of the busiest; motion between beats 0.0043 against
+ * 0.0023. GPU time per frame on Dawn 1.74 → 1.76 ms, the mean of five alternating runs
+ * whose spread is 1.60–1.97 — the three extra roosts' 7 000 animals cost less than the
+ * noise. The loop is the owner's constraint again and it holds: deposit off → mean V
+ * 0.00000 with zero texels above 0.05, and on a field the herd cannot write the herd sits
+ * at 1.054× the frame mean with steering and 0.997× with it deleted.
  *
  * ## The two traps this file paid attention to rather than rediscovering
  *
@@ -521,9 +529,9 @@ export const pastureDocument = document(
          is right for what it drives (a sustained swell, no flicker) and nearly silent on a
          steady beat: 0.018 mean over the pattern's run. So the onsets get their own envelope
          — Beat, not Trigger: 1 on the hit and a 0.4 s exponential tail, with a 0.2 s
-         hold-off so a flam is one event — and it lands on four large things (`tint1`,
-         `burn1`, `spin1`, `flow1`), each named at its site. It reads `source1`, never
-         `env1`, for the same §V509 reason `trig1` does. */
+         hold-off so a flam is one event — and it lands on ONE thing, the deposit
+         (`sowin1`), so the beat shows where the herds are and nowhere else. It reads
+         `source1`, never `env1`, for the same §V509 reason `trig1` does. */
       node("hitSel", "valueSelect", [-2600, 1100], { channels: "onsetCount" }, { label: "hitsel1" }),
       node("hit", "valueBeat", [-2340, 1100], { threshold: 0.5, retrigger: 0.2, tail: 0.4, decay: "exponential" }, { label: "hit1" }),
 
@@ -864,26 +872,13 @@ export const pastureDocument = document(
        * the flow carries V away faster than a low-feed regime can regrow it. Turn it up
        * for wilder and emptier, down for denser and more regular.
        *
-       * T1399b: the rest stays 0.0025 and the BEAT adds 0.006 on `hit1`'s tail — so the
-       * medium lurches along the swell on every hit and the shear it leaves is permanent,
-       * which is the surround moving WITH the music rather than beside it. The average
-       * over a bar stays near the density the note above settles on; tried at a 0.0035
-       * rest, the colonies thinned into bare trails and the surround had nothing to move.
+       * T1399b tried two things here and kept neither: a 0.0035 rest thinned the colonies
+       * into bare trails, and a lurch on the beat (+0.006 on `hit1`) moved the whole field
+       * at once on every hit — the frame-wide pump the owner rejected.
        */
       node("flow", "displace", [-1690, -260], {
-        offset: [0.5, 0.5], sourcex: "red", sourcey: "green", extend: "hold",
-      }, {
-        label: "flow1", resolution: { mode: "fixed", width: 640, height: 360 },
-        parameters: {
-          weight: {
-            mode: "expression",
-            bindings: {
-              static: { kind: "static", value: [0.0025, 0.0025] },
-              expression: { kind: "expression", source: "0.0025 + 0.006 * op('hit1').chan.onsetCount" },
-            },
-          },
-        },
-      }),
+        weight: [0.0025, 0.0025], offset: [0.5, 0.5], sourcex: "red", sourcey: "green", extend: "hold",
+      }, { label: "flow1", resolution: { mode: "fixed", width: 640, height: 360 } }),
 
       // ---- THE REACTION -------------------------------------------------------------
       node("state", "feedback", [-1820, 0], {
@@ -923,11 +918,14 @@ export const pastureDocument = document(
          chemistry into it and the reaction spends the next second growing what the animal
          put there. The DEPOSIT IS THE FRONT (§V510's shape): Composite's opacity scales the
          front only, so `drop1` reads as "how much chemistry a footstep leaves" on the node
-         that does the depositing, with no extra node to hold it. */
+         that does the depositing, with no extra node to hold it.
+         T1399b: plus 0.35 on `hit1` — the beat, and the only place it lands. A hit lays a
+         thicker footstep, so it lights the herds' fronts and seeds growth exactly where
+         the animals are standing; the ground they are not on never hears it. */
       node("sowIn", "screen", [1300, 0], {}, {
         label: "sowin1",
         resolution: { mode: "fixed", width: 640, height: 360 },
-        parameters: { opacity: drivenSlot("drop1:level", 0.2) },
+        parameters: { opacity: expressionSlot("op('drop1').chan.level + 0.35 * op('hit1').chan.onsetCount", 0.2) },
       }),
       /* AND THE DEPOSIT IS EATEN BACK. `chew1` is 1 everywhere and 1-depth under a
          grazer, so this is the herd's mouth. */
@@ -993,10 +991,9 @@ export const pastureDocument = document(
       node("tint", "lookup", [2340, 0], { channel: "green", row: 0.5, offset: 0 }, {
         label: "tint1",
         /* §V471.7 — the grade BREATHES. Rest 1.15 puts the fronts in the jade and leaves
-           the moss and the gold as somewhere for a loud passage to reach. T1399b: plus
-           0.45 on `hit1` — every onset flares the fronts up the ramp into the gold, and the
-           0.4 s tail brings them back down before the next one. */
-        parameters: { scale: expressionSlot("op('grade1').chan.highMid + 0.45 * op('hit1').chan.onsetCount", 1.15) },
+           the moss and the gold as somewhere for a loud passage to reach. (T1399b briefly
+           added a beat flare here; it lit every front in the frame at once — removed.) */
+        parameters: { scale: drivenSlot("grade1:highMid", 1.15) },
       }),
       /* The three castes go on top of the graded field, coldest first. Screen rather than
          add: an animal on an already-bright front should not double it. */
@@ -1005,14 +1002,12 @@ export const pastureDocument = document(
       node("liftFind", "screen", [3120, 0], { opacity: 1 }, { label: "liftfind1" }),
       node("halo", "blur", [3120, 220], { size: 18, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
       /* The bloom's WEIGHT is the audio (§V471.3): the blurred copy is the front here, so
-         one number says how much halo, and it rests low. T1399b: plus 0.6 on `hit1`. The
-         flash lives HERE and not on `hue1`'s value, which was tried: `hue1` is where the
-         trail loop closes, so a gain there is fed back into itself every frame of the tail —
-         the haze ran up to a washed pink and HSV clipped the bright edges into colour
-         fringes. `burn1` is upstream of the loop, so the loop only ever sees one copy. */
+         one number says how much halo, and it rests low. No beat here: a beat on the bloom
+         or on `hue1`'s value is a frame-wide flash (T1399b tried both — on `hue1`, which
+         closes the trail loop, it also fed back into itself and clipped into colour fringes). */
       node("burn", "add", [3380, 0], {}, {
         label: "burn1",
-        parameters: { opacity: expressionSlot("op('glow1').chan.level + 0.6 * op('hit1').chan.onsetCount", 0.17) },
+        parameters: { opacity: drivenSlot("glow1:level", 0.17) },
       }),
       /* §V471.5 — THE TRAILS CLOSE ON THE FINAL OUTPUT. `hue1` is the last node before the
          Output, so what smears is the graded, hue-drifted picture rather than the raw
@@ -1055,21 +1050,15 @@ export const pastureDocument = document(
        * transform inside a feedback loop; a rotation in there would spiral the trails
        * instead of swaying the picture. The 1.12 scale is the cover for ±4.5°.
        *
-       * T1399b: the scale is the beat's third landing — 1.12 at rest, 1.17 on the hit,
-       * falling back over `hit1`'s tail. It only ever grows, so the ±4.5° cover holds.
+       * No beat on the scale: T1399b tried a 5% push per hit and it read as the whole
+       * picture pumping.
        */
       node("sway", "lfo", [3900, 400], {
         shape: "sine", frequency: 0.012, amplitude: 4.5, offset: 0, phase: 0,
       }, { label: "sway1" }),
       node("spin", "transform", [4160, 0], {
-        t: [0, 0], p: [0, 0], xord: "srt", extend: "hold", aspectcorrect: true,
-      }, { label: "spin1", parameters: { r: drivenSlot("sway1", 0), s: {
-        mode: "expression",
-        bindings: {
-          static: { kind: "static", value: [1.12, 1.12] },
-          expression: { kind: "expression", source: "1.12 + 0.05 * op('hit1').chan.onsetCount" },
-        },
-      } } }),
+        t: [0, 0], s: [1.12, 1.12], p: [0, 0], xord: "srt", extend: "hold", aspectcorrect: true,
+      }, { label: "spin1", parameters: { r: drivenSlot("sway1", 0) } }),
       node("out", "output", [4420, 0], {}, { label: "out1" }),
     ],
     [

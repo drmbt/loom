@@ -1044,7 +1044,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('glow1').chan.level + 0.6 * op('hit1').chan.onsetCount"
+                "source": "op('glow1').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -1356,22 +1356,10 @@
           ],
           "sourcex": "red",
           "sourcey": "green",
-          "weight": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "0.0025 + 0.006 * op('hit1').chan.onsetCount"
-              },
-              "static": {
-                "kind": "static",
-                "value": [
-                  0.0025,
-                  0.0025
-                ]
-              }
-            },
-            "mode": "expression"
-          }
+          "weight": [
+            0.0025,
+            0.0025
+          ]
         },
         "position": {
           "x": -1690,
@@ -2252,7 +2240,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('drop1').chan.level"
+                "source": "op('drop1').chan.level + 0.35 * op('hit1').chan.onsetCount"
               },
               "static": {
                 "kind": "static",
@@ -2325,22 +2313,10 @@
             },
             "mode": "expression"
           },
-          "s": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "1.12 + 0.05 * op('hit1').chan.onsetCount"
-              },
-              "static": {
-                "kind": "static",
-                "value": [
-                  1.12,
-                  1.12
-                ]
-              }
-            },
-            "mode": "expression"
-          },
+          "s": [
+            1.12,
+            1.12
+          ],
           "t": [
             0,
             0
@@ -2491,7 +2467,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('grade1').chan.highMid + 0.45 * op('hit1').chan.onsetCount"
+                "source": "op('grade1').chan.highMid"
               },
               "static": {
                 "kind": "static",
