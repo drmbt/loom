@@ -1153,7 +1153,7 @@
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
           "joints": "0:pelvis@0,0.9618,0.0048 1:spine<0@0,1.0506,-0.0276 2:chest<1@0,1.1862,-0.0263 3:neck<2@0,1.5378,0.0131 4:head<3@0,1.6366,0.0473 5:shoulder.L<2@0.0234,1.4616,0.0258 6:upperarm.L<5@0.1906,1.4317,0.0196 7:forearm.L<6@0.3632,1.2339,0.0184 8:hand.L<7@0.5003,1.1029,0.2135 9:shoulder.R<2@-0.0234,1.4616,0.0258 10:upperarm.R<9@-0.1906,1.4317,0.0196 11:forearm.R<10@-0.3632,1.2339,0.0184 12:hand.R<11@-0.5003,1.1029,0.2135 13:thigh.L<0@0.1113,0.9562,-0.0059 14:shin.L<13@0.1549,0.5171,0.0291 15:foot.L<14@0.2015,0.0739,0.0154 16:thigh.R<0@-0.1113,0.9562,-0.0059 17:shin.R<16@-0.1549,0.5171,0.0291 18:foot.R<17@-0.2015,0.0739,0.0154",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "figbare.*",
           "triangles": 125416,
           "vertices": 72834
@@ -1961,7 +1961,7 @@
         "label": "meshcar01",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "car0.*",
           "triangles": 370034,
           "vertices": 283863
@@ -1978,7 +1978,7 @@
         "label": "meshcar11",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "car1.*",
           "triangles": 365163,
           "vertices": 256983
@@ -1995,10 +1995,10 @@
         "label": "meshcar21",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "car2.*",
-          "triangles": 261513,
-          "vertices": 173724
+          "triangles": 268593,
+          "vertices": 177928
         },
         "position": {
           "x": -3600,
@@ -2012,7 +2012,7 @@
         "label": "meshcar31",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "car3.*",
           "triangles": 708903,
           "vertices": 717397
@@ -2029,7 +2029,7 @@
         "label": "meshcar41",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "car4.*",
           "triangles": 340032,
           "vertices": 428609
@@ -2046,7 +2046,7 @@
         "label": "meshlampglass1",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "lampglass.*",
           "triangles": 10058,
           "vertices": 9946
@@ -2063,7 +2063,7 @@
         "label": "meshwh1",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "wh.*",
           "triangles": 7708,
           "vertices": 14785

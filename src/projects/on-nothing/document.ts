@@ -12,14 +12,11 @@ import { carAreas } from "./scene-facts.ts";
 import { markerOf } from "./scene-facts.ts";
 import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "./skin-kernel.ts";
 import { GLASS_COMPOSITE_WGSL, LAMP_GLASS_WGSL, OCCLUDER_WGSL, SURFACE_WGSL } from "./surface.ts";
-import { CAR_RIG_ATTRIBUTES, carRigKernel, drivenCar } from "./car-rig.ts";
-import { GLYPHS_WGSL } from "./tracking.ts";
+import { CAR_RIG_ATTRIBUTES, carRigKernel } from "./car-rig.ts";
+import { WHEEL_DOF, WHEEL_DRIVE, WHEEL_TURN, WHEEL_GLYPHS, WHEEL_GLYPHS_WGSL, placedHaze, riding, wheelCamera, wheelLights, wheelRig } from "./shots/wheel.ts";
 import { prismDocument } from "./shots/prism.ts";
 import { quadDocument } from "./shots/quad.ts";
 import { handheld } from "./shots/handheld.ts";
-
-/** The wheel shot: how far the rigged car has driven, metres (a slow roll past the others). */
-const DRIVE = "(abstime * 2.2)";
 
 /**
  * T1400b — THE ON NOTHING DOCUMENTS: one graph per shot, built from the GLB's measured facts.
@@ -72,7 +69,7 @@ const PLANS: Record<Base, ShotPlan> = {
   tableau: { areas: ["wh", "cars"], figure: true, headlights: true, tubes: false, haze: { density: 0.035, groups: ["head"], ambient: [0.0025, 0.0045, 0.005] }, dof: true, echo: false, mirror: false, whiteRoom: false },
   title: { areas: ["wh", "cars", "title"], figure: false, headlights: true, tubes: false, haze: { density: 0.03, groups: ["head"], ambient: [0.006, 0.006, 0.0065] }, dof: true, echo: false, mirror: false, whiteRoom: false },
   quad: { areas: [], figure: true, headlights: false, tubes: false, haze: { density: 0.06, groups: ["back"], ambient: [0, 0, 0] }, dof: false, echo: false, mirror: true, whiteRoom: false },
-  wheel: { areas: ["wh", "cars"], figure: false, headlights: true, tubes: false, haze: { density: 0.03, groups: ["head"], ambient: [0.004, 0.0042, 0.0045] }, dof: false, echo: false, mirror: false, whiteRoom: false },
+  wheel: { areas: ["wh", "cars"], figure: false, headlights: true, tubes: false, haze: { density: 0.03, groups: ["head"], ambient: [0.004, 0.0042, 0.0045] }, dof: true, echo: false, mirror: false, whiteRoom: false },
   cyc: { areas: ["cyc"], figure: true, headlights: false, tubes: false, haze: { density: 0, groups: [], ambient: [0, 0, 0] }, dof: false, echo: true, mirror: false, whiteRoom: true },
 };
 
@@ -146,19 +143,8 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   if (shot === "prism") return prismDocument(facts, options);
   const base = BASE_OF[shot];
   const plan = PLANS[base];
-  /** The wheel shot's car drives `DRIVE` metres; what rides with it follows by this helper. */
-  /** The car the wheel shot drives: the first car area that carries a rig. */
-  const drivenArea = carAreas(facts).find((area) => (facts.areas.get(area)?.partTable.length ?? 0) > 0);
-  const carParts = drivenArea === undefined ? [] : facts.areas.get(drivenArea)!.partTable;
-  const driven = base === "wheel" && carParts.length > 0 ? (() => {
-    const car = drivenCar(carParts);
-    return { car: car.body.name.slice(3), forward: car.forward, right: car.right, pivot: car.body.pivot };
-  })() : undefined;
-  const follow = (key: string, at: readonly [number, number, number], forward: readonly [number, number, number]): Record<string, StoredParameter> => ({
-    [`${key}.x`]: expressionSlot(`${at[0]} + ${forward[0].toFixed(5)} * ${DRIVE}`, at[0]),
-    [`${key}.y`]: expressionSlot(`${at[1]} + ${forward[1].toFixed(5)} * ${DRIVE}`, at[1]),
-    [`${key}.z`]: expressionSlot(`${at[2]} + ${forward[2].toFixed(5)} * ${DRIVE}`, at[2]),
-  });
+  /** The wheel shot's rigged car, moved to its own mark and creeping (shots/wheel.ts). */
+  const rig = base === "wheel" ? wheelRig(facts) : undefined;
   const camera = facts.cameras.get(`shot.${base}`);
   if (camera === undefined) throw new Error(`onNothingDocument: the GLB has no camera "shot.${shot}".`);
   const eye = camera.eye;
@@ -211,9 +197,9 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     if (mesh === undefined) throw new Error(`onNothingDocument: no "${area}" area in the GLB.`);
     nodes.push(node(`mesh_${area}`, "meshFileIn", [-3600, index * 250], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts }, { label: `mesh${area}1` }));
     nodes.push(node(`geo_${area}`, "geometry", [-3300, index * 250], { mode: "surface", material: "surf1" }, { label: `geo${area}1` }));
-    if (base === "wheel" && area === drivenArea) {
+    if (rig !== undefined && area === rig.area) {
       // The rigged car drives; its wheels roll (car-rig.ts).
-      nodes.push(node("carRig", "pointKernel", [-3450, index * 250], { capacity: mesh.vertices, attributes: CAR_RIG_ATTRIBUTES, kernel: carRigKernel(mesh.partTable), drive: expressionSlot(DRIVE, 0) }, { label: "carrig1" }));
+      nodes.push(node("carRig", "pointKernel", [-3450, index * 250], { capacity: mesh.vertices, attributes: CAR_RIG_ATTRIBUTES, kernel: carRigKernel(mesh.partTable), drive: expressionSlot(WHEEL_DRIVE, 0), place: [...rig.place], turn: WHEEL_TURN }, { label: "carrig1" }));
       edges.push(edge("mesh-rig-car", [`mesh_${area}`, "out"], ["carRig", "in"]));
       edges.push(edge("rig-geo-car", ["carRig", "out"], [`geo_${area}`, "points"]));
     } else {
@@ -236,9 +222,9 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     edges.push(edge("mesh-geo-lampglass", ["mesh_lampglass", "out"], ["geo_lampglass", "points"]));
     glassScenes.push("geolampglass1");
     for (const area of carAreas(facts)) {
-      if (base === "wheel" && area === drivenArea) continue;
       nodes.push(node(`occ_${area}`, "geometry", [-3000, 1000], { mode: "surface", material: "occmat1" }, { label: `occ${area}1` }));
-      edges.push(edge(`mesh-occ-${area}`, [`mesh_${area}`, "out"], [`occ_${area}`, "points"]));
+      // the rigged car occludes where it stands in the shot, not where the GLB left it
+      edges.push(edge(`mesh-occ-${area}`, rig !== undefined && area === rig.area ? ["carRig", "out"] : [`mesh_${area}`, "out"], [`occ_${area}`, "points"]));
       glassScenes.push(`occ${area}1`);
     }
   }
@@ -301,8 +287,8 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
       nodes.push(node(id, "projector", [-2600, 1400 + index * 60], {
         eye: vec(centre),
         lookAt: [centre[0] + dir[0]! * 2, centre[1] + dir[1]! * 2, centre[2] + dir[2]! * 2],
-        ...(base === "wheel" && driven !== undefined && car === driven.car ? follow("eye", centre, driven.forward) : {}),
-        ...(base === "wheel" && driven !== undefined && car === driven.car ? follow("lookAt", [centre[0] + dir[0]! * 2, centre[1] + dir[1]! * 2, centre[2] + dir[2]! * 2], driven.forward) : {}),
+        ...(rig !== undefined && car === rig.car ? riding(rig, "eye", centre) : {}),
+        ...(rig !== undefined && car === rig.car ? riding(rig, "lookAt", [centre[0] + dir[0]! * 2, centre[1] + dir[1]! * 2, centre[2] + dir[2]! * 2]) : {}),
         throwRatio: 0.5,
         aspect: 2.4,
         brightness: 2.5,
@@ -353,7 +339,13 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     lights.push("fill1", "carkey1");
     sodium();
   }
-  if (base === "wheel") {
+  if (rig !== undefined) {
+    wheelLights(rig).forEach((light, index) => {
+      nodes.push(node(`wheelLight${index}`, "light", [-2600, 2000 + index * 100], light, { label: `wheellight${index}1` }));
+      lights.push(`wheellight${index}1`);
+    });
+  } else if (base === "wheel") {
+    // no rigged car in this GLB: the interim raking key (the rig's own lights are shots/wheel.ts)
     sodium();
     // a low raking key along the car's flank: the wheel's spokes and the door read, as in 2:00
     nodes.push(node("wheelKey", "light", [-2600, 700], { kind: "point", position: [eye[0] + 2.5, 0.6, eye[2] + 1.0], color: [0.9, 0.95, 1, 1], intensity: 14 }, { label: "wheelkey1" }));
@@ -454,8 +446,8 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
       ? zoomMove()
       : shot === "title"
         ? titleMove()
-        : base === "wheel" && driven !== undefined
-          ? { ...follow("eye", eye, driven.forward), ...follow("lookAt", aim, driven.forward) }
+        : rig !== undefined
+          ? wheelCamera(rig)
           : shot === "tableau"
             ? handheld(eye, aim, TABLEAU_HANDHELD)
             : base === "wheel"
@@ -498,12 +490,17 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     pass("glass", GLASS_COMPOSITE_WGSL, {}, [["glassShot", "out"], ["glassShot", "normal"]], [-1800, 0]);
   }
   if (plan.haze.density > 0) {
-    pass("haze", hazeWgsl(hazeLights(facts, plan.haze.groups)), { ...cameraParams, density: plan.haze.density, ambient: vec(plan.haze.ambient), anisotropy: 0.72, head: base === "title" ? 0.01 : 0.25 }, [depth], [-1700, 0]);
+    const haze = hazeLights(facts, plan.haze.groups);
+    pass("haze", hazeWgsl(rig === undefined ? haze : placedHaze(facts, rig, haze)), { ...cameraParams, density: plan.haze.density, ambient: vec(plan.haze.ambient), anisotropy: 0.72, head: base === "title" ? 0.01 : 0.25 }, [depth], [-1700, 0]);
   }
   if (plan.dof) {
     // focus: the title's script at 1.3 m; the tableau's figure (the rear row falls soft)
     const focus = base === "title" ? 1.3 : base === "tableau" ? 11.0 : 0;
-    pass("lens_dof", DOF_WGSL, { ...cameraParams, aperture: base === "title" ? 0.5 : 0.45, maxRadius: 16, focusDistance: focus }, [depth], [-1500, 0]);
+    pass("lens_dof", DOF_WGSL, { ...cameraParams, ...(base === "wheel" ? WHEEL_DOF : { aperture: base === "title" ? 0.5 : 0.45, maxRadius: 16, focusDistance: focus }) }, [depth], [-1500, 0]);
+  }
+  if (base === "wheel") {
+    // Outlined letters on the beat, into the HDR picture so the streak glass smears them (shots/wheel.ts).
+    pass("glyphs", WHEEL_GLYPHS_WGSL, WHEEL_GLYPHS, [], [-1450, 0]);
   }
   const scene = last;
   const opticsGain: Record<Base, { streak: number; halo: number }> = {
@@ -555,19 +552,6 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   pass("optics", OPTICS_COMPOSITE_WGSL, { streak: opticsGain[base].streak, halo: opticsGain[base].halo, bloom: 0.12, streakTint: [0.9, 0.97, 1, 1] }, [["streak2", "out"], ["halo", "out"], ["bloomUp0", "out"]], [-500, 0]);
 
   // ── Lens and grade ──
-  if (base === "wheel" && driven !== undefined) {
-    // Counter digits floating off the door, locked to the car as it drives (tracking.ts).
-    const up: [number, number, number] = [0, 1, 0];
-    // The row stands across the camera's view, just behind the front wheel, off the car's side:
-    // along the car's right (screen left to right from this camera), upright.
-    const across: [number, number, number] = [driven.right[0], driven.right[1], driven.right[2]];
-    const o: [number, number, number] = [
-      driven.pivot[0] + driven.right[0] * 1.02 - driven.forward[0] * 1.5,
-      0.08,
-      driven.pivot[2] + driven.right[2] * 1.02 - driven.forward[2] * 1.5,
-    ];
-    pass("glyphs", GLYPHS_WGSL, { ...cameraParams, origin: o, ...follow("origin", o, driven.forward), axisU: across, axisV: up, value: expressionSlot("floor(abstime * 7) * 13 % 1000", 0), digits: 3, height: 0.55, gain: 3 }, [depth], [-400, 0]);
-  }
   const snapBlur: Record<string, StoredParameter> =
     shot === "zoom" ? { zoomBlur: expressionSlot("0.22 * max(1 - abs(abstime - 1.5) / 0.12, 0) ^ 2", 0) }
     : shot === "title" ? { whip: expressionSlot(`0.16 * ${WHIP}`, 0), distortion: 0.12, edgeBlur: 0.02 }

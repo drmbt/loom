@@ -1879,7 +1879,7 @@
         "label": "meshcar01",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "car0.*",
           "triangles": 370034,
           "vertices": 283863
@@ -1896,7 +1896,7 @@
         "label": "meshcar11",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "car1.*",
           "triangles": 365163,
           "vertices": 256983
@@ -1913,10 +1913,10 @@
         "label": "meshcar21",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "car2.*",
-          "triangles": 261513,
-          "vertices": 173724
+          "triangles": 268593,
+          "vertices": 177928
         },
         "position": {
           "x": -3600,
@@ -1930,7 +1930,7 @@
         "label": "meshcar31",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "car3.*",
           "triangles": 708903,
           "vertices": 717397
@@ -1947,7 +1947,7 @@
         "label": "meshcar41",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "car4.*",
           "triangles": 340032,
           "vertices": 428609
@@ -1964,7 +1964,7 @@
         "label": "meshlampglass1",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "lampglass.*",
           "triangles": 10058,
           "vertices": 9946
@@ -1981,7 +1981,7 @@
         "label": "meshtitle1",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "title.*",
           "triangles": 51996,
           "vertices": 31352
@@ -1998,7 +1998,7 @@
         "label": "meshwh1",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
           "select": "wh.*",
           "triangles": 7708,
           "vertices": 14785

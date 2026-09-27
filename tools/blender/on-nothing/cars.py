@@ -203,9 +203,16 @@ def build(ctx, variants):
             loc = Vector(v["loc"])
             yaw = math.radians(v["yaw"])
             report = []
-            _, heads = car_import.import_car(ctx, os.path.join(car_models.ASSETS, m["path"]), n, loc, yaw, v["paint"],
-                                             length=m["length"], report=report, model=m)
+            car_ob, heads = car_import.import_car(ctx, os.path.join(car_models.ASSETS, m["path"]), n, loc, yaw, v["paint"],
+                                                  length=m["length"], report=report, model=m)
             print(f"[cars] {n} {v['model']}: {report[0][1]}", flush=True)
+            if v.get("moving"):
+                # A real model that drives: its wheels become parts pivoting at their hubs (wheel_rig.py).
+                import wheel_rig
+                rig_report = []
+                wheel_rig.rig(car_ob, n, report=rig_report)
+                for what, detail in rig_report:
+                    print(f"[cars] {n} {what}: {detail}", flush=True)
             rot = Matrix.Rotation(yaw, 3, "Z")
             fwd = rot @ Vector((0, -1, 0))
             for side, h in zip("lr", heads):
