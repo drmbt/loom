@@ -50,7 +50,9 @@ async function setup(types: readonly string[]) {
   const ids = types.map((_, index) => created.output.createdIds[`$${String(index)}`] as NodeId);
   const displaySinks = createDisplaySinkStore();
   const presented: Array<{ options: PresentationOptions; outputs: string[]; disposed: boolean }> = [];
+  const sources: Array<unknown> = [];
   const backend = {
+    setFrameSource: (source: unknown) => sources.push(source),
     present: (_canvas: unknown, options: PresentationOptions) => {
       const entry = { options, outputs: [options.outputId], disposed: false };
       presented.push(entry);
@@ -71,7 +73,7 @@ async function setup(types: readonly string[]) {
   );
   const toggle = async (nodeIds?: string[]) =>
     act(async () => bus.execute("perform.toggle", nodeIds === undefined ? {} : { nodeIds }, context));
-  return { bus, ids, displaySinks, presented, opened, hook, toggle };
+  return { bus, ids, displaySinks, presented, opened, hook, toggle, sources };
 }
 
 afterEach(() => {
@@ -117,6 +119,16 @@ describe("perform windows, through perform.toggle", () => {
       await bus.execute("graph.applyPatch", { baseRevision: bus.store.getRevision(), operations: [{ op: "removeNodes", nodeIds: [ids[0]!] }] }, context);
     });
     expect(displaySinks.get()).toEqual([]);
+  });
+
+  it("hands the loop to the visible perform window, and back to the editor when it closes (§V202)", async () => {
+    const { toggle, sources } = await setup(["window"]);
+    await toggle();
+    const child = sources.at(-1) as Window | null;
+    expect(child).not.toBeNull();
+    expect(child?.document.visibilityState).toBe("visible");
+    await toggle();
+    expect(sources.at(-1)).toBeNull();
   });
 
   it("refuses by name when there is no Window Out", async () => {

@@ -186,6 +186,29 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
     [bus, windows],
   );
 
+  /*
+   * §V202, T303 — the show follows the VISIBLE surface. The newest open perform window
+   * whose document is visible drives the realtime loop, so hiding or backgrounding the
+   * editor no longer freezes it; with none visible the loop returns to the editor's frames.
+   * Re-chosen on open/close and whenever any of those documents changes visibility.
+   */
+  useEffect(() => {
+    if (backend === undefined || backend === null || backend.setFrameSource === undefined) return;
+    const choose = (): void => {
+      const visible = [...handles.current.values()]
+        .reverse()
+        .find((handle) => !handle.closed && handle.window.document.visibilityState === "visible");
+      backend.setFrameSource?.(visible === undefined ? null : visible.window);
+    };
+    choose();
+    const documents = [...handles.current.values()].map((handle) => handle.window.document);
+    for (const doc of documents) doc.addEventListener("visibilitychange", choose);
+    return () => {
+      for (const doc of documents) doc.removeEventListener("visibilitychange", choose);
+      backend.setFrameSource?.(null);
+    };
+  }, [backend, open]);
+
   // A new device (or none) cannot present into the old surfaces: close, and unmount closes.
   useEffect(() => () => windows.close([...handles.current.keys()]), [backend, windows]);
 

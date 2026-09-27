@@ -51,6 +51,14 @@ export interface PresentableCanvas {
   getContext(contextId: "webgpu", options?: unknown): unknown;
 }
 
+/** Anything that hands out animation frames — a `Window` is one (§T1391b). */
+export interface FrameSource {
+  requestAnimationFrame(callback: (time: number) => void): number;
+  cancelAnimationFrame(handle: number): void;
+  /** A closed window never calls back; the loop falls back to its own realm then. */
+  readonly closed?: boolean;
+}
+
 export interface PresentationOptions {
   /** Which compiled output this surface shows. */
   readonly outputId: string;
@@ -193,6 +201,17 @@ export interface LoomBackend extends RenderBackend {
    * survive plan recompiles and are re-established across device loss.
    */
   present(canvas: PresentableCanvas, options: PresentationOptions): PresentationHandle;
+
+  /**
+   * §T1391b, §V202, T303 — WHOSE animation frames drive the realtime loop.
+   *
+   * The loop runs on the editor window's `requestAnimationFrame`, and a browser stops
+   * calling that for a hidden tab — so a show on a perform window froze the moment the
+   * editor was backgrounded. Handing a perform window here makes ITS frames drive the loop
+   * while it is visible; `null` returns to the editor's. Optional so hand-written fake
+   * backends still satisfy the interface.
+   */
+  setFrameSource?(source: FrameSource | null): void;
 
   /**
    * Creates the preview system's runtime host on a shared surface (T161, doc §12.2):

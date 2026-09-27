@@ -745,6 +745,79 @@ describe("vgpu backend — timer-driven loop (T109, §V49)", () => {
   });
 });
 
+describe("vgpu backend — the loop follows a frame source (§T1391b, §V202, T303)", () => {
+  /** A window stand-in whose frames arrive only when the test flushes them. */
+  function manualSource() {
+    let next = 1;
+    const queue = new Map<number, (time: number) => void>();
+    return {
+      closed: false,
+      requestAnimationFrame(callback: (time: number) => void) {
+        const id = next++;
+        queue.set(id, callback);
+        return id;
+      },
+      cancelAnimationFrame(id: number) {
+        queue.delete(id);
+      },
+      pending: () => queue.size,
+      flush() {
+        const due = [...queue.values()];
+        queue.clear();
+        for (const callback of due) callback(0);
+      },
+    };
+  }
+
+  it("runs on the source's frames while one is set, and on its own realm's again after", async () => {
+    const { backend } = await harness();
+    const plan = await backend.compile(fixturePlan());
+    const source = manualSource();
+    backend.setFrameSource?.(source);
+
+    let ticks = 0;
+    const control = backend.loop(() => {
+      ticks += 1;
+      backend.render(plan, frameInputs(ticks));
+    }, { fps: 1000 });
+
+    // Nothing arrives from this realm while the source holds the loop: a hidden editor
+    // tab's frames must not be what the show waits on.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(ticks).toBe(0);
+    expect(source.pending()).toBe(1);
+
+    for (let index = 0; index < 5; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      source.flush();
+    }
+    expect(ticks).toBeGreaterThanOrEqual(3);
+
+    // Back to this realm: the source is released and frames keep coming without it.
+    backend.setFrameSource?.(null);
+    expect(source.pending()).toBe(0);
+    const before = ticks;
+    await until(() => ticks > before, "realm frames after the source is released");
+    control.stop();
+  });
+
+  it("falls back to its own realm instead of stalling when the source window has closed", async () => {
+    const { backend } = await harness();
+    const plan = await backend.compile(fixturePlan());
+    const source = manualSource();
+    backend.setFrameSource?.(source);
+    let ticks = 0;
+    const control = backend.loop(() => {
+      ticks += 1;
+      backend.render(plan, frameInputs(ticks));
+    }, { fps: 1000 });
+    source.closed = true;
+    source.flush();
+    await until(() => ticks > 1, "realm frames after the source closed");
+    control.stop();
+  });
+});
+
 describe("vgpu backend — presentation seam (T87, §V64/§V70)", () => {
   /** A structural canvas whose webgpu context textures come from the live mock device. */
   function stubCanvas(host: MockGpuHost) {

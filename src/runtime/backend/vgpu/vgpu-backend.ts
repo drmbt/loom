@@ -24,6 +24,7 @@ import type {
   PresentableCanvas,
   PresentationHandle,
   PresentationOptions,
+  FrameSource,
   PresentationReport,
   PreviewFrameCommand,
   PreviewHostHandle,
@@ -361,6 +362,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
    */
   let surfaceResizeHeld = false;
 
+  /** §T1391b: whose animation frames drive the realtime loop; null = this realm's. */
+  let frameSource: FrameSource | null = null;
+
   /** The CSS box in device pixels, or undefined for a canvas with no layout (Offscreen). */
   function layoutSize(canvas: PresentableCanvas): readonly [number, number] | undefined {
     const laidOut = canvas as PresentableCanvas & {
@@ -571,6 +575,11 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     // no `fps` key at all. There is now no unpaced branch to fall into by omission; a
     // loop that genuinely wants every tick has to ask for that rate by name.
     const gate = createPacedGate();
+    const source = frameSource;
+    if (source !== null) {
+      registration.handle = sourceLoop(source, gate, registration);
+      return;
+    }
     registration.handle = frameLoop(gpu, (f) => {
       // Interval read PER TICK off the registration, so a live settings.fps change
       // takes effect without a loop restart — the clock reads its rate the same way
@@ -582,6 +591,64 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
 
   function restartLoops(): void {
     for (const registration of loops) startLoop(registration);
+  }
+
+  /** This realm's frames — vgpu's own fallback where there is no rAF (a worker, Node). */
+  function realmFrames(): FrameSource {
+    const realm = globalThis as { requestAnimationFrame?: (cb: (t: number) => void) => number; cancelAnimationFrame?: (id: number) => void };
+    const request = realm.requestAnimationFrame;
+    const cancel = realm.cancelAnimationFrame;
+    if (request !== undefined && cancel !== undefined) {
+      return { requestAnimationFrame: (cb) => request.call(globalThis, cb), cancelAnimationFrame: (id) => cancel.call(globalThis, id) };
+    }
+    return {
+      requestAnimationFrame: (cb) => setTimeout(() => cb(performance.now()), 16) as unknown as number,
+      cancelAnimationFrame: (id) => clearTimeout(id as unknown as ReturnType<typeof setTimeout>),
+    };
+  }
+
+  /**
+   * The realtime loop on ANOTHER window's frames (§T1391b, §V202). vgpu's `frameLoop`
+   * captures this realm's `requestAnimationFrame`, so this is the same loop written here
+   * over `frame()`: the same paced gate on this realm's clock (a child window's rAF
+   * timestamps have a different origin, so they are never compared with ours), the same
+   * frame path, a stop that cancels on the realm it requested from. A closed source never
+   * calls back, so each tick re-checks it and falls back to this realm rather than stall.
+   */
+  function sourceLoop(
+    source: FrameSource,
+    gate: ReturnType<typeof createPacedGate>,
+    registration: LoopRegistration,
+  ): { stop(): void } {
+    let stopped = false;
+    let requester: FrameSource = source;
+    let id = 0;
+    const schedule = (): void => {
+      requester = source.closed === true ? realmFrames() : source;
+      id = requester.requestAnimationFrame(tick);
+    };
+    const tick = (): void => {
+      if (stopped) return;
+      const active = session?.gpu;
+      if (active && !halted && !disposed && !registration.stopped && gate.due(performance.now(), 1000 / projectFps(registration.settings))) {
+        try {
+          frame(active, (f) => runFrame(f, registration.onFrame));
+        } catch (error) {
+          // As vgpu's own loop does: an error escaping a rAF callback has no caller and
+          // no next tick; stop properly instead of leaving a loop that looks alive.
+          stopped = true;
+          throw error;
+        }
+      }
+      if (!stopped) schedule();
+    };
+    schedule();
+    return {
+      stop() {
+        stopped = true;
+        requester.cancelAnimationFrame(id);
+      },
+    };
   }
 
   async function rebuild(): Promise<void> {
@@ -2357,6 +2424,14 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     resetTemporalHistory(resourceIds?: readonly string[], options?: { buffers?: boolean; silent?: boolean }) {
       if (program) program.dirty = true;
       clearTemporalHistory("explicit", resourceIds, options);
+    },
+
+    setFrameSource(source: FrameSource | null) {
+      if (source === frameSource) return;
+      frameSource = source;
+      // Only rAF-scheduled loops move; a timer loop has no window to follow.
+      stopLoops();
+      if (session && !halted) restartLoops();
     },
 
     present(canvas: PresentableCanvas, options: PresentationOptions): PresentationHandle {
