@@ -21,10 +21,13 @@ MODELS = {
             "etk800": "tyre", "amdb11_caliper": "headlight_body", "amdb11_brake": "headlight_body",
             "gls_glass_1": "glass_car", "vehicle_vehglass": "glass_car",
             "gls_fara": "headlight", "gls_svet": "headlight", "gls_sigl": "drl", "gls_sigr": "drl",
+            "lsiggls": "drl",  # the LED signature strips
             "gls_run": "taillight", "gls_stop": "taillight", "etk800_glass": "taillight",
             "Scene_-_Root": "plastic_black", "gls_grille": "plastic_black", "gls_din": "plastic_black",
             "gls_carbonn": "plastic_black", "gls_ras_on": "plastic_black",
         },
+        # its projector modules are black chrome inside the lamp units: light them by position
+        lamp_pods=dict(**{"from": ["headlight_body"]}, depth=0.45, z=(0.72, 1.0), x_min=0.55),
         drop=["gls_interior", "gls_interior1", "gls_torpedka1", "gls_leather", "gls_wood", "gls_seatbelt",
               "gls_dvd", "gls_gauges_screen", "gls_gps_screen", "gavril_v8", "gls_rgblentaa", "etk800_interior",
               "gls_amg_steer", "Interior", "etk800_lettering"],
@@ -36,6 +39,7 @@ MODELS = {
             "Car_plastic_dark": "plastic_black", "Car_chrome": "chrome", "Glass": "glass_car",
             # "Material" is the red emissive: the TAIL lights. This file faces the right way as imported.
             "Material": "taillight", "Red_car_lights_glass": "taillight",
+            "Material_2125663081": "headlight", "Material_2125663076": "headlight",  # the LED modules
             "Material_2125663085": "chrome", "Material_2125663092": "headlight_body", "Material_2125663093": "chrome",
         },
         drop_objects=["Object_6", "Object_7"],

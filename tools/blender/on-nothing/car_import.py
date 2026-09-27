@@ -193,6 +193,16 @@ def import_car(ctx, path, n, loc, yaw, paint, length=5.2, front_axis="-Y", repor
     me.transform(Matrix.Scale(s, 4))
     me.transform(Matrix.Translation((-(min(xs) + max(xs)) / 2 * s, -min(ys) * s, -min(zs) * s)))
     me.update()
+    if os.environ.get("ON_NOTHING_LAMP_DEBUG"):
+        import collections
+        for end, test in (("front(y small)", lambda c: c.y < 0.35), ("rear(y large)", lambda c: c.y > length - 0.35)):
+            cnt = collections.Counter()
+            for poly in me.polygons:
+                c = poly.center
+                if test(c) and 0.55 < c.z < 1.05 and abs(c.x) > 0.35:
+                    mat = me.materials[poly.material_index]
+                    cnt[_base(mat.name) if mat else "-"] += 1
+            print(f"[lampdebug] {os.path.basename(path)} {end}: {cnt.most_common(14)}", flush=True)
     # materials: the model's map, then the regex classes, then black trim
     explicit = model.get("materials", {})
     moved = {}

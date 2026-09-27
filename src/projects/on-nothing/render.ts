@@ -23,6 +23,7 @@ import { walkTrack } from "../furnace/load-audio.ts";
  *     [--tag name]                            appended to the file names (compare takes)
  *     [--probe streak2]                       show that node's output instead of the finished frame
  *     [--audio <song.wav>] [--audio-start <s>]  hear the song (the streaks breathe with it); a clip is muxed with it
+ *     [--final]                               finished quality: the Render supersampled (SSAA 2x) instead of MSAA
  *     [--hdri <file.hdr>]                     reflections from a real HDRI (Poly Haven, CC0) instead of the procedural room
  */
 const argv = process.argv.slice(2).filter((arg) => arg !== "--");
@@ -70,6 +71,11 @@ for (const shot of shots) {
     const target = nodes[nodeId];
     if (target === undefined) continue;
     nodes[nodeId] = { ...target, parameters: { ...target.parameters, [parameter]: value } } as typeof target;
+  }
+  if (argv.includes("--final")) {
+    // SSAA shades 4 samples a pixel: it also cleans the shader-thin detail MSAA leaves (chrome bars, chain links)
+    const shotNode = nodes["shot"];
+    if (shotNode !== undefined) nodes["shot"] = { ...shotNode, parameters: { ...shotNode.parameters, antialias: "ssaa" } } as typeof shotNode;
   }
   let graphEdges = built.graph.edges;
   const probe = flag("probe");
