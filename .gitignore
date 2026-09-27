@@ -86,3 +86,6 @@ exports/
 
 # T1354b: the furnace GLB is a build product of tools/blender/furnace (~100 MB)
 public/media/furnace/
+
+# T1400b: On Nothing media — build products of src/projects/on-nothing/build.ts (GLB, song, HDRI); never commit
+public/media/on-nothing/
