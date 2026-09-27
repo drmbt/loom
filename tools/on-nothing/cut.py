@@ -40,9 +40,23 @@ def load():
     with open(EDL) as f:
         edl = json.load(f)
     fps = Fraction(edl["fps"])
+    # A row whose reference cuts inside it (strobes, a cut-in) lists "parts": each part is its
+    # own clip, {start, end, shot, take, from, args}, and the parts tile the row in time.
+    units = []
     for r in edl["rows"]:
-        r["f0"] = round(r["start"] * fps)
-        r["f1"] = round(r["end"] * fps)
+        parts = r.get("parts")
+        if not parts:
+            units.append({**r, "id": f"{r['row']:03d}", "name": f"row {r['row']}"})
+            continue
+        for k, part in enumerate(parts):
+            unit = {**r, "take": 0, "from": 0.0, "args": [], **part}
+            unit.pop("parts", None)
+            letter = "abcdefghijklmnopqrstuvwxyz"[k]
+            units.append({**unit, "id": f"{r['row']:03d}{letter}", "name": f"row {r['row']}{letter}"})
+    for u in units:
+        u["f0"] = round(u["start"] * fps)
+        u["f1"] = round(u["end"] * fps)
+    edl["rows"] = units
     return edl, fps
 
 
@@ -59,7 +73,7 @@ def pick(rows, spec, shots):
 
 
 def row_clip(r):
-    return os.path.join(ROWS, f"row-{r['row']:03d}.mp4")
+    return os.path.join(ROWS, f"row-{r['id']}.mp4")
 
 
 def render(args):
@@ -70,7 +84,7 @@ def render(args):
             continue
         path = row_clip(r)
         if os.path.exists(path) and not args.force:
-            print(f"row {r['row']:3d}: kept {os.path.relpath(path, ROOT)}", flush=True)
+            print(f"{r['name']:>9}: kept {os.path.relpath(path, ROOT)}", flush=True)
             continue
         cmd = ["node", "--import", "./src/tooling/alias-hooks.ts", "src/projects/on-nothing/render.ts", "--",
                "--width", str(W), "--shots", r["shot"], "--frames", str(r["f1"] - r["f0"]),
@@ -82,10 +96,10 @@ def render(args):
             cmd[cmd.index("--width") + 1] = str(args.width)
         if args.final:
             cmd.append("--final")
-        print(f"row {r['row']:3d}: {r['shot']} take {r['take']} from {r['from']} ({r['f1'] - r['f0']} frames)", flush=True)
+        print(f"{r['name']:>9}: {r['shot']} take {r['take']} from {r['from']} ({r['f1'] - r['f0']} frames)", flush=True)
         done = subprocess.run(cmd, cwd=ROOT)
         if done.returncode != 0:
-            print(f"row {r['row']:3d}: FAILED ({done.returncode})", flush=True)
+            print(f"{r['name']:>9}: FAILED ({done.returncode})", flush=True)
             if os.path.exists(path):
                 os.remove(path)
 
@@ -118,14 +132,14 @@ def assemble(args):
         n = r["f1"] - r["f0"]
         clip = row_clip(r)
         have = r["shot"] is not None and os.path.exists(clip)
-        ours = os.path.join(seg_dir, f"ours-{r['row']:03d}.mp4")
-        cmp = os.path.join(seg_dir, f"cmp-{r['row']:03d}.mp4")
-        top_label = os.path.join(seg_dir, f"lab-ref-{r['row']:03d}.png")
-        bot_label = os.path.join(seg_dir, f"lab-our-{r['row']:03d}.png")
-        label(top_label, f"REFERENCE  row {r['row']}  {stamp(r['start'])}  {r['what']}", HALF_W)
+        ours = os.path.join(seg_dir, f"ours-{r['id']}.mp4")
+        cmp = os.path.join(seg_dir, f"cmp-{r['id']}.mp4")
+        top_label = os.path.join(seg_dir, f"lab-ref-{r['id']}.png")
+        bot_label = os.path.join(seg_dir, f"lab-our-{r['id']}.png")
+        label(top_label, f"REFERENCE  {r['name']}  {stamp(r['start'])}  {r['what']}", HALF_W)
         ours_text = ((f"LOOM  {r['shot']}" + (f" take {r['take']}" if r["take"] else "")) if have
-                     else f"NOT RENDERED  row {r['row']}  ({r['shot']}: cut.py render --rows {r['row']})" if r["shot"]
-                     else f"NOT BUILT  row {r['row']}  (planned: {r['plan']})")
+                     else f"NOT RENDERED  {r['name']}  ({r['shot']}: cut.py render --rows {r['row']})" if r["shot"]
+                     else f"NOT BUILT  {r['name']}  (planned: {r['plan']})")
         label(bot_label, ours_text, HALF_W)
         # our half, normalised to the reference's size and rate, exactly n frames (black when not built)
         src = ["-i", clip] if have else ["-f", "lavfi", "-i", f"color=c=black:s={W}x{H}:r={rate}"]
@@ -140,7 +154,7 @@ def assemble(args):
         r["segment"], r["have"] = ours, have
         ours_list.append(ours)
         cmp_list.append(cmp)
-        print(f"row {r['row']:3d}: {'built' if have else 'black'} {n} frames", flush=True)
+        print(f"{r['name']:>9}: {'built' if have else 'black'} {n} frames", flush=True)
     cuts = os.path.join(OUT, "cuts")
     timeline(rows, ref, os.path.join(cuts, f"timeline-{args.tag}.fcpxml"), args.tag)
     start = rows[0]["start"]
@@ -176,7 +190,7 @@ def timeline(rows, ref, path, tag):
            f'<asset id="song" name="song" src={quoteattr("file://" + SONG_WAV)} start="0s" duration="{t(4000)}" hasAudio="1" audioSources="1" audioChannels="2"/>']
     for r in rows:
         if r["have"]:
-            out.append(f'<asset id="row{r["row"]}" name="row {r["row"]} {r["shot"]}" src={quoteattr("file://" + r["segment"])} start="0s" duration="{t(r["f1"] - r["f0"])}" hasVideo="1" format="fmt"/>')
+            out.append(f'<asset id="row{r["id"]}" name="{r["name"]} {r["shot"]}" src={quoteattr("file://" + r["segment"])} start="0s" duration="{t(r["f1"] - r["f0"])}" hasVideo="1" format="fmt"/>')
     out += ["</resources>", "<library>", '<event name="On Nothing">', f'<project name="On Nothing {tag}">',
             f'<sequence format="fmt" duration="{t(total)}" tcStart="0s" tcFormat="NDF">', "<spine>"]
     for k, r in enumerate(rows):
@@ -187,9 +201,9 @@ def timeline(rows, ref, path, tag):
             inner = (f'<asset-clip ref="ref" lane="2" offset="{at}" start="{t(base)}" duration="{t(total)}" name="reference"/>'
                      f'<asset-clip ref="song" lane="-1" offset="{at}" start="{t(base)}" duration="{t(total)}" name="song"/>')
         if r["have"]:
-            out.append(f'<asset-clip ref="row{r["row"]}" offset="{at}" start="0s" duration="{t(n)}" name="row {r["row"]} {r["shot"]}">{inner}</asset-clip>')
+            out.append(f'<asset-clip ref="row{r["id"]}" offset="{at}" start="0s" duration="{t(n)}" name="{r["name"]} {r["shot"]}">{inner}</asset-clip>')
         else:
-            out.append(f'<gap name="row {r["row"]} not built" offset="{at}" start="0s" duration="{t(n)}">{inner}</gap>')
+            out.append(f'<gap name="{r["name"]} not built" offset="{at}" start="0s" duration="{t(n)}">{inner}</gap>')
     out += ["</spine>", "</sequence>", "</project>", "</event>", "</library>", "</fcpxml>"]
     with open(path, "w") as f:
         f.write("\n".join(out) + "\n")
