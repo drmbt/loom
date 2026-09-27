@@ -21,6 +21,7 @@ import {
   SHADOW_CLEAR_WGSL,
   backdropWgsl,
   glassInstancesWgsl,
+  glassMeshWgsl,
   glassSurfaceWgsl,
   sceneInstancesWgsl,
   sceneSurfaceWgsl,
@@ -500,7 +501,7 @@ export const geometryNode: NodeDefinition = {
         { value: "additive", label: "Additive" },
       ],
       description:
-        "Additive adds this geometry's colour onto what is already drawn — light on light — and stops writing depth so overlapping light sums instead of occluding.",
+        "Additive adds this geometry's colour onto what is already drawn — light on light — and stops writing depth so overlapping light sums instead of occluding. A Surface drawn additively (T1411b) comes after every opaque and glass geometry, still hides behind what is in front of it, and leaves the Render's Depth, Normal and Albedo outputs and its shadows to what it glows over.",
     },
     shape: {
       type: "enum",
@@ -1340,6 +1341,10 @@ export const renderNode: NodeDefinition = {
       geometries.forEach(({ payload }, geometryIndex) => {
         const position = payload.pairs["position"];
         if (position === undefined) return; // the lit loop refuses this by name
+        /* T1411b: an ADDITIVE surface is light laid over the picture, not a body — it
+           occludes nothing, so it casts no shadow, encloses no AO, blocks no projector,
+           and the exported depth is the depth of what it glows over. */
+        if (additiveSurface(payload)) return;
         /* T647: a points-mode billboard casts NO shadow, deliberately — a camera-facing
            card has no light-facing geometry, so a shadow from it would be a lie (and
            without this skip a grid-topology cloud would cast its MESH's shadow, a ghost
@@ -1842,10 +1847,7 @@ export const renderNode: NodeDefinition = {
         clear: true,
       } as DrawPassDescriptor);
     }
-    geometries.forEach(({ payload, source }, index) => {
-      /* T725: transmissive geometry draws in its own phase AFTER the opaques — it
-         samples what they drew. Skipped here, emitted below the pyramid. */
-      if (payload.material.model === "glass") return;
+    const emitGeometry = ({ payload, source }: { payload: GeometryPayload; source: string }, index: number): void => {
       if (payload.mode === "instances" || payload.mode === "points" || payload.mode === "beam") {
         /* T1355b: a Material · WGSL is placed into the SURFACE generator; these three draw
            through another one, and a material whose code silently did not run would teach
@@ -2182,13 +2184,18 @@ export const renderNode: NodeDefinition = {
           ? {}
           : { custom: { code: material.custom.code, paramsDeclaration: material.custom.paramsDeclaration, fields: material.custom.fields } }),
       };
+      /* T1411b: an additive surface sums onto what is drawn and stops writing depth (it
+         still tests — a wall in front still hides it). */
+      const additive = additiveSurface(payload);
       const litPass: DrawPassDescriptor = {
         kind: "draw",
         id: `${nodeId}:scene:${index}`,
         nodeId,
+        ...(additive ? { blend: "additive" as const, depthWrite: false } : {}),
         shader: sceneSurfaceWgsl({
           model,
           lightCount: lights.length,
+          ...(additive ? { additive: true } : {}),
           maps,
           ...(tintAttribute === undefined ? {} : { pointColor: true }),
           ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
@@ -2285,7 +2292,9 @@ export const renderNode: NodeDefinition = {
       passes.push(litPass);
       /* T1371b/T1380b: the same surface into each G-buffer layer — same material, same
          buffers, only the uniforms that generator declares (no lights, shadows, environment
-         or projectors). */
+         or projectors). T1411b: an additive surface is light, not a surface a screen-space
+         pass should reflect or relight — it writes no G-buffer layer. */
+      if (additive) return;
       for (const { layer, target } of gbufferTargets) {
         const lighting = /^(light\d|shadow\d|environment|projector)/;
         passes.push({
@@ -2304,6 +2313,14 @@ export const renderNode: NodeDefinition = {
           uniforms: Object.fromEntries(Object.entries(litPass.uniforms ?? {}).filter(([key]) => !lighting.test(key))),
         });
       }
+    };
+    geometries.forEach((entry, index) => {
+      /* T725: transmissive geometry draws in its own phase AFTER the opaques — it
+         samples what they drew. Skipped here, emitted below the pyramid. */
+      if (entry.payload.material.model === "glass") return;
+      /* T1411b: additive surfaces draw LAST — see below the glass phase. */
+      if (additiveSurface(entry.payload)) return;
+      emitGeometry(entry, index);
     });
 
     /*
@@ -2453,11 +2470,46 @@ export const renderNode: NodeDefinition = {
           continue;
         }
         const topology = typeof payload.topology === "string" ? parseTopology(payload.topology) : null;
+        /* T1357b: an indexed mesh refracts through the lit mesh generator's vertex chunk —
+           and needs its normal attribute for the same reason the lit mesh does. */
+        if (topology !== null && topology.kind === "mesh") {
+          const normal = payload.pairs["normal"];
+          if (normal === undefined || normal.type !== "vec3f") {
+            diagnostics.push({
+              severity: "error",
+              code: "node.scene.topology",
+              message: `Node "${nodeId}": geometry "${source}" is a mesh without a vec3f \`normal\` attribute; glass refracts through the surface normal.`,
+              nodeId,
+              suggestion: "Keep the normal attribute through any kernel between the Mesh File In and the Geometry.",
+            });
+            continue;
+          }
+          passes.push({
+            kind: "draw",
+            id: `${nodeId}:glass:${index}`,
+            nodeId,
+            shader: glassMeshWgsl(glassShaderOptions),
+            target,
+            topology: "triangle-list",
+            instances: 1,
+            vertexCount: topology.triangles * 3,
+            buffers: [
+              attributeBinding("positions", position),
+              { binding: "meshIndices", resourceId: topology.indexBuffer },
+              attributeBinding("meshNormals", normal),
+            ],
+            textures: glassTextures,
+            uniforms: glassUniforms,
+            uniformBinding: "params",
+            clear: false,
+          });
+          continue;
+        }
         if (topology === null || topology.kind !== "grid") {
           diagnostics.push({
             severity: "error",
             code: "node.scene.topology",
-            message: `Node "${nodeId}": geometry "${source}" carries no analytic grid topology; a surface cannot be built.`,
+            message: `Node "${nodeId}": geometry "${source}" carries neither an analytic grid nor a mesh topology; a surface cannot be built.`,
             nodeId,
           });
           continue;
@@ -2492,6 +2544,19 @@ export const renderNode: NodeDefinition = {
         });
       }
     }
+
+    /*
+     * T1411b — the ADDITIVE phase, last: a surface drawn with Blend: Additive is light laid
+     * over the finished picture (a lamp cover's sheen and glints), so it follows every
+     * opaque AND the glass — a glass pane and an additive shell on the same mesh then read
+     * pane + shell, the shell passing the pane's own depth (less-equal). It writes no depth
+     * and no G-buffer, so it hides nothing drawn after it and every screen-space pass sees
+     * what it glows over.
+     */
+    geometries.forEach((entry, index) => {
+      if (entry.payload.material.model === "glass" || !additiveSurface(entry.payload)) return;
+      emitGeometry(entry, index);
+    });
 
     if (ssaa) {
       /* T939 — the resolve: the LAST pass, averaging each 2x2 supersampled block into
@@ -2542,6 +2607,15 @@ export const renderNode: NodeDefinition = {
  * caught on the shader side and missed here. One name per file now, on both sides.
  */
 const envLit = (model: string): boolean => model === "phong" || model === "pbr";
+
+/**
+ * T1411b — a SURFACE (grid or mesh) drawn with Blend: Additive. One predicate for the
+ * three places that must agree: the lit loop defers it, the lit pass blends it, and every
+ * depth sweep (shadow, AO, projector, the Depth output) leaves it out. The per-point
+ * modes keep T917's own additive rules; glass has its own phase.
+ */
+const additiveSurface = (payload: GeometryPayload): boolean =>
+  payload.mode === "surface" && payload.blend === "additive" && payload.material.model !== "glass";
 
 function materialCompile(model: MaterialPayload["model"]) {
   return (context: Parameters<NodeDefinition["compile"]>[0]): CompiledNodeDescription => {
@@ -2658,7 +2732,7 @@ export const materialGlassNode: NodeDefinition = {
   title: "Material · Glass",
   category: "render",
   description:
-    "Screen-space transmission: the surface refracts what the render already drew behind it, through a blur pyramid so roughness reads as frost. IOR bends, Dispersion splits colours, Absorption tints by removal (Beer-Lambert over Thickness), and a Fresnel-weighted environment reflection takes over at grazing angles. Draws after the opaques; casts no shadow (light passes through). The node preview shows a phong stand-in — there is no scene behind a preview ball to refract.",
+    "Screen-space transmission: the surface refracts what the render already drew behind it, through a blur pyramid so roughness reads as frost. IOR bends, Dispersion splits colours, Absorption tints by removal (Beer-Lambert over Thickness), and a Fresnel-weighted environment reflection takes over at grazing angles. Draws after the opaques, on grid, mesh (T1357b) and instance geometry; casts no shadow (light passes through). The node preview shows a phong stand-in — there is no scene behind a preview ball to refract.",
   tags: ["3d", "material", "glass", "transmission", "refraction", "dispersion", "scene"],
   inputs: [],
   outputs: [MATERIAL_OUT],

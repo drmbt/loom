@@ -104,6 +104,13 @@ export interface SceneShadingOptions {
    * the clear leaves zero — the Normal output's alpha is the coverage test.
    */
   readonly gbuffer?: "normal" | "albedo";
+  /**
+   * T1411b: the surface is drawn ADDITIVELY (src + dst colour, no depth write) — light
+   * added over what the opaques drew. Its alpha is written as 0, so the one/one blend
+   * keeps the destination's coverage: a glow over a surface does not make the pixel
+   * "more opaque" than 1. Absent emits the stock text byte for byte (§V309).
+   */
+  readonly additive?: boolean;
 }
 
 /** T1355b: the author's surface code, placed into the lit surface generator. */
@@ -963,13 +970,15 @@ ${
   const aoLookup = ambientOcclusion
     ? `  let occlusion = textureLoad(occlusionMap, vec2i(input.position.xy), 0).r;\n`
     : "";
+  /* T1411b: an additive draw writes alpha 0 — the one/one blend then keeps dst coverage. */
+  const alphaOut = options.additive === true ? "0.0" : "albedo.a * cover";
   const shading =
     options.model === "unlit"
       ? custom !== undefined
-        ? `  return vec4f((albedo.rgb + shaded.emissive) * cover, albedo.a * cover);`
+        ? `  return vec4f((albedo.rgb + shaded.emissive) * cover, ${alphaOut});`
         : options.mesh?.emissive === true
-        ? `  return vec4f((albedo.rgb + input.emissive) * cover, albedo.a * cover);`
-        : `  return vec4f(albedo.rgb * cover, albedo.a * cover);`
+        ? `  return vec4f((albedo.rgb + input.emissive) * cover, ${alphaOut});`
+        : `  return vec4f(albedo.rgb * cover, ${alphaOut});`
       : `${aoLookup}  let ambient = params.ambientColor.rgb * params.ambientColor.a${aoTerm};
   var lit = albedo.rgb * ambient;
 ${
@@ -977,7 +986,7 @@ ${
     ? ""
     : `  let viewDir = normalize(params.eye.xyz - input.world);
 ${Array.from({ length: lightCount }, (_, index) => perVertex(lightBlock(index))).join("")}`
-}${projectors.term}${perVertex(envTerm)}${emissiveTerm}  return vec4f(lit * cover, albedo.a * cover);`;
+}${projectors.term}${perVertex(envTerm)}${emissiveTerm}  return vec4f(lit * cover, ${alphaOut});`;
   /* T1355b — the custom surface: its uniform members, its module text, and the fragment
      head that calls it. Without `custom` the head is the stock text, character for
      character, so every existing scene's shader is unchanged. */
@@ -2182,6 +2191,30 @@ export function glassSurfaceWgsl(options: GlassShaderOptions = {}): EmittedWgsl 
 @group(0) @binding(0) var<uniform> params: SceneParams;
 @group(0) @binding(1) var<storage, read> positions: array<vec3f>;
 ${glassBindingsWgsl(options)}${surfaceMeshWgsl(false)}
+
+${glassPyramidWgsl()}
+${glassFragmentWgsl(options)}`;
+}
+
+/**
+ * T1357b — the glass draw for an INDEXED MESH: the lit mesh generator's own vertex chunk
+ * (index pull, file normals) under the same optics. The fragment already picks the
+ * face the camera sees as the entry face, so a file mesh's authored side needs no
+ * B227 turn here.
+ */
+export function glassMeshWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
+  const mesh = { uv: false, surface: false, emissive: false } as const;
+  return wgsl`struct SceneParams {
+  viewProjection: mat4x4f,
+  eye: vec4f,
+  glassA: vec4f,            // ior, roughness, thickness, dispersion
+  glassB: vec4f,            // absorption rgb, w = environment intensity
+  fallback: vec4f,          // background rgb — the off-frame / no-env answer
+};
+
+@group(0) @binding(0) var<uniform> params: SceneParams;
+@group(0) @binding(1) var<storage, read> positions: array<vec3f>;
+${glassBindingsWgsl(options)}${meshBindingsWgsl(mesh)}${meshVertexWgsl(false, mesh)}
 
 ${glassPyramidWgsl()}
 ${glassFragmentWgsl(options)}`;
