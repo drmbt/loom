@@ -14,6 +14,7 @@ import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "./skin-kernel.ts
 import { GLASS_COMPOSITE_WGSL, LAMP_GLASS_WGSL, OCCLUDER_WGSL, SURFACE_WGSL } from "./surface.ts";
 import { CAR_RIG_ATTRIBUTES, carRigKernel, drivenCar } from "./car-rig.ts";
 import { GLYPHS_WGSL } from "./tracking.ts";
+import { handheld } from "./shots/handheld.ts";
 
 /** The wheel shot: how far the rigged car has driven, metres (a slow roll past the others). */
 const DRIVE = "(abstime * 2.2)";
@@ -394,24 +395,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
    * an arc about the grille, never a straight dolly — with a breath of handheld.
    */
   const WHIP = "clamp(1 - abstime / 0.35, 0, 1) ^ 2";
-  /**
-   * HANDHELD on a long lens: a slow creep in, a breathing sway (three incommensurate sines per
-   * axis, so it never loops visibly), the aim wandering a few centimetres, and ROLL — the
-   * operator's horizon drifting a degree or two. The streaks are image-space, so they turn with
-   * the camera, as a filter on the lens does.
-   */
-  function handheld(at: readonly [number, number, number], look: readonly [number, number, number]): Record<string, StoredParameter> {
-    const wob = (a: number, b: number, c: number, phase: number) => `(sin(abstime * ${a} + ${phase}) * 0.5 + sin(abstime * ${b} + ${phase * 1.7}) * 0.3 + sin(abstime * ${c} + ${phase * 2.3}) * 0.2)`;
-    return {
-      "eye.x": expressionSlot(`${at[0]} + ${wob(0.9, 2.3, 5.1, 0.3)} * 0.05`, at[0]),
-      "eye.y": expressionSlot(`${at[1]} + ${wob(1.3, 3.1, 6.7, 1.1)} * 0.03`, at[1]),
-      "eye.z": expressionSlot(`${at[2]} - abstime * 0.12`, at[2]),
-      "lookAt.x": expressionSlot(`${look[0]} + ${wob(0.7, 1.9, 4.3, 2.0)} * 0.07`, look[0]),
-      "lookAt.y": expressionSlot(`${look[1]} + ${wob(0.8, 2.1, 4.9, 2.7)} * 0.04`, look[1]),
-      "lookAt.z": expressionSlot(`${look[2]}`, look[2]),
-      roll: expressionSlot(`${wob(0.5, 1.4, 3.3, 0.9)} * 1.6`, 0),
-    };
-  }
+
   function titleMove(): Record<string, StoredParameter> {
     const centre: [number, number, number] = [0, 0.74, 0.13];
     const dx = eye[0] - centre[0];
@@ -445,7 +429,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
         : base === "wheel" && driven !== undefined
           ? { ...follow("eye", eye, driven.forward), ...follow("lookAt", aim, driven.forward) }
           : shot === "tableau"
-            ? handheld(eye, aim)
+            ? handheld(eye, aim, { tiltIn: -2.6, tilt: -0.9, settle: 1.5, shake: 1, creep: 0.12 })
             : {};
   nodes.push(node("cam", "camera", [-2700, -900], { eye: vec(eye), lookAt: aim, fov: camera.fovDeg, near: 0.05, far: 200, ...cameraMove }, { label: "cam1" }));
   nodes.push(node("shot", "render", [-2400, 0], {
