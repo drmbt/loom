@@ -58,6 +58,14 @@ function node(id: string, type: string, position: readonly [number, number], par
 const vec = (v: Vec3): number[] => [v[0], v[1], v[2]];
 const add = (a: Vec3, b: Vec3, k = 1): [number, number, number] => [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k];
 const num = (value: number): string => value.toFixed(5);
+/**
+ * T1437b: a point light on the physical 1/d² law, its intensity scaled by d²/(1 + d²) so the
+ * subject `offset` away receives what the old 1/(1 + d²) law gave it at the same intensity.
+ */
+const inverseSquare = (intensity: number, offset: Vec3): Record<string, StoredParameter> => {
+  const d2 = offset[0] * offset[0] + offset[1] * offset[1] + offset[2] * offset[2];
+  return { falloff: "inverseSquare", intensity: (intensity * d2) / (1 + d2) };
+};
 
 function vec3Extra(extras: Readonly<Record<string, unknown>> | undefined, key: string, what: string): [number, number, number] {
   const value = extras?.[key];
@@ -160,10 +168,11 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     aim = add(eye, camera.forward, reach);
     // Lights, close: a cool key high left, a sodium rim behind right (the warm hint on the
     // letters' edges) and a cyan kick low left. The far wall carries its own soft glow (the
-    // surface's backdrop class): a Render's point light hardly falls off (1/(1 + d²)), so a lamp
-    // aimed at the wall would wash the pendant as much.
+    // surface's backdrop class). T1437b: the lamps fall off inverse-square, so each one is steep
+    // across the word instead of washing it flat; `intensity` is what the old 1/(1 + d²) law
+    // gave at the pendant, so the exposure there is unchanged.
     const light = (id: string, at: Vec3, color: readonly number[], intensity: number): void => {
-      nodes.push(node(id, "light", [-2600, 1000 + lights.length * 100], { kind: "point", position: vec(add(stage, at)), color: [...color], intensity }, { label: `${id}1` }));
+      nodes.push(node(id, "light", [-2600, 1000 + lights.length * 100], { kind: "point", position: vec(add(stage, at)), color: [...color], ...inverseSquare(intensity, at) }, { label: `${id}1` }));
       lights.push(`${id}1`);
     };
     light("key", [-0.22, 0.32, 0.3], [0.9, 0.95, 1, 1], 0.35);
@@ -231,9 +240,12 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     projectors.push("head31");
     // sodium high-bays: the warm pool on the floor and the trusses; a cyan LED spill from the
     // left over the white car's flank; a dim key low beside the lens for the shoe
+    // T1437b: inverse-square, matched to the old law's exposure at the shoe (the far lamps barely
+    // move; the shoe's own key and rim get the steep close falloff that stops them washing it)
     const light = (id: string, at: Vec3, color: readonly number[], intensity: number, shadow?: { readonly range: number }): void => {
       const casts = shadow === undefined ? {} : { shadows: true, shadowExtent: shadow.range, shadowSoftness: 2 };
-      nodes.push(node(id, "light", [-2600, 2000 + lights.length * 100], { kind: "point", position: vec(at), color: [...color], intensity, ...casts }, { label: `${id}1` }));
+      const toShoe: Vec3 = [at[0] - shoe!.position[0], at[1] - shoe!.position[1], at[2] - shoe!.position[2]];
+      nodes.push(node(id, "light", [-2600, 2000 + lights.length * 100], { kind: "point", position: vec(at), color: [...color], ...inverseSquare(intensity, toShoe), ...casts }, { label: `${id}1` }));
       lights.push(`${id}1`);
     };
     const shoeAt = shoe!.position;
@@ -326,6 +338,8 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     // the sneaker's room is a sharp HDRI: the IBL does not blur it by roughness enough, so it stays low
     environmentIntensity: shot === "pendant" ? 1 : 0.12,
     environmentTaps: 16,
+    // T1427b: rough and matte surfaces read a prefiltered environment, so the room's lamps stop streaking them
+    environmentFilter: "prefiltered",
   }, { label: "shot1" }));
   edges.push(edge("env-shot", [hdri && shot === "sneaker" ? "envHdri" : "env", "out"], ["shot", "environment"]));
 

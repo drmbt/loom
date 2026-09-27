@@ -1,4 +1,4 @@
-import { ggxSpecularWgsl, INSTANCE_SHAPES_WGSL } from "./scene-render.wgsl.ts";
+import { ggxSpecularWgsl, INSTANCE_SHAPES_WGSL, POINT_FALLOFF_WGSL } from "./scene-render.wgsl.ts";
 import { wgsl } from "../../runtime/backend/wgsl.ts";
 import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
 /**
@@ -203,8 +203,7 @@ fn torusTilt(p: vec3f) -> vec3f {
       let offset = lightVector.xyz - input.world;
       let distance = max(length(offset), 1e-4);
       toLight = offset / distance;
-      attenuation = 1.0 / (1.0 + distance * distance);
-    }
+${POINT_FALLOFF_WGSL}    }
     let lambert = abs(dot(normal, toLight));
     let radiance = lightColor.rgb * lightMeta.y * attenuation;
 ${

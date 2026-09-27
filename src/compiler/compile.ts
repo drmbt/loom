@@ -63,7 +63,7 @@ import {
 } from "../nodes/shaders/points-preview.wgsl.ts";
 // T532: the geometry preview draws through the scene Render's OWN shader builders, so
 // the preview and the render cannot drift about what a geometry looks like.
-import { sceneInstancesWgsl, sceneSurfaceWgsl } from "../nodes/shaders/scene-render.wgsl.ts";
+import { lightMetaUniform, sceneInstancesWgsl, sceneSurfaceWgsl } from "../nodes/shaders/scene-render.wgsl.ts";
 import { gridCellCounts, gridPointCount, parseTopology } from "../points/topology.ts";
 import {
   CAMERA_PREVIEW_VERTEX_COUNT,
@@ -1854,7 +1854,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
             specular: [...DEFAULT_MATERIAL.specularColor, DEFAULT_MATERIAL.shininess],
             material: [DEFAULT_MATERIAL.metallic, DEFAULT_MATERIAL.roughness, 0, 0],
             background: [...SCENE_PREVIEW_BACKGROUND],
-            light0Meta: [light.type === "point" ? 1 : 0, light.intensity, 0, 0],
+            light0Meta: lightMetaUniform(light),
             light0Color: [...light.color, 0],
             light0Vector: [...(light.type === "point" ? light.position : light.direction), 0],
           },

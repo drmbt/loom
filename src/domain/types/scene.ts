@@ -57,6 +57,31 @@ export interface LightPayload {
      * this shipped with before PCF.
      */
     readonly shadowSoftness: number;
+    /**
+     * T1438b: extra receiver bias for this light's shadow, in WORLD UNITS, on top of the
+     * built-in texel-plus-slope bias. 0 is the built-in bias alone. Compile-time: it is a
+     * literal in the lit shader, absent at 0 (§V309).
+     */
+    readonly shadowBias: number;
+    /**
+     * T1405b: the world point a DIRECTIONAL light's shadow volume is framed around (the
+     * volume is Shadow Extent either side of it). The origin by default; a value, so it can
+     * follow a set or a camera by expression. Point lights ignore it.
+     */
+    readonly shadowCenter: readonly [number, number, number];
+    /**
+     * T1437b: how a POINT light's radiance falls with distance d. "soft" is 1/(1 + d²),
+     * which is nearly flat inside a metre and so washes a close-up evenly; "inverseSquare"
+     * is the physical 1/d² (d held at 1 cm or more). Both equal the intensity's reading at
+     * large d. Directional lights ignore it.
+     */
+    readonly falloff: "soft" | "inverseSquare";
+    /**
+     * T1437b: a POINT light's reach in world units — the falloff is windowed by
+     * (1 − (d/range)⁴)², clamped to 0..1, so it reaches exactly zero at the range. 0 is
+     * unlimited (no window).
+     */
+    readonly range: number;
   };
 }
 

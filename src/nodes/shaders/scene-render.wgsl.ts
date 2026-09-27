@@ -39,6 +39,11 @@ export interface SceneShadingOptions {
    */
   readonly shadowSoftness?: ReadonlyArray<number>;
   /**
+   * T1438b: an extra receiver bias in WORLD UNITS, parallel to `shadows` by slot. A missing
+   * entry or 0 emits the text without it, byte for byte (§V309).
+   */
+  readonly shadowBias?: ReadonlyArray<number>;
+  /**
    * T1362b: the shadow SLOTS (indices into `shadows`) whose light is a POINT light. Such a
    * slot owns `shadow{s}Light` (xyz position, w range) and six `shadow{s}Face{f}` matrices
    * instead of `shadow{s}Matrix`, and its map is a 3×2 atlas of cube faces holding radial
@@ -60,6 +65,12 @@ export interface SceneShadingOptions {
    * measurement to be gated on rather than an argument.
    */
   readonly environmentTaps?: number;
+  /**
+   * T1427b: read the environment through the prefiltered atlas (`environmentAtlas`, bound
+   * right after `environmentMap`) instead of the tap cone and the five irradiance taps.
+   * Absent or false: the text is unchanged (§V309).
+   */
+  readonly environmentPrefiltered?: boolean;
   /**
    * T624: an ambient-occlusion map is bound, indexed by SCREEN PIXEL, and multiplies
    * the ambient and environment terms. Not the direct lights: occlusion says how much
@@ -414,6 +425,41 @@ const IRRADIANCE_WGSL = `  let envN = normal * select(-1.0, 1.0, dot(normal, vie
     + sampleEnvironment(normalize(envN - envTy))) / 5.0;
 `;
 
+/**
+ * T1437b — a POINT light's distance falloff, shared verbatim by the surface, instances and
+ * preview light blocks (§V349). It reads the `lightMeta` the block already holds:
+ *
+ *  - z selects the law: 0 is the shipped 1/(1 + d²), 1 is the physical 1/d² with d held at
+ *    1 cm or more (a surface through the lamp must not divide by zero);
+ *  - w is the range: 0 is unlimited, else the law is multiplied by the window
+ *    (1 − (d/range)⁴)², clamped, which is 1 at the lamp, ~0.88 at half the range and exactly
+ *    0 at it — a light that ends, rather than one that is cut.
+ *
+ * With z = w = 0 (every light saved before this row) the value is the pre-T1437b expression
+ * to the bit: the soft arm is that expression, and the window branch is not taken.
+ */
+export const POINT_FALLOFF_WGSL = `      attenuation = select(1.0 / (1.0 + distance * distance), 1.0 / max(distance * distance, 1e-4), lightMeta.z > 0.5);
+      if (lightMeta.w > 0.0) {
+        let reach = distance / lightMeta.w;
+        let reachWindow = clamp(1.0 - reach * reach * reach * reach, 0.0, 1.0);
+        attenuation = attenuation * reachWindow * reachWindow;
+      }
+`;
+
+/**
+ * T1437b — the `light{i}Meta` row every lit draw writes, in ONE place (the render's two
+ * generators and the light preview wrote it three times): x = 1 for a point light, y = the
+ * intensity, z = the falloff law (1 inverse square), w = the range (0 unlimited).
+ */
+export function lightMetaUniform(light: {
+  readonly type: "directional" | "point";
+  readonly intensity: number;
+  readonly falloff?: "soft" | "inverseSquare";
+  readonly range?: number;
+}): number[] {
+  return [light.type === "point" ? 1 : 0, light.intensity, light.falloff === "inverseSquare" ? 1 : 0, Math.max(0, light.range ?? 0)];
+}
+
 /** The equirect fetch, shared by the reflection and the five irradiance taps (T636). */
 const ENV_SAMPLE_WGSL = `fn sampleEnvironment(direction: vec3f) -> vec3f {
   let uv = vec2f(
@@ -476,6 +522,207 @@ const ENV_CONE_WGSL = (taps: number): string => `fn sampleEnvironmentCone(direct
   }
   return total / ${String(taps)}.0;
 }
+`;
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════
+ * T1427b — THE PREFILTERED ENVIRONMENT (the Render's Env Filter = Prefiltered).
+ * ═══════════════════════════════════════════════════════════════════════════════════
+ *
+ * The taps above read a SHARP map: 8 (or up to 32) taps across a roughness cone, and five
+ * for the diffuse irradiance. A small bright source in the map — a lamp in an HDRI — falls
+ * between taps for one pixel and on one for the next, so a rough surface BANDS and a matte
+ * one STREAKS as it moves. More taps only move the threshold.
+ *
+ * So the environment is filtered ONCE per frame, before the lit draws, into roughness
+ * levels, and the lit draw reads one bilinear texel per level:
+ *
+ *  1. BASE: a box average of the source over each base texel's own footprint, measured at
+ *     runtime with textureDimensions — so this assumes NOTHING about the source's size
+ *     (§T1293's objection to a decimating pyramid over an arbitrary input: a kernel that
+ *     assumes "target is half of source" is simply wrong at the first level). A lamp a
+ *     tenth of a base texel wide still lands in it, averaged, never missed.
+ *  2. LEVELS: each level blurs the PREVIOUS one by a cone of the incremental spread
+ *     √(sₖ² − sₖ₋₁²), 64 golden-spiral taps, bilinear. The tap spacing stays under the
+ *     previous level's own blur, so no level aliases what the one before it already
+ *     smoothed. The spreads are GGX's alpha (roughness²), the unit the taps already use.
+ *  3. ATLAS: the four levels and a cosine-weighted IRRADIANCE tile (64 taps over the
+ *     hemisphere of the widest level, Malley's method) packed into one 3 × 2 atlas, so a
+ *     lit draw binds ONE more texture, not five (§T1406b's budget).
+ *
+ * Every map here is an equirect in direction space and is read by DIRECTION: its texel
+ * count follows the output's aspect (scratch targets scale with the node's output), which
+ * changes texel density but not what a texel means. Longitude wraps, latitude clamps.
+ *
+ * The lookup blends the two levels whose spreads bracket the surface's; below the first
+ * it blends from the sharp source, and at roughness 0 it IS the sharp source, by the same
+ * early return the cone takes — a mirror is byte-identical under either filter.
+ */
+export const ENV_PREFILTER_SPREADS = [0.04, 0.12, 0.35, 1.0] as const;
+/** T1427b: the short side, in texels, of the base, of each level, and of the atlas. */
+export const ENV_PREFILTER_SIDES = { base: 256, levels: [128, 64, 32, 32], atlas: 256 } as const;
+
+const FULLSCREEN_VS = `@vertex
+fn vs(@builtin(vertex_index) v: u32) -> @builtin(position) vec4f {
+  var corners = array<vec2f, 6>(
+    vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0),
+    vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0),
+  );
+  return vec4f(corners[v], 0.0, 1.0);
+}
+`;
+
+/**
+ * Direction ↔ equirect uv, the exact inverse pair of `sampleEnvironment`'s mapping. At the
+ * poles atan2(0, −0) is undefined in WGSL (NaN on Metal): a floor's irradiance normal is
+ * exactly +Y, so the longitude is pinned to 0 there rather than trusted.
+ */
+const ENV_UV_WGSL = `fn envUv(direction: vec3f) -> vec2f {
+  let around = select(atan2(direction.x, -direction.z), 0.0, abs(direction.x) + abs(direction.z) < 1e-12);
+  return vec2f(around / 6.2831853 + 0.5, acos(clamp(direction.y, -1.0, 1.0)) / 3.14159265);
+}
+fn envBilinear(tex: texture_2d<f32>, origin: vec2i, size: vec2i, uv: vec2f) -> vec3f {
+  let coord = vec2f(fract(uv.x), clamp(uv.y, 0.0, 1.0)) * vec2f(size) - vec2f(0.5);
+  let base = floor(coord);
+  let f = coord - base;
+  let x0 = ((i32(base.x) % size.x) + size.x) % size.x;
+  let x1 = (x0 + 1) % size.x;
+  let y0 = clamp(i32(base.y), 0, size.y - 1);
+  let y1 = clamp(i32(base.y) + 1, 0, size.y - 1);
+  let c00 = textureLoad(tex, origin + vec2i(x0, y0), 0).rgb;
+  let c10 = textureLoad(tex, origin + vec2i(x1, y0), 0).rgb;
+  let c01 = textureLoad(tex, origin + vec2i(x0, y1), 0).rgb;
+  let c11 = textureLoad(tex, origin + vec2i(x1, y1), 0).rgb;
+  return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
+}
+`;
+const ENV_DIRECTION_WGSL = `fn envDirection(uv: vec2f) -> vec3f {
+  let theta = uv.y * 3.14159265;
+  let phi = (uv.x - 0.5) * 6.2831853;
+  return vec3f(sin(theta) * sin(phi), cos(theta), -sin(theta) * cos(phi));
+}
+fn envBasis(direction: vec3f) -> mat3x3f {
+  let up = select(vec3f(0.0, 1.0, 0.0), vec3f(1.0, 0.0, 0.0), abs(direction.y) > 0.9);
+  let tx = normalize(cross(up, direction));
+  return mat3x3f(tx, cross(direction, tx), direction);
+}
+`;
+const PREFILTER_PARAMS = `struct PrefilterParams {
+  dims: vec4f,   // xy = this pass's target size in texels
+};
+@group(0) @binding(0) var<uniform> params: PrefilterParams;
+`;
+
+/** T1427b step 1: the source box-averaged over each target texel's footprint (≤ 16 × 16 loads, strided beyond). */
+export const ENV_PREFILTER_BASE_WGSL = wgsl`${PREFILTER_PARAMS}@group(0) @binding(1) var sourceTex: texture_2d<f32>;
+${FULLSCREEN_VS}@fragment
+fn fs(@builtin(position) position: vec4f) -> @location(0) vec4f {
+  let source = vec2i(textureDimensions(sourceTex, 0));
+  let cell = floor(position.xy);
+  let lo = vec2i(floor(cell / params.dims.xy * vec2f(source)));
+  let hi = max(lo, vec2i(ceil((cell + vec2f(1.0)) / params.dims.xy * vec2f(source))) - vec2i(1));
+  let span = hi - lo + vec2i(1);
+  let count = min(span, vec2i(16));
+  let stride = vec2f(span) / vec2f(count);
+  var sum = vec3f(0.0);
+  for (var j = 0; j < count.y; j = j + 1) {
+    for (var i = 0; i < count.x; i = i + 1) {
+      let at = clamp(lo + vec2i(vec2f(f32(i), f32(j)) * stride), vec2i(0), source - vec2i(1));
+      sum = sum + textureLoad(sourceTex, at, 0).rgb;
+    }
+  }
+  return vec4f(sum / f32(count.x * count.y), 1.0);
+}`;
+
+/** T1427b step 2: one level — the previous level blurred by a cone of `radius` (tangent units). */
+export function envPrefilterLevelWgsl(radius: number): EmittedWgsl {
+  return wgsl`${PREFILTER_PARAMS}@group(0) @binding(1) var sourceTex: texture_2d<f32>;
+${ENV_UV_WGSL}${ENV_DIRECTION_WGSL}${FULLSCREEN_VS}@fragment
+fn fs(@builtin(position) position: vec4f) -> @location(0) vec4f {
+  let direction = envDirection((floor(position.xy) + vec2f(0.5)) / params.dims.xy);
+  let basis = envBasis(direction);
+  let size = vec2i(textureDimensions(sourceTex, 0));
+  var total = vec3f(0.0);
+  for (var i = 0; i < 64; i = i + 1) {
+    let t = (f32(i) + 0.5) / 64.0;
+    let angle = f32(i) * 2.3999632;
+    let offset = (basis[0] * cos(angle) + basis[1] * sin(angle)) * (${radius.toFixed(6)} * sqrt(t));
+    total = total + envBilinear(sourceTex, vec2i(0), size, envUv(normalize(direction + offset)));
+  }
+  return vec4f(total / 64.0, 1.0);
+}`;
+}
+
+/** T1427b step 3: the levels copied into atlas tiles 0–3, the irradiance into tile 4. */
+export const ENV_PREFILTER_PACK_WGSL = wgsl`${PREFILTER_PARAMS}@group(0) @binding(1) var level0: texture_2d<f32>;
+@group(0) @binding(2) var level1: texture_2d<f32>;
+@group(0) @binding(3) var level2: texture_2d<f32>;
+@group(0) @binding(4) var level3: texture_2d<f32>;
+${ENV_UV_WGSL}${ENV_DIRECTION_WGSL}${FULLSCREEN_VS}@fragment
+fn fs(@builtin(position) position: vec4f) -> @location(0) vec4f {
+  let p = vec2i(floor(position.xy));
+  let tileSize = vec2i(params.dims.xy) / vec2i(3, 2);
+  let tile = p / tileSize;
+  if (tile.x > 2 || tile.y > 1) {
+    return vec4f(0.0, 0.0, 0.0, 1.0);
+  }
+  let uv = (vec2f(p - tile * tileSize) + vec2f(0.5)) / vec2f(tileSize);
+  switch (tile.y * 3 + tile.x) {
+    case 0: { return vec4f(envBilinear(level0, vec2i(0), vec2i(textureDimensions(level0, 0)), uv), 1.0); }
+    case 1: { return vec4f(envBilinear(level1, vec2i(0), vec2i(textureDimensions(level1, 0)), uv), 1.0); }
+    case 2: { return vec4f(envBilinear(level2, vec2i(0), vec2i(textureDimensions(level2, 0)), uv), 1.0); }
+    case 3: { return vec4f(envBilinear(level3, vec2i(0), vec2i(textureDimensions(level3, 0)), uv), 1.0); }
+    case 4: {
+      /* Cosine-weighted over the hemisphere: an even disc lifted onto it (Malley). */
+      let basis = envBasis(envDirection(uv));
+      let size = vec2i(textureDimensions(level3, 0));
+      var total = vec3f(0.0);
+      for (var i = 0; i < 64; i = i + 1) {
+        let t = (f32(i) + 0.5) / 64.0;
+        let angle = f32(i) * 2.3999632;
+        let r = sqrt(t);
+        let d = basis[0] * (cos(angle) * r) + basis[1] * (sin(angle) * r) + basis[2] * sqrt(max(0.0, 1.0 - t));
+        total = total + envBilinear(level3, vec2i(0), size, envUv(normalize(d)));
+      }
+      return vec4f(total / 64.0, 1.0);
+    }
+    default: { return vec4f(0.0, 0.0, 0.0, 1.0); }
+  }
+}`;
+
+/** T1427b: the lit draw's lookup into the atlas — declared only under Env Filter = Prefiltered. */
+function envPrefilteredLookupWgsl(binding: number): string {
+  const s = ENV_PREFILTER_SPREADS;
+  const f = (value: number): string => value.toFixed(4);
+  const between = s
+    .slice(1)
+    .map(
+      (upper, index) =>
+        `  if (spread < ${f(upper)}) { return mix(envAtlasTile(${index}u, direction), envAtlasTile(${index + 1}u, direction), (spread - ${f(s[index]!)}) / ${f(upper - s[index]!)}); }\n`,
+    )
+    .join("");
+  return `@group(0) @binding(${binding}) var environmentAtlas: texture_2d<f32>;
+${ENV_UV_WGSL}fn envAtlasTile(tile: u32, direction: vec3f) -> vec3f {
+  let size = vec2i(textureDimensions(environmentAtlas, 0)) / vec2i(3, 2);
+  let origin = vec2i(i32(tile % 3u), i32(tile / 3u)) * size;
+  return envBilinear(environmentAtlas, origin, size, envUv(direction));
+}
+fn sampleEnvironmentPrefiltered(direction: vec3f, spread: f32) -> vec3f {
+  if (spread <= 0.0) {
+    return sampleEnvironment(direction);
+  }
+  if (spread < ${f(s[0])}) { return mix(sampleEnvironment(direction), envAtlasTile(0u, direction), spread / ${f(s[0])}); }
+${between}  return envAtlasTile(${s.length - 1}u, direction);
+}
+fn sampleIrradiance(direction: vec3f) -> vec3f {
+  return envAtlasTile(4u, direction);
+}
+`;
+}
+
+/** T1427b: the diffuse half read from the irradiance tile — the same viewer-facing normal. */
+const IRRADIANCE_PREFILTERED_WGSL = `  let envN = normal * select(-1.0, 1.0, dot(normal, viewDir) >= 0.0);
+  let irradiance = sampleIrradiance(envN);
 `;
 
 /**
@@ -668,6 +915,12 @@ function meshBindingsWgsl(mesh: SceneMeshOption): string {
   ].join("");
 }
 
+/** T1438b: a light's Shadow Bias (world units) as a WGSL float literal. */
+function biasLiteral(metres: number): string {
+  const text = String(metres);
+  return /[.e]/.test(text) ? text : `${text}.0`;
+}
+
 /**
  * T481/T1285 — the shadow term for one slot, SHARED VERBATIM by the surface and the
  * instances generators (§V349, the rule FRESNEL_WGSL and INSTANCE_SHAPES_WGSL already
@@ -714,8 +967,9 @@ function meshBindingsWgsl(mesh: SceneMeshOption): string {
  * the range grows with it — at an 80 m range it was over a metre, thicker than a furnace
  * shell, and the arc shone through the wall it sits behind.
  */
-function pointShadowFactorWgsl(slot: number, radius: number): EmittedWgsl {
+function pointShadowFactorWgsl(slot: number, radius: number, extraBias = 0): EmittedWgsl {
   const r = Math.max(0, Math.min(4, Math.floor(radius)));
+  const extra = extraBias > 0 ? ` + ${biasLiteral(extraBias)}` : "";
   const taps = (2 * r + 1) * (2 * r + 1);
   const faceCases = [1, 2, 3, 4, 5].map((face) => `        case ${face}u: { faceMatrix = params.shadow${slot}Face${face}; }`).join("\n");
   return wgsl`    var shadow = 1.0;
@@ -745,7 +999,7 @@ ${faceCases}
         let last = origin + vec2i(tile) - vec2i(1);
         let centre = origin + vec2i(suv * (tile - vec2f(1.0)));
         let texelWorld = 2.0 * length(lightToFragment) / max(tile.y, 1.0);
-        let bias = (texelWorld * (1.0 + 2.0 * (1.0 - lambert) * ${r + 1}.0) + 1e-3) / max(params.shadow${slot}Light.w, 1e-4);
+        let bias = (texelWorld * (1.0 + 2.0 * (1.0 - lambert) * ${r + 1}.0) + 1e-3${extra}) / max(params.shadow${slot}Light.w, 1e-4);
         var lit = 0.0;
         for (var oy = -${r}; oy <= ${r}; oy = oy + 1) {
           for (var ox = -${r}; ox <= ${r}; ox = ox + 1) {
@@ -759,8 +1013,15 @@ ${faceCases}
 `;
 }
 
-function shadowFactorWgsl(slot: number, radius: number): EmittedWgsl {
+function shadowFactorWgsl(slot: number, radius: number, extraBias = 0): EmittedWgsl {
   const r = Math.max(0, Math.floor(radius));
+  /* T1438b: metres → this map's depth units. The ortho volume's depth is linear, and the
+     length of the matrix's z ROW is exactly 1 ÷ (far − near), so the conversion needs no
+     new uniform and follows Shadow Extent as it animates. */
+  const extra =
+    extraBias > 0
+      ? ` + ${biasLiteral(extraBias)} * length(vec3f(params.shadow${slot}Matrix[0].z, params.shadow${slot}Matrix[1].z, params.shadow${slot}Matrix[2].z))`
+      : "";
   /* The reach factor is r+1 texels — see the docblock. It is a substitution in CODE, never
      inside the emitted comment (§V685's gate: a `${…}` hidden in a WGSL comment runs
      without showing). The note below is therefore a fixed string, chosen rather than
@@ -784,7 +1045,7 @@ function shadowFactorWgsl(slot: number, radius: number): EmittedWgsl {
            the lit half of a medallion and this removes it without visible peter-panning
            (the slope term only reaches its maximum where the light is already grazing
            and the surface is dark anyway). */
-        let bias = 0.0015 + 0.012 * (1.0 - lambert)${reach};
+        let bias = 0.0015 + 0.012 * (1.0 - lambert)${reach}${extra};
 `;
   const head = `    var shadow = 1.0;
     {
@@ -842,8 +1103,8 @@ export function sceneSurfaceWgsl(options: SceneShadingOptions): EmittedWgsl {
     const slot = shadowSlotOf(index);
     if (slot < 0) return "";
     return pointSlots.has(slot)
-      ? pointShadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0)
-      : shadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0);
+      ? pointShadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0, options.shadowBias?.[slot] ?? 0)
+      : shadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0, options.shadowBias?.[slot] ?? 0);
   };
   const environment = options.environment === true && lit(options.model);
   /* T1289: the shipped default is 8 — measured enough to read as a blur at roughness 1
@@ -852,15 +1113,18 @@ export function sceneSurfaceWgsl(options: SceneShadingOptions): EmittedWgsl {
      WGSL: 0 would silently turn the cone back into the sharp sample this row removed. */
   const envTaps = Math.min(32, Math.max(1, Math.round(options.environmentTaps ?? 8)));
   const envBinding = 5 + shadows.length;
+  /* T1427b: the atlas binds right after the sharp map, so every later binding shifts by one
+     only when it is on. */
+  const prefiltered = environment && options.environmentPrefiltered === true;
   const envDeclarations = environment
-    ? `@group(0) @binding(${envBinding}) var environmentMap: texture_2d<f32>;\n${ENV_SAMPLE_WGSL}${ENV_CONE_WGSL(envTaps)}`
+    ? `@group(0) @binding(${envBinding}) var environmentMap: texture_2d<f32>;\n${ENV_SAMPLE_WGSL}${prefiltered ? envPrefilteredLookupWgsl(envBinding + 1) : ENV_CONE_WGSL(envTaps)}`
     : "";
   const envField = environment ? "  environment: vec4f,   // x = intensity\n" : "";
   /* Equirect, documented exactly: u = atan2(R.x, −R.z)/2π + 0.5, v = acos(R.y)/π. */
   /* T624: bound after the environment, so a scene without AO emits the same bindings
      it always did and a scene with it needs no renumbering of the shadow slots. */
   const ambientOcclusion = options.ambientOcclusion === true && options.model !== "unlit";
-  const aoBinding = envBinding + (environment ? 1 : 0);
+  const aoBinding = envBinding + (environment ? 1 : 0) + (prefiltered ? 1 : 0);
   const aoDeclarations = ambientOcclusion
     ? `@group(0) @binding(${aoBinding}) var occlusionMap: texture_2d<f32>;\n`
     : "";
@@ -872,9 +1136,9 @@ export function sceneSurfaceWgsl(options: SceneShadingOptions): EmittedWgsl {
     aoBinding + (ambientOcclusion ? 1 : 0),
   );
   const envTerm = environment
-    ? `  let envColor = sampleEnvironmentCone(reflect(-viewDir, normal), roughness * roughness);
+    ? `  let envColor = ${prefiltered ? "sampleEnvironmentPrefiltered" : "sampleEnvironmentCone"}(reflect(-viewDir, normal), roughness * roughness);
 ${FRESNEL_WGSL}  lit += envColor * params.specular.rgb * envFresnel * params.environment.x${aoTerm};
-${IRRADIANCE_WGSL}  lit += irradiance * albedo.rgb * (1.0 - envFresnel) * (1.0 - params.material.x) * params.environment.x${aoTerm};
+${prefiltered ? IRRADIANCE_PREFILTERED_WGSL : IRRADIANCE_WGSL}  lit += irradiance * albedo.rgb * (1.0 - envFresnel) * (1.0 - params.material.x) * params.environment.x${aoTerm};
 `
     : "";
 
@@ -930,8 +1194,7 @@ ${IRRADIANCE_WGSL}  lit += irradiance * albedo.rgb * (1.0 - envFresnel) * (1.0 -
       let offset = lightVector.xyz - input.world;
       let distance = max(length(offset), 1e-4);
       toLight = offset / distance;
-      attenuation = 1.0 / (1.0 + distance * distance);
-    }
+${POINT_FALLOFF_WGSL}    }
 ${
   options.mesh === undefined
     ? `    /* Two-sided lambert: a surface has no wrong side (T301's rule, kept). */
@@ -1220,6 +1483,8 @@ export function sceneInstancesWgsl(options: {
   shadows?: ReadonlyArray<number>;
   /** T1285: PCF kernel radius per slot — see SceneShadingOptions.shadowSoftness. */
   shadowSoftness?: ReadonlyArray<number>;
+  /** T1438b: extra receiver bias per slot, world units — see SceneShadingOptions.shadowBias. */
+  shadowBias?: ReadonlyArray<number>;
   /** T1362b: shadow slots that are point lights (see SceneShadingOptions.pointShadows). */
   pointShadows?: ReadonlyArray<number>;
   /** T482: equirect environment wired — see SceneShadingOptions.environment. */
@@ -1231,6 +1496,8 @@ export function sceneInstancesWgsl(options: {
    * measurement to be gated on rather than an argument.
    */
   environmentTaps?: number;
+  /** T1427b: see SceneShadingOptions.environmentPrefiltered. */
+  environmentPrefiltered?: boolean;
   /** T624: an occlusion map is bound — see SceneShadingOptions.ambientOcclusion. */
   ambientOcclusion?: boolean;
   /** T704: referenced projectors — see SceneShadingOptions.projectors. */
@@ -1326,14 +1593,17 @@ export function sceneInstancesWgsl(options: {
      WGSL: 0 would silently turn the cone back into the sharp sample this row removed. */
   const envTaps = Math.min(32, Math.max(1, Math.round(options.environmentTaps ?? 8)));
   const envBinding = 5 + shadows.length;
+  /* T1427b: the atlas binds right after the sharp map, so every later binding shifts by one
+     only when it is on. */
+  const prefiltered = environment && options.environmentPrefiltered === true;
   const envDeclarations = environment
-    ? `@group(0) @binding(${envBinding}) var environmentMap: texture_2d<f32>;\n${ENV_SAMPLE_WGSL}${ENV_CONE_WGSL(envTaps)}`
+    ? `@group(0) @binding(${envBinding}) var environmentMap: texture_2d<f32>;\n${ENV_SAMPLE_WGSL}${prefiltered ? envPrefilteredLookupWgsl(envBinding + 1) : ENV_CONE_WGSL(envTaps)}`
     : "";
   const envField = environment ? "  environment: vec4f,   // x = intensity\n" : "";
   /* T624 — see the surface generator: bound after the environment, ambient and
      environment only, byte-identical when absent. */
   const ambientOcclusion = options.ambientOcclusion === true && options.model !== "unlit";
-  const aoBinding = envBinding + (environment ? 1 : 0);
+  const aoBinding = envBinding + (environment ? 1 : 0) + (prefiltered ? 1 : 0);
   const aoDeclarations = ambientOcclusion
     ? `@group(0) @binding(${aoBinding}) var occlusionMap: texture_2d<f32>;\n`
     : "";
@@ -1376,9 +1646,9 @@ fn qrot(q: vec4f, v: vec3f) -> vec3f {
 `
     : "";
   const envTerm = environment
-    ? `  let envColor = sampleEnvironmentCone(reflect(-viewDir, normal), params.material.y * params.material.y);
+    ? `  let envColor = ${prefiltered ? "sampleEnvironmentPrefiltered" : "sampleEnvironmentCone"}(reflect(-viewDir, normal), params.material.y * params.material.y);
 ${FRESNEL_WGSL}  lit += envColor * params.specular.rgb * envFresnel * params.environment.x${aoTerm};
-${IRRADIANCE_WGSL}  lit += irradiance * albedo.rgb * (1.0 - envFresnel) * (1.0 - params.material.x) * params.environment.x${aoTerm};
+${prefiltered ? IRRADIANCE_PREFILTERED_WGSL : IRRADIANCE_WGSL}  lit += irradiance * albedo.rgb * (1.0 - envFresnel) * (1.0 - params.material.x) * params.environment.x${aoTerm};
 `
     : "";
   /* T1285: the same text the surface generator emits, from the same function (§V349). */
@@ -1386,8 +1656,8 @@ ${IRRADIANCE_WGSL}  lit += irradiance * albedo.rgb * (1.0 - envFresnel) * (1.0 -
     const slot = shadowSlotOf(index);
     if (slot < 0) return "";
     return pointSlots.has(slot)
-      ? pointShadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0)
-      : shadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0);
+      ? pointShadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0, options.shadowBias?.[slot] ?? 0)
+      : shadowFactorWgsl(slot, options.shadowSoftness?.[slot] ?? 0, options.shadowBias?.[slot] ?? 0);
   };
   const lightField = Array.from({ length: lightCount }, (_, index) =>
     `  light${index}Meta: vec4f,\n  light${index}Color: vec4f,\n  light${index}Vector: vec4f,\n`,
@@ -1404,8 +1674,7 @@ ${IRRADIANCE_WGSL}  lit += irradiance * albedo.rgb * (1.0 - envFresnel) * (1.0 -
       let offset = lightVector.xyz - input.world;
       let distance = max(length(offset), 1e-4);
       toLight = offset / distance;
-      attenuation = 1.0 / (1.0 + distance * distance);
-    }
+${POINT_FALLOFF_WGSL}    }
     let lambert = abs(dot(normal, toLight));
 ${shadowFactor(index)}    let radiance = lightColor.rgb * lightMeta.y * attenuation${shadowSlotOf(index) >= 0 ? " * shadow" : ""};
 ${
@@ -2275,6 +2544,7 @@ export const SURFACE_RESERVED_NAMES: ReadonlySet<string> = new Set(
         shadows: [0],
         shadowSoftness: [1],
         environment: true,
+        environmentPrefiltered: true,
         ambientOcclusion: true,
         projectors: [{ cookie: true, occlusion: true }],
         mesh: { uv: true, surface: true, emissive: true },

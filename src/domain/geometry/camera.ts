@@ -289,8 +289,9 @@ export function cameraPayloadMatrix(
 
 /**
  * T481: the CASTING matrix for a directional light — an orthographic camera looking
- * along the light's travel, framed by an EXPLICIT half-extent around the origin (V426:
- * payloads carry no scene bounds, so a derived box would crop shadows plausibly-wrong).
+ * along the light's travel, framed by an EXPLICIT half-extent around an explicit CENTRE
+ * (V426: payloads carry no scene bounds, so a derived box would crop shadows
+ * plausibly-wrong; T1405b: the centre is the light's Shadow Centre, the origin by default).
  * Coverage is at least `extent` on BOTH map axes whatever the map's aspect; a direction
  * parallel to world-up swaps the up vector rather than degenerating.
  */
@@ -298,14 +299,15 @@ export function directionalShadowMatrix(
   direction: readonly [number, number, number],
   extent: number,
   aspect: number,
+  center: readonly [number, number, number] = [0, 0, 0],
 ): Mat4 {
   const length = Math.hypot(direction[0], direction[1], direction[2]) || 1;
   const d: [number, number, number] = [direction[0] / length, direction[1] / length, direction[2] / length];
-  const eye: [number, number, number] = [-d[0] * extent, -d[1] * extent, -d[2] * extent];
+  const eye: [number, number, number] = [center[0] - d[0] * extent, center[1] - d[1] * extent, center[2] - d[2] * extent];
   const up: [number, number, number] = Math.abs(d[1]) > 0.999 ? [0, 0, 1] : [0, 1, 0];
   const safeAspect = Math.max(aspect, 1e-6);
   const height = 2 * extent * Math.max(1, 1 / safeAspect);
-  const view = lookAt(eye, [0, 0, 0], up);
+  const view = lookAt(eye, [center[0], center[1], center[2]], up);
   const projection = orthographic(height, safeAspect, 0.01, 3 * extent);
   return multiply(projection, view);
 }

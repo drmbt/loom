@@ -32,6 +32,12 @@ import {
   GBUFFER_CLEAR_WGSL,
   CUSTOM_SURFACE_FRAME_BINDING,
   materialParamUniformKey,
+  lightMetaUniform,
+  ENV_PREFILTER_BASE_WGSL,
+  ENV_PREFILTER_PACK_WGSL,
+  ENV_PREFILTER_SIDES,
+  ENV_PREFILTER_SPREADS,
+  envPrefilterLevelWgsl,
 } from "../shaders/scene-render.wgsl.ts";
 import { aoBlurWgsl, aoResolveWgsl, aoSampleCount } from "../shaders/scene-ao.wgsl.ts";
 
@@ -281,7 +287,7 @@ export const lightNode: NodeDefinition = {
   title: "Light",
   category: "render",
   description:
-    "A light other nodes reference by NAME — a Render lists any number in its lights parameter (list order is light order). Directional lights travel along Direction; point lights sit at Position with distance falloff. Colour, intensity and placement are all drivable.",
+    "A light other nodes reference by NAME — a Render lists any number in its lights parameter (list order is light order). Directional lights travel along Direction; point lights sit at Position with distance falloff (soft or inverse-square, and an optional range). Colour, intensity and placement are all drivable.",
   tags: ["3d", "scene", "light", "shading"],
   inputs: [],
   outputs: [{ id: "out", label: "Out", type: { kind: "light" } }],
@@ -311,6 +317,28 @@ export const lightNode: NodeDefinition = {
       default: [1, 2, 1.5],
       inactiveWhen: (values) => (values["kind"] === "directional" ? "A directional light is infinitely far." : null),
     },
+    falloff: {
+      type: "enum",
+      label: "Falloff",
+      default: "soft",
+      options: [
+        { value: "soft", label: "Soft 1/(1+d²)" },
+        { value: "inverseSquare", label: "Inverse Square 1/d²" },
+      ],
+      description:
+        "T1437b: how a point light dims with distance d. Soft, 1/(1+d²), is nearly flat inside a metre, so a lamp close to a subject lights its near and far side almost alike. Inverse Square, 1/d², is the physical law: a lamp at 30 cm lights a surface at 60 cm a quarter as much, which is what makes a close key read as close. Distance is held at 1 cm or more. Far from the light the two agree; inside a metre Inverse Square is brighter and much steeper.",
+      inactiveWhen: (values) => (values["kind"] === "point" ? null : "A directional light does not fall off."),
+    },
+    range: {
+      type: "number",
+      label: "Range",
+      default: 0,
+      min: 0,
+      range: "floor",
+      description:
+        "T1437b: how far a point light reaches, in world units. The falloff is multiplied by (1 − (d/range)⁴)², so it reaches exactly zero at the range and is barely touched inside half of it. 0 is unlimited.",
+      inactiveWhen: (values) => (values["kind"] === "point" ? null : "A directional light is infinitely far."),
+    },
     shadows: {
       type: "boolean",
       label: "Cast Shadows",
@@ -326,8 +354,18 @@ export const lightNode: NodeDefinition = {
       min: 0.1,
       range: "floor",
       description:
-        "Directional: world-units half-extent of the shadow volume around the origin. Point (T1362b): the shadow RANGE in world units — casters and receivers beyond it are unshadowed, and depth precision is spread over it, so keep it close to how far the light visibly reaches. Explicit on purpose: nothing knows your scene's bounds, and a guessed box would crop shadows plausibly-wrong (V426).",
+        "Directional: world-units half-extent of the shadow volume around its Shadow Centre (the origin by default). Point (T1362b): the shadow RANGE in world units — casters and receivers beyond it are unshadowed, and depth precision is spread over it, so keep it close to how far the light visibly reaches. Explicit on purpose: nothing knows your scene's bounds, and a guessed box would crop shadows plausibly-wrong (V426).",
       inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light frames a shadow volume."),
+    },
+    shadowCenter: {
+      type: "vector",
+      size: 3,
+      label: "Shadow Centre",
+      default: [0, 0, 0],
+      description:
+        "T1405b: the world point a directional light's shadow volume is framed around — Shadow Extent either side of it. Put it on the set (a set away from the origin otherwise gets no sun shadows at all), or drive it by expression to follow the camera or the subject. Moving it does not rebuild anything.",
+      inactiveWhen: (values) =>
+        values["kind"] === "point" ? "A point light's shadow is centred on the light." : values["shadows"] === true ? null : "Only a casting light frames a shadow volume.",
     },
     shadowSoftness: {
       type: "number",
@@ -341,6 +379,17 @@ export const lightNode: NodeDefinition = {
       description:
         "T1285: PCF radius in SHADOW MAP TEXELS — (2r+1)² taps per lit fragment this light reaches, averaged, giving a penumbra 2r+1 texels wide instead of a hard staircase. Priced per tap in the MAIN pass, not a second sweep. 0 is the single-tap hard edge; turn it down if the shot cannot afford 25 loads.",
       inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light has an edge to soften."),
+    },
+    shadowBias: {
+      type: "number",
+      label: "Shadow Bias",
+      default: 0,
+      min: 0,
+      range: "floor",
+      compileTime: true,
+      description:
+        "T1438b: extra distance, in world units, a surface may sit behind the shadow map before it counts as shadowed — added to the built-in bias (one shadow-map texel plus a slope term). Raise it when a lit surface speckles or stripes with its own shadow (acne): a coarse mesh whose smoothed normals say it faces the light more than its facets do, or a large Shadow Extent spreading the map thin. Too much and a thin caster's shadow detaches from its base (peter-panning). 0 is the built-in bias alone. A compile-time knob: changing it rebuilds the shader.",
+      inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light has a shadow to bias."),
     },
   },
   compile(context): CompiledNodeDescription {
@@ -357,6 +406,10 @@ export const lightNode: NodeDefinition = {
         shadows: parameters["shadows"] === true,
         shadowExtent: readNumber(parameters, "shadowExtent", 8),
         shadowSoftness: readNumber(parameters, "shadowSoftness", 2),
+        shadowBias: Math.max(0, readNumber(parameters, "shadowBias", 0)),
+        shadowCenter: vec3(parameters, "shadowCenter", [0, 0, 0]),
+        falloff: parameters["falloff"] === "inverseSquare" ? "inverseSquare" : "soft",
+        range: Math.max(0, readNumber(parameters, "range", 0)),
       },
     };
     return { passes: [], scene: { out: payload } } as CompiledNodeDescription;
@@ -871,6 +924,54 @@ export const geometryNode: NodeDefinition = {
 };
 
 /**
+ * T1406b — the Render's SAMPLED-TEXTURE LEDGER. The compiler already refuses a pass that
+ * binds more sampled textures than the device allows (T328, `compiler/bindings.ts`), but
+ * its sentence is generic: "binds 17 sampled textures", remedy "composite in stages" —
+ * neither says that each projector costs TWO (cookie + occlusion map), each casting light
+ * one, the environment one or two, and what to turn off. The Render knows, so when its
+ * worst pass goes over the WebGPU BASELINE (16) it says so itself, by category. A warning,
+ * not a refusal: the node compiles without device limits, and a device that reports more
+ * than the baseline renders it fine — on one that does not, the compiler's error refuses
+ * the pass and this is the sentence that explains it.
+ */
+const SAMPLED_TEXTURE_BASELINE = 16;
+const TEXTURE_CATEGORIES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^projectorCookie/, "projector cookies"],
+  [/^projectorDepth/, "projector occlusion maps"],
+  [/^shadowMap/, "shadow maps"],
+  [/^environment/, "environment maps"],
+  [/^occlusionMap$/, "ambient occlusion"],
+  [/^(albedoMap|roughnessMap)$/, "material maps"],
+  [/^pyr\d/, "glass pyramid levels"],
+];
+function textureLedger(
+  nodeId: string,
+  passes: ReadonlyArray<DrawPassDescriptor | DispatchPassDescriptor>,
+): NonNullable<CompiledNodeDescription["diagnostics"]>[number] | undefined {
+  let worst: { id: string; bindings: string[] } | undefined;
+  for (const pass of passes) {
+    if (pass.kind !== "draw") continue;
+    const bindings = ((pass as DrawPassDescriptor).textures ?? []).map((texture) => texture.binding);
+    if (bindings.length > (worst?.bindings.length ?? SAMPLED_TEXTURE_BASELINE)) worst = { id: pass.id, bindings };
+  }
+  if (worst === undefined) return undefined;
+  const counts = new Map<string, number>();
+  for (const binding of worst.bindings) {
+    const category = TEXTURE_CATEGORIES.find(([pattern]) => pattern.test(binding))?.[1] ?? binding;
+    counts.set(category, (counts.get(category) ?? 0) + 1);
+  }
+  const breakdown = [...counts].map(([category, count]) => `${count} ${category}`).join(", ");
+  return {
+    severity: "warning",
+    code: "node.scene.textureBudget",
+    message: `Node "${nodeId}": pass "${worst.id}" binds ${worst.bindings.length} sampled textures (${breakdown}), over the WebGPU baseline of ${SAMPLED_TEXTURE_BASELINE} (maxSampledTexturesPerShaderStage). A device that reports no more than the baseline refuses the pass.`,
+    nodeId,
+    suggestion:
+      "Each projector costs two (cookie + occlusion): turn Occlusion off on projectors nothing needs to shadow, or merge projectors that sit together into one wider throw. Each casting light costs one shadow map; Env Filter: Prefiltered costs one more than Taps.",
+  };
+}
+
+/**
  * T377 — the Render: consumes {geometries, camera, lights} BY NAME, produces a texture.
  * The §V198 matrix is composed HERE, where the aspect is known.
  */
@@ -992,6 +1093,19 @@ export const renderNode: NodeDefinition = {
       compileTime: true,
       description:
         "T1289: how many taps the reflection's roughness cone takes. Roughness BLURS the environment rather than dimming it, and this is the sample count that blur is made of — priced per covered pixel in the main pass. 8 reads as a blur at full roughness; turn it up if a small bright thing in the environment sparkles as the surface moves, down if the shot cannot afford the loads. A compile-time knob: changing it rebuilds the shader.",
+      inactiveWhen: () => null,
+    },
+    environmentFilter: {
+      type: "enum",
+      label: "Env Filter",
+      default: "taps",
+      compileTime: true,
+      options: [
+        { value: "taps", label: "Taps" },
+        { value: "prefiltered", label: "Prefiltered" },
+      ],
+      description:
+        "T1427b: how rough and matte surfaces read the environment. Taps samples the sharp map per pixel (Env Taps across the roughness cone, five for the diffuse fill): cheap, but a small bright source in the map — a lamp in an HDRI — bands a rough surface and streaks a matte one as it moves. Prefiltered blurs the environment once per frame into four roughness levels and a diffuse irradiance map (a box average of the source, four cone blurs and one pack: SIX small passes) and every surface reads a smooth bilinear texel from them. A mirror reads the sharp map either way. Env Taps is unused while Prefiltered is on.",
       inactiveWhen: () => null,
     },
     /*
@@ -1203,7 +1317,7 @@ export const renderNode: NodeDefinition = {
        and its slot carries a position, a range and six face matrices where a directional
        slot carries one matrix. */
     const shadowMatrices = casting.map(({ light }) =>
-      directionalShadowMatrix(light.direction, Math.max(0.1, light.shadowExtent), aspect),
+      directionalShadowMatrix(light.direction, Math.max(0.1, light.shadowExtent), aspect, light.shadowCenter),
     );
     const pointSlots = casting.flatMap(({ light }, slot) => (light.type === "point" ? [slot] : []));
     const pointFaces = casting.map(({ light }) =>
@@ -1228,6 +1342,8 @@ export const renderNode: NodeDefinition = {
     const shadowSoftness = casting.map(({ light }) =>
       Math.min(4, Math.max(0, Math.round(light.shadowSoftness))),
     );
+    /* T1438b: the extra receiver bias per casting slot, world units (the generators convert). */
+    const shadowBias = casting.map(({ light }) => Math.max(0, light.shadowBias));
 
     /* T482: the environment, wired or absent — presence is structural (a shader
        variant, like maps); intensity is a value. */
@@ -1239,6 +1355,9 @@ export const renderNode: NodeDefinition = {
     /* T1289: the cone's sample count, clamped here AND in the generator — this is a loop
        bound in generated WGSL, so a stray value must not reach it from either direction. */
     const environmentTaps = Math.min(32, Math.max(1, Math.round(readNumber(parameters, "environmentTaps", 8))));
+    /* T1427b: the prefiltered environment — structural (its passes and one more binding). */
+    const environmentPrefiltered = environmentResource !== undefined && parameters["environmentFilter"] === "prefiltered";
+    const envAtlasId = `scratch:${nodeId}:envAtlas`;
 
     const ambient = readColor(parameters, "ambientColor", [1, 1, 1, 1]);
     const ambientIntensity = readNumber(parameters, "ambientIntensity", 0.12);
@@ -1254,6 +1373,8 @@ export const renderNode: NodeDefinition = {
       | { key: string; scale: number }
       // T939: the SSAA surface — 2x, with depth (it IS the scene target while on).
       | { key: string; scale: number; depth: true }
+      // T1427b: the prefiltered environment's levels and atlas — HDR, no depth.
+      | { key: string; scale: number; format: "rgba16float" }
     > = [];
     if (ssaa) scratch.push({ key: "ss", scale: 2, depth: true });
     /** T481: counted draw support emitted once (in the shadow phase when one exists),
@@ -1599,6 +1720,65 @@ export const renderNode: NodeDefinition = {
       });
     };
     emitShadowPasses();
+
+    /*
+     * T1427b — the PREFILTER phase: the environment blurred once, before any lit draw reads
+     * it (see ENV_PREFILTER_SPREADS). Scratch targets scale with the node's output, so each
+     * scale here is chosen to give the target the short side it needs; the size the compiler
+     * allocates (round(base × scale) per axis, compile.ts) is recomputed for the passes'
+     * own `dims`, since a fragment cannot ask its render target how big it is.
+     */
+    if (environmentPrefiltered && environmentResource !== undefined) {
+      const shortSide = Math.max(1, Math.min(resolution[0], resolution[1]));
+      const prefilterTarget = (key: string, side: number): { id: string; dims: number[] } => {
+        const scale = side / shortSide;
+        scratch.push({ key, scale, format: "rgba16float" });
+        return {
+          id: `scratch:${nodeId}:${key}`,
+          dims: [Math.max(1, Math.round(resolution[0] * scale)), Math.max(1, Math.round(resolution[1] * scale)), 0, 0],
+        };
+      };
+      const fullscreen = (
+        id: string,
+        shader: ReturnType<typeof envPrefilterLevelWgsl>,
+        to: { id: string; dims: number[] },
+        textures: Array<{ binding: string; resourceId: string }>,
+      ): void => {
+        passes.push({
+          kind: "draw",
+          id: `${nodeId}:envPrefilter:${id}`,
+          nodeId,
+          shader,
+          target: to.id,
+          topology: "triangle-list",
+          instances: 1,
+          vertexCount: 6,
+          textures: textures.map((texture) => ({ ...texture, sampled: "unfiltered" as const })),
+          uniforms: { dims: to.dims },
+          uniformBinding: "params",
+          clear: true,
+        } as DrawPassDescriptor);
+      };
+      const base = prefilterTarget("envBase", ENV_PREFILTER_SIDES.base);
+      fullscreen("base", ENV_PREFILTER_BASE_WGSL, base, [{ binding: "sourceTex", resourceId: environmentResource }]);
+      let previous = base;
+      let previousSpread = 0;
+      const levels = ENV_PREFILTER_SPREADS.map((spread, level) => {
+        const target = prefilterTarget(`envLevel${level}`, ENV_PREFILTER_SIDES.levels[level] ?? 32);
+        const radius = Math.sqrt(spread * spread - previousSpread * previousSpread);
+        fullscreen(`level${level}`, envPrefilterLevelWgsl(radius), target, [{ binding: "sourceTex", resourceId: previous.id }]);
+        previous = target;
+        previousSpread = spread;
+        return target;
+      });
+      const atlas = prefilterTarget("envAtlas", ENV_PREFILTER_SIDES.atlas);
+      fullscreen(
+        "pack",
+        ENV_PREFILTER_PACK_WGSL,
+        atlas,
+        levels.map((level, index) => ({ binding: `level${index}`, resourceId: level.id })),
+      );
+    }
 
     /*
      * T704 — the PROJECTOR phase: matrices, uniforms, textures and (for occluding
@@ -1966,8 +2146,8 @@ export const renderNode: NodeDefinition = {
                     ...(payload.scaleAttribute.channel === undefined ? {} : { channel: payload.scaleAttribute.channel }),
                   },
                 }),
-            ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
-            ...(environmentResource === undefined ? {} : { environment: true, environmentTaps }),
+            ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, shadowBias, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
+            ...(environmentResource === undefined ? {} : { environment: true, environmentTaps, ...(environmentPrefiltered ? { environmentPrefiltered: true } : {}) }),
             ...(aoActive ? { ambientOcclusion: true } : {}),
             ...(projActive ? { projectors: projectorOptions } : {}),
             ...(payload.group === undefined ? {} : { group: payload.group }),
@@ -2031,7 +2211,7 @@ export const renderNode: NodeDefinition = {
               : {}),
             ...Object.fromEntries(
               lights.flatMap((light, lightIndex) => [
-                [`light${lightIndex}Meta`, [light.type === "point" ? 1 : 0, light.intensity, 0, 0]],
+                [`light${lightIndex}Meta`, lightMetaUniform(light)],
                 [`light${lightIndex}Color`, [...light.color, 0]],
                 [`light${lightIndex}Vector`, [...(light.type === "point" ? light.position : light.direction), 0]],
               ]),
@@ -2055,7 +2235,10 @@ export const renderNode: NodeDefinition = {
                   })),
                   ...(environmentResource === undefined || !envLit(model)
                     ? []
-                    : [{ binding: "environmentMap", resourceId: environmentResource, sampled: "unfiltered" as const }]),
+                    : [
+                        { binding: "environmentMap", resourceId: environmentResource, sampled: "unfiltered" as const },
+                        ...(environmentPrefiltered ? [{ binding: "environmentAtlas", resourceId: envAtlasId, sampled: "unfiltered" as const }] : []),
+                      ]),
                   ...(aoActive
                     ? [{ binding: "occlusionMap", resourceId: aoTargetId, sampled: "unfiltered" as const }]
                     : []),
@@ -2198,8 +2381,8 @@ export const renderNode: NodeDefinition = {
           ...(additive ? { additive: true } : {}),
           maps,
           ...(tintAttribute === undefined ? {} : { pointColor: true }),
-          ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
-          ...(environmentResource === undefined ? {} : { environment: true, environmentTaps }),
+          ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, shadowBias, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
+          ...(environmentResource === undefined ? {} : { environment: true, environmentTaps, ...(environmentPrefiltered ? { environmentPrefiltered: true } : {}) }),
           ...(aoActive ? { ambientOcclusion: true } : {}),
           ...(projActive ? { projectors: projectorOptions } : {}),
           ...(meshTopology === undefined
@@ -2251,7 +2434,10 @@ export const renderNode: NodeDefinition = {
                 })),
                 ...(environmentResource === undefined || !envLit(model)
                   ? []
-                  : [{ binding: "environmentMap", resourceId: environmentResource, sampled: "unfiltered" as const }]),
+                  : [
+                      { binding: "environmentMap", resourceId: environmentResource, sampled: "unfiltered" as const },
+                      ...(environmentPrefiltered ? [{ binding: "environmentAtlas", resourceId: envAtlasId, sampled: "unfiltered" as const }] : []),
+                    ]),
                 ...(aoActive
                   ? [{ binding: "occlusionMap", resourceId: aoTargetId, sampled: "unfiltered" as const }]
                   : []),
@@ -2273,7 +2459,7 @@ export const renderNode: NodeDefinition = {
           grid: topology.kind === "grid" ? [topology.cols, topology.rows, topology.wrapU ? 1 : 0, topology.wrapV ? 1 : 0] : [0, 0, 0, 0],
           ...Object.fromEntries(
             lights.flatMap((light, lightIndex) => [
-              [`light${lightIndex}Meta`, [light.type === "point" ? 1 : 0, light.intensity, 0, 0]],
+              [`light${lightIndex}Meta`, lightMetaUniform(light)],
               [`light${lightIndex}Color`, [...light.color, 0]],
               [`light${lightIndex}Vector`, [...(light.type === "point" ? light.position : light.direction), 0]],
             ]),
@@ -2575,6 +2761,9 @@ export const renderNode: NodeDefinition = {
         clear: true,
       } as DrawPassDescriptor);
     }
+
+    const ledger = textureLedger(nodeId, passes);
+    if (ledger !== undefined) diagnostics.push(ledger);
 
     if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
       return { passes: [], diagnostics };
