@@ -165,22 +165,23 @@ describe("§V50 — override modes with no existing coverage", () => {
   });
 
   /**
-   * Clamping deliberately does NOT preserve aspect, unlike `fit` and `limit`.
+   * Clamping preserves aspect, like `fit` and `limit`: it scales the LONGER axis to the cap.
    *
-   * This is the surprising half of §V24 and it is nowhere written down as a test. A user
-   * whose 8192x512 plate silently becomes 1024x512 sees a stretched image, and the
-   * distinction between "clamped" (per-axis, hard cap) and "limited" (aspect-preserving,
-   * user-chosen) is the explanation. Pinned so a well-meaning change to make them agree is
-   * a decision rather than an accident.
+   * This used to pin the opposite (per-axis, so an 8192x512 plate became a stretched
+   * 1024x512), "so a well-meaning change to make them agree is a decision rather than an
+   * accident". The change was made as a decision: `db4fbff5` ("export v2") rewrote the clamp
+   * in `resolution.ts` because a per-axis cap turned a 2x portrait pass (4320x7680) into a
+   * square texture, and repinned `resolution.test.ts` to 1024x64 — this copy was missed
+   * (T1403b). A safety cap changes sampling density, never the image's geometry.
    */
-  it("clamping caps each axis independently and does not preserve aspect", () => {
+  it("clamping scales the longer axis to the cap and preserves aspect", () => {
     const outcome = resolveNodeResolution({
       ...base,
       override: { mode: "fixed", width: 8192, height: 512 },
       inputs: { byPort: {}, primaryPort: undefined },
       settings: testSettings({ limits: { ...settings.limits, maxResolution: 1024 } }),
     });
-    expect(outcome.size).toEqual([1024, 512]);
+    expect(outcome.size).toEqual([1024, 64]);
     expect(outcome.clamped).toBe(true);
     expect(outcome.diagnostics.map((d) => d.severity)).toEqual(["warning"]);
   });

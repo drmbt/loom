@@ -361,6 +361,13 @@ const CLOCK_OWNERSHIP: Readonly<Record<string, "free-running" | "timeline-anchor
   // reaches it only through that source — the boundary itself owns no phase.
   componentInValue: "clockless",
   componentOutValue: "clockless",
+  // T1388b: the control widgets publish a HAND-SET value from their own parameters and
+  // read no clock — they change only when someone moves them, as `mouse` changes only
+  // when the cursor does. A lap cannot reach them. Each description says CLOCKLESS.
+  slider: "clockless",
+  toggle: "clockless",
+  button: "clockless",
+  xyPad: "clockless",
 };
 
 function valueNodes(): readonly NodeDefinition[] {

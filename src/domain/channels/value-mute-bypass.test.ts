@@ -404,6 +404,12 @@ describe("EVERY value node honours mute and bypass (T541, §V437)", () => {
     reference: 0.01,
     // T1370b: Expression publishes what its statements compute; the default is `value = 0`.
     expressions: "loud = 1.25",
+    // T1388b/T1403b: Toggle and Button publish their hand-set state, and an untouched one
+    // honestly reads 0 — so the sweep switches the toggle on and holds the button with
+    // presses on the counter. No other node has these parameters.
+    on: true,
+    held: true,
+    presses: 3,
   };
 
   const evaluateOne = (

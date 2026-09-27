@@ -224,8 +224,12 @@ ${SHARED_UNIFORMS_WGSL}
     const sample=async(brightness:number)=>{
       const graph=structuredClone(resonanceDocument.graph);
       // An opaque near reflection covers the floor pixels; changing the room behind it must be invisible.
-      const source=RESONANCE_ROOM_WGSL.replace(/fn sceneAt\(uv:vec2f\)->vec4f \{[\s\S]*?\n\}/,
-        "fn sceneAt(uv:vec2f)->vec4f {return vec4f(0.12,0.09,0.06,0.18);}");
+      // Replace the one-line definition by its exact text. The lazy `[\s\S]*?\n\}` this used
+      // to match against ran on past the one-liner to the end of `fs`, deleting the entry
+      // point, so the room never compiled (T1403b). Exactly one occurrence, or this fails loud.
+      const scene="fn sceneAt(uv:vec2f)->vec4f {return layerAt(uv,vec2f(0));}";
+      expect(RESONANCE_ROOM_WGSL.split(scene)).toHaveLength(2);
+      const source=RESONANCE_ROOM_WGSL.replace(scene,"fn sceneAt(uv:vec2f)->vec4f {return vec4f(0.12,0.09,0.06,0.18);}");
       graph.nodes["room"]!.parameters={...graph.nodes["room"]!.parameters,source,haze:0,energy:0,highs:0,transient:0,beatPulse:0,panelBrightness:brightness,panelSequence:0,panelScene:0};
       const result=await renderHeadless({host:nodeGpuHost(),components:await starterComponentsView(),graph,settings:{...resonanceDocument.settings,outputResolution:{width:64,height:64}},frames:1,outputNodeId:"room"});
       expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
