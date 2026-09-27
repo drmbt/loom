@@ -54,8 +54,10 @@ export interface OnNothingFacts {
 
 /** The GLB's areas, one Mesh File In each (every object is named `<area>.<name>`). */
 export const AREAS = ["wh", "title", "fig", "figbare", "cyc"] as const;
+/** Areas a GLB may or may not hold (older builds lack them). */
+export const OPTIONAL_AREAS = ["lampglass"] as const;
 /** The fixed areas, plus one `car<n>` per car (each car its own Mesh File In: five real models overflow one buffer). */
-export type Area = (typeof AREAS)[number] | `car${number}`;
+export type Area = (typeof AREAS)[number] | (typeof OPTIONAL_AREAS)[number] | `car${number}`;
 
 /** The car areas a GLB holds, in index order, read from its node names (`car<n>.<name>`). */
 export function carAreasOf(glb: Uint8Array): Area[] {
@@ -91,6 +93,7 @@ export function factsFrom(glbUrl: string, meshes: ReadonlyMap<Area, DecodedMesh>
   if (any === undefined) throw new Error("On Nothing GLB: no figure area decoded.");
   const areas = new Map<Area, MeshSelectionFacts>();
   for (const [area, mesh] of meshes) {
+    if (mesh.vertexCount === 0 && area === "lampglass") continue;
     if (mesh.vertexCount === 0) throw new Error(`On Nothing GLB: area "${area}" is empty — was the Blender build run with every module?`);
     areas.set(area, {
       select: selectOf(area),

@@ -42,7 +42,7 @@ CARS = [
     dict(loc=(-2.91, 0.01, 0.0), yaw=0, paint="paint_white", model="rangerover"),
     dict(loc=(2.85, 0.30, 0.0), yaw=0, paint="paint_white", model="phantom"),
     dict(loc=(-1.42, 7.35, 0.0), yaw=0, paint="paint_white", model="maybach_s"),
-    dict(loc=(1.75, 7.1, 0.0), yaw=0, paint="paint_black", model="escalade"),
+    dict(loc=(2.25, 7.1, 0.0), yaw=0, paint="paint_black", model="escalade"),
 ]
 
 # where the figure stands (and faces) in each shot; loom places it there

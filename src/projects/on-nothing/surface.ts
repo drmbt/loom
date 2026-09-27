@@ -143,3 +143,31 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   }
   return o;
 }`;
+
+/**
+ * T1407b — LAMP GLASS, drawn ADDITIVELY over the lamp (loom has no transmissive mesh glass,
+ * T1357b): what a clear polycarbonate cover adds to a lit lamp is its reflection — a fresnel
+ * sheen that grows at grazing angles, and sharp glints where the cover's curvature catches the
+ * room's bright shapes (a horizon band and a couple of overhead sources). Adds, never occludes,
+ * so the lamp and its streak stay whole.
+ */
+export const LAMP_GLASS_WGSL = `struct Params {
+  sheen: f32, // @default 0.06  Fresnel sheen radiance.
+  glint: f32, // @default 3  Radiance of the glints (the room's bright shapes in the glass).
+  tint: vec3f, // @default 1  Colour of the reflection.
+};
+
+fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
+  var o = surfaceDefaults(s);
+  let v = normalize(s.eye - s.world);
+  let n = normalize(s.normal);
+  let nv = clamp(abs(dot(n, v)), 0.0, 1.0);
+  let fresnel = 0.04 + 0.96 * pow(1.0 - nv, 5.0);
+  let r = reflect(-v, n);
+  // the room: a bright horizon band (the other cars' lamps, the doors) and two overhead fittings
+  let band = smoothstep(0.12, 0.02, abs(r.y - 0.05)) * (0.6 + 0.4 * sin(atan2(r.x, r.z) * 7.0));
+  let top = pow(max(dot(r, normalize(vec3f(0.3, 1.0, 0.2))), 0.0), 400.0) + pow(max(dot(r, normalize(vec3f(-0.4, 0.9, -0.3))), 0.0), 300.0);
+  o.albedo = vec4f(0.0, 0.0, 0.0, 1.0);
+  o.emissive = p.tint * (fresnel * p.sheen * 10.0 + (band + top) * p.glint * (0.25 + fresnel));
+  return o;
+}`;

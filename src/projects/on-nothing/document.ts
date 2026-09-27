@@ -11,7 +11,7 @@ import type { Area, OnNothingFacts } from "./scene-facts.ts";
 import { carAreas } from "./scene-facts.ts";
 import { markerOf } from "./scene-facts.ts";
 import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "./skin-kernel.ts";
-import { SURFACE_WGSL } from "./surface.ts";
+import { LAMP_GLASS_WGSL, SURFACE_WGSL } from "./surface.ts";
 import { CAR_RIG_ATTRIBUTES, carRigKernel, drivenCar } from "./car-rig.ts";
 import { GLYPHS_WGSL } from "./tracking.ts";
 
@@ -186,7 +186,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     nodes.push(node("smooth", "valueLag", [-3600, 1300], { lag: 0.02, releaseRatio: 4 }, { label: "smooth1" }));
     nodes.push(node("rank", "valueNormalize", [-3300, 1300], { window: 16 }, { label: "rank1" }));
     // slow and smooth: the columns breathe with the track, they never twitch
-    nodes.push(node("levels", "valueLag", [-3000, 1300], { lag: 0.12, releaseRatio: 3 }, { label: "levels1" }));
+    nodes.push(node("levels", "valueLag", [-3000, 1300], { lag: 1.0, releaseRatio: 1.5 }, { label: "levels1" }));
     edges.push(edge("song-pick", ["song", "out"], ["pickLevels", "in"]));
     edges.push(edge("pick-smooth", ["pickLevels", "out"], ["smooth", "in"]));
     edges.push(edge("smooth-rank", ["smooth", "out"], ["rank", "in"]));
@@ -215,6 +215,19 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     }
     scenes.push(`geo${area}1`);
   });
+
+  // ── Lamp glass over every car's lamps, additive (surface.ts LAMP_GLASS_WGSL) ──
+  const glassArea = facts.areas.get("lampglass");
+  // OFF until surfaces honour additive blend (T1357b; row filed 2026-09-27): drawn today it is
+  // opaque black and hides the lamps it covers.
+  const LAMP_GLASS_ENABLED = false;
+  if (LAMP_GLASS_ENABLED && glassArea !== undefined && plan.areas.includes("cars")) {
+    nodes.push(node("glassMat", "materialWgsl", [-3300, 900], { model: "unlit", source: LAMP_GLASS_WGSL }, { label: "glassmat1" }));
+    nodes.push(node("mesh_lampglass", "meshFileIn", [-3600, 900], { file: facts.glbUrl, select: glassArea.select, vertices: glassArea.vertices, triangles: glassArea.triangles, parts: glassArea.parts }, { label: "meshlampglass1" }));
+    nodes.push(node("geo_lampglass", "geometry", [-3000, 900], { mode: "surface", material: "glassmat1", blend: "additive" }, { label: "geolampglass1" }));
+    edges.push(edge("mesh-geo-lampglass", ["mesh_lampglass", "out"], ["geo_lampglass", "points"]));
+    scenes.push("geolampglass1");
+  }
 
   // ── The figure, posed by the skin kernel ──
   if (plan.figure) {
@@ -462,7 +475,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   if (plan.dof) {
     // focus: the title's script at 1.3 m; the tableau's figure (the rear row falls soft)
     const focus = base === "title" ? 1.3 : shot === "tableau" ? 11.4 : 0;
-    pass("lens_dof", DOF_WGSL, { ...cameraParams, aperture: base === "title" ? 0.5 : 1.4, maxRadius: 16, focusDistance: focus }, [depth], [-1500, 0]);
+    pass("lens_dof", DOF_WGSL, { ...cameraParams, aperture: base === "title" ? 0.5 : 0.45, maxRadius: 16, focusDistance: focus }, [depth], [-1500, 0]);
   }
   const scene = last;
   const opticsGain: Record<Base, { streak: number; halo: number }> = {
@@ -486,7 +499,9 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   // LED element in a lamp draws its own line inside the column, as in the reference.
   const reach = streakReach[base];
   // Every column EXTENDS and RETRACTS together with the song, smoothly: the reach is a lane.
-  const reachExpr = `(${reach} * (0.55 + 0.9 * ${LOUD}))`;
+  // ONE direction per cut: the columns grow steadily through the shot, and the song only
+  // leans on that very slowly (a 1 s lag) — never a jitter.
+  const reachExpr = `(${reach} * (0.62 + 0.3 * clamp(abstime / 4, 0, 1) + 0.18 * ${LOUD}))`;
   const STREAKS = [reach / 160, reach / 48, reach / 10] as const;
   const STREAK_DIV = [160, 48, 10] as const;
   STREAKS.forEach((step, index) => {

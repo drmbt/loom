@@ -439,35 +439,47 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
     rx, ry = (hx1 - hx0) / 2 + 0.012, (hy1 - hy0) / 2 + 0.012
 
     def beanie(mb):
-        # A knit dome over the skull, then the folded cuff: a ribbed band a little proud of the
-        # dome, from the brow up, its top edge rolled.
-        c = Vector((cx, cy + 0.004, brow_z + 0.035))
-        rz = htop - c.z + 0.028
-        rings, seg = 12, 48
+        # A knit beanie HUGS the skull: every point of it is the head's own surface pushed out
+        # a few millimetres (rays cast inward at the skull), so it has the head's shape, not a
+        # dome's. The crown is lifted slightly (a little slouch) and a thin cuff is rolled at the brow.
+        from mathutils.bvhtree import BVHTree
+        tree = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+        centre = Vector((cx, cy, brow_z + 0.02))
+        rings, seg = 16, 64
         verts, faces = [], []
         for i in range(rings + 1):
-            t = (math.pi / 2) * i / rings
+            lat = (math.pi / 2) * i / rings          # 0 at the brow line, pi/2 at the crown
             for j in range(seg):
-                s_ = 2 * math.pi * j / seg
-                verts.append(c + Vector((rx * math.cos(t) * math.cos(s_), ry * math.cos(t) * math.sin(s_), rz * math.sin(t))))
+                az = 2 * math.pi * j / seg
+                d = Vector((math.cos(lat) * math.cos(az), math.cos(lat) * math.sin(az), math.sin(lat))).normalized()
+                start = centre + d * 0.4
+                h = tree.ray_cast(start, -d, 0.5)
+                surface = h[0] if h[0] is not None else centre + d * 0.1
+                # thin knit, a touch of slouch at the crown
+                off = 0.007 + 0.012 * max(0.0, math.sin(lat)) ** 3
+                verts.append(surface + d * off)
         for i in range(rings):
             for j in range(seg):
                 j2 = (j + 1) % seg
                 faces.append((i * seg + j, i * seg + j2, (i + 1) * seg + j2, (i + 1) * seg + j))
+        top = len(verts)
+        verts.append(sum(verts[-seg:], Vector()) / seg)
+        for j in range(seg):
+            faces.append((rings * seg + j, rings * seg + (j + 1) % seg, top))
         mb.add(verts, faces, "cloth_black")
-        z0, z1 = brow_z - 0.004, brow_z + 0.052
-        verts, faces = [], []
-        for zi, z in enumerate((z0, z1)):
-            for j in range(seg * 2):
-                s_ = 2 * math.pi * j / (seg * 2)
-                rib = 0.0025 * (1 if j % 2 == 0 else -1)
-                verts.append(Vector((cx + (rx + 0.006 + rib) * math.cos(s_), cy + 0.004 + (ry + 0.006 + rib) * math.sin(s_), z)))
-        m = seg * 2
-        for j in range(m):
-            j2 = (j + 1) % m
-            faces.append((j, j2, m + j2, m + j))
-        mb.add(verts, faces, "cloth_black")
-        mb.torus(Vector((cx, cy + 0.004, z1)), (0, 0, 1), (rx + ry) / 2 + 0.006, 0.007, 48, 8, "cloth_black")
+        # the cuff: a ribbed band 4 cm tall, 5 mm proud of the knit, rolled at its top edge
+        brow = verts[:seg]
+        ring_up = [verts[3 * seg + j] for j in range(seg)]
+        cverts, cfaces = [], []
+        for r_, ring in enumerate((brow, ring_up)):
+            for j, q in enumerate(ring):
+                out = Vector((q.x - cx, q.y - cy, 0)).normalized()
+                rib = 0.0015 if j % 2 == 0 else 0.0
+                cverts.append(q + out * (0.005 + rib) + Vector((0, 0, -0.004 if r_ == 0 else 0)))
+        for j in range(seg):
+            j2 = (j + 1) % seg
+            cfaces.append((j, j2, seg + j2, seg + j))
+        mb.add(cverts, cfaces, "cloth_black")
 
     def glasses(mb):
         # Wraparound sunglasses: two superellipse lenses turned to follow the face, a rim

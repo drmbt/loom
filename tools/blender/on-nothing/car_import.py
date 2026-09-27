@@ -259,18 +259,39 @@ def import_car(ctx, path, n, loc, yaw, paint, length=5.2, front_axis="-Y", repor
         ys = [v.co.y for v in me.vertices]
         me.transform(Matrix.Translation((0, -min(ys), 0)))
         me.update()
-    # Lamp COVERS: loom draws mesh glass opaque (T1357b), so a headlight's clear cover would
-    # hide the lamp it covers. Glass low at the front (below the windscreen) is lamp cover: cut it.
+    # Lamp COVERS: loom draws mesh glass opaque (T1357b), so a cover left in place would hide
+    # the lamp. They are SPLIT OFF into their own object (`lampglass.car<n>`, area lampglass),
+    # which loom draws additively: the glass's sheen and glints over a lamp that stays lit.
     import bmesh
     glass = {i for i, m in enumerate(me.materials) if m is not None and m.name == "glass_car"}
     bm = bmesh.new()
     bm.from_mesh(me)
     covers = [f for f in bm.faces if f.material_index in glass and f.calc_center_median().y < 0.75 and f.calc_center_median().z < 1.12]
-    bmesh.ops.delete(bm, geom=covers, context="FACES")
-    bm.to_mesh(me)
+    cover_ids = {f.index for f in covers}
     bm.free()
+    if cover_ids:
+        for x in bpy.context.selected_objects:
+            x.select_set(False)
+        car.select_set(True)
+        bpy.context.view_layer.objects.active = car
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="DESELECT")
+        bpy.ops.object.mode_set(mode="OBJECT")
+        for poly in me.polygons:
+            poly.select = poly.index in cover_ids
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.separate(type="SELECTED")
+        bpy.ops.object.mode_set(mode="OBJECT")
+        split = [o for o in bpy.context.selected_objects if o is not car]
+        for o in split:
+            o.name = f"lampglass.car{n}"
+            o.data.materials.clear()
+            o.data.materials.append(mats["lamp_glass"])
+            o["loom_area"] = "lampglass"
+            o.location = loc
+            o.rotation_euler = (0, 0, yaw)
     if report is not None:
-        report.append(("covers cut", len(covers)))
+        report.append(("covers split", len(cover_ids)))
     if model.get("decimate", 1.0) < 1.0:
         mod = car.modifiers.new("decimate", "DECIMATE")
         mod.ratio = model["decimate"]
