@@ -1144,7 +1144,7 @@
   },
   "name": "E40 Wake",
   "projectId": "example-wake",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

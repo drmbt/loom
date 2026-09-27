@@ -158,7 +158,7 @@
   },
   "name": "E62 Rake",
   "projectId": "example-e62-rake",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

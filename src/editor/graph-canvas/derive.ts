@@ -244,15 +244,12 @@ export function projectEdges(
         sourceNodeId: domain.source.nodeId,
         inactive: isInactive(sourceNode),
       };
-      // §V1026: there are no per-channel sockets, so a wire that carries a channel (a
-      // §T1350b document not yet migrated, §T1390b) draws from its port's one socket.
-      const sourceHandle = domain.source.portId;
       const prior = before.get(edgeId);
       if (
         prior !== undefined &&
         prior.source === domain.source.nodeId &&
         prior.target === domain.target.nodeId &&
-        prior.sourceHandle === sourceHandle &&
+        prior.sourceHandle === domain.source.portId &&
         prior.targetHandle === targetHandle &&
         prior.data?.portKind === data.portKind &&
         prior.data.sourceNodeId === data.sourceNodeId &&
@@ -266,7 +263,7 @@ export function projectEdges(
           id: edgeId,
           type: SIGNAL_EDGE_TYPE,
           source: domain.source.nodeId,
-          sourceHandle,
+          sourceHandle: domain.source.portId,
           target: domain.target.nodeId,
           targetHandle,
           data,

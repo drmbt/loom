@@ -26,8 +26,6 @@ export interface DraggedPort {
   readonly portId: PortId;
   /** Which end of the wire the user grabbed. An output looks for an input, and vice versa. */
   readonly direction: "input" | "output";
-  /** T1350b: grabbed from a per-channel socket — the replacement wire carries this channel. */
-  readonly channel?: string;
 }
 
 function edgesInto(graph: GraphDocument, nodeId: NodeId, portId: PortId): EdgeId[] {
@@ -89,13 +87,12 @@ export function replaceEdgeOperations(
 ): GraphPatchOperation[] {
   // Dropping a port onto a wire it is already an end of is a no-op, not a rewire.
   if (dragged.direction === "output") {
-    // T1350b: the same port carrying another channel is a different wire, not a no-op.
-    if (edge.source.nodeId === dragged.nodeId && edge.source.portId === dragged.portId && edge.channel === dragged.channel) return [];
+    if (edge.source.nodeId === dragged.nodeId && edge.source.portId === dragged.portId) return [];
     const source = { nodeId: dragged.nodeId, portId: dragged.portId };
     if (!compatible(registry, graph, source, edge.target)) return [];
     return [
       { op: "disconnect", edgeIds: [edge.id] },
-      { op: "connect", source, target: { ...edge.target }, ...(dragged.channel === undefined ? {} : { channel: dragged.channel }) },
+      { op: "connect", source, target: { ...edge.target } },
     ];
   }
 
@@ -108,8 +105,7 @@ export function replaceEdgeOperations(
     // The dragged input may already be occupied; that edge goes too, in the same patch
     // (§V14a — the drop is unambiguous, so refusing would only make the user hunt).
     ...displace(registry, graph, target, replaced),
-    // T1350b: the wire keeps the channel it carried — its source end did not move.
-    { op: "connect", source: { ...edge.source }, target, ...(edge.channel === undefined ? {} : { channel: edge.channel }) },
+    { op: "connect", source: { ...edge.source }, target },
   ];
 }
 
@@ -201,8 +197,7 @@ export function spliceNodeOperations(
     // being spliced. The node's own input might be occupied, though — a node already
     // wired elsewhere is a perfectly ordinary thing to drop on a wire.
     ...displace(registry, graph, target, replaced),
-    // T1350b: the upstream half keeps the channel; the spliced node publishes its own bag.
-    { op: "connect", source: { ...edge.source }, target, ...(edge.channel === undefined ? {} : { channel: edge.channel }) },
+    { op: "connect", source: { ...edge.source }, target },
     { op: "connect", source: { nodeId, portId: ports.output }, target: { ...edge.target } },
   ];
 }

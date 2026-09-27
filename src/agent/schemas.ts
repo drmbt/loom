@@ -273,8 +273,6 @@ export const connectPortsInput = z
   .object({
     source: portRef,
     target: portRef,
-    /** T1350b: wire ONE channel of a value port's bag (e.g. `band109`) instead of the whole bag. */
-    channel: z.string().min(1).optional(),
     baseRevision,
     dryRun,
   })

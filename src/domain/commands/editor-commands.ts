@@ -107,8 +107,6 @@ interface ClipboardNode {
 interface ClipboardEdge {
   readonly source: { nodeId: NodeId; portId: string };
   readonly target: { nodeId: NodeId; portId: string };
-  /** T1350b: a per-channel wire pastes as a per-channel wire. */
-  readonly channel?: string;
 }
 
 interface Clipboard {
@@ -161,7 +159,7 @@ function internalEdges(graph: GraphDocument, nodeIds: readonly NodeId[]): Clipbo
     const edge = graph.edges[edgeId];
     if (edge === undefined) continue;
     if (!inside.has(edge.source.nodeId) || !inside.has(edge.target.nodeId)) continue;
-    edges.push({ source: { ...edge.source }, target: { ...edge.target }, ...(edge.channel === undefined ? {} : { channel: edge.channel }) });
+    edges.push({ source: { ...edge.source }, target: { ...edge.target } });
   }
   return edges;
 }
@@ -288,7 +286,6 @@ function recreateOperations(
       op: "connect",
       source: { nodeId: ref(edge.source.nodeId), portId: edge.source.portId },
       target: { nodeId: ref(edge.target.nodeId), portId: edge.target.portId },
-      ...(edge.channel === undefined ? {} : { channel: edge.channel }),
     });
   }
 

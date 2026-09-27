@@ -375,7 +375,7 @@
   },
   "name": "E48 Marionette",
   "projectId": "example-e48-marionette",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

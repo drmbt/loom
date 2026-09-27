@@ -1778,7 +1778,7 @@
   },
   "name": "E51 Chorus",
   "projectId": "example-e51-chorus",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

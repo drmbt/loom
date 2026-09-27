@@ -55,15 +55,6 @@ describe("the channels a picker offers", () => {
     expect(rows.has("name")).toBe(false);
   });
 
-  it("offers only the channel a channel-carrying wire delivers", () => {
-    const graph = graphOf(
-      [node("pick"), node("a", "audio1")],
-      [{ id: "e1", source: { nodeId: "a", portId: "out" }, target: { nodeId: "pick", portId: "in" }, channel: "band109" }],
-    );
-    const rows = channelPickAvailable(graph, graph.nodes["pick"] as GraphNode, [{ key: "channels", definition: channels }], channelsOf);
-    expect(rows.get("channels")).toEqual(["band109"]);
-  });
-
   it("offers nothing from a wire into another port, an unlabelled source, or a host with no lookup", () => {
     const graph = graphOf(
       [node("pick"), node("a", "audio1"), node("u")],

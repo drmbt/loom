@@ -70,8 +70,7 @@ export type ConnectDropGraph = Pick<GraphDocument, "nodes" | "edges">;
 export interface ConnectDropRequest {
   readonly graph: ConnectDropGraph;
   readonly registry: NodeRegistryView;
-  /** `channel` (T1350b): the wire was dragged from a per-channel socket and carries that channel. */
-  readonly source: { readonly nodeId: NodeId; readonly portId: PortId; readonly channel?: string };
+  readonly source: { readonly nodeId: NodeId; readonly portId: PortId };
   readonly target: SocketTarget;
   /**
    * An EXISTING edge whose target end is being moved here, rather than a new wire.
@@ -144,7 +143,7 @@ export function connectDropOperations(request: ConnectDropRequest): ConnectDrop 
     );
     const only = occupying.length === 1 ? occupying[0] : undefined;
     // Dropping the wire that is already there is not a rewire; it is nothing.
-    if (only?.source.nodeId === source.nodeId && only?.source.portId === source.portId && only.channel === source.channel) {
+    if (only?.source.nodeId === source.nodeId && only?.source.portId === source.portId) {
       return { kind: "unchanged" };
     }
     if (occupying.length > 0) {
@@ -179,7 +178,7 @@ export function connectDropOperations(request: ConnectDropRequest): ConnectDrop 
     } else {
       const occupant = arriving[target.slot];
       if (occupant !== undefined) {
-        if (occupant.source.nodeId === source.nodeId && occupant.source.portId === source.portId && occupant.channel === source.channel) {
+        if (occupant.source.nodeId === source.nodeId && occupant.source.portId === source.portId) {
           return { kind: "unchanged" };
         }
         operations.push({ op: "disconnect", edgeIds: [occupant.id] });
@@ -193,7 +192,6 @@ export function connectDropOperations(request: ConnectDropRequest): ConnectDrop 
     source: { nodeId: source.nodeId, portId: source.portId },
     target: { nodeId: target.nodeId, portId: target.portId },
     ...(order === undefined ? {} : { order }),
-    ...(source.channel === undefined ? {} : { channel: source.channel }),
   });
 
   return {

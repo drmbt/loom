@@ -136,9 +136,130 @@ function effectiveName(
   }
 }
 
+/**
+ * 3 → 4 (§T1390b, §V1026): a wire no longer carries ONE channel of its source's bag.
+ *
+ * §T1350b let an edge name a channel (`edge.channel`), written by dragging from a socket
+ * per channel on the source card. The owner ruled that out — *"we never want to have an
+ * explosion of sockets … the select node should handle the rest"* — so the sockets went,
+ * and a narrowing that lives invisibly on a wire goes with them. Each such edge becomes
+ * what it always meant: the whole bag into a `valueSelect` whose Channels is that one
+ * name, and the Select into the original target. One Select per (source, port, channel),
+ * shared by every wire that picked the same channel, so ten wires from `band109` are one
+ * node, not ten. The Select publishes `{ [channel]: value }`, exactly what the narrowed
+ * wire delivered. One difference remains, stated rather than hidden: when the source does
+ * not publish that channel this frame, the narrowed wire read as UNWIRED, while the Select
+ * publishes an empty bag — which a `valueSwitch` counts as a connected branch (T541).
+ *
+ * The same rewrite runs over every component definition's internal graph, and a published
+ * string parameter that writes a `valueSelect`'s Channels gains the `channelsFrom` of the
+ * component input that feeds that Select — so an AudioAnalysis embedded before §T1390b
+ * shows its Levels and Hits as pickers without being re-instantiated.
+ */
+const channelEdgeBecomesSelect: DocumentMigration = {
+  from: 3,
+  to: 4,
+  description: "A wire that carried one channel becomes the whole bag into a Select naming that channel.",
+  migrate(document) {
+    rewriteChannelEdges(document["graph"]);
+    const library = document["componentLibrary"];
+    const components = typeof library === "object" && library !== null ? (library as Record<string, unknown>)["components"] : undefined;
+    if (Array.isArray(components)) {
+      for (const component of components) {
+        if (typeof component !== "object" || component === null) continue;
+        rewriteChannelEdges((component as Record<string, unknown>)["graph"]);
+        declareChannelSources(component as Record<string, unknown>);
+      }
+    }
+    return document;
+  },
+};
+
+type RawRecord = Record<string, unknown>;
+
+function recordOf(value: unknown): RawRecord | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as RawRecord) : undefined;
+}
+
+function rewriteChannelEdges(graphValue: unknown): void {
+  const graph = recordOf(graphValue);
+  const nodes = recordOf(graph?.["nodes"]) as Record<string, RawRecord> | undefined;
+  const edges = recordOf(graph?.["edges"]) as Record<string, RawRecord> | undefined;
+  if (nodes === undefined || edges === undefined) return;
+  const selects = new Map<string, string>();
+  const freshId = (base: string, taken: Record<string, unknown>): string => {
+    if (!(base in taken)) return base;
+    for (let index = 2; ; index += 1) if (!(`${base}${index}` in taken)) return `${base}${index}`;
+  };
+  for (const edge of Object.values(edges)) {
+    const channel = edge["channel"];
+    if (typeof channel !== "string") continue;
+    const source = recordOf(edge["source"]);
+    const sourceId = typeof source?.["nodeId"] === "string" ? source["nodeId"] : undefined;
+    const sourcePort = typeof source?.["portId"] === "string" ? source["portId"] : undefined;
+    delete edge["channel"];
+    if (sourceId === undefined || sourcePort === undefined) continue;
+    const key = `${sourceId}\u0000${sourcePort}\u0000${channel}`;
+    let selectId = selects.get(key);
+    if (selectId === undefined) {
+      selectId = freshId(`${sourceId}-${channel}`, nodes);
+      const at = recordOf(nodes[sourceId]?.["position"]);
+      const x = typeof at?.["x"] === "number" ? at["x"] : 0;
+      const y = typeof at?.["y"] === "number" ? at["y"] : 0;
+      nodes[selectId] = {
+        id: selectId,
+        type: "valueSelect",
+        definitionVersion: 1,
+        position: { x: x + 160, y: y + 40 * selects.size },
+        parameters: { channels: channel },
+      };
+      const feedId = freshId(`${selectId}-in`, edges);
+      edges[feedId] = {
+        id: feedId,
+        source: { nodeId: sourceId, portId: sourcePort },
+        target: { nodeId: selectId, portId: "in" },
+      };
+      selects.set(key, selectId);
+    }
+    edge["source"] = { nodeId: selectId, portId: "out" };
+  }
+}
+
+function declareChannelSources(component: RawRecord): void {
+  const graph = recordOf(component["graph"]);
+  const nodes = recordOf(graph?.["nodes"]) as Record<string, RawRecord> | undefined;
+  const edges = recordOf(graph?.["edges"]) as Record<string, RawRecord> | undefined;
+  const inputs = component["inputs"];
+  const parameters = component["parameters"];
+  if (nodes === undefined || edges === undefined || !Array.isArray(inputs) || !Array.isArray(parameters)) return;
+  const inputFeeding = (nodeId: string): string | undefined => {
+    for (const edge of Object.values(edges)) {
+      const target = recordOf(edge["target"]);
+      if (target?.["nodeId"] !== nodeId || target["portId"] !== "in") continue;
+      const from = recordOf(edge["source"])?.["nodeId"];
+      const exposed = inputs.map(recordOf).find((entry) => entry?.["nodeId"] === from);
+      return typeof exposed?.["externalId"] === "string" ? exposed["externalId"] : undefined;
+    }
+    return undefined;
+  };
+  for (const published of parameters.map(recordOf)) {
+    const definition = recordOf(published?.["definition"]);
+    const targets = published?.["targets"];
+    if (definition?.["type"] !== "string" || "channelsFrom" in definition || !Array.isArray(targets) || targets.length === 0) continue;
+    const feeds = new Set<string | undefined>();
+    for (const target of targets.map(recordOf)) {
+      const nodeId = typeof target?.["nodeId"] === "string" ? target["nodeId"] : "";
+      feeds.add(nodes[nodeId]?.["type"] === "valueSelect" && target?.["key"] === "channels" ? inputFeeding(nodeId) : undefined);
+    }
+    const [only] = feeds;
+    if (feeds.size === 1 && only !== undefined) definition["channelsFrom"] = only;
+  }
+}
+
 export const DOCUMENT_MIGRATIONS: readonly DocumentMigration[] = [
   previewPinBecomesSwitch,
   feedbackLoopBecomesReference,
+  channelEdgeBecomesSelect,
 ];
 
 export interface MigrateDocumentOptions {

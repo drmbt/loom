@@ -564,7 +564,7 @@
   },
   "name": "E28 Sundial",
   "projectId": "example-e28-sundial",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

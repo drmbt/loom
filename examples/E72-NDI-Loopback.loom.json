@@ -314,7 +314,7 @@
   },
   "name": "E72 NDI Loopback",
   "projectId": "example-e72-ndi-loopback",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

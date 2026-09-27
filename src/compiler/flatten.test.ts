@@ -918,24 +918,3 @@ describe("mute and bypass on a component instance (T1032)", () => {
     expect(compiled.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   });
 });
-
-describe("T1350b — a per-channel wire survives a flattening (B155's lesson, second field)", () => {
-  it("copies `channel` onto the flat edge exactly as `order` is copied", () => {
-    const definition: GraphComponentDefinition = {
-      ...bloom(),
-      graph: graphOf(
-        [testNode("blurA", "fx.blur", { parameters: { radius: 2 } }), testNode("blurB", "fx.blur", { parameters: { radius: 2 } })],
-        { inner: { ...testEdge("inner", ["blurA", "out"], ["blurB", "source"]), channel: "band109" } },
-      ),
-    };
-    const system = createComponentSystem(baseNodes, [definition]);
-    const flattened = flattenComponents({ graph: chain([instance("c1", "bloom", 1)]), registry: system.nodes, components: system.components.view() });
-    const inner = Object.values(flattened.graph.edges).find((edge) => edge.source.nodeId === "c1/blurA");
-    expect(inner?.channel).toBe("band109");
-    // And the root document's own wires keep theirs — the root path copies the edge whole.
-    const root = chain([instance("c1", "bloom", 1)]);
-    root.edges["e0"] = { ...root.edges["e0"]!, channel: "x" };
-    const rootFlat = flattenComponents({ graph: root, registry: system.nodes, components: system.components.view() });
-    expect(rootFlat.graph.edges["e0"]?.channel).toBe("x");
-  });
-});

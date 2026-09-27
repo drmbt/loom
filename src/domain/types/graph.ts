@@ -188,19 +188,6 @@ export interface GraphEdge {
    * field existed, which is why an absent order sorts last (§V68, `compareEdgeOrder`).
    */
   order?: number;
-  /**
-   * T1350b — ONE channel of the source's bag rides this wire instead of the whole bag.
-   *
-   * A value edge carries a bag; the target sees every channel the source published, and
-   * picking one meant a `valueSelect` in between. The owner's reference graph has a socket
-   * per channel on the source card — "the 109 Hz row" is a thing you drag from — and this
-   * is what that drag writes: the port is still `out`, the edge names the channel. The
-   * value graph narrows the arriving bag to `{ [channel]: value }` (a channel the source
-   * does not publish this frame contributes nothing, the same as an unwired port). Only
-   * meaningful on a VALUE edge; the patch layer refuses it on any other port kind. Absent
-   * on every edge written before the field existed, which is "the whole bag" (§V68).
-   */
-  channel?: string;
 }
 
 export interface GraphGroup {

@@ -1414,7 +1414,7 @@
   },
   "name": "E34 Lidar",
   "projectId": "example-e34-lidar",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

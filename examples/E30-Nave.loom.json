@@ -636,7 +636,7 @@
   },
   "name": "E30 Nave",
   "projectId": "example-e30-nave",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

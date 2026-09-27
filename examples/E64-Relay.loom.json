@@ -871,7 +871,7 @@
   },
   "name": "E64 Relay",
   "projectId": "example-e64-relay",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

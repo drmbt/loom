@@ -541,17 +541,6 @@ function executeOperation(
         );
       }
 
-      // T1350b: a per-channel wire only means something on a value port — a texture has
-      // no channels to pick, and a silent accept would write a field the compiler ignores.
-      if (operation.channel !== undefined && sourcePort.type.kind !== "value") {
-        fail(
-          "port.channel",
-          `output "${sourcePort.id}" on "${sourceNode.type}" is ${describePortType(sourcePort.type)}; only a value port has channels to wire one of.`,
-          { nodeId: sourceNode.id, portId: sourcePort.id },
-        );
-        return;
-      }
-
       const incoming = incomingEdges(draft, targetNode.id, targetPort.id);
       // §V14: one edge per input unless the port declares itself variadic.
       if (targetPort.variadic !== true && incoming.length > 0) {
@@ -565,12 +554,9 @@ function executeOperation(
           },
         );
       }
-      // T1350b: two wires from the same port carrying DIFFERENT channels are two wires.
       const duplicate = incoming.some(
         (edge) =>
-          edge.source.nodeId === sourceNode.id &&
-          edge.source.portId === operation.source.portId &&
-          edge.channel === operation.channel,
+          edge.source.nodeId === sourceNode.id && edge.source.portId === operation.source.portId,
       );
       if (duplicate) {
         fail("edge.duplicate", `that exact connection already exists.`, {
@@ -606,7 +592,6 @@ function executeOperation(
         ...(targetPort.variadic === true
           ? { order: placementFor(operation.order, incoming.length) }
           : {}),
-        ...(operation.channel === undefined ? {} : { channel: operation.channel }),
       };
       if (targetPort.variadic === true) {
         compactPortOrder(draft, targetNode.id, targetPort.id);

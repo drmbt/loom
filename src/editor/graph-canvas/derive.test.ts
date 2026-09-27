@@ -297,24 +297,3 @@ describe("T1262 — an annotation projects to its own type, under every node", (
     }
   });
 });
-
-describe("§V1026 — a wire that carries a channel draws from its port's one socket", () => {
-  it("stamps the port id as the source handle, channel or not — there is no channel socket to aim at", () => {
-    const nodes: Record<string, GraphNode> = {
-      a: { id: "a", type: "test.solid", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} },
-      b: { id: "b", type: "test.blur", definitionVersion: 1, position: { x: 100, y: 0 }, parameters: {} },
-    };
-    const edges: Record<string, GraphEdge> = {
-      plain: { id: "plain", source: { nodeId: "a", portId: "out" }, target: { nodeId: "b", portId: "source" } },
-      picked: { id: "picked", source: { nodeId: "a", portId: "out" }, target: { nodeId: "b", portId: "source" }, channel: "band109" },
-    };
-    const projected = projectEdges(edges, nodes, registry);
-    const handles = Object.fromEntries(projected.map((edge) => [edge.id, edge.sourceHandle]));
-    // A handle id with no socket behind it is an edge React Flow cannot draw at all, so
-    // an unmigrated §T1350b wire would vanish from the canvas while it still delivers.
-    expect(handles).toEqual({ plain: "out", picked: "out" });
-    // Stable: the same document projects the same edge objects, channel included.
-    const again = projectEdges(edges, nodes, registry, projected);
-    expect(again.find((edge) => edge.id === "picked")).toBe(projected.find((edge) => edge.id === "picked"));
-  });
-});

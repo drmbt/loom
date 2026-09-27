@@ -883,7 +883,7 @@
   },
   "name": "E70 Chimera",
   "projectId": "example-chimera",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

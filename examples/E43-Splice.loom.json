@@ -679,7 +679,7 @@
   },
   "name": "E43 Splice",
   "projectId": "example-e43-splice",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

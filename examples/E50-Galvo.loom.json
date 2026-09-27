@@ -274,7 +274,7 @@
   },
   "name": "E50 Galvo",
   "projectId": "example-e50-galvo",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

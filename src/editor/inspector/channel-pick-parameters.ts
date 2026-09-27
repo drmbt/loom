@@ -8,9 +8,7 @@ import type { ParameterDefinition } from "@domain/types/parameters.ts";
  * The picker's other half, as `referenceParameters` is `ReferenceField`'s: the control
  * knows how a channel list reads, this knows the document. A channel ARRIVES when a wire
  * into that input comes from a node that publishes it — so the answer is each wired
- * source's current bag, in wire order then publication order, without repeats. A wire
- * that carries one channel (a §T1350b document) offers that channel only, because that is
- * all it delivers.
+ * source's current bag, in wire order then publication order, without repeats.
  *
  * `channelsOf` is the same live-or-structural name lookup expression completion uses
  * (`use-value-graph.ts`), keyed by LABEL (§B170). An unlabelled source cannot be looked
@@ -32,9 +30,7 @@ export function channelPickAvailable(
       const label = graph.nodes[edge.source.nodeId]?.label;
       if (label === undefined || label === "" || channelsOf === undefined) continue;
       const published = channelsOf(label);
-      for (const name of edge.channel === undefined ? published : published.filter((entry) => entry === edge.channel)) {
-        seen.add(name);
-      }
+      for (const name of published) seen.add(name);
     }
     rows.set(key, [...seen]);
   }

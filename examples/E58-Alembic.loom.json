@@ -158,7 +158,7 @@
   },
   "name": "E58 Alembic",
   "projectId": "example-e58-alembic",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

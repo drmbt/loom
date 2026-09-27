@@ -608,7 +608,7 @@
   },
   "name": "E42 Current",
   "projectId": "example-e42-current",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

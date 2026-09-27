@@ -1570,7 +1570,7 @@
   },
   "name": "E47 Hologram",
   "projectId": "example-e47-hologram",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

@@ -1299,7 +1299,7 @@
   },
   "name": "E54 Quorum",
   "projectId": "example-e54-quorum",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

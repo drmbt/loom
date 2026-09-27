@@ -527,7 +527,7 @@
   },
   "name": "E57 Forest",
   "projectId": "example-e57-forest",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

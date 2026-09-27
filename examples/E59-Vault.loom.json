@@ -158,7 +158,7 @@
   },
   "name": "E59 Vault",
   "projectId": "example-e59-vault",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,
