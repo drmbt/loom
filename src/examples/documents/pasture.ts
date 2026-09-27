@@ -1,4 +1,4 @@
-import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts";
+import { settings, node, edge, graph, document, drivenSlot, expressionSlot } from "./builders.ts";
 import { SHADER_SOURCE_PARAMETER } from "../../domain/commands/apply-patch.ts";
 
 /* ═══ E32 — PASTURE (T621) ═══════════════════════════════════════════════════════════
@@ -22,7 +22,9 @@ import { SHADER_SOURCE_PARAMETER } from "../../domain/commands/apply-patch.ts";
  * on its own — a trail the herd laid twenty seconds ago is still inventing structure while
  * the herd is somewhere else entirely, and the herd then comes back and eats it.
  */
-const PASTURE_AGENTS = 5_000;
+/* T1399b: 12 000, where it was 5 000 — four herds of 3 000, so each activity centre keeps
+   the density that made the single one read as a crawling tangle rather than a sprinkle. */
+const PASTURE_AGENTS = 12_000;
 
 /**
  * SEMANTICS OF THE SCHEMA, because three of these four numbers are read by nodes that are
@@ -51,21 +53,32 @@ const PASTURE_KERNEL = `/* A clip unit is 640 px across x and 360 px across y on
    displacement is squashed in x to make walking ISOTROPIC ON SCREEN. One constant, and it
    is the only thing in this kernel that knows the output's shape. */
 const PX: vec2f = vec2f(0.5625, 1.0);
-/* The pasture, in clip space: the same disc \`bowl1\` cuts out of the chemistry map, and the
-   ONE number stated in two coordinate systems in this file. bowl1.center is uv with v DOWN;
-   this is clip with y UP, so (0.40, 0.54) uv is (-0.20, -0.08) clip (T512's mapping,
-   uv.y = 0.5 - y*0.5). Move one and move the other. There is deliberately NO radius here to
-   match \`bowl1\`'s: an animal does not know the shape of the coastline, only that it is
-   hungry and which way the middle is. Which side of the coast it is standing on it finds out
-   by starving. */
-const HOME: vec2f = vec2f(-0.2, -0.08);
-/* T657: 0.60, where it was 0.42. The roost's circuit is the piece's disturbance and the
-   outskirts were outside it — a lattice is what a Gray-Scott field does when nothing
-   arrives to disturb it, and nothing did. A wider circuit sweeps the grazed clearing
-   through most of the pasture over its 83-second lap, so a region that is lattice now was
-   torn open a minute ago and will be again. This is the half of the fix that MOVES; the
-   chemistry gradient is the half that VARIES. */
-const RANGE: f32 = 0.60;
+/* T1399b — FOUR ROOSTS, not one. The owner's word for the single herd was "the activity
+   centre looks awesome — maybe we need more of those", and a centre IS a roost: the herd
+   gathers wherever its homing spring points. So every animal belongs to one of four, by
+   \`ctx.index % ROOSTS\` (identity, never slot — §V74's rule, so a herd keeps its members),
+   and each roost walks its own circle: centre (clip, y UP), radius (screen units, squashed
+   by PX like every other displacement here), and laps per \`range1\` lap. The lap counts are
+   INTEGERS on purpose — \`ctx.value4\` is a saw on an angle, and only a whole multiple of it
+   wraps where the cosine cannot see the seam (a 1.3× lap would jump once per circuit). The
+   circuits sit in the four quarters of the frame and cross near the middle, so the herds
+   meet and part rather than share one clearing. There is still deliberately NO pasture
+   radius here: an animal knows which way its roost is, never where the dead ground starts. */
+const HOME: vec2f = vec2f(-0.3, -0.3);
+const RANGE: f32 = 0.46;
+const ROOSTS: u32 = 4u;
+fn roost(k: u32, bearing: f32) -> vec2f {
+  var circuit = array<vec4f, 4>(
+    vec4f(HOME, RANGE, 1.0),
+    vec4f(0.52, 0.46, 0.40, -1.0),
+    vec4f(0.50, -0.50, 0.44, 2.0),
+    vec4f(-0.60, 0.52, 0.34, -1.0),
+  );
+  var phase = array<f32, 4>(0.0, 2.1, 4.2, 1.0);
+  let c = circuit[k];
+  let a = bearing * c.w + phase[k];
+  return c.xy + vec2f(cos(a), sin(a)) * c.z * PX;
+}
 
 /* WHAT AN ANIMAL SMELLS: the reaction RATE, not a concentration. U*V*V is Gray-Scott's own
    reaction term, and it is largest exactly on a GROWING front — zero in empty plate (V=0)
@@ -87,16 +100,16 @@ fn process(p: Point, ctx: PointCtx) -> Point {
      lap, not a fresh buffer). Scatter once, deterministically: pointRand is a hash of the
      identity, not a stream, so the same seed lays the same herd on any device (§V45). */
   if (ctx.firstRun == 1u) {
-    /* ON THE PASTURE, not across the frame. A uniform scatter walks a fifth of the herd
+    /* ON EACH ROOST, not across the frame. A uniform scatter walks a fifth of the herd
        through the dead ground before the spring gathers it, and every one of them seeds a
        spot out there that then persists for the rest of the run — measured: the first build
        to get this far had the empty four fifths covered in stray colonies laid in the first
        two seconds. sqrt() on the radius is what makes the disc UNIFORM rather than
        centre-heavy; without it the middle is seeded four times as hard as the rim. */
     let a = pointRand(ctx.index, 37u) * 6.2831853;
-    let r = sqrt(pointRand(ctx.index, 11u)) * 0.8;
+    let r = sqrt(pointRand(ctx.index, 11u)) * 0.45;
     let h = pointRand(ctx.index, 23u) * 6.2831853;
-    q.position = vec3f(HOME + vec2f(cos(a), sin(a)) * r * PX, 0.0);
+    q.position = vec3f(roost(ctx.index % ROOSTS, ctx.value4) + vec2f(cos(a), sin(a)) * r * PX, 0.0);
     q.velocity = vec3f(cos(h), sin(h), 0.0);
     q.graze = vec4f(0.0, 0.0, 0.0, 0.0);
     return q;
@@ -110,7 +123,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
      get a direction out of a field. The alternative is to make the reaction shader encode
      its own gradient into spare channels, and there are none spare (b is the chemistry
      map, a is the kernel's initialised flag), so it would cost a second full-field pass:
-     230 400 texels. Three taps per animal costs 72 000 loads for the whole herd — a third
+     230 400 texels. Three taps per animal costs 36 000 loads for the whole herd — a sixth
      of that, with no extra node and no channel budget. Sensing scales with the HERD; a
      field encoding scales with the FIELD, and the field is the bigger of the two.
      ctx.value2 is the audio on the reach: the hats make the herd look further ahead. */
@@ -154,8 +167,10 @@ fn process(p: Point, ctx: PointCtx) -> Point {
      a WELL-FED animal is not homing at all — it stays where the food is — and only an
      animal that has gone hungry turns back toward the middle. The flock's outline is
      therefore drawn by the FOOD, it migrates as it eats a region down, and E16's sentence
-     still holds: the murmuration never abandons the sphere. The second term is the frame's
-     fence and nothing else: past 0.95 of a half-height from home, everything turns back. */
+     still holds: the murmuration never abandons the sphere. The second term is the fence:
+     past 0.45 screen units from its roost an animal starts turning back, and by 0.8 it turns
+     at full rate. T1399b pulled it in from 0.8…1.2 — with four roosts a loose fence lets the
+     herds drift into one another's clearings and merge back into a single centre. */
   /* WHERE HOME IS THIS MINUTE. A fixed spring has a FIXED POINT, and a flock sitting on
      its own fixed point eats one spot to the ground and stays there forever — measured, a
      blown-out core in the same place at frames 300, 900 and 1500 with the rest of the
@@ -164,12 +179,12 @@ fn process(p: Point, ctx: PointCtx) -> Point {
      ANGLE, which is the one wave whose wrap is continuous once you take its cosine, and the
      flock makes a circuit of its range, grazing it down behind and finding it regrown by
      the time it comes round again. It is the piece's longest cycle and it is in the
-     ANIMALS, not in the grade. */
-  let home = HOME + vec2f(cos(ctx.value4), sin(ctx.value4)) * RANGE * PX;
+     ANIMALS, not in the grade. Since T1399b there are four such circles (\`roost\` above). */
+  let home = roost(ctx.index % ROOSTS, ctx.value4);
   let toHome = (home - pos) / PX;
   let away = length(toHome);
   let sinHome = (dir.x * toHome.y - dir.y * toHome.x) / max(away, 1e-5);
-  steer = steer + sinHome * (5.5 * q.graze.y + 9.0 * smoothstep(0.8, 1.2, away));
+  steer = steer + sinHome * (5.5 * q.graze.y + 9.0 * smoothstep(0.45, 0.8, away));
 
   /* §V481(b) ON THE HERD, which is the half of that invariant nobody had a place to put.
      An envelope on the turn rate is a DC term: it bends every animal the same way for as
@@ -244,12 +259,31 @@ fn process(p: Point, ctx: PointCtx) -> Point {
  * spots included — lives OUTSIDE it. A pattern is not a fixed point.)
  *
  * So this band is chosen against Pearson's map rather than inherited, and it travels:
- *   chemistry 0.0  ->  F 0.037, k 0.060   dense worms, the pasture at its richest
- *   chemistry 0.5  ->  F 0.0205, k 0.069  self-replicating spots — trails that MITOSE
- *   chemistry 1.0  ->  F 0.004, k 0.078   dead: no feed to grow on, and V starves out
+ *   chemistry 0.0  ->  F 0.037, k 0.060   labyrinth and dense worms, the pasture at its richest
+ *   chemistry 0.5  ->  F 0.0315, k 0.062  self-replicating spots — trails that MITOSE
+ *   chemistry 1.0  ->  F 0.026, k 0.064   dead: V starves out
  * which is the range the example needs, because "a trail can branch and divide on its own"
  * is the sentence that separates this from a Physarum clone, and "there is empty field to
  * walk across" is the one that separates it from a carpet.
+ *
+ * ## 1b. T1399b — THE MAP REACHED ONE STEP IN EIGHT, and that was the regular field
+ *
+ * Until T1399b this shader returned `vec4f(next, 0.0, 1.0)`: blue ZEROED on the way out.
+ * `rd1` read the chemistry `pack1` painted; `rd2`..`rd8` read the 0 `rd1` wrote, and ran
+ * the band's rich corner. Seven steps in eight were therefore one chemistry everywhere, and
+ * one chemistry everywhere is exactly what packs into a regular lattice — the owner's "very
+ * regular outside of the crawling centre" (T671 said the same thing and treated it with
+ * advection). MEASURED on the shipped file at frame 1800: the fraction of texels with
+ * V > 0.2 was 0.22 at chemistry 0 and still 0.19 at 0.85 — no regime change across the
+ * whole map. Blue now passes through, so all eight steps read the map, and the same
+ * measurement reads 0.20 at 0, 0.10 at 0.5 and 0.03 at 0.85 and above.
+ *
+ * That also made the old band's numbers wrong in the other direction: honestly applied,
+ * F 0.002 / k 0.086 at the high corner put everything above chemistry ~0.18 into death.
+ * Re-measured by driving THIS band with a 0..1 ramp for 2400 steps through the eight-step
+ * chain (seeded plate): labyrinth and worms below ~0.2, worms breaking into spots 0.2–0.3,
+ * spots 0.3–0.7 thinning with the coordinate, sparse spots to ~0.85, dead above. Texels
+ * with V > 0.2 by tenth of the ramp: 0.40 0.34 0.29 0.25 0.23 0.19 0.18 0.14 0.04 0.00.
  *
  * ## 2. THE PLATE STARTS EMPTY, because the herd is the seed
  *
@@ -265,8 +299,8 @@ const PASTURE_REACTION_WGSL = `@group(0) @binding(0) var inputSampler: sampler;
 
 const FEED_LOW: f32 = 0.037;
 const KILL_LOW: f32 = 0.0600;
-const FEED_HIGH: f32 = 0.002;
-const KILL_HIGH: f32 = 0.0860;
+const FEED_HIGH: f32 = 0.026;
+const KILL_HIGH: f32 = 0.0640;
 
 const DIFFUSE_U: f32 = 0.2097;
 const DIFFUSE_V: f32 = 0.105;
@@ -285,7 +319,8 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let nw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, texel.y)).rg;
   let ne = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, texel.y)).rg;
 
-  // b is a 0..1 coordinate the GRAPH paints per pixel; the band it walks is above.
+  // b is a 0..1 coordinate the GRAPH paints per pixel; the band it walks is above. It is
+  // passed THROUGH (the return below), so every one of the eight steps reads it (T1399b).
   let chemistry = clamp(centre.b, 0.0, 1.0);
   let feed = mix(FEED_LOW, FEED_HIGH, chemistry);
   let kill = mix(KILL_LOW, KILL_HIGH, chemistry);
@@ -306,7 +341,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
 
   // alpha < 0.5 == the pair was cleared: a BARE pasture, not a seeded plate.
   let next = select(vec2f(1.0, 0.0), stepped, centre.a >= 0.5);
-  return vec4f(next, 0.0, 1.0);
+  return vec4f(next, chemistry, 1.0);
 }`;
 
 /**
@@ -345,6 +380,12 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
  * scatters THIS frame, the deposit that scatter lays becomes structure over the next few
  * seconds, and the regime it lands in was set by the bar before.
  *
+ * T1399b added the fourth way, the one you see without knowing any of the above: `hit1`,
+ * a Beat node on the onsets (1 on the hit, a 0.4 s exponential tail), lands on four large
+ * things at once — the palette scale (`tint1`, fronts flare toward the gold), the bloom's
+ * weight (`burn1`), the camera's scale (`spin1`, a 5% push) and the medium's advection
+ * (`flow1`, the whole field lurches along the swell on the beat and keeps the shear).
+ *
  * ## T671 — a lattice needs a stationary substrate, so deny it one
  *
  * The owner looked at the T657 build and said the field still "consists of all these
@@ -373,7 +414,36 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
  * which was the owner's own constraint: deposit off → mean V 0.00000 with zero texels
  * above 0.05; steering on 1.079× the frame mean against a field the herd cannot write,
  * steering deleted 0.996× — chance — versus 1.080× / 0.994× before. A prettier Pasture
- * with a dead stigmergy loop would have been a failure that photographs well.
+ * with a dead stigmergy loop would have been a failure that photographs well. (Those are
+ * T671's numbers, on T671's file.)
+ *
+ * ## T1399b — more centres, a surround that moves, negative space, a beat you can see
+ *
+ * The owner, on the T671 build: "audio reactivity of pasture is very weak … very regular
+ * outside of the intense crawling center … super static. the activity center right now
+ * looks awesome. maybe we need more of those". MEASURED first, on that file, 30 s at
+ * 1280×720 with the pattern: the frame's mean brightness swung 7.5% rms against its own
+ * one-second average and correlated 0.09 with an onset envelope — the audio was a 2%
+ * tint, because `env1` is a deviation from a 5-second average and a steady beat deviates
+ * from its own average by very little (its mean over the run was 0.018). Motion lived in
+ * one place: the median 40-px block moved 0.0015 per frame against 0.0204 in the busiest,
+ * and 17% of blocks moved more than a quarter of that. The regular field was not a
+ * substrate that held still — it was ONE chemistry everywhere, the reaction defect named
+ * in §1b above the shader.
+ *
+ * The changes, each one the owner's sentence: FOUR ROOSTS (the kernel's `roost`) and
+ * 12 000 animals, so there are four activity centres; the chemistry reaching all eight
+ * steps and a map drawn to put the band's dead corner inside the frame (`shape1`,
+ * `bowl1`), so the surround is islands of worms and spot colonies drifting with
+ * `terrain1` between open dark ground — negative space that opens and closes; and
+ * `hit1`, above. MEASURED on this file, same run, same instrument: brightness swing 30.8%
+ * rms, onset correlation 0.43 (0.61 on the shipped showcase clip, from 0.34); median
+ * block motion 0.0073 and 40% of blocks above a quarter of the busiest; motion between
+ * beats, with the flash excluded, 0.0043 against 0.0023. GPU time per frame on Dawn
+ * 1.74 → 1.76 ms, the mean of five alternating runs whose spread is 1.60–1.97 — the
+ * three extra roosts' 7 000 animals cost less than the noise. The loop is the owner's constraint again and it holds: deposit off →
+ * mean V 0.00000 with zero texels above 0.05, and on a field the herd cannot write the
+ * herd sits at 1.054× the frame mean with steering and 0.997× with it deleted.
  *
  * ## The two traps this file paid attention to rather than rediscovering
  *
@@ -447,6 +517,15 @@ export const pastureDocument = document(
       node("envDiff", "valueMath", [-2600, 880], { operation: "subtract" }, { label: "envdiff1" }),
       node("env", "valueLimit", [-2340, 880], { minimum: 0, maximum: 4 }, { label: "env1" }),
       node("trig", "valueTrigger", [-2340, 1540], { threshold: 0.5 }, { label: "trig1" }),
+      /* T1399b — THE BEAT YOU CAN SEE. `env1` is a deviation from a 5-second average, which
+         is right for what it drives (a sustained swell, no flicker) and nearly silent on a
+         steady beat: 0.018 mean over the pattern's run. So the onsets get their own envelope
+         — Beat, not Trigger: 1 on the hit and a 0.4 s exponential tail, with a 0.2 s
+         hold-off so a flam is one event — and it lands on four large things (`tint1`,
+         `burn1`, `spin1`, `flow1`), each named at its site. It reads `source1`, never
+         `env1`, for the same §V509 reason `trig1` does. */
+      node("hitSel", "valueSelect", [-2600, 1100], { channels: "onsetCount" }, { label: "hitsel1" }),
+      node("hit", "valueBeat", [-2340, 1100], { threshold: 0.5, retrigger: 0.2, tail: 0.4, decay: "exponential" }, { label: "hit1" }),
 
       /* ---- THE HERD'S THREE BANDS. These reach ctx.value1..3 (T479), which is the only
          way audio has ever been able to change what a point kernel DOES rather than what
@@ -481,9 +560,13 @@ export const pastureDocument = document(
       /* T657: the swing widens 0.05 → 0.14 with the rest state at 0.55, because the
          window it moves is now three times as wide — the same gain on a wider window is a
          smaller gesture (§V471.3, §V477: the bias is the rest state, the gain is the
-         swing). Achievable span 0.55…0.69 against a declared −1…4 (T545). */
-      node("warmG", "valueMath", [-2080, 1760], { operation: "multiply", operand: 0.4171 }, { label: "warmg1" }),
-      node("warm", "valueMath", [-1820, 1760], { operation: "add", operand: 0.571 }, { label: "warm1" }),
+         swing). Achievable span 0.55…0.69 against a declared −1…4 (T545).
+         T1399b: rest 0.60, gain 0.30 — the window under it is now 0.42…0.60 and the map
+         honestly reaches the reaction (§1b), so a loud passage moves real ground: at the
+         terrain's median the coordinate falls from 0.44 to ~0.33 on the loudest bars,
+         and the spot colonies swell into worms. */
+      node("warmG", "valueMath", [-2080, 1760], { operation: "multiply", operand: 0.3 }, { label: "warmg1" }),
+      node("warm", "valueMath", [-1820, 1760], { operation: "add", operand: 0.60 }, { label: "warm1" }),
 
       /* ---- AND ONLY THEN THE PICTURE ------------------------------------------------ */
       node("gradeG", "valueMath", [-1560, 880], { operation: "multiply", operand: 1.6083 }, { label: "gradeg1" }),
@@ -651,8 +734,14 @@ export const pastureDocument = document(
          REGIME GRADIENT, and only the far corners still pin at 1.0. The background stays
          white on purpose: that is what keeps the negative space, and it is the half of
          this the two rejected variants gave away. */
+      /* T1399b: CENTRED, radius 0.40 and softness 0.36. With four roosts in the four
+         quarters of the frame the pasture has to be the frame, not a disc off to one side
+         — a herd whose circuit runs over pinned-dead ground only ever lays trails that
+         fade. What is left of the disc is a vignette: the far corners pin at 1.0 and the
+         negative space INSIDE the frame now comes from `shape1` crossing the band's dead
+         corner, which moves (`terrain1`) where a disc's rim does not. */
       node("bowl", "circle", [-2860, -440], {
-        mode: "fill", center: [0.4, 0.54], radius: [0.26, 0.26], softness: 0.42,
+        mode: "fill", center: [0.5, 0.5], radius: [0.40, 0.40], softness: 0.36,
         fillcolor: [0, 0, 0, 1], bgcolor: [1, 1, 1, 1], aspectcorrect: true,
       }, { label: "bowl1", resolution: { mode: "fixed", width: 640, height: 360 } }),
       /* THE COASTLINE. A circle is a shape nobody chose, and a pasture with a circular
@@ -668,9 +757,11 @@ export const pastureDocument = document(
       node("swell", "noise", [-2860, -220], {
         type: "perlin4d", seed: 41, period: 0.55, harmon: 2, spread: 2, gain: 0.55,
         rough: 0.5, exp: 1, amp: 1, offset: 0, mono: false, aspectcorrect: true,
-        t4d: 0.37, s4d: 1, speed: 0.035,
+        t4d: 0.37, s4d: 1, speed: 0.05,
       }, { label: "swell1", resolution: { mode: "fixed", width: 640, height: 360 } }),
       /* T657: 0.30 rather than 0.15, and the swell drifting at 0.035 rather than 0.02.
+         T1399b: 0.05 — `swell1` is also the flow `flow1` advects the medium along, and a
+         flow that changes direction faster keeps the drift from settling into streaks.
          The coastline is now the width of the falloff it is warping, so the regime bands
          are ragged and interlocking rather than concentric — a wide smooth ramp warped a
          little is still visibly a ring. */
@@ -684,8 +775,10 @@ export const pastureDocument = document(
            which patch of the pasture is lattice and which is worms is now visibly a
            function of time, not just of place. The PERIOD is deliberately left at 0.18:
            tried at 0.34 the patches grew larger than the frame, which reads as uniform
-           again from inside one of them. */
-        t4d: 0.37, s4d: 1, speed: 0.06,
+           again from inside one of them.
+           T1399b: 0.10. Once the map reached the reaction (§1b) this became the speed at
+           which the dead ground opens and closes — the negative space breathing. */
+        t4d: 0.37, s4d: 1, speed: 0.10,
       }, { label: "terrain1", resolution: { mode: "fixed", width: 640, height: 360 } }),
       /* THE WINDOW IS T562's AND THE BRIGHTNESS IS THIS FILE'S OWN FINDING. Gray-Scott has
          a non-trivial steady state only where F >= 4(F+k)^2, and over the imported band
@@ -712,9 +805,16 @@ export const pastureDocument = document(
          nearly BINARY — the terrain contributed an on/off mask rather than a landscape, so
          even where the screen did not saturate there were only two regimes to be in. The
          window now spans the band and the audio drive widens with it. */
+      /* T1399b — everything above was tuned against a reaction that read this map on one
+         step in eight (§1b), which is why a window spanning "the whole living band" still
+         produced one regime. Re-drawn against the honest band: `terrain1` measures 0.39…0.62
+         (p50 0.50), black 0.42 and a white point resting at 0.60 put its median at 0.44
+         (spots), its lower tenth at ~0.1 (worms and labyrinth) and its upper fifth past the
+         dead corner at 0.85. Gamma 1 and brightness 1: the map is a straight ramp through
+         the band, and the dead ground is part of the picture rather than beyond its edge. */
       node("shape", "level", [-2340, -220], {
-        blacklevel: 0.36, contrast: 1, brightness: 0.72, gamma1: 1.25, invert: 0, opacity: 1,
-      }, { label: "shape1", parameters: { whitelevel: drivenSlot("warm1:lowMid", 0.62) } }),
+        blacklevel: 0.42, contrast: 1, brightness: 1.0, gamma1: 1, invert: 0, opacity: 1,
+      }, { label: "shape1", parameters: { whitelevel: drivenSlot("warm1:lowMid", 0.60) } }),
       node("dish", "screen", [-2080, -440], { opacity: 1 }, { label: "dish1" }),
       /*
        * T671 — WEATHER. A fertile front, expanding on the herd's own 83-second lap.
@@ -763,10 +863,27 @@ export const pastureDocument = document(
        * at 0.006 the dark fraction reaches 71% and the pasture visibly shrinks, because
        * the flow carries V away faster than a low-feed regime can regrow it. Turn it up
        * for wilder and emptier, down for denser and more regular.
+       *
+       * T1399b: the rest stays 0.0025 and the BEAT adds 0.006 on `hit1`'s tail — so the
+       * medium lurches along the swell on every hit and the shear it leaves is permanent,
+       * which is the surround moving WITH the music rather than beside it. The average
+       * over a bar stays near the density the note above settles on; tried at a 0.0035
+       * rest, the colonies thinned into bare trails and the surround had nothing to move.
        */
       node("flow", "displace", [-1690, -260], {
-        weight: [0.0025, 0.0025], offset: [0.5, 0.5], sourcex: "red", sourcey: "green", extend: "hold",
-      }, { label: "flow1", resolution: { mode: "fixed", width: 640, height: 360 } }),
+        offset: [0.5, 0.5], sourcex: "red", sourcey: "green", extend: "hold",
+      }, {
+        label: "flow1", resolution: { mode: "fixed", width: 640, height: 360 },
+        parameters: {
+          weight: {
+            mode: "expression",
+            bindings: {
+              static: { kind: "static", value: [0.0025, 0.0025] },
+              expression: { kind: "expression", source: "0.0025 + 0.006 * op('hit1').chan.onsetCount" },
+            },
+          },
+        },
+      }),
 
       // ---- THE REACTION -------------------------------------------------------------
       node("state", "feedback", [-1820, 0], {
@@ -839,7 +956,7 @@ export const pastureDocument = document(
          running the LOW (labyrinth) chemistry is the dense one and gets the warmer base. */
       node("chem", "level", [1560, 220], {
         blacklevel: 0, whitelevel: 1, contrast: 1, gamma1: 1, invert: 1,
-        brightness: 0.26, opacity: 0,
+        brightness: 0.14, opacity: 0,
       }, { label: "chem1" }),
       /* WHERE THE PICTURE LEAVES THE SIMULATION'S GRID — and it lands on a SECOND fixed
          resolution rather than on the project's, which is §V533 pushed one step further
@@ -876,8 +993,10 @@ export const pastureDocument = document(
       node("tint", "lookup", [2340, 0], { channel: "green", row: 0.5, offset: 0 }, {
         label: "tint1",
         /* §V471.7 — the grade BREATHES. Rest 1.15 puts the fronts in the jade and leaves
-           the moss and the gold as somewhere for a loud passage to reach. */
-        parameters: { scale: drivenSlot("grade1:highMid", 1.15) },
+           the moss and the gold as somewhere for a loud passage to reach. T1399b: plus
+           0.45 on `hit1` — every onset flares the fronts up the ramp into the gold, and the
+           0.4 s tail brings them back down before the next one. */
+        parameters: { scale: expressionSlot("op('grade1').chan.highMid + 0.45 * op('hit1').chan.onsetCount", 1.15) },
       }),
       /* The three castes go on top of the graded field, coldest first. Screen rather than
          add: an animal on an already-bright front should not double it. */
@@ -886,10 +1005,14 @@ export const pastureDocument = document(
       node("liftFind", "screen", [3120, 0], { opacity: 1 }, { label: "liftfind1" }),
       node("halo", "blur", [3120, 220], { size: 18, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
       /* The bloom's WEIGHT is the audio (§V471.3): the blurred copy is the front here, so
-         one number says how much halo, and it rests low. */
+         one number says how much halo, and it rests low. T1399b: plus 0.6 on `hit1`. The
+         flash lives HERE and not on `hue1`'s value, which was tried: `hue1` is where the
+         trail loop closes, so a gain there is fed back into itself every frame of the tail —
+         the haze ran up to a washed pink and HSV clipped the bright edges into colour
+         fringes. `burn1` is upstream of the loop, so the loop only ever sees one copy. */
       node("burn", "add", [3380, 0], {}, {
         label: "burn1",
-        parameters: { opacity: drivenSlot("glow1:level", 0.17) },
+        parameters: { opacity: expressionSlot("op('glow1').chan.level + 0.6 * op('hit1').chan.onsetCount", 0.17) },
       }),
       /* §V471.5 — THE TRAILS CLOSE ON THE FINAL OUTPUT. `hue1` is the last node before the
          Output, so what smears is the graded, hue-drifted picture rather than the raw
@@ -931,13 +1054,22 @@ export const pastureDocument = document(
        * OUTSIDE the trail loop, which closes on `hue1`. §V481(a) is exactly about a
        * transform inside a feedback loop; a rotation in there would spiral the trails
        * instead of swaying the picture. The 1.12 scale is the cover for ±4.5°.
+       *
+       * T1399b: the scale is the beat's third landing — 1.12 at rest, 1.17 on the hit,
+       * falling back over `hit1`'s tail. It only ever grows, so the ±4.5° cover holds.
        */
       node("sway", "lfo", [3900, 400], {
         shape: "sine", frequency: 0.012, amplitude: 4.5, offset: 0, phase: 0,
       }, { label: "sway1" }),
       node("spin", "transform", [4160, 0], {
-        t: [0, 0], s: [1.12, 1.12], p: [0, 0], xord: "srt", extend: "hold", aspectcorrect: true,
-      }, { label: "spin1", parameters: { r: drivenSlot("sway1", 0) } }),
+        t: [0, 0], p: [0, 0], xord: "srt", extend: "hold", aspectcorrect: true,
+      }, { label: "spin1", parameters: { r: drivenSlot("sway1", 0), s: {
+        mode: "expression",
+        bindings: {
+          static: { kind: "static", value: [1.12, 1.12] },
+          expression: { kind: "expression", source: "1.12 + 0.05 * op('hit1').chan.onsetCount" },
+        },
+      } } }),
       node("out", "output", [4420, 0], {}, { label: "out1" }),
     ],
     [
@@ -953,6 +1085,8 @@ export const pastureDocument = document(
       edge("e-envslow-envdiff", ["envSlow", "out"], ["envDiff", "b"]),
       edge("e-envdiff-env", ["envDiff", "out"], ["env", "in"]),
       edge("e-source-trig", ["source", "out"], ["trig", "in"]),
+      edge("e-source-hitsel", ["source", "out"], ["hitSel", "in"]),
+      edge("e-hitsel-hit", ["hitSel", "out"], ["hit", "in"]),
       // the herd's three bands
       edge("e-env-paceg", ["env", "out"], ["paceG", "a"]),
       edge("e-paceg-pace", ["paceG", "out"], ["pace", "a"]),

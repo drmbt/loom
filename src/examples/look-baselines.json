@@ -96,10 +96,11 @@
     "phrase": 0.23616
   },
   "E32-Pasture.loom.json": {
-    "motion": 0.06199,
-    "range": 0.7633,
-    "f0max": 0.0344,
-    "phrase": 0.0477
+    "motion": 0.11274,
+    "range": 0.9179,
+    "f0max": 0.0248,
+    "cardFloor": 0.0009,
+    "phrase": 0.09141
   },
   "E33-Obol.loom.json": {
     "motion": 0.00972,

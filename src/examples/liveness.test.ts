@@ -180,7 +180,8 @@ import LOOK_BASELINES from "./look-baselines.json" with { type: "json" };
  *   the quietest card is E43 Splice at 0.1651, then E12 Fluid 0.3103, E10 Instanced
  *   Torus 0.3710, and everything else above that, up to 1.0000 for eleven of them.
  *   Nothing is black. E24 — the only example ever declared out of this property — reads
- *   0.9048, and E32 Pasture, the survivor of the frame-0 cluster, reads 0.6838.
+ *   0.9048, and E32 Pasture, the survivor of the frame-0 cluster, reads 0.6838 (0.7036
+ *   since §T1399b re-lit it).
  *
  * So 0.02 is kept, and it is kept for the reason the original sentence gave rather than by
  * inheritance: the gap is real again. Eight times below the quietest shipped card is a

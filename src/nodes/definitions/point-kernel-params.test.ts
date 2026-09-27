@@ -438,7 +438,12 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
   "E28-Sundial.loom.json": "fd30a6a5d8a12088",
   "E30-Nave.loom.json": "79f18c0c294ff3c0",
   "E31-Corona.loom.json": "cdf805800334b838",
-  "E32-Pasture.loom.json": "925da38ae3402e98",
+  /* T1399b re-pinned: `herd1`'s kernel changed on purpose — four roosts (`roost()`, keyed
+     by `ctx.index % ROOSTS`), each herd seeded on its own roost, and the homing fence
+     pulled in to 0.45…0.8 — and its capacity went 5 000 → 12 000, which moves the
+     dispatch size. The picture is held by the example's look baseline and its .md's
+     re-measured claims, not by this number. */
+  "E32-Pasture.loom.json": "13534a2ee6ac29f6",
   "E33-Obol.loom.json": "68029203112b3bbc",
   /* T1053 re-pinned this one, and the module's gain is enumerable: `aim1`, `sight1`,
      `mark1` and `mark2a` each grew a `struct Params` and its uniform members, and twelve
