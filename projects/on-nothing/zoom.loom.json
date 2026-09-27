@@ -1100,8 +1100,8 @@
           "joints": "0:pelvis@0,0.9618,0.0048 1:spine<0@0,1.0506,-0.0276 2:chest<1@0,1.1862,-0.0263 3:neck<2@0,1.5378,0.0131 4:head<3@0,1.6366,0.0473 5:shoulder.L<2@0.0234,1.4616,0.0258 6:upperarm.L<5@0.1906,1.4317,0.0196 7:forearm.L<6@0.3632,1.2339,0.0184 8:hand.L<7@0.5003,1.1029,0.2135 9:shoulder.R<2@-0.0234,1.4616,0.0258 10:upperarm.R<9@-0.1906,1.4317,0.0196 11:forearm.R<10@-0.3632,1.2339,0.0184 12:hand.R<11@-0.5003,1.1029,0.2135 13:thigh.L<0@0.1113,0.9562,-0.0059 14:shin.L<13@0.1549,0.5171,0.0291 15:foot.L<14@0.2015,0.0739,0.0154 16:thigh.R<0@-0.1113,0.9562,-0.0059 17:shin.R<16@-0.1549,0.5171,0.0291 18:foot.R<17@-0.2015,0.0739,0.0154",
           "parts": "",
           "select": "figbare.*",
-          "triangles": 125392,
-          "vertices": 72786
+          "triangles": 125416,
+          "vertices": 72834
         },
         "position": {
           "x": -3600,
@@ -2505,7 +2505,7 @@
         "label": "skin1",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"normal\",\"type\":\"vec3f\",\"qualifier\":\"direction\",\"default\":[0,1,0]},{\"name\":\"joints\",\"type\":\"vec4f\",\"default\":[0,0,0,0]},{\"name\":\"weights\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
-          "capacity": 72786,
+          "capacity": 72834,
           "chest": [
             0,
             0,
