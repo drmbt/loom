@@ -171,3 +171,55 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   o.emissive = p.tint * (fresnel * p.sheen * 10.0 + (band + top) * p.glint * (0.25 + fresnel));
   return o;
 }`;
+
+/** A black, unlit stand-in: the cars as depth occluders in the glass Render. Roughness 1 marks it (the glass is 0.02). */
+export const OCCLUDER_WGSL = `struct Params {
+  unused: f32, // @default 0  (none)
+};
+
+fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
+  var o = surfaceDefaults(s);
+  o.albedo = vec4f(0.0, 0.0, 0.0, 1.0);
+  o.emissive = vec3f(0.0);
+  o.roughness = 1.0;
+  return o;
+}`;
+
+/**
+ * Lays the glass Render over the frame: where the glass is (its normal output, low roughness),
+ * the frame behind is REFRACTED — sampled through a UV offset from the glass normal, with a
+ * slight dispersion — and the glass's own reflections are added on top.
+ * Input = the frame, More = [glass colour, glass normal].
+ */
+export const GLASS_COMPOSITE_WGSL = `struct Params {
+  refract: f32, // @default 0.012  Refraction offset, fraction of the frame, at full normal tilt.
+  dispersion: f32, // @default 0.25  Extra offset for red over blue (a hint of rainbow at the edges).
+  reflect: f32, // @default 1  Reflection gain.
+  tint: f32, // @default 0.92  Transmission (the cover absorbs a little).
+};
+@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+@group(0) @binding(3) var<uniform> params: Params;
+@group(0) @binding(4) var inputTexture1: texture_2d<f32>;
+@group(0) @binding(5) var inputTexture2: texture_2d<f32>;
+
+fn texel(t: texture_2d<f32>, uv: vec2f) -> vec2i {
+  let size = vec2f(textureDimensions(t));
+  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));
+}
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let base = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
+  let g = textureLoad(inputTexture2, texel(inputTexture2, uv), 0);
+  // glass: a surface (a > 0) that is glossy (the occluders carry roughness 1)
+  let isGlass = step(0.001, g.a) * step(g.a, 0.2);
+  if (isGlass <= 0.0) { return base; }
+  let n = normalize(g.rgb * 2.0 - 1.0);
+  let o = n.xy * vec2f(1.0, -1.0) * params.refract;
+  let r = textureSampleLevel(inputTexture, inputSampler, uv + o * (1.0 + params.dispersion), 0.0).r;
+  let gg = textureSampleLevel(inputTexture, inputSampler, uv + o, 0.0).g;
+  let b = textureSampleLevel(inputTexture, inputSampler, uv + o * (1.0 - params.dispersion), 0.0).b;
+  let refl = textureSampleLevel(inputTexture1, inputSampler, uv, 0.0).rgb;
+  return vec4f(vec3f(r, gg, b) * params.tint + refl * params.reflect, base.a);
+}`;

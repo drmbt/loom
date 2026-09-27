@@ -11,7 +11,7 @@ import type { Area, OnNothingFacts } from "./scene-facts.ts";
 import { carAreas } from "./scene-facts.ts";
 import { markerOf } from "./scene-facts.ts";
 import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "./skin-kernel.ts";
-import { LAMP_GLASS_WGSL, SURFACE_WGSL } from "./surface.ts";
+import { GLASS_COMPOSITE_WGSL, LAMP_GLASS_WGSL, OCCLUDER_WGSL, SURFACE_WGSL } from "./surface.ts";
 import { CAR_RIG_ATTRIBUTES, carRigKernel, drivenCar } from "./car-rig.ts";
 import { GLYPHS_WGSL } from "./tracking.ts";
 
@@ -216,17 +216,25 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     scenes.push(`geo${area}1`);
   });
 
-  // ── Lamp glass over every car's lamps, additive (surface.ts LAMP_GLASS_WGSL) ──
+  // ── Lamp glass: its OWN Render (surface.ts LAMP_GLASS_WGSL) ──
+  // A surface cannot blend additively, so the glass shell renders separately, with every car as
+  // a black depth OCCLUDER, and is composited later (GLASS_COMPOSITE_WGSL): its reflections are
+  // added and the lamp behind it is refracted by its normals. The lamp is never covered.
   const glassArea = facts.areas.get("lampglass");
-  // OFF until surfaces honour additive blend (T1357b; row filed 2026-09-27): drawn today it is
-  // opaque black and hides the lamps it covers.
-  const LAMP_GLASS_ENABLED = false;
-  if (LAMP_GLASS_ENABLED && glassArea !== undefined && plan.areas.includes("cars")) {
-    nodes.push(node("glassMat", "materialWgsl", [-3300, 900], { model: "unlit", source: LAMP_GLASS_WGSL }, { label: "glassmat1" }));
+  const glassScenes: string[] = [];
+  if (glassArea !== undefined && plan.areas.includes("cars")) {
+    nodes.push(node("glassMat", "materialWgsl", [-3300, 900], { model: "unlit", source: LAMP_GLASS_WGSL, roughness: 0.02 }, { label: "glassmat1" }));
+    nodes.push(node("occMat", "materialWgsl", [-3300, 1000], { model: "unlit", source: OCCLUDER_WGSL, roughness: 1 }, { label: "occmat1" }));
     nodes.push(node("mesh_lampglass", "meshFileIn", [-3600, 900], { file: facts.glbUrl, select: glassArea.select, vertices: glassArea.vertices, triangles: glassArea.triangles, parts: glassArea.parts }, { label: "meshlampglass1" }));
-    nodes.push(node("geo_lampglass", "geometry", [-3000, 900], { mode: "surface", material: "glassmat1", blend: "additive" }, { label: "geolampglass1" }));
+    nodes.push(node("geo_lampglass", "geometry", [-3000, 900], { mode: "surface", material: "glassmat1" }, { label: "geolampglass1" }));
     edges.push(edge("mesh-geo-lampglass", ["mesh_lampglass", "out"], ["geo_lampglass", "points"]));
-    scenes.push("geolampglass1");
+    glassScenes.push("geolampglass1");
+    for (const area of carAreas(facts)) {
+      if (base === "wheel" && area === drivenArea) continue;
+      nodes.push(node(`occ_${area}`, "geometry", [-3000, 1000], { mode: "surface", material: "occmat1" }, { label: `occ${area}1` }));
+      edges.push(edge(`mesh-occ-${area}`, [`mesh_${area}`, "out"], [`occ_${area}`, "points"]));
+      glassScenes.push(`occ${area}1`);
+    }
   }
 
   // ── The figure, posed by the skin kernel ──
@@ -469,6 +477,10 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   const normal = ["shot", "normal"] as const;
   pass("reflections", GLOSSY_SSR_WGSL, { ...cameraParams, strength: 1.2, maxDistance: 30, roughnessCutoff: 0.55, thickness: 0.4, blur: 1.6, stretch: 4, keepBright: 4, dimShare: 0.1 }, [depth, normal], [-2100, 0]);
   pass("occlusion", GTAO_WGSL, { ...cameraParams, radius: 0.5, strength: plan.whiteRoom ? 0.6 : 0.8 }, [depth, normal], [-1900, 0]);
+  if (glassScenes.length > 0) {
+    nodes.push(node("glassShot", "render", [-2400, 700], { scenes: glassScenes.join(" "), camera: "cam1", lights: "", ambientIntensity: 0, background: [0, 0, 0, 1], antialias: "msaa", normalOutput: true }, { label: "glassshot1" }));
+    pass("glass", GLASS_COMPOSITE_WGSL, {}, [["glassShot", "out"], ["glassShot", "normal"]], [-1800, 0]);
+  }
   if (plan.haze.density > 0) {
     pass("haze", hazeWgsl(hazeLights(facts, plan.haze.groups)), { ...cameraParams, density: plan.haze.density, ambient: vec(plan.haze.ambient), anisotropy: 0.72, head: base === "title" ? 0.01 : 0.25 }, [depth], [-1700, 0]);
   }
