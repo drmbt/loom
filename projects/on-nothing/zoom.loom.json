@@ -216,41 +216,6 @@
           "portId": "in"
         }
       },
-      "glass-haze": {
-        "id": "glass-haze",
-        "source": {
-          "nodeId": "glass",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "haze",
-          "portId": "input"
-        }
-      },
-      "glass-more0": {
-        "id": "glass-more0",
-        "order": 0,
-        "source": {
-          "nodeId": "glassShot",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "glass",
-          "portId": "more"
-        }
-      },
-      "glass-more1": {
-        "id": "glass-more1",
-        "order": 1,
-        "source": {
-          "nodeId": "glassShot",
-          "portId": "normal"
-        },
-        "target": {
-          "nodeId": "glass",
-          "portId": "more"
-        }
-      },
       "haze-lens_dof": {
         "id": "haze-lens_dof",
         "source": {
@@ -429,14 +394,14 @@
           "portId": "points"
         }
       },
-      "mesh-geo-lampglass": {
-        "id": "mesh-geo-lampglass",
+      "mesh-geo-lampglint": {
+        "id": "mesh-geo-lampglint",
         "source": {
           "nodeId": "mesh_lampglass",
           "portId": "out"
         },
         "target": {
-          "nodeId": "geo_lampglass",
+          "nodeId": "geo_lampglint",
           "portId": "points"
         }
       },
@@ -451,69 +416,14 @@
           "portId": "points"
         }
       },
-      "mesh-occ-car0": {
-        "id": "mesh-occ-car0",
-        "source": {
-          "nodeId": "mesh_car0",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "occ_car0",
-          "portId": "points"
-        }
-      },
-      "mesh-occ-car1": {
-        "id": "mesh-occ-car1",
-        "source": {
-          "nodeId": "mesh_car1",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "occ_car1",
-          "portId": "points"
-        }
-      },
-      "mesh-occ-car2": {
-        "id": "mesh-occ-car2",
-        "source": {
-          "nodeId": "mesh_car2",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "occ_car2",
-          "portId": "points"
-        }
-      },
-      "mesh-occ-car3": {
-        "id": "mesh-occ-car3",
-        "source": {
-          "nodeId": "mesh_car3",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "occ_car3",
-          "portId": "points"
-        }
-      },
-      "mesh-occ-car4": {
-        "id": "mesh-occ-car4",
-        "source": {
-          "nodeId": "mesh_car4",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "occ_car4",
-          "portId": "points"
-        }
-      },
-      "occlusion-glass": {
-        "id": "occlusion-glass",
+      "occlusion-haze": {
+        "id": "occlusion-haze",
         "source": {
           "nodeId": "occlusion",
           "portId": "out"
         },
         "target": {
-          "nodeId": "glass",
+          "nodeId": "haze",
           "portId": "input"
         }
       },
@@ -1284,17 +1194,18 @@
         },
         "type": "geometry"
       },
-      "geo_lampglass": {
+      "geo_lampglint": {
         "definitionVersion": 1,
-        "id": "geo_lampglass",
-        "label": "geolampglass1",
+        "id": "geo_lampglint",
+        "label": "geolampglint1",
         "parameters": {
+          "blend": "additive",
           "material": "glassmat1",
           "mode": "surface"
         },
         "position": {
           "x": -3000,
-          "y": 900
+          "y": 950
         },
         "type": "geometry"
       },
@@ -1312,22 +1223,6 @@
         },
         "type": "geometry"
       },
-      "glass": {
-        "definitionVersion": 1,
-        "id": "glass",
-        "label": "glass1",
-        "parameters": {
-          "source": "struct Params {\n  refract: f32, // @default 0.012  Refraction offset, fraction of the frame, at full normal tilt.\n  dispersion: f32, // @default 0.25  Extra offset for red over blue (a hint of rainbow at the edges).\n  reflect: f32, // @default 1  Reflection gain.\n  tint: f32, // @default 0.92  Transmission (the cover absorbs a little).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n@group(0) @binding(5) var inputTexture2: texture_2d<f32>;\n\nfn texel(t: texture_2d<f32>, uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(t));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let base = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let g = textureLoad(inputTexture2, texel(inputTexture2, uv), 0);\n  // glass: a surface (a > 0) that is glossy (the occluders carry roughness 1)\n  let isGlass = step(0.001, g.a) * step(g.a, 0.2);\n  if (isGlass <= 0.0) { return base; }\n  let n = normalize(g.rgb * 2.0 - 1.0);\n  let o = n.xy * vec2f(1.0, -1.0) * params.refract;\n  let r = textureSampleLevel(inputTexture, inputSampler, uv + o * (1.0 + params.dispersion), 0.0).r;\n  let gg = textureSampleLevel(inputTexture, inputSampler, uv + o, 0.0).g;\n  let b = textureSampleLevel(inputTexture, inputSampler, uv + o * (1.0 - params.dispersion), 0.0).b;\n  let refl = textureSampleLevel(inputTexture1, inputSampler, uv, 0.0).rgb;\n  return vec4f(vec3f(r, gg, b) * params.tint + refl * params.reflect, base.a);\n}"
-        },
-        "position": {
-          "x": -1800,
-          "y": 0
-        },
-        "resolution": {
-          "mode": "project"
-        },
-        "type": "customWgslMulti"
-      },
       "glassMat": {
         "definitionVersion": 1,
         "id": "glassMat",
@@ -1339,33 +1234,9 @@
         },
         "position": {
           "x": -3300,
-          "y": 900
+          "y": 950
         },
         "type": "materialWgsl"
-      },
-      "glassShot": {
-        "definitionVersion": 1,
-        "id": "glassShot",
-        "label": "glassshot1",
-        "parameters": {
-          "ambientIntensity": 0,
-          "antialias": "msaa",
-          "background": [
-            0,
-            0,
-            0,
-            1
-          ],
-          "camera": "cam1",
-          "lights": "",
-          "normalOutput": true,
-          "scenes": "geolampglass1 occcar01 occcar11 occcar21 occcar31 occcar41"
-        },
-        "position": {
-          "x": -2400,
-          "y": 700
-        },
-        "type": "render"
       },
       "grade": {
         "definitionVersion": 1,
@@ -2085,91 +1956,6 @@
         },
         "type": "meshFileIn"
       },
-      "occMat": {
-        "definitionVersion": 1,
-        "id": "occMat",
-        "label": "occmat1",
-        "parameters": {
-          "model": "unlit",
-          "roughness": 1,
-          "source": "struct Params {\n  unused: f32, // @default 0  (none)\n};\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  o.albedo = vec4f(0.0, 0.0, 0.0, 1.0);\n  o.emissive = vec3f(0.0);\n  o.roughness = 1.0;\n  return o;\n}"
-        },
-        "position": {
-          "x": -3300,
-          "y": 1000
-        },
-        "type": "materialWgsl"
-      },
-      "occ_car0": {
-        "definitionVersion": 1,
-        "id": "occ_car0",
-        "label": "occcar01",
-        "parameters": {
-          "material": "occmat1",
-          "mode": "surface"
-        },
-        "position": {
-          "x": -3000,
-          "y": 1000
-        },
-        "type": "geometry"
-      },
-      "occ_car1": {
-        "definitionVersion": 1,
-        "id": "occ_car1",
-        "label": "occcar11",
-        "parameters": {
-          "material": "occmat1",
-          "mode": "surface"
-        },
-        "position": {
-          "x": -3000,
-          "y": 1000
-        },
-        "type": "geometry"
-      },
-      "occ_car2": {
-        "definitionVersion": 1,
-        "id": "occ_car2",
-        "label": "occcar21",
-        "parameters": {
-          "material": "occmat1",
-          "mode": "surface"
-        },
-        "position": {
-          "x": -3000,
-          "y": 1000
-        },
-        "type": "geometry"
-      },
-      "occ_car3": {
-        "definitionVersion": 1,
-        "id": "occ_car3",
-        "label": "occcar31",
-        "parameters": {
-          "material": "occmat1",
-          "mode": "surface"
-        },
-        "position": {
-          "x": -3000,
-          "y": 1000
-        },
-        "type": "geometry"
-      },
-      "occ_car4": {
-        "definitionVersion": 1,
-        "id": "occ_car4",
-        "label": "occcar41",
-        "parameters": {
-          "material": "occmat1",
-          "mode": "surface"
-        },
-        "position": {
-          "x": -3000,
-          "y": 1000
-        },
-        "type": "geometry"
-      },
       "occlusion": {
         "definitionVersion": 1,
         "id": "occlusion",
@@ -2558,7 +2344,7 @@
           "lights": "fill1 carkey1 sodiumpool1 sodiuma1 sodiumb1",
           "normalOutput": true,
           "projectors": "head01 head11 head21 head31 head41",
-          "scenes": "geowh1 geocar01 geocar11 geocar21 geocar31 geocar41 figgeo1"
+          "scenes": "geowh1 geocar01 geocar11 geocar21 geocar31 geocar41 geolampglint1 figgeo1"
         },
         "position": {
           "x": -2400,

@@ -11,7 +11,7 @@ import type { Area, OnNothingFacts } from "./scene-facts.ts";
 import { carAreas } from "./scene-facts.ts";
 import { markerOf } from "./scene-facts.ts";
 import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "./skin-kernel.ts";
-import { GLASS_COMPOSITE_WGSL, LAMP_GLASS_WGSL, OCCLUDER_WGSL, surfaceWgsl, type Footprint } from "./surface.ts";
+import { LAMP_GLASS_WGSL, surfaceWgsl, type Footprint } from "./surface.ts";
 import { CAR_RIG_ATTRIBUTES, carRigKernel } from "./car-rig.ts";
 import { WHEEL_DOF, WHEEL_DRIVE, WHEEL_GRADE, WHEEL_SSR, WHEEL_TURN, WHEEL_GLYPHS, WHEEL_GLYPHS_WGSL, placedHaze, riding, wheelCamera, wheelLights, wheelRig } from "./shots/wheel.ts";
 import { titleDocument } from "./shots/title.ts";
@@ -228,25 +228,18 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     scenes.push(`geo${area}1`);
   });
 
-  // ── Lamp glass: its OWN Render (surface.ts LAMP_GLASS_WGSL) ──
-  // A surface cannot blend additively, so the glass shell renders separately, with every car as
-  // a black depth OCCLUDER, and is composited later (GLASS_COMPOSITE_WGSL): its reflections are
-  // added and the lamp behind it is refracted by its normals. The lamp is never covered.
+  // ── Lamp glass: an ADDITIVE glint shell over every lamp (T1411b) ──
+  // LAMP_GLASS_WGSL adds the covers' fresnel sheen and glints without covering anything, so the
+  // lamp and its streak stay whole. Material · Glass (T1357b) is NOT used here: it samples the
+  // scene ~thickness + 4 m behind the surface, which on a 1 cm cover reads the car's interior
+  // instead of the lamp and put every headlight out (measured; see the T1400b row notes).
   const glassArea = facts.areas.get("lampglass");
-  const glassScenes: string[] = [];
   if (glassArea !== undefined && plan.areas.includes("cars")) {
-    nodes.push(node("glassMat", "materialWgsl", [-3300, 900], { model: "unlit", source: LAMP_GLASS_WGSL, roughness: 0.02 }, { label: "glassmat1" }));
-    nodes.push(node("occMat", "materialWgsl", [-3300, 1000], { model: "unlit", source: OCCLUDER_WGSL, roughness: 1 }, { label: "occmat1" }));
     nodes.push(node("mesh_lampglass", "meshFileIn", [-3600, 900], { file: facts.glbUrl, select: glassArea.select, vertices: glassArea.vertices, triangles: glassArea.triangles, parts: glassArea.parts }, { label: "meshlampglass1" }));
-    nodes.push(node("geo_lampglass", "geometry", [-3000, 900], { mode: "surface", material: "glassmat1" }, { label: "geolampglass1" }));
-    edges.push(edge("mesh-geo-lampglass", ["mesh_lampglass", "out"], ["geo_lampglass", "points"]));
-    glassScenes.push("geolampglass1");
-    for (const area of carAreas(facts)) {
-      nodes.push(node(`occ_${area}`, "geometry", [-3000, 1000], { mode: "surface", material: "occmat1" }, { label: `occ${area}1` }));
-      // the rigged car occludes where it stands in the shot, not where the GLB left it
-      edges.push(edge(`mesh-occ-${area}`, rig !== undefined && area === rig.area ? ["carRig", "out"] : [`mesh_${area}`, "out"], [`occ_${area}`, "points"]));
-      glassScenes.push(`occ${area}1`);
-    }
+    nodes.push(node("glassMat", "materialWgsl", [-3300, 950], { model: "unlit", source: LAMP_GLASS_WGSL, roughness: 0.02 }, { label: "glassmat1" }));
+    nodes.push(node("geo_lampglint", "geometry", [-3000, 950], { mode: "surface", material: "glassmat1", blend: "additive" }, { label: "geolampglint1" }));
+    edges.push(edge("mesh-geo-lampglint", ["mesh_lampglass", "out"], ["geo_lampglint", "points"]));
+    scenes.push("geolampglint1");
   }
 
   // ── The figure, posed by the skin kernel ──
@@ -479,10 +472,6 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   const normal = ["shot", "normal"] as const;
   pass("reflections", GLOSSY_SSR_WGSL, { ...cameraParams, strength: 1.2, maxDistance: 30, roughnessCutoff: 0.55, thickness: 0.4, blur: 1.6, stretch: 4, keepBright: 4, dimShare: 0.1, ...(base === "wheel" ? WHEEL_SSR : {}) }, [depth, normal], [-2100, 0]);
   pass("occlusion", GTAO_WGSL, { ...cameraParams, radius: plan.whiteRoom ? 0.5 : 1.3, strength: plan.whiteRoom ? 0.6 : 0.95, power: 1.6 }, [depth, normal], [-1900, 0]);
-  if (glassScenes.length > 0) {
-    nodes.push(node("glassShot", "render", [-2400, 700], { scenes: glassScenes.join(" "), camera: "cam1", lights: "", ambientIntensity: 0, background: [0, 0, 0, 1], antialias: "msaa", normalOutput: true }, { label: "glassshot1" }));
-    pass("glass", GLASS_COMPOSITE_WGSL, {}, [["glassShot", "out"], ["glassShot", "normal"]], [-1800, 0]);
-  }
   if (plan.haze.density > 0) {
     const haze = hazeLights(facts, plan.haze.groups);
     pass("haze", hazeWgsl(rig === undefined ? haze : placedHaze(facts, rig, haze)), { ...cameraParams, density: plan.haze.density, ambient: vec(plan.haze.ambient), anisotropy: 0.72, head: base === "title" ? 0.01 : 0.25 }, [depth], [-1700, 0]);
