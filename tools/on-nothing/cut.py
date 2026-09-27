@@ -146,10 +146,10 @@ def assemble(args):
     start = rows[0]["start"]
     duration = rows[-1]["end"] - start
     for name, parts, share_w in (("full", ours_list, 1280), ("compare-full", cmp_list, 960)):
-        listing = os.path.join(seg_dir, f"{name}.txt")
+        listing = os.path.join(seg_dir, f"{name}-{args.tag}.txt")
         with open(listing, "w") as f:
             f.writelines(f"file '{p}'\n" for p in parts)
-        video = os.path.join(seg_dir, f"{name}-video.mp4")
+        video = os.path.join(seg_dir, f"{name}-{args.tag}-video.mp4")
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", listing, "-c", "copy", video], check=True)
         final = os.path.join(cuts, f"{name}-{args.tag}.mp4")
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", video, "-ss", str(start), "-t", str(duration), "-i", SONG_M4A,
