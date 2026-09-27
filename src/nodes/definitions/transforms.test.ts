@@ -119,6 +119,17 @@ describe("geometry filter nodes (T40)", () => {
       expect(firstPass(tileNode, { mirrorx: true }).uniforms?.["mirror"]).toEqual([1, 0]);
       expect(firstPass(tileNode, { mirrory: true }).uniforms?.["mirror"]).toEqual([0, 1]);
     });
+
+    it("packs the crop window like Crop's bounds, and defaults to the whole source (T1402b)", () => {
+      // The whole frame by default is what lets an old document keep its pixels (the
+      // shader's `0 + t * 1`); the window rides the uniform block, so dragging it rebuilds
+      // nothing (§V5). Pixels: tile-crop.gpu.test.ts.
+      expect(firstPass(tileNode).uniforms?.["crop"]).toEqual([0, 1, 0, 1]);
+      const pass = firstPass(tileNode, { cropleft: 0.377, cropright: 0.677, cropbottom: 0.2, croptop: 0.7 });
+      expect(pass.uniforms?.["crop"]).toEqual([0.377, 0.677, 0.2, 0.7]);
+      expect(pass.id).toBe(firstPass(tileNode).id);
+      expect(pass.shader).toBe(firstPass(tileNode).shader);
+    });
   });
 });
 

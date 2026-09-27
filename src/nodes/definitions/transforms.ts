@@ -165,20 +165,79 @@ export const cropNode: NodeDefinition = {
   },
 };
 
-/** Tile — TD's Tile TOP: repeat the image, optionally mirroring alternate tiles. */
+/**
+ * Tile — TD's Tile TOP: repeat the image, optionally mirroring alternate tiles.
+ *
+ * T1402b: the CROP window (TD's Tile carries the same four) is which part of the source
+ * every tile shows. With it, N vertical strips of one central slice, alternately flipped,
+ * is this node on its own — the On Nothing project's MIRROR pass needed a Custom WGSL node
+ * for exactly that. Which strips flip is `offset`: an odd whole-tile offset flips the even
+ * strips instead of the odd ones (back-to-back rather than face-to-face). Added without a
+ * version bump because the defaults are the full frame, which is the old arithmetic exactly.
+ */
 export const tileNode: NodeDefinition = {
   type: "tile",
   version: 1,
   title: "Tile",
   category: "filter",
-  description: "Repeats the image in a grid, with optional mirroring for seamless tiling.",
+  description:
+    "Repeats the image, or a cropped window of it, in a grid, with optional mirroring of alternate tiles.",
   inputs: [{ id: "input", label: "Input", type: RGBA_TEXTURE }],
   outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],
   parameters: {
     repeat: { type: "vector", size: 2, label: "Repeat", default: [2, 2], min: 0.01, max: 64, range: "floor" },
-    offset: { type: "vector", size: 2, label: "Offset", default: [0, 0], min: -8, max: 8, range: "soft" },
+    offset: {
+      type: "vector",
+      size: 2,
+      label: "Offset",
+      default: [0, 0],
+      min: -8,
+      max: 8,
+      range: "soft",
+      description: "Shifts the grid, in tiles. An odd whole number swaps which tiles mirror.",
+    },
     mirrorx: { type: "boolean", label: "Mirror X", default: false },
     mirrory: { type: "boolean", label: "Mirror Y", default: false },
+    cropleft: {
+      type: "number",
+      label: "Crop Left",
+      default: 0,
+      min: 0,
+      max: 1,
+      range: "soft",
+      group: "Crop",
+      description: "Left edge of the source window every tile shows, 0..1 across the source.",
+    },
+    cropright: {
+      type: "number",
+      label: "Crop Right",
+      default: 1,
+      min: 0,
+      max: 1,
+      range: "soft",
+      group: "Crop",
+      description: "Right edge of the source window.",
+    },
+    cropbottom: {
+      type: "number",
+      label: "Crop Bottom",
+      default: 0,
+      min: 0,
+      max: 1,
+      range: "soft",
+      group: "Crop",
+      description: "Bottom edge of the source window, 0 at the bottom of the source.",
+    },
+    croptop: {
+      type: "number",
+      label: "Crop Top",
+      default: 1,
+      min: 0,
+      max: 1,
+      range: "soft",
+      group: "Crop",
+      description: "Top edge of the source window.",
+    },
   },
   resolutionPolicy: { kind: "inherit", input: "input" },
   formatPolicy: { kind: "inherit", input: "input" },
@@ -202,6 +261,12 @@ export const tileNode: NodeDefinition = {
         repeat: readVector(parameters, "repeat", [2, 2]),
         offset: readVector(parameters, "offset", [0, 0]),
         mirror: [readFlag(parameters, "mirrorx", false), readFlag(parameters, "mirrory", false)],
+        crop: [
+          readNumber(parameters, "cropleft", 0),
+          readNumber(parameters, "cropright", 1),
+          readNumber(parameters, "cropbottom", 0),
+          readNumber(parameters, "croptop", 1),
+        ],
       },
       nodeId,
       label: "Tile",

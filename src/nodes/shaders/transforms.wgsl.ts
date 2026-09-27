@@ -69,11 +69,20 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   return select(vec4f(0.0), value, inside);
 }`;
 
-/** Tile — TD's Tile TOP: repeat the image n by m, optionally mirroring alternate tiles. */
+/**
+ * Tile — TD's Tile TOP: repeat the image n by m, optionally mirroring alternate tiles.
+ *
+ * `crop` (T1402b) is the WINDOW of the source every tile shows — left, right, bottom, top,
+ * bottom-up as Crop's are — so four strips of one central slice, alternately flipped, is
+ * this node alone (the On Nothing silhouette quadruplet). At the default (0, 1, 0, 1) the
+ * window arithmetic is `0 + t * 1`, which is `t` exactly: existing documents keep their
+ * pixels.
+ */
 export const TILE_FRAGMENT_WGSL = wgsl`struct Params {
   repeat: vec2f,
   offset: vec2f,
   mirror: vec2f,
+  crop: vec4f,
 };
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var inputSampler: sampler;
@@ -87,7 +96,12 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   // that way: the odd tiles read backwards, so every tile boundary matches its neighbour.
   let odd = fract(floor(scaled) * 0.5) > vec2f(0.25);
   let mirrored = select(tile, 1.0 - tile, odd);
-  let source = select(tile, mirrored, params.mirror > vec2f(0.5));
+  let local = select(tile, mirrored, params.mirror > vec2f(0.5));
+  // The window, in uv (y down): x runs left -> right, y runs top -> bottom.
+  let source = vec2f(
+    params.crop.x + local.x * (params.crop.y - params.crop.x),
+    (1.0 - params.crop.w) + local.y * (params.crop.w - params.crop.z),
+  );
   return textureSampleLevel(inputTexture, inputSampler, source, 0.0);
 }`;
 
