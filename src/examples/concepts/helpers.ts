@@ -1,4 +1,4 @@
-import { compileGraph } from "../../compiler/index.ts";
+import { compileGraph, flattenComponents } from "../../compiler/index.ts";
 import type { CompiledGraph } from "../../compiler/index.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import type { ComponentRegistryView } from "../../domain/components/index.ts";
@@ -176,6 +176,13 @@ export interface Pointer {
 export function valueGraphRun(document: ProjectDocument) {
   const { nodes, components } = registryFor(document);
   const session = createValueGraphSession(nodes);
+  /*
+   * The session evaluates the FLATTENED graph, as the app's does (use-value-graph.ts). Fed the
+   * raw document it never saw a component's own value nodes, so every `op()` inside an
+   * instance read "publishes no channel" — silent until §B231 surfaced component-slot
+   * diagnostics, and then E51's churn LFOs inside `wall1` failed step 0.
+   */
+  const flat = flattenComponents({ graph: document.graph, registry: nodes, components }).graph;
   let frameIndex = 0;
 
   const frameAt = (index: number): FrameEvaluationInput => ({
@@ -191,7 +198,7 @@ export function valueGraphRun(document: ProjectDocument) {
     step(pointer: Pointer): { plan: CompiledGraph; frame: FrameEvaluationInput } {
       const frame = frameAt(frameIndex);
       frameIndex += 1;
-      const { resolver } = session.evaluate(document.graph, frame, { pointer: { ...pointer } });
+      const { resolver } = session.evaluate(flat, frame, { pointer: { ...pointer } });
       const plan = requireLivePlan(
         compileGraph({
           graph: document.graph,
