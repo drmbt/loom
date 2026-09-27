@@ -435,6 +435,10 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
         ex0, ex1, ey0, ez0, ez1 = -0.06, 0.06, hy0 + 0.01, brow_z - 0.02, brow_z
     eye_z = (ez0 + ez1) / 2
     eye_x = (ex1 - ex0) / 4 + 0.004
+    # a beanie sits on the forehead ABOVE the brows (eyes are ~0.12 m under the crown, so a brim
+    # measured down from the crown landed on the eyes)
+    brow_z = eye_z + 0.032
+    print(f"[figure] head top {htop:.3f}  eyes z {eye_z:.3f} x±{eye_x:.3f} front y {ey0:.3f}  beanie brim {brow_z:.3f}", flush=True)
     cx, cy = (hx0 + hx1) / 2, (hy0 + hy1) / 2
     rx, ry = (hx1 - hx0) / 2 + 0.012, (hy1 - hy0) / 2 + 0.012
 
@@ -444,7 +448,7 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
         # dome's. The crown is lifted slightly (a little slouch) and a thin cuff is rolled at the brow.
         from mathutils.bvhtree import BVHTree
         tree = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
-        centre = Vector((cx, cy, brow_z + 0.02))
+        centre = Vector((cx, cy, brow_z))
         rings, seg = 16, 64
         verts, faces = [], []
         for i in range(rings + 1):
@@ -452,7 +456,9 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
             for j in range(seg):
                 az = 2 * math.pi * j / seg
                 d = Vector((math.cos(lat) * math.cos(az), math.cos(lat) * math.sin(az), math.sin(lat))).normalized()
-                start = centre + d * 0.4
+                # the brim runs lower at the back (over the ear tops, onto the nape)
+                drop = 0.07 * max(0.0, math.sin(az)) ** 1.5 * (1.0 - i / rings) ** 2
+                start = centre + d * 0.4 - Vector((0, 0, drop))
                 h = tree.ray_cast(start, -d, 0.5)
                 surface = h[0] if h[0] is not None else centre + d * 0.1
                 # thin knit, a touch of slouch at the crown
@@ -484,15 +490,15 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
     def glasses(mb):
         # Wraparound sunglasses: two superellipse lenses turned to follow the face, a rim
         # round each, a bridge, and temples running back over the ears.
-        fy = ey0 - 0.012
-        a_, b_, nexp = 0.028, 0.02, 3.2
+        fy = ey0 - 0.014
+        a_, b_, nexp = 0.026, 0.018, 3.2
         outline = []
         for k in range(28):
             t = 2 * math.pi * k / 28
             ct, st = math.cos(t), math.sin(t)
             outline.append((a_ * math.copysign(abs(ct) ** (2 / nexp), ct), b_ * math.copysign(abs(st) ** (2 / nexp), st)))
         for sx in (1, -1):
-            centre = Vector((cx + sx * (eye_x + 0.002), fy, eye_z + 0.002))
+            centre = Vector((cx + sx * (eye_x + 0.002), fy, eye_z - 0.002))
             wrap = math.radians(14) * sx
 
             def place(u, v, depth=0.0):
@@ -511,11 +517,14 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
                 k2 = (k + 1) % n
                 mb.faces.append([cf, base + k2, base + k]); mb.fmats.append("lens_black")
                 mb.faces.append([cb, base + n + k, base + n + k2]); mb.fmats.append("lens_black")
-            rim = [place(u * 1.08, v * 1.1, -0.001) for u, v in outline]
+            rim = [place(u * 1.05, v * 1.06, -0.001) for u, v in outline]
             for k in range(n):
-                mb.beam(rim[k], rim[(k + 1) % n], 0.0045, 0.0045, "paint_black", up=(0, -1, 0))
+                mb.beam(rim[k], rim[(k + 1) % n], 0.0028, 0.0028, "paint_black", up=(0, -1, 0))
             hinge = place(a_ * 1.08, b_ * 0.6, -0.001)
-            mb.beam(hinge, Vector((cx + sx * (rx - 0.002), cy + 0.03, eye_z + 0.014)), 0.004, 0.009, "jewel")
+            # temples: thin, black, along the side of the head to the top of the ear, then down behind it
+            ear = Vector((cx + sx * (rx - 0.006), cy + 0.01, eye_z + 0.004))
+            mb.beam(hinge, ear, 0.0025, 0.006, "paint_black")
+            mb.beam(ear, ear + Vector((0, 0.025, -0.02)), 0.0025, 0.005, "paint_black")
         mb.beam(Vector((cx + eye_x - a_ + 0.003, fy - 0.001, eye_z + 0.012)), Vector((cx - eye_x + a_ - 0.003, fy - 0.001, eye_z + 0.012)), 0.005, 0.005, "paint_black", up=(0, -1, 0))
 
     nx0, nx1, ny0, ny1, _, _ = neck

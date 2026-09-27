@@ -182,6 +182,8 @@ def preview(scene, outdir):
     util.camera(scene.collection, "dbg.fig", (-2.0, -3.2, 1.1), (0.0, 0.0, 0.95), 35)
     util.camera(scene.collection, "dbg.chest", (0.35, -1.1, 1.45), (0.0, 0.0, 1.38), 50)
     util.camera(scene.collection, "dbg.side", (1.3, 0.0, 1.4), (0.0, 0.0, 1.35), 50)
+    util.camera(scene.collection, "dbg.head", (0.35, -1.2, 1.72), (0.0, 0.0, 1.68), 60)
+    util.camera(scene.collection, "dbg.headside", (1.2, -0.25, 1.72), (0.0, 0.0, 1.68), 60)
     util.camera(scene.collection, "dbg.back", (0.3, 1.2, 1.5), (0.0, 0.0, 1.4), 50)
     for ob in scene.objects:
         if ob.type == "CAMERA" and (ob.name.startswith("shot.") or ob.name.startswith("dbg.")):
