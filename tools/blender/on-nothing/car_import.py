@@ -120,10 +120,16 @@ def _base(name):
     return name.split(".")[0] if name else ""
 
 
-def import_car(ctx, path, n, loc, yaw, paint, length=5.2, front_axis="-Y", report=None, model=None):
-    """Bring in one car; returns (body object, [left headlight point, right headlight point]) car-local."""
+def import_car(ctx, path, n, loc, yaw, paint, length=5.2, front_axis="-Y", report=None, model=None, cabin=None):
+    """Bring in one car; returns (body object, [left headlight point, right headlight point]) car-local.
+
+    `cabin` (T1407b incar, carint.py): the optional INTERIOR mode. The car keeps its interior and
+    becomes area `cabin["area"]`; `drop` and `materials` replace/extend the model's; `prepare(meshes)`
+    runs before the join and `measure(car)` once the car is normalised; EVERY pane is split off
+    into `<area>glass` (not only the lamp covers into the shared `lampglass`)."""
     coll, mats = ctx["coll"], ctx["mats"]
     model = model or {}
+    area = cabin["area"] if cabin is not None else f"car{n}"
     objs = import_any(path)
     for o in list(objs):
         if o.type in ("CAMERA", "LIGHT", "ARMATURE") or any(_base(o.name) == d for d in model.get("drop_objects", [])):
@@ -154,6 +160,8 @@ def import_car(ctx, path, n, loc, yaw, paint, length=5.2, front_axis="-Y", repor
         bake_texture_colour(o)
     for o in [o for o in objs if o.type == "EMPTY"]:
         bpy.data.objects.remove(o, do_unlink=True)
+    if cabin is not None:
+        cabin["prepare"](meshes)
     # join
     for x in bpy.context.selected_objects:
         x.select_set(False)
@@ -162,14 +170,14 @@ def import_car(ctx, path, n, loc, yaw, paint, length=5.2, front_axis="-Y", repor
     bpy.context.view_layer.objects.active = meshes[0]
     bpy.ops.object.join()
     car = meshes[0]
-    car.name = f"car{n}.body"
+    car.name = f"{area}.body"
     me = car.data
     # the join UNIONS every part's UV layer (231 on the GLS, each exported as its own TEXCOORD:
     # 640 MB). Texture colour is already baked into COLOR_0, so no UV layer is needed at all.
     while me.uv_layers:
         me.uv_layers.remove(me.uv_layers[0])
     # drop interiors and anything the model config names, before measuring
-    drop = model.get("drop", [])
+    drop = cabin["drop"] if cabin is not None else model.get("drop", [])
     if drop:
         import bmesh
         bm = bmesh.new()
@@ -204,7 +212,7 @@ def import_car(ctx, path, n, loc, yaw, paint, length=5.2, front_axis="-Y", repor
                     cnt[_base(mat.name) if mat else "-"] += 1
             print(f"[lampdebug] {os.path.basename(path)} {end}: {cnt.most_common(14)}", flush=True)
     # materials: the model's map, then the regex classes, then black trim
-    explicit = model.get("materials", {})
+    explicit = {**model.get("materials", {}), **(cabin["materials"] if cabin is not None else {})}
     moved = {}
     for i, mat in enumerate(me.materials):
         name = _base(mat.name) if mat is not None else ""
@@ -259,6 +267,8 @@ def import_car(ctx, path, n, loc, yaw, paint, length=5.2, front_axis="-Y", repor
         ys = [v.co.y for v in me.vertices]
         me.transform(Matrix.Translation((0, -min(ys), 0)))
         me.update()
+    if cabin is not None:
+        cabin["measure"](car)
     # Lamp COVERS: loom draws mesh glass opaque (T1357b), so a cover left in place would hide
     # the lamp. They are SPLIT OFF into their own object (`lampglass.car<n>`, area lampglass),
     # which loom draws additively: the glass's sheen and glints over a lamp that stays lit.
@@ -266,7 +276,7 @@ def import_car(ctx, path, n, loc, yaw, paint, length=5.2, front_axis="-Y", repor
     glass = {i for i, m in enumerate(me.materials) if m is not None and m.name == "glass_car"}
     bm = bmesh.new()
     bm.from_mesh(me)
-    covers = [f for f in bm.faces if f.material_index in glass and f.calc_center_median().y < 0.75 and f.calc_center_median().z < 1.12]
+    covers = [f for f in bm.faces if f.material_index in glass and (cabin is not None or (f.calc_center_median().y < 0.75 and f.calc_center_median().z < 1.12))]
     cover_ids = {f.index for f in covers}
     bm.free()
     if cover_ids:
@@ -284,10 +294,10 @@ def import_car(ctx, path, n, loc, yaw, paint, length=5.2, front_axis="-Y", repor
         bpy.ops.object.mode_set(mode="OBJECT")
         split = [o for o in bpy.context.selected_objects if o is not car]
         for o in split:
-            o.name = f"lampglass.car{n}"
+            o.name = f"{area}glass.body" if cabin is not None else f"lampglass.car{n}"
             o.data.materials.clear()
-            o.data.materials.append(mats["lamp_glass"])
-            o["loom_area"] = "lampglass"
+            o.data.materials.append(mats["glass_car" if cabin is not None else "lamp_glass"])
+            o["loom_area"] = f"{area}glass" if cabin is not None else "lampglass"
             o.location = loc
             o.rotation_euler = (0, 0, yaw)
     if report is not None:
@@ -307,7 +317,7 @@ def import_car(ctx, path, n, loc, yaw, paint, length=5.2, front_axis="-Y", repor
         heads.append(sum(group, Vector()) / len(group) + Vector((0, -0.03, 0)) if group else Vector((sx * 0.7, -0.05, 0.9)))
     car.location = loc
     car.rotation_euler = (0, 0, yaw)
-    car["loom_area"] = f"car{n}"
+    car["loom_area"] = area
     me.shade_smooth()
     try:
         me.set_sharp_from_angle(angle=math.radians(35))

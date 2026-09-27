@@ -22,6 +22,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import cars  # noqa: E402
+import carint  # noqa: E402
 import closeups  # noqa: E402
 import cyc_set  # noqa: E402
 import cyc_wardrobe  # noqa: E402
@@ -120,6 +121,7 @@ def main():
     sets.cyc(ctx)
     cyc_set.build(ctx)  # the wide's tight-cove studio (T1407b cyc)
     heads = cars.build(ctx, CARS)
+    carint.build(ctx)  # the in-car rows' cabin car, interior kept (T1407b incar)
     title.build(ctx, a.title)
     if a.human:
         figure.build_mpfb(ctx, os.path.abspath(a.human))

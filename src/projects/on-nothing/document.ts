@@ -26,6 +26,7 @@ import { CLOSEUP_SHOTS, closeupDocument, isCloseup } from "./shots/closeups.ts";
 import { splitDocument } from "./shots/split.ts";
 import { mirrorDocument } from "./shots/mirror.ts";
 import { lightsDocument } from "./shots/lights.ts";
+import { incarDocument } from "./shots/incar.ts";
 import { REACT_PROFILES, reactive } from "./shots/react.ts";
 
 /**
@@ -39,11 +40,11 @@ import { REACT_PROFILES, reactive } from "./shots/react.ts";
  */
 
 /** The close-ups (shots/closeups.ts) are their own graphs. */
-export const SHOTS = ["tableau", "title", "ring", "quad", "cyc", "cyc-wide", "zoom", "prism", "wheel", "halo", "crt", "split", "mirror", "lights", ...CLOSEUP_SHOTS] as const;
+export const SHOTS = ["tableau", "title", "ring", "quad", "cyc", "cyc-wide", "zoom", "prism", "wheel", "halo", "crt", "split", "mirror", "lights", "incar", ...CLOSEUP_SHOTS] as const;
 export type Shot = (typeof SHOTS)[number];
 /** The four sets; `zoom` and `prism` are the tableau's set with their own camera and finish. */
 type Base = "tableau" | "title" | "quad" | "cyc" | "wheel";
-const BASE_OF: Record<Exclude<Shot, (typeof CLOSEUP_SHOTS)[number]>, Base> = { tableau: "tableau", title: "title", ring: "quad", quad: "quad", cyc: "cyc", "cyc-wide": "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel", halo: "tableau", crt: "tableau", split: "tableau", mirror: "cyc", lights: "tableau" };
+const BASE_OF: Record<Exclude<Shot, (typeof CLOSEUP_SHOTS)[number]>, Base> = { tableau: "tableau", title: "title", ring: "quad", quad: "quad", cyc: "cyc", "cyc-wide": "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel", halo: "tableau", crt: "tableau", split: "tableau", mirror: "cyc", lights: "tableau", incar: "tableau" };
 
 export interface OnNothingOptions {
   readonly shot: Shot;
@@ -160,6 +161,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   if (shot === "mirror") return mirrorDocument(facts, onNothingDocument, options);
   // T1407b (lights): the light, detail and abstract rows, each a take on a stock shot (shots/lights.ts).
   if (shot === "lights") return lightsDocument(facts, options, onNothingDocument);
+  if (shot === "incar") return incarDocument(facts, onNothingDocument, options); // T1407b (incar)
   // T1407b: the quad and the prism build their own graphs (shots/).
   if (shot === "quad") return quadDocument(facts, options);
   if (shot === "prism") return prismDocument(facts, options);

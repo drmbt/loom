@@ -73,6 +73,22 @@ MODELS = {
         drop=["seat_white", "interior", "inside_button", "car_stering", "car_stearning", "back_speaker", "car_button_inside",
               "steering_box", "inside_board_white"],
     ),
+    # T1441b: a LOW black sports SUV for the sneaker-on-bonnet shot (the Escalade's bonnet sits at
+    # 1.4 m; this one's top runs 1.01 m at the nose to 1.13 m at the scuttle, 1.59 m roof, measured
+    # through car_import with paint_black, 146k tris after the decimate). The SDC "Carbone" body is the paint; its orange accents go to black trim, so with
+    # paint_black it reads all black. The file's "Material.00n" slots (tyres, discs, hubs) all fold
+    # to one base name here, so they share the tyre's rubber.
+    "urus": dict(
+        path="lamborghini_urus_sdc.glb", length=5.112, decimate=0.4,
+        materials={
+            "Carbone": "PAINT", "Black_metal": "plastic_black", "Fond": "plastic_black", "BlackPaint": "plastic_black",
+            "material_16": "plastic_black", "noir": "plastic_black", "Orange": "plastic_black", "GreyElements": "headlight_body",
+            "Vitres": "glass_car", "Mirror": "chrome", "Chrome": "chrome", "visse": "chrome", "jente": "headlight_body",
+            "aille": "headlight_body", "Material": "tyre", "Light": "headlight", "Default_Material": "headlight", "material": "drl",
+            "BreakDiscs": "headlight_body", "BreakDiscs_1": "headlight_body", "Light_RED": "taillight", "LightsGlassBack": "taillight",
+            "BreaksRedPaint": "taillight",
+        },
+    ),
     "rangerover": dict(
         path="_alternates/range_rover_sport_2018.glb", length=4.88, decimate=0.7,
         materials={
