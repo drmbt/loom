@@ -56,8 +56,8 @@ export interface OnNothingFacts {
 
 /** The GLB's areas, one Mesh File In each (every object is named `<area>.<name>`). */
 export const AREAS = ["wh", "title", "fig", "figbare", "fignocap", "cyc"] as const;
-/** Areas a GLB may or may not hold (older builds lack them; T1407b cyc: the walker's wardrobe, the wide's studio; T1407b mirror: the curled hands). */
-export const OPTIONAL_AREAS = ["lampglass", "figcyc", "cycwide", "fighand"] as const;
+/** Areas a GLB may or may not hold (older builds lack them; T1407b cyc: the walker's wardrobe, the wide's studio; T1407b mirror: the curled hands; `pend` and `shoe`, the close-ups' props, closeups.py). */
+export const OPTIONAL_AREAS = ["lampglass", "figcyc", "cycwide", "fighand", "pend", "shoe"] as const;
 /** The fixed areas, plus one `car<n>` per car (each car its own Mesh File In: five real models overflow one buffer). */
 export type Area = (typeof AREAS)[number] | (typeof OPTIONAL_AREAS)[number] | `car${number}`;
 

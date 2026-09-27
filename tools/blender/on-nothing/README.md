@@ -107,3 +107,23 @@ A body is a loft of cross-sections along the car, subdivided twice. The underbod
 axle, which cuts the wheel arches without a boolean. The vertical-bar grille, lamps, turbine wheels
 and mirrors are hard-surface pieces. No brand likeness is intended; the proportions are those of the
 reference's large luxury SUVs.
+
+## Close-ups (closeups.py)
+
+Two props for the close-up shots (`src/projects/on-nothing/shots/closeups.ts`):
+
+- **`pend.*`**: an iced script pendant ("Nothing", SnellRoundhand, bubble-bevelled) on a Cuban
+  chain, with a dark knit shoulder and a far wall. It stands at `PEND` (x = 60), away from every
+  other set. Faces that look at the lens are class 50 (pavé: loom sets the stones); sides, backs
+  and the bail are class 51 (polished white gold).
+- **`shoe.*`**: a white leather low-top (a cupsole, an upper whose top edge is the collar and the
+  eyestays, a tongue, eyelets, flat laces that drape onto the paint) and the warehouse's far
+  windows. `seat()` rests the sole on the black car's bonnet: the sole's contact points are cast
+  onto the paint, and the pose that rests lowest is chosen, with the nearest contact 1.5 mm into
+  the paint. The black car is MOVED for this shot by `SNEAKER_CAR_SHIFT`, and loom moves its mesh
+  by the same vector.
+
+What loom reads: `shot.pendant` and `shot.sneaker`; `stage.pendant`; `stage.sneaker` (where the
+figure stands, plus `loom_car` and `loom_car_shift`); and `prop.shoe` (the shoe's origin, and its
+axes in `loom_x`, `loom_y` and `loom_z`, glTF). The surface draws the panels, stitching and
+perforations in the shoe's own frame. The classes are 50–58 (`closeups.LIB`).

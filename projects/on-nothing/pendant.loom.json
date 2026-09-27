@@ -1,0 +1,1580 @@
+{
+  "assets": [],
+  "createdAt": "2026-09-27T00:00:00.000Z",
+  "graph": {
+    "edges": {
+      "bloom-down1": {
+        "id": "bloom-down1",
+        "source": {
+          "nodeId": "bright",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomDown1",
+          "portId": "input"
+        }
+      },
+      "bloom-down2": {
+        "id": "bloom-down2",
+        "source": {
+          "nodeId": "bloomDown1",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomDown2",
+          "portId": "input"
+        }
+      },
+      "bloom-down3": {
+        "id": "bloom-down3",
+        "source": {
+          "nodeId": "bloomDown2",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomDown3",
+          "portId": "input"
+        }
+      },
+      "bloom-down4": {
+        "id": "bloom-down4",
+        "source": {
+          "nodeId": "bloomDown3",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomDown4",
+          "portId": "input"
+        }
+      },
+      "bloom-lens": {
+        "id": "bloom-lens",
+        "source": {
+          "nodeId": "bloom",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lens",
+          "portId": "input"
+        }
+      },
+      "bloom-more0": {
+        "id": "bloom-more0",
+        "order": 0,
+        "source": {
+          "nodeId": "bloomUp0",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloom",
+          "portId": "more"
+        }
+      },
+      "bloom-up0-lower": {
+        "id": "bloom-up0-lower",
+        "source": {
+          "nodeId": "bloomUp1",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp0",
+          "portId": "input"
+        }
+      },
+      "bloom-up0-own": {
+        "id": "bloom-up0-own",
+        "order": 0,
+        "source": {
+          "nodeId": "bright",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp0",
+          "portId": "more"
+        }
+      },
+      "bloom-up1-lower": {
+        "id": "bloom-up1-lower",
+        "source": {
+          "nodeId": "bloomUp2",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp1",
+          "portId": "input"
+        }
+      },
+      "bloom-up1-own": {
+        "id": "bloom-up1-own",
+        "order": 0,
+        "source": {
+          "nodeId": "bloomDown1",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp1",
+          "portId": "more"
+        }
+      },
+      "bloom-up2-lower": {
+        "id": "bloom-up2-lower",
+        "source": {
+          "nodeId": "bloomUp3",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp2",
+          "portId": "input"
+        }
+      },
+      "bloom-up2-own": {
+        "id": "bloom-up2-own",
+        "order": 0,
+        "source": {
+          "nodeId": "bloomDown2",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp2",
+          "portId": "more"
+        }
+      },
+      "bloom-up3-lower": {
+        "id": "bloom-up3-lower",
+        "source": {
+          "nodeId": "bloomDown4",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp3",
+          "portId": "input"
+        }
+      },
+      "bloom-up3-own": {
+        "id": "bloom-up3-own",
+        "order": 0,
+        "source": {
+          "nodeId": "bloomDown3",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp3",
+          "portId": "more"
+        }
+      },
+      "dof-dofFill": {
+        "id": "dof-dofFill",
+        "source": {
+          "nodeId": "dof",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "dofFill",
+          "portId": "input"
+        }
+      },
+      "dof-more0": {
+        "id": "dof-more0",
+        "order": 0,
+        "source": {
+          "nodeId": "shot",
+          "portId": "depth"
+        },
+        "target": {
+          "nodeId": "dof",
+          "portId": "more"
+        }
+      },
+      "dofFill-more0": {
+        "id": "dofFill-more0",
+        "order": 0,
+        "source": {
+          "nodeId": "shot",
+          "portId": "depth"
+        },
+        "target": {
+          "nodeId": "dofFill",
+          "portId": "more"
+        }
+      },
+      "dofFill-streak": {
+        "id": "dofFill-streak",
+        "source": {
+          "nodeId": "dofFill",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "streak",
+          "portId": "input"
+        }
+      },
+      "env-shot": {
+        "id": "env-shot",
+        "source": {
+          "nodeId": "env",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "shot",
+          "portId": "environment"
+        }
+      },
+      "hdri-env": {
+        "id": "hdri-env",
+        "source": {
+          "nodeId": "hdri",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "env",
+          "portId": "input"
+        }
+      },
+      "hot-soft": {
+        "id": "hot-soft",
+        "source": {
+          "nodeId": "hotStreak",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "hotSoft",
+          "portId": "input"
+        }
+      },
+      "last-out": {
+        "id": "last-out",
+        "source": {
+          "nodeId": "grade",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "out",
+          "portId": "input"
+        }
+      },
+      "lens-grade": {
+        "id": "lens-grade",
+        "source": {
+          "nodeId": "lens",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "grade",
+          "portId": "input"
+        }
+      },
+      "mesh-geo-pend": {
+        "id": "mesh-geo-pend",
+        "source": {
+          "nodeId": "mesh_pend",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "geo_pend",
+          "portId": "points"
+        }
+      },
+      "occlusion-dof": {
+        "id": "occlusion-dof",
+        "source": {
+          "nodeId": "occlusion",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "dof",
+          "portId": "input"
+        }
+      },
+      "occlusion-more0": {
+        "id": "occlusion-more0",
+        "order": 0,
+        "source": {
+          "nodeId": "shot",
+          "portId": "depth"
+        },
+        "target": {
+          "nodeId": "occlusion",
+          "portId": "more"
+        }
+      },
+      "occlusion-more1": {
+        "id": "occlusion-more1",
+        "order": 1,
+        "source": {
+          "nodeId": "shot",
+          "portId": "normal"
+        },
+        "target": {
+          "nodeId": "occlusion",
+          "portId": "more"
+        }
+      },
+      "scene-bright": {
+        "id": "scene-bright",
+        "source": {
+          "nodeId": "dofFill",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bright",
+          "portId": "input"
+        }
+      },
+      "scene-hotstreak": {
+        "id": "scene-hotstreak",
+        "source": {
+          "nodeId": "dofFill",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "hotStreak",
+          "portId": "input"
+        }
+      },
+      "shot-occlusion": {
+        "id": "shot-occlusion",
+        "source": {
+          "nodeId": "shot",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "occlusion",
+          "portId": "input"
+        }
+      },
+      "soft-softer": {
+        "id": "soft-softer",
+        "source": {
+          "nodeId": "hotSoft",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "hotSofter",
+          "portId": "input"
+        }
+      },
+      "soft-streak": {
+        "id": "soft-streak",
+        "source": {
+          "nodeId": "hotSoft",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "streak",
+          "portId": "bright"
+        }
+      },
+      "softer-softest": {
+        "id": "softer-softest",
+        "source": {
+          "nodeId": "hotSofter",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "hotSoftest",
+          "portId": "input"
+        }
+      },
+      "streak-bloom": {
+        "id": "streak-bloom",
+        "source": {
+          "nodeId": "streak",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloom",
+          "portId": "input"
+        }
+      }
+    },
+    "groups": {},
+    "nodes": {
+      "bloom": {
+        "definitionVersion": 1,
+        "id": "bloom",
+        "label": "bloom1",
+        "parameters": {
+          "gain": 0.08,
+          "source": "struct Params {\n  gain: f32, // @default 0.1  Bloom brightness.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let base = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  return vec4f(base.rgb + textureSampleLevel(inputTexture1, inputSampler, uv, 0.0).rgb * params.gain, base.a);\n}"
+        },
+        "position": {
+          "x": -600,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgslMulti"
+      },
+      "bloomDown1": {
+        "definitionVersion": 1,
+        "id": "bloomDown1",
+        "label": "bloomdown11",
+        "parameters": {
+          "clampLuma": 1,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -900,
+          "y": 300
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "bloomDown2": {
+        "definitionVersion": 1,
+        "id": "bloomDown2",
+        "label": "bloomdown21",
+        "parameters": {
+          "clampLuma": 0,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -900,
+          "y": 450
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "bloomDown3": {
+        "definitionVersion": 1,
+        "id": "bloomDown3",
+        "label": "bloomdown31",
+        "parameters": {
+          "clampLuma": 0,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -900,
+          "y": 600
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "bloomDown4": {
+        "definitionVersion": 1,
+        "id": "bloomDown4",
+        "label": "bloomdown41",
+        "parameters": {
+          "clampLuma": 0,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -900,
+          "y": 750
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "bloomUp0": {
+        "definitionVersion": 1,
+        "id": "bloomUp0",
+        "label": "bloomup01",
+        "parameters": {
+          "lower": 1,
+          "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+        },
+        "position": {
+          "x": -700,
+          "y": 150
+        },
+        "resolution": {
+          "factor": 2,
+          "mode": "scale"
+        },
+        "type": "customWgslMulti"
+      },
+      "bloomUp1": {
+        "definitionVersion": 1,
+        "id": "bloomUp1",
+        "label": "bloomup11",
+        "parameters": {
+          "lower": 1,
+          "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+        },
+        "position": {
+          "x": -700,
+          "y": 300
+        },
+        "resolution": {
+          "factor": 2,
+          "mode": "scale"
+        },
+        "type": "customWgslMulti"
+      },
+      "bloomUp2": {
+        "definitionVersion": 1,
+        "id": "bloomUp2",
+        "label": "bloomup21",
+        "parameters": {
+          "lower": 1,
+          "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+        },
+        "position": {
+          "x": -700,
+          "y": 450
+        },
+        "resolution": {
+          "factor": 2,
+          "mode": "scale"
+        },
+        "type": "customWgslMulti"
+      },
+      "bloomUp3": {
+        "definitionVersion": 1,
+        "id": "bloomUp3",
+        "label": "bloomup31",
+        "parameters": {
+          "lower": 1,
+          "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+        },
+        "position": {
+          "x": -700,
+          "y": 600
+        },
+        "resolution": {
+          "factor": 2,
+          "mode": "scale"
+        },
+        "type": "customWgslMulti"
+      },
+      "bright": {
+        "definitionVersion": 1,
+        "id": "bright",
+        "label": "bright1",
+        "parameters": {
+          "knee": 0.8,
+          "source": "struct Params {\n  threshold: f32, // @default 1.2  Linear radiance where bloom starts.\n  knee: f32, // @default 0.8  Softness of the threshold.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n  let brightness = max(color.r, max(color.g, color.b));\n  let soft = clamp(brightness - params.threshold + params.knee, 0.0, 2.0 * params.knee);\n  let weight = max(soft * soft / (4.0 * params.knee + 1e-4), brightness - params.threshold) / max(brightness, 1e-4);\n  return vec4f(color * weight, 1.0);\n}",
+          "threshold": 1.4
+        },
+        "position": {
+          "x": -1300,
+          "y": 300
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "cam": {
+        "definitionVersion": 1,
+        "id": "cam",
+        "label": "cam1",
+        "parameters": {
+          "eye": [
+            60.25,
+            1.3499999046325684,
+            0.20000000298023224
+          ],
+          "eye.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "60.25000 + abstime * -0.01200 + (sin(abstime * 0.9 + 0.3) * 0.5 + sin(abstime * 2.3 + 0.510) * 0.3 + sin(abstime * 5.1 + 0.690) * 0.2) * 0.00180"
+              },
+              "static": {
+                "kind": "static",
+                "value": 60.25
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "1.35000 + abstime * 0.00150 + (sin(abstime * 1.3 + 1.1) * 0.5 + sin(abstime * 3.1 + 1.870) * 0.3 + sin(abstime * 6.7 + 2.530) * 0.2) * 0.00126"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.3499999046325684
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.20000 + abstime * -0.00200 + (sin(abstime * 0.7 + 2.2) * 0.5 + sin(abstime * 1.7 + 3.740) * 0.3 + sin(abstime * 4.3 + 5.060) * 0.2) * 0.00108"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.20000000298023224
+              }
+            },
+            "mode": "expression"
+          },
+          "far": 200,
+          "fov": 8.770574065900902,
+          "lookAt": [
+            60.0007951629137,
+            1.2941780790274695,
+            0.0006361693027232551
+          ],
+          "lookAt.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "60.00080 + abstime * -0.01200 + (sin(abstime * 0.7 + 2) * 0.5 + sin(abstime * 1.9 + 3.400) * 0.3 + sin(abstime * 4.3 + 4.600) * 0.2) * 0.00252"
+              },
+              "static": {
+                "kind": "static",
+                "value": 60.0007951629137
+              }
+            },
+            "mode": "expression"
+          },
+          "lookAt.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "1.29418 + abstime * 0.00150 + (sin(abstime * 0.8 + 2.7) * 0.5 + sin(abstime * 2.1 + 4.590) * 0.3 + sin(abstime * 4.9 + 6.210) * 0.2) * 0.00216"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.2941780790274695
+              }
+            },
+            "mode": "expression"
+          },
+          "lookAt.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.00064 + abstime * -0.00200 + (sin(abstime * 0.6 + 0.4) * 0.5 + sin(abstime * 1.5 + 0.680) * 0.3 + sin(abstime * 3.7 + 0.920) * 0.2) * 0.00144"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.0006361693027232551
+              }
+            },
+            "mode": "expression"
+          },
+          "near": 0.01,
+          "roll": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "1.50000 + abstime * -0.80000 + (sin(abstime * 0.5 + 0.9) * 0.5 + sin(abstime * 1.4 + 1.530) * 0.3 + sin(abstime * 3.3 + 2.070) * 0.2) * 1.20000"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.5
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -2700,
+          "y": -900
+        },
+        "type": "camera"
+      },
+      "cusurf": {
+        "definitionVersion": 1,
+        "id": "cusurf",
+        "label": "cusurf1",
+        "parameters": {
+          "grime": 0.35,
+          "model": "pbr",
+          "source": "// @use surface-detail\nstruct Params {\n  pitch: f32, // @default 0.0015  Pavé stone pitch, metres.\n  fire: f32, // @default 0.3  Colour of the stones' fire (0 = colourless glints).\n  crown: f32, // @default 0.62  Tilt of the main crown facets, radians.\n  shoeOrigin: vec3f, // @default 0  The shoe's own origin (heel, on the ground), world metres.\n  shoeX: vec3f, // @default 0  World direction of the shoe's +x (across, lateral).\n  shoeY: vec3f, // @default 0  World direction of the shoe's +y (heel to toe).\n  shoeZ: vec3f, // @default 0  World direction of the shoe's +z (up).\n  grime: f32, // @default 0.3  How worn the white shoe is (creases, scuffs, a yellowed sole edge).\n  wallGlow: f32, // @default 0.12  The pendant set's far wall: its own soft grey-teal glow.\n  wallCentre: vec3f, // @default 0  Where the wall's glow is brightest (world).\n  windowGlow: f32, // @default 0.06  Radiance of the warehouse's far windows (the sneaker shot's background).\n  debugView: f32, // @default 0  1 shows the pave: red = distance from the stone centre, green = resolved, blue = the facet.\n};\n\nfn classOf(s: SurfaceIn) -> u32 {\n  return u32(s.attr.z * 64.0 + 0.5);\n}\n\nfn hash3(c: vec3f, seed: u32) -> vec3f {\n  let i = vec3i(c);\n  return vec3f(unitFloat(hash3i(i, seed)), unitFloat(hash3i(i, seed + 101u)), unitFloat(hash3i(i, seed + 211u)));\n}\n\nstruct Stone {\n  f1: f32, // distance from this point to its stone's centre, in pitches\n  offset: vec3f, // from the stone's centre to this point, world metres (in the setting's plane)\n  id: vec3f,\n};\n\n// Stones are SET in rows: a hexagonal lattice (each stone jittered a little, as a setter's hand\n// does) in the plane the surface faces most — x, y or z, a triplanar choice — so a face of the\n// letter carries even rows and a curved link switches plane where its normal turns.\nfn stoneAt(w: vec3f, n: vec3f, pitch: f32) -> Stone {\n  let a = abs(n);\n  var u = vec3f(1.0, 0.0, 0.0);\n  var v = vec3f(0.0, 1.0, 0.0);\n  var face = 2.0;\n  if (a.x >= a.y && a.x >= a.z) { u = vec3f(0.0, 0.0, 1.0); v = vec3f(0.0, 1.0, 0.0); face = 0.0; }\n  else if (a.y >= a.z) { u = vec3f(1.0, 0.0, 0.0); v = vec3f(0.0, 0.0, 1.0); face = 1.0; }\n  let q = vec2f(dot(w, u), dot(w, v)) / pitch;\n  // hex lattice: rows 0.866 apart, every other row shifted half a pitch\n  let rowH = 0.8660254;\n  let row0 = floor(q.y / rowH);\n  var st: Stone;\n  st.f1 = 1e9;\n  for (var dr = -1; dr <= 2; dr = dr + 1) {\n    let row = row0 + f32(dr);\n    let shift = select(0.0, 0.5, (i32(row) & 1) == 1);\n    let col0 = floor(q.x - shift);\n    for (var dc = -1; dc <= 2; dc = dc + 1) {\n      let col = col0 + f32(dc);\n      let id = vec3f(col, row, face);\n      let jitter = (hash3(id, 17u).xy - vec2f(0.5)) * 0.12;\n      let centre = vec2f(col + shift + 0.5, (row + 0.5) * rowH) + jitter;\n      let d = q - centre;\n      let dist = length(d);\n      if (dist < st.f1) {\n        st.f1 = dist;\n        st.offset = (u * d.x + v * d.y) * pitch;\n        st.id = id;\n      }\n    }\n  }\n  return st;\n}\n\nfn pave(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  let n = normalize(s.normal);\n  // Stones smaller than about three pixels cannot be drawn: they fade to a bright satin sheen.\n  let resolved = 1.0 - smoothstep(p.pitch * 0.25, p.pitch * 0.6, s.footprint);\n  let st = stoneAt(s.world, n, p.pitch);\n  // 0 at a stone's centre, 1 at its girdle (stones of 0.92 of a pitch, varying a little)\n  let h = hash3(st.id, 53u);\n  let t = st.f1 / (0.46 * (0.94 + 0.06 * h.z));\n  // the radial direction, laid into the surface's own tangent plane\n  let flat = st.offset - n * dot(st.offset, n);\n  let radial = flat / max(length(flat), 1e-9);\n  let b1 = normalize(cross(n, normalize(vec3f(0.37, 0.81, 0.46))));\n  let b2 = cross(n, b1);\n  let turn = h.x * 6.2831853;\n  let angle = atan2(dot(radial, b2), dot(radial, b1)) - turn;\n  let sectors = 8.0;\n  let k = floor(angle / (6.2831853 / sectors));\n  // star facets sit between the main facets: half a sector round\n  let star = t < 0.55;\n  let centreAngle = (k + select(0.5, 0.0, star)) * (6.2831853 / sectors) + turn;\n  let facetDir = b1 * cos(centreAngle) + b2 * sin(centreAngle);\n  var tilt = select(p.crown, 0.36, star);\n  if (t < 0.2) { tilt = 0.0; }\n  // each stone sits a little crooked in its seat\n  let seat = normalize(n + (h - vec3f(0.5)) * 0.6);\n  var facet = normalize(seat * cos(tilt) + facetDir * sin(tilt));\n  let metal = smoothstep(0.96, 1.02, t);\n  // prongs: the metal between stones, domed into beads where three stones meet\n  let bead = smoothstep(1.02, 1.18, t) * metal;\n  facet = normalize(mix(facet, n, metal));\n  r.normal = normalize(mix(n, facet, resolved));\n  if (p.debugView > 0.5) { r.emissive = vec3f(t, resolved, fract(k / 8.0)) * 2.0; r.albedo = vec4f(0.0, 0.0, 0.0, 1.0); r.metallic = 0.0; r.roughness = 1.0; return r; }\n  // Fire: a brilliant splits white light, so each facet leans a little toward a hue.\n  let hue = unitFloat(hash3i(vec3i(st.id * 7.0 + vec3f(k)), 71u));\n  let fireTint = vec3f(0.5) + 0.5 * cos(6.2831853 * (hue + vec3f(0.0, 0.33, 0.67)));\n  let stoneColor = mix(vec3f(1.0), fireTint, p.fire * (1.0 - metal));\n  r.albedo = vec4f(mix(stoneColor, vec3f(0.95, 0.95, 0.97), metal) * mix(0.92, 1.0, resolved), 1.0);\n  // A diamond returns light from inside as well as off its facets: part mirror, part a bright\n  // white body the key lights, so the pave reads silver-white, not black glass.\n  r.metallic = mix(0.93, 1.0, metal);\n  r.roughness = mix(mix(0.012, 0.18, metal), 0.1, 1.0 - resolved) + bead * 0.05;\n  return r;\n}\n\nfn shoeLocal(s: SurfaceIn, p: Params) -> vec3f {\n  let d = s.world - p.shoeOrigin;\n  return vec3f(dot(d, p.shoeX), dot(d, p.shoeY), dot(d, p.shoeZ));\n}\n\n// A stitched seam: a row of short raised thread dashes along the line where f = 0, running\n// along the parameter u (metres). Returns the thread coverage.\nfn stitch(f: f32, u: f32, footprint: f32) -> f32 {\n  let across = smoothstep(0.00045 + footprint, 0.00015, abs(f));\n  let along = smoothstep(0.35, 0.3, abs(fract(u / 0.0036) - 0.5));\n  return across * along;\n}\n\nfn leather(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  let q = shoeLocal(s, p);\n  let lx = q.x - 0.005 * sin(3.14159 * q.y / 0.29);\n  let n = normalize(s.normal);\n  // tumbled leather: a fine pebble grain, glossier on the crowns of the pebbles\n  let grain = detailFbm(s.world * 900.0, 3, s.footprint);\n  let broad = detailFbm(s.world * 60.0, 3, s.footprint);\n  var bumpGrad = grain.gradient * 0.00028 + broad.gradient * 0.0006;\n  var albedo = vec3f(0.84, 0.84, 0.82) * (0.96 + 0.06 * broad.value);\n  var rough = 0.62 + 0.1 * grain.value;\n  // panel seams and their double stitching\n  let toeSeam = q.y - (0.212 + 18.0 * lx * lx);\n  let mudguard = q.z - (0.041 + 0.02 * smoothstep(0.2, 0.29, q.y));\n  let heelSeam = q.y - (0.082 - 0.35 * max(q.z - 0.03, 0.0));\n  let eyestay = abs(lx) - (0.034 - 0.02 * smoothstep(0.17, 0.205, q.y));\n  var thread = 0.0;\n  thread = max(thread, stitch(toeSeam - 0.0025, lx, s.footprint));\n  thread = max(thread, stitch(toeSeam - 0.0045, lx, s.footprint) * step(0.04, q.z));\n  thread = max(thread, stitch(mudguard - 0.0025, q.y, s.footprint) * step(0.07, q.y));\n  thread = max(thread, stitch(heelSeam + 0.0025, q.z, s.footprint) * step(0.03, q.z));\n  thread = max(thread, stitch(eyestay + 0.0025, q.y, s.footprint) * step(0.105, q.y) * step(q.y, 0.205) * step(0.06, q.z));\n  // the panel edges themselves: an overlay's edge is a small step with a dark crease under it\n  let edges = min(min(abs(toeSeam), abs(mudguard)), min(abs(heelSeam), select(1.0, abs(eyestay), q.y > 0.1 && q.y < 0.205 && q.z > 0.06)));\n  let edge = smoothstep(0.0009 + s.footprint, 0.0, edges);\n  albedo = albedo * (1.0 - 0.35 * edge);\n  // the perforated toe box: rows of punched holes on the vamp, ahead of the toe seam\n  let perfZone = step(0.004, toeSeam) * step(0.047, q.z) * step(abs(lx), 0.034);\n  let cellA = vec2f(lx, q.y) / 0.0048;\n  let row = floor(cellA.y);\n  let hole = length(fract(cellA + vec2f(0.5 * (row % 2.0), 0.0)) - vec2f(0.5)) * 0.0048;\n  let holeMask = smoothstep(0.00085 + s.footprint, 0.00055, hole) * perfZone;\n  albedo = mix(albedo, vec3f(0.05), holeMask);\n  rough = mix(rough, 0.95, holeMask);\n  // creases across the toe box, where the foot bends: wavy ridges, deeper in the middle\n  let flex = smoothstep(0.17, 0.2, q.y) * smoothstep(0.245, 0.215, q.y) * smoothstep(0.04, 0.06, q.z) * p.grime;\n  let wave = sin(q.y / 0.0055 * 6.2831853 + detailNoise(s.world * 80.0).value * 5.0);\n  let creaseGrad = p.shoeY * cos(q.y / 0.0055 * 6.2831853) * (6.2831853 / 0.0055) * 0.00022 * flex;\n  bumpGrad = bumpGrad + creaseGrad;\n  albedo = albedo * (1.0 - 0.07 * flex * max(-wave, 0.0));\n  // thread: off-white, raised, matte\n  albedo = mix(albedo, vec3f(0.78, 0.78, 0.75), thread);\n  rough = mix(rough, 0.7, thread);\n  r.normal = detailBump(n, bumpGrad, 1.0);\n  r.albedo = vec4f(albedo, 1.0);\n  r.roughness = rough;\n  r.metallic = 0.0;\n  return r;\n}\n\nfn sole(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  let q = shoeLocal(s, p);\n  let n = normalize(s.normal);\n  let grain = detailFbm(s.world * 500.0, 3, s.footprint);\n  var albedo = vec3f(0.82, 0.8, 0.76);\n  // the cupsole's stitch row round the upper band, and a scuffed, faintly yellowed lower edge\n  let around = atan2(q.y - 0.145, q.x * 2.4) * 0.13;\n  let thread = stitch(q.z - 0.0245, around, s.footprint);\n  albedo = mix(albedo, vec3f(0.74, 0.73, 0.7), thread);\n  let low = smoothstep(0.012, 0.0, q.z);\n  let scuff = smoothstep(0.55, 0.8, detailFbm(s.world * 140.0, 3, s.footprint).value) * low;\n  albedo = mix(albedo, vec3f(0.78, 0.72, 0.62), low * 0.5 * p.grime);\n  albedo = albedo * (1.0 - scuff * 0.35 * p.grime);\n  r.albedo = vec4f(albedo * (0.97 + 0.05 * grain.value), 1.0);\n  r.roughness = 0.72 + 0.12 * grain.value;\n  r.metallic = 0.0;\n  r.normal = detailBump(n, grain.gradient * 0.0003, 1.0);\n  return r;\n}\n\nfn lace(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  let n = normalize(s.normal);\n  // a woven flat lace: a fine herringbone of fibres\n  let weave = detailFbm(vec3f(s.world.x * 2600.0, s.world.y * 2600.0, s.world.z * 600.0), 2, s.footprint);\n  r.albedo = vec4f(vec3f(0.86, 0.86, 0.84) * (0.9 + 0.12 * weave.value), 1.0);\n  r.roughness = 0.85;\n  r.metallic = 0.0;\n  r.normal = detailBump(n, weave.gradient * 0.00008, 1.0);\n  return r;\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  switch classOf(s) {\n    case 50u: { return pave(s, p, o); }\n    case 51u: {\n      let brush = detailFbm(s.world * vec3f(4000.0, 300.0, 4000.0), 2, s.footprint);\n      o.albedo = vec4f(0.93, 0.93, 0.95, 1.0);\n      o.metallic = 1.0;\n      o.roughness = 0.05 + 0.04 * brush.value;\n      o.normal = detailBump(normalize(s.normal), brush.gradient * 0.00002, 1.0);\n    }\n    case 52u: { return leather(s, p, o); }\n    case 53u: { return sole(s, p, o); }\n    case 54u: { return lace(s, o); }\n    case 55u: {\n      // a painted wall, mottled: out of focus it is only a soft grey-teal field\n      let m = detailFbm(s.world * 3.0, 4, s.footprint);\n      o.albedo = vec4f(vec3f(0.2, 0.25, 0.25) * (0.85 + 0.3 * m.value), 1.0);\n      o.roughness = 0.9;\n      o.metallic = 0.0;\n      // lit from off frame: a broad soft pool, falling away from its centre\n      let away = length(s.world - p.wallCentre);\n      o.emissive = vec3f(0.5, 0.74, 0.74) * p.wallGlow * (0.85 + 0.3 * m.value) * exp(-away * away / 0.8);\n    }\n    case 56u: {\n      // black cotton knit: fine vertical ribs and a dull sheen\n      let rib = detailFbm(vec3f(s.world.x * 1400.0, s.world.y * 250.0, s.world.z * 1400.0), 2, s.footprint);\n      o.albedo = vec4f(vec3f(0.022, 0.022, 0.024) * (0.8 + 0.4 * rib.value), 1.0);\n      o.roughness = 0.78;\n      o.metallic = 0.0;\n      o.normal = detailBump(normalize(s.normal), rib.gradient * 0.0002, 1.0);\n    }\n    case 57u: { o.albedo = vec4f(0.05, 0.05, 0.052, 1.0); o.roughness = 0.9; o.metallic = 0.0; }\n    case 58u: {\n      // the warehouse's far windows: grimy wired glass lit from outside, a dim cold glow,\n      // uneven pane to pane, the wire mesh and the grime darker\n      let pane = floor(s.world * 1.4);\n      let h = unitFloat(hash3i(vec3i(pane), 5u));\n      let grime = detailFbm(s.world * 2.0, 4, s.footprint).value;\n      let mesh = max(smoothstep(0.93, 0.98, fract(s.world.x * 1.4 + s.world.z * 1.4)), smoothstep(0.93, 0.98, fract(s.world.y * 1.4)));\n      o.albedo = vec4f(0.0, 0.0, 0.0, 1.0);\n      o.emissive = vec3f(0.62, 0.74, 0.8) * p.windowGlow * (0.35 + 0.65 * h) * (0.6 + 0.6 * grime) * (1.0 - 0.8 * mesh);\n      o.roughness = 1.0;\n      o.metallic = 0.0;\n    }\n    default: {}\n  }\n  return o;\n}",
+          "wallCentre": [
+            58,
+            1.3999999523162843,
+            -1.6
+          ],
+          "wallGlow": 0.13,
+          "windowGlow": 0.07
+        },
+        "position": {
+          "x": -3000,
+          "y": -700
+        },
+        "type": "materialWgsl"
+      },
+      "dof": {
+        "definitionVersion": 1,
+        "id": "dof",
+        "label": "dof1",
+        "parameters": {
+          "aim": [
+            60.0007951629137,
+            1.2941780790274695,
+            0.0006361693027232551
+          ],
+          "aim.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 60.0007951629137
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.2941780790274695
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.0006361693027232551
+              }
+            },
+            "mode": "expression"
+          },
+          "eye": [
+            60.25,
+            1.3499999046325684,
+            0.20000000298023224
+          ],
+          "eye.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 60.25
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.3499999046325684
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.20000000298023224
+              }
+            },
+            "mode": "expression"
+          },
+          "far": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.far"
+              },
+              "static": {
+                "kind": "static",
+                "value": 200
+              }
+            },
+            "mode": "expression"
+          },
+          "focal": 100,
+          "focus": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.29598 + clamp(abstime / 2.5, 0, 1) * 0.035"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.29598312489957174
+              }
+            },
+            "mode": "expression"
+          },
+          "fov": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.fov"
+              },
+              "static": {
+                "kind": "static",
+                "value": 8.770574065900902
+              }
+            },
+            "mode": "expression"
+          },
+          "fstop": 2.8,
+          "maxCoc": 0.1,
+          "roll": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.roll"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "source": "struct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  focal: f32, // @default 50  Focal length, millimetres (36 mm-wide sensor).\n  fstop: f32, // @default 2.8  Aperture, f-number.\n  focus: f32, // @default 1  Focus distance, metres (view-plane distance).\n  maxCoc: f32, // @default 0.05  Largest disc RADIUS gathered, fraction of the frame width.\n  catEye: f32, // @default 0.45  Optical vignetting: how far the second disc slides at the frame's corner (fraction of the disc).\n  fringe: f32, // @default 0.08  Longitudinal CA: red and blue discs differ by this share of the radius.\n  rim: f32, // @default 0.35  Brighter rim on each disc (a spherical-aberration \"soap bubble\").\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\n// Signed circle-of-confusion RADIUS, as a fraction of the frame width: + behind focus, − in front.\nfn cocAt(z: f32) -> f32 {\n  let f = params.focal * 0.001;\n  let s = max(params.focus, f * 1.01);\n  let zz = select(params.far, z, z > 0.0);\n  let c = (f * f / params.fstop) * (zz - s) / (max(zz, 1e-3) * (s - f));\n  return clamp(c / 0.036 * 0.5, -params.maxCoc, params.maxCoc);\n}\n\nconst TAPS: u32 = 160u;\n\nfn ign(p: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(p, vec2f(0.06711056, 0.00583715))));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let size = vec2f(textureDimensions(inputTexture));\n  let aspect = size.x / size.y;\n  let centre = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let z0 = viewDepth(uv);\n  let zc = select(params.far, z0, z0 > 0.0);\n  let c0 = cocAt(z0);\n  let r0 = abs(c0) * size.x;\n  let reach = params.maxCoc * size.x;\n  // where this pixel sits in the frame, for the cat's eye (0 at the centre, ~1 at the corners)\n  let place = (uv - vec2f(0.5)) * vec2f(aspect, 1.0) / (0.5 * sqrt(aspect * aspect + 1.0));\n  let noise = ign(uv * size + vec2f(frameU.absFrame * 7.13, frameU.absFrame * 3.71));\n  let spin = noise * 6.2831853;\n  // the centre pixel: its own area-weight\n  let wc = 1.0 / max(r0 * r0, 1.0);\n  var sum = centre.rgb * wc;\n  var norm = vec3f(wc);\n  for (var i = 0u; i < TAPS; i = i + 1u) {\n    let fi = f32(i) + fract(noise * 13.7 + f32(i) * 0.618034);\n    let d = sqrt(fi / f32(TAPS)) * reach;\n    let a = f32(i) * 2.39996323 + spin;\n    let o = vec2f(cos(a), sin(a)) * d;\n    let tuv = uv + o / size;\n    if (any(tuv < vec2f(0.0)) || any(tuv > vec2f(1.0))) { continue; }\n    let zt = viewDepth(tuv);\n    let ztc = select(params.far, zt, zt > 0.0);\n    let ct = cocAt(zt);\n    var rt = abs(ct) * size.x;\n    // a sample behind this pixel may not spread past this pixel's own disc\n    if (ztc > zc) { rt = min(rt, max(r0, 0.0)); }\n    let rr = max(rt, 0.75);\n    // the disc's shape: a circle cut by a second one slid toward the frame centre (cat's eye)\n    let q = o / rr;\n    let slid = q + place * params.catEye;\n    let inside2 = smoothstep(1.0 + 1.5 / rr, 1.0 - 1.5 / rr, length(slid));\n    // longitudinal CA: behind focus red spreads wider than blue, in front the other way\n    let s = sign(ct) * params.fringe;\n    let rim = 1.0 + params.rim * smoothstep(0.6, 1.0, d / rr);\n    let covR = clamp(rr * (1.0 + s) - d + 0.5, 0.0, 1.0);\n    let covG = clamp(rr - d + 0.5, 0.0, 1.0);\n    let covB = clamp(rr * (1.0 - s) - d + 0.5, 0.0, 1.0);\n    let area = 1.0 / max(rr * rr, 1.0);\n    let w = vec3f(covR, covG, covB) * area * inside2 * rim;\n    let col = textureSampleLevel(inputTexture, inputSampler, tuv, 0.0).rgb;\n    sum = sum + col * w;\n    norm = norm + w;\n  }\n  return vec4f(sum / max(norm, vec3f(1e-6)), centre.a);\n}"
+        },
+        "position": {
+          "x": -1500,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgslMulti"
+      },
+      "dofFill": {
+        "definitionVersion": 1,
+        "id": "dofFill",
+        "label": "doffill1",
+        "parameters": {
+          "aim": [
+            60.0007951629137,
+            1.2941780790274695,
+            0.0006361693027232551
+          ],
+          "aim.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 60.0007951629137
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.2941780790274695
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.0006361693027232551
+              }
+            },
+            "mode": "expression"
+          },
+          "eye": [
+            60.25,
+            1.3499999046325684,
+            0.20000000298023224
+          ],
+          "eye.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 60.25
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.3499999046325684
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.20000000298023224
+              }
+            },
+            "mode": "expression"
+          },
+          "far": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.far"
+              },
+              "static": {
+                "kind": "static",
+                "value": 200
+              }
+            },
+            "mode": "expression"
+          },
+          "focal": 100,
+          "focus": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.29598 + clamp(abstime / 2.5, 0, 1) * 0.035"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.29598312489957174
+              }
+            },
+            "mode": "expression"
+          },
+          "fov": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.fov"
+              },
+              "static": {
+                "kind": "static",
+                "value": 8.770574065900902
+              }
+            },
+            "mode": "expression"
+          },
+          "fstop": 2.8,
+          "maxCoc": 0.1,
+          "roll": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.roll"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "source": "struct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  focal: f32, // @default 50  Focal length, millimetres (36 mm-wide sensor).\n  fstop: f32, // @default 2.8  Aperture, f-number.\n  focus: f32, // @default 1  Focus distance, metres (view-plane distance).\n  maxCoc: f32, // @default 0.05  Largest disc RADIUS gathered, fraction of the frame width.\n  spacing: f32, // @default 0.22  Fill radius as a share of the pixel's disc radius.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\n// Signed circle-of-confusion RADIUS, as a fraction of the frame width: + behind focus, − in front.\nfn cocAt(z: f32) -> f32 {\n  let f = params.focal * 0.001;\n  let s = max(params.focus, f * 1.01);\n  let zz = select(params.far, z, z > 0.0);\n  let c = (f * f / params.fstop) * (zz - s) / (max(zz, 1e-3) * (s - f));\n  return clamp(c / 0.036 * 0.5, -params.maxCoc, params.maxCoc);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let size = vec2f(textureDimensions(inputTexture));\n  let centre = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let r = abs(cocAt(viewDepth(uv))) * size.x * params.spacing;\n  if (r < 0.75) { return centre; }\n  var sum = centre.rgb;\n  var norm = 1.0;\n  for (var i = 1u; i < 24u; i = i + 1u) {\n    let d = sqrt(f32(i) / 24.0) * r;\n    let a = f32(i) * 2.39996323;\n    let tuv = uv + vec2f(cos(a), sin(a)) * d / size;\n    let w = 1.0 - d / (r + 1.0);\n    sum = sum + textureSampleLevel(inputTexture, inputSampler, tuv, 0.0).rgb * w;\n    norm = norm + w;\n  }\n  return vec4f(sum / norm, centre.a);\n}"
+        },
+        "position": {
+          "x": -1400,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgslMulti"
+      },
+      "env": {
+        "definitionVersion": 1,
+        "id": "env",
+        "label": "env1",
+        "parameters": {
+          "cards": 220,
+          "count": 70,
+          "points": 150,
+          "room": 0.6,
+          "roomTurn": 0.3,
+          "size": 0.005,
+          "softbox": 3,
+          "source": "struct Params {\n  softbox: f32, // @default 3  Radiance of the overhead soft box.\n  strip: f32, // @default 6  Radiance of the strip light.\n  points: f32, // @default 40  Radiance of the small sources.\n  count: f32, // @default 90  How many small sources.\n  size: f32, // @default 0.012  Angular radius of a small source, radians.\n  ambient: f32, // @default 0.01  The dark room.\n  surround: f32, // @default 1.5  Radiance of the white cards round the lens (what a stone facing the lens returns).\n  toward: vec3f, // @default 0  Direction from the subject to the lens (world); the cards gather round it.\n  cards: f32, // @default 14  How many cards.\n  room: f32, // @default 0  Gain of a real room under it all: the input read as an RGBM-packed HDRI (0 ignores the input).\n  roomTurn: f32, // @default 0  The room's rotation about the vertical, fraction of a revolution.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn h1(i: f32) -> f32 {\n  return fract(sin(i * 127.1 + 311.7) * 43758.5453);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let roomTexel = textureSampleLevel(inputTexture, inputSampler, vec2f(fract(uv.x + params.roomTurn), uv.y), 0.0);\n  let unused = roomTexel.a * 0.0;\n  let phi = (uv.x - 0.5) * 6.2831853;\n  let theta = uv.y * 3.1415927;\n  let d = vec3f(sin(theta) * sin(phi), cos(theta), -sin(theta) * cos(phi));\n  var c = vec3f(params.ambient) * (0.6 + 0.4 * d.y);\n  // a real room (RGBM, range 16), desaturated toward steel: the broad shapes a metal face mirrors\n  let roomRgb = roomTexel.rgb * roomTexel.a * 16.0;\n  c = c + mix(roomRgb, vec3f(dot(roomRgb, vec3f(0.2126, 0.7152, 0.0722))), 0.7) * params.room;\n  // White cards round the lens, with black between them (a jeweller's tent, torn): a facet\n  // either returns a card or the black, so the pave reads as hard black-and-white sparkle.\n  let fwd = normalize(params.toward + vec3f(1e-4));\n  let side = normalize(cross(fwd, vec3f(0.0, 1.0, 0.0)));\n  let upv = cross(side, fwd);\n  let local = vec3f(dot(d, side), dot(d, upv), dot(d, fwd));\n  if (local.z > 0.05) {\n    let q = local.xy / local.z;\n    for (var i = 0.0; i < params.cards; i = i + 1.0) {\n      let centre = vec2f(h1(i + 3.3) - 0.5, h1(i + 7.9) - 0.5) * 6.5;\n      let halfSize = vec2f(0.05 + 0.22 * h1(i + 11.1), 0.04 + 0.3 * h1(i + 13.7));\n      let e = abs(q - centre) - halfSize;\n      let inside = 1.0 - smoothstep(-0.02, 0.0, max(e.x, e.y));\n      c = c + vec3f(0.96, 0.98, 1.0) * params.surround * (0.4 + 0.6 * h1(i + 19.3)) * inside;\n    }\n    // straight back at the lens: the operator and the camera, dim grey, never pure black\n    c = c + vec3f(0.3) * params.surround * 0.25 * smoothstep(0.5, 0.15, length(q));\n  }\n  // the overhead soft box: a rounded rectangle up and a little behind the lens\n  let box = smoothstep(0.35, 0.28, abs(d.x - 0.1)) * smoothstep(0.25, 0.18, abs(d.z + 0.25)) * step(0.5, d.y);\n  c = c + vec3f(0.95, 0.97, 1.0) * params.softbox * box;\n  // a tall strip to the right: cool\n  let az = atan2(d.x, -d.z);\n  let strip = smoothstep(0.06, 0.03, abs(az - 1.1)) * smoothstep(0.75, 0.6, abs(d.y - 0.1));\n  c = c + vec3f(0.85, 0.95, 1.0) * params.strip * strip;\n  // small hard sources, scattered over the sphere; a few warm, a few cyan\n  for (var i = 0.0; i < params.count; i = i + 1.0) {\n    let u = h1(i) * 2.0 - 1.0;\n    let a = h1(i + 17.3) * 6.2831853;\n    let p = vec3f(sqrt(1.0 - u * u) * cos(a), u * 0.8 + 0.1, sqrt(1.0 - u * u) * sin(a));\n    let k = dot(d, normalize(p));\n    let spot = smoothstep(cos(params.size), cos(params.size * 0.5), k);\n    let kind = h1(i + 5.1);\n    let tint = select(select(vec3f(1.0, 0.98, 0.95), vec3f(1.0, 0.55, 0.22), kind < 0.18), vec3f(0.45, 0.9, 1.0), kind > 0.85);\n    c = c + tint * params.points * spot * (0.4 + 0.6 * h1(i + 9.7));\n  }\n  return vec4f(c + vec3f(unused), 1.0);\n}",
+          "strip": 6,
+          "surround": 0.5,
+          "toward": [
+            0.35,
+            0.1,
+            1
+          ]
+        },
+        "position": {
+          "x": -2700,
+          "y": 500
+        },
+        "resolution": {
+          "height": 1024,
+          "mode": "fixed",
+          "width": 2048
+        },
+        "type": "customWgsl"
+      },
+      "envSeed": {
+        "definitionVersion": 2,
+        "id": "envSeed",
+        "label": "envseed1",
+        "parameters": {},
+        "position": {
+          "x": -2700,
+          "y": 300
+        },
+        "resolution": {
+          "height": 512,
+          "mode": "fixed",
+          "width": 1024
+        },
+        "type": "ramp"
+      },
+      "geo_pend": {
+        "definitionVersion": 1,
+        "id": "geo_pend",
+        "label": "geopend1",
+        "parameters": {
+          "material": "cusurf1",
+          "mode": "surface"
+        },
+        "position": {
+          "x": -3200,
+          "y": 0
+        },
+        "type": "geometry"
+      },
+      "grade": {
+        "definitionVersion": 1,
+        "id": "grade",
+        "label": "grade1",
+        "parameters": {
+          "black": 0.03,
+          "bleach": 0.3,
+          "contrast": 1.2,
+          "exposure": -0.1,
+          "grain": 0.04,
+          "grainSize": 1.3,
+          "highlightTint": [
+            0.97,
+            1.01,
+            1.03,
+            1
+          ],
+          "keepWarm": 0.9,
+          "saturation": 0.7,
+          "shadowTint": [
+            0.94,
+            1.02,
+            1.05,
+            1
+          ],
+          "split": 0.5
+        },
+        "position": {
+          "x": -100,
+          "y": 0
+        },
+        "type": "filmGrade"
+      },
+      "hdri": {
+        "definitionVersion": 1,
+        "id": "hdri",
+        "label": "hdri1",
+        "parameters": {
+          "file": "media/on-nothing/hdri.png"
+        },
+        "position": {
+          "x": -2900,
+          "y": 700
+        },
+        "resolution": {
+          "height": 1024,
+          "mode": "fixed",
+          "width": 2048
+        },
+        "type": "movieFileIn"
+      },
+      "hotSoft": {
+        "definitionVersion": 1,
+        "id": "hotSoft",
+        "label": "hotsoft1",
+        "parameters": {
+          "clampLuma": 0,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -1200,
+          "y": 700
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "hotSofter": {
+        "definitionVersion": 1,
+        "id": "hotSofter",
+        "label": "hotsofter1",
+        "parameters": {
+          "clampLuma": 0,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -1100,
+          "y": 700
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "hotSoftest": {
+        "definitionVersion": 1,
+        "id": "hotSoftest",
+        "label": "hotsoftest1",
+        "parameters": {
+          "clampLuma": 0,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -1000,
+          "y": 700
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "hotStreak": {
+        "definitionVersion": 1,
+        "id": "hotStreak",
+        "label": "hotstreak1",
+        "parameters": {
+          "knee": 1.7999999999999998,
+          "source": "struct Params {\n  threshold: f32, // @default 1.2  Linear radiance where bloom starts.\n  knee: f32, // @default 0.8  Softness of the threshold.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n  let brightness = max(color.r, max(color.g, color.b));\n  let soft = clamp(brightness - params.threshold + params.knee, 0.0, 2.0 * params.knee);\n  let weight = max(soft * soft / (4.0 * params.knee + 1e-4), brightness - params.threshold) / max(brightness, 1e-4);\n  return vec4f(color * weight, 1.0);\n}",
+          "threshold": 6
+        },
+        "position": {
+          "x": -1300,
+          "y": 700
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "key": {
+        "definitionVersion": 1,
+        "id": "key",
+        "label": "key1",
+        "parameters": {
+          "color": [
+            0.9,
+            0.95,
+            1,
+            1
+          ],
+          "intensity": 0.35,
+          "kind": "point",
+          "position": [
+            59.78,
+            1.6199999523162842,
+            0.3
+          ]
+        },
+        "position": {
+          "x": -2600,
+          "y": 1000
+        },
+        "type": "light"
+      },
+      "kick": {
+        "definitionVersion": 1,
+        "id": "kick",
+        "label": "kick1",
+        "parameters": {
+          "color": [
+            0.35,
+            0.85,
+            1,
+            1
+          ],
+          "intensity": 0.08,
+          "kind": "point",
+          "position": [
+            59.7,
+            1.1199999523162842,
+            0.12
+          ]
+        },
+        "position": {
+          "x": -2600,
+          "y": 1200
+        },
+        "type": "light"
+      },
+      "lens": {
+        "definitionVersion": 1,
+        "id": "lens",
+        "label": "lens1",
+        "parameters": {
+          "aberration": 0.002,
+          "distortion": 0.02,
+          "edgeBlur": 0.01,
+          "swirl": 0.3,
+          "vignette": 0.75,
+          "vignetteRound": 0.8
+        },
+        "position": {
+          "x": -300,
+          "y": 0
+        },
+        "type": "lens"
+      },
+      "mesh_pend": {
+        "definitionVersion": 1,
+        "id": "mesh_pend",
+        "label": "meshpend1",
+        "parameters": {
+          "file": "media/on-nothing/on-nothing.glb",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
+          "select": "pend.*",
+          "triangles": 78062,
+          "vertices": 48632
+        },
+        "position": {
+          "x": -3600,
+          "y": 0
+        },
+        "type": "meshFileIn"
+      },
+      "occlusion": {
+        "definitionVersion": 1,
+        "id": "occlusion",
+        "label": "occlusion1",
+        "parameters": {
+          "aim": [
+            60.0007951629137,
+            1.2941780790274695,
+            0.0006361693027232551
+          ],
+          "aim.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 60.0007951629137
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.2941780790274695
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.0006361693027232551
+              }
+            },
+            "mode": "expression"
+          },
+          "eye": [
+            60.25,
+            1.3499999046325684,
+            0.20000000298023224
+          ],
+          "eye.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 60.25
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.3499999046325684
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.20000000298023224
+              }
+            },
+            "mode": "expression"
+          },
+          "far": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.far"
+              },
+              "static": {
+                "kind": "static",
+                "value": 200
+              }
+            },
+            "mode": "expression"
+          },
+          "fov": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.fov"
+              },
+              "static": {
+                "kind": "static",
+                "value": 8.770574065900902
+              }
+            },
+            "mode": "expression"
+          },
+          "radius": 0.006,
+          "roll": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.roll"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "source": "struct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  radius: f32, // @default 1.2  World radius of the occlusion search, metres.\n  strength: f32, // @default 0.75  How much of the occlusion darkens the frame.\n  power: f32, // @default 1.4  Contrast of the occlusion.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n@group(0) @binding(5) var inputTexture2: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\nconst DIRECTIONS: u32 = 8u;\nconst STEPS: u32 = 6u;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let v = makeView();\n  let z = viewDepth(uv);\n  let encoded = textureLoad(inputTexture2, depthTexel(uv), 0);\n  if (z < 0.0 || encoded.a <= 0.0) { return color; }\n  let n = normalize(encoded.rgb * 2.0 - 1.0);\n  let p = worldAt(v, uv, z);\n  let helper = select(vec3f(0.0, 1.0, 0.0), vec3f(1.0, 0.0, 0.0), abs(n.y) > 0.9);\n  let t = normalize(cross(n, helper));\n  let b = cross(n, t);\n  let spin = ignHash(uv * frameU.resolution) * 6.2831853;\n  var occlusion = 0.0;\n  for (var i = 0u; i < DIRECTIONS; i = i + 1u) {\n    let angle = spin + f32(i) * 6.2831853 / f32(DIRECTIONS);\n    let dir = t * cos(angle) + b * sin(angle);\n    var best = 0.0;\n    for (var s = 1u; s <= STEPS; s = s + 1u) {\n      let distance = params.radius * (f32(s) / f32(STEPS)) * (f32(s) / f32(STEPS));\n      let probe = project(v, p + dir * distance);\n      if (probe.z <= 0.0 || any(probe.xy < vec2f(0.0)) || any(probe.xy > vec2f(1.0))) { break; }\n      let sz = viewDepth(probe.xy);\n      if (sz < 0.0) { continue; }\n      let sp = worldAt(v, probe.xy, sz);\n      let toSample = sp - p;\n      let length2 = dot(toSample, toSample);\n      let elevation = dot(n, toSample) * inverseSqrt(max(length2, 1e-6));\n      let falloff = 1.0 - smoothstep(params.radius * params.radius * 0.5, params.radius * params.radius * 2.0, length2);\n      best = max(best, (elevation - 0.08) * falloff);\n    }\n    occlusion = occlusion + clamp(best, 0.0, 1.0);\n  }\n  let ao = pow(clamp(1.0 - occlusion / f32(DIRECTIONS), 0.0, 1.0), params.power);\n  return vec4f(color.rgb * mix(1.0, ao, params.strength), color.a);\n}",
+          "strength": 0.7
+        },
+        "position": {
+          "x": -1900,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgslMulti"
+      },
+      "out": {
+        "definitionVersion": 1,
+        "id": "out",
+        "label": "out1",
+        "parameters": {
+          "toneMap": "none"
+        },
+        "position": {
+          "x": 700,
+          "y": 0
+        },
+        "type": "output"
+      },
+      "rim": {
+        "definitionVersion": 1,
+        "id": "rim",
+        "label": "rim1",
+        "parameters": {
+          "color": [
+            1,
+            0.52,
+            0.2,
+            1
+          ],
+          "intensity": 0.22,
+          "kind": "point",
+          "position": [
+            60.28,
+            1.4199999523162843,
+            -0.2
+          ]
+        },
+        "position": {
+          "x": -2600,
+          "y": 1100
+        },
+        "type": "light"
+      },
+      "shot": {
+        "definitionVersion": 1,
+        "id": "shot",
+        "label": "shot1",
+        "parameters": {
+          "albedoOutput": true,
+          "ambientColor": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "ambientIntensity": 0,
+          "antialias": "msaa",
+          "background": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "camera": "cam1",
+          "depthOutput": true,
+          "environmentIntensity": 1,
+          "environmentTaps": 16,
+          "lights": "key1 rim1 kick1",
+          "normalOutput": true,
+          "projectors": "",
+          "scenes": "geopend1"
+        },
+        "position": {
+          "x": -2400,
+          "y": 0
+        },
+        "type": "render"
+      },
+      "streak": {
+        "definitionVersion": 1,
+        "id": "streak",
+        "label": "streak1",
+        "parameters": {
+          "angle": 0,
+          "falloff": 1.4,
+          "gain": 0.5,
+          "knee": 0.8,
+          "length": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.08 + (0.15 - 0.08) * clamp(abstime / 2.5, 0, 1)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.08
+              }
+            },
+            "mode": "expression"
+          },
+          "spread": 0.002,
+          "striation": 0.3,
+          "striationScale": 120,
+          "tail": 0.04,
+          "threshold": 6,
+          "tint": [
+            0.92,
+            0.98,
+            1,
+            1
+          ]
+        },
+        "position": {
+          "x": -1200,
+          "y": 0
+        },
+        "type": "streak"
+      }
+    },
+    "revision": 1
+  },
+  "name": "On Nothing · pendant",
+  "projectId": "project-on-nothing-pendant",
+  "schemaVersion": 4,
+  "settings": {
+    "limits": {
+      "maxBufferBytes": 268435456,
+      "maxDispatch": 65535,
+      "maxResolution": 4096,
+      "memoryBudgetBytes": 3221225472
+    },
+    "outputResolution": {
+      "height": 818,
+      "width": 1920
+    },
+    "previewFps": 30,
+    "previewLongEdge": 192,
+    "randomSeed": 7,
+    "workingFormat": "rgba16float"
+  },
+  "updatedAt": "2026-09-27T00:00:00.000Z"
+}
