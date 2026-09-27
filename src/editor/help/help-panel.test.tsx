@@ -402,7 +402,7 @@ describe("ExpressionHelp (T201)", () => {
       const name = signature.slice(0, signature.indexOf("("));
       expect(name).not.toBe("");
       const arity = signature === `${name}()` ? 0 : signature.split(",").length;
-      const call = `${name}(${Array.from({ length: arity }, () => "1").join(", ")})`;
+      const call = `${name}(${Array.from({ length: arity }, (_, index) => String(index + 1)).join(", ")})`;
       expect(evaluateExpression(call).ok, call).toBe(true);
     }
   });

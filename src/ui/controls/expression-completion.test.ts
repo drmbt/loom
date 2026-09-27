@@ -123,7 +123,7 @@ describe("completionAt", () => {
       const signature = candidate.detail ?? "";
       expect(signature.startsWith(`${candidate.text}(`), signature).toBe(true);
       const arity = signature === `${candidate.text}()` ? 0 : signature.split(",").length;
-      const call = `${candidate.text}(${Array.from({ length: arity }, () => "1").join(", ")})`;
+      const call = `${candidate.text}(${Array.from({ length: arity }, (_, index) => String(index + 1)).join(", ")})`;
       expect(evaluateExpression(call).ok, call).toBe(true);
     }
   });

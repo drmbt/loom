@@ -82,17 +82,23 @@ export type NodeReferenceReader = (
  * below earns its place by one of two tests:
  *
  *  - the arithmetic grammar CANNOT express it (`sin`, `cos`, `min`, `max`, `floor`,
- *    `ceil`, `round`, `sign` — no series here; comparisons joined the GRAMMAR in T628); or
+ *    `ceil`, `round`, `sign` — no series here; comparisons joined the GRAMMAR in T628;
+ *    `atan2` joined in T1420b: there is no inverse trig to build it from, and it is the
+ *    angle of a position, finite for every input); or
  *  - it is the CORRECT form of something the arithmetic form gets subtly wrong
  *    (`clamp` is what a bounded parameter does to you silently, said out loud; `mod` is a
  *    true modulo where `%` is a remainder that goes negative below zero; `fract` is the
- *    0..1 phase `x % 1` only appears to be).
+ *    0..1 phase `x % 1` only appears to be; T1420b: `exp` is the `e ^ x` a typed-in
+ *    `2.718 ^ x` only approximates, and `smoothstep` is the eased ramp whose arithmetic
+ *    form repeats one clamped term, `t ^ 2 * (3 - 2 * t)`, where a typo in either copy
+ *    still evaluates — the On Nothing shots (§T1400b) spelled it out in two helpers).
  *
  * Names that fail both tests stay out, and the rejection message lists what is in, so
  * typing one teaches the boundary instead of just failing. `sqrt` is `x ^ 0.5`; `mix` is
  * `a + (b - a) * t`; `hypot` and `pow` are the same story. `tan`, `log`, `asin` and
  * friends are excluded for a second reason as well: each has inputs where it returns a
- * non-finite number, and this evaluator's contract is a finite one.
+ * non-finite number, and this evaluator's contract is a finite one — `exp` is let in
+ * because its one such input, an overflow above ~709, is refused by name.
  *
  * ## Cost
  *
@@ -116,6 +122,8 @@ function nth(args: readonly number[], index: number): number {
 
 const FUNCTIONS: Readonly<Record<string, FunctionSpec>> = {
   abs: { params: ["x"], apply: (a) => Math.abs(nth(a, 0)) },
+  /** The angle of (x, y) in radians, -π..π, quadrant included — what `y / x` loses. */
+  atan2: { params: ["y", "x"], apply: (a) => Math.atan2(nth(a, 0), nth(a, 1)) },
   ceil: { params: ["x"], apply: (a) => Math.ceil(nth(a, 0)) },
   clamp: {
     params: ["x", "low", "high"],
@@ -128,6 +136,16 @@ const FUNCTIONS: Readonly<Record<string, FunctionSpec>> = {
     },
   },
   cos: { params: ["x"], apply: (a) => Math.cos(nth(a, 0)) },
+  exp: {
+    params: ["x"],
+    apply: (a) => {
+      const value = Math.exp(nth(a, 0));
+      // Refused HERE, by name, rather than as the generic "not a finite number" at the end:
+      // an intermediate Infinity can also cancel into a finite number that means nothing.
+      if (!Number.isFinite(value)) fail(`exp(): exp(${nth(a, 0)}) overflows`);
+      return value;
+    },
+  },
   floor: { params: ["x"], apply: (a) => Math.floor(nth(a, 0)) },
   /** The 0..1 phase. `x % 1` is negative for negative x; this never is. */
   fract: { params: ["x"], apply: (a) => nth(a, 0) - Math.floor(nth(a, 0)) },
@@ -145,6 +163,21 @@ const FUNCTIONS: Readonly<Record<string, FunctionSpec>> = {
   round: { params: ["x"], apply: (a) => Math.round(nth(a, 0)) },
   sign: { params: ["x"], apply: (a) => Math.sign(nth(a, 0)) },
   sin: { params: ["x"], apply: (a) => Math.sin(nth(a, 0)) },
+  /**
+   * WGSL's `smoothstep`, so a shader's easing reads the same in the knob beside it: 0 at
+   * `low`, 1 at `high`, Hermite-eased between. `low > high` is the falling ramp the formula
+   * gives (`smoothstep(1, 0, x)` fades out — an idiom, not a typo). Equal edges are refused:
+   * the ramp has no width, and which side of the step `x == low` lands on is a guess.
+   */
+  smoothstep: {
+    params: ["low", "high", "x"],
+    apply: (a) => {
+      const [low, high, x] = [nth(a, 0), nth(a, 1), nth(a, 2)];
+      if (low === high) fail(`smoothstep(): the edges are equal (${low}), so the ramp has no width`);
+      const t = Math.min(Math.max((x - low) / (high - low), 0), 1);
+      return t * t * (3 - 2 * t);
+    },
+  },
 };
 
 /** Every function name the grammar accepts, sorted. The evaluator's own statement (§V150). */

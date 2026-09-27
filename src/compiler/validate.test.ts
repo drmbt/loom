@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { validateGraph, validateRequiredInputs } from "./validate.ts";
 import { CompilerDiagnosticCode } from "./diagnostics.ts";
 import { createCompilerTestRegistry, testEdge, testGraph, testNode } from "./test-support.ts";
+import { allNodeDefinitions } from "../nodes/definitions/index.ts";
+import { createNodeRegistry } from "../nodes/registry/registry.ts";
 
 const registry = createCompilerTestRegistry().view();
 
@@ -109,5 +111,75 @@ describe("validateGraph — connections (§V13, §V14)", () => {
     expect(reported).toHaveLength(1);
     expect(reported[0]?.code).toBe(CompilerDiagnosticCode.inputMissing);
     expect(reported[0]?.nodeId).toBe("blur");
+  });
+});
+
+/**
+ * §B231 — the resolver's per-COMPONENT verdicts reach the compile's diagnostics.
+ *
+ * A compound written per component (`place.x`, §V113) resolves each component slot on its
+ * own, and each carries its own diagnostic. The compile read only the bare key's, so an
+ * unknown function in `place.x` fell back to §V108's retained value with nothing said,
+ * while the identical mistake on a scalar knob was reported. The shipped node types, not
+ * the test registry: the reported knob was a Point Kernel's reflected `vec3f`, and the
+ * stock half (a Camera's `lookAt`) is the same key shape through a declared schema.
+ * The Dawn half — the render itself holding the value — is in
+ * `src/tests/headless/component-expression.gpu.test.ts`.
+ */
+describe("validateGraph — per-component expressions (§B231)", () => {
+  const shipped = createNodeRegistry(allNodeDefinitions).view();
+  const KERNEL = [
+    "struct Params {",
+    "  place: vec3f,",
+    "}",
+    "fn process(p: Point, ctx: PointCtx) -> Point { var q = p; q.position = q.position + ctx.params.place; return q; }",
+  ].join("\n");
+  const slot = (source: string, retained: number) => ({
+    mode: "expression" as const,
+    bindings: {
+      static: { kind: "static" as const, value: retained },
+      expression: { kind: "expression" as const, source },
+    },
+  });
+  const expressionDiagnostics = (result: ReturnType<typeof validateGraph>) =>
+    result.diagnostics.filter((d) => d.code === "parameter.expression");
+
+  it("reports an unknown function on a reflected kernel component, naming node, key and function", () => {
+    const graph = testGraph([
+      testNode("k", "pointKernel", {
+        parameters: { kernel: KERNEL, place: [1, 2, 3], "place.x": slot("saturate(abstime)", 0.25) },
+      }),
+    ]);
+    const result = validateGraph(graph, shipped);
+    const [reported, ...rest] = expressionDiagnostics(result);
+    expect(rest).toEqual([]);
+    expect(reported?.nodeId).toBe("k");
+    expect(reported?.message).toContain('"place.x"');
+    expect(reported?.message).toContain('unknown function "saturate"');
+    // What the kernel is handed: the retained x, the bare key's y and z.
+    expect(result.nodes.get("k")?.parameters["place"]).toEqual([0.25, 2, 3]);
+  });
+
+  it("reports an evaluation failure on a stock compound's component the same way", () => {
+    const graph = testGraph([
+      testNode("cam", "camera", { parameters: { "lookAt.y": slot("mod(abstime, 0)", 0.5) } }),
+    ]);
+    const [reported, ...rest] = expressionDiagnostics(validateGraph(graph, shipped));
+    expect(rest).toEqual([]);
+    expect(reported?.nodeId).toBe("cam");
+    expect(reported?.message).toContain('"lookAt.y"');
+    expect(reported?.message).toContain("mod(): the period is zero");
+  });
+
+  it("stays silent on a valid component expression, whose value is the one handed on", () => {
+    const graph = testGraph([
+      testNode("k", "pointKernel", {
+        parameters: { kernel: KERNEL, place: [1, 2, 3], "place.x": slot("clamp(7, 0, 5) + abstime", 0.25) },
+      }),
+    ]);
+    const result = validateGraph(graph, shipped);
+    expect(result.diagnostics.filter((d) => d.nodeId === "k" && d.code.startsWith("parameter."))).toEqual([]);
+    // `abstime` is 0 in the frameless compile (§V44's zero frame): 5, not the retained 0.25.
+    expect(result.nodes.get("k")?.parameters["place"]).toEqual([5, 2, 3]);
   });
 });

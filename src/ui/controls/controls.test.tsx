@@ -590,11 +590,11 @@ describe("expression grammar refusals teach the boundary (T370)", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Rotate" }));
     const field = screen.getByRole("textbox", { name: /rotate expression/i });
-    fireEvent.change(field, { target: { value: "smoothstep(0, 1, time)" } });
+    fireEvent.change(field, { target: { value: "saturate(time)" } });
     fireEvent.keyDown(field, { key: "Enter" });
 
     const status = screen.getByRole("status");
-    expect(status.textContent).toContain("smoothstep");
+    expect(status.textContent).toContain("saturate");
     for (const name of ["clamp", "mod", "sin"]) expect(status.textContent).toContain(name);
   });
 

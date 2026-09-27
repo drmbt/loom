@@ -9,6 +9,7 @@ import {
   parseExpression,
   scopeFromFrame,
 } from "./evaluate.ts";
+import { acceptedFunctionCalls } from "./reference.ts";
 
 /**
  * T108, §V71: the single expression engine — deterministic, sandboxed by construction,
@@ -150,12 +151,13 @@ describe("the function whitelist", () => {
   });
 
   it("names the whole whitelist when a function is not in it (§V288)", () => {
-    // The teaching moment. `smoothstep` is a reasonable thing to try, and the answer has
-    // to be more useful than "no" — it has to say what the grammar IS.
-    const result = parseExpression("smoothstep(0, 1, time)");
+    // The teaching moment. `saturate` is a reasonable thing to try (it is WGSL), and the
+    // answer has to be more useful than "no" — it has to say what the grammar IS.
+    // (`smoothstep` was this example until T1420b let it in.)
+    const result = parseExpression("saturate(time)");
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.reason).toContain('"smoothstep"');
+    expect(result.reason).toContain('"saturate"');
     for (const name of ["abs", "clamp", "cos", "fract", "mod", "sin"]) {
       expect(result.reason).toContain(name);
     }
@@ -191,7 +193,80 @@ describe("the function whitelist", () => {
 
   it("reports the signature of every name it accepts, and nothing else", () => {
     for (const name of functionNames()) expect(functionSignature(name)).toContain(`${name}(`);
-    expect(functionSignature("smoothstep")).toBeNull();
+    expect(functionSignature("saturate")).toBeNull();
+  });
+});
+
+/**
+ * T1420b — `smoothstep`, `exp` and `atan2`, each asserted at values whose answer is exact in
+ * binary floating point, so a wrong formula cannot hide inside a tolerance.
+ */
+describe("smoothstep, exp and atan2 (T1420b)", () => {
+  const value = (source: string, scope: Record<string, number> = {}): number => {
+    const result = evaluateExpression(source, scope);
+    if (!result.ok) throw new Error(`expected "${source}" to evaluate: ${result.reason}`);
+    return result.value;
+  };
+
+  it("smoothstep is WGSL's Hermite ramp: 0 below, 1 above, t²(3 − 2t) between", () => {
+    expect(value("smoothstep(0, 1, -3)")).toBe(0);
+    expect(value("smoothstep(0, 1, 7)")).toBe(1);
+    expect(value("smoothstep(0, 1, 0.5)")).toBe(0.5);
+    // t = 0.25 → 0.0625 × 2.5. A LINEAR ramp would say 0.25, and that is the difference
+    // the name exists for.
+    expect(value("smoothstep(0, 1, 0.25)")).toBe(0.15625);
+    // The edges scale the input, not the output: a quarter of the way from 2 to 6.
+    expect(value("smoothstep(2, 6, 3)")).toBe(0.15625);
+    // Driven by the clock, as it is used: halfway through a 2 s → 4 s ease.
+    expect(value("smoothstep(2, 4, time)", { time: 3 })).toBe(0.5);
+  });
+
+  it("smoothstep with low above high is the falling ramp, the fade-out idiom WGSL authors write", () => {
+    // t = (0.25 − 1) / (0 − 1) = 0.75 → 0.5625 × 1.5.
+    expect(value("smoothstep(1, 0, 0.25)")).toBe(0.84375);
+    expect(value("smoothstep(1, 0, 2)")).toBe(0);
+  });
+
+  it("smoothstep refuses a ramp of no width instead of guessing a side of the step", () => {
+    const result = evaluateExpression("smoothstep(1, 1, time)", { time: 1 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("smoothstep(): the edges are equal (1)");
+  });
+
+  it("exp is e to the x, and refuses by name the overflow that would otherwise be Infinity", () => {
+    expect(value("exp(0)")).toBe(1);
+    expect(value("exp(1)")).toBe(Math.E);
+    // The decay idiom: halve per unit of time is exp(-ln2 · t); here the exact case e^-x·e^x.
+    expect(value("exp(-2) * exp(2)")).toBe(1);
+    expect(value("exp(709)")).toBe(Math.exp(709));
+    const overflow = evaluateExpression("exp(710)");
+    expect(overflow.ok).toBe(false);
+    if (!overflow.ok) expect(overflow.reason).toBe("exp(): exp(710) overflows");
+  });
+
+  it("atan2 keeps the quadrant that y / x throws away", () => {
+    expect(value("atan2(1, 1)")).toBe(Math.PI / 4);
+    // Same ratio, opposite quadrant — atan(y / x) would answer π/4 for both.
+    expect(value("atan2(-1, -1)")).toBe((-3 * Math.PI) / 4);
+    expect(value("atan2(0, -1)")).toBe(Math.PI);
+    expect(value("atan2(-1, 0)")).toBe(-Math.PI / 2);
+    // The origin has no angle, and still gets a finite answer rather than NaN.
+    expect(value("atan2(0, 0)")).toBe(0);
+  });
+
+  it("checks their arity at PARSE time, with the call shape", () => {
+    const short = parseExpression("smoothstep(0, time)");
+    expect(short.ok).toBe(false);
+    if (!short.ok) expect(short.reason).toContain("smoothstep(low, high, x)");
+    expect(functionSignature("exp")).toBe("exp(x)");
+    expect(functionSignature("atan2")).toBe("atan2(y, x)");
+  });
+
+  it("are offered by the reference and completion menus, which ASK the evaluator (§V150)", () => {
+    const accepted = acceptedFunctionCalls().map((entry) => entry.signature);
+    expect(accepted).toContain("smoothstep(low, high, x)");
+    expect(accepted).toContain("exp(x)");
+    expect(accepted).toContain("atan2(y, x)");
   });
 });
 

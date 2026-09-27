@@ -53,8 +53,10 @@ export function acceptedFunctions(): readonly string[] {
   const accepted: string[] = [];
   for (const name of CANDIDATE_FUNCTIONS) {
     // One, two and three arguments: arity is part of what is being asked, and a function
-    // that only takes two must not be judged by its one-argument call.
-    const calls = [`${name}(1)`, `${name}(1, 1)`, `${name}(1, 1, 1)`];
+    // that only takes two must not be judged by its one-argument call. DISTINCT, ascending
+    // arguments (T1420b): `smoothstep(1, 1, 1)` is a ramp of no width and is refused, so
+    // equal ones would drop an accepted name from every menu that asks here.
+    const calls = [`${name}(1)`, `${name}(1, 2)`, `${name}(1, 2, 3)`];
     if (calls.some((call) => evaluateExpression(call).ok)) accepted.push(name);
   }
   return accepted;

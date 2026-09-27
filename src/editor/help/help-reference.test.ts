@@ -216,8 +216,8 @@ describe("expression reference ← the evaluator (§V105, §V71)", () => {
     for (const name of CANDIDATE_FUNCTIONS) {
       const accepted =
         evaluateExpression(`${name}(1)`).ok ||
-        evaluateExpression(`${name}(1, 1)`).ok ||
-        evaluateExpression(`${name}(1, 1, 1)`).ok;
+        evaluateExpression(`${name}(1, 2)`).ok ||
+        evaluateExpression(`${name}(1, 2, 3)`).ok;
       expect(listed.has(name), name).toBe(accepted);
     }
   });

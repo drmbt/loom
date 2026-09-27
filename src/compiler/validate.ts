@@ -106,6 +106,13 @@ export function resolveNodeParameters(
   // a parameter name, and the order must not change when a manifest is reordered.
   for (const entry of [...resolved.entries].sort((a, b) => a.key.localeCompare(b.key))) {
     if (entry.diagnostic !== null) diagnostics.push(entry.diagnostic);
+    // §B231: a compound's per-component slots (`place.x`, `tint.r`, §V113) carry their OWN
+    // verdicts. Reading only the bare key's dropped them, so an unknown function in
+    // `place.x` held the retained value with nothing said — on the problems pane and on
+    // every headless render alike — while the same typo on a scalar knob was reported.
+    for (const component of entry.components ?? []) {
+      if (component.diagnostic !== null) diagnostics.push(component.diagnostic);
+    }
   }
 
   for (const key of Object.keys(node.parameters).sort()) {
