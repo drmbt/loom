@@ -4,7 +4,8 @@
       --out <path.glb> [--title "On Nothing"] [--preview <png dir>] [--blend <path>]
 
 Builds the warehouse, five cars, the figure, the white cyc and the chrome title, the shot
-cameras and the light / stage / bone markers, and exports one GLB for loom. See README.md.
+cameras, the light / stage markers and the figure's skin (T1401b), and exports one GLB for loom.
+See README.md.
 """
 import argparse
 import json
@@ -142,7 +143,8 @@ def main():
         export_cameras=True, export_lights=False,
         export_vertex_color="NONE", export_all_vertex_colors=False,
         export_normals=True, export_texcoords=True, export_tangents=False,
-        export_animations=False, export_skins=False, export_morph=False,
+        export_animations=False, export_skins=True, export_influence_nb=4, export_all_influences=False,
+        export_leaf_bone=False, export_rest_position_armature=True, export_morph=False,
         export_materials="EXPORT", export_image_format="NONE",
         use_selection=False, use_visible=False,
     )

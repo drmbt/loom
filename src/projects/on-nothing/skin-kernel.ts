@@ -4,12 +4,12 @@ import { wgslVec3 } from "./scene-facts.ts";
 /**
  * T1400b — the FIGURE'S SKIN: one Point Kernel that poses the mannequin from per-bone knobs.
  *
- * Stopgap for glTF skins (the decoder refuses them; the proper import is its own row): the
- * Blender build packs each vertex's two strongest bones and the first one's weight into
- * TEXCOORD_0 — u = boneA × 32 + boneB, v = weight of A — from Blender's bone-heat weights.
- * Here each bone's world transform is its own rotation about its REST head, then its
- * parent's, up to the pelvis (the furnace rig's child-first walk); the vertex blends the two
- * transforms linearly and the whole figure is then turned by `yaw` and set down at `place`.
+ * T1401b: the figure is a real glTF skin. Mesh File In publishes each vertex's four joint
+ * indices and weights (`joints`, `weights`) and the decoder's joint table (name, parent, rest
+ * head) is `facts.bones`, baked in here. Each bone's world transform is its own rotation about
+ * its REST head, then its parent's, up to the pelvis (the furnace rig's child-first walk); the
+ * vertex blends its four transforms linearly (linear-blend skinning) and the whole figure is
+ * then turned by `yaw` and set down at `place`.
  *
  * A bone's knob is a vec3 of Euler angles in radians about the REST figure's world axes
  * (x = the figure's left, y = up, z = the way it faces), applied x, then y, then z. All zero is
@@ -19,7 +19,8 @@ import { wgslVec3 } from "./scene-facts.ts";
 export const SKIN_ATTRIBUTES = JSON.stringify([
   { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
   { name: "normal", type: "vec3f", qualifier: "direction", default: [0, 1, 0] },
-  { name: "uv", type: "vec2f", default: [0, 0] },
+  { name: "joints", type: "vec4f", default: [0, 0, 0, 0] },
+  { name: "weights", type: "vec4f", default: [0, 0, 0, 0] },
 ]);
 
 /** A bone's knob name: `upperarm.L` → `upperarmL`. */
@@ -29,7 +30,7 @@ export function boneParam(bone: Bone): string {
 
 export function skinKernel(facts: OnNothingFacts): string {
   const bones = facts.bones;
-  if (bones.length === 0) throw new Error("skinKernel: the GLB has no bone markers.");
+  if (bones.length === 0) throw new Error("skinKernel: the GLB's figure has no skin joints.");
   const count = bones.length;
   const params = bones.map((bone) => `  ${boneParam(bone)}: vec3f, // @default 0  ${bone.name}: rotation about its head, radians (x, y, z about the rest axes).`).join("\n");
   const cases = bones.map((bone) => `    case ${bone.index}u: { return ctx.params.${boneParam(bone)}; }`).join("\n");
@@ -85,14 +86,26 @@ fn boneXf(bone: u32, ctx: PointCtx) -> Xf {
 
 fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
-  let code = u32(max(p.uv.x, 0.0) + 0.5);
-  let a = min(code / 32u, BONES - 1u);
-  let b = min(code % 32u, BONES - 1u);
-  let w = clamp(p.uv.y, 0.0, 1.0);
-  let xa = boneXf(a, ctx);
-  let xb = boneXf(b, ctx);
-  let posed = mix(xb.m * p.position + xb.t, xa.m * p.position + xa.t, w);
-  let normal = normalize(mix(xb.m * p.normal, xa.m * p.normal, w));
+  // Linear-blend skinning over the four influences the decoder normalised to sum 1.
+  var posed = vec3f(0.0);
+  var bent = vec3f(0.0);
+  var total = 0.0;
+  for (var k = 0u; k < 4u; k = k + 1u) {
+    let w = p.weights[k];
+    if (w <= 0.0) { continue; }
+    let x = boneXf(min(u32(p.joints[k] + 0.5), BONES - 1u), ctx);
+    posed = posed + w * (x.m * p.position + x.t);
+    bent = bent + w * (x.m * p.normal);
+    total = total + w;
+  }
+  if (total <= 0.0) {
+    // Nothing skins this vertex: it keeps its rest place.
+    posed = p.position;
+    bent = p.normal;
+  } else {
+    posed = posed / total;
+  }
+  let normal = normalize(bent);
   let c = cos(ctx.params.yaw);
   let s = sin(ctx.params.yaw);
   let turn = mat3x3f(vec3f(c, 0.0, -s), vec3f(0.0, 1.0, 0.0), vec3f(s, 0.0, c));

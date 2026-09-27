@@ -224,7 +224,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
           "place.z": expressionSlot(`${pz} + ${fz} * (abstime * 1.25 - 2.5)`, pz),
         }
       : { place: [px, py, pz] };
-    nodes.push(node("fig", "meshFileIn", [-3600, 1200], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts }, { label: "fig1" }));
+    nodes.push(node("fig", "meshFileIn", [-3600, 1200], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts, joints: mesh.joints }, { label: "fig1" }));
     nodes.push(node("skin", "pointKernel", [-3300, 1200], { capacity: mesh.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw: yawFor(stage.facing), ...place, ...pose }, { label: "skin1" }));
     nodes.push(node("figGeo", "geometry", [-3000, 1200], { mode: "surface", material: "surf1" }, { label: "figgeo1" }));
     edges.push(edge("fig-skin", ["fig", "out"], ["skin", "in"]));

@@ -1,10 +1,12 @@
 import type { DecodedCamera, DecodedMarker, DecodedMesh } from "../../domain/mesh/glb.ts";
+import { formatJointTable } from "../../points/mesh.ts";
 
 /**
  * T1400b — what the On Nothing documents need to know about the Blender export
  * (`tools/blender/on-nothing/`), measured from the GLB at build time: each area's mesh size,
  * the shot cameras, the stages the figure stands on, the light markers and the figure's
- * bone table. The documents BAKE these, as the furnace does.
+ * bone table (T1401b: the decoded glTF skin's joint table). The documents BAKE these, as the
+ * furnace does.
  */
 
 export interface MeshSelectionFacts {
@@ -12,6 +14,8 @@ export interface MeshSelectionFacts {
   readonly vertices: number;
   readonly triangles: number;
   readonly parts: string;
+  /** T1401b: the Mesh File In's Joints fact — empty for an unskinned area. */
+  readonly joints: string;
   /** The rig parts in this selection (index as `surface.w` carries it, pivot, rest rotation, parent). */
   readonly partTable: readonly PartFacts[];
 }
@@ -25,13 +29,12 @@ export interface PartFacts {
   readonly parent?: string;
 }
 
-/** One bone of the figure: its rest head (glTF metres), parent (−1 at the root) and tail. */
+/** One bone of the figure: its table index, rest head (glTF metres) and parent (−1 at the root). */
 export interface Bone {
   readonly index: number;
   readonly name: string;
   readonly parent: number;
   readonly head: readonly [number, number, number];
-  readonly tail: readonly [number, number, number];
 }
 
 /** Where the figure stands in a shot, and which way it faces (unit, horizontal). */
@@ -75,12 +78,12 @@ export function factsFrom(glbUrl: string, meshes: ReadonlyMap<Area, DecodedMesh>
       vertices: mesh.vertexCount,
       triangles: mesh.triangleCount,
       parts: mesh.parts.map((part) => `${part.index}:${part.name}`).join(" "),
+      joints: formatJointTable(mesh.skin?.joints ?? []),
       partTable: mesh.parts.map((part) => ({ index: part.index, name: part.name, pivot: part.pivot, rotation: part.rotation, ...(part.parent === undefined || part.parent === "" ? {} : { parent: part.parent }) })),
     });
   }
   const markers = new Map(any.markers.map((marker) => [marker.name, marker]));
   const stages = new Map<string, Stage>();
-  const bones: Bone[] = [];
   for (const marker of any.markers) {
     if (marker.name.startsWith("stage.")) {
       // The exporter drops an empty's rotation (the furnace README records it): the aim rides in extras.
@@ -88,20 +91,11 @@ export function factsFrom(glbUrl: string, meshes: ReadonlyMap<Area, DecodedMesh>
       const length = Math.hypot(x, z) || 1;
       stages.set(marker.name.slice("stage.".length), { position: marker.position, facing: [x / length, 0, z / length] });
     }
-    const bone = /^bone\.(\d+)\.(.+)$/.exec(marker.name);
-    if (bone !== null) {
-      const extras = marker.extras ?? {};
-      const index = extras["loom_bone_index"];
-      const parent = extras["loom_bone_parent"];
-      if (typeof index !== "number" || typeof parent !== "number") throw new Error(`On Nothing GLB: ${marker.name} lacks loom_bone_index / loom_bone_parent.`);
-      bones.push({ index, name: bone[2]!, parent, head: marker.position, tail: vec3(extras["loom_bone_tail"], `${marker.name} loom_bone_tail`) });
-    }
   }
-  bones.sort((a, b) => a.index - b.index);
-  bones.forEach((bone, position) => {
-    if (bone.index !== position) throw new Error(`On Nothing GLB: bone indices are not 0..${bones.length - 1} (found ${bone.index} at ${position}).`);
-    if (bone.parent >= bone.index) throw new Error(`On Nothing GLB: bone ${bone.name} names a parent after itself.`);
-  });
+  // The decoder's joint table, in its order: the indices `joints` carries, parents first.
+  const skin = any.skin;
+  if (skin === undefined) throw new Error("On Nothing GLB: the figure is not skinned — rebuild it with tools/blender/on-nothing (T1401b exports the armature as a glTF skin).");
+  const bones: Bone[] = skin.joints.map((joint, index) => ({ index, name: joint.name, parent: joint.parent, head: joint.head }));
   return { glbUrl, areas, cameras: new Map(any.cameras.map((camera) => [camera.name, camera])), markers, stages, bones };
 }
 

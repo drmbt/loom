@@ -64,15 +64,13 @@ Both are kept in `renders/on-nothing/assets/`.
 - It fits the beanie, the sunglasses, the chain and the bracelet to the measured head, eyes, neck
   and chest.
 
-## Skinning: a stopgap
+## Skinning
 
-loom's GLB decoder refuses glTF skins (T1401b is the row for proper import). Until that lands:
-
-- Each vertex carries its two strongest bones and the first one's weight in TEXCOORD_0:
-  `u = boneA * 32 + boneB`, `v = weight of A`. It is written `1 - w` here because the exporter
-  flips v.
-- Each bone exports as a meshless marker `bone.<nn>.<name>` at its head, with `loom_bone_index`,
-  `loom_bone_parent` and `loom_bone_tail` (glTF) in its extras.
+The figure exports as a real glTF skin (T1401b). The body is bound to the armature `fig.rig`,
+which has the 19 bones of `figure.BONES`, and the exporter runs with `export_skins=True` and four
+influences. loom's decoder reads JOINTS_0/WEIGHTS_0 and the joint table (name, parent, rest head),
+and the figure's Mesh File In publishes `joints` and `weights` per vertex. A vertex that no bone
+weights takes its nearest bone, so no vertex is left behind when a limb turns.
 
 `src/projects/on-nothing/skin-kernel.ts` poses the figure from per-bone knobs. The figure stands at
 the origin facing −Y (glTF +Z), in the rest A-pose.

@@ -4,12 +4,13 @@ One smooth mesh (a skin-modifier skeleton, subdivided, applied) with its accesso
 a beanie, sunglasses, a heavy chain with a slab pendant, a bracelet. It stands at the origin
 facing -Y (glTF +Z) in an A-pose; loom places and poses it.
 
-SKINNING. glTF skins are refused by loom's decoder on purpose, so the figure is skinned in loom:
-each vertex carries its two strongest bones and the first one's weight in TEXCOORD_0,
-u = boneA * 32 + boneB and v = weight of boneA (written 1 - w here; the exporter flips v). The
-weights come from Blender's bone-heat weighting against a matching armature, which is deleted
-before export. Each bone exports as a marker `bone.<nn>.<name>` at its head, with its index,
-parent index and tail in `extras`.
+SKINNING (T1401b). The figure exports as a real glTF skin: the body is bound to the armature
+`fig.rig` (the 19 bones of BONES) by an Armature modifier, and the exporter writes JOINTS_0 /
+WEIGHTS_0 (four influences) and the bones as joint nodes. loom decodes the skin into a joint
+table (name, parent, rest head) and per-vertex joints/weights; `src/projects/on-nothing/
+skin-kernel.ts` poses it. The weights come from Blender's bone-heat weighting (the mannequin) or
+from MPFB's own weights folded onto BONES (the human); a vertex neither reaches takes its
+nearest bone, so nothing is left unskinned.
 """
 import math
 
@@ -241,11 +242,10 @@ def build(ctx):
         _accessory(coll, mats, "fig.chain", _chain, "chest"),
         _accessory(coll, mats, "fig.bracelet", _bracelet, "forearm.L"),
     ]
-    # detach from the rig, keep the groups, delete the rig
+    # detach from the rig (keeping the groups) to join the accessories, then bind again
     for mod in list(body.modifiers):
         body.modifiers.remove(mod)
     body.parent = None
-    bpy.data.objects.remove(rig, do_unlink=True)
     for o in bpy.context.selected_objects:
         o.select_set(False)
     for o in parts:
@@ -253,12 +253,8 @@ def build(ctx):
     body.select_set(True)
     bpy.context.view_layer.objects.active = body
     bpy.ops.object.join()
-    _encode_weights(body)
-    body.vertex_groups.clear()
+    _bind(body, rig)
     body["loom_area"] = "fig"
-    for idx, name, parent, head, tail in BONES:
-        util.link_empty(coll, f"bone.{idx:02d}.{name}", head, props={
-            "loom_bone_index": idx, "loom_bone_parent": parent, "loom_bone_tail": util.gl(tail)})
     return body
 
 
@@ -274,29 +270,30 @@ def _nearest_bone(co):
     return bi
 
 
-def _encode_weights(ob):
-    me = ob.data
-    by_name = {b[1]: b[0] for b in BONES}
-    gname = {g.index: g.name for g in ob.vertex_groups}
-    code = []
+def _bind(ob, rig):
+    """Skin `ob` to `rig`: only BONES' groups, every vertex weighted, an Armature modifier.
+
+    The glTF exporter turns this into the skin (JOINTS_0/WEIGHTS_0, top four influences,
+    normalised). A vertex with no weight would stay behind when its limb turns and tear the
+    surface, so it takes its nearest bone at full weight.
+    """
+    known = {b[1] for b in BONES}
+    for g in list(ob.vertex_groups):
+        if g.name not in known:
+            ob.vertex_groups.remove(g)
+    groups = {b[1]: (ob.vertex_groups.get(b[1]) or ob.vertex_groups.new(name=b[1])) for b in BONES}
+    by_index = {g.index: g.name for g in ob.vertex_groups}
     unweighted = 0
-    for v in me.vertices:
-        gs = sorted(((g.weight, by_name[gname[g.group]]) for g in v.groups if g.weight > 1e-4 and gname[g.group] in by_name), reverse=True)
-        if not gs:
+    for v in ob.data.vertices:
+        if not any(g.weight > 1e-4 and by_index.get(g.group) in known for g in v.groups):
             unweighted += 1
-            gs = [(1.0, _nearest_bone(v.co))]
-        if len(gs) == 1:
-            gs.append((0.0, gs[0][1]))
-        (wa, a), (wb, b) = gs[0], gs[1]
-        w = wa / max(wa + wb, 1e-6)
-        code.append((a * 32 + b, w))
+            groups[BONES[_nearest_bone(v.co)][1]].add([v.index], 1.0, "REPLACE")
     if unweighted:
-        print(f"[figure] {unweighted} vertices had no heat weight; nearest bone used", flush=True)
-    uv = me.uv_layers.new(name="UVMap") if not me.uv_layers else me.uv_layers[0]
-    me.uv_layers.active = uv
-    for loop in me.loops:
-        u, w = code[loop.vertex_index]
-        uv.data[loop.index].uv = (float(u), 1.0 - w)
+        print(f"[figure] {unweighted} vertices had no weight; nearest bone used", flush=True)
+    ob.parent = rig
+    ob.matrix_parent_inverse = rig.matrix_world.inverted()
+    mod = ob.modifiers.new("rig", "ARMATURE")
+    mod.object = rig
 
 
 # ── The MPFB (MakeHuman) human: a CC0 body in place of the mannequin ─────────────────────────
@@ -585,11 +582,7 @@ def build_mpfb(ctx, blend_path):
     bpy.ops.object.join()
     body.name = "fig.body"
     body.data.name = "fig.body"
-    _encode_weights(body)
-    body.vertex_groups.clear()
+    _bind(body, _armature(coll))
     body["loom_area"] = "fig"
-    for idx, name, parent_i, head, tail in BONES:
-        util.link_empty(coll, f"bone.{idx:02d}.{name}", head, props={
-            "loom_bone_index": idx, "loom_bone_parent": parent_i, "loom_bone_tail": util.gl(tail)})
     print(f"[figure] MPFB human: {len(body.data.vertices):,} vertices", flush=True)
     return body
