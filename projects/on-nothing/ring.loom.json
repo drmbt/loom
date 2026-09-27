@@ -1569,7 +1569,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "-1.95 - 0.1 * clamp(abstime / 0.7, 0, 1)"
+                "source": "-2.1 - 0.12 * smoothstep(0, 0.7, abstime)"
               },
               "static": {
                 "kind": "static",
@@ -1578,11 +1578,11 @@
             },
             "mode": "expression"
           },
-          "forearmL.z": {
+          "forearmL.y": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.1"
+                "source": "0.5"
               },
               "static": {
                 "kind": "static",
@@ -1673,7 +1673,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "-0.7 - 0.08 * clamp(abstime / 0.7, 0, 1)"
+                "source": "-0.3"
               },
               "static": {
                 "kind": "static",
@@ -1686,7 +1686,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.2"
+                "source": "0.6"
               },
               "static": {
                 "kind": "static",

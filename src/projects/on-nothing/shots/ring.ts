@@ -42,11 +42,13 @@ const LAMP: V3 = [-60.2, 3.8, -3.0];
 /** The figure's pose: square to the lens, chin up a touch, the left hand raised to the mouth. */
 const POSE: Record<string, string | number[]> = {
   upperarmR: [0, 0, 0.62],
-  // (measured on this rig: x lifts the arm out to the side, y swings it forward)
-  "upperarmL.x": "-0.7 - 0.08 * clamp(abstime / 0.7, 0, 1)",
-  "upperarmL.y": "1.2",
-  "forearmL.x": "-1.95 - 0.1 * clamp(abstime / 0.7, 0, 1)",
-  "forearmL.z": "1.1",
+  // (measured on this rig: x lifts the arm out to the side, y swings it forward). The old
+  // pose twisted the upper arm 69 deg about its own axis, folding the elbow backward; this one
+  // keeps the elbow down and the forearm up, the hand rising to face height beside the cheek.
+  "upperarmL.x": "-0.3",
+  "upperarmL.y": "0.6",
+  "forearmL.x": "-2.1 - 0.12 * smoothstep(0, 0.7, abstime)",
+  "forearmL.y": "0.5",
   "handL.x": "0.35",
   "neck.x": "0.16 + sin(abstime * 3.1) * 0.02",
   "head.x": "0.1",
