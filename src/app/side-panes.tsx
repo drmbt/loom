@@ -175,6 +175,8 @@ export interface InspectorPaneProps {
   midi?: MidiSectionSurface;
   /** T950: the laser SESSION surface, for the Inspector's Laser section on laserOut. */
   laser?: import("@editor/inspector/laser-section.tsx").LaserSectionSurface;
+  /** §T1391b: the perform windows, for the Inspector's Window section on Window Out. */
+  performWindows?: import("@editor/inspector/window-section.tsx").WindowSectionSurface;
 }
 
 /**
@@ -272,6 +274,7 @@ export function InspectorPane({
   cameraStatus,
   midi,
   laser,
+  performWindows,
 }: InspectorPaneProps) {
   const { bus, invocation, registry, settings } = useAppRuntime();
   // §V351/B67: the pane that declares a context must be able to hold focus, or clicking
@@ -348,6 +351,7 @@ export function InspectorPane({
       {...(cameraStatus === undefined ? {} : { cameraStatus })}
       {...(midi === undefined ? {} : { midi })}
       {...(laser === undefined ? {} : { laser })}
+      {...(performWindows === undefined ? {} : { performWindows })}
     />
   );
 

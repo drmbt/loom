@@ -537,6 +537,20 @@ const APP_BINDINGS: readonly KeyBinding[] = [
     description: "Fill the screen with the whole app. Escape returns.",
   },
   {
+    // §T1391b: TouchDesigner's perform key, as a chord a browser leaves alone (F1 opens the
+    // browser's help). Global: it must also work from inside a perform window.
+    id: "perform.toggle",
+    keys: "mod+alt+p",
+    context: "global",
+    command: "perform.toggle",
+    // Never blocks: with nothing selected the command gets `[]`, which means every Window
+    // Out (the owner's ruling); with Window Outs selected, only those.
+    when: "always",
+    inputFrom: { from: "selectionIfAny", as: "nodeIds" },
+    label: "Perform windows",
+    description: "Open the selected Window Out nodes' windows — every Window Out when none is selected — or close them if they are all open.",
+  },
+  {
     id: "runtime.resetFeedback",
     keys: "mod+shift+r",
     context: "global",

@@ -46,7 +46,11 @@ export type KeymapCommandName = CommandName | (string & Record<never, never>);
 
 /** Where a command's input comes from when it is not static (§T77). */
 export interface BindingInputSource {
-  from: "selection" | "hoveredNode" | "selectionOrHovered";
+  /**
+   * `selectionIfAny` (§T1391b) is the one source that never blocks: the selection, or an
+   * EMPTY list when nothing is selected, for a command whose "nothing chosen" means "all".
+   */
+  from: "selection" | "hoveredNode" | "selectionOrHovered" | "selectionIfAny";
   /** Property name the resolved value is written to on the command input. */
   as: string;
 }

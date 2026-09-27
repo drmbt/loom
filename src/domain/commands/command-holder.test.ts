@@ -67,6 +67,7 @@ const MODULES: readonly HolderEntry[] = [
   { label: "ui.openLayouts", path: "src/app/layout-commands.ts", load: () => import("@/app/layout-commands.ts"), accessor: "layoutCommandHolderFor" },
   { label: "view.frameAll", path: "src/app/view-commands.ts", load: () => import("@/app/view-commands.ts"), accessor: "viewHolderFor" },
   { label: "view.toggleFullscreen", path: "src/app/fullscreen-commands.ts", load: () => import("@/app/fullscreen-commands.ts"), accessor: "fullscreenHolderFor" },
+  { label: "perform.toggle", path: "src/app/perform-commands.ts", load: () => import("@/app/perform-commands.ts"), accessor: "performHolderFor" },
   { label: "transport.togglePlay", path: "src/app/transport-commands.ts", load: () => import("@/app/transport-commands.ts"), accessor: "transportHolderFor" },
   { label: "project.save", path: "src/app/project-commands.ts", load: () => import("@/app/project-commands.ts"), accessor: "projectHolderFor" },
   /*

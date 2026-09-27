@@ -12,7 +12,7 @@ import type { LoadProjectSuccess, SnapshotStore } from "@domain/project/index.ts
 import { HelpHost, OPEN_HELP_COMMAND } from "@editor/help/index.ts";
 import { NodeInfoHost } from "@editor/inspect/index.ts";
 import { SELECT_NODES_COMMAND } from "@editor/selection/select-created.ts";
-import { KeymapProvider } from "@editor/keymap/index.ts";
+import { KeymapProvider, KeymapWindowTarget } from "@editor/keymap/index.ts";
 import type { KeymapDispatch } from "@editor/keymap/index.ts";
 import type { KeymapEnvironment } from "@editor/keymap/index.ts";
 import { ComponentLibrary, ExampleLibrary, useDocumentDirty } from "@editor/library/index.ts";
@@ -64,6 +64,8 @@ import { useAgentPorts } from "./agent-ports.ts";
 import { usePulseFiring } from "./pulse-firing.ts";
 import { useRuntimeCommands } from "./runtime-commands.ts";
 import { createPreviewSinkStore } from "./preview-sinks.ts";
+import { createDisplaySinkStore, mergeSinkStores } from "./display-sinks.ts";
+import { usePerformWindows } from "./use-perform-windows.ts";
 import { useAutosave } from "./use-autosave.ts";
 import { useStarterProject } from "./use-starter-project.ts";
 import type { ExampleLinkOutcome, UnrunnableRestore } from "./use-starter-project.ts";
@@ -370,6 +372,9 @@ export function App({
    * across two: the previous document's tiles are not coming back.
    */
   const previewSinks = usePerDocument(runtime.documentIdentity, createPreviewSinkStore);
+  // §T1391b: which Window Outs have an open perform window — they render only then.
+  const displaySinks = usePerDocument(runtime.documentIdentity, createDisplaySinkStore);
+  const compileSinks = useMemo(() => mergeSinkStores(previewSinks, displaySinks), [previewSinks, displaySinks]);
   /* T379 — ONE inspection-orbit store, shared by the graph pane's tiles and the viewer
      pane: both surfaces show the SAME preview target per node (the tile's request is
      what renders it), so one camera per node is the truthful model — a viewer drag and
@@ -684,7 +689,8 @@ export function App({
   const compile = useGraphCompile(
     runtime,
     capabilities,
-    previewSinks,
+    // §T1391b: the scheduler's preview sinks plus the display sinks of open perform windows.
+    compileSinks,
     driverChannels,
     sessionNodeDiagnostics,
     renderCompileSettings,
@@ -1345,6 +1351,8 @@ export function App({
    * accounting and warn twice about the same read.
    */
   const nativeOutputs = useNativeOutputs(runtime, backend ?? null, compile.flatGraph, frameLoop.installedPlan);
+  // §T1391b: Window Out perform windows — the commands, the open set, the inspector surface.
+  const perform = usePerformWindows({ bus: runtime.bus, backend, plan: frameLoop.installedPlan, displaySinks });
   const renderRange = useRenderRange({
     createCapture: output => {
       if (backend === undefined || backend === null) throw new Error("No GPU device for video capture.");
@@ -2151,6 +2159,7 @@ export function App({
                 cameraStatus={media.cameraStatus}
                 midi={midi}
                 laser={laser.session}
+                performWindows={perform.surface}
               />
               </AppRuntimeContext.Provider>
             </ErrorBoundary>
@@ -2257,6 +2266,10 @@ export function App({
           busy={project.busy}
         />
         <CommandPalette />
+        {/* §T1391b: the perform key (and every other binding) works inside a perform window. */}
+        {perform.windows.map((child, index) => (
+          <KeymapWindowTarget key={index} target={child} />
+        ))}
         {/* Inside the KeymapProvider on purpose: the shortcuts tab reads the RESOLVED
             keymap from its context, so mounting it outside would list nothing (T200). */}
         <HelpHost

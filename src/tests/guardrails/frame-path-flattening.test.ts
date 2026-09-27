@@ -70,6 +70,11 @@ const RAW_READ = /store\.getGraph/g;
  */
 const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
   {
+    file: "app/use-perform-windows.ts",
+    reads: 3,
+    why: "§T1391b: NOT per frame — on a perform command (which Window Outs exist, and the one being opened), on a document change (close the window of a deleted Window Out), and when the inspector describes a window. A Window Out is an AUTHORED node the user picks; a perform window for one inside a component is not offered.",
+  },
+  {
     file: "app/use-mesh-sources.ts",
     reads: 1,
     why: "T1353b: NOT per frame — once per file load, to find the AUTHORED node its measured Vertices/Triangles are written to through the bus. A mesh inside a component has no authored node of that id, and the hook says so instead of writing.",

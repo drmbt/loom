@@ -59,6 +59,9 @@ function resolveSource(
       if (environment.hoveredNodeId === null) return { ok: false, reason: "no hovered node" };
       return { ok: true, value: environment.hoveredNodeId };
     }
+    case "selectionIfAny": {
+      return { ok: true, value: [...environment.selection] };
+    }
     case "selectionOrHovered": {
       if (environment.selection.length > 0) return { ok: true, value: [...environment.selection] };
       if (environment.hoveredNodeId !== null) return { ok: true, value: [environment.hoveredNodeId] };

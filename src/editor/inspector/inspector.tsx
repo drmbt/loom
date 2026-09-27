@@ -33,9 +33,12 @@ import { NativeInputSection, nativeInputSectionParameters } from "./syphon-secti
 import { NATIVE_INPUT_TRANSPORTS } from "@devices/native-video.ts";
 import { MidiSection, midiSectionParameters } from "./midi-section.tsx";
 import { LaserSection, laserSectionParameters } from "./laser-section.tsx";
+import { WindowSection, windowSectionParameters } from "./window-section.tsx";
+import type { WindowSectionSurface } from "./window-section.tsx";
 import { ComponentSection, componentSectionParameters } from "./component-section.tsx";
 import { isComponentNodeType } from "@domain/components/component-type.ts";
 import { LASER_OUT_TYPE } from "@nodes/definitions/laser-out.ts";
+import { WINDOW_OUT_TYPE } from "@nodes/definitions/window-out.ts";
 import type { MidiSectionSurface } from "./midi-section.tsx";
 import { DEFAULT_GROUP, groupParameters } from "./parameter-groups.ts";
 import { createParameterEditor } from "./parameter-editor.ts";
@@ -192,6 +195,12 @@ export interface InspectorProps {
    * never document state (G1), which is why it is a SURFACE and not a parameter.
    */
   laser?: import("./laser-section.tsx").LaserSectionSurface;
+  /**
+   * §T1391b: the perform windows, for the Window section on Window Out nodes — screen
+   * picker, Match screen, Open/Close. Absent (tests, embeds): section hidden, and Screen
+   * stays an ordinary text row.
+   */
+  performWindows?: WindowSectionSurface;
   variant?: ControlVariant;
   /**
    * The channel resolver a `driven` parameter reads through (B46, T374, §V61).
@@ -316,6 +325,7 @@ export function Inspector({
   cameraStatus,
   midi,
   laser,
+  performWindows,
   components,
 }: InspectorProps) {
   const graph = useSyncExternalStore<GraphDocument>(
@@ -621,6 +631,7 @@ export function Inspector({
   // The CONSTANT, not the literal: §T1005's tripwire reads an emitting type's literal
   // in session code as an unregistered pump's tell, and this section is a surface.
   const showsLaserSection = laser !== undefined && node.type === LASER_OUT_TYPE;
+  const showsWindowSection = performWindows !== undefined && node.type === WINDOW_OUT_TYPE;
   /* T1065 — the instance's session controls (version, upgrade, enter, detach), only
      when a registry view is supplied: headless mounts and plain-node inspectors carry
      no components and render no section. */
@@ -631,6 +642,7 @@ export function Inspector({
     ...(showsSyphonSection ? nativeInputSectionParameters() : []),
     ...(showsMidiSection ? midiSectionParameters() : []),
     ...(showsLaserSection ? laserSectionParameters() : []),
+    ...(showsWindowSection ? windowSectionParameters() : []),
     ...(showsComponentSection ? componentSectionParameters() : []),
   ]);
   const groups = groupParameters(
@@ -778,6 +790,8 @@ export function Inspector({
       {...(planNodeId === undefined ? {} : { planNodeId })}
       {...(previewChoices === undefined ? {} : { componentPreview: previewChoices })}
       resolution={node.resolution}
+      // §T1391b: a node sized by its own parameters (Window Out) is not offered the override.
+      sizedByParameters={(definition?.resolutionPolicy as { kind?: string } | undefined)?.kind === "parameter"}
       format={node.format}
       resolutionContext={resolutionContext}
       formatContext={formatContext}
@@ -857,6 +871,19 @@ export function Inspector({
       laser={laser}
     />
   ) : null;
+
+  /* §T1391b: the perform window's controls, on the Window Out node. */
+  const windowSection =
+    showsWindowSection && performWindows !== undefined ? (
+      <WindowSection
+        nodeId={node.id}
+        screen={typeof resolved.values["screen"] === "string" ? (resolved.values["screen"] as string) : ""}
+        bus={bus}
+        context={context}
+        editor={editor}
+        windows={performWindows}
+      />
+    ) : null;
 
   const componentSection =
     showsComponentSection && components !== undefined ? (
@@ -1065,6 +1092,7 @@ export function Inspector({
         {syphonSection}
         {midiSection}
         {laserSection}
+        {windowSection}
         {componentSection}
         {parameterSections}
         {commonSection}
@@ -1089,6 +1117,7 @@ export function Inspector({
           {syphonSection}
           {midiSection}
           {laserSection}
+          {windowSection}
         {componentSection}
           {parameterSections}
         </TabsContent>

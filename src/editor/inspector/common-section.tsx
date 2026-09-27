@@ -72,6 +72,13 @@ export interface CommonSectionProps {
     readonly choices: readonly ComponentPreviewChoice[];
   };
   resolution: NodeResolutionOverride | undefined;
+  /**
+   * §T1391b: the node sizes itself from its OWN parameters (T151's parameter policy — a
+   * Window Out's Width × Height). Its size then has one place, the parameter rows, and the
+   * generic override is not offered; an override already stored still shows, so it can be
+   * cleared.
+   */
+  sizedByParameters?: boolean;
   format: NodeFormatOverride | undefined;
   resolutionContext: ResolutionContext;
   formatContext: FormatContext;
@@ -93,6 +100,7 @@ export function CommonSection({
   planNodeId,
   componentPreview,
   resolution,
+  sizedByParameters = false,
   format,
   resolutionContext,
   formatContext,
@@ -207,14 +215,16 @@ export function CommonSection({
           />
         </ControlRow>
       )}
-      <ControlRow label="Resolution" variant={variant}>
-        <EnumField
-          label="Resolution mode"
-          value={modeKey}
-          options={RESOLUTION_MODE_OPTIONS}
-          onChange={(next) => onModeChange(next)}
-        />
-      </ControlRow>
+      {sizedByParameters && resolution === undefined ? null : (
+        <ControlRow label="Resolution" variant={variant}>
+          <EnumField
+            label="Resolution mode"
+            value={modeKey}
+            options={RESOLUTION_MODE_OPTIONS}
+            onChange={(next) => onModeChange(next)}
+          />
+        </ControlRow>
+      )}
 
       {usesInput && inputs.length > 1 ? (
         <ControlRow label="Source input" variant={variant}>
