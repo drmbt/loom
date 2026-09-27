@@ -45,6 +45,8 @@ const BASE_OF: Record<Exclude<Shot, (typeof CLOSEUP_SHOTS)[number]>, Base> = { t
 
 export interface OnNothingOptions {
   readonly shot: Shot;
+  /** Which take: a shot may frame its set several ways (the EDL's rows pick one; 0 = the first). */
+  readonly take?: number;
   readonly width?: number;
   readonly height?: number;
   /** Run the CRT re-scan over the finished frame. */

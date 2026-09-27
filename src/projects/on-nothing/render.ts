@@ -17,6 +17,11 @@ import { walkTrack } from "../furnace/load-audio.ts";
  *     [--glb renders/on-nothing/build/on-nothing.glb] [--shots tableau,title,quad,cyc]
  *     [--width 1920] [--at <seconds>]        a still at that time (default 2)
  *     [--clip <seconds>]                      an MP4 from t = 0 (needs ffmpeg)
+ *     [--frames N]                            the clip's exact frame count (overrides --clip's length)
+ *     [--from <seconds>]                      the clip starts at this shot time (earlier frames still render, unseen,
+ *                                             so trails and feedback arrive warm); --audio-start stays the clip's first frame
+ *     [--out <file.mp4>]                      the clip's path (default clips/<shot><tag>.mp4)
+ *     [--take N]                              which take of the shot (a shot may frame the same set several ways)
  *     [--crt]                                 the CRT re-scan over the finished frame
  *     [--bypass haze,lens]                    bypass nodes by id
  *     [--set grade.exposure=0.5,halo.gain=2]  parameter overrides by node id
@@ -40,7 +45,9 @@ const width = Number(flag("width") ?? 1920);
 // The reference's 2.35:1.
 const height = Math.round(width / 2.347) & ~1;
 const fps = 24;
-const clip = flag("clip") === undefined ? undefined : Number(flag("clip"));
+const clip = flag("clip") === undefined ? (flag("frames") === undefined ? undefined : Number(flag("frames")) / fps) : Number(flag("clip"));
+const from = Number(flag("from") ?? 0);
+const take = Number(flag("take") ?? 0);
 const at = Number(flag("at") ?? 2);
 const crt = argv.includes("--crt");
 const audioPath = flag("audio");
@@ -124,7 +131,7 @@ const toRgba8 = (frame: RenderedFrame) =>
   toRgba8At({ ...frame, rowStride: frame.width * (frame.format === "rgba16float" ? 8 : 4) } as never, frame.width, frame.height, { space: "encoded" });
 
 for (const shot of shots) {
-  const built = onNothingDocument(facts, { shot, width: width * ss, height: height * ss, crt, hdri: hdri !== undefined, audio: track !== undefined });
+  const built = onNothingDocument(facts, { shot, take, width: width * ss, height: height * ss, crt, hdri: hdri !== undefined, audio: track !== undefined });
   const nodes = { ...built.graph.nodes };
   for (const id of (flag("bypass") ?? "").split(",").filter((entry) => entry !== "")) {
     if (nodes[id] === undefined) throw new Error(`--bypass: no node "${id}".`);
@@ -154,19 +161,21 @@ for (const shot of shots) {
   const meshes: Record<string, Uint8Array> = {};
   for (const [id, entry] of Object.entries(nodes)) if (entry.type === "meshFileIn") meshes[id] = glb;
   const started = performance.now();
-  const frames = clip !== undefined ? Math.round(clip * fps) : Math.round(at * fps) + 1;
-  const renderFrames = frames * sub;
+  const frames = flag("frames") !== undefined ? Number(flag("frames")) : clip !== undefined ? Math.round(clip * fps) : Math.round(at * fps) + 1;
+  // --from: the frames before it render (feedback and trails warm up) but are not captured
+  const skip = clip === undefined ? 0 : Math.round(from * fps);
+  const renderFrames = (frames + skip) * sub;
   const accumulator = new Accumulator(width, height);
   let lastOut: Uint8Array | undefined;
   let encoder: ReturnType<typeof spawn> | undefined;
-  const clipPath = `${outDir}/clips/${shot}${crt ? "-crt" : ""}${tag}.mp4`;
+  const clipPath = flag("out") ?? `${outDir}/clips/${shot}${crt ? "-crt" : ""}${tag}.mp4`;
   if (clip !== undefined) {
     encoder = spawn("ffmpeg", [
       "-y", "-loglevel", "error",
       "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${width}x${height}`, "-r", String(fps), "-i", "-",
       ...(audioPath === undefined ? [] : ["-ss", String(audioStart), "-t", String(frames / fps), "-i", audioPath]),
       "-c:v", "h264_videotoolbox", "-b:v", "60M", "-pix_fmt", "yuv420p", "-profile:v", "high",
-      ...(audioPath === undefined ? [] : ["-c:a", "aac", "-b:a", "256k", "-shortest"]),
+      ...(audioPath === undefined ? [] : ["-c:a", "aac", "-b:a", "256k"]),
       clipPath,
     ], { stdio: ["pipe", "inherit", "inherit"] });
   }
@@ -176,12 +185,12 @@ for (const shot of shots) {
     settings: document.settings,
     frames: renderFrames,
     // every sub-frame goes through the accumulator (for a still: only the last output frame's)
-    capture: clip === undefined ? Array.from({ length: sub }, (_, index) => renderFrames - sub + index) : Array.from({ length: renderFrames }, (_, index) => index),
+    capture: clip === undefined ? Array.from({ length: sub }, (_, index) => renderFrames - sub + index) : Array.from({ length: frames * sub }, (_, index) => skip * sub + index),
     fps: fps * sub,
     outputNodeId: "out",
     animate: true,
     meshes,
-    ...(track === undefined ? {} : { audio: track.seam(fps * sub, audioStart) }),
+    ...(track === undefined ? {} : { audio: track.seam(fps * sub, audioStart - skip / fps) }),
     ...(hdri !== undefined && nodes["hdri"] !== undefined ? { pictures: { hdri: (size: readonly [number, number]) => rgbmBytes(hdri, size) } } : {}),
     onCapture: async (frame: RenderedFrame) => {
       const out = accumulator.add(toRgba8(frame).data as Uint8Array);
