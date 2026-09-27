@@ -40,6 +40,8 @@ export interface OnNothingOptions {
   readonly height?: number;
   /** Run the CRT re-scan over the finished frame. */
   readonly crt?: boolean;
+  /** Hear the song: an Audio File In (timeline) whose level lanes drive the streaks. */
+  readonly audio?: boolean;
   /** Light reflections from a real HDRI (a Movie File In `hdri`, fed RGBM; see hdri.ts). */
   readonly hdri?: boolean;
 }
@@ -64,7 +66,7 @@ interface ShotPlan {
 }
 
 const PLANS: Record<Base, ShotPlan> = {
-  tableau: { areas: ["wh", "cars"], figure: true, headlights: true, tubes: false, haze: { density: 0.035, groups: ["head"], ambient: [0.0025, 0.0045, 0.005] }, dof: false, echo: false, mirror: false, whiteRoom: false },
+  tableau: { areas: ["wh", "cars"], figure: true, headlights: true, tubes: false, haze: { density: 0.035, groups: ["head"], ambient: [0.0025, 0.0045, 0.005] }, dof: true, echo: false, mirror: false, whiteRoom: false },
   title: { areas: ["wh", "cars", "title"], figure: false, headlights: true, tubes: false, haze: { density: 0.03, groups: ["head"], ambient: [0.006, 0.006, 0.0065] }, dof: true, echo: false, mirror: false, whiteRoom: false },
   quad: { areas: [], figure: true, headlights: false, tubes: false, haze: { density: 0.06, groups: ["back"], ambient: [0, 0, 0] }, dof: false, echo: false, mirror: true, whiteRoom: false },
   wheel: { areas: ["wh", "cars"], figure: false, headlights: true, tubes: false, haze: { density: 0.03, groups: ["head"], ambient: [0.004, 0.0042, 0.0045] }, dof: false, echo: false, mirror: false, whiteRoom: false },
@@ -83,8 +85,8 @@ function performance(shot: Base): Record<string, string | number[]> {
     case "tableau":
       // 0:16: back to the lens, arms thrown up in a wide V, pumping gently with the track.
       return {
-        "upperarmL.z": "1.5 + sin(abstime * 2.2) * 0.06",
-        "upperarmR.z": "-1.5 - sin(abstime * 2.2 + 0.4) * 0.06",
+        "upperarmL.z": "1.2 + sin(abstime * 2.2) * 0.06",
+        "upperarmR.z": "-1.2 - sin(abstime * 2.2 + 0.4) * 0.06",
         "upperarmL.x": "-0.15",
         "upperarmR.x": "-0.15",
         "forearmL.z": "0.35",
@@ -176,9 +178,26 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   const lights: string[] = [];
   const projectors: string[] = [];
 
+  // ── The song (render.ts --audio feeds the analysis): smoothed, normalised level lanes ──
+  const audio = options.audio === true;
+  if (audio) {
+    nodes.push(node("song", "audioFileIn", [-4200, 1400], { file: "media/on-nothing/song.wav", playMode: "timeline" }, { label: "song1" }));
+    nodes.push(node("pickLevels", "valueSelect", [-3900, 1300], { channels: "level low high" }, { label: "picklevels1" }));
+    nodes.push(node("smooth", "valueLag", [-3600, 1300], { lag: 0.02, releaseRatio: 4 }, { label: "smooth1" }));
+    nodes.push(node("rank", "valueNormalize", [-3300, 1300], { window: 16 }, { label: "rank1" }));
+    // slow and smooth: the columns breathe with the track, they never twitch
+    nodes.push(node("levels", "valueLag", [-3000, 1300], { lag: 0.12, releaseRatio: 3 }, { label: "levels1" }));
+    edges.push(edge("song-pick", ["song", "out"], ["pickLevels", "in"]));
+    edges.push(edge("pick-smooth", ["pickLevels", "out"], ["smooth", "in"]));
+    edges.push(edge("smooth-rank", ["smooth", "out"], ["rank", "in"]));
+    edges.push(edge("rank-levels", ["rank", "out"], ["levels", "in"]));
+  }
+  /** 0..1 loudness, smooth; 0.5 when silent (no --audio). */
+  const LOUD = audio ? "clamp(op('levels1').chan.level * 0.6 + op('levels1').chan.low * 0.4, 0, 1)" : "0.5";
+
   // ── The material every surface wears ──
   // The title frames the grille from a metre: its own headlights would blow the frame out, so they idle.
-  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: base === "title" ? 0.04 : 1, wet: base === "title" ? 0.1 : 0.14, wetGloss: 0.32 }, { label: "surf1" }));
+  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: base === "title" ? 0.04 : 1, wet: base === "tableau" ? 0 : base === "title" ? 0.1 : 0.14, wetGloss: 0.32, dryGloss: base === "tableau" ? 0.6 : 0.62 }, { label: "surf1" }));
 
   // ── Meshes ──
   plan.areas.flatMap((entry) => (entry === "cars" ? carAreas(facts) : [entry])).forEach((area, index) => {
@@ -199,8 +218,8 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
 
   // ── The figure, posed by the skin kernel ──
   if (plan.figure) {
-    // 0:16 is shirtless; everywhere else the figure wears the black tee
-    const figArea = shot === "tableau" ? "figbare" : "fig";
+    // the tableau set (0:16 and its zoom/prism) is shirtless; everywhere else the black tee
+    const figArea = base === "tableau" ? "figbare" : "fig";
     const mesh = facts.areas.get(figArea);
     if (mesh === undefined) throw new Error("onNothingDocument: no figure in the GLB.");
     const stage = facts.stages.get(base);
@@ -276,7 +295,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
    */
   function sodium(): void {
     const warm = [1, 0.52, 0.2, 1];
-    nodes.push(node("sodiumPool", "light", [-2600, 2000], { kind: "point", position: [0.4, 5.5, 2.2], color: warm, intensity: 16 }, { label: "sodiumpool1" }));
+    nodes.push(node("sodiumPool", "light", [-2600, 2000], { kind: "point", position: [0.4, 2.6, 6.5], color: warm, intensity: 4 }, { label: "sodiumpool1" }));
     nodes.push(node("sodiumA", "light", [-2600, 2100], { kind: "point", position: [-9, 7.2, -6], color: warm, intensity: 4 }, { label: "sodiuma1" }));
     nodes.push(node("sodiumB", "light", [-2600, 2200], { kind: "point", position: [10, 7.2, -9], color: warm, intensity: 3 }, { label: "sodiumb1" }));
     lights.push("sodiumpool1", "sodiuma1", "sodiumb1");
@@ -298,9 +317,12 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     nodes.push(node("top", "light", [-2600, 900], { kind: "directional", direction: [0.1, -1, 0.15], color: [0.9, 0.93, 1, 1], intensity: 0.12 }, { label: "top1" }));
     // The cars' own key: a broad soft source behind the camera, high — the reference's white
     // bodies read clearly, grille chrome and all, while the room stays black.
-    // Nearly horizontal: it lights the cars' faces and grazes the floor, which stays dark.
-    nodes.push(node("carKey", "light", [-2600, 800], { kind: "directional", direction: [0.05, -0.1, -0.99], color: [0.9, 0.95, 1, 1], intensity: 0.45 }, { label: "carkey1" }));
-    lights.push("fill1", "top1", "carkey1");
+    // LOW, beside the camera (out of frame): in the reference only the cars' lower fronts catch light (bumpers, grilles,
+    // lamps) and their roofs fall into black. A point low in front of the row, falling off with
+    // height and distance, does that; a sun lit them top to bottom and made them read huge.
+    nodes.push(node("carKey", "light", [-2600, 800], { kind: "point", position: [0, 0.45, 13.5], color: [0.88, 0.94, 1, 1], intensity: 22 }, { label: "carkey1" }));
+    // no top light: the reference's roofs fall into black
+    lights.push("fill1", "carkey1");
     sodium();
   }
   if (base === "wheel") sodium();
@@ -351,6 +373,24 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
    * an arc about the grille, never a straight dolly — with a breath of handheld.
    */
   const WHIP = "clamp(1 - abstime / 0.35, 0, 1) ^ 2";
+  /**
+   * HANDHELD on a long lens: a slow creep in, a breathing sway (three incommensurate sines per
+   * axis, so it never loops visibly), the aim wandering a few centimetres, and ROLL — the
+   * operator's horizon drifting a degree or two. The streaks are image-space, so they turn with
+   * the camera, as a filter on the lens does.
+   */
+  function handheld(at: readonly [number, number, number], look: readonly [number, number, number]): Record<string, StoredParameter> {
+    const wob = (a: number, b: number, c: number, phase: number) => `(sin(abstime * ${a} + ${phase}) * 0.5 + sin(abstime * ${b} + ${phase * 1.7}) * 0.3 + sin(abstime * ${c} + ${phase * 2.3}) * 0.2)`;
+    return {
+      "eye.x": expressionSlot(`${at[0]} + ${wob(0.9, 2.3, 5.1, 0.3)} * 0.05`, at[0]),
+      "eye.y": expressionSlot(`${at[1]} + ${wob(1.3, 3.1, 6.7, 1.1)} * 0.03`, at[1]),
+      "eye.z": expressionSlot(`${at[2]} - abstime * 0.12`, at[2]),
+      "lookAt.x": expressionSlot(`${look[0]} + ${wob(0.7, 1.9, 4.3, 2.0)} * 0.07`, look[0]),
+      "lookAt.y": expressionSlot(`${look[1]} + ${wob(0.8, 2.1, 4.9, 2.7)} * 0.04`, look[1]),
+      "lookAt.z": expressionSlot(`${look[2]}`, look[2]),
+      roll: expressionSlot(`${wob(0.5, 1.4, 3.3, 0.9)} * 1.6`, 0),
+    };
+  }
   function titleMove(): Record<string, StoredParameter> {
     const centre: [number, number, number] = [0, 0.74, 0.13];
     const dx = eye[0] - centre[0];
@@ -383,7 +423,9 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
         ? { fov: 9, lookAt: vec(face), "lookAt.x": expressionSlot(`${face[0]} + sin(abstime * 0.6) * 0.01`, face[0]), "lookAt.y": expressionSlot(`${face[1]} + sin(abstime * 0.9) * 0.006`, face[1]) }
         : base === "wheel" && driven !== undefined
           ? { ...follow("eye", eye, driven.forward), ...follow("lookAt", aim, driven.forward) }
-          : {};
+          : shot === "tableau"
+            ? handheld(eye, aim)
+            : {};
   nodes.push(node("cam", "camera", [-2700, -900], { eye: vec(eye), lookAt: aim, fov: camera.fovDeg, near: 0.05, far: 200, ...cameraMove }, { label: "cam1" }));
   nodes.push(node("shot", "render", [-2400, 0], {
     scenes: scenes.join(" "),
@@ -397,7 +439,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     depthOutput: true,
     normalOutput: true,
     albedoOutput: true,
-    environmentIntensity: plan.whiteRoom ? 0.6 : base === "title" ? 1 : base === "quad" ? 0 : 0.18,
+    environmentIntensity: plan.whiteRoom ? 0.6 : base === "title" ? 1 : base === "quad" ? 0 : 0.1,
     environmentTaps: 16,
   }, { label: "shot1" }));
   edges.push(edge("env-shot", [options.hdri === true && !plan.whiteRoom ? "envHdri" : "env", "out"], ["shot", "environment"]));
@@ -418,7 +460,9 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     pass("haze", hazeWgsl(hazeLights(facts, plan.haze.groups)), { ...cameraParams, density: plan.haze.density, ambient: vec(plan.haze.ambient), anisotropy: 0.72, head: base === "title" ? 0.01 : 0.25 }, [depth], [-1700, 0]);
   }
   if (plan.dof) {
-    pass("lens_dof", DOF_WGSL, { ...cameraParams, aperture: 0.5, maxRadius: 16, focusDistance: 1.3 }, [depth], [-1500, 0]);
+    // focus: the title's script at 1.3 m; the tableau's figure (the rear row falls soft)
+    const focus = base === "title" ? 1.3 : shot === "tableau" ? 11.4 : 0;
+    pass("lens_dof", DOF_WGSL, { ...cameraParams, aperture: base === "title" ? 0.5 : 1.4, maxRadius: 16, focusDistance: focus }, [depth], [-1500, 0]);
   }
   const scene = last;
   const opticsGain: Record<Base, { streak: number; halo: number }> = {
@@ -441,10 +485,13 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   // passes (each step under the span of the pass before) fed by the SHARP bright pass, so each
   // LED element in a lamp draws its own line inside the column, as in the reference.
   const reach = streakReach[base];
+  // Every column EXTENDS and RETRACTS together with the song, smoothly: the reach is a lane.
+  const reachExpr = `(${reach} * (0.55 + 0.9 * ${LOUD}))`;
   const STREAKS = [reach / 160, reach / 48, reach / 10] as const;
+  const STREAK_DIV = [160, 48, 10] as const;
   STREAKS.forEach((step, index) => {
     const id = `streak${index}`;
-    nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step, decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 ? 0.003 : 0, compress: index === 0 ? 4 : 0, down: 0, gain: 2.2, striation: 0.45, striationScale: 150 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } }));
+    nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step: expressionSlot(`${reachExpr} / ${STREAK_DIV[index]}`, step), decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 ? 0.003 : 0, compress: index === 0 ? 4 : 0, down: 0, gain: 2.2, striation: 0.22, striationScale: 110 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } }));
     edges.push(edge(`into-${id}`, [index === 0 ? "bright" : `streak${index - 1}`, "out"], [id, "input"]));
   });
   nodes.push(node("hot", "customWgsl", [-1300, 500], { source: BRIGHT_PASS_WGSL, threshold: 150, knee: 30 }, { label: "hot1", resolution: { mode: "scale", factor: 0.25 } }));

@@ -532,7 +532,7 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
         half_n = 60
         cxn, cyn = (nx0 + nx1) / 2, (ny0 + ny1) / 2
         a_ = (nx1 - nx0) / 2 + 0.022
-        back_y = ny1 + 0.012
+        back_y = ny1 + 0.03  # behind the nape, resting on the trapezius, not sunk into the neck
         half = []
         collar_z = None
         for k in range(half_n + 1):
@@ -543,7 +543,11 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
                 y = back_y + (ny0 - 0.01 - back_y) * (t / 0.5)
                 p = Vector((cxn + a_ * side, y, 1.545))  # below the jaw: a ray from higher lands on the head
                 h = hit(p, Vector((0, 0, -1)))
-                q = (h if h is not None else Vector((p.x, y, 1.48))) + Vector((0, 0, 0.006))
+                # a ray that slips between the neck and the collar lands far down the body:
+                # the chain rests on the trapezius, so only a hit in that band counts
+                if h is None or not (1.40 < h.z < 1.545):
+                    h = Vector((p.x, y, half[-1].z - 0.01 if half else 1.49))
+                q = h + Vector((0, 0, 0.01))
                 collar_z = q.z
             else:
                 # a U, not a V: the sides fall and swing in together, the bottom rounds off
@@ -561,6 +565,10 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
         mirror = [Vector((2 * cxn - q.x, q.y, q.z)) for q in reversed(half[1:-1])]
         guide = half + mirror
         n = len(guide)
+        # relax the kink where the resting part meets the hanging part: a few smoothing passes
+        # around the closed loop, then back out to the surface clearance it had
+        for _ in range(6):
+            guide = [guide[k] * 0.5 + (guide[k - 1] + guide[(k + 1) % n]) * 0.25 for k in range(n)]
         # resample to even spacing, then alternate the links flat and upright
         lengths = [0.0]
         for k in range(1, n + 1):

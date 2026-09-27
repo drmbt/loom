@@ -7,6 +7,7 @@ import { toRgba8At } from "../../runtime/export/image.ts";
 import { SHOTS, onNothingDocument, type Shot } from "./document.ts";
 import { loadOnNothingFacts } from "./load-facts.ts";
 import { readHdr, rgbmBytes } from "./hdri.ts";
+import { walkTrack } from "../furnace/load-audio.ts";
 
 /**
  * T1400b — render the On Nothing shots headless. Everything lands in the gitignored
@@ -21,6 +22,7 @@ import { readHdr, rgbmBytes } from "./hdri.ts";
  *     [--set grade.exposure=0.5,halo.gain=2]  parameter overrides by node id
  *     [--tag name]                            appended to the file names (compare takes)
  *     [--probe streak2]                       show that node's output instead of the finished frame
+ *     [--audio <song.wav>] [--audio-start <s>]  hear the song (the streaks breathe with it); a clip is muxed with it
  *     [--hdri <file.hdr>]                     reflections from a real HDRI (Poly Haven, CC0) instead of the procedural room
  */
 const argv = process.argv.slice(2).filter((arg) => arg !== "--");
@@ -36,6 +38,9 @@ const fps = 24;
 const clip = flag("clip") === undefined ? undefined : Number(flag("clip"));
 const at = Number(flag("at") ?? 2);
 const crt = argv.includes("--crt");
+const audioPath = flag("audio");
+const audioStart = Number(flag("audio-start") ?? 0);
+const track = audioPath === undefined ? undefined : walkTrack(audioPath, fps);
 const hdriPath = flag("hdri");
 const hdri = hdriPath === undefined ? undefined : readHdr(hdriPath);
 const tag = flag("tag") === undefined ? "" : `-${flag("tag")}`;
@@ -55,7 +60,7 @@ const toRgba8 = (frame: RenderedFrame) =>
   toRgba8At({ ...frame, rowStride: frame.width * (frame.format === "rgba16float" ? 8 : 4) } as never, frame.width, frame.height, { space: "encoded" });
 
 for (const shot of shots) {
-  const built = onNothingDocument(facts, { shot, width, height, crt, hdri: hdri !== undefined });
+  const built = onNothingDocument(facts, { shot, width, height, crt, hdri: hdri !== undefined, audio: track !== undefined });
   const nodes = { ...built.graph.nodes };
   for (const id of (flag("bypass") ?? "").split(",").filter((entry) => entry !== "")) {
     if (nodes[id] === undefined) throw new Error(`--bypass: no node "${id}".`);
@@ -84,7 +89,9 @@ for (const shot of shots) {
     encoder = spawn("ffmpeg", [
       "-y", "-loglevel", "error",
       "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${width}x${height}`, "-r", String(fps), "-i", "-",
+      ...(audioPath === undefined ? [] : ["-ss", String(audioStart), "-t", String(frames / fps), "-i", audioPath]),
       "-c:v", "h264_videotoolbox", "-b:v", "60M", "-pix_fmt", "yuv420p", "-profile:v", "high",
+      ...(audioPath === undefined ? [] : ["-c:a", "aac", "-b:a", "256k", "-shortest"]),
       clipPath,
     ], { stdio: ["pipe", "inherit", "inherit"] });
   }
@@ -98,6 +105,7 @@ for (const shot of shots) {
     outputNodeId: "out",
     animate: true,
     meshes,
+    ...(track === undefined ? {} : { audio: track.seam(fps, audioStart) }),
     ...(hdri !== undefined && nodes["hdri"] !== undefined ? { pictures: { hdri: (size: readonly [number, number]) => rgbmBytes(hdri, size) } } : {}),
     ...(encoder === undefined
       ? {}

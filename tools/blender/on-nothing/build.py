@@ -31,21 +31,23 @@ import util  # noqa: E402
 # The reference's frame: 2.35:1. The exporter derives each camera's vertical fov from this.
 RES = (1920, 818)
 
-# The reference's 0:16 tableau, SOLVED from the frame (docs plan, "layout"): the hero square
-# to the lens; the front pair ~3.6 m either side and 1.4-1.9 m further back; the rear pair
-# ~1.7 m either side, 5-5.6 m back. All square to the camera (yaw 0): perspective alone shows
-# their inner flanks, as the reference does. Real models (car_models.py) where we have them.
+# The reference's 0:16 tableau, FITTED to the frame: a least-squares solve of the camera (eye,
+# pitch, fov) and each car's position so every visible headlight (auto-detected blob centroids)
+# and the hero's wheel contacts, the figure's feet and head land on their reference pixels
+# (residuals 5-15 px; our models' lamps sit a little differently from the real cars'). The lens
+# came out LONG (53 mm, 15 m back), which is what compresses the rows as the reference does.
+# The rear-right car shows one ambiguous lamp; it sits at the rear-left car's depth.
 CARS = [
-    dict(loc=(0.0, 0.0, 0.0), yaw=0, paint="paint_matte", model="gls600"),
-    dict(loc=(-3.6, 1.4, 0.0), yaw=0, paint="paint_white", model="rangerover"),
-    dict(loc=(3.63, 1.9, 0.0), yaw=0, paint="paint_white", model="phantom"),
-    dict(loc=(-1.73, 5.72, 0.0), yaw=0, paint="paint_white", model="maybach_s"),
-    dict(loc=(1.72, 5.22, 0.0), yaw=0, paint="paint_black", model="escalade"),
+    dict(loc=(0.0, 0.0, 0.0), yaw=0, paint="paint_silver", model="gls600"),  # the reference hero is a light satin grey
+    dict(loc=(-2.91, 0.01, 0.0), yaw=0, paint="paint_white", model="rangerover"),
+    dict(loc=(2.85, 0.30, 0.0), yaw=0, paint="paint_white", model="phantom"),
+    dict(loc=(-1.42, 7.35, 0.0), yaw=0, paint="paint_white", model="maybach_s"),
+    dict(loc=(1.75, 7.1, 0.0), yaw=0, paint="paint_black", model="escalade"),
 ]
 
 # where the figure stands (and faces) in each shot; loom places it there
 STAGES = {
-    "tableau": ((0.0, -3.0, 0.0), (0, 1, 0)),
+    "tableau": ((0.0, -3.74, 0.0), (0, 1, 0)),
     "title": ((1.4, -2.4, 0.0), (0, -1, 0)),
     "quad": ((-60.0, 0.0, 0.0), (1, 0, 0)),
     "cyc": ((0.5, -0.6, 0.0), (1, 0, 0)),
@@ -53,7 +55,7 @@ STAGES = {
 
 # name: (location, target, focal mm)
 SHOTS = {
-    "tableau": ((0.0, -9.86, 1.52), (0.0, 0.0, 1.28), 32),
+    "tableau": ((0.02, -15.14, 1.605), (0.02, 0.0, 1.262), 53),
     "title": ((0.0, -1.3, 0.8), (0.0, 0.0, 0.74), 18),
     "quad": ((-60.0, -2.7, 1.42), (-60.0, 0.0, 1.36), 40),
     "cyc": ((-1.1, -6.8, 1.25), (0.4, 0.0, 0.8), 32),
@@ -179,6 +181,8 @@ def preview(scene, outdir):
     util.camera(scene.collection, "dbg.nose", (1.6, -2.0, 1.0), (0.4, 0.0, 0.8), 35)
     util.camera(scene.collection, "dbg.fig", (-2.0, -3.2, 1.1), (0.0, 0.0, 0.95), 35)
     util.camera(scene.collection, "dbg.chest", (0.35, -1.1, 1.45), (0.0, 0.0, 1.38), 50)
+    util.camera(scene.collection, "dbg.side", (1.3, 0.0, 1.4), (0.0, 0.0, 1.35), 50)
+    util.camera(scene.collection, "dbg.back", (0.3, 1.2, 1.5), (0.0, 0.0, 1.4), 50)
     for ob in scene.objects:
         if ob.type == "CAMERA" and (ob.name.startswith("shot.") or ob.name.startswith("dbg.")):
             scene.camera = ob

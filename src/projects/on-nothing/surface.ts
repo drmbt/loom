@@ -32,25 +32,44 @@ fn classOf(s: SurfaceIn) -> u32 {
   return u32(s.attr.z * 64.0 + 0.5);
 }
 
+// Scratch lines: per 0.6 m cell, a random direction and offset; thin, broken, short.
+fn scratchAt(w: vec2f, scale: f32, seed: u32) -> f32 {
+  let q = w / scale;
+  let cell = floor(q);
+  let h = vec3f(unitFloat(hash3i(vec3i(vec3f(cell, 1.0)), seed)), unitFloat(hash3i(vec3i(vec3f(cell, 2.0)), seed + 7u)), unitFloat(hash3i(vec3i(vec3f(cell, 3.0)), seed + 13u)));
+  let a = h.x * 3.14159;
+  let local = q - cell - vec2f(0.5);
+  let across = dot(local, vec2f(-sin(a), cos(a))) - (h.y - 0.5) * 0.6;
+  let along = dot(local, vec2f(cos(a), sin(a)));
+  let seg = smoothstep(0.45, 0.2, abs(along)) * step(0.35, h.z);
+  return smoothstep(0.012, 0.0, abs(across)) * seg;
+}
+
 fn floorSurface(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {
+  // DRY, WORN warehouse concrete: satin, never glossy. A traffic-polished lane catches the
+  // lamps as a soft sheen; scuffs, stains, aggregate and scratches break it everywhere.
   var r = o;
   let w = s.world;
   let large = detailFbm(vec3f(w.x * 0.18, 0.0, w.z * 0.18), 4, s.footprint);
+  let mid = detailFbm(vec3f(w.x * 0.9, 5.0, w.z * 0.9), 4, s.footprint);
   let fine = detailFbm(w * 3.1, 5, s.footprint);
   let grit = detailFbm(w * 21.0, 3, s.footprint);
-  // Damp patches: large, soft-edged pools with fine ragged borders.
   let damp = smoothstep(1.0 - p.wet - 0.15, 1.0 - p.wet + 0.15, large.value + (fine.value - 0.5) * 0.25);
-  // Tyre scuffs: long dark arcs along the depth axis.
-  let scuff = smoothstep(0.62, 0.8, detailNoise(vec3f(w.x * 1.7, 0.0, w.z * 0.12)).value) * 0.5;
-  // Hairline cracks.
+  // tyre scuffs and oil stains
+  let scuff = smoothstep(0.6, 0.8, detailNoise(vec3f(w.x * 1.7, 0.0, w.z * 0.12)).value) * 0.45;
+  let stain = smoothstep(0.62, 0.78, mid.value) * 0.35;
+  // aggregate: a speckle of lighter and darker stones in the cement
+  let stone = smoothstep(0.7, 0.85, grit.value) * 0.18 - smoothstep(0.3, 0.15, grit.value) * 0.12;
   let crack = smoothstep(0.006, 0.0, abs(detailNoise(vec3f(w.x * 0.9, 3.0, w.z * 0.9)).value - 0.5)) * 0.5;
-  let shade = 0.9 + 0.2 * fine.value + (grit.value - 0.5) * 0.12;
-  r.albedo = vec4f(o.albedo.rgb * shade * mix(1.0, 0.55, damp) * (1.0 - scuff * 0.6) * (1.0 - crack * 0.6), 1.0);
-  // Sealed warehouse concrete: semi-gloss everywhere (every lamp draws a soft streak in it),
-  // glossier where damp. The reflections pass blurs by roughness, so neither reads as a mirror.
-  r.roughness = mix(p.dryGloss + (grit.value - 0.5) * 0.08, p.wetGloss + (fine.value - 0.5) * 0.04, damp);
+  let scratches = max(scratchAt(w.xz, 0.6, 3u), scratchAt(w.xz + vec2f(0.21, 0.37), 0.35, 11u) * 0.6) * (1.0 - smoothstep(0.004, 0.02, s.footprint));
+  let shade = (0.88 + 0.24 * fine.value + stone) * (0.85 + 0.3 * large.value);
+  r.albedo = vec4f(o.albedo.rgb * shade * mix(1.0, 0.6, damp) * (1.0 - scuff * 0.5) * (1.0 - stain) * (1.0 - crack * 0.6) * (1.0 + scratches * 0.5), 1.0);
+  // satin, never a mirror: polished where traffic ran, rough where it did not
+  let polish = smoothstep(0.35, 0.75, large.value);
+  r.roughness = clamp(mix(p.dryGloss + 0.12, p.dryGloss - 0.08, polish) + (grit.value - 0.5) * 0.1 + stain * 0.1 - scratches * 0.15, 0.3, 0.95);
+  r.roughness = mix(r.roughness, p.wetGloss, damp);
   r.metallic = 0.0;
-  r.normal = detailBump(s.normal, grit.gradient * 0.004 + fine.gradient * 0.012 * (1.0 - damp), 1.0);
+  r.normal = detailBump(s.normal, grit.gradient * 0.006 + fine.gradient * 0.015 + mid.gradient * 0.02, 1.0);
   return r;
 }
 
