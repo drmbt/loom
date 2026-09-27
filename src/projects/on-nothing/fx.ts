@@ -38,6 +38,7 @@ export const STREAK_WGSL = `struct Params {
   striationScale: f32, // @default 140  Striations across the frame width.
   gain: f32, // @default 1  Column brightness (last pass).
   spread: f32, // @default 0  Horizontal widening, fraction of the frame width (first pass).
+  compress: f32, // @default 0  First pass: roll each source off toward this radiance (0 off), so a clipped lamp smears a milky slab, not a white bar.
 };
 ${INPUT_AND_FRAME}
 const TAPS: i32 = 8;
@@ -60,10 +61,19 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     let at = uv + vec2f(0.0, f32(k) * params.step);
     if (at.y > 1.0) { break; }
     var c = textureSampleLevel(inputTexture, inputSampler, at, 0.0).rgb;
+    if (params.compress > 0.0) {
+      c = c / (1.0 + max(c.r, max(c.g, c.b)) / params.compress);
+    }
     if (params.spread > 0.0) {
       for (var j = 1; j <= 3; j = j + 1) {
         let o = vec2f(f32(j) / 3.0 * params.spread, 0.0);
-        c = c + (textureSampleLevel(inputTexture, inputSampler, at + o, 0.0).rgb + textureSampleLevel(inputTexture, inputSampler, at - o, 0.0).rgb) * (1.0 - f32(j) / 4.0);
+        var l = textureSampleLevel(inputTexture, inputSampler, at + o, 0.0).rgb;
+        var r = textureSampleLevel(inputTexture, inputSampler, at - o, 0.0).rgb;
+        if (params.compress > 0.0) {
+          l = l / (1.0 + max(l.r, max(l.g, l.b)) / params.compress);
+          r = r / (1.0 + max(r.r, max(r.g, r.b)) / params.compress);
+        }
+        c = c + (l + r) * (1.0 - f32(j) / 4.0);
       }
       c = c / 3.5;
     }
@@ -78,7 +88,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
       if (uv.y - d < 0.0) { break; }
       tail = tail + textureSampleLevel(inputTexture, inputSampler, uv - vec2f(0.0, d), 0.0).rgb * exp(-f32(k) / 3.0);
     }
-    color = color + tail * 0.12;
+    color = color + tail * 0.12 * step(0.0001, params.down);
     color = color * mix(1.0, stripe(uv.x * params.striationScale), params.striation) * params.gain;
   }
   return vec4f(color, 1.0);

@@ -31,17 +31,21 @@ import util  # noqa: E402
 # The reference's frame: 2.35:1. The exporter derives each camera's vertical fov from this.
 RES = (1920, 818)
 
+# The reference's 0:16 tableau, SOLVED from the frame (docs plan, "layout"): the hero square
+# to the lens; the front pair ~3.6 m either side and 1.4-1.9 m further back; the rear pair
+# ~1.7 m either side, 5-5.6 m back. All square to the camera (yaw 0): perspective alone shows
+# their inner flanks, as the reference does. Real models (car_models.py) where we have them.
 CARS = [
-    dict(loc=(0.0, 0.0, 0.0), yaw=0, paint="paint_matte", grille="bars", ornament=True),
-    dict(loc=(-3.3, 1.5, 0.0), yaw=11, paint="paint_white", grille="slats"),
-    dict(loc=(3.3, 1.5, 0.0), yaw=-11, paint="paint_silver", grille="bars", moving=True),
-    dict(loc=(-6.7, 0.3, 0.0), yaw=21, paint="paint_white", grille="bars", height=1.03),
-    dict(loc=(6.7, 0.3, 0.0), yaw=-21, paint="paint_white", grille="slats", height=0.97),
+    dict(loc=(0.0, 0.0, 0.0), yaw=0, paint="paint_matte", model="gls600"),
+    dict(loc=(-3.6, 1.4, 0.0), yaw=0, paint="paint_white", model="rangerover"),
+    dict(loc=(3.63, 1.9, 0.0), yaw=0, paint="paint_white", model="phantom"),
+    dict(loc=(-1.73, 5.72, 0.0), yaw=0, paint="paint_white", model="maybach_s"),
+    dict(loc=(1.72, 5.22, 0.0), yaw=0, paint="paint_black", model="escalade"),
 ]
 
 # where the figure stands (and faces) in each shot; loom places it there
 STAGES = {
-    "tableau": ((0.0, -3.0, 0.0), (0, -1, 0)),
+    "tableau": ((0.0, -3.0, 0.0), (0, 1, 0)),
     "title": ((1.4, -2.4, 0.0), (0, -1, 0)),
     "quad": ((-60.0, 0.0, 0.0), (1, 0, 0)),
     "cyc": ((0.5, -0.6, 0.0), (1, 0, 0)),
@@ -49,7 +53,7 @@ STAGES = {
 
 # name: (location, target, focal mm)
 SHOTS = {
-    "tableau": ((0.0, -7.4, 0.92), (0.0, 0.0, 1.12), 24),
+    "tableau": ((0.0, -9.86, 1.52), (0.0, 0.0, 1.28), 32),
     "title": ((0.0, -1.3, 0.8), (0.0, 0.0, 0.74), 18),
     "quad": ((-60.0, -2.7, 1.42), (-60.0, 0.0, 1.36), 40),
     "cyc": ((-1.1, -6.8, 1.25), (0.4, 0.0, 0.8), 32),
@@ -111,6 +115,8 @@ def main():
     title.build(ctx, a.title)
     if a.human:
         figure.build_mpfb(ctx, os.path.abspath(a.human))
+        # the same body shirtless, for the tableau (0:16): its own area, its own skin
+        figure.build_mpfb(ctx, os.path.abspath(a.human), prefix="figbare", bare=True)
     else:
         figure.build(ctx)
 
@@ -141,7 +147,7 @@ def main():
         export_draco_mesh_compression_enable=False, export_use_gltfpack=False,
         export_apply=True, export_yup=True, export_extras=True,
         export_cameras=True, export_lights=False,
-        export_vertex_color="NONE", export_all_vertex_colors=False,
+        export_vertex_color="ACTIVE", export_all_vertex_colors=False,
         export_normals=True, export_texcoords=True, export_tangents=False,
         export_animations=False, export_skins=True, export_influence_nb=4, export_all_influences=False,
         export_leaf_bone=False, export_rest_position_armature=True, export_morph=False,

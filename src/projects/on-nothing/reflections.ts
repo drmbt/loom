@@ -21,6 +21,8 @@ ${CAMERA_PARAMS}
   roughnessCutoff: f32, // @default 0.5  Surfaces rougher than this reflect nothing.
   blur: f32, // @default 0.9  Blur at the hit per unit roughness × travel, as a fraction of the frame height per metre.
   stretch: f32, // @default 3  How much longer the blur runs vertically than across.
+  keepBright: f32, // @default 3  Radiance above which a reflection keeps full strength; dimmer things (car bodies) reflect only dimShare of it.
+  dimShare: f32, // @default 0.15  Share of a dim reflection that shows: sealed concrete mirrors lamps, not paint.
 };
 ${SHARED_UNIFORMS_WGSL}
 @group(0) @binding(0) var inputSampler: sampler;
@@ -89,7 +91,9 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
       weight = weight + w;
     }
   }
-  let reflected = sum / weight;
+  var reflected = sum / weight;
+  let rl = dot(reflected, vec3f(0.2126, 0.7152, 0.0722));
+  reflected = reflected * mix(params.dimShare, 1.0, smoothstep(params.keepBright * 0.3, params.keepBright, rl));
   // A ray turning back toward the lens leaves what the frame knows: its "hit" is a false one
   // (it drew bright slabs on the floor). Fade reflections out as the ray turns toward the camera.
   let away = smoothstep(-0.05, 0.3, dot(r, v.forward));

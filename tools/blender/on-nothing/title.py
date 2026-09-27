@@ -12,7 +12,7 @@ FONTS = [
 ]
 
 
-def build(ctx, text, width=1.02, center=(0.0, -0.13, 0.74)):
+def build(ctx, text, width=0.98, center=(0.0, -0.05, 0.9)):
     coll, mats = ctx["coll"], ctx["mats"]
     curve = bpy.data.curves.new("title.script", "FONT")
     curve.body = text

@@ -12,7 +12,7 @@ import bpy
 # name: (base rgb, metallic, roughness, emission rgb or None, emission strength, class code)
 LIB = {
     # warehouse
-    "concrete":       ((0.20, 0.195, 0.19), 0.0, 0.62, None, 0, 1),
+    "concrete":       ((0.11, 0.108, 0.104), 0.0, 0.45, None, 0, 1),
     "brick_dark":     ((0.05, 0.035, 0.028), 0.0, 0.9, None, 0, 2),
     "steel_truss":    ((0.06, 0.06, 0.062), 0.7, 0.55, None, 0, 3),
     "roof_sheet":     ((0.04, 0.04, 0.042), 0.5, 0.6, None, 0, 3),

@@ -5,10 +5,12 @@ twice, so the clear coat carries long unbroken highlights. The underbody rises o
 which cuts the wheel arches without a boolean. Grille, lamps, wheels and mirrors are separate
 hard-surface pieces in the same object.
 
-Each car exports as `car.<n>_body` (paint, glass, trim) and `car.<n>_parts` (chrome, lamps,
-wheels); its two headlights become `lamp.head.<n>l` / `lamp.head.<n>r` markers.
+Each car exports as `car<n>.body` (paint, glass, trim) and `car<n>.parts` (chrome, lamps,
+wheels), its own area; its two headlights become `lamp.head.<n>l` / `lamp.head.<n>r` markers.
+A variant with `model` is not built here: car_import.py brings in a real one (car_models.py).
 """
 import math
+import os
 
 from mathutils import Matrix, Vector
 
@@ -194,17 +196,32 @@ def build(ctx, variants):
     coll, mats = ctx["coll"], ctx["mats"]
     heads_all = []
     for n, v in enumerate(variants):
+        if v.get("model"):
+            import car_import
+            import car_models
+            m = car_models.MODELS[v["model"]]
+            loc = Vector(v["loc"])
+            yaw = math.radians(v["yaw"])
+            report = []
+            _, heads = car_import.import_car(ctx, os.path.join(car_models.ASSETS, m["path"]), n, loc, yaw, v["paint"],
+                                             length=m["length"], report=report, model=m)
+            print(f"[cars] {n} {v['model']}: {report[0][1]}", flush=True)
+            rot = Matrix.Rotation(yaw, 3, "Z")
+            fwd = rot @ Vector((0, -1, 0))
+            for side, h in zip("lr", heads):
+                heads_all.append((f"lamp.head.{n}{side}", loc + rot @ h, fwd))
+            continue
         loc = Vector(v["loc"])
         yaw = math.radians(v["yaw"])
-        bm = util.MB(f"car.{n}_body")
+        bm = util.MB(f"car{n}.body")
         body(bm, v)
         mirrors(bm, v)
         moving = bool(v.get("moving"))
         # A car that drives is a rig: its body is the part `car<n>` (pivot at the car's origin),
         # its trim rides on it, and each wheel is its own part turning about its hub.
-        body_props = {"loom_area": "car", **({"loom_part": f"car{n}", "loom_parent": ""} if moving else {})}
+        body_props = {"loom_area": f"car{n}", **({"loom_part": f"car{n}", "loom_parent": ""} if moving else {})}
         body_ob = bm.to_object(mats, coll, smooth_deg=None, subsurf=2, location=loc, yaw=yaw, props=body_props)
-        pm = util.MB(f"car.{n}_parts")
+        pm = util.MB(f"car{n}.parts")
         grille(pm, v)
         heads = lamps(pm, v)
         if not moving:
@@ -214,7 +231,7 @@ def build(ctx, variants):
         if v.get("ornament"):
             pm.cylinder((0, 0.16, 1.02), (0, 0.16, 1.1), 0.012, 12, "chrome")
             pm.torus((0, 0.16, 1.14), (0, 1, 0), 0.035, 0.006, 24, 6, "chrome")
-        trim_props = {"loom_area": "car", **({"loom_part": f"car{n}_trim", "loom_parent": f"car{n}"} if moving else {})}
+        trim_props = {"loom_area": f"car{n}", **({"loom_part": f"car{n}_trim", "loom_parent": f"car{n}"} if moving else {})}
         trim_ob = pm.to_object(mats, coll, smooth_deg=35, location=loc, yaw=yaw, props=trim_props)
         if moving:
             import bpy
@@ -223,11 +240,11 @@ def build(ctx, variants):
             for a in AXLES:
                 for side in (1, -1):
                     tag = f"{'f' if a < 2 else 'r'}{'r' if side > 0 else 'l'}"
-                    wm = util.MB(f"car.{n}_wheel_{tag}")
+                    wm = util.MB(f"car{n}.wheel_{tag}")
                     wheel(wm, a, side, at_origin=True)
                     hub = loc + rot0 @ Vector((side * 0.87, a, WHEEL_R))
                     children.append(wm.to_object(mats, coll, smooth_deg=35, location=hub, yaw=yaw,
-                                                 props={"loom_area": "car", "loom_part": f"car{n}_wheel_{tag}", "loom_parent": f"car{n}"}))
+                                                 props={"loom_area": f"car{n}", "loom_part": f"car{n}_wheel_{tag}", "loom_parent": f"car{n}"}))
             bpy.context.view_layer.update()
             for child in children:
                 world = child.matrix_world.copy()

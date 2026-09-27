@@ -113,9 +113,9 @@ def _skin_body(coll):
     return ob
 
 
-def _armature(coll):
-    arm = bpy.data.armatures.new("fig.rig")
-    ob = bpy.data.objects.new("fig.rig", arm)
+def _armature(coll, name="fig.rig"):
+    arm = bpy.data.armatures.new(name)
+    ob = bpy.data.objects.new(name, arm)
     coll.objects.link(ob)
     bpy.context.view_layer.objects.active = ob
     for o in bpy.context.selected_objects:
@@ -322,8 +322,13 @@ def _measure(ob, zlo, zhi, xmax=None):
     return (min(p.x for p in sel), max(p.x for p in sel), min(p.y for p in sel), max(p.y for p in sel), min(p.z for p in sel), max(p.z for p in sel))
 
 
-def build_mpfb(ctx, blend_path):
-    """Append the MPFB human, bake it to rest, fold its bones onto BONES, join, accessorise."""
+def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
+    """Append the MPFB human, bake it to rest, fold its bones onto BONES, join, accessorise.
+
+    `bare`: shirtless (the reference's tableau, 0:16): the suit's shirt is cut away above the
+    waist and the body under it is KEPT (MPFB's delete-under-clothes mask would leave a hole).
+    """
+    waist = 1.0
     coll, mats = ctx["coll"], ctx["mats"]
     with bpy.data.libraries.load(blend_path) as (src, dst):
         dst.objects = list(src.objects)
@@ -369,8 +374,23 @@ def build_mpfb(ctx, blend_path):
         o.select_set(True)
         if o.data.shape_keys is not None:
             bpy.ops.object.shape_key_remove(all=True, apply_mix=True)
+        if bare and o.name.endswith(".body"):
+            # keep the torso and arms the suit's mask would delete: take them out of its group
+            for mod in o.modifiers:
+                if mod.type == "MASK" and "casualsuit" in mod.name and mod.vertex_group in o.vertex_groups:
+                    group = o.vertex_groups[mod.vertex_group]
+                    upper = [v.index for v in o.data.vertices if (o.matrix_world @ v.co).z > waist - 0.02]
+                    group.remove(upper)
         for mod in list(o.modifiers):
             bpy.ops.object.modifier_apply(modifier=mod.name)
+        if bare and "casualsuit" in o.name:
+            import bmesh
+            bm = bmesh.new()
+            bm.from_mesh(o.data)
+            shirt = [f for f in bm.faces if (o.matrix_world @ f.calc_center_median()).z > waist]
+            bmesh.ops.delete(bm, geom=shirt, context="FACES")
+            bm.to_mesh(o.data)
+            bm.free()
         o.parent = None
         # fold the MPFB groups onto ours: sum per vertex, drop helper groups
         names = {g.index: g.name for g in o.vertex_groups}
@@ -408,7 +428,7 @@ def build_mpfb(ctx, blend_path):
     brow_z = htop - 0.115
     # the neck COLUMN, above the trapezius (a lower band takes the shoulders in and widens the loop)
     neck = _measure(body, 1.555, 1.585, xmax=0.1)
-    chest = _measure(suit, 1.27, 1.31, xmax=0.05)
+    chest = _measure(body if bare else suit, 1.27, 1.31, xmax=0.05)
     if eyes is not None:
         ex0, ex1, ey0, _, ez0, ez1 = _measure(eyes, 0.0, 3.0)
     else:
@@ -569,10 +589,10 @@ def build_mpfb(ctx, blend_path):
         mb.torus(wrist_h - along * 0.03, along, 0.038, 0.009, 24, 6, "jewel")
 
     parts = [
-        _accessory(coll, mats, "fig.beanie", beanie, "head"),
-        _accessory(coll, mats, "fig.glasses", glasses, "head"),
-        _accessory(coll, mats, "fig.chain", chain, "chest"),
-        _accessory(coll, mats, "fig.bracelet", bracelet, "forearm.L"),
+        _accessory(coll, mats, f"{prefix}.beanie", beanie, "head"),
+        _accessory(coll, mats, f"{prefix}.glasses", glasses, "head"),
+        _accessory(coll, mats, f"{prefix}.chain", chain, "chest"),
+        _accessory(coll, mats, f"{prefix}.bracelet", bracelet, "forearm.L"),
     ]
     for x in bpy.context.selected_objects:
         x.select_set(False)
@@ -580,9 +600,9 @@ def build_mpfb(ctx, blend_path):
         o.select_set(True)
     bpy.context.view_layer.objects.active = body
     bpy.ops.object.join()
-    body.name = "fig.body"
-    body.data.name = "fig.body"
-    _bind(body, _armature(coll))
-    body["loom_area"] = "fig"
+    body.name = f"{prefix}.body"
+    body.data.name = f"{prefix}.body"
+    _bind(body, _armature(coll, f"{prefix}.rig"))
+    body["loom_area"] = prefix
     print(f"[figure] MPFB human: {len(body.data.vertices):,} vertices", flush=True)
     return body

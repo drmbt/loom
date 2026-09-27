@@ -23,6 +23,7 @@ struct Params {
   tailGain: f32, // @default 1  Tail light radiance multiplier.
   wet: f32, // @default 0.4  Share of the floor that is damp and glossy.
   wetGloss: f32, // @default 0.22  Roughness of the damp patches.
+  dryGloss: f32, // @default 0.62  Roughness of the dry floor (worn concrete: past the reflections' cutoff).
   peel: f32, // @default 0.25  Orange-peel strength on the clear coat.
   cycAlbedo: f32, // @default 0.9  Albedo of the white cyc.
 };
@@ -43,9 +44,11 @@ fn floorSurface(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {
   let scuff = smoothstep(0.62, 0.8, detailNoise(vec3f(w.x * 1.7, 0.0, w.z * 0.12)).value) * 0.5;
   // Hairline cracks.
   let crack = smoothstep(0.006, 0.0, abs(detailNoise(vec3f(w.x * 0.9, 3.0, w.z * 0.9)).value - 0.5)) * 0.5;
-  let shade = 0.85 + 0.3 * fine.value + (grit.value - 0.5) * 0.2;
+  let shade = 0.9 + 0.2 * fine.value + (grit.value - 0.5) * 0.12;
   r.albedo = vec4f(o.albedo.rgb * shade * mix(1.0, 0.55, damp) * (1.0 - scuff * 0.6) * (1.0 - crack * 0.6), 1.0);
-  r.roughness = mix(0.72 + (grit.value - 0.5) * 0.2, p.wetGloss + (fine.value - 0.5) * 0.04, damp);
+  // Sealed warehouse concrete: semi-gloss everywhere (every lamp draws a soft streak in it),
+  // glossier where damp. The reflections pass blurs by roughness, so neither reads as a mirror.
+  r.roughness = mix(p.dryGloss + (grit.value - 0.5) * 0.08, p.wetGloss + (fine.value - 0.5) * 0.04, damp);
   r.metallic = 0.0;
   r.normal = detailBump(s.normal, grit.gradient * 0.004 + fine.gradient * 0.012 * (1.0 - damp), 1.0);
   return r;

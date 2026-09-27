@@ -8,6 +8,7 @@ import { GLOSSY_SSR_WGSL } from "./reflections.ts";
 import { ENVIRONMENT_HDRI_WGSL, ENVIRONMENT_WGSL, HEADLIGHT_COOKIE_WGSL, hazeLights, hazeWgsl } from "./atmosphere.ts";
 import { CRT_WGSL, ECHO_WGSL, GRADE_WGSL, HALO_WGSL, LENS_WGSL, MIRROR_WGSL, OPTICS_COMPOSITE_WGSL, PRISM_WGSL, STREAK_WGSL } from "./fx.ts";
 import type { Area, OnNothingFacts } from "./scene-facts.ts";
+import { carAreas } from "./scene-facts.ts";
 import { markerOf } from "./scene-facts.ts";
 import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "./skin-kernel.ts";
 import { SURFACE_WGSL } from "./surface.ts";
@@ -50,7 +51,8 @@ function node(id: string, type: string, position: readonly [number, number], par
 const vec = (v: readonly [number, number, number]): number[] => [v[0], v[1], v[2]];
 
 interface ShotPlan {
-  readonly areas: readonly Area[];
+  /** `cars` stands for every car area the GLB holds. */
+  readonly areas: readonly (Area | "cars")[];
   readonly figure: boolean;
   readonly headlights: boolean;
   readonly tubes: boolean;
@@ -62,10 +64,10 @@ interface ShotPlan {
 }
 
 const PLANS: Record<Base, ShotPlan> = {
-  tableau: { areas: ["wh", "car"], figure: true, headlights: true, tubes: false, haze: { density: 0.035, groups: ["head"], ambient: [0.004, 0.0042, 0.0045] }, dof: false, echo: false, mirror: false, whiteRoom: false },
-  title: { areas: ["wh", "car", "title"], figure: false, headlights: true, tubes: false, haze: { density: 0.03, groups: ["head"], ambient: [0.006, 0.006, 0.0065] }, dof: true, echo: false, mirror: false, whiteRoom: false },
+  tableau: { areas: ["wh", "cars"], figure: true, headlights: true, tubes: false, haze: { density: 0.035, groups: ["head"], ambient: [0.0025, 0.0045, 0.005] }, dof: false, echo: false, mirror: false, whiteRoom: false },
+  title: { areas: ["wh", "cars", "title"], figure: false, headlights: true, tubes: false, haze: { density: 0.03, groups: ["head"], ambient: [0.006, 0.006, 0.0065] }, dof: true, echo: false, mirror: false, whiteRoom: false },
   quad: { areas: [], figure: true, headlights: false, tubes: false, haze: { density: 0.06, groups: ["back"], ambient: [0, 0, 0] }, dof: false, echo: false, mirror: true, whiteRoom: false },
-  wheel: { areas: ["wh", "car"], figure: false, headlights: true, tubes: false, haze: { density: 0.03, groups: ["head"], ambient: [0.004, 0.0042, 0.0045] }, dof: false, echo: false, mirror: false, whiteRoom: false },
+  wheel: { areas: ["wh", "cars"], figure: false, headlights: true, tubes: false, haze: { density: 0.03, groups: ["head"], ambient: [0.004, 0.0042, 0.0045] }, dof: false, echo: false, mirror: false, whiteRoom: false },
   cyc: { areas: ["cyc"], figure: true, headlights: false, tubes: false, haze: { density: 0, groups: [], ambient: [0, 0, 0] }, dof: false, echo: true, mirror: false, whiteRoom: true },
 };
 
@@ -79,21 +81,21 @@ function performance(shot: Base): Record<string, string | number[]> {
   const armsDown = { upperarmL: "z:-0.62", upperarmR: "z:0.62" };
   switch (shot) {
     case "tableau":
-      // Weight on one hip, a slow sway; the right arm comes up in a loose gesture and drops.
+      // 0:16: back to the lens, arms thrown up in a wide V, pumping gently with the track.
       return {
-        ...armsDown,
-        "pelvis.y": "sin(abstime * 0.7) * 0.12",
-        "pelvis.z": "0.04 + sin(abstime * 0.7) * 0.02",
-        "chest.z": "-0.05 + sin(abstime * 1.4) * 0.03",
-        "neck.x": "0.08 + sin(abstime * 2.2) * 0.06",
-        "head.y": "sin(abstime * 0.5) * 0.15",
-        "upperarmR.x": "-0.9 - 0.35 * (0.5 + 0.5 * sin(abstime * 1.3))",
-        "upperarmR.z": "0.35",
-        "forearmR.x": "-1.1 - 0.3 * sin(abstime * 2.6)",
-        "upperarmL.x": "-0.2 + sin(abstime * 0.9) * 0.1",
-        "forearmL.x": "-0.35",
-        "thighL.z": "0.06",
-        "thighR.z": "-0.1",
+        "upperarmL.z": "1.5 + sin(abstime * 2.2) * 0.06",
+        "upperarmR.z": "-1.5 - sin(abstime * 2.2 + 0.4) * 0.06",
+        "upperarmL.x": "-0.15",
+        "upperarmR.x": "-0.15",
+        "forearmL.z": "0.35",
+        "forearmR.z": "-0.35",
+        "handL.x": "-0.3",
+        "handR.x": "-0.3",
+        "chest.x": "-0.06",
+        "neck.x": "-0.12 + sin(abstime * 2.2) * 0.04",
+        "pelvis.y": "sin(abstime * 0.6) * 0.05",
+        "thighL.z": "0.07",
+        "thighR.z": "-0.07",
       };
     case "quad":
       // Profile, still, the head working with the beat, the near hand low.
@@ -137,7 +139,9 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   const base = BASE_OF[shot];
   const plan = PLANS[base];
   /** The wheel shot's car drives `DRIVE` metres; what rides with it follows by this helper. */
-  const carParts = facts.areas.get("car")?.partTable ?? [];
+  /** The car the wheel shot drives: the first car area that carries a rig. */
+  const drivenArea = carAreas(facts).find((area) => (facts.areas.get(area)?.partTable.length ?? 0) > 0);
+  const carParts = drivenArea === undefined ? [] : facts.areas.get(drivenArea)!.partTable;
   const driven = base === "wheel" && carParts.length > 0 ? (() => {
     const car = drivenCar(carParts);
     return { car: car.body.name.slice(3), forward: car.forward, right: car.right, pivot: car.body.pivot };
@@ -174,15 +178,15 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
 
   // ── The material every surface wears ──
   // The title frames the grille from a metre: its own headlights would blow the frame out, so they idle.
-  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: base === "title" ? 0.04 : 1, wet: base === "title" ? 0.2 : 0.4 }, { label: "surf1" }));
+  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: base === "title" ? 0.04 : 1, wet: base === "title" ? 0.1 : 0.14, wetGloss: 0.32 }, { label: "surf1" }));
 
   // ── Meshes ──
-  plan.areas.forEach((area, index) => {
+  plan.areas.flatMap((entry) => (entry === "cars" ? carAreas(facts) : [entry])).forEach((area, index) => {
     const mesh = facts.areas.get(area);
     if (mesh === undefined) throw new Error(`onNothingDocument: no "${area}" area in the GLB.`);
     nodes.push(node(`mesh_${area}`, "meshFileIn", [-3600, index * 250], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts }, { label: `mesh${area}1` }));
     nodes.push(node(`geo_${area}`, "geometry", [-3300, index * 250], { mode: "surface", material: "surf1" }, { label: `geo${area}1` }));
-    if (base === "wheel" && area === "car") {
+    if (base === "wheel" && area === drivenArea) {
       // The rigged car drives; its wheels roll (car-rig.ts).
       nodes.push(node("carRig", "pointKernel", [-3450, index * 250], { capacity: mesh.vertices, attributes: CAR_RIG_ATTRIBUTES, kernel: carRigKernel(mesh.partTable), drive: expressionSlot(DRIVE, 0) }, { label: "carrig1" }));
       edges.push(edge("mesh-rig-car", [`mesh_${area}`, "out"], ["carRig", "in"]));
@@ -195,7 +199,9 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
 
   // ── The figure, posed by the skin kernel ──
   if (plan.figure) {
-    const mesh = facts.areas.get("fig");
+    // 0:16 is shirtless; everywhere else the figure wears the black tee
+    const figArea = shot === "tableau" ? "figbare" : "fig";
+    const mesh = facts.areas.get(figArea);
     if (mesh === undefined) throw new Error("onNothingDocument: no figure in the GLB.");
     const stage = facts.stages.get(base);
     if (stage === undefined) throw new Error(`onNothingDocument: the GLB has no stage "stage.${base}".`);
@@ -254,13 +260,26 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
         throwRatio: 0.5,
         aspect: 2.4,
         brightness: 2.5,
-        color: [0.92, 0.95, 1, 1],
+        // LED low beams read cool on concrete: a cyan-white, as the reference's floor shows.
+        color: [0.78, 0.92, 1, 1],
         falloff: true,
         occlusion: true,
       }, { label: `${id}1` }));
       edges.push(edge(`cookie-${id}`, ["cookie", "out"], [id, "cookie"]));
       projectors.push(`${id}1`);
     });
+  }
+  /**
+   * The room's practicals: old sodium high-bays. One high over the floor in front of the hero
+   * car throws the warm pool the reference's floor carries (measured rgb 40,33,31 there against
+   * a cyan-grey 24,26,25 beside it); two more, far and dim, warm the trusses.
+   */
+  function sodium(): void {
+    const warm = [1, 0.52, 0.2, 1];
+    nodes.push(node("sodiumPool", "light", [-2600, 2000], { kind: "point", position: [0.4, 5.5, 2.2], color: warm, intensity: 16 }, { label: "sodiumpool1" }));
+    nodes.push(node("sodiumA", "light", [-2600, 2100], { kind: "point", position: [-9, 7.2, -6], color: warm, intensity: 4 }, { label: "sodiuma1" }));
+    nodes.push(node("sodiumB", "light", [-2600, 2200], { kind: "point", position: [10, 7.2, -9], color: warm, intensity: 3 }, { label: "sodiumb1" }));
+    lights.push("sodiumpool1", "sodiuma1", "sodiumb1");
   }
   if (plan.tubes) {
     const tubes = [...facts.markers.values()].filter((marker) => marker.name.startsWith("lamp.tube.")).sort((a, b) => (a.name < b.name ? -1 : 1));
@@ -277,9 +296,16 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     nodes.push(node("fill", "light", [-2600, 1000], { kind: "point", position: [stage[0] - 1.1, 2.1, stage[2] + 1.5], color: [0.88, 0.92, 1, 1], intensity: 5 }, { label: "fill1" }));
     // The room's own light: a soft top, so the white bodies and the roof read at a few percent.
     nodes.push(node("top", "light", [-2600, 900], { kind: "directional", direction: [0.1, -1, 0.15], color: [0.9, 0.93, 1, 1], intensity: 0.12 }, { label: "top1" }));
-    lights.push("fill1", "top1");
+    // The cars' own key: a broad soft source behind the camera, high — the reference's white
+    // bodies read clearly, grille chrome and all, while the room stays black.
+    // Nearly horizontal: it lights the cars' faces and grazes the floor, which stays dark.
+    nodes.push(node("carKey", "light", [-2600, 800], { kind: "directional", direction: [0.05, -0.1, -0.99], color: [0.9, 0.95, 1, 1], intensity: 0.45 }, { label: "carkey1" }));
+    lights.push("fill1", "top1", "carkey1");
+    sodium();
   }
+  if (base === "wheel") sodium();
   if (base === "title") {
+    sodium();
     // A soft top over the bonnet: the chrome script and the grille bars catch it; the room stays dim.
     nodes.push(node("fill", "light", [-2600, 1000], { kind: "point", position: [0, 2.6, 0.9], color: [1, 0.97, 0.92, 1], intensity: 5 }, { label: "fill1" }));
     nodes.push(node("top", "light", [-2600, 900], { kind: "directional", direction: [0.1, -1, 0.3], color: [1, 0.93, 0.85, 1], intensity: 0.12 }, { label: "top1" }));
@@ -371,7 +397,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     depthOutput: true,
     normalOutput: true,
     albedoOutput: true,
-    environmentIntensity: plan.whiteRoom ? 0.6 : base === "title" ? 1 : base === "quad" ? 0 : 0.4,
+    environmentIntensity: plan.whiteRoom ? 0.6 : base === "title" ? 1 : base === "quad" ? 0 : 0.18,
     environmentTaps: 16,
   }, { label: "shot1" }));
   edges.push(edge("env-shot", [options.hdri === true && !plan.whiteRoom ? "envHdri" : "env", "out"], ["shot", "environment"]));
@@ -386,7 +412,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   };
   const depth = ["shot", "depth"] as const;
   const normal = ["shot", "normal"] as const;
-  pass("reflections", GLOSSY_SSR_WGSL, { ...cameraParams, strength: 1, maxDistance: 30, roughnessCutoff: 0.5, thickness: 0.4 }, [depth, normal], [-2100, 0]);
+  pass("reflections", GLOSSY_SSR_WGSL, { ...cameraParams, strength: 1.2, maxDistance: 30, roughnessCutoff: 0.55, thickness: 0.4, blur: 1.6, stretch: 4, keepBright: 4, dimShare: 0.1 }, [depth, normal], [-2100, 0]);
   pass("occlusion", GTAO_WGSL, { ...cameraParams, radius: 0.5, strength: plan.whiteRoom ? 0.6 : 0.8 }, [depth, normal], [-1900, 0]);
   if (plan.haze.density > 0) {
     pass("haze", hazeWgsl(hazeLights(facts, plan.haze.groups)), { ...cameraParams, density: plan.haze.density, ambient: vec(plan.haze.ambient), anisotropy: 0.72, head: base === "title" ? 0.01 : 0.25 }, [depth], [-1700, 0]);
@@ -396,8 +422,8 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   }
   const scene = last;
   const opticsGain: Record<Base, { streak: number; halo: number }> = {
-    tableau: { streak: 0.5, halo: 0.12 },
-    wheel: { streak: 0.5, halo: 0 },
+    tableau: { streak: 1.3, halo: 0.12 },
+    wheel: { streak: 0.9, halo: 0 },
     title: { streak: 0.35, halo: 0.15 },
     quad: { streak: 0.25, halo: 0 },
     cyc: { streak: 0.1, halo: 0 },
@@ -410,16 +436,16 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   // factor against the pass before it: the bloom halves on the way down and doubles back up.
   nodes.push(node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: plan.whiteRoom ? 3 : 1.4, knee: 0.8 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }));
   edges.push(edge("scene-bright", scene, ["bright", "input"]));
-  // The streak glass copies each bright SHAPE straight up: a flat-sided slab the width of the
-  // source that holds its brightness and ends softly at the reach — three chained box passes
-  // (each step under the span of the pass before) fed by the bloom's first level, so the slab
-  // carries the lamp's clipped glare, not only its lens.
+  // The streak glass copies each bright SHAPE straight up: a flat-sided slab exactly the width
+  // of the lamp that holds its brightness and ends softly at the reach — three chained box
+  // passes (each step under the span of the pass before) fed by the SHARP bright pass, so each
+  // LED element in a lamp draws its own line inside the column, as in the reference.
   const reach = streakReach[base];
   const STREAKS = [reach / 160, reach / 48, reach / 10] as const;
   STREAKS.forEach((step, index) => {
     const id = `streak${index}`;
-    nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step, decay: index === 2 ? 1.2 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 ? 0.004 : 0 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } }));
-    edges.push(edge(`into-${id}`, [index === 0 ? "bloomUp0" : `streak${index - 1}`, "out"], [id, "input"]));
+    nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step, decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 ? 0.003 : 0, compress: index === 0 ? 4 : 0, down: 0, gain: 2.2, striation: 0.45, striationScale: 150 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } }));
+    edges.push(edge(`into-${id}`, [index === 0 ? "bright" : `streak${index - 1}`, "out"], [id, "input"]));
   });
   nodes.push(node("hot", "customWgsl", [-1300, 500], { source: BRIGHT_PASS_WGSL, threshold: 150, knee: 30 }, { label: "hot1", resolution: { mode: "scale", factor: 0.25 } }));
   edges.push(edge("scene-hot", scene, ["hot", "input"]));
@@ -434,7 +460,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     edges.push(edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]));
     edges.push(edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0));
   }
-  pass("optics", OPTICS_COMPOSITE_WGSL, { streak: opticsGain[base].streak, halo: opticsGain[base].halo, bloom: 0.3, streakTint: [0.95, 0.98, 1, 1] }, [["streak2", "out"], ["halo", "out"], ["bloomUp0", "out"]], [-500, 0]);
+  pass("optics", OPTICS_COMPOSITE_WGSL, { streak: opticsGain[base].streak, halo: opticsGain[base].halo, bloom: 0.12, streakTint: [0.9, 0.97, 1, 1] }, [["streak2", "out"], ["halo", "out"], ["bloomUp0", "out"]], [-500, 0]);
 
   // ── Lens and grade ──
   if (base === "wheel" && driven !== undefined) {
@@ -456,9 +482,11 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     : {};
   pass("lens", LENS_WGSL, plan.whiteRoom ? { distortion: 0.03, edgeBlur: 0.012, vignette: 0.8, vignetteRound: 0.9 } : { distortion: 0.06, edgeBlur: 0.014, vignette: 0.6, ...snapBlur }, [], [-300, 0]);
   const grade: Record<Base, Record<string, StoredParameter>> = {
-    wheel: { exposure: 0.35, black: 0.04, contrast: 1.2, saturation: 0.22, steel: [0.94, 0.99, 1.04], shadowTint: [0.97, 1, 1.03, 1] },
-    tableau: { exposure: 0.2, black: 0.04, contrast: 1.2, saturation: 0.22, steel: [0.94, 0.99, 1.04], shadowTint: [0.97, 1, 1.03, 1] },
-    title: { exposure: 0.4, black: 0.035, contrast: 1.15, saturation: 0.3, steel: [0.95, 0.99, 1.03], shadowTint: [0.98, 1, 1.02, 1] },
+    wheel: { exposure: 0.35, black: 0.035, contrast: 1.18, saturation: 0.62, keepWarm: 0.9, steel: [0.96, 1.01, 1.03], shadowTint: [0.96, 1.02, 1.03, 1], split: 0.4 },
+    // Not black and white: sodium warmth in the floor pool, cyan in the LED spill and the haze,
+    // cyan-green in the greys — measured from the reference (docs plan, 'colour').
+    tableau: { exposure: 0.2, black: 0.035, contrast: 1.18, saturation: 0.62, keepWarm: 0.9, steel: [0.96, 1.01, 1.03], shadowTint: [0.96, 1.02, 1.03, 1], split: 0.4 },
+    title: { exposure: 0.4, black: 0.03, contrast: 1.15, saturation: 0.6, keepWarm: 0.9, steel: [0.97, 1.0, 1.02], shadowTint: [0.97, 1.01, 1.02, 1], split: 0.35 },
     quad: { exposure: 0.1, black: 0.05, contrast: 1.25, saturation: 0.75, keepWarm: 0.75, steel: [0.9, 1.02, 1.04], shadowTint: [0.9, 1.03, 1.06, 1] },
     cyc: { exposure: 0.9, black: 0.02, contrast: 1.1, saturation: 0.15, steel: [0.97, 1, 1.02], shadowTint: [1, 1, 1, 1], lift: 0.02, grain: 0.02 },
   };

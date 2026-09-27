@@ -53,8 +53,27 @@ export interface OnNothingFacts {
 }
 
 /** The GLB's areas, one Mesh File In each (every object is named `<area>.<name>`). */
-export const AREAS = ["wh", "car", "title", "fig", "cyc"] as const;
-export type Area = (typeof AREAS)[number];
+export const AREAS = ["wh", "title", "fig", "figbare", "cyc"] as const;
+/** The fixed areas, plus one `car<n>` per car (each car its own Mesh File In: five real models overflow one buffer). */
+export type Area = (typeof AREAS)[number] | `car${number}`;
+
+/** The car areas a GLB holds, in index order, read from its node names (`car<n>.<name>`). */
+export function carAreasOf(glb: Uint8Array): Area[] {
+  const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
+  const length = view.getUint32(12, true);
+  const json = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + length))) as { nodes?: Array<{ name?: string; mesh?: number }> };
+  const found = new Set<number>();
+  for (const node of json.nodes ?? []) {
+    const match = /^car(\d+)\./.exec(node.name ?? "");
+    if (match !== null && node.mesh !== undefined) found.add(Number(match[1]));
+  }
+  return [...found].sort((a, b) => a - b).map((n) => `car${n}` as Area);
+}
+
+/** The car areas in the facts, in index order. */
+export function carAreas(facts: OnNothingFacts): Area[] {
+  return [...facts.areas.keys()].filter((area) => area.startsWith("car")).sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)));
+}
 
 export function selectOf(area: Area): string {
   return `${area}.*`;
@@ -94,6 +113,11 @@ export function factsFrom(glbUrl: string, meshes: ReadonlyMap<Area, DecodedMesh>
   }
   // The decoder's joint table, in its order: the indices `joints` carries, parents first.
   const skin = any.skin;
+  // The shirtless figure shares the kernel's bone table: its skin must list the same joints in the same order.
+  const bare = meshes.get("figbare")?.skin;
+  if (bare !== undefined && skin !== undefined && bare.joints.map((j) => j.name).join(",") !== skin.joints.map((j) => j.name).join(",")) {
+    throw new Error("On Nothing GLB: figbare's joints differ from fig's; both must be built from the same rig.");
+  }
   if (skin === undefined) throw new Error("On Nothing GLB: the figure is not skinned — rebuild it with tools/blender/on-nothing (T1401b exports the armature as a glTF skin).");
   const bones: Bone[] = skin.joints.map((joint, index) => ({ index, name: joint.name, parent: joint.parent, head: joint.head }));
   return { glbUrl, areas, cameras: new Map(any.cameras.map((camera) => [camera.name, camera])), markers, stages, bones };
