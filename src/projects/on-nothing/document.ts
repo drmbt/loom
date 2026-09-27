@@ -17,6 +17,9 @@ import { WHEEL_DOF, WHEEL_DRIVE, WHEEL_TURN, WHEEL_GLYPHS, WHEEL_GLYPHS_WGSL, pl
 import { titleDocument } from "./shots/title.ts";
 import { ringDocument } from "./shots/ring.ts";
 import { prismDocument } from "./shots/prism.ts";
+import { haloDocument } from "./shots/halo.ts";
+import { crtDocument } from "./shots/crt.ts";
+import { cycDocument } from "./shots/cyc.ts";
 import { quadDocument } from "./shots/quad.ts";
 import { handheld } from "./shots/handheld.ts";
 
@@ -30,11 +33,11 @@ import { handheld } from "./shots/handheld.ts";
  * docs/on-nothing-shots-plan-2026-09-27.md for what each shot is after.
  */
 
-export const SHOTS = ["tableau", "title", "ring", "quad", "cyc", "zoom", "prism", "wheel"] as const;
+export const SHOTS = ["tableau", "title", "ring", "quad", "cyc", "cyc-wide", "zoom", "prism", "wheel", "halo", "crt"] as const;
 export type Shot = (typeof SHOTS)[number];
 /** The four sets; `zoom` and `prism` are the tableau's set with their own camera and finish. */
 type Base = "tableau" | "title" | "quad" | "cyc" | "wheel";
-const BASE_OF: Record<Shot, Base> = { tableau: "tableau", title: "title", ring: "quad", quad: "quad", cyc: "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel" };
+const BASE_OF: Record<Shot, Base> = { tableau: "tableau", title: "title", ring: "quad", quad: "quad", cyc: "cyc", "cyc-wide": "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel", halo: "tableau", crt: "tableau" };
 
 export interface OnNothingOptions {
   readonly shot: Shot;
@@ -146,6 +149,11 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   // T1407b: the quad and the prism build their own graphs (shots/).
   if (shot === "quad") return quadDocument(facts, options);
   if (shot === "prism") return prismDocument(facts, options);
+  // T1407b (halo, crt): built on the tableau's graph by shots/halo.ts and shots/crt.ts
+  if (shot === "halo") return haloDocument(facts, options, onNothingDocument);
+  if (shot === "crt") return crtDocument(facts, options, onNothingDocument);
+  // T1407b (cyc): the white limbo's framings have their own builder (shots/cyc.ts).
+  if (shot === "cyc" || shot === "cyc-wide") return cycDocument(facts, { shot, ...(options.width === undefined ? {} : { width: options.width }), ...(options.height === undefined ? {} : { height: options.height }), ...(options.crt === undefined ? {} : { crt: options.crt }) });
   const base = BASE_OF[shot];
   const plan = PLANS[base];
   /** The wheel shot's rigged car, moved to its own mark and creeping (shots/wheel.ts). */

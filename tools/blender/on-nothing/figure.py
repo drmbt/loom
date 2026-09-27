@@ -322,7 +322,7 @@ def _measure(ob, zlo, zhi, xmax=None):
     return (min(p.x for p in sel), max(p.x for p in sel), min(p.y for p in sel), max(p.y for p in sel), min(p.z for p in sel), max(p.z for p in sel))
 
 
-def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
+def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None):
     """Append the MPFB human, bake it to rest, fold its bones onto BONES, join, accessorise.
 
     `bare`: shirtless (the reference's tableau, 0:16): the suit's shirt is cut away above the
@@ -381,6 +381,8 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
                     group = o.vertex_groups[mod.vertex_group]
                     upper = [v.index for v in o.data.vertices if (o.matrix_world @ v.co).z > waist - 0.02]
                     group.remove(upper)
+        if wardrobe is not None:
+            wardrobe.pre_apply(o)  # T1407b (cyc): cyc_wardrobe.py
         for mod in list(o.modifiers):
             bpy.ops.object.modifier_apply(modifier=mod.name)
         if bare and "casualsuit" in o.name:
@@ -418,6 +420,8 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False):
         o.data.shade_smooth()
         keep.append(o)
     bpy.data.objects.remove(rig, do_unlink=True)
+    if wardrobe is not None:
+        wardrobe.post_apply(keep, arm_bones, mats)
     body = next(o for o in keep if o.name.endswith(".body"))
     suit = next(o for o in keep if "casualsuit" in o.name)
     eyes = next((o for o in keep if "high-poly" in o.name), None)

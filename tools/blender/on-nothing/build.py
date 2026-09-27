@@ -22,6 +22,8 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import cars  # noqa: E402
+import cyc_set  # noqa: E402
+import cyc_wardrobe  # noqa: E402
 import figure  # noqa: E402
 import mats as materials  # noqa: E402
 import sets  # noqa: E402
@@ -114,12 +116,15 @@ def main():
 
     tube_markers = sets.warehouse(ctx)
     sets.cyc(ctx)
+    cyc_set.build(ctx)  # the wide's tight-cove studio (T1407b cyc)
     heads = cars.build(ctx, CARS)
     title.build(ctx, a.title)
     if a.human:
         figure.build_mpfb(ctx, os.path.abspath(a.human))
         # the same body shirtless, for the tableau (0:16): its own area, its own skin
         figure.build_mpfb(ctx, os.path.abspath(a.human), prefix="figbare", bare=True)
+        # the white limbo's walker: wide cropped trousers, socks, chunky shoes (T1407b cyc)
+        figure.build_mpfb(ctx, os.path.abspath(a.human), prefix="figcyc", wardrobe=cyc_wardrobe)
     else:
         figure.build(ctx)
 

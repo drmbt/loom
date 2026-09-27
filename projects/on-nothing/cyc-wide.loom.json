@@ -1,0 +1,2505 @@
+{
+  "assets": [],
+  "createdAt": "2026-09-27T00:00:00.000Z",
+  "graph": {
+    "edges": {
+      "bloom-down1": {
+        "id": "bloom-down1",
+        "source": {
+          "nodeId": "bright",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomDown1",
+          "portId": "input"
+        }
+      },
+      "bloom-down2": {
+        "id": "bloom-down2",
+        "source": {
+          "nodeId": "bloomDown1",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomDown2",
+          "portId": "input"
+        }
+      },
+      "bloom-down3": {
+        "id": "bloom-down3",
+        "source": {
+          "nodeId": "bloomDown2",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomDown3",
+          "portId": "input"
+        }
+      },
+      "bloom-down4": {
+        "id": "bloom-down4",
+        "source": {
+          "nodeId": "bloomDown3",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomDown4",
+          "portId": "input"
+        }
+      },
+      "bloom-up0-lower": {
+        "id": "bloom-up0-lower",
+        "source": {
+          "nodeId": "bloomUp1",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp0",
+          "portId": "input"
+        }
+      },
+      "bloom-up0-own": {
+        "id": "bloom-up0-own",
+        "order": 0,
+        "source": {
+          "nodeId": "bright",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp0",
+          "portId": "more"
+        }
+      },
+      "bloom-up1-lower": {
+        "id": "bloom-up1-lower",
+        "source": {
+          "nodeId": "bloomUp2",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp1",
+          "portId": "input"
+        }
+      },
+      "bloom-up1-own": {
+        "id": "bloom-up1-own",
+        "order": 0,
+        "source": {
+          "nodeId": "bloomDown1",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp1",
+          "portId": "more"
+        }
+      },
+      "bloom-up2-lower": {
+        "id": "bloom-up2-lower",
+        "source": {
+          "nodeId": "bloomUp3",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp2",
+          "portId": "input"
+        }
+      },
+      "bloom-up2-own": {
+        "id": "bloom-up2-own",
+        "order": 0,
+        "source": {
+          "nodeId": "bloomDown2",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp2",
+          "portId": "more"
+        }
+      },
+      "bloom-up3-lower": {
+        "id": "bloom-up3-lower",
+        "source": {
+          "nodeId": "bloomDown4",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp3",
+          "portId": "input"
+        }
+      },
+      "bloom-up3-own": {
+        "id": "bloom-up3-own",
+        "order": 0,
+        "source": {
+          "nodeId": "bloomDown3",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bloomUp3",
+          "portId": "more"
+        }
+      },
+      "env-shot": {
+        "id": "env-shot",
+        "source": {
+          "nodeId": "env",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "shot",
+          "portId": "environment"
+        }
+      },
+      "fig-skin_far": {
+        "id": "fig-skin_far",
+        "source": {
+          "nodeId": "fig",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "skin_far",
+          "portId": "in"
+        }
+      },
+      "fig-skin_near": {
+        "id": "fig-skin_near",
+        "source": {
+          "nodeId": "fig",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "skin_near",
+          "portId": "in"
+        }
+      },
+      "finish-trail": {
+        "id": "finish-trail",
+        "source": {
+          "nodeId": "finish",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "trail",
+          "portId": "input"
+        }
+      },
+      "last-out": {
+        "id": "last-out",
+        "source": {
+          "nodeId": "trail",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "out",
+          "portId": "input"
+        }
+      },
+      "lens-finish": {
+        "id": "lens-finish",
+        "source": {
+          "nodeId": "lens",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "finish",
+          "portId": "input"
+        }
+      },
+      "mesh-geo-cyc": {
+        "id": "mesh-geo-cyc",
+        "source": {
+          "nodeId": "mesh_cyc",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "geo_cyc",
+          "portId": "points"
+        }
+      },
+      "mist-lens": {
+        "id": "mist-lens",
+        "source": {
+          "nodeId": "mist",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lens",
+          "portId": "input"
+        }
+      },
+      "mist-more0": {
+        "id": "mist-more0",
+        "order": 0,
+        "source": {
+          "nodeId": "bloomUp0",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "mist",
+          "portId": "more"
+        }
+      },
+      "occlusion-mist": {
+        "id": "occlusion-mist",
+        "source": {
+          "nodeId": "occlusion",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "mist",
+          "portId": "input"
+        }
+      },
+      "occlusion-more0": {
+        "id": "occlusion-more0",
+        "order": 0,
+        "source": {
+          "nodeId": "shot",
+          "portId": "depth"
+        },
+        "target": {
+          "nodeId": "occlusion",
+          "portId": "more"
+        }
+      },
+      "occlusion-more1": {
+        "id": "occlusion-more1",
+        "order": 1,
+        "source": {
+          "nodeId": "shot",
+          "portId": "normal"
+        },
+        "target": {
+          "nodeId": "occlusion",
+          "portId": "more"
+        }
+      },
+      "scene-bright": {
+        "id": "scene-bright",
+        "source": {
+          "nodeId": "occlusion",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "bright",
+          "portId": "input"
+        }
+      },
+      "seed-env": {
+        "id": "seed-env",
+        "source": {
+          "nodeId": "envSeed",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "env",
+          "portId": "input"
+        }
+      },
+      "shot-occlusion": {
+        "id": "shot-occlusion",
+        "source": {
+          "nodeId": "shot",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "occlusion",
+          "portId": "input"
+        }
+      },
+      "skin_far-geo": {
+        "id": "skin_far-geo",
+        "source": {
+          "nodeId": "skin_far",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "geo_far",
+          "portId": "points"
+        }
+      },
+      "skin_near-geo": {
+        "id": "skin_near-geo",
+        "source": {
+          "nodeId": "skin_near",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "geo_near",
+          "portId": "points"
+        }
+      }
+    },
+    "groups": {},
+    "nodes": {
+      "bloomDown1": {
+        "definitionVersion": 1,
+        "id": "bloomDown1",
+        "label": "bloomdown11",
+        "parameters": {
+          "clampLuma": 0,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -900,
+          "y": 300
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "bloomDown2": {
+        "definitionVersion": 1,
+        "id": "bloomDown2",
+        "label": "bloomdown21",
+        "parameters": {
+          "clampLuma": 0,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -900,
+          "y": 450
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "bloomDown3": {
+        "definitionVersion": 1,
+        "id": "bloomDown3",
+        "label": "bloomdown31",
+        "parameters": {
+          "clampLuma": 0,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -900,
+          "y": 600
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "bloomDown4": {
+        "definitionVersion": 1,
+        "id": "bloomDown4",
+        "label": "bloomdown41",
+        "parameters": {
+          "clampLuma": 0,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -900,
+          "y": 750
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "bloomUp0": {
+        "definitionVersion": 1,
+        "id": "bloomUp0",
+        "label": "bloomup01",
+        "parameters": {
+          "lower": 1.4,
+          "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+        },
+        "position": {
+          "x": -700,
+          "y": 150
+        },
+        "resolution": {
+          "factor": 2,
+          "mode": "scale"
+        },
+        "type": "customWgslMulti"
+      },
+      "bloomUp1": {
+        "definitionVersion": 1,
+        "id": "bloomUp1",
+        "label": "bloomup11",
+        "parameters": {
+          "lower": 1.4,
+          "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+        },
+        "position": {
+          "x": -700,
+          "y": 300
+        },
+        "resolution": {
+          "factor": 2,
+          "mode": "scale"
+        },
+        "type": "customWgslMulti"
+      },
+      "bloomUp2": {
+        "definitionVersion": 1,
+        "id": "bloomUp2",
+        "label": "bloomup21",
+        "parameters": {
+          "lower": 1.4,
+          "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+        },
+        "position": {
+          "x": -700,
+          "y": 450
+        },
+        "resolution": {
+          "factor": 2,
+          "mode": "scale"
+        },
+        "type": "customWgslMulti"
+      },
+      "bloomUp3": {
+        "definitionVersion": 1,
+        "id": "bloomUp3",
+        "label": "bloomup31",
+        "parameters": {
+          "lower": 1.4,
+          "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+        },
+        "position": {
+          "x": -700,
+          "y": 600
+        },
+        "resolution": {
+          "factor": 2,
+          "mode": "scale"
+        },
+        "type": "customWgslMulti"
+      },
+      "bright": {
+        "definitionVersion": 1,
+        "id": "bright",
+        "label": "bright1",
+        "parameters": {
+          "knee": 0.001,
+          "source": "struct Params {\n  threshold: f32, // @default 1.2  Linear radiance where bloom starts.\n  knee: f32, // @default 0.8  Softness of the threshold.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n  let brightness = max(color.r, max(color.g, color.b));\n  let soft = clamp(brightness - params.threshold + params.knee, 0.0, 2.0 * params.knee);\n  let weight = max(soft * soft / (4.0 * params.knee + 1e-4), brightness - params.threshold) / max(brightness, 1e-4);\n  return vec4f(color * weight, 1.0);\n}",
+          "threshold": 0
+        },
+        "position": {
+          "x": -1300,
+          "y": 300
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "cam": {
+        "definitionVersion": 1,
+        "id": "cam",
+        "label": "cam1",
+        "parameters": {
+          "eye": [
+            0,
+            1.72,
+            0.4
+          ],
+          "eye.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.00000 + 0.00000 * (abstime) + 0.00000 * abstime + 0.00330 * sin(7.6597 * abstime + 0.8441) + 0.00180 * sin(18.3094 * abstime + 3.1850) + 0.00090 * sin(41.5089 * abstime + 0.1138)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "1.72000 + 0.00000 * (abstime) + 0.00000 * abstime + 0.00330 * sin(5.7277 * abstime + 2.4722) + 0.00180 * sin(15.1623 * abstime + 5.0424) + 0.00090 * sin(33.3784 * abstime + 3.7331)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.72
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.40000 + 0.00000 * (abstime) + 0.00000 * abstime + 0.00330 * sin(8.1557 * abstime + 2.0446) + 0.00180 * sin(15.2679 * abstime + 3.4354) + 0.00090 * sin(37.7250 * abstime + 1.5482)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.4
+              }
+            },
+            "mode": "expression"
+          },
+          "far": 100,
+          "fov": 25,
+          "lookAt": [
+            0.25,
+            1.08,
+            -5.6
+          ],
+          "lookAt.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.25000 + 0.00000 * (abstime) + 0.15000 * abstime + 0.00660 * sin(8.0504 * abstime + 5.8292) + 0.00360 * sin(13.7139 * abstime + 0.1593) + 0.00180 * sin(35.8553 * abstime + 5.7926)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lookAt.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "1.08000 + 0.00000 * (abstime) + (-0.05000) * abstime + 0.00660 * sin(8.5848 * abstime + 3.7343) + 0.00360 * sin(13.4328 * abstime + 1.8650) + 0.00180 * sin(42.2541 * abstime + 1.7458)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.08
+              }
+            },
+            "mode": "expression"
+          },
+          "lookAt.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(-5.60000) + 0.00000 * (abstime) + 0.00000 * abstime + 0.00660 * sin(8.2553 * abstime + 1.1395) + 0.00360 * sin(18.4933 * abstime + 5.5362) + 0.00180 * sin(35.4039 * abstime + 2.5775)"
+              },
+              "static": {
+                "kind": "static",
+                "value": -5.6
+              }
+            },
+            "mode": "expression"
+          },
+          "near": 0.05,
+          "roll": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.00330 * sin(7.2215 * abstime + 3.4471) + 0.00180 * sin(16.0633 * abstime + 2.5372) + 0.00090 * sin(33.7002 * abstime + 3.2677)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -2700,
+          "y": -900
+        },
+        "type": "camera"
+      },
+      "env": {
+        "definitionVersion": 1,
+        "id": "env",
+        "label": "env1",
+        "parameters": {
+          "keyDir": [
+            0.6191338185571941,
+            0.09986029331567647,
+            0.7789102878622765
+          ],
+          "keyGain": 1.2,
+          "keySize": 0.4,
+          "source": "struct Params {\n  toward: vec3f, // @default 0  Direction from the set toward the cyc wall (world).\n  wall: f32, // @default 1.4  Radiance of the cyc.\n  studio: f32, // @default 0.04  Radiance of the dark studio behind the lens.\n  keyDir: vec3f, // @default 0  Direction toward the key's source (world; minus its travel).\n  keyGain: f32, // @default 12  Radiance of the key's source.\n  keySize: f32, // @default 0.12  Its angular radius (radians).\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let unused = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).a * 0.0;\n  let phi = (uv.x - 0.5) * 6.2831853;\n  let theta = uv.y * 3.1415927;\n  let d = vec3f(sin(theta) * sin(phi), cos(theta), -sin(theta) * cos(phi));\n  // The cyc: the half-space toward the wall (up to the grid), and the floor below the horizon.\n  let wallSide = smoothstep(-0.25, 0.35, dot(d, normalize(params.toward))) * smoothstep(0.85, 0.5, d.y);\n  let floorSide = smoothstep(0.05, -0.2, d.y);\n  var radiance = mix(vec3f(params.studio), vec3f(params.wall), max(wallSide, floorSide));\n  let key = smoothstep(cos(params.keySize), cos(params.keySize * 0.6), dot(d, normalize(params.keyDir)));\n  radiance = radiance + vec3f(params.keyGain * key);\n  return vec4f(radiance + vec3f(unused), 1.0);\n}",
+          "studio": 0.03,
+          "toward": [
+            0.04163054471218133,
+            0,
+            -0.999133073092352
+          ],
+          "wall": 1.4
+        },
+        "position": {
+          "x": -2700,
+          "y": 500
+        },
+        "resolution": {
+          "height": 256,
+          "mode": "fixed",
+          "width": 512
+        },
+        "type": "customWgsl"
+      },
+      "envSeed": {
+        "definitionVersion": 2,
+        "id": "envSeed",
+        "label": "envseed1",
+        "parameters": {},
+        "position": {
+          "x": -2700,
+          "y": 300
+        },
+        "resolution": {
+          "height": 256,
+          "mode": "fixed",
+          "width": 512
+        },
+        "type": "ramp"
+      },
+      "fig": {
+        "definitionVersion": 1,
+        "id": "fig",
+        "label": "fig1",
+        "parameters": {
+          "file": "media/on-nothing/on-nothing.glb",
+          "joints": "0:pelvis@0,0.9618,0.0048 1:spine<0@0,1.0506,-0.0276 2:chest<1@0,1.1862,-0.0263 3:neck<2@0,1.5378,0.0131 4:head<3@0,1.6366,0.0473 5:shoulder.L<2@0.0234,1.4616,0.0258 6:upperarm.L<5@0.1906,1.4317,0.0196 7:forearm.L<6@0.3632,1.2339,0.0184 8:hand.L<7@0.5003,1.1029,0.2135 9:shoulder.R<2@-0.0234,1.4616,0.0258 10:upperarm.R<9@-0.1906,1.4317,0.0196 11:forearm.R<10@-0.3632,1.2339,0.0184 12:hand.R<11@-0.5003,1.1029,0.2135 13:thigh.L<0@0.1113,0.9562,-0.0059 14:shin.L<13@0.1549,0.5171,0.0291 15:foot.L<14@0.2015,0.0739,0.0154 16:thigh.R<0@-0.1113,0.9562,-0.0059 17:shin.R<16@-0.1549,0.5171,0.0291 18:foot.R<17@-0.2015,0.0739,0.0154",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
+          "select": "figcyc.*",
+          "triangles": 159600,
+          "vertices": 89772
+        },
+        "position": {
+          "x": -3600,
+          "y": 1200
+        },
+        "type": "meshFileIn"
+      },
+      "finish": {
+        "definitionVersion": 1,
+        "id": "finish",
+        "label": "finish1",
+        "parameters": {
+          "broad": 0.1,
+          "exposure": -0.62,
+          "peak": 0.79,
+          "saturation": 0.6,
+          "source": "struct Params {\n  exposure: f32, // @default 0  Stops; 0 puts scene linear 1.0 at Peak.\n  peak: f32, // @default 0.79  Display level of scene linear 1.0 (the lit cyc).\n  contrast: f32, // @default 1.4  Slope of the curve in log space (above 1 crushes the darks faster than a gamma).\n  knee: f32, // @default 0.35  Scene level where the curve is halfway up (relative to the lit cyc).\n  black: f32, // @default 0.035  The display floor the blacks sit on.\n  saturation: f32, // @default 0.35  Chroma kept before the curve.\n  redGamma: f32, // @default 1.22  Display red = green ^ this (the cyan cast, strongest in the darks).\n  blueGamma: f32, // @default 0.95  Display blue = BlueGain × green ^ this.\n  blueGain: f32, // @default 0.975  (the lit cyc's blue sits just under its green; the darks' just over).\n  vignette: f32, // @default 0.5  How far the frame's sides fall (0 off).\n  vignetteRadius: f32, // @default 1.02  Elliptical radius (1 = the frame's side) where the sides are half down.\n  vignetteHardness: f32, // @default 7.5  How abruptly the vignette arrives.\n  vignetteHeight: f32, // @default 0.45  How much the top and bottom count (0 = only the sides darken).\n  vignetteBias: f32, // @default 0  Shifts the vignette's centre sideways (uv; + darkens the left more).\n  broad: f32, // @default 0.1  A broad centre-weighted falloff under the vignette.\n  grain: f32, // @default 0.004  Grain (display units, the reference's is almost gone in the encode).\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn finishHash(p: vec3f) -> f32 {\n  var q = fract(p * vec3f(0.1031, 0.1030, 0.0973));\n  q = q + dot(q, q.yxz + 33.33);\n  return fract((q.x + q.y) * q.z);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  var c = max(textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb, vec3f(0.0)) * exp2(params.exposure);\n  let y = dot(c, vec3f(0.2126, 0.7152, 0.0722));\n  c = max(mix(vec3f(y), c, params.saturation), vec3f(0.0));\n  // A log-space sigmoid, normalised so scene 1.0 lands on Peak; highlights run on toward\n  // Peak × (1 + knee^contrast) (jewellery glints past the cyc, the cyc never clips).\n  let kc = pow(params.knee, params.contrast);\n  let u = pow(c, vec3f(params.contrast));\n  var d = params.peak * (1.0 + kc) * u / (u + vec3f(kc));\n  // The vignette, in display space (a power window as much as a lens).\n  let q = (uv - vec2f(0.5 + params.vignetteBias, 0.5)) * 2.0 * vec2f(1.0, params.vignetteHeight);\n  let r = length(q);\n  let v = (1.0 - params.broad * r * r) / (1.0 + pow(r / params.vignetteRadius, params.vignetteHardness) * params.vignette / max(1.0 - params.vignette, 1e-3));\n  d = d * clamp(v, 0.0, 1.0);\n  d = clamp(d, vec3f(0.0), vec3f(1.0));\n  // The channel curve: the cast lives in the darks.\n  let g = d.g;\n  d = vec3f(pow(g, params.redGamma) * (d.r / max(g, 1e-4)), g, params.blueGain * pow(g, params.blueGamma) * (d.b / max(g, 1e-4)));\n  d = params.black + (1.0 - params.black) * d;\n  let px = floor(uv * frameU.resolution);\n  let n = finishHash(vec3f(px, frameU.absFrame)) + finishHash(vec3f(px + 17.0, frameU.absFrame * 1.7)) - 1.0;\n  d = clamp(d + vec3f(n * params.grain), vec3f(0.0), vec3f(1.0));\n  // Linear display light for the Output (tone map off): the exact inverse of its sRGB encode, so the\n  // display levels above (the black floor especially) land where they were measured.\n  return vec4f(select(pow((d + 0.055) / 1.055, vec3f(2.4)), d / 12.92, d <= vec3f(0.04045)), 1.0);\n}",
+          "vignette": 0.47,
+          "vignetteHardness": 7.5,
+          "vignetteHeight": 0.45,
+          "vignetteRadius": 1.02
+        },
+        "position": {
+          "x": -100,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgsl"
+      },
+      "geo_cyc": {
+        "definitionVersion": 1,
+        "id": "geo_cyc",
+        "label": "geocyc1",
+        "parameters": {
+          "material": "surf1",
+          "mode": "surface"
+        },
+        "position": {
+          "x": -3300,
+          "y": 0
+        },
+        "type": "geometry"
+      },
+      "geo_far": {
+        "definitionVersion": 1,
+        "id": "geo_far",
+        "label": "geofar1",
+        "parameters": {
+          "material": "surf1",
+          "mode": "surface"
+        },
+        "position": {
+          "x": -3000,
+          "y": 1400
+        },
+        "type": "geometry"
+      },
+      "geo_near": {
+        "definitionVersion": 1,
+        "id": "geo_near",
+        "label": "geonear1",
+        "parameters": {
+          "material": "surf1",
+          "mode": "surface"
+        },
+        "position": {
+          "x": -3000,
+          "y": 1200
+        },
+        "type": "geometry"
+      },
+      "key0": {
+        "definitionVersion": 1,
+        "id": "key0",
+        "label": "key01",
+        "parameters": {
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "direction": [
+            -0.6191338185571941,
+            -0.09986029331567647,
+            -0.7789102878622765
+          ],
+          "intensity": 0.18333333333333335,
+          "kind": "directional",
+          "shadowExtent": 7,
+          "shadowSoftness": 2,
+          "shadows": true
+        },
+        "position": {
+          "x": -2600,
+          "y": 1000
+        },
+        "type": "light"
+      },
+      "key1": {
+        "definitionVersion": 1,
+        "id": "key1",
+        "label": "key11",
+        "parameters": {
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "direction": [
+            -0.6311738963740687,
+            -0.06200818811159447,
+            -0.7741928035981045
+          ],
+          "intensity": 0.18333333333333335,
+          "kind": "directional",
+          "shadowExtent": 7,
+          "shadowSoftness": 2,
+          "shadows": true
+        },
+        "position": {
+          "x": -2600,
+          "y": 1060
+        },
+        "type": "light"
+      },
+      "key2": {
+        "definitionVersion": 1,
+        "id": "key2",
+        "label": "key21",
+        "parameters": {
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "direction": [
+            -0.595262065684972,
+            -0.07646640575381701,
+            -0.8008844872686401
+          ],
+          "intensity": 0.18333333333333335,
+          "kind": "directional",
+          "shadowExtent": 7,
+          "shadowSoftness": 2,
+          "shadows": true
+        },
+        "position": {
+          "x": -2600,
+          "y": 1120
+        },
+        "type": "light"
+      },
+      "key3": {
+        "definitionVersion": 1,
+        "id": "key3",
+        "label": "key31",
+        "parameters": {
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "direction": [
+            -0.5923401860942482,
+            -0.12325418087753592,
+            -0.7972085742351489
+          ],
+          "intensity": 0.18333333333333335,
+          "kind": "directional",
+          "shadowExtent": 7,
+          "shadowSoftness": 2,
+          "shadows": true
+        },
+        "position": {
+          "x": -2600,
+          "y": 1180
+        },
+        "type": "light"
+      },
+      "key4": {
+        "definitionVersion": 1,
+        "id": "key4",
+        "label": "key41",
+        "parameters": {
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "direction": [
+            -0.6264461958852431,
+            -0.13771239851975847,
+            -0.768245051370227
+          ],
+          "intensity": 0.18333333333333335,
+          "kind": "directional",
+          "shadowExtent": 7,
+          "shadowSoftness": 2,
+          "shadows": true
+        },
+        "position": {
+          "x": -2600,
+          "y": 1240
+        },
+        "type": "light"
+      },
+      "key5": {
+        "definitionVersion": 1,
+        "id": "key5",
+        "label": "key51",
+        "parameters": {
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "direction": [
+            -0.6504467487474384,
+            -0.09986029331567649,
+            -0.7540205228392617
+          ],
+          "intensity": 0.18333333333333335,
+          "kind": "directional",
+          "shadowExtent": 7,
+          "shadowSoftness": 2,
+          "shadows": true
+        },
+        "position": {
+          "x": -2600,
+          "y": 1300
+        },
+        "type": "light"
+      },
+      "lens": {
+        "definitionVersion": 1,
+        "id": "lens",
+        "label": "lens1",
+        "parameters": {
+          "aberration": 0.0015,
+          "distortion": 0.07,
+          "edgeBlur": 0.014,
+          "source": "struct Params {\n  distortion: f32, // @default 0.06  Barrel distortion (positive bows lines outward).\n  edgeBlur: f32, // @default 0.012  Edge blur reach at the corners, fraction of the frame width.\n  swirl: f32, // @default 0.6  0 radial edge blur .. 1 tangential (swirly) edge blur.\n  aberration: f32, // @default 0.0015  Lateral chromatic aberration at the corners.\n  zoomBlur: f32, // @default 0  Snap-zoom radial blur reach (0 off).\n  zoomCentre: vec2f, // @default 0.5  Where the snap-zoom converges (uv).\n  whip: f32, // @default 0  Whip-pan blur: horizontal smear, fraction of the frame width.\n  vignette: f32, // @default 0.55  Darkening toward the corners.\n  vignetteRound: f32, // @default 0.75  1 = round vignette, 0 = follows the frame's shape.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n\nconst TAPS: i32 = 12;\n\nfn distort(uv: vec2f, k: f32, aspect: f32) -> vec2f {\n  let c = (uv - vec2f(0.5)) * vec2f(aspect, 1.0);\n  let r2 = dot(c, c);\n  let f = 1.0 + k * r2;\n  return c * f / vec2f(aspect, 1.0) / (1.0 + k * 0.25) + vec2f(0.5);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let size = vec2f(textureDimensions(inputTexture));\n  let aspect = size.x / size.y;\n  let src = distort(uv, params.distortion, aspect);\n  let c = (src - vec2f(0.5)) * vec2f(aspect, 1.0);\n  let r2 = dot(c, c) / (0.25 * aspect * aspect + 0.25);\n  let radial = normalize(c + vec2f(1e-5)) / vec2f(aspect, 1.0);\n  let tangent = vec2f(-radial.y, radial.x);\n  let blurDir = normalize(mix(radial, normalize(tangent), params.swirl)) * params.edgeBlur * r2 * r2 * 2.0;\n  let zoomDir = (src - params.zoomCentre) * params.zoomBlur;\n  let ca = (src - vec2f(0.5)) * params.aberration * r2 * 4.0;\n  var sum = vec3f(0.0);\n  for (var k = 0; k < TAPS; k = k + 1) {\n    let t = (f32(k) + 0.5) / f32(TAPS) - 0.5;\n    let o = src + blurDir * t - zoomDir * (t + 0.5) + vec2f(params.whip * t, 0.0);\n    let rch = textureSampleLevel(inputTexture, inputSampler, o + ca, 0.0).r;\n    let gch = textureSampleLevel(inputTexture, inputSampler, o, 0.0).g;\n    let bch = textureSampleLevel(inputTexture, inputSampler, o - ca, 0.0).b;\n    sum = sum + vec3f(rch, gch, bch);\n  }\n  var color = sum / f32(TAPS);\n  let q = (uv - vec2f(0.5)) * vec2f(mix(1.0, aspect, params.vignetteRound), 1.0);\n  let vr = dot(q, q) / (0.25 * mix(1.0, aspect * aspect, params.vignetteRound) + 0.25);\n  color = color * mix(1.0, 1.0 - smoothstep(0.12, 1.0, vr), params.vignette);\n  return vec4f(color, 1.0);\n}",
+          "swirl": 0.5,
+          "vignette": 0
+        },
+        "position": {
+          "x": -300,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgsl"
+      },
+      "mesh_cyc": {
+        "definitionVersion": 1,
+        "id": "mesh_cyc",
+        "label": "meshcyc1",
+        "parameters": {
+          "file": "media/on-nothing/on-nothing.glb",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
+          "select": "cycwide.*",
+          "triangles": 1144,
+          "vertices": 621
+        },
+        "position": {
+          "x": -3600,
+          "y": 0
+        },
+        "type": "meshFileIn"
+      },
+      "mist": {
+        "definitionVersion": 1,
+        "id": "mist",
+        "label": "mist1",
+        "parameters": {
+          "amount": 0.14,
+          "source": "struct Params {\n  amount: f32, // @default 0.15  Share of the blur in the mix.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let now = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n  let wide = textureSampleLevel(inputTexture1, inputSampler, uv, 0.0).rgb;\n  return vec4f(mix(now, wide, params.amount), 1.0);\n}"
+        },
+        "position": {
+          "x": -500,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgslMulti"
+      },
+      "occlusion": {
+        "definitionVersion": 1,
+        "id": "occlusion",
+        "label": "occlusion1",
+        "parameters": {
+          "aim": [
+            0.25,
+            1.08,
+            -5.6
+          ],
+          "aim.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.25
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.08
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": -5.6
+              }
+            },
+            "mode": "expression"
+          },
+          "eye": [
+            0,
+            1.72,
+            0.4
+          ],
+          "eye.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.72
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.4
+              }
+            },
+            "mode": "expression"
+          },
+          "far": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.far"
+              },
+              "static": {
+                "kind": "static",
+                "value": 100
+              }
+            },
+            "mode": "expression"
+          },
+          "fov": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.fov"
+              },
+              "static": {
+                "kind": "static",
+                "value": 25
+              }
+            },
+            "mode": "expression"
+          },
+          "radius": 0.35,
+          "roll": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.roll"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "source": "struct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  radius: f32, // @default 1.2  World radius of the occlusion search, metres.\n  strength: f32, // @default 0.75  How much of the occlusion darkens the frame.\n  power: f32, // @default 1.4  Contrast of the occlusion.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n@group(0) @binding(5) var inputTexture2: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\nconst DIRECTIONS: u32 = 8u;\nconst STEPS: u32 = 6u;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let v = makeView();\n  let z = viewDepth(uv);\n  let encoded = textureLoad(inputTexture2, depthTexel(uv), 0);\n  if (z < 0.0 || encoded.a <= 0.0) { return color; }\n  let n = normalize(encoded.rgb * 2.0 - 1.0);\n  let p = worldAt(v, uv, z);\n  let helper = select(vec3f(0.0, 1.0, 0.0), vec3f(1.0, 0.0, 0.0), abs(n.y) > 0.9);\n  let t = normalize(cross(n, helper));\n  let b = cross(n, t);\n  let spin = ignHash(uv * frameU.resolution) * 6.2831853;\n  var occlusion = 0.0;\n  for (var i = 0u; i < DIRECTIONS; i = i + 1u) {\n    let angle = spin + f32(i) * 6.2831853 / f32(DIRECTIONS);\n    let dir = t * cos(angle) + b * sin(angle);\n    var best = 0.0;\n    for (var s = 1u; s <= STEPS; s = s + 1u) {\n      let distance = params.radius * (f32(s) / f32(STEPS)) * (f32(s) / f32(STEPS));\n      let probe = project(v, p + dir * distance);\n      if (probe.z <= 0.0 || any(probe.xy < vec2f(0.0)) || any(probe.xy > vec2f(1.0))) { break; }\n      let sz = viewDepth(probe.xy);\n      if (sz < 0.0) { continue; }\n      let sp = worldAt(v, probe.xy, sz);\n      let toSample = sp - p;\n      let length2 = dot(toSample, toSample);\n      let elevation = dot(n, toSample) * inverseSqrt(max(length2, 1e-6));\n      let falloff = 1.0 - smoothstep(params.radius * params.radius * 0.5, params.radius * params.radius * 2.0, length2);\n      best = max(best, (elevation - 0.08) * falloff);\n    }\n    occlusion = occlusion + clamp(best, 0.0, 1.0);\n  }\n  let ao = pow(clamp(1.0 - occlusion / f32(DIRECTIONS), 0.0, 1.0), params.power);\n  return vec4f(color.rgb * mix(1.0, ao, params.strength), color.a);\n}",
+          "strength": 0.55
+        },
+        "position": {
+          "x": -2100,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgslMulti"
+      },
+      "out": {
+        "definitionVersion": 1,
+        "id": "out",
+        "label": "out1",
+        "parameters": {
+          "toneMap": "none"
+        },
+        "position": {
+          "x": 700,
+          "y": 0
+        },
+        "type": "output"
+      },
+      "shot": {
+        "definitionVersion": 1,
+        "id": "shot",
+        "label": "shot1",
+        "parameters": {
+          "albedoOutput": true,
+          "ambientColor": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "ambientIntensity": 0.9,
+          "antialias": "msaa",
+          "background": [
+            0.8,
+            0.8,
+            0.8,
+            1
+          ],
+          "camera": "cam1",
+          "depthOutput": true,
+          "environmentIntensity": 0.25,
+          "environmentTaps": 16,
+          "lights": "key01 key11 key21 key31 key41 key51 top1",
+          "normalOutput": true,
+          "projectors": "",
+          "scenes": "geocyc1 geonear1 geofar1"
+        },
+        "position": {
+          "x": -2400,
+          "y": 0
+        },
+        "type": "render"
+      },
+      "skin_far": {
+        "definitionVersion": 1,
+        "id": "skin_far",
+        "label": "skinfar1",
+        "parameters": {
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"normal\",\"type\":\"vec3f\",\"qualifier\":\"direction\",\"default\":[0,1,0]},{\"name\":\"joints\",\"type\":\"vec4f\",\"default\":[0,0,0,0]},{\"name\":\"weights\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
+          "capacity": 89772,
+          "chest": [
+            0,
+            0,
+            0
+          ],
+          "chest.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.16000 + (0.00000 * clamp((abstime - 0.4200) / 0.2800, 0, 1) + 0.08453 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + (-0.08453) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.07547) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + (-0.23382) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + 0.14929 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + ((-0.06476) * clamp((abstime - 0.9500) / 0.1700, 0, 1) + 0.15440 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + (-0.08964) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + ((-0.03512) * clamp((abstime - 1.1200) / 0.2400, 0, 1) + (-0.07627) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + 0.05139 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + ((-0.02651) * clamp((abstime - 1.3600) / 0.1900, 0, 1) + 0.05302 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + (-0.02651) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "chest.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.00000 + (0.00000 * clamp((abstime - 0.9500) / 0.1700, 0, 1) + (-0.01244) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + 0.01244 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + (0.01756 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + 0.03813 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + (-0.02569) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + (0.01326 * clamp((abstime - 1.3600) / 0.1900, 0, 1) + (-0.02651) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + 0.01326 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "footL": [
+            0,
+            0,
+            0
+          ],
+          "footL.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.04000))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "footL.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.10472)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "footL.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.08088)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "footR": [
+            0,
+            0,
+            0
+          ],
+          "footR.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.10472))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "footR.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.08088))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "forearmL": [
+            0,
+            0,
+            0
+          ],
+          "forearmL.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.05964) + (0.00000 * clamp((abstime - 0.2000) / 0.2200, 0, 1) + 0.37579 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + (-0.37579) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + ((-0.47828) * clamp((abstime - 0.4200) / 0.2800, 0, 1) + (-1.15444) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + 0.77865 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.40286) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + 0.80572 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + (-0.40286) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + (0.00000 * clamp((abstime - 0.9500) / 0.1700, 0, 1) + (-0.35080) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + 0.35080 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + (0.49525 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + 0.77489 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + (-0.42409) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + (0.61178 * clamp((abstime - 1.3600) / 0.1900, 0, 1) + 0.18346 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + (-0.25675) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + (0.25235 * clamp((abstime - 1.5500) / 0.2300, 0, 1) + (-0.73774) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + 0.40771 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3) + (0.00000 * clamp((abstime - 1.7800) / 0.2200, 0, 1) + 0.23303 * clamp((abstime - 1.7800) / 0.2200, 0, 1) ^ 2 + (-0.15536) * clamp((abstime - 1.7800) / 0.2200, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "forearmL.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.86915) + (0.00000 * clamp((abstime - 0.2000) / 0.2200, 0, 1) + 0.08556 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + (-0.08556) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + ((-0.10890) * clamp((abstime - 0.4200) / 0.2800, 0, 1) + (-0.26285) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + 0.17729 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.09173) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + 0.18345 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + (-0.09173) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + (0.00000 * clamp((abstime - 0.9500) / 0.1700, 0, 1) + (-0.41690) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + 0.41690 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + (0.58856 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + 1.02929 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + (-0.61239) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + (0.64122 * clamp((abstime - 1.3600) / 0.1900, 0, 1) + (-0.12029) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + (-0.07521) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + (0.21188 * clamp((abstime - 1.5500) / 0.2300, 0, 1) + (-0.60022) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + 0.32952 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3) + (0.00000 * clamp((abstime - 1.7800) / 0.2200, 0, 1) + 0.17647 * clamp((abstime - 1.7800) / 0.2200, 0, 1) ^ 2 + (-0.11765) * clamp((abstime - 1.7800) / 0.2200, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "forearmL.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.40568) + (0.00000 * clamp((abstime - 0.2000) / 0.2200, 0, 1) + (-0.29867) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + 0.29867 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + (0.38013 * clamp((abstime - 0.4200) / 0.2800, 0, 1) + 0.91754 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + (-0.61887) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + (0.32019 * clamp((abstime - 0.7000) / 0.2500, 0, 1) + (-0.64038) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + 0.32019 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + (0.00000 * clamp((abstime - 0.9500) / 0.1700, 0, 1) + 0.10908 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + (-0.10908) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + ((-0.15400) * clamp((abstime - 1.1200) / 0.2400, 0, 1) + (-0.34514) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + 0.23606 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + ((-0.10775) * clamp((abstime - 1.3600) / 0.1900, 0, 1) + 0.27236 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + (-0.14539) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + (0.00098 * clamp((abstime - 1.5500) / 0.2300, 0, 1) + (-0.05426) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + 0.03584 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3) + (0.00000 * clamp((abstime - 1.7800) / 0.2200, 0, 1) + 0.05229 * clamp((abstime - 1.7800) / 0.2200, 0, 1) ^ 2 + (-0.03486) * clamp((abstime - 1.7800) / 0.2200, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "forearmR": [
+            0,
+            0,
+            0
+          ],
+          "forearmR.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.05964) + (0.00000 * clamp((abstime - 0.2000) / 0.2200, 0, 1) + 0.37579 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + (-0.37579) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + ((-0.47828) * clamp((abstime - 0.4200) / 0.2800, 0, 1) + (-1.15444) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + 0.77865 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.40286) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + 0.18014 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + 0.22272 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + (0.42539 * clamp((abstime - 0.9500) / 0.1700, 0, 1) + 1.77745 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + (-1.15187) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + (0.74073 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + (-0.98548) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + 0.45919 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + (0.11664 * clamp((abstime - 1.3600) / 0.1900, 0, 1) + (-0.10708) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + 0.03998 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + (0.02713 * clamp((abstime - 1.5500) / 0.2300, 0, 1) + (-0.05425) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + 0.02713 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "forearmR.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.86915 + (0.00000 * clamp((abstime - 0.2000) / 0.2200, 0, 1) + (-0.08556) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + 0.08556 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + (0.10890 * clamp((abstime - 0.4200) / 0.2800, 0, 1) + 0.26285 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + (-0.17729) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + (0.09173 * clamp((abstime - 0.7000) / 0.2500, 0, 1) + 0.46193 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + (-0.55366) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + ((-0.43886) * clamp((abstime - 0.9500) / 0.1700, 0, 1) + (-1.83038) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + 1.18500 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + ((-0.76888) * clamp((abstime - 1.1200) / 0.2400, 0, 1) + 1.00656 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + (-0.46695) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + ((-0.12398) * clamp((abstime - 1.3600) / 0.1900, 0, 1) + 0.11723 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + (-0.04457) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + ((-0.02810) * clamp((abstime - 1.5500) / 0.2300, 0, 1) + 0.05620 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + (-0.02810) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "forearmR.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.40568 + (0.00000 * clamp((abstime - 0.2000) / 0.2200, 0, 1) + 0.29867 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + (-0.29867) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + ((-0.38013) * clamp((abstime - 0.4200) / 0.2800, 0, 1) + (-0.91754) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + 0.61887 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.32019) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + 0.42668 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + (-0.10649) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + (0.14532 * clamp((abstime - 0.9500) / 0.1700, 0, 1) + 0.65412 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + (-0.44041) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + (0.18681 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + (-0.46036) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + 0.23366 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + ((-0.02608) * clamp((abstime - 1.3600) / 0.1900, 0, 1) + 0.00343 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + 0.00352 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + ((-0.01048) * clamp((abstime - 1.5500) / 0.2300, 0, 1) + 0.02095 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + (-0.01048) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "handL": [
+            0,
+            0,
+            0
+          ],
+          "handL.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.10000 + (0.00000 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + 0.16744 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + (-0.16744) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + ((-0.13256) * clamp((abstime - 1.3600) / 0.1900, 0, 1) + (-0.49917) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + 0.33173 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + ((-0.16429) * clamp((abstime - 1.5500) / 0.2300, 0, 1) + 0.32857 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + (-0.16429) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "handL.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.08000 + (0.00000 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + 0.04465 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + (-0.04465) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + ((-0.03535) * clamp((abstime - 1.3600) / 0.1900, 0, 1) + (-0.13311) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + 0.08846 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + ((-0.04381) * clamp((abstime - 1.5500) / 0.2300, 0, 1) + 0.08762 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + (-0.04381) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "handR": [
+            0,
+            0,
+            0
+          ],
+          "handR.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.10000)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "handR.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.08000))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "head": [
+            0,
+            0,
+            0
+          ],
+          "head.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.25000 + (0.00000 * clamp((abstime - 0.4200) / 0.2800, 0, 1) + 0.13208 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + (-0.13208) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.11792) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + (-0.36534) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + 0.23327 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + ((-0.10119) * clamp((abstime - 0.9500) / 0.1700, 0, 1) + 0.28531 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + (-0.18412) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + ((-0.11707) * clamp((abstime - 1.1200) / 0.2400, 0, 1) + (-0.25423) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + 0.17130 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + ((-0.08837) * clamp((abstime - 1.3600) / 0.1900, 0, 1) + 0.17674 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + (-0.08837) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "head.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.00000 + (0.00000 * clamp((abstime - 0.9500) / 0.1700, 0, 1) + (-0.04146) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + 0.04146 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + (0.05854 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + 0.12711 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + (-0.08565) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + (0.04419 * clamp((abstime - 1.3600) / 0.1900, 0, 1) + (-0.08837) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + 0.04419 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "kernel": "// T1400b — the figure's skin (generated by src/projects/on-nothing/skin-kernel.ts from the GLB's bones).\nstruct Params {\n  place: vec3f, // @default 0  Where the figure stands (world metres).\n  yaw: f32, // @default 0  Which way it faces: radians about +Y (0 faces +Z).\n  pelvis: vec3f, // @default 0  pelvis: rotation about its head, radians (x, y, z about the rest axes).\n  spine: vec3f, // @default 0  spine: rotation about its head, radians (x, y, z about the rest axes).\n  chest: vec3f, // @default 0  chest: rotation about its head, radians (x, y, z about the rest axes).\n  neck: vec3f, // @default 0  neck: rotation about its head, radians (x, y, z about the rest axes).\n  head: vec3f, // @default 0  head: rotation about its head, radians (x, y, z about the rest axes).\n  shoulderL: vec3f, // @default 0  shoulder.L: rotation about its head, radians (x, y, z about the rest axes).\n  upperarmL: vec3f, // @default 0  upperarm.L: rotation about its head, radians (x, y, z about the rest axes).\n  forearmL: vec3f, // @default 0  forearm.L: rotation about its head, radians (x, y, z about the rest axes).\n  handL: vec3f, // @default 0  hand.L: rotation about its head, radians (x, y, z about the rest axes).\n  shoulderR: vec3f, // @default 0  shoulder.R: rotation about its head, radians (x, y, z about the rest axes).\n  upperarmR: vec3f, // @default 0  upperarm.R: rotation about its head, radians (x, y, z about the rest axes).\n  forearmR: vec3f, // @default 0  forearm.R: rotation about its head, radians (x, y, z about the rest axes).\n  handR: vec3f, // @default 0  hand.R: rotation about its head, radians (x, y, z about the rest axes).\n  thighL: vec3f, // @default 0  thigh.L: rotation about its head, radians (x, y, z about the rest axes).\n  shinL: vec3f, // @default 0  shin.L: rotation about its head, radians (x, y, z about the rest axes).\n  footL: vec3f, // @default 0  foot.L: rotation about its head, radians (x, y, z about the rest axes).\n  thighR: vec3f, // @default 0  thigh.R: rotation about its head, radians (x, y, z about the rest axes).\n  shinR: vec3f, // @default 0  shin.R: rotation about its head, radians (x, y, z about the rest axes).\n  footR: vec3f, // @default 0  foot.R: rotation about its head, radians (x, y, z about the rest axes).\n};\n\nconst BONES: u32 = 19u;\nconst BONE_PARENT = array<i32, 19>(-1, 0, 1, 2, 3, 2, 5, 6, 7, 2, 9, 10, 11, 0, 13, 14, 0, 16, 17);\nconst BONE_HEAD = array<vec3f, 19>(vec3f(0.00000, 0.96179, 0.00482), vec3f(0.00000, 1.05056, -0.02764), vec3f(0.00000, 1.18620, -0.02634), vec3f(0.00000, 1.53777, 0.01311), vec3f(0.00000, 1.63664, 0.04730), vec3f(0.02343, 1.46157, 0.02581), vec3f(0.19063, 1.43167, 0.01959), vec3f(0.36319, 1.23385, 0.01839), vec3f(0.50031, 1.10285, 0.21346), vec3f(-0.02343, 1.46157, 0.02581), vec3f(-0.19063, 1.43167, 0.01959), vec3f(-0.36319, 1.23385, 0.01839), vec3f(-0.50031, 1.10285, 0.21346), vec3f(0.11126, 0.95615, -0.00587), vec3f(0.15488, 0.51706, 0.02909), vec3f(0.20151, 0.07392, 0.01538), vec3f(-0.11126, 0.95615, -0.00587), vec3f(-0.15488, 0.51706, 0.02909), vec3f(-0.20151, 0.07392, 0.01538));\n\nfn boneAngles(i: u32, ctx: PointCtx) -> vec3f {\n  switch i {\n    case 0u: { return ctx.params.pelvis; }\n    case 1u: { return ctx.params.spine; }\n    case 2u: { return ctx.params.chest; }\n    case 3u: { return ctx.params.neck; }\n    case 4u: { return ctx.params.head; }\n    case 5u: { return ctx.params.shoulderL; }\n    case 6u: { return ctx.params.upperarmL; }\n    case 7u: { return ctx.params.forearmL; }\n    case 8u: { return ctx.params.handL; }\n    case 9u: { return ctx.params.shoulderR; }\n    case 10u: { return ctx.params.upperarmR; }\n    case 11u: { return ctx.params.forearmR; }\n    case 12u: { return ctx.params.handR; }\n    case 13u: { return ctx.params.thighL; }\n    case 14u: { return ctx.params.shinL; }\n    case 15u: { return ctx.params.footL; }\n    case 16u: { return ctx.params.thighR; }\n    case 17u: { return ctx.params.shinR; }\n    case 18u: { return ctx.params.footR; }\n    default: { return vec3f(0.0); }\n  }\n}\n\nfn euler(e: vec3f) -> mat3x3f {\n  let cx = cos(e.x); let sx = sin(e.x);\n  let cy = cos(e.y); let sy = sin(e.y);\n  let cz = cos(e.z); let sz = sin(e.z);\n  let rx = mat3x3f(vec3f(1.0, 0.0, 0.0), vec3f(0.0, cx, sx), vec3f(0.0, -sx, cx));\n  let ry = mat3x3f(vec3f(cy, 0.0, -sy), vec3f(0.0, 1.0, 0.0), vec3f(sy, 0.0, cy));\n  let rz = mat3x3f(vec3f(cz, sz, 0.0), vec3f(-sz, cz, 0.0), vec3f(0.0, 0.0, 1.0));\n  return rz * ry * rx;\n}\n\nstruct Xf {\n  m: mat3x3f,\n  t: vec3f,\n};\n\n// The bone's world transform: its own rotation about its head, then each ancestor's.\nfn boneXf(bone: u32, ctx: PointCtx) -> Xf {\n  var acc: Xf;\n  acc.m = mat3x3f(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0));\n  acc.t = vec3f(0.0);\n  var j = i32(bone);\n  for (var level = 0u; level < 8u; level = level + 1u) {\n    if (j < 0 || u32(j) >= BONES) { break; }\n    let r = euler(boneAngles(u32(j), ctx));\n    let h = BONE_HEAD[u32(j)];\n    acc.m = r * acc.m;\n    acc.t = r * (acc.t - h) + h;\n    j = BONE_PARENT[u32(j)];\n  }\n  return acc;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  // Linear-blend skinning over the four influences the decoder normalised to sum 1.\n  var posed = vec3f(0.0);\n  var bent = vec3f(0.0);\n  var total = 0.0;\n  for (var k = 0u; k < 4u; k = k + 1u) {\n    let w = p.weights[k];\n    if (w <= 0.0) { continue; }\n    let x = boneXf(min(u32(p.joints[k] + 0.5), BONES - 1u), ctx);\n    posed = posed + w * (x.m * p.position + x.t);\n    bent = bent + w * (x.m * p.normal);\n    total = total + w;\n  }\n  if (total <= 0.0) {\n    // Nothing skins this vertex: it keeps its rest place.\n    posed = p.position;\n    bent = p.normal;\n  } else {\n    posed = posed / total;\n  }\n  let normal = normalize(bent);\n  let c = cos(ctx.params.yaw);\n  let s = sin(ctx.params.yaw);\n  let turn = mat3x3f(vec3f(c, 0.0, -s), vec3f(0.0, 1.0, 0.0), vec3f(s, 0.0, c));\n  q.position = ctx.params.place + turn * posed;\n  q.normal = turn * normal;\n  return q;\n}",
+          "neck": [
+            0,
+            0,
+            0
+          ],
+          "neck.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.45000 + (0.00000 * clamp((abstime - 0.2000) / 0.2200, 0, 1) + 0.02200 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + (-0.02200) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + ((-0.02800) * clamp((abstime - 0.4200) / 0.2800, 0, 1) + 0.01166 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + (-0.03366) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.09434) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + 0.00654 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + (-0.06220) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + ((-0.18214) * clamp((abstime - 0.9500) / 0.1700, 0, 1) + (-0.30767) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + 0.18981 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + ((-0.32195) * clamp((abstime - 1.1200) / 0.2400, 0, 1) + 0.03344 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + 0.03851 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + ((-0.11047) * clamp((abstime - 1.3600) / 0.1900, 0, 1) + 0.22093 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + (-0.11047) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "neck.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.10000) + (0.00000 * clamp((abstime - 0.2000) / 0.2200, 0, 1) + 0.02200 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + (-0.02200) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + ((-0.02800) * clamp((abstime - 0.4200) / 0.2800, 0, 1) + (-0.09400) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + 0.07200 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + (0.00000 * clamp((abstime - 0.7000) / 0.2500, 0, 1) + 0.06071 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + (-0.01071) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + (0.06071 * clamp((abstime - 0.9500) / 0.1700, 0, 1) + 0.07491 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + (-0.03563) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + (0.14634 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + 0.07360 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + (-0.06994) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + (0.06628 * clamp((abstime - 1.3600) / 0.1900, 0, 1) + (-0.13256) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + 0.06628 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "neck.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.00000 + (0.00000 * clamp((abstime - 0.9500) / 0.1700, 0, 1) + (-0.02073) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + 0.02073 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + (0.02927 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + 0.06356 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + (-0.04282) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + (0.02209 * clamp((abstime - 1.3600) / 0.1900, 0, 1) + (-0.04419) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + 0.02209 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "pelvis": [
+            0,
+            0,
+            0
+          ],
+          "pelvis.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.02500))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "place": [
+            1.35,
+            0,
+            -4.7
+          ],
+          "shinL": [
+            0,
+            0,
+            0
+          ],
+          "shinL.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.11000)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "shinL.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.02022))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "shinR": [
+            0,
+            0,
+            0
+          ],
+          "shinR.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.02022)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "spine": [
+            0,
+            0,
+            0
+          ],
+          "spine.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.20000 + (0.00000 * clamp((abstime - 0.2000) / 0.2200, 0, 1) + 0.02640 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + (-0.02640) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + ((-0.03360) * clamp((abstime - 0.4200) / 0.2800, 0, 1) + (-0.01771) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + (-0.00869) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.08491) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + (-0.11876) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + 0.08367 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + ((-0.04857) * clamp((abstime - 0.9500) / 0.1700, 0, 1) + 0.12202 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + (-0.07345) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + ((-0.03512) * clamp((abstime - 1.1200) / 0.2400, 0, 1) + (-0.07627) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + 0.05139 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + ((-0.02651) * clamp((abstime - 1.3600) / 0.1900, 0, 1) + 0.05302 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + (-0.02651) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "spine.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.05000 + (0.00000 * clamp((abstime - 0.2000) / 0.2200, 0, 1) + 0.00440 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + (-0.00440) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + ((-0.00560) * clamp((abstime - 0.4200) / 0.2800, 0, 1) + 0.00762 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + (-0.01202) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.02358) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + (-0.04902) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + 0.03261 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + ((-0.01619) * clamp((abstime - 0.9500) / 0.1700, 0, 1) + 0.03238 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + (-0.01619) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "thighL": [
+            0,
+            0,
+            0
+          ],
+          "thighL.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.06000))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "thighL.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.10472)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "thighL.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.06066))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "thighR": [
+            0,
+            0,
+            0
+          ],
+          "thighR.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.10472))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "thighR.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.06066)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "upperarmL": [
+            0,
+            0,
+            0
+          ],
+          "upperarmL.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.39608) + (0.00000 * clamp((abstime - 0.0000) / 0.2000, 0, 1) + (-0.24770) * clamp((abstime - 0.0000) / 0.2000, 0, 1) ^ 2 + 0.17215 * clamp((abstime - 0.0000) / 0.2000, 0, 1) ^ 3) + (0.02314 * clamp((abstime - 0.2000) / 0.2200, 0, 1) + 0.37223 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + (-0.27564) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + ((-0.07550) * clamp((abstime - 0.4200) / 0.2800, 0, 1) + (-0.42460) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + 0.24555 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.16790) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + 0.15489 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + (-0.08838) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + ((-0.08383) * clamp((abstime - 0.9500) / 0.1700, 0, 1) + 0.44005 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + (-0.46193) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + ((-0.83225) * clamp((abstime - 1.1200) / 0.2400, 0, 1) + (-1.08441) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + 0.60061 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + ((-0.94941) * clamp((abstime - 1.3600) / 0.1900, 0, 1) + (-0.22669) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + 0.34350 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + ((-0.45069) * clamp((abstime - 1.5500) / 0.2300, 0, 1) + 0.93021 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + (-0.46991) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3) + (0.00000 * clamp((abstime - 1.7800) / 0.2200, 0, 1) + (-0.02884) * clamp((abstime - 1.7800) / 0.2200, 0, 1) ^ 2 + 0.01923 * clamp((abstime - 1.7800) / 0.2200, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "upperarmL.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.30223) + (0.00000 * clamp((abstime - 0.0000) / 0.2000, 0, 1) + (-0.16460) * clamp((abstime - 0.0000) / 0.2000, 0, 1) ^ 2 + 0.11461 * clamp((abstime - 0.0000) / 0.2000, 0, 1) ^ 3) + (0.01611 * clamp((abstime - 0.2000) / 0.2200, 0, 1) + 0.22231 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + (-0.15767) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + ((-0.01565) * clamp((abstime - 0.4200) / 0.2800, 0, 1) + (-0.21213) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + 0.11909 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.07378) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + 0.05879 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + (-0.03274) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + ((-0.03700) * clamp((abstime - 0.9500) / 0.1700, 0, 1) + (-0.10352) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + 0.09684 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + (0.06562 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + 0.12826 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + (-0.03811) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + (0.16453 * clamp((abstime - 1.3600) / 0.1900, 0, 1) + 0.21374 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + (-0.16169) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + (0.12945 * clamp((abstime - 1.5500) / 0.2300, 0, 1) + (-0.19947) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + 0.08983 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3) + (0.00000 * clamp((abstime - 1.7800) / 0.2200, 0, 1) + (-0.05943) * clamp((abstime - 1.7800) / 0.2200, 0, 1) ^ 2 + 0.03962 * clamp((abstime - 1.7800) / 0.2200, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "upperarmL.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.62167) + (0.00000 * clamp((abstime - 0.0000) / 0.2000, 0, 1) + 0.07886 * clamp((abstime - 0.0000) / 0.2000, 0, 1) ^ 2 + (-0.05456) * clamp((abstime - 0.0000) / 0.2000, 0, 1) ^ 3) + ((-0.00655) * clamp((abstime - 0.2000) / 0.2200, 0, 1) + (-0.14337) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + 0.11312 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + (0.05862 * clamp((abstime - 0.4200) / 0.2800, 0, 1) + 0.21138 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + (-0.12852) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + (0.08556 * clamp((abstime - 0.7000) / 0.2500, 0, 1) + (-0.10255) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + 0.05689 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + (0.03477 * clamp((abstime - 0.9500) / 0.1700, 0, 1) + (-0.19918) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + 0.21041 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + (0.37784 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + 0.53725 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + (-0.31561) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + (0.40020 * clamp((abstime - 1.3600) / 0.1900, 0, 1) + 0.02645 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + (-0.12043) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + (0.11116 * clamp((abstime - 1.5500) / 0.2300, 0, 1) + (-0.53204) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + 0.31764 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3) + (0.00000 * clamp((abstime - 1.7800) / 0.2200, 0, 1) + 0.30973 * clamp((abstime - 1.7800) / 0.2200, 0, 1) ^ 2 + (-0.20648) * clamp((abstime - 1.7800) / 0.2200, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "upperarmR": [
+            0,
+            0,
+            0
+          ],
+          "upperarmR.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.45632) + (0.00000 * clamp((abstime - 0.0000) / 0.2000, 0, 1) + 0.28397 * clamp((abstime - 0.0000) / 0.2000, 0, 1) ^ 2 + (-0.19419) * clamp((abstime - 0.0000) / 0.2000, 0, 1) ^ 3) + ((-0.01611) * clamp((abstime - 0.2000) / 0.2200, 0, 1) + (-0.20172) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + 0.09730 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + ((-0.16245) * clamp((abstime - 0.4200) / 0.2800, 0, 1) + (-0.15527) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + 0.14815 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.02547) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + 0.09471 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + 0.04633 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + (0.20600 * clamp((abstime - 0.9500) / 0.1700, 0, 1) + 0.54559 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + (-0.35822) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + (0.31413 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + (-0.31031) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + 0.13946 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + (0.08857 * clamp((abstime - 1.3600) / 0.1900, 0, 1) + (-0.03148) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + 0.00009 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + (0.03131 * clamp((abstime - 1.5500) / 0.2300, 0, 1) + (-0.06262) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + 0.03131 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "upperarmR.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.34236 + (0.00000 * clamp((abstime - 0.0000) / 0.2000, 0, 1) + (-0.19109) * clamp((abstime - 0.0000) / 0.2000, 0, 1) ^ 2 + 0.13051 * clamp((abstime - 0.0000) / 0.2000, 0, 1) ^ 3) + (0.01028 * clamp((abstime - 0.2000) / 0.2200, 0, 1) + 0.16608 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + (-0.09615) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + (0.06871 * clamp((abstime - 0.4200) / 0.2800, 0, 1) + (-0.00173) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + (-0.02450) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.00735) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + 0.02058 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + (-0.07130) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + ((-0.12247) * clamp((abstime - 0.9500) / 0.1700, 0, 1) + (-0.34570) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + 0.22367 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + ((-0.20167) * clamp((abstime - 1.1200) / 0.2400, 0, 1) + 0.18147 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + (-0.07982) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + ((-0.06191) * clamp((abstime - 1.3600) / 0.1900, 0, 1) + 0.02169 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + 0.00013 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + ((-0.02195) * clamp((abstime - 1.5500) / 0.2300, 0, 1) + 0.04391 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + (-0.02195) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "upperarmR.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.60258 + (0.00000 * clamp((abstime - 0.0000) / 0.2000, 0, 1) + 0.08783 * clamp((abstime - 0.0000) / 0.2000, 0, 1) ^ 2 + (-0.06024) * clamp((abstime - 0.0000) / 0.2000, 0, 1) ^ 3) + ((-0.00556) * clamp((abstime - 0.2000) / 0.2200, 0, 1) + (-0.03455) * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 2 + 0.00191 * clamp((abstime - 0.2000) / 0.2200, 0, 1) ^ 3) + ((-0.08774) * clamp((abstime - 0.4200) / 0.2800, 0, 1) + (-0.13977) * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 2 + 0.10904 * clamp((abstime - 0.4200) / 0.2800, 0, 1) ^ 3) + ((-0.03587) * clamp((abstime - 0.7000) / 0.2500, 0, 1) + 0.12069 * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 2 + (-0.04239) * clamp((abstime - 0.7000) / 0.2500, 0, 1) ^ 3) + (0.05328 * clamp((abstime - 0.9500) / 0.1700, 0, 1) + 0.11371 * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 2 + (-0.07779) * clamp((abstime - 0.9500) / 0.1700, 0, 1) ^ 3) + (0.06679 * clamp((abstime - 1.1200) / 0.2400, 0, 1) + (-0.06243) * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 2 + 0.02055 * clamp((abstime - 1.1200) / 0.2400, 0, 1) ^ 3) + (0.00284 * clamp((abstime - 1.3600) / 0.1900, 0, 1) + (-0.05278) * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 2 + 0.03145 * clamp((abstime - 1.3600) / 0.1900, 0, 1) ^ 3) + ((-0.01013) * clamp((abstime - 1.5500) / 0.2300, 0, 1) + 0.02025 * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 2 + (-0.01013) * clamp((abstime - 1.5500) / 0.2300, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "yaw": -0.6435011087932843
+        },
+        "position": {
+          "x": -3300,
+          "y": 1400
+        },
+        "type": "pointKernel"
+      },
+      "skin_near": {
+        "definitionVersion": 1,
+        "id": "skin_near",
+        "label": "skinnear1",
+        "parameters": {
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"normal\",\"type\":\"vec3f\",\"qualifier\":\"direction\",\"default\":[0,1,0]},{\"name\":\"joints\",\"type\":\"vec4f\",\"default\":[0,0,0,0]},{\"name\":\"weights\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
+          "capacity": 89772,
+          "chest": [
+            0,
+            0,
+            0
+          ],
+          "chest.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.00000 + (0.00000 * clamp((abstime - 0.6200) / 0.2300, 0, 1) + (-0.02091) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + 0.02091 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + (0.00909 * clamp((abstime - 0.8500) / 0.1000, 0, 1) + 0.04479 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + (-0.02388) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3) + (0.07297 * clamp((abstime - 0.9500) / 0.2700, 0, 1) + 0.03705 * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 2 + (-0.04003) * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 3) + (0.02300 * clamp((abstime - 1.2200) / 0.2300, 0, 1) + (-0.11600) * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 2 + 0.07300 * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 3) + (0.01000 * clamp((abstime - 1.4500) / 0.2300, 0, 1) + 0.09582 * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 2 + (-0.06582) * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 3) + (0.00582 * clamp((abstime - 1.6800) / 0.3200, 0, 1) + (-0.10164) * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 2 + 0.06582 * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "chest.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.12000 + (0.00000 * clamp((abstime - 0.0000) / 0.2200, 0, 1) + 0.06000 * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 2 + (-0.04000) * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 3) + (0.00000 * clamp((abstime - 0.2200) / 0.2000, 0, 1) + (-0.04000) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + 0.02000 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + ((-0.02000) * clamp((abstime - 0.4200) / 0.2000, 0, 1) + 0.02186 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + (-0.02186) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + ((-0.04814) * clamp((abstime - 0.6200) / 0.2300, 0, 1) + (-0.04402) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + 0.02216 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + ((-0.03030) * clamp((abstime - 0.8500) / 0.1000, 0, 1) + (-0.04831) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + 0.04862 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3) + (0.05108 * clamp((abstime - 0.9500) / 0.2700, 0, 1) + 0.15464 * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 2 + (-0.10572) * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 3) + (0.03680 * clamp((abstime - 1.2200) / 0.2300, 0, 1) + (-0.14360) * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 2 + 0.08680 * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 3) + (0.01000 * clamp((abstime - 1.4500) / 0.2300, 0, 1) + 0.09164 * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 2 + (-0.06164) * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 3) + (0.01164 * clamp((abstime - 1.6800) / 0.3200, 0, 1) + (-0.08327) * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 2 + 0.05164 * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 3)) + ((0.03 + 0.07 * clamp((abstime - 1.05) / 0.25, 0, 1)) * sin(7.5398 * abstime + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "footL": [
+            0,
+            0,
+            0
+          ],
+          "footL.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.06981)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "footL.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.10336)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "footR": [
+            0,
+            0,
+            0
+          ],
+          "footR.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.02400))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "footR.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.06981))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "footR.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.10336))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "forearmL": [
+            0,
+            0,
+            0
+          ],
+          "forearmL.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.40123)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "forearmL.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.30122)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "forearmL.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.02687))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "forearmR": [
+            0,
+            0,
+            0
+          ],
+          "forearmR.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.52021 + (0.00000 * clamp((abstime - 0.2200) / 0.2000, 0, 1) + (-0.03010) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + 0.03010 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + (0.03010 * clamp((abstime - 0.4200) / 0.2000, 0, 1) + 0.24306 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + (-0.21296) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + ((-0.14107) * clamp((abstime - 0.6200) / 0.2300, 0, 1) + (-0.46390) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + 0.28103 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + ((-0.09816) * clamp((abstime - 0.8500) / 0.1000, 0, 1) + 0.19633 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + (-0.09816) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "forearmR.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.25863 + (0.00000 * clamp((abstime - 0.2200) / 0.2000, 0, 1) + (-0.07057) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + 0.07057 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + (0.07057 * clamp((abstime - 0.4200) / 0.2000, 0, 1) + 0.47041 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + (-0.39984) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + ((-0.21633) * clamp((abstime - 0.6200) / 0.2300, 0, 1) + (-0.82386) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + 0.49459 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + ((-0.16533) * clamp((abstime - 0.8500) / 0.1000, 0, 1) + 0.33066 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + (-0.16533) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "forearmR.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.65289 + (0.00000 * clamp((abstime - 0.2200) / 0.2000, 0, 1) + (-0.08096) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + 0.08096 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + (0.08096 * clamp((abstime - 0.4200) / 0.2000, 0, 1) + 0.59280 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + (-0.51184) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + ((-0.30932) * clamp((abstime - 0.6200) / 0.2300, 0, 1) + (-1.08608) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + 0.65519 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + ((-0.22431) * clamp((abstime - 0.8500) / 0.1000, 0, 1) + 0.44861 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + (-0.22431) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "handL": [
+            0,
+            0,
+            0
+          ],
+          "handL.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.10000)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "handL.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.08000)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "handR": [
+            0,
+            0,
+            0
+          ],
+          "handR.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.10000) + (0.00000 * clamp((abstime - 0.2200) / 0.2000, 0, 1) + (-0.05000) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + 0.05000 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + (0.05000 * clamp((abstime - 0.4200) / 0.2000, 0, 1) + 0.10698 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + (-0.05698) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + (0.10698 * clamp((abstime - 0.6200) / 0.2300, 0, 1) + 0.01635 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + (-0.02333) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + (0.03030 * clamp((abstime - 0.8500) / 0.1000, 0, 1) + (-0.06061) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + 0.03030 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "handR.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.25000 + (0.00000 * clamp((abstime - 0.2200) / 0.2000, 0, 1) + 0.02500 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + (-0.02500) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + ((-0.02500) * clamp((abstime - 0.4200) / 0.2000, 0, 1) + 0.05349 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + (-0.07849) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + ((-0.17651) * clamp((abstime - 0.6200) / 0.2300, 0, 1) + (-0.29183) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + 0.18834 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + ((-0.08485) * clamp((abstime - 0.8500) / 0.1000, 0, 1) + 0.16970 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + (-0.08485) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "head": [
+            0,
+            0,
+            0
+          ],
+          "head.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.00800 + (0.00000 * clamp((abstime - 0.0000) / 0.2200, 0, 1) + 0.08038 * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 2 + (-0.05638) * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 3) + ((-0.00762) * clamp((abstime - 0.2200) / 0.2000, 0, 1) + (-0.09676) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + 0.06438 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + ((-0.00800) * clamp((abstime - 0.4200) / 0.2000, 0, 1) + 0.07312 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + (-0.04112) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + (0.01712 * clamp((abstime - 0.6200) / 0.2300, 0, 1) + (-0.02696) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + 0.01784 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + (0.00727 * clamp((abstime - 0.8500) / 0.1000, 0, 1) + (-0.02709) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + 0.03581 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3) + (0.16346 * clamp((abstime - 0.9500) / 0.2700, 0, 1) + 0.21068 * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 2 + (-0.16614) * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 3) + (0.07360 * clamp((abstime - 1.2200) / 0.2300, 0, 1) + (-0.30320) * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 2 + 0.18160 * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 3) + (0.01200 * clamp((abstime - 1.4500) / 0.2300, 0, 1) + 0.18364 * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 2 + (-0.12364) * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 3) + (0.01164 * clamp((abstime - 1.6800) / 0.3200, 0, 1) + (-0.17927) * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 2 + 0.11564 * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "head.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.03200) + (0.00000 * clamp((abstime - 0.0000) / 0.2200, 0, 1) + 0.05219 * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 2 + (-0.03619) * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 3) + ((-0.00381) * clamp((abstime - 0.2200) / 0.2000, 0, 1) + (-0.06038) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + 0.04019 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + ((-0.00400) * clamp((abstime - 0.4200) / 0.2000, 0, 1) + 0.04670 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + (-0.02670) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + (0.01070 * clamp((abstime - 0.6200) / 0.2300, 0, 1) + (-0.04006) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + 0.03336 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + (0.01333 * clamp((abstime - 0.8500) / 0.1000, 0, 1) + 0.04252 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + (-0.01586) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3) + (0.13719 * clamp((abstime - 0.9500) / 0.2700, 0, 1) + 0.11562 * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 2 + (-0.10481) * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 3) + (0.04600 * clamp((abstime - 1.2200) / 0.2300, 0, 1) + (-0.24400) * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 2 + 0.15000 * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 3) + (0.00800 * clamp((abstime - 1.4500) / 0.2300, 0, 1) + 0.16596 * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 2 + (-0.10996) * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 3) + (0.01396 * clamp((abstime - 1.6800) / 0.3200, 0, 1) + (-0.14793) * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 2 + 0.09396 * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "head.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.03000 + (0.00000 * clamp((abstime - 0.0000) / 0.2200, 0, 1) + (-0.03262) * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 2 + 0.02262 * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 3) + (0.00238 * clamp((abstime - 0.2200) / 0.2000, 0, 1) + 0.03774 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + (-0.02512) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + (0.00250 * clamp((abstime - 0.4200) / 0.2000, 0, 1) + (-0.02570) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + 0.01320 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + ((-0.01070) * clamp((abstime - 0.6200) / 0.2300, 0, 1) + 0.00882 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + (-0.00812) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + ((-0.00758) * clamp((abstime - 0.8500) / 0.1000, 0, 1) + (-0.01904) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + 0.01161 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3) + ((-0.02919) * clamp((abstime - 0.9500) / 0.2700, 0, 1) + (-0.01122) * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 2 + 0.01541 * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 3) + ((-0.00460) * clamp((abstime - 1.2200) / 0.2300, 0, 1) + 0.06170 * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 2 + (-0.04210) * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 3) + ((-0.00750) * clamp((abstime - 1.4500) / 0.2300, 0, 1) + (-0.07082) * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 2 + 0.04832 * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 3) + ((-0.00582) * clamp((abstime - 1.6800) / 0.3200, 0, 1) + 0.07164 * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 2 + (-0.04582) * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "kernel": "// T1400b — the figure's skin (generated by src/projects/on-nothing/skin-kernel.ts from the GLB's bones).\nstruct Params {\n  place: vec3f, // @default 0  Where the figure stands (world metres).\n  yaw: f32, // @default 0  Which way it faces: radians about +Y (0 faces +Z).\n  pelvis: vec3f, // @default 0  pelvis: rotation about its head, radians (x, y, z about the rest axes).\n  spine: vec3f, // @default 0  spine: rotation about its head, radians (x, y, z about the rest axes).\n  chest: vec3f, // @default 0  chest: rotation about its head, radians (x, y, z about the rest axes).\n  neck: vec3f, // @default 0  neck: rotation about its head, radians (x, y, z about the rest axes).\n  head: vec3f, // @default 0  head: rotation about its head, radians (x, y, z about the rest axes).\n  shoulderL: vec3f, // @default 0  shoulder.L: rotation about its head, radians (x, y, z about the rest axes).\n  upperarmL: vec3f, // @default 0  upperarm.L: rotation about its head, radians (x, y, z about the rest axes).\n  forearmL: vec3f, // @default 0  forearm.L: rotation about its head, radians (x, y, z about the rest axes).\n  handL: vec3f, // @default 0  hand.L: rotation about its head, radians (x, y, z about the rest axes).\n  shoulderR: vec3f, // @default 0  shoulder.R: rotation about its head, radians (x, y, z about the rest axes).\n  upperarmR: vec3f, // @default 0  upperarm.R: rotation about its head, radians (x, y, z about the rest axes).\n  forearmR: vec3f, // @default 0  forearm.R: rotation about its head, radians (x, y, z about the rest axes).\n  handR: vec3f, // @default 0  hand.R: rotation about its head, radians (x, y, z about the rest axes).\n  thighL: vec3f, // @default 0  thigh.L: rotation about its head, radians (x, y, z about the rest axes).\n  shinL: vec3f, // @default 0  shin.L: rotation about its head, radians (x, y, z about the rest axes).\n  footL: vec3f, // @default 0  foot.L: rotation about its head, radians (x, y, z about the rest axes).\n  thighR: vec3f, // @default 0  thigh.R: rotation about its head, radians (x, y, z about the rest axes).\n  shinR: vec3f, // @default 0  shin.R: rotation about its head, radians (x, y, z about the rest axes).\n  footR: vec3f, // @default 0  foot.R: rotation about its head, radians (x, y, z about the rest axes).\n};\n\nconst BONES: u32 = 19u;\nconst BONE_PARENT = array<i32, 19>(-1, 0, 1, 2, 3, 2, 5, 6, 7, 2, 9, 10, 11, 0, 13, 14, 0, 16, 17);\nconst BONE_HEAD = array<vec3f, 19>(vec3f(0.00000, 0.96179, 0.00482), vec3f(0.00000, 1.05056, -0.02764), vec3f(0.00000, 1.18620, -0.02634), vec3f(0.00000, 1.53777, 0.01311), vec3f(0.00000, 1.63664, 0.04730), vec3f(0.02343, 1.46157, 0.02581), vec3f(0.19063, 1.43167, 0.01959), vec3f(0.36319, 1.23385, 0.01839), vec3f(0.50031, 1.10285, 0.21346), vec3f(-0.02343, 1.46157, 0.02581), vec3f(-0.19063, 1.43167, 0.01959), vec3f(-0.36319, 1.23385, 0.01839), vec3f(-0.50031, 1.10285, 0.21346), vec3f(0.11126, 0.95615, -0.00587), vec3f(0.15488, 0.51706, 0.02909), vec3f(0.20151, 0.07392, 0.01538), vec3f(-0.11126, 0.95615, -0.00587), vec3f(-0.15488, 0.51706, 0.02909), vec3f(-0.20151, 0.07392, 0.01538));\n\nfn boneAngles(i: u32, ctx: PointCtx) -> vec3f {\n  switch i {\n    case 0u: { return ctx.params.pelvis; }\n    case 1u: { return ctx.params.spine; }\n    case 2u: { return ctx.params.chest; }\n    case 3u: { return ctx.params.neck; }\n    case 4u: { return ctx.params.head; }\n    case 5u: { return ctx.params.shoulderL; }\n    case 6u: { return ctx.params.upperarmL; }\n    case 7u: { return ctx.params.forearmL; }\n    case 8u: { return ctx.params.handL; }\n    case 9u: { return ctx.params.shoulderR; }\n    case 10u: { return ctx.params.upperarmR; }\n    case 11u: { return ctx.params.forearmR; }\n    case 12u: { return ctx.params.handR; }\n    case 13u: { return ctx.params.thighL; }\n    case 14u: { return ctx.params.shinL; }\n    case 15u: { return ctx.params.footL; }\n    case 16u: { return ctx.params.thighR; }\n    case 17u: { return ctx.params.shinR; }\n    case 18u: { return ctx.params.footR; }\n    default: { return vec3f(0.0); }\n  }\n}\n\nfn euler(e: vec3f) -> mat3x3f {\n  let cx = cos(e.x); let sx = sin(e.x);\n  let cy = cos(e.y); let sy = sin(e.y);\n  let cz = cos(e.z); let sz = sin(e.z);\n  let rx = mat3x3f(vec3f(1.0, 0.0, 0.0), vec3f(0.0, cx, sx), vec3f(0.0, -sx, cx));\n  let ry = mat3x3f(vec3f(cy, 0.0, -sy), vec3f(0.0, 1.0, 0.0), vec3f(sy, 0.0, cy));\n  let rz = mat3x3f(vec3f(cz, sz, 0.0), vec3f(-sz, cz, 0.0), vec3f(0.0, 0.0, 1.0));\n  return rz * ry * rx;\n}\n\nstruct Xf {\n  m: mat3x3f,\n  t: vec3f,\n};\n\n// The bone's world transform: its own rotation about its head, then each ancestor's.\nfn boneXf(bone: u32, ctx: PointCtx) -> Xf {\n  var acc: Xf;\n  acc.m = mat3x3f(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0));\n  acc.t = vec3f(0.0);\n  var j = i32(bone);\n  for (var level = 0u; level < 8u; level = level + 1u) {\n    if (j < 0 || u32(j) >= BONES) { break; }\n    let r = euler(boneAngles(u32(j), ctx));\n    let h = BONE_HEAD[u32(j)];\n    acc.m = r * acc.m;\n    acc.t = r * (acc.t - h) + h;\n    j = BONE_PARENT[u32(j)];\n  }\n  return acc;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  // Linear-blend skinning over the four influences the decoder normalised to sum 1.\n  var posed = vec3f(0.0);\n  var bent = vec3f(0.0);\n  var total = 0.0;\n  for (var k = 0u; k < 4u; k = k + 1u) {\n    let w = p.weights[k];\n    if (w <= 0.0) { continue; }\n    let x = boneXf(min(u32(p.joints[k] + 0.5), BONES - 1u), ctx);\n    posed = posed + w * (x.m * p.position + x.t);\n    bent = bent + w * (x.m * p.normal);\n    total = total + w;\n  }\n  if (total <= 0.0) {\n    // Nothing skins this vertex: it keeps its rest place.\n    posed = p.position;\n    bent = p.normal;\n  } else {\n    posed = posed / total;\n  }\n  let normal = normalize(bent);\n  let c = cos(ctx.params.yaw);\n  let s = sin(ctx.params.yaw);\n  let turn = mat3x3f(vec3f(c, 0.0, -s), vec3f(0.0, 1.0, 0.0), vec3f(s, 0.0, c));\n  q.position = ctx.params.place + turn * posed;\n  q.normal = turn * normal;\n  return q;\n}",
+          "neck": [
+            0,
+            0,
+            0
+          ],
+          "neck.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.01200 + (0.00000 * clamp((abstime - 0.0000) / 0.2200, 0, 1) + 0.12057 * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 2 + (-0.08457) * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 3) + ((-0.01143) * clamp((abstime - 0.2200) / 0.2000, 0, 1) + (-0.14514) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + 0.09657 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + ((-0.01200) * clamp((abstime - 0.4200) / 0.2000, 0, 1) + 0.10967 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + (-0.06167) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + (0.02567 * clamp((abstime - 0.6200) / 0.2300, 0, 1) + (-0.04044) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + 0.02677 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + (0.01091 * clamp((abstime - 0.8500) / 0.1000, 0, 1) + (-0.04063) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + 0.05372 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3) + (0.24519 * clamp((abstime - 0.9500) / 0.2700, 0, 1) + 0.31602 * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 2 + (-0.24921) * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 3) + (0.11040 * clamp((abstime - 1.2200) / 0.2300, 0, 1) + (-0.45480) * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 2 + 0.27240 * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 3) + (0.01800 * clamp((abstime - 1.4500) / 0.2300, 0, 1) + 0.27545 * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 2 + (-0.18545) * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 3) + (0.01745 * clamp((abstime - 1.6800) / 0.3200, 0, 1) + (-0.26891) * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 2 + 0.17345 * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 3)) + ((0.05 + 0.13 * clamp((abstime - 1.05) / 0.25, 0, 1)) * sin(15.0796 * abstime))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "neck.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.04800) + (0.00000 * clamp((abstime - 0.0000) / 0.2200, 0, 1) + 0.07829 * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 2 + (-0.05429) * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 3) + ((-0.00571) * clamp((abstime - 0.2200) / 0.2000, 0, 1) + (-0.09057) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + 0.06029 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + ((-0.00600) * clamp((abstime - 0.4200) / 0.2000, 0, 1) + 0.07005 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + (-0.04005) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + (0.01605 * clamp((abstime - 0.6200) / 0.2300, 0, 1) + (-0.06009) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + 0.05005 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + (0.02000 * clamp((abstime - 0.8500) / 0.1000, 0, 1) + 0.06378 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + (-0.02378) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3) + (0.20578 * clamp((abstime - 0.9500) / 0.2700, 0, 1) + 0.17343 * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 2 + (-0.15722) * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 3) + (0.06900 * clamp((abstime - 1.2200) / 0.2300, 0, 1) + (-0.36600) * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 2 + 0.22500 * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 3) + (0.01200 * clamp((abstime - 1.4500) / 0.2300, 0, 1) + 0.24895 * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 2 + (-0.16495) * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 3) + (0.02095 * clamp((abstime - 1.6800) / 0.3200, 0, 1) + (-0.22189) * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 2 + 0.14095 * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "neck.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.06000 + (0.00000 * clamp((abstime - 0.0000) / 0.2200, 0, 1) + (-0.06524) * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 2 + 0.04524 * clamp((abstime - 0.0000) / 0.2200, 0, 1) ^ 3) + (0.00476 * clamp((abstime - 0.2200) / 0.2000, 0, 1) + 0.07548 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + (-0.05024) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + (0.00500 * clamp((abstime - 0.4200) / 0.2000, 0, 1) + (-0.05140) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + 0.02640 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + ((-0.02140) * clamp((abstime - 0.6200) / 0.2300, 0, 1) + 0.01764 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + (-0.01624) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + ((-0.01515) * clamp((abstime - 0.8500) / 0.1000, 0, 1) + (-0.03808) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + 0.02323 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3) + ((-0.05838) * clamp((abstime - 0.9500) / 0.2700, 0, 1) + (-0.02244) * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 2 + 0.03082 * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 3) + ((-0.00920) * clamp((abstime - 1.2200) / 0.2300, 0, 1) + 0.12340 * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 2 + (-0.08420) * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 3) + ((-0.01500) * clamp((abstime - 1.4500) / 0.2300, 0, 1) + (-0.14164) * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 2 + 0.09664 * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 3) + ((-0.01164) * clamp((abstime - 1.6800) / 0.3200, 0, 1) + 0.14327 * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 2 + (-0.09164) * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 3)) + ((0.03 + 0.08 * clamp((abstime - 1.05) / 0.25, 0, 1)) * sin(7.5398 * abstime + 0.7))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "pelvis": [
+            0,
+            0,
+            0
+          ],
+          "pelvis.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.01500)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "place": [
+            -0.25,
+            0,
+            -0.67
+          ],
+          "shinL": [
+            0,
+            0,
+            0
+          ],
+          "shinL.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.02584))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "shinR": [
+            0,
+            0,
+            0
+          ],
+          "shinR.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.06600)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "shinR.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.02584)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "spine": [
+            0,
+            0,
+            0
+          ],
+          "spine.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.00000 + (0.00000 * clamp((abstime - 0.8500) / 0.1000, 0, 1) + (-0.01622) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + 0.01622 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3) + (0.04378 * clamp((abstime - 0.9500) / 0.2700, 0, 1) + 0.06543 * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 2 + (-0.04922) * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 3) + (0.02300 * clamp((abstime - 1.2200) / 0.2300, 0, 1) + (-0.08100) * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 2 + 0.04800 * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 3) + (0.00500 * clamp((abstime - 1.4500) / 0.2300, 0, 1) + 0.04582 * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 2 + (-0.03082) * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 3) + (0.00582 * clamp((abstime - 1.6800) / 0.3200, 0, 1) + (-0.04164) * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 2 + 0.02582 * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 3)) + (0.03 * clamp((abstime - 1.05) / 0.25, 0, 1) * sin(15.0796 * abstime + 0.4))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "spine.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.00000 + (0.00000 * clamp((abstime - 0.8500) / 0.1000, 0, 1) + (-0.01351) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + 0.01351 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3) + (0.03649 * clamp((abstime - 0.9500) / 0.2700, 0, 1) + 0.05543 * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 2 + (-0.04191) * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 3) + (0.01840 * clamp((abstime - 1.2200) / 0.2300, 0, 1) + (-0.07180) * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 2 + 0.04340 * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 3) + (0.00500 * clamp((abstime - 1.4500) / 0.2300, 0, 1) + 0.04582 * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 2 + (-0.03082) * clamp((abstime - 1.4500) / 0.2300, 0, 1) ^ 3) + (0.00582 * clamp((abstime - 1.6800) / 0.3200, 0, 1) + (-0.04164) * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 2 + 0.02582 * clamp((abstime - 1.6800) / 0.3200, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "spine.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.01200) + (0.00000 * clamp((abstime - 0.8500) / 0.1000, 0, 1) + (-0.00324) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + 0.00324 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3) + (0.00876 * clamp((abstime - 0.9500) / 0.2700, 0, 1) + 0.01201 * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 2 + (-0.00876) * clamp((abstime - 0.9500) / 0.2700, 0, 1) ^ 3) + (0.00552 * clamp((abstime - 1.2200) / 0.2300, 0, 1) + (-0.01104) * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 2 + 0.00552 * clamp((abstime - 1.2200) / 0.2300, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "thighL": [
+            0,
+            0,
+            0
+          ],
+          "thighL.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.06981)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "thighL.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.07752))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "thighR": [
+            0,
+            0,
+            0
+          ],
+          "thighR.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.03600))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "thighR.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.06981))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "thighR.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.07752)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "upperarmL": [
+            0,
+            0,
+            0
+          ],
+          "upperarmL.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.05275)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "upperarmL.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.03821)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "upperarmL.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-0.61154))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "upperarmR": [
+            0,
+            0,
+            0
+          ],
+          "upperarmR.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((-1.27124) + (0.00000 * clamp((abstime - 0.2200) / 0.2000, 0, 1) + (-0.13303) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + 0.13303 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + (0.13303 * clamp((abstime - 0.4200) / 0.2000, 0, 1) + (-0.00514) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + 0.13817 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + (0.61787 * clamp((abstime - 0.6200) / 0.2300, 0, 1) + 0.81183 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + (-0.54062) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + (0.26942 * clamp((abstime - 0.8500) / 0.1000, 0, 1) + (-0.53883) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + 0.26942 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "upperarmR.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.95721 + (0.00000 * clamp((abstime - 0.2200) / 0.2000, 0, 1) + 0.07521 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + (-0.07521) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + ((-0.07521) * clamp((abstime - 0.4200) / 0.2000, 0, 1) + 0.10441 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + (-0.17963) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + ((-0.46606) * clamp((abstime - 0.6200) / 0.2300, 0, 1) + (-0.72814) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + 0.47329 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + ((-0.21845) * clamp((abstime - 0.8500) / 0.1000, 0, 1) + 0.43691 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + (-0.21845) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "upperarmR.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(0.25093 + (0.00000 * clamp((abstime - 0.2200) / 0.2000, 0, 1) + (-0.09102) * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 2 + 0.09102 * clamp((abstime - 0.2200) / 0.2000, 0, 1) ^ 3) + (0.09102 * clamp((abstime - 0.4200) / 0.2000, 0, 1) + 0.18192 * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 2 + (-0.09090) * clamp((abstime - 0.4200) / 0.2000, 0, 1) ^ 3) + (0.20949 * clamp((abstime - 0.6200) / 0.2300, 0, 1) + 0.06377 * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 2 + (-0.06364) * clamp((abstime - 0.6200) / 0.2300, 0, 1) ^ 3) + (0.06352 * clamp((abstime - 0.8500) / 0.1000, 0, 1) + (-0.12704) * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 2 + 0.06352 * clamp((abstime - 0.8500) / 0.1000, 0, 1) ^ 3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "yaw": 0.30587887140485215
+        },
+        "position": {
+          "x": -3300,
+          "y": 1200
+        },
+        "type": "pointKernel"
+      },
+      "surf": {
+        "definitionVersion": 1,
+        "id": "surf",
+        "label": "surf1",
+        "parameters": {
+          "cycAlbedo": 0.9,
+          "model": "pbr",
+          "source": "// @use surface-detail\nstruct Params {\n  headGain: f32, // @default 1  Headlight and DRL radiance multiplier.\n  tubeGain: f32, // @default 1  LED tube radiance multiplier.\n  tailGain: f32, // @default 1  Tail light radiance multiplier.\n  wet: f32, // @default 0.4  Share of the floor that is damp and glossy.\n  wetGloss: f32, // @default 0.22  Roughness of the damp patches.\n  dryGloss: f32, // @default 0.62  Roughness of the dry floor (worn concrete: past the reflections' cutoff).\n  peel: f32, // @default 0.25  Orange-peel strength on the clear coat.\n  cycAlbedo: f32, // @default 0.9  Albedo of the white cyc.\n};\n\nfn classOf(s: SurfaceIn) -> u32 {\n  return u32(s.attr.z * 64.0 + 0.5);\n}\n\n// Scratch lines: per 0.6 m cell, a random direction and offset; thin, broken, short.\nfn scratchAt(w: vec2f, scale: f32, seed: u32) -> f32 {\n  let q = w / scale;\n  let cell = floor(q);\n  let h = vec3f(unitFloat(hash3i(vec3i(vec3f(cell, 1.0)), seed)), unitFloat(hash3i(vec3i(vec3f(cell, 2.0)), seed + 7u)), unitFloat(hash3i(vec3i(vec3f(cell, 3.0)), seed + 13u)));\n  let a = h.x * 3.14159;\n  let local = q - cell - vec2f(0.5);\n  let across = dot(local, vec2f(-sin(a), cos(a))) - (h.y - 0.5) * 0.6;\n  let along = dot(local, vec2f(cos(a), sin(a)));\n  let seg = smoothstep(0.45, 0.2, abs(along)) * step(0.35, h.z);\n  return smoothstep(0.012, 0.0, abs(across)) * seg;\n}\n\nfn floorSurface(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {\n  // DRY, WORN warehouse concrete: satin, never glossy. A traffic-polished lane catches the\n  // lamps as a soft sheen; scuffs, stains, aggregate and scratches break it everywhere.\n  var r = o;\n  let w = s.world;\n  let large = detailFbm(vec3f(w.x * 0.18, 0.0, w.z * 0.18), 4, s.footprint);\n  let mid = detailFbm(vec3f(w.x * 0.9, 5.0, w.z * 0.9), 4, s.footprint);\n  let fine = detailFbm(w * 3.1, 5, s.footprint);\n  let grit = detailFbm(w * 21.0, 3, s.footprint);\n  let damp = smoothstep(1.0 - p.wet - 0.15, 1.0 - p.wet + 0.15, large.value + (fine.value - 0.5) * 0.25);\n  // tyre scuffs and oil stains\n  let scuff = smoothstep(0.6, 0.8, detailNoise(vec3f(w.x * 1.7, 0.0, w.z * 0.12)).value) * 0.45;\n  let stain = smoothstep(0.62, 0.78, mid.value) * 0.35;\n  // aggregate: a speckle of lighter and darker stones in the cement\n  let stone = smoothstep(0.7, 0.85, grit.value) * 0.18 - smoothstep(0.3, 0.15, grit.value) * 0.12;\n  let crack = smoothstep(0.006, 0.0, abs(detailNoise(vec3f(w.x * 0.9, 3.0, w.z * 0.9)).value - 0.5)) * 0.5;\n  let scratches = max(scratchAt(w.xz, 0.6, 3u), scratchAt(w.xz + vec2f(0.21, 0.37), 0.35, 11u) * 0.6) * (1.0 - smoothstep(0.004, 0.02, s.footprint));\n  let shade = (0.88 + 0.24 * fine.value + stone) * (0.85 + 0.3 * large.value);\n  r.albedo = vec4f(o.albedo.rgb * shade * mix(1.0, 0.6, damp) * (1.0 - scuff * 0.5) * (1.0 - stain) * (1.0 - crack * 0.6) * (1.0 + scratches * 0.5), 1.0);\n  // satin, never a mirror: polished where traffic ran, rough where it did not\n  let polish = smoothstep(0.35, 0.75, large.value);\n  r.roughness = clamp(mix(p.dryGloss + 0.12, p.dryGloss - 0.08, polish) + (grit.value - 0.5) * 0.1 + stain * 0.1 - scratches * 0.15, 0.3, 0.95);\n  r.roughness = mix(r.roughness, p.wetGloss, damp);\n  r.metallic = 0.0;\n  r.normal = detailBump(s.normal, grit.gradient * 0.006 + fine.gradient * 0.015 + mid.gradient * 0.02, 1.0);\n  return r;\n}\n\nfn brickSurface(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  let w = s.world;\n  let course = w.y / 0.075;\n  let row = floor(course);\n  let along = (w.x + w.z) / 0.23 + row * 0.5;\n  let mortar = max(smoothstep(0.1, 0.0, fract(course)), smoothstep(0.06, 0.0, fract(along)));\n  let n = detailFbm(w * 6.0, 4, s.footprint);\n  r.albedo = vec4f(o.albedo.rgb * (0.7 + 0.6 * n.value) * mix(1.0, 1.6, mortar), 1.0);\n  r.roughness = 0.9;\n  r.normal = detailBump(s.normal, n.gradient * 0.01, 1.0);\n  return r;\n}\n\nfn clearCoat(s: SurfaceIn, p: Params, o: SurfaceOut, roughness: f32) -> SurfaceOut {\n  var r = o;\n  let peel = detailFbm(s.world * 90.0, 2, s.footprint);\n  r.roughness = roughness;\n  r.normal = detailBump(s.normal, peel.gradient * 0.00045 * p.peel, 1.0);\n  return r;\n}\n\nfn jewel(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  // Facets: the normal snaps to a coarse lattice of directions, cell by cell, so each stone\n  // throws its own glint instead of one smooth sheen.\n  let cell = floor(s.world * 180.0);\n  let h = vec3f(unitFloat(hash3i(vec3i(cell), 11u)), unitFloat(hash3i(vec3i(cell), 23u)), unitFloat(hash3i(vec3i(cell), 37u)));\n  // facets finer than a pixel sparkle and crawl frame to frame: fade them to the smooth normal\n  let resolved = 1.0 - smoothstep(0.002, 0.006, s.footprint);\n  r.normal = normalize(s.normal + (h - vec3f(0.5)) * 0.9 * resolved);\n  r.roughness = 0.03;\n  r.metallic = 1.0;\n  r.albedo = vec4f(0.98, 0.98, 1.0, 1.0);\n  return r;\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let c = classOf(s);\n  switch c {\n    case 1u: { return floorSurface(s, p, o); }\n    case 2u: { return brickSurface(s, o); }\n    case 4u: { o.emissive = s.emissive * p.tubeGain; }\n    case 10u, 13u: { return clearCoat(s, p, o, 0.035); }\n    case 11u: { return clearCoat(s, p, o, 0.16); }\n    case 12u: { return clearCoat(s, p, o, 0.42); }\n    case 14u, 19u: { o.roughness = 0.035; o.metallic = 1.0; }\n    case 15u: { o.roughness = 0.015; o.metallic = 0.0; }\n    case 17u: {\n      let n = detailFbm(s.world * 40.0, 3, s.footprint);\n      o.roughness = 0.65 + 0.2 * n.value;\n      o.normal = detailBump(s.normal, n.gradient * 0.002, 1.0);\n    }\n    case 18u: { o.emissive = s.emissive * p.headGain; }\n    case 20u: { o.emissive = s.emissive * p.tailGain; }\n    case 30u: {\n      let luma = dot(o.albedo.rgb, vec3f(0.2126, 0.7152, 0.0722));\n      o.albedo = vec4f(mix(vec3f(luma), o.albedo.rgb, 0.6), 1.0);\n      o.roughness = 0.45;\n    }\n    case 31u, 32u: {\n      let n = detailFbm(s.world * 55.0, 3, s.footprint);\n      o.roughness = 0.9;\n      o.normal = detailBump(s.normal, n.gradient * 0.0012, 1.0);\n    }\n    case 35u: { return jewel(s, o); }\n    case 40u: { o.albedo = vec4f(vec3f(p.cycAlbedo), 1.0); o.roughness = 0.95; o.metallic = 0.0; }\n    default: {}\n  }\n  return o;\n}"
+        },
+        "position": {
+          "x": -3000,
+          "y": -600
+        },
+        "type": "materialWgsl"
+      },
+      "top": {
+        "definitionVersion": 1,
+        "id": "top",
+        "label": "top1",
+        "parameters": {
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "direction": [
+            0,
+            -1,
+            0
+          ],
+          "intensity": 0.7480000000000001,
+          "kind": "directional"
+        },
+        "position": {
+          "x": -2600,
+          "y": 1500
+        },
+        "type": "light"
+      },
+      "trail": {
+        "definitionVersion": 1,
+        "id": "trail",
+        "label": "trail1",
+        "parameters": {
+          "amount": 0.62,
+          "darken": 0.15,
+          "delay": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "min(8, max(1, round(1 / max(24 * delta, 0.001))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "frames": 9
+        },
+        "position": {
+          "x": 300,
+          "y": 0
+        },
+        "type": "echo"
+      }
+    },
+    "revision": 1
+  },
+  "name": "On Nothing · cyc-wide",
+  "projectId": "project-on-nothing-cyc-wide",
+  "schemaVersion": 4,
+  "settings": {
+    "limits": {
+      "maxBufferBytes": 268435456,
+      "maxDispatch": 65535,
+      "maxResolution": 4096,
+      "memoryBudgetBytes": 3221225472
+    },
+    "outputResolution": {
+      "height": 818,
+      "width": 1920
+    },
+    "previewFps": 30,
+    "previewLongEdge": 192,
+    "randomSeed": 7,
+    "workingFormat": "rgba16float"
+  },
+  "updatedAt": "2026-09-27T00:00:00.000Z"
+}

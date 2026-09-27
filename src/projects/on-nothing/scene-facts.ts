@@ -54,8 +54,8 @@ export interface OnNothingFacts {
 
 /** The GLB's areas, one Mesh File In each (every object is named `<area>.<name>`). */
 export const AREAS = ["wh", "title", "fig", "figbare", "fignocap", "cyc"] as const;
-/** Areas a GLB may or may not hold (older builds lack them). */
-export const OPTIONAL_AREAS = ["lampglass"] as const;
+/** Areas a GLB may or may not hold (older builds lack them; T1407b cyc: the walker's wardrobe, the wide's studio). */
+export const OPTIONAL_AREAS = ["lampglass", "figcyc", "cycwide"] as const;
 /** The fixed areas, plus one `car<n>` per car (each car its own Mesh File In: five real models overflow one buffer). */
 export type Area = (typeof AREAS)[number] | (typeof OPTIONAL_AREAS)[number] | `car${number}`;
 
@@ -96,7 +96,7 @@ export function factsFrom(glbUrl: string, meshes: ReadonlyMap<Area, DecodedMesh>
   if (any === undefined) throw new Error("On Nothing GLB: no figure area decoded.");
   const areas = new Map<Area, MeshSelectionFacts>();
   for (const [area, mesh] of meshes) {
-    if (mesh.vertexCount === 0 && area === "lampglass") continue;
+    if (mesh.vertexCount === 0 && (OPTIONAL_AREAS as readonly string[]).includes(area)) continue;
     if (mesh.vertexCount === 0) throw new Error(`On Nothing GLB: area "${area}" is empty — was the Blender build run with every module?`);
     areas.set(area, {
       select: selectOf(area),
@@ -119,10 +119,12 @@ export function factsFrom(glbUrl: string, meshes: ReadonlyMap<Area, DecodedMesh>
   }
   // The decoder's joint table, in its order: the indices `joints` carries, parents first.
   const skin = any.skin;
-  // The shirtless figure shares the kernel's bone table: its skin must list the same joints in the same order.
-  const bare = meshes.get("figbare")?.skin;
-  if (bare !== undefined && skin !== undefined && bare.joints.map((j) => j.name).join(",") !== skin.joints.map((j) => j.name).join(",")) {
-    throw new Error("On Nothing GLB: figbare's joints differ from fig's; both must be built from the same rig.");
+  // The shirtless figure (and the cyc's, T1407b) share the kernel's bone table: each skin must list the same joints in the same order.
+  for (const other of ["figbare", "figcyc"] as const) {
+    const joints = meshes.get(other)?.skin;
+    if (joints !== undefined && skin !== undefined && joints.joints.map((j) => j.name).join(",") !== skin.joints.map((j) => j.name).join(",")) {
+      throw new Error(`On Nothing GLB: ${other}'s joints differ from fig's; both must be built from the same rig.`);
+    }
   }
   if (skin === undefined) throw new Error("On Nothing GLB: the figure is not skinned — rebuild it with tools/blender/on-nothing (T1401b exports the armature as a glTF skin).");
   const bones: Bone[] = skin.joints.map((joint, index) => ({ index, name: joint.name, parent: joint.parent, head: joint.head }));
