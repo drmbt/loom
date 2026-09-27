@@ -12,6 +12,7 @@ import type { Area, OnNothingFacts } from "../scene-facts.ts";
 import { GLASS_COMPOSITE_WGSL, LAMP_GLASS_WGSL, OCCLUDER_WGSL, SURFACE_WGSL } from "../surface.ts";
 import { Chain, type Port, cameraParams, easeOut, smooth, vec3 } from "./title-graph.ts";
 import { handheld } from "./handheld.ts";
+import { REACT_PROFILES, flicker } from "./react.ts";
 
 /**
  * T1407b (title) — THE TITLE SHOT, the reference's 0:00–0:01.6, built from what its frames
@@ -556,7 +557,7 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
     tail: 0.05,
     striation: 0.45,
     striationScale: 150,
-    gain: 0.8,
+    gain: flicker(0.8, REACT_PROFILES.title.lamp), // T1407b: the lamps' measured flicker (shots/react.ts)
     tint: [0.92, 0.97, 1, 1],
   }, [-1300, 0]);
   chain.link(["streakBright", "out"], ["streak", "bright"]);

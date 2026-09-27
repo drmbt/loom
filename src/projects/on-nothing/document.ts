@@ -25,6 +25,7 @@ import { handheld } from "./shots/handheld.ts";
 import { CLOSEUP_SHOTS, closeupDocument, isCloseup } from "./shots/closeups.ts";
 import { splitDocument } from "./shots/split.ts";
 import { mirrorDocument } from "./shots/mirror.ts";
+import { REACT_PROFILES, reactive } from "./shots/react.ts";
 
 /**
  * T1400b — THE ON NOTHING DOCUMENTS: one graph per shot, built from the GLB's measured facts.
@@ -209,6 +210,8 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   }
   /** 0..1 loudness, smooth; 0.5 when silent (no --audio). */
   const LOUD = audio ? "clamp(op('levels1').chan.level * 0.6 + op('levels1').chan.low * 0.4, 0, 1)" : "0.5";
+  // T1407b: the measured in-shot flicker of the glass and the lamps, and the kick lane's reach (shots/react.ts)
+  const react = reactive(nodes, edges, REACT_PROFILES.tableau, audio ? "song" : undefined);
 
   // ── The material every surface wears ──
   // The title frames the grille from a metre: its own headlights would blow the frame out, so they idle.
@@ -314,7 +317,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
         ...(rig !== undefined && car === rig.car ? riding(rig, "lookAt", [centre[0] + dir[0]! * 2, centre[1] + dir[1]! * 2, centre[2] + dir[2]! * 2]) : {}),
         throwRatio: 0.5,
         aspect: 2.4,
-        brightness: 2.5,
+        brightness: react.lamp(2.5),
         // LED low beams read cool on concrete: a cyan-white, as the reference's floor shows.
         color: [0.78, 0.92, 1, 1],
         falloff: true,
@@ -484,7 +487,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   pass("occlusion", GTAO_WGSL, { ...cameraParams, radius: plan.whiteRoom ? 0.5 : 1.3, strength: plan.whiteRoom ? 0.6 : 0.95, power: 1.6 }, [depth, normal], [-1900, 0]);
   if (plan.haze.density > 0) {
     const haze = hazeLights(facts, plan.haze.groups);
-    pass("haze", hazeWgsl(rig === undefined ? haze : placedHaze(facts, rig, haze)), { ...cameraParams, density: plan.haze.density, ambient: vec(plan.haze.ambient), anisotropy: 0.72, head: base === "title" ? 0.01 : 0.25 }, [depth], [-1700, 0]);
+    pass("haze", hazeWgsl(rig === undefined ? haze : placedHaze(facts, rig, haze)), { ...cameraParams, density: plan.haze.density, ambient: vec(plan.haze.ambient), anisotropy: 0.72, head: base === "title" ? 0.01 : react.lamp(0.25) }, [depth], [-1700, 0]);
   }
   if (plan.dof) {
     // focus: the title's script at 1.3 m; the tableau's figure (the rear row falls soft)
@@ -546,7 +549,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     edges.push(edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]));
     edges.push(edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0));
   }
-  pass("optics", OPTICS_COMPOSITE_WGSL, { streak: opticsGain[base].streak, halo: opticsGain[base].halo, bloom: 0.12, streakTint: [0.9, 0.97, 1, 1] }, [["streak2", "out"], ["halo", "out"], ["bloomUp0", "out"]], [-500, 0]);
+  pass("optics", OPTICS_COMPOSITE_WGSL, { streak: opticsGain[base].streak, halo: opticsGain[base].halo, bloom: 0.12, streakTint: [0.9, 0.97, 1, 1] }, [react.streak(["streak2", "out"]), ["halo", "out"], ["bloomUp0", "out"]], [-500, 0]);
 
   // ── Lens and grade ──
   const snapBlur: Record<string, StoredParameter> =
