@@ -198,7 +198,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
 
   // ── The material every surface wears ──
   // The title frames the grille from a metre: its own headlights would blow the frame out, so they idle.
-  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: base === "title" ? 0.04 : 1, wet: base === "tableau" ? 0 : base === "title" ? 0.1 : 0.14, wetGloss: 0.32, dryGloss: base === "tableau" ? 0.6 : 0.62 }, { label: "surf1" }));
+  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: base === "title" ? 0.04 : 1, wet: 0, wetGloss: 0.32, dryGloss: 0.6 }, { label: "surf1" }));
 
   // ── Meshes ──
   plan.areas.flatMap((entry) => (entry === "cars" ? carAreas(facts) : [entry])).forEach((area, index) => {
@@ -317,7 +317,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
    */
   function sodium(): void {
     const warm = [1, 0.52, 0.2, 1];
-    nodes.push(node("sodiumPool", "light", [-2600, 2000], { kind: "point", position: [0.4, 2.6, 6.5], color: warm, intensity: 4 }, { label: "sodiumpool1" }));
+    nodes.push(node("sodiumPool", "light", [-2600, 2000], { kind: "point", position: [0.4, 2.6, 6.5], color: warm, intensity: 4, shadows: true, shadowExtent: 16, shadowSoftness: 2 }, { label: "sodiumpool1" }));
     nodes.push(node("sodiumA", "light", [-2600, 2100], { kind: "point", position: [-9, 7.2, -6], color: warm, intensity: 4 }, { label: "sodiuma1" }));
     nodes.push(node("sodiumB", "light", [-2600, 2200], { kind: "point", position: [10, 7.2, -9], color: warm, intensity: 3 }, { label: "sodiumb1" }));
     lights.push("sodiumpool1", "sodiuma1", "sodiumb1");
@@ -342,12 +342,18 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     // LOW, beside the camera (out of frame): in the reference only the cars' lower fronts catch light (bumpers, grilles,
     // lamps) and their roofs fall into black. A point low in front of the row, falling off with
     // height and distance, does that; a sun lit them top to bottom and made them read huge.
-    nodes.push(node("carKey", "light", [-2600, 800], { kind: "point", position: [0, 0.45, 13.5], color: [0.88, 0.94, 1, 1], intensity: 22 }, { label: "carkey1" }));
+    // it CASTS: the cars throw their shadows back onto the floor under and behind them
+    nodes.push(node("carKey", "light", [-2600, 800], { kind: "point", position: [0, 0.45, 13.5], color: [0.88, 0.94, 1, 1], intensity: 22, shadows: true, shadowExtent: 30, shadowSoftness: 2 }, { label: "carkey1" }));
     // no top light: the reference's roofs fall into black
     lights.push("fill1", "carkey1");
     sodium();
   }
-  if (base === "wheel") sodium();
+  if (base === "wheel") {
+    sodium();
+    // a low raking key along the car's flank: the wheel's spokes and the door read, as in 2:00
+    nodes.push(node("wheelKey", "light", [-2600, 700], { kind: "point", position: [eye[0] + 2.5, 0.6, eye[2] + 1.0], color: [0.9, 0.95, 1, 1], intensity: 14 }, { label: "wheelkey1" }));
+    lights.push("wheelkey1");
+  }
   if (base === "title") {
     sodium();
     // A soft top over the bonnet: the chrome script and the grille bars catch it; the room stays dim.
@@ -450,7 +456,11 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
           ? { ...follow("eye", eye, driven.forward), ...follow("lookAt", aim, driven.forward) }
           : shot === "tableau"
             ? handheld(eye, aim, TABLEAU_HANDHELD)
-            : {};
+            : base === "wheel"
+              // no rigged car in this GLB (the wheel rig lands with the wheel shot's own work):
+              // at least the operator tracks along the parked car instead of a dead frame
+              ? handheld(eye, aim, { tiltIn: 4, tilt: 2, settle: 1, shake: 1.3, creep: 0 })
+              : {};
   nodes.push(node("cam", "camera", [-2700, -900], { eye: vec(eye), lookAt: aim, fov: camera.fovDeg, near: 0.05, far: 200, ...cameraMove }, { label: "cam1" }));
   nodes.push(node("shot", "render", [-2400, 0], {
     scenes: scenes.join(" "),
@@ -480,7 +490,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   const depth = ["shot", "depth"] as const;
   const normal = ["shot", "normal"] as const;
   pass("reflections", GLOSSY_SSR_WGSL, { ...cameraParams, strength: 1.2, maxDistance: 30, roughnessCutoff: 0.55, thickness: 0.4, blur: 1.6, stretch: 4, keepBright: 4, dimShare: 0.1 }, [depth, normal], [-2100, 0]);
-  pass("occlusion", GTAO_WGSL, { ...cameraParams, radius: 0.5, strength: plan.whiteRoom ? 0.6 : 0.8 }, [depth, normal], [-1900, 0]);
+  pass("occlusion", GTAO_WGSL, { ...cameraParams, radius: plan.whiteRoom ? 0.5 : 1.3, strength: plan.whiteRoom ? 0.6 : 0.95, power: 1.6 }, [depth, normal], [-1900, 0]);
   if (glassScenes.length > 0) {
     nodes.push(node("glassShot", "render", [-2400, 700], { scenes: glassScenes.join(" "), camera: "cam1", lights: "", ambientIntensity: 0, background: [0, 0, 0, 1], antialias: "msaa", normalOutput: true }, { label: "glassshot1" }));
     pass("glass", GLASS_COMPOSITE_WGSL, {}, [["glassShot", "out"], ["glassShot", "normal"]], [-1800, 0]);

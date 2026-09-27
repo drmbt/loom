@@ -978,7 +978,10 @@
             0,
             0.45,
             13.5
-          ]
+          ],
+          "shadowExtent": 30,
+          "shadowSoftness": 2,
+          "shadows": true
         },
         "position": {
           "x": -2600,
@@ -1820,7 +1823,7 @@
             },
             "mode": "expression"
           },
-          "focusDistance": 0,
+          "focusDistance": 11,
           "fov": {
             "bindings": {
               "expression": {
@@ -2196,7 +2199,8 @@
             },
             "mode": "expression"
           },
-          "radius": 0.5,
+          "power": 1.6,
+          "radius": 1.3,
           "roll": {
             "bindings": {
               "expression": {
@@ -2211,7 +2215,7 @@
             "mode": "expression"
           },
           "source": "struct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  radius: f32, // @default 1.2  World radius of the occlusion search, metres.\n  strength: f32, // @default 0.75  How much of the occlusion darkens the frame.\n  power: f32, // @default 1.4  Contrast of the occlusion.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n@group(0) @binding(5) var inputTexture2: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\nconst DIRECTIONS: u32 = 8u;\nconst STEPS: u32 = 6u;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let v = makeView();\n  let z = viewDepth(uv);\n  let encoded = textureLoad(inputTexture2, depthTexel(uv), 0);\n  if (z < 0.0 || encoded.a <= 0.0) { return color; }\n  let n = normalize(encoded.rgb * 2.0 - 1.0);\n  let p = worldAt(v, uv, z);\n  let helper = select(vec3f(0.0, 1.0, 0.0), vec3f(1.0, 0.0, 0.0), abs(n.y) > 0.9);\n  let t = normalize(cross(n, helper));\n  let b = cross(n, t);\n  let spin = ignHash(uv * frameU.resolution) * 6.2831853;\n  var occlusion = 0.0;\n  for (var i = 0u; i < DIRECTIONS; i = i + 1u) {\n    let angle = spin + f32(i) * 6.2831853 / f32(DIRECTIONS);\n    let dir = t * cos(angle) + b * sin(angle);\n    var best = 0.0;\n    for (var s = 1u; s <= STEPS; s = s + 1u) {\n      let distance = params.radius * (f32(s) / f32(STEPS)) * (f32(s) / f32(STEPS));\n      let probe = project(v, p + dir * distance);\n      if (probe.z <= 0.0 || any(probe.xy < vec2f(0.0)) || any(probe.xy > vec2f(1.0))) { break; }\n      let sz = viewDepth(probe.xy);\n      if (sz < 0.0) { continue; }\n      let sp = worldAt(v, probe.xy, sz);\n      let toSample = sp - p;\n      let length2 = dot(toSample, toSample);\n      let elevation = dot(n, toSample) * inverseSqrt(max(length2, 1e-6));\n      let falloff = 1.0 - smoothstep(params.radius * params.radius * 0.5, params.radius * params.radius * 2.0, length2);\n      best = max(best, (elevation - 0.08) * falloff);\n    }\n    occlusion = occlusion + clamp(best, 0.0, 1.0);\n  }\n  let ao = pow(clamp(1.0 - occlusion / f32(DIRECTIONS), 0.0, 1.0), params.power);\n  return vec4f(color.rgb * mix(1.0, ao, params.strength), color.a);\n}",
-          "strength": 0.8
+          "strength": 0.95
         },
         "position": {
           "x": -1900,
@@ -2834,7 +2838,10 @@
             0.4,
             2.6,
             6.5
-          ]
+          ],
+          "shadowExtent": 16,
+          "shadowSoftness": 2,
+          "shadows": true
         },
         "position": {
           "x": -2600,
