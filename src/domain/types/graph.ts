@@ -259,6 +259,17 @@ export function projectFps(settings: Pick<ProjectSettings, "fps">): number {
 export const DEFAULT_PROJECT_FPS = 60;
 
 /**
+ * T1432b — how many output pixels one authored pixel is: `outputResolution.width /
+ * referenceWidth`, or exactly 1 when the project names no reference (or a meaningless one),
+ * so a document without it compiles the same uniforms bit for bit.
+ */
+export function outputPixelScale(settings: Pick<ProjectSettings, "outputResolution" | "referenceWidth">): number {
+  const reference = settings.referenceWidth;
+  if (typeof reference !== "number" || !Number.isFinite(reference) || reference <= 0) return 1;
+  return settings.outputResolution.width / reference;
+}
+
+/**
  * The timeline's in and out points — ONE value, three meanings (T433).
  *
  * `end` is simultaneously the render length, the loop end and the scrub extent. That is a
@@ -340,6 +351,20 @@ export interface ProjectSettings {
   frameRange?: FrameRange;
   /** Absent in older documents; consumers read `settings.colorPolicy ?? DEFAULT_COLOR_POLICY`. */
   colorPolicy?: ColorPolicy;
+  /**
+   * T1432b — the output WIDTH the document's pixel-sized effects are authored at.
+   *
+   * A blur radius or a grain size in pixels is a size in the PICTURE, so a render at twice
+   * the size drew the blur half as wide across the frame (`--final` renders at 2× and
+   * box-downsamples). Named, every parameter that declares `scalesWithOutput` is scaled by
+   * `outputResolution.width / referenceWidth` before its node compiles — a pixel means a
+   * pixel of the picture at this width. Read it through `outputPixelScale()`.
+   *
+   * Absent or 0 (every document before it existed, and the default): a pixel is a pixel of
+   * whatever the output is, exactly as before (§V68). STRUCTURAL: the scale is compiled
+   * into uniform values, so an edit recompiles (§V178).
+   */
+  referenceWidth?: number;
   limits: {
     maxResolution: number;
     maxDispatch: number;

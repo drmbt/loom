@@ -95,11 +95,16 @@ function graphFor(consumer: string, cameraName: string): GraphDocument {
           node("sun", "light", { kind: "directional", direction: [0, 0, -1], intensity: 1 }, "sun1"),
           node("shot", "render", { scenes: "geo1", camera: cameraName, lights: "sun1" }, "shot1"),
         ]
-      : [...shared, node("shot", consumer, { camera: cameraName }, "shot1")];
+      : consumer === "cameraBlur"
+        ? // A filter, not a renderer: it blurs a picture, here a solid.
+          [...shared, node("pic", "solid", {}, "pic1"), node("shot", consumer, { camera: cameraName }, "shot1")]
+        : [...shared, node("shot", consumer, { camera: cameraName }, "shot1")];
   edges["e1"] =
     consumer === "render"
       ? { id: "e1", source: { nodeId: "grid", portId: "out" }, target: { nodeId: "geo", portId: "points" } }
-      : { id: "e1", source: { nodeId: "grid", portId: "out" }, target: { nodeId: "shot", portId: "points" } };
+      : consumer === "cameraBlur"
+        ? { id: "e1", source: { nodeId: "pic", portId: "out" }, target: { nodeId: "shot", portId: "input" } }
+        : { id: "e1", source: { nodeId: "grid", portId: "out" }, target: { nodeId: "shot", portId: "points" } };
   return {
     revision: 1,
     nodes: Object.fromEntries(nodes.map((entry) => [entry.id, entry])),
@@ -116,10 +121,11 @@ const passesOf = (plan: { passes: ReadonlyArray<PassDescriptor> }): ReadonlyArra
   plan.passes.filter((pass) => (pass as { nodeId?: string }).nodeId === "shot");
 
 describe("T528 — a dangling camera name refuses, and does not draw anyway", () => {
-  it("enumerates the camera consumers from the registry, and there are three", () => {
-    // If a fourth lands, every case below runs against it automatically. The count is
+  it("enumerates the camera consumers from the registry, and there are four", () => {
+    // If a fifth lands, every case below runs against it automatically. The count is
     // asserted so that a consumer VANISHING (which would make the sweep vacuous) is loud.
-    expect(cameraConsumers()).toEqual(["render", "renderInstances", "renderSurface"]);
+    // T1421b: Camera Blur names its camera as the renderers do, and refuses as they do.
+    expect(cameraConsumers()).toEqual(["cameraBlur", "render", "renderInstances", "renderSurface"]);
   });
 
   for (const consumer of cameraConsumers()) {

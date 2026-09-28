@@ -24,7 +24,7 @@ import {
   parseComponentKey,
   staticBindingValue,
 } from "./slots.ts";
-import { defaultParameterValue, validateParameterValue } from "./validate.ts";
+import { completeParameterValue, defaultParameterValue, validateParameterValue } from "./validate.ts";
 import { numericRangeOf, rangeRemedy } from "./expression-range.ts";
 
 /**
@@ -289,7 +289,7 @@ function checkAgainstManifest(
   node: GraphNode,
 ): Checked {
   const diagnostic = validateParameterValue(key, definition, value, node.id);
-  if (diagnostic === null) return { value, diagnostic: null };
+  if (diagnostic === null) return { value: completeParameterValue(definition, value), diagnostic: null };
   return { value: defaultParameterValue(definition), diagnostic };
 }
 
@@ -446,7 +446,7 @@ function fallback(
 ): StoredResolution {
   const retained = staticBindingValue(slot);
   if (retained !== undefined && validateParameterValue(key, definition, retained, node.id) === null) {
-    return { value: retained, mode: slot.mode, source: "static", driven: false, diagnostic };
+    return { value: completeParameterValue(definition, retained), mode: slot.mode, source: "static", driven: false, diagnostic };
   }
   return {
     value: defaultParameterValue(definition),

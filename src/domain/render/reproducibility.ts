@@ -216,6 +216,11 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   lens: "pure",
   filmGrade: "pure",
   crt: "pure",
+  // T1423b: the flare measures its own input each frame; the tube reads the frame clock.
+  flare: "pure",
+  crtTube: "pure",
+  // T1421b: the camera's path at the frame's own clock, a per-frame jitter off the frame count.
+  cameraBlur: "pure",
   composite: "pure",
   cross: "pure",
   over: "pure",

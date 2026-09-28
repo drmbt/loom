@@ -70,6 +70,23 @@ export interface FrameEvaluationInput {
   absFrameIndex?: number;
   /** `absFrameIndex` in seconds, at the timeline's rate. Never a wall reading (T461). */
   absTimeSeconds?: number;
+  /**
+   * T1426b — the PROJECT's frame rate: frames of the finished picture per second.
+   *
+   * Not `1 / deltaSeconds`, and that is the point of it: the live clock may advance several
+   * timeline frames in one displayed frame, and an offline render that averages sub-frames
+   * steps `subframes` times per project frame. An Echo that wants "three frames back" means
+   * three frames of the FILM, which is `3 / fps` seconds whatever either transport did.
+   * Optional (§V68); an expression reads `DEFAULT_PROJECT_FPS` when a transport supplies none.
+   */
+  fps?: number;
+  /**
+   * T1435b — offline sub-frames averaged into each output frame (temporal AA and motion
+   * blur by accumulation); 1 when frames are not accumulated, which is every live frame.
+   * The transport then steps at `fps * subframes`, so `delta` is a sub-frame's step. A shot
+   * that draws its own shutter blur reads it to stand down when accumulation provides one.
+   */
+  subframes?: number;
 }
 
 /**

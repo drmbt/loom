@@ -33,7 +33,8 @@ import { addNode, connect, dropParams, feederOf, finish, setParams, spliceAfter,
  * tracer: a thin-lens macro camera (aperture samples → real depth of field) looks through a
  * curved glass faceplate (refracted, with a Fresnel reflection of the room) onto a curved
  * phosphor surface carrying an aperture grille of R, G, B stripes, lit by scanlines whose
- * beams swell with brightness, interlaced in two fields that the shutter half-catches.
+ * beams swell with brightness, interlaced in two fields that the shutter half-catches — the
+ * stock CRT Tube node (T1423b), promoted from this file.
  */
 
 const INPUT = `${SHARED_UNIFORMS_WGSL}
@@ -63,181 +64,6 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     return textureSampleLevel(inputTexture1, inputSampler, uv, 0.0);
   }
   return textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
-}`;
-
-/**
- * THE TUBE, PHOTOGRAPHED. Input: the held picture (linear display light, as the grade hands
- * it on). Output: the macro camera's finished frame (linear display light for the Output).
- * Units are millimetres; the tube is a 4:3 face `tubeSize` wide, its phosphor on a sphere of
- * radius `curvature` (apex at z = 0, +z toward the camera), behind `glass` of faceplate.
- */
-export const TUBE_WGSL = `struct Params {
-  tubeSize: vec2f, // @default 400  Visible face, width × height, mm.
-  curvature: f32, // @default 1100  Radius of the phosphor (and faceplate) sphere, mm.
-  glass: f32, // @default 12  Faceplate thickness, mm.
-  lines: f32, // @default 480  Visible scanlines.
-  triads: f32, // @default 350  RGB triads across the face.
-  aim: vec2f, // @default 0.5  Where the camera looks on the face (u, v; v down).
-  distance: f32, // @default 350  Lens to target, mm.
-  pitch: f32, // @default 15  Camera above the face's normal, degrees (it looks down at the glass).
-  yaw: f32, // @default 0  Camera to the side of the normal, degrees.
-  roll: f32, // @default 0  Camera roll, degrees.
-  fov: f32, // @default 24  Vertical field of view, degrees.
-  aperture: f32, // @default 6  Lens aperture radius, mm (depth of field).
-  focus: f32, // @default 0  Focus offset beyond the target, mm.
-  beamDark: f32, // @default 0.15  Beam sigma of a dark line, in line pitches.
-  beamBright: f32, // @default 0.27  Beam sigma of a bright line (a bright line swells).
-  grille: f32, // @default 0.75  Share of a triad's third each phosphor stripe fills.
-  field: f32, // @default 0.55  Brightness of the field NOT being scanned now (phosphor persistence).
-  halation: f32, // @default 0.12  Light scattered in the faceplate (phosphor bloom).
-  invert: f32, // @default 1  1 shows the picture as a negative.
-  contrast: f32, // @default 1.6  Contrast of the picture on the tube.
-  pivot: f32, // @default 0.5  Level of the (inverted) picture that lands on mid-grey.
-  unlit: f32, // @default 0.02  The unlit phosphor's glow (the tube is never black).
-  reflection: f32, // @default 0.5  Room reflected in the faceplate (× Fresnel).
-  exposure: f32, // @default 0.35  Camera exposure (linear gain before the shoulder; low, so a lit phosphor never clips).
-  gain: f32, // @default 1.3  Display gain after the shoulder.
-  lift: f32, // @default 0.035  Display-level black lift.
-  tint: vec3f, // @default 1  Camera's colour cast.
-  saturation: f32, // @default 0.35  Chroma kept.
-  grain: f32, // @default 0.02  Grain.
-};
-${INPUT}
-const SAMPLES: i32 = 16;
-const PI: f32 = 3.14159265;
-
-fn hash(p: vec3f) -> f32 {
-  var q = fract(p * vec3f(0.1031, 0.1030, 0.0973));
-  q = q + dot(q, q.yxz + 33.33);
-  return fract((q.x + q.y) * q.z);
-}
-
-/** Nearest positive hit of a ray with a sphere centred on (0, 0, -R); -1 if none. */
-fn sphere(o: vec3f, d: vec3f, r: f32, far: bool) -> f32 {
-  let c = vec3f(0.0, 0.0, -params.curvature);
-  let oc = o - c;
-  let b = dot(oc, d);
-  let h = b * b - (dot(oc, oc) - r * r);
-  if (h < 0.0) { return -1.0; }
-  let s = sqrt(h);
-  return select(-b - s, -b + s, far);
-}
-
-/** A point on the phosphor for face coordinates (u, v). */
-fn facePoint(uv: vec2f) -> vec3f {
-  let x = (uv.x - 0.5) * params.tubeSize.x;
-  let y = (0.5 - uv.y) * params.tubeSize.y;
-  let r = params.curvature;
-  return vec3f(x, y, sqrt(max(r * r - x * x - y * y, 0.0)) - r);
-}
-
-/** The picture as the tube shows it: negative, contrasty, on the face's 4:3 (cropped from the source). */
-fn picture(uv: vec2f) -> vec3f {
-  let size = vec2f(textureDimensions(inputTexture));
-  let crop = (4.0 / 3.0) / (size.x / size.y);
-  let at = vec2f(0.5 + (uv.x - 0.5) * crop, uv.y);
-  var c = pow(max(textureSampleLevel(inputTexture, inputSampler, at, 0.0).rgb, vec3f(0.0)), vec3f(1.0 / 2.2));
-  c = mix(c, 1.0 - c, params.invert);
-  c = clamp((c - params.pivot) * params.contrast + 0.5, vec3f(0.0), vec3f(1.0));
-  return pow(c, vec3f(2.2));
-}
-
-/** Light leaving the phosphor at face coordinates uv (scanlines, fields, grille). */
-fn phosphor(uv: vec2f, fieldNow: f32) -> vec3f {
-  let lineF = uv.y * params.lines;
-  let line = floor(lineF);
-  let du = 0.8 / (params.triads * 3.0);
-  var light = vec3f(0.0);
-  for (var k = -1; k <= 1; k = k + 1) {
-    let ln = line + f32(k);
-    let yc = (ln + 0.5) / params.lines;
-    // the video's limited bandwidth: a short horizontal smear along the line
-    let c = (picture(vec2f(uv.x - du, yc)) + picture(vec2f(uv.x, yc)) * 2.0 + picture(vec2f(uv.x + du, yc))) * 0.25;
-    let peak = max(c.r, max(c.g, c.b));
-    let sigma = mix(params.beamDark, params.beamBright, sqrt(clamp(peak, 0.0, 1.0)));
-    let y = lineF - (ln + 0.5);
-    let fieldW = select(params.field, 1.0, (i32(ln) & 1) == i32(fieldNow));
-    light = light + c * exp(-(y * y) / (2.0 * sigma * sigma)) / (sigma * 2.5066) * fieldW;
-  }
-  // aperture grille: three phosphor stripes a triad, each lit only in its own colour
-  let t = fract(uv.x * params.triads) * 3.0;
-  let stripe = floor(t);
-  let across = (fract(t) - 0.5) / max(params.grille, 0.05);
-  let fill = smoothstep(0.5, 0.35, abs(across));
-  var mask = vec3f(0.0);
-  mask[i32(stripe)] = fill * 3.0 / max(params.grille, 0.05);
-  // the halation: the glass scatters a little of the picture around each point
-  let halo = picture(uv + vec2f(0.004, 0.0)) + picture(uv - vec2f(0.004, 0.0)) + picture(uv + vec2f(0.0, 0.005)) + picture(uv - vec2f(0.0, 0.005));
-  return light * mask + halo * 0.25 * params.halation + vec3f(params.unlit);
-}
-
-/** The room in the faceplate: a dark studio, one soft window high on the left. */
-fn room(d: vec3f) -> vec3f {
-  let win = exp(-pow(length(d - normalize(vec3f(-0.5, 0.6, 0.6))) / 0.35, 2.0));
-  return vec3f(0.004, 0.005, 0.006) + vec3f(0.25, 0.27, 0.3) * win;
-}
-
-fn rotate(v: vec3f, axis: vec3f, angle: f32) -> vec3f {
-  return v * cos(angle) + cross(axis, v) * sin(angle) + axis * dot(axis, v) * (1.0 - cos(angle));
-}
-
-@fragment
-fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let size = frameU.resolution;
-  let aspect = size.x / max(size.y, 1.0);
-  // The camera: back from the target along the face's normal, swung up by pitch and aside by yaw.
-  let aimAt = facePoint(params.aim);
-  let normal = normalize(aimAt - vec3f(0.0, 0.0, -params.curvature));
-  var back = rotate(normal, vec3f(1.0, 0.0, 0.0), -radians(params.pitch));
-  back = rotate(back, vec3f(0.0, 1.0, 0.0), radians(params.yaw));
-  let eye = aimAt + back * params.distance;
-  let forward = -back;
-  var up = normalize(vec3f(0.0, 1.0, 0.0) - forward * forward.y);
-  up = rotate(up, forward, radians(params.roll));
-  let right = normalize(cross(forward, up));
-  let tanHalf = tan(radians(params.fov) * 0.5);
-  let focal = params.distance + params.focus;
-  let fieldNow = floor(frameU.absTime * 59.94) % 2.0;
-
-  var sum = vec3f(0.0);
-  let seed = vec3f(uv * size, frameU.absFrame);
-  for (var s = 0; s < SAMPLES; s = s + 1) {
-    let j = vec2f(hash(seed + f32(s) * 1.7), hash(seed + f32(s) * 3.1 + 11.0)) - 0.5;
-    let p = uv + j / size;
-    let ndc = vec2f(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0);
-    let dir = normalize(forward + right * ndc.x * tanHalf * aspect + up * ndc.y * tanHalf);
-    // thin lens: a point on the aperture, aimed through the plane of focus
-    let a = (f32(s) + hash(seed + 5.0)) * 2.39996323;
-    let rr = sqrt((f32(s) + 0.5) / f32(SAMPLES)) * params.aperture;
-    let lens = eye + (right * cos(a) + up * sin(a)) * rr;
-    let inFocus = eye + dir * (focal / dot(dir, forward));
-    let ray = normalize(inFocus - lens);
-    // the faceplate: refract in, then find the phosphor behind it
-    let t1 = sphere(lens, ray, params.curvature + params.glass, false);
-    if (t1 < 0.0) { continue; }
-    let p1 = lens + ray * t1;
-    let n1 = normalize(p1 - vec3f(0.0, 0.0, -params.curvature));
-    let inside = refract(ray, n1, 1.0 / 1.52);
-    let t2 = sphere(p1, inside, params.curvature, false);
-    if (t2 < 0.0) { continue; }
-    let p2 = p1 + inside * t2;
-    let face = vec2f(p2.x / params.tubeSize.x + 0.5, 0.5 - p2.y / params.tubeSize.y);
-    var light = vec3f(0.0);
-    if (all(face >= vec2f(0.0)) && all(face <= vec2f(1.0))) { light = phosphor(face, fieldNow); }
-    let cosi = clamp(dot(-ray, n1), 0.0, 1.0);
-    let fresnel = 0.04 + 0.96 * pow(1.0 - cosi, 5.0);
-    sum = sum + light * (1.0 - fresnel) + room(reflect(ray, n1)) * fresnel * params.reflection;
-  }
-  var c = sum / f32(SAMPLES);
-  // the camera's grade: a soft shoulder, a cool cast, little chroma, blacks lifted, grain
-  c = c * params.exposure / (vec3f(1.0) + c * params.exposure * 0.25);
-  c = pow(c, vec3f(1.0 / 2.2)) * params.tint * params.gain;
-  let y = dot(c, vec3f(0.2126, 0.7152, 0.0722));
-  c = mix(vec3f(y), c, params.saturation);
-  c = c + vec3f(params.lift) * (1.0 - c);
-  let n = hash(vec3f(floor(uv * size / 1.3), frameU.absFrame * 1.7)) + hash(vec3f(floor(uv * size / 1.3) + 17.0, frameU.absFrame)) - 1.0;
-  c = clamp(c + vec3f(n) * params.grain * (0.4 + 0.6 * (1.0 - y)), vec3f(0.0), vec3f(1.0));
-  return vec4f(pow(c, vec3f(2.2)), 1.0);
 }`;
 
 /** The figure on the tube: hands working at the waistband, 12 poses a second. */
@@ -318,8 +144,8 @@ export function crtDocument(facts: OnNothingFacts, options: ShotOptions, build: 
   spliceAfter(cut, last, "hold");
   connect(cut, ["holdHistory", "out"], ["hold", "more"], 0);
   const tubeCam = ease(0, CRT_SECONDS);
-  addNode(cut, "tube", "customWgsl", [700, 0], {
-    source: TUBE_WGSL,
+  // the stock CRT Tube (T1423b, promoted from this file): the tube photographed by a macro lens
+  addNode(cut, "tube", "crtTube", [700, 0], {
     tubeSize: [400, 300],
     curvature: 1100,
     glass: 12,

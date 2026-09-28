@@ -406,6 +406,64 @@ describe("T1182 verifier: a structure change from a value parameter is caught, n
 /* 5. what travels: loop counts and scene payloads                                       */
 /* ------------------------------------------------------------------------------------ */
 
+describe("T1432b: the values-only frame scales pixel-sized parameters exactly as the full compile", () => {
+  it("a driven Blur size at a reference width splices the full compile's uniforms, twice the authored size", () => {
+    const blur = allNodeDefinitions.find((definition) => definition.type === "blur") as NodeDefinition;
+    const base = minimalGraphFor(blur, registry) as unknown as GraphDocument;
+    const referenced = { ...settings, referenceWidth: 32 };
+    const graph = withParameter(base, "subject", "size", expressionSlot(stepExpression(4, 6, 5), 4));
+    const prepared = prepareFrameCompiler(requestFor(graph, { settings: referenced }));
+    expect(prepared.uniformOnly, prepared.reason ?? "").toBe(true);
+    const uniformsOf = (plan: { passes: ReadonlyArray<unknown> }) =>
+      plan.passes.filter((pass) => typeof pass === "object" && pass !== null && "nodeId" in pass && pass.nodeId === "subject" && "uniforms" in pass).map((pass) => (pass as { uniforms: unknown }).uniforms);
+    for (const [frameIndex, authored] of [[4, 4], [5, 6]] as const) {
+      const resolution = { frame: frameAt(frameIndex) };
+      const spliced = prepared.compileFrame(resolution);
+      expect(spliced, prepared.reason ?? "").not.toBeNull();
+      expect(spliced?.passes).toEqual(compileGraph(requestFor(graph, { settings: referenced, resolution })).passes);
+      // 64 wide at reference 32: the uniforms are a static Blur of TWICE the authored size.
+      const doubled = compileGraph(requestFor(withParameter(base, "subject", "size", (authored * 2) as unknown as ParameterSlot)));
+      expect(uniformsOf(spliced as { passes: ReadonlyArray<unknown> })).toEqual(uniformsOf(doubled));
+      expect(uniformsOf(spliced as { passes: ReadonlyArray<unknown> })).not.toEqual(uniformsOf(compileGraph(requestFor(graph, { resolution }))));
+    }
+  });
+});
+
+describe("T1421b: the camera's path derivative splices exactly as the full compile publishes it", () => {
+  it("a turning camera's Camera Blur uniforms match the full compile at every frame, and move", () => {
+    const node = (id: string, type: string, parameters: Record<string, unknown>, label: string) => ({ id, type, label, definitionVersion: 1, position: { x: 0, y: 0 }, parameters });
+    const graph = {
+      revision: 1,
+      groups: {},
+      nodes: {
+        pic: node("pic", "solid", {}, "pic1"),
+        cam: node("cam", "camera", { eye: [0, 0, 0], lookAt: [0, 0, -10], "lookAt.x": expressionSlot("sin(time * 3) * 10", 0), "lookAt.z": expressionSlot("-cos(time * 3) * 10", -10) }, "cam1"),
+        blur: node("blur", "cameraBlur", { camera: "cam1" }, "blur1"),
+        out: node("out", "output", {}, "out1"),
+      },
+      edges: {
+        e1: { id: "e1", source: { nodeId: "pic", portId: "out" }, target: { nodeId: "blur", portId: "input" } },
+        e2: { id: "e2", source: { nodeId: "blur", portId: "out" }, target: { nodeId: "out", portId: "input" } },
+      },
+    } as unknown as GraphDocument;
+    const prepared = prepareFrameCompiler(requestFor(graph));
+    expect(prepared.uniformOnly, prepared.reason ?? "").toBe(true);
+    const blurUniforms = (plan: { passes: ReadonlyArray<unknown> }) =>
+      plan.passes.filter((pass) => typeof pass === "object" && pass !== null && "nodeId" in pass && pass.nodeId === "blur" && "uniforms" in pass).map((pass) => (pass as { uniforms: Record<string, unknown> }).uniforms);
+    const seen: unknown[] = [];
+    for (const frameIndex of [1, 20]) {
+      const resolution = { frame: frameAt(frameIndex) };
+      const spliced = prepared.compileFrame(resolution);
+      expect(spliced, prepared.reason ?? "").not.toBeNull();
+      expect(spliced?.passes).toEqual(compileGraph(requestFor(graph, { resolution })).passes);
+      const [uniforms] = blurUniforms(spliced as { passes: ReadonlyArray<unknown> });
+      expect(uniforms?.["enabled"]).toBe(1);
+      seen.push(uniforms?.["right"]);
+    }
+    expect(seen[0]).not.toEqual(seen[1]);
+  });
+});
+
 describe("T1182: loop counts and scene payloads move with the frame", () => {
   const KERNEL_WGSL = `@group(0) @binding(0) var inputSampler: sampler;
 @group(0) @binding(1) var inputTexture: texture_2d<f32>;

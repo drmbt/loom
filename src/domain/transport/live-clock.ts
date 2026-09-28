@@ -281,6 +281,9 @@ export function liveClock(options: LiveClockOptions = {}): TransportSource {
         wallDeltaSeconds,
         absFrameIndex: absIndex,
         absTimeSeconds: absSeconds,
+        // T1426b: the project's rate, not the display's; live frames are never accumulated.
+        fps,
+        subframes: 1,
       };
     },
     /**

@@ -1,3 +1,4 @@
+import type { TimeProbe } from "./time-probe.ts";
 import type { EdgeId, NodeId, PortId } from "../domain/types/ids.ts";
 import type { PreviewPayloadKind } from "./preview-orbit.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
@@ -391,6 +392,12 @@ export type CompilerNodeContext = {
    * same decision (B47 was those two disagreeing).
    */
   readonly colorPolicy: ColorPolicy;
+  /**
+   * T1421b: this node's parameters re-resolved with the clocks moved (`time-probe.ts`), and
+   * one transport step in seconds. Present whenever the compile has a frame; the Camera reads
+   * it to publish its own path's derivative for a motion blur.
+   */
+  readonly timeProbe?: TimeProbe;
 };
 
 /**

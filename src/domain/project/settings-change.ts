@@ -35,6 +35,8 @@ export const STRUCTURAL_SETTINGS = [
   "workingFormat",
   "limits",
   "randomSeed",
+  // T1432b: compiled into uniform values (pixel-sized parameters scale by it).
+  "referenceWidth",
 ] as const satisfies ReadonlyArray<keyof ProjectSettings>;
 
 export interface SettingsChange {

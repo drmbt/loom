@@ -24,6 +24,33 @@ export interface CameraPayload {
   readonly orthoHeight: number;
   /** Degrees of bank around the view axis (T706). Optional: absent reads as 0. */
   readonly roll?: number;
+  /**
+   * T1421b: where the camera is a hair either side of this moment along its own path — the
+   * DERIVATIVE a motion blur wants (a frame-to-frame difference reprojects a fast whip from
+   * behind the lens). Present when the camera compiled with a frame; absent in a static compile.
+   */
+  readonly motion?: CameraMotion;
+}
+
+/** One camera orientation: eye, look-at, field and bank, as the Camera node states them. */
+export interface CameraPose {
+  readonly eye: readonly [number, number, number];
+  readonly lookAt: readonly [number, number, number];
+  readonly fovDeg: number;
+  readonly roll: number;
+}
+
+/**
+ * T1421b: the camera's path around the frame. `before` and `after` are the pose `dt` seconds
+ * either side (clocks moved, channels not); `frameSeconds` is one transport step — what a
+ * shutter of 1 spans. Two sides, so a consumer can differentiate on the side that does not
+ * cross a cut.
+ */
+export interface CameraMotion {
+  readonly dt: number;
+  readonly frameSeconds: number;
+  readonly before: CameraPose;
+  readonly after: CameraPose;
 }
 
 export interface LightPayload {

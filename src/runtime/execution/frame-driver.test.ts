@@ -275,6 +275,9 @@ describe("offline transport", () => {
       // `loop-continuity.test.ts`).
       absFrameIndex: 10,
       absTimeSeconds: 10 / 24,
+      // T1426b/T1435b: the rates an expression reads — the project's, with no accumulation.
+      fps: 24,
+      subframes: 1,
     });
     expect(second.deltaSeconds).toBeCloseTo(1 / 24, 12);
     expect(second.frameIndex).toBe(11);

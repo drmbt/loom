@@ -194,13 +194,18 @@ describe("expression reference ← the evaluator (§V105, §V71)", () => {
       "absframe",
       "abstime",
       "delta",
+      "fps",
       "frame",
+      "subframes",
       "time",
       "walldelta",
       "walltime",
     ]);
     // Values, not placeholders: this is the scope the resolver will use.
     expect(variables.find((variable) => variable.name === "time")?.value).toBe(2);
+    // T1426b/T1435b: the rates, at their defaults for a frame whose transport states none.
+    expect(variables.find((variable) => variable.name === "fps")?.value).toBe(60);
+    expect(variables.find((variable) => variable.name === "subframes")?.value).toBe(1);
   });
 
   it("carries node context alongside the frame names", () => {

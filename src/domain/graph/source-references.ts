@@ -48,6 +48,8 @@ export const SOURCE_REFERENCE_PARAMETERS: Readonly<Record<string, ReadonlyArray<
   // one camera node can frame instances, a surface and a scene render at once.
   renderSurface: [{ parameter: "camera", input: "camera" }],
   renderInstances: [{ parameter: "camera", input: "camera" }],
+  // T1421b: Camera Blur names the camera whose motion it smears, as the renderers do.
+  cameraBlur: [{ parameter: "camera", input: "camera" }],
   // §T1391b: a Window Out shows a node by name as well as by wire (the owner's ruling).
   window: [{ parameter: "source", input: "input" }],
 };

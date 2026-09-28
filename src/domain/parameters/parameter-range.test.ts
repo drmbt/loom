@@ -85,6 +85,9 @@ const CYCLIC = [
   "camera.roll",
   // T704: same bank, same wrap, on the projector's throw axis.
   "projector.roll",
+  // T1423b: the CRT Tube's camera banks like the Camera node's; the flare's ring turns like any angle.
+  "crtTube.roll",
+  "flare.ringAngle",
   "hsv.hueoffset",
   "lfo.phase",
   "mirror.rotate",
@@ -109,6 +112,9 @@ const BOUNDED_DEGREES: Readonly<Record<string, string>> = {
     "a keystone is a CORRECTION range, not an angle that wraps — ±30° covers real installs and tan() blows up toward 90°",
   "projector.keystoneV":
     "same as keystoneH: a correction range with a tan() in it, never a wrap",
+  "crtTube.fov": "the projection matrix is singular at 0° and at 180°",
+  "crtTube.pitch": "±80° off the face's normal: at 90° the camera sees the glass edge-on and the tube vanishes",
+  "crtTube.yaw": "same as pitch: past ±80° the glass is edge-on, never a wrap",
 };
 
 describe("§B111 — every numeric parameter declares whether its bounds are a limit", () => {

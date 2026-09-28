@@ -34,6 +34,16 @@ function isNumberArray(value: ParameterValue, size?: number): value is readonly 
   return value.every((entry) => typeof entry === "number" && Number.isFinite(entry));
 }
 
+/**
+ * T1434b — a VALID value in the shape every reader expects: an rgb colour completed to rgba
+ * with alpha 1. Everything else is returned as it is (the same object), so no other value's
+ * identity changes on the read path.
+ */
+export function completeParameterValue(definition: ParameterDefinition, value: ParameterValue): ParameterValue {
+  if (definition.type === "color" && Array.isArray(value) && value.length === 3) return [...(value as readonly number[]), 1];
+  return value;
+}
+
 /** Validates one value. Returns null when the value is acceptable for the definition. */
 export function validateParameterValue(
   key: string,
@@ -90,7 +100,9 @@ export function validateParameterValue(
       return null;
     }
     case "color":
-      return isNumberArray(value, 4) ? null : wrongType("4 finite numbers (rgba)");
+      // T1434b: rgb is a colour too — a shader's `vec3f` tint has no alpha to give. The
+      // resolver completes it to rgba (alpha 1) before anything reads it.
+      return isNumberArray(value, 4) || isNumberArray(value, 3) ? null : wrongType("3 or 4 finite numbers (rgb or rgba)");
     case "vector":
       return isNumberArray(value, definition.size)
         ? null

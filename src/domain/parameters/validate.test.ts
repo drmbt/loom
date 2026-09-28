@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ParameterSchema } from "../types/parameters.ts";
 import {
+  completeParameterValue,
   defaultParameters,
   validateParameterValue,
   validateParameters,
@@ -74,7 +75,17 @@ describe("validateParameters", () => {
 
   it("rejects a vector or color of the wrong length", () => {
     expect(validateParameters(schema, { offset: [1, 2, 3] })[0]?.code).toBe("parameter.type");
-    expect(validateParameters(schema, { tint: [1, 1, 1] })[0]?.code).toBe("parameter.type");
+    // T1434b: a colour takes rgb or rgba; two or five numbers are no colour.
+    expect(validateParameters(schema, { tint: [1, 1] })[0]?.code).toBe("parameter.type");
+    expect(validateParameters(schema, { tint: [1, 1, 1, 1, 1] })[0]?.code).toBe("parameter.type");
+  });
+
+  it("accepts an rgb colour, and the read path completes it to rgba with alpha 1 (T1434b)", () => {
+    expect(validateParameters(schema, { tint: [1, 0.5, 0] })).toEqual([]);
+    const tint = schema["tint"]!;
+    expect(completeParameterValue(tint, [1, 0.5, 0])).toEqual([1, 0.5, 0, 1]);
+    const rgba = [1, 0.5, 0, 0.25];
+    expect(completeParameterValue(tint, rgba)).toBe(rgba);
   });
 
   it("accepts an asset id or null, nothing else", () => {

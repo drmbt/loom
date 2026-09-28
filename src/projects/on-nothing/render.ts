@@ -8,6 +8,9 @@ import { SHOTS, onNothingDocument, type Shot } from "./document.ts";
 import { loadOnNothingFacts } from "./load-facts.ts";
 import { readHdr, rgbmBytes } from "./hdri.ts";
 import { walkTrack } from "../furnace/load-audio.ts";
+import { outputPixelScale } from "../../domain/types/graph.ts";
+import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
+import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 
 /**
  * T1400b — render the On Nothing shots headless. Everything lands in the gitignored
@@ -24,12 +27,14 @@ import { walkTrack } from "../furnace/load-audio.ts";
  *     [--take N]                              which take of the shot (a shot may frame the same set several ways)
  *     [--crt]                                 the CRT re-scan over the finished frame
  *     [--bypass haze,lens]                    bypass nodes by id
- *     [--set grade.exposure=0.5,halo.gain=2]  parameter overrides by node id
+ *     [--set grade.exposure=0.5,halo.gain=2]  parameter overrides by node id; a vector or colour in brackets,
+ *                                             JSON, commas and all: --set 'grade.steel=[0.9,1,1.02],halo.gain=2'
  *     [--tag name]                            appended to the file names (compare takes)
  *     [--probe streak2]                       show that node's output instead of the finished frame
  *     [--audio <song.wav>] [--audio-start <s>]  hear the song (the streaks breathe with it); a clip is muxed with it
  *     [--final]                               finished quality: SSAA in the Render, the whole frame rendered at 2x and
- *                                             box-downsampled, and --sub 4 sub-frames averaged per output frame
+ *                                             box-downsampled, and --sub 8 sub-frames averaged per output frame. Grain
+ *                                             moves AFTER the accumulation (T1432b): averaged, it all but vanished
  *     [--sub N]                               sub-frames per output frame (temporal AA + motion blur; 1 = off; --final: 8)
  *     [--trail 0.5]                           echo trail: the previous frame decays by this factor and shows where brighter
  *                                             (smeared lights, the reference's ghosting; resets on a cut); --final: 0.5
@@ -60,7 +65,24 @@ const hdri = hdriPath === undefined ? undefined : readHdr(hdriPath);
 const tag = flag("tag") === undefined ? "" : `-${flag("tag")}`;
 const shots = (flag("shots") ?? SHOTS.join(",")).split(",") as Shot[];
 for (const shot of shots) if (!SHOTS.includes(shot)) throw new Error(`--shots: no shot "${shot}" (known: ${SHOTS.join(", ")}).`);
-const overrides = (flag("set") ?? "").split(",").filter((entry) => entry !== "").map((entry) => {
+/** T1430b: split `--set` on the commas OUTSIDE brackets, so `grade.steel=[0.9,1,1.02],halo.gain=2` is two entries. */
+function splitOverrides(text: string): string[] {
+  const entries: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === "[") depth++;
+    else if (char === "]") depth--;
+    else if (char === "," && depth === 0) {
+      entries.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  entries.push(text.slice(start));
+  return entries.filter((entry) => entry !== "");
+}
+const overrides = splitOverrides(flag("set") ?? "").map((entry) => {
   const match = /^([^.=]+)\.([^=]+)=(.+)$/.exec(entry);
   if (match === null) throw new Error(`--set expects node.param=value, got "${entry}".`);
   return { nodeId: match[1]!, parameter: match[2]!, value: JSON.parse(match[3]!) as unknown };
@@ -77,19 +99,62 @@ const sub = Number(flag("sub") ?? (finalQuality ? 8 : 1));
 const trail = Number(flag("trail") ?? (finalQuality ? 0.5 : 0));
 
 /**
+ * T1432b — FILM GRAIN AFTER THE ACCUMULATION. A grade's grain is a new pattern every frame, so
+ * the mean of 8 sub-frames and a 2×2 box cut it to about a quarter of its authored strength.
+ * Whenever frames are accumulated, the render lifts each grade's grain out of the graph (its
+ * `grain` goes to 0) and adds it here to the finished output frame instead: the grade's own
+ * formula (a triangular noise in [-1, 1], heavier in the blacks: `grain * (0.35 + 0.65 * (1 -
+ * luma))`, in display levels), one pattern per OUTPUT frame, in cells of the grade's
+ * `grainSize` taken in pixels of the draft render, i.e. of the output.
+ */
+interface Grain {
+  readonly amount: number;
+  /** Cell size in output pixels. */
+  readonly size: number;
+}
+
+/** A 32-bit integer hash of a cell and a frame, to [0, 1). */
+function grainHash(x: number, y: number, frame: number, salt: number): number {
+  let h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ Math.imul(frame + salt * 7919, 0x9e3779b1);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+function addGrain(frame: Float32Array, w: number, h: number, grains: readonly Grain[], frameIndex: number): void {
+  grains.forEach((grain, index) => {
+    const size = Math.max(grain.size, 0.5);
+    for (let y = 0; y < h; y++) {
+      const cy = Math.floor(y / size);
+      for (let x = 0; x < w; x++) {
+        const cx = Math.floor(x / size);
+        const n = grainHash(cx, cy, frameIndex, index * 2) + grainHash(cx, cy, frameIndex, index * 2 + 1) - 1;
+        const at = (y * w + x) * 4;
+        const luma = (0.2126 * frame[at]! + 0.7152 * frame[at + 1]! + 0.0722 * frame[at + 2]!) / 255;
+        const add = n * grain.amount * (0.35 + 0.65 * (1 - Math.min(1, luma))) * 255;
+        for (let c = 0; c < 3; c++) frame[at + c] = Math.min(255, Math.max(0, frame[at + c]! + add));
+      }
+    }
+  });
+}
+
+/**
  * Accumulates `sub` rendered frames (each `ss`× the output size) into one output frame: the
  * mean of the sub-frames (a 360° shutter: temporal AA and motion blur, and the per-frame dither
- * of haze and grain averages out), then a box downsample by `ss` (spatial AA).
+ * of haze averages out), then a box downsample by `ss` (spatial AA), then the grain (above).
  */
 class Accumulator {
   private readonly sum: Float32Array;
   private readonly w: number;
   private readonly h: number;
   private count = 0;
+  private outputs = 0;
   private previous: Float32Array | undefined;
-  constructor(w: number, h: number) {
+  private readonly grains: readonly Grain[];
+  constructor(w: number, h: number, grains: readonly Grain[] = []) {
     this.w = w;
     this.h = h;
+    this.grains = grains;
     this.sum = new Float32Array(w * ss * h * ss * 4);
   }
   add(rgba: Uint8Array | Uint8ClampedArray): Uint8Array | undefined {
@@ -120,7 +185,14 @@ class Accumulator {
       if (!cut) for (let i = 0; i < frame.length; i++) frame[i] = Math.max(frame[i]!, this.previous[i]! * trail);
     }
     this.previous = frame;
-    for (let i = 0; i < frame.length; i++) out[i] = Math.min(255, Math.round(frame[i]!));
+    // the grain rides on the output only, never on the trail's memory of it
+    let shown = frame;
+    if (this.grains.length > 0) {
+      shown = frame.slice();
+      addGrain(shown, this.w, this.h, this.grains, this.outputs);
+    }
+    this.outputs++;
+    for (let i = 0; i < shown.length; i++) out[i] = Math.min(255, Math.round(shown[i]!));
     this.sum.fill(0);
     this.count = 0;
     return out;
@@ -150,6 +222,30 @@ for (const shot of shots) {
       nodes[id] = { ...shotNode, parameters: { ...shotNode.parameters, antialias: "ssaa" } } as typeof shotNode;
     }
   }
+  // T1432b: accumulating, the grades' grain moves after the accumulation (see Grain above)
+  const grains: Grain[] = [];
+  if (sub > 1 || ss > 1) {
+    for (const [id, entry] of Object.entries(nodes)) {
+      // the stored value, or the node's own default (a Custom WGSL grade's `@default`)
+      const schema = effectiveParameterSchema(allNodeDefinitions.find((definition) => definition.type === entry.type), entry.parameters);
+      const valueOf = (key: string): unknown => {
+        const declared = schema[key];
+        return entry.parameters[key] ?? (declared?.type === "number" ? declared.default : undefined);
+      };
+      const amount = valueOf("grain");
+      if (typeof amount !== "number" || amount <= 0) continue;
+      const size = valueOf("grainSize") ?? 1.3;
+      if (typeof size !== "number") {
+        console.log(`${id}: grainSize is driven, so its grain stays in the graph (averaged by --sub/--final)`);
+        continue;
+      }
+      // grainSize is in pixels of the render (ss× the output), scaled first by the project's
+      // reference width where the node declares it (the stock Film Grade, T1432b)
+      const scale = entry.type === "filmGrade" ? outputPixelScale(built.settings) : 1;
+      grains.push({ amount, size: (size * scale) / ss });
+      nodes[id] = { ...entry, parameters: { ...entry.parameters, grain: 0 } } as typeof entry;
+    }
+  }
   let graphEdges = built.graph.edges;
   const probe = flag("probe");
   if (probe !== undefined) {
@@ -165,7 +261,7 @@ for (const shot of shots) {
   // --from: the frames before it render (feedback and trails warm up) but are not captured
   const skip = clip === undefined ? 0 : Math.round(from * fps);
   const renderFrames = (frames + skip) * sub;
-  const accumulator = new Accumulator(width, height);
+  const accumulator = new Accumulator(width, height, grains);
   let lastOut: Uint8Array | undefined;
   let encoder: ReturnType<typeof spawn> | undefined;
   const clipPath = flag("out") ?? `${outDir}/clips/${shot}${crt ? "-crt" : ""}${tag}.mp4`;
@@ -187,6 +283,8 @@ for (const shot of shots) {
     // every sub-frame goes through the accumulator (for a still: only the last output frame's)
     capture: clip === undefined ? Array.from({ length: sub }, (_, index) => renderFrames - sub + index) : Array.from({ length: frames * sub }, (_, index) => skip * sub + index),
     fps: fps * sub,
+    // T1435b: the document reads `subframes` (and `fps` stays the film's 24)
+    subframes: sub,
     outputNodeId: "out",
     animate: true,
     meshes,

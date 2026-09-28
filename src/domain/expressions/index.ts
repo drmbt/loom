@@ -2,6 +2,7 @@ export {
   evaluateAst,
   evaluateExpression,
   FREE_RUNNING_CLOCK_NAMES,
+  FRAME_RATE_NAMES,
   WRAPPING_CLOCK_NAMES,
   functionNames,
   functionSignature,

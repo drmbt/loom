@@ -104,8 +104,9 @@ export const blurNode: NodeDefinition = {
       max: 128,
       range: "floor",
       unit: "px",
+      scalesWithOutput: true,
       description:
-        "Kernel radius in pixels of the input. Fully sampled to 42 (Gaussian) / 64 (box); wider blurs approximate.",
+        "Kernel radius in pixels of the input (of the project's reference width, when it names one). Fully sampled to 42 (Gaussian) / 64 (box); wider blurs approximate.",
     },
     filter: {
       type: "enum",

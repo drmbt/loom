@@ -174,6 +174,38 @@ describe("Streak on a real device (T1402b)", () => {
     for (const y of [30, 50, 80, 100]) expect(at(40, y), `off-axis ${y}`).toEqual([0, 0, 0, 1]);
   }, 60_000);
 
+  /*
+   * SPREAD IS A SOFT WIDENING, NOT A BARCODE (T1439b). A one-pixel line, spread 0.03 of a
+   * 512-wide frame: 15 px either side, 7.7 texels of the half-size scratch. The old kernel
+   * stepped three samples 2.6 texels apart across that and drew the line three times either
+   * side; now neighbouring samples sit a texel apart and the column's cross-section falls
+   * off monotonically from its centre to nothing — every step outward is no brighter than the
+   * one before — and reaches no further than the spread (plus the resampling smear).
+   */
+  it("Spread widens a one-pixel source into a ramp that only falls away from its centre", async () => {
+    requireDawn();
+    const width = 512;
+    const spread = 0.03;
+    const at = await render(graph("streak", { ...quiet, spread }, fixture(block(256, 96, 257, 100, 4))), width, H);
+    const reach = spread * width;
+    for (const y of [90, 80, 70]) {
+      const right: number[] = [];
+      const left: number[] = [];
+      for (let d = 1; d <= Math.ceil(reach) + SMEAR_PX; d += 1) {
+        right.push(at(256 + d, y)[0]);
+        left.push(at(256 - d, y)[0]);
+      }
+      for (let i = 1; i < right.length; i += 1) {
+        expect(right[i], `row ${y}: right ${i + 1} px out is no brighter than ${i} px`).toBeLessThanOrEqual(right[i - 1]!);
+        expect(left[i], `row ${y}: left ${i + 1} px out is no brighter than ${i} px`).toBeLessThanOrEqual(left[i - 1]!);
+      }
+      // Wide, not merely soft: two thirds of the way out there is still light...
+      expect(at(256 + Math.round(reach * 0.66), y)[0], `row ${y}: 2/3 of the spread`).toBeGreaterThan(0);
+      // ...and past the spread and the smear, exactly the input.
+      for (let x = 256 + Math.ceil(reach) + SMEAR_PX; x < width; x += 7) expect(at(x, y), `row ${y}: past the spread ${x}`).toEqual([0, 0, 0, 1]);
+    }
+  }, 60_000);
+
   it("streaks the Bright input when one is wired, and ignores its own threshold", async () => {
     requireDawn();
     // The picture carries a hot block on the LEFT; the Bright input carries a 0.5 block on the
@@ -416,5 +448,67 @@ describe("Lens on a real device (T1402b)", () => {
     );
     expect(zoom(80, 50)[1]).toBe(0);
     expect(contrast(zoom, 140, 50)).toBeLessThan(0.5);
+  }, 60_000);
+});
+
+/*
+ * THE ON-AXIS FLARE (T1423b). A 256×128 frame; a 4×4 block of 8.0 (threshold 1 takes 7/8 of
+ * it) at the frame centre. Everything but the ring off, ring even all round (facing 0) and
+ * fully saturated, so the flare is three Gaussian bands centred on the measured source: red at
+ * radius × (1 + dispersion), green at the radius, blue at radius × (1 − dispersion), in frame
+ * heights. The source's centroid is measured on a 60-column gather, so it may sit up to half a
+ * gather cell (256 / 60 / 2 ≈ 2.1 px) off the block's centre: the peaks are asserted to within
+ * that plus a pixel of band sampling.
+ */
+const FW = 256;
+const FH = 128;
+const RING = { threshold: 1, axis: 2, gain: 1, veil: 0, core: 0, glow: 0, ghost: 0, dot: 0, ring: 1, ringSaturation: 1, ringFacing: 0, radius: 0.4, width: 0.01, dispersion: 0.1 };
+const HOT = (cx: number, cy: number) => block(cx - 2, cy - 2, cx + 2, cy + 2, 8);
+
+describe("On-Axis Flare on a real device (T1423b)", () => {
+  it("adds nothing at all where nothing is over the threshold: the input, bit for bit", async () => {
+    requireDawn();
+    const picture = `color = vec4f(vec3f(0.5) * uv.x, 1.0);`;
+    const flared = await render(graph("flare", RING, fixture(picture)), FW, FH);
+    // The reference: Halo at gain 0, whose add is exactly the picture (a zero glow adds an exact 0).
+    const plain = await render(graph("halo", { gain: 0 }, fixture(picture)), FW, FH);
+    for (let y = 0; y < FH; y += 9) for (let x = 0; x < FW; x += 7) expect(flared(x, y), `${x},${y}`).toEqual(plain(x, y));
+  }, 60_000);
+
+  it("rings the source at the radius, red outside green outside blue, and follows it", async () => {
+    requireDawn();
+    for (const cx of [128, 96]) {
+      const at = await render(graph("flare", RING, fixture(HOT(cx, 64))), FW, FH);
+      // Walk right from the source along its row: each channel peaks at its own radius.
+      const peak = (channel: 0 | 1 | 2): number => {
+        let best = 0;
+        let where = -1;
+        for (let x = cx + 20; x < FW; x += 1) {
+          const value = at(x, 64)[channel];
+          if (value > best) [best, where] = [value, x];
+        }
+        expect(best, `channel ${channel} lit`).toBeGreaterThan(0);
+        return where - cx;
+      };
+      const [r, g, b] = [peak(0), peak(1), peak(2)];
+      const slack = 256 / 60 / 2 + 1;
+      expect(Math.abs(r - 0.44 * FH), `red at ${r}`).toBeLessThanOrEqual(slack);
+      expect(Math.abs(g - 0.4 * FH), `green at ${g}`).toBeLessThanOrEqual(slack);
+      expect(Math.abs(b - 0.36 * FH), `blue at ${b}`).toBeLessThanOrEqual(slack);
+      expect(r).toBeGreaterThan(g);
+      expect(g).toBeGreaterThan(b);
+    }
+  }, 60_000);
+
+  it("measures the Source when it is wired, not the input", async () => {
+    requireDawn();
+    // The input is dark; only the Source carries the lamp. Unwired, nothing flares; wired, the ring is there.
+    const dark = fixture("");
+    const unwired = await render(graph("flare", { ...RING, gain: 100 }, dark), FW, FH);
+    const wired = await render(graph("flare", { ...RING, gain: 100 }, dark, { source: fixture(HOT(128, 64)) }), FW, FH);
+    expect(unwired(128 + 51, 64)).toEqual([0, 0, 0, 1]);
+    expect(wired(128 + 51, 64)[1]).toBeGreaterThan(0.1);
+    // ...and the lamp itself is not in the output: the flare is added onto the INPUT.
+    expect(wired(128, 64)[0]).toBeLessThan(1);
   }, 60_000);
 });

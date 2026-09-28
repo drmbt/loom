@@ -83,6 +83,8 @@ const FORMAT_OPTIONS: ReadonlyArray<{ value: TextureFormat; label: string }> = [
   { value: "rgba8unorm-srgb", label: "8-bit RGBA, sRGB" },
 ];
 
+/** T1432b — the reference width: 0 is "none" (a pixel is a pixel of the output). */
+const REFERENCE_WIDTH_SPEC: NumericSpec = { min: 0, max: 16384, step: 1, precision: 0 };
 /** A rate is a whole number of frames per second, 1..240. */
 const FPS_SPEC: NumericSpec = { min: 1, max: 240, step: 1, precision: 0 };
 /**
@@ -217,6 +219,22 @@ export function ProjectSettingsDialog({
                 )
               }
             />
+          </ControlRow>
+          {/*
+            T1432b — the width the document's pixel-sized effects (a blur radius, a grain) are
+            authored at. Named, a render at another size scales them with it; 0 is none.
+          */}
+          <ControlRow label="pixel reference" compileTime>
+            <div className={styles.scalar}>
+              <NumberField
+                label="pixel reference width"
+                value={shown("referenceWidth", settings.referenceWidth ?? 0)}
+                spec={REFERENCE_WIDTH_SPEC}
+                onChange={commitOnly("referenceWidth", (next) =>
+                  onChange({ referenceWidth: next > 0 ? Math.round(next) : 0 }, "Set pixel reference width"),
+                )}
+              />
+            </div>
           </ControlRow>
         </section>
 

@@ -1,6 +1,7 @@
 import type { CompiledNodeDescription, NodeDefinition } from "../../domain/types/node-definition.ts";
 import { instanceShapeIndex, parseInstanceShape } from "./render-instances.ts";
 import type { DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
+import type { CameraMotion, CameraPose } from "../../domain/types/scene.ts";
 import type { CameraPayload, GeometryPayload, LightPayload, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
 import { resolveGroupPredicate } from "./points.ts";
 import { DEFAULT_MATERIAL } from "../../domain/types/scene.ts";
@@ -69,6 +70,17 @@ const vec3 = (params: Readonly<Record<string, unknown>>, key: string, fallback: 
   return [read[0] ?? fallback[0], read[1] ?? fallback[1], read[2] ?? fallback[2]] as const;
 };
 
+/**
+ * T1421b: how far either side of the frame the Camera differentiates its own path, seconds.
+ * Small, so a whip is linearised at its instantaneous direction; one millisecond keeps the
+ * difference well above f32 noise in every consumer, and the two-sided payload lets a
+ * consumer step away from a cut that falls inside it.
+ */
+export const CAMERA_MOTION_SECONDS = 1 / 1000;
+
+const samePose = (a: CameraPose, b: CameraPose): boolean =>
+  a.fovDeg === b.fovDeg && a.roll === b.roll && a.eye.every((v, i) => v === b.eye[i]) && a.lookAt.every((v, i) => v === b.lookAt[i]);
+
 /** T377 — the camera as a THING: shareable, drivable, referenced by name. */
 export const cameraNode: NodeDefinition = {
   type: "camera",
@@ -95,7 +107,7 @@ export const cameraNode: NodeDefinition = {
       range: "cyclic",
       unit: "degrees",
       description:
-        "Bank around the view axis. Aim stays Look At's job — eye, Look At and Roll together are the full orientation (T706), so drive this to tilt the horizon without moving the shot. The preview gizmo (T692) leaves Roll alone on purpose: banking is a framing decision you set and hold, not a navigation gesture, so it stays a number here rather than a drag.",
+        "Bank around the view axis, right-handed about the direction of view: positive turns the camera clockwise as seen from behind it, so the picture turns counter-clockwise (Blender and three.js turn the other way; negate a roll taken from them). Aim stays Look At's job — eye, Look At and Roll together are the full orientation (T706), so drive this to tilt the horizon without moving the shot. The preview gizmo (T692) leaves Roll alone on purpose: banking is a framing decision you set and hold, not a navigation gesture, so it stays a number here rather than a drag.",
     },
     ortho: { type: "boolean", label: "Orthographic", default: false },
     orthoHeight: {
@@ -108,7 +120,23 @@ export const cameraNode: NodeDefinition = {
     },
   },
   compile(context): CompiledNodeDescription {
-    const { parameters } = readCompileInputs(context);
+    const { parameters, timeProbe } = readCompileInputs(context);
+    const pose = (values: Readonly<Record<string, unknown>>): CameraPose => ({
+      eye: vec3(values, "eye", [0, 0.5, 3]),
+      lookAt: vec3(values, "lookAt", [0, 0, 0]),
+      fovDeg: readNumber(values as never, "fov", 55),
+      roll: readNumber(values as never, "roll", 0),
+    });
+    // T1421b: the path's derivative, both sides, for a motion blur (Camera Blur) — published
+    // only when the camera MOVES there, so a still camera's payload is the same with or
+    // without a frame (the values-only frame path never re-runs a camera that animates nothing).
+    const now = pose(parameters);
+    const before = timeProbe?.parametersAt(-CAMERA_MOTION_SECONDS);
+    const after = timeProbe?.parametersAt(CAMERA_MOTION_SECONDS);
+    const motion: CameraMotion | undefined =
+      timeProbe === undefined || before === undefined || after === undefined || (samePose(pose(before), now) && samePose(pose(after), now))
+        ? undefined
+        : { dt: CAMERA_MOTION_SECONDS, frameSeconds: timeProbe.frameSeconds, before: pose(before), after: pose(after) };
     const payload: CameraPayload = {
       kind: "camera",
       eye: vec3(parameters, "eye", [0, 0.5, 3]),
@@ -119,6 +147,7 @@ export const cameraNode: NodeDefinition = {
       ortho: parameters["ortho"] === true,
       orthoHeight: readNumber(parameters, "orthoHeight", 2),
       roll: readNumber(parameters, "roll", 0),
+      ...(motion === undefined ? {} : { motion }),
     };
     return { passes: [], scene: { out: payload } } as CompiledNodeDescription;
   },
@@ -167,7 +196,8 @@ export const projectorNode: NodeDefinition = {
       max: 180,
       range: "cyclic",
       unit: "degrees",
-      description: "Bank around the throw axis — a projector mounted sideways is a rolled projector.",
+      description:
+        "Bank around the throw axis — a projector mounted sideways is a rolled projector. Positive turns the projector clockwise as seen from behind it, as the Camera's Roll does.",
     },
     throwRatio: {
       type: "number",

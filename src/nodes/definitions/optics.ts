@@ -8,6 +8,9 @@ import { DEGREES_TO_RADIANS, readColor, readNumber, readVector } from "./paramet
 import type { Params } from "./parameter-readers.ts";
 import {
   BRIGHT_EXTRACT_WGSL,
+  FLARE_GATHER_WGSL,
+  FLARE_SOURCE_WGSL,
+  FLARE_WGSL,
   GLOW_ADD_WGSL,
   HALO_RING_WGSL,
   LENS_WGSL,
@@ -57,6 +60,18 @@ export const STREAK_LEG_STEPS = [1 / 160, 1 / 48, 1 / 10] as const;
 
 /** The first two legs are flat boxes; only the last one's weights fall off (`falloff`). */
 const FLAT_DECAY = 50;
+
+/** T1439b: the sideways widening's samples either side, at least (the original kernel) and at most. */
+export const STREAK_SPREAD_TAPS = { min: 3, max: 32 } as const;
+
+/**
+ * Samples either side for a sideways spread of `texels` streak-scratch texels: enough that
+ * neighbours sit at most one texel apart, so a thin source widens into a ramp instead of being
+ * copied (T1439b). A spread of three texels or less keeps the original seven-tap kernel.
+ */
+export function streakSpreadTaps(texels: number): number {
+  return Math.min(STREAK_SPREAD_TAPS.max, Math.max(STREAK_SPREAD_TAPS.min, Math.ceil(texels)));
+}
 
 const thresholdParameters: ParameterSchema = {
   threshold: {
@@ -157,9 +172,10 @@ export const streakNode: NodeDefinition = {
       max: 32,
       range: "floor",
       unit: "px",
+      scalesWithOutput: true,
       group: "Source",
       description:
-        "Smallest source that streaks, in pixels: a source must fill most of a square this wide to pass the threshold, so a thin glint does not streak like a lamp. 0 is off. Ignored while the Bright input is wired.",
+        "Smallest source that streaks, in pixels (of the project's reference width, when it names one): a source must fill most of a square this wide to pass the threshold, so a thin glint does not streak like a lamp. 0 is off. Ignored while the Bright input is wired.",
     },
     length: {
       type: "number",
@@ -196,7 +212,7 @@ export const streakNode: NodeDefinition = {
       min: 0,
       max: 0.05,
       range: "floor",
-      description: "Widens the column sideways, as a fraction of the frame width.",
+      description: "Widens the column sideways, as a fraction of the frame width: a soft ramp, however thin the source.",
     },
     tail: {
       type: "number",
@@ -266,6 +282,9 @@ export const streakNode: NodeDefinition = {
     const toward = [-sin / aspect, cos] as const;
     const length = readNumber(parameters, "length", 0.33);
     const spread = readNumber(parameters, "spread", 0.004);
+    // In streak-scratch texels: `spread` is a fraction of the frame width in any direction
+    // (x is a width; y is a height times the aspect, which is a width again).
+    const taps = streakSpreadTaps(spread * scratchSize(resolution, STREAK_SCALE)[0]);
     const tail = readNumber(parameters, "tail", 0.12);
     const legs = STREAK_LEG_KEYS.map((key, index): EffectPassDescriptor => {
       const step = length * STREAK_LEG_STEPS[index]!;
@@ -286,6 +305,8 @@ export const streakNode: NodeDefinition = {
           spread: index === 0 ? [cos * spread, sin * spread * aspect] : [0, 0],
           back: last ? [-toward[0] * tail, -toward[1] * tail] : [0, 0],
           decay: last ? readNumber(parameters, "falloff", 1.2) : FLAT_DECAY,
+          taps,
+          norm: 1 / (taps + 1),
         },
         nodeId,
         label: `Streak ${index + 1}`,
@@ -579,5 +600,155 @@ export const lensNode: NodeDefinition = {
   },
 };
 
+/** T1423b: the flare's two reduction stages, node-local scratch keys. */
+export const FLARE_GATHER_KEY = "gather";
+export const FLARE_SOURCE_KEY = "source";
+/** Columns of the flare's gather (its rows follow the aspect): the project's measured 60. */
+export const FLARE_GATHER_COLUMNS = 60;
+
+/**
+ * On-Axis Flare — the flare a lens throws when a hard light looks straight down it (T1423b).
+ *
+ * Promoted from the On Nothing halo shot (`src/projects/on-nothing/shots/halo.ts`), where it was
+ * measured off the reference: a thin rainbow ring round the source with red outermost, a veil
+ * filling it, a core glow, a peach ghost and a small red ring. It is MEASURED, not keyed:
+ * `FLARE_GATHER_WGSL` and `FLARE_SOURCE_WGSL` reduce the bright, on-axis energy of the Source
+ * (the input, unless the Source port is wired) to a centroid, an energy and a colour each frame,
+ * so an arm passing over the lamp dims the flare as it would on glass. Three passes: the gather
+ * (60 columns, its rows to the aspect) and the 2-texel source stage as half-float scratch sized
+ * from the node's width, then the flare added onto the input at full size.
+ */
+export const flareNode: NodeDefinition = {
+  type: "flare",
+  version: 1,
+  title: "On-Axis Flare",
+  category: "filter",
+  description:
+    "Measures the bright light near the middle of the frame and draws the flare a lens throws from it: a rainbow ring, a veil, a glow and two ghosts, following the light and dimming when something covers it.",
+  tags: ["flare", "lens flare", "ring", "ghost", "veil", "optics", "lens", "dispersion"],
+  inputs: [
+    { id: "input", label: "Input", type: RGBA_TEXTURE },
+    {
+      id: "source",
+      label: "Source",
+      type: RGBA_TEXTURE,
+      optional: true,
+      description: "Optional. Wired, the flare is measured from this image instead of the input (say, before a depth of field softens the lamp).",
+    },
+  ],
+  outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],
+  parameters: {
+    threshold: { type: "number", label: "Threshold", default: 6, min: 0, max: 100, range: "floor", group: "Source", description: "Linear brightness where a pixel starts to count as a flare source." },
+    axis: { type: "number", label: "Axis", default: 0.35, min: 0.01, max: 2, range: "floor", group: "Source", description: "How far from the frame centre a source still flares, as a fraction of the frame height (the width of a Gaussian window)." },
+    gain: { type: "number", label: "Gain", default: 1, min: 0, max: 100, range: "floor", description: "Overall flare strength per unit of measured energy." },
+    tint: { type: "color", label: "Tint", default: [1, 1, 1, 1], space: "display", description: "Flare colour; multiplies the source's own." },
+    veil: { type: "number", label: "Veil", default: 0.35, min: 0, max: 4, range: "floor", group: "Glow", description: "The flat veiling glare filling the ring." },
+    veilTint: { type: "color", label: "Veil Tint", default: [1, 1, 1, 1], space: "display", group: "Glow", description: "Colour of the veil (the glare inside the ring reads cooler than the core)." },
+    core: { type: "number", label: "Core", default: 1, min: 0, max: 20, range: "floor", group: "Glow", description: "The soft glow round the source." },
+    coreRadius: { type: "number", label: "Core Radius", default: 0.16, min: 0.001, max: 1, range: "floor", group: "Glow", description: "The core's 1/e radius, as a fraction of the frame height." },
+    glow: { type: "number", label: "Wide Glow", default: 0.2, min: 0, max: 4, range: "floor", group: "Glow", description: "A wide soft glow round the source, reaching toward the ring." },
+    radius: { type: "number", label: "Ring Radius", default: 0.8, min: 0, max: 2, range: "floor", group: "Ring", description: "Ring radius, as a fraction of the frame height." },
+    width: { type: "number", label: "Ring Width", default: 0.018, min: 0.001, max: 0.3, range: "floor", group: "Ring", description: "Ring thickness (a Gaussian's sigma), as a fraction of the frame height." },
+    dispersion: { type: "number", label: "Dispersion", default: 0.035, min: 0, max: 0.5, range: "floor", group: "Ring", description: "How far red sits outside blue, as a fraction of the radius." },
+    ring: { type: "number", label: "Ring", default: 0.25, min: 0, max: 4, range: "floor", group: "Ring", description: "Ring strength." },
+    ringSaturation: { type: "number", label: "Ring Saturation", default: 0.7, min: 0, max: 1, range: "bounded", group: "Ring", description: "How much of the dispersion's colour the ring keeps." },
+    ringFacing: { type: "number", label: "Ring Facing", default: 0.6, min: 0, max: 1, range: "bounded", group: "Ring", description: "How much stronger the ring is toward Ring Angle than opposite it; 0 is even all round." },
+    ringAngle: { type: "number", label: "Ring Angle", default: 0.5, min: -3.14159, max: 3.14159, range: "cyclic", unit: "radians", group: "Ring", description: "Direction the ring is strongest: 0 is right, positive turns down." },
+    ghost: { type: "number", label: "Ghost", default: 0.2, min: 0, max: 4, range: "floor", group: "Ghosts", description: "Strength of the peach ghost." },
+    ghostAt: { type: "vector", size: 2, label: "Ghost Offset", default: [0.2, 0.2], min: -2, max: 2, range: "soft", group: "Ghosts", description: "The peach ghost's offset from the source, in frame heights, y down." },
+    ghostRadius: { type: "number", label: "Ghost Radius", default: 0.3, min: 0.001, max: 2, range: "floor", group: "Ghosts", description: "The peach ghost's radius, as a fraction of the frame height." },
+    dot: { type: "number", label: "Red Ring", default: 0.4, min: 0, max: 4, range: "floor", group: "Ghosts", description: "Strength of the small red ring ghost." },
+    dotAt: { type: "vector", size: 2, label: "Red Ring Offset", default: [0.7, 0.7], min: -2, max: 2, range: "soft", group: "Ghosts", description: "The red ring's offset from the source, in frame heights, y down." },
+    dotRadius: { type: "number", label: "Red Ring Radius", default: 0.027, min: 0.001, max: 0.5, range: "floor", group: "Ghosts", description: "The red ring's radius, as a fraction of the frame height." },
+  },
+  resolutionPolicy: { kind: "inherit", input: "input" },
+  formatPolicy: { kind: "inherit", input: "input" },
+  compile(context): CompiledNodeDescription {
+    const { nodeId, outputs, inputs, parameters, resolution } = readCompileInputs(context);
+    const target = outputs["out"];
+    const input = inputs["input"];
+    if (target === undefined || input === undefined) {
+      const what = target === undefined ? 'output port "out"' : 'input port "input"';
+      return { passes: [], diagnostics: [missingCompileResource(nodeId, what)] };
+    }
+    const measured = inputs["source"] ?? input;
+    // Sized from the node's width, so the gather is 60 columns and the source stage 2 at any size.
+    const gatherScale = FLARE_GATHER_COLUMNS / resolution[0];
+    const gatherSize = scratchSize(resolution, gatherScale);
+    const tint = readColor(parameters, "tint", [1, 1, 1, 1]);
+    const veilTint = readColor(parameters, "veilTint", [1, 1, 1, 1]);
+    const gather: EffectPassDescriptor = {
+      kind: "effect",
+      id: `${nodeId}:flare-gather`,
+      shader: FLARE_GATHER_WGSL,
+      target: scratchResourceId(nodeId, FLARE_GATHER_KEY),
+      textures: [{ binding: "inputTexture", resourceId: measured.resource }],
+      samplers: [{ binding: "inputSampler", resourceId: measured.sampler }],
+      uniformBinding: "params",
+      uniforms: {
+        block: [1 / gatherSize[0], 1 / gatherSize[1]],
+        threshold: readNumber(parameters, "threshold", 6),
+        axis: readNumber(parameters, "axis", 0.35),
+      },
+      nodeId,
+      label: "Flare Gather",
+    };
+    const source: EffectPassDescriptor = {
+      kind: "effect",
+      id: `${nodeId}:flare-source`,
+      shader: FLARE_SOURCE_WGSL,
+      target: scratchResourceId(nodeId, FLARE_SOURCE_KEY),
+      textures: [{ binding: "inputTexture", resourceId: scratchResourceId(nodeId, FLARE_GATHER_KEY) }],
+      nodeId,
+      label: "Flare Source",
+    };
+    const flare: EffectPassDescriptor = {
+      kind: "effect",
+      id: `${nodeId}:flare`,
+      shader: FLARE_WGSL,
+      target,
+      textures: [
+        { binding: "inputTexture", resourceId: input.resource },
+        { binding: "sourceTexture", resourceId: scratchResourceId(nodeId, FLARE_SOURCE_KEY) },
+      ],
+      samplers: [{ binding: "inputSampler", resourceId: input.sampler }],
+      uniformBinding: "params",
+      // Key order matches the WGSL struct's field order.
+      uniforms: {
+        gain: readNumber(parameters, "gain", 1),
+        veil: readNumber(parameters, "veil", 0.35),
+        core: readNumber(parameters, "core", 1),
+        coreRadius: readNumber(parameters, "coreRadius", 0.16),
+        radius: readNumber(parameters, "radius", 0.8),
+        width: readNumber(parameters, "width", 0.018),
+        dispersion: readNumber(parameters, "dispersion", 0.035),
+        ring: readNumber(parameters, "ring", 0.25),
+        ringSaturation: readNumber(parameters, "ringSaturation", 0.7),
+        glow: readNumber(parameters, "glow", 0.2),
+        ringFacing: readNumber(parameters, "ringFacing", 0.6),
+        ringAngle: readNumber(parameters, "ringAngle", 0.5),
+        ghost: readNumber(parameters, "ghost", 0.2),
+        ghostAt: readVector(parameters, "ghostAt", [0.2, 0.2]),
+        ghostRadius: readNumber(parameters, "ghostRadius", 0.3),
+        dot: readNumber(parameters, "dot", 0.4),
+        dotAt: readVector(parameters, "dotAt", [0.7, 0.7]),
+        dotRadius: readNumber(parameters, "dotRadius", 0.027),
+        tint: [tint[0] ?? 1, tint[1] ?? 1, tint[2] ?? 1],
+        veilTint: [veilTint[0] ?? 1, veilTint[1] ?? 1, veilTint[2] ?? 1],
+      },
+      nodeId,
+      label: "Flare",
+    };
+    return {
+      passes: [gather, source, flare],
+      scratch: [
+        { key: FLARE_GATHER_KEY, scale: gatherScale, format: "rgba16float" },
+        { key: FLARE_SOURCE_KEY, scale: 2 / resolution[0], format: "rgba16float" },
+      ],
+    };
+  },
+};
+
 /** The optics group, in library order. */
-export const opticsNodes: readonly NodeDefinition[] = [streakNode, haloNode, lensNode];
+export const opticsNodes: readonly NodeDefinition[] = [streakNode, haloNode, lensNode, flareNode];
+

@@ -14,6 +14,9 @@ import type { CompileGraphResult, RetainedCompile, RetainedNodeCompile } from ".
 import { isParameterPolicy } from "./resolution.ts";
 import { substepCount } from "./substeps.ts";
 import { resolveNodeParameters } from "./validate.ts";
+import { scaleOutputPixels } from "./pixel-scale.ts";
+import { timeProbeFor } from "./time-probe.ts";
+import { outputPixelScale } from "../domain/types/graph.ts";
 import type { ParameterResolution } from "./validate.ts";
 import { outputKey } from "./types.ts";
 import type { ActiveSink, CompileRequest, CompiledGraph, CompiledInputBinding, CompilerNodeContext } from "./types.ts";
@@ -311,9 +314,11 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
     // dropped, exactly as the full per-frame compile's were by its one consumer.
     const discarded: RuntimeDiagnostic[] = [];
     const values = new Map<NodeId, FrameValues>();
+    // T1432b: the same pixel scale the full compile gave the node's context.
+    const pixelScale = outputPixelScale(retained.request.settings);
     for (const entry of animated) {
       const resolved = resolveNodeParameters(entry.record.node, entry.schema, entry.record.definition.type, discarded, reader);
-      values.set(entry.nodeId, { parameters: { ...resolved.values }, parameterMaps: resolved.maps });
+      values.set(entry.nodeId, { parameters: scaleOutputPixels({ ...resolved.values }, entry.schema, pixelScale), parameterMaps: resolved.maps });
     }
 
     const scene = new Map(retained.scenePayloads);
@@ -325,10 +330,13 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
       const frameValues = values.get(nodeId);
       const sceneMoved = bindingsReadScene(record.context.inputs, recompiled);
       if (frameValues === undefined && !sceneMoved) continue;
+      // T1421b: the probe moves with the frame, exactly as the full compile's does.
+      const probe = timeProbeFor(record.node, record.definition, retained.graph, request.registry, resolution, retained.request.settings);
       const context: CompilerNodeContext = {
         ...record.context,
         ...(frameValues === undefined ? {} : frameValues),
         inputs: sceneMoved ? withScenePayloads(record.context.inputs, scene) : record.context.inputs,
+        ...(probe === undefined ? {} : { timeProbe: probe }),
       };
       let description: CompiledNodeDescription;
       try {

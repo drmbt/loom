@@ -79,6 +79,12 @@ export interface HeadlessRenderRequest {
   readonly displaySinks?: ReadonlyArray<string>;
   readonly fps?: number;
   /**
+   * T1435b: the caller averages this many consecutive frames into one output frame, so
+   * `fps` is the SUB-frame rate. Every frame then reports `fps / subframes` as the project
+   * rate and `subframes` itself, which an expression reads (`fps`, `subframes`). Default 1.
+   */
+  readonly subframes?: number;
+  /**
    * §V47's control knob. Supplying a canvas must not change a single byte — the backend
    * documents that it creates no surface either way — so the parity suite runs the same
    * graph with and without one and compares.
@@ -877,7 +883,7 @@ export async function renderHeadless(request: HeadlessRenderRequest): Promise<He
       backend,
       ...(audioSeam === undefined ? {} : { audio: audioSeam }),
       // §V45: the seed is the project's, not the transport's own invention.
-      transport: offlineTransport({ fps, seed: settings.randomSeed, mode: "fixed-step" }),
+      transport: offlineTransport({ fps, seed: settings.randomSeed, mode: "fixed-step", ...(request.subframes === undefined ? {} : { subframes: request.subframes }) }),
       pointer: pointerSource,
       resolution: () => [settings.outputResolution.width, settings.outputResolution.height],
       ...(valueSession === null || animator === null

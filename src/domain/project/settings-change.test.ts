@@ -78,6 +78,8 @@ describe("the structural key is what a compile may depend on", () => {
       { workingFormat: "rgba8unorm" },
       { randomSeed: 42 },
       { limits: { ...base.limits, maxDispatch: 1024 } },
+      // T1432b: pixel-sized parameters compile scaled by it.
+      { referenceWidth: 1920 },
     ];
     for (const patch of patches) {
       expect(structuralSettingsKey(withSettings(patch))).not.toBe(key);

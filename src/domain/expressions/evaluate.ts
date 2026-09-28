@@ -5,6 +5,7 @@ import {
   wallSecondsOf,
 } from "../types/frame.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
+import { DEFAULT_PROJECT_FPS } from "../types/graph.ts";
 
 /**
  * The parameter expression engine (T108, §V71): own closed grammar, jsep-style AST,
@@ -204,6 +205,13 @@ export type EvaluateResult = { ok: true; value: number } | { ok: false; reason: 
  */
 export const WRAPPING_CLOCK_NAMES = ["time", "delta", "frame"] as const;
 export const FREE_RUNNING_CLOCK_NAMES = ["walltime", "walldelta", "abstime", "absframe"] as const;
+/**
+ * T1426b/T1435b: the RATES — not clocks (they do not advance), the terms that say what a
+ * clock's step means: `fps`, the project's frame rate, and `subframes`, the offline
+ * sub-frames accumulated into each output frame (1 live). With the two clock families they
+ * are exactly the scope's frame keys.
+ */
+export const FRAME_RATE_NAMES = ["fps", "subframes"] as const;
 
 export function scopeFromFrame(
   frame: FrameEvaluationInput,
@@ -226,6 +234,10 @@ export function scopeFromFrame(
     // played (§V44).
     abstime: absTimeSecondsOf(frame),
     absframe: absFrameIndexOf(frame),
+    // T1426b/T1435b: the rates. A transport that states none is a plain project at the
+    // default rate with no accumulation, which is what `projectFps()` says of absent settings.
+    fps: frame.fps !== undefined && Number.isFinite(frame.fps) && frame.fps > 0 ? frame.fps : DEFAULT_PROJECT_FPS,
+    subframes: frame.subframes !== undefined && Number.isFinite(frame.subframes) && frame.subframes >= 1 ? frame.subframes : 1,
   };
 }
 

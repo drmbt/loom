@@ -273,3 +273,86 @@ describe("CRT on a real device (T1402b)", () => {
     expect(output!(0, 0).slice(0, 3)).toEqual([0, 0, 0]);
   }, 60_000);
 });
+
+/*
+ * CRT TUBE (T1423b). A white picture on a nearly flat tube (curvature radius 1e6 mm) faced
+ * square-on by a pinhole (aperture 0), 400 mm away, with a 10.71° field: the visible face is
+ * 2 · 400 · tan(5.355°) · 1.6 = 120 mm wide at the glass, and the phosphor 12 mm behind the
+ * faceplate is seen through it, so about (400 + 12 / 1.52) / 400 × 120 = 122.4 mm of phosphor
+ * fills the 96 columns. At 40 triads across the 400 mm face that is 12.24 triads: the red
+ * stripes repeat every 7.84 px, and the red channel's strongest frequency along a row is bin
+ * 12 of a 96-point DFT. The picture is shown as itself (invert 0), then as a negative, where a
+ * white picture lights nothing but the unlit glow.
+ */
+const TUBE = {
+  tubeSize: [400, 300],
+  curvature: 1_000_000,
+  glass: 12,
+  lines: 480,
+  triads: 40,
+  aim: [0.5, 0.5],
+  distance: 400,
+  pitch: 0,
+  yaw: 0,
+  roll: 0,
+  fov: 2 * Math.atan(0.09375) * (180 / Math.PI),
+  aperture: 0,
+  focus: 0,
+  grille: 0.75,
+  halation: 0,
+  invert: 0,
+  contrast: 1,
+  pivot: 0.5,
+  unlit: 0,
+  reflection: 0,
+  lift: 0,
+  grain: 0,
+};
+const WHITE = `color = vec4f(1.0);`;
+
+/** |DFT| of a row, bins 1 .. n/2 (the DC term dropped). */
+function spectrum(row: readonly number[]): number[] {
+  const n = row.length;
+  const out: number[] = [];
+  for (let k = 1; k <= n / 2; k += 1) {
+    let re = 0;
+    let im = 0;
+    for (let i = 0; i < n; i += 1) {
+      re += row[i]! * Math.cos((2 * Math.PI * k * i) / n);
+      im -= row[i]! * Math.sin((2 * Math.PI * k * i) / n);
+    }
+    out.push(Math.hypot(re, im));
+  }
+  return out;
+}
+
+describe("CRT Tube on a real device (T1423b)", () => {
+  it("draws the aperture grille at the pitch the tube's triads and the lens's field say", async () => {
+    requireDawn();
+    const [at] = await render(graph("crtTube", TUBE, fixture(WHITE)), "fx");
+    for (const channel of [0, 1, 2] as const) {
+      const row = Array.from({ length: W }, (_, x) => at!(x, H / 2)[channel]);
+      const power = spectrum(row);
+      const strongest = power.indexOf(Math.max(...power)) + 1;
+      expect(strongest, `channel ${channel}`).toBe(12);
+    }
+  }, 60_000);
+
+  it("shows a white picture as white, and as a negative lights nothing but the unlit glow", async () => {
+    requireDawn();
+    const mean = (frame: Frame): number => {
+      let sum = 0;
+      for (let y = 0; y < H; y += 1) for (let x = 0; x < W; x += 1) sum += luma(frame(x, y));
+      return sum / (W * H);
+    };
+    const [positive] = await render(graph("crtTube", TUBE, fixture(WHITE)), "fx");
+    const [negative] = await render(graph("crtTube", { ...TUBE, invert: 1 }, fixture(WHITE)), "fx");
+    const [glowing] = await render(graph("crtTube", { ...TUBE, invert: 1, unlit: 0.05 }, fixture(WHITE)), "fx");
+    expect(mean(positive!)).toBeGreaterThan(0.1);
+    // Inverted white is black on the tube: no phosphor lit, no halation, no room, no grain, no lift.
+    expect(mean(negative!)).toBe(0);
+    // ...and the unlit glow is all that shows.
+    expect(mean(glowing!)).toBeGreaterThan(0);
+    expect(mean(glowing!)).toBeLessThan(mean(positive!));
+  }, 60_000);
+});

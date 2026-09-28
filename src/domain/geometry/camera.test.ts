@@ -103,6 +103,22 @@ describe("T706 — the camera can aim anywhere and bank (cameraPayloadMatrix)", 
     expect([...a]).toEqual([...b]);
   });
 
+  it("roll's SIGN (T1433b): +90 turns the camera clockwise from behind, so world up lands screen-LEFT", () => {
+    // Right-handed about the FORWARD axis: the opposite of a camera frame's own +z (and of
+    // Blender/three.js). Pinned so a flip is a deliberate, visible change, never a drift.
+    const level = payload({ eye: [0, 0, 3], lookAt: [0, 0, 0] });
+    const project = (m: Float32Array, p: [number, number, number]) => {
+      const w = (m[3] ?? 0) * p[0] + (m[7] ?? 0) * p[1] + (m[11] ?? 0) * p[2] + (m[15] ?? 0);
+      return [((m[0] ?? 0) * p[0] + (m[4] ?? 0) * p[1] + (m[8] ?? 0) * p[2] + (m[12] ?? 0)) / w, ((m[1] ?? 0) * p[0] + (m[5] ?? 0) * p[1] + (m[9] ?? 0) * p[2] + (m[13] ?? 0)) / w];
+    };
+    const [ux = 0, uy = 0] = project(cameraPayloadMatrix({ ...level, roll: 90 }, 1), [0, 1, 0]);
+    expect(ux).toBeLessThan(-0.1); // world up -> screen left: the picture turned counter-clockwise
+    expect(Math.abs(uy)).toBeLessThan(1e-6);
+    // A small positive roll: the right end of the horizon rises on screen.
+    const [, ry = 0] = project(cameraPayloadMatrix({ ...level, roll: 10 }, 1), [1, 0, 0]);
+    expect(ry).toBeGreaterThan(0.01);
+  });
+
   it("roll banks around the view axis by exact degrees, aim untouched", () => {
     // Looking down -z from the origin side: world +x is screen-right. At roll 90 the
     // camera's up becomes world -x... the exact expectation is computed from the

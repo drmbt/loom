@@ -244,6 +244,8 @@ export const projectSettingsSchema = z.object({
       message: "the range's out point must be after its in point",
     })
     .optional(),
+  /** T1432b: the width pixel-sized effects are authored at; absent or 0 = no scaling. */
+  referenceWidth: z.number().int().min(0).max(16384).optional(),
   /** T84: optional so pre-colour-policy documents parse; absent means the default. */
   colorPolicy: z
     .object({

@@ -13,6 +13,10 @@ import {
   STREAK_LEG_KEYS,
   STREAK_LEG_STEPS,
   STREAK_SCALE,
+  STREAK_SPREAD_TAPS,
+  FLARE_GATHER_KEY,
+  FLARE_SOURCE_KEY,
+  flareNode,
   haloNode,
   lensNode,
   opticsNodes,
@@ -54,7 +58,7 @@ const structure = (passes: ReadonlyArray<PassDescriptor>): string[] => passes.ma
 describe("optics nodes (T1402b)", () => {
   it("register together with no manifest diagnostics", () => {
     for (const definition of opticsNodes) expect(validateNodeDefinition(definition)).toEqual([]);
-    expect(createNodeRegistry(opticsNodes).list().map((d) => d.type)).toEqual(["halo", "lens", "streak"]);
+    expect(createNodeRegistry(opticsNodes).list().map((d) => d.type)).toEqual(["flare", "halo", "lens", "streak"]);
   });
 });
 
@@ -98,6 +102,20 @@ describe("Streak", () => {
     expect(legs.map((leg) => leg["spread"])).toEqual([[0.01, 0], [0, 0], [0, 0]]);
     expect(legs.map((leg) => leg["back"])).toEqual([[0, 0], [0, 0], [0, -0.1]]);
     expect(legs.map((leg) => leg["decay"])).toEqual([50, 50, 2]);
+  });
+
+  it("spreads with samples at most a scratch texel apart: seven taps up to three texels, more past it (T1439b)", () => {
+    const tapsAt = (spread: number, width: number) => {
+      const { passes } = compile(streakNode, { spread }, ["input"], [width, width / 2]);
+      const first = passes[1]!.uniforms!;
+      return { taps: first["taps"] as number, norm: first["norm"] as number };
+    };
+    // 0.004 of a 700-wide frame is 1.4 texels of the 350-wide scratch: the original kernel.
+    expect(tapsAt(0.004, 700)).toEqual({ taps: 3, norm: 0.25 });
+    // 0.009 of 1920 is 8.64 texels of the 960-wide scratch: nine samples either side, 0.96 apart.
+    expect(tapsAt(0.009, 1920)).toEqual({ taps: 9, norm: 1 / 10 });
+    // The ceiling holds at the widest spread on the largest frame.
+    expect(tapsAt(0.05, 4096).taps).toBe(STREAK_SPREAD_TAPS.max);
   });
 
   it("turns with Angle: 90 streaks to the right, so the gather reads from the LEFT, per frame height", () => {
@@ -189,5 +207,32 @@ describe("Lens", () => {
       vignette: 0.8,
       vignetteRound: 0.75,
     });
+  });
+});
+
+describe("On-Axis Flare (T1423b)", () => {
+  it("measures on a 60-column gather and a 2-texel source stage at any width, then adds at full size", () => {
+    for (const [width, height, rows] of [[1920, 818, 26], [960, 409, 26], [1280, 720, 34]] as const) {
+      const { compiled, passes } = compile(flareNode, {}, ["input"], [width, height]);
+      const sizes = (compiled.scratch ?? []).map((entry) => {
+        const scale = (entry as { scale: number }).scale;
+        return [entry.key, Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale))];
+      });
+      expect(sizes).toEqual([[FLARE_GATHER_KEY, 60, rows], [FLARE_SOURCE_KEY, 2, 1]]);
+      // The gather's block is one of ITS texels in source uv.
+      expect(passes[0]!.uniforms!["block"]).toEqual([1 / 60, 1 / rows]);
+    }
+  });
+
+  it("measures the Source port when it is wired, and the input otherwise", () => {
+    const measured = (inputs: ReadonlyArray<string>) => (compile(flareNode, {}, inputs).passes[0] as { textures: ReadonlyArray<{ resourceId: string }> }).textures[0]!.resourceId;
+    expect(measured(["input"])).toBe(inputResourceId("input"));
+    expect(measured(["input", "source"])).toBe(inputResourceId("source"));
+  });
+
+  it("every knob is a uniform value: no parameter change moves the structure", () => {
+    const base = structure(compile(flareNode).passes);
+    const turned = structure(compile(flareNode, { threshold: 2, axis: 1, gain: 9, radius: 0.3, dispersion: 0.2, ghostAt: [0.1, -0.4], tint: [1, 0.5, 0.2, 1] }).passes);
+    expect(turned).toEqual(base);
   });
 });

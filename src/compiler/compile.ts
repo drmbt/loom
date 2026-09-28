@@ -75,6 +75,16 @@ import { cameraPayloadMatrix, viewProjection , projectorMatrix } from "../domain
 import type { Mat4 } from "../domain/geometry/camera.ts";
 import { DEFAULT_MATERIAL } from "../domain/types/scene.ts";
 import { applySubstepLoops, planSubstepLoops } from "./substeps.ts";
+import { scaleOutputPixels } from "./pixel-scale.ts";
+import { timeProbeFor } from "./time-probe.ts";
+import type { TimeProbe } from "./time-probe.ts";
+
+/** T1421b: a context field that is absent, not undefined, when there is no frame. */
+function withTimeProbe(probe: TimeProbe | undefined): { timeProbe?: TimeProbe } {
+  return probe === undefined ? {} : { timeProbe: probe };
+}
+import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
+import { outputPixelScale } from "../domain/types/graph.ts";
 import { orderNodes } from "./topology.ts";
 import { isTemporalOutput, validateGraph, validateRequiredInputs } from "./validate.ts";
 import type { ResolvedNode } from "./validate.ts";
@@ -1121,6 +1131,8 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
   const sceneInfoByOutput = new Map<string, ScenePayload>();
   /** T1182: what each compiled node leaves for the per-frame values-only path. */
   const retainedNodes = new Map<NodeId, RetainedNodeCompile>();
+  /** T1432b: authored pixels -> output pixels, 1 when the project names no reference width. */
+  const pixelScale = outputPixelScale(settings);
   for (const nodeId of topology.order) {
     const resolved = validated.nodes.get(nodeId);
     if (resolved === undefined) continue;
@@ -1197,7 +1209,8 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
     const context: CompilerNodeContext = {
       nodeId,
       nodeType: node.type,
-      parameters: resolved.parameters,
+      // T1432b: pixel-sized parameters at the project's reference width (identity without one).
+      parameters: scaleOutputPixels(resolved.parameters, pixelScale === 1 ? {} : effectiveParameterSchema(definition, node.parameters), pixelScale),
       parameterMaps: resolved.parameterMaps,
       resolution: resolution ?? [settings.outputResolution.width, settings.outputResolution.height],
       format: format ?? settings.workingFormat,
@@ -1211,6 +1224,8 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       // display transform in can read them. T84 recorded `colorPolicy` and nothing ever
       // read it — the §V220 shape, and the whole of B47.
       colorPolicy: colorPolicyOf(settings),
+      // T1421b: the node's parameters along its own path (the Camera's derivative).
+      ...withTimeProbe(timeProbeFor(node, definition, graph, registry, request.resolution ?? {}, settings)),
     };
 
     let description: CompiledNodeDescription;

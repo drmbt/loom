@@ -28,7 +28,7 @@ function pass(definition: NodeDefinition, parameters: Values = {}) {
 describe("film nodes (T1402b)", () => {
   it("register together with no manifest diagnostics", () => {
     for (const definition of filmNodes) expect(validateNodeDefinition(definition)).toEqual([]);
-    expect(createNodeRegistry(filmNodes).list().map((d) => d.type)).toEqual(["crt", "filmGrade"]);
+    expect(createNodeRegistry(filmNodes).list().map((d) => d.type)).toEqual(["crt", "crtTube", "filmGrade"]);
   });
 
   it("both bind the shared frame block, so a plan holding one is never idle-skipped", () => {

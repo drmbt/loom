@@ -9,6 +9,7 @@ import { colorNodes } from "./color.ts";
 import { filterNodes } from "./filters.ts";
 import { opticsNodes } from "./optics.ts";
 import { filmNodes } from "./film.ts";
+import { cameraBlurNode } from "./camera-blur.ts";
 import { echoNode } from "./echo.ts";
 import { compositeNodes } from "./composite.ts";
 import { temporalNodes } from "./feedback.ts";
@@ -195,8 +196,9 @@ export {
 } from "./composite.ts";
 export { feedbackNode, temporalNodes } from "./feedback.ts";
 export { cacheNode, CACHE_RING_KEY } from "./cache.ts";
-export { streakNode, haloNode, lensNode, opticsNodes } from "./optics.ts";
-export { filmGradeNode, crtNode, filmNodes } from "./film.ts";
+export { streakNode, haloNode, lensNode, flareNode, opticsNodes } from "./optics.ts";
+export { filmGradeNode, crtNode, crtTubeNode, filmNodes } from "./film.ts";
+export { cameraBlurNode } from "./camera-blur.ts";
 export { echoNode, ECHO_RING_KEY } from "./echo.ts";
 export {
   depthNode,
@@ -252,6 +254,8 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   // T1402b: the look-building filters promoted from the On Nothing project's passes.
   ...opticsNodes,
   ...filmNodes,
+  // T1421b: the camera path's motion blur.
+  cameraBlurNode,
   ...compositeNodes,
   ...temporalNodes,
   cacheNode,

@@ -7,6 +7,13 @@ export interface OfflineTransportOptions {
   readonly startFrame?: number;
   /** "fixed-step" for a deterministic timeline; "offline" for a render queue (§I.frame). */
   readonly mode?: "fixed-step" | "offline";
+  /**
+   * T1435b: sub-frames the caller averages into each output frame. `fps` stays the rate this
+   * transport STEPS at (the sub-frame rate); each frame reports `fps / subframes` as the
+   * project's rate and `subframes` itself, so an expression can tell a film frame from a
+   * sub-frame. Default 1.
+   */
+  readonly subframes?: number;
 }
 
 /**
@@ -19,6 +26,8 @@ export interface OfflineTransportOptions {
 export function offlineTransport(options: OfflineTransportOptions): TransportSource {
   const deltaSeconds = 1 / options.fps;
   const mode = options.mode ?? "offline";
+  const subframes = options.subframes !== undefined && Number.isFinite(options.subframes) && options.subframes >= 1 ? options.subframes : 1;
+  const projectRate = options.fps / subframes;
   const startFrame = options.startFrame ?? 0;
 
   let seed = options.seed ?? 0;
@@ -68,6 +77,9 @@ export function offlineTransport(options: OfflineTransportOptions): TransportSou
         // clocks agree until something wraps the timeline and diverge only then.
         absFrameIndex: absIndex,
         absTimeSeconds: absIndex / options.fps,
+        // T1426b/T1435b: the rates an expression reads as `fps` and `subframes`.
+        fps: projectRate,
+        subframes,
       };
     },
     /**

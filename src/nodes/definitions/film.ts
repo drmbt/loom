@@ -2,8 +2,8 @@ import type { CompiledNodeDescription, NodeDefinition } from "../../domain/types
 import type { EffectPassDescriptor } from "../../runtime/backend/plan.ts";
 import { RGBA_TEXTURE } from "./common-ports.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
-import { readColor, readNumber } from "./parameter-readers.ts";
-import { CRT_WGSL, FILM_GRADE_WGSL } from "../shaders/film.wgsl.ts";
+import { readColor, readNumber, readVector } from "./parameter-readers.ts";
+import { CRT_TUBE_WGSL, CRT_WGSL, FILM_GRADE_WGSL } from "../shaders/film.wgsl.ts";
 
 /**
  * The FINISHING family: Film Grade and CRT (T1402b).
@@ -154,8 +154,9 @@ export const filmGradeNode: NodeDefinition = {
       max: 8,
       range: "floor",
       unit: "px",
+      scalesWithOutput: true,
       group: "Grain",
-      description: "Size of one grain in pixels of the input.",
+      description: "Size of one grain in pixels of the input (of the project's reference width, when it names one).",
     },
   },
   resolutionPolicy: { kind: "inherit", input: "input" },
@@ -261,8 +262,9 @@ export const crtNode: NodeDefinition = {
       max: 24,
       range: "floor",
       unit: "px",
+      scalesWithOutput: true,
       group: "Phosphor",
-      description: "Pixels per red-green-blue stripe triad.",
+      description: "Pixels per red-green-blue stripe triad (of the project's reference width, when it names one).",
     },
     glow: {
       type: "number",
@@ -329,5 +331,112 @@ export const crtNode: NodeDefinition = {
   },
 };
 
+/**
+ * CRT Tube — the picture re-scanned: shown on a modelled CRT and photographed with a macro
+ * lens (T1423b). Promoted from the On Nothing crt shot (`src/projects/on-nothing/shots/crt.ts`);
+ * `CRT_TUBE_WGSL` is the ray tracer. Where CRT is a filter laid over the picture, this is a
+ * second camera: the output is what a lens a few centimetres from the glass sees — the grille,
+ * the scanlines and their fields, the faceplate's curve and reflection, its depth of field.
+ */
+export const crtTubeNode: NodeDefinition = {
+  type: "crtTube",
+  version: 1,
+  title: "CRT Tube",
+  category: "filter",
+  description:
+    "Shows the picture on a modelled CRT and photographs it with a macro lens: curved glass, an RGB aperture grille, interlaced scanlines that swell with brightness, a reflection and a thin depth of field. Outputs linear display light; set the Output's tone map to none.",
+  tags: ["crt", "tube", "rescan", "scanlines", "phosphor", "grille", "macro", "retro", "video"],
+  inputs: [{ id: "input", label: "Input", type: RGBA_TEXTURE }],
+  outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],
+  parameters: {
+    tubeSize: { type: "vector", size: 2, label: "Tube Size", default: [400, 300], min: 10, max: 2000, range: "floor", group: "Tube", description: "The visible face, width and height, in millimetres (a 4:3 tube is 400 × 300)." },
+    curvature: { type: "number", label: "Curvature Radius", default: 1100, min: 100, max: 100000, range: "floor", group: "Tube", description: "Radius of the phosphor and faceplate sphere, mm: smaller bulges more." },
+    glass: { type: "number", label: "Glass", default: 12, min: 0, max: 60, range: "floor", group: "Tube", description: "Faceplate thickness, mm." },
+    lines: { type: "number", label: "Lines", default: 480, min: 16, max: 2000, range: "floor", group: "Tube", description: "Visible scanlines." },
+    triads: { type: "number", label: "Triads", default: 350, min: 16, max: 2000, range: "floor", group: "Tube", description: "RGB triads across the face." },
+    beamDark: { type: "number", label: "Beam (Dark)", default: 0.15, min: 0.02, max: 1, range: "floor", group: "Tube", description: "Beam sigma of a dark line, in line pitches." },
+    beamBright: { type: "number", label: "Beam (Bright)", default: 0.27, min: 0.02, max: 1, range: "floor", group: "Tube", description: "Beam sigma of a bright line: a bright line swells." },
+    grille: { type: "number", label: "Grille Fill", default: 0.75, min: 0.05, max: 1, range: "bounded", group: "Tube", description: "Share of a triad's third each phosphor stripe fills." },
+    field: { type: "number", label: "Other Field", default: 0.55, min: 0, max: 1, range: "bounded", group: "Tube", description: "Brightness of the field not being scanned now (phosphor persistence)." },
+    halation: { type: "number", label: "Halation", default: 0.12, min: 0, max: 2, range: "floor", group: "Tube", description: "Light scattered in the faceplate (phosphor bloom)." },
+    unlit: { type: "number", label: "Unlit Glow", default: 0.02, min: 0, max: 1, range: "floor", group: "Tube", description: "The unlit phosphor's glow: the tube is never black." },
+    reflection: { type: "number", label: "Reflection", default: 0.5, min: 0, max: 4, range: "floor", group: "Tube", description: "The room reflected in the faceplate (times Fresnel)." },
+    invert: { type: "number", label: "Negative", default: 1, min: 0, max: 1, range: "bounded", group: "Picture", description: "1 shows the picture as a negative, 0 as itself." },
+    contrast: { type: "number", label: "Contrast", default: 1.6, min: 0, max: 8, range: "floor", group: "Picture", description: "Contrast of the picture on the tube." },
+    pivot: { type: "number", label: "Pivot", default: 0.5, min: 0, max: 1, range: "bounded", group: "Picture", description: "Level of the (inverted) picture that lands on mid-grey." },
+    aim: { type: "vector", size: 2, label: "Aim", default: [0.5, 0.5], min: 0, max: 1, range: "soft", group: "Camera", description: "Where the macro camera looks on the face, in uv with y down." },
+    distance: { type: "number", label: "Distance", default: 350, min: 10, max: 5000, range: "floor", group: "Camera", description: "Lens to target, mm." },
+    pitch: { type: "number", label: "Pitch", default: 15, min: -80, max: 80, range: "bounded", unit: "degrees", group: "Camera", description: "The camera above the face's normal, looking down at the glass." },
+    yaw: { type: "number", label: "Yaw", default: 0, min: -80, max: 80, range: "bounded", unit: "degrees", group: "Camera", description: "The camera to the side of the face's normal." },
+    roll: { type: "number", label: "Roll", default: 0, min: -180, max: 180, range: "cyclic", unit: "degrees", group: "Camera", description: "Bank around the view axis, with the Camera node's sign: positive turns the camera clockwise as seen from behind it." },
+    fov: { type: "number", label: "FOV", default: 24, min: 1, max: 120, range: "bounded", unit: "degrees", group: "Camera", description: "Vertical field of view." },
+    aperture: { type: "number", label: "Aperture", default: 6, min: 0, max: 100, range: "floor", group: "Camera", description: "Lens aperture radius, mm: the depth of field." },
+    focus: { type: "number", label: "Focus Offset", default: 0, min: -500, max: 500, range: "soft", group: "Camera", description: "Focus beyond the target, mm." },
+    exposure: { type: "number", label: "Exposure", default: 0.35, min: 0, max: 20, range: "floor", group: "Grade", description: "Camera exposure: linear gain before the shoulder (low, so a lit phosphor never clips)." },
+    gain: { type: "number", label: "Gain", default: 1.3, min: 0, max: 8, range: "floor", group: "Grade", description: "Display gain after the shoulder." },
+    lift: { type: "number", label: "Lift", default: 0.035, min: 0, max: 1, range: "bounded", group: "Grade", description: "Display-level black lift." },
+    tint: { type: "color", label: "Tint", default: [1, 1, 1, 1], space: "display", group: "Grade", description: "The camera's colour cast." },
+    saturation: { type: "number", label: "Saturation", default: 0.35, min: 0, max: 2, range: "floor", group: "Grade", description: "Chroma kept." },
+    grain: { type: "number", label: "Grain", default: 0.02, min: 0, max: 1, range: "floor", group: "Grade", description: "Grain, heavier in the blacks, a new pattern every frame." },
+  },
+  resolutionPolicy: { kind: "inherit", input: "input" },
+  formatPolicy: { kind: "inherit", input: "input" },
+  compile(context): CompiledNodeDescription {
+    const { nodeId, outputs, inputs, parameters } = readCompileInputs(context);
+    const target = outputs["out"];
+    const source = inputs["input"];
+    if (target === undefined || source === undefined) {
+      const what = target === undefined ? 'output port "out"' : 'input port "input"';
+      return { passes: [], diagnostics: [missingCompileResource(nodeId, what)] };
+    }
+    const tint = readColor(parameters, "tint", [1, 1, 1, 1]);
+    const pass: EffectPassDescriptor = {
+      kind: "effect",
+      id: `${nodeId}:crt-tube`,
+      shader: CRT_TUBE_WGSL,
+      target,
+      textures: [{ binding: "inputTexture", resourceId: source.resource }],
+      samplers: [{ binding: "inputSampler", resourceId: source.sampler }],
+      uniformBinding: "params",
+      sharedBinding: "frameU",
+      // Key order matches the WGSL struct's field order.
+      uniforms: {
+        tubeSize: readVector(parameters, "tubeSize", [400, 300]),
+        curvature: readNumber(parameters, "curvature", 1100),
+        glass: readNumber(parameters, "glass", 12),
+        lines: readNumber(parameters, "lines", 480),
+        triads: readNumber(parameters, "triads", 350),
+        aim: readVector(parameters, "aim", [0.5, 0.5]),
+        distance: readNumber(parameters, "distance", 350),
+        pitch: readNumber(parameters, "pitch", 15),
+        yaw: readNumber(parameters, "yaw", 0),
+        roll: readNumber(parameters, "roll", 0),
+        fov: readNumber(parameters, "fov", 24),
+        aperture: readNumber(parameters, "aperture", 6),
+        focus: readNumber(parameters, "focus", 0),
+        beamDark: readNumber(parameters, "beamDark", 0.15),
+        beamBright: readNumber(parameters, "beamBright", 0.27),
+        grille: readNumber(parameters, "grille", 0.75),
+        field: readNumber(parameters, "field", 0.55),
+        halation: readNumber(parameters, "halation", 0.12),
+        invert: readNumber(parameters, "invert", 1),
+        contrast: readNumber(parameters, "contrast", 1.6),
+        pivot: readNumber(parameters, "pivot", 0.5),
+        unlit: readNumber(parameters, "unlit", 0.02),
+        reflection: readNumber(parameters, "reflection", 0.5),
+        exposure: readNumber(parameters, "exposure", 0.35),
+        gain: readNumber(parameters, "gain", 1.3),
+        lift: readNumber(parameters, "lift", 0.035),
+        tint: [tint[0] ?? 1, tint[1] ?? 1, tint[2] ?? 1],
+        saturation: readNumber(parameters, "saturation", 0.35),
+        grain: readNumber(parameters, "grain", 0.02),
+      },
+      nodeId,
+      label: "CRT Tube",
+    };
+    return { passes: [pass] };
+  },
+};
+
 /** The finishing group, in library order. */
-export const filmNodes: readonly NodeDefinition[] = [filmGradeNode, crtNode];
+export const filmNodes: readonly NodeDefinition[] = [filmGradeNode, crtNode, crtTubeNode];

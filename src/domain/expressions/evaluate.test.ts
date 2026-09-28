@@ -10,6 +10,9 @@ import {
   scopeFromFrame,
 } from "./evaluate.ts";
 import { acceptedFunctionCalls } from "./reference.ts";
+import { offlineTransport } from "../../runtime/execution/offline-transport.ts";
+import { liveClock } from "../transport/live-clock.ts";
+import { DEFAULT_PROJECT_FPS } from "../types/graph.ts";
 
 /**
  * T108, §V71: the single expression engine — deterministic, sandboxed by construction,
@@ -29,6 +32,7 @@ const frame: FrameEvaluationInput = {
 
 import {
   FREE_RUNNING_CLOCK_NAMES,
+  FRAME_RATE_NAMES,
   WRAPPING_CLOCK_NAMES,
 } from "./evaluate.ts";
 
@@ -39,11 +43,14 @@ import {
  * does not supply would paint a variable that evaluates to an error.
  */
 describe("clock families match the scope (T505)", () => {
-  it("the two lists are disjoint and together are EXACTLY the bare scope's keys", () => {
+  it("the two lists and the rates are disjoint and together are EXACTLY the bare scope's keys", () => {
     const frame = { timeSeconds: 1, deltaSeconds: 1 / 60, frameIndex: 60, mode: "realtime", randomSeed: 0 } as never;
     const keys = Object.keys(scopeFromFrame(frame)).sort();
-    const union = [...WRAPPING_CLOCK_NAMES, ...FREE_RUNNING_CLOCK_NAMES].sort();
+    const union = [...WRAPPING_CLOCK_NAMES, ...FREE_RUNNING_CLOCK_NAMES, ...FRAME_RATE_NAMES].sort();
     expect(union).toEqual(keys);
+    for (const name of FRAME_RATE_NAMES) {
+      expect([...WRAPPING_CLOCK_NAMES, ...FREE_RUNNING_CLOCK_NAMES]).not.toContain(name);
+    }
     for (const name of WRAPPING_CLOCK_NAMES) {
       expect(FREE_RUNNING_CLOCK_NAMES).not.toContain(name);
     }
@@ -433,5 +440,46 @@ describe("T1176 — a rejection is CONTROL FLOW, and must not cost an Error stac
       globalThis.Error = RealError;
       vi.resetModules();
     }
+  });
+});
+
+/**
+ * T1426b / T1435b — the RATES an expression reads: `fps`, the project's frame rate, and
+ * `subframes`, the offline sub-frames accumulated into each output frame. Asserted through
+ * the transports that state them, at values exact in binary floating point.
+ */
+describe("fps and subframes (T1426b, T1435b)", () => {
+  const value = (source: string, input: FrameEvaluationInput): number => {
+    const result = evaluateExpression(source, scopeFromFrame(input));
+    if (!result.ok) throw new Error(`expected "${source}" to evaluate: ${result.reason}`);
+    return result.value;
+  };
+
+  it("an offline render at 8 sub-frames of a 24 fps film reads fps 24 and subframes 8, while delta is a sub-frame", () => {
+    const transport = offlineTransport({ fps: 24 * 8, subframes: 8 });
+    transport.next();
+    const second = transport.next();
+    expect(value("fps", second)).toBe(24);
+    expect(value("subframes", second)).toBe(8);
+    // Three FILM frames back is 3/24 s whatever the transport steps at; delta is 1/192.
+    expect(value("3 / fps", second)).toBe(0.125);
+    expect(value("delta * fps * subframes", second)).toBe(1);
+    // The idiom T1435b exists for: a shot's own shutter blur stands down under accumulation.
+    expect(value("(subframes == 1) * 0.5", second)).toBe(0);
+    expect(value("(subframes == 1) * 0.5", offlineTransport({ fps: 24 }).next())).toBe(0.5);
+  });
+
+  it("the live clock states the PROJECT rate and no accumulation", () => {
+    const clock = liveClock({ fps: () => 30, now: () => 0 });
+    const first = clock.next();
+    expect(value("fps", first)).toBe(30);
+    expect(value("subframes", first)).toBe(1);
+  });
+
+  it("a frame that states no rate reads the default project rate and 1; a nonsense one is ignored", () => {
+    expect(value("fps", frame)).toBe(DEFAULT_PROJECT_FPS);
+    expect(value("subframes", frame)).toBe(1);
+    expect(value("fps", { ...frame, fps: 0 })).toBe(DEFAULT_PROJECT_FPS);
+    expect(value("subframes", { ...frame, subframes: 0.5 })).toBe(1);
   });
 });

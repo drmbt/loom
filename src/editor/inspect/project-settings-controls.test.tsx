@@ -103,6 +103,8 @@ describe("the rendered fields are the kit's controls (T390)", () => {
       ["height", 720],
       ["target fps", 60],
       ["preview fps", 20],
+      // T1432b: no reference width reads as 0 ("none").
+      ["pixel reference width", 0],
       ["seed", 1],
     ] as const) {
       const field = screen.getByLabelText(label);

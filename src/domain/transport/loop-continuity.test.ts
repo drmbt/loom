@@ -8,7 +8,7 @@ import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import type { GraphDocument } from "../types/graph.ts";
 import { offlineTransport } from "../../runtime/execution/offline-transport.ts";
-import { scopeFromFrame, evaluateExpression } from "../expressions/evaluate.ts";
+import { FRAME_RATE_NAMES, scopeFromFrame, evaluateExpression } from "../expressions/evaluate.ts";
 import { resolveParameters } from "../parameters/resolve.ts";
 import { dispatchFrameUniforms, sharedUniformsFromFrame, SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 import { generateKernelModule, generateSpawnHookModule } from "../../points/codegen.ts";
@@ -951,9 +951,8 @@ describe("T489 — the frameless resolve scope offers the same names as a real f
   });
 
   it("offers every name `scopeFromFrame` does, by derivation rather than by a second list", () => {
-    const real = Object.keys(
-      scopeFromFrame({ timeSeconds: 0, deltaSeconds: 0, frameIndex: 0, mode: "offline", randomSeed: 0 }),
-    ).sort();
+    const zero = scopeFromFrame({ timeSeconds: 0, deltaSeconds: 0, frameIndex: 0, mode: "offline", randomSeed: 0 });
+    const real = Object.keys(zero).sort();
     for (const name of real) {
       const node: GraphNode = {
         ...ABSTIME_NODE,
@@ -961,7 +960,10 @@ describe("T489 — the frameless resolve scope offers the same names as a real f
           amount: { mode: "expression", bindings: { expression: { kind: "expression", source: name } } },
         },
       };
-      expect(resolveParameters(node, ABSTIME_DEFINITION).values["amount"], `frameless scope knows "${name}"`).toBe(0);
+      // Every CLOCK reads the deterministic zero; a RATE (T1426b/T1435b: `fps`, `subframes`)
+      // reads its default, because a rate of 0 is a division by zero, not a quiet start.
+      const expected = (FRAME_RATE_NAMES as readonly string[]).includes(name) ? zero[name] : 0;
+      expect(resolveParameters(node, ABSTIME_DEFINITION).values["amount"], `frameless scope knows "${name}"`).toBe(expected);
     }
   });
 });

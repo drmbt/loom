@@ -111,6 +111,14 @@ export interface NumberParameter extends ParameterBase {
   scale?: "linear" | "log";
   unit?: "px" | "percent" | "degrees" | "radians" | "seconds" | "hz";
   precision?: number;
+  /**
+   * T1432b — a SIZE IN THE PICTURE, in pixels (a blur radius, a grain), as opposed to a pixel
+   * count of something else (a capture request, a window). When the project names a
+   * `referenceWidth`, the compiler scales this value by `outputPixelScale()` before the node
+   * compiles, so a render at twice the size draws the effect just as wide across the frame.
+   * The stored value, the inspector and the resolver all keep the authored number.
+   */
+  scalesWithOutput?: boolean;
 }
 
 export interface BooleanParameter extends ParameterBase {

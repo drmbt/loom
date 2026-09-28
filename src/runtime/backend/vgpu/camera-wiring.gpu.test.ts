@@ -121,10 +121,20 @@ const OBJECT: Readonly<Record<string, number>> = {
 };
 const BACKGROUND = 0;
 
-/** Every node that names a camera through a reference parameter (§V372/§V373). */
+/**
+ * Camera consumers that do NOT draw the picture from the camera, by name and with the reason,
+ * so the enumeration below stays a list of renderers without going stale (§V437).
+ *  - `cameraBlur` (T1421b): smears an existing picture along the camera's motion; a still
+ *    camera changes nothing it draws. Its link is gated in `camera-blur.gpu.test.ts`, and its
+ *    dangling-name refusal with the renderers' in `camera-reference.test.ts`.
+ */
+const NOT_RENDERERS: ReadonlySet<string> = new Set(["cameraBlur"]);
+
+/** Every node that RENDERS through a camera it names by a reference parameter (§V372/§V373). */
 function cameraConsumers(): ReadonlyArray<string> {
   const found: string[] = [];
   for (const definition of allNodeDefinitions) {
+    if (NOT_RENDERERS.has(definition.type)) continue;
     for (const reference of definition.sourceReferences ?? []) {
       const port = definition.inputs.find((input) => input.id === reference.input);
       if (port?.type.kind === "camera" && !found.includes(definition.type)) found.push(definition.type);

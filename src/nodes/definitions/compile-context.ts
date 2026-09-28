@@ -1,3 +1,4 @@
+import type { TimeProbe } from "../../compiler/time-probe.ts";
 import type { ColorPolicy } from "../../domain/types/graph.ts";
 import { DEFAULT_COLOR_POLICY } from "../../domain/types/graph.ts";
 import type { NodeCompileContext, PointsetAttributeRef, TextureFormat } from "../../domain/types/node-definition.ts";
@@ -99,6 +100,8 @@ export interface NodeCompileInputs {
    * there is one adapter, and so the next display node does not invent a second route.
    */
   readonly colorPolicy: ColorPolicy;
+  /** T1421b: this node's parameters along its own path, when the compile has a frame (time-probe.ts). */
+  readonly timeProbe?: TimeProbe;
 }
 
 /** The compiler-side shape this adapter reads. Kept local so src/nodes stays headless. */
@@ -126,6 +129,7 @@ interface CompilerContextShape {
   readonly format?: TextureFormat;
   readonly space?: ColorSpace;
   readonly colorPolicy?: ColorPolicy;
+  readonly timeProbe?: TimeProbe;
 }
 
 export function readCompileInputs(context: NodeCompileContext): NodeCompileInputs {
@@ -172,6 +176,7 @@ export function readCompileInputs(context: NodeCompileContext): NodeCompileInput
     space: raw.space ?? "linear",
     colorPolicy: raw.colorPolicy ?? DEFAULT_COLOR_POLICY,
     ...(raw.target === undefined ? {} : { target: raw.target }),
+    ...(raw.timeProbe === undefined ? {} : { timeProbe: raw.timeProbe }),
   };
 }
 

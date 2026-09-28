@@ -131,6 +131,15 @@ export function orthographic(height: number, aspect: number, near: number, far: 
  * T706/T704 — the ONE guarded, rolled up-vector (§V437). The camera's view and the
  * projector's throw share it: the degenerate-pole guard swaps to [0,0,1] exactly as the
  * shadow path does, and `roll` banks the result around the view axis (Rodrigues).
+ *
+ * THE SIGN (T1433b), stated because it is the opposite of Blender's and three.js's: `roll` is
+ * right-handed about the FORWARD (view) axis. A positive roll turns the camera CLOCKWISE as
+ * seen from behind it (its up swings toward its right), so the PICTURE turns
+ * COUNTER-CLOCKWISE: at +90 the world's up lands on the screen's left. A camera frame's own
+ * convention (right-handed about its +z, which points back at the viewer) is the other way
+ * round, so a roll taken from a DCC tool, or measured as "the camera turned counter-clockwise",
+ * is negated on the way in. `camera.test.ts` pins the sign. Every WGSL copy of the rolled
+ * basis in the projects (`rolledRight`) repeats it and must keep doing so.
  */
 export function guardedRolledUp(
   eye: readonly [number, number, number],
@@ -163,6 +172,30 @@ export function guardedRolledUp(
     ];
   }
   return up;
+}
+
+/**
+ * T1421b — the camera's frame in world space, exactly as the render's view builds it (`lookAt`
+ * with the guarded, rolled up): `forward` the way it looks, `right`, and the true `up`.
+ */
+export function cameraBasis(
+  eye: readonly [number, number, number],
+  lookAt3: readonly [number, number, number],
+  rollDeg: number,
+): { forward: [number, number, number]; right: [number, number, number]; up: [number, number, number] } {
+  const up = guardedRolledUp(eye, lookAt3, rollDeg);
+  const unit = (v: [number, number, number]): [number, number, number] => {
+    const length = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [v[0] / length, v[1] / length, v[2] / length];
+  };
+  const cross = (a: readonly number[], b: readonly number[]): [number, number, number] => [
+    (a[1] ?? 0) * (b[2] ?? 0) - (a[2] ?? 0) * (b[1] ?? 0),
+    (a[2] ?? 0) * (b[0] ?? 0) - (a[0] ?? 0) * (b[2] ?? 0),
+    (a[0] ?? 0) * (b[1] ?? 0) - (a[1] ?? 0) * (b[0] ?? 0),
+  ];
+  const forward = unit([lookAt3[0] - eye[0], lookAt3[1] - eye[1], lookAt3[2] - eye[2]]);
+  const right = unit(cross(forward, up));
+  return { forward, right, up: cross(right, forward) };
 }
 
 /** The optics a venue spec lists (T704). All of it is geometry — no light math here. */
