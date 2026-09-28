@@ -1,0 +1,272 @@
+{
+  "assets": [],
+  "createdAt": "2026-09-27T00:00:00.000Z",
+  "graph": {
+    "edges": {
+      "cardMesh.out-cardGeo.points": {
+        "id": "cardMesh.out-cardGeo.points",
+        "source": {
+          "nodeId": "cardMesh",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "cardGeo",
+          "portId": "points"
+        }
+      },
+      "cocoon.out-out.input": {
+        "id": "cocoon.out-out.input",
+        "source": {
+          "nodeId": "cocoon",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "out",
+          "portId": "input"
+        }
+      },
+      "envSeed.out-typeEnv.input": {
+        "id": "envSeed.out-typeEnv.input",
+        "source": {
+          "nodeId": "envSeed",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "typeEnv",
+          "portId": "input"
+        }
+      },
+      "type.out-cocoon.input": {
+        "id": "type.out-cocoon.input",
+        "source": {
+          "nodeId": "type",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "cocoon",
+          "portId": "input"
+        }
+      },
+      "typeEnv.out-type.environment": {
+        "id": "typeEnv.out-type.environment",
+        "source": {
+          "nodeId": "typeEnv",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "type",
+          "portId": "environment"
+        }
+      }
+    },
+    "groups": {},
+    "nodes": {
+      "cam": {
+        "definitionVersion": 1,
+        "id": "cam",
+        "label": "cam1",
+        "parameters": {
+          "eye": [
+            120,
+            0,
+            5.333333492279053
+          ],
+          "far": 20,
+          "fov": 8.770574065900902,
+          "lookAt": [
+            120,
+            0,
+            1.5894571969710114e-7
+          ],
+          "near": 1
+        },
+        "position": {
+          "x": -2800,
+          "y": -300
+        },
+        "type": "camera"
+      },
+      "cardGeo": {
+        "definitionVersion": 1,
+        "id": "cardGeo",
+        "label": "cardgeo1",
+        "parameters": {
+          "material": "typesurf1",
+          "mode": "surface"
+        },
+        "position": {
+          "x": -3200,
+          "y": 0
+        },
+        "type": "geometry"
+      },
+      "cardMesh": {
+        "definitionVersion": 1,
+        "id": "cardMesh",
+        "label": "cardmesh1",
+        "parameters": {
+          "file": "media/on-nothing/on-nothing.glb",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
+          "select": "card.*",
+          "triangles": 32920,
+          "vertices": 33581
+        },
+        "position": {
+          "x": -3600,
+          "y": 0
+        },
+        "type": "meshFileIn"
+      },
+      "cocoon": {
+        "definitionVersion": 1,
+        "id": "cocoon",
+        "label": "cocoon1",
+        "parameters": {
+          "source": "struct Params {\n  t: f32, // @default 0  The card's clock, seconds.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\nfn toLinear(c: vec3f) -> vec3f {\n  return select(pow((c + vec3f(0.055)) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045));\n}\nfn toDisplay(c: vec3f) -> vec3f {\n  return select(1.055 * pow(max(c, vec3f(0.0)), vec3f(1.0 / 2.4)) - vec3f(0.055), c * 12.92, c <= vec3f(0.0031308));\n}\nfn grainAt(p: vec2f, t: f32) -> f32 {\n  let q = fract(sin(dot(floor(p) + vec2f(t * 37.0, t * 91.0), vec2f(12.9898, 78.233))) * 43758.5453);\n  return q - 0.5;\n}\n\n// the hairlines' x (reference px): C, O (two), C, O (two), O (two), then the N's two\nconst LINES = array<f32, 10>(374.5, 591.5, 650.5, 811.5, 1028.5, 1087.5, 1249.5, 1307.5, 1471.0, 1524.0);\nconst BASE = 385.0;\n\nfn hairline(p: vec2f, x: f32, len: f32, level: f32) -> f32 {\n  let k = BASE - p.y;\n  if (k < 0.0 || len <= 0.0) { return 0.0; }\n  let across = exp(-(p.x - x) * (p.x - x) / (2.0 * 1.6 * 1.6));\n  // brighter at the letter, easing off upward, a soft top\n  let along = (0.6 + 0.4 * (1.0 - clamp(k / max(len, 1.0), 0.0, 1.0))) * smoothstep(len, len - 14.0, k);\n  return level * across * along;\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let p = uv * vec2f(1920.0, 818.0);\n  let f = floor(params.t * 24.0 + 0.001);\n  // the strobe-off tail\n  let off = f == 49.0 || f == 51.0 || f == 53.0 || f >= 55.0;\n  var shown = select(1.0, 0.0, off);\n  let type_ = toDisplay(textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb).r * 0.976;\n  // C and O: climbing from 145 px a little slower than the N, fading out over the first 15 frames\n  let fade = clamp(1.0 - f / 15.0, 0.0, 1.0);\n  var lines = 0.0;\n  for (var i = 0; i < 8; i = i + 1) {\n    lines = max(lines, hairline(p, LINES[i], min(145.0 + 23.0 * f, BASE), 0.29 * fade));\n  }\n  // N: climbing to the top by frame 9, holding, snapping back at 16 and settling;\n  // the two flash frames (52, 54) throw the full lines back\n  var nLen = 11.0 + 21.0 * exp(-(f - 16.0) / 7.0);\n  if (f < 16.0) { nLen = min(145.0 + 27.5 * f, BASE); }\n  if (f == 52.0 || f == 54.0) { nLen = BASE; }\n  let nLevel = select(0.6, 0.45, f >= 16.0 && f != 52.0 && f != 54.0);\n  lines = max(lines, hairline(p, LINES[8], nLen, nLevel));\n  lines = max(lines, hairline(p, LINES[9], nLen, nLevel));\n  let grain = grainAt(p, params.t) * 0.006;\n  let display = clamp(max(type_, lines) * shown + grain + 0.002, 0.0, 1.0);\n  return vec4f(toLinear(vec3f(display)), 1.0);\n}",
+          "t": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "abstime"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -2300,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgsl"
+      },
+      "envSeed": {
+        "definitionVersion": 2,
+        "id": "envSeed",
+        "label": "envseed1",
+        "parameters": {},
+        "position": {
+          "x": -3000,
+          "y": 300
+        },
+        "resolution": {
+          "height": 32,
+          "mode": "fixed",
+          "width": 64
+        },
+        "type": "ramp"
+      },
+      "out": {
+        "definitionVersion": 1,
+        "id": "out",
+        "label": "out1",
+        "parameters": {
+          "toneMap": "none"
+        },
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "type": "output"
+      },
+      "type": {
+        "definitionVersion": 1,
+        "id": "type",
+        "label": "type1",
+        "parameters": {
+          "ambientColor": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "ambientIntensity": 0,
+          "antialias": "msaa",
+          "background": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "camera": "cam1",
+          "environmentIntensity": 0,
+          "environmentTaps": 4,
+          "lights": "",
+          "projectors": "",
+          "scenes": "cardgeo1"
+        },
+        "position": {
+          "x": -2600,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "render"
+      },
+      "typeEnv": {
+        "definitionVersion": 1,
+        "id": "typeEnv",
+        "label": "typeenv1",
+        "parameters": {
+          "bars": 0,
+          "floor": 0,
+          "roof": 0,
+          "source": "struct Params {\n  bars: f32, // @default 3  Radiance of the vertical light bars.\n  barCount: f32, // @default 22  Bars around the horizon.\n  roof: f32, // @default 0.006  Radiance of the roof.\n  floor: f32, // @default 0.002  Radiance below the horizon.\n  white: f32, // @default 0  1 = the white cyc room instead.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn barHash(i: f32) -> f32 {\n  return fract(sin(i * 91.3458 + 7.1) * 47453.5453);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let unused = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).a * 0.0;\n  let phi = (uv.x - 0.5) * 6.2831853;\n  let theta = uv.y * 3.1415927;\n  let d = vec3f(sin(theta) * sin(phi), cos(theta), -sin(theta) * cos(phi));\n  if (params.white > 0.5) {\n    let wall = mix(0.55, 1.0, smoothstep(-0.3, 0.4, d.y));\n    return vec4f(vec3f(wall * 1.6) + vec3f(unused), 1.0);\n  }\n  var radiance = mix(vec3f(params.floor), vec3f(params.roof), smoothstep(-0.05, 0.2, d.y));\n  // Vertical bars: each its own azimuth jitter, width and height.\n  let slot = uv.x * params.barCount;\n  let index = floor(slot);\n  let within = fract(slot) - 0.5 - (barHash(index) - 0.5) * 0.6;\n  let width = 0.05 + 0.06 * barHash(index + 3.0);\n  let top = 0.1 + 0.35 * barHash(index + 7.0);\n  let lit = step(0.35, barHash(index + 11.0));\n  let bar = smoothstep(width, width * 0.4, abs(within)) * smoothstep(-0.08, -0.04, d.y) * (1.0 - smoothstep(top - 0.04, top, d.y)) * lit;\n  radiance = radiance + vec3f(0.92, 0.96, 1.0) * params.bars * bar;\n  return vec4f(radiance + vec3f(unused), 1.0);\n}"
+        },
+        "position": {
+          "x": -2800,
+          "y": 300
+        },
+        "resolution": {
+          "height": 32,
+          "mode": "fixed",
+          "width": 64
+        },
+        "type": "customWgsl"
+      },
+      "typesurf": {
+        "definitionVersion": 1,
+        "id": "typesurf",
+        "label": "typesurf1",
+        "parameters": {
+          "gain": 1,
+          "model": "pbr",
+          "source": "struct Params {\n  gain: f32, // @default 1  Radiance of the type.\n};\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  o.albedo = vec4f(0.0, 0.0, 0.0, 1.0);\n  o.emissive = vec3f(p.gain);\n  o.roughness = 1.0;\n  o.metallic = 0.0;\n  return o;\n}"
+        },
+        "position": {
+          "x": -3000,
+          "y": -600
+        },
+        "type": "materialWgsl"
+      }
+    },
+    "revision": 1
+  },
+  "name": "On Nothing · cards",
+  "projectId": "project-on-nothing-cards",
+  "schemaVersion": 4,
+  "settings": {
+    "limits": {
+      "maxBufferBytes": 268435456,
+      "maxDispatch": 65535,
+      "maxResolution": 4096,
+      "memoryBudgetBytes": 3221225472
+    },
+    "outputResolution": {
+      "height": 818,
+      "width": 1920
+    },
+    "previewFps": 30,
+    "previewLongEdge": 192,
+    "randomSeed": 7,
+    "workingFormat": "rgba16float"
+  },
+  "updatedAt": "2026-09-27T00:00:00.000Z"
+}
