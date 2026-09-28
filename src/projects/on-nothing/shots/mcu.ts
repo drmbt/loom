@@ -3,7 +3,7 @@ import type { StoredParameter } from "../../../domain/types/parameters.ts";
 import { expressionSlot } from "../../../examples/documents/builders.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../../runtime/backend/shared-uniforms.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../../furnace/post.ts";
-import { GTAO_WGSL } from "../../furnace/screen-space.ts";
+import { CAMERA_PARAMS, GTAO_WGSL, VIEW } from "../../furnace/screen-space.ts";
 import { ENVIRONMENT_HDRI_WGSL, HEADLIGHT_COOKIE_WGSL, hazeLights, hazeWgsl } from "../atmosphere.ts";
 import { CRT_WGSL, GRADE_WGSL, LENS_WGSL, OPTICS_COMPOSITE_WGSL, STREAK_WGSL } from "../fx.ts";
 import { GLOSSY_SSR_WGSL } from "../reflections.ts";
@@ -120,6 +120,11 @@ interface Beat {
    * A sodium lamp just off the lens, far out of focus: a big soft warm disc with a brighter rim
    * (row 20's red flare). Centre in uv (may be expressions in `u`), radius in frame heights.
    */
+  /**
+   * Practical TUBES: a vertical light column seen close (row 21's near tube, row 31's), a glowing
+   * capsule between two points in the figure's frame; the depth occludes it and the lens blurs it.
+   */
+  readonly tubes?: readonly { readonly from: V3; readonly to: V3; readonly radius: number; readonly radiance: number }[];
   readonly flare?: { readonly centre: readonly [number | string, number | string]; readonly radius: number; readonly gain: number | string };
 }
 
@@ -573,10 +578,15 @@ export const MCU_TAKES: readonly Take[] = [
           { t: 0, body: { neck: [0.05, 0.2, 0] }, L: POINT_L, R: LOW_HANDS },
           { t: 0.4, body: { neck: [0.05, -0.1, 0] }, L: LOW_HANDS, R: right(POINT_L) },
         ],
-        frame: { dir: [0.35, -0.45, 1], head: [0.56, 0.16], size: 0.22 },
+        frame: { dir: [0.35, -0.45, 1], head: [0.56, 0.16], size: 0.28 },
         fov: 40,
         hand: { tiltIn: -2, tilt: -3, settle: 0.5, shake: 0.6, creep: 0.05 },
-        lights: CAR_LIGHTS,
+        // two tall tubes near the lens at the left, far out of focus: the reference's big columns
+        tubes: [
+          { from: [-0.9, 0.1, 0.4], to: [-0.9, 2.6, 0.4], radius: 0.09, radiance: 2.5 },
+          { from: [-1.5, 0.1, -0.3], to: [-1.5, 2.6, -0.3], radius: 0.09, radiance: 2.5 },
+        ],
+        lights: { ...CAR_LIGHTS, warm: { at: [-2.5, 2.5, -1.0], power: 1.2 } },
       },
       {
         // row 24, first part (25.78): front, the white cars either side, the hands low then up in a gesture
@@ -614,7 +624,7 @@ export const MCU_TAKES: readonly Take[] = [
         frames: 14,
         stage: "void",
         keys: [{ t: 0, body: { neck: [0.1, 0, 0], head: [0.05, 0, 0] }, L: mirror(MOUTH_R), R: DOWN }],
-        frame: { dir: [1, -0.1, 0.35], head: [0.42, 0.12], size: 1.5 },
+        frame: { dir: [1, -0.25, 0.45], head: [0.32, -0.18], size: 1.5 },
         fov: 20,
         focus: 0.6,
         fstop: 2.0,
@@ -655,15 +665,15 @@ export const MCU_TAKES: readonly Take[] = [
         stage: "void",
         keys: [{ t: 0, body: { neck: [0.1, 0.1, 0], head: [0.05, 0.05, 0] }, ...both(DOWN) }],
         life: { "head.y": "sin(u * 1.2) * 0.02" },
-        frame: { dir: [0.9, 0.15, 0.35], head: [0.5, 0.45], size: 1.5 },
+        frame: { dir: [-0.7, 0.3, 0.9], head: [0.4, 0.08], size: 1.7 },
         fov: 34,
         fstop: 2.8,
         hand: { tiltIn: -1, tilt: -1.5, settle: 0.8, shake: 0.15, creep: 0.01 },
-        lights: { rimL: { at: [0.5, 1.9, -0.6], power: 1.5 }, key: { at: [1.2, 2.2, 0.8], power: 2.5 }, cyan: { at: [0.6, 1.4, 0.6], power: 0.3 } },
-        lamps: [
-          { at: [-0.9, 1.1, 2.6], size: 0.07, radiance: 60 },
-          { at: [-1.1, 1.1, 2.4], size: 0.07, radiance: 60 },
-          { at: [-1.3, 1.1, 2.2], size: 0.07, radiance: 60 },
+        lights: { rimL: { at: [0.5, 1.9, -0.6], power: 1.5 }, key: { at: [-0.8, 2.0, 1.1], power: 2.5 }, cyan: { at: [0.6, 1.4, 0.6], power: 0.3 } },
+        tubes: [
+          { from: [0.9, 0.2, -1.4], to: [0.9, 2.8, -1.4], radius: 0.05, radiance: 4 },
+          { from: [1.3, 0.2, -1.9], to: [1.3, 2.8, -1.9], radius: 0.05, radiance: 4 },
+          { from: [1.7, 0.2, -2.4], to: [1.7, 2.8, -2.4], radius: 0.05, radiance: 4 },
         ],
       },
       {
@@ -678,7 +688,7 @@ export const MCU_TAKES: readonly Take[] = [
         fstop: 2.0,
         hand: { tiltIn: 3, tilt: 2, settle: 0.4, shake: 0.4, creep: 0.03 },
         lights: { key: { at: [-0.6, 2.2, 0.9], power: 1.5 }, top: { at: [0.2, 2.7, -0.5], power: 3 }, rimL: { at: [0.6, 1.8, -0.5], power: 1.2 } },
-        lamps: [{ at: [-0.9, 1.3, -1.6], size: 0.1, radiance: 60 }, { at: [-1.3, 1.3, -2.4], size: 0.1, radiance: 60 }],
+        tubes: [{ from: [-0.8, 0.2, -1.2], to: [-0.8, 2.8, -1.2], radius: 0.12, radiance: 1.8 }],
       },
     ],
   },
@@ -747,6 +757,51 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let fill = 1.0 - smoothstep(0.82, 1.0, d);
   let rim = exp(-pow((d - 0.93) / 0.06, 2.0));
   return vec4f(base.rgb + params.color * params.gain * (fill * 0.35 + rim * 0.65), base.a);
+}`;
+
+/**
+ * A TUBE LAMP: an emissive capsule between `a` and `b` (world), drawn where the view ray passes
+ * within `radius` of the segment and nothing nearer covers it. HDR radiance, soft-edged, so the
+ * depth of field spreads it and the streak glass lengthens it. Input = the picture, More = [depth].
+ */
+const TUBE_WGSL = `struct Params {
+${CAMERA_PARAMS}
+  a: vec3f, // @default 0  One end (world metres).
+  b: vec3f, // @default 0  The other end.
+  radius: f32, // @default 0.03  Tube radius, metres.
+  radiance: f32, // @default 0  Radiance (0 off).
+};
+${SHARED_UNIFORMS_WGSL}
+@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+@group(0) @binding(2) var<uniform> frameU: SharedFrame;
+@group(0) @binding(3) var<uniform> params: Params;
+@group(0) @binding(4) var inputTexture1: texture_2d<f32>;
+${VIEW}
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let base = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
+  if (params.radiance <= 0.0) { return base; }
+  let v = makeView();
+  let d = rayAt(v, uv);
+  // closest approach between the ray eye + d t and the segment a + u s, s in [0, 1]
+  let u = params.b - params.a;
+  let w = params.eye - params.a;
+  let aa = dot(d, d);
+  let bb = dot(d, u);
+  let cc = dot(u, u);
+  let dd = dot(d, w);
+  let ee = dot(u, w);
+  let den = max(aa * cc - bb * bb, 1e-8);
+  let sc = clamp((bb * ee - cc * dd) / den, 0.0, 1e6);
+  let tc = clamp((aa * ee - bb * dd) / den, 0.0, 1.0);
+  let gap = length(w + d * sc - u * tc);
+  let core = 1.0 - smoothstep(params.radius * 0.6, params.radius, gap);
+  if (core <= 0.0) { return base; }
+  let p = params.a + u * tc;
+  let z = viewDepth(uv);
+  if (z > 0.0 && z < dot(p - params.eye, v.forward)) { return base; }
+  return vec4f(base.rgb + vec3f(0.92, 0.97, 1.0) * params.radiance * core, base.a);
 }`;
 
 /** Figure-local → world (the skin kernel's turn: yaw about +Y, then the place). */
@@ -1029,6 +1084,20 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
     };
     [0, 1, 2].forEach((axis) => { params[`lamp.${"xyz"[axis]}`] = expressionSlot(switched(world.map((p) => fmt(p[axis]!)), starts), world[0]![axis]!); });
     g.pass(`lamp${k}`, LAMP_DISC_WGSL, params, g.last, [depth], [-1600, 200 + k * 100]);
+  }
+  const tubeCount = Math.max(0, ...take.beats.map((beat) => beat.tubes?.length ?? 0));
+  for (let k = 0; k < tubeCount; k++) {
+    const params: Record<string, StoredParameter> = {
+      ...cameraParams,
+      radius: expressionSlot(switched(take.beats.map((beat) => fmt(beat.tubes?.[k]?.radius ?? 0.03)), starts), 0.03),
+      radiance: expressionSlot(switched(take.beats.map((beat) => fmt(beat.tubes?.[k]?.radiance ?? 0)), starts), 0),
+    };
+    for (const end of ["a", "b"] as const) {
+      const world = take.beats.map((beat, b) => toWorld(places[b]!, yaws[b]!, (end === "a" ? beat.tubes?.[k]?.from : beat.tubes?.[k]?.to) ?? [0, -50, 0]));
+      params[end] = world[0]!;
+      [0, 1, 2].forEach((axis) => { params[`${end}.${"xyz"[axis]}`] = expressionSlot(switched(world.map((q) => fmt(q[axis]!)), starts), world[0]![axis]!); });
+    }
+    g.pass(`tube${k}`, TUBE_WGSL, params, g.last, [depth], [-1580, 600 + k * 100]);
   }
   g.pass("dof", LENS_DOF_WGSL, lensParams, g.last, [depth], [-1500, 0]);
   g.pass("dofFill", DOF_FILL_WGSL, lensParams, g.last, [depth], [-1400, 0]);
