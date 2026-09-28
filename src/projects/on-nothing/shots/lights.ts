@@ -399,6 +399,47 @@ TAKES[106] = {
 };
 
 /**
+ * Row 1, part a (0:00.00, 8 frames, before the title): close past the hero's grille (the left
+ * quarter of the frame) at its lamp, the white neighbour's lamps beyond — each lamp's LEDs
+ * drawn up into short columns — drifting for three frames; then a WHIP (frame 3 a violent
+ * smear up and across) into a featureless grey-teal smear (frames 4–7, sRGB ~45–55) that the
+ * title's grille lands out of.
+ */
+TAKES[1] = {
+  base: "tableau",
+  build: (cut, facts) => {
+    noFigure(cut);
+    // the white neighbour stands back, so its lamps read as the smaller blocks beyond the hero's
+    moveCar(cut, facts, "car2", [0.2, 0, -2.6]);
+    const fov = 24;
+    setCamera(cut, {
+      keys: [
+        { t: 0, eye: [0.05, 0.85, 1.05], aim: [1.9, 0.95, -1.5] },
+        { t: 0.1, eye: [0.03, 0.85, 1.05], aim: [2.0, 0.9, -1.5] },
+        // the whip: up and across, hard, then on through the dark room
+        { t: 0.2, eye: [0.0, 0.92, 1.0], aim: [5.0, 2.8, 0.2] },
+        { t: 0.34, eye: [0.0, 0.97, 0.95], aim: [5.5, 3.4, 3.8] },
+      ],
+      fov,
+      shake: 0.006,
+      aimShake: 0.02,
+      roll: 6,
+      rollRate: 30,
+      rollWander: 1,
+    });
+    setParams(cut, "lens_dof", { focusDistance: 1.5, aperture: 1.1 });
+    setParams(cut, "surf", { headGain: 0.6 });
+    // the glass: short columns off each LED, not the tableau's tall slabs
+    streakReach(cut, "0.3");
+    // the whip's smear, image-space (a --final render adds the real sub-frame motion blur on top):
+    // nothing for three frames, a violent smear on frame 3, the grey wash after
+    setParams(cut, "lens", { whip: expressionSlot(`0.45 * clamp((abstime * 24 - 2.5) / 1.5, 0, 1)`, 0) });
+    // the smear is the room averaged: a grey-teal wash lifts the blacks as the whip runs
+    setParams(cut, "grade", { lift: expressionSlot(`0.06 + 0.17 * clamp((abstime * 24 - 3) / 1.5, 0, 1)`, 0.06), exposure: 1.0, shadowTint: [0.9, 1.03, 1.07, 1], split: 0.6 });
+  },
+};
+
+/**
  * Row 70 (1:13.95, 73 frames): the floor from above on a long lens — two headlight pools on dry
  * concrete, black between them, the figure's shadow crossing them.
  */
@@ -470,11 +511,21 @@ TAKES[18] = {
     setCamera(cut, { keys: [{ t: 0, eye, aim }, { t: 0.1, eye: [eye[0], eye[1] + 0.01, eye[2] - 0.01], aim }], fov, shake: 0.004, aimShake: 0.006, roll: -2, rollRate: 6 });
     // the lamp: just peeking past the back of the head (frame x ≈ 0.72), so the lens's mirror
     // ghost lands warm at 0.28 and the big centre ghost washes the whole face
-    ringLamp(cut, facts, [VOID[0] - 3.15, 1.68, -0.62], eye, { radiance: 150, size: 0.2, haze: 0.06 });
+    ringLamp(cut, facts, [VOID[0] - 3.15, 1.68, -0.62], eye, { radiance: 80, size: 0.2, haze: 0.06 });
     setParams(cut, "dof", { focusDistance: 1.05, aperture: 3.5 });
     // the veil: the ghosts at half again their ring-shot gain, the print pushed up
-    setParams(cut, "ghosts", { gain: 0.45 });
-    setParams(cut, "optics", { bloom: 0.5, halo: 0.4 });
+    // The reference's table: no big mirrored disc on the left (ghost 0 off); the one huge veil
+    // sits right of centre (0.6 W, toward the source), filled, radius ~0.9 H; the warm oval at
+    // the lamp's mirror point stays.
+    setParams(cut, "ghosts", {
+      gain: 0.45,
+      ratio: [-1.9, 0.0, -1.0, 0.45],
+      radius: [0.98, 0.78, 0.12, 0.05],
+      rim: [0.022, 0.03, 0.03, 0.012],
+      fill: [0.05, 0.35, 0.7, 0.5],
+      strength: [0, 0.028, 0.05, 0],
+    });
+    setParams(cut, "optics", { bloom: 0.2, halo: 0 });
     setParams(cut, "grade", { exposure: 0.7, saturation: 0.7, keepWarm: 1 });
   },
 };
@@ -489,4 +540,23 @@ export function lightsDocument(facts: OnNothingFacts, options: LightsOptions, bu
   const cut = surgery(base);
   take.build(cut, facts, options);
   return finish(base, cut, `lights-${takeId}`);
+}
+
+// ───────────────────────── the tableau's glass, measured (row 17a) ─────────────────────────
+
+/** The reach (frame heights) that just clears the frame's top edge from the tableau's lamps (they stand at ~0.78 H). */
+export const TABLEAU_TOP = 0.85;
+
+/**
+ * Row 17a (0:15.39–16.52, 27 frames): how far the tableau's columns reach, frame by frame, as a
+ * share of the way to the frame's top edge (the reference's lamps stand at 0.56 of the height).
+ * Measured with the contiguous run of pixels over sRGB 70 above the lamp line: frames 0–1 are
+ * the cut's flash (full height), frame 2 barely 0.18, then the glass shoots to the TOP by frame
+ * 4, holds to 7, and retracts steadily to a quarter by frame 20, where it stays.
+ */
+export function tableauReach(top: number): string {
+  const n = "floor(abstime * 24 + 0.001)";
+  const rise = `clamp(0.18 + (${n} - 2) * 0.42, 0, 1)`;
+  const fall = `(1 - 0.75 * clamp((${n} - 7) / 13, 0, 1))`;
+  return `(${top} * max(clamp(2 - ${n}, 0, 1), min(${rise}, ${fall})))`;
 }

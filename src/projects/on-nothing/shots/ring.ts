@@ -68,6 +68,11 @@ export const GHOSTS_WGSL = `struct Params {
 ${CAMERA_PARAMS}
   lamp: vec3f, // @default 0  The source's world position.
   gain: f32, // @default 1  Overall ghost brightness.
+  ratio: vec4f, // @default [-1.9, -0.1, -1.0, 0.45]  Each ghost's place: its ratio of the source's offset from the frame centre (1 = on the source, -1 = mirrored).
+  radius: vec4f, // @default [0.98, 0.9, 0.075, 0.05]  Each ghost's radius, frame heights.
+  rim: vec4f, // @default [0.022, 0.012, 0.02, 0.012]  Each ghost's rim width.
+  fill: vec4f, // @default [0.05, 0.0, 0.6, 0.5]  How much each ghost's disc fills inside its rim.
+  strength: vec4f, // @default [0.2, 0.09, 0.07, 0.0]  Each ghost's brightness (0 drops it).
 };
 ${SHARED_UNIFORMS_WGSL}
 @group(0) @binding(0) var inputSampler: sampler;
@@ -76,14 +81,10 @@ ${SHARED_UNIFORMS_WGSL}
 @group(0) @binding(3) var<uniform> params: Params;
 @group(0) @binding(4) var inputTexture1: texture_2d<f32>;
 ${VIEW}
-// ratio f, radius (frame heights), rim width, fill, colour
+// The ghost table is parameters (ratio, radius, rim, fill, strength: one vec4 component per
+// ghost; T1407b lights), so a take can drop or reshape a ghost; the colours stay fixed.
 const GHOSTS: u32 = 4u;
-const G_RATIO = array<f32, 4>(-1.9, -0.1, -1.0, 0.45);
-const G_RADIUS = array<f32, 4>(0.98, 0.9, 0.075, 0.05);
-const G_RIM = array<f32, 4>(0.022, 0.012, 0.02, 0.012);
-const G_FILL = array<f32, 4>(0.05, 0.0, 0.6, 0.5);
 const G_COLOR = array<vec3f, 4>(vec3f(0.85, 0.9, 1.0), vec3f(0.7, 0.8, 0.95), vec3f(1.0, 0.55, 0.3), vec3f(0.6, 0.85, 1.0));
-const G_GAIN = array<f32, 4>(0.2, 0.09, 0.07, 0.0);
 
 fn ring(d: f32, radius: f32, rim: f32, fill: f32) -> f32 {
   let edge = exp(-pow((d - radius) / rim, 2.0));
@@ -110,14 +111,14 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let power = dot(seen / 49.0, vec3f(0.2126, 0.7152, 0.0722));
   var add = vec3f(0.0);
   for (var g = 0u; g < GHOSTS; g = g + 1u) {
-    let centre = vec2f(0.5) + (at.xy - vec2f(0.5)) * G_RATIO[g];
+    let centre = vec2f(0.5) + (at.xy - vec2f(0.5)) * params.ratio[g];
     let q = (uv - centre) * vec2f(aspect, 1.0);
     let d = length(q);
     // dispersion: red a little larger than blue
-    let r = ring(d, G_RADIUS[g] * 1.012, G_RIM[g], G_FILL[g]);
-    let gg = ring(d, G_RADIUS[g], G_RIM[g], G_FILL[g]);
-    let b = ring(d, G_RADIUS[g] * 0.988, G_RIM[g], G_FILL[g]);
-    add = add + vec3f(r, gg, b) * G_COLOR[g] * G_GAIN[g];
+    let r = ring(d, params.radius[g] * 1.012, params.rim[g], params.fill[g]);
+    let gg = ring(d, params.radius[g], params.rim[g], params.fill[g]);
+    let b = ring(d, params.radius[g] * 0.988, params.rim[g], params.fill[g]);
+    add = add + vec3f(r, gg, b) * G_COLOR[g] * params.strength[g];
   }
   return vec4f(base.rgb + add * power * params.gain, base.a);
 }`;

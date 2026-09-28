@@ -25,7 +25,7 @@ import { handheld } from "./shots/handheld.ts";
 import { CLOSEUP_SHOTS, closeupDocument, isCloseup } from "./shots/closeups.ts";
 import { splitDocument } from "./shots/split.ts";
 import { mirrorDocument } from "./shots/mirror.ts";
-import { lightsDocument } from "./shots/lights.ts";
+import { TABLEAU_TOP, lightsDocument, tableauReach } from "./shots/lights.ts";
 import { incarDocument } from "./shots/incar.ts";
 import { handsDocument } from "./shots/hands.ts";
 import { REACT_PROFILES, reactive } from "./shots/react.ts";
@@ -507,7 +507,8 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   }
   const scene = last;
   const opticsGain: Record<Base, { streak: number; halo: number }> = {
-    tableau: { streak: 0.8, halo: 0 },
+    // T1407b (lights): measured on row 17a — thin, semi-transparent columns, never white slabs
+    tableau: { streak: 0.5, halo: 0 },
     wheel: { streak: 0.55, halo: 0 },
     title: { streak: 0.35, halo: 0.15 },
     quad: { streak: 0.25, halo: 0 },
@@ -533,14 +534,15 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   // Every column EXTENDS and RETRACTS together with the song, smoothly: the reach is a lane.
   // ONE direction per cut: the columns grow steadily through the shot, and the song only
   // leans on that very slowly (a 1 s lag) — never a jitter.
-  const reachExpr = `(${reach} * (0.62 + 0.3 * clamp(abstime / 4, 0, 1) + 0.18 * ${LOUD}))`;
+  // T1407b (lights): the 0:16 tableau's own glass is measured frame by frame (shots/lights.ts tableauReach)
+  const reachExpr = shot === "tableau" ? tableauReach(TABLEAU_TOP) : `(${reach} * (0.62 + 0.3 * clamp(abstime / 4, 0, 1) + 0.18 * ${LOUD}))`;
   // 16 taps a pass: each pass's span (16 steps) covers the next pass's step twice over, so the
   // three convolve into one smooth column — no stepped tops, no banded copies of each LED.
   const STREAKS = [reach / 400, reach / 60, reach / 20] as const;
   const STREAK_DIV = [400, 60, 20] as const;
   STREAKS.forEach((step, index) => {
     const id = `streak${index}`;
-    nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step: expressionSlot(`${reachExpr} / ${STREAK_DIV[index]}`, step), decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 ? 0.003 : 0, compress: index === 0 ? 3 : 0, ...(index === 0 ? { minSize: 0.006 } : {}), down: 0, gain: 1.8, striation: 0.22, striationScale: 110 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } }));
+    nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step: expressionSlot(`${reachExpr} / ${STREAK_DIV[index]}`, step), decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 && base !== "tableau" ? 0.003 : 0, compress: index === 0 ? (base === "tableau" ? 1.5 : 3) : 0, ...(index === 0 ? { minSize: 0.006 } : {}), down: 0, gain: 1.8, striation: 0.22, striationScale: 110 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } }));
     edges.push(edge(`into-${id}`, [index === 0 ? "streakSrc" : `streak${index - 1}`, "out"], [id, "input"]));
   });
   nodes.push(node("hot", "customWgsl", [-1300, 500], { source: BRIGHT_PASS_WGSL, threshold: 150, knee: 30 }, { label: "hot1", resolution: { mode: "scale", factor: 0.25 } }));
@@ -556,7 +558,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     edges.push(edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]));
     edges.push(edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0));
   }
-  pass("optics", OPTICS_COMPOSITE_WGSL, { streak: opticsGain[base].streak, halo: opticsGain[base].halo, bloom: 0.12, streakTint: [0.9, 0.97, 1, 1] }, [react.streak(["streak2", "out"]), ["halo", "out"], ["bloomUp0", "out"]], [-500, 0]);
+  pass("optics", OPTICS_COMPOSITE_WGSL, { streak: opticsGain[base].streak, halo: opticsGain[base].halo, bloom: base === "tableau" ? 0.04 : 0.12, streakTint: [0.9, 0.97, 1, 1] }, [react.streak(["streak2", "out"]), ["halo", "out"], ["bloomUp0", "out"]], [-500, 0]);
 
   // ── Lens and grade ──
   const snapBlur: Record<string, StoredParameter> =
