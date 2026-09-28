@@ -5,7 +5,7 @@ import type { OnNothingFacts, PartFacts } from "../scene-facts.ts";
 import { markerOf, wgslVec3 } from "../scene-facts.ts";
 import { CAR_RIG_ATTRIBUTES } from "../car-rig.ts";
 import { CRT_WGSL } from "../fx.ts";
-import { boneParam } from "../skin-kernel.ts";
+import { boneParam, handPose } from "../skin-kernel.ts";
 import { GLASS_COMPOSITE_WGSL, OCCLUDER_WGSL, SURFACE_WGSL } from "../surface.ts";
 import { Plate, knob, vectorKnobs, wobble } from "./plate.ts";
 
@@ -17,13 +17,18 @@ import { Plate, knob, vectorKnobs, wobble } from "./plate.ts";
  * its first and last frames, then a glitch (a teal frame; the positive back, dark, the negative
  * holding only on the face) and the face big and tilted, smeared out. See row36Glitch.
  *
+ * Take 1, row 45 (0:46.171-0:46.838, frames 1107-1122): through the open door, the figure
+ * shirtless and slouched in the front seat, the near hand thrown at the lens pointing, the far
+ * hand on the thigh, a passenger beyond with an arm out along the dash, the cabin's cyan strips;
+ * out past the B-pillar on the left the room and the white cars' lamps, smeared up. The cabin is
+ * moved in front of the car row for it, and the frame is MIRRORED (see MIRROR_X_WGSL).
+ *
  * The set is the tableau's (the warehouse, the car row, their lamps, the haze, the streak glass,
  * the grade: document.ts) with the CABIN car added — the GLS with its interior kept, its driver's
  * door a rig part (shut here) and its window down (tools/blender/on-nothing/carint.py) — the
  * figure SEATED in it, and the cabin's panes drawn in their own Render and laid over the frame,
- * so the glass is seen through and mirrors the room. Rows 45, 84, 85 and 91 (the open door, the
- * window double exposure, the rolling wide, the inverted close-up) are not built yet; the cabin,
- * the door kernel and the negative are what they need.
+ * so the glass is seen through and mirrors the room. Rows 84, 85 and 91 (the window double
+ * exposure, the rolling wide, the inverted close-up) are not built yet.
  */
 
 type V3 = readonly [number, number, number];
@@ -78,13 +83,13 @@ const add = (a: V3, b: V3, k = 1): [number, number, number] => [a[0] + b[0] * k,
  * The frame in the car's own axes: `at(local)` maps (right, up, forward) metres from the driver's
  * hip to the world. The car faces +Z in these builds, but nothing below assumes it.
  */
-function carFrame(cabin: Cabin): { hip: V3; at: (local: V3) => [number, number, number] } {
+function carFrame(cabin: Cabin, shift: V3 = [0, 0, 0]): { hip: V3; at: (local: V3) => [number, number, number] } {
   const f = cabin.forward;
   // the car's right (the driver's right) = forward × up
   const right: V3 = [-f[2], 0, f[0]];
   // The hip joint (the H-point): 11 cm above the cushion's top (the pelvis's own depth), 16 cm
   // ahead of the backrest's face.
-  const hip: V3 = [cabin.back[0] + f[0] * 0.16, cabin.seat[1] + 0.11, cabin.back[2] + f[2] * 0.16];
+  const hip: V3 = [cabin.back[0] + f[0] * 0.16 + shift[0], cabin.seat[1] + 0.11 + shift[1], cabin.back[2] + f[2] * 0.16 + shift[2]];
   const at = (local: V3): [number, number, number] => add(add(add(hip, right, local[0]), [0, 1, 0], local[1]), f, local[2]);
   return { hip, at };
 }
@@ -131,6 +136,23 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let dot = 1.0 - smoothstep(0.2, 0.5, length(q));
   out = out * (1.0 - params.dots + params.dots * dot * 1.4);
   return vec4f(pow(out, vec3f(2.2)), 1.0);
+}`;
+
+/**
+ * MIRROR: the frame flipped left for right. Row 45's figure sits in the passenger's seat of a
+ * car whose opening door is the driver's; the cabin's one rig door is the driver's, so the take
+ * is shot from the driver's side and flipped (nothing in frame reads as handed: no text, no badge).
+ */
+export const MIRROR_X_WGSL = `struct Params {
+  unused: f32, // @default 0  (none)
+};
+@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  return textureSampleLevel(inputTexture, inputSampler, vec2f(1.0 - uv.x, uv.y), 0.0);
 }`;
 
 /**
@@ -236,13 +258,17 @@ ${fallback}`);
 }
 export const CABIN_SURFACE_WGSL = cabinSurface();
 
-/** Knobs for every bone: the given ones, zero for the rest (no tableau performance survives). */
+/** Knobs for every bone: the given ones, zero for the rest (no tableau performance survives); the hands' knobs (skin-kernel.ts handPose: curl, spread, thumb) pass through. */
 function seatedPose(facts: OnNothingFacts, values: Record<string, number | string>): Record<string, StoredParameter> {
   const known = new Set(facts.bones.map(boneParam));
   const out: Record<string, StoredParameter> = {};
   for (const bone of known) out[bone] = [0, 0, 0];
   for (const [key, value] of Object.entries(values)) {
     const [bone, axis] = key.split(".");
+    if (bone !== undefined && /^(curl|spread|thumb)[LR]$/.test(bone)) {
+      out[key] = knob(String(value), typeof value === "number" ? value : 0);
+      continue;
+    }
     if (bone === undefined || axis === undefined || !known.has(bone)) throw new Error(`incar: no bone knob "${key}".`);
     out[key] = knob(String(value), typeof value === "number" ? value : 0);
   }
@@ -299,6 +325,14 @@ interface Take {
   readonly door: number | string;
   /** The take's own finishing passes and knobs, after the common ones (`at` maps the car's frame to the world). */
   readonly finish?: (plate: Plate, at: (local: V3) => [number, number, number]) => void;
+  /** The cabin car's own lamps' radiance (headlights, DRLs, the mirrors' signal strips); unset, the scene's. */
+  readonly ownLamps?: number;
+  /** Move the whole cabin car (and everything framed by it) by this, glTF metres: another mark in the room. */
+  readonly shift?: V3;
+  /** Flip the finished frame left for right (see MIRROR_X_WGSL). */
+  readonly mirror?: boolean;
+  /** A second figure in the passenger's seat: which one, its pose, its hip shifted from that seat's H-point. */
+  readonly passenger?: { readonly area: "fig" | "figbare"; readonly pose: Record<string, number | string>; readonly hipShift?: V3 };
 }
 
 /** A shot's clock in output frames (24 fps): `after(k)` is 1 from frame k on (sub-frames included). */
@@ -362,7 +396,7 @@ function row36Glitch(plate: Plate, at: (local: V3) => [number, number, number]):
 
 const COOL = [0.85, 0.92, 1, 1] as const;
 
-const TAKES: Record<0, Take> = {
+const TAKES: Record<0 | 1, Take> = {
   // row 36: at the windscreen, just outside it, a little toward the door (frame: the figure right
   // of centre, big, the passenger's side and the rear seats beyond on the left)
   0: {
@@ -401,13 +435,74 @@ const TAKES: Record<0, Take> = {
     door: 0,
     finish: row36Glitch,
   },
+  // row 45 (0:46.17, 16 frames): outside the open driver's door, just behind its front edge,
+  // looking in and back — the figure shirtless and slouched in the seat, the near (left) hand
+  // thrown at the lens with the rings, the far hand on the thigh; the passenger beyond, an arm
+  // out along the far door; the open door's inner panel and its cyan strip on the right, the
+  // headliner's strip over them; outside on the left the room, the white cars' lamps smeared up.
+  1: {
+    area: "figbare",
+    // slid forward in the seat, slouched: the upper body clears the B-pillar
+    hipShift: [0.05, -0.08, 0.3],
+    pose: {
+      ...legsSeated(-0.5),
+      "spine.x": -0.08,
+      "chest.x": 0.1,
+      // the near (left) hand thrown out at the lens, the far hand on the thigh, the head toward the door
+      "upperarmL.x": `-0.1 + sin(abstime * 5.2) * 0.05`,
+      "upperarmL.y": 0.5,
+      "upperarmL.z": 0.3,
+      "forearmL.x": `-0.8 + sin(abstime * 5.2 + 0.6) * 0.06`,
+      "upperarmR.z": 0.62,
+      "forearmR.x": -0.6,
+      // the thrown hand points (index out, the rest in a fist, the thumb up); the far hand lies loose
+      ...handPose("L", { curl: 1.35, point: 0.95, thumb: 0.1, thumbOut: 0.5, extra: [0, 0, 0.05, 0.1] }),
+      ...handPose("R", { curl: 0.45, spread: 0.08 }),
+      "neck.y": 0.4,
+      "neck.x": `0.08 + sin(abstime * 2.3) * 0.03`,
+    },
+    passenger: {
+      area: "fig",
+      hipShift: [0, -0.04, 0],
+      pose: {
+        ...legsSeated(-0.3),
+        // the far arm out along the dash
+        "upperarmR.y": 1.1,
+        "upperarmR.z": 0.4,
+        "forearmR.y": 0.2,
+        "upperarmL.z": -0.55,
+        "neck.y": -0.4,
+        "neck.x": 0.1,
+      },
+    },
+    eye: [-0.7, 0.45, 0.62],
+    aim: [0.4, 0.1, -0.35],
+    fov: 72,
+    roll: `-4 + abstime * 2 + ${wobble(3, 1.2)}`,
+    sway: 0.02,
+    focus: 0.95,
+    negative: false,
+    leather: [0.03, 0.028, 0.027],
+    strips: 6,
+    lens: 0.004,
+    // the figure's warm key from outside on the left (the room's sodium), a cool top in the cabin,
+    // the strips' cyan spill on the far side
+    lights: [["cabinKey", [-0.45, 0.55, 0.95], [1, 0.72, 0.5, 1], 0.6], ["cabinDome", [0.3, 0.75, -0.3], COOL, 0.08], ["cabinStrip", [0.9, 0.1, 0.4], [0.2, 0.9, 1, 1], 0.12], ["passengerKey", [0.6, 0.25, 0.5], COOL, 0.3]],
+    exposure: -0.2,
+    door: 1.25,
+    mirror: true,
+    // in front of the car row (its lamps face +z at z = 0): out past the B-pillar the lens sees their fronts
+    shift: [4, 0, 9.5],
+    // the door mirror's signal strip sits a hand from the lens: not lit in the reference
+    ownLamps: 0,
+  },
 };
 
 /** The tableau's set with the cabin car in it, the figure seated, a take's camera and finish. */
 function cabinPlate(facts: OnNothingFacts, build: Builder, options: IncarOptions, take: Take): Plate {
   const plate = new Plate(build(facts, { shot: "tableau", ...(options.width === undefined ? {} : { width: options.width }), ...(options.height === undefined ? {} : { height: options.height }), audio: options.audio === true, hdri: options.hdri === true, crt: false }));
   const cabin = cabinFacts(facts);
-  const frame = carFrame(cabin);
+  const frame = carFrame(cabin, take.shift);
   const scale = (options.width ?? 1920) / 1920;
 
   // ── The cabin car: its body (interior and all) in the main Render ──
@@ -415,11 +510,18 @@ function cabinPlate(facts: OnNothingFacts, build: Builder, options: IncarOptions
   const panes = facts.areas.get("cabinglass");
   if (body === undefined || panes === undefined) throw new Error("incar: no cabin in the GLB (rebuild it with tools/blender/on-nothing/carint.py).");
   plate.add("mesh_cabin", "meshFileIn", { file: facts.glbUrl, select: body.select, vertices: body.vertices, triangles: body.triangles, parts: body.parts }, { label: "meshcabin1" });
-  plate.add("cabinSurf", "materialWgsl", { ...plate.node("surf").parameters, source: CABIN_SURFACE_WGSL, leather: [...take.leather], trim: [0.02, 0.02, 0.021], stripGain: take.strips, lens: take.lens ?? 0.004, plainChain: take.chain === false ? 1 : 0 }, { label: "cabinsurf1" });
+  plate.add("cabinSurf", "materialWgsl", { ...plate.node("surf").parameters, source: CABIN_SURFACE_WGSL, leather: [...take.leather], trim: [0.02, 0.02, 0.021], stripGain: take.strips, lens: take.lens ?? 0.004, plainChain: take.chain === false ? 1 : 0, ...(take.ownLamps === undefined ? {} : { headGain: take.ownLamps }) }, { label: "cabinsurf1" });
   plate.add("geo_cabin", "geometry", { mode: "surface", material: "cabinsurf1" }, { label: "geocabin1" });
   plate.add("door", "pointKernel", { capacity: body.vertices, attributes: CAR_RIG_ATTRIBUTES, kernel: doorKernel(body.partTable), open: knob(take.door, 0) }, { label: "door1" });
   plate.connect("mesh-door", ["mesh_cabin", "out"], ["door", "in"]);
-  plate.connect("door-geo-cabin", ["door", "out"], ["geo_cabin", "points"]);
+  // the take may move the whole car (its panes too) to another mark in the room
+  const carOut: readonly [string, string] = take.shift === undefined ? ["door", "out"] : ["moveCabin", "out"];
+  const paneOut: readonly [string, string] = take.shift === undefined ? ["mesh_cabinglass", "out"] : ["movePanes", "out"];
+  if (take.shift !== undefined) {
+    plate.add("moveCabin", "pointTransform", { translate: [...take.shift], pivot: "origin" }, { label: "movecabin1" });
+    plate.connect("door-move", ["door", "out"], ["moveCabin", "points"]);
+  }
+  plate.connect("door-geo-cabin", carOut, ["geo_cabin", "points"]);
   plate.set("shot", { scenes: `${String(plate.node("shot").parameters["scenes"])} geocabin1` });
 
   // ── The figure, seated in the driver's seat ──
@@ -436,6 +538,19 @@ function cabinPlate(facts: OnNothingFacts, build: Builder, options: IncarOptions
   const kept = Object.fromEntries(Object.entries(skin.parameters).filter(([key]) => ["capacity", "attributes", "kernel"].includes(key)));
   plate.nodes.set("skin", { ...skin, parameters: kept });
   plate.set("skin", { capacity: figure.vertices, yaw: Math.atan2(cabin.forward[0], cabin.forward[2]), place, ...seatedPose(facts, take.pose) });
+  if (take.passenger !== undefined) {
+    // the passenger: the same kernel on its own figure, the seat's H-point across the car
+    const other = facts.areas.get(take.passenger.area);
+    if (other === undefined) throw new Error(`incar: no ${take.passenger.area} in the GLB.`);
+    const across = Math.hypot(cabin.seat[0] - cabin.passengerSeat[0], cabin.seat[2] - cabin.passengerSeat[2]);
+    const seatHip = frame.at(add([across, 0, 0], take.passenger.hipShift ?? [0, 0, 0]));
+    plate.add("fig2", "meshFileIn", { file: facts.glbUrl, select: other.select, vertices: other.vertices, triangles: other.triangles, parts: other.parts, joints: other.joints }, { label: "fig21" });
+    plate.add("skin2", "pointKernel", { ...kept, capacity: other.vertices, yaw: Math.atan2(cabin.forward[0], cabin.forward[2]), place: [seatHip[0], seatHip[1] - pelvis.head[1], seatHip[2] - pelvis.head[2]], ...seatedPose(facts, take.passenger.pose) }, { label: "skin21" });
+    plate.add("figGeo2", "geometry", { mode: "surface", material: "cabinsurf1" }, { label: "figgeo21" });
+    plate.connect("fig2-skin2", ["fig2", "out"], ["skin2", "in"]);
+    plate.connect("skin2-geo2", ["skin2", "out"], ["figGeo2", "points"]);
+    plate.set("shot", { scenes: `${String(plate.node("shot").parameters["scenes"])} figgeo21` });
+  }
 
   // ── The camera ──
   const eye = frame.at(take.eye);
@@ -466,12 +581,20 @@ function cabinPlate(facts: OnNothingFacts, build: Builder, options: IncarOptions
   plate.add("geo_panes", "geometry", { mode: "surface", material: "panemat1" }, { label: "geopanes1" });
   plate.add("occ_cabin", "geometry", { mode: "surface", material: "occmat1" }, { label: "occcabin1" });
   plate.add("occ_fig", "geometry", { mode: "surface", material: "occmat1" }, { label: "occfig1" });
-  plate.connect("mesh-geo-panes", ["mesh_cabinglass", "out"], ["geo_panes", "points"]);
-  plate.connect("door-occ-cabin", ["door", "out"], ["occ_cabin", "points"]);
+  if (take.shift !== undefined) {
+    plate.add("movePanes", "pointTransform", { translate: [...take.shift], pivot: "origin" }, { label: "movepanes1" });
+    plate.connect("panes-move", ["mesh_cabinglass", "out"], ["movePanes", "points"]);
+  }
+  plate.connect("mesh-geo-panes", paneOut, ["geo_panes", "points"]);
+  plate.connect("door-occ-cabin", carOut, ["occ_cabin", "points"]);
   plate.connect("skin-occ-fig", ["skin", "out"], ["occ_fig", "points"]);
+  if (take.passenger !== undefined) {
+    plate.add("occ_fig2", "geometry", { mode: "surface", material: "occmat1" }, { label: "occfig21" });
+    plate.connect("skin2-occ-fig2", ["skin2", "out"], ["occ_fig2", "points"]);
+  }
   const envPort = plate.feederOf("shot", "environment").source;
   plate.add("paneShot", "render", {
-    scenes: "geopanes1 occcabin1 occfig1",
+    scenes: `geopanes1 occcabin1 occfig1${take.passenger === undefined ? "" : " occfig21"}`,
     camera: "cam1",
     lights: "",
     ambientIntensity: 0,
@@ -491,6 +614,10 @@ function cabinPlate(facts: OnNothingFacts, build: Builder, options: IncarOptions
     plate.spliceAfter("grade", "negative");
   }
   take.finish?.(plate, frame.at);
+  if (take.mirror === true) {
+    plate.add("mirrorX", "customWgsl", { source: MIRROR_X_WGSL }, { label: "mirrorx1", resolution: { mode: "project" } });
+    plate.spliceAfter("grade", "mirrorX");
+  }
   if (options.crt === true) {
     plate.add("crt", "customWgsl", { source: CRT_WGSL, amount: 1 }, { label: "crt1", resolution: { mode: "project" } });
     plate.spliceAfter(plate.feederOf("out").source.nodeId, "crt");
@@ -509,7 +636,7 @@ function finishDocument(plate: Plate, base: ProjectDocument, name: string): Proj
 
 export function incarDocument(facts: OnNothingFacts, build: Builder, options: IncarOptions): ProjectDocument {
   const take = options.take ?? 0;
-  if (take !== 0) throw new Error(`incar: no take ${take} (0 = row 36, through the windscreen; rows 45, 84, 85 and 91 are not built yet).`);
+  if (take !== 0 && take !== 1) throw new Error(`incar: no take ${take} (0 = row 36, through the windscreen; 1 = row 45, through the open door; rows 84, 85 and 91 are not built yet).`);
   const base = build(facts, { shot: "tableau", ...(options.width === undefined ? {} : { width: options.width }), ...(options.height === undefined ? {} : { height: options.height }) });
   const plate = cabinPlate(facts, build, options, TAKES[take]);
   return finishDocument(plate, base, "incar");
