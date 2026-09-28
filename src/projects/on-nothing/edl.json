@@ -47,7 +47,7 @@
   {"row": 43, "start": 44.878, "end": 45.42, "shot": null, "take": 0, "from": 0.0, "plan": "wide", "what": "The figure from behind, the cars' lamps beyond", "lens": "wide"},
   {"row": 44, "start": 45.42, "end": 46.171, "shot": null, "take": 0, "from": 0.0, "plan": "mcu", "what": "MCU, hands to the face, pure black ground", "lens": "normal"},
   {"row": 45, "start": 46.171, "end": 46.838, "shot": null, "take": 0, "from": 0.0, "plan": "incar", "what": "Through an open door: a shirtless figure reclining inside, cyan ambient LED strips", "lens": "wide, handheld"},
-  {"row": 46, "start": 46.838, "end": 47.464, "shot": null, "take": 0, "from": 0.0, "plan": "lights", "what": "Backlit figure, circular flare", "lens": "normal"},
+  {"row": 46, "start": 46.838, "end": 47.464, "shot": "lights", "take": 46, "from": 0.0, "plan": "lights", "what": "Backlit figure, circular flare", "lens": "normal"},
   {"row": 47, "start": 47.464, "end": 47.798, "shot": null, "take": 0, "from": 0.0, "plan": "hands", "what": "CU of a ringed hand, dark", "lens": "tele CU"},
   {"row": 48, "start": 47.798, "end": 48.423, "shot": null, "take": 0, "from": 0.0, "plan": "jewel", "what": "Macro of the chain over the tee's print", "lens": "macro"},
   {"row": 49, "start": 48.423, "end": 49.216, "shot": null, "take": 0, "from": 0.0, "plan": "mcu", "what": "CU of the top of the beanie, the face soft", "lens": "CU, high"},

@@ -6,6 +6,7 @@ import { boneParam, yawFor } from "../skin-kernel.ts";
 import { hazeLights, hazeWgsl } from "../atmosphere.ts";
 import { CAR_RIG_ATTRIBUTES } from "../car-rig.ts";
 import { DOF_FILL_WGSL, LENS_DOF_WGSL } from "./closeups-fx.ts";
+import { armPose, type Pose } from "./gait.ts";
 import { addNode, connect, dropParams, finish, setParams, spliceAfter, surgery, type Surgery } from "./splice.ts";
 
 /**
@@ -527,6 +528,49 @@ TAKES[18] = {
     });
     setParams(cut, "optics", { bloom: 0.2, halo: 0 });
     setParams(cut, "grade", { exposure: 0.7, saturation: 0.7, keepWarm: 1 });
+  },
+};
+
+/**
+ * Row 46 (0:46.84, 15 frames, 1123–1137): a held MCU — the figure square to the lens, head bowed
+ * in the beanie, both hands up at the temples, the chain on the chest; a cold teal backlight in
+ * the haze just over the crown (sRGB ~140,175,180 there, ~40 at the frame's middle, blacks ~10);
+ * one BIG thin warm ring round the frame (centre ~(0.49, 0.3), radius ~0.87 H, orange outermost)
+ * and the arc of a second, lower one crossing the chest (y ~0.72–0.9).
+ */
+TAKES[46] = {
+  base: "ring",
+  build: (cut, facts) => {
+    // both hands up at the temples, elbows out and forward, the head bowed into them
+    const arms: Pose = {
+      ...armPose(facts.bones, "L", { flex: 90, out: 15, elbow: 160, inward: 75, wrist: [0.3, 0, 0.1] }),
+      ...armPose(facts.bones, "R", { flex: 90, out: 15, elbow: 160, inward: 75, wrist: [0.3, 0, -0.1] }),
+    };
+    const knobs: Record<string, string> = { "neck.x": "0.38 + 0.02 * sin(abstime * 3.3)", "head.x": "0.22", "chest.x": "0.08" };
+    for (const [bone, v] of Object.entries(arms)) (["x", "y", "z"] as const).forEach((axis, i) => (knobs[`${bone}.${axis}`] = v[i]!.toFixed(4)));
+    poseFigure(cut, facts, { place: VOID, facing: [0, 0, 1], knobs });
+    // an MCU from 1.6 m, the figure left of centre (0.37 W), the crown at the frame's top edge
+    const eye: V3 = [VOID[0] + 0.13, 1.45, 1.6];
+    const aim: V3 = [VOID[0] + 0.13, 1.52, 0];
+    const fov = 20;
+    setCamera(cut, { keys: [{ t: 0, eye, aim }, { t: 0.63, eye: [eye[0] - 0.01, eye[1], eye[2] - 0.02], aim }], fov, shake: 0.003, aimShake: 0.006, roll: 1.2, rollRate: -0.8, rollWander: 0.3 });
+    // the lamp behind the crown (just right of it, just above the frame): its glow in the teal
+    // haze; the head hides its face; its ghosts are the rings
+    ringLamp(cut, facts, [VOID[0] + 0.13, 2.27, -2.6], eye, { radiance: 60, size: 0.05, haze: 0.045, color: [0.55, 0.88, 0.98] });
+    setParams(cut, "lamp", { color: [0.6, 0.9, 1, 1] });
+    setParams(cut, "dof", { focusDistance: 1.6, aperture: 1.6 });
+    // the big ring centred at (0.49, 0.3) and the lower arc crossing the chest: the lamp's ghosts (placed by eye against frame 1130)
+    setParams(cut, "ghosts", {
+      gain: 1,
+      ratio: [-2.6, 0.5, -1.0, 0.45],
+      radius: [0.84, 0.87, 0.075, 0.05],
+      rim: [0.022, 0.018, 0.02, 0.012],
+      fill: [0, 0, 0, 0],
+      strength: [0.009, 0.011, 0, 0],
+      tint: [1.3, 0.8, 0.55],
+    });
+    setParams(cut, "optics", { halo: 0 });
+    setParams(cut, "grade", { exposure: 0.1, lift: 0.03, shadowTint: [0.88, 1.02, 1.1, 1], steel: [0.9, 1.02, 1.06], split: 0.6, saturation: 0.75, keepWarm: 1 });
   },
 };
 

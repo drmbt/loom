@@ -73,6 +73,7 @@ ${CAMERA_PARAMS}
   rim: vec4f, // @default [0.022, 0.012, 0.02, 0.012]  Each ghost's rim width.
   fill: vec4f, // @default [0.05, 0.0, 0.6, 0.5]  How much each ghost's disc fills inside its rim.
   strength: vec4f, // @default [0.2, 0.09, 0.07, 0.0]  Each ghost's brightness (0 drops it).
+  tint: vec3f, // @default [1, 1, 1]  Colour over every ghost (a warm coating reads orange).
 };
 ${SHARED_UNIFORMS_WGSL}
 @group(0) @binding(0) var inputSampler: sampler;
@@ -118,7 +119,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     let r = ring(d, params.radius[g] * 1.012, params.rim[g], params.fill[g]);
     let gg = ring(d, params.radius[g], params.rim[g], params.fill[g]);
     let b = ring(d, params.radius[g] * 0.988, params.rim[g], params.fill[g]);
-    add = add + vec3f(r, gg, b) * G_COLOR[g] * params.strength[g];
+    add = add + vec3f(r, gg, b) * G_COLOR[g] * params.tint * params.strength[g];
   }
   return vec4f(base.rgb + add * power * params.gain, base.a);
 }`;
