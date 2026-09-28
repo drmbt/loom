@@ -24,6 +24,7 @@ if HERE not in sys.path:
 import cars  # noqa: E402
 import carint  # noqa: E402
 import closeups  # noqa: E402
+import closeups2  # noqa: E402
 import cyc_set  # noqa: E402
 import cyc_wardrobe  # noqa: E402
 import figure  # noqa: E402
@@ -135,6 +136,8 @@ def main():
         figure.build(ctx)
     # the close-up props (the pendant's set, the sneaker on the black car's bonnet) and their cameras
     closeups.build(ctx, CARS)
+    # T1407b closeups2: the pendant on the tee, the held shoe, the end cards' type
+    closeups2.build(ctx, CARS)
 
     for name, pos, fwd in heads:
         # low beams dip a little; the headlight is a hard, cool LED

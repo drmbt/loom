@@ -147,3 +147,15 @@ What loom reads: `shot.pendant` and `shot.sneaker`; `stage.pendant`; `stage.snea
 figure stands, plus `loom_car` and `loom_car_shift`); and `prop.shoe` (the shoe's origin, and its
 axes in `loom_x`, `loom_y` and `loom_z`, glTF). The surface draws the panels, stitching and
 perforations in the shoe's own frame. The classes are 50–58 (`closeups.LIB`).
+
+## Close-ups, part two (closeups2.py)
+
+- **`shoeh.*`**: the same low-top built in its own axes at `HELD`, its loose lace ends hanging
+  (`closeups.sneaker(..., held=True)`). loom turns and moves it into the figure's right hand frame
+  by frame (`shots/closeups-held.ts`); `prop.shoeh` carries its rest origin and axes.
+- **`jewel.*`**: a second pendant lying on a black tee, its chain up the chest, a far bright floor
+  (camera `shot.jewel`; the rows it serves are not built yet).
+- **`card.*`**: the end cards' type: "COCOON" (Arial Bold, each glyph fitted to its measured pixel
+  box) and a ten-line credit block (Copperplate, placeholder handles), flat, facing `shot.cocoon` /
+  `shot.credits` (100 mm at 5.333 m: one millimetre is one pixel of the 1920 × 818 frame). The
+  class is 60 (`closeups2.LIB2`); no loom card graph reads it yet.

@@ -28,6 +28,7 @@ import { mirrorDocument } from "./shots/mirror.ts";
 import { TABLEAU_TOP, lightsDocument, tableauReach } from "./shots/lights.ts";
 import { incarDocument } from "./shots/incar.ts";
 import { handsDocument } from "./shots/hands.ts";
+import { cardsDocument } from "./shots/cards.ts";
 import { REACT_PROFILES, reactive } from "./shots/react.ts";
 
 /**
@@ -41,11 +42,11 @@ import { REACT_PROFILES, reactive } from "./shots/react.ts";
  */
 
 /** The close-ups (shots/closeups.ts) are their own graphs. */
-export const SHOTS = ["tableau", "title", "ring", "quad", "cyc", "cyc-wide", "zoom", "prism", "wheel", "halo", "crt", "split", "mirror", "lights", "incar", "hands", ...CLOSEUP_SHOTS] as const;
+export const SHOTS = ["tableau", "title", "ring", "quad", "cyc", "cyc-wide", "zoom", "prism", "wheel", "halo", "crt", "split", "mirror", "lights", "incar", "hands", ...CLOSEUP_SHOTS, "cards"] as const;
 export type Shot = (typeof SHOTS)[number];
 /** The four sets; `zoom` and `prism` are the tableau's set with their own camera and finish. */
 type Base = "tableau" | "title" | "quad" | "cyc" | "wheel";
-const BASE_OF: Record<Exclude<Shot, (typeof CLOSEUP_SHOTS)[number]>, Base> = { tableau: "tableau", title: "title", ring: "quad", quad: "quad", cyc: "cyc", "cyc-wide": "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel", halo: "tableau", crt: "tableau", split: "tableau", mirror: "cyc", lights: "tableau", incar: "tableau", hands: "tableau" };
+const BASE_OF: Record<Exclude<Shot, (typeof CLOSEUP_SHOTS)[number] | "cards">, Base> = { tableau: "tableau", title: "title", ring: "quad", quad: "quad", cyc: "cyc", "cyc-wide": "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel", halo: "tableau", crt: "tableau", split: "tableau", mirror: "cyc", lights: "tableau", incar: "tableau", hands: "tableau" };
 
 export interface OnNothingOptions {
   readonly shot: Shot;
@@ -157,6 +158,8 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   if (options.shot === "ring") return ringDocument(facts, options);
   const shot = options.shot;
   if (isCloseup(shot)) return closeupDocument(facts, { ...options, shot });
+  // T1407b closeups2: the end cards (rows 108-110)
+  if (shot === "cards") return cardsDocument(facts, options);
   // T1407b (split/mirror): composites of re-cut stock shots, built in shots/.
   if (shot === "split") return splitDocument(facts, onNothingDocument, options);
   if (shot === "mirror") return mirrorDocument(facts, onNothingDocument, options);

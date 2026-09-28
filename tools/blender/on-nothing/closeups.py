@@ -502,8 +502,10 @@ def _smooth(points, passes=4, closed=True):
     return pts
 
 
-def sneaker(ctx, mats, place):
-    """The shoe, built shoe-local then turned by `place` (a 4x4 Matrix) onto the bonnet."""
+def sneaker(ctx, mats, place, area="shoe", held=False):
+    """The shoe, built shoe-local then turned by `place` (a 4x4 Matrix) onto the bonnet. `held`
+    (closeups2.py, T1407b closeups2): the loose lace ends hang below the sole instead of draping
+    onto the paint, and the shoe's objects are named into `area`."""
     coll = ctx["coll"]
     upper = _upper_shell(coll, mats)
     loops = _boundary_loops(upper)
@@ -581,6 +583,9 @@ def sneaker(ctx, mats, place):
     cord = 0.0021
     for side, start, run in ((-1, eyelets[0][0], (-0.45, 0.89)), (1, eyelets[0][1], (0.55, -0.83))):
         a0 = start + Vector((0, 0, 0.002))
+        if held:
+            _hanging_lace(parts, a0, side, cord)
+            continue
         touch = Vector((centre_x(start.y) + side * (half_width(start.y) + 0.065), start.y + 0.012 * side, cord))
         ground = Vector((run[0] * side * side, run[1], 0)).normalized()
         # a cubic from the eyelet (leaving outward and a little up) to the touchdown (arriving level)
@@ -619,8 +624,26 @@ def sneaker(ctx, mats, place):
         ob.matrix_world = place @ ob.matrix_world
         _select_only(ob)
         bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-        ob["loom_area"] = "shoe"
+        ob["loom_area"] = area
+        ob.name = area + ob.name[ob.name.index("."):]
     print(f"[closeups] sneaker: {len(upper.data.vertices):,} + {len(parts_ob.data.vertices):,} vertices", flush=True)
+
+
+def _hanging_lace(mb, a0, side, cord):
+    """A loose end hanging from its top eyelet (the shoe held up, sole down): out over the
+    upper's side wall, then down past the sole under its own weight, an aglet on the end."""
+    end = a0 + Vector((side * 0.066, 0.012 * side, -0.15))
+    p1 = a0 + Vector((side * 0.05, 0.0, 0.014))
+    p2 = end + Vector((-side * 0.004, 0.0, 0.09))
+    pts = []
+    for k in range(40):
+        t = k / 39
+        u = 1 - t
+        pts.append(a0 * u ** 3 + p1 * 3 * u * u * t + p2 * 3 * u * t * t + end * t ** 3)
+    path = _smooth(_resample(pts, 0.002, closed=False), 3, closed=False)
+    _tube(mb, path, cord, "cu_lace", closed=False, rseg=10)
+    tip = path[-1]
+    _tube(mb, [tip, tip + (path[-1] - path[-3]).normalized() * 0.017], cord * 0.95, "cu_lace", closed=False, rseg=10)
 
 
 def _flat_lace(mb, path, width, thickness):
