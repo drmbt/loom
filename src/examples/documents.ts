@@ -1,9 +1,11 @@
 export { resonanceDocument } from "./documents/resonance.ts";
 export { verdantLotusDocument, emberMonolithsDocument, aetherOrreryDocument } from "./documents/monument-halls.ts";
 export { crucibleDocument } from "./documents/crucible.ts";
+export { azulejoDocument } from "./documents/azulejo.ts";
 import { resonanceDocument } from "./documents/resonance.ts";
 import { verdantLotusDocument, emberMonolithsDocument, aetherOrreryDocument } from "./documents/monument-halls.ts";
 import { crucibleDocument } from "./documents/crucible.ts";
+import { azulejoDocument } from "./documents/azulejo.ts";
 import type { ProjectDocument } from "../domain/types/graph.ts";
 export { EXAMPLE_TIMESTAMP } from "./documents/builders.ts";
 export { feedbackEchoDocument } from "./documents/feedback-echo.ts";
@@ -139,6 +141,7 @@ export const EXAMPLE_DOCUMENTS: readonly ProjectDocument[] = [
   emberMonolithsDocument,
   aetherOrreryDocument,
   crucibleDocument,
+  azulejoDocument,
   feedbackEchoDocument,
   reactionDiffusionDocument,
   animatedNoiseFieldDocument,

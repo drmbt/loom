@@ -100,6 +100,7 @@ happened:
 | [E77 Ember Monoliths](./E77-Ember-Monoliths.md) | Ring of fractured stone monoliths around a white-hot aperture, with ember seams, monumental wall projections, wet floor reflections and audio-driven firelight. |
 | [E78 Aether Orrery](./E78-Aether-Orrery.md) | Suspended orbital sculpture around a violet energy sphere, with independently turning rings, cosmic wall panels, floor reflections and volumetric light. |
 | [E79 Crucible](./E79-Crucible.md) | A white-hot ring with a belted sphere inside it — plates that split on every hit over a lava heart — in a black void of machinery at three scales, five coloured lights among the hulls each on its own SPECTRUM row (Select → Range → Beat / Tail, T1347b/T1348b), dust, red haze, a slow orbit. |
+| [E80 Azulejo](./E80-Azulejo.md) | Two picture layers and a person-shaped window between them: a wall of blue-and-white tiles with the people in front of the camera cut out of it, and a night city playing inside the cut. Every layer is a Switch — stand-in shaders ship, a Movie File In or the webcam (browser Matte or Apple Vision Person Mask) replaces each one. |
 
 ## Running them
 

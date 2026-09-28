@@ -401,6 +401,12 @@
     "range": 0.6484,
     "f0max": 0.9003
   },
+  "E80-Azulejo.loom.json": {
+    "motion": 0.04006,
+    "range": 0.9777,
+    "f0max": 1,
+    "cardFloor": 0.0212
+  },
   "E9-Ember.loom.json": {
     "motion": 0.13639,
     "range": 1,

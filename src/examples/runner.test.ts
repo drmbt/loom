@@ -111,6 +111,7 @@ describe("examples: the gate", () => {
       "E78-Aether-Orrery.loom.json",
       "E79-Crucible.loom.json",
       "E8-Slit-Scan.loom.json",
+      "E80-Azulejo.loom.json",
       "E9-Ember.loom.json",
     ]);
   });
