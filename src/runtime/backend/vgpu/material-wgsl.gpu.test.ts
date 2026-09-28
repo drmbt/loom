@@ -44,14 +44,16 @@ const node = (id: string, type: string, parameters: Record<string, unknown>, lab
   label,
 });
 
-function graph(material: { type: string; parameters: Record<string, unknown> }, mode = "surface"): GraphDocument {
+function graph(material: { type: string; parameters: Record<string, unknown> }, mode = "surface", second?: { overrides: string; drawn: "geo1" | "geo2" }): GraphDocument {
   const nodes = [
     node("mesh", "meshFileIn", { vertices: FACTS.vertices, triangles: FACTS.triangles, parts: FACTS.parts }, "mesh1"),
     node("mat", material.type, material.parameters, "mat1"),
     node("geo", "geometry", { mode, material: "mat1" }, "geo1"),
+    // T1415b: a second object wearing the SAME material node, with overrides of its own.
+    ...(second === undefined ? [] : [node("geo2", "geometry", { mode, material: "mat1", materialOverrides: second.overrides }, "geo2")]),
     node("cam", "camera", { eye: [0, 0, 3], lookAt: [0, 0, 0] }, "cam1"),
     node("sun", "light", { kind: "directional", direction: [0, 0, -1], intensity: 1 }, "sun1"),
-    node("shot", "render", { scenes: "geo1", camera: "cam1", lights: "sun1", ambientColor: [1, 1, 1, 1], ambientIntensity: 0.12 }, "shot1"),
+    node("shot", "render", { scenes: second?.drawn ?? "geo1", camera: "cam1", lights: "sun1", ambientColor: [1, 1, 1, 1], ambientIntensity: 0.12 }, "shot1"),
     node("out", "output", {}, "out1"),
   ];
   return {
@@ -60,6 +62,7 @@ function graph(material: { type: string; parameters: Record<string, unknown> }, 
     edges: {
       e1: { id: "e1", source: { nodeId: "mesh", portId: "out" }, target: { nodeId: "geo", portId: "points" } },
       e2: { id: "e2", source: { nodeId: "shot", portId: "out" }, target: { nodeId: "out", portId: "input" } },
+      ...(second === undefined ? {} : { e3: { id: "e3", source: { nodeId: "mesh", portId: "out" }, target: { nodeId: "geo2", portId: "points" } } }),
     },
     groups: {},
   } as never;
@@ -93,6 +96,15 @@ const byte = (linear: number): number => Math.round(Math.min(1, linear) * 255);
 /** Lambert, head-on light: (ambient 0.12 + |N·L| 1) × albedo, where albedo = base 1 × the file's colour. */
 const LIT = [byte(1 * 1.12), byte(0.5 * 1.12), byte(0.25 * 1.12)];
 
+const BLUE_SOURCE = `struct Params {
+  glow: f32, // @default 0  Blue emissive.
+};
+fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
+  var o = surfaceDefaults(s);
+  o.emissive = vec3f(0.0, 0.0, p.glow);
+  return o;
+}`;
+
 describe("Material · WGSL on Dawn (T1355b, §V147)", () => {
   it("the default source is the identity: the same bytes as no code at all", async () => {
     const probe = await probeDawn();
@@ -108,14 +120,7 @@ describe("Material · WGSL on Dawn (T1355b, §V147)", () => {
   it("emissive, albedo and the mesh's heat each arrive — and a reflected knob moves the pixel by its value", async () => {
     const probe = await probeDawn();
     if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
-    const blueSource = `struct Params {
-  glow: f32, // @default 0  Blue emissive.
-};
-fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
-  var o = surfaceDefaults(s);
-  o.emissive = vec3f(0.0, 0.0, p.glow);
-  return o;
-}`;
+    const blueSource = BLUE_SOURCE;
     const blueLow = await render(graph({ type: "materialWgsl", parameters: { model: "lambert", source: blueSource, glow: 0.1 } }));
     const blueHigh = await render(graph({ type: "materialWgsl", parameters: { model: "lambert", source: blueSource, glow: 0.3 } }));
     expect(rgb(blueLow.bytes)).toEqual([LIT[0], LIT[1], byte(0.25 * 1.12 + 0.1)]);
@@ -141,6 +146,21 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
     // The default source's heat glow: attr.z is the file's loom_heat (0.5), heatColor white.
     const hot = await render(graph({ type: "materialWgsl", parameters: { model: "lambert", source: MATERIAL_WGSL_DEFAULT_SOURCE, heatGlow: 0.2 } }));
     expect(rgb(hot.bytes)).toEqual([255, byte(0.5 * 1.12 + 0.1), byte(0.25 * 1.12 + 0.1)]);
+  });
+
+  it("a geometry's material override moves its own pixel and leaves the material's other wearer alone (T1415b)", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    // One material node, glow 0.1; geo2 wears it with glow overridden to 0.3 — no second material.
+    const material = { type: "materialWgsl", parameters: { model: "lambert", source: BLUE_SOURCE, glow: 0.1 } };
+    const plain = await render(graph(material, "surface", { overrides: "glow = 0.3", drawn: "geo1" }));
+    const overridden = await render(graph(material, "surface", { overrides: "glow = 0.3", drawn: "geo2" }));
+    expect(plain.errors).toEqual([]);
+    expect(overridden.errors).toEqual([]);
+    expect(rgb(plain.bytes)).toEqual([LIT[0], LIT[1], byte(0.25 * 1.12 + 0.1)]);
+    expect(rgb(overridden.bytes)).toEqual([LIT[0], LIT[1], byte(0.25 * 1.12 + 0.3)]);
+    // A misspelt name refuses by name instead of drawing the un-overridden material.
+    await expect(render(graph(material, "surface", { overrides: "glwo = 0.3", drawn: "geo2" }))).rejects.toThrow(/no "glwo" to override/);
   });
 
   it("the surface-detail module compiles under @use, and an fbm finer than the footprint fades to exactly 0.5", async () => {

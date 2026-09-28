@@ -225,7 +225,7 @@ export const pulseDocument = document(
       }),
       node("orbAx", "lfo", [-2600, -160], { shape: "sine", frequency: 0.013, amplitude: 0.7, offset: 0, phase: 0 }, { label: "orbAx1" }),
       node("orbAz", "lfo", [-2600, 40], { shape: "sine", frequency: 0.013, amplitude: 0.7, offset: 2.9, phase: 0.25 }, { label: "orbAz1" }),
-      node("camA", "camera", [-1400, -80], { eye: [0, 0.2, 3.1], lookAt: [0, 0, 0] }, {
+      node("camA", "camera", [-1400, -60], { eye: [0, 0.2, 3.1], lookAt: [0, 0, 0] }, {
         label: "camA1",
         parameters: { "eye.x": drivenSlot("orbAx1", 0), "eye.z": drivenSlot("orbAz1", 2.9) },
       }),

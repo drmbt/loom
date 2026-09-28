@@ -44,6 +44,19 @@ export interface FixtureSkin {
   readonly inverseBindMatrices?: ReadonlyArray<ReadonlyArray<number>>;
 }
 
+/** T1410b: one glTF animation — channels by node NAME, each with its own sampler. */
+export interface FixtureAnimation {
+  readonly name?: string;
+  readonly channels: ReadonlyArray<{
+    readonly node: string;
+    readonly path: "translation" | "rotation" | "scale" | "weights";
+    readonly times: ReadonlyArray<number>;
+    /** Flat: 3 per key (translation, scale), 4 (rotation); ×3 again for CUBICSPLINE (in-tangent, value, out-tangent). */
+    readonly values: ReadonlyArray<number>;
+    readonly interpolation?: "LINEAR" | "STEP" | "CUBICSPLINE";
+  }>;
+}
+
 export interface FixtureMaterial {
   readonly name: string;
   readonly baseColor?: readonly [number, number, number, number];
@@ -59,6 +72,7 @@ export interface FixtureScene {
   readonly materials?: ReadonlyArray<FixtureMaterial>;
   readonly extensionsRequired?: ReadonlyArray<string>;
   readonly skins?: ReadonlyArray<FixtureSkin>;
+  readonly animations?: ReadonlyArray<FixtureAnimation>;
 }
 
 export function encodeFixtureGlb(scene: FixtureScene): Uint8Array {
@@ -164,6 +178,21 @@ export function encodeFixtureGlb(scene: FixtureScene): Uint8Array {
     }),
     ...(skin.inverseBindMatrices === undefined ? {} : { inverseBindMatrices: addAccessor(skin.inverseBindMatrices.flat(), "MAT4", 5126) }),
   }));
+  const animations = (scene.animations ?? []).map((animation) => {
+    const samplers: Array<Record<string, unknown>> = [];
+    const channels = animation.channels.map((channel) => {
+      const node = nodes.findIndex((entry) => entry["name"] === channel.node);
+      if (node < 0) throw new Error(`encodeFixtureGlb: animation channel names no node "${channel.node}".`);
+      const type = channel.path === "rotation" ? "VEC4" : channel.path === "weights" ? "SCALAR" : "VEC3";
+      samplers.push({
+        input: addAccessor(channel.times, "SCALAR", 5126),
+        output: addAccessor(channel.values, type, 5126),
+        ...(channel.interpolation === undefined ? {} : { interpolation: channel.interpolation }),
+      });
+      return { sampler: samplers.length - 1, target: { node, path: channel.path } };
+    });
+    return { ...(animation.name === undefined ? {} : { name: animation.name }), samplers, channels };
+  });
   const materials = (scene.materials ?? []).map((material) => ({
     name: material.name,
     pbrMetallicRoughness: {
@@ -187,6 +216,7 @@ export function encodeFixtureGlb(scene: FixtureScene): Uint8Array {
     ...(cameras.length === 0 ? {} : { cameras }),
     ...(materials.length === 0 ? {} : { materials }),
     ...(skins.length === 0 ? {} : { skins }),
+    ...(animations.length === 0 ? {} : { animations }),
     ...(accessors.length === 0 ? {} : { accessors, bufferViews, buffers: [{ byteLength: binLength }] }),
     ...(scene.extensionsRequired === undefined ? {} : { extensionsRequired: [...scene.extensionsRequired], extensionsUsed: [...scene.extensionsRequired] }),
   };

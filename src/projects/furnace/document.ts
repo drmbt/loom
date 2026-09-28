@@ -544,13 +544,16 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     ...[1, 2, 3, 4].map((level) =>
       node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, {
         label: `bloomdown${level}1`,
-        resolution: { mode: "scale", factor: 0.5 / 2 ** level },
+        // A scale is relative to the node's INPUT (compiler/resolution.ts): each level halves
+        // the one above, so the pyramid runs 1/4 … 1/32 of the frame (T1404b).
+        resolution: { mode: "scale", factor: 0.5 },
       }),
     ),
     ...[0, 1, 2, 3].map((level) =>
       node(`bloomUp${level}`, "customWgslMulti", [-600, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, {
         label: `bloomup${level}1`,
-        resolution: { mode: "scale", factor: 0.5 / 2 ** level },
+        // Doubles its input (the level below), landing back on its own level's size.
+        resolution: { mode: "scale", factor: 2 },
       }),
     ),
     node("glow", "add", [-300, 0], { opacity: 0.35 }, { label: "glow1", resolution: { mode: "project" } }),

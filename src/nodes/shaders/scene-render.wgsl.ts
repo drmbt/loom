@@ -114,7 +114,7 @@ export interface SceneShadingOptions {
    * base colour (after the material) in rgb, linear, and metallic in a. Where nothing drew,
    * the clear leaves zero — the Normal output's alpha is the coverage test.
    */
-  readonly gbuffer?: "normal" | "albedo";
+  readonly gbuffer?: "normal" | "albedo" | "shadow";
   /**
    * T1411b: the surface is drawn ADDITIVELY (src + dst colour, no depth write) — light
    * added over what the opaques drew. Its alpha is written as 0, so the one/one blend
@@ -1316,6 +1316,25 @@ ${unlitModel ? "" : `  let roughness = clamp(shaded.roughness, 0.04, 1.0);
 `
     : "";
 
+  /* T1414b: the SHADOW MATTE layer — for the first three casting lights, the lit block's
+     own toward-light and lambert (the bias reads it) and its own shadow test, written as
+     1 − shadow in r, g, b; a = 1 marks a surface. */
+  const shadowMatteWrite = (): string =>
+    `  var matte = vec3f(0.0);
+${shadows
+  .slice(0, 3)
+  .map(
+    (index, channel) => `  {
+    let lightMeta = params.light${index}Meta;
+    let lightVector = params.light${index}Vector;
+    var toLight = normalize(-lightVector.xyz);
+    if (lightMeta.x >= 0.5) { toLight = normalize(lightVector.xyz - input.world); }
+    let lambert = ${options.mesh === undefined ? "abs(dot(normal, toLight))" : "max(dot(normal, toLight), 0.0)"};
+${shadowFactor(index)}    matte.${"xyz"[channel]} = 1.0 - shadow;
+  }
+`,
+  )
+  .join("")}  return vec4f(matte, 1.0);`;
   const gbufferMetallic =
     options.model === "unlit" ? "0.0" : custom !== undefined ? "surfaceMetallic" : meshSurface ? "clamp(input.surface.y, 0.0, 1.0)" : "params.material.x";
   const gbufferWrite =
@@ -1323,7 +1342,9 @@ ${unlitModel ? "" : `  let roughness = clamp(shaded.roughness, 0.04, 1.0);
       ? `  return vec4f(normal * 0.5 + vec3f(0.5), ${options.model === "unlit" ? "1.0" : "max(roughness, 0.04)"});`
       : options.gbuffer === "albedo"
         ? `  return vec4f(albedo.rgb, ${gbufferMetallic});`
-        : undefined;
+        : options.gbuffer === "shadow"
+          ? shadowMatteWrite()
+          : undefined;
 
   return wgsl`struct SceneParams {
   viewProjection: mat4x4f,

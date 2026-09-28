@@ -4,12 +4,12 @@ import type { CompiledGraph } from "../../compiler/types.ts";
 import type { BackendCapabilities, LogicalExecutionPlan } from "../../domain/types/backend.ts";
 import type { TransportSource } from "../../domain/types/frame.ts";
 import type { RuntimeDiagnostic } from "../../domain/types/diagnostics.ts";
-import type { GraphDocument, ProjectSettings } from "../../domain/types/graph.ts";
+import type { GraphDocument, GraphNode, ProjectSettings } from "../../domain/types/graph.ts";
 import { projectFps } from "../../domain/types/graph.ts";
 import type { NodeDefinition, TextureFormat } from "../../domain/types/node-definition.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
-import { meshSourceIdsFor, prepareMesh } from "../../points/mesh.ts";
+import { meshSourceIdsFor, prepareMesh, type PreparedMesh } from "../../points/mesh.ts";
 import { createVgpuBackend } from "../../runtime/backend/vgpu/vgpu-backend.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { createUniformAnimator } from "../../app/animate-parameters.ts";
@@ -168,10 +168,13 @@ export interface HeadlessRenderRequest {
   /**
    * T1353b — GLB bytes per Mesh File In node id. Each one is prepared through
    * `prepareMesh` — the app loader's own path — under the node's Select, and fed to the
-   * node's two sources. The node's Vertices/Triangles must already match the file (the
-   * app's loader writes them through the bus); a mismatch THROWS here, because a buffer
-   * sized for another file is exactly the silent wrong shape the facts exist to prevent.
-   * A mesh node absent from this map is fed nothing and draws nothing.
+   * node's two sources. T1416b: the harness MEASURES as the app's loader does — the node's
+   * Vertices, Triangles, Parts and Joints are replaced by what its Select holds before the
+   * first compile, so a Select that drops a sub-mesh needs no counts from the caller. A mesh
+   * node inside a component (not in this document's own graph) is not measured: its facts
+   * must already match, and a mismatch THROWS, because a buffer sized for another file is
+   * exactly the silent wrong shape the facts exist to prevent. A mesh node absent from this
+   * map is fed nothing and draws nothing.
    */
   readonly meshes?: Readonly<Record<string, Uint8Array>>;
   /**
@@ -698,7 +701,38 @@ export function frameLoopBreather(): () => Promise<void> {
   };
 }
 
-export async function renderHeadless(request: HeadlessRenderRequest): Promise<HeadlessRenderResult> {
+/**
+ * T1416b — the app loader's measurement (`use-mesh-sources.ts`), offline: each Mesh File In
+ * the request feeds is prepared under its own Select and its facts written onto a copy of the
+ * graph, so what compiles is sized for what will be fed. The prepared bytes ride along so the
+ * feed does not decode the file twice.
+ */
+/** T1410b: the clip a Mesh File In asks for, as `prepareMesh` takes it. */
+function clipOf(parameters: Readonly<Record<string, unknown>>): { name?: string; rate?: number } {
+  const name = typeof parameters["clip"] === "string" ? parameters["clip"].trim() : "";
+  const rate = parameters["clipRate"];
+  return name === "" ? {} : { name, ...(typeof rate === "number" ? { rate } : {}) };
+}
+
+function measureMeshes(request: HeadlessRenderRequest): { request: HeadlessRenderRequest; prepared: Map<string, PreparedMesh | null> } {
+  const prepared = new Map<string, PreparedMesh | null>();
+  if (request.meshes === undefined) return { request, prepared };
+  const nodes: Record<string, GraphNode> = { ...request.graph.nodes };
+  for (const [nodeId, glb] of Object.entries(request.meshes)) {
+    const node = nodes[nodeId];
+    if (node === undefined) continue; // inside a component: checked, not measured, at the feed
+    if (node.type !== "meshFileIn") throw new Error(`meshes: "${nodeId}" is not a Mesh File In node.`);
+    const select = typeof node.parameters["select"] === "string" ? (node.parameters["select"] as string) : "";
+    const mesh = prepareMesh(glb, select, clipOf(node.parameters));
+    prepared.set(nodeId, mesh);
+    if (mesh === null) continue;
+    nodes[nodeId] = { ...node, parameters: { ...node.parameters, ...mesh.facts } };
+  }
+  return { request: { ...request, graph: { ...request.graph, nodes } }, prepared };
+}
+
+export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise<HeadlessRenderResult> {
+  const { request, prepared: preparedMeshes } = measureMeshes(unmeasured);
   const settings = request.settings ?? paritySettings();
   const frameCount = request.frames ?? 1;
   const capture = [...(request.capture ?? [frameCount - 1])].sort((a, b) => a - b);
@@ -774,7 +808,7 @@ export async function renderHeadless(request: HeadlessRenderRequest): Promise<He
       const node = logicalGraph.nodes[nodeId as keyof typeof logicalGraph.nodes];
       if (node?.type !== "meshFileIn") throw new Error(`meshes: "${nodeId}" is not a Mesh File In node.`);
       const select = typeof node.parameters["select"] === "string" ? (node.parameters["select"] as string) : "";
-      const prepared = prepareMesh(glb, select);
+      const prepared = preparedMeshes.has(nodeId) ? (preparedMeshes.get(nodeId) ?? null) : prepareMesh(glb, select, clipOf(node.parameters));
       if (prepared === null) continue;
       if (node.parameters["vertices"] !== prepared.facts.vertices || node.parameters["triangles"] !== prepared.facts.triangles) {
         throw new Error(
@@ -792,6 +826,9 @@ export async function renderHeadless(request: HeadlessRenderRequest): Promise<He
       const ids = meshSourceIdsFor(nodeId);
       backend.registerMediaSource(ids.points, { currentFrame: () => ({ frameId: 1, bytes: prepared.points }) });
       backend.registerMediaSource(ids.indices, { currentFrame: () => ({ frameId: 1, bytes: prepared.indices }) });
+      // T1410b: a chosen clip's baked poses, the node's third fed buffer.
+      const pose = prepared.pose;
+      if (pose !== undefined) backend.registerMediaSource(ids.pose, { currentFrame: () => ({ frameId: 1, bytes: pose }) });
     }
     // T715: the inference feed, beside the media one and claiming a different prefix.
     registerInferenceSources(

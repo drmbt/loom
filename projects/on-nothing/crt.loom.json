@@ -428,6 +428,17 @@
           "portId": "points"
         }
       },
+      "mesh-geo-card": {
+        "id": "mesh-geo-card",
+        "source": {
+          "nodeId": "mesh_card",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "geo_card",
+          "portId": "points"
+        }
+      },
       "mesh-geo-lampglint": {
         "id": "mesh-geo-lampglint",
         "source": {
@@ -500,7 +511,7 @@
         "id": "optics-more0",
         "order": 0,
         "source": {
-          "nodeId": "streak2",
+          "nodeId": "reactStreak",
           "portId": "out"
         },
         "target": {
@@ -552,6 +563,39 @@
         "target": {
           "nodeId": "levels",
           "portId": "in"
+        }
+      },
+      "react-kick-beat": {
+        "id": "react-kick-beat",
+        "source": {
+          "nodeId": "reactKickPick",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "reactKick",
+          "portId": "in"
+        }
+      },
+      "react-kick-pick": {
+        "id": "react-kick-pick",
+        "source": {
+          "nodeId": "song",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "reactKickPick",
+          "portId": "in"
+        }
+      },
+      "react-streak-in": {
+        "id": "react-streak-in",
+        "source": {
+          "nodeId": "streak2",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "reactStreak",
+          "portId": "input"
         }
       },
       "reflections-more0": {
@@ -1095,11 +1139,11 @@
         "label": "fig1",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "joints": "0:pelvis@0,0.9618,0.0048 1:spine<0@0,1.0506,-0.0276 2:chest<1@0,1.1862,-0.0263 3:neck<2@0,1.5378,0.0131 4:head<3@0,1.6366,0.0473 5:shoulder.L<2@0.0234,1.4616,0.0258 6:upperarm.L<5@0.1906,1.4317,0.0196 7:forearm.L<6@0.3632,1.2339,0.0184 8:hand.L<7@0.5003,1.1029,0.2135 9:shoulder.R<2@-0.0234,1.4616,0.0258 10:upperarm.R<9@-0.1906,1.4317,0.0196 11:forearm.R<10@-0.3632,1.2339,0.0184 12:hand.R<11@-0.5003,1.1029,0.2135 13:thigh.L<0@0.1113,0.9562,-0.0059 14:shin.L<13@0.1549,0.5171,0.0291 15:foot.L<14@0.2015,0.0739,0.0154 16:thigh.R<0@-0.1113,0.9562,-0.0059 17:shin.R<16@-0.1549,0.5171,0.0291 18:foot.R<17@-0.2015,0.0739,0.0154",
-          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
+          "joints": "0:pelvis@0,0.9618,0.0048 1:spine<0@0,1.0506,-0.0276 2:chest<1@0,1.1862,-0.0263 3:neck<2@0,1.5378,0.0131 4:head<3@0,1.6366,0.0473 5:shoulder.L<2@0.0234,1.4616,0.0258 6:upperarm.L<5@0.1906,1.4317,0.0196 7:forearm.L<6@0.3632,1.2339,0.0184 8:hand.L<7@0.5003,1.1029,0.2135 9:thumb1.L<8@0.5017,1.0961,0.2636 10:thumb2.L<9@0.4782,1.0871,0.2875 11:thumb3.L<10@0.464,1.073,0.3235 12:index1.L<8@0.5313,1.0611,0.3216 13:index2.L<12@0.5349,1.0449,0.3456 14:index3.L<13@0.5344,1.0271,0.3649 15:middle1.L<8@0.5497,1.0479,0.3023 16:middle2.L<15@0.5578,1.0195,0.3264 17:middle3.L<16@0.5608,0.9963,0.3464 18:ring1.L<8@0.5583,1.0389,0.2831 19:ring2.L<18@0.5686,1.0117,0.3 20:ring3.L<19@0.5736,0.9888,0.3152 21:pinky1.L<8@0.5598,1.0281,0.2615 22:pinky2.L<21@0.5665,1.007,0.2709 23:pinky3.L<22@0.5686,0.9911,0.278 24:shoulder.R<2@-0.0234,1.4616,0.0258 25:upperarm.R<24@-0.1906,1.4317,0.0196 26:forearm.R<25@-0.3632,1.2339,0.0184 27:hand.R<26@-0.5003,1.1029,0.2135 28:thumb1.R<27@-0.5017,1.0961,0.2636 29:thumb2.R<28@-0.4782,1.0871,0.2875 30:thumb3.R<29@-0.464,1.073,0.3235 31:index1.R<27@-0.5313,1.0611,0.3216 32:index2.R<31@-0.5349,1.0449,0.3456 33:index3.R<32@-0.5344,1.0271,0.3649 34:middle1.R<27@-0.5497,1.0479,0.3023 35:middle2.R<34@-0.5578,1.0195,0.3264 36:middle3.R<35@-0.5608,0.9963,0.3464 37:ring1.R<27@-0.5583,1.0389,0.2831 38:ring2.R<37@-0.5686,1.0117,0.3 39:ring3.R<38@-0.5736,0.9888,0.3152 40:pinky1.R<27@-0.5598,1.0281,0.2615 41:pinky2.R<40@-0.5665,1.007,0.2709 42:pinky3.R<41@-0.5686,0.9911,0.278 43:thigh.L<0@0.1113,0.9562,-0.0059 44:shin.L<43@0.1549,0.5171,0.0291 45:foot.L<44@0.2015,0.0739,0.0154 46:thigh.R<0@-0.1113,0.9562,-0.0059 47:shin.R<46@-0.1549,0.5171,0.0291 48:foot.R<47@-0.2015,0.0739,0.0154",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
           "select": "figbare.*",
-          "triangles": 125416,
-          "vertices": 72834
+          "triangles": 127800,
+          "vertices": 77781
         },
         "position": {
           "x": -3600,
@@ -1181,7 +1225,7 @@
         },
         "position": {
           "x": -3300,
-          "y": 250
+          "y": 500
         },
         "type": "geometry"
       },
@@ -1195,7 +1239,7 @@
         },
         "position": {
           "x": -3300,
-          "y": 500
+          "y": 750
         },
         "type": "geometry"
       },
@@ -1209,7 +1253,7 @@
         },
         "position": {
           "x": -3300,
-          "y": 750
+          "y": 1000
         },
         "type": "geometry"
       },
@@ -1223,7 +1267,7 @@
         },
         "position": {
           "x": -3300,
-          "y": 1000
+          "y": 1250
         },
         "type": "geometry"
       },
@@ -1237,7 +1281,21 @@
         },
         "position": {
           "x": -3300,
-          "y": 1250
+          "y": 1500
+        },
+        "type": "geometry"
+      },
+      "geo_card": {
+        "definitionVersion": 1,
+        "id": "geo_card",
+        "label": "geocard1",
+        "parameters": {
+          "material": "surf1",
+          "mode": "surface"
+        },
+        "position": {
+          "x": -3300,
+          "y": 250
         },
         "type": "geometry"
       },
@@ -1465,7 +1523,19 @@
             },
             "mode": "expression"
           },
-          "head": 0.25,
+          "head": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.25 * (1 + 0.15 * (fract(sin(floor(abstime * 24) * 12.9898 + 1.7) * 43758.5453) * 2 - 1))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.25
+              }
+            },
+            "mode": "expression"
+          },
           "roll": {
             "bindings": {
               "expression": {
@@ -1514,7 +1584,19 @@
         "label": "head01",
         "parameters": {
           "aspect": 2.4,
-          "brightness": 2.5,
+          "brightness": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "2.5 * (1 + 0.15 * (fract(sin(floor(abstime * 24) * 12.9898 + 1.7) * 43758.5453) * 2 - 1))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.5
+              }
+            },
+            "mode": "expression"
+          },
           "color": [
             0.78,
             0.92,
@@ -1547,7 +1629,19 @@
         "label": "head11",
         "parameters": {
           "aspect": 2.4,
-          "brightness": 2.5,
+          "brightness": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "2.5 * (1 + 0.15 * (fract(sin(floor(abstime * 24) * 12.9898 + 1.7) * 43758.5453) * 2 - 1))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.5
+              }
+            },
+            "mode": "expression"
+          },
           "color": [
             0.78,
             0.92,
@@ -1580,7 +1674,19 @@
         "label": "head21",
         "parameters": {
           "aspect": 2.4,
-          "brightness": 2.5,
+          "brightness": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "2.5 * (1 + 0.15 * (fract(sin(floor(abstime * 24) * 12.9898 + 1.7) * 43758.5453) * 2 - 1))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.5
+              }
+            },
+            "mode": "expression"
+          },
           "color": [
             0.78,
             0.92,
@@ -1613,7 +1719,19 @@
         "label": "head31",
         "parameters": {
           "aspect": 2.4,
-          "brightness": 2.5,
+          "brightness": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "2.5 * (1 + 0.15 * (fract(sin(floor(abstime * 24) * 12.9898 + 1.7) * 43758.5453) * 2 - 1))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.5
+              }
+            },
+            "mode": "expression"
+          },
           "color": [
             0.78,
             0.92,
@@ -1646,7 +1764,19 @@
         "label": "head41",
         "parameters": {
           "aspect": 2.4,
-          "brightness": 2.5,
+          "brightness": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "2.5 * (1 + 0.15 * (fract(sin(floor(abstime * 24) * 12.9898 + 1.7) * 43758.5453) * 2 - 1))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.5
+              }
+            },
+            "mode": "expression"
+          },
           "color": [
             0.78,
             0.92,
@@ -1904,14 +2034,14 @@
         "label": "meshcar01",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
           "select": "car0.*",
           "triangles": 370034,
           "vertices": 283863
         },
         "position": {
           "x": -3600,
-          "y": 250
+          "y": 500
         },
         "type": "meshFileIn"
       },
@@ -1921,14 +2051,14 @@
         "label": "meshcar11",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
           "select": "car1.*",
           "triangles": 365163,
           "vertices": 256983
         },
         "position": {
           "x": -3600,
-          "y": 500
+          "y": 750
         },
         "type": "meshFileIn"
       },
@@ -1938,14 +2068,14 @@
         "label": "meshcar21",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
           "select": "car2.*",
           "triangles": 268593,
           "vertices": 177928
         },
         "position": {
           "x": -3600,
-          "y": 750
+          "y": 1000
         },
         "type": "meshFileIn"
       },
@@ -1955,14 +2085,14 @@
         "label": "meshcar31",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
           "select": "car3.*",
           "triangles": 708903,
           "vertices": 717397
         },
         "position": {
           "x": -3600,
-          "y": 1000
+          "y": 1250
         },
         "type": "meshFileIn"
       },
@@ -1972,14 +2102,31 @@
         "label": "meshcar41",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
           "select": "car4.*",
           "triangles": 340032,
           "vertices": 428609
         },
         "position": {
           "x": -3600,
-          "y": 1250
+          "y": 1500
+        },
+        "type": "meshFileIn"
+      },
+      "mesh_card": {
+        "definitionVersion": 1,
+        "id": "mesh_card",
+        "label": "meshcard1",
+        "parameters": {
+          "file": "media/on-nothing/on-nothing.glb",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
+          "select": "card.*",
+          "triangles": 32920,
+          "vertices": 33581
+        },
+        "position": {
+          "x": -3600,
+          "y": 250
         },
         "type": "meshFileIn"
       },
@@ -1989,7 +2136,7 @@
         "label": "meshlampglass1",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
           "select": "lampglass.*",
           "triangles": 10058,
           "vertices": 9946
@@ -2006,7 +2153,7 @@
         "label": "meshwh1",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
           "select": "wh.*",
           "triangles": 7708,
           "vertices": 14785
@@ -2168,7 +2315,7 @@
         "id": "optics",
         "label": "optics1",
         "parameters": {
-          "bloom": 0.12,
+          "bloom": 0.04,
           "halo": 0,
           "source": "struct Params {\n  streak: f32, // @default 1  Streak columns.\n  halo: f32, // @default 1  Halo rings.\n  bloom: f32, // @default 0.25  Bloom glow.\n  streakTint: vec3f, // @default 1  Colour of the streaks (the glass is faintly cold).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n@group(0) @binding(5) var inputTexture2: texture_2d<f32>;\n@group(0) @binding(6) var inputTexture3: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let base = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let s = textureSampleLevel(inputTexture1, inputSampler, uv, 0.0).rgb;\n  let h = textureSampleLevel(inputTexture2, inputSampler, uv, 0.0).rgb;\n  let b = textureSampleLevel(inputTexture3, inputSampler, uv, 0.0).rgb;\n  return vec4f(base.rgb + s * params.streak * params.streakTint + h * params.halo + b * params.bloom, base.a);\n}",
           "streak": 0,
@@ -2226,6 +2373,70 @@
           "y": 1300
         },
         "type": "valueNormalize"
+      },
+      "reactKick": {
+        "definitionVersion": 1,
+        "id": "reactKick",
+        "label": "reactkick1",
+        "parameters": {
+          "decay": "linear",
+          "retrigger": 0.1,
+          "tail": 0.12,
+          "threshold": 0.5
+        },
+        "position": {
+          "x": -3600,
+          "y": 1700
+        },
+        "type": "valueBeat"
+      },
+      "reactKickPick": {
+        "definitionVersion": 1,
+        "id": "reactKickPick",
+        "label": "reactkickpick1",
+        "parameters": {
+          "channels": "kickCount"
+        },
+        "position": {
+          "x": -3900,
+          "y": 1700
+        },
+        "type": "valueSelect"
+      },
+      "reactStreak": {
+        "definitionVersion": 1,
+        "id": "reactStreak",
+        "label": "reactstreak1",
+        "parameters": {
+          "bands": 16,
+          "depth": 1.2,
+          "gain": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(1 + 0.15 * (fract(sin(floor(abstime * 24) * 12.9898 + 1.7) * 43758.5453) * 2 - 1)) * (1 + 0.8 * op('reactkick1').chan.kickCount)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "pop": 1.4,
+          "popChance": 0.012,
+          "rate": 24,
+          "source": "struct Params {\n  depth: f32, // @default 0.5  Per-column flicker depth: each column's gain is 1 +- this, fresh every frame.\n  bands: f32, // @default 16  Columns across the frame width.\n  pop: f32, // @default 1.4  Extra gain of a popping column.\n  popChance: f32, // @default 0.01  Chance a column pops on a frame.\n  gain: f32, // @default 1  Every column together (the lamps' flicker, the kick).\n  rate: f32, // @default 24  Frames a second the flicker steps at.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn reactHash(p: vec2f) -> f32 {\n  var q = fract(vec3f(p.x, p.y, p.x + p.y) * vec3f(0.1031, 0.1030, 0.0973));\n  q = q + dot(q, q.yzx + 33.33);\n  return fract((q.x + q.y) * q.z);\n}\n\nfn columnGain(c: f32, f: f32) -> f32 {\n  let u = reactHash(vec2f(c * 7.13 + 1.0, f * 1.37 + 5.0)) * 2.0 - 1.0;\n  let popping = step(1.0 - params.popChance, reactHash(vec2f(c * 3.7 + 11.0, f * 2.11 + 17.0)));\n  return max(0.0, 1.0 + params.depth * u + params.pop * popping);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let c = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let f = floor(frameU.absTime * params.rate + 0.001);\n  let x = uv.x * params.bands - 0.5;\n  let i = floor(x);\n  let g = mix(columnGain(i, f), columnGain(i + 1.0, f), smoothstep(0.0, 1.0, x - i));\n  return vec4f(c.rgb * g * params.gain, c.a);\n}"
+        },
+        "position": {
+          "x": -800,
+          "y": 300
+        },
+        "resolution": {
+          "factor": 1,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
       },
       "reflections": {
         "definitionVersion": 1,
@@ -2419,7 +2630,7 @@
         "label": "skin1",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"normal\",\"type\":\"vec3f\",\"qualifier\":\"direction\",\"default\":[0,1,0]},{\"name\":\"joints\",\"type\":\"vec4f\",\"default\":[0,0,0,0]},{\"name\":\"weights\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
-          "capacity": 72834,
+          "capacity": 77781,
           "chest": [
             0,
             0,
@@ -2551,7 +2762,67 @@
             0,
             0
           ],
-          "kernel": "// T1400b — the figure's skin (generated by src/projects/on-nothing/skin-kernel.ts from the GLB's bones).\nstruct Params {\n  place: vec3f, // @default 0  Where the figure stands (world metres).\n  yaw: f32, // @default 0  Which way it faces: radians about +Y (0 faces +Z).\n  pelvis: vec3f, // @default 0  pelvis: rotation about its head, radians (x, y, z about the rest axes).\n  spine: vec3f, // @default 0  spine: rotation about its head, radians (x, y, z about the rest axes).\n  chest: vec3f, // @default 0  chest: rotation about its head, radians (x, y, z about the rest axes).\n  neck: vec3f, // @default 0  neck: rotation about its head, radians (x, y, z about the rest axes).\n  head: vec3f, // @default 0  head: rotation about its head, radians (x, y, z about the rest axes).\n  shoulderL: vec3f, // @default 0  shoulder.L: rotation about its head, radians (x, y, z about the rest axes).\n  upperarmL: vec3f, // @default 0  upperarm.L: rotation about its head, radians (x, y, z about the rest axes).\n  forearmL: vec3f, // @default 0  forearm.L: rotation about its head, radians (x, y, z about the rest axes).\n  handL: vec3f, // @default 0  hand.L: rotation about its head, radians (x, y, z about the rest axes).\n  shoulderR: vec3f, // @default 0  shoulder.R: rotation about its head, radians (x, y, z about the rest axes).\n  upperarmR: vec3f, // @default 0  upperarm.R: rotation about its head, radians (x, y, z about the rest axes).\n  forearmR: vec3f, // @default 0  forearm.R: rotation about its head, radians (x, y, z about the rest axes).\n  handR: vec3f, // @default 0  hand.R: rotation about its head, radians (x, y, z about the rest axes).\n  thighL: vec3f, // @default 0  thigh.L: rotation about its head, radians (x, y, z about the rest axes).\n  shinL: vec3f, // @default 0  shin.L: rotation about its head, radians (x, y, z about the rest axes).\n  footL: vec3f, // @default 0  foot.L: rotation about its head, radians (x, y, z about the rest axes).\n  thighR: vec3f, // @default 0  thigh.R: rotation about its head, radians (x, y, z about the rest axes).\n  shinR: vec3f, // @default 0  shin.R: rotation about its head, radians (x, y, z about the rest axes).\n  footR: vec3f, // @default 0  foot.R: rotation about its head, radians (x, y, z about the rest axes).\n};\n\nconst BONES: u32 = 19u;\nconst BONE_PARENT = array<i32, 19>(-1, 0, 1, 2, 3, 2, 5, 6, 7, 2, 9, 10, 11, 0, 13, 14, 0, 16, 17);\nconst BONE_HEAD = array<vec3f, 19>(vec3f(0.00000, 0.96179, 0.00482), vec3f(0.00000, 1.05056, -0.02764), vec3f(0.00000, 1.18620, -0.02634), vec3f(0.00000, 1.53777, 0.01311), vec3f(0.00000, 1.63664, 0.04730), vec3f(0.02343, 1.46157, 0.02581), vec3f(0.19063, 1.43167, 0.01959), vec3f(0.36319, 1.23385, 0.01839), vec3f(0.50031, 1.10285, 0.21346), vec3f(-0.02343, 1.46157, 0.02581), vec3f(-0.19063, 1.43167, 0.01959), vec3f(-0.36319, 1.23385, 0.01839), vec3f(-0.50031, 1.10285, 0.21346), vec3f(0.11126, 0.95615, -0.00587), vec3f(0.15488, 0.51706, 0.02909), vec3f(0.20151, 0.07392, 0.01538), vec3f(-0.11126, 0.95615, -0.00587), vec3f(-0.15488, 0.51706, 0.02909), vec3f(-0.20151, 0.07392, 0.01538));\n\nfn boneAngles(i: u32, ctx: PointCtx) -> vec3f {\n  switch i {\n    case 0u: { return ctx.params.pelvis; }\n    case 1u: { return ctx.params.spine; }\n    case 2u: { return ctx.params.chest; }\n    case 3u: { return ctx.params.neck; }\n    case 4u: { return ctx.params.head; }\n    case 5u: { return ctx.params.shoulderL; }\n    case 6u: { return ctx.params.upperarmL; }\n    case 7u: { return ctx.params.forearmL; }\n    case 8u: { return ctx.params.handL; }\n    case 9u: { return ctx.params.shoulderR; }\n    case 10u: { return ctx.params.upperarmR; }\n    case 11u: { return ctx.params.forearmR; }\n    case 12u: { return ctx.params.handR; }\n    case 13u: { return ctx.params.thighL; }\n    case 14u: { return ctx.params.shinL; }\n    case 15u: { return ctx.params.footL; }\n    case 16u: { return ctx.params.thighR; }\n    case 17u: { return ctx.params.shinR; }\n    case 18u: { return ctx.params.footR; }\n    default: { return vec3f(0.0); }\n  }\n}\n\nfn euler(e: vec3f) -> mat3x3f {\n  let cx = cos(e.x); let sx = sin(e.x);\n  let cy = cos(e.y); let sy = sin(e.y);\n  let cz = cos(e.z); let sz = sin(e.z);\n  let rx = mat3x3f(vec3f(1.0, 0.0, 0.0), vec3f(0.0, cx, sx), vec3f(0.0, -sx, cx));\n  let ry = mat3x3f(vec3f(cy, 0.0, -sy), vec3f(0.0, 1.0, 0.0), vec3f(sy, 0.0, cy));\n  let rz = mat3x3f(vec3f(cz, sz, 0.0), vec3f(-sz, cz, 0.0), vec3f(0.0, 0.0, 1.0));\n  return rz * ry * rx;\n}\n\nstruct Xf {\n  m: mat3x3f,\n  t: vec3f,\n};\n\n// The bone's world transform: its own rotation about its head, then each ancestor's.\nfn boneXf(bone: u32, ctx: PointCtx) -> Xf {\n  var acc: Xf;\n  acc.m = mat3x3f(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0));\n  acc.t = vec3f(0.0);\n  var j = i32(bone);\n  for (var level = 0u; level < 8u; level = level + 1u) {\n    if (j < 0 || u32(j) >= BONES) { break; }\n    let r = euler(boneAngles(u32(j), ctx));\n    let h = BONE_HEAD[u32(j)];\n    acc.m = r * acc.m;\n    acc.t = r * (acc.t - h) + h;\n    j = BONE_PARENT[u32(j)];\n  }\n  return acc;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  // Linear-blend skinning over the four influences the decoder normalised to sum 1.\n  var posed = vec3f(0.0);\n  var bent = vec3f(0.0);\n  var total = 0.0;\n  for (var k = 0u; k < 4u; k = k + 1u) {\n    let w = p.weights[k];\n    if (w <= 0.0) { continue; }\n    let x = boneXf(min(u32(p.joints[k] + 0.5), BONES - 1u), ctx);\n    posed = posed + w * (x.m * p.position + x.t);\n    bent = bent + w * (x.m * p.normal);\n    total = total + w;\n  }\n  if (total <= 0.0) {\n    // Nothing skins this vertex: it keeps its rest place.\n    posed = p.position;\n    bent = p.normal;\n  } else {\n    posed = posed / total;\n  }\n  let normal = normalize(bent);\n  let c = cos(ctx.params.yaw);\n  let s = sin(ctx.params.yaw);\n  let turn = mat3x3f(vec3f(c, 0.0, -s), vec3f(0.0, 1.0, 0.0), vec3f(s, 0.0, c));\n  q.position = ctx.params.place + turn * posed;\n  q.normal = turn * normal;\n  return q;\n}",
+          "index1L": [
+            0,
+            0,
+            0
+          ],
+          "index1R": [
+            0,
+            0,
+            0
+          ],
+          "index2L": [
+            0,
+            0,
+            0
+          ],
+          "index2R": [
+            0,
+            0,
+            0
+          ],
+          "index3L": [
+            0,
+            0,
+            0
+          ],
+          "index3R": [
+            0,
+            0,
+            0
+          ],
+          "kernel": "// T1400b — the figure's skin (generated by src/projects/on-nothing/skin-kernel.ts from the GLB's bones).\nstruct Params {\n  place: vec3f, // @default 0  Where the figure stands (world metres).\n  yaw: f32, // @default 0  Which way it faces: radians about +Y (0 faces +Z).\n  pelvis: vec3f, // @default 0  pelvis: rotation about its head, radians (x, y, z about the rest axes).\n  spine: vec3f, // @default 0  spine: rotation about its head, radians (x, y, z about the rest axes).\n  chest: vec3f, // @default 0  chest: rotation about its head, radians (x, y, z about the rest axes).\n  neck: vec3f, // @default 0  neck: rotation about its head, radians (x, y, z about the rest axes).\n  head: vec3f, // @default 0  head: rotation about its head, radians (x, y, z about the rest axes).\n  shoulderL: vec3f, // @default 0  shoulder.L: rotation about its head, radians (x, y, z about the rest axes).\n  upperarmL: vec3f, // @default 0  upperarm.L: rotation about its head, radians (x, y, z about the rest axes).\n  forearmL: vec3f, // @default 0  forearm.L: rotation about its head, radians (x, y, z about the rest axes).\n  handL: vec3f, // @default 0  hand.L: rotation about its head, radians (x, y, z about the rest axes).\n  thumb1L: vec3f, // @default 0  thumb1.L: rotation about its head, radians (x, y, z about the rest axes).\n  thumb2L: vec3f, // @default 0  thumb2.L: rotation about its head, radians (x, y, z about the rest axes).\n  thumb3L: vec3f, // @default 0  thumb3.L: rotation about its head, radians (x, y, z about the rest axes).\n  index1L: vec3f, // @default 0  index1.L: rotation about its head, radians (x, y, z about the rest axes).\n  index2L: vec3f, // @default 0  index2.L: rotation about its head, radians (x, y, z about the rest axes).\n  index3L: vec3f, // @default 0  index3.L: rotation about its head, radians (x, y, z about the rest axes).\n  middle1L: vec3f, // @default 0  middle1.L: rotation about its head, radians (x, y, z about the rest axes).\n  middle2L: vec3f, // @default 0  middle2.L: rotation about its head, radians (x, y, z about the rest axes).\n  middle3L: vec3f, // @default 0  middle3.L: rotation about its head, radians (x, y, z about the rest axes).\n  ring1L: vec3f, // @default 0  ring1.L: rotation about its head, radians (x, y, z about the rest axes).\n  ring2L: vec3f, // @default 0  ring2.L: rotation about its head, radians (x, y, z about the rest axes).\n  ring3L: vec3f, // @default 0  ring3.L: rotation about its head, radians (x, y, z about the rest axes).\n  pinky1L: vec3f, // @default 0  pinky1.L: rotation about its head, radians (x, y, z about the rest axes).\n  pinky2L: vec3f, // @default 0  pinky2.L: rotation about its head, radians (x, y, z about the rest axes).\n  pinky3L: vec3f, // @default 0  pinky3.L: rotation about its head, radians (x, y, z about the rest axes).\n  shoulderR: vec3f, // @default 0  shoulder.R: rotation about its head, radians (x, y, z about the rest axes).\n  upperarmR: vec3f, // @default 0  upperarm.R: rotation about its head, radians (x, y, z about the rest axes).\n  forearmR: vec3f, // @default 0  forearm.R: rotation about its head, radians (x, y, z about the rest axes).\n  handR: vec3f, // @default 0  hand.R: rotation about its head, radians (x, y, z about the rest axes).\n  thumb1R: vec3f, // @default 0  thumb1.R: rotation about its head, radians (x, y, z about the rest axes).\n  thumb2R: vec3f, // @default 0  thumb2.R: rotation about its head, radians (x, y, z about the rest axes).\n  thumb3R: vec3f, // @default 0  thumb3.R: rotation about its head, radians (x, y, z about the rest axes).\n  index1R: vec3f, // @default 0  index1.R: rotation about its head, radians (x, y, z about the rest axes).\n  index2R: vec3f, // @default 0  index2.R: rotation about its head, radians (x, y, z about the rest axes).\n  index3R: vec3f, // @default 0  index3.R: rotation about its head, radians (x, y, z about the rest axes).\n  middle1R: vec3f, // @default 0  middle1.R: rotation about its head, radians (x, y, z about the rest axes).\n  middle2R: vec3f, // @default 0  middle2.R: rotation about its head, radians (x, y, z about the rest axes).\n  middle3R: vec3f, // @default 0  middle3.R: rotation about its head, radians (x, y, z about the rest axes).\n  ring1R: vec3f, // @default 0  ring1.R: rotation about its head, radians (x, y, z about the rest axes).\n  ring2R: vec3f, // @default 0  ring2.R: rotation about its head, radians (x, y, z about the rest axes).\n  ring3R: vec3f, // @default 0  ring3.R: rotation about its head, radians (x, y, z about the rest axes).\n  pinky1R: vec3f, // @default 0  pinky1.R: rotation about its head, radians (x, y, z about the rest axes).\n  pinky2R: vec3f, // @default 0  pinky2.R: rotation about its head, radians (x, y, z about the rest axes).\n  pinky3R: vec3f, // @default 0  pinky3.R: rotation about its head, radians (x, y, z about the rest axes).\n  thighL: vec3f, // @default 0  thigh.L: rotation about its head, radians (x, y, z about the rest axes).\n  shinL: vec3f, // @default 0  shin.L: rotation about its head, radians (x, y, z about the rest axes).\n  footL: vec3f, // @default 0  foot.L: rotation about its head, radians (x, y, z about the rest axes).\n  thighR: vec3f, // @default 0  thigh.R: rotation about its head, radians (x, y, z about the rest axes).\n  shinR: vec3f, // @default 0  shin.R: rotation about its head, radians (x, y, z about the rest axes).\n  footR: vec3f, // @default 0  foot.R: rotation about its head, radians (x, y, z about the rest axes).\n  curlL: vec4f, // @default 0  T1419b: L hand — index, middle, ring, pinky curl at the base knuckle, radians (0 straight, ~1.5 a fist).\n  spreadL: f32, // @default 0  T1419b: L hand — the fingers fan apart, radians.\n  thumbL: vec2f, // @default 0  T1419b: L thumb — x folds it across the palm, y swings it off the palm.\n  curlR: vec4f, // @default 0  T1419b: R hand — index, middle, ring, pinky curl at the base knuckle, radians (0 straight, ~1.5 a fist).\n  spreadR: f32, // @default 0  T1419b: R hand — the fingers fan apart, radians.\n  thumbR: vec2f, // @default 0  T1419b: R thumb — x folds it across the palm, y swings it off the palm.\n};\n\nconst BONES: u32 = 49u;\nconst BONE_PARENT = array<i32, 49>(-1, 0, 1, 2, 3, 2, 5, 6, 7, 8, 9, 10, 8, 12, 13, 8, 15, 16, 8, 18, 19, 8, 21, 22, 2, 24, 25, 26, 27, 28, 29, 27, 31, 32, 27, 34, 35, 27, 37, 38, 27, 40, 41, 0, 43, 44, 0, 46, 47);\nconst BONE_HEAD = array<vec3f, 49>(vec3f(0.00000, 0.96179, 0.00482), vec3f(0.00000, 1.05056, -0.02764), vec3f(0.00000, 1.18620, -0.02634), vec3f(0.00000, 1.53777, 0.01311), vec3f(0.00000, 1.63664, 0.04730), vec3f(0.02343, 1.46157, 0.02581), vec3f(0.19063, 1.43167, 0.01959), vec3f(0.36319, 1.23385, 0.01839), vec3f(0.50031, 1.10285, 0.21346), vec3f(0.50170, 1.09609, 0.26361), vec3f(0.47818, 1.08713, 0.28751), vec3f(0.46400, 1.07300, 0.32346), vec3f(0.53130, 1.06115, 0.32158), vec3f(0.53494, 1.04488, 0.34556), vec3f(0.53436, 1.02711, 0.36492), vec3f(0.54967, 1.04794, 0.30230), vec3f(0.55783, 1.01948, 0.32645), vec3f(0.56080, 0.99628, 0.34638), vec3f(0.55826, 1.03887, 0.28311), vec3f(0.56859, 1.01169, 0.29997), vec3f(0.57361, 0.98880, 0.31518), vec3f(0.55984, 1.02806, 0.26152), vec3f(0.56653, 1.00704, 0.27089), vec3f(0.56864, 0.99110, 0.27797), vec3f(-0.02343, 1.46157, 0.02581), vec3f(-0.19063, 1.43167, 0.01959), vec3f(-0.36319, 1.23385, 0.01839), vec3f(-0.50031, 1.10285, 0.21346), vec3f(-0.50170, 1.09609, 0.26361), vec3f(-0.47818, 1.08713, 0.28751), vec3f(-0.46400, 1.07300, 0.32346), vec3f(-0.53130, 1.06115, 0.32158), vec3f(-0.53494, 1.04488, 0.34556), vec3f(-0.53436, 1.02711, 0.36492), vec3f(-0.54967, 1.04794, 0.30230), vec3f(-0.55783, 1.01948, 0.32645), vec3f(-0.56080, 0.99628, 0.34638), vec3f(-0.55826, 1.03887, 0.28311), vec3f(-0.56859, 1.01169, 0.29997), vec3f(-0.57361, 0.98880, 0.31518), vec3f(-0.55984, 1.02806, 0.26152), vec3f(-0.56653, 1.00704, 0.27089), vec3f(-0.56864, 0.99110, 0.27797), vec3f(0.11126, 0.95615, -0.00587), vec3f(0.15488, 0.51706, 0.02909), vec3f(0.20151, 0.07392, 0.01538), vec3f(-0.11126, 0.95615, -0.00587), vec3f(-0.15488, 0.51706, 0.02909), vec3f(-0.20151, 0.07392, 0.01538));\n\nfn boneAngles(i: u32, ctx: PointCtx) -> vec3f {\n  switch i {\n    case 0u: { return ctx.params.pelvis; }\n    case 1u: { return ctx.params.spine; }\n    case 2u: { return ctx.params.chest; }\n    case 3u: { return ctx.params.neck; }\n    case 4u: { return ctx.params.head; }\n    case 5u: { return ctx.params.shoulderL; }\n    case 6u: { return ctx.params.upperarmL; }\n    case 7u: { return ctx.params.forearmL; }\n    case 8u: { return ctx.params.handL; }\n    case 9u: { return ctx.params.thumb1L; }\n    case 10u: { return ctx.params.thumb2L; }\n    case 11u: { return ctx.params.thumb3L; }\n    case 12u: { return ctx.params.index1L; }\n    case 13u: { return ctx.params.index2L; }\n    case 14u: { return ctx.params.index3L; }\n    case 15u: { return ctx.params.middle1L; }\n    case 16u: { return ctx.params.middle2L; }\n    case 17u: { return ctx.params.middle3L; }\n    case 18u: { return ctx.params.ring1L; }\n    case 19u: { return ctx.params.ring2L; }\n    case 20u: { return ctx.params.ring3L; }\n    case 21u: { return ctx.params.pinky1L; }\n    case 22u: { return ctx.params.pinky2L; }\n    case 23u: { return ctx.params.pinky3L; }\n    case 24u: { return ctx.params.shoulderR; }\n    case 25u: { return ctx.params.upperarmR; }\n    case 26u: { return ctx.params.forearmR; }\n    case 27u: { return ctx.params.handR; }\n    case 28u: { return ctx.params.thumb1R; }\n    case 29u: { return ctx.params.thumb2R; }\n    case 30u: { return ctx.params.thumb3R; }\n    case 31u: { return ctx.params.index1R; }\n    case 32u: { return ctx.params.index2R; }\n    case 33u: { return ctx.params.index3R; }\n    case 34u: { return ctx.params.middle1R; }\n    case 35u: { return ctx.params.middle2R; }\n    case 36u: { return ctx.params.middle3R; }\n    case 37u: { return ctx.params.ring1R; }\n    case 38u: { return ctx.params.ring2R; }\n    case 39u: { return ctx.params.ring3R; }\n    case 40u: { return ctx.params.pinky1R; }\n    case 41u: { return ctx.params.pinky2R; }\n    case 42u: { return ctx.params.pinky3R; }\n    case 43u: { return ctx.params.thighL; }\n    case 44u: { return ctx.params.shinL; }\n    case 45u: { return ctx.params.footL; }\n    case 46u: { return ctx.params.thighR; }\n    case 47u: { return ctx.params.shinR; }\n    case 48u: { return ctx.params.footR; }\n    default: { return vec3f(0.0); }\n  }\n}\n\nfn euler(e: vec3f) -> mat3x3f {\n  let cx = cos(e.x); let sx = sin(e.x);\n  let cy = cos(e.y); let sy = sin(e.y);\n  let cz = cos(e.z); let sz = sin(e.z);\n  let rx = mat3x3f(vec3f(1.0, 0.0, 0.0), vec3f(0.0, cx, sx), vec3f(0.0, -sx, cx));\n  let ry = mat3x3f(vec3f(cy, 0.0, -sy), vec3f(0.0, 1.0, 0.0), vec3f(sy, 0.0, cy));\n  let rz = mat3x3f(vec3f(cz, sz, 0.0), vec3f(-sz, cz, 0.0), vec3f(0.0, 0.0, 1.0));\n  return rz * ry * rx;\n}\n\n// T1419b: a turn of t radians about the unit axis a (Rodrigues).\nfn axisAngle(a: vec3f, t: f32) -> mat3x3f {\n  let c = cos(t);\n  let s = sin(t);\n  let k = 1.0 - c;\n  return mat3x3f(\n    vec3f(c + a.x * a.x * k, a.y * a.x * k + a.z * s, a.z * a.x * k - a.y * s),\n    vec3f(a.x * a.y * k - a.z * s, c + a.y * a.y * k, a.z * a.y * k + a.x * s),\n    vec3f(a.x * a.z * k + a.y * s, a.y * a.z * k - a.x * s, c + a.z * a.z * k));\n}\n\n// T1419b: the hand knobs' turn of a finger bone, about rest axes measured from the heads.\nfn fingerTurn(i: u32, ctx: PointCtx) -> mat3x3f {\n  switch i {\n    case 12u: { return axisAngle(vec3f(-0.88812, -0.41755, -0.19207), ctx.params.spreadL * 1.000) * axisAngle(vec3f(0.45014, -0.70587, -0.54692), ctx.params.curlL.x * 1.000); }\n    case 13u: { return axisAngle(vec3f(0.44311, -0.66693, -0.59905), ctx.params.curlL.x * 1.150); }\n    case 14u: { return axisAngle(vec3f(0.44311, -0.66693, -0.59905), ctx.params.curlL.x * 0.800); }\n    case 15u: { return axisAngle(vec3f(-0.88812, -0.41755, -0.19207), ctx.params.spreadL * 0.150) * axisAngle(vec3f(0.40698, -0.52029, -0.75078), ctx.params.curlL.y * 1.000); }\n    case 16u: { return axisAngle(vec3f(0.41815, -0.56065, -0.71472), ctx.params.curlL.y * 1.150); }\n    case 17u: { return axisAngle(vec3f(0.41815, -0.56065, -0.71472), ctx.params.curlL.y * 0.800); }\n    case 18u: { return axisAngle(vec3f(-0.88812, -0.41755, -0.19207), ctx.params.spreadL * -0.600) * axisAngle(vec3f(0.36496, -0.38670, -0.84692), ctx.params.curlL.z * 1.000); }\n    case 19u: { return axisAngle(vec3f(0.38587, -0.45038, -0.80514), ctx.params.curlL.z * 1.150); }\n    case 20u: { return axisAngle(vec3f(0.38587, -0.45038, -0.80514), ctx.params.curlL.z * 0.800); }\n    case 21u: { return axisAngle(vec3f(-0.88812, -0.41755, -0.19207), ctx.params.spreadL * -1.200) * axisAngle(vec3f(0.33204, -0.29397, -0.89629), ctx.params.curlL.w * 1.000); }\n    case 22u: { return axisAngle(vec3f(0.34927, -0.34151, -0.87257), ctx.params.curlL.w * 1.150); }\n    case 23u: { return axisAngle(vec3f(0.34927, -0.34151, -0.87257), ctx.params.curlL.w * 0.800); }\n    case 9u: { return axisAngle(vec3f(-0.41280, 0.90842, -0.06609), ctx.params.thumbL.y * 1.000) * axisAngle(vec3f(0.45536, -0.88249, 0.11772), ctx.params.thumbL.x * 0.350); }\n    case 10u: { return axisAngle(vec3f(0.51944, -0.84496, -0.12737), ctx.params.thumbL.x * 0.800); }\n    case 11u: { return axisAngle(vec3f(0.51944, -0.84496, -0.12737), ctx.params.thumbL.x * 0.900); }\n    case 31u: { return axisAngle(vec3f(0.88812, -0.41755, -0.19207), ctx.params.spreadR * -1.000) * axisAngle(vec3f(0.45014, 0.70587, 0.54692), ctx.params.curlR.x * 1.000); }\n    case 32u: { return axisAngle(vec3f(0.44311, 0.66693, 0.59905), ctx.params.curlR.x * 1.150); }\n    case 33u: { return axisAngle(vec3f(0.44311, 0.66693, 0.59905), ctx.params.curlR.x * 0.800); }\n    case 34u: { return axisAngle(vec3f(0.88812, -0.41755, -0.19207), ctx.params.spreadR * -0.150) * axisAngle(vec3f(0.40698, 0.52029, 0.75078), ctx.params.curlR.y * 1.000); }\n    case 35u: { return axisAngle(vec3f(0.41815, 0.56065, 0.71472), ctx.params.curlR.y * 1.150); }\n    case 36u: { return axisAngle(vec3f(0.41815, 0.56065, 0.71472), ctx.params.curlR.y * 0.800); }\n    case 37u: { return axisAngle(vec3f(0.88812, -0.41755, -0.19207), ctx.params.spreadR * 0.600) * axisAngle(vec3f(0.36496, 0.38670, 0.84692), ctx.params.curlR.z * 1.000); }\n    case 38u: { return axisAngle(vec3f(0.38587, 0.45038, 0.80514), ctx.params.curlR.z * 1.150); }\n    case 39u: { return axisAngle(vec3f(0.38587, 0.45038, 0.80514), ctx.params.curlR.z * 0.800); }\n    case 40u: { return axisAngle(vec3f(0.88812, -0.41755, -0.19207), ctx.params.spreadR * 1.200) * axisAngle(vec3f(0.33204, 0.29397, 0.89629), ctx.params.curlR.w * 1.000); }\n    case 41u: { return axisAngle(vec3f(0.34927, 0.34151, 0.87257), ctx.params.curlR.w * 1.150); }\n    case 42u: { return axisAngle(vec3f(0.34927, 0.34151, 0.87257), ctx.params.curlR.w * 0.800); }\n    case 28u: { return axisAngle(vec3f(-0.41280, -0.90842, 0.06609), ctx.params.thumbR.y * 1.000) * axisAngle(vec3f(0.45536, 0.88249, -0.11772), ctx.params.thumbR.x * 0.350); }\n    case 29u: { return axisAngle(vec3f(0.51944, 0.84496, 0.12737), ctx.params.thumbR.x * 0.800); }\n    case 30u: { return axisAngle(vec3f(0.51944, 0.84496, 0.12737), ctx.params.thumbR.x * 0.900); }\n    default: { return mat3x3f(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0)); }\n  }\n}\n\nstruct Xf {\n  m: mat3x3f,\n  t: vec3f,\n};\n\n// The bone's world transform: its own rotation about its head, then each ancestor's.\nfn boneXf(bone: u32, ctx: PointCtx) -> Xf {\n  var acc: Xf;\n  acc.m = mat3x3f(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0));\n  acc.t = vec3f(0.0);\n  var j = i32(bone);\n  // T1419b: pelvis → spine → chest → shoulder → upper arm → forearm → hand → three phalanges is\n  // ten bones deep; the walk allows twelve.\n  for (var level = 0u; level < 12u; level = level + 1u) {\n    if (j < 0 || u32(j) >= BONES) { break; }\n    let r = euler(boneAngles(u32(j), ctx)) * fingerTurn(u32(j), ctx);\n    let h = BONE_HEAD[u32(j)];\n    acc.m = r * acc.m;\n    acc.t = r * (acc.t - h) + h;\n    j = BONE_PARENT[u32(j)];\n  }\n  return acc;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  // Linear-blend skinning over the four influences the decoder normalised to sum 1.\n  var posed = vec3f(0.0);\n  var bent = vec3f(0.0);\n  var total = 0.0;\n  for (var k = 0u; k < 4u; k = k + 1u) {\n    let w = p.weights[k];\n    if (w <= 0.0) { continue; }\n    let x = boneXf(min(u32(p.joints[k] + 0.5), BONES - 1u), ctx);\n    posed = posed + w * (x.m * p.position + x.t);\n    bent = bent + w * (x.m * p.normal);\n    total = total + w;\n  }\n  if (total <= 0.0) {\n    // Nothing skins this vertex: it keeps its rest place.\n    posed = p.position;\n    bent = p.normal;\n  } else {\n    posed = posed / total;\n  }\n  let normal = normalize(bent);\n  let c = cos(ctx.params.yaw);\n  let s = sin(ctx.params.yaw);\n  let turn = mat3x3f(vec3f(c, 0.0, -s), vec3f(0.0, 1.0, 0.0), vec3f(s, 0.0, c));\n  q.position = ctx.params.place + turn * posed;\n  q.normal = turn * normal;\n  return q;\n}",
+          "middle1L": [
+            0,
+            0,
+            0
+          ],
+          "middle1R": [
+            0,
+            0,
+            0
+          ],
+          "middle2L": [
+            0,
+            0,
+            0
+          ],
+          "middle2R": [
+            0,
+            0,
+            0
+          ],
+          "middle3L": [
+            0,
+            0,
+            0
+          ],
+          "middle3R": [
+            0,
+            0,
+            0
+          ],
           "neck": [
             0,
             0,
@@ -2588,10 +2859,70 @@
             },
             "mode": "expression"
           },
+          "pinky1L": [
+            0,
+            0,
+            0
+          ],
+          "pinky1R": [
+            0,
+            0,
+            0
+          ],
+          "pinky2L": [
+            0,
+            0,
+            0
+          ],
+          "pinky2R": [
+            0,
+            0,
+            0
+          ],
+          "pinky3L": [
+            0,
+            0,
+            0
+          ],
+          "pinky3R": [
+            0,
+            0,
+            0
+          ],
           "place": [
             0,
             0,
             3.740000009536743
+          ],
+          "ring1L": [
+            0,
+            0,
+            0
+          ],
+          "ring1R": [
+            0,
+            0,
+            0
+          ],
+          "ring2L": [
+            0,
+            0,
+            0
+          ],
+          "ring2R": [
+            0,
+            0,
+            0
+          ],
+          "ring3L": [
+            0,
+            0,
+            0
+          ],
+          "ring3R": [
+            0,
+            0,
+            0
           ],
           "shinL": [
             0,
@@ -2624,6 +2955,36 @@
             0
           ],
           "thighR": [
+            0,
+            0,
+            0
+          ],
+          "thumb1L": [
+            0,
+            0,
+            0
+          ],
+          "thumb1R": [
+            0,
+            0,
+            0
+          ],
+          "thumb2L": [
+            0,
+            0,
+            0
+          ],
+          "thumb2R": [
+            0,
+            0,
+            0
+          ],
+          "thumb3L": [
+            0,
+            0,
+            0
+          ],
+          "thumb3R": [
             0,
             0,
             0
@@ -2809,19 +3170,19 @@
         "id": "streak0",
         "label": "streak01",
         "parameters": {
-          "compress": 3,
+          "compress": 1.5,
           "decay": 50,
           "down": 0,
           "finish": 0,
           "gain": 1.8,
           "minSize": 0.006,
           "source": "struct Params {\n  step: f32, // @default 0.004  Distance between taps, as a fraction of the frame height (chained passes: each step under the previous pass's span).\n  decay: f32, // @default 50  1/e reach of this pass's weights, as a fraction of its span (large = a flat box).\n  finish: f32, // @default 0  1 on the last pass: striations and the downward tail.\n  down: f32, // @default 0.12  Downward tail reach, fraction of the frame height (last pass).\n  striation: f32, // @default 0.55  Depth of the glass's vertical striations (last pass).\n  striationScale: f32, // @default 140  Striations across the frame width.\n  gain: f32, // @default 1  Column brightness (last pass).\n  spread: f32, // @default 0  Horizontal widening, fraction of the frame width (first pass).\n  compress: f32, // @default 0  First pass: roll each source off toward this radiance (0 off), so a clipped lamp smears a milky slab, not a white bar.\n  minSize: f32, // @default 0  First pass: smallest source that streaks, as a fraction of the frame height (0 off); a thinner glint never streaks.\n  sourceLevel: f32, // @default 0.5  Brightness of the (thresholded) input at which a texel fully counts as source, for minSize.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n\nconst TAPS: i32 = 16;\n\n// The share of a minSize-wide square around at that is source, through smoothstep(0.5, 1).\nfn sizeGate(at: vec2f) -> f32 {\n  if (params.minSize <= 0.0) { return 1.0; }\n  let size = vec2f(textureDimensions(inputTexture));\n  let n = i32(min(ceil(params.minSize * size.y), 8.0));\n  let side = vec2f(params.minSize * size.y) / size;\n  var share = 0.0;\n  for (var j = 0; j < n; j = j + 1) {\n    for (var i = 0; i < n; i = i + 1) {\n      let o = (vec2f(f32(i), f32(j)) + 0.5) / f32(n) - 0.5;\n      let c = max(textureSampleLevel(inputTexture, inputSampler, at + o * side, 0.0).rgb, vec3f(0.0));\n      share = share + clamp(max(c.r, max(c.g, c.b)) / max(params.sourceLevel, 1e-4), 0.0, 1.0);\n    }\n  }\n  return smoothstep(0.5, 1.0, share / f32(n * n));\n}\n\nfn stripe(x: f32) -> f32 {\n  // Two incommensurate sine families, sharpened: uneven, glassy grooves.\n  let a = 0.5 + 0.5 * sin(x * 6.2831853 + sin(x * 0.37) * 3.0);\n  let b = 0.5 + 0.5 * sin(x * 2.618 * 6.2831853 + 1.3);\n  return pow(a * 0.6 + b * 0.4, 1.6);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let size = vec2f(textureDimensions(inputTexture));\n  var sum = vec3f(0.0);\n  var norm = 0.0;\n  for (var k = 0; k < TAPS; k = k + 1) {\n    let w = exp(-f32(k) / (f32(TAPS) * params.decay));\n    // Upward column: gather from BELOW (texture y grows downward).\n    let at = uv + vec2f(0.0, f32(k) * params.step);\n    if (at.y > 1.0) { break; }\n    var c = textureSampleLevel(inputTexture, inputSampler, at, 0.0).rgb * sizeGate(at);\n    if (params.compress > 0.0) {\n      c = c / (1.0 + max(c.r, max(c.g, c.b)) / params.compress);\n    }\n    if (params.spread > 0.0) {\n      for (var j = 1; j <= 3; j = j + 1) {\n        let o = vec2f(f32(j) / 3.0 * params.spread, 0.0);\n        var l = textureSampleLevel(inputTexture, inputSampler, at + o, 0.0).rgb * sizeGate(at + o);\n        var r = textureSampleLevel(inputTexture, inputSampler, at - o, 0.0).rgb * sizeGate(at - o);\n        if (params.compress > 0.0) {\n          l = l / (1.0 + max(l.r, max(l.g, l.b)) / params.compress);\n          r = r / (1.0 + max(r.r, max(r.g, r.b)) / params.compress);\n        }\n        c = c + (l + r) * (1.0 - f32(j) / 4.0);\n      }\n      c = c / 3.5;\n    }\n    sum = sum + c * w;\n    norm = norm + w;\n  }\n  var color = sum / norm;\n  if (params.finish > 0.5) {\n    var tail = vec3f(0.0);\n    for (var k = 1; k <= 8; k = k + 1) {\n      let d = f32(k) / 8.0 * params.down;\n      if (uv.y - d < 0.0) { break; }\n      tail = tail + textureSampleLevel(inputTexture, inputSampler, uv - vec2f(0.0, d), 0.0).rgb * exp(-f32(k) / 3.0);\n    }\n    color = color + tail * 0.12 * step(0.0001, params.down);\n    color = color * mix(1.0, stripe(uv.x * params.striationScale), params.striation) * params.gain;\n  }\n  return vec4f(color, 1.0);\n}",
-          "spread": 0.003,
+          "spread": 0,
           "step": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(0.36 * (0.62 + 0.3 * clamp(abstime / 4, 0, 1) + 0.18 * clamp(op('levels1').chan.level * 0.6 + op('levels1').chan.low * 0.4, 0, 1))) / 400"
+                "source": "(0.85 * max(clamp(2 - floor(abstime * 24 + 0.001), 0, 1), min(clamp(0.18 + (floor(abstime * 24 + 0.001) - 2) * 0.42, 0, 1), (1 - 0.75 * clamp((floor(abstime * 24 + 0.001) - 7) / 13, 0, 1))))) / 400"
               },
               "static": {
                 "kind": "static",
@@ -2859,7 +3220,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(0.36 * (0.62 + 0.3 * clamp(abstime / 4, 0, 1) + 0.18 * clamp(op('levels1').chan.level * 0.6 + op('levels1').chan.low * 0.4, 0, 1))) / 60"
+                "source": "(0.85 * max(clamp(2 - floor(abstime * 24 + 0.001), 0, 1), min(clamp(0.18 + (floor(abstime * 24 + 0.001) - 2) * 0.42, 0, 1), (1 - 0.75 * clamp((floor(abstime * 24 + 0.001) - 7) / 13, 0, 1))))) / 60"
               },
               "static": {
                 "kind": "static",
@@ -2897,7 +3258,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(0.36 * (0.62 + 0.3 * clamp(abstime / 4, 0, 1) + 0.18 * clamp(op('levels1').chan.level * 0.6 + op('levels1').chan.low * 0.4, 0, 1))) / 20"
+                "source": "(0.85 * max(clamp(2 - floor(abstime * 24 + 0.001), 0, 1), min(clamp(0.18 + (floor(abstime * 24 + 0.001) - 2) * 0.42, 0, 1), (1 - 0.75 * clamp((floor(abstime * 24 + 0.001) - 7) / 13, 0, 1))))) / 20"
               },
               "static": {
                 "kind": "static",
@@ -2946,7 +3307,7 @@
           "dryGloss": 0.6,
           "headGain": 1,
           "model": "pbr",
-          "source": "// @use surface-detail\nconst CONTACT_COUNT: u32 = 5u;\nconst CONTACT = array<vec4f, 5>(vec4f(0.0000, -2.6025, 0.9438, 2.3525), vec4f(-2.9100, -2.4500, 0.9683, 2.1900), vec4f(2.8452, -3.1800, 0.9234, 2.6300), vec4f(-1.4200, -10.0850, 0.9622, 2.4850), vec4f(2.2500, -9.7900, 1.0655, 2.4400));\nstruct Params {\n  headGain: f32, // @default 1  Headlight and DRL radiance multiplier.\n  tubeGain: f32, // @default 1  LED tube radiance multiplier.\n  tailGain: f32, // @default 1  Tail light radiance multiplier.\n  wet: f32, // @default 0.4  Share of the floor that is damp and glossy.\n  wetGloss: f32, // @default 0.22  Roughness of the damp patches.\n  contactDepth: f32, // @default 0.93  How dark the floor gets under a parked car (0 off).\n  contactReach: f32, // @default 1.1  How far the contact shadow reaches beyond the footprint, metres.\n  dryGloss: f32, // @default 0.62  Roughness of the dry floor (worn concrete: past the reflections' cutoff).\n  peel: f32, // @default 0.25  Orange-peel strength on the clear coat.\n  cycAlbedo: f32, // @default 0.9  Albedo of the white cyc.\n};\n\nfn classOf(s: SurfaceIn) -> u32 {\n  return u32(s.attr.z * 64.0 + 0.5);\n}\n\n// Scratch lines: per 0.6 m cell, a random direction and offset; thin, broken, short.\nfn scratchAt(w: vec2f, scale: f32, seed: u32) -> f32 {\n  let q = w / scale;\n  let cell = floor(q);\n  let h = vec3f(unitFloat(hash3i(vec3i(vec3f(cell, 1.0)), seed)), unitFloat(hash3i(vec3i(vec3f(cell, 2.0)), seed + 7u)), unitFloat(hash3i(vec3i(vec3f(cell, 3.0)), seed + 13u)));\n  let a = h.x * 3.14159;\n  let local = q - cell - vec2f(0.5);\n  let across = dot(local, vec2f(-sin(a), cos(a))) - (h.y - 0.5) * 0.6;\n  let along = dot(local, vec2f(cos(a), sin(a)));\n  let seg = smoothstep(0.45, 0.2, abs(along)) * step(0.35, h.z);\n  return smoothstep(0.012, 0.0, abs(across)) * seg;\n}\n\n// CONTACT SHADOWS under the parked cars: each footprint (generated from the GLB, see\n// contactFootprints) darkens the floor with a soft falloff — near black under the body, a\n// short penumbra beyond it — the sky/room occlusion a screen-space pass cannot reach at 15 m.\nfn contactShadow(q: vec2f, p: Params) -> f32 {\n  var k = 1.0;\n  for (var i = 0u; i < CONTACT_COUNT; i = i + 1u) {\n    let f = CONTACT[i];\n    let d = abs(q - f.xy) - f.zw;\n    let outside = length(max(d, vec2f(0.0))) + min(max(d.x, d.y), 0.0);\n    let shadow = pow(1.0 - smoothstep(-0.6, p.contactReach, outside), 1.6);\n    k = k * (1.0 - shadow * p.contactDepth);\n  }\n  return k;\n}\n\nfn floorSurface(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {\n  // DRY, WORN warehouse concrete: satin, never glossy. A traffic-polished lane catches the\n  // lamps as a soft sheen; scuffs, stains, aggregate and scratches break it everywhere.\n  var r = o;\n  let w = s.world;\n  let large = detailFbm(vec3f(w.x * 0.18, 0.0, w.z * 0.18), 4, s.footprint);\n  let mid = detailFbm(vec3f(w.x * 0.9, 5.0, w.z * 0.9), 4, s.footprint);\n  let fine = detailFbm(w * 3.1, 5, s.footprint);\n  let grit = detailFbm(w * 21.0, 3, s.footprint);\n  let damp = smoothstep(1.0 - p.wet - 0.15, 1.0 - p.wet + 0.15, large.value + (fine.value - 0.5) * 0.25);\n  // tyre scuffs and oil stains\n  let scuff = smoothstep(0.6, 0.8, detailNoise(vec3f(w.x * 1.7, 0.0, w.z * 0.12)).value) * 0.45;\n  let stain = smoothstep(0.62, 0.78, mid.value) * 0.35;\n  // aggregate: a speckle of lighter and darker stones in the cement\n  let stone = smoothstep(0.7, 0.85, grit.value) * 0.18 - smoothstep(0.3, 0.15, grit.value) * 0.12;\n  let crack = smoothstep(0.006, 0.0, abs(detailNoise(vec3f(w.x * 0.9, 3.0, w.z * 0.9)).value - 0.5)) * 0.5;\n  let scratches = max(scratchAt(w.xz, 0.6, 3u), scratchAt(w.xz + vec2f(0.21, 0.37), 0.35, 11u) * 0.6) * (1.0 - smoothstep(0.004, 0.02, s.footprint));\n  let shade = (0.88 + 0.24 * fine.value + stone) * (0.85 + 0.3 * large.value);\n  r.albedo = vec4f(o.albedo.rgb * shade * mix(1.0, 0.6, damp) * (1.0 - scuff * 0.5) * (1.0 - stain) * (1.0 - crack * 0.6) * (1.0 + scratches * 0.5) * contactShadow(w.xz, p), 1.0);\n  // satin, never a mirror: polished where traffic ran, rough where it did not\n  let polish = smoothstep(0.35, 0.75, large.value);\n  r.roughness = clamp(mix(p.dryGloss + 0.12, p.dryGloss - 0.08, polish) + (grit.value - 0.5) * 0.1 + stain * 0.1 - scratches * 0.15, 0.3, 0.95);\n  r.roughness = mix(r.roughness, p.wetGloss, damp);\n  r.metallic = 0.0;\n  r.normal = detailBump(s.normal, grit.gradient * 0.006 + fine.gradient * 0.015 + mid.gradient * 0.02, 1.0);\n  return r;\n}\n\nfn brickSurface(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  let w = s.world;\n  let course = w.y / 0.075;\n  let row = floor(course);\n  let along = (w.x + w.z) / 0.23 + row * 0.5;\n  let mortar = max(smoothstep(0.1, 0.0, fract(course)), smoothstep(0.06, 0.0, fract(along)));\n  let n = detailFbm(w * 6.0, 4, s.footprint);\n  r.albedo = vec4f(o.albedo.rgb * (0.7 + 0.6 * n.value) * mix(1.0, 1.6, mortar), 1.0);\n  r.roughness = 0.9;\n  r.normal = detailBump(s.normal, n.gradient * 0.01, 1.0);\n  return r;\n}\n\nfn clearCoat(s: SurfaceIn, p: Params, o: SurfaceOut, roughness: f32) -> SurfaceOut {\n  var r = o;\n  let peel = detailFbm(s.world * 90.0, 2, s.footprint);\n  r.roughness = roughness;\n  r.normal = detailBump(s.normal, peel.gradient * 0.00045 * p.peel, 1.0);\n  return r;\n}\n\nfn jewel(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  // Facets: the normal snaps to a coarse lattice of directions, cell by cell, so each stone\n  // throws its own glint instead of one smooth sheen.\n  let cell = floor(s.world * 180.0);\n  let h = vec3f(unitFloat(hash3i(vec3i(cell), 11u)), unitFloat(hash3i(vec3i(cell), 23u)), unitFloat(hash3i(vec3i(cell), 37u)));\n  // facets finer than a pixel sparkle and crawl frame to frame: fade them to the smooth normal\n  let resolved = 1.0 - smoothstep(0.002, 0.006, s.footprint);\n  r.normal = normalize(s.normal + (h - vec3f(0.5)) * 0.9 * resolved);\n  r.roughness = 0.03;\n  r.metallic = 1.0;\n  r.albedo = vec4f(0.98, 0.98, 1.0, 1.0);\n  return r;\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let c = classOf(s);\n  switch c {\n    case 1u: { return floorSurface(s, p, o); }\n    case 2u: { return brickSurface(s, o); }\n    case 4u: { o.emissive = s.emissive * p.tubeGain; }\n    case 10u, 13u: { return clearCoat(s, p, o, 0.035); }\n    case 11u: { return clearCoat(s, p, o, 0.16); }\n    case 12u: { return clearCoat(s, p, o, 0.42); }\n    case 14u, 19u: { o.roughness = 0.035; o.metallic = 1.0; }\n    case 15u: { o.roughness = 0.015; o.metallic = 0.0; }\n    case 17u: {\n      let n = detailFbm(s.world * 40.0, 3, s.footprint);\n      o.roughness = 0.65 + 0.2 * n.value;\n      o.normal = detailBump(s.normal, n.gradient * 0.002, 1.0);\n    }\n    case 18u: { o.emissive = s.emissive * p.headGain; }\n    case 20u: { o.emissive = s.emissive * p.tailGain; }\n    case 30u: {\n      let luma = dot(o.albedo.rgb, vec3f(0.2126, 0.7152, 0.0722));\n      o.albedo = vec4f(mix(vec3f(luma), o.albedo.rgb, 0.6), 1.0);\n      o.roughness = 0.45;\n    }\n    case 31u, 32u: {\n      let n = detailFbm(s.world * 55.0, 3, s.footprint);\n      o.roughness = 0.9;\n      o.normal = detailBump(s.normal, n.gradient * 0.0012, 1.0);\n    }\n    case 35u: { return jewel(s, o); }\n    case 40u: { o.albedo = vec4f(vec3f(p.cycAlbedo), 1.0); o.roughness = 0.95; o.metallic = 0.0; }\n    default: {}\n  }\n  return o;\n}",
+          "source": "// @use surface-detail\nconst CONTACT_COUNT: u32 = 6u;\nconst CONTACT = array<vec4f, 6>(vec4f(120.1614, 0.0000, 0.6324, -0.2500), vec4f(0.0000, -2.6025, 0.9438, 2.3525), vec4f(-2.9100, -2.4500, 0.9683, 2.1900), vec4f(2.8452, -3.1800, 0.9234, 2.6300), vec4f(-1.4200, -10.0850, 0.9622, 2.4850), vec4f(2.2500, -9.7900, 1.0655, 2.4400));\nstruct Params {\n  headGain: f32, // @default 1  Headlight and DRL radiance multiplier.\n  tubeGain: f32, // @default 1  LED tube radiance multiplier.\n  tailGain: f32, // @default 1  Tail light radiance multiplier.\n  wet: f32, // @default 0.4  Share of the floor that is damp and glossy.\n  wetGloss: f32, // @default 0.22  Roughness of the damp patches.\n  contactDepth: f32, // @default 0.93  How dark the floor gets under a parked car (0 off).\n  contactReach: f32, // @default 1.1  How far the contact shadow reaches beyond the footprint, metres.\n  dryGloss: f32, // @default 0.62  Roughness of the dry floor (worn concrete: past the reflections' cutoff).\n  peel: f32, // @default 0.25  Orange-peel strength on the clear coat.\n  cycAlbedo: f32, // @default 0.9  Albedo of the white cyc.\n};\n\nfn classOf(s: SurfaceIn) -> u32 {\n  return u32(s.attr.z * 64.0 + 0.5);\n}\n\n// Scratch lines: per 0.6 m cell, a random direction and offset; thin, broken, short.\nfn scratchAt(w: vec2f, scale: f32, seed: u32) -> f32 {\n  let q = w / scale;\n  let cell = floor(q);\n  let h = vec3f(unitFloat(hash3i(vec3i(vec3f(cell, 1.0)), seed)), unitFloat(hash3i(vec3i(vec3f(cell, 2.0)), seed + 7u)), unitFloat(hash3i(vec3i(vec3f(cell, 3.0)), seed + 13u)));\n  let a = h.x * 3.14159;\n  let local = q - cell - vec2f(0.5);\n  let across = dot(local, vec2f(-sin(a), cos(a))) - (h.y - 0.5) * 0.6;\n  let along = dot(local, vec2f(cos(a), sin(a)));\n  let seg = smoothstep(0.45, 0.2, abs(along)) * step(0.35, h.z);\n  return smoothstep(0.012, 0.0, abs(across)) * seg;\n}\n\n// CONTACT SHADOWS under the parked cars: each footprint (generated from the GLB, see\n// contactFootprints) darkens the floor with a soft falloff — near black under the body, a\n// short penumbra beyond it — the sky/room occlusion a screen-space pass cannot reach at 15 m.\nfn contactShadow(q: vec2f, p: Params) -> f32 {\n  var k = 1.0;\n  for (var i = 0u; i < CONTACT_COUNT; i = i + 1u) {\n    let f = CONTACT[i];\n    let d = abs(q - f.xy) - f.zw;\n    let outside = length(max(d, vec2f(0.0))) + min(max(d.x, d.y), 0.0);\n    let shadow = pow(1.0 - smoothstep(-0.6, p.contactReach, outside), 1.6);\n    k = k * (1.0 - shadow * p.contactDepth);\n  }\n  return k;\n}\n\nfn floorSurface(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {\n  // DRY, WORN warehouse concrete: satin, never glossy. A traffic-polished lane catches the\n  // lamps as a soft sheen; scuffs, stains, aggregate and scratches break it everywhere.\n  var r = o;\n  let w = s.world;\n  let large = detailFbm(vec3f(w.x * 0.18, 0.0, w.z * 0.18), 4, s.footprint);\n  let mid = detailFbm(vec3f(w.x * 0.9, 5.0, w.z * 0.9), 4, s.footprint);\n  let fine = detailFbm(w * 3.1, 5, s.footprint);\n  let grit = detailFbm(w * 21.0, 3, s.footprint);\n  let damp = smoothstep(1.0 - p.wet - 0.15, 1.0 - p.wet + 0.15, large.value + (fine.value - 0.5) * 0.25);\n  // tyre scuffs and oil stains\n  let scuff = smoothstep(0.6, 0.8, detailNoise(vec3f(w.x * 1.7, 0.0, w.z * 0.12)).value) * 0.45;\n  let stain = smoothstep(0.62, 0.78, mid.value) * 0.35;\n  // aggregate: a speckle of lighter and darker stones in the cement\n  let stone = smoothstep(0.7, 0.85, grit.value) * 0.18 - smoothstep(0.3, 0.15, grit.value) * 0.12;\n  let crack = smoothstep(0.006, 0.0, abs(detailNoise(vec3f(w.x * 0.9, 3.0, w.z * 0.9)).value - 0.5)) * 0.5;\n  let scratches = max(scratchAt(w.xz, 0.6, 3u), scratchAt(w.xz + vec2f(0.21, 0.37), 0.35, 11u) * 0.6) * (1.0 - smoothstep(0.004, 0.02, s.footprint));\n  let shade = (0.88 + 0.24 * fine.value + stone) * (0.85 + 0.3 * large.value);\n  r.albedo = vec4f(o.albedo.rgb * shade * mix(1.0, 0.6, damp) * (1.0 - scuff * 0.5) * (1.0 - stain) * (1.0 - crack * 0.6) * (1.0 + scratches * 0.5) * contactShadow(w.xz, p), 1.0);\n  // satin, never a mirror: polished where traffic ran, rough where it did not\n  let polish = smoothstep(0.35, 0.75, large.value);\n  r.roughness = clamp(mix(p.dryGloss + 0.12, p.dryGloss - 0.08, polish) + (grit.value - 0.5) * 0.1 + stain * 0.1 - scratches * 0.15, 0.3, 0.95);\n  r.roughness = mix(r.roughness, p.wetGloss, damp);\n  r.metallic = 0.0;\n  r.normal = detailBump(s.normal, grit.gradient * 0.006 + fine.gradient * 0.015 + mid.gradient * 0.02, 1.0);\n  return r;\n}\n\nfn brickSurface(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  let w = s.world;\n  let course = w.y / 0.075;\n  let row = floor(course);\n  let along = (w.x + w.z) / 0.23 + row * 0.5;\n  let mortar = max(smoothstep(0.1, 0.0, fract(course)), smoothstep(0.06, 0.0, fract(along)));\n  let n = detailFbm(w * 6.0, 4, s.footprint);\n  r.albedo = vec4f(o.albedo.rgb * (0.7 + 0.6 * n.value) * mix(1.0, 1.6, mortar), 1.0);\n  r.roughness = 0.9;\n  r.normal = detailBump(s.normal, n.gradient * 0.01, 1.0);\n  return r;\n}\n\nfn clearCoat(s: SurfaceIn, p: Params, o: SurfaceOut, roughness: f32) -> SurfaceOut {\n  var r = o;\n  let peel = detailFbm(s.world * 90.0, 2, s.footprint);\n  r.roughness = roughness;\n  r.normal = detailBump(s.normal, peel.gradient * 0.00045 * p.peel, 1.0);\n  return r;\n}\n\nfn jewel(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  // Facets: the normal snaps to a coarse lattice of directions, cell by cell, so each stone\n  // throws its own glint instead of one smooth sheen.\n  let cell = floor(s.world * 180.0);\n  let h = vec3f(unitFloat(hash3i(vec3i(cell), 11u)), unitFloat(hash3i(vec3i(cell), 23u)), unitFloat(hash3i(vec3i(cell), 37u)));\n  // facets finer than a pixel sparkle and crawl frame to frame: fade them to the smooth normal\n  let resolved = 1.0 - smoothstep(0.002, 0.006, s.footprint);\n  r.normal = normalize(s.normal + (h - vec3f(0.5)) * 0.9 * resolved);\n  r.roughness = 0.03;\n  r.metallic = 1.0;\n  r.albedo = vec4f(0.98, 0.98, 1.0, 1.0);\n  return r;\n}\n\nconst HEAD_UV_PER_M: f32 = 0.9;\n// pores ~0.7 mm apart; hair follicles ~0.8 mm apart (in UV cells)\nconst PORE_FREQ: f32 = 1587.3;\nconst HAIR_FREQ: f32 = 1388.9;\nconst HAIR_COLOUR: vec3f = vec3f(0.012, 0.009, 0.008);\n// the face's centre line in v, and the eyes' line in u (brows above it), measured on the MPFB head's UV\nconst FACE_V: f32 = 0.5168;\nconst BROW_U: f32 = 0.83;\n\nfn headHash4(c: vec2f, seed: u32) -> vec4f {\n  let i = vec3i(vec3f(c, f32(seed)));\n  return vec4f(unitFloat(hash3i(i, seed)), unitFloat(hash3i(i, seed + 101u)), unitFloat(hash3i(i, seed + 211u)), unitFloat(hash3i(i, seed + 307u)));\n}\n\nfn headSegment(p: vec2f, a: vec2f, b: vec2f) -> f32 {\n  let ab = b - a;\n  let t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);\n  return length(p - (a + ab * t));\n}\n\n// Hair coverage at uv (0..1): at most one hair per cell (a follicle ~0.8 mm from the next),\n// present where the density allows, a stroke 2-3.5 cells long, thick at the root and thin at the\n// tip. The beard grows down the face (+u in MakeHuman's layout); above the eyes (u < BROW_U) the\n// brows grow out from the nose, along v, rising a little. HAIR_MEAN is the coverage these strokes\n// average to, so the footprint fade does not change the beard's darkness.\nfn hairCoverage(uv: vec2f, density: f32) -> f32 {\n  let q = uv * HAIR_FREQ;\n  let base = floor(q);\n  let brow = uv.x < BROW_U;\n  let out = select(-1.0, 1.0, uv.y > FACE_V);\n  var cover = 0.0;\n  for (var a = -4; a <= 1; a = a + 1) {\n    for (var b = -1; b <= 1; b = b + 1) {\n      // a hair reaches up to 3.5 cells from its root: the beard searches up the face (-u), a brow inwards along v\n      let cell = base + select(vec2f(f32(a), f32(b)), vec2f(f32(b), f32(a) * out), brow);\n      let h = headHash4(cell, 17u);\n      if (h.x < density) {\n        let root = cell + h.yz;\n        let dir = select(normalize(vec2f(1.0, (h.w - 0.5) * 0.9)), normalize(vec2f(-0.35 + (h.w - 0.5) * 0.5, out)), brow);\n        let length = 2.0 + 1.5 * h.y;\n        let d = headSegment(q, root, root + dir * length);\n        let along = clamp(dot(q - root, dir) / length, 0.0, 1.0);\n        let width = mix(0.2, 0.07, along);\n        cover = max(cover, 1.0 - smoothstep(width * 0.5, width, d));\n      }\n    }\n  }\n  return cover;\n}\n\n// Pores: one per cell at most, a round pit (Worley: the nearest pore of the 3x3 cells). Returns the\n// pit depth (0..1) and its gradient in cell units (for the bump).\nfn poreAt(uv: vec2f) -> vec3f {\n  let q = uv * PORE_FREQ;\n  let base = floor(q);\n  var best = vec3f(0.0);\n  for (var dy = -1; dy <= 1; dy = dy + 1) {\n    for (var dx = -1; dx <= 1; dx = dx + 1) {\n      let cell = base + vec2f(f32(dx), f32(dy));\n      let h = headHash4(cell, 29u);\n      if (h.x < 0.75) {\n        let centre = cell + vec2f(0.15) + h.yz * 0.7;\n        let radius = 0.18 + 0.14 * h.w;\n        let v = q - centre;\n        let d = length(v);\n        let t = clamp(1.0 - d / radius, 0.0, 1.0);\n        let depth = t * t * (3.0 - 2.0 * t);\n        if (depth > best.x) {\n          // d(depth)/dq = s'(t) * dt/dq, with dt/dq = -v / (d * radius)\n          let slope = 6.0 * t * (1.0 - t) / max(d * radius, 1e-4);\n          best = vec3f(depth, -v * slope);\n        }\n      }\n    }\n  }\n  return best;\n}\n\nfn hairMean(density: f32) -> f32 {\n  return 1.0 - exp(-density * 0.55);\n}\n\nfn headSkin(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  let density = clamp(1.0 - s.tint.a, 0.0, 1.0);\n  let base = s.albedo.rgb;\n  // UV units per pixel, and how resolved the pores and the hairs are at this distance\n  let uvPx = s.footprint * HEAD_UV_PER_M;\n  let poreSeen = 1.0 - smoothstep(0.35, 0.9, uvPx * PORE_FREQ);\n  let hairSeen = 1.0 - smoothstep(0.3, 0.8, uvPx * HAIR_FREQ);\n  let n = normalize(s.normal);\n  // A frame for the bump: MakeHuman's head UV runs u DOWN the face and v across it (towards the\n  // subject's right), so with the head upright, -u is world up and +v is the figure's right.\n  // There is no tangent attribute; this frame turns with the normal, so a pore stays a pit as the head turns.\n  let side = normalize(select(cross(vec3f(0.0, 1.0, 0.0), n), vec3f(1.0, 0.0, 0.0), abs(n.y) > 0.98));\n  let up = cross(n, side);\n  let pore = poreAt(s.uv);\n  let pit = pore.x * poreSeen;\n  // the pit's slope in world terms (per cell -> a tilt); a pit tilts the normal towards its centre\n  // and a finer-than-the-bake unevenness (2-5 mm): a height field's gradient in the same frame\n  let fineScale = PORE_FREQ * 0.3;\n  let fine = detailFbm(vec3f(s.uv * fineScale, 5.0), 3, uvPx * fineScale);\n  let slope = (-up * pore.y - side * pore.z) * 0.035 * poreSeen + (-up * fine.gradient.x - side * fine.gradient.y) * 0.012;\n  let blotch = detailFbm(vec3f(s.uv * PORE_FREQ * 0.08, 2.0), 3, uvPx * PORE_FREQ * 0.08);\n  var albedo = base * (1.0 - 0.22 * pit) * (0.94 + 0.12 * blotch.value);\n  // oil: the lighter, raised planes (nose, forehead, cheekbones) are glossier; pores are dull\n  let luma = dot(base, vec3f(0.2126, 0.7152, 0.0722));\n  var rough = clamp(0.5 - 0.9 * (luma - 0.1) + 0.15 * pit + 0.08 * (blotch.value - 0.5) + 0.1 * (fine.value - 0.5), 0.3, 0.62);\n  var normal = normalize(n + slope - n * dot(slope, n));\n  // the hairs, or their average darkness where they are finer than a pixel\n  let cover = select(0.0, hairCoverage(s.uv, density), hairSeen > 0.0 && density > 0.02);\n  let mean = hairMean(density);\n  let hair = mix(mean, cover, hairSeen);\n  albedo = mix(albedo, HAIR_COLOUR, hair * 0.92);\n  rough = mix(rough, 0.55, hair);\n  r.albedo = vec4f(albedo, 1.0);\n  r.roughness = rough;\n  r.metallic = 0.0;\n  r.normal = normal;\n  return r;\n}\n\n// MakeHuman's eye texture holds two eyes; their iris centres and radii, measured on the PNG. glTF UVs run v DOWN\n// (the exporter flips Blender's v), which is the PNG's own row order.\nconst IRIS_A: vec2f = vec2f(0.703, 0.298);\nconst IRIS_B: vec2f = vec2f(0.288, 0.708);\nconst IRIS_R: f32 = 0.113;\nconst PUPIL_R: f32 = 0.036;\n\nfn headEye(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  let da = s.uv - IRIS_A;\n  let db = s.uv - IRIS_B;\n  let d2 = select(db, da, dot(da, da) < dot(db, db));\n  let d = length(d2);\n  let angle = atan2(d2.y, d2.x);\n  let aa = max(s.footprint * 4.0, 0.004);\n  // the iris: dark brown, radial fibres, a darker collarette and a dark limbal ring\n  let fibres = 0.75 + 0.5 * detailNoise(vec3f(angle * 18.0, d * 40.0, 0.0)).value;\n  var iris = vec3f(0.1, 0.05, 0.024) * fibres;\n  iris = iris * mix(0.6, 1.0, smoothstep(PUPIL_R, PUPIL_R * 1.8, d));\n  iris = iris * mix(1.0, 0.35, smoothstep(IRIS_R * 0.8, IRIS_R, d));\n  let inIris = 1.0 - smoothstep(IRIS_R - aa, IRIS_R + aa, d);\n  let inPupil = 1.0 - smoothstep(PUPIL_R - aa, PUPIL_R + aa, d);\n  // the sclera from the bake, a little shadowed and warm, never paper white\n  let sclera = s.albedo.rgb * vec3f(0.62, 0.58, 0.55);\n  var albedo = mix(sclera, iris, inIris);\n  albedo = mix(albedo, vec3f(0.004), inPupil);\n  r.albedo = vec4f(albedo, 1.0);\n  r.roughness = 0.03;\n  r.metallic = 0.0;\n  return r;\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let c = classOf(s);\n  switch c {\n    case 1u: { return floorSurface(s, p, o); }\n    case 2u: { return brickSurface(s, o); }\n    case 4u: { o.emissive = s.emissive * p.tubeGain; }\n    case 10u, 13u: { return clearCoat(s, p, o, 0.035); }\n    case 11u: { return clearCoat(s, p, o, 0.16); }\n    case 12u: { return clearCoat(s, p, o, 0.42); }\n    case 14u, 19u: { o.roughness = 0.035; o.metallic = 1.0; }\n    case 15u: { o.roughness = 0.015; o.metallic = 0.0; }\n    case 17u: {\n      let n = detailFbm(s.world * 40.0, 3, s.footprint);\n      o.roughness = 0.65 + 0.2 * n.value;\n      o.normal = detailBump(s.normal, n.gradient * 0.002, 1.0);\n    }\n    case 18u: { o.emissive = s.emissive * p.headGain; }\n    case 20u: { o.emissive = s.emissive * p.tailGain; }\n    case 30u: {\n      let luma = dot(o.albedo.rgb, vec3f(0.2126, 0.7152, 0.0722));\n      o.albedo = vec4f(mix(vec3f(luma), o.albedo.rgb, 0.6), 1.0);\n      o.roughness = 0.45;\n    }\n    case 31u, 32u: {\n      let n = detailFbm(s.world * 55.0, 3, s.footprint);\n      o.roughness = 0.9;\n      o.normal = detailBump(s.normal, n.gradient * 0.0012, 1.0);\n    }\n    case 35u: { return jewel(s, o); }\n    case 36u: { return headSkin(s, o); }\n    case 37u: { return headEye(s, o); }\n    case 40u: { o.albedo = vec4f(vec3f(p.cycAlbedo), 1.0); o.roughness = 0.95; o.metallic = 0.0; }\n    default: {}\n  }\n  return o;\n}",
           "wet": 0,
           "wetGloss": 0.32
         },
@@ -3063,7 +3424,6 @@
             "mode": "expression"
           },
           "saturation": 0.35,
-          "source": "struct Params {\n  tubeSize: vec2f, // @default 400  Visible face, width × height, mm.\n  curvature: f32, // @default 1100  Radius of the phosphor (and faceplate) sphere, mm.\n  glass: f32, // @default 12  Faceplate thickness, mm.\n  lines: f32, // @default 480  Visible scanlines.\n  triads: f32, // @default 350  RGB triads across the face.\n  aim: vec2f, // @default 0.5  Where the camera looks on the face (u, v; v down).\n  distance: f32, // @default 350  Lens to target, mm.\n  pitch: f32, // @default 15  Camera above the face's normal, degrees (it looks down at the glass).\n  yaw: f32, // @default 0  Camera to the side of the normal, degrees.\n  roll: f32, // @default 0  Camera roll, degrees.\n  fov: f32, // @default 24  Vertical field of view, degrees.\n  aperture: f32, // @default 6  Lens aperture radius, mm (depth of field).\n  focus: f32, // @default 0  Focus offset beyond the target, mm.\n  beamDark: f32, // @default 0.15  Beam sigma of a dark line, in line pitches.\n  beamBright: f32, // @default 0.27  Beam sigma of a bright line (a bright line swells).\n  grille: f32, // @default 0.75  Share of a triad's third each phosphor stripe fills.\n  field: f32, // @default 0.55  Brightness of the field NOT being scanned now (phosphor persistence).\n  halation: f32, // @default 0.12  Light scattered in the faceplate (phosphor bloom).\n  invert: f32, // @default 1  1 shows the picture as a negative.\n  contrast: f32, // @default 1.6  Contrast of the picture on the tube.\n  pivot: f32, // @default 0.5  Level of the (inverted) picture that lands on mid-grey.\n  unlit: f32, // @default 0.02  The unlit phosphor's glow (the tube is never black).\n  reflection: f32, // @default 0.5  Room reflected in the faceplate (× Fresnel).\n  exposure: f32, // @default 0.35  Camera exposure (linear gain before the shoulder; low, so a lit phosphor never clips).\n  gain: f32, // @default 1.3  Display gain after the shoulder.\n  lift: f32, // @default 0.035  Display-level black lift.\n  tint: vec3f, // @default 1  Camera's colour cast.\n  saturation: f32, // @default 0.35  Chroma kept.\n  grain: f32, // @default 0.02  Grain.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\nconst SAMPLES: i32 = 16;\nconst PI: f32 = 3.14159265;\n\nfn hash(p: vec3f) -> f32 {\n  var q = fract(p * vec3f(0.1031, 0.1030, 0.0973));\n  q = q + dot(q, q.yxz + 33.33);\n  return fract((q.x + q.y) * q.z);\n}\n\n/** Nearest positive hit of a ray with a sphere centred on (0, 0, -R); -1 if none. */\nfn sphere(o: vec3f, d: vec3f, r: f32, far: bool) -> f32 {\n  let c = vec3f(0.0, 0.0, -params.curvature);\n  let oc = o - c;\n  let b = dot(oc, d);\n  let h = b * b - (dot(oc, oc) - r * r);\n  if (h < 0.0) { return -1.0; }\n  let s = sqrt(h);\n  return select(-b - s, -b + s, far);\n}\n\n/** A point on the phosphor for face coordinates (u, v). */\nfn facePoint(uv: vec2f) -> vec3f {\n  let x = (uv.x - 0.5) * params.tubeSize.x;\n  let y = (0.5 - uv.y) * params.tubeSize.y;\n  let r = params.curvature;\n  return vec3f(x, y, sqrt(max(r * r - x * x - y * y, 0.0)) - r);\n}\n\n/** The picture as the tube shows it: negative, contrasty, on the face's 4:3 (cropped from the source). */\nfn picture(uv: vec2f) -> vec3f {\n  let size = vec2f(textureDimensions(inputTexture));\n  let crop = (4.0 / 3.0) / (size.x / size.y);\n  let at = vec2f(0.5 + (uv.x - 0.5) * crop, uv.y);\n  var c = pow(max(textureSampleLevel(inputTexture, inputSampler, at, 0.0).rgb, vec3f(0.0)), vec3f(1.0 / 2.2));\n  c = mix(c, 1.0 - c, params.invert);\n  c = clamp((c - params.pivot) * params.contrast + 0.5, vec3f(0.0), vec3f(1.0));\n  return pow(c, vec3f(2.2));\n}\n\n/** Light leaving the phosphor at face coordinates uv (scanlines, fields, grille). */\nfn phosphor(uv: vec2f, fieldNow: f32) -> vec3f {\n  let lineF = uv.y * params.lines;\n  let line = floor(lineF);\n  let du = 0.8 / (params.triads * 3.0);\n  var light = vec3f(0.0);\n  for (var k = -1; k <= 1; k = k + 1) {\n    let ln = line + f32(k);\n    let yc = (ln + 0.5) / params.lines;\n    // the video's limited bandwidth: a short horizontal smear along the line\n    let c = (picture(vec2f(uv.x - du, yc)) + picture(vec2f(uv.x, yc)) * 2.0 + picture(vec2f(uv.x + du, yc))) * 0.25;\n    let peak = max(c.r, max(c.g, c.b));\n    let sigma = mix(params.beamDark, params.beamBright, sqrt(clamp(peak, 0.0, 1.0)));\n    let y = lineF - (ln + 0.5);\n    let fieldW = select(params.field, 1.0, (i32(ln) & 1) == i32(fieldNow));\n    light = light + c * exp(-(y * y) / (2.0 * sigma * sigma)) / (sigma * 2.5066) * fieldW;\n  }\n  // aperture grille: three phosphor stripes a triad, each lit only in its own colour\n  let t = fract(uv.x * params.triads) * 3.0;\n  let stripe = floor(t);\n  let across = (fract(t) - 0.5) / max(params.grille, 0.05);\n  let fill = smoothstep(0.5, 0.35, abs(across));\n  var mask = vec3f(0.0);\n  mask[i32(stripe)] = fill * 3.0 / max(params.grille, 0.05);\n  // the halation: the glass scatters a little of the picture around each point\n  let halo = picture(uv + vec2f(0.004, 0.0)) + picture(uv - vec2f(0.004, 0.0)) + picture(uv + vec2f(0.0, 0.005)) + picture(uv - vec2f(0.0, 0.005));\n  return light * mask + halo * 0.25 * params.halation + vec3f(params.unlit);\n}\n\n/** The room in the faceplate: a dark studio, one soft window high on the left. */\nfn room(d: vec3f) -> vec3f {\n  let win = exp(-pow(length(d - normalize(vec3f(-0.5, 0.6, 0.6))) / 0.35, 2.0));\n  return vec3f(0.004, 0.005, 0.006) + vec3f(0.25, 0.27, 0.3) * win;\n}\n\nfn rotate(v: vec3f, axis: vec3f, angle: f32) -> vec3f {\n  return v * cos(angle) + cross(axis, v) * sin(angle) + axis * dot(axis, v) * (1.0 - cos(angle));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let size = frameU.resolution;\n  let aspect = size.x / max(size.y, 1.0);\n  // The camera: back from the target along the face's normal, swung up by pitch and aside by yaw.\n  let aimAt = facePoint(params.aim);\n  let normal = normalize(aimAt - vec3f(0.0, 0.0, -params.curvature));\n  var back = rotate(normal, vec3f(1.0, 0.0, 0.0), -radians(params.pitch));\n  back = rotate(back, vec3f(0.0, 1.0, 0.0), radians(params.yaw));\n  let eye = aimAt + back * params.distance;\n  let forward = -back;\n  var up = normalize(vec3f(0.0, 1.0, 0.0) - forward * forward.y);\n  up = rotate(up, forward, radians(params.roll));\n  let right = normalize(cross(forward, up));\n  let tanHalf = tan(radians(params.fov) * 0.5);\n  let focal = params.distance + params.focus;\n  let fieldNow = floor(frameU.absTime * 59.94) % 2.0;\n\n  var sum = vec3f(0.0);\n  let seed = vec3f(uv * size, frameU.absFrame);\n  for (var s = 0; s < SAMPLES; s = s + 1) {\n    let j = vec2f(hash(seed + f32(s) * 1.7), hash(seed + f32(s) * 3.1 + 11.0)) - 0.5;\n    let p = uv + j / size;\n    let ndc = vec2f(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0);\n    let dir = normalize(forward + right * ndc.x * tanHalf * aspect + up * ndc.y * tanHalf);\n    // thin lens: a point on the aperture, aimed through the plane of focus\n    let a = (f32(s) + hash(seed + 5.0)) * 2.39996323;\n    let rr = sqrt((f32(s) + 0.5) / f32(SAMPLES)) * params.aperture;\n    let lens = eye + (right * cos(a) + up * sin(a)) * rr;\n    let inFocus = eye + dir * (focal / dot(dir, forward));\n    let ray = normalize(inFocus - lens);\n    // the faceplate: refract in, then find the phosphor behind it\n    let t1 = sphere(lens, ray, params.curvature + params.glass, false);\n    if (t1 < 0.0) { continue; }\n    let p1 = lens + ray * t1;\n    let n1 = normalize(p1 - vec3f(0.0, 0.0, -params.curvature));\n    let inside = refract(ray, n1, 1.0 / 1.52);\n    let t2 = sphere(p1, inside, params.curvature, false);\n    if (t2 < 0.0) { continue; }\n    let p2 = p1 + inside * t2;\n    let face = vec2f(p2.x / params.tubeSize.x + 0.5, 0.5 - p2.y / params.tubeSize.y);\n    var light = vec3f(0.0);\n    if (all(face >= vec2f(0.0)) && all(face <= vec2f(1.0))) { light = phosphor(face, fieldNow); }\n    let cosi = clamp(dot(-ray, n1), 0.0, 1.0);\n    let fresnel = 0.04 + 0.96 * pow(1.0 - cosi, 5.0);\n    sum = sum + light * (1.0 - fresnel) + room(reflect(ray, n1)) * fresnel * params.reflection;\n  }\n  var c = sum / f32(SAMPLES);\n  // the camera's grade: a soft shoulder, a cool cast, little chroma, blacks lifted, grain\n  c = c * params.exposure / (vec3f(1.0) + c * params.exposure * 0.25);\n  c = pow(c, vec3f(1.0 / 2.2)) * params.tint * params.gain;\n  let y = dot(c, vec3f(0.2126, 0.7152, 0.0722));\n  c = mix(vec3f(y), c, params.saturation);\n  c = c + vec3f(params.lift) * (1.0 - c);\n  let n = hash(vec3f(floor(uv * size / 1.3), frameU.absFrame * 1.7)) + hash(vec3f(floor(uv * size / 1.3) + 17.0, frameU.absFrame)) - 1.0;\n  c = clamp(c + vec3f(n) * params.grain * (0.4 + 0.6 * (1.0 - y)), vec3f(0.0), vec3f(1.0));\n  return vec4f(pow(c, vec3f(2.2)), 1.0);\n}",
           "tint": [
             0.93,
             0.98,
@@ -3082,7 +3442,7 @@
           "x": 700,
           "y": 0
         },
-        "type": "customWgsl"
+        "type": "crtTube"
       }
     },
     "revision": 1

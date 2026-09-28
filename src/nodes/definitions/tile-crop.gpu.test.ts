@@ -126,3 +126,79 @@ describe("Tile's crop window on a real device (T1402b)", () => {
     for (let y = 0; y < H; y += 1) for (let x = 0; x < W; x += 1) expect(tiled(x, y)).toEqual(input(x, y));
   }, 60_000);
 });
+
+/**
+ * T1413b — the seams layout and unfolded outer tiles: the On Nothing quad's composite (one
+ * window mirrored about three seams, the two strips the frame edges cut running on instead
+ * of folding again) as a stock node. Seam at 60 px, tiles 24 px wide on a 128 px frame, so
+ * both edges cut a tile: tiles -3 and 2 are the cut ones, and unfolding hands them to -2 and 1.
+ */
+const SEAMS = {
+  layout: "seams",
+  seam: [60 / W, 0],
+  tilesize: [24 / W, 1],
+  mirrorx: true,
+  cropleft: 0.4,
+  cropright: 0.5,
+};
+
+/** The source u a column must read: the grid by hand, the index clamped when unfolding. */
+function expectedU(x: number, unfold: boolean): number {
+  const t = (x + 0.5 - 60) / 24;
+  const index = unfold ? Math.min(Math.max(Math.floor(t), -2), 1) : Math.floor(t);
+  const f = t - index;
+  const local = Math.abs(index) % 2 === 1 ? 1 - f : f;
+  return 0.4 + local * 0.1;
+}
+
+describe("Tile's seams layout and unfolded outer tiles on a real device (T1413b)", () => {
+  it("mirrors about the seams and runs the edge-cut tiles on from their neighbours", async () => {
+    requireDawn();
+    const at = await render({ ...SEAMS, unfoldx: true });
+    for (let x = 0; x < W; x += 1) {
+      for (const y of [0, 17, 31]) {
+        const pixel = at(x, y);
+        expect(Math.abs(pixel[0] - expectedU(x, true)), `u at ${x},${y}`).toBeLessThanOrEqual(TOLERANCE_CROSS_GPU_HDR);
+        // One tile tall from the bottom seam: y is the frame's own.
+        expect(Math.abs(pixel[1] - (y + 0.5) / H), `v at ${x},${y}`).toBeLessThanOrEqual(TOLERANCE_CROSS_GPU_HDR);
+      }
+    }
+    // The outer strips run on PAST the window: the left edge reads 0.352, the right 0.323,
+    // both outside 0.4..0.5 — which is what "does not fold again" means in pixels.
+    expect(expectedU(0, true)).toBeLessThan(0.4);
+    expect(expectedU(W - 1, true)).toBeLessThan(0.4);
+  }, 60_000);
+
+  it("without unfold the edge-cut tiles fold like every other (the seams layout alone)", async () => {
+    requireDawn();
+    const at = await render(SEAMS);
+    for (let x = 0; x < W; x += 1) {
+      expect(Math.abs(at(x, 9)[0] - expectedU(x, false)), `u at ${x}`).toBeLessThanOrEqual(TOLERANCE_CROSS_GPU_HDR);
+    }
+    // The two layouts differ exactly in the edge strips (x < 12 and x >= 108).
+    expect(Math.abs(expectedU(0, false) - expectedU(0, true))).toBeGreaterThan(0.05);
+  }, 60_000);
+
+  it("unfold leaves a grid with no tile between its edge tiles alone, bit for bit", async () => {
+    requireDawn();
+    // Two whole tiles: each is an edge tile and nothing lies between, so there is no inner
+    // neighbour to run on from — the frame must be the plain mirrored repeat.
+    const plain = await render({ repeat: [2, 1], mirrorx: true, cropleft: 0.2, cropright: 0.6 });
+    const unfolded = await render({ repeat: [2, 1], mirrorx: true, cropleft: 0.2, cropright: 0.6, unfoldx: true });
+    for (let y = 0; y < H; y += 1) for (let x = 0; x < W; x += 1) expect(unfolded(x, y)).toEqual(plain(x, y));
+  }, 60_000);
+
+  it("places the y seam bottom-up with tile 0 above it, as the crop window is", async () => {
+    requireDawn();
+    // Seam 0.25 up, tiles half the frame tall: tile 0 is rows 8..23 (top-down) and reads the
+    // window unflipped; rows 0..7 are tile 1 and 24..31 tile -1, both mirrored.
+    const at = await render({ layout: "seams", seam: [0, 0.25], tilesize: [1, 0.5], mirrory: true, cropbottom: 0.2, croptop: 0.7 });
+    for (let y = 0; y < H; y += 1) {
+      const scaled = (2 * (y + 0.5)) / H - 0.5;
+      const index = Math.floor(scaled);
+      const f = scaled - index;
+      const local = Math.abs(index) % 2 === 1 ? 1 - f : f;
+      expect(Math.abs(at(40, y)[1] - (0.3 + local * 0.5)), `v at row ${y}`).toBeLessThanOrEqual(TOLERANCE_CROSS_GPU_HDR);
+    }
+  }, 60_000);
+});

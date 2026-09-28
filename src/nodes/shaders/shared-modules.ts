@@ -182,10 +182,74 @@ fn detailEdgeWear(curvature: f32, threshold: f32, noise: f32) -> f32 {
 }`,
 };
 
+/**
+ * T1417b — reading a Render's LIGHT DEPTH output: whether a world point is lit by that
+ * Render's first casting light. The layouts are the Render's own (`scene.ts`'s shadow sweeps,
+ * `domain/geometry/camera.ts`'s matrices), rebuilt from the light's placement rather than
+ * passed as matrices: a POINT light's map is the 3×2 cube atlas (+X, −X, +Y, −Y, +Z, −Z), each
+ * face a 90° frustum storing radial distance ÷ range; a DIRECTIONAL light's is the ortho
+ * volume round the origin (half-extent `extent`, 3 × extent deep, the map's own aspect)
+ * storing its z. One nearest texel, no PCF: a march samples many points and averages anyway.
+ * `bias` is in metres along the light. What a haze or a shaft needs — the light's own view of
+ * its occluders, where a march through the CAMERA's depth sees only what the camera sees.
+ */
+const LIGHT_DEPTH_MODULE: SharedWgslModule = {
+  summary: "light visibility from a Render's Light Depth output (point cube atlas or directional ortho map)",
+  source: `fn lightDepthPointVisible(map: texture_2d<f32>, light: vec3f, range: f32, p: vec3f, bias: f32) -> f32 {
+  let toP = p - light;
+  let distance = length(toP);
+  if (distance >= range) { return 1.0; }
+  let axes = abs(toP);
+  var face = 0u;
+  var axis = vec3f(1.0, 0.0, 0.0);
+  var up = vec3f(0.0, 1.0, 0.0);
+  if (axes.x >= axes.y && axes.x >= axes.z) {
+    face = select(1u, 0u, toP.x > 0.0);
+    axis = vec3f(sign(toP.x), 0.0, 0.0);
+  } else if (axes.y >= axes.z) {
+    face = select(3u, 2u, toP.y > 0.0);
+    axis = vec3f(0.0, sign(toP.y), 0.0);
+    up = vec3f(0.0, 0.0, -sign(toP.y));
+  } else {
+    face = select(5u, 4u, toP.z > 0.0);
+    axis = vec3f(0.0, 0.0, sign(toP.z));
+  }
+  let right = normalize(cross(axis, up));
+  let trueUp = cross(right, axis);
+  let w = max(dot(toP, axis), 1e-6);
+  let ndc = vec2f(dot(toP, right), dot(toP, trueUp)) / w;
+  let suv = clamp(vec2f(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5), vec2f(0.0), vec2f(1.0));
+  let atlas = vec2f(textureDimensions(map, 0));
+  let tile = floor(atlas / vec2f(3.0, 2.0));
+  let origin = vec2i(vec2f(f32(face % 3u), f32(face / 3u)) * tile);
+  let stored = textureLoad(map, origin + vec2i(suv * (tile - vec2f(1.0))), 0).r;
+  return select(1.0, 0.0, (distance - bias) / range > stored);
+}
+
+fn lightDepthDirectionalVisible(map: texture_2d<f32>, direction: vec3f, extent: f32, p: vec3f, bias: f32) -> f32 {
+  let d = normalize(direction);
+  let eye = -d * extent;
+  let up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(d.y) > 0.999);
+  let right = normalize(cross(up, -d));
+  let trueUp = cross(-d, right);
+  let dims = vec2f(textureDimensions(map, 0));
+  let aspect = max(dims.x / max(dims.y, 1.0), 1e-6);
+  let halfH = extent * max(1.0, 1.0 / aspect);
+  let rel = p - eye;
+  let clip = vec2f(dot(rel, right) / (halfH * aspect), dot(rel, trueUp) / halfH);
+  let depth = (dot(rel, d) - 0.01) / (3.0 * extent - 0.01);
+  let suv = vec2f(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5);
+  if (any(suv < vec2f(0.0)) || any(suv > vec2f(1.0)) || depth > 1.0) { return 1.0; }
+  let stored = textureLoad(map, vec2i(suv * (dims - vec2f(1.0))), 0).r;
+  return select(1.0, 0.0, depth - bias / (3.0 * extent - 0.01) > stored);
+}`,
+};
+
 export const SHARED_WGSL_MODULES: Readonly<Record<string, SharedWgslModule>> = {
   hash: HASH_MODULE,
   grid: GRID_MODULE,
   "surface-detail": SURFACE_DETAIL_MODULE,
+  "light-depth": LIGHT_DEPTH_MODULE,
 };
 
 /** The directive a source writes, in the file's own `// @` comment idiom. */

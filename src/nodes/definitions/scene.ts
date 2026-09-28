@@ -13,6 +13,7 @@ import { DANGLING_CAMERA_SUGGESTION, danglingCameraRefusal } from "./camera-refe
 import { readColor, readNumber, readVector } from "./parameter-readers.ts";
 import { countedDrawSupport, resolveColorMap, resolveScalarMap } from "./points.ts";
 import { attributeBinding } from "./point-storage.ts";
+import { applyMaterialOverrides } from "./material-overrides.ts";
 import {
   GLASS_BLIT_WGSL,
   SSAA_RESOLVE_WGSL,
@@ -498,6 +499,21 @@ export const geometryNode: NodeDefinition = {
       default: "",
       description: "Name of a material node. Empty = the default lambert material.",
     },
+    shadowOnly: {
+      type: "boolean",
+      label: "Shadow Only",
+      default: false,
+      compileTime: true,
+      description:
+        "T1414b: this object casts shadows (and blocks projectors) but the camera never sees it — no colour, depth, normal, albedo or shadow matte, no ambient occlusion. A stand-in that throws the shadow of something not in the shot, or the performer's shadow on a wall he is composited in front of. Surface and Instances bodies of a lit, opaque material only: nothing else casts.",
+    },
+    materialOverrides: {
+      type: "string",
+      label: "Material Overrides",
+      default: "",
+      description:
+        "T1415b: this object's own values for the material it wears, the material itself untouched: one `name = value` per line (or `;`), e.g. `roughness = 0.2` or a Material · WGSL field `heatColor = 1 0.5 0.2`. roughness, metallic and any field of the material's struct Params; an unknown name refuses by name.",
+    },
     mode: {
       type: "enum",
       label: "Mode",
@@ -716,7 +732,14 @@ export const geometryNode: NodeDefinition = {
     if ("refusal" in resolvedTint) return resolvedTint.refusal;
     const tintMap = resolvedTint.map;
 
-    const base: MaterialPayload = materialBinding ?? DEFAULT_MATERIAL;
+    // T1415b: this object's own values for the material it wears (material-overrides.ts).
+    const overridden = applyMaterialOverrides(
+      nodeId,
+      typeof parameters["materialOverrides"] === "string" ? (parameters["materialOverrides"] as string) : "",
+      materialBinding ?? DEFAULT_MATERIAL,
+    );
+    if ("diagnostics" in overridden) return { passes: [], diagnostics: overridden.diagnostics };
+    const base: MaterialPayload = overridden.material;
     const tint = readColor(parameters, "tint", [1, 1, 1, 1]);
     const material: MaterialPayload =
       tintMap !== undefined
@@ -742,6 +765,35 @@ export const geometryNode: NodeDefinition = {
        instance is true of a billboard and of a beam — a scale, a group predicate, no
        uv, no grid. Only `surface` is the odd one. */
     const perPoint = mode === "instances" || mode === "points" || mode === "beam";
+    /* T1414b: Shadow Only keeps exactly the casting half of a body — so a body that casts
+       nothing (a billboard, a beam, light laid on additively, glass, an unlit marker) would
+       draw nothing at all. Refused by name rather than silently invisible (§V288). */
+    if (parameters["shadowOnly"] === true) {
+      const why =
+        mode === "points" || mode === "beam"
+          ? `a ${mode === "points" ? "points" : "beam"} geometry casts no shadow`
+          : parameters["blend"] === "additive"
+            ? "an additive geometry is light and casts no shadow"
+            : material.model === "glass"
+              ? "glass casts no shadow"
+              : material.model === "unlit"
+                ? "an unlit material exchanges no light, so it casts no shadow"
+                : undefined;
+      if (why !== undefined) {
+        return {
+          passes: [],
+          diagnostics: [
+            {
+              severity: "error",
+              code: "node.scene.shadowOnly",
+              message: `Node "${nodeId}": Shadow Only keeps only an object's shadow, and ${why} — it would draw nothing.`,
+              nodeId,
+              suggestion: "Use a Surface or Instances geometry with a lit, opaque material, or turn Shadow Only off.",
+            },
+          ],
+        };
+      }
+    }
     /*
      * T721 — SCALE in map mode: an f32 attribute (or one channel of a float vector)
      * sizes each primitive, through the same resolver `renderPoints.sizePixels` uses
@@ -937,6 +989,7 @@ export const geometryNode: NodeDefinition = {
           }
         : {}),
       ...(parameters["blend"] === "additive" ? { blend: "additive" as const } : {}),
+      ...(parameters["shadowOnly"] === true ? { castOnly: true as const } : {}),
       ...(endpointPair === undefined ? {} : { endpoint: endpointPair }),
       ...(tintMap === undefined ? {} : { colorAttribute: { ...tintMap, type: "vec4f" } }),
       ...(scaleMap === undefined || !perPoint ? {} : { scaleAttribute: scaleMap }),
@@ -1076,8 +1129,24 @@ export const renderNode: NodeDefinition = {
       description:
         "The shaded base colour as data — linear rgb after the material — and metallic in a. Surface geometry only; enable with Albedo Output — off, this port produces nothing. With Depth and Normal, a deferred pass can light the frame from any number of lamps.",
     },
+    {
+      /* T1417b — the LIGHT'S OWN VIEW of its occluders, for a march that needs to know. */
+      id: "lightDepth",
+      label: "Light Depth",
+      type: DATA_TEXTURE,
+      description:
+        "The first CASTING light's shadow map as data, at this Render's resolution: a point light's 3×2 cube atlas (+X, −X, +Y, −Y, +Z, −Z; r = radial distance ÷ Shadow Extent), a directional light's ortho map (r = depth through its volume). Read it with `// @use light-depth` in a Custom WGSL — lightDepthPointVisible / lightDepthDirectionalVisible — for haze and shafts shadowed by what the light sees, not what the camera sees. Enable with Light Depth Output.",
+    },
+    {
+      /* T1414b — the SHADOW MATTE: where the casting lights are blocked, per camera pixel. */
+      id: "shadow",
+      label: "Shadow",
+      type: DATA_TEXTURE,
+      description:
+        "The shadow matte as data: r, g, b = how shadowed each surface the camera sees is from the first three CASTING lights in the Lights list (1 = fully in shadow, 0 = lit, the lit pass's own shadow test and softness), a = 1 where a surface drew (0 = nothing). Surface geometry only; enable with Shadow Output — off, this port produces nothing.",
+    },
   ],
-  depthOutputs: ["out", "depth", "normal", "albedo"],
+  depthOutputs: ["out", "depth", "normal", "albedo", "shadow", "lightDepth"],
   /* B226: depth, normal and albedo are drawn against `out`'s depth attachment. */
   anchorOutput: "out",
   /* T939: MSAA is structural (a different render signature), so it is declared like
@@ -1087,6 +1156,8 @@ export const renderNode: NodeDefinition = {
     depth: (parameters) => parameters["depthOutput"] === true,
     normal: (parameters) => parameters["normalOutput"] === true,
     albedo: (parameters) => parameters["albedoOutput"] === true,
+    shadow: (parameters) => parameters["shadowOutput"] === true,
+    lightDepth: (parameters) => parameters["lightDepthOutput"] === true,
   },
   sourceReferences: [
     { parameter: "scenes", input: "scenes", list: true },
@@ -1216,6 +1287,22 @@ export const renderNode: NodeDefinition = {
       compileTime: true,
       description:
         "T1380b: renders the shaded base colour (rgb) and metallic (a) into the Albedo output — one extra pass per SURFACE geometry, through the same material code as the lit draw. Instances, points and beams do not write it. Off, the port allocates nothing.",
+    },
+    shadowOutput: {
+      type: "boolean",
+      label: "Shadow Output",
+      default: false,
+      compileTime: true,
+      description:
+        "T1414b: renders the shadow matte into the Shadow output — per surface pixel, how shadowed it is from each of the first three casting lights — one extra pass per SURFACE geometry, through the same material and the same shadow test as the lit draw. Off, the port allocates nothing.",
+    },
+    lightDepthOutput: {
+      type: "boolean",
+      label: "Light Depth Output",
+      default: false,
+      compileTime: true,
+      description:
+        "T1417b: renders the first casting light's shadow map into the Light Depth output at this Render's resolution — its sweeps again (one for a directional light, six for a point light), into a map a Custom WGSL can read. Needs a light with Cast Shadows in Lights.",
     },
     depthOutput: {
       type: "boolean",
@@ -1461,6 +1548,8 @@ export const renderNode: NodeDefinition = {
       readonly linearDepth: boolean;
       /** Camera visibility includes transmissive and emissive surfaces, unlike occlusion. */
       readonly visibility?: boolean;
+      /** T1414b: a sweep FROM THE CAMERA (the Depth output, the AO prepass) — shadow-only bodies stay out. */
+      readonly fromCamera?: boolean;
       /** T704: store fragment-z (z ÷ w) — a projector's frustum is perspective. */
       readonly perspective?: boolean;
       readonly extraUniforms: Readonly<Record<string, ReadonlyArray<number>>>;
@@ -1496,6 +1585,7 @@ export const renderNode: NodeDefinition = {
            occludes nothing, so it casts no shadow, encloses no AO, blocks no projector,
            and the exported depth is the depth of what it glows over. */
         if (additiveSurface(payload)) return;
+        if (options.fromCamera === true && payload.castOnly === true) return;
         /* T647: a points-mode billboard casts NO shadow, deliberately — a camera-facing
            card has no light-facing geometry, so a shadow from it would be a lie (and
            without this skip a grid-topology cloud would cast its MESH's shadow, a ghost
@@ -1751,6 +1841,40 @@ export const renderNode: NodeDefinition = {
     };
     emitShadowPasses();
 
+    /* T1417b: the first casting light's map again, into the Light Depth port — the same
+       sweeps at the port's own size, so a reader rebuilds the layout from the light alone. */
+    const lightDepthTarget = parameters["lightDepthOutput"] === true ? outputs["lightDepth"] : undefined;
+    if (lightDepthTarget !== undefined) {
+      const first = casting[0];
+      if (first === undefined) {
+        diagnostics.push({
+          severity: "error",
+          code: "node.scene.lightDepth",
+          message: `Node "${nodeId}": Light Depth Output renders the first casting light's shadow map, and no light in Lights casts shadows.`,
+          nodeId,
+          suggestion: "Turn Cast Shadows on for a light this Render lists (a zero-intensity copy lights nothing and still casts).",
+        });
+      } else if (first.light.type === "point") {
+        const range = Math.max(0.1, first.light.shadowExtent);
+        (pointFaces[0] ?? []).forEach((matrix, face) => {
+          emitDepthSweep({
+            prefix: `lightDepth:face${face}`,
+            target: lightDepthTarget,
+            matrix,
+            linearDepth: false,
+            extraUniforms: {},
+            cube: {
+              light: [first.light.position[0], first.light.position[1], first.light.position[2], range],
+              tile: [1 / 3, 1 / 2, -1 + (2 * (face % 3) + 1) / 3, 1 - (2 * Math.floor(face / 3) + 1) / 2],
+            },
+            ...(face === 0 ? {} : { skipClear: true }),
+          });
+        });
+      } else {
+        emitDepthSweep({ prefix: "lightDepth", target: lightDepthTarget, matrix: shadowMatrices[0], linearDepth: false, extraUniforms: {} });
+      }
+    }
+
     /*
      * T1427b — the PREFILTER phase: the environment blurred once, before any lit draw reads
      * it (see ENV_PREFILTER_SPREADS). Scratch targets scale with the node's output, so each
@@ -1891,6 +2015,7 @@ export const renderNode: NodeDefinition = {
       emitDepthSweep({
         prefix: "depthOut",
         visibility: true,
+        fromCamera: true,
         target: depthTarget,
         matrix: viewProjectionMatrix,
         linearDepth: true,
@@ -1931,6 +2056,7 @@ export const renderNode: NodeDefinition = {
 
       emitDepthSweep({
         prefix: "ao:depth",
+        fromCamera: true,
         target: aoDepthTarget,
         matrix: viewProjectionMatrix,
         linearDepth: true,
@@ -2042,6 +2168,7 @@ export const renderNode: NodeDefinition = {
       [
         ["normal", parameters["normalOutput"] === true ? outputs["normal"] : undefined],
         ["albedo", parameters["albedoOutput"] === true ? outputs["albedo"] : undefined],
+        ["shadow", parameters["shadowOutput"] === true ? outputs["shadow"] : undefined],
       ] as const
     ).flatMap(([layer, target]) => (target === undefined ? [] : [{ layer, target }]));
     for (const { layer, target } of gbufferTargets) {
@@ -2058,6 +2185,8 @@ export const renderNode: NodeDefinition = {
       } as DrawPassDescriptor);
     }
     const emitGeometry = ({ payload, source }: { payload: GeometryPayload; source: string }, index: number): void => {
+      /* T1414b: a shadow-only body is in the light sweeps above and in nothing the camera draws. */
+      if (payload.castOnly === true) return;
       if (payload.mode === "instances" || payload.mode === "points" || payload.mode === "beam") {
         /* T1355b: a Material · WGSL is placed into the SURFACE generator; these three draw
            through another one, and a material whose code silently did not run would teach
@@ -2512,6 +2641,28 @@ export const renderNode: NodeDefinition = {
          pass should reflect or relight — it writes no G-buffer layer. */
       if (additive) return;
       for (const { layer, target } of gbufferTargets) {
+        if (layer === "shadow") {
+          /* T1414b: the matte runs the lit draw's own shadow test — the lights and their
+             maps bound, nothing else (no environment, AO or projectors). */
+          passes.push({
+            ...litPass,
+            id: `${nodeId}:gbuffer:shadow:${index}`,
+            shader: sceneSurfaceWgsl({
+              ...surfaceMaterialOptions,
+              lightCount: lights.length,
+              gbuffer: "shadow",
+              ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
+            }),
+            target,
+            textures: [
+              ...(material.maps.albedo === undefined ? [] : [{ binding: "albedoMap", resourceId: material.maps.albedo, sampled: "unfiltered" as const }]),
+              ...(material.maps.roughness === undefined ? [] : [{ binding: "roughnessMap", resourceId: material.maps.roughness, sampled: "unfiltered" as const }]),
+              ...casting.map((_, slot) => ({ binding: `shadowMap${slot}`, resourceId: shadowTargetOf(slot), sampled: "unfiltered" as const })),
+            ],
+            uniforms: Object.fromEntries(Object.entries(litPass.uniforms ?? {}).filter(([key]) => !/^(environment|projector)/.test(key))),
+          });
+          continue;
+        }
         const lighting = /^(light\d|shadow\d|environment|projector)/;
         passes.push({
           ...litPass,

@@ -37,6 +37,14 @@
  * skin a selected primitive uses, in scene-walk order, so a joint's parent (its nearest
  * ancestor node that is also in the table) always has a smaller index. A vertex the
  * selection holds unskinned carries weights of zero: nothing moves it.
+ *
+ * T1440b: a PROP PARENTED TO A BONE — an unskinned mesh node under a joint node, which is
+ * how Blender exports an object with a Bone parent (sunglasses on the head) — is bound
+ * rigidly to that joint: weight 1 on its nearest joint ancestor, placed at its rest world as
+ * before. That is glTF's own meaning (the child moves with its joint's pose), so the kernel
+ * that poses the skin carries the prop with it. The joint's skin joins the selection's table
+ * even when no skinned primitive is selected, so a prop decoded on its own indexes the same
+ * table as the body it rides on.
  */
 
 export interface DecodedJoint {
@@ -55,6 +63,23 @@ export interface DecodedSkin {
   readonly indices: Uint16Array;
   /** Four weights per vertex, summing to 1 on a skinned vertex; all zero on an unskinned one. */
   readonly weights: Float32Array;
+  /** T1410b: present when `DecodeOptions.clip` named an animation — its baked joint poses. */
+  readonly pose?: DecodedPose;
+}
+
+/**
+ * T1410b — a glTF animation BAKED into per-joint poses at a fixed rate. `table` holds, for
+ * frame f (time min(f / rate, duration)) and table joint j, the joint's DELTA — its animated
+ * world matrix times the inverse of its rest world — as three rows of a 3×4 affine matrix,
+ * frame-major: `((f · joints + j) · 3 + row) · 4`. A skinned vertex, which the decoder places
+ * at the rest pose, lands where glTF skinning puts it at that time under Σ weight × delta.
+ */
+export interface DecodedPose {
+  readonly clip: string;
+  readonly rate: number;
+  readonly frames: number;
+  readonly duration: number;
+  readonly table: Float32Array;
 }
 
 export interface DecodedPart {
@@ -121,6 +146,8 @@ export interface DecodedMesh {
   readonly warnings: ReadonlyArray<string>;
   /** T1401b: present only when a selected primitive is skinned. */
   readonly skin?: DecodedSkin;
+  /** T1410b: the file's animation names, in file order; absent when it has none. */
+  readonly clips?: ReadonlyArray<string>;
 }
 
 export interface DecodeOptions {
@@ -133,6 +160,10 @@ export interface DecodeOptions {
    * storage binding is split across nodes.
    */
   readonly select?: string;
+  /** T1410b: the animation to bake into the skin's pose table, by name (`clips` lists them). */
+  readonly clip?: string;
+  /** T1410b: the pose table's samples per second (default 30). */
+  readonly clipRate?: number;
 }
 
 export class GlbDecodeError extends Error {
@@ -220,6 +251,11 @@ interface GltfJson {
   buffers?: Array<{ byteLength: number; uri?: string }>;
   cameras?: Array<{ name?: string; type: string; perspective?: { yfov: number; znear: number; zfar?: number } }>;
   skins?: Array<{ joints: number[]; inverseBindMatrices?: number; name?: string }>;
+  animations?: Array<{
+    name?: string;
+    channels: Array<{ sampler: number; target: { node?: number; path: string } }>;
+    samplers: Array<{ input: number; output: number; interpolation?: string }>;
+  }>;
   extensionsRequired?: string[];
   extensionsUsed?: string[];
 }
@@ -373,6 +409,174 @@ function matrixRotation(m: Mat4): Quat {
 function globToRegExp(glob: string): RegExp {
   const escaped = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".");
   return new RegExp(`^${escaped}$`);
+}
+
+/** T1410b: an affine matrix's inverse (the rest worlds a pose is measured from). */
+function invertAffine(m: Mat4): Mat4 {
+  const [a, b, c] = [m[0] as number, m[1] as number, m[2] as number];
+  const [d, e, f] = [m[4] as number, m[5] as number, m[6] as number];
+  const [g, h, i] = [m[8] as number, m[9] as number, m[10] as number];
+  const det = a * (e * i - h * f) - d * (b * i - h * c) + g * (b * f - e * c);
+  const s = Math.abs(det) < 1e-12 ? 0 : 1 / det;
+  const out = new Float64Array(16);
+  out[0] = (e * i - h * f) * s;
+  out[1] = (h * c - b * i) * s;
+  out[2] = (b * f - e * c) * s;
+  out[4] = (g * f - d * i) * s;
+  out[5] = (a * i - g * c) * s;
+  out[6] = (d * c - a * f) * s;
+  out[8] = (d * h - g * e) * s;
+  out[9] = (g * b - a * h) * s;
+  out[10] = (a * e - d * b) * s;
+  const [tx, ty, tz] = [m[12] as number, m[13] as number, m[14] as number];
+  out[12] = -((out[0] as number) * tx + (out[4] as number) * ty + (out[8] as number) * tz);
+  out[13] = -((out[1] as number) * tx + (out[5] as number) * ty + (out[9] as number) * tz);
+  out[14] = -((out[2] as number) * tx + (out[6] as number) * ty + (out[10] as number) * tz);
+  out[15] = 1;
+  return out;
+}
+
+/** Spherical interpolation between unit quaternions, the short way round (glTF LINEAR rotation). */
+function slerp(a: readonly number[], b: readonly number[], u: number): Quat {
+  let [bx, by, bz, bw] = [b[0] as number, b[1] as number, b[2] as number, b[3] as number];
+  let cos = (a[0] as number) * bx + (a[1] as number) * by + (a[2] as number) * bz + (a[3] as number) * bw;
+  if (cos < 0) {
+    [bx, by, bz, bw] = [-bx, -by, -bz, -bw];
+    cos = -cos;
+  }
+  let wa = 1 - u;
+  let wb = u;
+  if (cos < 0.9995) {
+    const angle = Math.acos(Math.min(1, cos));
+    const sin = Math.sin(angle);
+    wa = Math.sin((1 - u) * angle) / sin;
+    wb = Math.sin(u * angle) / sin;
+  }
+  const q: Quat = [wa * (a[0] as number) + wb * bx, wa * (a[1] as number) + wb * by, wa * (a[2] as number) + wb * bz, wa * (a[3] as number) + wb * bw];
+  const length = Math.hypot(...q) || 1;
+  return [q[0] / length, q[1] / length, q[2] / length, q[3] / length];
+}
+
+/**
+ * T1410b — bake one glTF animation into the table joints' DELTA poses (`DecodedPose`).
+ *
+ * Each channel is sampled the way glTF defines it — STEP holds a key, LINEAR lerps
+ * translation and scale and slerps rotation, CUBICSPLINE runs the Hermite form over its
+ * in-tangent / value / out-tangent triples (a rotation renormalised) — and before the first
+ * key or after the last it holds the end value. A channel replaces its node's REST
+ * translation, rotation or scale; every other node keeps its rest local. Worlds are walked
+ * parent-first in scene order, so an animated ancestor that is not itself a joint (an
+ * armature object) still moves its joints. Morph-target weights are not decoded: a
+ * `weights` channel is skipped with a warning.
+ */
+function bakeClip(input: {
+  readonly animation: NonNullable<GltfJson["animations"]>[number];
+  readonly name: string;
+  readonly rate: number;
+  readonly nodes: ReadonlyArray<GltfNode>;
+  readonly walked: ReadonlyMap<number, { world: Mat4; parent: number; order: number }>;
+  readonly tableNodes: ReadonlyArray<number>;
+  readonly readFloats: (index: number, what: string) => { data: Float32Array; components: number; count: number };
+  readonly warnings: string[];
+}): DecodedPose {
+  const { animation, name, nodes, walked, tableNodes, readFloats, warnings } = input;
+  const rate = Number.isFinite(input.rate) && input.rate > 0 ? input.rate : 30;
+  interface Track { node: number; path: "translation" | "rotation" | "scale"; times: Float32Array; values: Float32Array; width: number; mode: "LINEAR" | "STEP" | "CUBICSPLINE" }
+  const tracks: Track[] = [];
+  let duration = 0;
+  let skippedWeights = 0;
+  for (const channel of animation.channels) {
+    const where = `Animation "${name}"`;
+    const node = channel.target.node;
+    if (node === undefined) continue;
+    const path = channel.target.path;
+    if (path === "weights") {
+      skippedWeights += 1;
+      continue;
+    }
+    if (path !== "translation" && path !== "rotation" && path !== "scale") throw new GlbDecodeError(`${where} animates "${path}", which is not decoded.`);
+    if (Array.isArray(nodes[node]?.matrix)) throw new GlbDecodeError(`${where} animates node "${nodes[node]?.name ?? node}", which carries a matrix; glTF animates TRS nodes only.`);
+    const sampler = animation.samplers[channel.sampler];
+    if (sampler === undefined) throw new GlbDecodeError(`${where} names sampler ${channel.sampler}, which does not exist.`);
+    const mode = sampler.interpolation ?? "LINEAR";
+    if (mode !== "LINEAR" && mode !== "STEP" && mode !== "CUBICSPLINE") throw new GlbDecodeError(`${where} interpolates by "${mode}", which is not decoded.`);
+    const times = readFloats(sampler.input, `${where} input`).data;
+    const values = readFloats(sampler.output, `${where} output`).data;
+    const width = path === "rotation" ? 4 : 3;
+    if (values.length !== times.length * width * (mode === "CUBICSPLINE" ? 3 : 1)) throw new GlbDecodeError(`${where}: a ${path} sampler has ${values.length} values for ${times.length} keys.`);
+    if (times.length > 0) duration = Math.max(duration, times[times.length - 1] as number);
+    tracks.push({ node, path, times, values, width, mode });
+  }
+  if (skippedWeights > 0) warnings.push(`Animation "${name}": ${skippedWeights} morph-weight channel(s) skipped; morph targets are not decoded.`);
+
+  const value = (track: Track, key: number, slot: number): number[] => {
+    const base = track.mode === "CUBICSPLINE" ? (key * 3 + slot) * track.width : key * track.width;
+    return Array.from(track.values.subarray(base, base + track.width));
+  };
+  const sample = (track: Track, t: number): number[] => {
+    const { times } = track;
+    const last = times.length - 1;
+    const valueSlot = track.mode === "CUBICSPLINE" ? 1 : 0;
+    if (last < 0) return [];
+    if (t <= (times[0] as number)) return value(track, 0, valueSlot);
+    if (t >= (times[last] as number)) return value(track, last, valueSlot);
+    let k = 0;
+    while (k < last - 1 && (times[k + 1] as number) <= t) k += 1;
+    const t0 = times[k] as number;
+    const dt = (times[k + 1] as number) - t0;
+    const u = dt > 0 ? (t - t0) / dt : 0;
+    if (track.mode === "STEP") return value(track, k, 0);
+    if (track.mode === "LINEAR") {
+      const a = value(track, k, 0);
+      const b = value(track, k + 1, 0);
+      return track.path === "rotation" ? slerp(a, b, u) : a.map((x, c) => x + ((b[c] as number) - x) * u);
+    }
+    const [p0, m0, p1, m1] = [value(track, k, 1), value(track, k, 2), value(track, k + 1, 1), value(track, k + 1, 0)];
+    const u2 = u * u;
+    const u3 = u2 * u;
+    const out = p0.map((_, c) =>
+      (2 * u3 - 3 * u2 + 1) * (p0[c] as number) + (u3 - 2 * u2 + u) * dt * (m0[c] as number) + (-2 * u3 + 3 * u2) * (p1[c] as number) + (u3 - u2) * dt * (m1[c] as number),
+    );
+    if (track.path !== "rotation") return out;
+    const length = Math.hypot(...out) || 1;
+    return out.map((x) => x / length);
+  };
+
+  const order = [...walked.entries()].sort((a, b) => a[1].order - b[1].order);
+  const restInverse = tableNodes.map((jointNode) => invertAffine((walked.get(jointNode) as { world: Mat4 }).world));
+  const frames = Math.floor(duration * rate + 1e-6) + 1;
+  const table = new Float32Array(frames * tableNodes.length * 12);
+  const worlds = new Map<number, Mat4>();
+  for (let frame = 0; frame < frames; frame += 1) {
+    const t = Math.min(frame / rate, duration);
+    const overrides = new Map<number, { translation?: number[]; rotation?: number[]; scale?: number[] }>();
+    for (const track of tracks) {
+      const entry = overrides.get(track.node) ?? {};
+      entry[track.path] = sample(track, t);
+      overrides.set(track.node, entry);
+    }
+    worlds.clear();
+    for (const [nodeIndex, entry] of order) {
+      const node = nodes[nodeIndex] as GltfNode;
+      const animated = overrides.get(nodeIndex);
+      const local =
+        animated === undefined
+          ? localMatrix(node)
+          : composeTrs(animated.translation ?? node.translation ?? [0, 0, 0], animated.rotation ?? node.rotation ?? [0, 0, 0, 1], animated.scale ?? node.scale ?? [1, 1, 1]);
+      worlds.set(nodeIndex, entry.parent < 0 ? local : multiply(worlds.get(entry.parent) ?? identity(), local));
+    }
+    tableNodes.forEach((jointNode, joint) => {
+      const delta = multiply(worlds.get(jointNode) ?? identity(), restInverse[joint] as Mat4);
+      const at = (frame * tableNodes.length + joint) * 12;
+      for (let row = 0; row < 3; row += 1) {
+        table[at + row * 4] = delta[row] as number;
+        table[at + row * 4 + 1] = delta[4 + row] as number;
+        table[at + row * 4 + 2] = delta[8 + row] as number;
+        table[at + row * 4 + 3] = delta[12 + row] as number;
+      }
+    });
+  }
+  return { clip: name, rate, frames, duration, table };
 }
 
 export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOptions = {}): DecodedMesh {
@@ -530,7 +734,13 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
 
   // Pass 1: size the output so pass 2 writes straight into final arrays.
   const materials = json.materials ?? [];
-  interface Plan { visit: Visit; primitive: GltfPrimitive; vertices: number; indices: number; skin?: number }
+  interface Plan { visit: Visit; primitive: GltfPrimitive; vertices: number; indices: number; skin?: number; bone?: number }
+  /** T1440b: an unskinned node's nearest ancestor that is a skin joint, the bone it is parented to. */
+  const boneOf = (nodeIndex: number): number | undefined => {
+    let at = walked.get(nodeIndex)?.parent ?? -1;
+    while (at >= 0 && !jointNodes.has(at)) at = walked.get(at)?.parent ?? -1;
+    return at >= 0 ? at : undefined;
+  };
   const plans: Plan[] = [];
   const textured = new Set<string>();
   for (const visit of visits) {
@@ -568,7 +778,8 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
         }
       }
       if (node.skin === undefined) {
-        plans.push({ visit, primitive, vertices, indices });
+        const bone = boneOf(visit.node);
+        plans.push({ visit, primitive, vertices, indices, ...(bone === undefined ? {} : { bone }) });
         continue;
       }
       const where = `Skinned mesh "${mesh.name ?? node.name ?? node.mesh}"`;
@@ -584,7 +795,11 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
 
   // T1401b: ONE joint table for the selection — every joint of every skin a selected
   // primitive uses, in walk order, so a parent always precedes its children.
-  const usedSkins = [...new Set(plans.flatMap((plan) => (plan.skin === undefined ? [] : [plan.skin])))];
+  // T1440b: a bone-parented prop brings the first skin that lists its bone.
+  const skinOfBone = (jointNode: number): number => skins.findIndex((skin) => skin.joints.includes(jointNode));
+  const usedSkins = [
+    ...new Set(plans.flatMap((plan) => (plan.skin !== undefined ? [plan.skin] : plan.bone !== undefined ? [skinOfBone(plan.bone)] : []))),
+  ];
   const tableNodes = [...new Set(usedSkins.flatMap((skin) => (skins[skin] as { joints: number[] }).joints))];
   for (const jointNode of tableNodes) {
     if (!walked.has(jointNode)) throw new GlbDecodeError(`Skin joint node ${jointNode} ("${nodes[jointNode]?.name ?? ""}") is not in the scene, so it has no pose.`);
@@ -651,6 +866,25 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
   const emissive = new Float32Array(vertexCount * 3);
   const indices = new Uint32Array(indexCount);
   const skinned = usedSkins.length > 0;
+
+  // T1410b: the named animation, baked into the table joints' poses.
+  const clipNames = (json.animations ?? []).map((animation, index) => animation.name ?? `clip${index}`);
+  let pose: DecodedPose | undefined;
+  if (options.clip !== undefined && options.clip !== "") {
+    const clipIndex = clipNames.indexOf(options.clip);
+    if (clipIndex < 0) throw new GlbDecodeError(`The file has no animation "${options.clip}"; it holds ${clipNames.length === 0 ? "none" : clipNames.map((name) => `"${name}"`).join(", ")}.`);
+    if (!skinned) throw new GlbDecodeError(`Animation "${options.clip}" poses a skin's joints, and the selection holds nothing skinned.`);
+    pose = bakeClip({
+      animation: (json.animations ?? [])[clipIndex] as NonNullable<GltfJson["animations"]>[number],
+      name: options.clip,
+      rate: options.clipRate ?? 30,
+      nodes,
+      walked,
+      tableNodes,
+      readFloats,
+      warnings,
+    });
+  }
   const jointIndices = new Uint16Array(skinned ? vertexCount * 4 : 0);
   const jointWeights = new Float32Array(skinned ? vertexCount * 4 : 0);
   let unweighted = 0;
@@ -699,6 +933,10 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
           m = blended;
           mn = normalMatrix(blended);
         }
+      } else if (plan.bone !== undefined) {
+        // T1440b: rigid on its bone, at its rest world (m stays the node's own).
+        jointIndices[o * 4] = tableIndex.get(plan.bone) as number;
+        jointWeights[o * 4] = 1;
       }
       const p = transformPoint(m, pos.data[v * 3] as number, pos.data[v * 3 + 1] as number, pos.data[v * 3 + 2] as number);
       positions.set(p, o * 3);
@@ -804,7 +1042,8 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
     markers,
     bounds: vertexCount === 0 ? { min: [0, 0, 0], max: [0, 0, 0] } : { min, max },
     warnings,
-    ...(skinned ? { skin: { joints, indices: jointIndices, weights: jointWeights } } : {}),
+    ...(skinned ? { skin: { joints, indices: jointIndices, weights: jointWeights, ...(pose === undefined ? {} : { pose }) } } : {}),
+    ...(clipNames.length === 0 ? {} : { clips: clipNames }),
   };
 }
 

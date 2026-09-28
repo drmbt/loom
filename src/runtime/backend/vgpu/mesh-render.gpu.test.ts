@@ -46,13 +46,15 @@ interface SceneOptions {
   readonly light?: { readonly direction: Vec3; readonly shadows?: boolean };
   /** WGSL for a Point Kernel spliced between the mesh and the geometry. */
   readonly kernel?: string;
+  /** T1416b: the node's Select. The node is still SIZED for the whole file (stale facts). */
+  readonly select?: string;
 }
 
 function meshGraph(options: SceneOptions): GraphDocument {
   const facts = prepareMesh(options.glb, "")?.facts;
   if (facts === undefined) throw new Error("fixture mesh is empty");
   const nodes = [
-    node("mesh", "meshFileIn", { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts }, "mesh1"),
+    node("mesh", "meshFileIn", { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts, ...(options.select === undefined ? {} : { select: options.select }) }, "mesh1"),
     node("geo", "geometry", { mode: "surface" }, "geo1"),
     node("cam", "camera", { eye: [...options.eye], lookAt: [...(options.lookAt ?? [0, 0, 0])] }, "cam1"),
     node(
@@ -245,5 +247,27 @@ describe("Mesh File In end to end on Dawn (T1353b, §V147)", () => {
     const moved = await render({ glb, eye, light: { direction: [0, 0, -1] }, kernel: lift(3) });
     expect(rgb(moved, leftTexel)).toEqual(litFace);
     expect(rgb(moved, ladleTexel)).toEqual([0, 0, 0]);
+  });
+
+  it("T1416b: a Select that drops a sub-mesh re-measures — the node sized for the whole file draws the kept box only", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    const glb = encodeFixtureGlb({
+      materials: [{ name: "grey", baseColor: [1, 1, 1, 1] }, { name: "cap", baseColor: [1, 1, 1, 1] }],
+      nodes: [
+        { name: "body", translation: [-1, 0, 0], mesh: [cubePrimitive(0)] },
+        { name: "beanie", translation: [1, 0, 0], mesh: [cubePrimitive(1)] },
+      ],
+    });
+    // The graph carries the WHOLE file's counts (two boxes); the Select keeps one. The counts
+    // are the caller's no longer: the harness measures under the Select, as the app's loader does.
+    expect(prepareMesh(glb, "!material:cap")?.facts.vertices).toBe((prepareMesh(glb, "")?.facts.vertices ?? 0) / 2);
+    const eye: Vec3 = [0, 0, 4];
+    const litFace = [byte(0.8 * 1.12), byte(0.8 * 1.12), byte(0.8 * 1.12)];
+    const bothTexels = [texelOf(eye, [0, 0, 0], [-1, 0, 0.5]), texelOf(eye, [0, 0, 0], [1, 0, 0.5])] as const;
+    const whole = await render({ glb, eye, light: { direction: [0, 0, -1] } });
+    expect(bothTexels.map((at) => rgb(whole, at))).toEqual([litFace, litFace]);
+    const bare = await render({ glb, eye, light: { direction: [0, 0, -1] }, select: "!material:cap" });
+    expect(bothTexels.map((at) => rgb(bare, at))).toEqual([litFace, [0, 0, 0]]);
   });
 });

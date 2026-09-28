@@ -37,9 +37,9 @@ export const MESH_SKIN_ATTRIBUTES: ReadonlyArray<PointAttributeSchema> = [
   { name: "weights", type: "vec4f", default: [0, 0, 0, 0] },
 ];
 
-/** The two registry keys a mesh node's buffers are fed from (§V135: keys, never bytes). */
-export function meshSourceIdsFor(nodeId: string): { readonly points: string; readonly indices: string } {
-  return { points: `mesh:${nodeId}:points`, indices: `mesh:${nodeId}:indices` };
+/** The registry keys a mesh node's buffers are fed from (§V135: keys, never bytes). T1410b: `pose`, a clip's baked joint poses. */
+export function meshSourceIdsFor(nodeId: string): { readonly points: string; readonly indices: string; readonly pose: string } {
+  return { points: `mesh:${nodeId}:points`, indices: `mesh:${nodeId}:indices`, pose: `mesh:${nodeId}:pose` };
 }
 
 export function meshLayout(vertexCount: number, skinned = false): PackedLayoutResult {
@@ -96,6 +96,8 @@ export function meshFacts(mesh: DecodedMesh): MeshFacts {
     triangles: mesh.triangleCount,
     parts: mesh.parts.map((part) => `${part.index}:${part.name}`).join(" "),
     joints: formatJointTable(mesh.skin?.joints ?? []),
+    clips: (mesh.clips ?? []).map((name) => name.replace(/\s+/g, "_")).join(" "),
+    clipFrames: mesh.skin?.pose?.frames ?? 0,
   };
 }
 
@@ -105,6 +107,10 @@ export interface MeshFacts {
   readonly parts: string;
   /** T1401b: the joint table, `formatJointTable`; empty = unskinned (no joints/weights attributes). */
   readonly joints: string;
+  /** T1410b: the file's animation names, space-separated. */
+  readonly clips: string;
+  /** T1410b: frames in the chosen clip's baked pose table; 0 = no clip chosen (or none in the file). */
+  readonly clipFrames: number;
 }
 
 /**
@@ -124,6 +130,8 @@ export interface PreparedMesh {
   readonly facts: MeshFacts;
   readonly points: Uint8Array;
   readonly indices: Uint8Array;
+  /** T1410b: the chosen clip's pose table as bytes (`DecodedPose.table`); absent without one. */
+  readonly pose?: Uint8Array;
   readonly mesh: DecodedMesh;
 }
 
@@ -133,10 +141,17 @@ export interface PreparedMesh {
  * (nothing to feed; the node's own diagnostic says so). Throws `GlbDecodeError` on a file
  * the decoder refuses, and a plain Error when the selection overflows one binding.
  */
-export function prepareMesh(glb: Uint8Array, select: string): PreparedMesh | null {
-  const mesh = decodeGlb(glb, { select });
+export function prepareMesh(glb: Uint8Array, select: string, clip: { readonly name?: string; readonly rate?: number } = {}): PreparedMesh | null {
+  const mesh = decodeGlb(glb, { select, ...(clip.name === undefined || clip.name === "" ? {} : { clip: clip.name, ...(clip.rate === undefined ? {} : { clipRate: clip.rate }) }) });
   if (mesh.vertexCount === 0 || mesh.triangleCount === 0) return null;
   const layout = meshLayout(mesh.vertexCount, mesh.skin !== undefined);
   if (!layout.ok) throw new Error(layout.errors.join("; "));
-  return { facts: meshFacts(mesh), points: packMeshAttributes(mesh, layout), indices: packMeshIndices(mesh), mesh };
+  const table = mesh.skin?.pose?.table;
+  return {
+    facts: meshFacts(mesh),
+    points: packMeshAttributes(mesh, layout),
+    indices: packMeshIndices(mesh),
+    ...(table === undefined ? {} : { pose: new Uint8Array(table.buffer, table.byteOffset, table.byteLength) }),
+    mesh,
+  };
 }

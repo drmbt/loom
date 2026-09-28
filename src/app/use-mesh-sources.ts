@@ -38,6 +38,9 @@ interface MeshRequest {
   readonly nodeId: NodeId;
   readonly file: string;
   readonly select: string;
+  /** T1410b: the chosen clip and its bake rate ("" = none). */
+  readonly clip: string;
+  readonly clipRate: number;
   /** The node's stored facts, so a written measurement re-runs the effect (T1401b: joints too — a skin changes the layout, not the counts). */
   readonly sized: string;
 }
@@ -49,11 +52,15 @@ function meshRequests(graph: GraphDocument): MeshRequest[] {
     const file = node.parameters["file"];
     if (typeof file !== "string" || file === "") continue;
     const select = node.parameters["select"];
+    const clip = node.parameters["clip"];
+    const clipRate = node.parameters["clipRate"];
     requests.push({
       nodeId: node.id,
       file,
       select: typeof select === "string" ? select : "",
-      sized: `${String(node.parameters["vertices"])}/${String(node.parameters["triangles"])}/${String(node.parameters["parts"])}/${String(node.parameters["joints"])}`,
+      clip: typeof clip === "string" ? clip.trim() : "",
+      clipRate: typeof clipRate === "number" ? clipRate : 30,
+      sized: `${String(node.parameters["vertices"])}/${String(node.parameters["triangles"])}/${String(node.parameters["parts"])}/${String(node.parameters["joints"])}/${String(node.parameters["clips"])}/${String(node.parameters["clipFrames"])}`,
     });
   }
   return requests.sort((a, b) => (a.nodeId < b.nodeId ? -1 : a.nodeId > b.nodeId ? 1 : 0));
@@ -70,7 +77,7 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
 
   const requests = meshRequests(graph);
   // A flat string, so an unrelated recompile does not re-open every mesh.
-  const key = requests.map((request) => `${request.nodeId}|${request.file}|${request.select}|${request.sized}`).join("\n");
+  const key = requests.map((request) => `${request.nodeId}|${request.file}|${request.select}|${request.clip}@${request.clipRate}|${request.sized}`).join("\n");
 
   useEffect(() => {
     if (backend === null || key === "") {
@@ -113,13 +120,23 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
       const parameters = stored.parameters;
       // An unskinned node may never have stored Joints at all: absent reads as the empty table.
       const joints = typeof parameters["joints"] === "string" ? parameters["joints"] : "";
-      if (parameters["vertices"] === facts.vertices && parameters["triangles"] === facts.triangles && parameters["parts"] === facts.parts && joints === facts.joints) return true;
+      // T1410b: absent clip facts read as the no-clip file's ("" and 0).
+      const clips = typeof parameters["clips"] === "string" ? parameters["clips"] : "";
+      const clipFrames = typeof parameters["clipFrames"] === "number" ? parameters["clipFrames"] : 0;
+      if (
+        parameters["vertices"] === facts.vertices &&
+        parameters["triangles"] === facts.triangles &&
+        parameters["parts"] === facts.parts &&
+        joints === facts.joints &&
+        clips === facts.clips &&
+        clipFrames === facts.clipFrames
+      ) return true;
       void bus.execute(
         "graph.applyPatch",
         {
           baseRevision: bus.store.getRevision(),
           label: "Measure mesh",
-          operations: [{ op: "setParameters", nodeId, parameters: { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts, joints: facts.joints } }],
+          operations: [{ op: "setParameters", nodeId, parameters: { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts, joints: facts.joints, clips: facts.clips, clipFrames: facts.clipFrames } }],
         },
         runtimeRef.current.invocation,
       );
@@ -128,11 +145,11 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
 
     void (async () => {
       for (const request of requests) {
-        const preparedKey = `${request.file}|${request.select}`;
+        const preparedKey = `${request.file}|${request.select}|${request.clip}@${request.clipRate}`;
         let prepared: PreparedMesh | null;
         try {
           const cached = preparedRef.current.get(preparedKey);
-          prepared = cached !== undefined ? cached : prepareMesh(await readFile(request.file), request.select);
+          prepared = cached !== undefined ? cached : prepareMesh(await readFile(request.file), request.select, request.clip === "" ? {} : { name: request.clip, rate: request.clipRate });
           preparedRef.current.set(preparedKey, prepared);
         } catch (error) {
           found.push({
@@ -162,6 +179,9 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
         const indices = prepared.indices;
         unregisters.push(backend.registerMediaSource(ids.points, { currentFrame: () => ({ frameId: 1, bytes: points }) }));
         unregisters.push(backend.registerMediaSource(ids.indices, { currentFrame: () => ({ frameId: 1, bytes: indices }) }));
+        // T1410b: the chosen clip's baked poses.
+        const pose = prepared.pose;
+        if (pose !== undefined) unregisters.push(backend.registerMediaSource(ids.pose, { currentFrame: () => ({ frameId: 1, bytes: pose }) }));
       }
       if (!cancelled) setDiagnostics(found.length === 0 ? NO_DIAGNOSTICS : [...found]);
     })();

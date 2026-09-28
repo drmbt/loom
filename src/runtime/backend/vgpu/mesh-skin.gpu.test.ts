@@ -98,8 +98,8 @@ function turnKernel(joint: number, head: Vec3, radians: number): string {
 }`;
 }
 
-function graph(kernel: string): GraphDocument {
-  const prepared = prepareMesh(GLB, "");
+function graph(kernel: string, glb: Uint8Array = GLB): GraphDocument {
+  const prepared = prepareMesh(glb, "");
   if (prepared === null) throw new Error("fixture mesh is empty");
   const { facts } = prepared;
   const nodes = [
@@ -132,15 +132,15 @@ function graph(kernel: string): GraphDocument {
   } as never;
 }
 
-async function render(kernel: string): Promise<Uint8Array> {
+async function render(kernel: string, glb: Uint8Array = GLB): Promise<Uint8Array> {
   const result = await renderHeadless({
     host: nodeGpuHost(),
-    graph: graph(kernel),
+    graph: graph(kernel, glb),
     settings: SETTINGS,
     frames: 2,
     outputNodeId: "shot",
     outputPortId: "out",
-    meshes: { mesh: GLB },
+    meshes: { mesh: glb },
   });
   expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   const frame = result.frames[result.frames.length - 1];
@@ -191,5 +191,84 @@ describe("a skinned GLB posed by a Point Kernel on Dawn (T1401b, §V147)", () =>
     const other = await render(turnKernel(0, head, Math.PI / 2));
     expect(rgb(other, armAtRest)).toEqual([LIT, LIT, LIT]);
     expect(rgb(other, anchor)).toEqual([0, 0, 0]);
+  }, 60_000);
+
+  it("T1440b: a prop parented to a bone (unskinned, a child of the joint node) rides that bone", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    // The body skins only the anchor cube; the "glasses" are a plain cube node under the arm
+    // joint, 1.5 m out from its head: at rest (2, 0, 0), where the arm cube was above.
+    const glb = encodeFixtureGlb({
+      materials: [{ name: "grey", baseColor: [1, 1, 1, 1] }],
+      skins: [{ joints: ["root", "arm"], inverseBindMatrices: [[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.5, 0, 0, 1]] }],
+      nodes: [
+        { name: "root", children: [{ name: "arm", translation: [0.5, 0, 0], children: [{ name: "glasses", translation: [1.5, 0, 0], mesh: [cubePrimitive(0)] }] }] },
+        { name: "body", skin: 0, mesh: [boundCube(-2, 0)] },
+      ],
+    });
+    const head = prepareMesh(glb, "")!.mesh.skin!.joints[1]!.head;
+    const anchor = texelOf([-2, 0, 0.5]);
+    const propAtRest = texelOf([2, 0, 0.5]);
+    const propTurned = texelOf([0.5, 1.5, 0.5]);
+    const rest = await render(turnKernel(1, head, 0), glb);
+    expect([anchor, propAtRest, propTurned].map((at) => rgb(rest, at))).toEqual([[LIT, LIT, LIT], [LIT, LIT, LIT], [0, 0, 0]]);
+    // The arm turns 90 degrees about its head: the glasses go with it, the anchor stays.
+    const turned = await render(turnKernel(1, head, Math.PI / 2), glb);
+    expect([anchor, propAtRest, propTurned].map((at) => rgb(turned, at))).toEqual([[LIT, LIT, LIT], [0, 0, 0], [LIT, LIT, LIT]]);
+  }, 60_000);
+
+  it("T1410b: a glTF clip plays on Mesh File In alone — the arm turns about its head at the frame clock, no kernel", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    // The file's own performance: the arm joint turns 0 -> 90 degrees about +Z over one second (LINEAR = slerp).
+    const glb = encodeFixtureGlb({
+      materials: [{ name: "grey", baseColor: [1, 1, 1, 1] }],
+      skins: [{ joints: ["root", "arm"], inverseBindMatrices: [[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.5, 0, 0, 1]] }],
+      nodes: [
+        { name: "root", children: [{ name: "arm", translation: [0.5, 0, 0] }] },
+        { name: "body", skin: 0, mesh: [boundCube(-2, 0), boundCube(2, 1)] },
+      ],
+      animations: [{ name: "wave", channels: [{ node: "arm", path: "rotation", times: [0, 1], values: [0, 0, 0, 1, 0, 0, Math.SQRT1_2, Math.SQRT1_2] }] }],
+    });
+    const clipGraph = (clip: Record<string, unknown>): GraphDocument => {
+      const facts = prepareMesh(glb, "")!.facts;
+      const nodes = [
+        node("mesh", "meshFileIn", { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts, joints: facts.joints, ...clip }, "mesh1"),
+        node("geo", "geometry", { mode: "surface" }, "geo1"),
+        node("cam", "camera", { eye: [...EYE], lookAt: [0, 0, 0] }, "cam1"),
+        node("sun", "light", { kind: "directional", direction: [0, 0, -1], intensity: 1 }, "sun1"),
+        node("shot", "render", { scenes: "geo1", camera: "cam1", lights: "sun1", ambientColor: [1, 1, 1, 1], ambientIntensity: 0.12 }, "shot1"),
+        node("out", "output", {}, "out1"),
+      ];
+      return {
+        revision: 1,
+        nodes: Object.fromEntries(nodes.map((entry) => [entry.id, entry])),
+        edges: {
+          e1: { id: "e1", source: { nodeId: "mesh", portId: "out" }, target: { nodeId: "geo", portId: "points" } },
+          e2: { id: "e2", source: { nodeId: "shot", portId: "out" }, target: { nodeId: "out", portId: "input" } },
+        },
+        groups: {},
+      } as never;
+    };
+    /** The frames at absTime = index / 30 (the harness's clock at 30 fps). */
+    const at = async (clip: Record<string, unknown>, capture: number[]): Promise<Uint8Array[]> => {
+      const result = await renderHeadless({ host: nodeGpuHost(), graph: clipGraph(clip), settings: SETTINGS, frames: Math.max(...capture) + 1, capture, fps: 30, outputNodeId: "shot", outputPortId: "out", meshes: { mesh: glb } });
+      expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+      return result.frames.map((frame) => frame.bytes);
+    };
+    const anchor = texelOf([-2, 0, 0.5]);
+    const armAtRest = texelOf([2, 0, 0.5]);
+    // Half time, 45 degrees: the arm cube's centre at (0.5 + 1.5 cos 45, 1.5 sin 45).
+    const armHalf = texelOf([0.5 + 1.5 * Math.SQRT1_2, 1.5 * Math.SQRT1_2, 0.5]);
+    const armTurned = texelOf([0.5, 1.5, 0.5]);
+    const [start, half] = await at({ clip: "wave" }, [0, 15]);
+    expect([anchor, armAtRest, armHalf, armTurned].map((texel) => rgb(start!, texel))).toEqual([[LIT, LIT, LIT], [LIT, LIT, LIT], [0, 0, 0], [0, 0, 0]]);
+    expect([anchor, armAtRest, armHalf, armTurned].map((texel) => rgb(half!, texel))).toEqual([[LIT, LIT, LIT], [0, 0, 0], [LIT, LIT, LIT], [0, 0, 0]]);
+    // Past the end with Loop off the last pose holds: the full quarter turn.
+    const [held] = await at({ clip: "wave", clipLoop: false }, [45]);
+    expect([anchor, armAtRest, armTurned].map((texel) => rgb(held!, texel))).toEqual([[LIT, LIT, LIT], [0, 0, 0], [LIT, LIT, LIT]]);
+    // Without a clip the node is the rest pose at any time.
+    const [still] = await at({}, [15]);
+    expect([armAtRest, armHalf].map((texel) => rgb(still!, texel))).toEqual([[LIT, LIT, LIT], [0, 0, 0]]);
   }, 60_000);
 });

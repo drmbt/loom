@@ -36,7 +36,8 @@ import { handheld, keyed } from "./motion.ts";
  *    rising 40 px over the last second. A few thin vertical streak lines rise from the rim.
  *
  * The chain: Render (figure only, background alpha 0 so its alpha is coverage) → haze (one
- * backlight, shadowed by the figure through a screen-space march of the depth buffer) →
+ * backlight, shadowed by the figure as the light sees it: T1417b, a second Render's Light
+ * Depth, the backlight's own cube map) →
  * composite (haze behind, the rim as light wrap of the haze onto the silhouette's edge) →
  * streak and bloom → the four-way mirror → lens → grade.
  */
@@ -48,13 +49,16 @@ const STRIP = 395.5 / 1920;
 /**
  * The HAZE of the quad: one spot behind the figure aimed at the lens, in-scattered along each
  * view ray (Henyey-Greenstein, forward-peaked) through slowly rising, vertically stretched
- * billows. Each sample asks whether the figure stands between it and the light by marching
- * the segment toward the light through the depth buffer, so the haze in front of the
- * silhouette sits in its shadow (the reference's black at 6/255) and god rays fan off its
+ * billows. Each sample asks the backlight's own shadow map whether the figure stands between
+ * it and the light (T1417b: `// @use light-depth`, where it used to march the segment through
+ * the CAMERA's depth buffer, blind to anything the lens did not see), so the haze in front of
+ * the silhouette sits in its shadow (the reference's black at 6/255) and god rays fan off its
  * edges. Output: rgb = the haze along the whole ray (what the background shows), a = the part
- * in front of the figure (in units of `color`). Input = the Render (unused), More = [depth].
+ * in front of the figure (in units of `color`). Input = the Render (unused), More = [depth,
+ * the backlight's Light Depth].
  */
 export const QUAD_HAZE_WGSL = `${SHARED_UNIFORMS_WGSL}
+// @use light-depth
 struct Params {
 ${CAMERA_PARAMS}
   light: vec3f, // @default 0  The backlight's position (world metres).
@@ -70,7 +74,8 @@ ${CAMERA_PARAMS}
   billow: f32, // @default 0.6  Depth of the density variation.
   billowScale: f32, // @default 1.6  Billows per metre.
   rise: f32, // @default 0.08  Upward drift of the billows, metres a second.
-  thickness: f32, // @default 0.5  How deep the figure is along the view, metres (the shadow test).
+  range: f32, // @default 8  The backlight's shadow range (its Light Depth's Shadow Extent), metres.
+  shadowBias: f32, // @default 0.03  Shadow-test allowance along the light, metres.
   plane: f32, // @default 5  View distance of the figure, metres.
   wash: f32, // @default 0  A broad, unpeaked share of the light (the room the haze fills), relative to the beam.
   washCore: f32, // @default 2  Metres over which the wash falls off round the source.
@@ -84,9 +89,9 @@ ${CAMERA_PARAMS}
 @group(0) @binding(2) var<uniform> frameU: SharedFrame;
 @group(0) @binding(3) var<uniform> params: Params;
 @group(0) @binding(4) var inputTexture1: texture_2d<f32>;
+@group(0) @binding(5) var inputTexture2: texture_2d<f32>;
 ${VIEW}
 const STEPS: u32 = 48u;
-const SHADOW_STEPS: u32 = 10u;
 
 fn hash3(p: vec3f) -> f32 {
   var q = fract(p * vec3f(0.1031, 0.1030, 0.0973));
@@ -121,18 +126,6 @@ fn hg(cosTheta: f32, g: f32) -> f32 {
   return (1.0 - g2) / (12.566371 * pow(max(1.0 + g2 - 2.0 * g * cosTheta, 1e-4), 1.5));
 }
 
-// 1 when nothing on screen stands between p and the light, 0 when the figure does.
-fn lightVisible(v: View, p: vec3f) -> f32 {
-  for (var k = 1u; k <= SHADOW_STEPS; k = k + 1u) {
-    let q = mix(p, params.light, f32(k) / f32(SHADOW_STEPS + 1u));
-    let s = project(v, q);
-    if (s.z <= 0.0 || any(s.xy < vec2f(0.0)) || any(s.xy > vec2f(1.0))) { continue; }
-    let zb = viewDepth(s.xy);
-    if (zb > 0.0 && s.z > zb && s.z < zb + params.thickness) { return 0.0; }
-  }
-  return 1.0;
-}
-
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let v = makeView();
@@ -158,9 +151,8 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     let cone = smoothstep(params.cosOuter, params.cosInner, dot(l, normalize(params.lightDir)));
     let spill = params.wash / (12.566371 * (d2 + params.washCore * params.washCore));
     if (cone > 0.0 || spill > 0.0) {
-      // The figure's shadow falls TOWARD the lens: only what lies in front of it can be in it.
-      let front = dot(p - params.eye, v.forward) < params.plane + 0.1;
-      let visible = select(1.0, lightVisible(v, p), front);
+      // 1 when the light reaches p, 0 when the figure stands between (the light's own view).
+      let visible = lightDepthPointVisible(inputTexture2, params.light, params.range, p, params.shadowBias);
       let inscatter = (cone * hg(dot(l, -ray), params.anisotropy) / (d2 + params.core * params.core) + spill) * visible;
       let add = inscatter * sigma * exp(-optical) * dt;
       all = all + add;
@@ -259,31 +251,6 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     }
   }
   return vec4f(c, 1.0);
-}`;
-
-/**
- * The quad's MIRROR: one source window repeated across the frame about three seams — strips
- * `width` wide either side of `axis`, alternate strips flipped — with the two outer strips
- * running on to the frame edges instead of folding again (the reference's composite). Strip 3
- * (just right of `axis`) shows the source unflipped from `window`.
- */
-export const QUAD_MIRROR_WGSL = `struct Params {
-  axis: f32, // @default 0.4919  The centre seam (uv x).
-  width: f32, // @default 0.206  Strip width (uv x).
-  window: f32, // @default 0.4  Source uv x at the face-side edge of the window.
-};
-@group(0) @binding(0) var inputSampler: sampler;
-@group(0) @binding(1) var inputTexture: texture_2d<f32>;
-@group(0) @binding(3) var<uniform> params: Params;
-
-@fragment
-fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let t = (uv.x - params.axis) / params.width;
-  let k = clamp(floor(t), -2.0, 1.0);
-  let f = t - k;
-  let odd = fract(k * 0.5) > 0.25;
-  let local = select(f, 1.0 - f, odd);
-  return textureSampleLevel(inputTexture, inputSampler, vec2f(params.window + local * params.width, uv.y), 0.0);
 }`;
 
 export interface QuadOptions {
@@ -391,6 +358,20 @@ export function quadDocument(facts: OnNothingFacts, options: QuadOptions): Proje
 
   // The backlight lights what faces it — the upturned palms, the tops of the shoulders.
   g.node("back", "light", [-2600, 1000], { kind: "point", color: [...lightColor, 1], intensity: 6, position: light }, { label: "back1" });
+  // T1417b: the backlight's own view of the figure, for the haze's shadow — a zero-intensity
+  // casting copy (it lights nothing) and a Render that exports its cube map as Light Depth.
+  // 512-texel faces: a centimetre at the figure, 1.3 m off.
+  const shadowRange = 8;
+  g.node("backShadow", "light", [-2600, 1100], { kind: "point", color: [...lightColor, 1], intensity: 0, position: light, shadows: true, shadowExtent: shadowRange, shadowSoftness: 0 }, { label: "backshadow1" });
+  g.node("backView", "render", [-2400, 300], {
+    scenes: figure.scene,
+    camera: "cam1",
+    lights: "backshadow1",
+    ambientIntensity: 0,
+    background: [0, 0, 0, 0],
+    environmentIntensity: 0,
+    lightDepthOutput: true,
+  }, { label: "backview1", resolution: { mode: "fixed", width: 1536, height: 1024 } });
   g.node("shot", "render", [-2400, 0], {
     scenes: figure.scene,
     camera: "cam1",
@@ -421,14 +402,15 @@ export function quadDocument(facts: OnNothingFacts, options: QuadOptions): Proje
     billow: 0.9,
     billowScale: 2.2,
     rise: 0.09,
-    thickness: 0.5,
+    range: shadowRange,
+    shadowBias: 0.03,
     plane: distance,
     frontShare: 0.15,
     depth: 1.6,
     wash: 0.04,
     washCore: 0.9,
     ceiling: 1.85,
-  }, ["shot", "out"], [depth], [-2100, 0]);
+  }, ["shot", "out"], [depth, ["backView", "lightDepth"]], [-2100, 0]);
   g.pass("comp", QUAD_COMPOSITE_WGSL, {
     ...cameraParams,
     color: [...lightColor, 1],
@@ -453,7 +435,12 @@ export function quadDocument(facts: OnNothingFacts, options: QuadOptions): Proje
   // ── The four-way mirror, then the lens and the grade over the composite ──
   // Placed so strip 3 matches the reference at the start: crown centre x 1120 px, chest
   // 1086–1284 px at row 500 (the Render centres the figure; the window starts 9 px early).
-  g.pass("mirror", QUAD_MIRROR_WGSL, { axis: AXIS, width: STRIP, window: 0.5 - 0.605 * STRIP - 9 / 1920 }, g.last, [], [-300, 0]);
+  // Tile's seams layout with the outer tiles unfolded (T1413b): the seam at AXIS, strips STRIP
+  // wide, the tile right of it unflipped, the two strips the frame edges cut running on.
+  const window = 0.5 - 0.605 * STRIP - 9 / 1920;
+  g.node("mirror", "tile", [-300, 0], { layout: "seams", seam: [AXIS, 0], tilesize: [STRIP, 1], mirrorx: true, unfoldx: true, cropleft: window, cropright: window + STRIP }, { label: "mirror1" });
+  g.edge("optics-mirror", g.last, ["mirror", "input"]);
+  g.last = ["mirror", "out"];
   g.pass("lens", LENS_WGSL, { distortion: 0.02, edgeBlur: 0.01, aberration: 0.001, vignette: 0.55, vignetteRound: 0.6 }, g.last, [], [-100, 0]);
   g.pass("grade", GRADE_WGSL, { exposure: 0, black: 0.02, contrast: 1.15, saturation: 0.85, keepWarm: 0.5, bleach: 0.2, steel: [0.94, 1.0, 1.03], shadowTint: [0.96, 1.0, 1.04, 1], split: 0.3, lift: 0.06, grain: 0.025 }, g.last, [], [100, 0]);
   return g.document("quad", width, height);

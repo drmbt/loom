@@ -177,6 +177,28 @@ describe("decodeGlb skins (T1401b)", () => {
     expect(decodeGlb(encodeFixtureGlb(leg({ extra: [{ name: "rock", mesh: [{ positions: [0, 0, 0, 1, 0, 0, 0, 1, 0] }] }] })), { select: "rock" }).skin).toBeUndefined();
   });
 
+  it("T1440b: binds a prop parented to a bone rigidly to it, and a prop selected alone indexes the body's table", () => {
+    // Blender's Bone parent exports the prop as an unskinned child of the joint node.
+    const scene: FixtureScene = {
+      skins: [{ joints: ["hip", "knee"] }],
+      nodes: [
+        { name: "hip", translation: [0, 1, 0], children: [{ name: "knee", translation: [0, -0.5, 0], children: [{ name: "pad", translation: [0, -0.2, 0], mesh: [{ positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2] }] }] }] },
+        { name: "body", skin: 0, mesh: [{ positions: [0, 1, 0, 0, 0.5, 0, 0, 0, 0], indices: [0, 1, 2], joints: [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0], weights: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0] }] },
+      ],
+    };
+    const glb = encodeFixtureGlb(scene);
+    const whole = decodeGlb(glb);
+    // The pad is walked first (under the hip): vertices 0..2, at its rest world, all knee.
+    expect([0, 1, 2].map((v) => point(whole.positions, v))).toEqual([[0, 0.3, 0], [1, 0.3, 0], [0, 1.3, 0]]);
+    expect([0, 1, 2].map((v) => [...quad(whole.skin!.indices, v), ...quad(whole.skin!.weights, v)])).toEqual(Array.from({ length: 3 }, () => [1, 0, 0, 0, 1, 0, 0, 0]));
+    // Alone, the pad still carries the skin's whole table — the same one the body's kernel reads.
+    const alone = prepareMesh(glb, "pad");
+    expect(alone?.facts.vertices).toBe(3);
+    expect(alone?.facts.joints).toBe(prepareMesh(glb, "")?.facts.joints);
+    expect(alone?.facts.joints).toBe("0:hip@0,1,0 1:knee<0@0,0.5,0");
+    expect(quad(alone!.mesh.skin!.indices, 0)).toEqual([1, 0, 0, 0]);
+  });
+
   it("publishes the table as the node's Joints fact and packs joints/weights after the six unskinned regions", () => {
     const glb = encodeFixtureGlb(leg());
     const prepared = prepareMesh(glb, "");

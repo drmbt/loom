@@ -1,4 +1,5 @@
 import type { NodeDefinition, CompiledNodeDescription } from "../../domain/types/node-definition.ts";
+import type { ParameterValue } from "../../domain/types/parameters.ts";
 import type { EffectPassDescriptor } from "../../runtime/backend/plan.ts";
 import { RGBA_TEXTURE } from "./common-ports.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
@@ -174,7 +175,33 @@ export const cropNode: NodeDefinition = {
  * for exactly that. Which strips flip is `offset`: an odd whole-tile offset flips the even
  * strips instead of the odd ones (back-to-back rather than face-to-face). Added without a
  * version bump because the defaults are the full frame, which is the old arithmetic exactly.
+ *
+ * T1413b: the SEAMS layout places the grid by one seam and the tile size in uv (what a
+ * reference measures) instead of a count and a shift, and UNFOLD lets the tiles cut by the
+ * frame edges run on from their inner neighbour — the On Nothing quad's composite, three
+ * seams and two outer strips that do not fold again, which needed its own mirror pass. Both
+ * default off, and the seams layout is plain arithmetic onto Repeat/Offset, so the shader's
+ * grid is the one it always was.
  */
+const TILE_LAYOUT_OPTIONS = [
+  { value: "repeat", label: "Repeat" },
+  { value: "seams", label: "Seams" },
+] as const;
+
+/**
+ * Repeat and offset for the shader, from either layout. Seams: tile 0 starts at the seam and
+ * runs right in x; in y the seam is bottom-up (as the crop window is) and tile 0 lies ABOVE it,
+ * so in the shader's top-down uv it spans (1 - seam - size) .. (1 - seam).
+ */
+function tileGrid(parameters: Readonly<Record<string, ParameterValue>>): { repeat: readonly number[]; offset: readonly number[] } {
+  if (parameters["layout"] !== "seams") {
+    return { repeat: readVector(parameters, "repeat", [2, 2]), offset: readVector(parameters, "offset", [0, 0]) };
+  }
+  const [seamX, seamY] = readVector(parameters, "seam", [0.5, 0.5]) as [number, number];
+  const [sizeX, sizeY] = readVector(parameters, "tilesize", [0.5, 0.5]).map((size) => Math.max(size, 1e-3)) as [number, number];
+  return { repeat: [1 / sizeX, 1 / sizeY], offset: [-seamX / sizeX, (seamY + sizeY - 1) / sizeY] };
+}
+
 export const tileNode: NodeDefinition = {
   type: "tile",
   version: 1,
@@ -198,6 +225,50 @@ export const tileNode: NodeDefinition = {
     },
     mirrorx: { type: "boolean", label: "Mirror X", default: false },
     mirrory: { type: "boolean", label: "Mirror Y", default: false },
+    layout: {
+      type: "enum",
+      label: "Layout",
+      default: "repeat",
+      options: TILE_LAYOUT_OPTIONS,
+      description:
+        "Repeat: the grid is Repeat tiles across the frame, shifted by Offset. Seams: the grid is placed by one seam's position and the tile size, both in uv.",
+    },
+    seam: {
+      type: "vector",
+      size: 2,
+      label: "Seam",
+      default: [0.5, 0.5],
+      min: -1,
+      max: 2,
+      range: "soft",
+      group: "Seams",
+      description:
+        "Seams layout: where one seam lies, 0..1 across the frame from the bottom left. The tile right of and above it shows the window unflipped.",
+    },
+    tilesize: {
+      type: "vector",
+      size: 2,
+      label: "Tile Size",
+      default: [0.5, 0.5],
+      min: 0.001,
+      max: 4,
+      range: "soft",
+      group: "Seams",
+      description: "Seams layout: one tile's width and height, 0..1 of the frame.",
+    },
+    unfoldx: {
+      type: "boolean",
+      label: "Unfold Outer X",
+      default: false,
+      description:
+        "The tiles cut by the left and right frame edges run on from their inner neighbour instead of starting another tile (no fold at the outermost seams).",
+    },
+    unfoldy: {
+      type: "boolean",
+      label: "Unfold Outer Y",
+      default: false,
+      description: "The same for the tiles cut by the top and bottom frame edges.",
+    },
     cropleft: {
       type: "number",
       label: "Crop Left",
@@ -258,9 +329,9 @@ export const tileNode: NodeDefinition = {
       samplers: [{ binding: "inputSampler", resourceId: source.sampler }],
       uniformBinding: "params",
       uniforms: {
-        repeat: readVector(parameters, "repeat", [2, 2]),
-        offset: readVector(parameters, "offset", [0, 0]),
+        ...tileGrid(parameters),
         mirror: [readFlag(parameters, "mirrorx", false), readFlag(parameters, "mirrory", false)],
+        unfold: [readFlag(parameters, "unfoldx", false), readFlag(parameters, "unfoldy", false)],
         crop: [
           readNumber(parameters, "cropleft", 0),
           readNumber(parameters, "cropright", 1),

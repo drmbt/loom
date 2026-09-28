@@ -1222,7 +1222,8 @@
             1,
             1
           ],
-          "intensity": 0.35,
+          "falloff": "inverseSquare",
+          "intensity": 0.06792392005157963,
           "kind": "point",
           "position": [
             59.78,
@@ -1247,7 +1248,8 @@
             1,
             1
           ],
-          "intensity": 0.08,
+          "falloff": "inverseSquare",
+          "intensity": 0.009627023223082338,
           "kind": "point",
           "position": [
             59.7,
@@ -1285,10 +1287,10 @@
         "label": "meshpend1",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
-          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr",
+          "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
           "select": "pend.*",
-          "triangles": 78062,
-          "vertices": 48632
+          "triangles": 139680,
+          "vertices": 87696
         },
         "position": {
           "x": -3600,
@@ -1465,7 +1467,8 @@
             0.2,
             1
           ],
-          "intensity": 0.22,
+          "falloff": "inverseSquare",
+          "intensity": 0.025790960451977405,
           "kind": "point",
           "position": [
             60.28,
@@ -1501,6 +1504,7 @@
           ],
           "camera": "cam1",
           "depthOutput": true,
+          "environmentFilter": "prefiltered",
           "environmentIntensity": 1,
           "environmentTaps": 16,
           "lights": "key1 rim1 kick1",

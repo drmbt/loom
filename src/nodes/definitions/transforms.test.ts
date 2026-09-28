@@ -130,6 +130,26 @@ describe("geometry filter nodes (T40)", () => {
       expect(pass.id).toBe(firstPass(tileNode).id);
       expect(pass.shader).toBe(firstPass(tileNode).shader);
     });
+
+    it("places the grid by a seam and a tile size in the seams layout, and only there (T1413b)", () => {
+      // A reference measures seams in pixels, not a count and a shift. Seam x 0.25, tiles 0.5
+      // wide: tile 0 starts at the seam, so uv 0.25 must land on a whole tile index — offset -0.5.
+      // In y the seam is bottom-up and tile 0 lies above it: seam 0.25, size 0.5 puts tile 0 at
+      // top-down uv 0.25..0.75, so offset -0.5 there too.
+      const seams = firstPass(tileNode, { layout: "seams", seam: [0.25, 0.25], tilesize: [0.5, 0.5], repeat: [7, 7], offset: [3, 3] });
+      expect(seams.uniforms?.["repeat"]).toEqual([2, 2]);
+      expect(seams.uniforms?.["offset"]).toEqual([-0.5, -0.5]);
+      // The repeat layout ignores seam and size: an old document keeps its grid.
+      const repeat = firstPass(tileNode, { seam: [0.25, 0.25], tilesize: [0.5, 0.5], repeat: [7, 7], offset: [3, 3] });
+      expect(repeat.uniforms?.["repeat"]).toEqual([7, 7]);
+      expect(repeat.uniforms?.["offset"]).toEqual([3, 3]);
+    });
+
+    it("passes the two unfold flags as a vec2 of 0/1, off by default (T1413b)", () => {
+      expect(firstPass(tileNode).uniforms?.["unfold"]).toEqual([0, 0]);
+      expect(firstPass(tileNode, { unfoldx: true }).uniforms?.["unfold"]).toEqual([1, 0]);
+      expect(firstPass(tileNode, { unfoldy: true }).uniforms?.["unfold"]).toEqual([0, 1]);
+    });
   });
 });
 

@@ -31,20 +31,18 @@ import { keyed } from "./motion.ts";
  *    clips to 245, the shadowed wall lifts to a pale grey, the performer inside the matte does
  *    not.
  *
- * The chain: Render the figure (key-lit, alpha = coverage) from the camera and, depth only,
- * from the key light (the shadow map) → the WALL composite (the wall plane ray-cast, its relief
- * lit by the key, shadowed through the map, the figure shown inside the shadow only) → streak
- * and bloom → lens → grade.
+ * The chain: Render the figure (key-lit, alpha = coverage) from the camera and, T1414b, a
+ * second Render from the same camera of the wall plane alone, the figure in it SHADOW ONLY
+ * under a casting copy of the key, whose Shadow output is the figure's shadow on the wall at
+ * every pixel (behind him too) → the WALL composite (the wall plane ray-cast, its relief lit
+ * by the key, darkened by that matte, the figure shown inside the shadow only) → streak and
+ * bloom → lens → grade.
  */
 
-/** The wall composite. Input = the camera Render; More = [camera depth, key-light depth]. */
+/** The wall composite. Input = the camera Render; More = [camera depth, the wall Render's shadow matte]. */
 export const PRISM_WALL_WGSL = `${SHARED_UNIFORMS_WGSL}
 struct Params {
 ${CAMERA_PARAMS}
-  lEye: vec3f, // @default 0  The shadow camera (at the key light): position.
-  lAim: vec3f, // @default 0  The shadow camera's look-at.
-  lFov: f32, // @default 60  The shadow camera's vertical fov, degrees (its target is square).
-  lFar: f32, // @default 20  The shadow camera's far plane.
   wallPoint: vec3f, // @default 0  A point on the wall.
   wallNormal: vec3f, // @default 0  The wall's normal (toward the camera).
   key: vec3f, // @default 0  The key light's position.
@@ -54,7 +52,6 @@ ${CAMERA_PARAMS}
   albedo: vec3f, // @default 0.8  The wall's colour.
   relief: f32, // @default 1  Depth of the stucco relief.
   reliefScale: f32, // @default 18  Stucco features per metre.
-  softness: f32, // @default 1.5  Shadow edge softness, shadow-map texels.
   flash: f32, // @default 1  The wall's exposure (the beat flashes).
   matte: f32, // @default 1  1 shows the performer only inside his shadow; 0 shows all of him.
   clip: f32, // @default 4  The plate's highlights roll off toward this (the camera's sensor clips; a glinting pendant does not bloom the frame).
@@ -93,31 +90,11 @@ fn stucco(p: vec2f) -> f32 {
   return h;
 }
 
-// 1 where the figure stands between the wall point and the key light (softened over the map).
-fn shadowAt(w: vec3f) -> f32 {
-  let f = normalize(params.lAim - params.lEye);
-  let r = normalize(cross(f, vec3f(0.0, 1.0, 0.0)));
-  let u = cross(r, f);
-  let rel = w - params.lEye;
-  let z = dot(rel, f);
-  if (z <= 0.0) { return 0.0; }
-  let t = tan(radians(params.lFov) * 0.5);
-  let uv = vec2f(dot(rel, r) / (z * t) * 0.5 + 0.5, 0.5 - dot(rel, u) / (z * t) * 0.5);
+// 1 where the figure stands between the wall and the key: the wall Render's shadow matte
+// (T1414b), the same camera, so the pixel is the pixel.
+fn shadowAt(uv: vec2f) -> f32 {
   let size = vec2f(textureDimensions(inputTexture2));
-  let n = 2;
-  var sum = 0.0;
-  var count = 0.0;
-  for (var dy = -n; dy <= n; dy = dy + 1) {
-    for (var dx = -n; dx <= n; dx = dx + 1) {
-      let q = uv + vec2f(f32(dx), f32(dy)) * params.softness / size;
-      if (any(q < vec2f(0.0)) || any(q > vec2f(1.0))) { count = count + 1.0; continue; }
-      let d = textureLoad(inputTexture2, vec2i(q * size), 0).r;
-      let blocker = select(1e9, d * params.lFar, d > 0.0 && d < 0.9999);
-      sum = sum + select(0.0, 1.0, blocker < z - 0.02);
-      count = count + 1.0;
-    }
-  }
-  return sum / count;
+  return textureLoad(inputTexture2, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).r;
 }
 
 @fragment
@@ -141,7 +118,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let lambert = max(dot(n, toKey / dk), 0.0);
   let shade = 0.94 + 0.12 * h0;
   let albedo = params.albedo * shade;
-  let shadow = shadowAt(w);
+  let shadow = shadowAt(uv);
   let lit = albedo * (params.keyColor * params.keyIntensity * lambert / (dk * dk) * (1.0 - shadow) + vec3f(params.ambient));
   let dark = albedo * params.ambient;
   // Inside the shadow: the figure, and the shadowed wall where it does not cover.
@@ -221,7 +198,6 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
   // down toward the lamp throws the long black band lower right while the arm itself, off
   // its own shadow, is matted away.
   const key: [number, number, number] = [ax - 1.5, 0.35, az - 2.2];
-  const keyAim: [number, number, number] = [ax, 1.45, az];
   g.node("key", "light", [-2600, 1000], { kind: "point", color: [1, 0.98, 0.95, 1], intensity: 16, position: key }, { label: "key1" });
   g.node("fill", "light", [-2600, 1100], { kind: "point", color: [0.9, 0.95, 1, 1], intensity: 0.4, position: [ax + 0.8, 1.9, az - 1.2] }, { label: "fill1" });
   // The chains need a bright room to mirror: the white cyc environment.
@@ -242,17 +218,27 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
     environmentTaps: 16,
   }, { label: "shot1" });
   g.edge("env-shot", ["env", "out"], ["shot", "environment"]);
-  // The shadow map: the figure's depth from the key light.
-  const lightFov = 70;
-  g.node("keyCam", "camera", [-2700, -700], { eye: key, lookAt: keyAim, fov: lightFov, near: 0.05, far: 20 }, { label: "keycam1" });
-  g.node("keyView", "render", [-2400, 300], {
-    scenes: figure.scene,
-    camera: "keycam1",
+  // The shadow on the wall (T1414b): the wall plane and the figure SHADOW ONLY, seen by the
+  // shot's own camera under a casting copy of the key; its Shadow output is the matte the
+  // wall composite darkens by. Twice the frame, so the key's cube map (1.5x its Render per
+  // face tile) keeps the shadow's edge near the old 2048-texel map's.
+  g.node("figCast", "geometry", [-3000, 1400], { mode: "surface", material: "surf1", shadowOnly: true }, { label: "figcast1" });
+  g.edge("skin-figcast", ["skin", "out"], ["figCast", "points"]);
+  g.node("wallGrid", "pointGrid", [-3300, 1600], { cols: 2, rows: 2, count: 4, sizeX: 8, sizeY: 6 }, { label: "wallgrid1" });
+  g.node("wallPlace", "pointTransform", [-3150, 1600], { translate: [ax, 1.5, az + 0.12] }, { label: "wallplace1" });
+  g.node("wallGeo", "geometry", [-3000, 1600], { mode: "surface" }, { label: "wallgeo1" });
+  g.edge("wallgrid-place", ["wallGrid", "out"], ["wallPlace", "points"]);
+  g.edge("wallplace-geo", ["wallPlace", "out"], ["wallGeo", "points"]);
+  g.node("keyShadow", "light", [-2600, 1200], { kind: "point", color: [1, 0.98, 0.95, 1], intensity: 16, position: key, shadows: true, shadowExtent: 6, shadowSoftness: 2 }, { label: "keyshadow1" });
+  g.node("wallShot", "render", [-2400, 300], {
+    scenes: "figcast1 wallgeo1",
+    camera: "cam1",
+    lights: "keyshadow1",
     background: [0, 0, 0, 0],
     ambientIntensity: 0,
-    depthOutput: true,
     environmentIntensity: 0,
-  }, { label: "keyview1", resolution: { mode: "fixed", width: 2048, height: 2048 } });
+    shadowOutput: true,
+  }, { label: "wallshot1", resolution: { mode: "fixed", width: width * 2, height: height * 2 } });
 
   // Occlusion on the figure itself: its creases, the arm against the head, the chain on the
   // tee — a small radius, this is a close-up (a hand's width is 0.1 m).
@@ -261,10 +247,6 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
   const wallZ = az + 0.12;
   g.pass("wall", PRISM_WALL_WGSL, {
     ...cameraRefs("cam1", eye, aim, fov, 20),
-    lEye: key,
-    lAim: keyAim,
-    lFov: lightFov,
-    lFar: 20,
     wallPoint: [ax, 0, wallZ],
     wallNormal: [0, 0, -1],
     key,
@@ -274,13 +256,12 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
     albedo: [0.76, 0.82, 0.8, 1],
     relief: 1.1,
     reliefScale: 55,
-    softness: 1.5,
     flash: expressionSlot(flashCurve(t), 1),
     // The reference mattes him to his own shadow; the owner reads that as the figure being
     // eaten (2026-09-27), so he stands whole in front of it. matte: 1 restores the matte.
     matte: 0,
     clip: 3,
-  }, ["occlusion", "out"], [["shot", "depth"], ["keyView", "depth"]], [-2100, 0]);
+  }, ["occlusion", "out"], [["shot", "depth"], ["wallShot", "shadow"]], [-2100, 0]);
 
   g.optics(g.last, { threshold: 1.6, knee: 0.8, reach: 0.4, streak: 0.12, bloom: 0.1, compress: 3 });
   g.pass("lens", LENS_WGSL, { distortion: 0.02, edgeBlur: 0.012, aberration: 0.0012, vignette: 0.5, vignetteRound: 0.7 }, g.last, [], [-100, 0]);

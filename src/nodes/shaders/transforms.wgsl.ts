@@ -82,6 +82,7 @@ export const TILE_FRAGMENT_WGSL = wgsl`struct Params {
   repeat: vec2f,
   offset: vec2f,
   mirror: vec2f,
+  unfold: vec2f,
   crop: vec4f,
 };
 @group(0) @binding(0) var<uniform> params: Params;
@@ -91,10 +92,18 @@ export const TILE_FRAGMENT_WGSL = wgsl`struct Params {
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let scaled = (uv * params.repeat) + params.offset;
-  let tile = fract(scaled);
+  // T1413b UNFOLD: the tiles the frame edges cut (first index at uv 0, last at uv 1) take
+  // their inner neighbour's index, so the outermost seams do not fold again and the edge
+  // tiles run on past 0..1. Only where at least one tile lies between them.
+  let first = floor(params.offset) + 1.0;
+  let last = ceil(params.repeat + params.offset) - 2.0;
+  let clamped = clamp(floor(scaled), first, max(first, last));
+  let unfold = (params.unfold > vec2f(0.5)) & (first <= last);
+  let index = select(floor(scaled), clamped, unfold);
+  let tile = select(fract(scaled), scaled - index, unfold);
   // Mirroring alternate tiles is what makes a tiled image seamless without authoring it
   // that way: the odd tiles read backwards, so every tile boundary matches its neighbour.
-  let odd = fract(floor(scaled) * 0.5) > vec2f(0.25);
+  let odd = fract(index * 0.5) > vec2f(0.25);
   let mirrored = select(tile, 1.0 - tile, odd);
   let local = select(tile, mirrored, params.mirror > vec2f(0.5));
   // The window, in uv (y down): x runs left -> right, y runs top -> bottom.

@@ -168,6 +168,12 @@ export interface GeometryPayload {
    */
   /** T917: additive light — the draw blends additively and stops writing depth. */
   readonly blend?: "additive";
+  /**
+   * T1414b: a SHADOW-ONLY body — it draws into every light's shadow sweep (and a
+   * projector's occlusion) and into nothing the camera sees: no colour, depth, normal,
+   * albedo or shadow matte, no ambient occlusion.
+   */
+  readonly castOnly?: true;
   readonly scaleAttribute?: ScenePairRef & {
     readonly type: string;
     readonly channel?: string;
