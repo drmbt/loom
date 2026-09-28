@@ -204,6 +204,9 @@ const SWITCHING: HandPose = (() => {
 })();
 const CUPPED: HandPose = { curl: 0.35, spread: 0.12, thumbOut: 0.2 };
 
+/** Arms crossed in an X before the throat (row 54): the left wrist at the right of the neck. */
+const CROSS_L: ArmTarget = { elbow: [0.26, 1.3, 0.22], wrist: [-0.1, 1.48, 0.2], tip: [-0.22, 1.56, 0.18], seed: [[-1.0, 0, 0.3], [-1.8, 0, 0.3], [0, 0, 0]] };
+
 const both = (left: ArmTarget): { L: ArmTarget; R: ArmTarget } => ({ L: left, R: mirror(left) });
 const right = (left: ArmTarget): ArmTarget => mirror(left);
 
@@ -297,6 +300,22 @@ export const MCU_TAKES: readonly Take[] = [
         focus: "0.4 + 0.6 * clamp(u / 0.3, 0, 1)",
         fstop: 1.4,
         hand: { tiltIn: 3, tilt: 2, settle: 0.4, shake: 0.6, creep: 0.1 },
+        lights: VOID_LIGHTS,
+      },
+      {
+        // row 54, first part (52.34): arms crossed in an X before the throat, the head tipped back into the top light
+        hands: { L: SPREAD, R: SPREAD },
+        rows: [54],
+        frames: 26,
+        stage: "void",
+        keys: [
+          { t: 0, body: { neck: [-0.25, 0, 0], head: [-0.25, 0, 0], chest: [-0.05, 0, 0] }, L: CROSS_L, R: right({ ...CROSS_L, wrist: [0.1, 1.44, 0.2] }) },
+          { t: 0.6, body: { neck: [-0.32, 0.08, 0], head: [-0.3, 0, 0], chest: [-0.06, 0, 0] }, L: { ...CROSS_L, wrist: [-0.08, 1.52, 0.2] }, R: right({ ...CROSS_L, wrist: [0.12, 1.36, 0.22] }) },
+        ],
+        life: { "head.y": "sin(u * 2.2) * 0.04" },
+        frame: { dir: [0, -0.55, 1], head: [0.47, 0.15], size: 0.36 },
+        fov: 40,
+        hand: { tiltIn: -1, tilt: -0.5, settle: 0.6, shake: 0.3, creep: 0.03 },
         lights: VOID_LIGHTS,
       },
     ],
@@ -465,6 +484,22 @@ export const MCU_TAKES: readonly Take[] = [
         hand: { tiltIn: 1, tilt: 0.5, settle: 0.5, shake: 0.4, creep: 0.03 },
         lights: { ...ROW_LIGHTS, key: { at: [-0.9, 2.2, 1.3], power: 0.25 } },
       },
+      {
+        // row 54, fourth part (54.39): waist height, a spread hand thrust at the lens, the other arm up; the car row behind
+        hands: { L: SPREAD, R: LOOSE },
+        rows: [54],
+        frames: 11,
+        stage: "cars",
+        keys: [
+          { t: 0, body: { chest: [0.05, 0.1, 0] }, L: SPREAD_L, R: right({ ...ON_CROWN, onHead: false, elbow: [0.34, 1.6, -0.05], wrist: [0.2, 1.85, 0.0], tip: [0.18, 2.0, 0.02] }) },
+        ],
+        frame: { dir: [0, -0.1, 1], head: [0.42, -0.08], size: 0.34 },
+        fov: 46,
+        focus: 0.9,
+        fstop: 2.2,
+        hand: { tiltIn: 1, tilt: 0.5, settle: 0.4, shake: 0.5, creep: 0.03 },
+        lights: ROW_LIGHTS,
+      },
     ],
   },
   {
@@ -495,6 +530,26 @@ export const MCU_TAKES: readonly Take[] = [
         fstop: 1.8,
         hand: { tiltIn: -6, tilt: -4, settle: 0.8, shake: 0.7, creep: 0.12 },
         lights: { ...ROW_LIGHTS, key: { at: [-0.5, 1.4, 1.0], power: 0.8 }, cyan: { at: [0.6, 1.2, 0.8], power: 0.25 } },
+      },
+      {
+        // row 61 (59.89): the face in the dark from below and very close, soft; a hand passing; it runs on into row 62
+        hands: { L: LOOSE, R: CUPPED },
+        rows: [61],
+        frames: 13,
+        stage: "cars",
+        at: [0.2, 0, -3.2],
+        yaw: Math.PI / 2,
+        keys: [
+          { t: 0, body: { neck: [-0.2, 0.1, 0], head: [-0.2, 0.05, 0] }, L: DOWN, R: right({ ...GESTURE_L, wrist: [0.25, 1.45, 0.36] }) },
+          { t: 0.5, body: { neck: [-0.24, -0.05, 0], head: [-0.24, 0, 0] }, L: DOWN, R: right({ ...GESTURE_L, wrist: [0.08, 1.52, 0.42] }) },
+        ],
+        life: { "head.x": "sin(u * 4.4) * 0.03" },
+        frame: { dir: [0.15, -0.55, 1], head: [0.55, 0.45], size: 0.95 },
+        fov: 44,
+        focus: 0.3,
+        fstop: 1.4,
+        hand: { tiltIn: 3, tilt: 5, settle: 0.4, shake: 0.7, creep: 0.02 },
+        lights: { key: { at: [0.6, 1.2, 0.8], power: 0.4 }, rimL: { at: [0.7, 1.9, -0.8], power: 1.2 }, warm: { at: [-0.8, 1.3, 0.6], power: 0.25 } },
       },
     ],
   },
@@ -604,6 +659,39 @@ export const MCU_TAKES: readonly Take[] = [
         frame: { dir: [0, 0, 1], head: [0.6, 0.26], size: 0.34 },
         fov: 36,
         hand: { tiltIn: 0.5, tilt: 0.2, settle: 0.5, shake: 0.3, creep: 0.03 },
+        lights: CAR_LIGHTS,
+      },
+      {
+        // row 55 (54.97): standing at the grey car's front corner, the phone at the ear; white cars either side, columns
+        hands: { L: LOOSE, R: PHONE },
+        rows: [55],
+        frames: 15,
+        stage: "cars",
+        at: [0.9, 0, -2.1],
+        keys: [
+          { t: 0, body: { neck: [0.05, 0.2, 0] }, L: LOW_HANDS, R: PHONE_R },
+          { t: 0.5, body: { neck: [0.05, 0.1, 0] }, L: DOWN, R: PHONE_R },
+        ],
+        life: { "head.x": "sin(u * 4.4) * 0.03" },
+        frame: { dir: [-0.25, 0.05, 1], head: [0.56, 0.16], size: 0.17 },
+        fov: 40,
+        hand: { tiltIn: 0.5, tilt: 1, settle: 0.4, shake: 0.35, creep: 0.02 },
+        lights: CAR_LIGHTS,
+      },
+      {
+        // row 58 (57.31): low and close before the black car's lamps, both hands at the head over the face
+        hands: { L: CUPPED, R: CUPPED },
+        rows: [58],
+        frames: 14,
+        stage: "cars",
+        at: [0, 0, 0.55],
+        keys: [
+          { t: 0, body: { neck: [0.1, 0, 0], head: [0.1, 0, 0] }, ...both(OVER_FACE) },
+          { t: 0.45, body: { neck: [0.0, 0.15, 0], head: [0.0, 0.1, 0] }, L: OVER_FACE, R: right({ ...ON_CROWN, wrist: [0.12, 1.66, 0.06] }) },
+        ],
+        frame: { dir: [0, -0.5, 1], head: [0.48, 0.25], size: 0.42 },
+        fov: 58,
+        hand: { tiltIn: -2, tilt: -1, settle: 0.5, shake: 0.5, creep: 0.04 },
         lights: CAR_LIGHTS,
       },
     ],
