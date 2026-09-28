@@ -105,11 +105,13 @@ def _script(coll, mats, text, width, centre):
     coll.objects.link(ob)
     bpy.context.view_layer.update()
     s = width / max(ob.dimensions.x, 1e-6)
-    # thickness and roundness in curve units (the object is scaled by s afterwards)
-    curve.offset = 0.0012 / s
-    curve.extrude = 0.0026 / s
-    curve.bevel_depth = 0.0024 / s
-    curve.bevel_resolution = 4
+    # thickness and roundness in curve units (the object is scaled by s afterwards). T1407b
+    # closeups2: a THIN script, as the reference's: the font's own strokes barely fattened, a
+    # flat paved face and a narrow chrome edge (it was bubble-bevelled, which read as a pavé blob)
+    curve.offset = 0.0004 / s
+    curve.extrude = 0.0016 / s
+    curve.bevel_depth = 0.0007 / s
+    curve.bevel_resolution = 3
     ob.scale = (s, s, s)
     ob.rotation_euler = (math.pi / 2, 0, 0)
     ob.location = centre

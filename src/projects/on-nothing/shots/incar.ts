@@ -233,7 +233,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
 function cabinSurface(): string {
   const params = "struct Params {\n";
   const fallback = "    default: {}";
-  const jewel = "    case 35u: { return jewel(s, o); }";
+  const jewel = "    case 35u: { return jewel(s, p, o); }";
   for (const needle of [params, fallback, jewel]) {
     if (!SURFACE_WGSL.includes(needle)) throw new Error(`incar: surface.ts no longer has "${needle.trim()}"; re-derive the cabin surface.`);
   }
@@ -244,7 +244,7 @@ function cabinSurface(): string {
   plainChain: f32, // @default 0  1 draws the chain (class 35) as the tee's black cloth: row 36's negative shows no chain.
 `).replace(jewel, `    case 35u: {
       if (p.plainChain > 0.5) { o.albedo = vec4f(0.018, 0.018, 0.019, 1.0); o.metallic = 0.0; o.roughness = 0.9; return o; }
-      return jewel(s, o);
+      return jewel(s, p, o);
     }
     case 34u: { o.albedo = vec4f(vec3f(p.lens), 1.0); o.roughness = 0.3; }`).replace(fallback, `    case 60u: {
       let n = detailFbm(s.world * 70.0, 3, s.footprint);

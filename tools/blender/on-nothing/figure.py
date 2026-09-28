@@ -642,32 +642,18 @@ def build_mpfb(ctx, blend_path, prefix="fig", bare=False, wardrobe=None, pre_pos
         # around the closed loop, then back out to the surface clearance it had
         for _ in range(6):
             guide = [guide[k] * 0.5 + (guide[k - 1] + guide[(k + 1) % n]) * 0.25 for k in range(n)]
-        # resample to even spacing, then alternate the links flat and upright
-        lengths = [0.0]
-        for k in range(1, n + 1):
-            lengths.append(lengths[-1] + (guide[k % n] - guide[k - 1]).length)
-        total = lengths[-1]
-        pitch = 0.0125
-        links = int(total / pitch)
-        j = 0
-        for i in range(links):
-            d_ = i * total / links
-            while lengths[j + 1] < d_:
-                j += 1
-            f = (d_ - lengths[j]) / max(lengths[j + 1] - lengths[j], 1e-9)
-            p = guide[j].lerp(guide[(j + 1) % n], f)
-            tangent = (guide[(j + 1) % n] - guide[j]).normalized()
-            outward = (p - Vector((cxn, cyn, p.z - 0.05))).normalized()
-            normal = tangent.cross(outward).normalized() if i % 2 else outward
-            mb.torus(p, normal, 0.0085, 0.0036, 14, 6, "jewel")
+        # T1407b closeups2: heavy iced Cuban links along the guide (ice.py)
+        import ice
+        ice.cuban(mb, guide, cxn, cyn)
         low = guide[n // 2]
-        mb.box(low + Vector((0, -0.006, -0.024)), (0.032, 0.006, 0.036), "jewel")
+        mb.box(low + Vector((0, -0.012, -0.03)), (0.046, 0.007, 0.044), "jewel")
 
     wrist_h, wrist_t = arm_bones["lowerarm_l"][1], arm_bones["hand_l"][1]
     along = (wrist_t - wrist_h).normalized()
 
     def bracelet(mb):
-        mb.torus(wrist_h - along * 0.03, along, 0.038, 0.009, 24, 6, "jewel")
+        # T1407b closeups2: round enough that the ice does not show its facets as flat panels
+        mb.torus(wrist_h - along * 0.03, along, 0.038, 0.009, 64, 14, "jewel")
 
     parts = [
         _accessory(coll, mats, f"{prefix}.beanie", beanie, "head"),

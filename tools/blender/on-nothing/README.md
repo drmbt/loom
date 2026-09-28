@@ -163,3 +163,11 @@ perforations in the shoe's own frame. The classes are 50–58 (`closeups.LIB`).
   box) and a ten-line credit block (Copperplate, placeholder handles), flat, facing `shot.cocoon` /
   `shot.credits` (100 mm at 5.333 m: one millimetre is one pixel of the 1920 × 818 frame). The
   class is 60 (`closeups2.LIB2`); no loom card graph reads it yet.
+
+## Ice (ice.py)
+
+The figure's neck chain is a heavy iced Cuban (`ice.cuban`), laid on the guide loop that
+`figure.build_mpfb` finds on the body. It uses the `jewel` class, which loom's surface draws as
+ice (surface.ts `jewel`): a white body, round stones, and its own mirrored studio scaled by the
+surface's `ice` param. That param is a jewel-only environment gain, so the skin keeps each shot's
+low image-based light.

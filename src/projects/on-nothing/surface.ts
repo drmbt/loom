@@ -45,6 +45,7 @@ struct Params {
   silverRoughness: f32, // @default 0.3  The hero's satin silver: its roughness.
   silverMetallic: f32, // @default 0.2  The hero's satin silver: how metallic (a flake coat, mostly dielectric).
   cycAlbedo: f32, // @default 0.9  Albedo of the white cyc.
+  ice: f32, // @default 0.075  The ice's own mirrored studio (jewel class only; T1407b closeups2).
 };
 
 fn classOf(s: SurfaceIn) -> u32 {
@@ -129,18 +130,42 @@ fn clearCoat(s: SurfaceIn, p: Params, o: SurfaceOut, roughness: f32) -> SurfaceO
   return r;
 }
 
-fn jewel(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {
+// ICE (T1407b closeups2): the chain, the bracelet, the pendant slab. As a pure mirror the ice
+// showed only the dark room and read black in every shot; the reference's reads WHITE. A pavé
+// is not a mirror: every stone returns light from inside, so it is (1) a bright white body the
+// scene's lights light like a diffuse surface, and (2) a scatter of facets, each mirroring the
+// set's lights as a glint. The room gives the facets nothing to mirror, so the ice carries its
+// OWN reflected studio — a soft overhead box and a horizon band, seen through each stone's
+// facet normal — as emission scaled by params.ice. It is the jewel-only environment gain: the
+// Render's IBL (and so the skin) stays as low as each shot sets it.
+fn jewel(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {
   var r = o;
-  // Facets: the normal snaps to a coarse lattice of directions, cell by cell, so each stone
-  // throws its own glint instead of one smooth sheen.
-  let cell = floor(s.world * 180.0);
+  // stones ~3 mm apart; each a facet tilted its own way
+  let q = s.world * 330.0;
+  let cell = floor(q);
   let h = vec3f(unitFloat(hash3i(vec3i(cell), 11u)), unitFloat(hash3i(vec3i(cell), 23u)), unitFloat(hash3i(vec3i(cell), 37u)));
   // facets finer than a pixel sparkle and crawl frame to frame: fade them to the smooth normal
-  let resolved = 1.0 - smoothstep(0.002, 0.006, s.footprint);
-  r.normal = normalize(s.normal + (h - vec3f(0.5)) * 0.9 * resolved);
-  r.roughness = 0.03;
-  r.metallic = 1.0;
-  r.albedo = vec4f(0.98, 0.98, 1.0, 1.0);
+  let resolved = 1.0 - smoothstep(0.0015, 0.005, s.footprint);
+  // each stone ROUND in its cell (a cell's sphere cut by the surface), the metal of the setting
+  // showing darker between them, so close up it reads as pavé rather than a mosaic of squares
+  let seat = length(q - cell - vec3f(0.5) - (h - vec3f(0.5)) * 0.25);
+  let stone = mix(1.0, 1.0 - smoothstep(0.36, 0.48, seat), resolved);
+  let n = normalize(s.normal);
+  let facet = normalize(n + (h - vec3f(0.5)) * 1.1 * resolved * stone);
+  r.normal = facet;
+  r.roughness = mix(0.25, 0.12, stone);
+  r.metallic = mix(0.9, 0.45, stone);
+  r.albedo = vec4f(vec3f(0.92, 0.94, 0.97) * mix(0.55, 1.0, stone), 1.0);
+  // the ice's own studio, mirrored by the facet: a broad soft box overhead and toward the lens,
+  // a dimmer horizon band, a few stones catching it hard (a sparkle, per stone)
+  let v = normalize(s.eye - s.world);
+  let refl = reflect(-v, facet);
+  let box = smoothstep(0.1, 0.7, refl.y) * 0.8 + smoothstep(0.35, 0.95, dot(refl, v)) * 0.6;
+  let band = smoothstep(0.25, 0.0, abs(refl.y - 0.05)) * 0.35;
+  let sparkle = select(0.0, 3.0, h.x > 0.93) * resolved;
+  // an unresolved pavé averages its stones: a steady satin white
+  let studio = mix(0.55, box + band + sparkle, resolved);
+  r.emissive = vec3f(0.93, 0.97, 1.0) * p.ice * studio * mix(0.3, 1.0, stone);
   return r;
 }
 ${HEAD_SURFACE_WGSL}
@@ -181,7 +206,7 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
       o.roughness = 0.9;
       o.normal = detailBump(s.normal, n.gradient * 0.0012, 1.0);
     }
-    case 35u: { return jewel(s, o); }
+    case 35u: { return jewel(s, p, o); }
     case 36u: { return headSkin(s, o); }
     case 37u: { return headEye(s, o); }
     case 40u: { o.albedo = vec4f(vec3f(p.cycAlbedo), 1.0); o.roughness = 0.95; o.metallic = 0.0; }
