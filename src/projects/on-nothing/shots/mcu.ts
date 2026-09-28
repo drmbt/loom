@@ -1,6 +1,7 @@
 import type { ProjectDocument } from "../../../domain/types/graph.ts";
 import type { StoredParameter } from "../../../domain/types/parameters.ts";
 import { expressionSlot } from "../../../examples/documents/builders.ts";
+import { SHARED_UNIFORMS_WGSL } from "../../../runtime/backend/shared-uniforms.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../../furnace/post.ts";
 import { GTAO_WGSL } from "../../furnace/screen-space.ts";
 import { ENVIRONMENT_HDRI_WGSL, HEADLIGHT_COOKIE_WGSL, hazeLights, hazeWgsl } from "../atmosphere.ts";
@@ -16,6 +17,7 @@ import { handheld, type HandheldOptions } from "./handheld.ts";
 import { type Angles, type ArmTarget, type Euler, type V3, boneIndex, mirror, posed, solveArm } from "./mcu-rig.ts";
 import { keyed } from "./motion.ts";
 import { LAMP_DISC_WGSL } from "./ring.ts";
+import { type HandPose, handPose } from "../skin-kernel.ts";
 
 /**
  * T1407b (mcu) — THE PERFORMER CLOSE-UPS, the most common shot in the reference: the figure
@@ -88,6 +90,8 @@ interface Beat {
   readonly keys: readonly Key[];
   /** Additive knob expressions in `u` (beat-local seconds): breathing, the head with the beat. */
   readonly life?: Readonly<Record<string, string>>;
+  /** The fingers (T1419b knobs through skin-kernel.ts handPose): a fist, a point, a spread; fields may be expressions in `u`. */
+  readonly hands?: { readonly L?: HandPose; readonly R?: HandPose };
   /** The operator: eye and aim in the figure's frame (or `frame`), vertical fov (degrees), the handheld. */
   readonly eye?: V3;
   readonly aim?: V3;
@@ -112,6 +116,11 @@ interface Beat {
    * hides one.
    */
   readonly lamps?: readonly { readonly at: V3; readonly size: number; readonly radiance: number }[];
+  /**
+   * A sodium lamp just off the lens, far out of focus: a big soft warm disc with a brighter rim
+   * (row 20's red flare). Centre in uv (may be expressions in `u`), radius in frame heights.
+   */
+  readonly flare?: { readonly centre: readonly [number | string, number | string]; readonly radius: number; readonly gain: number | string };
 }
 
 interface Take {
@@ -177,6 +186,19 @@ const LOW_HANDS: ArmTarget = { elbow: [0.22, 1.08, 0.04], wrist: [0.1, 1.08, 0.3
 /** Arms down, the hands loose at the thighs. */
 const DOWN: ArmTarget = { elbow: [0.24, 1.18, -0.02], wrist: [0.27, 0.93, 0.06], tip: [0.28, 0.78, 0.1], seed: [[0, 0, -0.62], [0, 0, 0], [0, 0, 0]] };
 
+/** Finger shapes (T1419b knobs): loose, a fist, pointing at the lens, fingers spread, a phone held at the ear, flat on the head. */
+const LOOSE: HandPose = { curl: 0.45, spread: 0.05, thumb: 0.2 };
+const FIST: HandPose = { curl: 1.5, thumb: 0.9, extra: [0, 0.05, 0.1, 0.15] };
+const POINTING: HandPose = { curl: 1.4, point: 1, thumb: 0.8, extra: [0, 0, 0.05, 0.1] };
+const SPREAD: HandPose = { curl: 0.15, spread: 0.3, thumbOut: 0.4 };
+const PHONE: HandPose = { curl: 1.1, thumb: 0.7, extra: [0, 0, 0.1, 0.15] };
+/** Rows 9–11: the free hand points, then spreads into the lens, and back, with the operator's beats. */
+const SWITCHING: HandPose = (() => {
+  const w = keyed("u", [[0, 0], [1.0, 0], [1.3, 1], [1.8, 1], [2.0, 0], [2.6, 0], [2.8, 1]]);
+  return { curl: `1.4 - 1.25 * (${w})`, point: `1 - (${w})`, spread: `0.3 * (${w})`, thumb: `0.8 - 0.8 * (${w})`, thumbOut: `0.4 * (${w})` };
+})();
+const CUPPED: HandPose = { curl: 0.35, spread: 0.12, thumbOut: 0.2 };
+
 const both = (left: ArmTarget): { L: ArmTarget; R: ArmTarget } => ({ L: left, R: mirror(left) });
 const right = (left: ArmTarget): ArmTarget => mirror(left);
 
@@ -231,6 +253,7 @@ export const MCU_TAKES: readonly Take[] = [
     beats: [
       {
         // row 30 (31.91): both hands on the crown, the face tipped up and turned off the lens
+        hands: { L: CUPPED, R: CUPPED },
         rows: [30],
         frames: 17,
         stage: "void",
@@ -243,6 +266,7 @@ export const MCU_TAKES: readonly Take[] = [
       },
       {
         // row 27 (29.90): chest up, hands behind the head, looking up into the top light
+        hands: { L: CUPPED, R: CUPPED },
         rows: [27],
         frames: 13,
         stage: "void",
@@ -255,6 +279,7 @@ export const MCU_TAKES: readonly Take[] = [
       },
       {
         // row 33, last part (37.08): hands thrust at the lens, soft; the focus pulls in to the face
+        hands: { L: FIST, R: FIST },
         rows: [33],
         frames: 14,
         stage: "void",
@@ -281,6 +306,7 @@ export const MCU_TAKES: readonly Take[] = [
     beats: [
       {
         // row 14 (11.05): the head bowed, the hands raised either side, flapping with the beat
+        hands: { L: LOOSE, R: LOOSE },
         rows: [14],
         frames: 30,
         stage: "void",
@@ -299,6 +325,7 @@ export const MCU_TAKES: readonly Take[] = [
       },
       {
         // row 32 (33.12): hands on the crown, from above and in front
+        hands: { L: CUPPED, R: CUPPED },
         rows: [32],
         frames: 10,
         stage: "void",
@@ -310,6 +337,7 @@ export const MCU_TAKES: readonly Take[] = [
       },
       {
         // row 33, second part (33.99): from above, the head bowed into both palms
+        hands: { L: SPREAD, R: SPREAD },
         rows: [33],
         frames: 14,
         stage: "void",
@@ -333,6 +361,7 @@ export const MCU_TAKES: readonly Take[] = [
     beats: [
       {
         // rows 9–11 (5.38–8.18): ONE continuous take, intercut with the wide: the phone at the ear,
+        hands: { L: SWITCHING, R: PHONE },
         // the free hand working at the lens (pointing, then spread wide into it)
         rows: [9, 10, 11],
         frames: 67,
@@ -345,7 +374,7 @@ export const MCU_TAKES: readonly Take[] = [
           { t: 2.8, body: { spine: [0.22, 0, 0], chest: [0.18, 0, 0], neck: [-0.08, 0.05, 0], head: [-0.2, 0, 0] }, L: SPREAD_L, R: PHONE_R },
         ],
         life: { "head.x": "sin(u * 4.4) * 0.035", "chest.y": "sin(u * 1.1) * 0.05" },
-        frame: { dir: [0, -0.15, 1], head: [0.5, 0.25], size: 0.9 },
+        frame: { dir: [0, -0.15, 1], head: [0.5, 0.3], size: 0.45 },
         fov: 52,
         focus: 0.85,
         fstop: 2.2,
@@ -365,6 +394,7 @@ export const MCU_TAKES: readonly Take[] = [
     beats: [
       {
         // row 11 (8.18–9.68): the chains, then both ringed fists and the watches pushed at the lens
+        hands: { L: FIST, R: FIST },
         rows: [11],
         frames: 36,
         stage: "cars",
@@ -375,7 +405,7 @@ export const MCU_TAKES: readonly Take[] = [
           { t: 1.5, body: { neck: [0.05, -0.1, 0], head: [0.0, 0, 0] }, ...both(FISTS) },
         ],
         life: { "head.x": "sin(u * 4.4) * 0.04" },
-        frame: { dir: [0, -0.15, 1], head: [0.58, 0.22], size: 0.7 },
+        frame: { dir: [0, -0.15, 1], head: [0.58, 0.28], size: 0.4 },
         fov: 46,
         focus: 0.8,
         fstop: 2.2,
@@ -384,6 +414,7 @@ export const MCU_TAKES: readonly Take[] = [
       },
       {
         // row 16, first part (13.14): waist height, a fist thrust into the lens, the bare torso behind
+        hands: { L: FIST, R: LOOSE },
         rows: [16],
         frames: 13,
         stage: "cars",
@@ -400,6 +431,7 @@ export const MCU_TAKES: readonly Take[] = [
       },
       {
         // row 16, third part (13.85): the ringed hand spread over the bare torso and the pendant
+        hands: { L: SPREAD, R: LOOSE },
         rows: [16],
         frames: 14,
         stage: "cars",
@@ -416,6 +448,7 @@ export const MCU_TAKES: readonly Take[] = [
       },
       {
         // row 16, second and fourth parts (13.68, 14.43): profile CU, the cap bowed over a phone at the ear, dark
+        hands: { L: LOOSE, R: PHONE },
         rows: [16],
         frames: 27,
         stage: "cars",
@@ -439,6 +472,7 @@ export const MCU_TAKES: readonly Take[] = [
     beats: [
       {
         // row 8 (4.30): the left hand working near the lens, the lens pushing in to the open mouth
+        hands: { L: SPREAD, R: LOOSE },
         rows: [8],
         frames: 26,
         stage: "cars",
@@ -464,11 +498,13 @@ export const MCU_TAKES: readonly Take[] = [
     name: "car",
     wardrobe: "fig",
     streak: { from: 0.2, to: 0.28, gain: 1.6, threshold: 5 },
+    carKey: 4,
     grade: ROW_GRADE,
     ambient: 0.05,
     beats: [
       {
         // row 33, third part (34.58): at the black car's front corner, pointing at the lens; the bonnet fills the right
+        hands: { L: POINTING, R: PHONE },
         rows: [33],
         frames: 60,
         stage: "cars",
@@ -481,7 +517,7 @@ export const MCU_TAKES: readonly Take[] = [
           { t: 2.5, body: { neck: [0.0, 0.1, 0], head: [0.0, 0, 0] }, L: { ...POINT_L, wrist: [0.22, 1.36, 0.44] }, R: PHONE_R },
         ],
         life: { "head.x": "sin(u * 4.4) * 0.04" },
-        frame: { dir: [0.35, 0.3, 1], head: [0.22, 0.18], size: 0.55 },
+        frame: { dir: [0.3, 0.6, 1], head: [0.2, 0.26], size: 0.42 },
         fov: 40,
         fstop: 2.2,
         hand: { tiltIn: 2, tilt: 3.5, settle: 1.0, shake: 0.5, creep: 0.04 },
@@ -489,6 +525,7 @@ export const MCU_TAKES: readonly Take[] = [
       },
       {
         // row 33, first part (33.53): close down across the chain to the dark grille
+        hands: { L: LOOSE, R: LOOSE },
         rows: [33],
         frames: 11,
         stage: "cars",
@@ -506,6 +543,7 @@ export const MCU_TAKES: readonly Take[] = [
       },
       {
         // row 20 (21.61): beside the grey car, three-quarter, head down over the phone; a white car's lamps behind; the operator slides in
+        hands: { L: LOOSE, R: PHONE },
         rows: [20],
         frames: 38,
         stage: "cars",
@@ -516,14 +554,16 @@ export const MCU_TAKES: readonly Take[] = [
           { t: 1.5, body: { neck: [0.25, -0.2, 0], head: [0.2, -0.1, 0], chest: [0.1, 0, 0] }, ...both(LOW_HANDS) },
         ],
         life: { "head.x": "sin(u * 4.4) * 0.03" },
-        frame: { dir: [-0.8, 0.1, 0.6], head: [0.5, 0.15], size: 0.45 },
+        frame: { dir: [-0.8, 0.1, 0.6], head: [0.62, 0.24], size: 0.45 },
         fov: 30,
         fstop: 2.0,
-        hand: { tiltIn: 1, tilt: 0.3, settle: 1.2, shake: 0.35, creep: 0.25 },
+        hand: { tiltIn: 1, tilt: 0.3, settle: 1.2, shake: 0.35, creep: 0.08 },
+        flare: { centre: ["0.12 + 0.04 * clamp(u / 1.6, 0, 1)", 0.45], radius: 0.36, gain: "0.3 * clamp((u - 0.6) / 0.3, 0, 1)" },
         lights: { ...CAR_LIGHTS, key: { at: [0.9, 2.0, 1.0], power: 1.2 } },
       },
       {
         // row 21 (23.19): low, the figure right of centre, an arm swinging across; a lamp column big at the left
+        hands: { L: FIST, R: FIST },
         rows: [21],
         frames: 17,
         stage: "cars",
@@ -533,13 +573,14 @@ export const MCU_TAKES: readonly Take[] = [
           { t: 0, body: { neck: [0.05, 0.2, 0] }, L: POINT_L, R: LOW_HANDS },
           { t: 0.4, body: { neck: [0.05, -0.1, 0] }, L: LOW_HANDS, R: right(POINT_L) },
         ],
-        frame: { dir: [0.35, -0.45, 1], head: [0.58, 0.14], size: 0.32 },
+        frame: { dir: [0.35, -0.45, 1], head: [0.56, 0.16], size: 0.22 },
         fov: 40,
         hand: { tiltIn: -2, tilt: -3, settle: 0.5, shake: 0.6, creep: 0.05 },
         lights: CAR_LIGHTS,
       },
       {
         // row 24, first part (25.78): front, the white cars either side, the hands low then up in a gesture
+        hands: { L: POINTING, R: LOOSE },
         rows: [24],
         frames: 20,
         stage: "cars",
@@ -550,7 +591,7 @@ export const MCU_TAKES: readonly Take[] = [
           { t: 0.8, body: { neck: [0.05, -0.15, 0] }, L: POINT_L, R: LOW_HANDS },
         ],
         life: { "head.x": "sin(u * 4.4) * 0.04" },
-        frame: { dir: [0, 0, 1], head: [0.6, 0.2], size: 0.45 },
+        frame: { dir: [0, 0, 1], head: [0.6, 0.26], size: 0.34 },
         fov: 36,
         hand: { tiltIn: 0.5, tilt: 0.2, settle: 0.5, shake: 0.3, creep: 0.03 },
         lights: CAR_LIGHTS,
@@ -564,23 +605,25 @@ export const MCU_TAKES: readonly Take[] = [
     streak: { from: 0.2, to: 0.28, gain: 1.6, threshold: 4.5 },
     grade: { ...ROW_GRADE, exposure: 0.45 },
     ambient: 0.12,
-    background: [0.3, 0.34, 0.34],
+    background: [0.55, 0.6, 0.6],
     beats: [
       {
         // row 23, first part (24.65): profile CU, the ringed left hand at the mouth, facing screen left
+        hands: { L: { curl: 0.9, thumb: 0.5, extra: [0, 0.1, 0.2, 0.3] }, R: LOOSE },
         rows: [23],
         frames: 14,
         stage: "void",
         keys: [{ t: 0, body: { neck: [0.1, 0, 0], head: [0.05, 0, 0] }, L: mirror(MOUTH_R), R: DOWN }],
-        frame: { dir: [1, 0, 0.25], head: [0.35, 0.35], size: 1.3 },
+        frame: { dir: [1, -0.1, 0.35], head: [0.42, 0.12], size: 1.5 },
         fov: 20,
         focus: 0.6,
         fstop: 2.0,
         hand: { tiltIn: 0.5, tilt: 1, settle: 0.5, shake: 0.2, creep: 0.02 },
-        lights: { key: { at: [1.0, 2.0, -0.4], power: 1.5 }, rimR: { at: [-0.6, 1.8, -0.5], power: 1.2 }, cyan: { at: [0.8, 1.3, 0.6], power: 0.3 } },
+        lights: { key: { at: [1.0, 1.7, 0.6], power: 3.5 }, rimR: { at: [-0.6, 1.8, -0.5], power: 1.2 }, fill: { at: [0.8, 1.3, 0.2], power: 1.0 } },
       },
       {
         // row 23, second part (25.23): the chain at the side of the neck against the grey ground, soft
+        hands: { L: LOOSE, R: LOOSE },
         rows: [23],
         frames: 13,
         stage: "void",
@@ -606,6 +649,7 @@ export const MCU_TAKES: readonly Take[] = [
     beats: [
       {
         // row 24, second part (26.61): ECU from three-quarter behind: the beanie cuff, the sunglasses' temple, the cheek; lamps at the left
+        hands: { L: LOOSE, R: LOOSE },
         rows: [24],
         frames: 25,
         stage: "void",
@@ -624,6 +668,7 @@ export const MCU_TAKES: readonly Take[] = [
       },
       {
         // row 31 (32.62): up at the face, looking up past a lamp column at the left
+        hands: { L: LOOSE, R: LOOSE },
         rows: [31],
         frames: 12,
         stage: "void",
@@ -676,6 +721,33 @@ function switched(values: readonly string[], starts: readonly number[]): string 
 }
 
 const sourceOf = (slot: StoredParameter): string => (slot as unknown as { bindings: { expression: { source: string } } }).bindings.expression.source;
+
+/**
+ * The WARM FLARE: the out-of-focus disc of a sodium lamp an arm's length off the lens — far
+ * wider than the depth of field's largest disc (a lens element's ghost, not a scene bokeh): a
+ * soft orange-red fill with a brighter rim, added in linear light before the grade.
+ */
+const WARM_FLARE_WGSL = `struct Params {
+  centre: vec2f, // @default 0.1  Disc centre, uv.
+  radius: f32, // @default 0.4  Radius, frame heights.
+  gain: f32, // @default 0  Brightness (0 off).
+  color: vec3f, // @default 1  Colour.
+};
+@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+@group(0) @binding(2) var<uniform> frameU: SharedFrame;
+@group(0) @binding(3) var<uniform> params: Params;
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let base = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
+  if (params.gain <= 0.0) { return base; }
+  let aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);
+  let d = length((uv - params.centre) * vec2f(aspect, 1.0)) / max(params.radius, 1e-4);
+  let fill = 1.0 - smoothstep(0.82, 1.0, d);
+  let rim = exp(-pow((d - 0.93) / 0.06, 2.0));
+  return vec4f(base.rgb + params.color * params.gain * (fill * 0.35 + rim * 0.65), base.a);
+}`;
 
 /** Figure-local → world (the skin kernel's turn: yaw about +Y, then the place). */
 function toWorld(place: V3, yaw: number, local: V3): [number, number, number] {
@@ -741,6 +813,10 @@ function performance(facts: OnNothingFacts, beat: Beat): { knobs: Record<string,
       if (keys.every((key) => Math.abs(key[1]) < 1e-6)) continue;
       out[`${knob}.${"xyz"[axis]}`] = keys.length === 1 ? fmt(keys[0]![1]) : keyed("u", keys as never);
     }
+  }
+  for (const side of ["L", "R"] as const) {
+    const shape = beat.hands?.[side];
+    if (shape !== undefined) Object.assign(out, handPose(side, shape));
   }
   for (const [knob, expression] of Object.entries(beat.life ?? {})) {
     out[knob] = out[knob] === undefined ? expression : `${out[knob]} + ${expression}`;
@@ -956,6 +1032,20 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
   }
   g.pass("dof", LENS_DOF_WGSL, lensParams, g.last, [depth], [-1500, 0]);
   g.pass("dofFill", DOF_FILL_WGSL, lensParams, g.last, [depth], [-1400, 0]);
+  if (take.beats.some((beat) => beat.flare !== undefined)) {
+    const flare = (b: number, axis: 0 | 1): string => {
+      const value = take.beats[b]!.flare?.centre[axis] ?? 0.5;
+      return typeof value === "string" ? local(b, value) : fmt(value);
+    };
+    g.pass("flare", `${SHARED_UNIFORMS_WGSL}\n${WARM_FLARE_WGSL}`, {
+      centre: [0.1, 0.4],
+      "centre.x": expressionSlot(switched(take.beats.map((_, b) => flare(b, 0)), starts), 0.1),
+      "centre.y": expressionSlot(switched(take.beats.map((_, b) => flare(b, 1)), starts), 0.4),
+      radius: expressionSlot(switched(take.beats.map((beat) => fmt(beat.flare?.radius ?? 0.4)), starts), 0.4),
+      gain: expressionSlot(switched(take.beats.map((beat, b) => { const v = beat.flare?.gain ?? 0; return typeof v === "string" ? local(b, v) : fmt(v); }), starts), 0),
+      color: [1, 0.48, 0.2],
+    }, g.last, [], [-1350, 0]);
+  }
   const scene = g.last;
 
   // ── Optics: the streak glass (three chained box passes, document.ts's), bloom ──
