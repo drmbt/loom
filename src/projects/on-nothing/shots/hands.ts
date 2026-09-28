@@ -418,12 +418,24 @@ interface Take {
   readonly bokeh?: readonly { readonly at: V3; readonly radius: number; readonly color: V3 }[];
   /** Headlights in the haze (warehouse sets). */
   readonly haze?: number;
-  readonly streak: { readonly from: number; readonly to: number; readonly threshold: number; readonly gain: number };
-  readonly flare?: { readonly centre: readonly [number, number]; readonly drift: readonly [number, number]; readonly radius: number; readonly gain: number; readonly veil?: number };
+  /** `sharp`: the glass smears the bright pass itself, not its softened glow — thin columns from small lamps. */
+  readonly streak: { readonly from: number; readonly to: number; readonly threshold: number; readonly gain: number; readonly sharp?: boolean };
+  readonly flare?: { readonly centre: readonly [number, number]; readonly drift: readonly [number, number]; readonly radius: number; readonly gain: number | string; readonly veil?: number | string };
   /** Shot-time spans the key lights are out (a strobe). */
   readonly strobe?: readonly (readonly [number, number])[];
   /** The figure holds the pistol (the `figgun` area). */
   readonly gun?: boolean;
+  /** When the pistol is in the hand: an expression, 1 = held, 0 = away (default: always). */
+  readonly gunShow?: string;
+  /** Which body wears the ice: the clothed `figbody` (default) or the shirtless `figbare`. */
+  readonly body?: "figbody" | "figbare";
+  /**
+   * LAYERS (row 17c): one posed figure seen by several cameras, each layer its own Render, laid
+   * over black by LIGHTEN (the brighter wins), each cut in whole at its shot time. The take's
+   * eye and aim frame the first layer; a layer names where the HAND sits in its frame (u, v in
+   * −1..1, v up) and the frame's roll. Depth-of-field and the depth passes are skipped.
+   */
+  readonly layers?: readonly { readonly at: number; readonly hand: V3; readonly roll: number; readonly u: number; readonly v: number; readonly distance: number }[];
   readonly grade: Record<string, StoredParameter>;
   readonly lensFx?: Record<string, StoredParameter>;
   readonly cars?: readonly number[];
@@ -437,6 +449,10 @@ const SODIUM: [number, number, number] = [1, 0.5, 0.17];
 
 /** The stage the figure stands on for the tableau cut-ins: in front of the parked row, facing the lens. */
 const TABLEAU_FIGURE: Placement = { place: [0, 0, 3.74], yaw: 0 };
+/** Row 54: further in front of the parked row than the tableau's mark, so the lamps sit small and low. */
+const FAR_FIGURE: Placement = { place: [0, 0, 6.5], yaw: 0 };
+/** Row 47: in the void, facing +X — the head in profile to a lens on +Z, the right hand on the lens's side. */
+const PROFILE_FIGURE: Placement = { place: [-60, 0, 0], yaw: Math.PI / 2 };
 /** Row 3: beside the white car's (car1) left headlight, facing across its nose (−X). */
 const CAR1_FIGURE: Placement = { place: [-1.84, 0, 1.42], yaw: -Math.PI / 2 };
 
@@ -572,31 +588,355 @@ function takes(width: number): readonly Take[] {
       pose: (bones) => {
         const at: Placement = { place: [-60, 0, 0], yaw: 0 };
         const w = (p: V3): [number, number, number] => toWorld(p, at);
-        const left = solveArm(bones, "L", { wrist: w([0.06, 1.47, 0.2]), point: [0.08, 1, 0.35], palm: [0, 0.3, -1], elbow: w([0.2, 1.22, 0.1]) }, at);
-        const right = solveArm(bones, "R", { wrist: w([-0.06, 1.47, 0.2]), point: [-0.08, 1, 0.35], palm: [0, 0.3, -1], elbow: w([-0.2, 1.22, 0.1]) }, at);
-        const pose = { ...fixed({ ...left, ...right }), ...fingers("L", { curl: 0.15, spread: 0.18, thumb: 0.2 }), ...fingers("R", { curl: 0.15, spread: 0.18, thumb: 0.2 }) };
-        nudge(pose, "neck.x", "0.3");
-        nudge(pose, "head.x", "0.15");
-        nudge(pose, "spreadL", "0.08 * smoothstep(0, 0.58, abstime)");
-        nudge(pose, "spreadR", "0.08 * smoothstep(0, 0.58, abstime)");
+        const left = solveArm(bones, "L", { wrist: w([0.06, 1.55, 0.22]), point: [0.08, 1, -0.1], palm: [0, 0, -1], elbow: w([0.2, 1.28, 0.14]) }, at);
+        const right = solveArm(bones, "R", { wrist: w([-0.06, 1.55, 0.22]), point: [-0.08, 1, -0.1], palm: [0, 0, -1], elbow: w([-0.2, 1.28, 0.14]) }, at);
+        const pose = { ...fixed({ ...left, ...right }), ...fingers("L", { curl: 0.06, thumb: 0.1 }), ...fingers("R", { curl: 0.06, thumb: 0.1 }) };
+        // bowed: a POSITIVE x tips the head forward (the prism's negative one tips it back)
+        nudge(pose, "neck.x", "0.4");
+        nudge(pose, "head.x", "0.3");
+        // the reference's fingers creep a little as he presses: a slow curl over the cut
+        nudge(pose, "curlL.x", "0.06 * smoothstep(0, 0.58, abstime)");
+        nudge(pose, "curlR.x", "0.06 * smoothstep(0, 0.58, abstime)");
         return pose;
       },
-      eye: [-60.0, 2.3, 0.62],
-      aim: [-60.0, 1.45, 0.1],
+      eye: [-60.0, 2.35, 0.6],
+      aim: [-60.0, 1.58, 0.12],
       focal: 45,
       fstop: 2.8,
-      focus: 0.85,
+      focus: 0.8,
       camera: { size: 0.003, jolt: 0.005, roll: { start: 0, lean: 0, wander: 0.5 } },
       lights: [
-        { at: [-60.0, 2.6, 0.9], color: COOL, intensity: 0.9 },
-        { at: [-60.6, 2.0, 0.2], color: COOL, intensity: 0.25 },
+        { at: [-60.0, 2.6, 0.9], color: COOL, intensity: 1.6 },
+        { at: [-60.1, 2.5, -0.2], color: COOL, intensity: 0.8 },
+        { at: [-60.6, 2.0, 0.2], color: COOL, intensity: 0.3 },
       ],
       streak: { from: 0.4, to: 0.45, threshold: 3, gain: 0.35 },
-      grade: DARK_GRADE(width, { exposure: 0.1, saturation: 0.5 }),
+      grade: DARK_GRADE(width, { exposure: 0.1, saturation: 0.35, keepWarm: 0.3 }),
     },
     // ── take 8 · row 60 (0:58.60) "CU of the chain and a watch, with bokeh" (T1407b closeups2)
     chainWatchTake(width),
+    // ── take 9 · row 16 part a (0:13.14, 13 frames) "pistol pointed into the lens, tubes": shirtless,
+    // the pistol held out at the lens, the parked row's headlights low behind in their columns;
+    // frames 5-10 cut to the other hand's middle finger up, the pistol hanging in the right.
+    {
+      row: "16a",
+      set: "warehouse",
+      cars: [0, 1, 2, 3, 4],
+      body: "figbare",
+      gun: true,
+      placement: TABLEAU_FIGURE,
+      pose: (bones) => {
+        const at = TABLEAU_FIGURE;
+        const w = (p: V3): [number, number, number] => toWorld(p, at);
+        const aim = solveArm(bones, "R", { wrist: w([-0.03, 1.27, 0.44]), point: [0.04, 0.03, 1], palm: [1, 0, 0.05], elbow: w([-0.18, 1.14, 0.2]) }, at);
+        const low = solveArm(bones, "R", { wrist: w([-0.24, 1.0, 0.3]), point: [0.1, -1, 0.3], palm: [1, 0, 0.1], elbow: w([-0.27, 1.2, 0.1]) }, at);
+        const flip = solveArm(bones, "L", { wrist: w([0.07, 1.13, 0.44]), point: [-0.05, 1, 0.2], palm: [0, 0.1, -1], elbow: w([0.2, 1.0, 0.25]) }, at);
+        const a = { ...armsDown(), ...fixed(aim), ...fingers("R", PISTOL_GRIP), ...fingers("L", { curl: 0.5 }) };
+        const b = { ...armsDown(), ...fixed({ ...low, ...flip }), ...fingers("R", PISTOL_GRIP), ...fingers("L", { curl: 1.45, flip: 1, thumb: 0.8, extra: [0, 0, 0.05, 0.1] }) };
+        const pose = switchPoses(a, b, span(4 / 24, 10 / 24));
+        nudge(pose, "forearmR.x", tremor(0.03, 0.6));
+        nudge(pose, "neck.x", "0.1");
+        return pose;
+      },
+      eye: [0.06, 1.3, 4.68],
+      aim: [0.02, 1.24, 3.74],
+      focal: 28,
+      fstop: 2.2,
+      focus: 0.38,
+      camera: { size: 0.008, jolt: 0.015, roll: { start: -1.5, lean: 2, wander: 1.2 } },
+      lights: [
+        { at: [0.35, 1.45, 4.75], color: COOL, intensity: 0.9 },
+        { at: [-0.5, 1.2, 4.6], color: COOL, intensity: 0.3 },
+      ],
+      haze: 0.035,
+      streak: { from: 0.5, to: 0.55, threshold: 8, gain: 0.5 },
+      grade: DARK_GRADE(width, { exposure: -0.1, saturation: 0.35, keepWarm: 0.3 }),
+      environment: 0.15,
+    },
+    // ── take 10 · row 16 part c (0:13.85, 14 frames) "ringed hand and pendant over the bare torso":
+    // the right hand hanging over the belly, rings across the fingers, the watch at the wrist; a
+    // strobe blacks frames 1-2 and 9; from frame 10 the hand rests on the pistol at the waistband.
+    {
+      row: "16c",
+      set: "warehouse",
+      cars: [0, 1, 2, 3, 4],
+      body: "figbare",
+      gun: true,
+      gunShow: span(9 / 24, 1),
+      placement: TABLEAU_FIGURE,
+      pose: (bones) => {
+        const at = TABLEAU_FIGURE;
+        const w = (p: V3): [number, number, number] => toWorld(p, at);
+        const hang = solveArm(bones, "R", { wrist: w([-0.03, 1.13, 0.24]), point: [0.12, -1, 0.1], palm: [0, 0.1, -1], elbow: w([-0.22, 1.12, 0.05]) }, at);
+        const grip = solveArm(bones, "R", { wrist: w([-0.07, 1.06, 0.22]), point: [0.05, -1, 0.1], palm: [1, 0, -0.2], elbow: w([-0.24, 1.1, 0.02]) }, at);
+        const a = { ...armsDown(), ...fixed(hang), ...fingers("R", { curl: 0.3, spread: 0.12, thumb: 0.3, extra: [0, 0.05, 0.1, 0.2] }) };
+        const b = { ...armsDown(), ...fixed(grip), ...fingers("R", PISTOL_GRIP) };
+        const pose = switchPoses(a, b, span(9 / 24, 1));
+        nudge(pose, "forearmR.x", tremor(0.03, 1.1));
+        nudge(pose, "pelvis.y", "sin(abstime * 2.4) * 0.03");
+        return pose;
+      },
+      eye: [0.04, 1.13, 4.52],
+      aim: [0.0, 1.07, 3.74],
+      focal: 32,
+      fstop: 2.4,
+      focus: 0.56,
+      camera: { size: 0.006, jolt: 0.012, roll: { start: 1.5, lean: -1.5, wander: 1 } },
+      lights: [
+        { at: [0.3, 1.35, 4.45], color: COOL, intensity: 0.8 },
+        { at: [-0.5, 1.0, 4.4], color: COOL, intensity: 0.25 },
+      ],
+      strobe: [[0, 2 / 24], [8 / 24, 9 / 24]],
+      haze: 0.035,
+      streak: { from: 0.5, to: 0.55, threshold: 8, gain: 0.5 },
+      grade: DARK_GRADE(width, { exposure: -0.1, saturation: 0.35, keepWarm: 0.3 }),
+      environment: 0.15,
+    },
+    // ── take 11 · row 17 part c (0:16.52, 21 frames) "CU hands and watches, pistol gesture": the
+    // reference stacks five takes of an arm, a watch and a pistol over black, each cut in whole on
+    // its frame (f396, f402, f406, f410, f413: docs/on-nothing-reactivity-2026-09-27.md) and
+    // laid over the others by lighten. One posed arm (straight out, the pistol along it), five
+    // cameras: up from the bottom, hanging from the top right, hanging from the top left, in from
+    // the right, in from the left.
+    armLayersTake(width),
+    // ── take 12 · row 47 (0:47.46, frames 1138-1145) "CU of a ringed hand, dark": a tele from the
+    // side, the head in profile bowed to the right, the ringed hand spread close to the lens and
+    // soft, the chain sharp at the shoulder; warm bokeh high, a white one right; the last frame
+    // (1145) is a strobe gone dark.
+    {
+      row: "47",
+      set: "void",
+      placement: PROFILE_FIGURE,
+      pose: (bones) => {
+        const at = PROFILE_FIGURE;
+        const w = (p: V3): [number, number, number] => toWorld(p, at);
+        // the hand spread over the side and back of the bowed head on the lens's side, its back to
+        // the lens and nearer it than the chain, so the tele's thin focus leaves it soft
+        const right = solveArm(bones, "R", { wrist: w([-0.19, 1.5, -0.1]), point: dirToWorld([-0.1, 1, -0.2], at), palm: dirToWorld([1, 0, 0], at), elbow: w([-0.34, 1.28, -0.12]) }, at);
+        const pose = { "upperarmL.z": "-0.62", "forearmL.x": "-0.2", ...fixed(right), ...fingers("R", { curl: 0.12, spread: 0.22, thumb: 0.1, extra: [0, 0.05, 0.1, 0.15] }) };
+        nudge(pose, "neck.x", "0.5");
+        nudge(pose, "neck.z", "-0.15");
+        nudge(pose, "head.x", "0.35");
+        // the hand drifts toward the lens over the cut
+        nudge(pose, "forearmR.x", `-0.08 * smoothstep(0, 0.33, abstime) + ${tremor(0.02, 0.7)}`);
+        return pose;
+      },
+      eye: [-60.02, 1.6, 1.3],
+      aim: [-59.97, 1.58, 0.0],
+      focal: 85,
+      fstop: 1.4,
+      focus: 1.27,
+      camera: { size: 0.004, jolt: 0.012, roll: { start: -8, lean: -3, wander: 1.2 } },
+      lights: [
+        { at: [-60.6, 1.9, 1.3], color: COOL, intensity: 1.4 },
+        { at: [-59.5, 2.0, -0.55], color: COOL, intensity: 0.8 },
+        { at: [-59.6, 2.1, -1.2], color: SODIUM, intensity: 0.3 },
+      ],
+      strobe: [[6.5 / 24, 1]],
+      bokeh: [
+        { at: [-59.6, 2.0, -2.0], radius: 0.06, color: [26, 15, 6] },
+        { at: [-59.35, 1.92, -2.5], radius: 0.06, color: [22, 13, 5] },
+        { at: [-59.05, 1.55, -2.0], radius: 0.06, color: [34, 36, 38] },
+        { at: [-59.5, 1.75, -2.4], radius: 0.05, color: [18, 11, 5] },
+      ],
+      streak: { from: 0.2, to: 0.25, threshold: 10, gain: 0.25 },
+      grade: DARK_GRADE(width, { exposure: -0.3, saturation: 0.55, keepWarm: 0.7 }),
+    },
+    // ── take 13 · row 54 parts c and e (0:54.14, 0:54.85) "close torso with pistol, cars low": the
+    // same set-up twice — shirtless, the pistol held at the belly into the lens, the other hand
+    // out beside the chest, the parked row's lamps low behind. Part c (from 0) strobes dark on its
+    // 2nd and 4th frames; part e plays from 0.5 s, past the strobe.
+    {
+      row: "54c",
+      set: "warehouse",
+      cars: [0, 1, 2, 3, 4],
+      body: "figbare",
+      gun: true,
+      placement: FAR_FIGURE,
+      pose: (bones) => {
+        const at = FAR_FIGURE;
+        const w = (p: V3): [number, number, number] => toWorld(p, at);
+        const right = solveArm(bones, "R", { wrist: w([-0.05, 1.1, 0.3]), point: [0.05, 0.12, 1], palm: [1, 0, 0.05], elbow: w([-0.22, 1.05, 0.06]) }, at);
+        const left = solveArm(bones, "L", { wrist: w([0.2, 1.24, 0.3]), point: [0.25, 0.85, 0.45], palm: [0, 0, -1], elbow: w([0.28, 1.05, 0.1]) }, at);
+        const pose = { ...fixed({ ...right, ...left }), ...fingers("R", PISTOL_GRIP), ...fingers("L", { curl: 1.35, flip: 1, thumbOut: 0.5, extra: [0, 0, 0.05, 0.1] }) };
+        nudge(pose, "forearmL.x", tremor(0.04, 0.9));
+        nudge(pose, "chest.y", "0.08 + sin(abstime * 2.1) * 0.03");
+        return pose;
+      },
+      eye: [0.05, 1.02, 7.71],
+      aim: [0.0, 1.17, 6.5],
+      focal: 28,
+      // stopped down: the far lamps stay small points, so their columns stay thin
+      fstop: 5.6,
+      focus: 0.85,
+      camera: { size: 0.008, jolt: 0.015, roll: { start: 1, lean: -1, wander: 1 } },
+      lights: [
+        { at: [0.4, 1.5, 7.66], color: COOL, intensity: 1.2 },
+        { at: [-0.5, 1.2, 7.46], color: COOL, intensity: 0.4 },
+        { at: [0.0, 1.8, 5.56], color: COOL, intensity: 0.5 },
+      ],
+      strobe: [[0.5 / 24, 1.5 / 24], [2.5 / 24, 3.5 / 24]],
+      haze: 0.02,
+      // a column is as wide as its lamp, and these models' DRL strips are wide: kept short and dim
+      streak: { from: 0.3, to: 0.3, threshold: 30, gain: 0.22, sharp: true },
+      grade: DARK_GRADE(width, { exposure: -0.1, saturation: 0.35, keepWarm: 0.3 }),
+      environment: 0.15,
+    },
+    // ── take 14 · row 57 (0:56.06, 30 frames) "CU of a forearm with iced bracelets, streaks": one
+    // handheld tele take — the right forearm across the frame before the face, the watch and the
+    // Cuban to the lens, then out of shot (the head in three-quarter, cap and glasses), back
+    // across as a fist, out again; the watch's glints smeared up into streaks, a cold teal
+    // spill behind. (The reference's forearm is tattooed: a UV tattoo is a proposed row.)
+    {
+      row: "57",
+      set: "void",
+      placement: { place: [-60, 0, 0], yaw: 0.55 },
+      pose: (bones) => {
+        const at: Placement = { place: [-60, 0, 0], yaw: 0.55 };
+        const w = (p: V3): [number, number, number] => toWorld(p, at);
+        const across = solveArm(bones, "R", { wrist: w([0.1, 1.58, 0.32]), point: dirToWorld([1, 0.05, 0.05], at), palm: dirToWorld([0, 0, -1], at), elbow: w([-0.26, 1.48, 0.28]) }, at);
+        const down = solveArm(bones, "R", { wrist: w([-0.12, 1.1, 0.3]), point: dirToWorld([0.3, -0.3, 1], at), palm: dirToWorld([1, 0, 0], at), elbow: w([-0.26, 1.2, 0.05]) }, at);
+        const a = { "upperarmL.z": "-0.62", "forearmL.x": "-0.2", ...fixed(across), ...fingers("R", { curl: 1.4, thumb: 0.8, extra: [0, 0, 0.05, 0.1] }) };
+        const b = { "upperarmL.z": "-0.62", "forearmL.x": "-0.2", ...fixed(down), ...fingers("R", { curl: 1.4, thumb: 0.8 }) };
+        // across (0-0.25), out (0.3-0.5), across again (0.55-0.85), out (0.9-)
+        const out = `(smoothstep(0.2, 0.3, abstime) - smoothstep(0.5, 0.58, abstime) + smoothstep(0.84, 0.92, abstime))`;
+        const pose = switchPoses(a, b, out);
+        nudge(pose, "neck.x", "0.2");
+        nudge(pose, "neck.y", "-0.25");
+        nudge(pose, "head.x", tremor(0.02, 0.4));
+        return pose;
+      },
+      eye: [-59.72, 1.6, 1.25],
+      aim: [-59.95, 1.62, 0.0],
+      focal: 70,
+      fstop: 2,
+      focus: 1.02,
+      camera: { size: 0.006, jolt: 0.015, roll: { start: -3, lean: 2, wander: 1.4 } },
+      lights: [
+        { at: [-59.4, 2.1, 1.1], color: COOL, intensity: 1.2 },
+        { at: [-60.4, 1.6, 0.9], color: COOL, intensity: 0.35 },
+      ],
+      bokeh: [
+        { at: [-60.6, 1.9, -1.8], radius: 0.12, color: [2, 10, 11] },
+        { at: [-59.4, 2.05, -2.0], radius: 0.1, color: [2, 9, 10] },
+        { at: [-60.9, 1.35, -2.2], radius: 0.08, color: [1.5, 7, 8] },
+      ],
+      streak: { from: 0.45, to: 0.55, threshold: 2, gain: 0.7 },
+      grade: DARK_GRADE(width, { exposure: 0.1, saturation: 0.5, keepWarm: 0.3 }),
+    },
+    // ── take 15 · row 59 (0:57.89, 17 frames), one take for all five parts (from = each part's
+    // offset): hands framing the face at eye level, rings, fingers pinched (0-0.33 s, a rainbow
+    // veil flashing on 0.167 and 0.292 — those parts' posts lift the blacks), then both middle
+    // fingers up at the lens, near and soft (0.33 s-); a red blob low left.
+    {
+      row: "59",
+      set: "void",
+      placement: { place: [-60, 0, 0], yaw: 0 },
+      pose: (bones) => {
+        const at: Placement = { place: [-60, 0, 0], yaw: 0 };
+        const w = (p: V3): [number, number, number] => toWorld(p, at);
+        const frameL = solveArm(bones, "L", { wrist: w([0.15, 1.5, 0.24]), point: [-0.35, 1, 0.1], palm: [0, 0, 1], elbow: w([0.27, 1.24, 0.16]) }, at);
+        const frameR = solveArm(bones, "R", { wrist: w([-0.15, 1.5, 0.24]), point: [0.35, 1, 0.1], palm: [0, 0, 1], elbow: w([-0.27, 1.24, 0.16]) }, at);
+        const flipL = solveArm(bones, "L", { wrist: w([0.14, 1.5, 0.4]), point: [-0.1, 1, 0.2], palm: [0, 0, -1], elbow: w([0.24, 1.25, 0.25]) }, at);
+        const flipR = solveArm(bones, "R", { wrist: w([-0.14, 1.5, 0.4]), point: [0.1, 1, 0.2], palm: [0, 0, -1], elbow: w([-0.24, 1.25, 0.25]) }, at);
+        const pinch: HandPose = { curl: 0.7, point: 0.35, thumb: 0.8, extra: [0, 0.2, 0.35, 0.45] };
+        const a = { ...fixed({ ...frameL, ...frameR }), ...fingers("L", pinch), ...fingers("R", pinch) };
+        const b = { ...fixed({ ...flipL, ...flipR }), ...fingers("L", { curl: 1.45, flip: 1, thumb: 0.8 }), ...fingers("R", { curl: 1.45, flip: 1, thumb: 0.8 }) };
+        const pose = switchPoses(a, b, span(8 / 24, 99));
+        nudge(pose, "forearmL.x", tremor(0.03, 0.2));
+        nudge(pose, "forearmR.x", tremor(0.03, 1.7));
+        return pose;
+      },
+      eye: [-60.0, 1.48, 0.95],
+      aim: [-60.0, 1.6, 0.0],
+      focal: 50,
+      fstop: 1.8,
+      focus: 0.8,
+      camera: { size: 0.005, jolt: 0.015, roll: { start: 2, lean: -2, wander: 1.2 } },
+      lights: [
+        { at: [-59.5, 2.0, 0.9], color: COOL, intensity: 0.9 },
+        { at: [-60.5, 1.4, 0.8], color: COOL, intensity: 0.3 },
+      ],
+      bokeh: [{ at: [-60.55, 1.3, -1.6], radius: 0.07, color: [40, 5, 2] }],
+      flare: { centre: [0.7, 0.5], drift: [0, 0], radius: 0.95, gain: `1.1 * (${span(4 / 24, 5 / 24)} + ${span(7 / 24, 8 / 24)})`, veil: 0.35 },
+      streak: { from: 0.25, to: 0.3, threshold: 6, gain: 0.35 },
+      grade: DARK_GRADE(width, { exposure: 0.05, saturation: 0.45, keepWarm: 0.5 }),
+    },
+    // ── take 16 · row 62 (0:60.44, 8 frames), one take for its three parts: a ring-flare flash
+    // over the face (frame 1), the low-angle face with a ringed hand at the cheek and a rainbow
+    // arc crossing the right (frames 2-7), a flare blowing out the hand (frame 8).
+    {
+      row: "62",
+      set: "void",
+      placement: { place: [-60, 0, 0], yaw: -0.3 },
+      pose: (bones) => {
+        const at: Placement = { place: [-60, 0, 0], yaw: -0.3 };
+        const w = (p: V3): [number, number, number] => toWorld(p, at);
+        const right = solveArm(bones, "R", { wrist: w([-0.13, 1.52, 0.2]), point: dirToWorld([0.25, 1, 0.1], at), palm: dirToWorld([1, 0, -0.3], at), elbow: w([-0.28, 1.25, 0.1]) }, at);
+        const pose = { "upperarmL.z": "-0.62", "forearmL.x": "-0.2", ...fixed(right), ...fingers("R", { curl: 0.55, spread: 0.1, thumb: 0.4, extra: [0, 0.1, 0.2, 0.3] }) };
+        // chin up to a lens below
+        nudge(pose, "neck.x", "-0.2");
+        nudge(pose, "head.x", "-0.15");
+        nudge(pose, "head.y", tremor(0.03, 0.5));
+        return pose;
+      },
+      eye: [-60.1, 1.28, 0.55],
+      aim: [-60.02, 1.68, 0.02],
+      focal: 35,
+      fstop: 1.8,
+      focus: 0.62,
+      camera: { size: 0.005, jolt: 0.015, roll: { start: -10, lean: 6, wander: 1.5 } },
+      lights: [
+        { at: [-59.6, 1.9, 0.6], color: COOL, intensity: 0.8 },
+        { at: [-60.5, 1.3, 0.5], color: COOL, intensity: 0.2 },
+      ],
+      flare: { centre: [1.18, 0.35], drift: [-0.25, 0], radius: 0.85, gain: `0.7 + 1.6 * (${span(0, 1 / 24)} + ${span(7 / 24, 8 / 24)})`, veil: `0.08 + 1.4 * (${span(0, 1 / 24)} + ${span(7 / 24, 8 / 24)})` },
+      streak: { from: 0.3, to: 0.35, threshold: 5, gain: 0.35 },
+      grade: DARK_GRADE(width, { exposure: 0.05, saturation: 0.5, keepWarm: 0.5 }),
+    },
   ];
+}
+
+/** Row 17c: the stacked arm-and-pistol layers (see the take's note above). */
+function armLayersTake(width: number): Take {
+  const at: Placement = { place: [-60, 0, 0], yaw: 0 };
+  // where the hand is: the solved wrist (below) plus half a hand along the arm
+  const hand: V3 = [-60.71, 1.42, 0.06];
+  // a layer is in from its frame: half a frame early, so the render's 1/24 s steps land on it
+  const frame = (k: number): number => (k - 0.5) / 24;
+  const layers = [
+    { at: 0, hand, roll: -90, u: 0.0, v: 0.4, distance: 1.7 },
+    { at: frame(6), hand, roll: 90, u: 0.4, v: -0.35, distance: 1.75 },
+    { at: frame(10), hand, roll: 90, u: -0.48, v: -0.4, distance: 1.75 },
+    { at: frame(14), hand, roll: 0, u: 0.22, v: 0.02, distance: 1.65 },
+    { at: frame(17), hand, roll: 180, u: -0.2, v: 0.12, distance: 1.65 },
+  ];
+  const first = layerCamera(layers[0]!, 50);
+  return {
+    row: "17c",
+    set: "void",
+    gun: true,
+    placement: at,
+    pose: (bones) => {
+      const out = solveArm(bones, "R", { wrist: toWorld([-0.62, 1.42, 0.05], at), point: [-1, 0, 0], palm: [0, 0, -1], elbow: toWorld([-0.36, 1.43, 0.03], at) }, at);
+      const pose = { "upperarmL.z": "-0.62", ...fixed(out), ...fingers("R", PISTOL_GRIP) };
+      nudge(pose, "handR.y", tremor(0.04, 0.5));
+      return pose;
+    },
+    layers,
+    eye: first.eye,
+    aim: first.aim,
+    focal: 50,
+    fstop: 4,
+    focus: 1.1,
+    camera: { size: 0.004, jolt: 0.01, roll: { start: 0, lean: 0, wander: 0.8 } },
+    lights: [
+      { at: [-60.5, 1.9, 1.0], color: COOL, intensity: 2.2 },
+      { at: [-61.1, 1.2, 0.8], color: COOL, intensity: 0.9 },
+    ],
+    streak: { from: 0.4, to: 0.5, threshold: 1.6, gain: 0.6 },
+    grade: DARK_GRADE(width, { exposure: 0.35, saturation: 0.25, keepWarm: 0.3 }),
+  };
 }
 
 /** Row 12's MCU: fists up either side of the face; `dark` lists the shot-time spans the strobe blacks out. */
@@ -745,10 +1085,85 @@ export interface HandsOptions {
   readonly crt?: boolean;
 }
 
+/**
+ * A layer's camera: looking straight down −Z at the hand from `distance` metres, rolled by
+ * `roll` degrees, and shifted in its own image plane so the hand lands at (u, v) of the frame
+ * (the rolled right and up are the ones the camera node builds: screen-space.ts VIEW).
+ */
+function layerCamera(layer: NonNullable<Take["layers"]>[number], focal: number): { eye: V3; aim: V3 } {
+  const t = (layer.roll * Math.PI) / 180;
+  const up: V3 = [Math.sin(t), Math.cos(t), 0];
+  const right: V3 = [Math.cos(t), -Math.sin(t), 0];
+  const halfW = (18 / focal) * layer.distance;
+  const halfH = halfW / 2.347;
+  const shift = add(add([0, 0, 0], right, -layer.u * halfW), up, -layer.v * halfH);
+  const aim = add(layer.hand, shift);
+  return { aim, eye: add(aim, [0, 0, 1], layer.distance) };
+}
+
+/** LIGHTEN: the Input (if `keep`), then each More picture wherever it is brighter, from its gate on. */
+function lightenWgsl(layers: number): string {
+  const gates = [`  keep: f32, // @default 1  1 lightens onto the Input, 0 starts from black.`, ...Array.from({ length: layers }, (_, i) => `  g${i}: f32, // @default 0  Layer ${i + 1} is in (1) or not yet (0).`)].join("\n");
+  const binds = Array.from({ length: layers }, (_, i) => `@group(0) @binding(${4 + i}) var inputTexture${i + 1}: texture_2d<f32>;`).join("\n");
+  const taps = Array.from({ length: layers }, (_, i) => `  c = max(c, textureSampleLevel(inputTexture${i + 1}, inputSampler, uv, 0.0).rgb * params.g${i});`).join("\n");
+  return `struct Params {
+${gates}
+};
+@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+@group(0) @binding(3) var<uniform> params: Params;
+${binds}
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  var c = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * params.keep;
+${taps}
+  return vec4f(c, 1.0);
+}`;
+}
+
+/** Switch between two poses (knob axis → expression) by k (0 = a, 1 = b); an axis only one names switches from/to 0. */
+function switchPoses(a: Record<string, string>, b: Record<string, string>, k: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const va = a[key] ?? "0";
+    const vb = b[key] ?? "0";
+    out[key] = va === vb ? va : `(${va}) + ((${vb}) - (${va})) * ${k}`;
+  }
+  return out;
+}
+
+/**
+ * 1 on the frames whose time k/24 lies in [t0, t1), 0 elsewhere: a hard cut in, a hard cut out.
+ * The edges sit half a frame early — a part renders from a whole frame, and an edge exactly on
+ * a frame's time would give that frame half of each side.
+ */
+const span = (t0: number, t1: number): string => `(clamp((abstime - ${num(t0 - 1 / 48)}) * 10000, 0, 1) * clamp((${num(t1 - 1 / 48)} - abstime) * 10000, 0, 1))`;
+
+/**
+ * The PISTOL'S surface: a black polymer frame and a dark slide. Its GLB class (61) is one the
+ * scene surface does not know, so it would fall to the material's defaults and read mid-grey
+ * under a key; here it stays near black, a satin sheen on its flats.
+ */
+const GUN_SURFACE_WGSL = `struct Params {
+  shade: f32, // @default 0.018  The pistol's albedo.
+  sheen: f32, // @default 0.4  Roughness of its flats.
+};
+
+fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
+  var o = surfaceDefaults(s);
+  o.albedo = vec4f(vec3f(p.shade), 1.0);
+  o.roughness = p.sheen;
+  o.metallic = 0.35;
+  return o;
+}`;
+
 /** The fig area's pieces: the body (scene surface) and the ice (pavé surface). */
-function figurePieces(facts: OnNothingFacts, gun: boolean): (readonly [string, Area, string])[] {
-  if (!facts.areas.has("figbody") || !facts.areas.has("figice")) throw new Error("handsDocument: the GLB has no rings (rebuild it with tools/blender/on-nothing/hands.py, T1407b hands).");
-  const pieces: (readonly [string, Area, string])[] = [["body", "figbody", "surf1"], ["ice", "figice", "cusurf1"]];
+function figurePieces(facts: OnNothingFacts, gun: boolean, body: "figbody" | "figbare" = "figbody"): (readonly [string, Area, string])[] {
+  if (!facts.areas.has(body) || !facts.areas.has("figice")) throw new Error("handsDocument: the GLB has no rings (rebuild it with tools/blender/on-nothing/hands.py, T1407b hands).");
+  // `figbare` is the same MPFB body at the same rest, skinned by the same joints (scene-facts
+  // checks the joint lists match), so `fig`'s ice sits on its fingers and wrist as on `fig`'s
+  const pieces: (readonly [string, Area, string])[] = [["body", body, "surf1"], ["ice", "figice", "cusurf1"]];
   if (gun) {
     const own = facts.areas.get("figgun");
     const fig = facts.areas.get("fig");
@@ -756,7 +1171,7 @@ function figurePieces(facts: OnNothingFacts, gun: boolean): (readonly [string, A
     // the pistol is skinned by its own copy of the rig: the kernel's indices hold only if its joints are fig's, in fig's order
     const names = (joints: string): string => joints.split(" ").map((entry) => entry.split(/[<@]/)[0]).join(" ");
     if (names(own.joints) !== names(fig.joints)) throw new Error("handsDocument: the pistol's rig lists other joints than the figure's.");
-    pieces.push(["gun", "figgun", "surf1"]);
+    pieces.push(["gun", "figgun", "gunsurf1"]);
   }
   return pieces;
 }
@@ -770,6 +1185,7 @@ export function handsDocument(facts: OnNothingFacts, options: HandsOptions): Pro
   const chain = new Chain(["shot", "out"]);
   chain.add("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: 1, wet: 0.3, wetGloss: 0.22, dryGloss: 0.62 }, { label: "surf1" });
   chain.add("cusurf", "materialWgsl", [-3000, -700], { model: "pbr", source: CLOSEUP_SURFACE_WGSL, pitch: 0.0011, fire: 0.35 }, { label: "cusurf1" });
+  if (take.gun === true) chain.add("gunsurf", "materialWgsl", [-3000, -800], { model: "pbr", source: GUN_SURFACE_WGSL }, { label: "gunsurf1" });
   const scenes: string[] = [];
 
   // ── The set ──
@@ -810,11 +1226,13 @@ export function handsDocument(facts: OnNothingFacts, options: HandsOptions): Pro
     knobs[key] = expressionSlot(value, 0);
   }
   const kernel = skinKernel(facts);
-  figurePieces(facts, take.gun === true).forEach(([piece, area, material], index) => {
+  figurePieces(facts, take.gun === true, take.body).forEach(([piece, area, material], index) => {
     const f = facts.areas.get(area)!;
     const y = 1200 + index * 250;
+    // the pistol out of the hand: dropped far below the floor while `gunShow` is 0
+    const away: Record<string, StoredParameter> = piece === "gun" && take.gunShow !== undefined ? { "place.y": expressionSlot(`${num(take.placement.place[1])} - 50 * (1 - (${take.gunShow}))`, take.placement.place[1]) } : {};
     chain.add(`fig_${piece}`, "meshFileIn", [-3600, y], { file: facts.glbUrl, select: f.select, vertices: f.vertices, triangles: f.triangles, parts: f.parts, joints: f.joints }, { label: `fig${piece}1` });
-    chain.add(`skin_${piece}`, "pointKernel", [-3300, y], { capacity: f.vertices, attributes: SKIN_ATTRIBUTES, kernel, yaw: take.placement.yaw, place: vec3(take.placement.place), ...knobs }, { label: `skin${piece}1` });
+    chain.add(`skin_${piece}`, "pointKernel", [-3300, y], { capacity: f.vertices, attributes: SKIN_ATTRIBUTES, kernel, yaw: take.placement.yaw, place: vec3(take.placement.place), ...away, ...knobs }, { label: `skin${piece}1` });
     chain.add(`figGeo_${piece}`, "geometry", [-3000, y], { mode: "surface", material }, { label: `figgeo${piece}1` });
     chain.link([`fig_${piece}`, "out"], [`skin_${piece}`, "in"]);
     chain.link([`skin_${piece}`, "out"], [`figGeo_${piece}`, "points"]);
@@ -864,17 +1282,43 @@ export function handsDocument(facts: OnNothingFacts, options: HandsOptions): Pro
   }, { label: "shot1" });
   chain.link(["env", "out"], ["shot", "environment"]);
 
-  const cam = cameraParams(take.eye, take.aim, fov);
-  const depth = ["shot", "depth"] as const;
-  const normal = ["shot", "normal"] as const;
-  chain.pass("occlusion", GTAO_WGSL, { ...cam, radius: 0.06, strength: 0.5 }, [depth, normal], [-2100, 0]);
-  if (take.haze !== undefined) {
-    chain.pass("haze", hazeWgsl(hazeLights(facts, ["head"])), { ...cam, density: take.haze, ambient: [0.002, 0.0025, 0.003], anisotropy: 0.75, head: 0.3 }, [depth], [-1900, 0]);
+  if (take.layers !== undefined) {
+    // ── The layers: the same figure through other cameras, laid in by lighten on their frames ──
+    const layered: { port: [string, string]; gate: StoredParameter }[] = [];
+    take.layers.forEach((layer, i) => {
+      const { eye, aim } = layerCamera(layer, take.focal);
+      const id = `L${i}`;
+      const moveL = teleHandheld(eye, aim, take.camera.size, take.camera.jolt, { ...take.camera.roll, start: take.camera.roll.start + layer.roll });
+      chain.add(`cam${id}`, "camera", [-2700, -1100 - i * 150], { eye: vec3(eye), lookAt: vec3(aim), fov, near: 0.02, far: 200, ...moveL }, { label: `cam${id.toLowerCase()}1` });
+      chain.add(`shot${id}`, "render", [-2400, -300 - i * 150], {
+        scenes: scenes.join(" "), camera: `cam${id.toLowerCase()}1`, lights: lights.join(" "), projectors: "",
+        ambientColor: [1, 1, 1, 1], ambientIntensity: 0, background: [0, 0, 0, 1], antialias: "msaa",
+        environmentIntensity: take.environment ?? 0.4, environmentTaps: 16,
+      }, { label: `shot${id.toLowerCase()}1` });
+      chain.link(["env", "out"], [`shot${id}`, "environment"]);
+      layered.push({ port: [`shot${id}`, "out"], gate: expressionSlot(`clamp((abstime - ${num(layer.at)}) * 10000 + 0.5, 0, 1)`, 0) });
+    });
+    // a Custom WGSL · Multi takes three More pictures: the stack runs in passes of three, each
+    // lightening onto the one before (the first ignores its Input, the base Render)
+    for (let start = 0; start < layered.length; start += 3) {
+      const group = layered.slice(start, start + 3);
+      const gates: Record<string, StoredParameter> = { keep: start === 0 ? 0 : 1 };
+      group.forEach((layer, i) => { gates[`g${i}`] = layer.gate; });
+      chain.pass(`stack${start / 3}`, lightenWgsl(group.length), gates, group.map((layer) => layer.port), [-2000 + (start / 3) * 100, 0]);
+    }
+  } else {
+    const cam = cameraParams(take.eye, take.aim, fov);
+    const depth = ["shot", "depth"] as const;
+    const normal = ["shot", "normal"] as const;
+    chain.pass("occlusion", GTAO_WGSL, { ...cam, radius: 0.06, strength: 0.5 }, [depth, normal], [-2100, 0]);
+    if (take.haze !== undefined) {
+      chain.pass("haze", hazeWgsl(hazeLights(facts, ["head"])), { ...cam, density: take.haze, ambient: [0.002, 0.0025, 0.003], anisotropy: 0.75, head: 0.3 }, [depth], [-1900, 0]);
+    }
+    if (take.bokeh !== undefined) chain.pass("bokeh", bokehWgsl(take.bokeh), { ...cam, gain: 1, flicker: 0.04 }, [depth], [-1800, 0]);
+    const lens: Record<string, StoredParameter> = { ...cam, focal: take.focal, fstop: take.fstop, focus: typeof take.focus === "number" ? take.focus : expressionSlot(take.focus, 1), maxCoc: 0.05 };
+    chain.pass("dof", LENS_DOF_WGSL, lens, [depth], [-1600, 0]);
+    chain.pass("dofFill", DOF_FILL_WGSL, lens, [depth], [-1500, 0]);
   }
-  if (take.bokeh !== undefined) chain.pass("bokeh", bokehWgsl(take.bokeh), { ...cam, gain: 1, flicker: 0.04 }, [depth], [-1800, 0]);
-  const lens: Record<string, StoredParameter> = { ...cam, focal: take.focal, fstop: take.fstop, focus: typeof take.focus === "number" ? take.focus : expressionSlot(take.focus, 1), maxCoc: 0.05 };
-  chain.pass("dof", LENS_DOF_WGSL, lens, [depth], [-1600, 0]);
-  chain.pass("dofFill", DOF_FILL_WGSL, lens, [depth], [-1500, 0]);
   const scene = chain.last;
 
   // ── The streak glass (stock), from the hottest sources softened to their glow ──
@@ -895,7 +1339,7 @@ export function handsDocument(facts: OnNothingFacts, options: HandsOptions): Pro
     gain: take.streak.gain,
     tint: [0.92, 0.98, 1, 1],
   }, [-1200, 0]);
-  chain.link(["hotSoft", "out"], ["streak", "bright"]);
+  chain.link([take.streak.sharp === true ? "hotStreak" : "hotSoft", "out"], ["streak", "bright"]);
   const glow = chain.bloom(chain.last, 1.4, -1100);
   chain.pass("bloomAdd", BLOOM_ADD_WGSL, { gain: 0.1 }, [glow], [-600, 0]);
   if (take.flare !== undefined) {
@@ -905,8 +1349,8 @@ export function handsDocument(facts: OnNothingFacts, options: HandsOptions): Pro
       "centre.x": expressionSlot(`${num(f.centre[0])} + abstime * ${num(f.drift[0])}`, f.centre[0]),
       "centre.y": expressionSlot(`${num(f.centre[1])} + abstime * ${num(f.drift[1])}`, f.centre[1]),
       radius: f.radius,
-      gain: f.gain,
-      veil: f.veil ?? 0.05,
+      gain: typeof f.gain === "number" ? f.gain : expressionSlot(f.gain, 0),
+      veil: typeof f.veil === "string" ? expressionSlot(f.veil, 0) : (f.veil ?? 0.05),
     }, [], [-500, 0]);
   }
   chain.stock("lens", "lens", take.lensFx ?? { distortion: 0.02, edgeBlur: 0.012, swirl: 0.5, aberration: 0.0025, vignette: 0.7, vignetteRound: 0.8 }, [-300, 0]);
