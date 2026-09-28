@@ -533,6 +533,20 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
           </p>
         )}
         {/*
+          T1487b: an inference node's run state (computing, could not run, found nothing),
+          said here rather than in the app-wide strip, where it pushed the layout around.
+        */}
+        {snapshot.inferenceNote === null ? null : (
+          <p
+            className={styles.inferenceNote}
+            data-tone={snapshot.inferenceNote.tone}
+            data-testid={`node-inference-note-${id}`}
+            title={snapshot.inferenceNote.text}
+          >
+            {snapshot.inferenceNote.text}
+          </p>
+        )}
+        {/*
           T599: the node shows ONE message; with several diagnostics the rest were
           unreachable from the node entirely. An honest count, and a real door — the
           chip runs `ui.showProblems`, which fronts the problems tab (restoring it if

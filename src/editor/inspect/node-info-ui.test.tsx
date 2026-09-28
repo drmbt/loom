@@ -228,6 +228,7 @@ describe("T645 — the node info popup shows §V329's staleness and classificati
         inferenceBackend: null,
         inferenceMs: null,
         inferenceIsolated: null,
+        inferenceNote: null,
         message: null,
         errorCount: 0,
         warningCount: 0,

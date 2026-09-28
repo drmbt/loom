@@ -65,6 +65,7 @@ import {
 } from "@runtime/models/pose-runner.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { Notice } from "./notices.tsx";
+import type { InferenceNote } from "@editor/graph-canvas/node-runtime.ts";
 
 declare module "@domain/types/commands.ts" {
   interface CommandMap {
@@ -366,6 +367,25 @@ function sameHealth(a: RunHealth | undefined, b: RunHealth | undefined): boolean
  */
 const CLAIMS_NOTHING_BELOW = 0.001;
 
+/**
+ * T1487b — where "found nothing" CLEARS, above where it sets. Four times the set line: still
+ * far under any subject a matte would call one (0.4% of the frame), and clear of the noise an
+ * empty frame returns, so the node's note does not blink with every result.
+ */
+const CLAIMS_SOMETHING_ABOVE = 0.004;
+
+/**
+ * T1487b — HYSTERESIS on "found nothing". An empty frame's coverage hovers near the set line,
+ * and a single threshold flipped the note on and off with every result — on the node now, in
+ * the app-wide strip before, where it shoved the layout. Once "found nothing" is showing, it
+ * takes a clearly-claimed subject to clear it; once something is claimed, it takes a truly
+ * empty frame to say nothing is.
+ */
+export function claimsNothingAfter(wasNothing: boolean, claimed: number | undefined): boolean {
+  if (claimed === undefined) return false;
+  return claimed < (wasNothing ? CLAIMS_SOMETHING_ABOVE : CLAIMS_NOTHING_BELOW);
+}
+
 function sameHealthMap(
   a: Readonly<Record<string, RunHealth>>,
   b: Readonly<Record<string, RunHealth>>,
@@ -449,7 +469,6 @@ export function useModelInference(
    */
   const [tracked, setTracked] = useState<readonly DepthTarget[]>([]);
   const healthRef = useRef<Readonly<Record<string, RunHealth>>>({});
-  const [health, setHealth] = useState<Readonly<Record<string, RunHealth>>>({});
   const unregisterRef = useRef<Map<string, () => void>>(new Map());
   /**
    * WHICH backend the entries in `unregisterRef` were registered on (T1044).
@@ -887,27 +906,36 @@ export function useModelInference(
         }
       }
       // B156: what the RUN half is doing, from the seam that is the only thing that knows.
-      // Recomputed every frame because it is three map lookups, but pushed into React
-      // state ONLY on a transition — waiting → running happens once, and waiting → failed
-      // happens once. A per-frame setState here would re-render the strip at 60 Hz and
-      // re-arm the frame loop through this binding's identity.
+      // Recomputed every frame because it is three map lookups, but published to the node
+      // ONLY on a transition — waiting → running happens once, and waiting → failed happens
+      // once (T1487b: it used to be React state feeding the notice strip).
       const next: Record<string, RunHealth> = {};
       for (const candidate of targetsRef.current) {
         if (states[candidate.descriptor.id]?.kind !== "ready") continue;
         const reason = sources.lastFailure(candidate.nodeId);
         if (sources.ready(candidate.nodeId)) {
           const claimed = sources.lastCoverage(candidate.nodeId);
-          next[candidate.nodeId] = {
-            kind: "running",
-            claimsNothing: claimed !== undefined && claimed < CLAIMS_NOTHING_BELOW,
-          };
+          const previous = healthRef.current[candidate.nodeId];
+          const wasNothing = previous?.kind === "running" && previous.claimsNothing;
+          next[candidate.nodeId] = { kind: "running", claimsNothing: claimsNothingAfter(wasNothing, claimed) };
         } else {
           next[candidate.nodeId] = reason === undefined ? { kind: "waiting" } : { kind: "failed", reason };
         }
       }
       if (!sameHealthMap(healthRef.current, next)) {
+        // T1487b: the run state goes to the NODE, on the transition only. A node that left
+        // the tracked set (or whose model stopped being ready) gets its note cleared.
+        if (target !== undefined) {
+          for (const nodeId of Object.keys(healthRef.current)) {
+            if (!(nodeId in next)) target.publish(nodeId, { inferenceNote: null });
+          }
+          for (const candidate of targetsRef.current) {
+            if (!(candidate.nodeId in next)) continue;
+            if (sameHealth(healthRef.current[candidate.nodeId], next[candidate.nodeId])) continue;
+            target.publish(candidate.nodeId, { inferenceNote: runNote(candidate, next[candidate.nodeId]) });
+          }
+        }
         healthRef.current = next;
-        setHealth(next);
       }
 
       // Only once the weights are actually held: `sample` would otherwise call `acquire`
@@ -947,8 +975,8 @@ export function useModelInference(
   );
 
   const notices = useMemo(
-    () => buildNotices(tracked, states, acquisition, health),
-    [tracked, states, acquisition, health],
+    () => buildNotices(tracked, states, acquisition),
+    [tracked, states, acquisition],
   );
 
   /**
@@ -995,6 +1023,8 @@ export function useModelInference(
  *    run" are different states from "not downloaded", they were both SILENT, and all
  *    three previously rendered the identical flat picture. Naming them is what makes
  *    §B156's two candidate diagnoses tellable apart from the app rather than by asking.
+ *    (T1487b moved those rows onto the node itself — see `runNote` below. This function
+ *    now says only what acquisition has to say.)
  *
  * What is deliberately NOT here: a row for a model that is running WELL. Its rate belongs
  * on the telemetry channel (the node info popup's "N frames behind"), because it changes
@@ -1026,7 +1056,6 @@ export function buildNotices(
   targets: readonly DepthTarget[],
   states: Readonly<Record<string, AcquisitionState>>,
   acquisition: { acquire(d: ModelDescriptor): unknown; cancel(id: string): void },
-  health: Readonly<Record<string, RunHealth>> = {},
 ): readonly Notice[] {
   const notices: Notice[] = [];
   const seen = new Set<string>();
@@ -1073,67 +1102,35 @@ export function buildNotices(
     }
   }
 
-  // The RUN half, per node (B156). Only reachable once acquisition says the bytes are
-  // here, which is why it is not an `else` on the loop above: "not downloaded", "computing
-  // the first one" and "downloaded and could not run" all render the identical flat
-  // picture, and the whole point is that a person can tell which one they are looking at.
-  for (const target of targets) {
-    if ((states[target.descriptor.id] ?? { kind: "unknown" }).kind !== "ready") continue;
-    const { label, neutralPicture } = target.kind;
-    const run = health[target.nodeId];
-    if (run?.kind === "waiting") {
-      notices.push({
-        id: `model-first-result-${target.nodeId}`,
-        tone: "info",
-        message: `${label} is computing its first result — showing ${neutralPicture}.`,
-      });
-    } else if (run?.kind === "failed") {
-      notices.push({
-        id: `model-run-failed-${target.nodeId}`,
-        tone: "error",
-        /*
-         * THE REASON IS THE HEADLINE, prefixed with what it belongs to.
-         *
-         * It used to be a banner announcing that the inference did not run — a fact the
-         * grey picture had already made — with the only load-bearing sentence demoted to
-         * the detail. And "the document still renders" was telling someone looking at a
-         * rendered document that it renders. Two lines: what went wrong, and what they
-         * are looking at instead.
-         *
-         * The reason arrives from the seam, and where the runtime's own wording named a
-         * symptom rather than a cause the worker has already rewritten it (§B171 —
-         * `runtime-load-failure.ts`), so putting it first is what makes that rewrite
-         * visible instead of buried.
-         */
-        message: `${label} could not run: ${run.reason}`,
-        detail: `Showing ${neutralPicture}.`,
-      });
-    } else if (run?.kind === "running" && run.claimsNothing) {
-      /*
-       * ═══════════════════════════════════════════════════════════════════════════════
-       * §V288 — THE FOURTH STATE, which used to be the silent one
-       * ═══════════════════════════════════════════════════════════════════════════════
-       *
-       * The docblock above says a healthy running model needs no row because it is
-       * identified by "the ABSENCE of a row plus a picture that moves". That is true of
-       * depth. It is FALSE of a matte, and the difference cost two wrong diagnoses in one
-       * day: a correct matte of a frame with nobody in it is zero everywhere, does not
-       * move, and is pixel-for-pixel the no-model picture, the no-result-yet picture and
-       * the failed-run picture. The owner read it as broken; the answer was that the model
-       * ran fine and there was no person in the source.
-       *
-       * So the rule is refined rather than dropped: a healthy model needs no row when its
-       * output is DISTINGUISHABLE from its neutral. When it is not, the node says what it
-       * measured. This row appears only while the measurement says nothing is being
-       * claimed, and vanishes the moment a subject appears — so it is a statement about
-       * the current picture, not a permanent banner about a working feature (§V537).
-       */
-      notices.push({
-        id: `model-empty-result-${target.nodeId}`,
-        tone: "info",
-        message: `${label} ran and found nothing — check its input.`,
-      });
-    }
-  }
   return notices;
 }
+
+/**
+ * T1487b — THE RUN HALF, AS A LINE ON THE NODE.
+ *
+ * B156's three run states (computing the first result, could not run, ran and found
+ * nothing — §V288) used to be rows in the app-wide notice strip. They are facts about ONE
+ * node, and the found-nothing row follows the camera: a person stepping in and out of frame
+ * mounted and unmounted the strip, which pushed the whole app layout down and back up. The
+ * owner: "that should probably be rather a warning on the node but not in the global layout
+ * of the app". So the sentences are unchanged and the surface is the node itself; the strip
+ * keeps only ACQUISITION, which is a one-time decision with a button.
+ *
+ * `null` for a model that is running and claiming something — a healthy model still says
+ * nothing (§V537).
+ */
+export function runNote(target: Pick<DepthTarget, "kind">, run: RunHealth | undefined): InferenceNote | null {
+  const { label, neutralPicture } = target.kind;
+  if (run?.kind === "waiting") {
+    return { tone: "info", text: `${label} is computing its first result — showing ${neutralPicture}.` };
+  }
+  if (run?.kind === "failed") {
+    // THE REASON IS THE HEADLINE (T965): the grey picture already says it did not run.
+    return { tone: "error", text: `${label} could not run: ${run.reason}` };
+  }
+  if (run?.kind === "running" && run.claimsNothing) {
+    return { tone: "info", text: `${label} ran and found nothing — check its input.` };
+  }
+  return null;
+}
+

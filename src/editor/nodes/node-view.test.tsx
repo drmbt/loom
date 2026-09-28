@@ -250,6 +250,25 @@ describe("node status states are distinct (doc §17.2)", () => {
   });
 });
 
+describe("T1487b — an inference node's run state is said on the node", () => {
+  it("shows the note in its tone, and removes it when the model has nothing to say", async () => {
+    // It used to be a row in the app-wide strip, which came and went with the camera and
+    // pushed the layout around. On the node it is a fact about the node.
+    const { runtime, nodeId } = mountNode("test.blur", { graph: graphWith("test.blur") });
+    expect(screen.queryByTestId(`node-inference-note-${nodeId}`)).toBeNull();
+
+    await publish(runtime, nodeId, {
+      inferenceNote: { tone: "info", text: "Matte ran and found nothing — check its input." },
+    });
+    const note = screen.getByTestId(`node-inference-note-${nodeId}`);
+    expect(note.textContent).toBe("Matte ran and found nothing — check its input.");
+    expect(note.getAttribute("data-tone")).toBe("info");
+
+    await publish(runtime, nodeId, { inferenceNote: null });
+    expect(screen.queryByTestId(`node-inference-note-${nodeId}`)).toBeNull();
+  });
+});
+
 describe("V42 — agent activity is visible on the node it is changing", () => {
   it("names the state and the actor", async () => {
     const { runtime, nodeId } = mountNode("test.blur", { graph: graphWith("test.blur") });

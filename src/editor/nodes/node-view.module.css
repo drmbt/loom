@@ -687,6 +687,30 @@
   -webkit-box-orient: vertical;
 }
 
+/* T1487b: an inference node's run state — the same box as `.message`, in its own tone. */
+.inferenceNote {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3) 0;
+  border-top: var(--border-hairline);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: var(--lh-ui);
+  color: var(--text-dim);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.inferenceNote[data-tone="warn"] {
+  color: var(--warn);
+}
+
+.inferenceNote[data-tone="error"] {
+  color: var(--error);
+}
+
 /* T599: the honest "+N more" — a real button that fronts the problems pane. */
 .moreDiagnostics {
   display: block;

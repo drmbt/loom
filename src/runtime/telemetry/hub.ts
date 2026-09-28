@@ -89,6 +89,11 @@ export interface NodeMetricSink {
       /** T1041 — the worker's measured `crossOriginIsolated`; false means wasm ran on
        *  ONE thread (no SharedArrayBuffer). Hosted pages without COOP/COEP land false. */
       inferenceIsolated?: boolean | null;
+      /**
+       * T1487b — the model's run state as one line ON THE NODE (still computing, could not
+       * run, found nothing). Published on a transition only, never per frame.
+       */
+      inferenceNote?: { readonly tone: "info" | "warn" | "error"; readonly text: string } | null;
     },
   ): void;
 }

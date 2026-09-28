@@ -226,6 +226,8 @@ export function useNodeRuntime(source: NodeRuntimeSource, nodeId: NodeId): NodeR
 export interface NodeStructuralState {
   status: NodeRunStatus;
   message: string | null;
+  /** T1487b — an inference node's run state, drawn on the node. */
+  inferenceNote: NodeRuntimeSnapshot["inferenceNote"];
   errorCount: number;
   warningCount: number;
   agent: AgentActivity | null;
@@ -247,6 +249,7 @@ export function useNodeStructuralState(
       previous !== null &&
       previous.status === next.status &&
       previous.message === next.message &&
+      previous.inferenceNote === next.inferenceNote &&
       previous.errorCount === next.errorCount &&
       previous.warningCount === next.warningCount &&
       previous.agent === next.agent
@@ -256,6 +259,7 @@ export function useNodeStructuralState(
     const projected: NodeStructuralState = {
       status: next.status,
       message: next.message,
+      inferenceNote: next.inferenceNote,
       errorCount: next.errorCount,
       warningCount: next.warningCount,
       agent: next.agent,

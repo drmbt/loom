@@ -9,7 +9,7 @@ import type { CompiledGraph } from "@compiler/index.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import { EXAMPLE_DOCUMENTS } from "@/examples/documents.ts";
 import { TIER_B_CAPABILITIES, exampleRegistry } from "@/examples/runner.ts";
-import { buildNotices, useModelInference } from "./use-model-inference.ts";
+import { buildNotices, claimsNothingAfter, runNote, useModelInference } from "./use-model-inference.ts";
 
 /**
  * THE CONSTRUCTION SITE FOR THE MODEL NOTICES (B156, §V205, §T743).
@@ -96,6 +96,80 @@ it("T1323: graph deletion retires worker history; lack of demand does not", asyn
   expect(depthId).toBeDefined();
   expect(sent.filter(message => message.kind === "forget"))
     .toEqual([{ kind: "forget", nodeIds: [depthId] }]);
+});
+
+/**
+ * T1487b — THE RUN STATE IS PUBLISHED TO THE NODE, THROUGH THE HOOK THE APP MOUNTS.
+ *
+ * The owner saw "Matte ran and found nothing" flicker in the app-wide strip, pushing the
+ * whole layout down and back up. The sentence moved onto the node; this asserts it arrives
+ * there from a real document — E44's Depth node, weights "held", no result yet — and that
+ * it is cleared when the node leaves the document, so a note cannot outlive its node.
+ */
+it("T1487b: a held model's run state is published to its node, and cleared when the node goes", async () => {
+  const createAcquisition = acquisitionModule.createModelAcquisition;
+  vi.spyOn(acquisitionModule, "createModelAcquisition").mockImplementation(options => ({
+    ...createAcquisition(options),
+    refresh: async descriptor => {
+      options.onStateChange?.(descriptor.id, { kind: "ready" });
+      return { kind: "ready" };
+    },
+    acquire: async () => undefined,
+  }));
+  // A worker that never answers: the model is held and has produced nothing yet.
+  vi.stubGlobal("Worker", class {
+    postMessage() {}
+    addEventListener() {}
+    terminate() {}
+  });
+  const backend = {
+    readBuffer: async () => new ArrayBuffer(16),
+    registerMediaSource: () => () => undefined,
+  } as unknown as LoomBackend;
+  const published: Array<[string, unknown]> = [];
+  const sink = {
+    publish: (nodeId: string, patch: Record<string, unknown>) => {
+      if ("inferenceNote" in patch) published.push([nodeId, patch["inferenceNote"]]);
+    },
+  };
+  const graph = sounding!.graph as GraphDocument;
+  const depthId = Object.keys(graph.nodes).find(id => graph.nodes[id]!.type === "depth")!;
+  const frame = { frameIndex: 0, timeSeconds: 0, absTimeSeconds: 0 } as never;
+  const view = renderHook(() => useModelInference(backend, sink as never));
+  act(() => view.result.current.track(graph, planFor(graph)));
+  await settleRefresh();
+  act(() => view.result.current.observe(frame));
+  expect(published).toHaveLength(1);
+  expect(published[0]![0]).toBe(depthId);
+  expect(published[0]![1]).toMatchObject({ tone: "info" });
+  expect((published[0]![1] as { text: string }).text).toContain("computing its first result");
+  // And the strip says nothing about it: the model is held, so there is no decision to make.
+  expect(view.result.current.notices).toEqual([]);
+
+  // A second frame in the same state publishes nothing — transitions only, never per frame.
+  act(() => view.result.current.observe(frame));
+  expect(published).toHaveLength(1);
+
+  act(() => view.result.current.track(EMPTY_GRAPH, planFor(EMPTY_GRAPH)));
+  act(() => view.result.current.observe(frame));
+  expect(published.at(-1)).toEqual([depthId, null]);
+});
+
+describe("T1487b — 'found nothing' has hysteresis, so the node's note does not blink", () => {
+  it("holds its state inside the band between the set and clear lines", () => {
+    // 0.2% of the frame sits between the two lines. Coming from "claiming something" it is
+    // still something; coming from "found nothing" it is still nothing. A single line here
+    // is what made the note flip on every result while coverage hovered near it.
+    expect(claimsNothingAfter(false, 0.002)).toBe(false);
+    expect(claimsNothingAfter(true, 0.002)).toBe(true);
+  });
+
+  it("still sets on a truly empty frame and clears on a real subject", () => {
+    expect(claimsNothingAfter(false, 0.0001)).toBe(true);
+    expect(claimsNothingAfter(true, 0.05)).toBe(false);
+    // No coverage reading yet is not a claim of nothing.
+    expect(claimsNothingAfter(true, undefined)).toBe(false);
+  });
 });
 
 /**
@@ -223,7 +297,7 @@ describe("the model notice for a document whose star node has no model", () => {
  * The RUN half. Acquisition answering "ready" says the bytes are on the machine and
  * nothing at all about whether a session started, and both failures render the same flat
  * picture — so before B156 a model that downloaded and could not run was completely
- * silent. `buildNotices` is exercised directly here because these states are reached
+ * silent. `runNote` is exercised directly here because these states are reached
  * through a live worker, an ORT session and a 94 MB file, none of which belong in a gate.
  */
 describe("a model that is held but does not run", () => {
@@ -237,70 +311,54 @@ describe("a model that is held but does not run", () => {
     descriptor: { id: "depth-accurate", label: "Depth Anything V2", bytes: 99_060_839 },
     size: [8, 8] as const,
   };
-  const acquisition = { acquire: () => undefined, cancel: () => {} };
-  const ready = { "depth-accurate": { kind: "ready" } } as const;
-  const notices = (health: Record<string, unknown>) =>
-    // The shapes above are the parts of `DepthTarget` this function reads; a fixture
-    // carrying a real 94 MB descriptor would prove less, not more.
-    buildNotices(
-      [target] as never,
-      ready as never,
-      acquisition,
-      health as never,
-    );
+  // The shapes above are the parts of `DepthTarget` these functions read; a fixture
+  // carrying a real 94 MB descriptor would prove less, not more.
+  const note = (run: unknown) => runNote(target as never, run as never);
 
-  it("says so, with the reason, instead of publishing grey in silence", () => {
-    const list = notices({
-      depth: { kind: "failed", reason: "no ExecutionProvider bound for depth-accurate" },
-    });
-    expect(list).toHaveLength(1);
-    expect(list[0]!.tone).toBe("error");
-    // T965: THE REASON IS THE HEADLINE. It used to be the detail, under a banner
-    // announcing that the inference did not run — which the grey picture had already
-    // said. The only line carrying information was the demoted one, so it is promoted,
-    // and this asserts the promotion rather than merely that the reason appears
-    // somewhere: a test that accepted it in either slot would go green on the copy that
-    // buried it.
-    expect(list[0]!.message).toContain("no ExecutionProvider bound for depth-accurate");
-    expect(list[0]!.message).toContain("Depth");
-    // And the detail says what is on screen instead, in a FRAGMENT — no "the document
-    // still renders" clause, which tells someone looking at a rendered document that it
-    // renders (§V852 later cut this from a sentence to three words).
-    expect(list[0]!.detail).toContain("flat grey");
-    expect(list[0]!.detail).not.toContain("still renders");
+  it("says so on the node, with the reason, instead of publishing grey in silence", () => {
+    const said = note({ kind: "failed", reason: "no ExecutionProvider bound for depth-accurate" });
+    expect(said?.tone).toBe("error");
+    // T965: THE REASON IS THE HEADLINE — the grey picture already says it did not run, so
+    // the only information is the reason, and it leads.
+    expect(said?.text).toContain("no ExecutionProvider bound for depth-accurate");
+    expect(said?.text).toContain("Depth");
   });
 
   it("distinguishes 'still computing the first one' from 'failed'", () => {
-    const list = notices({ depth: { kind: "waiting" } });
-    expect(list).toHaveLength(1);
-    expect(list[0]!.tone).toBe("info");
-    expect(list[0]!.message).toContain("computing its first result");
-    // §V852: the picture rides in the SAME sentence, and the rate no longer rides at all —
-    // it changes every frame, so it belongs on the node info popup, not in an alert.
-    expect(list[0]!.message).toContain("flat grey");
-    expect(list[0]!.detail).toBeUndefined();
+    const said = note({ kind: "waiting" });
+    expect(said?.tone).toBe("info");
+    expect(said?.text).toContain("computing its first result");
+    // §V852: the picture rides in the SAME sentence.
+    expect(said?.text).toContain("flat grey");
   });
 
   it("says NOTHING once results are landing", () => {
-    // A permanent row about a thing that is working is noise (§V537), and the rate belongs
-    // on the telemetry channel at <= 10 Hz (§V16) rather than in a strip. A healthy model
-    // is read as the absence of a row plus a picture that moves.
-    expect(notices({ depth: { kind: "running", claimsNothing: false } })).toEqual([]);
+    // A permanent line about a thing that is working is noise (§V537).
+    expect(note({ kind: "running", claimsNothing: false })).toBeNull();
+  });
+
+  it("never puts the run state in the app-wide strip (T1487b)", () => {
+    // The owner: a strip row that came and went with the camera pushed the whole layout
+    // around, and it was a fact about one node. Acquisition — a decision with a button —
+    // is the only thing the strip still carries for a model.
+    const ready = { "depth-accurate": { kind: "ready" } } as const;
+    expect(buildNotices([target] as never, ready as never, { acquire: () => undefined, cancel: () => {} })).toEqual([]);
+    const absent = { "depth-accurate": { kind: "absent" } } as const;
+    expect(buildNotices([target] as never, absent as never, { acquire: () => undefined, cancel: () => {} })).toHaveLength(1);
   });
 });
 
 /**
  * §V288 — THE FOURTH STATE, and the one that was silent.
  *
- * The rule above ("a healthy model is the absence of a row plus a picture that moves") is
+ * The rule above ("a healthy model is the absence of a line plus a picture that moves") is
  * right for depth and WRONG for a matte: a correct matte of a frame with nobody in it is
  * zero everywhere, does not move, and is pixel-for-pixel identical to no-model,
  * no-result-yet and failed-run. The owner read a working matte as broken twice in one day,
  * and nothing on screen could have told them otherwise.
  *
- * These assert the SENTENCE for the state that had none, and — the half that makes it a
- * refinement rather than a new banner — that it disappears the moment the matte claims
- * something. A row that stayed up while the feature worked would just be §V537 again.
+ * These assert the SENTENCE for the state that had none, and that it disappears the moment
+ * the matte claims something. Since T1487b the sentence is on the node, not in the strip.
  */
 describe("a matte that runs and finds nothing", () => {
   const target = {
@@ -315,33 +373,20 @@ describe("a matte that runs and finds nothing", () => {
     descriptor: { id: "modnet-photographic", label: "MODNet", bytes: 25_888_640 },
     size: [8, 8] as const,
   };
-  const notices = (health: Record<string, unknown>) =>
-    buildNotices(
-      [target] as never,
-      { "modnet-photographic": { kind: "ready" } } as never,
-      { acquire: () => undefined, cancel: () => {} },
-      health as never,
-    );
+  const note = (run: unknown) => runNote(target as never, run as never);
 
   it("says the model ran and returned nothing, rather than leaving black unexplained", () => {
-    const list = notices({ cut: { kind: "running", claimsNothing: true } });
-    expect(list).toHaveLength(1);
-    expect(list[0]!.tone).toBe("info");
+    const said = note({ kind: "running", claimsNothing: true });
+    expect(said?.tone).toBe("info");
     // The two facts the black picture cannot carry: that it RAN, and that the emptiness is
-    // the answer rather than a failure. Asserting both, because a row that only said
-    // "empty" would read as one more way of saying the thing is broken.
-    expect(list[0]!.message).toContain("ran");
-    expect(list[0]!.message).toContain("found nothing");
-    // §V852: and it points at what to do next in the same breath, with no second sentence.
-    // The measured readouts it would otherwise cite live on the node info popup and on
-    // `<name>:coverage`, which is where someone goes when this line is not enough.
-    expect(list[0]!.detail).toBeUndefined();
+    // the answer rather than a failure.
+    expect(said?.text).toContain("ran");
+    expect(said?.text).toContain("found nothing");
   });
 
   it("goes away the moment the matte claims something", () => {
-    // ⚠ The half that keeps this a refinement and not a permanent banner. If this ever
-    // fires on a working matte it is noise on the one screen that must stay readable.
-    expect(notices({ cut: { kind: "running", claimsNothing: false } })).toEqual([]);
+    // ⚠ The half that keeps this a refinement and not a permanent line.
+    expect(note({ kind: "running", claimsNothing: false })).toBeNull();
   });
 });
 

@@ -95,6 +95,14 @@ export interface NodeRuntimeSnapshot {
   inferenceMs: number | null;
   /** T1041 — worker-measured cross-origin isolation; false = single-threaded wasm. */
   inferenceIsolated: boolean | null;
+  /**
+   * T1487b — what an inference node's MODEL is doing, when the picture cannot say it: still
+   * computing its first result, could not run, or ran and found nothing. It sits on the node
+   * because it is a fact about THIS node; it used to be a row in the app-wide notice strip,
+   * where a matte flipping between "found nothing" and "found someone" mounted and unmounted
+   * the strip and shoved the whole layout up and down. `null` when there is nothing to say.
+   */
+  inferenceNote: InferenceNote | null;
   /** Highest-severity diagnostic text for this node, or null (§I.diag, §V27). */
   message: string | null;
   /** Diagnostic counts behind the node badge (§V27). */
@@ -117,6 +125,18 @@ export interface NodeRuntimeSnapshot {
   preview: NodePreviewRuntime | null;
 }
 
+/** T1487b — one line about an inference node's run state, with the tone it reads in. */
+export interface InferenceNote {
+  readonly tone: "info" | "warn" | "error";
+  readonly text: string;
+}
+
+function sameNote(a: InferenceNote | null, b: InferenceNote | null): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  return a.tone === b.tone && a.text === b.text;
+}
+
 /**
  * Shared idle value. Returned by identity so `useSyncExternalStore` sees a stable
  * snapshot for every node nobody has published anything about.
@@ -128,6 +148,7 @@ export const IDLE_RUNTIME: NodeRuntimeSnapshot = Object.freeze({
   inferenceBackend: null,
   inferenceMs: null,
   inferenceIsolated: null,
+  inferenceNote: null,
   message: null,
   errorCount: 0,
   warningCount: 0,
@@ -209,6 +230,7 @@ function sameSnapshot(a: NodeRuntimeSnapshot, b: NodeRuntimeSnapshot): boolean {
     a.inferenceBackend === b.inferenceBackend &&
     a.inferenceMs === b.inferenceMs &&
     a.inferenceIsolated === b.inferenceIsolated &&
+    sameNote(a.inferenceNote, b.inferenceNote) &&
     a.message === b.message &&
     a.errorCount === b.errorCount &&
     a.warningCount === b.warningCount &&
@@ -227,6 +249,7 @@ function isStructural(previous: NodeRuntimeSnapshot, next: NodeRuntimeSnapshot):
   return (
     previous.status !== next.status ||
     previous.message !== next.message ||
+    !sameNote(previous.inferenceNote, next.inferenceNote) ||
     previous.errorCount !== next.errorCount ||
     previous.warningCount !== next.warningCount ||
     previous.agent !== next.agent

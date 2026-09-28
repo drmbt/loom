@@ -3,7 +3,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { buildNotices } from "../../app/use-model-inference.ts";
+import { buildNotices, runNote } from "../../app/use-model-inference.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { DEFAULT_BINDINGS } from "../../editor/keymap/defaults.ts";
@@ -423,7 +423,15 @@ describe("§V852 — model notices fit in one sentence", () => {
   it("says everything it has to say in one sentence, in every state", () => {
     let measured = 0;
     for (const [name, states, health] of cases) {
-      const notices = buildNotices(targets as never, states as never, acquisition, health as never);
+      const notices: { id: string; message: string; detail?: string | undefined }[] = [
+        ...buildNotices(targets as never, states as never, acquisition),
+      ];
+      // T1487b: the run half is a line on the node now, and the same one-sentence budget
+      // holds there — a node's box is smaller than the strip ever was.
+      for (const target of targets) {
+        const note = runNote(target as never, (health as Record<string, never>)[target.nodeId]);
+        if (note !== null) notices.push({ id: `node-note-${target.nodeId}`, message: note.text });
+      }
       for (const notice of notices) {
         measured += 1;
         const where = `${name}: ${notice.id}`;
