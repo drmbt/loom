@@ -326,7 +326,7 @@
   },
   "name": "E4 Bloom",
   "projectId": "example-bloom",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

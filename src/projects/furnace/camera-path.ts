@@ -200,10 +200,10 @@ function discover(facts: FurnaceSceneFacts): Pose[] {
 
 /** Drone moves for the discovered framings, in turn: a push with a bank, a rising reveal, an orbit, a banking drift. */
 const DISCOVERED_MOVES: ReadonlyArray<Omit<Move, "pose" | "name">> = [
-  { dolly: 9, roll: 22, ease: "smooth" },
-  { crane: 5, dolly: 3, roll: -12, ease: "whip" },
-  { orbit: 0.7, roll: 8, ease: "creep" },
-  { truck: 7, dolly: 4, roll: -25, ease: "smooth" },
+  { dolly: 9, roll: -22, ease: "smooth" },
+  { crane: 5, dolly: 3, roll: 12, ease: "whip" },
+  { orbit: 0.7, roll: -8, ease: "creep" },
+  { truck: 7, dolly: 4, roll: 25, ease: "smooth" },
 ];
 
 /**
@@ -241,14 +241,14 @@ export const CUT: readonly Move[] = [
   { shot: "shot.caster_strand", dolly: 6.0, truck: -1.5 },
   { shot: "shot.pipe_corridor", dolly: 9.0, ease: "creep" },
   // A DRONE dropping out of the roof over the scrap bay toward the charging floor.
-  { name: "drone_descend", pose: seek("emit.scrap_bucket_drop", [0, -6, 0], 60, [[-14, 12, 10], [-14, 12, -10], [-18, 10, 0], [-10, 14, 12]], false, 12), foreground: 12, crane: -7, dolly: 6, roll: 14, ease: "smooth" },
+  { name: "drone_descend", pose: seek("emit.scrap_bucket_drop", [0, -6, 0], 60, [[-14, 12, 10], [-14, 12, -10], [-18, 10, 0], [-10, 14, 12]], false, 12), foreground: 12, crane: -7, dolly: 6, roll: -14, ease: "smooth" },
   // Across the caster from its far side, trucking along the strands.
   { name: "caster_across", pose: seek("caster_strand", [0, 0, 0], 50, [[0, 8, -20], [-8, 8, -19], [8, 7, -19], [0, 9, 9], [-18, 6, -10], [-20, 9, 0]], true, 12), foreground: 12, dolly: 4, ease: "creep" },
   // A BARREL ROLL down the melt bay: flying the length of the hall at gantry height, the
   // whole plant turning over once around the lens.
-  { name: "barrel_fly", pose: () => toward([-30, 15, -9], [30, 11, -7], 62), dolly: 30, roll: 360, ease: "smooth" },
+  { name: "barrel_fly", pose: () => toward([-30, 15, -9], [30, 11, -7], 62), dolly: 30, roll: -360, ease: "smooth" },
   // Over the furnace like a drone: rising off the charging side, banking as it crosses.
-  { name: "furnace_flyover", pose: seek("furnace_shell", [0, -1, 0], 55, [[-24, 8, 12], [-24, 8, -12], [24, 8, 12], [0, 9, 26], [-26, 10, 0]]), dolly: 16, crane: 3, roll: 35, ease: "creep" },
+  { name: "furnace_flyover", pose: seek("furnace_shell", [0, -1, 0], 55, [[-24, 8, 12], [-24, 8, -12], [24, 8, 12], [0, 9, 26], [-26, 10, 0]]), dolly: 16, crane: 3, roll: -35, ease: "creep" },
   // Wide and slow.
   { shot: "shot.establish_wide", truck: 10.0, dolly: 3.0 },
   { shot: "shot.scrap_bay", orbit: 0.45 },
@@ -262,7 +262,7 @@ export const CUT: readonly Move[] = [
   // columns stacking, the furnace small in the middle distance, the roof lost in smoke.
   { name: "hall_length", pose: seek("furnace_shell", [0, -3, 0], 24, [[-55, -7, -8], [-50, -6, 8], [55, -7, -6], [50, -6, 8], [-40, -5, -10], [40, -5, 10]], false, 12), foreground: 12, dolly: 5, push: -3, ease: "creep" },
   // A slow flight down the hall from the scrap-bay end toward the furnace, the cranes passing.
-  { name: "hall_flythrough", pose: seek("furnace_shell", [0, 2, 0], 58, [[-50, 8, 6], [-50, 8, -6], [50, 8, 6], [50, 8, -6], [-38, 10, 0], [38, 10, 0], [-30, 12, 10]], false, 12), foreground: 12, dolly: 30, roll: -18, ease: "creep" },
+  { name: "hall_flythrough", pose: seek("furnace_shell", [0, 2, 0], 58, [[-50, 8, 6], [-50, 8, -6], [50, 8, 6], [50, 8, -6], [-38, 10, 0], [38, 10, 0], [-30, 12, 10]], false, 12), foreground: 12, dolly: 30, roll: 18, ease: "creep" },
 ];
 
 /** How many CUT entries, from the start, are HOT (the process itself); they open the close pool. */

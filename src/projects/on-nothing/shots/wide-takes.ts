@@ -237,7 +237,7 @@ export const WIDE_TAKES: readonly WideTake[] = [
     // f1289 and f1296. The clock: seconds from 0:53.428.
     name: "locked",
     rows: [54],
-    camera: { eye: [-0.45, 0.97, 7.79], aim: [-0.18, 1.18, 1.8], fov: 28.2, hand: { tiltIn: -2, tilt: -2, settle: 1, shake: 0.15 } },
+    camera: { eye: [-0.45, 0.97, 7.79], aim: [-0.18, 1.18, 1.8], fov: 28.2, hand: { tiltIn: 2, tilt: 2, settle: 1, shake: 0.15 } },
     figure: { area: "figbare", at: [1.1, 1.93], facing: -15, performance: signs, groove: NOD },
     strobe: `(1 + ${[1286, 1289, 1296].map((f) => `(abstime >= ${((f - 1281) / REF_FPS - 0.002).toFixed(4)}) * (abstime < ${((f - 1280) / REF_FPS - 0.002).toFixed(4)}) * 0.6`).join(" + ")})`,
     key: { position: [0.6, 1.3, 11.5], intensity: 16 },
@@ -254,7 +254,7 @@ export const WIDE_TAKES: readonly WideTake[] = [
     name: "strobe",
     rows: [10, 11],
     cars: { 3: { place: [-1.3, 0] }, 4: { place: [-1.16, 0] } },
-    camera: { eye: [0.49, 1.48, 6.03], aim: [-0.11, 1.08, 0.08], fov: 36.3, hand: { tiltIn: -0.9, tilt: -0.9, settle: 1, shake: 0.12 } },
+    camera: { eye: [0.49, 1.48, 6.03], aim: [-0.11, 1.08, 0.08], fov: 36.3, hand: { tiltIn: 0.9, tilt: 0.9, settle: 1, shake: 0.12 } },
     figure: {
       area: "figbare",
       at: [0.03, 1.48],
@@ -281,7 +281,7 @@ export const WIDE_TAKES: readonly WideTake[] = [
     name: "lunge",
     rows: [19],
     cars: { 3: { place: [-1.5, 0] }, 4: { place: [1.0, 0] } },
-    camera: { eye: [0.2, 0.45, 4.3], aim: [0.02, 1.05, 0], fov: 42, hand: { tiltIn: 2.5, tilt: 0.4, settle: 2.5, shake: 0.45 }, move: [0.03, 0.01, -0.3], aimMove: [0.03, 0.17, 0] },
+    camera: { eye: [0.2, 0.45, 4.3], aim: [0.02, 1.05, 0], fov: 42, hand: { tiltIn: -2.5, tilt: -0.4, settle: 2.5, shake: 0.45 }, move: [0.03, 0.01, -0.3], aimMove: [0.03, 0.17, 0] },
     figure: { area: "fig", at: [0.12, 1.3], facing: 15, performance: lowDance, groove: NOD },
     // well off to the side: on the lens axis the figure threw its shadow over the hero's grille
     key: { position: [4.5, 1.6, 5.0], intensity: 15 },
@@ -295,7 +295,7 @@ export const WIDE_TAKES: readonly WideTake[] = [
     name: "squat",
     rows: [13],
     cars: { 1: { place: [-0.6, -0.6], turn: 0.45 }, 2: { place: [0.6, -0.9], turn: -0.45 }, 3: { place: [-0.9, 0] }, 4: { place: [-0.6, 0] } },
-    camera: { eye: [0.08, 1.5, 2.35], aim: [0.0, 1.35, -1.5], fov: 40, hand: { tiltIn: -1.5, tilt: -0.8, settle: 0.6, shake: 0.4 }, move: [0, -0.1, -0.12], aimMove: [0, -0.22, 0] },
+    camera: { eye: [0.08, 1.5, 2.35], aim: [0.0, 1.35, -1.5], fov: 40, hand: { tiltIn: 1.5, tilt: 0.8, settle: 0.6, shake: 0.4 }, move: [0, -0.1, -0.12], aimMove: [0, -0.22, 0] },
     figure: { area: "fig", at: [0.05, 1.05], facing: 0, performance: squat, groove: NOD, lift: [[t13(252), 0], [t13(262), -0.36]] },
     strobe: `max(0.05, 1 - (abstime >= ${(t13(247) - 0.002).toFixed(4)}) * (abstime < ${(t13(251) - 0.002).toFixed(4)}))`,
     key: { position: [1.6, 2.0, 6.5], intensity: 17 },
@@ -309,7 +309,7 @@ export const WIDE_TAKES: readonly WideTake[] = [
     name: "gap",
     rows: [34],
     cars: { 0: "hide", 1: { place: [1.46, 1.45], turn: Math.PI }, 2: { place: [-1.4, 2.18], turn: Math.PI }, 3: { place: [0, -4] }, 4: { place: [-1.5, -4] } },
-    camera: { eye: [0.0, 1.15, 1.9], aim: [0.02, 1.45, -3], fov: 44, hand: { tiltIn: 1.2, tilt: 0.5, settle: 2, shake: 0.35 }, move: [0, 0, -0.06] },
+    camera: { eye: [0.0, 1.15, 1.9], aim: [0.02, 1.45, -3], fov: 44, hand: { tiltIn: -1.2, tilt: -0.5, settle: 2, shake: 0.35 }, move: [0, 0, -0.06] },
     figure: { area: "fig", at: [0.0, 0.15], facing: 0, performance: gapStand, groove: NOD },
     // a fast wide lens held on the figure: the flanks a metre off melt into soft white
     aperture: 1.6,
@@ -326,7 +326,7 @@ export const WIDE_TAKES: readonly WideTake[] = [
     name: "row",
     rows: [37],
     cars: { 3: { place: [-0.81, 0] }, 4: { place: [1.27, 0] } },
-    camera: { eye: [-0.26, 0.66, 5.31], aim: [-0.15, 0.99, -0.68], fov: 40, hand: { tiltIn: -0.8, tilt: -0.8, settle: 1, shake: 0.2 } },
+    camera: { eye: [-0.26, 0.66, 5.31], aim: [-0.15, 0.99, -0.68], fov: 40, hand: { tiltIn: 0.8, tilt: 0.8, settle: 1, shake: 0.2 } },
     figure: { area: "figbare", at: [0.35, 1.1], facing: 70, performance: stepDance, groove: NOD },
     strobe: flicker37(),
     // the reference reads bright here (the car band ~95 of 255): a strong low key, the grade opened
@@ -343,7 +343,7 @@ export const WIDE_TAKES: readonly WideTake[] = [
     rows: [38],
     // the left car turned nearly side-on (its flank and lamp toward the gap, as in the reference)
     cars: { 0: "hide", 1: { place: [0.13, 3.98], turn: 1.25 }, 2: { place: [-0.9, 2.58], turn: -0.6 }, 3: { place: [0, -3] }, 4: { place: [-1.5, -3] } },
-    camera: { eye: [0.0, 1.1, 3.85], aim: [0.05, 1.3, 0], fov: 46, hand: { tiltIn: -2, tilt: -1.2, settle: 0.5, shake: 0.4 } },
+    camera: { eye: [0.0, 1.1, 3.85], aim: [0.05, 1.3, 0], fov: 46, hand: { tiltIn: 2, tilt: 1.2, settle: 0.5, shake: 0.4 } },
     figure: { area: "fig", at: [0.05, 1.6], facing: -8, performance: capTouch, groove: NOD },
     key: { position: [0.8, 1.8, 7.5], intensity: 14 },
     reach: 0.18,
@@ -355,7 +355,7 @@ export const WIDE_TAKES: readonly WideTake[] = [
     name: "gap-hero",
     rows: [40],
     cars: { 0: { place: [-2.0, 2.6], turn: 0.55 }, 1: { place: [-1.0, -3.0] }, 2: { place: [-0.75, 0.6], turn: -0.3 }, 3: { place: [0.6, -2] }, 4: { place: [0.2, -2] } },
-    camera: { eye: [0.25, 1.0, 4.4], aim: [0.4, 1.3, -2], fov: 44, hand: { tiltIn: 1.5, tilt: 0.8, settle: 0.5, shake: 0.45 } },
+    camera: { eye: [0.25, 1.0, 4.4], aim: [0.4, 1.3, -2], fov: 44, hand: { tiltIn: -1.5, tilt: -0.8, settle: 0.5, shake: 0.45 } },
     figure: { area: "fig", at: [0.4, 0.9], facing: -5, performance: capTouch, groove: NOD },
     key: { position: [1.5, 1.8, 7.0], intensity: 14 },
     reach: 0.2,
@@ -367,7 +367,7 @@ export const WIDE_TAKES: readonly WideTake[] = [
     name: "behind",
     rows: [43],
     cars: { 1: { place: [-0.4, 0.6], turn: 0.6 }, 2: { place: [0.5, 0.5], turn: -0.5 } },
-    camera: { eye: [0.35, 1.5, 3.9], aim: [-0.05, 0.8, 0], fov: 50, hand: { tiltIn: 2, tilt: 1, settle: 0.4, shake: 0.7 } },
+    camera: { eye: [0.35, 1.5, 3.9], aim: [-0.05, 0.8, 0], fov: 50, hand: { tiltIn: -2, tilt: -1, settle: 0.4, shake: 0.7 } },
     figure: { area: "fig", at: [0.75, 1.95], facing: 185, performance: armSwing },
     // off to the left of the lens, so the figure's shadow misses the hero's grille
     key: { position: [-1.8, 1.2, 5.0], intensity: 26 },
@@ -380,7 +380,7 @@ export const WIDE_TAKES: readonly WideTake[] = [
     name: "blown-close",
     rows: [52],
     cars: { 3: { place: [-1.3, 0] }, 4: { place: [-1.16, 0] } },
-    camera: { eye: [0.2, 1.3, 3.25], aim: [0.0, 1.25, 0], fov: 38, hand: { tiltIn: 2.5, tilt: 1.5, settle: 0.3, shake: 1.2 }, move: [0.3, 0, 0] },
+    camera: { eye: [0.2, 1.3, 3.25], aim: [0.0, 1.25, 0], fov: 38, hand: { tiltIn: -2.5, tilt: -1.5, settle: 0.3, shake: 1.2 }, move: [0.3, 0, 0] },
     figure: { area: "figbare", at: [0.05, 1.8], facing: 12, performance: waistband, groove: NOD },
     key: { position: [0.6, 1.6, 6.0], intensity: 30 },
     fill: { position: [0.8, 2.0, 3.0], intensity: 8 },
@@ -405,7 +405,7 @@ export const WIDE_TAKES: readonly WideTake[] = [
     rows: [56],
     cars: { 3: { place: [-1.3, 0] }, 4: { place: [-1.16, 0] } },
     // at the hero's front-left corner, shin height, looking across its bumper to the legs beyond
-    camera: { eye: [-2.2, 0.3, 2.2], aim: [0.35, 0.42, 0.6], fov: 34, hand: { tiltIn: -3, tilt: -1.5, settle: 0.3, shake: 0.25 } },
+    camera: { eye: [-2.2, 0.3, 2.2], aim: [0.35, 0.42, 0.6], fov: 34, hand: { tiltIn: 3, tilt: 1.5, settle: 0.3, shake: 0.25 } },
     figure: { area: "fig", at: [-0.45, 1.3], facing: 90, walk: { ...NORMAL_WALK, rate: 0.6 } },
     key: { position: [-3.5, 0.8, 3.0], intensity: 22 },
     // a low soft wash on the legs and the floor round them (the reference's floor reads lit)

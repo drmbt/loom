@@ -656,7 +656,7 @@
   },
   "name": "E41 Cinder",
   "projectId": "example-e41-cinder",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

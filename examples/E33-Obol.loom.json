@@ -1147,7 +1147,7 @@
   },
   "name": "E33 Obol",
   "projectId": "example-e33-obol",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

@@ -64,7 +64,7 @@ export function mirrorDocument(facts: OnNothingFacts, build: Builder, options: M
     ...vectorKnobs("lookAt", [`${look[0]} + ${wobble(13, 0.004)}`, `${look[1]} + ${wobble(14, 0.004)}`, `${look[2]}`], [look[0], look[1], look[2]]),
     fov: 12,
     // the reference's frame is tilted: the face leans into the seam
-    roll: knob(`10 + abstime * 1.5 + ${wobble(15, 0.8)}`, 10),
+    roll: knob(`-10 - abstime * 1.5 + ${wobble(15, -0.8)}`, -10),
   });
   // depth of field: the ring sharp, the face behind it a heavy blur
   const cameraParams = Object.fromEntries(Object.entries(plate.node("occlusion").parameters).filter(([key]) => /^(eye|aim|fov|far|roll)(\.|$)/.test(key)));

@@ -1083,7 +1083,7 @@
   },
   "name": "E27 Relief",
   "projectId": "example-e27-relief",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

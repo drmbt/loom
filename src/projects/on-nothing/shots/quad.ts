@@ -350,7 +350,7 @@ export function quadDocument(facts: OnNothingFacts, options: QuadOptions): Proje
     "lookAt.x": expressionSlot(`${aim[0]} + ${handX}`, aim[0]),
     "lookAt.y": expressionSlot(`${aim[1]} + ${handY}`, aim[1]),
     fov,
-    roll: expressionSlot(handheld(t, 0.12, 4, 0.7), 0),
+    roll: expressionSlot(handheld(t, -0.12, 4, 0.7), 0),
     near: 0.1,
     far: 60,
   }, { label: "cam1" });

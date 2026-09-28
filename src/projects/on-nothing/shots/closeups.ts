@@ -256,7 +256,7 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     // T1407b closeups2: the tee under the pendant (row 48) reads dark grey, not black: a broad cool fill from over the lens
     if (jewelSet?.set === "jewel") light("teeFill", [0.05, 0.6, 0.7], [0.85, 0.93, 1, 1], 3);
     // handheld macro: the rig slides right to left across the word, the horizon leaning
-    move = handheld(eye, aim, [-0.012, 0.0015, -0.002], 0.0018, { wander: 1.2, lean: -0.8, start: 1.5 });
+    move = handheld(eye, aim, [-0.012, 0.0015, -0.002], 0.0018, { wander: -1.2, lean: 0.8, start: -1.5 });
     look = {
       // 100 mm at f/2.8, focus racking from the front of the N back into the word
       lens: { focal: 100, fstop: 2.8, focus: `${num(near)} + clamp(abstime / ${CUT}, 0, 1) * 0.035`, focusAt: near, maxCoc: 0.1 },
@@ -365,7 +365,7 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     light("shoeRim", add(shoeAt, [-0.5, 0.25, -0.6]), [1, 0.6, 0.3, 1], 0.12);
     aim = add(eye, camera.forward, 4);
     // handheld 20 mm, a slow creep forward over the bonnet, the horizon rolling one way
-    move = handheld(eye, aim, [-0.02, 0.004, -0.045], 0.012, { wander: 1.6, lean: 1.1, start: -2.5 });
+    move = handheld(eye, aim, [-0.02, 0.004, -0.045], 0.012, { wander: -1.6, lean: -1.1, start: 2.5 });
     look = {
       // 20 mm wide open: the shoe crisp, the car and the figure soft, the bonnet's lip at the lens a blur
       lens: { focal: 20, fstop: 1.4, focus: "0.7", focusAt: 0.7, maxCoc: 0.03 },

@@ -2287,7 +2287,7 @@
   },
   "name": "E24 Audio Reaction-Diffusion",
   "projectId": "example-e24-audio-reaction-diffusion",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

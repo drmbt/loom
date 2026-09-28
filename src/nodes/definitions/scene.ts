@@ -108,7 +108,7 @@ export const cameraNode: NodeDefinition = {
       range: "cyclic",
       unit: "degrees",
       description:
-        "Bank around the view axis, right-handed about the direction of view: positive turns the camera clockwise as seen from behind it, so the picture turns counter-clockwise (Blender and three.js turn the other way; negate a roll taken from them). Aim stays Look At's job — eye, Look At and Roll together are the full orientation (T706), so drive this to tilt the horizon without moving the shot. The preview gizmo (T692) leaves Roll alone on purpose: banking is a framing decision you set and hold, not a navigation gesture, so it stays a number here rather than a drag.",
+        "Bank around the view axis, right-handed as in Blender and three.js: positive turns the camera counter-clockwise as seen from behind it, so the picture turns clockwise. Aim stays Look At's job — eye, Look At and Roll together are the full orientation (T706), so drive this to tilt the horizon without moving the shot. The preview gizmo (T692) leaves Roll alone on purpose: banking is a framing decision you set and hold, not a navigation gesture, so it stays a number here rather than a drag.",
     },
     ortho: { type: "boolean", label: "Orthographic", default: false },
     orthoHeight: {
@@ -198,7 +198,7 @@ export const projectorNode: NodeDefinition = {
       range: "cyclic",
       unit: "degrees",
       description:
-        "Bank around the throw axis — a projector mounted sideways is a rolled projector. Positive turns the projector clockwise as seen from behind it, as the Camera's Roll does.",
+        "Bank around the throw axis — a projector mounted sideways is a rolled projector. Positive turns the projector counter-clockwise as seen from behind it, as the Camera's Roll does.",
     },
     throwRatio: {
       type: "number",

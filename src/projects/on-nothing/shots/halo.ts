@@ -186,7 +186,7 @@ export function haloDocument(facts: OnNothingFacts, options: ShotOptions, build:
     "lookAt.y": expressionSlot(`${aim[1]} + ${wob(1.1, 2.9, 0.7)} * 0.015`, aim[1]),
     "lookAt.z": expressionSlot(`${aim[2]}`, aim[2]),
     // the operator's horizon: a slow turn one way through the cut, plus a breath
-    roll: expressionSlot(`-1.5 + abstime * 1.8 + ${wob(1.9, 4.7, 0.2)} * 0.3`, 0),
+    roll: expressionSlot(`1.5 - abstime * 1.8 - ${wob(1.9, 4.7, 0.2)} * 0.3`, 0),
   });
 
   // ── Depth of field: focus on the neck; the thrown hand near the lens goes very soft ──

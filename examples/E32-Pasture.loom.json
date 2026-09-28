@@ -2588,7 +2588,7 @@
   },
   "name": "E32 Pasture",
   "projectId": "example-e32-pasture",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

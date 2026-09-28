@@ -798,7 +798,7 @@
   },
   "name": "E53 Two Cuts",
   "projectId": "example-e53-two-cuts",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

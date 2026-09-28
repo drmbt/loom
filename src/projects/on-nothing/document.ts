@@ -465,7 +465,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   })();
   const SNAP = "(clamp((abstime - 1.4) / 0.16, 0, 1) ^ 2 * (3 - 2 * clamp((abstime - 1.4) / 0.16, 0, 1)))";
   /** The tableau's operator; the zoom CONTINUES it (its clock picks up where the tableau's 5 s ended). */
-  const TABLEAU_HANDHELD = { tiltIn: -2.6, tilt: -0.9, settle: 1.5, shake: 1, creep: 0.12 } as const;
+  const TABLEAU_HANDHELD = { tiltIn: 2.6, tilt: 0.9, settle: 1.5, shake: 1, creep: 0.12 } as const;
   const TABLEAU_SECONDS = 5;
   const wideFov = camera.fovDeg;
   /**
@@ -500,7 +500,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
             : base === "wheel"
               // no rigged car in this GLB (the wheel rig lands with the wheel shot's own work):
               // at least the operator tracks along the parked car instead of a dead frame
-              ? handheld(eye, aim, { tiltIn: 4, tilt: 2, settle: 1, shake: 1.3, creep: 0 })
+              ? handheld(eye, aim, { tiltIn: -4, tilt: -2, settle: 1, shake: 1.3, creep: 0 })
               : {};
   nodes.push(node("cam", "camera", [-2700, -900], { eye: vec(eye), lookAt: aim, fov: camera.fovDeg, near: 0.05, far: 200, ...cameraMove }, { label: "cam1" }));
   nodes.push(node("shot", "render", [-2400, 0], {

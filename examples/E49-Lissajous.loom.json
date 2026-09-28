@@ -274,7 +274,7 @@
   },
   "name": "E49 Lissajous",
   "projectId": "example-e49-lissajous",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

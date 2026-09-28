@@ -1311,7 +1311,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "sin(abstime * 0.006) * 3"
+                "source": "sin(abstime * 0.006) * -3"
               },
               "static": {
                 "kind": "static",
@@ -3294,7 +3294,7 @@
   },
   "name": "E79 Crucible",
   "projectId": "example-crucible",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

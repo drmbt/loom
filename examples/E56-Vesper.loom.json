@@ -383,7 +383,7 @@
   },
   "name": "E56 Vesper",
   "projectId": "example-e56-vesper",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

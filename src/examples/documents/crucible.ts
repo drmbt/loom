@@ -136,7 +136,7 @@ function crucibleDocumentBuild(): ProjectDocument {
       eye: [...CAMERA.eye], lookAt: [...CAMERA.lookAt], fov: CAMERA.fov, near: 0.1, far: 100,
       "eye.x": expressionSlot(EYE_X, 0), "eye.y": expressionSlot(EYE_Y, 1), "eye.z": expressionSlot(EYE_Z, 25.5),
       "lookAt.x": expressionSlot(AIM_X, 0), "lookAt.y": expressionSlot(AIM_Y, 0.2),
-      roll: expressionSlot("sin(abstime * 0.006) * 3", 0),
+      roll: expressionSlot("sin(abstime * 0.006) * -3", 0),
     }, { label: "cam1" }),
     node("hullPaint", "materialPbr", [-2200, -700], { color: [0.8, 0.82, 0.88, 1], metallic: 0.55, roughness: 0.5 }, { label: "hullpaint1" }),
     node("seamGlow", "materialUnlit", [-1600, -700], { color: [1, 1, 1, 1] }, { label: "seamglow1" }),

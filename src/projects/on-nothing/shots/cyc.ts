@@ -210,7 +210,7 @@ function plan(shot: CycShot, bones: readonly Bone[]): CycPlan {
           lookAt: [at[0] + 0.12, 0.22, at[2]],
           fov: 15,
           follow: "walker",
-          handheld: { position: 0.004, aim: 0.008, roll: 0.005, seed: 1 },
+          handheld: { position: 0.004, aim: 0.008, roll: -0.005, seed: 1 },
         },
         key: { direction: [-0.55, -0.5, -0.67], intensity: 4.6, radius: 0.06 },
         fill: 0.8,
@@ -234,7 +234,7 @@ function plan(shot: CycShot, bones: readonly Bone[]): CycPlan {
           fov: 25,
           // Measured off the far man's shoes: the frame eases right ~50 px/s and down ~20 px/s.
           pan: [0.15, -0.05, 0],
-          handheld: { position: 0.006, aim: 0.012, roll: 0.006, seed: 2 },
+          handheld: { position: 0.006, aim: 0.012, roll: -0.006, seed: 2 },
         },
         key: { direction: [-0.62, -0.1, -0.78], intensity: 1.1, radius: 0.05 },
         fill: 0.9,

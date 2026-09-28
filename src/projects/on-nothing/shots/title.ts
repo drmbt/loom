@@ -110,7 +110,7 @@ const BAY_HAZE = 0.6;
  * reference's roll runs -0.5° to +1°; the owner asked for a visible tilt settling), with a
  * light shake — the camera is a metre from the grille, where the tableau's 1.0 would swing it.
  */
-const OPERATOR = { tiltIn: -2.8, tilt: 0.8, settle: 1.0, shake: 0.22, creep: 0.02 } as const;
+const OPERATOR = { tiltIn: 2.8, tilt: -0.8, settle: 1.0, shake: 0.22, creep: 0.02 } as const;
 
 interface Path {
   readonly eye: readonly [string, string, string];
@@ -134,7 +134,7 @@ function titlePath(t: string): Path {
     `${whipEye[1]} + sin(${pitch})`,
     `${whipEye[2]} - cos(${heading}) * cos(${pitch})`,
   ];
-  const whipRoll = `(${psi} * 22)`;
+  const whipRoll = `(${psi} * -22)`;
 
   // ── The title (frame 9 on), τ from frame 9.
   const tau = `(${t} - ${LAND.toFixed(6)})`;
@@ -551,7 +551,7 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
     threshold: 0.75,
     knee: 0.25,
     length: 0.55,
-    angle: slot(`-(${path.roll})`, 0),
+    angle: slot(`(${path.roll})`, 0),
     falloff: 1.4,
     spread: 0.006,
     tail: 0.05,

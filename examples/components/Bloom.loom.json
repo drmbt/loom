@@ -484,7 +484,7 @@
   },
   "name": "Bloom",
   "projectId": "component-bloom",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

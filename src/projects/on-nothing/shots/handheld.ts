@@ -25,7 +25,7 @@ export interface HandheldOptions {
 }
 
 export function handheld(eye: readonly [number, number, number], aim: readonly [number, number, number], options: HandheldOptions = {}): Record<string, StoredParameter> {
-  const { tiltIn = -3.5, tilt = -1.2, settle = 1.2, shake = 1, creep = 0.12, timeOffset = 0 } = options;
+  const { tiltIn = 3.5, tilt = 1.2, settle = 1.2, shake = 1, creep = 0.12, timeOffset = 0 } = options;
   const t = timeOffset === 0 ? "abstime" : `(abstime + ${timeOffset})`;
   const wob = (a: number, b: number, c: number, phase: number) =>
     `(sin(${t} * ${a} + ${phase}) * 0.5 + sin(${t} * ${b} + ${phase * 1.7}) * 0.3 + sin(${t} * ${c} + ${phase * 2.3}) * 0.2)`;
@@ -42,6 +42,6 @@ export function handheld(eye: readonly [number, number, number], aim: readonly [
     "lookAt.x": expressionSlot(`${aim[0]} + ${wob(0.7, 1.9, 4.3, 2.0)} * ${0.07 * shake}`, aim[0]),
     "lookAt.y": expressionSlot(`${aim[1]} + ${wob(0.8, 2.1, 4.9, 2.7)} * ${0.04 * shake}`, aim[1]),
     "lookAt.z": expressionSlot(`${aim[2]}`, aim[2]),
-    roll: expressionSlot(`${tiltIn} + (${tilt} - ${tiltIn}) * ${ease} + ${wob(0.5, 1.4, 3.3, 0.9)} * ${1.4 * shake}`, tilt),
+    roll: expressionSlot(`${tiltIn} + (${tilt} - ${tiltIn}) * ${ease} - ${wob(0.5, 1.4, 3.3, 0.9)} * ${1.4 * shake}`, tilt),
   };
 }

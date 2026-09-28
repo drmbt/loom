@@ -1,6 +1,9 @@
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import { SCHEMA_VERSION } from "../types/schemas.ts";
 import type { AppliedMigration, DocumentMigration, RawDocument } from "./types.ts";
+import { channelExpression } from "../parameters/slots.ts";
+import { parseComponentNodeType } from "../components/component-type.ts";
+import { COMPONENT_OVERRIDES_STATE_KEY } from "../components/instance.ts";
 
 /**
  * The document-level migration ladder (T43, §V10).
@@ -256,10 +259,139 @@ function declareChannelSources(component: RawRecord): void {
   }
 }
 
+/**
+ * 4 → 5 (§T1433b): camera ROLL turns right-handed, as in Blender and three.js.
+ *
+ * Before schema 5 a positive roll turned the camera clockwise as seen from behind it; the
+ * owner ruled for the convention every DCC tool uses, where it turns counter-clockwise. The
+ * engine flipped, so every stored roll is NEGATED here and a saved document frames exactly
+ * what it framed before. The nodes that carry a roll: Camera, Projector (their shared rolled
+ * up-vector) and CRT Tube (its macro camera follows the Camera's sign).
+ *
+ * What "negated" means for each way a roll can be stored:
+ *  - a number: its negative (0 stays 0);
+ *  - a slot's static binding: its negative; an EXPRESSION binding is WRAPPED, `-(expr)`
+ *    (an expression cannot be negated by value, and the wrap is exact — IEEE negation);
+ *  - a retired `driven` binding becomes the negated channel read, `-(op('x').chan.y)` —
+ *    exactly what the §T897 load upgrade would have written, negated;
+ *  - a `bind` binding is LEFT: it names another parameter, which is not a roll, and there is
+ *    nothing to negate without changing what it points at. (No shipped document binds a roll.)
+ * Every expression anywhere in the same graph that READS such a node's roll by reference,
+ * `op('cam1').par.roll`, is wrapped `(-op('cam1').par.roll)`, so a streak turned with the
+ * camera keeps turning the way it did. The same rewrite runs over every embedded component's
+ * graph; a published parameter whose every target is such a roll has its default negated, and
+ * so does every instance's value for it and every instance override of an internal roll.
+ */
+const ROLL_NODE_TYPES: ReadonlySet<string> = new Set(["camera", "projector", "crtTube"]);
+
+function negateRollValue(value: unknown): unknown {
+  if (typeof value === "number") return value === 0 ? 0 : -value;
+  const slot = recordOf(value);
+  const bindings = recordOf(slot?.["bindings"]);
+  if (slot === undefined || bindings === undefined) return value;
+  const statics = recordOf(bindings["static"]);
+  if (statics !== undefined && typeof statics["value"] === "number") statics["value"] = statics["value"] === 0 ? 0 : -statics["value"];
+  const expression = recordOf(bindings["expression"]);
+  if (expression !== undefined && typeof expression["source"] === "string") expression["source"] = `-(${expression["source"]})`;
+  const driven = recordOf(bindings["driven"]);
+  if (driven !== undefined && typeof driven["channel"] === "string") {
+    const read = `-(${channelExpression(driven["channel"])})`;
+    delete bindings["driven"];
+    if (slot["mode"] === "driven") {
+      bindings["expression"] = { kind: "expression", source: read };
+      slot["mode"] = "expression";
+    } else if (expression === undefined) {
+      bindings["expression"] = { kind: "expression", source: read };
+    }
+  }
+  return value;
+}
+
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Negates the rolls of one graph's roll-carrying nodes; returns their ids. */
+function negateGraphRolls(graphValue: unknown): Set<string> {
+  const graph = recordOf(graphValue);
+  const nodes = recordOf(graph?.["nodes"]) as Record<string, RawRecord> | undefined;
+  const rolled = new Set<string>();
+  if (nodes === undefined) return rolled;
+  const names: string[] = [];
+  for (const [id, node] of Object.entries(nodes)) {
+    if (!ROLL_NODE_TYPES.has(String(node["type"]))) continue;
+    rolled.add(id);
+    const parameters = recordOf(node["parameters"]);
+    if (parameters !== undefined && "roll" in parameters) parameters["roll"] = negateRollValue(parameters["roll"]);
+    if (typeof node["label"] === "string" && node["label"].trim() !== "") names.push(node["label"].trim());
+  }
+  if (names.length === 0) return rolled;
+  // Every reader of those rolls, by reference: `op('name').par.roll` → `(-op('name').par.roll)`.
+  const reader = new RegExp(`op\\((['"])(${names.map(escapeRegExp).join("|")})\\1\\)\\.par\\.roll\\b`, "g");
+  for (const node of Object.values(nodes)) {
+    const parameters = recordOf(node["parameters"]);
+    if (parameters === undefined) continue;
+    for (const stored of Object.values(parameters)) {
+      const expression = recordOf(recordOf(recordOf(stored)?.["bindings"])?.["expression"]);
+      if (expression === undefined || typeof expression["source"] !== "string") continue;
+      expression["source"] = expression["source"].replace(reader, (match) => `(-${match})`);
+    }
+  }
+  return rolled;
+}
+
+const rollTurnsRightHanded: DocumentMigration = {
+  from: 4,
+  to: 5,
+  description: "Camera roll turns right-handed (as in Blender and three.js): every stored roll is negated, so each shot frames as it did.",
+  migrate(document) {
+    const library = recordOf(document["componentLibrary"]);
+    const components = Array.isArray(library?.["components"]) ? (library["components"] as unknown[]).map(recordOf) : [];
+    // Per component: which published parameters are wholly rolls, and which internal nodes roll.
+    const rolledParameters = new Map<string, Set<string>>();
+    const rolledInternals = new Map<string, Set<string>>();
+    for (const component of components) {
+      if (component === undefined) continue;
+      const id = String(component["componentId"]);
+      const internal = negateGraphRolls(component["graph"]);
+      rolledInternals.set(id, internal);
+      const published = new Set<string>();
+      for (const parameter of Array.isArray(component["parameters"]) ? component["parameters"].map(recordOf) : []) {
+        const targets = Array.isArray(parameter?.["targets"]) ? (parameter["targets"] as unknown[]).map(recordOf) : [];
+        if (parameter === undefined || targets.length === 0) continue;
+        if (!targets.every((target) => target?.["key"] === "roll" && internal.has(String(target["nodeId"])))) continue;
+        published.add(String(parameter["key"]));
+        const definition = recordOf(parameter["definition"]);
+        if (definition !== undefined && typeof definition["default"] === "number") definition["default"] = negateRollValue(definition["default"]);
+      }
+      rolledParameters.set(id, published);
+    }
+    const instancesIn = (graphValue: unknown): void => {
+      const nodes = recordOf(recordOf(graphValue)?.["nodes"]) as Record<string, RawRecord> | undefined;
+      for (const node of Object.values(nodes ?? {})) {
+        const ref = parseComponentNodeType(String(node["type"]));
+        if (ref === null) continue;
+        const parameters = recordOf(node["parameters"]);
+        for (const key of rolledParameters.get(ref.componentId) ?? []) {
+          if (parameters !== undefined && key in parameters) parameters[key] = negateRollValue(parameters[key]);
+        }
+        const overrides = recordOf(recordOf(node["state"])?.[COMPONENT_OVERRIDES_STATE_KEY]);
+        for (const internalId of rolledInternals.get(ref.componentId) ?? []) {
+          const path = `${internalId}/roll`;
+          if (overrides !== undefined && path in overrides) overrides[path] = negateRollValue(overrides[path]);
+        }
+      }
+    };
+    negateGraphRolls(document["graph"]);
+    instancesIn(document["graph"]);
+    for (const component of components) instancesIn(component?.["graph"]);
+    return document;
+  },
+};
+
 export const DOCUMENT_MIGRATIONS: readonly DocumentMigration[] = [
   previewPinBecomesSwitch,
   feedbackLoopBecomesReference,
   channelEdgeBecomesSelect,
+  rollTurnsRightHanded,
 ];
 
 export interface MigrateDocumentOptions {

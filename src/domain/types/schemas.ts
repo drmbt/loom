@@ -9,7 +9,7 @@ import type { ParameterMode } from "./parameters.ts";
  * Live in-memory types stay in the .ts contract; this guards what crosses in.
  */
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 const vec2 = z.object({ x: z.number(), y: z.number() });
 

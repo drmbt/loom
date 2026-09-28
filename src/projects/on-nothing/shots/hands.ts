@@ -490,7 +490,7 @@ function takes(width: number): readonly Take[] {
       focal: 85,
       fstop: 2.4,
       focus: 1.55,
-      camera: { size: 0.006, jolt: 0.012, roll: { start: -6, lean: 4, wander: 1.5 } },
+      camera: { size: 0.006, jolt: 0.012, roll: { start: 6, lean: -4, wander: -1.5 } },
       lights: [
         { at: [-1.6, 1.5, 2.7], color: COOL, intensity: 1.8 },
         { at: [-2.9, 1.3, 2.3], color: COOL, intensity: 1.2 },
@@ -524,7 +524,7 @@ function takes(width: number): readonly Take[] {
       focal: 24,
       fstop: 2.8,
       focus: 2.0,
-      camera: { size: 0.02, jolt: 0.02, roll: { start: 0.5, lean: 0, wander: 0.6 } },
+      camera: { size: 0.02, jolt: 0.02, roll: { start: -0.5, lean: 0, wander: -0.6 } },
       lights: [
         { at: [0.6, 2.0, 5.2], color: COOL, intensity: 4 },
         { at: [-0.8, 1.4, 5.0], color: COOL, intensity: 1.5 },
@@ -562,7 +562,7 @@ function takes(width: number): readonly Take[] {
       focal: 70,
       fstop: 2,
       focus: 1.22,
-      camera: { size: 0.004, jolt: 0.008, roll: { start: -2, lean: 1, wander: 1 }, drift: [0.012, 0, 0] },
+      camera: { size: 0.004, jolt: 0.008, roll: { start: 2, lean: -1, wander: -1 }, drift: [0.012, 0, 0] },
       lights: [
         { at: [-59.2, 2.0, 1.0], color: COOL, intensity: 1.6 },
         { at: [-60.6, 1.7, -0.5], color: SODIUM, intensity: 0.5 },
@@ -604,7 +604,7 @@ function takes(width: number): readonly Take[] {
       focal: 45,
       fstop: 2.8,
       focus: 0.8,
-      camera: { size: 0.003, jolt: 0.005, roll: { start: 0, lean: 0, wander: 0.5 } },
+      camera: { size: 0.003, jolt: 0.005, roll: { start: 0, lean: 0, wander: -0.5 } },
       lights: [
         { at: [-60.0, 2.6, 0.9], color: COOL, intensity: 1.6 },
         { at: [-60.1, 2.5, -0.2], color: COOL, intensity: 0.8 },
@@ -643,7 +643,7 @@ function takes(width: number): readonly Take[] {
       focal: 28,
       fstop: 2.2,
       focus: 0.38,
-      camera: { size: 0.008, jolt: 0.015, roll: { start: -1.5, lean: 2, wander: 1.2 } },
+      camera: { size: 0.008, jolt: 0.015, roll: { start: 1.5, lean: -2, wander: -1.2 } },
       lights: [
         { at: [0.35, 1.45, 4.75], color: COOL, intensity: 0.9 },
         { at: [-0.5, 1.2, 4.6], color: COOL, intensity: 0.3 },
@@ -681,7 +681,7 @@ function takes(width: number): readonly Take[] {
       focal: 32,
       fstop: 2.4,
       focus: 0.56,
-      camera: { size: 0.006, jolt: 0.012, roll: { start: 1.5, lean: -1.5, wander: 1 } },
+      camera: { size: 0.006, jolt: 0.012, roll: { start: -1.5, lean: 1.5, wander: -1 } },
       lights: [
         { at: [0.3, 1.35, 4.45], color: COOL, intensity: 0.8 },
         { at: [-0.5, 1.0, 4.4], color: COOL, intensity: 0.25 },
@@ -726,7 +726,7 @@ function takes(width: number): readonly Take[] {
       focal: 85,
       fstop: 1.4,
       focus: 1.27,
-      camera: { size: 0.004, jolt: 0.012, roll: { start: -8, lean: -3, wander: 1.2 } },
+      camera: { size: 0.004, jolt: 0.012, roll: { start: 8, lean: 3, wander: -1.2 } },
       lights: [
         { at: [-60.6, 1.9, 1.3], color: COOL, intensity: 1.4 },
         { at: [-59.5, 2.0, -0.55], color: COOL, intensity: 0.8 },
@@ -769,7 +769,7 @@ function takes(width: number): readonly Take[] {
       // stopped down: the far lamps stay small points, so their columns stay thin
       fstop: 5.6,
       focus: 0.85,
-      camera: { size: 0.008, jolt: 0.015, roll: { start: 1, lean: -1, wander: 1 } },
+      camera: { size: 0.008, jolt: 0.015, roll: { start: -1, lean: 1, wander: -1 } },
       lights: [
         { at: [0.4, 1.5, 7.66], color: COOL, intensity: 1.2 },
         { at: [-0.5, 1.2, 7.46], color: COOL, intensity: 0.4 },
@@ -811,7 +811,7 @@ function takes(width: number): readonly Take[] {
       focal: 70,
       fstop: 2,
       focus: 1.02,
-      camera: { size: 0.006, jolt: 0.015, roll: { start: -3, lean: 2, wander: 1.4 } },
+      camera: { size: 0.006, jolt: 0.015, roll: { start: 3, lean: -2, wander: -1.4 } },
       lights: [
         { at: [-59.4, 2.1, 1.1], color: COOL, intensity: 1.2 },
         { at: [-60.4, 1.6, 0.9], color: COOL, intensity: 0.35 },
@@ -852,7 +852,7 @@ function takes(width: number): readonly Take[] {
       focal: 50,
       fstop: 1.8,
       focus: 0.8,
-      camera: { size: 0.005, jolt: 0.015, roll: { start: 2, lean: -2, wander: 1.2 } },
+      camera: { size: 0.005, jolt: 0.015, roll: { start: -2, lean: 2, wander: -1.2 } },
       lights: [
         { at: [-59.5, 2.0, 0.9], color: COOL, intensity: 0.9 },
         { at: [-60.5, 1.4, 0.8], color: COOL, intensity: 0.3 },
@@ -885,7 +885,7 @@ function takes(width: number): readonly Take[] {
       focal: 35,
       fstop: 1.8,
       focus: 0.62,
-      camera: { size: 0.005, jolt: 0.015, roll: { start: -10, lean: 6, wander: 1.5 } },
+      camera: { size: 0.005, jolt: 0.015, roll: { start: 10, lean: -6, wander: -1.5 } },
       lights: [
         { at: [-59.6, 1.9, 0.6], color: COOL, intensity: 0.8 },
         { at: [-60.5, 1.3, 0.5], color: COOL, intensity: 0.2 },
@@ -905,11 +905,11 @@ function armLayersTake(width: number): Take {
   // a layer is in from its frame: half a frame early, so the render's 1/24 s steps land on it
   const frame = (k: number): number => (k - 0.5) / 24;
   const layers = [
-    { at: 0, hand, roll: -90, u: 0.0, v: 0.4, distance: 1.7 },
-    { at: frame(6), hand, roll: 90, u: 0.4, v: -0.35, distance: 1.75 },
-    { at: frame(10), hand, roll: 90, u: -0.48, v: -0.4, distance: 1.75 },
+    { at: 0, hand, roll: 90, u: 0.0, v: 0.4, distance: 1.7 },
+    { at: frame(6), hand, roll: -90, u: 0.4, v: -0.35, distance: 1.75 },
+    { at: frame(10), hand, roll: -90, u: -0.48, v: -0.4, distance: 1.75 },
     { at: frame(14), hand, roll: 0, u: 0.22, v: 0.02, distance: 1.65 },
-    { at: frame(17), hand, roll: 180, u: -0.2, v: 0.12, distance: 1.65 },
+    { at: frame(17), hand, roll: -180, u: -0.2, v: 0.12, distance: 1.65 },
   ];
   const first = layerCamera(layers[0]!, 50);
   return {
@@ -929,7 +929,7 @@ function armLayersTake(width: number): Take {
     focal: 50,
     fstop: 4,
     focus: 1.1,
-    camera: { size: 0.004, jolt: 0.01, roll: { start: 0, lean: 0, wander: 0.8 } },
+    camera: { size: 0.004, jolt: 0.01, roll: { start: 0, lean: 0, wander: -0.8 } },
     lights: [
       { at: [-60.5, 1.9, 1.0], color: COOL, intensity: 2.2 },
       { at: [-61.1, 1.2, 0.8], color: COOL, intensity: 0.9 },
@@ -962,7 +962,7 @@ function fistsTake(width: number, row: string, dark: readonly (readonly [number,
     focal: 32,
     fstop: 2,
     focus: 0.62,
-    camera: { size: 0.01, jolt: 0.02, roll: { start: 2.5, lean: -3, wander: 1.5 } },
+    camera: { size: 0.01, jolt: 0.02, roll: { start: -2.5, lean: 3, wander: -1.5 } },
     lights: [
       { at: [0.5, 1.9, 5.4], color: COOL, intensity: 2.2 },
       { at: [-0.6, 1.2, 5.0], color: COOL, intensity: 0.8 },
@@ -994,7 +994,7 @@ function shhTake(width: number): Take {
     focal: 60,
     fstop: 2,
     focus: 0.66,
-    camera: { size: 0.004, jolt: 0.01, roll: { start: 3, lean: 0, wander: 1 } },
+    camera: { size: 0.004, jolt: 0.01, roll: { start: -3, lean: 0, wander: -1 } },
     lights: [
       { at: [-59.6, 1.9, 0.9], color: COOL, intensity: 0.7 },
       { at: [-60.5, 1.3, 0.4], color: SODIUM, intensity: 0.15 },
@@ -1052,7 +1052,7 @@ function chainWatchTake(width: number): Take {
     focal: 85,
     fstop: 1.4,
     focus: 1.3,
-    camera: { size: 0.004, jolt: 0.006, roll: { start: -4, lean: 2, wander: 1 }, drift: [0.02, -0.01, 0.03] },
+    camera: { size: 0.004, jolt: 0.006, roll: { start: 4, lean: -2, wander: -1 }, drift: [0.02, -0.01, 0.03] },
     lights: [
       // a cool key from beyond the face (the rim on the hand and the chain), a low fill for the shoulder
       { at: w([0.6, 2.1, 0.8]), color: COOL, intensity: 1.2 },
@@ -1091,9 +1091,10 @@ export interface HandsOptions {
  * (the rolled right and up are the ones the camera node builds: screen-space.ts VIEW).
  */
 function layerCamera(layer: NonNullable<Take["layers"]>[number], focal: number): { eye: V3; aim: V3 } {
+  // T1433b: right-handed roll (camera.ts guardedRolledUp): +roll turns the camera's up to its left.
   const t = (layer.roll * Math.PI) / 180;
-  const up: V3 = [Math.sin(t), Math.cos(t), 0];
-  const right: V3 = [Math.cos(t), -Math.sin(t), 0];
+  const up: V3 = [-Math.sin(t), Math.cos(t), 0];
+  const right: V3 = [Math.cos(t), Math.sin(t), 0];
   const halfW = (18 / focal) * layer.distance;
   const halfH = halfW / 2.347;
   const shift = add(add([0, 0, 0], right, -layer.u * halfW), up, -layer.v * halfH);

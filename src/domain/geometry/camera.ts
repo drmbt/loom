@@ -132,14 +132,14 @@ export function orthographic(height: number, aspect: number, near: number, far: 
  * projector's throw share it: the degenerate-pole guard swaps to [0,0,1] exactly as the
  * shadow path does, and `roll` banks the result around the view axis (Rodrigues).
  *
- * THE SIGN (T1433b), stated because it is the opposite of Blender's and three.js's: `roll` is
- * right-handed about the FORWARD (view) axis. A positive roll turns the camera CLOCKWISE as
- * seen from behind it (its up swings toward its right), so the PICTURE turns
- * COUNTER-CLOCKWISE: at +90 the world's up lands on the screen's left. A camera frame's own
- * convention (right-handed about its +z, which points back at the viewer) is the other way
- * round, so a roll taken from a DCC tool, or measured as "the camera turned counter-clockwise",
- * is negated on the way in. `camera.test.ts` pins the sign. Every WGSL copy of the rolled
- * basis in the projects (`rolledRight`) repeats it and must keep doing so.
+ * THE SIGN (T1433b, flipped by the owner's ruling with schema 5): `roll` is RIGHT-HANDED about
+ * the camera's own +z — the axis pointing back out of the lens at whoever stands behind it —
+ * as in Blender and three.js. A positive roll turns the camera COUNTER-CLOCKWISE as seen from
+ * behind it (its up swings toward its left), so the PICTURE turns CLOCKWISE: at +90 the
+ * world's up lands on the screen's right. The Rodrigues turn below is about the FORWARD axis,
+ * hence the negated angle. Documents saved before schema 5 turned the other way; the 4 → 5
+ * migration negates their stored rolls. `camera.test.ts` pins the sign. Every WGSL copy of the
+ * rolled basis in the projects (`rolledRight`) and the CRT Tube's camera repeat it.
  */
 export function guardedRolledUp(
   eye: readonly [number, number, number],
@@ -155,7 +155,8 @@ export function guardedRolledUp(
   })();
   let up: [number, number, number] = Math.abs(view3[1]) > 0.999 ? [0, 0, 1] : [0, 1, 0];
   if (rollDeg !== 0) {
-    const theta = (rollDeg * Math.PI) / 180;
+    // Right-handed about +z (back) is left-handed about the forward axis `k`.
+    const theta = (-rollDeg * Math.PI) / 180;
     const c = Math.cos(theta);
     const sn = Math.sin(theta);
     const k = view3;

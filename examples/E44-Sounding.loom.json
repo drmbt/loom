@@ -520,7 +520,7 @@
   },
   "name": "E44 Sounding",
   "projectId": "example-e44-sounding",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

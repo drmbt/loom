@@ -389,7 +389,7 @@
   },
   "name": "E73 Native Person Mask",
   "projectId": "example-e73-native-person-mask",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

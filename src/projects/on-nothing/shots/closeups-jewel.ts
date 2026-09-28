@@ -78,7 +78,7 @@ export function jewelSetup(facts: OnNothingFacts, take: number): JewelSetup {
       "lookAt.x": expressionSlot(`${fixed(aim[0])} + abstime * (-0.02) + ${wob(1.7, 4.9, 10.3, 2.0)} * ${fixed(shake * 2)}`, aim[0]),
       "lookAt.y": expressionSlot(`${fixed(aim[1])} + ${wob(2.3, 5.1, 9.9, 2.7)} * ${fixed(shake * 2)}`, aim[1]),
       "lookAt.z": expressionSlot(fixed(aim[2]), aim[2]),
-      roll: expressionSlot(`-4 + abstime * 3 + ${wob(1.5, 3.4, 7.3, 0.9)} * 1.5`, -4),
+      roll: expressionSlot(`4 - abstime * 3 - ${wob(1.5, 3.4, 7.3, 0.9)} * 1.5`, 4),
     };
     // the holder behind the pendant, facing the lens, the left hand (curled, the ring on it)
     // reaching forward to the word's left end; the second figure further back at the right
@@ -126,7 +126,7 @@ export function jewelSetup(facts: OnNothingFacts, take: number): JewelSetup {
       "lookAt.x": expressionSlot(`${fixed(aim[0])} + ${wob(1.7, 4.9, 10.3, 2.0)} * ${fixed(shake)}`, aim[0]),
       "lookAt.y": expressionSlot(`${fixed(aim[1])} + ${wob(2.3, 5.1, 9.9, 2.7)} * ${fixed(shake)}`, aim[1]),
       "lookAt.z": expressionSlot(fixed(aim[2]), aim[2]),
-      roll: expressionSlot(`8 + ${wob(1.5, 3.4, 7.3, 0.9)} * 1`, 8),
+      roll: expressionSlot(`-8 - ${wob(1.5, 3.4, 7.3, 0.9)} * 1`, -8),
     };
     return {
       eye,
@@ -171,7 +171,7 @@ export function jewelSetup(facts: OnNothingFacts, take: number): JewelSetup {
       "lookAt.x": expressionSlot(`${fixed(aim[0])} + abstime * 0.012 + ${wob(1.7, 4.9, 10.3, 2.0)} * ${fixed(shake * 2)}`, aim[0]),
       "lookAt.y": expressionSlot(`${fixed(aim[1])} + ${wob(2.3, 5.1, 9.9, 2.7)} * ${fixed(shake * 2)}`, aim[1]),
       "lookAt.z": expressionSlot(fixed(aim[2]), aim[2]),
-      roll: expressionSlot(`-2 + abstime * 2 + ${wob(1.5, 3.4, 7.3, 0.9)} * 0.8`, -2),
+      roll: expressionSlot(`2 - abstime * 2 - ${wob(1.5, 3.4, 7.3, 0.9)} * 0.8`, 2),
     };
     // the focus, keyed on the take's frames: behind the pendant, onto it at 6–9, then in front
     const focusKeys: readonly (readonly [number, number])[] = [[0, d + 0.09], [6, d], [9, d], [14, d - 0.1]];

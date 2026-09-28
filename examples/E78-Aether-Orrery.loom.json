@@ -6305,7 +6305,7 @@
   },
   "name": "E78 Aether Orrery",
   "projectId": "example-aether-orrery",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

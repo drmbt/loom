@@ -35,9 +35,10 @@ ${SHARED_UNIFORMS_WGSL}
 @group(0) @binding(4) var inputTexture1: texture_2d<f32>;
 @group(0) @binding(5) var inputTexture2: texture_2d<f32>;
 
+// Right-handed about the camera's +z (the angle is negated about forward), as camera.ts guardedRolledUp (T1433b).
 fn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {
   var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);
-  let t = radians(rollDeg);
+  let t = radians(-rollDeg);
   up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));
   return normalize(cross(forward, up));
 }

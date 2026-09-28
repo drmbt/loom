@@ -1304,7 +1304,7 @@
   },
   "name": "E45 Pulse",
   "projectId": "example-e45-pulse",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

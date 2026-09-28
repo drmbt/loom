@@ -297,8 +297,8 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let eye = aimAt + back * params.distance;
   let forward = -back;
   var up = normalize(vec3f(0.0, 1.0, 0.0) - forward * forward.y);
-  // roll: the Camera node's sign (camera.ts guardedRolledUp), right-handed about forward
-  up = rotate(up, forward, radians(params.roll));
+  // roll: the Camera node's sign (camera.ts guardedRolledUp), right-handed about the camera's +z
+  up = rotate(up, forward, radians(-params.roll));
   let right = normalize(cross(forward, up));
   let tanHalf = tan(radians(params.fov) * 0.5);
   let focal = params.distance + params.focus;

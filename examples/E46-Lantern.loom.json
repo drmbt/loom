@@ -125,7 +125,7 @@
   },
   "name": "E46 Lantern",
   "projectId": "example-e46-lantern",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

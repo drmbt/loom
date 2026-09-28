@@ -541,7 +541,7 @@
   },
   "name": "E37 Sirocco",
   "projectId": "example-e37-sirocco",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

@@ -269,9 +269,9 @@ TAKES[28] = {
       fov,
       shake: 0.004,
       aimShake: 0.01,
-      roll: -3,
-      rollRate: 3,
-      rollWander: 0.8,
+      roll: 3,
+      rollRate: -3,
+      rollWander: -0.8,
     });
     thinLens(cut, { fov, fstop: 2, focus: `2.9 - 1.4 * ${ease(0.26, 0.4)}`, focusAt: 2.9, maxCoc: 0.04 });
     // a big soft source high beyond the car's tail rakes the flank (the sheen along the shoulder),
@@ -310,9 +310,9 @@ TAKES[29] = {
       fov,
       shake: 0.012,
       aimShake: 0.025,
-      roll: 1.5,
-      rollRate: -1.2,
-      rollWander: 0.8,
+      roll: -1.5,
+      rollRate: 1.2,
+      rollWander: -0.8,
     });
     setParams(cut, "lens_dof", { focusDistance: 6.0, aperture: 0.6 });
     // off the beam's axis the reference's lamps read as small LED blocks, not a glare
@@ -360,9 +360,9 @@ TAKES[99] = {
       fov,
       shake: 0.003,
       aimShake: 0.006,
-      roll: -24,
-      rollRate: 2,
-      rollWander: 0.5,
+      roll: 24,
+      rollRate: -2,
+      rollWander: -0.5,
     });
     thinLens(cut, { fov, fstop: 2.8, focus: "1.25", focusAt: 1.25, maxCoc: 0.03 });
   },
@@ -386,9 +386,9 @@ TAKES[106] = {
       fov,
       shake: 0.003,
       aimShake: 0.006,
-      roll: 2,
-      rollRate: 0.3,
-      rollWander: 0.3,
+      roll: -2,
+      rollRate: -0.3,
+      rollWander: -0.3,
     });
     thinLens(cut, { fov, fstop: 2, focus: "1.35", focusAt: 1.35, maxCoc: 0.05 });
   },
@@ -419,9 +419,9 @@ TAKES[1] = {
       fov,
       shake: 0.006,
       aimShake: 0.02,
-      roll: 6,
-      rollRate: 30,
-      rollWander: 1,
+      roll: -6,
+      rollRate: -30,
+      rollWander: -1,
     });
     setParams(cut, "lens_dof", { focusDistance: 1.5, aperture: 1.1 });
     setParams(cut, "surf", { headGain: 0.6 });
@@ -452,8 +452,8 @@ TAKES[70] = {
       shake: 0.01,
       aimShake: 0.012,
       roll: 0,
-      rollRate: 1,
-      rollWander: 0.5,
+      rollRate: -1,
+      rollWander: -0.5,
     });
     // the figure walks across between the car and the pools: only its shadow reaches the frame
     const stage = facts.stages.get("tableau")!.position;
@@ -504,7 +504,7 @@ TAKES[18] = {
     const eye: V3 = [VOID[0] + 1.05, 1.6, 0.12];
     const aim: V3 = [VOID[0], 1.63, 0.1];
     const fov = 17;
-    setCamera(cut, { keys: [{ t: 0, eye, aim }, { t: 0.1, eye: [eye[0], eye[1] + 0.01, eye[2] - 0.01], aim }], fov, shake: 0.004, aimShake: 0.006, roll: -2, rollRate: 6 });
+    setCamera(cut, { keys: [{ t: 0, eye, aim }, { t: 0.1, eye: [eye[0], eye[1] + 0.01, eye[2] - 0.01], aim }], fov, shake: 0.004, aimShake: 0.006, roll: 2, rollRate: -6 });
     // the lamp: just peeking past the back of the head (frame x ≈ 0.72), so the lens's mirror
     // ghost lands warm at 0.28 and the big centre ghost washes the whole face
     ringLamp(cut, facts, [VOID[0] - 3.15, 1.68, -0.62], eye, { radiance: 80, size: 0.2, haze: 0.06 });
@@ -548,7 +548,7 @@ TAKES[46] = {
     const eye: V3 = [VOID[0] + 0.13, 1.45, 1.6];
     const aim: V3 = [VOID[0] + 0.13, 1.52, 0];
     const fov = 20;
-    setCamera(cut, { keys: [{ t: 0, eye, aim }, { t: 0.63, eye: [eye[0] - 0.01, eye[1], eye[2] - 0.02], aim }], fov, shake: 0.003, aimShake: 0.006, roll: 1.2, rollRate: -0.8, rollWander: 0.3 });
+    setCamera(cut, { keys: [{ t: 0, eye, aim }, { t: 0.63, eye: [eye[0] - 0.01, eye[1], eye[2] - 0.02], aim }], fov, shake: 0.003, aimShake: 0.006, roll: -1.2, rollRate: 0.8, rollWander: -0.3 });
     // the lamp behind the crown (just right of it, just above the frame): its glow in the teal
     // haze; the head hides its face; its ghosts are the rings
     ringLamp(cut, facts, [VOID[0] + 0.13, 2.27, -2.6], eye, { radiance: 60, size: 0.05, haze: 0.045, color: [0.55, 0.88, 0.98] });

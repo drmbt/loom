@@ -507,7 +507,7 @@
   },
   "name": "E20 Gooeyball",
   "projectId": "example-e20-gooeyball",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

@@ -390,7 +390,7 @@ function row36Glitch(plate: Plate, at: (local: V3) => [number, number, number]):
     "lookAt.y": lookAt(1, "lookAt.y"),
     "lookAt.z": lookAt(2, "lookAt.z"),
     fov: knob(`27 - 7 * ${after(14)}`, 27),
-    roll: knob(`(${slot("roll")}) * (1 - ${after(14)}) + 20 * ${after(14)}`, 0),
+    roll: knob(`(${slot("roll")}) * (1 - ${after(14)}) - 20 * ${after(14)}`, 0),
   });
 }
 
@@ -420,7 +420,7 @@ const TAKES: Record<0 | 1, Take> = {
     eye: [-0.12, 0.62, 0.66],
     aim: [0.12, 0.54, 0],
     fov: 27,
-    roll: `4 + abstime * 2.5`,
+    roll: `-4 - abstime * 2.5`,
     sway: 0.012,
     focus: 0.62,
     negative: true,
@@ -478,7 +478,7 @@ const TAKES: Record<0 | 1, Take> = {
     eye: [-0.7, 0.45, 0.62],
     aim: [0.4, 0.1, -0.35],
     fov: 72,
-    roll: `-4 + abstime * 2 + ${wobble(3, 1.2)}`,
+    roll: `4 - abstime * 2 + ${wobble(3, -1.2)}`,
     sway: 0.02,
     focus: 0.95,
     negative: false,

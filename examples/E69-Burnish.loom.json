@@ -611,7 +611,7 @@
   },
   "name": "E69 Burnish",
   "projectId": "example-burnish",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

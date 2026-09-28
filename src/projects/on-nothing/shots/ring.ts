@@ -203,7 +203,7 @@ export function ringDocument(facts: OnNothingFacts, options: RingOptions): Proje
   point("rimR", [PLACE[0] + 0.45, 1.55, PLACE[2] - 0.5], cold, 0.6);
 
   // ── Camera and the Render ──
-  const operator = handheld(EYE, AIM, { tiltIn: 2.2, tilt: -0.6, settle: 0.9, shake: 0.35, creep: 0.04 });
+  const operator = handheld(EYE, AIM, { tiltIn: -2.2, tilt: 0.6, settle: 0.9, shake: 0.35, creep: 0.04 });
   chain.add("cam", "camera", [-2700, -900], { eye: vec3(EYE), lookAt: vec3(AIM), fov: FOV, near: 0.05, far: 200, ...operator }, { label: "cam1" });
   chain.add("shot", "render", [-2400, 0], {
     scenes: "figgeo1",

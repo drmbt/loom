@@ -55,7 +55,7 @@ const FAR_AZIMUTH = -3;
  */
 const YAW = 18;
 const PITCH = 2;
-const ROLL = -18;
+const ROLL = 18;
 const FOV = 36;
 
 type Vec3 = readonly [number, number, number];
@@ -171,7 +171,7 @@ export function wheelCamera(rig: WheelRig): Record<string, StoredParameter> {
     "lookAt.x": expressionSlot(aimAxis(0), eye[0]),
     "lookAt.y": expressionSlot(aimAxis(1), eye[1]),
     "lookAt.z": expressionSlot(aimAxis(2), eye[2]),
-    roll: expressionSlot(`${ROLL} + ${wander(6)} * 2.5 - 6 * ${smooth(2.4, 3.0, "abstime")}`, ROLL),
+    roll: expressionSlot(`${ROLL} - ${wander(6)} * 2.5 + 6 * ${smooth(2.4, 3.0, "abstime")}`, ROLL),
     fov: FOV,
   };
 }

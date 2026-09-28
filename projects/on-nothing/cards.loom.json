@@ -251,7 +251,7 @@
   },
   "name": "On Nothing · cards",
   "projectId": "project-on-nothing-cards",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

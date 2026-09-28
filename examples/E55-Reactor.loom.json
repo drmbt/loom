@@ -1510,7 +1510,7 @@
   },
   "name": "E55 Reactor",
   "projectId": "example-e55-reactor",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

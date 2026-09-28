@@ -164,10 +164,11 @@ fn shaftDensity(x: vec3f) -> f32 {
 
 
 // T1383b: the camera's right vector with its ROLL — world up turned about the view axis by
-// roll degrees (Rodrigues), exactly as camera.ts guardedRolledUp builds the render's view.
+// roll degrees (Rodrigues, right-handed about the camera's +z: the angle is negated about forward),
+// exactly as camera.ts guardedRolledUp builds the render's view (T1433b).
 fn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {
   var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);
-  let t = radians(rollDeg);
+  let t = radians(-rollDeg);
   up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));
   return normalize(cross(forward, up));
 }

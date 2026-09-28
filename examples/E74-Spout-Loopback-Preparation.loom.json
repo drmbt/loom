@@ -314,7 +314,7 @@
   },
   "name": "E74 Spout Loopback Preparation",
   "projectId": "example-e74-spout-loopback",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

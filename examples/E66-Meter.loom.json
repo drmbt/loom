@@ -1238,7 +1238,7 @@
   },
   "name": "E66 Meter",
   "projectId": "example-e66-meter",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

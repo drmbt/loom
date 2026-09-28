@@ -635,7 +635,7 @@
   },
   "name": "E63 Skin",
   "projectId": "example-e63-skin",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

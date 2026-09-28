@@ -48,7 +48,8 @@ function v3(edges: Record<string, unknown>, extra: RawDocument = {}): RawDocumen
 }
 
 function migrated(document: RawDocument): RawDocument {
-  const result = migrateProjectDocument(document);
+  // The 3 → 4 step on its own (the ladder has gone on to 5 since, §T1433b).
+  const result = migrateProjectDocument(document, { targetVersion: 4 });
   expect(result.ok).toBe(true);
   if (!result.ok) throw new Error(result.reason);
   expect(result.document["schemaVersion"]).toBe(4);

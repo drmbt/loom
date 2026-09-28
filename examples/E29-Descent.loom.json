@@ -748,7 +748,7 @@
   },
   "name": "E29 Descent",
   "projectId": "example-e29-descent",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

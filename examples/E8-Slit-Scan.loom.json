@@ -212,7 +212,7 @@
   },
   "name": "E8 Slit Scan",
   "projectId": "example-e8-slit-scan",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

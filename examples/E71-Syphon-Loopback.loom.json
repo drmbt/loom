@@ -314,7 +314,7 @@
   },
   "name": "E71 Syphon Loopback",
   "projectId": "example-e71-syphon-loopback",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

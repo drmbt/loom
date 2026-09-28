@@ -664,7 +664,7 @@
   },
   "name": "E14 Self-Regulating Bloom",
   "projectId": "example-self-regulating-bloom",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

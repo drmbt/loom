@@ -4463,7 +4463,7 @@
   },
   "name": "E76 Verdant Lotus",
   "projectId": "example-verdant-lotus",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

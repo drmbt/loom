@@ -368,7 +368,7 @@ export const crtTubeNode: NodeDefinition = {
     distance: { type: "number", label: "Distance", default: 350, min: 10, max: 5000, range: "floor", group: "Camera", description: "Lens to target, mm." },
     pitch: { type: "number", label: "Pitch", default: 15, min: -80, max: 80, range: "bounded", unit: "degrees", group: "Camera", description: "The camera above the face's normal, looking down at the glass." },
     yaw: { type: "number", label: "Yaw", default: 0, min: -80, max: 80, range: "bounded", unit: "degrees", group: "Camera", description: "The camera to the side of the face's normal." },
-    roll: { type: "number", label: "Roll", default: 0, min: -180, max: 180, range: "cyclic", unit: "degrees", group: "Camera", description: "Bank around the view axis, with the Camera node's sign: positive turns the camera clockwise as seen from behind it." },
+    roll: { type: "number", label: "Roll", default: 0, min: -180, max: 180, range: "cyclic", unit: "degrees", group: "Camera", description: "Bank around the view axis, with the Camera node's sign: positive turns the camera counter-clockwise as seen from behind it." },
     fov: { type: "number", label: "FOV", default: 24, min: 1, max: 120, range: "bounded", unit: "degrees", group: "Camera", description: "Vertical field of view." },
     aperture: { type: "number", label: "Aperture", default: 6, min: 0, max: 100, range: "floor", group: "Camera", description: "Lens aperture radius, mm: the depth of field." },
     focus: { type: "number", label: "Focus Offset", default: 0, min: -500, max: 500, range: "soft", group: "Camera", description: "Focus beyond the target, mm." },

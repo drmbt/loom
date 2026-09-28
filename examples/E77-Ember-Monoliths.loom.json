@@ -5923,7 +5923,7 @@
   },
   "name": "E77 Ember Monoliths",
   "projectId": "example-ember-monoliths",
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "settings": {
     "limits": {
       "maxBufferBytes": 268435456,

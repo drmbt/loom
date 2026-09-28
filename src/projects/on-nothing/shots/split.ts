@@ -218,7 +218,7 @@ function carPlate(facts: OnNothingFacts, build: Builder, options: SplitOptions):
     ], [look[0], look[1], look[2]]),
     fov: 16,
     // a Dutch tilt that keeps drifting one way, and the operator's sway on top
-    roll: knob(`-9.9 + abstime * 0.8 + ${wobble(5, 1.2)}`, -9.9),
+    roll: knob(`9.9 - abstime * 0.8 + ${wobble(5, -1.2)}`, 9.9),
   });
   // Light: the room stays black; a cool soft top from in front of the car catches the bar tops
   // and the surround; a hard point just above the camera puts the surround's highlight where
@@ -276,8 +276,8 @@ function floorPlate(facts: OnNothingFacts, build: Builder, options: SplitOptions
     ...vectorKnobs("eye", [`${eye[0]} + ${wobble(6, 0.005)}`, `${eye[1]} + ${wobble(7, 0.004)}`, `${eye[2]}`], [eye[0], eye[1], eye[2]]),
     ...vectorKnobs("lookAt", [`${look[0]} + ${wobble(8, 0.006)}`, `${look[1]}`, `${look[2]} + ${wobble(9, 0.005)}`], [look[0], look[1], look[2]]),
     fov: 24,
-    // (the solve said +3.5 deg; loom's roll turns the other way)
-    roll: knob(`-3.5 + abstime * 0.6 + ${wobble(10, 0.9)}`, -3.5),
+    // (the solve's +3.5 deg: loom's roll turns the solve's way since schema 5, T1433b)
+    roll: knob(`3.5 - abstime * 0.6 + ${wobble(10, -0.9)}`, 3.5),
   });
   // A hard key from the right and a little behind the lens: the legs' shadows run up and left
   // across the floor from the shoes, crisp, as the reference's; little fill, so they read dark.

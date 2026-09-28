@@ -91,12 +91,12 @@ export const HELD_TAKES: readonly HeldTake[] = [
     keys: [
       // the shoe hangs from the hand beside the chest, frame left, toe down-left; the chain at
       // frame right, the mouth at the top edge; the lens low and close
-      { f: 76, wrist: [-0.14, 1.32, 0.32], elbow: [-0.44, 1.12, 0.06], toe: [-0.8, -0.45, 0.35], up: [-0.4, 0.6, 0.25], grip: [0.06, 0.03, 0.07], bones: { ...LEFT_DOWN, neck: [0.14, 0, 0], head: [0.12, 0, 0] }, eye: [0.0, 1.2, 0.82], aim: [-0.08, 1.38, 0.1], fov: 34, focus: 0.5, roll: -4 },
+      { f: 76, wrist: [-0.14, 1.32, 0.32], elbow: [-0.44, 1.12, 0.06], toe: [-0.8, -0.45, 0.35], up: [-0.4, 0.6, 0.25], grip: [0.06, 0.03, 0.07], bones: { ...LEFT_DOWN, neck: [0.14, 0, 0], head: [0.12, 0, 0] }, eye: [0.0, 1.2, 0.82], aim: [-0.08, 1.38, 0.1], fov: 34, focus: 0.5, roll: 4 },
       // lifted to the face's height, sole down, the forearm across the frame, the beard beside it
-      { f: 82, wrist: [-0.13, 1.46, 0.3], elbow: [-0.45, 1.14, 0.06], toe: [-0.95, 0.05, 0.3], up: [0.05, 1, 0.1], grip: [0.06, 0.06, 0.05], bones: { ...LEFT_DOWN, neck: [0.08, 0, 0], head: [0.04, 0, 0] }, eye: [0.0, 1.22, 0.8], aim: [-0.07, 1.42, 0.1], fov: 34, focus: 0.5, roll: -6 },
+      { f: 82, wrist: [-0.13, 1.46, 0.3], elbow: [-0.45, 1.14, 0.06], toe: [-0.95, 0.05, 0.3], up: [0.05, 1, 0.1], grip: [0.06, 0.06, 0.05], bones: { ...LEFT_DOWN, neck: [0.08, 0, 0], head: [0.04, 0, 0] }, eye: [0.0, 1.22, 0.8], aim: [-0.07, 1.42, 0.1], fov: 34, focus: 0.5, roll: 6 },
       // over the head, the face under it, the lens at the chest looking up
-      { f: 88, wrist: [-0.12, 1.58, 0.28], elbow: [-0.45, 1.18, 0.05], toe: [-1, 0.05, 0.15], up: [0, 1, 0], grip: [0.06, 0.07, 0.05], bones: { ...LEFT_DOWN, neck: [0.1, 0, 0], head: [0.15, 0, 0] }, eye: [0.02, 1.24, 0.78], aim: [-0.04, 1.48, 0.1], fov: 34, focus: 0.5, roll: 3 },
-      { f: 91, wrist: [-0.1, 1.61, 0.28], elbow: [-0.45, 1.19, 0.05], toe: [-1, 0.0, 0.15], up: [0, 1, 0], grip: [0.06, 0.07, 0.05], bones: { ...LEFT_DOWN, neck: [0.1, 0, 0], head: [0.15, 0, 0] }, eye: [0.03, 1.25, 0.77], aim: [-0.03, 1.5, 0.1], fov: 34, focus: 0.5, roll: 4 },
+      { f: 88, wrist: [-0.12, 1.58, 0.28], elbow: [-0.45, 1.18, 0.05], toe: [-1, 0.05, 0.15], up: [0, 1, 0], grip: [0.06, 0.07, 0.05], bones: { ...LEFT_DOWN, neck: [0.1, 0, 0], head: [0.15, 0, 0] }, eye: [0.02, 1.24, 0.78], aim: [-0.04, 1.48, 0.1], fov: 34, focus: 0.5, roll: -3 },
+      { f: 91, wrist: [-0.1, 1.61, 0.28], elbow: [-0.45, 1.19, 0.05], toe: [-1, 0.0, 0.15], up: [0, 1, 0], grip: [0.06, 0.07, 0.05], bones: { ...LEFT_DOWN, neck: [0.1, 0, 0], head: [0.15, 0, 0] }, eye: [0.03, 1.25, 0.77], aim: [-0.03, 1.5, 0.1], fov: 34, focus: 0.5, roll: -4 },
     ],
   },
   // take 2 — rows 7–8, reference frames 91–128
@@ -108,16 +108,16 @@ export const HELD_TAKES: readonly HeldTake[] = [
     flashes: { 93: 1, 96: 1, 99: 1, 103: 0.8, 106: 1, 109: 0.35, 114: 0.25, 116: 0.35, 119: 0.3, 124: 0.2, 126: 0.25 },
     keys: [
       // across the face, toe to frame left, the sunglasses behind it
-      { f: 91, wrist: [-0.02, 1.5, 0.36], elbow: [-0.4, 1.2, 0.1], toe: [-1, -0.05, 0.12], up: [0, 1, 0.1], grip: [0.06, 0.07, 0.05], bones: { ...LEFT_DOWN, neck: [0.05, 0, 0], head: [0.1, 0, 0] }, eye: [0.1, 1.32, 0.72], aim: [0.02, 1.58, 0.1], fov: 38, focus: 0.4, roll: 2 },
+      { f: 91, wrist: [-0.02, 1.5, 0.36], elbow: [-0.4, 1.2, 0.1], toe: [-1, -0.05, 0.12], up: [0, 1, 0.1], grip: [0.06, 0.07, 0.05], bones: { ...LEFT_DOWN, neck: [0.05, 0, 0], head: [0.1, 0, 0] }, eye: [0.1, 1.32, 0.72], aim: [0.02, 1.58, 0.1], fov: 38, focus: 0.4, roll: -2 },
       // held at the lens, the face soft behind it, the left hand up by the face
-      { f: 95, wrist: [0.0, 1.42, 0.42], elbow: [-0.38, 1.15, 0.15], toe: [-1, -0.08, 0.05], up: [-0.05, 1, 0.1], grip: [0.06, 0.08, 0.05], bones: { ...LEFT_DOWN, neck: [0.08, 0, 0], head: [0.15, 0, 0] }, eye: [0.1, 1.32, 0.74], aim: [0.02, 1.58, 0.1], fov: 38, focus: 0.34, roll: -3 },
+      { f: 95, wrist: [0.0, 1.42, 0.42], elbow: [-0.38, 1.15, 0.15], toe: [-1, -0.08, 0.05], up: [-0.05, 1, 0.1], grip: [0.06, 0.08, 0.05], bones: { ...LEFT_DOWN, neck: [0.08, 0, 0], head: [0.15, 0, 0] }, eye: [0.1, 1.32, 0.74], aim: [0.02, 1.58, 0.1], fov: 38, focus: 0.34, roll: 3 },
       // pushed into the lens, a blur across the frame
-      { f: 101, wrist: [0.05, 1.38, 0.56], elbow: [-0.34, 1.14, 0.25], toe: [-1, 0.1, 0.3], up: [0, 1, 0.2], grip: [0.06, 0.08, 0.05], bones: { ...LEFT_DOWN, neck: [0.08, 0, 0], head: [0.15, 0, 0] }, eye: [0.08, 1.36, 0.72], aim: [0.02, 1.6, 0.1], fov: 38, focus: 0.5, roll: -5 },
+      { f: 101, wrist: [0.05, 1.38, 0.56], elbow: [-0.34, 1.14, 0.25], toe: [-1, 0.1, 0.3], up: [0, 1, 0.2], grip: [0.06, 0.08, 0.05], bones: { ...LEFT_DOWN, neck: [0.08, 0, 0], head: [0.15, 0, 0] }, eye: [0.08, 1.36, 0.72], aim: [0.02, 1.6, 0.1], fov: 38, focus: 0.5, roll: 5 },
       // gone: swept down past the lens; the face from below
-      { f: 105, wrist: [-0.35, 1.0, 0.35], elbow: [-0.4, 1.1, 0.0], toe: [-0.6, -0.6, 0.4], up: [0.1, 0.4, -1], grip: [0.06, 0.08, 0.05], bones: { ...LEFT_DOWN, neck: [0.12, 0, 0], head: [0.2, 0, 0] }, eye: [0.06, 1.42, 0.46], aim: [0.1, 1.66, 0.05], fov: 40, focus: 0.45, roll: -2 },
-      { f: 116, wrist: [-0.35, 1.0, 0.3], elbow: [-0.4, 1.1, 0.0], toe: [-0.6, -0.6, 0.4], up: [0.1, 0.4, -1], grip: [0.06, 0.08, 0.05], bones: { ...LEFT_DOWN, neck: [0.12, 0, 0], head: [0.25, 0, 0] }, eye: [0.05, 1.44, 0.44], aim: [0.1, 1.66, 0.05], fov: 40, focus: 0.42, roll: 2 },
+      { f: 105, wrist: [-0.35, 1.0, 0.35], elbow: [-0.4, 1.1, 0.0], toe: [-0.6, -0.6, 0.4], up: [0.1, 0.4, -1], grip: [0.06, 0.08, 0.05], bones: { ...LEFT_DOWN, neck: [0.12, 0, 0], head: [0.2, 0, 0] }, eye: [0.06, 1.42, 0.46], aim: [0.1, 1.66, 0.05], fov: 40, focus: 0.45, roll: 2 },
+      { f: 116, wrist: [-0.35, 1.0, 0.3], elbow: [-0.4, 1.1, 0.0], toe: [-0.6, -0.6, 0.4], up: [0.1, 0.4, -1], grip: [0.06, 0.08, 0.05], bones: { ...LEFT_DOWN, neck: [0.12, 0, 0], head: [0.25, 0, 0] }, eye: [0.05, 1.44, 0.44], aim: [0.1, 1.66, 0.05], fov: 40, focus: 0.42, roll: -2 },
       // the head leans in to the lens, the mouth open, the hand gone
-      { f: 128, wrist: [-0.35, 1.0, 0.3], elbow: [-0.4, 1.1, 0.0], toe: [-0.6, -0.6, 0.4], up: [0.1, 0.4, -1], grip: [0.06, 0.08, 0.05], bones: { ...LEFT_DOWN, spine: [0.12, 0, 0], chest: [0.1, 0, 0], neck: [0.2, 0, 0], head: [0.25, 0, 0] }, eye: [0.02, 1.48, 0.4], aim: [0.06, 1.62, 0.05], fov: 40, focus: 0.3, roll: 5 },
+      { f: 128, wrist: [-0.35, 1.0, 0.3], elbow: [-0.4, 1.1, 0.0], toe: [-0.6, -0.6, 0.4], up: [0.1, 0.4, -1], grip: [0.06, 0.08, 0.05], bones: { ...LEFT_DOWN, spine: [0.12, 0, 0], chest: [0.1, 0, 0], neck: [0.2, 0, 0], head: [0.25, 0, 0] }, eye: [0.02, 1.48, 0.4], aim: [0.06, 1.62, 0.05], fov: 40, focus: 0.3, roll: -5 },
     ],
   },
 ];
@@ -386,6 +386,6 @@ export function heldCamera(setup: HeldSetup): Record<string, StoredParameter> {
     "lookAt.y": axis(aim(1), 2.5, 2.7, [2.3, 5.1, 9.9]),
     "lookAt.z": axis(aim(2), 1, 0.4, [1.6, 3.5, 7.7]),
     fov: expressionSlot(sampled(setup.fov), setup.fov[0]!),
-    roll: expressionSlot(`${sampled(setup.roll)} + ${wob(1.5, 3.4, 7.3, 0.9)} * 1.2`, setup.roll[0]!),
+    roll: expressionSlot(`${sampled(setup.roll)} - ${wob(1.5, 3.4, 7.3, 0.9)} * 1.2`, setup.roll[0]!),
   };
 }

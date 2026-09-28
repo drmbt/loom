@@ -190,7 +190,7 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
   g.node("cam", "camera", [-2700, -900], {
     eye,
     lookAt: aim,
-    ...operator(eye, aim, { tiltIn: -4, tilt: -2.5, settle: 0.7, shake: 0.3, creep: 0 }),
+    ...operator(eye, aim, { tiltIn: 4, tilt: 2.5, settle: 0.7, shake: 0.3, creep: 0 }),
     fov,
     near: 0.05,
     far: 20,

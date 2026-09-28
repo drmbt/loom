@@ -129,7 +129,7 @@ export function crtDocument(facts: OnNothingFacts, options: ShotOptions, build: 
     "lookAt.x": expressionSlot(`${aim[0]} + sin(abstime * 0.9) * 0.015`, aim[0]),
     "lookAt.y": expressionSlot(`${aim[1]}`, aim[1]),
     "lookAt.z": expressionSlot(`${aim[2]}`, aim[2]),
-    roll: expressionSlot("sin(abstime * 0.7) * 1.5", 0),
+    roll: expressionSlot("sin(abstime * 0.7) * -1.5", 0),
   });
   // Video, not a lens: no depth of field in the picture, no streaks of its own.
   setParams(cut, "lens_dof", { aperture: 0.05 });
@@ -158,7 +158,7 @@ export function crtDocument(facts: OnNothingFacts, options: ShotOptions, build: 
     distance: expressionSlot(`360 - 30 * ${tubeCam}`, 360),
     pitch: 16,
     yaw: -4,
-    roll: expressionSlot(`-2.5 + 3.5 * ${tubeCam}`, 0),
+    roll: expressionSlot(`2.5 - 3.5 * ${tubeCam}`, 0),
     fov: 24,
     aperture: 3.5,
     focus: 0,
