@@ -283,7 +283,8 @@ export const WIDE_TAKES: readonly WideTake[] = [
     cars: { 3: { place: [-1.5, 0] }, 4: { place: [1.0, 0] } },
     camera: { eye: [0.2, 0.45, 4.3], aim: [0.02, 1.05, 0], fov: 42, hand: { tiltIn: 2.5, tilt: 0.4, settle: 2.5, shake: 0.45 }, move: [0.03, 0.01, -0.3], aimMove: [0.03, 0.17, 0] },
     figure: { area: "fig", at: [0.12, 1.3], facing: 15, performance: lowDance, groove: NOD },
-    key: { position: [2.2, 1.6, 6.5], intensity: 15 },
+    // well off to the side: on the lens axis the figure threw its shadow over the hero's grille
+    key: { position: [4.5, 1.6, 5.0], intensity: 15 },
     reach: `(0.12 + 0.22 * (1 - smoothstep(${((455 - 441) / REF_FPS).toFixed(3)}, ${((462 - 441) / REF_FPS).toFixed(3)}, abstime)))`,
     set: { bright: { threshold: 1.1 }, optics: { bloom: 0.22, streak: 0.95 } },
   },

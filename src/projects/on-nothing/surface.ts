@@ -41,6 +41,9 @@ struct Params {
   contactReach: f32, // @default 1.1  How far the contact shadow reaches beyond the footprint, metres.
   dryGloss: f32, // @default 0.62  Roughness of the dry floor (worn concrete: past the reflections' cutoff).
   peel: f32, // @default 0.25  Orange-peel strength on the clear coat.
+  silverAlbedo: f32, // @default 0.45  The hero's satin silver: its albedo (linear).
+  silverRoughness: f32, // @default 0.3  The hero's satin silver: its roughness.
+  silverMetallic: f32, // @default 0.2  The hero's satin silver: how metallic (a flake coat, mostly dielectric).
   cycAlbedo: f32, // @default 0.9  Albedo of the white cyc.
 };
 
@@ -149,7 +152,15 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
     case 2u: { return brickSurface(s, o); }
     case 4u: { o.emissive = s.emissive * p.tubeGain; }
     case 10u, 13u: { return clearCoat(s, p, o, 0.035); }
-    case 11u: { return clearCoat(s, p, o, 0.16); }
+    case 11u: {
+      // The hero's SATIN SILVER (T1407b wide, round 4). As a 0.85-metallic mirror it showed only
+      // the black room and read near-black in every wide; the reference hero is a light satin
+      // grey that takes the set's low keys on its bumper and bonnet. A light, mostly dielectric
+      // albedo with a broad sheen does that. (The title keeps its own matte grey, title.ts.)
+      o.albedo = vec4f(vec3f(p.silverAlbedo) * vec3f(0.98, 1.0, 1.02), 1.0);
+      o.metallic = p.silverMetallic;
+      return clearCoat(s, p, o, p.silverRoughness);
+    }
     case 12u: { return clearCoat(s, p, o, 0.42); }
     case 14u, 19u: { o.roughness = 0.035; o.metallic = 1.0; }
     case 15u: { o.roughness = 0.015; o.metallic = 0.0; }
