@@ -195,17 +195,6 @@
           "portId": "input"
         }
       },
-      "grade.out-out.input": {
-        "id": "grade.out-out.input",
-        "source": {
-          "nodeId": "grade",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "out",
-          "portId": "input"
-        }
-      },
       "halo.out-optics.more#1": {
         "id": "halo.out-optics.more#1",
         "order": 1,
@@ -293,6 +282,85 @@
         },
         "target": {
           "nodeId": "grade",
+          "portId": "input"
+        }
+      },
+      "look-down": {
+        "id": "look-down",
+        "source": {
+          "nodeId": "grade",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lookDown",
+          "portId": "input"
+        }
+      },
+      "look-in": {
+        "id": "look-in",
+        "source": {
+          "nodeId": "grade",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "look",
+          "portId": "input"
+        }
+      },
+      "look-more-near": {
+        "id": "look-more-near",
+        "order": 0,
+        "source": {
+          "nodeId": "lookNear",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "look",
+          "portId": "more"
+        }
+      },
+      "look-more-wide": {
+        "id": "look-more-wide",
+        "order": 1,
+        "source": {
+          "nodeId": "lookWide",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "look",
+          "portId": "more"
+        }
+      },
+      "look-near": {
+        "id": "look-near",
+        "source": {
+          "nodeId": "lookDown",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lookNear",
+          "portId": "input"
+        }
+      },
+      "look-out": {
+        "id": "look-out",
+        "source": {
+          "nodeId": "look",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "out",
+          "portId": "input"
+        }
+      },
+      "look-wide": {
+        "id": "look-wide",
+        "source": {
+          "nodeId": "lookNear",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lookWide",
           "portId": "input"
         }
       },
@@ -983,7 +1051,7 @@
           "bleach": 0.2,
           "contrast": 1.15,
           "exposure": 0.2,
-          "grain": 0.03,
+          "grain": 0,
           "keepWarm": 0.6,
           "saturation": 0.55,
           "shadowTint": [
@@ -1420,6 +1488,92 @@
         },
         "type": "customWgsl"
       },
+      "look": {
+        "definitionVersion": 1,
+        "id": "look",
+        "label": "look1",
+        "parameters": {
+          "contrast": 0.95,
+          "grain": 0.006,
+          "grainSize": 4,
+          "highlightTint": [
+            -0.0065,
+            0.0034,
+            -0.0147
+          ],
+          "lift": 0.023,
+          "midTint": [
+            -0.0111,
+            0.0026,
+            0.0074
+          ],
+          "mist": 0,
+          "mistWide": 0.02,
+          "pivot": 0.45,
+          "saturation": 1.45,
+          "shadowSaturation": 1.5,
+          "shadowTint": [
+            -0.005,
+            0.0012,
+            0.0032
+          ],
+          "source": "struct Params {\n  mist: f32, // @default 0  Share of the near glow mixed into the picture (halation, bloom), in linear light.\n  mistWide: f32, // @default 0  Share of the wide glow mixed in: the haze veil that lifts the dark round every light.\n  toe: f32, // @default 1  Gamma on display level before the curve (< 1 opens the shadows).\n  contrast: f32, // @default 1  Slope around the pivot (< 1 is flatter).\n  pivot: f32, // @default 0.45  Display level the contrast turns about.\n  lift: f32, // @default 0  Where black lands (display level): the flat veil.\n  white: f32, // @default 1  Where white lands (display level): the washed top.\n  saturation: f32, // @default 1  Chroma kept in the mids and highlights.\n  shadowSaturation: f32, // @default 1  Chroma kept in the shadows.\n  shadowTint: vec3f, // @default 0  Added to the shadows (display level).\n  midTint: vec3f, // @default 0  Added to the mids.\n  highlightTint: vec3f, // @default 0  Added to the highlights.\n  grain: f32, // @default 0  Grain amount (the grade's formula: heavier in the blacks, a new pattern every frame).\n  grainSize: f32, // @default 1.3  Grain cell size in pixels of the render.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n@group(0) @binding(5) var inputTexture2: texture_2d<f32>;\n\n// More textures are bound unfilterable: bilinear by hand.\nfn bilerp(t: texture_2d<f32>, uv: vec2f) -> vec3f {\n  let size = vec2f(textureDimensions(t));\n  let p = uv * size - 0.5;\n  let i = floor(p);\n  let f = p - i;\n  let hi = vec2i(size) - vec2i(1);\n  let a = vec2i(i);\n  let c00 = textureLoad(t, clamp(a, vec2i(0), hi), 0).rgb;\n  let c10 = textureLoad(t, clamp(a + vec2i(1, 0), vec2i(0), hi), 0).rgb;\n  let c01 = textureLoad(t, clamp(a + vec2i(0, 1), vec2i(0), hi), 0).rgb;\n  let c11 = textureLoad(t, clamp(a + vec2i(1, 1), vec2i(0), hi), 0).rgb;\n  return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);\n}\n\n// The Output encodes sRGB, so \"display level\" here is exactly the sRGB value the viewer sees\n// (a 2.2 power instead put a 0.022 lift at level 1 of 255, not 5.6: the toes part ways near black).\nfn toDisplay(l: vec3f) -> vec3f {\n  return select(1.055 * pow(l, vec3f(1.0 / 2.4)) - 0.055, 12.92 * l, l <= vec3f(0.0031308));\n}\n\nfn toLinear(d: vec3f) -> vec3f {\n  return select(pow((d + 0.055) / 1.055, vec3f(2.4)), d / 12.92, d <= vec3f(0.04045));\n}\n\nfn luma(c: vec3f) -> f32 {\n  return dot(c, vec3f(0.2126, 0.7152, 0.0722));\n}\n\nfn grainHash(p: vec3f) -> f32 {\n  var q = fract(p * vec3f(0.1031, 0.1030, 0.0973));\n  q = q + dot(q, q.yxz + 33.33);\n  return fract((q.x + q.y) * q.z);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let lin = max(textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb, vec3f(0.0));\n  let near = bilerp(inputTexture1, uv);\n  let wide = bilerp(inputTexture2, uv);\n  // the mist, in linear light: the lights' glow and the veil round them\n  let m = lin * (1.0 - params.mist - params.mistWide) + near * params.mist + wide * params.mistWide;\n  // the curve, on display level: toe, contrast about the pivot, then black and white land\n  var c = pow(clamp(toDisplay(max(m, vec3f(0.0))), vec3f(0.0), vec3f(1.0)), vec3f(params.toe));\n  c = clamp(params.pivot + (c - params.pivot) * params.contrast, vec3f(0.0), vec3f(1.0));\n  c = params.lift + (params.white - params.lift) * c;\n  // tone bands: a tint added to each\n  let y0 = luma(c);\n  let ws = 1.0 - smoothstep(0.04, 0.22, y0);\n  let wh = smoothstep(0.35, 0.75, y0);\n  let wm = clamp(1.0 - ws - wh, 0.0, 1.0);\n  c = c + ws * params.shadowTint + wm * params.midTint + wh * params.highlightTint;\n  let y = luma(c);\n  c = vec3f(y) + (c - vec3f(y)) * mix(params.saturation, params.shadowSaturation, ws);\n  // the film's one grain (render.ts adds it after the accumulation under --final, T1432b)\n  let px = floor(uv * frameU.resolution / max(params.grainSize, 0.5));\n  let n = grainHash(vec3f(px, frameU.absFrame)) + grainHash(vec3f(px + 17.0, frameU.absFrame * 1.7)) - 1.0;\n  c = c + vec3f(n) * params.grain * (0.35 + 0.65 * (1.0 - luma(c)));\n  c = clamp(c, vec3f(0.0), vec3f(1.0));\n  return vec4f(toLinear(c), 1.0);\n}",
+          "toe": 0.8,
+          "white": 0.9
+        },
+        "position": {
+          "x": 1450,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgslMulti"
+      },
+      "lookDown": {
+        "definitionVersion": 1,
+        "id": "lookDown",
+        "label": "lookdown1",
+        "parameters": {
+          "source": "struct Params {\n  gain: f32, // @default 1  Scales the downsampled picture.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  // one output texel's footprint in uv\n  let foot = vec2f(abs(dpdx(uv).x), abs(dpdy(uv).y));\n  var sum = vec3f(0.0);\n  for (var j = 0; j < 4; j = j + 1) {\n    for (var i = 0; i < 4; i = i + 1) {\n      let o = (vec2f(f32(i), f32(j)) + 0.5) / 4.0 - 0.5;\n      sum = sum + max(textureSampleLevel(inputTexture, inputSampler, uv + o * foot, 0.0).rgb, vec3f(0.0));\n    }\n  }\n  return vec4f(sum / 16.0 * params.gain, 1.0);\n}"
+        },
+        "position": {
+          "x": 700,
+          "y": 300
+        },
+        "resolution": {
+          "height": 204,
+          "mode": "fixed",
+          "width": 480
+        },
+        "type": "customWgsl"
+      },
+      "lookNear": {
+        "definitionVersion": 1,
+        "id": "lookNear",
+        "label": "looknear1",
+        "parameters": {
+          "size": 4
+        },
+        "position": {
+          "x": 950,
+          "y": 300
+        },
+        "type": "blur"
+      },
+      "lookWide": {
+        "definitionVersion": 1,
+        "id": "lookWide",
+        "label": "lookwide1",
+        "parameters": {
+          "size": 24
+        },
+        "position": {
+          "x": 1200,
+          "y": 300
+        },
+        "type": "blur"
+      },
       "optics": {
         "definitionVersion": 1,
         "id": "optics",
@@ -1446,7 +1600,7 @@
           "toneMap": "none"
         },
         "position": {
-          "x": 700,
+          "x": 1750,
           "y": 0
         },
         "type": "output"

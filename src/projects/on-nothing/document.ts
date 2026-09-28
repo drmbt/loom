@@ -33,6 +33,7 @@ import { wideDocument } from "./shots/wide.ts";
 import { MCU_SHOTS, mcuDocument } from "./shots/mcu.ts";
 import { MCU2_SHOTS, mcu2Document } from "./shots/mcu2.ts";
 import { REACT_PROFILES, reactive } from "./shots/react.ts";
+import { withFinish } from "./finish.ts";
 
 /**
  * T1400b — THE ON NOTHING DOCUMENTS: one graph per shot, built from the GLB's measured facts.
@@ -168,6 +169,12 @@ const asPlate = (facts: OnNothingFacts, options: OnNothingOptions): ProjectDocum
 const TABLEAU_NEARER = 0.46;
 
 export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptions): ProjectDocument {
+  // T1407b (grade): every shot's last pass is the one shared finish (finish.ts); a plate is finished by the shot that composites it
+  const built = shotDocument(facts, options);
+  return options.plate === true ? built : withFinish(built);
+}
+
+function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): ProjectDocument {
   // The title and the ring build their own graphs (shots/), apart from the shots below.
   if (options.shot === "title") return titleDocument(facts, options);
   if (options.shot === "ring") return ringDocument(facts, options);
