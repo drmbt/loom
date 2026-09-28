@@ -501,8 +501,9 @@ describe("T457 (V387) — reference-fed inputs render NO socket", () => {
     // diagnostic that names the switch.
     const outputs = [...container.querySelectorAll('[data-handlepos="right"]')];
     // T1371b/T1380b: `normal` and `albedo` are conditional the same way (Normal Output,
-    // Albedo Output), drawn for the same reason.
-    expect(outputs.map((handle) => handle.getAttribute("data-handleid"))).toEqual(["out", "depth", "normal", "albedo"]);
+    // Albedo Output), drawn for the same reason. T1417b/T1414b: so are `lightDepth` (Light
+    // Depth Output) and `shadow` (Shadow Output).
+    expect(outputs.map((handle) => handle.getAttribute("data-handleid"))).toEqual(["out", "depth", "normal", "albedo", "lightDepth", "shadow"]);
   });
 
   it("a wireable input on the same node keeps its socket (renderSurface: points yes, camera no)", () => {
