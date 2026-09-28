@@ -24,6 +24,7 @@ import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
  *     [--from <seconds>]                      the clip starts at this shot time (earlier frames still render, unseen,
  *                                             so trails and feedback arrive warm); --audio-start stays the clip's first frame
  *     [--out <file.mp4>]                      the clip's path (default clips/<shot><tag>.mp4)
+ *     [--warm N]                              frames rendered unseen before --from (default 24; the clock starts there)
  *     [--take N]                              which take of the shot (a shot may frame the same set several ways)
  *     [--crt]                                 the CRT re-scan over the finished frame
  *     [--bypass haze,lens]                    bypass nodes by id
@@ -53,6 +54,8 @@ const fps = 24;
 const clip = flag("clip") === undefined ? (flag("frames") === undefined ? undefined : Number(flag("frames")) / fps) : Number(flag("clip"));
 const from = Number(flag("from") ?? 0);
 const take = Number(flag("take") ?? 0);
+/** Output frames rendered unseen before a --from clip (the longest feedback/trail/lag any shot needs). */
+const WARM_FRAMES = Number(flag("warm") ?? 24);
 const at = Number(flag("at") ?? 2);
 const crt = argv.includes("--crt");
 const audioPath = flag("audio");
@@ -260,7 +263,11 @@ for (const shot of shots) {
   const frames = flag("frames") !== undefined ? Number(flag("frames")) : clip !== undefined ? Math.round(clip * fps) : Math.round(at * fps) + 1;
   // --from: the frames before it render (feedback and trails warm up) but are not captured
   const skip = clip === undefined ? 0 : Math.round(from * fps);
-  const renderFrames = (frames + skip) * sub;
+  // --from: the clock starts `warm` frames before the clip (feedback, trails and lagged
+  // channels arrive warm) instead of at 0, so a late part does not pay for the whole shot
+  const warm = Math.min(skip, WARM_FRAMES);
+  const startFrame = (skip - warm) * sub;
+  const renderFrames = (frames + warm) * sub;
   const accumulator = new Accumulator(width, height, grains);
   let lastOut: Uint8Array | undefined;
   let encoder: ReturnType<typeof spawn> | undefined;
@@ -280,15 +287,16 @@ for (const shot of shots) {
     graph: document.graph,
     settings: document.settings,
     frames: renderFrames,
+    startFrame,
     // every sub-frame goes through the accumulator (for a still: only the last output frame's)
-    capture: clip === undefined ? Array.from({ length: sub }, (_, index) => renderFrames - sub + index) : Array.from({ length: frames * sub }, (_, index) => skip * sub + index),
+    capture: clip === undefined ? Array.from({ length: sub }, (_, index) => renderFrames - sub + index) : Array.from({ length: frames * sub }, (_, index) => warm * sub + index),
     fps: fps * sub,
     // T1435b: the document reads `subframes` (and `fps` stays the film's 24)
     subframes: sub,
     outputNodeId: "out",
     animate: true,
     meshes,
-    ...(track === undefined ? {} : { audio: track.seam(fps * sub, audioStart - skip / fps) }),
+    ...(track === undefined ? {} : { audio: track.seam(fps * sub, audioStart - warm / fps) }),
     ...(hdri !== undefined && nodes["hdri"] !== undefined ? { pictures: { hdri: (size: readonly [number, number]) => rgbmBytes(hdri, size) } } : {}),
     onCapture: async (frame: RenderedFrame) => {
       const out = accumulator.add(toRgba8(frame).data as Uint8Array);

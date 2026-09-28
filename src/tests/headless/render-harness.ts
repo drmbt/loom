@@ -79,6 +79,12 @@ export interface HeadlessRenderRequest {
   readonly displaySinks?: ReadonlyArray<string>;
   readonly fps?: number;
   /**
+   * The transport's first frame: frame index 0 of this render lands at `startFrame / fps`
+   * (offlineTransport's own `startFrame`). Default 0. A render that starts mid-shot steps
+   * from there instead of rendering every earlier frame unseen.
+   */
+  readonly startFrame?: number;
+  /**
    * T1435b: the caller averages this many consecutive frames into one output frame, so
    * `fps` is the SUB-frame rate. Every frame then reports `fps / subframes` as the project
    * rate and `subframes` itself, which an expression reads (`fps`, `subframes`). Default 1.
@@ -920,7 +926,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
       backend,
       ...(audioSeam === undefined ? {} : { audio: audioSeam }),
       // §V45: the seed is the project's, not the transport's own invention.
-      transport: offlineTransport({ fps, seed: settings.randomSeed, mode: "fixed-step", ...(request.subframes === undefined ? {} : { subframes: request.subframes }) }),
+      transport: offlineTransport({ fps, seed: settings.randomSeed, mode: "fixed-step", ...(request.subframes === undefined ? {} : { subframes: request.subframes }), ...(request.startFrame === undefined ? {} : { startFrame: request.startFrame }) }),
       pointer: pointerSource,
       resolution: () => [settings.outputResolution.width, settings.outputResolution.height],
       ...(valueSession === null || animator === null
