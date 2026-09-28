@@ -78,7 +78,7 @@ interface Key {
   readonly snap?: boolean;
 }
 
-interface Beat {
+export interface Beat {
   /** The EDL rows this beat plays (documentation, and the check against the EDL). */
   readonly rows: readonly number[];
   /** Length in frames at 24 fps (the row's frame count). */
@@ -128,10 +128,12 @@ interface Beat {
   readonly flare?: { readonly centre: readonly [number | string, number | string]; readonly radius: number; readonly gain: number | string };
 }
 
-interface Take {
+export interface Take {
   readonly name: string;
   /** Which figure: the beanie and the tee, shirtless, or the brimmed cap (rows 14, 32, 33: area `figcap`). */
   readonly wardrobe: "fig" | "figbare" | "figcap";
+  /** T1407b (mcu2): the right hand holds the pistol (figureNodes' `gun`) through every beat. */
+  readonly gun?: boolean;
   /** Streak reach (fraction of the frame height) at the start and end of each beat: one direction per cut. */
   readonly streak: { readonly from: number; readonly to: number; readonly gain: number; readonly threshold: number };
   readonly grade: Record<string, StoredParameter>;
@@ -800,6 +802,8 @@ export interface McuOptions {
   readonly crt?: boolean;
   readonly hdri?: boolean;
   readonly audio?: boolean;
+  /** T1407b (mcu2): another take table on this builder (shots/mcu2.ts); default MCU_TAKES. */
+  readonly takes?: readonly Take[];
 }
 
 const fmt = (value: number): string => (Math.abs(value) < 1e-9 ? "0" : value < 0 ? `(${value.toFixed(5)})` : value.toFixed(5));
@@ -969,8 +973,9 @@ function performance(facts: OnNothingFacts, beat: Beat): { knobs: Record<string,
 
 export function mcuDocument(facts: OnNothingFacts, options: McuOptions): ProjectDocument {
   const takeIndex = options.take ?? 0;
-  const take = MCU_TAKES[takeIndex];
-  if (take === undefined) throw new Error(`mcuDocument: no take ${takeIndex} (there are ${MCU_TAKES.length}).`);
+  const table = options.takes ?? MCU_TAKES; // T1407b (mcu2)
+  const take = table[takeIndex];
+  if (take === undefined) throw new Error(`mcuDocument: no take ${takeIndex} (there are ${table.length}).`);
   const width = options.width ?? 1920;
   const height = options.height ?? 818;
   const aspect = width / height;
@@ -1063,6 +1068,7 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
     yaw: switched(yaws.map(fmt), starts),
     place: [0, 1, 2].map((axis) => switched(places.map((p) => fmt(p[axis]!)), starts)) as [string, string, string],
     pose: Object.fromEntries(Object.entries(pose).map(([knob, values]) => [knob, switched(values, starts)])),
+    ...(take.gun === true ? { gun: true } : {}), // T1407b (mcu2)
   });
   g.nodes.push(...figure.nodes);
   g.edges.push(...figure.edges);

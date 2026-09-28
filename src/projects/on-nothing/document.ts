@@ -31,6 +31,7 @@ import { handsDocument } from "./shots/hands.ts";
 import { cardsDocument } from "./shots/cards.ts";
 import { wideDocument } from "./shots/wide.ts";
 import { MCU_SHOTS, mcuDocument } from "./shots/mcu.ts";
+import { MCU2_SHOTS, mcu2Document } from "./shots/mcu2.ts";
 import { REACT_PROFILES, reactive } from "./shots/react.ts";
 
 /**
@@ -44,11 +45,11 @@ import { REACT_PROFILES, reactive } from "./shots/react.ts";
  */
 
 /** The close-ups (shots/closeups.ts) are their own graphs. */
-export const SHOTS = ["tableau", "title", "ring", "quad", "cyc", "cyc-wide", "zoom", "prism", "wheel", "halo", "crt", "split", "mirror", "lights", "incar", "hands", "wide", ...CLOSEUP_SHOTS, "cards", ...MCU_SHOTS] as const;
+export const SHOTS = ["tableau", "title", "ring", "quad", "cyc", "cyc-wide", "zoom", "prism", "wheel", "halo", "crt", "split", "mirror", "lights", "incar", "hands", "wide", ...CLOSEUP_SHOTS, "cards", ...MCU_SHOTS, ...MCU2_SHOTS] as const;
 export type Shot = (typeof SHOTS)[number];
 /** The four sets; `zoom` and `prism` are the tableau's set with their own camera and finish. */
 type Base = "tableau" | "title" | "quad" | "cyc" | "wheel";
-const BASE_OF: Record<Exclude<Shot, (typeof CLOSEUP_SHOTS)[number] | "cards" | (typeof MCU_SHOTS)[number]>, Base> = { tableau: "tableau", title: "title", ring: "quad", quad: "quad", cyc: "cyc", "cyc-wide": "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel", halo: "tableau", crt: "tableau", split: "tableau", mirror: "cyc", lights: "tableau", incar: "tableau", hands: "tableau", wide: "tableau" };
+const BASE_OF: Record<Exclude<Shot, (typeof CLOSEUP_SHOTS)[number] | "cards" | (typeof MCU_SHOTS)[number] | (typeof MCU2_SHOTS)[number]>, Base> = { tableau: "tableau", title: "title", ring: "quad", quad: "quad", cyc: "cyc", "cyc-wide": "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel", halo: "tableau", crt: "tableau", split: "tableau", mirror: "cyc", lights: "tableau", incar: "tableau", hands: "tableau", wide: "tableau" };
 
 export interface OnNothingOptions {
   readonly shot: Shot;
@@ -177,6 +178,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   // T1407b (wide): the tableau's set seen by the other cameras (shots/wide.ts)
   if (shot === "wide") return wideDocument(facts, options, asPlate);
   if (shot === "mcu") return mcuDocument(facts, options); // T1407b (mcu): shots/mcu.ts
+  if (shot === "mcu2") return mcu2Document(facts, options); // T1407b (mcu2): shots/mcu2.ts
   // T1407b: the quad and the prism build their own graphs (shots/).
   if (shot === "quad") return quadDocument(facts, options);
   if (shot === "prism") return prismDocument(facts, options);
