@@ -6,7 +6,7 @@ docs/on-nothing-shotlist-2026-09-27.md) with the loom shot that plays it (`shot`
 `curves=all='0/0.55 1/1'`: the reference's strobe flashes lift the blacks and blow the frame out). A row with no shot yet plays black, labelled NOT BUILT, so
 the cut always runs the reference's full length and every row sits on the reference's own frames.
 
-    python3 tools/on-nothing/cut.py render [--rows 1-20,35] [--shots quad] [--final] [--force] [--glb f] [--width 960]
+    python3 tools/on-nothing/cut.py render [--rows 1-20,35] [--parts 53a,54b] [--shots quad] [--final] [--force] [--glb f] [--width 960]
     python3 tools/on-nothing/cut.py assemble [--tag 05] [--rows ...]
 
 render    renders each built row to renders/on-nothing/rows/row-NNN.mp4: exactly the row's frame
@@ -80,7 +80,12 @@ def row_clip(r):
 def render(args):
     edl, _fps = load()
     os.makedirs(ROWS, exist_ok=True)
-    for r in pick(edl["rows"], args.rows, args.shots):
+    units = pick(edl["rows"], args.rows, args.shots)
+    if args.parts:
+        # only these parts ("53a,54b" or a whole row "37"), so a render never touches another owner's part
+        wanted = {p.strip() for p in args.parts.split(",")}
+        units = [u for u in units if u["id"].lstrip("0") in wanted or str(u["row"]) in wanted]
+    for r in units:
         if not r["shot"]:
             continue
         path = row_clip(r)
@@ -215,6 +220,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["render", "assemble"])
     parser.add_argument("--rows")
+    parser.add_argument("--parts", help="render only these parts, e.g. 53a,54b (a bare number is a whole row)")
     parser.add_argument("--shots")
     parser.add_argument("--final", action="store_true")
     parser.add_argument("--force", action="store_true")
