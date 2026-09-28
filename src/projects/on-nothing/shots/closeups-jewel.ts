@@ -25,6 +25,10 @@ const FPS = 24;
 const U = `(abstime * ${FPS})`;
 
 export interface JewelSetup {
+  /** Which set: closeups.py's pendant set (`pend`), or closeups2.py's pendant on the tee (`jewel`). */
+  readonly set: "pend" | "jewel";
+  /** The jewel set's far floor: its glow (the reference's white floor past the chest). */
+  readonly floorGlow: number;
   readonly eye: V3;
   readonly aim: V3;
   readonly fov: number;
@@ -40,6 +44,10 @@ export interface JewelSetup {
   readonly strobe: number;
   /** The grade's exposure between flashes (stops). */
   readonly exposure: number;
+  /** An exposure that moves through the cut (overrides `exposure`). */
+  readonly exposureExpr?: string;
+  /** Grade overrides (the tee's set lifts its blacks). */
+  readonly grade?: Record<string, StoredParameter>;
   /** The ring's brightness in the flash pass (0: the flash only lifts and veils). */
   readonly ring: number;
   /** Figures in the set: area, where it stands, which way it faces (yaw), and its knobs. */
@@ -92,6 +100,8 @@ export function jewelSetup(facts: OnNothingFacts, take: number): JewelSetup {
       strobe: 6,
       exposure: -0.1,
       ring: 0,
+      set: "pend",
+      floorGlow: 0,
       figures: [
         { id: "holder", area: "fighand", place: holder, yaw: 0, bones: solved.bones },
         { id: "second", area: "fig", place: [s[0] + 0.3, 0, s[2] - 0.55], yaw: 0, bones: { upperarmL: [0, 0, -0.62], upperarmR: [-1.2, 0, 0.2], forearmR: [-1.6, 0, 0], forearmL: [-0.35, 0, 0], neck: [0.2, 0, 0] } },
@@ -133,8 +143,65 @@ export function jewelSetup(facts: OnNothingFacts, take: number): JewelSetup {
       exposure: -0.7,
       flash: flashOf(295, { 295: 0.25, 296: 0.3, 297: 0.8, 298: 1.5, 299: 1.5, 300: 1.5, 301: 1.1, 302: 0.6, 303: 0.6, 304: 0.6, 314: 1.3 }),
       ring: 0,
+      set: "pend",
+      floorGlow: 0,
       figures: [],
     };
   }
-  throw new Error(`closeups: the pendant has no take ${take} (1: row 4, 2: row 15).`);
+  if (take === 3) {
+    // row 48 (47.80–48.42 s, frames 1146–1160): the pendant lying on the black tee, the chain
+    // rising to the top edge, the white floor far below showing past the chest at the bottom
+    // corners. The lens looks down on the chest from in front and above; the focus racks from
+    // behind the pendant onto it (sharp 1152–1155) and past it as the lens pushes in, the frame
+    // darkening over the last five frames.
+    const j = markerOf(facts, "stage.jewel").position;
+    const eye: V3 = addv(j, [0.03, 0.26, 0.38]);
+    const aim: V3 = addv(j, [0.012, 0.018, 0.0]);
+    const shake = 0.0012;
+    const d = Math.hypot(aim[0] - eye[0], aim[1] - eye[1], aim[2] - eye[2]);
+    const len = 15 / FPS;
+    const u = `clamp(abstime / ${fixed(len)}, 0, 1)`;
+    // the push: 4 cm closer over the cut, most of it at the end
+    const push = `(0.04 * ${u} ^ 2)`;
+    const toward = [(eye[0] - aim[0]) / d, (eye[1] - aim[1]) / d, (eye[2] - aim[2]) / d] as const;
+    const camera: Record<string, StoredParameter> = {
+      "eye.x": expressionSlot(`${fixed(eye[0])} - ${push} * ${fixed(toward[0])} + abstime * 0.012 + ${wob(2.1, 5.3, 11.1, 0.3)} * ${fixed(shake)}`, eye[0]),
+      "eye.y": expressionSlot(`${fixed(eye[1])} - ${push} * ${fixed(toward[1])} + ${wob(2.7, 6.1, 12.7, 1.1)} * ${fixed(shake)}`, eye[1]),
+      "eye.z": expressionSlot(`${fixed(eye[2])} - ${push} * ${fixed(toward[2])} + ${wob(1.9, 4.7, 9.3, 2.2)} * ${fixed(shake)}`, eye[2]),
+      "lookAt.x": expressionSlot(`${fixed(aim[0])} + abstime * 0.012 + ${wob(1.7, 4.9, 10.3, 2.0)} * ${fixed(shake * 2)}`, aim[0]),
+      "lookAt.y": expressionSlot(`${fixed(aim[1])} + ${wob(2.3, 5.1, 9.9, 2.7)} * ${fixed(shake * 2)}`, aim[1]),
+      "lookAt.z": expressionSlot(fixed(aim[2]), aim[2]),
+      roll: expressionSlot(`-2 + abstime * 2 + ${wob(1.5, 3.4, 7.3, 0.9)} * 0.8`, -2),
+    };
+    // the focus, keyed on the take's frames: behind the pendant, onto it at 6–9, then in front
+    const focusKeys: readonly (readonly [number, number])[] = [[0, d + 0.09], [6, d], [9, d], [14, d - 0.1]];
+    let focus = fixed(focusKeys[0]![1]);
+    for (let i = 0; i + 1 < focusKeys.length; i++) {
+      const [f0, v0] = focusKeys[i]!;
+      const [f1, v1] = focusKeys[i + 1]!;
+      focus += ` + clamp((${U} - ${f0}) / ${f1 - f0}, 0, 1) * (${fixed(v1 - v0)})`;
+    }
+    return {
+      set: "jewel",
+      floorGlow: 2.2,
+      eye,
+      aim,
+      fov: 10.3,
+      camera,
+      focus,
+      focusAt: d + 0.09,
+      fstop: 2,
+      flash: "0",
+      lift: 0,
+      veil: 0,
+      strobe: 0,
+      // darkening over the last five frames (luma 52 → 26)
+      exposure: 0,
+      ring: 0,
+      figures: [],
+      exposureExpr: `-0.1 - clamp((${U} - 10) / 5, 0, 1) * 1.4`,
+      grade: { black: 0, lift: 0.025, highlightTint: [0.92, 1.0, 1.04, 1], shadowTint: [0.9, 1.0, 1.06, 1] },
+    };
+  }
+  throw new Error(`closeups: the pendant has no take ${take} (1: row 4, 2: row 15, 3: row 48).`);
 }

@@ -594,6 +594,8 @@ function takes(width: number): readonly Take[] {
       streak: { from: 0.4, to: 0.45, threshold: 3, gain: 0.35 },
       grade: DARK_GRADE(width, { exposure: 0.1, saturation: 0.5 }),
     },
+    // ── take 8 · row 60 (0:58.60) "CU of the chain and a watch, with bokeh" (T1407b closeups2)
+    chainWatchTake(width),
   ];
 }
 
@@ -663,6 +665,69 @@ function shhTake(width: number): Take {
     ],
     streak: { from: 0.2, to: 0.25, threshold: 10, gain: 0.3 },
     grade: DARK_GRADE(width, { exposure: 0.1, saturation: 0.75, keepWarm: 1 }),
+  };
+}
+
+/**
+ * T1407b (closeups2) — row 60 (58.600–59.893, frames 1405–1435): a tele close-up from behind the
+ * figure's right shoulder, three-quarter back: the right hand up at the side of the face, fingers
+ * loose along the cap, the iced watch at the wrist; the Cuban chain across the near shoulder low
+ * left, the face in shadow, tall capsules of far tube light out of focus at the right. The key
+ * strobes dark over frames 1407–1408; the lens creeps round and in, so the chain grows in the
+ * frame and the picture brightens toward the end.
+ */
+function chainWatchTake(width: number): Take {
+  const at: Placement = { place: [-60, 0, 0], yaw: 0 };
+  const w = (p: V3): [number, number, number] => toWorld(p, at);
+  // the lens: at the figure's right, a little behind, the face's side and the raised hand in view
+  const eye = w([-1.25, 1.78, -0.2]);
+  const aim = w([0.02, 1.6, 0.2]);
+  const forward = unit(sub(aim, eye));
+  const right = unit([-forward[2], 0, forward[0]]);
+  const up: V3 = [right[1] * forward[2] - right[2] * forward[1], right[2] * forward[0] - right[0] * forward[2], right[0] * forward[1] - right[1] * forward[0]];
+  // the far tubes, 4.5 m off, placed in the frame: `sx` across (0..1), `sy` the capsule's centre
+  // down from the top (0..1), `tall` its height (frame heights); each a short vertical stack of
+  // lamps, which the lens spreads into a capsule
+  const frameH = (2 * 4.5 * (18 / 2.347)) / 85;
+  const frameW = frameH * 2.347;
+  const tube = (sx: number, sy: number, tall: number, gain: number): { at: V3; radius: number; color: V3 }[] =>
+    Array.from({ length: 5 }, (_, i) => {
+      const y = (sy - 0.5 + (i / 4 - 0.5) * tall) * frameH;
+      return { at: add(add(add(eye, forward, 4.5), right, (sx - 0.5) * frameW), up, -y), radius: 0.018, color: [gain * 0.9, gain * 0.97, gain] as V3 };
+    });
+  return {
+    row: "60",
+    set: "void",
+    placement: at,
+    pose: (bones) => {
+      const arm = solveArm(bones, "R", { wrist: w([-0.12, 1.54, 0.16]), point: [0.1, 1, 0.15], palm: [1, 0, 0.1], elbow: w([-0.22, 1.26, 0.2]) }, at);
+      const pose = { ...fixed(arm), "upperarmL.z": "-0.62", "forearmL.x": "-0.2", ...fingers("R", { curl: 0.35, spread: 0.08, thumb: 0.4, extra: [0, 0.1, 0.2, 0.3] }) };
+      nudge(pose, "neck.x", "0.18");
+      nudge(pose, "head.x", tremor(0.012, 0.5));
+      nudge(pose, "forearmR.x", tremor(0.015, 1.7));
+      return pose;
+    },
+    eye,
+    aim,
+    focal: 85,
+    fstop: 1.4,
+    focus: 1.3,
+    camera: { size: 0.004, jolt: 0.006, roll: { start: -4, lean: 2, wander: 1 }, drift: [0.02, -0.01, 0.03] },
+    lights: [
+      // a cool key from beyond the face (the rim on the hand and the chain), a low fill for the shoulder
+      { at: w([0.6, 2.1, 0.8]), color: COOL, intensity: 1.2 },
+      { at: w([-0.7, 1.3, -0.1]), color: COOL, intensity: 0.2 },
+      // the soft key over the lens: the side of the face, the back of the hand, the chain's top
+      { at: w([-0.9, 2.4, 0.35]), color: COOL, intensity: 2.2 },
+    ],
+    // the key out over frames 1407–1408 (take frames 2–3; the spans sit between frame times)
+    strobe: [[1.5 / 24, 3.5 / 24]],
+    bokeh: [...tube(0.86, 0.42, 0.28, 150), ...tube(0.97, 0.62, 0.3, 100)],
+    // the ice mirrors a brighter studio than the other hands takes (the chain), the IBL kept low (the skin)
+    studio: 1.4,
+    environment: 0.35,
+    streak: { from: 0.2, to: 0.25, threshold: 12, gain: 0.25 },
+    grade: DARK_GRADE(width, { exposure: 0.25, saturation: 0.4 }),
   };
 }
 

@@ -147,7 +147,8 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     shoeZ: vec3Extra(shoe.extras, "loom_z", "prop.shoe"),
   };
   // the pendant set's far wall glows brightest behind and right of the pendant, as the lens sees it
-  const wall = shot === "pendant" ? { wallCentre: vec(add(markerOf(facts, "stage.pendant").position, [-2.0, 0.1, -1.6])), wallGlow: 0.13 } : {};
+  // (T1407b closeups2: the pendant-on-tee set lights its far floor instead, bright white)
+  const wall = jewelSet?.set === "jewel" ? { wallCentre: vec(add(markerOf(facts, "stage.jewel").position, [0.4, -1.3, -2.2])), wallGlow: jewelSet.floorGlow } : shot === "pendant" ? { wallCentre: vec(add(markerOf(facts, "stage.pendant").position, [-2.0, 0.1, -1.6])), wallGlow: 0.13 } : {};
   nodes.push(node("cusurf", "materialWgsl", [-3000, -700], { model: "pbr", source: CLOSEUP_SURFACE_WGSL, ...shoeFrame, ...wall, grime: 0.35, windowGlow: 0.07 }, { label: "cusurf1" }));
   if (shot === "sneaker" || (jewelSet?.figures.length ?? 0) > 0) {
     nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: heldSet === undefined ? 1 : 0, wet: 0.25, wetGloss: 0.22, dryGloss: 0.66 }, { label: "surf1" }));
@@ -233,8 +234,8 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
       lensFx: { distortion: 0.05, edgeBlur: 0.014, swirl: 0.5, aberration: 0.0022, vignette: 0.65, vignetteRound: 0.75 },
     };
   } else if (shot === "pendant") {
-    mesh("pend", "cusurf1", 0);
-    const stage = markerOf(facts, "stage.pendant").position;
+    mesh(jewelSet?.set ?? "pend", "cusurf1", 0);
+    const stage = markerOf(facts, jewelSet?.set === "jewel" ? "stage.jewel" : "stage.pendant").position;
     // the pendant's face looks at +Z (glTF); the lens is 30 cm off, a little right and above
     // the view-plane distance to the pendant; the word is turned, so its nearest letters sit ~3 cm closer
     const reach = (stage[0] - eye[0]) * camera.forward[0] + (stage[1] - eye[1]) * camera.forward[1] + (stage[2] - eye[2]) * camera.forward[2];
@@ -252,6 +253,8 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     light("key", [-0.22, 0.32, 0.3], [0.9, 0.95, 1, 1], 0.35);
     light("rim", [0.28, 0.12, -0.2], [1, 0.52, 0.2, 1], 0.22);
     light("kick", [-0.3, -0.18, 0.12], [0.35, 0.85, 1, 1], 0.08);
+    // T1407b closeups2: the tee under the pendant (row 48) reads dark grey, not black: a broad cool fill from over the lens
+    if (jewelSet?.set === "jewel") light("teeFill", [0.05, 0.6, 0.7], [0.85, 0.93, 1, 1], 3);
     // handheld macro: the rig slides right to left across the word, the horizon leaning
     move = handheld(eye, aim, [-0.012, 0.0015, -0.002], 0.0018, { wander: 1.2, lean: -0.8, start: 1.5 });
     look = {
@@ -267,7 +270,7 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
       aim = [jewelSet.aim[0], jewelSet.aim[1], jewelSet.aim[2]];
       move = jewelSet.camera;
       fov = jewelSet.fov;
-      look = { ...look, lens: { focal: 100, fstop: jewelSet.fstop, focus: jewelSet.focus, focusAt: jewelSet.focusAt, maxCoc: 0.1 }, grade: { ...look.grade, exposure: jewelSet.exposure } };
+      look = { ...look, lens: { focal: 100, fstop: jewelSet.fstop, focus: jewelSet.focus, focusAt: jewelSet.focusAt, maxCoc: 0.1 }, grade: { ...look.grade, ...jewelSet.grade, exposure: jewelSet.exposureExpr === undefined ? jewelSet.exposure : expressionSlot(jewelSet.exposureExpr, jewelSet.exposure) } };
       for (const figure of jewelSet.figures) {
         const area = facts.areas.get(figure.area);
         if (area === undefined) throw new Error(`closeupDocument: no ${figure.area} area in the GLB.`);
@@ -520,7 +523,7 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
   stock("grade", "filmGrade", look.grade, [-100, 0]);
   // T1407b closeups2: the strobe's flash frames (veil and rainbow ring) in the held takes
   const flash = heldSet?.flash ?? jewelSet?.flash;
-  if (flash !== undefined) pass("flash", FLASH_WGSL, { flash: expressionSlot(flash, 0), centre: [0.72, 0.42], ring: jewelSet?.ring ?? 0.16, gain: jewelSet?.lift ?? 0.9, veil: jewelSet?.veil ?? 0.22 }, [], [100, 0]);
+  if (flash !== undefined && flash !== "0") pass("flash", FLASH_WGSL, { flash: expressionSlot(flash, 0), centre: [0.72, 0.42], ring: jewelSet?.ring ?? 0.16, gain: jewelSet?.lift ?? 0.9, veil: jewelSet?.veil ?? 0.22 }, [], [100, 0]);
   if (options.crt === true) stock("crt", "crt", { amount: 1 }, [500, 0]);
   nodes.push(node("out", "output", [700, 0], { toneMap: "none" }, { label: "out1" }));
   edges.push(edge("last-out", last, ["out", "input"]));
