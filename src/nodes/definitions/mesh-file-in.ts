@@ -4,6 +4,8 @@ import { scratchResourceId } from "../../compiler/resources.ts";
 import { MESH_ATTRIBUTES, meshLayout, meshSourceIdsFor } from "../../points/mesh.ts";
 import { formatTopology } from "../../points/topology.ts";
 import { MESH_CLIP_WGSL } from "../shaders/mesh-clip.wgsl.ts";
+import { MESH_LAMPS_WGSL } from "../shaders/mesh-lamps.wgsl.ts";
+import { lampGroups } from "../../domain/mesh/glb.ts";
 import { readCompileInputs } from "./compile-context.ts";
 import { readFlag, readNumber } from "./parameter-readers.ts";
 import { attributeBinding, packedPointStorage } from "./point-storage.ts";
@@ -43,11 +45,24 @@ import { attributeBinding, packedPointStorage } from "./point-storage.ts";
  * third buffer, and one compute pass poses every vertex at the frame clock: the published
  * `position` and `normal` are the performance, the rest (joints, weights, …) ride as before,
  * so a kernel downstream still turns the posed figure (a yaw, a place, a knob on top).
+ *
+ * ## Lamps (T1424b)
+ *
+ * A car's lamps usually share one emissive material, so switching ONE lamp could not be said.
+ * Lamps names up to eight groups, comma-separated, each in Select's own syntax; the loader
+ * records every vertex's group in a `lamp` attribute (appended last, so nothing else moves,
+ * and absent while Lamps is empty — the layout every existing document packs), and one
+ * dispatch a frame publishes `emissive` × Lamp Gain k. The gains are values: knobs,
+ * expressions, audio.
  */
 
 const POINTS_KEY = "meshPoints";
 const INDICES_KEY = "meshIndices";
 const POSE_KEY = "meshPose";
+/** T1424b: the published, gained emissive — a plain buffer the lamps pass writes each frame. */
+const LAMPS_KEY = "meshLamps";
+/** T1424b: at most this many Lamps groups — two vec4 rows of gains. */
+const LAMP_GROUPS = 8;
 const MEASURED = "Measured from the file: the loader writes it when the file is read.";
 
 export const meshFileInNode: NodeDefinition = {
@@ -162,6 +177,31 @@ export const meshFileInNode: NodeDefinition = {
         "The skin's joint table, index:name<parent@x,y,z (the rest head in world metres) — the numbers p.joints holds. Empty when the selection is unskinned; non-empty adds the joints and weights attributes.",
       inactiveWhen: () => MEASURED,
     },
+    lamps: {
+      type: "string",
+      label: "Lamps",
+      default: "",
+      group: "Lamps",
+      compileTime: true,
+      description:
+        "T1424b: up to eight lamp GROUPS, comma-separated, each written like Select (globs over object, part and material names; material:/part: scopes; ! excludes), where & inside a token requires both sides — e.g. car3.body&material:headlight, car3.body&material:taillight, material:drl. Every vertex takes the first group its object matches, and its emissive is multiplied by that group's Lamp Gain, so one lamp can switch inside one mesh. Empty: no groups, and the mesh packs exactly as before. Changing it re-reads the file.",
+    },
+    ...Object.fromEntries(
+      Array.from({ length: LAMP_GROUPS }, (_, index) => [
+        `lampGain${index + 1}`,
+        {
+          type: "number",
+          label: `Lamp Gain ${index + 1}`,
+          default: 1,
+          min: 0,
+          range: "floor",
+          group: "Lamps",
+          description: `T1424b: the emissive gain of Lamps group ${index + 1} — 0 switches it off, 1 is the file's own emission. A value: drive it by knob, expression or audio.`,
+          inactiveWhen: (values: Readonly<Record<string, unknown>>) =>
+            lampGroups(typeof values["lamps"] === "string" ? values["lamps"] : "").length > index ? null : `Lamps names no group ${index + 1}.`,
+        },
+      ]),
+    ),
   },
   compile(context): CompiledNodeDescription {
     const { nodeId, parameters } = readCompileInputs(context as Parameters<typeof readCompileInputs>[0]);
@@ -175,7 +215,22 @@ export const meshFileInNode: NodeDefinition = {
     const vertices = empty ? 1 : measuredVertices;
     const triangles = empty ? 1 : measuredTriangles;
     const skinned = typeof parameters["joints"] === "string" && parameters["joints"].trim() !== "";
-    const layout = meshLayout(vertices, skinned);
+    const lamps = lampGroups(typeof parameters["lamps"] === "string" ? parameters["lamps"] : "");
+    if (lamps.length > LAMP_GROUPS) {
+      return {
+        passes: [],
+        diagnostics: [
+          {
+            severity: "error",
+            code: "node.mesh.lamps",
+            message: `Node "${nodeId}": Lamps names ${lamps.length} groups; at most ${LAMP_GROUPS} have a gain.`,
+            nodeId,
+            suggestion: "Merge groups that switch together into one (space-separate their globs inside one group).",
+          },
+        ],
+      };
+    }
+    const layout = meshLayout(vertices, skinned, lamps.length > 0);
     if (!layout.ok) {
       return {
         passes: [],
@@ -199,16 +254,18 @@ export const meshFileInNode: NodeDefinition = {
     }
     const clip = playClip(nodeId, parameters, { vertices, skinned, empty, rest: pairs, poseSource: sources.pose });
     if ("refusal" in clip) return { passes: [], diagnostics: [clip.refusal] };
+    const lit = lampPass(nodeId, parameters, { vertices, empty, groups: lamps.length, rest: pairs });
     return {
-      passes: clip.passes,
+      passes: [...clip.passes, ...lit.passes],
       scratch: [
         { kind: "buffer", key: POINTS_KEY, stride: 4, capacity: layout.bytes / 4, sourceId: sources.points },
         { kind: "buffer", key: INDICES_KEY, stride: 4, capacity: triangles * 3, sourceId: sources.indices },
         ...clip.scratch,
+        ...lit.scratch,
       ],
       pointsets: {
         out: {
-          pairs: { ...pairs, ...clip.pairs },
+          pairs: { ...pairs, ...clip.pairs, ...lit.pairs },
           capacity: vertices,
           topology: formatTopology({ kind: "mesh", triangles, indexBuffer }),
         },
@@ -285,5 +342,46 @@ function playClip(
     passes: [pass],
     scratch: [{ kind: "buffer", key: POSE_KEY, stride: 16, capacity: frames * joints * 3, sourceId: mesh.poseSource }, storage.scratch],
     pairs: { position: storage.pairs["position"] as PointsetAttributeRef, normal: storage.pairs["normal"] as PointsetAttributeRef },
+  };
+}
+
+/**
+ * T1424b — the lamps pass, when Lamps names a group: one dispatch writing `emissive` × the
+ * vertex's group gain into a buffer of this node's own, which replaces the file's emissive on
+ * the edge. No groups (or nothing loaded) is the node without it.
+ */
+function lampPass(
+  nodeId: string,
+  parameters: Readonly<Record<string, unknown>>,
+  mesh: { readonly vertices: number; readonly empty: boolean; readonly groups: number; readonly rest: Readonly<Record<string, PointsetAttributeRef>> },
+): { readonly passes: DispatchPassDescriptor[]; readonly scratch: Array<{ kind: "buffer"; key: string; stride: number; capacity: number }>; readonly pairs: Record<string, PointsetAttributeRef> } {
+  if (mesh.groups === 0 || mesh.empty) return { passes: [], scratch: [], pairs: {} };
+  const gain = (index: number): number => Math.max(0, readNumber(parameters as never, `lampGain${index}`, 1));
+  // vec3f at the WGSL array stride, 16 bytes a vertex, exactly as the packed emissive region reads.
+  const out: PointsetAttributeRef = { buffer: scratchResourceId(nodeId, LAMPS_KEY), half: "read", offset: 0, bytes: mesh.vertices * 16, type: "vec3f" };
+  return {
+    passes: [
+      {
+        kind: "dispatch",
+        id: `${nodeId}:lamps`,
+        shader: MESH_LAMPS_WGSL,
+        entryPoint: "main",
+        workgroups: [Math.ceil(mesh.vertices / 64), 1, 1],
+        buffers: [
+          attributeBinding("in_emissive", mesh.rest["emissive"] as PointsetAttributeRef),
+          attributeBinding("in_lamp", mesh.rest["lamp"] as PointsetAttributeRef),
+          attributeBinding("out_emissive", out),
+        ],
+        uniforms: {
+          count: mesh.vertices,
+          gainsA: [gain(1), gain(2), gain(3), gain(4)],
+          gainsB: [gain(5), gain(6), gain(7), gain(8)],
+        },
+        uniformBinding: "params",
+        nodeId,
+      },
+    ],
+    scratch: [{ kind: "buffer", key: LAMPS_KEY, stride: 16, capacity: mesh.vertices }],
+    pairs: { emissive: out },
   };
 }

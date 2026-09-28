@@ -257,7 +257,9 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   plan.areas.flatMap((entry) => (entry === "cars" ? carAreas(facts) : [entry])).forEach((area, index) => {
     const mesh = facts.areas.get(area);
     if (mesh === undefined) throw new Error(`onNothingDocument: no "${area}" area in the GLB.`);
-    nodes.push(node(`mesh_${area}`, "meshFileIn", [-3600, index * 250], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts }, { label: `mesh${area}1` }));
+    // T1424b: a car's lamps switch per car — Lamp Gain 1 headlights, 2 DRLs, 3 tail lights (1 = as exported)
+    const lamps = area.startsWith("car") ? { lamps: "material:headlight, material:drl, material:taillight" } : {};
+    nodes.push(node(`mesh_${area}`, "meshFileIn", [-3600, index * 250], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts, ...lamps }, { label: `mesh${area}1` }));
     nodes.push(node(`geo_${area}`, "geometry", [-3300, index * 250], { mode: "surface", material: "surf1" }, { label: `geo${area}1` }));
     if (rig !== undefined && area === rig.area) {
       // The rigged car drives; its wheels roll (car-rig.ts).

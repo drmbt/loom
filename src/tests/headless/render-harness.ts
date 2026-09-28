@@ -720,6 +720,11 @@ function clipOf(parameters: Readonly<Record<string, unknown>>): { name?: string;
   return name === "" ? {} : { name, ...(typeof rate === "number" ? { rate } : {}) };
 }
 
+/** T1424b: a Mesh File In's Lamps groups, which the decode needs (they add the `lamp` attribute). */
+function lampsOf(parameters: Readonly<Record<string, unknown>>): string {
+  return typeof parameters["lamps"] === "string" ? parameters["lamps"] : "";
+}
+
 function measureMeshes(request: HeadlessRenderRequest): { request: HeadlessRenderRequest; prepared: Map<string, PreparedMesh | null> } {
   const prepared = new Map<string, PreparedMesh | null>();
   if (request.meshes === undefined) return { request, prepared };
@@ -729,7 +734,7 @@ function measureMeshes(request: HeadlessRenderRequest): { request: HeadlessRende
     if (node === undefined) continue; // inside a component: checked, not measured, at the feed
     if (node.type !== "meshFileIn") throw new Error(`meshes: "${nodeId}" is not a Mesh File In node.`);
     const select = typeof node.parameters["select"] === "string" ? (node.parameters["select"] as string) : "";
-    const mesh = prepareMesh(glb, select, clipOf(node.parameters));
+    const mesh = prepareMesh(glb, select, clipOf(node.parameters), lampsOf(node.parameters));
     prepared.set(nodeId, mesh);
     if (mesh === null) continue;
     nodes[nodeId] = { ...node, parameters: { ...node.parameters, ...mesh.facts } };
@@ -814,7 +819,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
       const node = logicalGraph.nodes[nodeId as keyof typeof logicalGraph.nodes];
       if (node?.type !== "meshFileIn") throw new Error(`meshes: "${nodeId}" is not a Mesh File In node.`);
       const select = typeof node.parameters["select"] === "string" ? (node.parameters["select"] as string) : "";
-      const prepared = preparedMeshes.has(nodeId) ? (preparedMeshes.get(nodeId) ?? null) : prepareMesh(glb, select, clipOf(node.parameters));
+      const prepared = preparedMeshes.has(nodeId) ? (preparedMeshes.get(nodeId) ?? null) : prepareMesh(glb, select, clipOf(node.parameters), lampsOf(node.parameters));
       if (prepared === null) continue;
       if (node.parameters["vertices"] !== prepared.facts.vertices || node.parameters["triangles"] !== prepared.facts.triangles) {
         throw new Error(

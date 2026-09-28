@@ -41,6 +41,8 @@ interface MeshRequest {
   /** T1410b: the chosen clip and its bake rate ("" = none). */
   readonly clip: string;
   readonly clipRate: number;
+  /** T1424b: the Lamps groups — they add the `lamp` attribute, so they are part of the decode. */
+  readonly lamps: string;
   /** The node's stored facts, so a written measurement re-runs the effect (T1401b: joints too — a skin changes the layout, not the counts). */
   readonly sized: string;
 }
@@ -54,12 +56,14 @@ function meshRequests(graph: GraphDocument): MeshRequest[] {
     const select = node.parameters["select"];
     const clip = node.parameters["clip"];
     const clipRate = node.parameters["clipRate"];
+    const lamps = node.parameters["lamps"];
     requests.push({
       nodeId: node.id,
       file,
       select: typeof select === "string" ? select : "",
       clip: typeof clip === "string" ? clip.trim() : "",
       clipRate: typeof clipRate === "number" ? clipRate : 30,
+      lamps: typeof lamps === "string" ? lamps : "",
       sized: `${String(node.parameters["vertices"])}/${String(node.parameters["triangles"])}/${String(node.parameters["parts"])}/${String(node.parameters["joints"])}/${String(node.parameters["clips"])}/${String(node.parameters["clipFrames"])}`,
     });
   }
@@ -77,7 +81,7 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
 
   const requests = meshRequests(graph);
   // A flat string, so an unrelated recompile does not re-open every mesh.
-  const key = requests.map((request) => `${request.nodeId}|${request.file}|${request.select}|${request.clip}@${request.clipRate}|${request.sized}`).join("\n");
+  const key = requests.map((request) => `${request.nodeId}|${request.file}|${request.select}|${request.clip}@${request.clipRate}|${request.lamps}|${request.sized}`).join("\n");
 
   useEffect(() => {
     if (backend === null || key === "") {
@@ -145,11 +149,11 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
 
     void (async () => {
       for (const request of requests) {
-        const preparedKey = `${request.file}|${request.select}|${request.clip}@${request.clipRate}`;
+        const preparedKey = `${request.file}|${request.select}|${request.clip}@${request.clipRate}|${request.lamps}`;
         let prepared: PreparedMesh | null;
         try {
           const cached = preparedRef.current.get(preparedKey);
-          prepared = cached !== undefined ? cached : prepareMesh(await readFile(request.file), request.select, request.clip === "" ? {} : { name: request.clip, rate: request.clipRate });
+          prepared = cached !== undefined ? cached : prepareMesh(await readFile(request.file), request.select, request.clip === "" ? {} : { name: request.clip, rate: request.clipRate }, request.lamps);
           preparedRef.current.set(preparedKey, prepared);
         } catch (error) {
           found.push({

@@ -148,6 +148,11 @@ export interface DecodedMesh {
   readonly skin?: DecodedSkin;
   /** T1410b: the file's animation names, in file order; absent when it has none. */
   readonly clips?: ReadonlyArray<string>;
+  /**
+   * T1424b: per vertex, the 1-based index of the first Lamps group its primitive matches
+   * (0 = none). Present only when `DecodeOptions.lamps` names at least one group.
+   */
+  readonly lamps?: Float32Array;
 }
 
 export interface DecodeOptions {
@@ -164,6 +169,19 @@ export interface DecodeOptions {
   readonly clip?: string;
   /** T1410b: the pose table's samples per second (default 30). */
   readonly clipRate?: number;
+  /**
+   * T1424b: LAMP GROUPS, comma-separated; each group is `select` syntax (globs over object,
+   * mesh, part and material names, `part:`/`material:` scopes, `!` excludes), plus `&` inside a
+   * token to require several terms at once (`car3.body&material:headlight`). Every vertex
+   * records the first group its primitive matches (`lamps`), so a gain can switch one lamp
+   * inside one mesh. Empty: no `lamps` array.
+   */
+  readonly lamps?: string;
+}
+
+/** T1424b: the Lamps groups of a `lamps` string — comma-separated, empty groups dropped. */
+export function lampGroups(lamps: string): string[] {
+  return lamps.split(",").map((group) => group.trim()).filter((group) => group !== "");
 }
 
 export class GlbDecodeError extends Error {
@@ -641,22 +659,36 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
   };
 
   interface Selector { readonly negate: boolean; readonly scope: "any" | "part" | "material"; readonly pattern: RegExp }
-  const selectors: Selector[] = (options.select ?? "").split(/\s+/).filter((token) => token !== "").map((token) => {
-    const negate = token.startsWith("!");
-    const body = negate ? token.slice(1) : token;
-    const scope = body.startsWith("part:") ? "part" : body.startsWith("material:") ? "material" : "any";
-    return { negate, scope, pattern: globToRegExp(scope === "any" ? body : body.slice(scope.length + 1)) };
-  });
-  const includes = selectors.filter((selector) => !selector.negate);
-  const excludes = selectors.filter((selector) => selector.negate);
-  const matches = (selector: Selector, names: { node?: string; mesh?: string; part?: string; material?: string }): boolean => {
+  type Names = { node?: string; mesh?: string; part?: string; material?: string };
+  const matches = (selector: Selector, names: Names): boolean => {
     const candidates =
       selector.scope === "part" ? [names.part] : selector.scope === "material" ? [names.material] : [names.node, names.mesh, names.part, names.material];
     return candidates.some((name) => name !== undefined && selector.pattern.test(name));
   };
-  const selected = (names: { node?: string; mesh?: string; part?: string; material?: string }): boolean =>
-    (includes.length === 0 || includes.some((selector) => matches(selector, names))) &&
-    !excludes.some((selector) => matches(selector, names));
+  const selector = (term: string): Selector => {
+    const negate = term.startsWith("!");
+    const body = negate ? term.slice(1) : term;
+    const scope = body.startsWith("part:") ? "part" : body.startsWith("material:") ? "material" : "any";
+    return { negate, scope, pattern: globToRegExp(scope === "any" ? body : body.slice(scope.length + 1)) };
+  };
+  /**
+   * A `select`-syntax string as a predicate; `emptyKeeps` is what an empty include list
+   * means. T1424b: with `conjunctions`, a token may join terms with `&`, ALL of which must
+   * match (`car3.body&material:headlight` is car 3's headlights and nothing else) — Lamps
+   * only, so Select's own syntax is unchanged.
+   */
+  const selection = (text: string, emptyKeeps: boolean, conjunctions = false): ((names: Names) => boolean) => {
+    const tokens = text.split(/\s+/).filter((token) => token !== "");
+    const includes = tokens.filter((token) => !token.startsWith("!")).map((token) => (conjunctions ? token.split("&") : [token]).map(selector));
+    const excludes = tokens.filter((token) => token.startsWith("!")).map((token) => selector(token));
+    return (names) =>
+      (includes.length === 0 ? emptyKeeps : includes.some((terms) => terms.every((term) => matches(term, names)))) &&
+      !excludes.some((term) => matches(term, names));
+  };
+  const selected = selection(options.select ?? "", true);
+  /* T1424b: each Lamps group a predicate; a primitive's lamp is the first that matches (1-based). */
+  const lampPredicates = lampGroups(options.lamps ?? "").map((group) => selection(group, false, true));
+  const lampOf = (names: Names): number => lampPredicates.findIndex((predicate) => predicate(names)) + 1;
 
   // Walk the default scene (or every root when there is none) in node order.
   const nodes = json.nodes ?? [];
@@ -734,7 +766,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
 
   // Pass 1: size the output so pass 2 writes straight into final arrays.
   const materials = json.materials ?? [];
-  interface Plan { visit: Visit; primitive: GltfPrimitive; vertices: number; indices: number; skin?: number; bone?: number }
+  interface Plan { visit: Visit; primitive: GltfPrimitive; vertices: number; indices: number; skin?: number; bone?: number; lamp: number }
   /** T1440b: an unskinned node's nearest ancestor that is a skin joint, the bone it is parented to. */
   const boneOf = (nodeIndex: number): number | undefined => {
     let at = walked.get(nodeIndex)?.parent ?? -1;
@@ -779,7 +811,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
       }
       if (node.skin === undefined) {
         const bone = boneOf(visit.node);
-        plans.push({ visit, primitive, vertices, indices, ...(bone === undefined ? {} : { bone }) });
+        plans.push({ visit, primitive, vertices, indices, lamp: lampOf(names), ...(bone === undefined ? {} : { bone }) });
         continue;
       }
       const where = `Skinned mesh "${mesh.name ?? node.name ?? node.mesh}"`;
@@ -789,7 +821,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
       }
       const more = Object.keys(primitive.attributes).find((name) => /^(JOINTS|WEIGHTS)_[1-9]/.test(name));
       if (more !== undefined) throw new GlbDecodeError(`${where} has ${more}: more than four influences per vertex are not decoded. Export with four (Blender: Bone Influences 4).`);
-      plans.push({ visit, primitive, vertices, indices, skin: node.skin });
+      plans.push({ visit, primitive, vertices, indices, skin: node.skin, lamp: lampOf(names) });
     }
   }
 
@@ -864,6 +896,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
   const colors = new Float32Array(vertexCount * 4);
   const surface = new Float32Array(vertexCount * 4);
   const emissive = new Float32Array(vertexCount * 3);
+  const lamps = lampPredicates.length === 0 ? undefined : new Float32Array(vertexCount);
   const indices = new Uint32Array(indexCount);
   const skinned = usedSkins.length > 0;
 
@@ -972,6 +1005,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
       emissive[o * 3] = (emit[0] ?? 0) * strength;
       emissive[o * 3 + 1] = (emit[1] ?? 0) * strength;
       emissive[o * 3 + 2] = (emit[2] ?? 0) * strength;
+      if (lamps !== undefined) lamps[o] = plan.lamp;
     }
 
     const localIndices = primitive.indices === undefined ? undefined : readFloats(primitive.indices, "indices");
@@ -1044,6 +1078,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
     warnings,
     ...(skinned ? { skin: { joints, indices: jointIndices, weights: jointWeights, ...(pose === undefined ? {} : { pose }) } } : {}),
     ...(clipNames.length === 0 ? {} : { clips: clipNames }),
+    ...(lamps === undefined ? {} : { lamps }),
   };
 }
 

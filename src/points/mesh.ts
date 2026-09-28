@@ -37,18 +37,26 @@ export const MESH_SKIN_ATTRIBUTES: ReadonlyArray<PointAttributeSchema> = [
   { name: "weights", type: "vec4f", default: [0, 0, 0, 0] },
 ];
 
+/**
+ * T1424b — a mesh node with LAMPS carries one more attribute, LAST (after the skin's, so no
+ * existing region moves): `lamp`, the 1-based Lamps group of the vertex's primitive, 0 for
+ * none. A node without Lamps packs exactly the layout it always did.
+ */
+export const MESH_LAMP_ATTRIBUTE: PointAttributeSchema = { name: "lamp", type: "f32", default: [0] };
+
 /** The registry keys a mesh node's buffers are fed from (§V135: keys, never bytes). T1410b: `pose`, a clip's baked joint poses. */
 export function meshSourceIdsFor(nodeId: string): { readonly points: string; readonly indices: string; readonly pose: string } {
   return { points: `mesh:${nodeId}:points`, indices: `mesh:${nodeId}:indices`, pose: `mesh:${nodeId}:pose` };
 }
 
-export function meshLayout(vertexCount: number, skinned = false): PackedLayoutResult {
-  return packAttributes(skinned ? MESH_SKIN_ATTRIBUTES : MESH_ATTRIBUTES, vertexCount);
+export function meshLayout(vertexCount: number, skinned = false, lamps = false): PackedLayoutResult {
+  const base = skinned ? MESH_SKIN_ATTRIBUTES : MESH_ATTRIBUTES;
+  return packAttributes(lamps ? [...base, MESH_LAMP_ATTRIBUTE] : base, vertexCount);
 }
 
 /**
  * The packed attribute bytes for `mesh`, laid out by `layout` (which must be
- * `meshLayout(mesh.vertexCount, mesh.skin !== undefined)`). vec3 attributes are written at stride 16 with the
+ * `meshLayout(mesh.vertexCount, mesh.skin !== undefined, mesh.lamps !== undefined)`). vec3 attributes are written at stride 16 with the
  * fourth lane zero, exactly as a WGSL `array<vec3f>` reads them.
  */
 export function packMeshAttributes(mesh: DecodedMesh, layout: PackedLayout): Uint8Array {
@@ -64,6 +72,7 @@ export function packMeshAttributes(mesh: DecodedMesh, layout: PackedLayout): Uin
     surface: { data: mesh.surface, components: 4 },
     emissive: { data: mesh.emissive, components: 3 },
     ...(mesh.skin === undefined ? {} : { joints: { data: mesh.skin.indices, components: 4 }, weights: { data: mesh.skin.weights, components: 4 } }),
+    ...(mesh.lamps === undefined ? {} : { lamp: { data: mesh.lamps, components: 1 } }),
   };
   for (const region of layout.regions) {
     const source = sources[region.name];
@@ -141,10 +150,19 @@ export interface PreparedMesh {
  * (nothing to feed; the node's own diagnostic says so). Throws `GlbDecodeError` on a file
  * the decoder refuses, and a plain Error when the selection overflows one binding.
  */
-export function prepareMesh(glb: Uint8Array, select: string, clip: { readonly name?: string; readonly rate?: number } = {}): PreparedMesh | null {
-  const mesh = decodeGlb(glb, { select, ...(clip.name === undefined || clip.name === "" ? {} : { clip: clip.name, ...(clip.rate === undefined ? {} : { clipRate: clip.rate }) }) });
+export function prepareMesh(
+  glb: Uint8Array,
+  select: string,
+  clip: { readonly name?: string; readonly rate?: number } = {},
+  lamps = "",
+): PreparedMesh | null {
+  const mesh = decodeGlb(glb, {
+    select,
+    ...(clip.name === undefined || clip.name === "" ? {} : { clip: clip.name, ...(clip.rate === undefined ? {} : { clipRate: clip.rate }) }),
+    ...(lamps.trim() === "" ? {} : { lamps }),
+  });
   if (mesh.vertexCount === 0 || mesh.triangleCount === 0) return null;
-  const layout = meshLayout(mesh.vertexCount, mesh.skin !== undefined);
+  const layout = meshLayout(mesh.vertexCount, mesh.skin !== undefined, mesh.lamps !== undefined);
   if (!layout.ok) throw new Error(layout.errors.join("; "));
   const table = mesh.skin?.pose?.table;
   return {
