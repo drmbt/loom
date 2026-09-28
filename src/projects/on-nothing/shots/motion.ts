@@ -7,6 +7,22 @@
 const num = (value: number): string => (Math.abs(value) < 1e-6 ? "0" : Number(value.toFixed(5)).toString());
 
 /**
+ * T1407b (prism) — a SHUTTER CLOCK: shot time as a camera with a `degrees` shutter sees it.
+ * render.ts --final averages `subframes` renders per output frame, stepping `abstime` across
+ * the WHOLE frame (a 360° shutter). The reference shoots its performance at a narrow shutter
+ * (the look brief: 45–90°), so a fast move reads crisp, not smeared into ghosts. This clock
+ * keeps each frame's start and squeezes its sub-frames into the first `degrees`/360 of it.
+ * With one sub-frame (a draft) it IS abstime at every frame.
+ */
+export function shutterClock(degrees: number): string {
+  const open = num(Math.max(0, Math.min(360, degrees)) / 360);
+  // the frame this sub-frame belongs to (nudged: n/(24·sub) may land a hair under a whole
+  // frame), and how far into it (un-nudged, so a whole frame is exactly k/fps)
+  const frame = "floor(abstime * fps + 0.0001)";
+  return `((${frame} + (abstime * fps - ${frame}) * ${open}) / fps)`;
+}
+
+/**
  * A curve through `keys` ([time s, value]): each span eased with smoothstep, flat before the
  * first key and after the last. A key marked "snap" in its third slot eases the span INTO it
  * out only, for a staccato hit: fast start, soft landing.

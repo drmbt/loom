@@ -10,7 +10,7 @@ import { ShotGraph, cameraRefs } from "./chain.ts";
 import { figureNodes } from "./figure.ts";
 import { pistolPose } from "./hands.ts";
 import { handheld as operator } from "./handheld.ts";
-import { keyed } from "./motion.ts";
+import { keyed, shutterClock } from "./motion.ts";
 
 /**
  * T1407b — PRISM, the reference's 0:28.92–0:29.88 (23 frames). The look breakdown calls it a
@@ -153,7 +153,9 @@ function performance(t: string, bones: readonly Bone[]): Record<string, string> 
     "forearmL.x": "-0.2",
     // T1407b (hands): the reference's hand is a PISTOL raised beside the head, the barrel out and
     // up, so the key throws a big pistol shadow up the cyc (shots/hands.ts pistolPose)
-    ...pistolPose(bones, { wrist: [-0.36, 1.6, 0.12], point: [-0.8, 0.5, 0.25], palm: [0.45, 0.8, 0.1], elbow: [-0.44, 1.33, 0.0] }),
+    // (the reference: the barrel level and a touch down, out to his right; the grip down; the back
+    // of the hand to the lens; the forearm rising from below, so gun and shadow read as one pistol)
+    ...pistolPose(bones, { wrist: [-0.24, 1.6, 0.22], point: [-1, -0.25, 0.1], palm: [0, 0.15, -1], elbow: [-0.26, 1.33, 0.12] }),
     "neck.x": `-0.1 * (${tip})`,
     "head.x": `-0.25 * (${tip})`,
     "head.y": "0.15",
@@ -167,7 +169,9 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
   if (stage === undefined) throw new Error("prismDocument: the GLB has no stage \"stage.quad\" (the void the prism borrows).");
   // In the empty void by the quad's mark, facing -Z (the camera's side).
   const [ax, , az] = stage.position;
-  const t = "abstime";
+  // T1407b (prism): the reference's narrow shutter — the fast rise reads crisp at --final,
+  // where a 360° clock smeared the figure and its shadow into ghosts (motion.ts shutterClock)
+  const t = shutterClock(90);
   const rise = keyed(t, [[0, -0.75], [0.55, 0, "snap"], [0.96, 0.02]]);
 
   const g = new ShotGraph();

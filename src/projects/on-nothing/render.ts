@@ -100,6 +100,9 @@ const finalQuality = argv.includes("--final");
 const ss = finalQuality ? 2 : 1;
 const sub = Number(flag("sub") ?? (finalQuality ? 8 : 1));
 const trail = Number(flag("trail") ?? (finalQuality ? 0.5 : 0));
+/** The trail's highlight knee and ramp, in display levels of the previous frame's luma (see Accumulator). */
+const TRAIL_KNEE = 170;
+const TRAIL_SPAN = 50;
 
 /**
  * T1432b — FILM GRAIN AFTER THE ACCUMULATION. A grade's grain is a new pattern every frame, so
@@ -181,11 +184,22 @@ class Accumulator {
     // than the present (a moving light leaves a fading ghost; a still pixel is untouched,
     // max(x, x * trail) = x). A CUT resets it: a frame that differs from the last on average by
     // more than 18 levels starts a new trail, so no ghost of one shot bleeds into the next.
+    // Only HIGHLIGHTS trail (the previous pixel's luma from TRAIL_KNEE up, eased over
+    // TRAIL_SPAN levels): a trail of mid-grey ground drew the last frame's cyc through a
+    // moving dark figure and its shadow — a ghost double (T1407b, the prism's row 26).
     if (trail > 0 && this.previous !== undefined) {
       let diff = 0;
       for (let i = 0; i < frame.length; i += 16) diff += Math.abs(frame[i]! - this.previous[i]!);
       const cut = diff / (frame.length / 16) > 18;
-      if (!cut) for (let i = 0; i < frame.length; i++) frame[i] = Math.max(frame[i]!, this.previous[i]! * trail);
+      if (!cut) {
+        const prev = this.previous;
+        for (let i = 0; i < frame.length; i += 4) {
+          const luma = 0.2126 * prev[i]! + 0.7152 * prev[i + 1]! + 0.0722 * prev[i + 2]!;
+          const w = Math.min(1, Math.max(0, (luma - TRAIL_KNEE) / TRAIL_SPAN)) * trail;
+          if (w <= 0) continue;
+          for (let c = 0; c < 3; c++) frame[i + c] = Math.max(frame[i + c]!, prev[i + c]! * w);
+        }
+      }
     }
     this.previous = frame;
     // the grain rides on the output only, never on the trail's memory of it
