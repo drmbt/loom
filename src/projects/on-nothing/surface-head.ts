@@ -6,14 +6,18 @@
  *
  *  - COLOR_0 rgb: MakeHuman's CC0 skin (and, on the eyes, its CC0 brown iris) sampled at each
  *    corner's UV — the albedo, arriving as `s.albedo` (the material's base colour is white);
- *  - COLOR_0 alpha: 1 − the facial-hair density (a goatee joined to a moustache, jaw stubble,
- *    the brows), smooth between vertices;
+ *  - COLOR_0 alpha: on the head's UV island 1 − half the facial-hair density (a goatee joined
+ *    to a moustache, jaw stubble, the brows), smooth between vertices; on every other island
+ *    (neck, torso, arms, hands) 0.25 × (1 − density), the BODY code (the goatee runs on under
+ *    the chin, onto the neck's island) — a triangle never spans two islands, so the halves never blend. Both halves share one complexion (head.py gains each island to it);
  *  - TEXCOORD_0: MakeHuman's UV, carried through the skin kernel, so the detail drawn here
  *    SITS ON THE SKIN as the figure moves (a world-space noise would swim across the face).
  *
- * Class 36, SKIN: round PORES keyed to the UV (darker, duller pits whose slope bumps the normal
- * in a frame aligned with the head's UV layout: the mesh carries no tangents); an oilier sheen
- * where the vertex albedo is lighter (the nose and forehead catch it); and short dark HAIRS
+ * Class 36, SKIN, the whole body's: round PORES keyed to the UV (darker, duller pits whose slope
+ * bumps the normal in a frame aligned with the head's UV layout: the mesh carries no tangents;
+ * on the body, at the body islands' UV scale and gentler); on the face an oilier sheen where the
+ * vertex albedo is lighter (the nose and forehead catch it), on the body a drier, broader one
+ * (no plastic hot spot under a hard key); and short dark HAIRS
  * grown from the density, one per UV cell at most: down the face in the beard, outwards in
  * the brows. Anything finer than a
  * pixel is replaced by its average (the footprint fade), so the head neither sparkles at a
@@ -31,6 +35,10 @@ const UV_PER_METRE = 0.9;
 
 export const HEAD_SURFACE_WGSL = `
 const HEAD_UV_PER_M: f32 = ${UV_PER_METRE};
+// the body's islands (torso 0.58, forearm 0.5, hand 0.48, upper arm 0.41 UV a metre, measured)
+const BODY_UV_PER_M: f32 = 0.5;
+// the luma of head.py's FACE_MEAN (0.27, 0.16, 0.105): the baked complexion's mean
+const SKIN_LUMA: f32 = 0.179;
 // pores ~0.7 mm apart; hair follicles ~0.8 mm apart (in UV cells)
 const PORE_FREQ: f32 = ${(1 / (0.0007 * UV_PER_METRE)).toFixed(1)};
 const HAIR_FREQ: f32 = ${(1 / (0.0008 * UV_PER_METRE)).toFixed(1)};
@@ -55,10 +63,10 @@ fn headSegment(p: vec2f, a: vec2f, b: vec2f) -> f32 {
 // tip. The beard grows down the face (+u in MakeHuman's layout); above the eyes (u < BROW_U) the
 // brows grow out from the nose, along v, rising a little. HAIR_MEAN is the coverage these strokes
 // average to, so the footprint fade does not change the beard's darkness.
-fn hairCoverage(uv: vec2f, density: f32) -> f32 {
-  let q = uv * HAIR_FREQ;
+fn hairCoverage(uv: vec2f, density: f32, freq: f32, onHead: bool) -> f32 {
+  let q = uv * freq;
   let base = floor(q);
-  let brow = uv.x < BROW_U;
+  let brow = onHead && uv.x < BROW_U;
   let out = select(-1.0, 1.0, uv.y > FACE_V);
   var cover = 0.0;
   for (var a = -4; a <= 1; a = a + 1) {
@@ -82,8 +90,8 @@ fn hairCoverage(uv: vec2f, density: f32) -> f32 {
 
 // Pores: one per cell at most, a round pit (Worley: the nearest pore of the 3x3 cells). Returns the
 // pit depth (0..1) and its gradient in cell units (for the bump).
-fn poreAt(uv: vec2f) -> vec3f {
-  let q = uv * PORE_FREQ;
+fn poreAt(uv: vec2f, freq: f32) -> vec3f {
+  let q = uv * freq;
   let base = floor(q);
   var best = vec3f(0.0);
   for (var dy = -1; dy <= 1; dy = dy + 1) {
@@ -114,33 +122,43 @@ fn hairMean(density: f32) -> f32 {
 
 fn headSkin(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {
   var r = o;
-  let density = clamp(1.0 - s.tint.a, 0.0, 1.0);
+  // COLOR_0 alpha: the head's UV island carries 1 - density/2 (0.5..1), every other island BODY_CODE
+  let body = s.tint.a < 0.375;
+  let density = clamp(select((1.0 - s.tint.a) * 2.0, 1.0 - s.tint.a * 4.0, body), 0.0, 1.0);
   let base = s.albedo.rgb;
-  // UV units per pixel, and how resolved the pores and the hairs are at this distance
-  let uvPx = s.footprint * HEAD_UV_PER_M;
-  let poreSeen = 1.0 - smoothstep(0.35, 0.9, uvPx * PORE_FREQ);
-  let hairSeen = 1.0 - smoothstep(0.3, 0.8, uvPx * HAIR_FREQ);
+  // UV units per pixel, and how resolved the pores and the hairs are at this distance. The body's
+  // islands are laid out at about half the head's UV scale, so its pores take a lower UV frequency.
+  let uvPerM = select(HEAD_UV_PER_M, BODY_UV_PER_M, body);
+  let poreFreq = PORE_FREQ * uvPerM / HEAD_UV_PER_M;
+  let uvPx = s.footprint * uvPerM;
+  let poreSeen = 1.0 - smoothstep(0.35, 0.9, uvPx * poreFreq);
+  let hairFreq = HAIR_FREQ * uvPerM / HEAD_UV_PER_M;
+  let hairSeen = 1.0 - smoothstep(0.3, 0.8, uvPx * hairFreq);
   let n = normalize(s.normal);
   // A frame for the bump: MakeHuman's head UV runs u DOWN the face and v across it (towards the
   // subject's right), so with the head upright, -u is world up and +v is the figure's right.
   // There is no tangent attribute; this frame turns with the normal, so a pore stays a pit as the head turns.
   let side = normalize(select(cross(vec3f(0.0, 1.0, 0.0), n), vec3f(1.0, 0.0, 0.0), abs(n.y) > 0.98));
   let up = cross(n, side);
-  let pore = poreAt(s.uv);
+  let pore = poreAt(s.uv, poreFreq);
   let pit = pore.x * poreSeen;
   // the pit's slope in world terms (per cell -> a tilt); a pit tilts the normal towards its centre
   // and a finer-than-the-bake unevenness (2-5 mm): a height field's gradient in the same frame
-  let fineScale = PORE_FREQ * 0.3;
+  let fineScale = poreFreq * 0.3;
   let fine = detailFbm(vec3f(s.uv * fineScale, 5.0), 3, uvPx * fineScale);
-  let slope = (-up * pore.y - side * pore.z) * 0.035 * poreSeen + (-up * fine.gradient.x - side * fine.gradient.y) * 0.012;
-  let blotch = detailFbm(vec3f(s.uv * PORE_FREQ * 0.08, 2.0), 3, uvPx * PORE_FREQ * 0.08);
-  var albedo = base * (1.0 - 0.22 * pit) * (0.94 + 0.12 * blotch.value);
-  // oil: the lighter, raised planes (nose, forehead, cheekbones) are glossier; pores are dull
+  // the body's islands are not laid out like the head's, so its frame is only roughly right: a gentler bump
+  let bump = select(1.0, 0.45, body);
+  let slope = ((-up * pore.y - side * pore.z) * 0.035 * poreSeen + (-up * fine.gradient.x - side * fine.gradient.y) * 0.012) * bump;
+  let blotch = detailFbm(vec3f(s.uv * poreFreq * 0.08, 2.0), 3, uvPx * poreFreq * 0.08);
+  var albedo = base * (1.0 - select(0.22, 0.12, body) * pit) * (0.94 + 0.12 * blotch.value);
+  // oil: on the face, the lighter, raised planes (nose, forehead, cheekbones) are glossier; the
+  // body is drier and broader in its sheen (no plastic hot spot under a hard key); pores are dull
   let luma = dot(base, vec3f(0.2126, 0.7152, 0.0722));
-  var rough = clamp(0.5 - 0.9 * (luma - 0.1) + 0.15 * pit + 0.08 * (blotch.value - 0.5) + 0.1 * (fine.value - 0.5), 0.3, 0.62);
+  let oily = clamp(0.47 - 1.2 * (luma - SKIN_LUMA), 0.36, 0.6);
+  var rough = clamp(select(oily, 0.6, body) + 0.15 * pit + 0.08 * (blotch.value - 0.5) + 0.1 * (fine.value - 0.5), 0.34, 0.7);
   var normal = normalize(n + slope - n * dot(slope, n));
   // the hairs, or their average darkness where they are finer than a pixel
-  let cover = select(0.0, hairCoverage(s.uv, density), hairSeen > 0.0 && density > 0.02);
+  let cover = select(0.0, hairCoverage(s.uv, density, hairFreq, !body), hairSeen > 0.0 && density > 0.02);
   let mean = hairMean(density);
   let hair = mix(mean, cover, hairSeen);
   albedo = mix(albedo, HAIR_COLOUR, hair * 0.92);

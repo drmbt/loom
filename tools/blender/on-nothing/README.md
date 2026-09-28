@@ -83,7 +83,11 @@ TEXCOORD_0:
 - MakeHuman's CC0 skin (`young_african_male`), toned to a mid-dark complexion, and the CC0 brown
   iris are baked into COLOR_0 at each face corner's UV. The texture is prefiltered to the head's
   ~2 mm vertex spacing first. The eyes' cornea shell is dropped.
-- COLOR_0's alpha is 1 − the facial-hair density: a goatee joined to a thin moustache, light jaw
+- The whole body shares one complexion. MakeHuman paints each UV island in its own tone: the hands
+  are pale beige and the torso is lighter than the face. So every island is gained to
+  `FACE_MEAN`. Off the head, an island's large-scale painting keeps a third of its contrast, and
+  the detail under ~3 cm is kept.
+- COLOR_0's alpha holds the facial-hair density: a goatee joined to a thin moustache, light jaw
   stubble, and the brows. It is placed from the face's measured profile (nose, lips, chin).
 - The surface (`src/projects/on-nothing/surface-head.ts`, classes 36 and 37) draws pores, hairs, a
   wet eye, and a crisp iris and pupil from the UV, so the detail stays on the skin as the figure

@@ -86,6 +86,23 @@ def _image(rel, texel=None):
     return px
 
 
+def _local_mean(img, radius):
+    """`img` box-blurred over (2 radius + 1) texels, the atlas's flat background left out of every mean."""
+    bg = img[0, 0]
+    mask = (np.abs(img - bg).sum(axis=2) > 0.01).astype(np.float64)
+
+    def box(a):
+        for axis in (0, 1):
+            c = np.cumsum(np.pad(a, [(radius + 1, radius) if k == axis else (0, 0) for k in range(a.ndim)], mode="edge"), axis=axis)
+            hi = np.take(c, np.arange(2 * radius + 1, c.shape[axis]), axis=axis)
+            lo = np.take(c, np.arange(0, c.shape[axis] - 2 * radius - 1), axis=axis)
+            a = hi - lo
+        return a
+    weight = box(mask)
+    out = box(img * mask[:, :, None]) / np.maximum(weight, 1e-6)[:, :, None]
+    return np.where(weight[:, :, None] > 0, out, img)
+
+
 def _sample(img, uv):
     """Bilinear lookup of `img` (h, w, 3) at uv (n, 2). Blender's image rows run bottom-up, as its v does."""
     h, w, _ = img.shape
@@ -167,6 +184,36 @@ def hair_density(p, cx, cy, eye_z, face_y, lm):
     return np.clip(np.maximum(np.maximum(beard, jaw * front), brow * 0.95), 0.0, 1.0)
 
 
+# COLOR_0 alpha on a skin corner outside the head's UV island (see bake); the head's run 0.5..1
+BODY_CODE = 0.25
+
+
+def _uv_islands(me, polys):
+    """Island id per polygon (-1 off `polys`): polygons joined where they share a vertex AND its UV."""
+    parent = list(range(len(me.polygons)))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+    uv = me.uv_layers.active.data
+    seen = {}
+    for p in polys:
+        poly = me.polygons[p]
+        for li in poly.loop_indices:
+            key = (me.loops[li].vertex_index, round(uv[li].uv.x, 5), round(uv[li].uv.y, 5))
+            q = seen.setdefault(key, p)
+            if q != p:
+                ra, rb = find(p), find(q)
+                if ra != rb:
+                    parent[ra] = rb
+    out = np.full(len(me.polygons), -1, dtype=np.int64)
+    for p in polys:
+        out[p] = find(p)
+    return out
+
+
 def bake(body, cx, cy, eye_z, face_y, lm):
     """COLOR_0 per face corner: the CC0 skin (skin_tex) and iris (eye) at the corner's UV, hair density in alpha."""
     me = body.data
@@ -195,13 +242,50 @@ def bake(body, cx, cy, eye_z, face_y, lm):
     eye = loop_mat == "eye"
     if skin.any():
         # the head is ~2 mm between vertices, and the texture ~0.55 mm a texel (0.9 UV a metre, 2048 texels)
-        col[skin, :3] = _sample(_image(SKIN_TEXTURE, texel=4), uv[skin])
-        dens = hair_density(co[loop_vert[skin]], cx, cy, eye_z, face_y, lm)
-        col[skin, 3] = 1.0 - dens
+        tex = _image(SKIN_TEXTURE, texel=4)
+        col[skin, :3] = _sample(tex, uv[skin])
+        local = _sample(_local_mean(tex, 8), uv[skin])
+        # T1418b round 2: ONE complexion over the whole body. MakeHuman paints each UV island in
+        # its own tone (its hands island is pale beige, its torso lighter than its face), and one
+        # face-set gain turned the hands white. Each island gets its own gain, so its mean lands
+        # on FACE_MEAN; inside an island the painting is kept (palms lighter than the backs of
+        # the hands, the lips, the nape's hairline). The head's island takes the FACE's gain,
+        # so the dark scalp painting under the beanie does not brighten the face.
+        island = _uv_islands(me, np.where(mat_index == names.index("skin_tex"))[0] if "skin_tex" in names else [])
+        loop_island = island[loop_poly]
         face = skin & (co[loop_vert][:, 2] > lm["under"]) & (co[loop_vert][:, 1] < face_y + 0.04)
+        head_id = np.bincount(loop_island[face]).argmax()
+        face &= loop_island == head_id
         raw = col[face, :3].mean(axis=0)
-        col[skin, :3] = np.clip(col[skin, :3] * (np.array(FACE_MEAN) / raw), 0, 1)
-        print(f"[head] skin bake: {skin.sum():,} corners; face mean rgb {raw.round(3)} -> {col[face, :3].mean(axis=0).round(3)}; "
+        ids, counts = np.unique(loop_island[skin], return_counts=True)
+        main = ids[np.argmax(np.where(ids == head_id, 0, counts))]   # the biggest island that is not the head's
+        gains = {}
+        for i, n in zip(ids, counts):
+            if i == head_id:
+                gains[i] = np.array(FACE_MEAN) / raw
+            elif n >= 200:
+                gains[i] = np.array(FACE_MEAN) / col[skin & (loop_island == i), :3].mean(axis=0)
+        for i in ids:
+            gains.setdefault(i, gains.get(main, np.array(FACE_MEAN) / raw))
+        gain = np.stack([gains[i] for i in loop_island[skin]])
+        # off the head, the island's LARGE-scale painting is flattened to a third of its contrast
+        # (MakeHuman's palms and finger sides are near white against the backs of the hands);
+        # the detail inside ~3 cm (knuckles, nail beds, creases) is kept, limited to 0.6..1.5x
+        body_loops = loop_island[skin] != head_id
+        detail = np.clip(col[skin, :3] / np.maximum(local, 1e-4), 0.6, 1.5)
+        mean = np.array(FACE_MEAN) / gain                  # the island's raw mean
+        flat = mean * (local / mean) ** 0.33 * detail
+        col[skin, :3] = np.where(body_loops[:, None], flat, col[skin, :3])
+        col[skin, :3] = np.clip(col[skin, :3] * gain, 0, 1)
+        # alpha: the head's island carries 1 - density/2 (0.5..1: its hair); every other island
+        # BODY_CODE x (1 - density) (0..0.25: surface-head.ts draws body pores at the body's UV
+        # scale, no oil; the goatee runs on under the chin onto the neck's island).
+        # Every triangle lies in one island, so the two codes never blend.
+        dens = hair_density(co[loop_vert[skin]], cx, cy, eye_z, face_y, lm)
+        head_loops = loop_island[skin] == head_id
+        col[skin, 3] = np.where(head_loops, 1.0 - 0.5 * dens, BODY_CODE * (1.0 - dens))
+        print(f"[head] skin bake: {skin.sum():,} corners in {len(ids)} islands (head {head_loops.sum():,}); "
+              f"face mean rgb {raw.round(3)} -> {col[face, :3].mean(axis=0).round(3)}; body mean {col[skin & (loop_island != head_id), :3].mean(axis=0).round(3)}; "
               f"hair on {(dens > 0.5).sum():,}", flush=True)
         if os.environ.get("HEAD_DEBUG") == "uv":
             pts = co[loop_vert]
@@ -218,9 +302,10 @@ def bake(body, cx, cy, eye_z, face_y, lm):
             r = np.linalg.norm(co[loop_vert[e]][:, [0, 2]] - co[loop_vert[front[0]]][[0, 2]], axis=1)
             print(f"[head] eye radius metres per uv: {np.median(r[r < 0.006] / np.maximum(np.linalg.norm(uv[e][r < 0.006] - uv[front[0]], axis=1), 1e-6)):.4f}", flush=True)
         col[eye, :3] = _sample(_image(EYE_TEXTURE), uv[eye])
-    if os.environ.get("HEAD_DEBUG") == "hair":  # debug: the density as the albedo
-        col[skin, :3] = (1.0 - col[skin, 3:4]) * 0.8 + 0.02
-        col[skin, 3] = 1.0
+    if os.environ.get("HEAD_DEBUG") == "hair":  # debug: the density as the albedo (body islands black)
+        a = col[skin, 3:4]
+        col[skin, :3] = np.where(a < 0.375, 1.0 - a * 4.0, (1.0 - a) * 2.0) * 0.8 + 0.02
+        col[skin, 3] = BODY_CODE
     attr = me.color_attributes.new("Col", "FLOAT_COLOR", "CORNER")
     attr.data.foreach_set("color", col.ravel())
     me.color_attributes.active_color = attr
