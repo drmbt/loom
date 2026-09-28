@@ -104,18 +104,22 @@ function performance(shot: Base): Record<string, string | number[]> {
   const armsDown = { upperarmL: "z:-0.62", upperarmR: "z:0.62" };
   switch (shot) {
     case "tableau":
-      // 0:16: back to the lens, arms thrown up in a wide V, pumping gently with the track.
+      // 0:16: back to the lens, arms thrown out in a wide V, pumping gently with the track.
+      // Measured on ref f384: the hands 90 px above the shoulders and 190 px out from them —
+      // nearly straight arms ~30 degrees above horizontal, the span a fifth of the frame
+      // width — and the head bowed forward, its crown barely over the shoulder line.
       return {
-        "upperarmL.z": "1.2 + sin(abstime * 2.2) * 0.06",
-        "upperarmR.z": "-1.2 - sin(abstime * 2.2 + 0.4) * 0.06",
-        "upperarmL.x": "-0.15",
-        "upperarmR.x": "-0.15",
-        "forearmL.z": "0.35",
-        "forearmR.z": "-0.35",
+        "upperarmL.z": "1.2 + sin(abstime * 2.2) * 0.05",
+        "upperarmR.z": "-1.2 - sin(abstime * 2.2 + 0.4) * 0.05",
+        "upperarmL.x": "-0.1",
+        "upperarmR.x": "-0.1",
+        "forearmL.z": "0.12",
+        "forearmR.z": "-0.12",
         "handL.x": "-0.3",
         "handR.x": "-0.3",
-        "chest.x": "-0.06",
-        "neck.x": "-0.12 + sin(abstime * 2.2) * 0.04",
+        "chest.x": "0.04",
+        "neck.x": "0.22 + sin(abstime * 2.2) * 0.04",
+        "head.x": "0.1",
         "pelvis.y": "sin(abstime * 0.6) * 0.05",
         "thighL.z": "0.07",
         "thighR.z": "-0.07",
@@ -159,6 +163,9 @@ function performance(shot: Base): Record<string, string | number[]> {
 
 /** The builder handed to the shots that start from another shot's graph (see `plate`). */
 const asPlate = (facts: OnNothingFacts, options: OnNothingOptions): ProjectDocument => onNothingDocument(facts, { ...options, plate: true });
+
+/** How much nearer the lens the 0:16 tableau's figure stands than the GLB's stage (metres, +z). */
+const TABLEAU_NEARER = 0.46;
 
 export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptions): ProjectDocument {
   // The title and the ring build their own graphs (shots/), apart from the shots below.
@@ -299,7 +306,11 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
       pose[key] = expressionSlot(String(value), 0);
     }
     const walk = base === "cyc";
-    const [px, py, pz] = stage.position;
+    const [px, py, pzStage] = stage.position;
+    // T1407b (round 5): the 0:16 tableau's mark, measured against ref f384 through the fitted
+    // camera: the feet land at y ≈ 755 of 818 and the figure reads ~5 % larger than on the
+    // GLB's stage — 0.46 m nearer the lens. Only the tableau and the zoom that continues it.
+    const pz = pzStage + (shot === "tableau" || shot === "zoom" ? TABLEAU_NEARER : 0);
     const [fx, , fz] = stage.facing;
     const place: Record<string, StoredParameter> = walk
       ? {
@@ -373,7 +384,16 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     // A dim, soft front key from high camera-left, so the face and the chain read at all.
     // A point, not a sun: it falls off before the foreground floor, so the floor stays dark.
     const stage = facts.stages.get("tableau")!.position;
-    nodes.push(node("fill", "light", [-2600, 1000], { kind: "point", position: [stage[0] - 1.1, 2.1, stage[2] + 1.5], color: [0.88, 0.92, 1, 1], intensity: 5 }, { label: "fill1" }));
+    // T1407b (round 5): the 0:16 tableau and its zoom, measured on ref f384 (median luma of 255):
+    // the near floor 34, the hero's bumper 31, the white side car's body 13. Under the stock
+    // lights ours read 36, 19 and 38: probes showed the fill, not the car key, lighting the side
+    // car (19 without it) and the near floor. So for these two the fill moves in close over the
+    // figure's back, a low lamp over the near floor lights the concrete, and a small key hidden
+    // behind the figure lights the hero's front (the car key, on the lens axis, has the figure's
+    // shadow over it).
+    const heroShot = shot === "tableau" || shot === "zoom";
+    const mark = stage[2] + (heroShot ? TABLEAU_NEARER : 0);
+    nodes.push(node("fill", "light", [-2600, 1000], { kind: "point", position: heroShot ? [stage[0] + 0.3, 2.4, mark + 1.3] : [stage[0] - 1.1, 2.1, stage[2] + 1.5], color: [0.88, 0.92, 1, 1], intensity: heroShot ? 1.6 : 5 }, { label: "fill1" }));
     // The room's own light: a soft top, so the white bodies and the roof read at a few percent.
     nodes.push(node("top", "light", [-2600, 900], { kind: "directional", direction: [0.1, -1, 0.15], color: [0.9, 0.93, 1, 1], intensity: 0.12 }, { label: "top1" }));
     // The cars' own key: a broad soft source behind the camera, high — the reference's white
@@ -382,9 +402,14 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
     // lamps) and their roofs fall into black. A point low in front of the row, falling off with
     // height and distance, does that; a sun lit them top to bottom and made them read huge.
     // it CASTS: the cars throw their shadows back onto the floor under and behind them
-    nodes.push(node("carKey", "light", [-2600, 800], { kind: "point", position: [0, 0.45, 13.5], color: [0.88, 0.94, 1, 1], intensity: 22, shadows: true, shadowExtent: 30, shadowSoftness: 2 }, { label: "carkey1" }));
+    nodes.push(node("carKey", "light", [-2600, 800], { kind: "point", position: [0, 0.45, 13.5], color: [0.88, 0.94, 1, 1], intensity: heroShot ? 8 : 22, shadows: true, shadowExtent: 30, shadowSoftness: 2 }, { label: "carkey1" }));
     // no top light: the reference's roofs fall into black
     lights.push("fill1", "carkey1");
+    if (heroShot) {
+      nodes.push(node("heroKey", "light", [-2600, 700], { kind: "point", position: [0, 0.9, 1.2], color: [0.88, 0.94, 1, 1], intensity: 3 }, { label: "herokey1" }));
+      nodes.push(node("floorLamp", "light", [-2600, 600], { kind: "point", position: [0.5, 1.5, 7.0], color: [0.9, 0.94, 1, 1], intensity: 3 }, { label: "floorlamp1" }));
+      lights.push("herokey1", "floorlamp1");
+    }
     sodium();
   }
   if (rig !== undefined) {
@@ -436,7 +461,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   // zoom (0:24): the wide tableau, then a violent crash-zoom onto the face at 1.4 s.
   const face = (() => {
     const stage = facts.stages.get("tableau");
-    return stage === undefined ? aim : ([stage.position[0], 1.6, stage.position[2]] as [number, number, number]);
+    return stage === undefined ? aim : ([stage.position[0], 1.6, stage.position[2] + TABLEAU_NEARER] as [number, number, number]);
   })();
   const SNAP = "(clamp((abstime - 1.4) / 0.16, 0, 1) ^ 2 * (3 - 2 * clamp((abstime - 1.4) / 0.16, 0, 1)))";
   /** The tableau's operator; the zoom CONTINUES it (its clock picks up where the tableau's 5 s ended). */
