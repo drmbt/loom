@@ -160,3 +160,35 @@ describe("applyCompletion", () => {
     expect(applied.caret).toBe(6);
   });
 });
+
+/**
+ * §T1394b — the owner: "our autocomplete is still not really helpful when it comes to
+ * referencing stuff like channels of an operator". Measured in the app on E24: forty
+ * channels on `op('music1').chan.`, sorted by letter, showed eight `band…` rows and never
+ * `level` or `kick`. Asserted on the candidate list the menu shows.
+ */
+describe("§T1394b — completion that helps with a node's channels", () => {
+  const AUDIO = ["level", "low", "lowMid", "highMid", "high", "onset", "onsetCount", "kick", "kickCount", "hat", "hatCount", "band80", "band109", "band1300", "band11700"];
+  const audio: ExpressionReferenceSource = {
+    names: ["music1", "noise10", "noise2", "noise1"],
+    membersOf: (name, path) => (name === "music1" && path[0] === "chan" ? AUDIO.map((text) => ({ text })) : []),
+  };
+  const offered = (source: string) => completionAt(source, source.length, undefined, audio)?.candidates.map((c) => c.text) ?? [];
+
+  it("keeps a node's channels in publication order, not by letter", () => {
+    expect(offered("op('music1').chan.")).toEqual(AUDIO);
+  });
+
+  it("finds a channel by any part of its name, whole-word starts first", () => {
+    expect(offered("op('music1').chan.count")).toEqual(["onsetCount", "kickCount", "hatCount"]);
+    expect(offered("op('music1').chan.k")).toEqual(["kick", "kickCount"]);
+  });
+
+  it("sorts node names numerically — noise2 before noise10", () => {
+    expect(offered("op('noise")).toEqual(["noise1", "noise2", "noise10"]);
+  });
+
+  it("offers no substring match once a name is typed in full, so Enter still commits (T539)", () => {
+    expect(offered("op('music1').chan.kick")).toEqual(["kickCount"]);
+  });
+});

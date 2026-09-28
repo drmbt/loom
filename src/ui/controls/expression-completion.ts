@@ -136,6 +136,8 @@ export function completionAt(
         kind: "member" as const,
         ...(entry.detail === undefined ? {} : { detail: entry.detail }),
       })),
+      // Members keep the node's own order: channels as published, parameters as declared.
+      "given",
     );
   }
 
@@ -165,18 +167,47 @@ export function completionAt(
   return finish(prefix, clamped - prefix.length, clamped, candidates);
 }
 
+/**
+ * §T1394b — how a candidate list is ordered once it is narrowed.
+ *
+ * `given`: the source's own order. A node's CHANNELS arrive in publication order (`level`,
+ * `low` … then the spectrum rows low to high) and its PARAMETERS in declaration order — the
+ * order the card and the inspector show them in. Sorting them by letter buried the useful
+ * ones: `op('music1').chan.` offered `band109, band11700, band1300…` and never reached
+ * `level` or `kick`. `alpha`: by name, numerically (`band80` before `band109`), for lists
+ * with no order of their own (node names, variables).
+ */
+type CompletionOrder = "alpha" | "given";
+
+const NUMERIC = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
 function finish(
   prefix: string,
   start: number,
   end: number,
   candidates: readonly CompletionCandidate[],
+  order: CompletionOrder = "alpha",
 ): CompletionState | null {
   const needle = prefix.toLowerCase();
-  const matched = candidates
-    .filter((candidate) => candidate.text.toLowerCase().startsWith(needle))
-    // A name that IS the prefix is not worth offering — accepting it would change nothing.
-    .filter((candidate) => candidate.text !== prefix)
-    .sort((a, b) => a.text.localeCompare(b.text));
+  /*
+   * A word typed IN FULL keeps T539's rule: it is filtered out of its own list, so with no
+   * longer name starting with it the menu closes and Enter commits. Substring matches would
+   * reopen it (`time` finds `walltime`) and turn Enter into a replacement, so they are only
+   * offered while what is typed is not itself a complete name.
+   */
+  const typedInFull = candidates.some((candidate) => candidate.text === prefix);
+  // A name that IS the prefix is not worth offering — accepting it would change nothing.
+  const eligible = candidates.filter((candidate) => candidate.text !== prefix);
+  const sorted = order === "alpha" ? [...eligible].sort((a, b) => NUMERIC.compare(a.text, b.text)) : eligible;
+  /*
+   * §T1394b: names that START with what was typed first, then names that merely CONTAIN
+   * it — `count` finds `kickCount` and `hatCount`, `mid` finds `lowMid`. A menu that only
+   * helps someone who already knows the first letters is not much help with forty channels.
+   */
+  const starts = sorted.filter((candidate) => candidate.text.toLowerCase().startsWith(needle));
+  const contains =
+    needle === "" || typedInFull ? [] : sorted.filter((candidate) => !candidate.text.toLowerCase().startsWith(needle) && candidate.text.toLowerCase().includes(needle));
+  const matched = [...starts, ...contains];
   if (matched.length === 0) return null;
   return { prefix, start, end, candidates: matched };
 }

@@ -112,6 +112,9 @@ function payloadProblem(binding: ParameterBinding): string | null {
   }
 }
 
+/** §T1394b: plenty for any node's channels or parameters; the list scrolls. */
+const MAX_COMPLETIONS = 200;
+
 export function ParameterModePanel({
   label,
   slot,
@@ -132,6 +135,12 @@ export function ParameterModePanel({
   const [problem, setProblem] = useState<string | null>(null);
   /** Which candidate the arrow keys have moved to. Reset whenever the menu changes. */
   const [highlighted, setHighlighted] = useState(0);
+  const completionList = useRef<HTMLUListElement>(null);
+  // §T1394b: the highlighted candidate stays in view as the arrow keys walk the list.
+  useEffect(() => {
+    const active = completionList.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    active?.scrollIntoView?.({ block: "nearest" });
+  }, [highlighted]);
   // Escape closes the popup without cancelling the parameter; any edit brings it back.
   const [dismissed, setDismissed] = useState(false);
   // Browse-mode marker: with an EMPTY prefix the menu is a catalogue, and Enter must
@@ -346,8 +355,11 @@ export function ParameterModePanel({
             onBlur={commitPayload}
           />
           {completion === null ? null : (
-            <ul className={styles.completion} role="listbox" aria-label="Expression completions">
-              {completion.candidates.slice(0, 8).map((candidate, index) => (
+            <ul ref={completionList} className={styles.completion} role="listbox" aria-label="Expression completions">
+              {/* §T1394b: every candidate, in a scrolling list. The list used to stop at
+                  eight while the arrow keys walked all of them, so the highlight left the
+                  menu and forty channels showed eight bands and nothing else. */}
+              {completion.candidates.slice(0, MAX_COMPLETIONS).map((candidate, index) => (
                 <li
                   key={`${candidate.kind}:${candidate.text}`}
                   role="option"

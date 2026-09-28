@@ -140,3 +140,26 @@ describe("completion without a live scope (B37)", () => {
     expect((field as HTMLInputElement).value).toBe("walldelta");
   });
 });
+
+describe("§T1394b — the whole list, not the first eight", () => {
+  it("renders every channel a node publishes, and the arrow keys reach the last one", async () => {
+    const channels = Array.from({ length: 20 }, (_, index) => `c${String(index)}`);
+    render(
+      <ParameterModePanel
+        label="Rotate"
+        slot={EXPRESSION_SLOT}
+        value={0}
+        references={{ names: ["m1"], membersOf: (name, path) => (name === "m1" && path[0] === "chan" ? channels.map((text) => ({ text })) : []) }}
+        onChange={vi.fn()}
+      />,
+    );
+    const field = screen.getByRole("textbox", { name: /rotate expression/i });
+    await userEvent.click(field);
+    await userEvent.type(field, "op('m1').chan.");
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(channels);
+    // Up from the top wraps to the LAST row, which must be a rendered, selected option.
+    await userEvent.keyboard("{ArrowUp}");
+    expect(screen.getAllByRole("option").at(-1)?.getAttribute("aria-selected")).toBe("true");
+  });
+});

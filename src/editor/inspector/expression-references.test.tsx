@@ -261,7 +261,7 @@ describe("T990 — the pane supplies the node names it has always had (§V272)",
 describe("T990 — the sub-properties, which is the half that did not exist", () => {
   it("offers the two namespaces after the closing paren", async () => {
     const harness = await setup();
-    expect(await harness.offeredFor(`op('${harness.labels.other}').`)).toEqual(["chan", "par"]);
+    expect(await harness.offeredFor(`op('${harness.labels.other}').`)).toEqual(["par", "chan"]); // §T1394b: the namespaces in declared order
   });
 
   it("offers the target's READABLE parameters under .par, and no others (§V150)", async () => {
@@ -285,7 +285,8 @@ describe("T990 — the sub-properties, which is the half that did not exist", ()
     // asserts the shipped behaviour rather than a preference. All four are present, which
     // is the property that matters — `op('x').par.tint` alone is refused with "name a
     // component", and this is the menu that answers that refusal.
-    expect(offered).toEqual(["a", "b", "g", "r"]);
+    // §T1394b: the node's own order — a colour reads r g b a, not a b g r.
+    expect(offered).toEqual(["r", "g", "b", "a"]);
   });
 
   it("offers the channels the node is publishing right now under .chan", async () => {
@@ -294,7 +295,8 @@ describe("T990 — the sub-properties, which is the half that did not exist", ()
     expect(harness.labels.other).toBe("wobbler1");
     // The NAME is what reaches the enumerator, not the id — the same §B170 fact one
     // namespace deeper, and the reason the stub above keys on a label.
-    expect(offered).toEqual(["low", "value"]);
+    // §T1394b: publication order, as the node publishes them.
+    expect(offered).toEqual(["value", "low"]);
   });
 
   it("offers nothing under a channel — a channel is a leaf, and the reader says so", async () => {
