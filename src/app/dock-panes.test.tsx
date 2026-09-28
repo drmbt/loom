@@ -292,6 +292,8 @@ describe("PerformancePane — the tier row (T1256)", () => {
     const runtime = {
       ...fakeRuntime(),
       telemetry: createTelemetryHub({ now: () => 0 }),
+      // §T1392b: the pane reads the project fps for the timeline's budget line.
+      settings: { fps: 60 },
     } as unknown as AppRuntime;
     const status: GpuStatus = {
       kind: "ready",

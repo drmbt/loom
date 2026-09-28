@@ -27,6 +27,8 @@ import {
 } from "../parameters/slots.ts";
 import { defaultParameterValue, validateParameterValue } from "../parameters/validate.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
+import { encodeLoomClipboard, readLoomClipboard } from "./loom-clipboard.ts";
+import type { LoomClipboardPayload, SystemClipboard } from "./loom-clipboard.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "./bus.ts";
 
 /**
@@ -127,7 +129,14 @@ export interface ParameterSetModeInput extends ParameterRef {
  * the only honest default for a paste that arrived as text from outside the app, where a
  * string is all there is.
  */
-export type ParameterPasteMode = "value" | "reference" | "binding";
+export type ParameterPasteMode = "value" | "reference" | "binding" | "name";
+
+export interface ChannelCopyInput {
+  readonly nodeId: NodeId;
+  readonly channel: string;
+  /** The reading on screen when it was copied, if the surface has one. */
+  readonly value?: number | undefined;
+}
 
 export interface ParameterPasteInput extends ParameterRef {
   /**
@@ -158,6 +167,11 @@ declare module "../types/commands.ts" {
     "parameter.copyReference": { input: ParameterRef; output: ParameterCopyOutput };
     /** Paste one member of what was copied onto this parameter. */
     "parameter.paste": { input: ParameterPasteInput; output: GraphPatchResult };
+    /**
+     * §T1393b: copy a value node's CHANNEL — reference `op('lfo1').chan.value`, its name,
+     * and the reading when the surface had one — so a paste chooses between them.
+     */
+    "channel.copy": { input: ChannelCopyInput; output: ParameterCopyOutput };
     /** Restore the manifest default AND the Constant mode (§V149). */
     "parameter.reset": { input: ParameterRef; output: ParameterResetOutput };
     /** Restore the value THIS DOCUMENT WAS OPENED WITH, whole — value, mode and all (T1184). */
@@ -188,6 +202,12 @@ declare module "../types/commands.ts" {
  * that cannot check a shape must say it did not, not pretend it did.
  */
 interface ParameterClipboard {
+  /**
+   * §T1393b: what was copied — a parameter, or a value node's CHANNEL. A channel's
+   * reference is an `op('x').chan.c` read, which only an expression can carry (never a
+   * sibling bind), and its `parameterKey` is the channel name.
+   */
+  source?: "parameter" | "channel";
   /** Which member the copy mirrored to the system clipboard. The default paste. */
   kind: "value" | "reference";
   /** What the parameter was WORTH when it was copied. Always captured. */
@@ -269,8 +289,58 @@ function parseValueText(text: string): { ok: true; value: ParameterValue } | { o
  * and treating it as one would quietly write the literal text into a string parameter —
  * a paste that looks like it worked and references nothing.
  */
+const CHANNEL_REFERENCE = /^op\('([^']+)'\)\.chan\.([A-Za-z_][\w:]*)$/;
+
+/** §T1393b: a channel copied off a value node, as a paste reads it. */
+function channelClipboard(nodeName: string, channel: string, value: number | null): ParameterClipboard {
+  const reference = `op('${nodeName}').chan.${channel}`;
+  return {
+    source: "channel",
+    kind: "reference",
+    value: value ?? reference,
+    valueText: value === null ? reference : String(value),
+    reference,
+    nodeName,
+    parameterKey: channel,
+    binding: null,
+    arity: 1,
+    typeName: null,
+  };
+}
+
+/**
+ * §T1393b: a parameter copy that came back off the system clipboard. Checked member by
+ * member rather than trusted: it may come from another window, another document, or a
+ * different build, and every paste below reads these fields as the shapes they claim.
+ */
+function parameterFromPayload(raw: Readonly<Record<string, unknown>>): ParameterClipboard | null {
+  const kind = raw["kind"];
+  if ((kind !== "value" && kind !== "reference") || typeof raw["valueText"] !== "string" || typeof raw["parameterKey"] !== "string") {
+    return null;
+  }
+  const text = (key: string): string | null => (typeof raw[key] === "string" ? (raw[key] as string) : null);
+  const binding = raw["binding"];
+  return {
+    source: raw["source"] === "channel" ? "channel" : "parameter",
+    kind,
+    value: (raw["value"] ?? raw["valueText"]) as ParameterValue,
+    valueText: raw["valueText"],
+    reference: text("reference"),
+    nodeName: text("nodeName"),
+    parameterKey: raw["parameterKey"],
+    binding:
+      typeof binding === "object" && binding !== null && typeof (binding as { kind?: unknown }).kind === "string"
+        ? (binding as ParameterBinding)
+        : null,
+    arity: typeof raw["arity"] === "number" ? raw["arity"] : null,
+    typeName: text("typeName"),
+  };
+}
+
 function clipboardFromText(text: string): ParameterClipboard | null {
   const trimmed = text.trim();
+  const channel = CHANNEL_REFERENCE.exec(trimmed);
+  if (channel !== null) return channelClipboard(channel[1] as string, channel[2] as string, null);
   const reference = parseParameterReference(trimmed);
   if (reference !== null) {
     return {
@@ -436,6 +506,8 @@ function writeParameters(
  */
 export interface ParameterCommandOptions {
   writeClipboard?: ((text: string) => void) | undefined;
+  /** §T1393b: the system clipboard with Loom's structured slot; supersedes `writeClipboard`. */
+  systemClipboard?: SystemClipboard | undefined;
 }
 
 export function registerParameterCommands(
@@ -444,6 +516,11 @@ export function registerParameterCommands(
 ): void {
   /** Per-bus, like the node clipboard. Never global: two buses are two documents. */
   let clipboard: ParameterClipboard | null = null;
+  /** §T1393b: one string out, the whole copy beside it. */
+  const mirrorOut = (text: string, payload: LoomClipboardPayload): void => {
+    if (options.systemClipboard !== undefined) options.systemClipboard.write(text, encodeLoomClipboard(payload));
+    else options.writeClipboard?.(text);
+  };
 
   bus.registerCommand({
     name: "parameter.pulse",
@@ -564,7 +641,7 @@ export function registerParameterCommands(
       }
       if (!context.dryRun) {
         clipboard = payload;
-        options.writeClipboard?.(text);
+        mirrorOut(text, { kind: "parameter", parameter: { ...payload } });
       }
       return { status: context.dryRun ? ("validated" as const) : ("applied" as const), output: { text } };
     };
@@ -597,14 +674,64 @@ export function registerParameterCommands(
   });
 
   bus.registerCommand({
+    name: "channel.copy",
+    description:
+      "Copy a value node's channel — its reference, its name and its reading — so paste can choose (T1393b).",
+    handler: (input, context) => {
+      const node = context.graph.nodes[input.nodeId];
+      const name = node === undefined ? undefined : nodeName(node);
+      if (node === undefined || name === undefined) {
+        return {
+          status: "rejected" as const,
+          output: { text: null },
+          diagnostics: [
+            refuse(
+              node === undefined ? "parameter.node" : "channel.reference.unnamed",
+              node === undefined ? `No node "${input.nodeId}".` : `Node "${node.id}" has no name, so nothing can reference its channels.`,
+              node?.id,
+              node === undefined ? undefined : "Name the node first — a reference addresses the name, not the id (§V127).",
+            ),
+          ],
+        };
+      }
+      const value = typeof input.value === "number" && Number.isFinite(input.value) ? input.value : null;
+      const payload = channelClipboard(name, input.channel, value);
+      const text = payload.reference as string;
+      if (!context.dryRun) {
+        clipboard = payload;
+        mirrorOut(text, { kind: "channel", channel: { nodeName: name, channel: input.channel, value } });
+      }
+      return { status: context.dryRun ? ("validated" as const) : ("applied" as const), output: { text } };
+    },
+    rejectionOutput: () => ({ text: null }),
+  });
+
+  bus.registerCommand({
     name: "parameter.paste",
     description:
       "Paste the copied value, reference or binding onto this parameter (T246).",
-    handler: (input, context) => {
+    handler: async (input, context) => {
       const revision = context.store.getRevision();
       const found = locate(context, input);
       if (isDiagnostic(found)) return { status: "rejected", output: rejectedPatch(revision, [found]) };
-      const source = input.text === undefined ? clipboard : clipboardFromText(input.text);
+      /*
+       * §T1393b: with no text handed in, the SYSTEM clipboard is the newest copy there is —
+       * another window's parameter or channel arrives whole through Loom's slot, and plain
+       * text copied anywhere reads as a reference or a value. Unreadable or refused, the bus
+       * clipboard stands, which is every paste before this existed.
+       */
+      let fromSystem: ParameterClipboard | null = null;
+      if (input.text === undefined) {
+        const system = await readLoomClipboard(options.systemClipboard);
+        if (system?.payload?.kind === "parameter") fromSystem = parameterFromPayload(system.payload.parameter);
+        else if (system?.payload?.kind === "channel") {
+          const { nodeName: owner, channel, value } = system.payload.channel;
+          fromSystem = channelClipboard(owner, channel, value);
+        } else if (system?.text !== null && system?.text !== undefined && system.text.trim() !== "") {
+          fromSystem = clipboardFromText(system.text);
+        }
+      }
+      const source = input.text === undefined ? (fromSystem ?? clipboard) : clipboardFromText(input.text);
       if (source === null) {
         return {
           status: "rejected",
@@ -655,8 +782,47 @@ export function registerParameterCommands(
       /** Absent `as` = whatever the copy mirrored outward, which is the legacy default. */
       const mode: ParameterPasteMode = input.as ?? source.kind;
 
+      /*
+       * §T1393b — PASTE NAME: the copied thing's NAME as text. A channel's name is the
+       * channel (`low`, for a Select's Channels); a parameter's is its node's name (for a
+       * Source/Camera reference field). Only a string parameter can hold a name.
+       */
+      if (mode === "name") {
+        const name = source.source === "channel" ? source.parameterKey : source.nodeName;
+        if (name === null || name === "") {
+          return reject(
+            refuse("parameter.paste.noName", "What was copied carries no name to paste.", found.node.id, "Paste value lands it as the value it is."),
+          );
+        }
+        if (found.definition.type !== "string") {
+          return reject(
+            refuse(
+              "parameter.paste.nameNotText",
+              `"${input.parameterKey}" is a ${found.definition.type}, and a name is text.`,
+              found.node.id,
+              "Paste reference drives it from the copied source instead.",
+            ),
+          );
+        }
+        const stored = found.node.parameters[input.parameterKey];
+        const next: StoredParameter = isParameterSlot(stored)
+          ? { mode: "static", bindings: { ...stored.bindings, static: { kind: "static", value: name } } }
+          : name;
+        return writeParameters(context, "Paste name", found.node.id, { [input.parameterKey]: next });
+      }
+
       if (mode === "value") {
-        if (source.kind === "reference" && input.text !== undefined) {
+        if (source.source === "channel" && typeof source.value !== "number") {
+          return reject(
+            refuse(
+              "parameter.paste.channelNoReading",
+              `The copied channel ${source.reference ?? source.parameterKey} was copied without a reading.`,
+              found.node.id,
+              "Paste reference drives the parameter from it live.",
+            ),
+          );
+        }
+        if (source.kind === "reference" && input.text !== undefined && source.source !== "channel") {
           // The silent-success trap this module's header is about, met from the other
           // side: `op('a').par.b` is also a perfectly good string, and landing it as one
           // is a paste that looks like it worked and references nothing.
@@ -759,7 +925,7 @@ export function registerParameterCommands(
        * by whether a local bind can express it, and there is ONE such decision so the
        * explicit `as: "reference"` and the legacy default can never drift (§V109).
        */
-      const sameNode = nodeByName(context.graph, source.nodeName) === found.node.id;
+      const sameNode = source.source !== "channel" && nodeByName(context.graph, source.nodeName) === found.node.id;
       if (sameNode && source.parameterKey === input.parameterKey) {
         return reject(
           refuse(

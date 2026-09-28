@@ -74,6 +74,7 @@ describe("command bus — registration surface (§V39)", () => {
   it("lists registered commands and queries", () => {
     // Exact, not toContain: a new registration should have to be declared here.
     expect(harness.bus.listCommands()).toEqual([
+      "channel.copy",
       "graph.applyPatch",
       "graph.copySelection",
       "graph.cutSelection",

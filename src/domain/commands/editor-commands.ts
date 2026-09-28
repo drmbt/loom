@@ -6,6 +6,8 @@ import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "./bus.ts";
 import { nodeNames, renumberedName, rewriteNodeNameReferences } from "../graph/names.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
+import { encodeLoomClipboard, readLoomClipboard } from "./loom-clipboard.ts";
+import type { SystemClipboard } from "./loom-clipboard.ts";
 
 /**
  * The editing commands the keymap and the palette name (§V52, §V29).
@@ -353,12 +355,66 @@ function registerToggle(
 }
 
 /**
+ * §T1393b — a node copy that came back off the SYSTEM clipboard (another window, another
+ * document), checked before it is trusted: every node must be a type THIS document's
+ * registry can build. A component instance whose definition this document does not hold
+ * is refused BY NAME — components are document-scoped until §T1395b rules on identity,
+ * and a paste that dropped the instance silently would lose the part the user copied it for.
+ */
+function foreignClipboard(
+  payload: { readonly nodes: readonly unknown[]; readonly edges: readonly unknown[] },
+  registry: CommandContext["registry"],
+): Clipboard | { readonly refusal: string } {
+  const nodes: ClipboardNode[] = [];
+  for (const raw of payload.nodes) {
+    const node = raw as Partial<ClipboardNode>;
+    if (typeof node.sourceId !== "string" || typeof node.type !== "string" || typeof node.position !== "object") {
+      return { refusal: "The copied nodes are not in a shape this build can read." };
+    }
+    if (registry.get(node.type) === undefined) {
+      return {
+        refusal: node.type.startsWith("component:")
+          ? `The copied "${node.label ?? node.sourceId}" is an instance of ${node.type}, which this document does not have. Copy it from a document that holds the component, or add the component here first.`
+          : `The copied "${node.label ?? node.sourceId}" is a "${node.type}", which this build does not know.`,
+      };
+    }
+    nodes.push({
+      sourceId: node.sourceId,
+      type: node.type,
+      label: node.label,
+      position: { ...(node.position as { x: number; y: number }) },
+      parameters: { ...(node.parameters ?? {}) },
+      ui: node.ui,
+      resolution: node.resolution,
+      format: node.format,
+    });
+  }
+  const edges = payload.edges.filter((raw): raw is ClipboardEdge => {
+    const edge = raw as Partial<ClipboardEdge>;
+    return typeof edge.source?.nodeId === "string" && typeof edge.target?.nodeId === "string";
+  });
+  return { nodes, edges };
+}
+
+/** §T1393b: where a node copy is mirrored so another window can paste it. */
+export interface EditorCommandOptions {
+  readonly systemClipboard?: SystemClipboard | undefined;
+}
+
+/**
  * Registers the editing commands on `bus`. The clipboard is per-bus and lives here: it
  * is scratch state, never document state, so it is neither serialized nor undoable.
  */
-export function registerEditorCommands(bus: LoomBus): void {
+export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptions = {}): void {
   let clipboard: Clipboard = { nodes: [], edges: [] };
   let pasteCount = 0;
+  /** The last payload THIS bus wrote, so its own paste keeps cascading (§V35). */
+  let written: string | null = null;
+  const mirror = (copied: Clipboard): void => {
+    if (options.systemClipboard === undefined) return;
+    written = encodeLoomClipboard({ kind: "nodes", nodes: copied.nodes, edges: copied.edges });
+    options.systemClipboard.write(written, written);
+  };
 
   bus.registerCommand({
     name: "graph.removeNodes",
@@ -396,6 +452,7 @@ export function registerEditorCommands(bus: LoomBus): void {
       if (!context.dryRun) {
         clipboard = copied;
         pasteCount = 0;
+        mirror(copied);
       }
       return { status: "applied", revision: context.store.getRevision(), output };
     },
@@ -419,6 +476,7 @@ export function registerEditorCommands(bus: LoomBus): void {
       if (outcome.status === "applied" && !context.dryRun) {
         clipboard = copied;
         pasteCount = 0;
+        mirror(copied);
       }
       return outcome;
     },
@@ -428,7 +486,22 @@ export function registerEditorCommands(bus: LoomBus): void {
   bus.registerCommand({
     name: "graph.paste",
     description: "Paste the clipboard as new nodes with new ids (§V35).",
-    handler: (input, context) => {
+    handler: async (input, context) => {
+      /*
+       * §T1393b: the SYSTEM clipboard first — a copy made in another window or another
+       * document is the newest one there is. A payload this bus wrote itself is the bus
+       * clipboard already, so reading it back changes nothing and the cascade continues.
+       */
+      const system = await readLoomClipboard(options.systemClipboard);
+      if (system?.payload?.kind === "nodes" && system.text !== written) {
+        const foreign = foreignClipboard(system.payload, context.registry);
+        if ("refusal" in foreign) return rejected(context.store.getRevision(), foreign.refusal, "clipboard.foreign");
+        if (foreign.nodes.length > 0 && !context.dryRun) {
+          clipboard = foreign;
+          pasteCount = 0;
+          written = system.text;
+        }
+      }
       if (clipboard.nodes.length === 0) {
         return rejected(context.store.getRevision(), "The clipboard is empty.", "clipboard.empty");
       }

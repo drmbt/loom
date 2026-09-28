@@ -1,4 +1,5 @@
 import { createDomainBus } from "@domain/commands/index.ts";
+import { createBrowserSystemClipboard } from "./system-clipboard.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { Actor, InvocationContext } from "@domain/types/commands.ts";
 import { DEFAULT_PROJECT_SETTINGS } from "@domain/types/graph.ts";
@@ -240,12 +241,11 @@ export function createAppRuntime(options: AppRuntimeOptions = {}): AppRuntime {
     initialSettings,
     ...(initialGraph === undefined ? {} : { initialGraph }),
     // §V148: "copy reference" is only worth anything if the string can be pasted into an
-    // expression field, which means it has to reach the system clipboard. Best effort —
-    // the write is asynchronous and permission-gated, and a refusal costs the trip
-    // through a text field, not the copy itself (the bus clipboard still holds it).
-    clipboard: (text) => {
-      void globalThis.navigator?.clipboard?.writeText(text).catch(() => undefined);
-    },
+    // expression field, which means it has to reach the system clipboard. §T1393b: the
+    // whole copy rides beside the text, so another window's paste gets every form of it.
+    // Best effort both ways — a refused write costs the trip out, a refused read falls
+    // back to this window's own clipboard.
+    systemClipboard: createBrowserSystemClipboard(),
   });
   registerComponentCommands(bus, { components });
   registerProjectCommands(bus);

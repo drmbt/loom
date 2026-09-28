@@ -77,6 +77,19 @@ const parameterRef: InputBuilder = (_item, target) =>
     ? { ok: false, reason: "No parameter under the cursor." }
     : { ok: true, input: { nodeId: target.nodeId, parameterKey: target.parameterKey } };
 
+/** §T1393b: the channel row under the cursor, with its reading when it showed one. */
+const channelRef: InputBuilder = (_item, target) =>
+  target.nodeId === undefined || target.channel === undefined
+    ? { ok: false, reason: "No channel under the cursor." }
+    : {
+        ok: true,
+        input: {
+          nodeId: target.nodeId,
+          channel: target.channel,
+          ...(target.channelValue === undefined ? {} : { value: target.channelValue }),
+        },
+      };
+
 const cursorPosition: InputBuilder = (_item, target) =>
   target.position === undefined
     ? { ok: true, input: {} }
@@ -172,6 +185,7 @@ const BUILDERS: Record<string, InputBuilder> = {
   // they carry, and a builder that dropped it would make all three paste the same thing
   // (T1004) — the B87 shape, one level in.
   "parameter.paste": parameterRefWith,
+  "channel.copy": channelRef,
   "parameter.reset": parameterRef,
   "parameter.revert": parameterRef,
   "parameter.setMode": parameterRefWith,

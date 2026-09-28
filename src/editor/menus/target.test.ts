@@ -228,3 +228,29 @@ describe("the walk", () => {
     });
   });
 });
+
+describe("§T1393b — a value node's channel row", () => {
+  it("resolves to the channel, its node and the reading it shows", () => {
+    const node = document.createElement("div");
+    node.className = "react-flow__node";
+    node.setAttribute("data-id", "lfo");
+    const row = document.createElement("div");
+    row.setAttribute("data-channel-name", "value");
+    row.setAttribute("data-channel-value", "0.25");
+    const label = document.createElement("dt");
+    row.append(label);
+    node.append(row);
+    expect(resolveMenuTarget(label)).toEqual({ surface: "channel", nodeId: "lfo", channel: "value", channelValue: 0.25 });
+  });
+
+  it("leaves the reading out when the row shows none, and is the NODE menu outside a row", () => {
+    const node = document.createElement("div");
+    node.className = "react-flow__node";
+    node.setAttribute("data-id", "lfo");
+    const row = document.createElement("div");
+    row.setAttribute("data-channel-name", "value");
+    node.append(row);
+    expect(resolveMenuTarget(row)).toEqual({ surface: "channel", nodeId: "lfo", channel: "value" });
+    expect(resolveMenuTarget(node)).toEqual({ surface: "node", nodeId: "lfo" });
+  });
+});

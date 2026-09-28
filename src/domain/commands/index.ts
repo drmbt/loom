@@ -1,4 +1,5 @@
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
+import type { SystemClipboard } from "./loom-clipboard.ts";
 import { createGraphStore, type GraphStore, type GraphStoreOptions } from "../graph/store.ts";
 import { createCommandBus, type LoomBus } from "./bus.ts";
 import { registerEditorCommands } from "./editor-commands.ts";
@@ -91,6 +92,11 @@ export interface DomainBusOptions extends GraphStoreOptions {
    * nothing and keeps working.
    */
   clipboard?: ((text: string) => void) | undefined;
+  /**
+   * §T1393b: the system clipboard with Loom's structured slot beside the text — what lets
+   * a copy made in one window paste in another. Supersedes `clipboard` when both are given.
+   */
+  systemClipboard?: SystemClipboard | undefined;
 }
 
 /**
@@ -99,7 +105,7 @@ export interface DomainBusOptions extends GraphStoreOptions {
  * returned bus rather than building their own (§V29, §V39).
  */
 export function createDomainBus(options: DomainBusOptions = {}): { bus: LoomBus; store: GraphStore } {
-  const { registry, store: providedStore, grants, clipboard, ...storeOptions } = options;
+  const { registry, store: providedStore, grants, clipboard, systemClipboard, ...storeOptions } = options;
   const store = providedStore ?? createGraphStore(storeOptions);
   const bus = createCommandBus({
     store,
@@ -108,11 +114,16 @@ export function createDomainBus(options: DomainBusOptions = {}): { bus: LoomBus;
   });
   registerGraphCommands(bus);
   registerNodeOutputCommands(bus);
-  registerEditorCommands(bus);
+  registerEditorCommands(bus, systemClipboard === undefined ? {} : { systemClipboard });
   registerLayoutCommands(bus);
-  registerParameterCommands(bus, { ...(clipboard === undefined ? {} : { writeClipboard: clipboard }) });
+  registerParameterCommands(bus, {
+    ...(clipboard === undefined ? {} : { writeClipboard: clipboard }),
+    ...(systemClipboard === undefined ? {} : { systemClipboard }),
+  });
   registerValidateCommand(bus);
   registerSettingsCommands(bus);
   return { bus, store };
 }
+export { LOOM_CLIPBOARD_TYPE, decodeLoomClipboard, encodeLoomClipboard } from "./loom-clipboard.ts";
+export type { LoomClipboardPayload, SystemClipboard } from "./loom-clipboard.ts";
 export { createCapabilityGrantStore, type CapabilityGrantStore, type CapabilityGrantStoreOptions } from "./grants.ts";

@@ -272,6 +272,9 @@ export const PARAMETER_MENU: MenuSchema = {
     { command: "parameter.paste", input: { as: "value" }, label: "Paste value" },
     { command: "parameter.paste", input: { as: "reference" }, label: "Paste reference" },
     { command: "parameter.paste", input: { as: "binding" }, label: "Paste binding" },
+    // §T1393b: the copied thing's NAME as text — a channel's name into a Select, a node's
+    // name into a Source/Camera field. The owner's "name, reference or value".
+    { command: "parameter.paste", input: { as: "name" }, label: "Paste name" },
     { separator: true },
     { command: "parameter.reset", label: "Reset to default", when: "isOverridden" },
     /*
@@ -318,6 +321,16 @@ export const PARAMETER_MENU: MenuSchema = {
   ],
 };
 
+/**
+ * §T1393b — a value node's CHANNEL row. One copy captures every form — the reference
+ * `op('lfo1').chan.value`, the channel's name, the reading on screen — and the paste rows
+ * on a parameter choose (the owner's "universal copy with a selective paste").
+ */
+const CHANNEL_MENU: MenuSchema = {
+  surface: "channel",
+  entries: [{ command: "channel.copy", label: "Copy channel" }],
+};
+
 /** The one menu offered for a surface. Built on open, never precomputed per node. */
 export function menuSchemaFor(
   surface: MenuTarget["surface"],
@@ -334,5 +347,7 @@ export function menuSchemaFor(
       return EDGE_MENU;
     case "parameter":
       return PARAMETER_MENU;
+    case "channel":
+      return CHANNEL_MENU;
   }
 }

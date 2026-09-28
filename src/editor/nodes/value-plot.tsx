@@ -427,7 +427,13 @@ export function ValuePlot({
         aria-label={`Channels of ${nodeId}`}
       >
         {value.channels.map((channel, index) => (
-          <div key={channel} className={styles.reading}>
+          <div
+            key={channel}
+            className={styles.reading}
+            // §T1393b: the channel menu's target — see value-bars.tsx.
+            data-channel-name={channel}
+            data-channel-value={String(value.latest?.[channel] ?? "")}
+          >
             {/* Only a PLOTTED channel gets its stroke's colour: tinting the 19th name
                 with seriesC would claim a line that is not on the canvas. */}
             <dt className={index < value.plotted.length ? cxChannel(index) : styles.channel}>
@@ -538,7 +544,7 @@ function FunctionPlot({
         )}
       </svg>
       <dl className={styles.values} aria-label={`Channels of ${nodeId}`}>
-        <div className={styles.reading}>
+        <div className={styles.reading} data-channel-name="value" {...(reading === null ? {} : { "data-channel-value": String(reading) })}>
           <dt className={cxChannel(0)}>value</dt>
           <dd className={styles.number}>{reading === null ? "—" : formatValue(reading)}</dd>
         </div>

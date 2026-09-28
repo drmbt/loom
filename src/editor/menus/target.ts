@@ -50,6 +50,13 @@ const HANDLE_PORT_ID = "data-handleid";
 /** Ours: the inspector must put these on a parameter row for the parameter menu. */
 export const PARAMETER_KEY_ATTRIBUTE = "data-parameter-key";
 export const PARAMETER_NODE_ATTRIBUTE = "data-node-id";
+/**
+ * §T1393b: a value node's channel row. `data-channel-name` names the channel, the node
+ * is the nearest owner (the card's React Flow wrapper, or a panel's `data-node-id`), and
+ * `data-channel-value` is the reading the row shows, when it shows one.
+ */
+export const CHANNEL_NAME_ATTRIBUTE = "data-channel-name";
+export const CHANNEL_VALUE_ATTRIBUTE = "data-channel-value";
 
 export interface ResolveMenuTargetOptions {
   /**
@@ -79,6 +86,16 @@ function surfaceOf(element: Element): MenuTarget | null {
     const nodeId = attribute(element, HANDLE_NODE_ID);
     const portId = attribute(element, HANDLE_PORT_ID);
     if (nodeId !== null && portId !== null) return { surface: "port", nodeId, portId };
+  }
+
+  const channel = attribute(element, CHANNEL_NAME_ATTRIBUTE);
+  if (channel !== null) {
+    const owner = element.closest(`[${PARAMETER_NODE_ATTRIBUTE}], .${NODE_CLASS}[${RF_ID}]`);
+    const nodeId = owner === null ? null : (attribute(owner, PARAMETER_NODE_ATTRIBUTE) ?? attribute(owner, RF_ID));
+    const reading = Number(attribute(element, CHANNEL_VALUE_ATTRIBUTE) ?? Number.NaN);
+    if (nodeId !== null) {
+      return { surface: "channel", nodeId, channel, ...(Number.isFinite(reading) ? { channelValue: reading } : {}) };
+    }
   }
 
   const parameterKey = attribute(element, PARAMETER_KEY_ATTRIBUTE);

@@ -15,8 +15,12 @@ import type { CommandName } from "./commands.ts";
 
 /** A right-click means different things over a node, a port, an edge, or empty canvas. */
 export interface MenuTarget {
-  surface: "canvas" | "node" | "port" | "edge" | "parameter";
+  surface: "canvas" | "node" | "port" | "edge" | "parameter" | "channel";
   nodeId?: NodeId;
+  /** §T1393b: the channel under the cursor on a value node's card (`surface: "channel"`). */
+  channel?: string;
+  /** Its reading when the row showed one. */
+  channelValue?: number;
   portId?: PortId;
   edgeId?: EdgeId;
   parameterKey?: string;

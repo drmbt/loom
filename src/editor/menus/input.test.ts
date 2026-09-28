@@ -180,13 +180,14 @@ describe("parameters", () => {
       .filter((entry): entry is MenuItem => !isMenuSeparator(entry))
       .filter((entry) => entry.command === "parameter.paste");
     // Three of them, or the schema changed under this test.
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
 
     const resolved = rows.map((row) => resolveMenuInput(row, target, fixture.context()));
     expect(resolved.map((one) => (one.ok ? one.input : one.reason))).toEqual([
       { nodeId: fixture.blur, parameterKey: "radius", as: "value" },
       { nodeId: fixture.blur, parameterKey: "radius", as: "reference" },
       { nodeId: fixture.blur, parameterKey: "radius", as: "binding" },
+      { nodeId: fixture.blur, parameterKey: "radius", as: "name" },
     ]);
   });
 

@@ -172,7 +172,14 @@ function ChannelBar({
 }) {
   const scale = channelScale(meta, observed);
   return (
-    <div className={styles.barRow} data-bar-row="" data-testid={`value-bar-${nodeId}-${channel}`}>
+    <div
+      className={styles.barRow}
+      data-bar-row=""
+      // §T1393b: right-click here opens the channel menu (copy reference / name / value).
+      data-channel-name={channel}
+      {...(value === null ? {} : { "data-channel-value": String(value) })}
+      data-testid={`value-bar-${nodeId}-${channel}`}
+    >
       <dt className={styles.channel}>{channel}</dt>
       {value === null || scale === null ? (
         // No reading, or nothing to draw it against. The number's own box still holds the
