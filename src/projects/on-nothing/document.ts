@@ -29,6 +29,7 @@ import { TABLEAU_TOP, lightsDocument, tableauReach } from "./shots/lights.ts";
 import { incarDocument } from "./shots/incar.ts";
 import { handsDocument } from "./shots/hands.ts";
 import { cardsDocument } from "./shots/cards.ts";
+import { wideDocument } from "./shots/wide.ts";
 import { REACT_PROFILES, reactive } from "./shots/react.ts";
 
 /**
@@ -42,16 +43,18 @@ import { REACT_PROFILES, reactive } from "./shots/react.ts";
  */
 
 /** The close-ups (shots/closeups.ts) are their own graphs. */
-export const SHOTS = ["tableau", "title", "ring", "quad", "cyc", "cyc-wide", "zoom", "prism", "wheel", "halo", "crt", "split", "mirror", "lights", "incar", "hands", ...CLOSEUP_SHOTS, "cards"] as const;
+export const SHOTS = ["tableau", "title", "ring", "quad", "cyc", "cyc-wide", "zoom", "prism", "wheel", "halo", "crt", "split", "mirror", "lights", "incar", "hands", "wide", ...CLOSEUP_SHOTS, "cards"] as const;
 export type Shot = (typeof SHOTS)[number];
 /** The four sets; `zoom` and `prism` are the tableau's set with their own camera and finish. */
 type Base = "tableau" | "title" | "quad" | "cyc" | "wheel";
-const BASE_OF: Record<Exclude<Shot, (typeof CLOSEUP_SHOTS)[number] | "cards">, Base> = { tableau: "tableau", title: "title", ring: "quad", quad: "quad", cyc: "cyc", "cyc-wide": "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel", halo: "tableau", crt: "tableau", split: "tableau", mirror: "cyc", lights: "tableau", incar: "tableau", hands: "tableau" };
+const BASE_OF: Record<Exclude<Shot, (typeof CLOSEUP_SHOTS)[number] | "cards">, Base> = { tableau: "tableau", title: "title", ring: "quad", quad: "quad", cyc: "cyc", "cyc-wide": "cyc", zoom: "tableau", prism: "tableau", wheel: "wheel", halo: "tableau", crt: "tableau", split: "tableau", mirror: "cyc", lights: "tableau", incar: "tableau", hands: "tableau", wide: "tableau" };
 
 export interface OnNothingOptions {
   readonly shot: Shot;
   /** Which take: a shot may frame its set several ways (the EDL's rows pick one; 0 = the first). */
   readonly take?: number;
+  /** Built as another shot's plate (halo, crt, wide, split, …): the 0:16 tableau's own measured glass curve does not apply. */
+  readonly plate?: boolean;
   readonly width?: number;
   readonly height?: number;
   /** Run the CRT re-scan over the finished frame. */
@@ -152,6 +155,9 @@ function performance(shot: Base): Record<string, string | number[]> {
   }
 }
 
+/** The builder handed to the shots that start from another shot's graph (see `plate`). */
+const asPlate = (facts: OnNothingFacts, options: OnNothingOptions): ProjectDocument => onNothingDocument(facts, { ...options, plate: true });
+
 export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptions): ProjectDocument {
   // The title and the ring build their own graphs (shots/), apart from the shots below.
   if (options.shot === "title") return titleDocument(facts, options);
@@ -161,18 +167,20 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   // T1407b closeups2: the end cards (rows 108-110)
   if (shot === "cards") return cardsDocument(facts, options);
   // T1407b (split/mirror): composites of re-cut stock shots, built in shots/.
-  if (shot === "split") return splitDocument(facts, onNothingDocument, options);
-  if (shot === "mirror") return mirrorDocument(facts, onNothingDocument, options);
+  if (shot === "split") return splitDocument(facts, asPlate, options);
+  if (shot === "mirror") return mirrorDocument(facts, asPlate, options);
   // T1407b (lights): the light, detail and abstract rows, each a take on a stock shot (shots/lights.ts).
-  if (shot === "lights") return lightsDocument(facts, options, onNothingDocument);
-  if (shot === "incar") return incarDocument(facts, onNothingDocument, options); // T1407b (incar)
+  if (shot === "lights") return lightsDocument(facts, options, asPlate);
+  if (shot === "incar") return incarDocument(facts, asPlate, options); // T1407b (incar)
   if (shot === "hands") return handsDocument(facts, options); // T1407b (hands): shots/hands.ts
+  // T1407b (wide): the tableau's set seen by the other cameras (shots/wide.ts)
+  if (shot === "wide") return wideDocument(facts, options, asPlate);
   // T1407b: the quad and the prism build their own graphs (shots/).
   if (shot === "quad") return quadDocument(facts, options);
   if (shot === "prism") return prismDocument(facts, options);
   // T1407b (halo, crt): built on the tableau's graph by shots/halo.ts and shots/crt.ts
-  if (shot === "halo") return haloDocument(facts, options, onNothingDocument);
-  if (shot === "crt") return crtDocument(facts, options, onNothingDocument);
+  if (shot === "halo") return haloDocument(facts, options, asPlate);
+  if (shot === "crt") return crtDocument(facts, options, asPlate);
   // T1407b (cyc): the white limbo's framings have their own builder (shots/cyc.ts).
   if (shot === "cyc" || shot === "cyc-wide") return cycDocument(facts, { shot, ...(options.width === undefined ? {} : { width: options.width }), ...(options.height === undefined ? {} : { height: options.height }), ...(options.crt === undefined ? {} : { crt: options.crt }) });
   const base = BASE_OF[shot];
@@ -538,7 +546,7 @@ export function onNothingDocument(facts: OnNothingFacts, options: OnNothingOptio
   // ONE direction per cut: the columns grow steadily through the shot, and the song only
   // leans on that very slowly (a 1 s lag) — never a jitter.
   // T1407b (lights): the 0:16 tableau's own glass is measured frame by frame (shots/lights.ts tableauReach)
-  const reachExpr = shot === "tableau" ? tableauReach(TABLEAU_TOP) : `(${reach} * (0.62 + 0.3 * clamp(abstime / 4, 0, 1) + 0.18 * ${LOUD}))`;
+  const reachExpr = shot === "tableau" && options.plate !== true ? tableauReach(TABLEAU_TOP) : `(${reach} * (0.62 + 0.3 * clamp(abstime / 4, 0, 1) + 0.18 * ${LOUD}))`;
   // 16 taps a pass: each pass's span (16 steps) covers the next pass's step twice over, so the
   // three convolve into one smooth column — no stepped tops, no banded copies of each LED.
   const STREAKS = [reach / 400, reach / 60, reach / 20] as const;
