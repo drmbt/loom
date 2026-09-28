@@ -182,15 +182,10 @@ function thinLens(cut: Surgery, lens: { fov: number; fstop: number; focus: strin
  * room. A variant of the car's material, worn by that car alone, in the takes that frame it close.
  */
 function satinPaint(cut: Surgery, area: string, look: { albedo: number; metallic: number; roughness: number }): void {
-  const surf = cut.nodes["surf"];
-  if (surf === undefined) throw new Error("lights: the base graph has no surf.");
-  const source = String(surf.parameters["source"]);
-  const needle = "case 11u: { return clearCoat(s, p, o, 0.16); }";
-  if (!source.includes(needle)) throw new Error("lights: surface.ts no longer draws the satin paint (class 11) as it did; re-derive satinPaint.");
-  const satin = `case 11u: { var q = clearCoat(s, p, o, ${look.roughness.toFixed(3)}); q.metallic = ${look.metallic.toFixed(3)}; q.albedo = vec4f(vec3f(${look.albedo.toFixed(3)}), 1.0); return q; }`;
-  const id = `surf_${area}`;
-  addNode(cut, id, "materialWgsl", [-3000, -500], { ...surf.parameters, source: source.replace(needle, satin) }, { label: `surf${area}1` });
-  setParams(cut, `geo_${area}`, { material: `surf${area}1` });
+  // class 11 (car0's paint) is the satin silver itself since 1e846207, driven by the surface's own knobs
+  if (area !== "car0") throw new Error(`lights: satinPaint drives class 11, which only car0 wears (asked for ${area}).`);
+  if (cut.nodes["surf"] === undefined) throw new Error("lights: the base graph has no surf.");
+  setParams(cut, "surf", { silverAlbedo: look.albedo, silverMetallic: look.metallic, silverRoughness: look.roughness });
 }
 
 /**
