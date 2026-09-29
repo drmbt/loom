@@ -205,6 +205,86 @@ describe("useNodePreviews (T185)", () => {
     nodeRuntime.dispose();
   });
 
+  /*
+   * T1488b — T620's hidden-page step exists for a PARKED tick, and a hidden editor is no
+   * longer the same thing: a perform window serves the tick. Counted in what the preview
+   * host is asked to draw (one `presentPreviews` per step), with the editor hidden and its
+   * own rAF answering nobody.
+   */
+  describe("T1488b — the hidden-page step follows the parked tick, not the hidden editor", () => {
+    let restoreVisibility: (() => void) | null = null;
+    afterEach(() => {
+      restoreVisibility?.();
+      restoreVisibility = null;
+    });
+    function hideEditor(): void {
+      const original = Object.getOwnPropertyDescriptor(Document.prototype, "visibilityState");
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+      restoreVisibility = () => {
+        if (original) Object.defineProperty(Document.prototype, "visibilityState", original);
+        delete (document as { visibilityState?: unknown }).visibilityState;
+      };
+    }
+    function mount(foreign: boolean) {
+      hideEditor();
+      vi.stubGlobal("requestAnimationFrame", () => 1);
+      vi.stubGlobal("cancelAnimationFrame", () => {});
+      const waiting: Array<(time: number) => void> = [];
+      let draws = 0;
+      const backend = {
+        ...fakeBackend(),
+        previewHost: () => ({ setPreviewProgram: () => {}, presentPreviews: () => (draws += 1), dispose: () => {} }),
+        frames: {
+          requestAnimationFrame: (callback: (time: number) => void) => waiting.push(callback),
+          cancelAnimationFrame: () => {},
+          foreign,
+        },
+      } as unknown as LoomBackend;
+      const nodeRuntime = createNodeRuntimeStore();
+      const bounds = createPreviewSlotBounds();
+      bounds.publish("n1", { x: 0, y: 0, width: 200, height: 120 });
+      const canvas = document.createElement("canvas");
+      canvas.getBoundingClientRect = () =>
+        ({ x: 0, y: 0, top: 0, left: 0, right: 400, bottom: 300, width: 400, height: 300 }) as DOMRect;
+      const output = (size: number) => [{ nodeId: "n1", portId: "out", resourceId: "res:n1:out",
+        resourceKind: "target" as const, size: [size, size] as const, format: "rgba8unorm" as const,
+        space: "linear" as const, temporal: false }];
+      const view = renderHook(({ compiledOutputs }) =>
+        useNodePreviews({
+          backend, canvasRef: { current: canvas }, bounds, graph: graphWith("test.blur"),
+          registry: createTestRegistry().view(), compiledOutputs, nodeRuntime,
+          getViewport: () => ({ x: 0, y: 0, zoom: 1 }), getNodePosition: () => ({ x: 0, y: 0 }),
+          getNodeBoxes: () => [], previewFps: 20, previewLongEdge: 192, documentIdentity: "document-under-test",
+        }), { initialProps: { compiledOutputs: output(64) } });
+      return {
+        draws: () => draws,
+        frame: () => { for (const callback of waiting.splice(0)) callback(0); },
+        recompile: () => view.rerender({ compiledOutputs: output(128) }),
+        dispose: () => nodeRuntime.dispose(),
+      };
+    }
+
+    it("a recompile adds no step while a perform window serves the tick", () => {
+      const h = mount(true);
+      h.frame();
+      const before = h.draws();
+      h.recompile();
+      expect(h.draws()).toBe(before);
+      // The perform window's next frame picks the plan up — one draw, not two.
+      h.frame();
+      expect(h.draws()).toBe(before + 1);
+      h.dispose();
+    });
+
+    it("a recompile still steps once when the tick is parked on the hidden editor's frames", () => {
+      const h = mount(false);
+      const before = h.draws();
+      h.recompile();
+      expect(h.draws()).toBe(before + 1);
+      h.dispose();
+    });
+  });
+
   it("marks a node idle when the compiler has not resolved an output for it yet", () => {
     const registry = createTestRegistry().view();
     const graph = graphWith("test.blur");

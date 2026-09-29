@@ -828,10 +828,13 @@ describe("vgpu backend — the loop follows a frame source (§T1391b, §V202, T3
     const frames = backend.frames!;
     const source = manualSource();
     let answered = 0;
+    // T1488b: `foreign` names who answers — what previews' hidden-page step keys on.
+    expect(frames.foreign).toBe(false);
 
     // Waiting on this realm's frames when the perform window takes over.
     frames.requestAnimationFrame(() => (answered += 1));
     backend.setFrameSource?.(source);
+    expect(frames.foreign).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(answered).toBe(0);
     expect(source.pending()).toBe(1);
@@ -841,6 +844,7 @@ describe("vgpu backend — the loop follows a frame source (§T1391b, §V202, T3
     // Waiting on the source when it is released: this realm answers it instead.
     frames.requestAnimationFrame(() => (answered += 1));
     backend.setFrameSource?.(null);
+    expect(frames.foreign).toBe(false);
     expect(source.pending()).toBe(0);
     await until(() => answered === 2, "a waiting request answered by this realm after release");
 
@@ -856,6 +860,7 @@ describe("vgpu backend — the loop follows a frame source (§T1391b, §V202, T3
     const source = manualSource();
     backend.setFrameSource?.(source);
     source.closed = true;
+    expect(backend.frames!.foreign).toBe(false);
     let answered = 0;
     backend.frames!.requestAnimationFrame(() => (answered += 1));
     expect(source.pending()).toBe(0);

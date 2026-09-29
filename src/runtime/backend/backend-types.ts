@@ -220,8 +220,13 @@ export interface LoomBackend extends RenderBackend {
    * request still pending when the source changes moves to the new one — a request left
    * on a hidden editor's rAF would never be answered. Optional like `setFrameSource`;
    * a loop given a backend without it schedules on its own window.
+   *
+   * T1488b — `foreign` says WHO answers right now: true while the source `setFrameSource`
+   * set (and not closed) does, false while this realm's frames do. A loop that has a
+   * hidden-page fallback (T620) needs it: with the editor hidden its own rAF is parked,
+   * but a request answered by a perform window is not.
    */
-  readonly frames?: FrameSource;
+  readonly frames?: FrameSource & { readonly foreign: boolean };
 
   /**
    * Creates the preview system's runtime host on a shared surface (T161, doc §12.2):

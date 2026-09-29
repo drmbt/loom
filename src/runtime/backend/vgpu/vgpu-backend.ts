@@ -2469,6 +2469,10 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         followers.delete(id);
         pending.requester.cancelAnimationFrame(pending.handle);
       },
+      /** T1488b: the same test `placeFollower` makes — a closed source answers nothing. */
+      get foreign(): boolean {
+        return frameSource !== null && frameSource.closed !== true;
+      },
     },
 
     present(canvas: PresentableCanvas, options: PresentationOptions): PresentationHandle {

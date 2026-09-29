@@ -1057,9 +1057,17 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
    * (four of fifty-two previews never painted). When the page is hidden — a background
    * tab, or a fully occluded window, which Chrome also reports as hidden — this is the
    * ONLY thing keeping the preview program and the sink set in step with the document.
+   *
+   * T1488b — "hidden" stands in for "the tick is parked", and since §T1409b the two part
+   * company: the tick follows `backend.frames`, so a perform window keeps serving it while
+   * the editor is hidden, and a step here would be one more on top of the running ticks —
+   * the same perturbation. So the gate is the editor hidden AND its own frames answering
+   * the tick (no `frames`, or `frames` not answered by a foreign source).
    */
   useEffect(() => {
-    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+    const parked = typeof document !== "undefined" && document.visibilityState === "hidden" &&
+      inputsRef.current.backend?.frames?.foreign !== true;
+    if (parked) {
       stepRef.current?.();
     }
     // The graph too, not just the plan: preview candidates read ui state (the P toggle,
