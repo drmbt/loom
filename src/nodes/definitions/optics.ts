@@ -638,9 +638,9 @@ export const flareNode: NodeDefinition = {
   ],
   outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],
   parameters: {
-    threshold: { type: "number", label: "Threshold", default: 6, min: 0, max: 100, range: "floor", group: "Source", description: "Linear brightness where a pixel starts to count as a flare source." },
+    threshold: { type: "number", label: "Threshold", default: 6, min: 0, max: 100, step: 0.1, range: "floor", group: "Source", description: "Linear brightness where a pixel starts to count as a flare source." },
     axis: { type: "number", label: "Axis", default: 0.35, min: 0.01, max: 2, range: "floor", group: "Source", description: "How far from the frame centre a source still flares, as a fraction of the frame height (the width of a Gaussian window)." },
-    gain: { type: "number", label: "Gain", default: 1, min: 0, max: 100, range: "floor", description: "Overall flare strength per unit of measured energy." },
+    gain: { type: "number", label: "Gain", default: 1, min: 0, max: 100, step: 0.01, range: "floor", description: "Overall flare strength per unit of measured energy." },
     tint: { type: "color", label: "Tint", default: [1, 1, 1, 1], space: "display", description: "Flare colour; multiplies the source's own." },
     veil: { type: "number", label: "Veil", default: 0.35, min: 0, max: 4, range: "floor", group: "Glow", description: "The flat veiling glare filling the ring." },
     veilTint: { type: "color", label: "Veil Tint", default: [1, 1, 1, 1], space: "display", group: "Glow", description: "Colour of the veil (the glare inside the ring reads cooler than the core)." },
