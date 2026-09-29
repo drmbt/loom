@@ -168,6 +168,9 @@ export function createModelAcquisition(options: {
     const { id } = descriptor;
     const controller = new AbortController();
     aborts.set(id, controller);
+    // B232: the click is answered before the server is. Waiting for the response headers
+    // left the state `absent`, so a slow or refused connection changed nothing on screen.
+    set(id, { kind: "downloading", received: 0, total: descriptor.bytes > 0 ? descriptor.bytes : undefined });
     try {
       const response = await options.fetch(descriptor.url, { signal: controller.signal });
       if (!response.ok) {
@@ -284,6 +287,14 @@ export function createModelAcquisition(options: {
        */
       const current = states.get(descriptor.id);
       if (current?.kind === "downloading") return current;
+      /*
+       * B232 — nor a transfer that FAILED. The miss is expected after a failure (nothing
+       * was cached, on purpose); the reason is the news. Writing `absent` over it put the
+       * same Download button back with no word about why, and the owner read that as
+       * "nothing happens". A failure is cleared by the next `acquire` (Try again), or
+       * above, by bytes actually arriving on disk.
+       */
+      if (current?.kind === "failed") return current;
       return set(descriptor.id, { kind: "absent" });
     },
 

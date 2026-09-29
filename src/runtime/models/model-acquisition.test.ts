@@ -127,7 +127,9 @@ describe("progress is real bytes", () => {
 
     await acquisition.acquire(DEPTH);
 
-    expect(seen.map((s) => s.received)).toEqual([0, 3, 6, 8]);
+    // The first 0 is the click being answered before the server is (B232); the second is
+    // the response arriving with its length.
+    expect(seen.map((s) => s.received)).toEqual([0, 0, 3, 6, 8]);
     expect(seen.every((s) => s.total === 8)).toBe(true);
   });
 
@@ -207,6 +209,70 @@ describe("a broken download is refused, never cached", () => {
 
     const state = acquisition.stateOf(DEPTH.id);
     expect(state.kind === "failed" && state.reason).toContain("404");
+  });
+
+  /**
+   * B232, the owner's report: Matte on Robust Video Matting, "I click download button and
+   * nothing happens". The browser refused the cross-origin fetch (a GitHub release asset
+   * carries no CORS header), acquisition recorded `failed` — and the next compile's
+   * `refresh` read the empty cache and wrote `absent` over it, so the banner went back to
+   * offering the same Download button with no word about why. The failure is the news; a
+   * cache miss is not.
+   */
+  it("a failed download stays failed through the refresh every compile makes", async () => {
+    const store = memoryStore();
+    const acquisition = createModelAcquisition({
+      store,
+      fetch: vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    });
+
+    await acquisition.acquire(DEPTH);
+    await acquisition.refresh(DEPTH);
+
+    const state = acquisition.stateOf(DEPTH.id);
+    expect(state.kind).toBe("failed");
+    expect(state.kind === "failed" && state.reason).toContain("Failed to fetch");
+  });
+
+  it("…but a refresh that finds the bytes on disk still says ready", async () => {
+    const store = memoryStore();
+    const acquisition = createModelAcquisition({ store, fetch: streamingFetch([[]], { status: 500 }) });
+    await acquisition.acquire(DEPTH);
+    store.held.set(DEPTH.id, new ArrayBuffer(8));
+
+    await acquisition.refresh(DEPTH);
+
+    expect(acquisition.stateOf(DEPTH.id).kind).toBe("ready");
+  });
+
+  /**
+   * B232's other half: until the server answered, the state stayed `absent`, so a click
+   * on a slow or refused connection changed nothing on screen at all.
+   */
+  it("the click is answered at once — downloading before the server has said anything", async () => {
+    let answer: (() => void) | undefined;
+    const acquisition = createModelAcquisition({
+      store: memoryStore(),
+      fetch: vi.fn(
+        () =>
+          new Promise<Response>((_resolve, reject) => {
+            answer = () => reject(new TypeError("Failed to fetch"));
+          }),
+      ),
+    });
+
+    const pending = acquisition.acquire(DEPTH);
+    await Promise.resolve();
+    await acquisition.refresh(DEPTH);
+
+    const state = acquisition.stateOf(DEPTH.id);
+    expect(state.kind).toBe("downloading");
+    expect(state.kind === "downloading" && state.received).toBe(0);
+    answer?.();
+    await pending;
+    expect(acquisition.stateOf(DEPTH.id).kind).toBe("failed");
   });
 });
 
