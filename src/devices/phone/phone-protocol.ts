@@ -147,10 +147,42 @@ export type PhoneClientMessage =
   /** The current snapshot. Told, not asked: no `id`, no reply. Fanned out to every phone. */
   | { readonly type: "phonePublish"; readonly snapshot: PhoneSnapshot };
 
+/**
+ * T1511b — the macOS application firewall will refuse every phone before it reaches the
+ * door: it is on, and `binary` (the helper's own executable, symlinks resolved) is not in
+ * its allowed list. Said only when the helper MEASURED it; a probe that could not tell
+ * says nothing.
+ */
+export interface PhoneFirewallBlock {
+  readonly blocked: true;
+  readonly binary: string;
+}
+
 /** What `phoneOpen`/`phoneClose` report. `url` carries the token; it is what the QR encodes. */
 export type PhoneDoorState =
-  | { readonly open: true; readonly url: string; readonly fingerprint: string; readonly phones: readonly PhonePeer[] }
+  | {
+      readonly open: true;
+      readonly url: string;
+      readonly fingerprint: string;
+      readonly phones: readonly PhonePeer[];
+      /** T1511b: present only when the firewall was measured refusing this helper. */
+      readonly firewall?: PhoneFirewallBlock;
+    }
   | { readonly open: false; readonly reason: string };
+
+/** T1511b — the macOS application firewall's command-line tool. */
+export const MAC_FIREWALL_TOOL = "/usr/libexec/ApplicationFirewall/socketfilterfw";
+
+/**
+ * T1511b — the two commands that let `binary` take incoming connections, for a person to
+ * run themselves: the helper never runs sudo and never changes a setting. `--add` puts it
+ * in the list; `--unblockapp` flips it to allowed if it was there as blocked. A path with
+ * anything outside the shell-safe set is single-quoted so it pastes as one argument.
+ */
+export function firewallAllowCommands(binary: string): readonly [string, string] {
+  const arg = /^[A-Za-z0-9_./+@:-]+$/.test(binary) ? binary : `'${binary.replaceAll("'", "'\\''")}'`;
+  return [`sudo ${MAC_FIREWALL_TOOL} --add ${arg}`, `sudo ${MAC_FIREWALL_TOOL} --unblockapp ${arg}`];
+}
 
 /** HOST → PAGE additions to `DeviceHostMessage`. Same id/push rule as the device role. */
 export type PhoneHostMessage =

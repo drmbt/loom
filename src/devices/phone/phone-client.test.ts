@@ -87,6 +87,19 @@ describe("T1396b — the device client's phone door", () => {
     expect(states).toEqual([{ ...OPEN, phones: [{ phone: "p1", userAgent: "iPhone" }] }]);
   });
 
+  it("T1511b: a firewall block the helper measured reaches the page; a malformed one is dropped, never guessed", async () => {
+    const { client, socket } = harness("ABCD-EFGH");
+    const states: PhoneDoorState[] = [];
+    client.onPhoneState((state) => states.push(state));
+    await tick();
+    socket().hear({ type: "deviceAttached" });
+    const binary = "/Users/me/.nvm/versions/node/v24.11.1/bin/node";
+    socket().hear({ type: "phoneState", stream: "phone", state: { ...OPEN, firewall: { blocked: true, binary } } });
+    socket().hear({ type: "phoneState", stream: "phone", state: { ...OPEN, firewall: { blocked: false, binary } } });
+    socket().hear({ type: "phoneState", stream: "phone", state: { ...OPEN, firewall: { blocked: true } } });
+    expect(states).toEqual([{ ...OPEN, firewall: { blocked: true, binary } }, OPEN, OPEN]);
+  });
+
   it("a socket that goes away closes the door: the owed answer and the listeners both hear it", async () => {
     const { client, socket } = harness("ABCD-EFGH");
     const states: PhoneDoorState[] = [];

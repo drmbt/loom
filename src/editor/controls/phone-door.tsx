@@ -10,6 +10,7 @@ import {
   type PhoneDoorView,
 } from "./phone-door-copy.ts";
 import styles from "./phone-door.module.css";
+import { FirewallNote } from "./firewall-note.tsx";
 
 /**
  * T1396b — the controls pane's Phone button and its popover: open the door, show the QR
@@ -68,6 +69,7 @@ export function PhoneDoorButton({ door }: { readonly door: PhoneDoorView }) {
         ) : null}
         {open ? (
           <div className={styles.section}>
+            <FirewallNote block={state.firewall} />
             <PhoneQr text={state.url} />
             <p className={styles.dim}>{PHONE_SCAN_HINT}</p>
             <code className={styles.url} data-phone-url>{state.url}</code>

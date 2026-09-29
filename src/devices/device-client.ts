@@ -722,6 +722,12 @@ function readDoorState(value: unknown): PhoneDoorState {
   const fingerprint = record["fingerprint"];
   if (record["open"] === true && typeof url === "string" && typeof fingerprint === "string") {
     const phones = Array.isArray(record["phones"]) ? (record["phones"] as unknown[]) : [];
+    // T1511b: carried only when it is a block naming a binary; anything else says nothing.
+    const firewall = record["firewall"];
+    const binary =
+      typeof firewall === "object" && firewall !== null && (firewall as Record<string, unknown>)["blocked"] === true
+        ? (firewall as Record<string, unknown>)["binary"]
+        : undefined;
     return {
       open: true,
       url,
@@ -733,6 +739,7 @@ function readDoorState(value: unknown): PhoneDoorState {
         const userAgent = entry["userAgent"];
         return typeof phone === "string" ? [{ phone, userAgent: typeof userAgent === "string" ? userAgent : "" }] : [];
       }),
+      ...(typeof binary === "string" && binary !== "" ? { firewall: { blocked: true, binary } } : {}),
     };
   }
   const reason = record["reason"];

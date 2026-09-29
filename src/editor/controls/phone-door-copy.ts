@@ -57,3 +57,6 @@ export function phoneLabel(userAgent: string): string {
   const label = device !== undefined && device !== "" ? device : said;
   return label.length > 32 ? `${label.slice(0, 32)}…` : label;
 }
+
+/** T1511b — above the commands that fix it (`firewallAllowCommands`), which the note shows. */
+export const PHONE_FIREWALL_BLOCKED = "The macOS firewall is refusing phones, because this helper's Node is not allowed:";

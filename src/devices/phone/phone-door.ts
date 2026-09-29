@@ -14,11 +14,13 @@ import {
   PHONE_TOKEN_PARAM,
   type PhoneDoorState,
   type PhoneEvent,
+  type PhoneFirewallBlock,
   type PhonePeer,
   type PhoneSet,
   type PhoneSnapshot,
 } from "./phone-protocol.ts";
 import { phonePageHtml } from "./phone-page.ts";
+import { probeMacFirewall } from "./mac-firewall.ts";
 
 /**
  * T1396b — THE PHONE DOOR: the helper's SECOND listener, and the only one on the LAN.
@@ -286,6 +288,11 @@ export interface PhoneDoorOptions {
   readonly openssl?: string;
   /** How often idle event streams get a comment line. Default 15 s. */
   readonly keepaliveMs?: number;
+  /**
+   * T1511b — whether the OS firewall will refuse the phones. Default `probeMacFirewall()`
+   * (read-only, macOS only). Asked at each opening; a rejection counts as "cannot tell".
+   */
+  readonly firewall?: () => Promise<PhoneFirewallBlock | null>;
 }
 
 export interface PhoneDoor {
@@ -320,6 +327,7 @@ interface Opened {
   readonly sink: PhoneDoorSink;
   readonly phones: Map<string, Phone>;
   readonly keepalive: ReturnType<typeof setInterval>;
+  readonly firewall: PhoneFirewallBlock | null;
 }
 
 const CLOSED_STATE: PhoneDoorState = { open: false, reason: "the phone door is closed." };
@@ -329,6 +337,7 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
   const preferredPort = options.port ?? PHONE_DOOR_PORT;
   const certDir = options.certDir ?? defaultPhoneCertDir();
   const keepaliveMs = options.keepaliveMs ?? KEEPALIVE_MS;
+  const firewall = options.firewall ?? (() => probeMacFirewall());
 
   let opened: Opened | null = null;
   let opening: Promise<PhoneDoorState> | null = null;
@@ -344,6 +353,7 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
       url: opened.url,
       fingerprint: opened.fingerprint,
       phones: [...opened.phones.values()].map((phone) => phone.peer),
+      ...(opened.firewall === null ? {} : { firewall: opened.firewall }),
     };
   };
 
@@ -516,6 +526,10 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
           "this machine has no private LAN address (10.x, 172.16–31.x or 192.168.x) to put the phone door on. Join the same wifi as the phone and open it again.",
       };
     }
+    // T1511b: asked alongside the certificate; any failure is "cannot tell", never a refusal.
+    const firewallVerdict = Promise.resolve()
+      .then(firewall)
+      .catch(() => null);
     let certificate: PhoneCertificate;
     try {
       certificate = await ensurePhoneCertificate({
@@ -540,6 +554,7 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
         reason: `the phone door could not listen on ${host}: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
+    const blocked = await firewallVerdict;
     if (ticket !== generation) {
       // Closed (or released) while the certificate was being made: the caller lost.
       server.close();
@@ -556,6 +571,7 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
       keepalive: setInterval(() => {
         for (const phone of door.phones.values()) phone.response.write(": keepalive\n\n");
       }, keepaliveMs),
+      firewall: blocked,
     };
     door.keepalive.unref();
     server.on("request", (request, response) => {
