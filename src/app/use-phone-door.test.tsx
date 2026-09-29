@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DeviceClient } from "@devices/device-client.ts";
 import { PHONE_DOOR_UNAVAILABLE } from "@devices/helper.ts";
 import type { PhoneDoorState, PhoneSet, PhoneSnapshot } from "@devices/phone/phone-protocol.ts";
 import { ControlsPane } from "@editor/controls/controls-pane.tsx";
+import { useControlBodies } from "@editor/controls/control-bodies.tsx";
+import { CanvasFixture } from "@editor/graph-canvas/canvas-fixture.tsx";
+import { fixtureContext, installFlowStubs, nodeProps } from "@editor/graph-canvas/testing.tsx";
+import { NodeView } from "@editor/nodes/node-view.tsx";
+import type { NodeId } from "@domain/types/ids.ts";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { createAppRuntime, type AppRuntime } from "./app-runtime.ts";
 import { NoticeStrip } from "./notices.tsx";
@@ -21,6 +26,7 @@ import { phoneDoorNotices, usePhoneDoor } from "./use-phone-door.ts";
  * wire it speaks is the shared contract (`phone-protocol.ts`).
  */
 installDomStubs();
+installFlowStubs();
 afterEach(cleanup);
 
 const URL_WITH_TOKEN = "https://192.168.1.20:47811/?t=abc123";
@@ -192,7 +198,9 @@ describe("T1396b — the phone door, page side", () => {
     expect(document.querySelector("[data-phone-door]")?.getAttribute("data-phone-door")).toBe("closed");
   });
 
-  it("says so when no Panel is published", async () => {
+  // T1512b: the Phone button is the Panel's own now, so pressing it on an unpublished Panel
+  // PUBLISHES that Panel — and "Stop publishing" is how a phone is left with nothing.
+  it("publishes the Panel it is pressed on, and says so when stopping leaves nothing published", async () => {
     const runtime = await runtimeWithPanel();
     const panel = Object.values(runtime.bus.store.getGraph().nodes).find((node) => node.type === "panel")!;
     await runtime.bus.execute(
@@ -206,6 +214,14 @@ describe("T1396b — the phone door, page side", () => {
       fireEvent.click(screen.getByRole("button", { name: /^Phone/ }));
       await settle();
     });
+    expect(runtime.bus.store.getGraph().nodes[panel.id]!.parameters["remote"]).toBe(true);
+    expect(helper.published.at(-1)?.panels.map((shown) => shown.title)).toEqual(["Furnace"]);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Stop publishing" }));
+      await settle();
+    });
+    expect(runtime.bus.store.getGraph().nodes[panel.id]!.parameters["remote"]).toBe(false);
     expect(screen.getByText(/No Panel is published yet/)).not.toBeNull();
     expect(helper.published.at(-1)?.panels).toEqual([]);
   });
@@ -278,5 +294,52 @@ describe("T1495b — the phone door follows the device attachment", () => {
     });
     expect(helper.door.asked).toBe(1);
     expect(doorState()).toBe("closed");
+  });
+});
+
+/**
+ * T1512b — THE PHONE ICON ON THE PANEL NODE: the owner's "one place" for the phone. On the
+ * canvas, the Panel's header carries it beside P/B/M; pressing it on an unpublished Panel
+ * publishes THAT Panel (its `remote`, through the bus) and opens the same door popover,
+ * anchored there, with the QR for the helper's URL — and the phones get the Panel.
+ */
+describe("T1512b — the Panel node's header phone icon", () => {
+  function PanelOnCanvas({ runtime, client, panelId }: { runtime: AppRuntime; client: DeviceClient; panelId: NodeId }) {
+    const door = usePhoneDoor({ deviceClient: () => client, bus: runtime.bus, invocation: runtime.invocation, attached: true, schedule: soon });
+    const bodies = useControlBodies({ bus: runtime.bus, invocation: runtime.invocation, write: () => undefined, phone: door });
+    const { value } = useMemo(
+      () => fixtureContext({ store: runtime.bus.store, registry: runtime.bus.registry, ...bodies }),
+      [runtime, bodies],
+    );
+    return (
+      <CanvasFixture value={value}>
+        <NodeView {...nodeProps(panelId)} />
+      </CanvasFixture>
+    );
+  }
+
+  it("publishes the Panel and shows the QR, right on the node", async () => {
+    const runtime = await runtimeWithPanel();
+    const panel = Object.values(runtime.bus.store.getGraph().nodes).find((node) => node.type === "panel")!;
+    await runtime.bus.execute(
+      "graph.applyPatch",
+      { baseRevision: runtime.bus.store.getRevision(), operations: [{ op: "setParameters", nodeId: panel.id, parameters: { remote: false } }] },
+      runtime.invocation,
+    );
+    const helper = fakeClient({ open: true, url: URL_WITH_TOKEN, fingerprint: "ff", phones: [] });
+    render(<PanelOnCanvas runtime={runtime} client={helper.client} panelId={panel.id} />);
+    const icon = screen.getByRole("button", { name: /^Phone/ });
+    expect(icon.getAttribute("aria-pressed")).toBe("false");
+    // It sits in the header row with the node's own toggles.
+    expect(icon.closest("header")?.querySelector('[aria-label="Mute"]')).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.click(icon);
+      await settle();
+    });
+    expect(runtime.bus.store.getGraph().nodes[panel.id]!.parameters["remote"]).toBe(true);
+    expect(screen.getByRole("button", { name: /^Phone/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelector("svg[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe(URL_WITH_TOKEN);
+    expect(helper.published.at(-1)?.panels.map((shown) => shown.title)).toEqual(["Furnace"]);
   });
 });

@@ -2122,6 +2122,8 @@ export function App({
                  */
                 orbits={previewOrbits}
                 interest={previewInterest}
+                // T1512b: the Panel's header phone icon opens this door's popover.
+                phone={phoneDoor}
               />
               </AppRuntimeContext.Provider>
             </NodeInfoHost>

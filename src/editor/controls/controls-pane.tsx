@@ -7,9 +7,13 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { isParameterSlot, storedStaticValue } from "@domain/parameters/slots.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
-import { CONTROL_WIDGET_TYPES, controlChannel, parsePanelLayout, type PanelRow } from "@nodes/definitions/controls.ts";
+import type { GraphPatchOperation } from "@domain/types/patch.ts";
+import { CONTROL_WIDGET_TYPES, controlChannel, panelLayout, panelTitle } from "@nodes/definitions/controls.ts";
+import { isRemotePanel } from "@devices/phone/phone-snapshot.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
+import { movePanelMemberOperations } from "./panel-join.ts";
+import { PanelRows } from "./panel-surface.tsx";
 import { PhoneDoorButton } from "./phone-door.tsx";
 import type { PhoneDoorView } from "./phone-door-copy.ts";
 import styles from "./controls-pane.module.css";
@@ -24,6 +28,11 @@ import styles from "./controls-pane.module.css";
  *
  * With no Panel in the document the pane still works: it lays out every widget there is, so
  * dropping a Slider on the canvas is already a control you can perform with.
+ *
+ * T1512b — with a Panel, this is a BIGGER VIEW OF THE PANEL NODE: the same rows from the
+ * same `panelLayout` through the same `PanelRows` the node body draws, the same phone icon
+ * (`PhoneDoorButton`) in the header, and — while the Panel follows its wiring — buttons
+ * that move a widget earlier or later, rewriting the edge order through the bus.
  */
 
 export interface ControlsPaneProps {
@@ -106,11 +115,12 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
   const [chosen, setChosen] = useState<string | null>(null);
   const [mapping, setMapping] = useState<string | null>(null);
   const panel = panels.find((candidate) => candidate.id === chosen) ?? panels[0];
+  const wired = panel !== undefined && panelLayout(graph, panel).source === "wiring";
 
-  const byName = useMemo(() => new Map(widgets.map((node) => [nameOf(node), node])), [widgets]);
-  const rows: PanelRow[] = panel === undefined
-    ? [{ kind: "widgets", names: widgets.map(nameOf) }]
-    : parsePanelLayout(typeof panel.parameters["layout"] === "string" ? (panel.parameters["layout"] as string) : "");
+  const apply = (operations: GraphPatchOperation[], label: string): void => {
+    if (operations.length === 0) return;
+    void bus.execute("graph.applyPatch", { baseRevision: bus.store.getRevision(), label, operations }, invocation);
+  };
 
   const map = (widget: GraphNode, target: NodeId, key: string, channel: string): void => {
     const node = graph.nodes[target];
@@ -125,15 +135,11 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
         expression: { kind: "expression", source: `op('${nameOf(widget)}').chan.${channel}` },
       },
     };
-    void bus.execute(
-      "graph.applyPatch",
-      { baseRevision: bus.store.getRevision(), label: `Map ${nameOf(widget)} → ${nameOf(node)}.${key}`, operations: [{ op: "setParameters", nodeId: target, parameters: { [key]: slot as never } }] },
-      invocation,
-    );
+    apply([{ op: "setParameters", nodeId: target, parameters: { [key]: slot as never } }], `Map ${nameOf(widget)} → ${nameOf(node)}.${key}`);
     setMapping(null);
   };
 
-  if (widgets.length === 0) {
+  if (widgets.length === 0 && panel === undefined) {
     return (
       <div className={styles.empty}>
         <p>No controls</p>
@@ -142,47 +148,70 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
     );
   }
 
+  const renderMeta = (widget: GraphNode) => {
+    const targets = targetsOf(graph, widget);
+    return (
+      <>
+        <div className={styles.meta}>
+          <span className={styles.targets} title={targets.join("\n")}>
+            {targets.length === 0 ? "drives nothing" : `→ ${targets.join(", ")}`}
+          </span>
+          {wired && panel !== undefined ? (
+            <>
+              <button type="button" className={styles.mapButton} aria-label={`Move ${nameOf(widget)} earlier`} onClick={() => apply(movePanelMemberOperations(graph, panel.id, widget.id, -1), "Reorder panel")}>
+                ‹
+              </button>
+              <button type="button" className={styles.mapButton} aria-label={`Move ${nameOf(widget)} later`} onClick={() => apply(movePanelMemberOperations(graph, panel.id, widget.id, 1), "Reorder panel")}>
+                ›
+              </button>
+            </>
+          ) : null}
+          <button type="button" className={styles.mapButton} onClick={() => setMapping(mapping === widget.id ? null : widget.id)}>
+            map…
+          </button>
+        </div>
+        {mapping === widget.id ? (
+          <MapForm graph={graph} registry={registry} widget={widget} onMap={(target, key, channel) => map(widget, target, key, channel)} />
+        ) : null}
+      </>
+    );
+  };
+
   return (
     <div className={styles.pane} data-controls-pane>
       <header className={styles.header}>
-        <h2 className={styles.title}>{panel === undefined ? "All controls" : String(panel.parameters["title"] ?? nameOf(panel))}</h2>
+        <h2 className={styles.title}>{panel === undefined ? "All controls" : panelTitle(panel)}</h2>
         {panels.length > 1 ? (
           <select aria-label="Panel" value={panel?.id ?? ""} onChange={(event) => setChosen(event.target.value)}>
-            {panels.map((candidate) => <option key={candidate.id} value={candidate.id}>{String(candidate.parameters["title"] ?? nameOf(candidate))}</option>)}
+            {panels.map((candidate) => <option key={candidate.id} value={candidate.id}>{panelTitle(candidate)}</option>)}
           </select>
         ) : null}
-        {phone === undefined ? null : <PhoneDoorButton door={phone} />}
+        {phone === undefined ? null : (
+          <PhoneDoorButton
+            door={phone}
+            panel={
+              panel === undefined
+                ? undefined
+                : {
+                    published: isRemotePanel(panel),
+                    publish: (on) =>
+                      apply([{ op: "setParameters", nodeId: panel.id, parameters: { remote: on } }], on ? "Publish panel to phones" : "Stop publishing panel"),
+                  }
+            }
+          />
+        )}
       </header>
-      {rows.map((row, index) =>
-        row.kind === "heading" ? (
-          <h3 key={index} className={styles.heading}>{row.text}</h3>
-        ) : row.kind === "text" ? (
-          <p key={index} className={styles.note}>{row.text}</p>
-        ) : (
-          <div key={index} className={styles.row}>
-            {row.names.map((name) => {
-              const widget = byName.get(name);
-              if (widget === undefined) return <div key={name} className={styles.missing}>no control named “{name}”</div>;
-              const targets = targetsOf(graph, widget);
-              return (
-                <div key={widget.id} className={styles.cell}>
-                  <ControlWidget nodeId={widget.id} type={widget.type} parameters={widget.parameters as Record<string, unknown>} write={write} size="panel" />
-                  <div className={styles.meta}>
-                    <span className={styles.targets} title={targets.join("\n")}>
-                      {targets.length === 0 ? "drives nothing" : `→ ${targets.join(", ")}`}
-                    </span>
-                    <button type="button" className={styles.mapButton} onClick={() => setMapping(mapping === widget.id ? null : widget.id)}>
-                      map…
-                    </button>
-                  </div>
-                  {mapping === widget.id ? (
-                    <MapForm graph={graph} registry={registry} widget={widget} onMap={(target, key, channel) => map(widget, target, key, channel)} />
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        ),
+      {panel === undefined ? (
+        <div className={styles.row}>
+          {widgets.map((widget) => (
+            <div key={widget.id} className={styles.cell}>
+              <ControlWidget nodeId={widget.id} type={widget.type} parameters={widget.parameters as Record<string, unknown>} write={write} size="panel" />
+              {renderMeta(widget)}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <PanelRows graph={graph} panel={panel} write={write} size="panel" renderMeta={renderMeta} />
       )}
     </div>
   );

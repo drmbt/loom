@@ -43,7 +43,16 @@ export interface PhoneDoorView {
 }
 
 export const PHONE_NOTHING_PUBLISHED =
-  "No Panel is published yet, so a phone sees no controls (it can still send its camera). Turn on Phone on a Panel to publish it.";
+  "No Panel is published yet, so a phone sees no controls (it can still send its camera). Press the phone icon on a Panel to publish it.";
+
+/** T1512b — what the Panel's phone icon says about THIS Panel, at the top of its popover. */
+export const PHONE_PANEL_PUBLISHED = "This Panel is on the phones.";
+export const PHONE_PANEL_UNPUBLISHED = "This Panel is not on the phones.";
+export const PHONE_PUBLISH_TITLE = "Phone — publish this Panel and show the QR code";
+export const PHONE_PUBLISHED_TITLE = "Phone — this Panel is published; show the QR code";
+
+/** T1512b — a fresh Panel's body, saying the one gesture that fills it. */
+export const PANEL_EMPTY_HINT = "Wire a Slider, Toggle, Button or XY Pad here";
 
 /** T1397b: what a phone's line in the popover adds when it is sending its camera. */
 export function phoneCameraLine(camera: PhoneCameraView): string {

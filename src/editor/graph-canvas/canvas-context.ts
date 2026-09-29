@@ -109,6 +109,11 @@ export interface GraphCanvasContextValue {
    */
   renderControls?: ((nodeId: NodeId) => ReactNode) | undefined;
   /**
+   * T1512b — header chrome a node type brings of its own, drawn after P/B/M: the Panel's
+   * phone icon. The composition root fills it (`control-bodies.tsx`); absent, nothing.
+   */
+  renderHeaderControls?: ((nodeId: NodeId) => ReactNode) | undefined;
+  /**
    * T892 — THERE IS NO `previewInspect` SEAM ANY MORE, and its removal is the point.
    *
    * The camera toggle used to be handed down here so the node HEADER could draw it, which

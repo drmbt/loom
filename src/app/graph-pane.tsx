@@ -17,8 +17,9 @@ import type { ResolvedOutput } from "@compiler/index.ts";
 import { GraphCanvas } from "@editor/graph-canvas/index.ts";
 import { type CameraPose, createCameraGizmoStore } from "@editor/viewer/camera-gizmo-store.ts";
 import { movableChannels, poseFromFacts, readCameraPoseFacts } from "@editor/viewer/camera-pose.ts";
-import { ControlWidget, type ControlWrite } from "@editor/controls/control-widget.tsx";
-import { CONTROL_WIDGET_TYPES } from "@nodes/definitions/controls.ts";
+import type { ControlWrite } from "@editor/controls/control-widget.tsx";
+import { useControlBodies } from "@editor/controls/control-bodies.tsx";
+import type { PhoneDoorView } from "@editor/controls/phone-door-copy.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { useKeymapPane } from "@editor/keymap/index.ts";
 import { readNodeDragPayload } from "@editor/library/index.ts";
@@ -130,6 +131,8 @@ export interface GraphPaneProps {
    * gets a document the refusal left untouched.
    */
   onCommandRefused?: (result: { status: CommandStatus; diagnostics: RuntimeDiagnostic[] }) => void;
+  /** T1512b: the phone door, for the Panel's header phone icon. Absent: no icon. */
+  phone?: PhoneDoorView;
 }
 
 const EMPTY_GRAPH: GraphDocument = { revision: 0, nodes: {}, edges: {}, groups: {} };
@@ -205,6 +208,7 @@ function GraphPaneInner({
   interest,
   rootBus: rootBusProp,
   onCommandRefused,
+  phone,
 }: GraphPaneProps) {
   // T519: `documentIdentity` — which DOCUMENT the previews below are showing. Taken
   // from the runtime rather than threaded as a prop, because the runtime IS the loaded
@@ -437,21 +441,22 @@ function GraphPaneInner({
   /**
    * T1388b — a live control's body IS the control: a slider, toggle, button or XY pad on
    * the node itself, writing through the same parameter editor the inspector uses (one
-   * undo group per gesture). Read from the ref like `renderPreview`, so the callback does
-   * not move with the document; the node re-renders on its own slice when its value does.
+   * undo group per gesture). Read from the store at render, so the callback does not move
+   * with the document; the node re-renders on its own slice when its value does.
    */
   const controlWrite = useCallback<ControlWrite>(
     (nodeId, entries, phase) => parameterEditor.setStored(nodeId, entries, phase),
     [parameterEditor],
   );
-  const renderControls = useCallback(
-    (nodeId: NodeId) => {
-      const node = graphRef.current.nodes[nodeId];
-      if (node === undefined || !CONTROL_WIDGET_TYPES.has(node.type)) return null;
-      return <ControlWidget nodeId={nodeId} type={node.type} parameters={node.parameters} write={controlWrite} />;
-    },
-    [controlWrite],
-  );
+  // T1512b: widget bodies, the Panel's live body and its header phone icon — one hook, the
+  // same seams the tests mount. A Panel inside a component is not what the phone door
+  // reads (it reads the document root), so no phone icon is offered there.
+  const { renderControls, renderHeaderControls } = useControlBodies({
+    bus,
+    invocation,
+    write: controlWrite,
+    phone: (componentPath ?? []).length === 0 ? phone : undefined,
+  });
   const cameraGizmos = useMemo(
     () => createCameraGizmoStore({ editor: parameterEditor, readPose: readCameraPose }),
     [parameterEditor, readCameraPose],
@@ -1062,6 +1067,7 @@ function GraphPaneInner({
           runtime={nodeRuntime}
           renderPreview={renderPreview}
           renderControls={renderControls}
+          renderHeaderControls={renderHeaderControls}
           previewLens={previewLens}
           onSelectionChange={onSelectionChange}
           onHoveredNodeChange={onHoveredNodeChange}

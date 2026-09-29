@@ -11,7 +11,9 @@ import {
   controlSliderNode,
   controlToggleNode,
   controlXYNode,
-  parsePanelLayout,
+  panelLayout,
+  panelMembers,
+  panelTitle,
 } from "../../nodes/definitions/controls.ts";
 import {
   PHONE_WRITABLE_KEYS,
@@ -35,12 +37,14 @@ import {
  * every write rather than trusting what it last sent. A handle is the widget node's id: a
  * phone that guesses another node's id reaches the same refusal as one that sends garbage.
  *
- * ## Names resolve exactly as the controls pane resolves them
+ * ## Members come from the one Panel derivation
  *
- * A Panel's layout names widgets by `node.label ?? node.id` against the DOCUMENT graph
- * (`controls-pane.tsx`), so a widget inside a component is invisible to a Panel outside it
- * — T1143's missing publish surface, and the same limitation here on purpose: the phone
- * shows what the pane shows. A name with no widget behind it is dropped (the pane prints
+ * Which widgets a Panel shows, and in what order, is `panelLayout` (`controls.ts`, T1512b):
+ * the widgets wired into it in wiring order, or its layout override's names resolved by
+ * `node.label ?? node.id` — the SAME function the Panel's canvas body and the Controls tab
+ * draw from, so the phone cannot show another order than the desk. It reads the DOCUMENT
+ * graph, so a widget inside a component is invisible to a Panel outside it — T1143's
+ * missing publish surface. A name with no widget behind it is dropped (the desk prints
  * "no control named …"; a phone has nothing to do with that line).
  *
  * ## A driven widget is not published
@@ -56,8 +60,6 @@ import {
  * The Panel's own Phone switch follows the same rule: only a plain (or static) `true`
  * publishes it; a switch an expression flips is not a door an expression gets to open.
  */
-
-const nameOf = (node: GraphNode): string => node.label ?? node.id;
 
 /** The plain value behind a stored parameter, or `DRIVEN` when a non-static mode is in force. */
 const DRIVEN = Symbol("driven");
@@ -134,26 +136,23 @@ interface Layout {
   >;
 }
 
-/** Every remote Panel, its layout resolved against the document the way the pane does it. */
+/** Every remote Panel, its rows from the one Panel derivation the desk draws from (T1512b). */
 function remoteLayouts(graph: GraphDocument): Layout[] {
-  const nodes = Object.values(graph.nodes);
-  const byName = new Map(nodes.filter((node) => CONTROL_WIDGET_TYPES.has(node.type)).map((node) => [nameOf(node), node]));
-  return nodes.filter(isRemotePanel).map((panel) => {
-    const layout = plain(panel.parameters["layout"]);
-    return {
+  return Object.values(graph.nodes)
+    .filter(isRemotePanel)
+    .map((panel) => ({
       panel,
-      rows: parsePanelLayout(typeof layout === "string" ? layout : "").map((row) =>
+      rows: panelLayout(graph, panel).rows.map((row) =>
         row.kind === "widgets"
           ? {
               kind: "widgets" as const,
-              nodes: row.names
-                .map((name) => byName.get(name))
-                .filter((node): node is WidgetNode => node !== undefined && isWidgetKind(node.type) && !isDriven(node, node.type)),
+              nodes: row.cells
+                .flatMap((cell) => (cell.kind === "widget" ? [cell.node] : []))
+                .filter((node): node is WidgetNode => isWidgetKind(node.type) && !isDriven(node, node.type)),
             }
           : row,
       ),
-    };
-  });
+    }));
 }
 
 /** The one decision: widget node id → node, for every widget a phone may see and move. */
@@ -205,9 +204,8 @@ function phoneWidget(node: WidgetNode): PhoneWidget {
 /** Everything a phone can see, from every Panel whose Phone switch is on. */
 export function buildPhoneSnapshot(graph: GraphDocument, seq: number): PhoneSnapshot {
   const panels: PhonePanel[] = remoteLayouts(graph).map(({ panel, rows }) => {
-    const title = plain(panel.parameters["title"]);
     return {
-      title: typeof title === "string" && title !== "" ? title : nameOf(panel),
+      title: panelTitle(panel),
       rows: rows.flatMap((row): PhoneRow[] => {
         if (row.kind !== "widgets") return [row];
         const widgets = row.nodes.map(phoneWidget);
@@ -313,10 +311,7 @@ export function vetPhoneSet(graph: GraphDocument, set: PhoneSet): PhoneVet {
 }
 
 function namedOnRemotePanel(graph: GraphDocument, widget: GraphNode): boolean {
-  const name = nameOf(widget);
-  return Object.values(graph.nodes).some((node) => {
-    if (!isRemotePanel(node)) return false;
-    const layout = plain(node.parameters["layout"]);
-    return parsePanelLayout(typeof layout === "string" ? layout : "").some((row) => row.kind === "widgets" && row.names.includes(name));
-  });
+  return Object.values(graph.nodes).some(
+    (node) => isRemotePanel(node) && panelMembers(graph, node).some((member) => member.id === widget.id),
+  );
 }

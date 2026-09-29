@@ -1,4 +1,8 @@
 import type { CompiledNodeDescription, NodeDefinition } from "../../domain/types/node-definition.ts";
+import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
+import type { StoredParameter } from "../../domain/types/parameters.ts";
+import { incomingEdgesInOrder } from "../../domain/graph/edge-order.ts";
+import { isParameterSlot, staticBindingValue } from "../../domain/parameters/slots.ts";
 import { VALUE_PORT } from "./common-ports.ts";
 
 const noPasses = (): CompiledNodeDescription => ({ passes: [] });
@@ -10,8 +14,9 @@ const noPasses = (): CompiledNodeDescription => ({ passes: [] });
  * A widget is a VALUE node whose value is set by hand: its channel carries what the control
  * shows, under a name the user picks (`heat`, `glitch`), so any parameter anywhere reads it
  * the way it reads any channel — `op('slider1').chan.heat` — and one control can drive many
- * things. The node's own body on the canvas IS the control (`control-widgets.tsx`), and a
- * Panel names widgets in rows to build a performance surface shown in the controls pane.
+ * things. The node's own body on the canvas IS the control (`control-widget.tsx`), and a
+ * Panel gathers the widgets wired into it into a performance surface — drawn on its own
+ * body, bigger in the Controls tab, and on a phone when published (T1512b, `panelLayout`).
  *
  * Headless like every definition (§V11): the value lives in parameters; the UI writes them
  * through the command bus, one undo group per gesture (`createParameterEditor`).
@@ -156,24 +161,38 @@ export function parsePanelLayout(layout: string): PanelRow[] {
     });
 }
 
+/**
+ * T1512b — the Panel's one input: every widget wired in joins it, in wiring order. A
+ * VARIADIC value port (§V131) rather than a new "many wires into one socket" idea: the
+ * edge `order` the patch layer already keeps dense is the order on the Panel, and
+ * `reorderEdges` is how the Panel rearranges its members — one patch, undoable.
+ */
+export const PANEL_INPUT = "controls";
+
+/** The layout text a fresh Panel carried before T1512b: a heading and no controls — never an override. */
+const LEGACY_DEFAULT_LAYOUT = "# Controls";
+
 export const controlPanelNode: NodeDefinition = {
   type: "panel",
   version: 1,
   title: "Panel",
   category: "value",
   description:
-    "A performance surface: widget nodes (Slider, Toggle, Button, XY Pad) laid out in rows under headings and notes, shown in the controls pane. Layout, one row per line: `# Heading`, `> a note`, or widget names side by side (`heat glitch cut`).",
+    "A performance surface: wire Slider, Toggle, Button and XY Pad nodes into Controls (or drop one on the Panel) and they show on the Panel's body, in the Controls tab and, with Phone on, on a phone — in wiring order.",
   tags: ["control", "panel", "ui", "surface", "perform", "live", "dashboard"],
-  inputs: [],
+  inputs: [{ id: PANEL_INPUT, label: "Controls", type: VALUE_PORT, optional: true, variadic: true }],
   outputs: [],
   parameters: {
     title: { type: "string", label: "Title", default: "Controls" },
+    // T1512b: an ADVANCED override, collapsed in the inspector. Empty = the wiring decides.
     layout: {
       type: "string",
       label: "Layout",
-      default: "# Controls\n",
+      group: "Advanced",
+      default: "",
       multiline: true,
-      description: "One row per line: `# Heading`, `> a note`, or widget node names side by side.",
+      description:
+        "Optional: replaces the wiring order. One row per line: `# Heading`, `> a note`, or widget node names side by side.",
     },
     // T1396b: the phone door publishes a Panel only when this is on. Absent in a document
     // saved before it existed = off, which is what the default says, so no migration.
@@ -182,7 +201,7 @@ export const controlPanelNode: NodeDefinition = {
       label: "Phone",
       default: false,
       description:
-        "Publishes this panel to the phone door: a phone paired from the controls pane sees these controls and can move them, and nothing else in the project.",
+        "Publishes this panel to the phone door: a phone paired from the Panel's phone icon sees these controls and can move them, and nothing else in the project.",
     },
   },
   compile: noPasses,
@@ -198,3 +217,99 @@ export const controlNodeDefinitions: readonly NodeDefinition[] = [
 
 /** Widget types a Panel lays out. */
 export const CONTROL_WIDGET_TYPES: ReadonlySet<string> = new Set(["slider", "toggle", "button", "xyPad"]);
+
+/* ------------------------------------------------------------ membership */
+
+/** A stored parameter's plain value: a static-mode slot is its static binding, a driven one is nothing. */
+function plainValue(stored: StoredParameter | undefined): unknown {
+  if (!isParameterSlot(stored)) return stored;
+  return stored.mode === "static" ? staticBindingValue(stored) : undefined;
+}
+
+/** What a widget or Panel is called on a surface: the node's label, or its id. */
+export const controlNameOf = (node: GraphNode): string => node.label ?? node.id;
+
+/** A Panel's title as every surface shows it: its Title, or the node's name. */
+export function panelTitle(panel: GraphNode): string {
+  const title = plainValue(panel.parameters["title"]);
+  return typeof title === "string" && title !== "" ? title : controlNameOf(panel);
+}
+
+/**
+ * The layout text when it OVERRIDES the wiring, else null. Empty and the pre-T1512b default
+ * (a lone `# Controls` heading) are not overrides — a fresh Panel follows its wires — and a
+ * driven layout is not one either: an expression does not lay a Panel out.
+ */
+export function panelLayoutOverride(panel: GraphNode): string | null {
+  const layout = plainValue(panel.parameters["layout"]);
+  if (typeof layout !== "string") return null;
+  const trimmed = layout.trim();
+  return trimmed === "" || trimmed === LEGACY_DEFAULT_LAYOUT ? null : layout;
+}
+
+/** One place on a Panel row: a widget node, or an override name with no widget behind it. */
+export type PanelCell =
+  | { readonly kind: "widget"; readonly node: GraphNode }
+  | { readonly kind: "missing"; readonly name: string };
+
+/** A Panel row, resolved against the document. */
+export type PanelSection =
+  | { readonly kind: "heading" | "text"; readonly text: string }
+  | { readonly kind: "widgets"; readonly cells: readonly PanelCell[] };
+
+export interface PanelLayout {
+  /** `wiring`: the widgets wired into Controls; `layout`: the override text decides. */
+  readonly source: "wiring" | "layout";
+  readonly rows: readonly PanelSection[];
+}
+
+/**
+ * T1512b — WHAT A PANEL SHOWS, AND IN WHAT ORDER: the ONE derivation behind the Panel's
+ * canvas body, the Controls tab and the phone snapshot (`phone-snapshot.ts`), so the three
+ * cannot disagree about a Panel's members or their order.
+ *
+ * With no override the members are the widget nodes wired into `controls`, in edge order
+ * (`incomingEdgesInOrder`, §V68/§V131), as one row the surface flows; a non-widget source
+ * and a second wire from the same widget add nothing. With an override the text wins,
+ * exactly as it read before T1512b — names resolve by `label ?? id` against this graph —
+ * so a document laid out by text shows what it showed, with no migration.
+ */
+export function panelLayout(graph: Pick<GraphDocument, "nodes" | "edges">, panel: GraphNode): PanelLayout {
+  const override = panelLayoutOverride(panel);
+  if (override === null) {
+    const seen = new Set<string>();
+    const cells: PanelCell[] = [];
+    for (const edge of incomingEdgesInOrder(graph, panel.id, PANEL_INPUT)) {
+      const node = graph.nodes[edge.source.nodeId];
+      if (node === undefined || !CONTROL_WIDGET_TYPES.has(node.type) || seen.has(node.id)) continue;
+      seen.add(node.id);
+      cells.push({ kind: "widget", node });
+    }
+    return { source: "wiring", rows: cells.length === 0 ? [] : [{ kind: "widgets", cells }] };
+  }
+  const byName = new Map(
+    Object.values(graph.nodes)
+      .filter((node) => CONTROL_WIDGET_TYPES.has(node.type))
+      .map((node) => [controlNameOf(node), node]),
+  );
+  return {
+    source: "layout",
+    rows: parsePanelLayout(override).map((row): PanelSection => {
+      if (row.kind !== "widgets") return row;
+      return {
+        kind: "widgets",
+        cells: row.names.map((name): PanelCell => {
+          const node = byName.get(name);
+          return node === undefined ? { kind: "missing", name } : { kind: "widget", node };
+        }),
+      };
+    }),
+  };
+}
+
+/** The widget nodes on a Panel, in the order it shows them. */
+export function panelMembers(graph: Pick<GraphDocument, "nodes" | "edges">, panel: GraphNode): GraphNode[] {
+  return panelLayout(graph, panel).rows.flatMap((row) =>
+    row.kind === "widgets" ? row.cells.flatMap((cell) => (cell.kind === "widget" ? [cell.node] : [])) : [],
+  );
+}

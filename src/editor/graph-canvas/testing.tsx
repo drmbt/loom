@@ -180,6 +180,7 @@ export interface FixtureContextOptions {
   renameNode?: GraphCanvasContextValue["renameNode"];
   renderPreview?: GraphCanvasContextValue["renderPreview"];
   renderControls?: GraphCanvasContextValue["renderControls"];
+  renderHeaderControls?: GraphCanvasContextValue["renderHeaderControls"];
   previewLens?: GraphCanvasContextValue["previewLens"];
   /** T1010: OFF by default here too, so a fixture sees what a user sees. */
   timingOverlay?: TimingOverlayStore;
@@ -223,6 +224,7 @@ export function fixtureContext(options: FixtureContextOptions): {
       renameNode: options.renameNode ?? (() => Promise.resolve(FIXTURE_RENAME_REFUSAL)),
       renderPreview: options.renderPreview,
       renderControls: options.renderControls,
+      renderHeaderControls: options.renderHeaderControls,
       previewLens: options.previewLens,
       timingOverlay,
       timingScale,

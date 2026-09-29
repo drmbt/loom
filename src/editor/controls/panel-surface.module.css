@@ -1,0 +1,60 @@
+/* T1512b/T1513b — a Panel's rows, shared by the canvas body and the Controls tab. Tokens only. */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+.title {
+  font-size: var(--fs-meta);
+  font-weight: var(--weight-header);
+  color: var(--text);
+}
+.heading {
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-micro);
+  font-weight: var(--weight-header);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.note {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-dim);
+}
+.hint {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+}
+/* The canvas body: one widget per line, the node is narrow. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+/*
+ * The Controls tab: a row the Panel defines is ONE grid, so it stays together, and the grid
+ * fills the pane's width — as many columns as fit at the minimum, sharing what is left.
+ */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--space-48) * 3.5), 1fr));
+  gap: var(--space-3);
+}
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+  background: var(--bg-raise);
+  border: var(--border-hairline);
+  border-radius: var(--radius);
+}
+.missing {
+  color: var(--warn);
+  font-size: var(--fs-meta);
+}

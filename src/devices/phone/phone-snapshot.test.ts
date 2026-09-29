@@ -186,3 +186,49 @@ describe("T1396b — the vet: a phone writes a published widget's own keys, in r
     expect(buildPhoneSnapshot(bus.store.getGraph(), 2).panels).toEqual([]);
   });
 });
+
+/**
+ * T1512b — a Panel that follows its WIRING publishes its widgets in wiring order, and moves
+ * when the order does: the phone reads the same `panelLayout` the desk draws from.
+ */
+describe("T1512b — the phone follows a Panel's wiring order", () => {
+  const wire = (from: string, to: string): GraphPatchOperation =>
+    ({ op: "connect", source: { nodeId: `$${from}`, portId: "out" }, target: { nodeId: `$${to}`, portId: "controls" } }) as GraphPatchOperation;
+  const handles = (bus: LoomBus): string[] =>
+    buildPhoneSnapshot(bus.store.getGraph(), 1).panels.flatMap((panel) =>
+      panel.rows.flatMap((row) => (row.kind === "widgets" ? row.widgets.map((widget) => widget.handle) : [])),
+    );
+
+  it("publishes wired widgets in edge order, and a reorder reorders the phone", async () => {
+    const { bus, ids } = await documentWith([
+      add("fader", "slider", "fader1"),
+      add("strobe", "toggle", "toggle1"),
+      add("stage", "panel", "panel1", { title: "Wired", remote: true }),
+      wire("strobe", "stage"),
+      wire("fader", "stage"),
+    ]);
+    expect(handles(bus)).toEqual([ids["$strobe"], ids["$fader"]]);
+    // A wired widget is published, so the vet lets the phone move it.
+    expect(vetPhoneSet(bus.store.getGraph(), set(ids["$fader"]!, { value: 0.5 })).ok).toBe(true);
+
+    const edges = Object.values(bus.store.getGraph().edges).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    await bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: bus.store.getRevision(),
+        operations: [{ op: "reorderEdges", nodeId: ids["$stage"] as never, portId: "controls", edgeIds: [edges[1]!.id, edges[0]!.id] }],
+      },
+      contextFor(alice),
+    );
+    expect(handles(bus)).toEqual([ids["$fader"], ids["$strobe"]]);
+
+    // Unwired, it is gone from the phone and the vet refuses it.
+    await bus.execute(
+      "graph.applyPatch",
+      { baseRevision: bus.store.getRevision(), operations: [{ op: "disconnect", edgeIds: [edges[1]!.id] }] },
+      contextFor(alice),
+    );
+    expect(handles(bus)).toEqual([ids["$strobe"]]);
+    expect(vetPhoneSet(bus.store.getGraph(), set(ids["$fader"]!, { value: 0.5 })).ok).toBe(false);
+  });
+});

@@ -12,6 +12,14 @@ import type { ResolvedParameter } from "./parameter-resolver.ts";
 /** Group name used for parameters that declare none. */
 export const DEFAULT_GROUP = "Parameters";
 
+/**
+ * T1512b — a group the inspector draws COLLAPSED (a closed `<details>`): a parameter most
+ * people never need, kept reachable without being the first thing a fresh node asks to be
+ * filled in. The Panel's layout override is the case that asked for it — the owner: "that
+ * layout text box is confusing me".
+ */
+export const ADVANCED_GROUP = "Advanced";
+
 export interface ParameterGroup {
   name: string;
   entries: readonly ResolvedParameter[];

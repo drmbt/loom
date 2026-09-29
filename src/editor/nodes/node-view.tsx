@@ -69,6 +69,7 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
     renameNode,
     renderPreview,
     renderControls,
+    renderHeaderControls,
     previewLens,
     showProblems,
     diveIn,
@@ -430,6 +431,8 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
             pressed={muted}
             onToggle={() => toggle("node.toggleRender")}
           />
+          {/* T1512b: a node type's own header chrome — the Panel's phone icon. */}
+          {renderHeaderControls?.(id)}
           {/*
             T892 — THE CAMERA TOGGLE (`C`) IS NOT IN THIS ROW, and its absence is the fix.
 

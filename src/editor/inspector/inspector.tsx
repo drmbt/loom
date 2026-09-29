@@ -40,7 +40,7 @@ import { isComponentNodeType } from "@domain/components/component-type.ts";
 import { LASER_OUT_TYPE } from "@nodes/definitions/laser-out.ts";
 import { WINDOW_OUT_TYPE } from "@nodes/definitions/window-out.ts";
 import type { MidiSectionSurface } from "./midi-section.tsx";
-import { DEFAULT_GROUP, groupParameters } from "./parameter-groups.ts";
+import { ADVANCED_GROUP, DEFAULT_GROUP, groupParameters } from "./parameter-groups.ts";
 import { createParameterEditor } from "./parameter-editor.ts";
 import type { ParameterEditor } from "./parameter-editor.ts";
 import { parseComponentNodeType } from "@domain/components/component-type.ts";
@@ -911,17 +911,21 @@ export function Inspector({
       // normal thing (Output, Null) and the panel should say so rather than sit blank.
       <p className={styles.emptyPage}>No parameters</p>
     ) : (
-      groups.map((group) => (
-        <section className={styles.section} key={group.name} aria-label={group.name}>
+      groups.map((group) => {
+        // T1512b: the Advanced group is a closed <details>, its heading the <summary>.
+        const Section = group.name === ADVANCED_GROUP ? "details" : "section";
+        const SectionHeader = group.name === ADVANCED_GROUP ? "summary" : "div";
+        return (
+        <Section className={styles.section} key={group.name} aria-label={group.name}>
           {/* T498: the DEFAULT group draws no heading — the tab above it already says
               Parameters, and the same word twice, stacked, was the owner's "odd" spot.
               Named groups (Shape, Colour) keep theirs; the aria-label keeps the section
               addressable either way. */}
           {group.name === DEFAULT_GROUP ? null : (
-            <div className={styles.sectionHeader}>
+            <SectionHeader className={styles.sectionHeader}>
               <span>{group.name}</span>
               <span className={styles.sectionRule} aria-hidden />
-            </div>
+            </SectionHeader>
           )}
           {group.entries.map((entry) => (
             // data-parameter-key lets the context menu resolve which parameter was
@@ -1003,8 +1007,9 @@ export function Inspector({
               ) : null}
             </div>
           ))}
-        </section>
-      ))
+        </Section>
+        );
+      })
     );
 
   const unknownNotice =

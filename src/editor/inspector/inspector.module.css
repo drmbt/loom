@@ -86,6 +86,21 @@
   user-select: none;
 }
 
+/* T1512b — the Advanced group's heading is a <summary>: pressable, with its own marker. */
+summary.sectionHeader {
+  cursor: pointer;
+  list-style: none;
+}
+summary.sectionHeader::-webkit-details-marker {
+  display: none;
+}
+summary.sectionHeader::before {
+  content: "▸";
+}
+details[open] > summary.sectionHeader::before {
+  content: "▾";
+}
+
 /*
   Fades out rather than running hard to the edge: it marks where the group starts without
   becoming a second horizontal divider competing with the pane's own borders.

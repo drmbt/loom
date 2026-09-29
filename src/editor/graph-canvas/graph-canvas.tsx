@@ -80,6 +80,7 @@ import {
 import type { LoomEdge, LoomNode } from "./derive.ts";
 import { createNodeRuntimeStore } from "./node-runtime.ts";
 import type { NodeRuntimeSource } from "./node-runtime.ts";
+import { joinPanelOperations, panelUnderDrop } from "@editor/controls/panel-join.ts";
 import styles from "./graph-canvas.module.css";
 
 /**
@@ -144,6 +145,8 @@ export interface GraphCanvasProps {
   runtime?: NodeRuntimeSource;
   renderPreview?: (nodeId: NodeId) => ReactNode;
   renderControls?: (nodeId: NodeId) => ReactNode;
+  /** T1512b: header chrome of a node's own (the Panel's phone icon), after P/B/M. */
+  renderHeaderControls?: (nodeId: NodeId) => ReactNode;
   /* T892: no `previewInspect` — the camera toggle is not node chrome at all any more.
      The graph pane draws it over the tiles; see `preview-inspect-overlay.tsx`. */
   /** T685: the preview lens marker's source — §V70a's warning, out from under the tile. */
@@ -183,6 +186,7 @@ export function GraphCanvas({
   runtime,
   renderPreview,
   renderControls,
+  renderHeaderControls,
   previewLens,
   onPatchResult,
   onSelectionChange,
@@ -402,6 +406,31 @@ export function GraphCanvas({
     [bus, edgeGeometry, registry],
   );
 
+  /**
+   * T1512b — a WIDGET dropped ON a Panel joins it: its `out` wired into the Panel's
+   * Controls, in the same patch as the move. Graph space both sides, like the splice above:
+   * the widget's centre from the live drag, each Panel's box from React Flow's measure.
+   */
+  const panelJoinAt = useCallback(
+    (nodeId: NodeId, position: { x: number; y: number }): GraphPatchOperation[] => {
+      const flow = flowRef.current;
+      const view = flow?.getNode(nodeId);
+      const width = view?.measured?.width ?? view?.width ?? 0;
+      const height = view?.measured?.height ?? view?.height ?? 0;
+      if (flow === null || !(width > 0) || !(height > 0)) return [];
+      const graph = bus.store.getGraph();
+      const centre = { x: position.x + width / 2, y: position.y + height / 2 };
+      const panelId = panelUnderDrop(graph, nodeId, centre, (id) => {
+        const panel = flow.getNode(id);
+        const w = panel?.measured?.width ?? panel?.width ?? 0;
+        const h = panel?.measured?.height ?? panel?.height ?? 0;
+        return panel === undefined || !(w > 0) || !(h > 0) ? null : { x: panel.position.x, y: panel.position.y, width: w, height: h };
+      });
+      return panelId === null ? [] : joinPanelOperations(graph, nodeId, panelId);
+    },
+    [bus],
+  );
+
   const onNodesChange = useCallback(
     (changes: NodeChange<LoomNode>[]) => {
       setViewNodes((previous) => applyNodeChanges(changes, previous));
@@ -482,19 +511,22 @@ export function GraphCanvas({
         // guess the user cannot see or undo separately from the move.
         const only = movedIds.length === 1 ? movedIds[0] : undefined;
         const target = only === undefined ? undefined : committed[only];
-        const splice = only === undefined || target === undefined ? [] : spliceAt(only, target);
+        // T1512b: a widget dropped ON a Panel joins it, and that wins over a wire under it —
+        // the Panel is the thing the widget was aimed at.
+        const join = only === undefined || target === undefined ? [] : panelJoinAt(only, target);
+        const splice = only === undefined || target === undefined || join.length > 0 ? [] : spliceAt(only, target);
         // The move and the splice are ONE gesture, so they are one patch and one undo
         // entry (§V15, §V32, §V34): undoing puts the node back AND restores the wire it
         // cut into. Two patches would make the user undo twice for one drop, and would
         // leave a graph rewired around a node that had moved back.
-        operations.push(...splice);
-        dispatch(operations, splice.length > 0 ? "Insert node into edge" : "Move node");
+        operations.push(...join, ...splice);
+        dispatch(operations, join.length > 0 ? "Add to panel" : splice.length > 0 ? "Insert node into edge" : "Move node");
       }
       if (removed.length > 0) {
         dispatch([{ op: "removeNodes", nodeIds: removed }], "Delete node");
       }
     },
-    [dispatch, spliceAt, onNodeLayoutChange],
+    [dispatch, spliceAt, panelJoinAt, onNodeLayoutChange],
   );
 
   const onEdgesChange = useCallback(
@@ -828,6 +860,7 @@ export function GraphCanvas({
       renameNode,
       renderPreview,
       renderControls,
+      renderHeaderControls,
       previewLens,
       showProblems,
       diveIn,
@@ -849,6 +882,7 @@ export function GraphCanvas({
       renameNode,
       renderPreview,
       renderControls,
+      renderHeaderControls,
       previewLens,
       showProblems,
       diveIn,
