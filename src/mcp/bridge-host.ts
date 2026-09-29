@@ -259,6 +259,13 @@ export interface BridgeHostOptions {
    */
   readonly vision?: import("@devices/vision-host.ts").VisionHost;
   /**
+   * B232 — the model door: downloads a CATALOGUE model by id for a page whose browser
+   * cannot (a host with no CORS). Absent, `deviceModelFetch` is refused by name. Every
+   * download is cancelled with the device client (`releaseDevice`): nobody is left to
+   * receive the bytes.
+   */
+  readonly models?: import("@devices/model-fetch-host.ts").ModelFetchHost;
+  /**
    * T1263 — the terminal door, present only when the host was built with one
    * (`pnpm helper --terminal`, or a desktop host that opens it itself). ABSENT means the
    * `terminal` role is refused BY NAME, after the pairing code is checked — the
@@ -546,6 +553,8 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     // T1029 — same posture, no hazard: just a child process that should not outlive
     // the one page it served. The next attach re-spawns from the compiled cache.
     options.vision?.dispose();
+    // B232 — a model download in flight was for this page alone.
+    options.models?.cancelAll();
     // T1396b — the phone door was opened BY this client and serves only its snapshot, so
     // it closes with it: every phone is told why, and the QR code it scanned stops working.
     options.phone?.release(`the Loom tab that opened this door went away (${reason})`);
@@ -751,6 +760,51 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
         );
         return;
       }
+      case "deviceModelFetch": {
+        // B232 — one owed `deviceModelFetchResult`, then chunk PUSHES on the stream it
+        // names. The id is looked up in the catalogue by the door, never a URL from here.
+        const id = message["id"];
+        if (typeof id !== "number") return;
+        const models = options.models;
+        if (models === undefined) {
+          send(socket, {
+            type: "deviceModelFetchResult",
+            id,
+            outcome: { ok: false, reason: "this helper was built without a model downloader." },
+          });
+          return;
+        }
+        // Nothing reaches a socket that is no longer the device client (a reload mid-download).
+        const live = (): boolean => device === socket;
+        models.start(message["modelId"], {
+          opened: (stream, total) => {
+            if (live()) send(socket, { type: "deviceModelFetchResult", id, outcome: { ok: true, stream, total } });
+          },
+          refused: (reason) => {
+            if (live()) send(socket, { type: "deviceModelFetchResult", id, outcome: { ok: false, reason } });
+          },
+          chunk: (stream, seq, received, bytes) => {
+            if (!live()) return;
+            const bytesBase64 = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64");
+            send(socket, { type: "deviceModelChunk", stream, seq, received, bytesBase64 });
+          },
+          end: (stream, received, reason) => {
+            if (!live()) return;
+            send(socket, {
+              type: "deviceModelEnd",
+              stream,
+              received,
+              ok: reason === undefined,
+              ...(reason === undefined ? {} : { reason }),
+            });
+          },
+        });
+        return;
+      }
+      case "deviceModelCancel":
+        // Told, not asked: no id, no reply (B232).
+        options.models?.cancel(message["modelId"]);
+        return;
       case "phoneOpen": {
         // T1396b — open the LAN door (or report the one already open). One owed reply,
         // `phoneOpened`, whichever way it goes; the door never rejects, it says why not.

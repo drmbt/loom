@@ -398,9 +398,20 @@ export function App({
   // T645: the third argument is §V329's staleness sink — the graph canvas's own per-node
   // channel, the same one the telemetry hub mirrors `gpuMs` into. One channel, not two.
   const analyze = useAnalyzeChannels(backend, runtime.registry, runtime.nodeRuntime);
+  /**
+   * T942 tier 3 — the session's ONE device attachment, constructed. It dials NOTHING on
+   * mount unless this tab already paired in this browser session (T925's memory), and the
+   * helper it reaches binds loopback only; with no helper running every `oscIn` publishes
+   * its declared rests and the document renders, degraded and saying so (§T715, §T948).
+   * Built above the depth seam since B232: a model the browser cannot fetch comes through it.
+   */
+  const osc = useOscBridge();
   // T385/T715: the depth seam, beside analyze because it is the same shape — a CPU half
   // outside the plan feeding a GPU half inside it (§V585).
-  const depth = useModelInference(backend, runtime.nodeRuntime, runtime.bus);
+  const depth = useModelInference(backend, runtime.nodeRuntime, runtime.bus, {
+    client: osc.deviceClient,
+    paired: helperFactFrom(osc.state) === "paired",
+  });
 
   /**
    * B27/T305 — the value graph, constructed. `createValueGraphSession` had no caller, so
@@ -416,14 +427,6 @@ export function App({
    * applied to every document rather than to one example.
    */
   const midi = useMidiInput();
-
-  /**
-   * T942 tier 3 — the session's ONE device attachment, constructed. It dials NOTHING on
-   * mount unless this tab already paired in this browser session (T925's memory), and the
-   * helper it reaches binds loopback only; with no helper running every `oscIn` publishes
-   * its declared rests and the document renders, degraded and saying so (§T715, §T948).
-   */
-  const osc = useOscBridge();
 
   /**
    * T950 — the laser pump, §T1005's second registered emission site. In this build it

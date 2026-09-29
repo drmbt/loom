@@ -286,8 +286,9 @@ export const MATTE_FAST: ModelDescriptor = {
  *    are checked on arrival.
  *  - 40% SMALLER than the MODNet it sits beside.
  *
- * Licence GPL-3.0, and §V858 rules it not a bar: the weights are fetched by the user's
- * browser at run time and never redistributed by us, and the GPL restricts distribution
+ * Licence GPL-3.0, and §V858 rules it not a bar: the weights are fetched on the user's
+ * machine at run time (by the local helper since B232 — the browser cannot read GitHub's
+ * release assets) and never redistributed by us, and the GPL restricts distribution
  * rather than use.
  */
 export const MATTE_RVM: ModelDescriptor = {
@@ -300,6 +301,10 @@ export const MATTE_RVM: ModelDescriptor = {
   /* Read off the downloaded file 2026-09-03, twice, on two different days' downloads. */
   sha256: "88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828",
   license: "GPL-3.0",
+  /* B232: GitHub's 302 and `release-assets.githubusercontent.com` send no CORS header
+     (measured with curl 2026-09-29), so a page can never read this URL; the local helper
+     fetches it by this row's id, and the hash above still checks what it sends. */
+  viaHelper: true,
   /*
    * ⚠ THE DOWNLOAD IS THE AUTHOR'S ASSET AND STAYS THAT WAY — the three-byte edit that
    * puts this model on the GPU happens IN MEMORY, on the way into the runtime, and is

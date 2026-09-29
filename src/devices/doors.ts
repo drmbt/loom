@@ -1,6 +1,7 @@
 import { createDeviceHub, nodeUdpSocketFactory, type DeviceHub, type UdpSocketFactory } from "./device-hub.ts";
 import { createLaserHost, nodeLaserDiscovery, nodeTcpSocketFactory, type LaserHost } from "./laser-host.ts";
 import { createVisionHost, nodeVisionStart, type VisionHost } from "./vision-host.ts";
+import { createModelFetchHost, type ModelFetchHost } from "./model-fetch-host.ts";
 import { createTerminalHost, type TerminalHost, type TerminalHostOptions } from "./terminal-host.ts";
 import { createPhoneDoor, type PhoneDoor, type PhoneDoorOptions } from "./phone/phone-door.ts";
 
@@ -37,6 +38,11 @@ export interface DeviceDoors {
   readonly laser: LaserHost;
   readonly vision: VisionHost;
   /**
+   * B232 — model downloads a page's CORS rules forbid, by CATALOGUE id only. Same posture
+   * as the rest: nothing is fetched until a paired page asks for a model by name.
+   */
+  readonly models: ModelFetchHost;
+  /**
    * T1263 — the FOURTH door, and the only one that is NULL by default.
    *
    * A shell as the user is not a UDP socket: it is built only when the host said so
@@ -71,6 +77,8 @@ export interface DeviceDoorOptions {
   readonly laser?: LaserHost;
   /** T1029 — the vision door. Defaults to the REAL one (swiftc-compiled worker). */
   readonly vision?: VisionHost;
+  /** B232 — the model door. Defaults to the REAL one (Node's `fetch`); a gate injects its fetch. */
+  readonly models?: ModelFetchHost;
   /**
    * T1263 — the terminal door. ABSENT or `enabled: false` builds none, and that is the
    * default: nothing here decides to hand out a shell. `enabled: true` opens it with the
@@ -128,6 +136,7 @@ export function createDeviceDoors(options: DeviceDoorOptions = {}): DeviceDoors 
       },
     });
   const vision = options.vision ?? createVisionHost({ start: nodeVisionStart() });
+  const models = options.models ?? createModelFetchHost();
   const terminal =
     options.terminal?.enabled === true
       ? createTerminalHost((({ enabled: _enabled, ...rest }) => rest)(options.terminal))
@@ -140,6 +149,7 @@ export function createDeviceDoors(options: DeviceDoorOptions = {}): DeviceDoors 
     devices,
     laser,
     vision,
+    models,
     terminal,
     phone,
     dispose() {
@@ -150,6 +160,7 @@ export function createDeviceDoors(options: DeviceDoorOptions = {}): DeviceDoors 
       devices.dispose();
       laser.dispose();
       vision.dispose();
+      models.cancelAll();
       terminal?.dispose();
       // T1396b: and every phone's stream is told `closed` before the listener goes.
       phone?.dispose();

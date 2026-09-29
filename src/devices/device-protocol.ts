@@ -260,6 +260,54 @@ export type VisionOutcome =
     }
   | { readonly ok: false; readonly reason: string };
 
+/**
+ * B232 — A MODEL DOWNLOAD THE PAGE CANNOT MAKE, MADE BY THE HELPER (owner-ruled 2026-09-29).
+ *
+ * Some model hosts send no `Access-Control-Allow-Origin` (RVM's GitHub release asset: the
+ * 302 and `release-assets.githubusercontent.com` both omit it), so the page's `fetch`
+ * rejects before a byte arrives. Node has no CORS, so the helper downloads it instead.
+ *
+ * **The request names a MODEL ID, never a URL.** The helper resolves the URL from its own
+ * copy of the model catalogue and refuses any id that is not in it, by name. That is the
+ * security property: a paired page can make the helper fetch exactly the artefacts this
+ * build ships descriptors for, and nothing else — the helper is not an open proxy.
+ *
+ * **The helper is not trusted with the bytes either.** The page runs the same length and
+ * SHA-256 checks on what arrives as it runs on a browser download (`model-acquisition.ts`),
+ * so a helper that sent other bytes fails the hash and nothing is cached.
+ *
+ * Shape, by the push rule above: `deviceModelFetch` is a request (one owed
+ * `deviceModelFetchResult`, sent once the host's headers are in, naming the STREAM); the
+ * bytes then arrive as `deviceModelChunk` PUSHES on that stream and close with one
+ * `deviceModelEnd` push. `deviceModelCancel` is told, not asked — no `id`, no reply, like
+ * `deviceAck` — and names the MODEL rather than the stream, so a cancel sent before the
+ * reply arrived still reaches the download.
+ */
+export type ModelFetchOutcome =
+  | {
+      readonly ok: true;
+      /** The stream the chunks will arrive on. */
+      readonly stream: string;
+      /** The host's `content-length`, or null when it sent none. */
+      readonly total: number | null;
+    }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * B232 — bytes per `deviceModelChunk`, before base64.
+ *
+ * Base64 for the vision path's reason (a JSON number array is ~5x, base64 4/3): 256 KB
+ * becomes ~350 KB of JSON per message, far inside the loopback socket's 64 MB frame cap,
+ * and RVM's 15 MB is ~58 messages — few enough that framing costs nothing, small enough
+ * that progress moves visibly and a cancel lands within one message.
+ */
+export const MODEL_FETCH_CHUNK_BYTES = 256 * 1024;
+
+/** The stream a model download's chunks ride. One download per model id at a time. */
+export function modelFetchStreamId(modelId: string): string {
+  return `model:${modelId}`;
+}
+
 /** PAGE → HOST, device role. Requests carry `id`; `deviceAck` is not a request. */
 export type DeviceClientMessage =
   | { readonly type: "deviceAttach"; readonly code: string; readonly client: string }
@@ -276,6 +324,10 @@ export type DeviceClientMessage =
   /** T1029: one picture in, one owed mask (or refusal) back. Request/response fits —
    *  every ask has exactly one answer and nothing about a mask is unsolicited. */
   | { readonly type: "deviceVision"; readonly id: number; readonly request: VisionSegmentRequest }
+  /** B232: download one CATALOGUE model by id (never a URL); one owed reply, then pushes. */
+  | { readonly type: "deviceModelFetch"; readonly id: number; readonly modelId: string }
+  /** B232: stop that download. Told, not asked: no `id`, no reply. */
+  | { readonly type: "deviceModelCancel"; readonly modelId: string }
   /** Flow control. No `id`, no reply; a `coalesce` stream accepts and ignores it. */
   | { readonly type: "deviceAck"; readonly stream: string; readonly seq: number }
   /** T1396b: the phone door, opened and fed by the page (`./phone/phone-protocol.ts`). */
@@ -296,6 +348,24 @@ export type DeviceHostMessage =
   | { readonly type: "deviceSendResult"; readonly id: number; readonly outcome: OscSendOutcome }
   | { readonly type: "deviceLaserResult"; readonly id: number; readonly outcome: LaserOutcome }
   | { readonly type: "deviceVisionResult"; readonly id: number; readonly outcome: VisionOutcome }
+  | { readonly type: "deviceModelFetchResult"; readonly id: number; readonly outcome: ModelFetchOutcome }
+  /** PUSH (B232). One slice of a model download, `MODEL_FETCH_CHUNK_BYTES` or fewer. */
+  | {
+      readonly type: "deviceModelChunk";
+      readonly stream: string;
+      readonly seq: number;
+      /** Bytes pushed so far on this stream, this chunk included. */
+      readonly received: number;
+      readonly bytesBase64: string;
+    }
+  /** PUSH (B232). The last message on a model stream: complete, or why not. */
+  | {
+      readonly type: "deviceModelEnd";
+      readonly stream: string;
+      readonly received: number;
+      readonly ok: boolean;
+      readonly reason?: string;
+    }
   /** PUSH. Unsolicited, no `id`, nothing waits for it. */
   | {
       readonly type: "deviceEvents";

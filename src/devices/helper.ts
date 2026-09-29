@@ -228,3 +228,14 @@ export const TERMINAL_UNPAIRED_REFUSAL =
  * the terminal door, which is what a pane with no shell needs the reader to find.
  */
 export const HELPER_DOCS_URL = "https://github.com/laubsauger/loom#the-local-helper";
+
+/**
+ * B232 — WHY A MODEL DOWNLOAD FAILED WHEN NO HELPER IS PAIRED, AND WHAT TO DO ABOUT IT.
+ *
+ * Some model hosts send no `Access-Control-Allow-Origin` (RVM's GitHub release asset), so
+ * the page cannot fetch them at all and the helper fetches them instead (Node has no
+ * CORS). This is the failure reason the download row shows as its `detail`, so it is ONE
+ * sentence inside §V852's 80-character detail budget — and it names the command, which is
+ * why it lives here (T1110).
+ */
+export const MODEL_NEEDS_HELPER = `Needs the local helper: run \`${DEVICE_HELPER_COMMAND}\` and pair it in Connections.`;

@@ -336,7 +336,9 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
           // T1220: the operator's out-of-band consent, carried to whichever tab the
           // operator then pairs. The bridge only reports it; the page composes it.
           operatorGrantedSnapshots: options.grantExport === true,
-          ...(doors === null ? {} : { devices: doors.devices, laser: doors.laser, vision: doors.vision }),
+          ...(doors === null
+            ? {}
+            : { devices: doors.devices, laser: doors.laser, vision: doors.vision, models: doors.models }),
           ...(doors?.terminal ? { terminal: doors.terminal } : {}),
           ...(doors?.phone ? { phone: doors.phone } : {}),
           ...(options.bridge.port === undefined ? {} : { port: options.bridge.port }),
@@ -634,6 +636,7 @@ export function createDeviceHelper(options: DeviceHelperOptions = {}): DeviceHel
     devices: doors.devices,
     laser: doors.laser,
     vision: doors.vision,
+    models: doors.models,
     ...(doors.terminal ? { terminal: doors.terminal } : {}),
     ...(doors.phone ? { phone: doors.phone } : {}),
     ...(options.port === undefined ? {} : { port: options.port }),

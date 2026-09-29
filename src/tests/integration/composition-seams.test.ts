@@ -1231,7 +1231,16 @@ describe("§T976 — inference publishes into the composition root's channel mer
   it("hands the hook the BUS, or §T978's reset pulse fires into nothing", () => {
     // The pulse names `runtime.resetInference`, which only this hook registers. Without
     // the bus the parameter page grows a button that lies (§V123).
-    expect(appSource).toContain("useModelInference(backend, runtime.nodeRuntime, runtime.bus)");
+    expect(appSource).toMatch(/useModelInference\(backend, runtime\.nodeRuntime, runtime\.bus[,)]/);
+  });
+
+  it("hands the hook the shared device client, or a model only the helper can fetch never arrives (B232)", () => {
+    // Optional in the hook's signature so a test can leave it out — which is exactly how
+    // the composition root could leave it out too, and every helper-only model would fail
+    // "needs the local helper" with a helper paired.
+    expect(appSource).toMatch(
+      /useModelInference\(backend, runtime\.nodeRuntime, runtime\.bus, \{\s*client: osc\.deviceClient,/,
+    );
   });
 });
 

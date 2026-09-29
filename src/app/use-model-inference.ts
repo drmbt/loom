@@ -64,6 +64,9 @@ import {
   packPoseInput,
 } from "@runtime/models/pose-runner.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
+import type { DeviceClient } from "@devices/device-client.ts";
+import { MODEL_NEEDS_HELPER } from "@devices/helper.ts";
+import { createModelFetch } from "./model-fetch.ts";
 import type { Notice } from "./notices.tsx";
 import type { InferenceNote } from "@editor/graph-canvas/node-runtime.ts";
 
@@ -434,6 +437,16 @@ export interface ModelInferenceBinding {
   readonly resolver: ChannelResolver;
 }
 
+/**
+ * B232 — the local helper, as this hook needs it: a door for the downloads the browser
+ * cannot make, and whether one is paired (the banner says so when it is not).
+ */
+export interface ModelHelper {
+  /** The shared device client. A function: it is rebuilt on reconnect. */
+  readonly client: () => DeviceClient | null;
+  readonly paired: boolean;
+}
+
 export function useModelInference(
   backend: LoomBackend | null | undefined,
   sink?: NodeMetricSink | undefined,
@@ -442,6 +455,8 @@ export function useModelInference(
    * seam can leave it out; the composition root passes the real one.
    */
   bus?: LoomBus | undefined,
+  /** B232 — absent in a test that wants no helper; the composition root passes the real one. */
+  helper?: ModelHelper | undefined,
 ): ModelInferenceBinding {
   const backendRef = useRef(backend);
   backendRef.current = backend;
@@ -453,6 +468,11 @@ export function useModelInference(
    */
   const sinkRef = useRef(sink);
   sinkRef.current = sink;
+  // B232: through a ref for `sinkRef`'s reason — the acquisition is memoised once, and a
+  // pairing change must reach its fetch without rebuilding it (and dropping a download).
+  const helperRef = useRef(helper);
+  helperRef.current = helper;
+  const helperPaired = helper?.paired === true;
 
   const [states, setStates] = useState<Readonly<Record<string, AcquisitionState>>>({});
   const targetsRef = useRef<readonly DepthTarget[]>([]);
@@ -508,7 +528,10 @@ export function useModelInference(
             return [];
           },
         },
-        fetch: (url, init) => globalThis.fetch(url, init),
+        fetch: createModelFetch({
+          browser: (url, init) => globalThis.fetch(url, init),
+          helper: () => (helperRef.current?.paired === true ? helperRef.current.client() : null),
+        }),
         onStateChange: (id, state) => setStates((prior) => ({ ...prior, [id]: state })),
       }),
     [store],
@@ -975,8 +998,8 @@ export function useModelInference(
   );
 
   const notices = useMemo(
-    () => buildNotices(tracked, states, acquisition),
-    [tracked, states, acquisition],
+    () => buildNotices(tracked, states, acquisition, helperPaired),
+    [tracked, states, acquisition, helperPaired],
   );
 
   /**
@@ -1056,6 +1079,8 @@ export function buildNotices(
   targets: readonly DepthTarget[],
   states: Readonly<Record<string, AcquisitionState>>,
   acquisition: { acquire(d: ModelDescriptor): unknown; cancel(id: string): void },
+  /** B232 — whether a local helper is paired, for the models only it can fetch. */
+  helperPaired = false,
 ): readonly Notice[] {
   const notices: Notice[] = [];
   const seen = new Set<string>();
@@ -1071,7 +1096,19 @@ export function buildNotices(
     seen.add(descriptor.id);
     const state = states[descriptor.id] ?? { kind: "unknown" };
 
-    if (state.kind === "absent") {
+    if (state.kind === "absent" && descriptor.viaHelper === true && !helperPaired) {
+      // B232: its host refuses browsers, so Download cannot work until a helper is paired.
+      // The command is the detail — data, not a second sentence (§V852).
+      notices.push({
+        id: `model-consent-${descriptor.id}`,
+        tone: "warn",
+        message: `${label}'s ${descriptor.label} downloads only through the local helper.`,
+        detail: MODEL_NEEDS_HELPER,
+        actions: [
+          { label: "Download", onSelect: () => void acquisition.acquire(descriptor), variant: "outline" },
+        ],
+      });
+    } else if (state.kind === "absent") {
       notices.push({
         id: `model-consent-${descriptor.id}`,
         tone: "warn",

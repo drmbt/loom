@@ -39,6 +39,9 @@ describe("§T950 gap 1 — an `id` means one reply, a `stream` means zero or mor
     { type: "deviceUnsubscribe", id: 2, stream: "osc:9000" },
     { type: "deviceSend", id: 3, to: { host: "127.0.0.1", port: 9000 }, packets: [] },
     { type: "deviceAck", stream: "osc:9000", seq: 7 },
+    // B232: a model download is asked (id); its cancel is told (no id, like the ack).
+    { type: "deviceModelFetch", id: 4, modelId: "rvm-mobilenetv3" },
+    { type: "deviceModelCancel", modelId: "rvm-mobilenetv3" },
   ];
   const replies: readonly DeviceHostMessage[] = [
     { type: "deviceAttached", sources: [] },
@@ -48,10 +51,13 @@ describe("§T950 gap 1 — an `id` means one reply, a `stream` means zero or mor
     { type: "deviceSendResult", id: 3, outcome: { delivery: "refused", reason: "x" } },
     { type: "deviceEvents", stream: "osc:9000", at: 1, seq: 1, dropped: 0, values: {} },
     { type: "deviceStreamState", stream: "osc:9000", state: "open", detail: "x" },
+    { type: "deviceModelFetchResult", id: 4, outcome: { ok: true, stream: "model:rvm-mobilenetv3", total: 3 } },
+    { type: "deviceModelChunk", stream: "model:rvm-mobilenetv3", seq: 1, received: 3, bytesBase64: "AQID" },
+    { type: "deviceModelEnd", stream: "model:rvm-mobilenetv3", received: 3, ok: true },
   ];
 
   it("every HOST message after the handshake is classifiable from `id` alone", () => {
-    const pushTypes = new Set(["deviceEvents", "deviceStreamState"]);
+    const pushTypes = new Set(["deviceEvents", "deviceStreamState", "deviceModelChunk", "deviceModelEnd"]);
     // The handshake sits either side of the rule: one attach is ever in flight per socket,
     // so there is nothing for an id to disambiguate — the page role's `attached`/`refused`
     // are shaped the same way and for the same reason.
@@ -69,16 +75,21 @@ describe("§T950 gap 1 — an `id` means one reply, a `stream` means zero or mor
   it("every page REQUEST carries an id, except the one that is told rather than asked", () => {
     for (const message of requests) {
       const record = message as unknown as Record<string, unknown>;
-      const owed = message.type !== "deviceAttach" && message.type !== "deviceAck";
+      const owed =
+        message.type !== "deviceAttach" && message.type !== "deviceAck" && message.type !== "deviceModelCancel";
       expect("id" in record, `${message.type}`).toBe(owed);
     }
   });
 
   it("every PUSH carries a stream, so nothing is left waiting for a reply that never comes", () => {
     const pushes = replies.filter(
-      (message) => message.type === "deviceEvents" || message.type === "deviceStreamState",
+      (message) =>
+        message.type === "deviceEvents" ||
+        message.type === "deviceStreamState" ||
+        message.type === "deviceModelChunk" ||
+        message.type === "deviceModelEnd",
     );
-    expect(pushes).toHaveLength(2);
+    expect(pushes).toHaveLength(4);
     for (const push of pushes) {
       expect("id" in (push as unknown as Record<string, unknown>)).toBe(false);
       expect("stream" in (push as unknown as Record<string, unknown>)).toBe(true);

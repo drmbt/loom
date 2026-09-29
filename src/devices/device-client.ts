@@ -18,7 +18,7 @@ import {
   type OscDestination,
   type OscSendOutcome,
 } from "./device-protocol.ts";
-import { DEVICE_HELPER_START } from "./helper.ts";
+import { DEVICE_HELPER_START, MODEL_NEEDS_HELPER } from "./helper.ts";
 import { OSC_CHANNEL_PREFIX } from "../domain/osc/osc-address.ts";
 /*
  * The state union lives in DOMAIN, beside the copy that renders it (§V359) — so a domain
@@ -27,7 +27,13 @@ import { OSC_CHANNEL_PREFIX } from "../domain/osc/osc-address.ts";
  */
 import type { OscBridgeState } from "../domain/osc/osc-status.ts";
 import type { OscMessage } from "./osc-codec.ts";
-import type { LaserCommand, LaserOutcome, VisionOutcome, VisionSegmentRequest } from "./device-protocol.ts";
+import type {
+  LaserCommand,
+  LaserOutcome,
+  ModelFetchOutcome,
+  VisionOutcome,
+  VisionSegmentRequest,
+} from "./device-protocol.ts";
 import type { PhoneDoorState, PhonePeer, PhoneSet, PhoneSnapshot } from "./phone/phone-protocol.ts";
 
 /**
@@ -124,6 +130,15 @@ export interface DeviceClient {
    */
   vision(request: VisionSegmentRequest): Promise<VisionOutcome>;
   /**
+   * B232 — have the helper download one CATALOGUE model, by id, for a host the browser
+   * cannot read (no CORS). Resolves with a real `Response` whose body streams the helper's
+   * chunks as they arrive, so `model-acquisition.ts` reads it exactly as it reads a browser
+   * download — progress, length check and SHA-256 check unchanged, which is what keeps the
+   * helper honest. Rejects with `MODEL_NEEDS_HELPER` when no helper is attached, and with
+   * the helper's own sentence when it refuses. Aborting `signal` tells the helper to stop.
+   */
+  fetchModel(modelId: string, signal: AbortSignal): Promise<Response>;
+  /**
    * T1396b — ask the helper to open its phone door (or report the one already open).
    * RESOLVES with the door's state either way: a closed state carries the helper's own
    * reason (no `--phone`, no LAN address), or this client's when no helper is attached.
@@ -174,6 +189,9 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
   let phoneDeferred: Array<() => void> = [];
   const phoneWriteListeners = new Set<(phone: string, set: PhoneSet) => void>();
   const phoneStateListeners = new Set<(state: PhoneDoorState) => void>();
+  /** B232: model downloads awaiting their one owed reply, and the streams they opened. */
+  const modelPending = new Map<number, (outcome: ModelFetchOutcome) => void>();
+  const modelStreams = new Map<string, ModelStreamSink>();
   let disposed = false;
 
   const publish = (state: OscBridgeState): void => {
@@ -205,6 +223,14 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
   const settleAll = (outcome: OscSendOutcome): void => {
     for (const [, resolve] of pending) resolve(outcome);
     pending.clear();
+  };
+
+  /** B232 — the socket is gone mid-download: every owed reply and open stream fails, saying so. */
+  const failModels = (reason: string): void => {
+    for (const [, settle] of [...modelPending]) settle({ ok: false, reason });
+    modelPending.clear();
+    for (const [, sink] of [...modelStreams]) sink.end(reason);
+    modelStreams.clear();
   };
 
   /**
@@ -356,6 +382,38 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
         resolve(message["outcome"] as VisionOutcome);
         return;
       }
+      case "deviceModelFetchResult": {
+        const id = message["id"];
+        if (typeof id !== "number") return;
+        const settle = modelPending.get(id);
+        if (settle === undefined) return;
+        modelPending.delete(id);
+        settle(readModelOutcome(message["outcome"]));
+        return;
+      }
+      case "deviceModelChunk": {
+        // A PUSH, routed by the stream the reply named.
+        const stream = message["stream"];
+        const bytesBase64 = message["bytesBase64"];
+        if (typeof stream !== "string" || typeof bytesBase64 !== "string") return;
+        const sink = modelStreams.get(stream);
+        if (sink === undefined) return;
+        const raw = atob(bytesBase64);
+        const bytes = new Uint8Array(raw.length);
+        for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+        sink.push(bytes);
+        return;
+      }
+      case "deviceModelEnd": {
+        const stream = message["stream"];
+        if (typeof stream !== "string") return;
+        const sink = modelStreams.get(stream);
+        if (sink === undefined) return;
+        modelStreams.delete(stream);
+        const said = message["reason"];
+        sink.end(message["ok"] === true ? undefined : typeof said === "string" ? said : "no reason given");
+        return;
+      }
       case "phoneOpened": {
         const id = message["id"];
         if (typeof id !== "number") return;
@@ -443,6 +501,7 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
           delivery: "failed",
           reason: "The device bridge closed before this send was answered.",
         });
+        failModels("the device bridge closed mid-download");
         closePhoneDoor("The device bridge closed the connection, and the phone door with it.");
         if (!wanted) return;
         wanted = false;
@@ -459,6 +518,7 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
       attached = false;
       if (disconnectOptions?.forget === true) memory.forget();
       settleAll({ delivery: "refused", reason: "The device bridge was disconnected." });
+      failModels("the device bridge was disconnected");
       closePhoneDoor("The device bridge was disconnected, and the phone door with it.");
       closeSocket();
       publish({ kind: "idle" });
@@ -520,6 +580,57 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
       send({ type: "deviceVision", id, request });
       return settled;
     },
+    fetchModel(modelId, signal) {
+      if (socket === null || !attached) return Promise.reject(new Error(MODEL_NEEDS_HELPER));
+      if (signal.aborted) return Promise.reject(abortError());
+      const id = nextId++;
+      return new Promise<Response>((resolve, reject) => {
+        let stream: string | null = null;
+        let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+        const onAbort = (): void => {
+          // Told to the helper whichever side of the reply this lands on — the cancel names
+          // the model, so it reaches a download whose stream this page has not heard yet.
+          send({ type: "deviceModelCancel", modelId });
+          modelPending.delete(id);
+          if (stream !== null) modelStreams.delete(stream);
+          if (controller === null) reject(abortError());
+          else controller.error(abortError());
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        modelPending.set(id, (outcome) => {
+          if (!outcome.ok) {
+            signal.removeEventListener("abort", onAbort);
+            reject(new Error(outcome.reason));
+            return;
+          }
+          stream = outcome.stream;
+          const body = new ReadableStream<Uint8Array>({
+            start(opened) {
+              controller = opened;
+            },
+            cancel() {
+              signal.removeEventListener("abort", onAbort);
+              send({ type: "deviceModelCancel", modelId });
+            },
+          });
+          modelStreams.set(outcome.stream, {
+            push: (bytes) => controller?.enqueue(bytes),
+            end: (reason) => {
+              signal.removeEventListener("abort", onAbort);
+              if (reason === undefined) controller?.close();
+              else controller?.error(new Error(reason));
+            },
+          });
+          resolve(
+            new Response(body, {
+              status: 200,
+              headers: outcome.total === null ? {} : { "content-length": String(outcome.total) },
+            }),
+          );
+        });
+        send({ type: "deviceModelFetch", id, modelId });
+      });
+    },
     phoneOpen() {
       return phoneRequest("phoneOpen");
     },
@@ -553,6 +664,7 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
       wanted = false;
       attached = false;
       settleAll({ delivery: "refused", reason: "The tab went away." });
+      failModels("the tab went away");
       closePhoneDoor("The tab went away.");
       closeSocket();
     },
@@ -564,6 +676,34 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
   if (remembered !== null && options.autoConnect !== false) client.connect(remembered);
 
   return client;
+}
+
+/** B232 — one open model stream, fed by pushes. `end` with a reason is a failure. */
+interface ModelStreamSink {
+  push(bytes: Uint8Array): void;
+  end(reason?: string): void;
+}
+
+/** What `model-acquisition.ts` recognises as a deliberate cancel, not a failure. */
+function abortError(): Error {
+  const error = new Error("The download was cancelled.");
+  error.name = "AbortError";
+  return error;
+}
+
+/** B232 — a model-fetch reply off the socket, validated; anything unreadable is a refusal. */
+function readModelOutcome(value: unknown): ModelFetchOutcome {
+  if (typeof value !== "object" || value === null) {
+    return { ok: false, reason: "The device bridge answered the download with something unreadable." };
+  }
+  const record = value as Record<string, unknown>;
+  const stream = record["stream"];
+  const total = record["total"];
+  if (record["ok"] === true && typeof stream === "string") {
+    return { ok: true, stream, total: typeof total === "number" && Number.isFinite(total) ? total : null };
+  }
+  const reason = record["reason"];
+  return { ok: false, reason: typeof reason === "string" ? reason : "no reason given" };
 }
 
 /**

@@ -71,6 +71,14 @@ export interface ModelDescriptor {
    * supposed to be measurement-proof, so the fact has to travel with the artefact.
    */
   readonly cannotRun?: ReadonlyArray<{ readonly provider: string; readonly reason: string }>;
+  /**
+   * B232 — the host sends no CORS header, so a PAGE can never read these bytes and the
+   * local helper fetches them instead (`src/app/model-fetch.ts`). Declared on the artefact
+   * rather than discovered per click: a discovered failure costs a doomed browser request
+   * and a console CORS error on every attempt, and "this host refuses browsers" is a fact
+   * about where the artefact lives — the same kind of fact `cannotRun` records.
+   */
+  readonly viaHelper?: boolean;
 }
 
 /**
@@ -110,8 +118,15 @@ export type AcquisitionState =
  * double cannot satisfy the overloads without lying with a cast, and a cast in a fixture
  * is how a fixture stops matching the thing it stands in for. `globalThis.fetch` is
  * assignable to this; so is a three-line fake.
+ *
+ * B232 added `descriptor`: WHICH model is being fetched, because a host the browser cannot
+ * read is fetched through the local helper, and the helper is asked by model id — never by
+ * URL — so the fetch has to know the id.
  */
-export type ModelFetch = (url: string, init: { readonly signal: AbortSignal }) => Promise<Response>;
+export type ModelFetch = (
+  url: string,
+  init: { readonly signal: AbortSignal; readonly descriptor: ModelDescriptor },
+) => Promise<Response>;
 
 /** Origin-wide bytes. Injectable so a test needs no Cache API and no 94 MB. */
 export interface ModelStore {
@@ -172,7 +187,7 @@ export function createModelAcquisition(options: {
     // left the state `absent`, so a slow or refused connection changed nothing on screen.
     set(id, { kind: "downloading", received: 0, total: descriptor.bytes > 0 ? descriptor.bytes : undefined });
     try {
-      const response = await options.fetch(descriptor.url, { signal: controller.signal });
+      const response = await options.fetch(descriptor.url, { signal: controller.signal, descriptor });
       if (!response.ok) {
         set(id, { kind: "failed", reason: `the server answered ${response.status} ${response.statusText}` });
         return undefined;

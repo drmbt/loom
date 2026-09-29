@@ -7,6 +7,7 @@ import { buildNotices, runNote } from "../../app/use-model-inference.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { DEFAULT_BINDINGS } from "../../editor/keymap/defaults.ts";
+import { MODEL_NEEDS_HELPER } from "../../devices/helper.ts";
 
 describe("T424 — product metadata describes Loom without prior-product comparisons", () => {
   it("checks rendered catalogue and shortcut text, not implementation comments or shader source", () => {
@@ -384,12 +385,25 @@ describe("§V852 — model notices fit in one sentence", () => {
       descriptor: { id: "m", label: "MODNet quantized", bytes: 6_612_345 },
       size: [8, 8],
     },
+    // B232: a model only the local helper can fetch, with no helper paired — its own row.
+    {
+      nodeId: "cut2",
+      channel: "cut2",
+      kind: {
+        nodeType: "matte",
+        label: "Matte",
+        neutralPicture: "zero everywhere",
+        coverage: () => 0,
+      },
+      descriptor: { id: "r", label: "Robust Video Matting", bytes: 14_975_696, viaHelper: true },
+      size: [8, 8],
+    },
   ];
   const acquisition = { acquire: () => undefined, cancel: () => {} };
 
   /** Every state the seam can be in, so the budget covers the whole surface. */
   const cases: ReadonlyArray<[string, unknown, unknown]> = [
-    ["no model", { d: { kind: "absent" }, m: { kind: "absent" } }, {}],
+    ["no model", { d: { kind: "absent" }, m: { kind: "absent" }, r: { kind: "absent" } }, {}],
     [
       "downloading",
       { d: { kind: "downloading", received: 1_000, total: 99_060_839 }, m: { kind: "downloading", received: 1, total: 2 } },
@@ -397,7 +411,11 @@ describe("§V852 — model notices fit in one sentence", () => {
     ],
     [
       "download failed",
-      { d: { kind: "failed", reason: "the network went away" }, m: { kind: "failed", reason: "the network went away" } },
+      {
+        d: { kind: "failed", reason: "the network went away" },
+        m: { kind: "failed", reason: "the network went away" },
+        r: { kind: "failed", reason: MODEL_NEEDS_HELPER },
+      },
       {},
     ],
     [
