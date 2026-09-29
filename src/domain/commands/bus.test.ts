@@ -111,6 +111,9 @@ describe("command bus — registration surface (§V39)", () => {
       // revert is a claim about THIS FILE (the value the document was opened with).
       "parameter.revert",
       "parameter.setMode",
+      // T1496b: a preset bank's Store and Recall are document edits, so every bus has them.
+      "preset.recall",
+      "preset.store",
       // T272: settings are document state, so they mutate through the domain bus like
       // every other document edit rather than through a pane holding an object.
       "project.setSettings",

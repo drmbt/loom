@@ -1131,6 +1131,11 @@ const COMMANDS_WITH_NO_INVOKER: ReadonlyArray<{ name: string; reason: string }> 
     reason:
       "KNOWN GAP, T436's. `app-shell.tsx` calls `registerLayoutCommands` for its HOLDER and the `layout` button is a Radix PopoverTrigger flipping local `menuOpen` state — B68's shape exactly, and V307's original sin (the settings dialog opening from a useState toggle) repeating. Found BY this gate.",
   },
+  {
+    name: "preset.store",
+    reason:
+      "KNOWN GAP, sliced on purpose. §T1496b (S1) landed the bank and its commands; the Store BUTTON is §T1501b's (the inspector's bank section and the Panel row) and the agent's store_preset is §T1502b's. Recall already has an invoker — the bank's own pulse names it.",
+  },
 ];
 
 describe("§V356/B68 — every command has something that invokes it", () => {

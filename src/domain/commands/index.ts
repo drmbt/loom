@@ -10,6 +10,7 @@ import { registerNodeOutputCommands } from "./node-output-commands.ts";
 import { registerParameterCommands } from "./parameter-commands.ts";
 import { registerValidateCommand } from "./validate-command.ts";
 import { registerSettingsCommands } from "./settings-commands.ts";
+import { registerPresetCommands } from "../presets/commands.ts";
 
 export {
   CapabilityDeniedError,
@@ -122,6 +123,9 @@ export function createDomainBus(options: DomainBusOptions = {}): { bus: LoomBus;
   });
   registerValidateCommand(bus);
   registerSettingsCommands(bus);
+  // T1496b: preset Store/Recall are graph edits like any other, so every bus has them —
+  // the app, the headless helper and the tests alike, with no second registration site.
+  registerPresetCommands(bus);
   return { bus, store };
 }
 export { LOOM_CLIPBOARD_TYPE, decodeLoomClipboard, encodeLoomClipboard } from "./loom-clipboard.ts";

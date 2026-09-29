@@ -43,6 +43,8 @@ describe("the code-parameter census (T492)", () => {
       "pointKernelAdvanced.group:wgsl",
       "pointKernelAdvanced.kernel:wgsl",
       "pointKernelAdvanced.spawn:wgsl",
+      // T1496b: the preset bank, hand-editable structured data like the MIDI mapping.
+      "presets.presets:json",
     ]);
   });
 
@@ -208,6 +210,8 @@ describe("core catalogue (T70, T40)", () => {
       "button",
       "xyPad",
       "panel",
+      // T1496b: the preset bank — Store/Recall a set of nodes' parameters as one step.
+      "presets",
       // T414: sound as channels — the value family's third input source after Mouse
       // and the trio. Deliberately named for what it IS, not a TD analog.
       "audioIn",

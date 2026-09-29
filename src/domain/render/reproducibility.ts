@@ -382,6 +382,8 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   button: "pure",
   xyPad: "pure",
   panel: "pure",
+  // T1496b: a preset bank — no ports, no passes; a recall is a document edit, never a frame read.
+  presets: "pure",
   valueBeat: "pure",
   valueSelect: "pure",
   audioPattern: "pure",

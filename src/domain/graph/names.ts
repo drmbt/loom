@@ -2,6 +2,8 @@ import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import { isParameterSlot } from "../parameters/slots.ts";
 import { sourceReferenceTokens, sourceReferencesOf } from "./source-references.ts";
+import { PRESETS_NODE_TYPE, parsePresetBank, serializePresetBank, type Preset } from "../presets/bank.ts";
+import type { StoredParameter } from "../types/parameters.ts";
 
 /**
  * Node names as identifiers (T221/T222, §V127-§V129).
@@ -207,10 +209,79 @@ const sourceReferenceClause: ReferenceClause = (node, name, rename) => {
   return touched;
 };
 
+/** A record keyed by node name with `name` renamed, key order kept. */
+function renamedKey<T>(record: Readonly<Record<string, T>>, name: string, rename: string): Record<string, T> {
+  return Object.fromEntries(Object.entries(record).map(([key, value]) => [key === name ? rename : key, value]));
+}
+
+/**
+ * Kind 5 (T1496b, §V320): a PRESET BANK names its targets by node name, in two places —
+ * `targets` (`glow` or `glow.radius`, token-wise like kind 4; only the part before the
+ * first dot is a name) and the bank's JSON, whose `values` and `on` records are keyed by
+ * node name and whose `recalls` name other banks. The slots a preset holds are stored
+ * references too (ruling 2 keeps expressions whole), so kinds 1 and 2 run over each of
+ * them as they would over a node's own parameters. Without this, pasting a bank beside
+ * its targets makes the copy recall into the ORIGINALS — §V320's first-wins misbind.
+ *
+ * `select` and `current` hold PRESET names, not node names, and are deliberately left
+ * alone: a node rename must not touch a preset that happens to share its spelling.
+ */
+const presetBankClause: ReferenceClause = (node, name, rename) => {
+  if (node.type !== PRESETS_NODE_TYPE) return 0;
+  let touched = 0;
+
+  const targets = node.parameters["targets"];
+  if (typeof targets === "string") {
+    let hit = false;
+    const pieces = targets.split(/([\s,]+)/).map((piece) => {
+      const dot = piece.indexOf(".");
+      const head = dot < 0 ? piece : piece.slice(0, dot);
+      if (head !== name) return piece;
+      hit = true;
+      return rename === null ? piece : `${rename}${piece.slice(head.length)}`;
+    });
+    if (hit) {
+      if (rename !== null) node.parameters["targets"] = pieces.join("");
+      touched += 1;
+    }
+  }
+
+  const parsed = parsePresetBank(node.parameters["presets"]);
+  if (!parsed.ok) return touched;
+  let bankTouched = 0;
+  const presets = parsed.bank.presets.map((preset): Preset => {
+    const values: Record<string, Record<string, StoredParameter>> = {};
+    for (const [nodeName, record] of Object.entries(preset.values)) {
+      const standIn: GraphNode = { id: node.id, type: "", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { ...record } };
+      bankTouched += expressionClause(standIn, name, rename) + drivenChannelClause(standIn, name, rename);
+      values[nodeName] = standIn.parameters;
+    }
+    if (name in values) bankTouched += 1;
+    let next: Preset = { ...preset, values: rename === null ? values : renamedKey(values, name, rename) };
+    if (preset.on !== undefined && name in preset.on) {
+      bankTouched += 1;
+      if (rename !== null) next = { ...next, on: renamedKey(preset.on, name, rename) };
+    }
+    if (preset.recalls?.some((recall) => recall.bank === name) === true) {
+      bankTouched += 1;
+      if (rename !== null) {
+        next = { ...next, recalls: preset.recalls.map((recall) => (recall.bank === name ? { ...recall, bank: rename } : recall)) };
+      }
+    }
+    return next;
+  });
+  if (bankTouched > 0) {
+    if (rename !== null) node.parameters["presets"] = serializePresetBank({ version: 1, presets });
+    touched += 1;
+  }
+  return touched;
+};
+
 const REFERENCE_CLAUSES: readonly ReferenceClause[] = [
   expressionClause,
   drivenChannelClause,
   sourceReferenceClause,
+  presetBankClause,
 ];
 
 /**

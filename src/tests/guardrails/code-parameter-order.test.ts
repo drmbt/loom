@@ -102,6 +102,8 @@ describe("T1052 — a node's code editors sort last", () => {
       "midiIn",
       "pointKernel",
       "pointKernelAdvanced",
+      // T1496b: the preset bank's JSON, hand-editable like the MIDI mapping.
+      "presets",
     ]);
     expect(REFLECTING.map((definition) => definition.type).sort()).toEqual([
       "customWgsl",
