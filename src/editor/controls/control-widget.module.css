@@ -1,45 +1,52 @@
-/* T1388b — live control widgets. Tokens only (no literal colours). */
+/* T1388b/T1513b — live control widgets. Tokens only (no literal colours). */
 .widget {
   display: grid;
   gap: var(--space-2);
-  align-items: center;
+  min-width: 0;
   font-family: var(--font-ui);
   color: var(--text);
   user-select: none;
   touch-action: none;
 }
 .node {
-  grid-template-columns: 1fr;
   font-size: var(--fs-micro);
   min-width: var(--space-48);
 }
 .panel {
-  grid-template-columns: 1fr;
   font-size: var(--fs-ui);
-  min-width: calc(var(--space-48) * 3);
+}
+/* Caption and value share one row; the value never takes a row of its own (T1513b). */
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
 }
 .caption {
+  min-width: 0;
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .readout {
+  flex: 0 0 auto;
   font-family: var(--font-mono);
-  color: var(--text-dim);
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 .track {
   position: relative;
   height: var(--space-6);
   background: var(--bg-sunken);
-  border: 1px solid var(--border-hairline);
+  border: var(--border-hairline);
   border-radius: var(--radius-sm);
   cursor: ew-resize;
   overflow: hidden;
 }
 .panel .track {
-  height: var(--space-32);
+  height: var(--control-h-lg);
 }
 .fill {
   position: absolute;
@@ -47,13 +54,18 @@
   background: var(--signal);
   opacity: 0.85;
 }
+/* Square, and capped: a pad is a control, not the pane's hero (T1513b). */
 .pad {
   position: relative;
+  width: 100%;
   aspect-ratio: 1;
   background: var(--bg-sunken);
-  border: 1px solid var(--border-hairline);
+  border: var(--border-hairline);
   border-radius: var(--radius-sm);
   cursor: crosshair;
+}
+.panel .pad {
+  max-width: calc(var(--space-48) * 3.75);
 }
 .puck {
   position: absolute;
@@ -66,21 +78,86 @@
 }
 .toggle,
 .button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
   font: inherit;
   color: var(--text);
   background: var(--bg-raise);
-  border: 1px solid var(--border-hairline);
+  border: var(--border-hairline);
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
 }
 .panel .toggle,
 .panel .button {
-  padding: var(--space-4) var(--space-5);
+  min-height: var(--control-h-lg);
 }
-.on {
+.toggle .caption,
+.button .caption {
+  flex: 1 1 auto;
+  text-align: left;
+  color: var(--text);
+}
+/* The switch: a pill with a knob that travels right when on. */
+.switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: calc(var(--space-6) * 1.75);
+  height: var(--space-6);
+  border-radius: var(--radius-pill);
+  background: var(--bg-sunken);
+  border: var(--border-hairline);
+}
+.knob {
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: calc(var(--space-6) - 6px);
+  height: calc(var(--space-6) - 6px);
+  transform: translateY(-50%);
+  border-radius: var(--radius-pill);
+  background: var(--text-dim);
+}
+.on .switch {
+  background: var(--signal);
+}
+.on .knob {
+  left: auto;
+  right: 2px;
+  background: var(--bg-void);
+}
+.state {
+  flex: 0 0 auto;
+  min-width: 3ch;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+}
+.on .state {
+  color: var(--signal);
+}
+/* A button looks raised at rest and sunk while held. */
+.button {
+  box-shadow: var(--shadow-raise);
+}
+.pressed {
   background: var(--signal);
   color: var(--bg-void);
+  box-shadow: var(--shadow-inset);
+}
+.pressed .caption,
+.pressed .count {
+  color: var(--bg-void);
+}
+.count {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
 }
 .driven {
   cursor: not-allowed;

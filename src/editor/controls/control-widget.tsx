@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { EditPhase } from "@ui/controls/types.ts";
@@ -7,12 +7,18 @@ import styles from "./control-widget.module.css";
 
 /**
  * T1388b — ONE widget, drawn wherever a control node is shown: in its own body on the canvas
- * and on a Panel in the controls pane. It reads the node's parameters and writes them back
- * through the parameter editor, so a drag is live frames plus one committed undo group
- * (`createParameterEditor`) and every write is an ordinary audited patch (§V30).
+ * and on a Panel (the Panel node's body and the Controls tab). It reads the node's parameters
+ * and writes them back through the parameter editor, so a drag is live frames plus one
+ * committed undo group (`createParameterEditor`) and every write is an ordinary audited
+ * patch (§V30).
  *
  * A parameter the document DRIVES (an expression, a MIDI binding) is shown, not grabbed: the
  * widget draws the driven number and refuses the gesture, rather than fighting the driver.
+ *
+ * T1513b — every widget SHOWS ITS STATE where the eye lands: a slider's caption and value on
+ * one header row above its bar, a toggle as a switch that says On or Off, a button that
+ * looks pressed while held and counts its presses, an XY pad capped in size with its value in
+ * its header row.
  */
 
 /** Writes a control's keys as ONE patch — an XY drag moves x and y in one undo group. */
@@ -78,6 +84,16 @@ interface WidgetProps extends ControlWidgetProps {
   readonly className: string;
 }
 
+/** Caption left, value right, on one row — the value never takes a row of its own. */
+function Head({ caption, value }: { caption: string; value: string }) {
+  return (
+    <div className={styles.head}>
+      <span className={styles.caption} title={caption}>{caption}</span>
+      <span className={styles.readout}>{value}</span>
+    </div>
+  );
+}
+
 function Slider({ nodeId, parameters, write, caption, className }: WidgetProps) {
   const min = num(parameters["min"], 0);
   const max = num(parameters["max"], 1);
@@ -90,7 +106,7 @@ function Slider({ nodeId, parameters, write, caption, className }: WidgetProps) 
   });
   return (
     <div className={className} data-control="slider" data-control-node={nodeId}>
-      <span className={styles.caption}>{caption}</span>
+      <Head caption={caption} value={driven ? "driven" : format(value)} />
       <div
         {...drag}
         className={`${styles.track} ${driven ? styles.driven : ""}`}
@@ -103,7 +119,6 @@ function Slider({ nodeId, parameters, write, caption, className }: WidgetProps) 
       >
         <div className={styles.fill} style={{ width: `${share * 100}%` }} />
       </div>
-      <span className={styles.readout}>{driven ? "driven" : format(value)}</span>
     </div>
   );
 }
@@ -112,8 +127,18 @@ function Toggle({ nodeId, parameters, write, caption, className }: WidgetProps) 
   const on = parameters["on"] === true;
   return (
     <div className={className} data-control="toggle" data-control-node={nodeId}>
-      <button type="button" className={`${styles.toggle} ${on ? styles.on : ""}`} aria-pressed={on} onClick={() => write(nodeId, { on: !on }, "commit")}>
-        {caption}
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        className={`${styles.toggle} ${on ? styles.on : ""}`}
+        onClick={() => write(nodeId, { on: !on }, "commit")}
+      >
+        <span className={styles.caption} title={caption}>{caption}</span>
+        <span className={styles.switch} aria-hidden="true">
+          <span className={styles.knob} />
+        </span>
+        <span className={styles.state}>{on ? "On" : "Off"}</span>
       </button>
     </div>
   );
@@ -122,21 +147,33 @@ function Toggle({ nodeId, parameters, write, caption, className }: WidgetProps) 
 function Button({ nodeId, parameters, write, caption, className }: WidgetProps) {
   const held = parameters["held"] === true;
   const presses = num(parameters["presses"], 0);
+  // Pressed from the pointer's own edge, not only from the document's echo of it.
+  const [pressing, setPressing] = useState(false);
+  const pressed = held || pressing;
+  // The count this press wrote on its way down. The release writes the SAME number: the
+  // press's live write re-renders this widget with the count already raised, and adding
+  // one again on release counted every press twice (T1513b, found by its test).
+  const count = useRef(presses);
   return (
     <div className={className} data-control="button" data-control-node={nodeId}>
       <button
         type="button"
-        className={`${styles.button} ${held ? styles.on : ""}`}
+        aria-pressed={pressed}
+        className={`${styles.button} ${pressed ? styles.pressed : ""}`}
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
-          write(nodeId, { held: true, presses: presses + 1 }, "live");
+          setPressing(true);
+          count.current = presses + 1;
+          write(nodeId, { held: true, presses: count.current }, "live");
         }}
         onPointerUp={(event) => {
           event.currentTarget.releasePointerCapture(event.pointerId);
-          write(nodeId, { held: false, presses: presses + 1 }, "commit");
+          setPressing(false);
+          write(nodeId, { held: false, presses: count.current }, "commit");
         }}
       >
-        {caption}
+        <span className={styles.caption} title={caption}>{caption}</span>
+        <span className={styles.count} title="Presses" data-press-count={presses}>×{presses}</span>
       </button>
     </div>
   );
@@ -154,13 +191,10 @@ function XYPad({ nodeId, parameters, write, caption, className }: WidgetProps) {
   });
   return (
     <div className={className} data-control="xy" data-control-node={nodeId}>
-      <span className={styles.caption}>{caption}</span>
+      <Head caption={caption} value={driven ? "driven" : `${format(x)}, ${format(y)}`} />
       <div {...drag} className={`${styles.pad} ${driven ? styles.driven : ""}`} aria-label={caption} role="group">
         <div className={styles.puck} style={{ left: `${((x - min) / span) * 100}%`, bottom: `${((y - min) / span) * 100}%` }} />
       </div>
-      <span className={styles.readout}>
-        {driven ? "driven" : `${format(x)}, ${format(y)}`}
-      </span>
     </div>
   );
 }
