@@ -1,4 +1,4 @@
-import type { Actor } from "@domain/types/commands.ts";
+import type { Actor, CapabilityClass } from "@domain/types/commands.ts";
 import type { Revision } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 
@@ -39,6 +39,12 @@ export interface AgentProposal {
   readonly status: ProposalStatus;
   readonly createdAt: number;
   readonly transactionId: string | undefined;
+  /**
+   * T1510b: set when the card asks for a GRANT rather than holding a mutation — whether
+   * this agent may hold `capability` for the session. `operations` is then empty, and
+   * `summary` is the composition root's authored sentence, never document text (§V37).
+   */
+  readonly grant?: { readonly capability: CapabilityClass; readonly summary: string };
 }
 
 /**

@@ -85,6 +85,13 @@ export interface AgentSurfaceOptions {
    * not (§Rule 8).
    */
   grantRoutes?: Partial<Record<CapabilityClass, CapabilityGrantRoute>>;
+  /**
+   * T1510b: the composition root's issuer for a class whose route `ask`s. Called with the
+   * class when the person at the keyboard chooses Allow on the card the surface filed. The
+   * surface never writes `bus.grants` itself (§V38): it forwards a human's click, and the
+   * root — the grant store's owner — decides what it is worth. Absent → nothing is asked.
+   */
+  onOperatorGrant?: (capability: CapabilityClass) => void;
   presence?: AgentPresenceStore;
   now?: () => number;
 }
@@ -100,6 +107,13 @@ export interface CapabilityGrantRoute {
   readonly obtainable: boolean;
   /** One sentence: how to obtain it, or — when it cannot be — what to use instead. */
   readonly guidance: string;
+  /**
+   * T1510b: present when this session ASKS the person at the keyboard the first time a
+   * tool needs the class. The ask is a card in the presence pane's pending list — the
+   * §V42 review card, reused rather than a second consent UI — and an Allow there reaches
+   * `onOperatorGrant`. Both strings are authored, never document text (§V37).
+   */
+  readonly ask?: { readonly label: string; readonly summary: string };
 }
 
 /**
@@ -182,6 +196,9 @@ export function createAgentToolSurface(options: AgentSurfaceOptions): AgentToolS
 
   const tools = new Map<string, AgentTool>(ALL_TOOLS.map((tool) => [tool.name, tool]));
   const held = new Map<string, { tool: AgentTool; input: unknown }>();
+  /** T1510b: open grant asks, proposal id → class, and the classes the person denied. */
+  const grantAsks = new Map<string, CapabilityClass>();
+  const declined = new Set<CapabilityClass>();
 
   let transactionId: string | undefined;
   /** B191: the session's own unit, opened on the first edit. Presence only — see below. */
@@ -407,6 +424,7 @@ export function createAgentToolSurface(options: AgentSurfaceOptions): AgentToolS
    */
   function deniedResult(tool: AgentTool, ungranted: readonly CapabilityClass[]): ToolResult {
     const unobtainable = unobtainableIn(ungranted);
+    const refused = ungranted.filter((capability) => declined.has(capability));
     return result(tool.name, "denied", null, {
       diagnostics: [
         diagnostic(
@@ -417,11 +435,40 @@ export function createAgentToolSurface(options: AgentSurfaceOptions): AgentToolS
             suggestion:
               unobtainable.length > 0
                 ? "Do not retry: nothing this tool can do grants a capability, and this surface has no grant path for it (§V38)."
-                : "Only whoever owns this session's grant store can issue it. Calling this tool again cannot grant it (§V38).",
+                : refused.length > 0
+                  ? `The person at the keyboard denied ${refused.join(", ")} for this session. Do not retry: the prompt is not asked again (§V38).`
+                  : "Only whoever owns this session's grant store can issue it. Calling this tool again cannot grant it (§V38).",
           },
         ),
       ],
     });
+  }
+
+  /**
+   * T1510b: the first call that needs an `ask` class files ONE card for it in the pending
+   * list, and the call is still refused — the refusal (the route's guidance) names the
+   * card. A class already asked, or denied this session, is not asked again, so an agent
+   * looping on the refusal cannot flood the operator with prompts.
+   */
+  async function askOperator(tool: AgentTool, ungranted: readonly CapabilityClass[]): Promise<void> {
+    if (options.onOperatorGrant === undefined) return;
+    for (const capability of ungranted) {
+      const ask = grantRoutes[capability]?.ask;
+      if (ask === undefined || declined.has(capability)) continue;
+      if ([...grantAsks.values()].includes(capability)) continue;
+      proposalCount += 1;
+      const proposalId = `proposal-${proposalCount}`;
+      grantAsks.set(proposalId, capability);
+      presence.addProposal({
+        id: proposalId,
+        tool: tool.name,
+        label: ask.label,
+        baseRevision: await runtimeFor(false).revision(),
+        operations: [],
+        transactionId,
+        grant: { capability, summary: ask.summary },
+      });
+    }
   }
 
   async function call(name: string, input: unknown): Promise<ToolResult> {
@@ -463,7 +510,10 @@ export function createAgentToolSurface(options: AgentSurfaceOptions): AgentToolS
     }
 
     const ungranted = ungrantedFor(tool);
-    if (ungranted.length > 0) return deniedResult(tool, ungranted);
+    if (ungranted.length > 0) {
+      await askOperator(tool, ungranted);
+      return deniedResult(tool, ungranted);
+    }
 
     // §V42: a mutation the user asked to review is HELD, visibly, not applied quietly.
     // Undo and redo are exempt: they only move this actor's own history (§V41), so there
@@ -579,6 +629,15 @@ export function createAgentToolSurface(options: AgentSurfaceOptions): AgentToolS
     },
 
     async approve(proposalId): Promise<ToolResult> {
+      // T1510b: an Allow on a grant card. The root writes the grant; nothing runs here —
+      // the agent's next call is checked against the store like any other.
+      const asked = grantAsks.get(proposalId);
+      if (asked !== undefined) {
+        grantAsks.delete(proposalId);
+        const resolved = presence.resolveProposal(proposalId, "approved");
+        options.onOperatorGrant?.(asked);
+        return result(resolved?.tool ?? proposalId, "ok", { capability: asked }, { proposalId });
+      }
       const entry = held.get(proposalId);
       const resolved = presence.resolveProposal(proposalId, "approved");
       if (entry === undefined || resolved === null) {
@@ -599,6 +658,11 @@ export function createAgentToolSurface(options: AgentSurfaceOptions): AgentToolS
     reject(proposalId) {
       const resolved = presence.resolveProposal(proposalId, "rejected");
       held.delete(proposalId);
+      const asked = grantAsks.get(proposalId);
+      if (asked !== undefined) {
+        grantAsks.delete(proposalId);
+        declined.add(asked);
+      }
       if (resolved === null) {
         return result<{ proposalId: string }>(proposalId, "error", null, {
           diagnostics: [

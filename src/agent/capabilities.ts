@@ -62,7 +62,9 @@ import type { Actor, CapabilityClass } from "@domain/types/commands.ts";
  *
  * `save_project` writes a file, so it needs `localFile`. `import_component` adds definitions
  * to the document's catalogue that undo does not take back, which is §V38's "component
- * install", so it needs `componentInstall` (T1494b).
+ * install", so it needs `componentInstall` (T1494b). In a tab that class is ASKED for
+ * (T1510b): the first refused call files an Allow/Deny card in the agent pane, and an Allow
+ * reaches the composition root's `onOperatorGrant` — the person clicked, not the tool.
  *
  * ## Two places declare a gate, and this one was incomplete (T1115, T1146)
  *
@@ -158,4 +160,7 @@ export function applyBridgeOperatorConsent(
 ): void {
   if (consent?.snapshots === true) grants.grant(actor, "previewSnapshot");
   else grants.revoke(actor, "previewSnapshot");
+  // T1510b: the operator's Allow on a `componentInstall` card lasts for the session, and a
+  // detach ends it. An attach never grants it — only the person's click does.
+  if (consent === null) grants.revoke(actor, "componentInstall");
 }

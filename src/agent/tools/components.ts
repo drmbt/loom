@@ -23,7 +23,8 @@ import type { AgentTool, ToolStatus } from "../types.ts";
  * §V38 names "component install" as a gated class, and this is exactly that: it adds
  * definitions to the document's catalogue, which an undo does not take back (undo removes
  * the instance only). So the tool declares the class and the surface refuses it until a
- * grant exists — the same shape as `save_project`.
+ * grant exists — the same shape as `save_project`. Unlike `localFile`, a tab can issue this
+ * one (T1510b): the first refused call asks the person at the keyboard for it.
  */
 
 export type ExportComponentData = Pick<ComponentExportOutput, "fileName" | "text" | "components">;

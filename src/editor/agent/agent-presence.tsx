@@ -125,7 +125,13 @@ interface ProposalCardProps {
   readonly onReject: (proposalId: string) => void;
 }
 
+/**
+ * T1510b: a card that asks for a GRANT is the same card — same pending list, same two
+ * callbacks — with the root's authored summary where the operations would be, and the
+ * buttons named for what they decide.
+ */
 function ProposalCard({ proposal, onApprove, onReject }: ProposalCardProps) {
+  const grant = proposal.grant;
   return (
     <article className={styles.card} data-status={proposal.status} data-proposal={proposal.id}>
       <header className={styles.cardHead}>
@@ -134,25 +140,31 @@ function ProposalCard({ proposal, onApprove, onReject }: ProposalCardProps) {
           {proposal.tool} · rev {proposal.baseRevision}
         </span>
       </header>
-      <ul className={styles.operations} data-testid="proposal-operations">
-        {proposal.operations.map((operation, index) => {
-          const row = describeOperation(operation);
-          return (
-            <li className={styles.operation} key={`${row.kind}-${String(index)}`}>
-              <span className={styles.opKind}>{row.kind}</span>
-              <span className={styles.opTargets}>{row.targets.join(" → ")}</span>
-              {row.detail === null ? null : <span className={styles.opDetail}>{row.detail}</span>}
-            </li>
-          );
-        })}
-      </ul>
+      {grant === undefined ? (
+        <ul className={styles.operations} data-testid="proposal-operations">
+          {proposal.operations.map((operation, index) => {
+            const row = describeOperation(operation);
+            return (
+              <li className={styles.operation} key={`${row.kind}-${String(index)}`}>
+                <span className={styles.opKind}>{row.kind}</span>
+                <span className={styles.opTargets}>{row.targets.join(" → ")}</span>
+                {row.detail === null ? null : <span className={styles.opDetail}>{row.detail}</span>}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className={styles.opDetail} data-capability={grant.capability}>
+          {grant.summary}
+        </p>
+      )}
       <div className={styles.actions}>
         <Button
           onClick={() => {
             onApprove(proposal.id);
           }}
         >
-          Apply
+          {grant === undefined ? "Apply" : "Allow"}
         </Button>
         <Button
           variant="ghost"
@@ -160,7 +172,7 @@ function ProposalCard({ proposal, onApprove, onReject }: ProposalCardProps) {
             onReject(proposal.id);
           }}
         >
-          Discard
+          {grant === undefined ? "Discard" : "Deny"}
         </Button>
       </div>
     </article>

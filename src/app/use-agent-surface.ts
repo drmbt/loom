@@ -112,11 +112,20 @@ export const PAGE_GRANT_ROUTES = {
     guidance:
       "No surface in this browser tab can issue the localFile grant. The user saves through the app's own Save control, which opens the browser's file picker — the consent gesture a tool call cannot stand in for.",
   },
-  /** T1494b: `import_component`. The person installs a component file themselves. */
+  /**
+   * T1494b: `import_component`. T1510b: obtainable, by ASKING — the first call that needs it
+   * files an Allow/Deny card in the agent pane's pending list (`ask`), and an Allow reaches
+   * `onOperatorGrant` below. The grant is the session's: a bridge detach revokes it
+   * (`applyBridgeOperatorConsent`), and a new document is a new bus with no grants at all.
+   */
   componentInstall: {
-    obtainable: false,
+    obtainable: true,
     guidance:
-      "No surface in this browser tab can issue the componentInstall grant. The user installs a component file by dropping it on the canvas or through the canvas menu's Import component row — the consent gesture a tool call cannot stand in for.",
+      "This tab asks the person at the keyboard: the first call that needs it puts an Allow / Deny card under Pending changes in the agent panel. Call the tool again once they choose Allow; the grant lasts for this session and ends when the bridge detaches. If they choose Deny it stays refused for the session. They can also install a component file themselves by dropping it on the canvas.",
+    ask: {
+      label: "Allow component install",
+      summary: "Lets the agent add component files to this document for this session.",
+    },
   },
 } satisfies Partial<Record<CapabilityClass, CapabilityGrantRoute>>;
 
@@ -207,6 +216,11 @@ export function useAgentSurface(
         ports,
         // T1097: what this surface can and cannot ever be granted, as data. See above.
         grantRoutes: PAGE_GRANT_ROUTES,
+        // T1510b: the person's Allow on a grant card, written by the grant store's owner.
+        // The surface only files cards for the classes the routes above `ask` for (§V38).
+        onOperatorGrant: (capability) => {
+          runtime.bus.grants.grant(AGENT_ACTOR, capability);
+        },
         // No `requireApproval` here on purpose. §V42 requires agent activity to be
         // VISIBLE and revertible, which the presence pane provides; holding every edit
         // for a click is a product policy nobody has asked for, and the surface already
