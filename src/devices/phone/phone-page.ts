@@ -22,7 +22,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { PHONE_EVENTS_PATH, PHONE_SET_PATH, PHONE_TOKEN_PARAM } from "./phone-protocol.ts";
+import { PHONE_EVENTS_PATH, PHONE_PEER_PARAM, PHONE_SET_PATH, PHONE_TOKEN_PARAM } from "./phone-protocol.ts";
 
 /** The palette entries the page uses, by their app name. */
 const PHONE_TOKENS = [
@@ -192,6 +192,7 @@ const CLIENT = String.raw`
   var inFlight = false;
   var noticeTimer = 0;
   var source = null;
+  var phone = "";      // this stream's id, from its "hello"; every write names it
 
   function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
   function format(v) {
@@ -274,7 +275,8 @@ const CLIENT = String.raw`
   }
 
   function pump() {
-    if (inFlight || stopped || queue.length === 0) return;
+    // No id yet (or the last one was refused): hold the queue until the stream says hello.
+    if (inFlight || stopped || queue.length === 0 || phone === "") return;
     var e = queue[0];
     var set;
     if (e.live !== null) {
@@ -286,13 +288,22 @@ const CLIENT = String.raw`
       queue.shift();
     }
     inFlight = true;
-    fetch(CONFIG.set + query, {
+    fetch(CONFIG.set + query + "&" + CONFIG.peer + "=" + encodeURIComponent(phone), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(set),
     })
       .then(function (response) {
         if (response.status === 403) { stop(EXPIRED); return; }
+        if (response.status === 409) {
+          // The helper does not know this stream: put the write back, get a new id, resend.
+          queue.unshift(set.phase === "live"
+            ? { handle: set.handle, live: set.values, commit: null }
+            : { handle: set.handle, live: null, commit: set.values });
+          phone = "";
+          connect();
+          return;
+        }
         if (response.ok) return;
         return response.text().then(
           function (text) { flash(text || "Loom refused that change."); },
@@ -557,21 +568,31 @@ const CLIENT = String.raw`
 
   /* ---------------------------------------------------------------------------- events */
 
-  source = new EventSource(CONFIG.events + query);
-  source.onopen = function () { if (!stopped) setStatus(""); };
-  source.onerror = function () {
-    if (stopped) return;
-    setStatus(source.readyState === 2
-      ? "Disconnected. Reload the page, or scan the QR code again."
-      : "Connection lost — reconnecting…");
-  };
-  source.onmessage = function (message) {
-    var event;
-    try { event = JSON.parse(message.data); } catch (x) { return; }
-    if (stopped || !event) return;
-    if (event.type === "snapshot") onSnapshot(event.snapshot);
-    else if (event.type === "closed") stop(String(event.reason || "Loom closed this door."));
-  };
+  function connect() {
+    if (source) source.close();
+    var mine = new EventSource(CONFIG.events + query);
+    source = mine;
+    mine.onopen = function () { if (!stopped && source === mine) setStatus(""); };
+    mine.onerror = function () {
+      if (stopped || source !== mine) return;
+      setStatus(mine.readyState === 2
+        ? "Disconnected. Reload the page, or scan the QR code again."
+        : "Connection lost — reconnecting…");
+    };
+    mine.onmessage = function (message) {
+      var event;
+      try { event = JSON.parse(message.data); } catch (x) { return; }
+      if (stopped || !event || source !== mine) return;
+      if (event.type === "hello") {
+        // A browser's own reconnect is a new stream too, and says a new id.
+        phone = String(event.phone || "");
+        pump();
+      }
+      else if (event.type === "snapshot") onSnapshot(event.snapshot);
+      else if (event.type === "closed") stop(String(event.reason || "Loom closed this door."));
+    };
+  }
+  connect();
 })();
 `;
 
@@ -582,6 +603,7 @@ export function phonePageHtml(): string {
   palette ??= paletteBlock();
   const config = JSON.stringify({
     param: PHONE_TOKEN_PARAM,
+    peer: PHONE_PEER_PARAM,
     events: PHONE_EVENTS_PATH,
     set: PHONE_SET_PATH,
     expired: PHONE_EXPIRED_SENTENCE,

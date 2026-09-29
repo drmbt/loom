@@ -58,7 +58,9 @@ class FakeEventSource {
   }
 }
 
-function openPage() {
+const PHONE_ID = "ph-1";
+
+function openPage(options: { hello?: boolean } = {}) {
   const frames: (() => void)[] = [];
   const posts: Post[] = [];
   const sources: FakeEventSource[] = [];
@@ -107,8 +109,13 @@ function openPage() {
   });
   const win = dom.window;
   const doc = win.document;
-  const source = sources[0];
-  if (source === undefined) throw new Error("the page opened no EventSource");
+  if (sources[0] === undefined) throw new Error("the page opened no EventSource");
+  /** The stream the page holds now; a reconnect replaces it. */
+  const latest = (): FakeEventSource => {
+    const last = sources.at(-1);
+    if (last === undefined) throw new Error("the page opened no EventSource");
+    return last;
+  };
 
   const flush = async () => {
     for (let i = 0; i < 4; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -116,7 +123,9 @@ function openPage() {
   const page = {
     win,
     doc,
-    source,
+    get source() {
+      return latest();
+    },
     sources,
     posts,
     otherRequests,
@@ -124,7 +133,11 @@ function openPage() {
       return maxOpen;
     },
     emit(event: PhoneEvent) {
-      source.onmessage?.({ data: JSON.stringify(event) });
+      latest().onmessage?.({ data: JSON.stringify(event) });
+    },
+    /** What the helper says first on every stream: this connection's phone id. */
+    hello(phone: string) {
+      page.emit({ type: "hello", phone });
     },
     snapshot(snapshot: PhoneSnapshot) {
       page.emit({ type: "snapshot", snapshot });
@@ -174,6 +187,7 @@ function openPage() {
       return status === null || status.hidden ? "" : (status.textContent ?? "");
     },
   };
+  if (options.hello !== false) page.hello(PHONE_ID);
   return page;
 }
 
@@ -237,14 +251,50 @@ describe("T1396b phone page — the document the helper serves", () => {
     expect(html).toContain("env(safe-area-inset-bottom)");
   });
 
-  it("sends the token from its own URL on both endpoints, and nowhere else", async () => {
+  it("sends the token from its own URL on both endpoints, and the stream's phone id on every write", async () => {
     const page = openPage();
     expect(page.source.url).toBe(`${PHONE_EVENTS_PATH}?t=${TOKEN}`);
     page.snapshot(SNAPSHOT);
     track(page, "Strobe").click();
-    expect(page.posts.map((post) => post.url)).toEqual([`${PHONE_SET_PATH}?t=${TOKEN}`]);
+    expect(page.posts.map((post) => post.url)).toEqual([`${PHONE_SET_PATH}?t=${TOKEN}&p=${PHONE_ID}`]);
     await page.drain();
     expect(page.otherRequests).toEqual([]);
+  });
+
+  it("sends nothing until its stream has said hello — a write with no phone id is one the helper refuses", async () => {
+    const page = openPage({ hello: false });
+    page.snapshot(SNAPSHOT);
+    track(page, "Strobe").click();
+    expect(page.posts).toHaveLength(0);
+    page.hello("ph-late");
+    expect(page.posts.map((post) => [post.url, post.set])).toEqual([
+      [`${PHONE_SET_PATH}?t=${TOKEN}&p=ph-late`, { handle: "h-strobe", values: { on: true }, phase: "commit" }],
+    ]);
+  });
+
+  /*
+   * The helper answers 409 when the write names a stream it no longer has (the phone slept,
+   * the stream was replaced). The page must not lose the gesture: it reconnects, waits for
+   * the new id, and sends the same write again under it.
+   */
+  it("a 409 reconnects the stream and resends the refused write under the new phone id", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    track(page, "Strobe").click();
+    const first = page.source;
+    await page.settle(409, "This phone's connection to Loom is not open.");
+    expect(page.sources).toHaveLength(2);
+    expect(first.closed).toBe(true);
+    expect(page.posts).toHaveLength(1); // held until the new stream says who it is
+    page.hello("ph-2");
+    await page.drain();
+    expect(page.posts.map((post) => [post.url, post.set])).toEqual([
+      [`${PHONE_SET_PATH}?t=${TOKEN}&p=${PHONE_ID}`, { handle: "h-strobe", values: { on: true }, phase: "commit" }],
+      [`${PHONE_SET_PATH}?t=${TOKEN}&p=ph-2`, { handle: "h-strobe", values: { on: true }, phase: "commit" }],
+    ]);
+    // The OLD stream's events no longer move the page.
+    first.onmessage?.({ data: JSON.stringify({ type: "closed", reason: "stale" }) });
+    expect(page.notice()).toBe("");
   });
 
   it("draws every row of a snapshot: headings, text, and each widget with its caption and value", () => {
@@ -423,7 +473,7 @@ describe("T1396b phone page — the document the helper serves", () => {
     const page = openPage();
     page.snapshot(SNAPSHOT);
     track(page, "Strobe").click();
-    await page.settle(409, "That control is no longer published.");
+    await page.settle(400, "That control is no longer published.");
     expect(page.notice()).toBe("That control is no longer published.");
     track(page, "Strobe").click();
     expect(page.posts).toHaveLength(2);

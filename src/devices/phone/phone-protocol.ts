@@ -39,8 +39,18 @@ export const PHONE_TOKEN_PARAM = "t";
 export const PHONE_PAGE_PATH = "/";
 /** GET: `text/event-stream` of `PhoneEvent`s, one JSON object per `data:` line. */
 export const PHONE_EVENTS_PATH = "/events";
-/** POST: one `PhoneSet` as a JSON body. Answered 204, or 4xx with a sentence. */
+/**
+ * POST: one `PhoneSet` as a JSON body. Answered 204, or 4xx with a sentence. Carries the
+ * token AND `PHONE_PEER_PARAM`; a phone id whose event stream is not open is a 409, and the
+ * phone answers that by reconnecting its stream (which says `hello` with a fresh id).
+ */
 export const PHONE_SET_PATH = "/set";
+/**
+ * The query parameter a write names its phone in (T1396b, added after the first cut): the
+ * id the phone's own event stream said in `hello`. Without it the helper could only guess
+ * which stream a POST belonged to, and two tabs on one phone share an address.
+ */
+export const PHONE_PEER_PARAM = "p";
 
 /** One control as the phone sees it: enough to draw it and nothing to reach past it. */
 export type PhoneWidget =
@@ -106,6 +116,11 @@ export interface PhoneSet {
 
 /** HELPER → PHONE, one per SSE `data:` line. */
 export type PhoneEvent =
+  /**
+   * Always the FIRST event on a stream: the id this connection is known by. The phone puts
+   * it in every write (`PHONE_PEER_PARAM`); a reconnected stream says a new one.
+   */
+  | { readonly type: "hello"; readonly phone: string }
   | { readonly type: "snapshot"; readonly snapshot: PhoneSnapshot }
   /** The page went away or closed the door. The phone shows `reason` and stops sending. */
   | { readonly type: "closed"; readonly reason: string };

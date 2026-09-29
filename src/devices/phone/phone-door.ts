@@ -9,6 +9,7 @@ import { join } from "node:path";
 import {
   PHONE_EVENTS_PATH,
   PHONE_PAGE_PATH,
+  PHONE_PEER_PARAM,
   PHONE_SET_PATH,
   PHONE_TOKEN_PARAM,
   type PhoneDoorState,
@@ -87,33 +88,55 @@ const BASE_HEADERS = {
 } as const;
 
 /**
- * THE ONE ADDRESS THE DOOR MAY BIND: the first non-internal IPv4 in a private range.
+ * THE ONE ADDRESS THE DOOR MAY BIND: the best-ranked non-internal IPv4 in a private range.
  *
  * Loopback would make the door unreachable from the phone; a public or CGNAT address
  * (100.64/10, which is what an overlay VPN hands out) would put it somewhere other than
  * "the same wifi"; link-local 169.254/16 is a network that failed to configure. None of
  * those is the LAN the owner meant, so none is returned, and no address at all is a
  * refusal the door says out loud.
+ *
+ * Among the private ones, "the first" was whatever order the OS listed interfaces in, and a
+ * laptop on home wifi with a work VPN up lists a `utun` on 10.x beside `en0` on 192.168.x.
+ * So they are RANKED: 192.168/16 (what home and venue routers hand out) over 172.16/12 over
+ * 10/8 (what VPNs and corporate networks use), and within a range a physical-looking
+ * interface (`en*`, `eth*`, `wlan*`) over a tunnel (`utun*`, `tun*`, `ppp*`, `tailscale*`,
+ * `wg*`), anything else between. Ties keep the OS's order.
  */
 export function pickLanAddress(
   interfaces: NodeJS.Dict<readonly NetworkInterfaceInfo[]> = networkInterfaces(),
 ): string | null {
-  for (const entries of Object.values(interfaces)) {
+  let best: { address: string; score: number } | null = null;
+  for (const [name, entries] of Object.entries(interfaces)) {
     for (const entry of entries ?? []) {
       // `family` was the number 4 on Node 18.0–18.3; both spellings mean IPv4.
       const v4 = entry.family === "IPv4" || (entry.family as unknown) === 4;
       if (!v4 || entry.internal) continue;
-      if (isPrivateIpv4(entry.address)) return entry.address;
+      const range = privateRange(entry.address);
+      if (range === null) continue;
+      const score = range * 3 + interfaceClass(name);
+      if (best === null || score < best.score) best = { address: entry.address, score };
     }
   }
+  return best?.address ?? null;
+}
+
+/** 0 for 192.168/16, 1 for 172.16/12, 2 for 10/8, null for anything that is not private. */
+function privateRange(address: string): number | null {
+  const parts = address.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null;
+  const [a, b] = parts as [number, number, number, number];
+  if (a === 192 && b === 168) return 0;
+  if (a === 172 && b >= 16 && b <= 31) return 1;
+  if (a === 10) return 2;
   return null;
 }
 
-function isPrivateIpv4(address: string): boolean {
-  const parts = address.split(".").map(Number);
-  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
-  const [a, b] = parts as [number, number, number, number];
-  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+/** 0 for a physical-looking interface, 2 for a tunnel, 1 for anything else. */
+function interfaceClass(name: string): number {
+  if (/^(en|eth|wlan)/i.test(name)) return 0;
+  if (/^(utun|tun|ppp|tailscale|wg)/i.test(name)) return 2;
+  return 1;
 }
 
 /** Where the certificate lives between sessions: one per user, not per project. */
@@ -286,7 +309,6 @@ export interface PhoneDoor {
 
 interface Phone {
   readonly peer: PhonePeer;
-  readonly address: string;
   readonly response: ServerResponse;
 }
 
@@ -367,7 +389,10 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
   };
 
   /** Every route, behind the one token check. §T1397b's signalling is one more row here. */
-  const routes: Record<string, (door: Opened, request: IncomingMessage, response: ServerResponse) => void> = {
+  const routes: Record<
+    string,
+    (door: Opened, request: IncomingMessage, response: ServerResponse, url: URL) => void
+  > = {
     [`GET ${PHONE_PAGE_PATH}`]: (_door, _request, response) => {
       response.writeHead(200, { ...BASE_HEADERS, "Content-Type": "text/html; charset=utf-8" });
       response.end(phonePageHtml());
@@ -385,7 +410,6 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
       const agent = request.headers["user-agent"];
       const phone: Phone = {
         peer: { phone: id, userAgent: typeof agent === "string" ? agent.slice(0, 200) : "" },
-        address: request.socket.remoteAddress ?? "",
         response,
       };
       response.writeHead(200, {
@@ -397,6 +421,8 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
       // published must still see its stream open.
       response.flushHeaders();
       door.phones.set(id, phone);
+      // First, always: the id this stream is, which every write from it must name.
+      writeEvent(response, { type: "hello", phone: id });
       if (snapshot !== null) writeEvent(response, { type: "snapshot", snapshot });
       request.socket.setNoDelay(true);
       response.on("close", () => {
@@ -405,7 +431,7 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
       });
       door.sink.onState(state());
     },
-    [`POST ${PHONE_SET_PATH}`]: (door, request, response) => {
+    [`POST ${PHONE_SET_PATH}`]: (door, request, response, url) => {
       let size = 0;
       const chunks: Buffer[] = [];
       let refused = false;
@@ -428,14 +454,19 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
           return;
         }
         /*
-         * WHICH PHONE WROTE. The contract gives a POST no phone id, so the write is
-         * attributed to the newest event stream from the same address — one phone on a
-         * LAN is one address. A POST from an address with no open stream is not a phone
-         * this door has met, and is refused rather than written under a made-up id.
+         * WHICH PHONE WROTE: the one the write names (`PHONE_PEER_PARAM`, the id its
+         * stream said in `hello`), and only while that stream is open. Not guessed from
+         * the address — two tabs on one phone share it and are two phones here, each
+         * with its own undo. An id with no open stream is refused, never written under.
          */
-        const phone = [...door.phones.values()].reverse().find((each) => each.address === request.socket.remoteAddress);
+        const named = url.searchParams.get(PHONE_PEER_PARAM);
+        const phone = named === null ? undefined : door.phones.get(named);
         if (phone === undefined) {
-          refuse(response, 409, "Open this page's event stream before writing; reload the page on the phone.");
+          refuse(
+            response,
+            409,
+            "This phone's connection to Loom is not open, so the change was not sent. Reconnecting.",
+          );
           return;
         }
         door.sink.onWrite(phone.peer.phone, set);
@@ -456,7 +487,7 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
       refuse(response, 404);
       return;
     }
-    route(door, request, response);
+    route(door, request, response, url);
   };
 
   const listen = (server: Server, host: string, port: number): Promise<number> =>

@@ -20,6 +20,7 @@ import { phonePageHtml } from "./phone-page.ts";
 import {
   PHONE_EVENTS_PATH,
   PHONE_PAGE_PATH,
+  PHONE_PEER_PARAM,
   PHONE_SET_PATH,
   type PhoneDoorState,
   type PhoneEvent,
@@ -102,6 +103,13 @@ function at(url: string, path: string, token?: string | null): string {
   return parsed.toString();
 }
 
+/** A write to the door naming `phone` in `PHONE_PEER_PARAM` — or, with null, naming none. */
+function postSet(doorUrl: string, ca: string, phone: string | null, body = JSON.stringify(A_SET)): Promise<Answer> {
+  const url = new URL(at(doorUrl, PHONE_SET_PATH));
+  if (phone !== null) url.searchParams.set(PHONE_PEER_PARAM, phone);
+  return fetchPinned(url.toString(), ca, { method: "POST", body });
+}
+
 interface Answer {
   readonly status: number;
   readonly headers: IncomingHttpHeaders;
@@ -147,19 +155,28 @@ function fetchPinned(
 
 interface Stream {
   readonly status: number;
+  /** The id this stream said in its `hello` — which the door guarantees is its FIRST event. */
+  readonly phone: string;
+  /** Every event AFTER the hello. */
   readonly events: PhoneEvent[];
   readonly comments: string[];
   ended: boolean;
   close(): void;
 }
 
-/** A phone's event stream, parsed the way `EventSource` does: blocks split on a blank line. */
+/**
+ * A phone's event stream, parsed the way `EventSource` does: blocks split on a blank line.
+ * Resolves once the stream has said `hello`, as the phone page waits for it before writing;
+ * REJECTS if anything else came first.
+ */
 function openStream(url: string, ca: string, userAgent = "PhoneTest/1.0"): Promise<Stream> {
   return new Promise((resolve, reject) => {
     const req = httpsRequest(url, { ca, agent: false, headers: { "User-Agent": userAgent } }, (res) => {
       let buffer = "";
-      const stream: Stream = {
+      let greeted = false;
+      const stream: Stream & { phone: string } = {
         status: res.statusCode ?? 0,
+        phone: "",
         events: [],
         comments: [],
         ended: false,
@@ -173,7 +190,19 @@ function openStream(url: string, ca: string, userAgent = "PhoneTest/1.0"): Promi
           const block = buffer.slice(0, cut);
           buffer = buffer.slice(cut + 2);
           for (const line of block.split("\n")) {
-            if (line.startsWith("data: ")) stream.events.push(JSON.parse(line.slice(6)) as PhoneEvent);
+            if (line.startsWith("data: ")) {
+              const event = JSON.parse(line.slice(6)) as PhoneEvent;
+              if (!greeted) {
+                greeted = true;
+                if (event.type !== "hello") reject(new Error(`the first event was ${event.type}, not hello`));
+                else {
+                  stream.phone = event.phone;
+                  resolve(stream);
+                }
+                continue;
+              }
+              stream.events.push(event);
+            }
             else if (line.startsWith(":")) stream.comments.push(line);
           }
           cut = buffer.indexOf("\n\n");
@@ -185,7 +214,7 @@ function openStream(url: string, ca: string, userAgent = "PhoneTest/1.0"): Promi
       res.on("error", () => {
         stream.ended = true;
       });
-      resolve(stream);
+      if (stream.status !== 200) resolve(stream);
     });
     req.on("error", reject);
     req.end();
@@ -235,7 +264,37 @@ describe("the door binds the LAN and nothing else (T1396b)", () => {
     expect(pickLanAddress({ ...hostile, en0: [iface("10.0.0.5")] })).toBe("10.0.0.5");
     expect(pickLanAddress({ ...hostile, en0: [iface("172.16.0.1")] })).toBe("172.16.0.1");
     expect(pickLanAddress({ ...hostile, en0: [iface("172.31.255.254")] })).toBe("172.31.255.254");
-    // The real machine's answer obeys the same rule, whatever network this runs on.
+  });
+
+  /*
+   * Which private address, when there are several. OS order used to decide, and a laptop
+   * with a VPN up lists its tunnel beside its wifi — so a phone on the wifi was handed a URL
+   * on the VPN. Each row lists the LOSER first, so "first wins" fails every one of them.
+   */
+  it("ranks 192.168 over 172.16 over 10, and within a range the wifi/ethernet over a tunnel", () => {
+    const rows: Array<[NodeJS.Dict<NetworkInterfaceInfo[]>, string]> = [
+      [{ en1: [iface("10.0.0.5")], en0: [iface("192.168.1.20")] }, "192.168.1.20"],
+      [{ en1: [iface("10.0.0.5")], en0: [iface("172.20.1.2")] }, "172.20.1.2"],
+      [{ en1: [iface("172.20.1.2")], en0: [iface("192.168.1.20")] }, "192.168.1.20"],
+      // The case the ranking exists for: work VPN on 10.x listed ahead of wifi.
+      [{ utun4: [iface("10.8.0.2")], en0: [iface("192.168.1.20")] }, "192.168.1.20"],
+      // Same range: the tunnel loses to the physical interface, whatever the order.
+      [{ utun4: [iface("10.8.0.2")], en0: [iface("10.1.2.3")] }, "10.1.2.3"],
+      [{ wg0: [iface("192.168.50.2")], wlan0: [iface("192.168.1.9")] }, "192.168.1.9"],
+      [{ tailscale0: [iface("10.9.9.9")], eth0: [iface("10.0.0.40")] }, "10.0.0.40"],
+      [{ ppp0: [iface("172.16.5.5")], tun0: [iface("172.16.6.6")], en2: [iface("172.16.7.7")] }, "172.16.7.7"],
+      // Unrecognised names sit between: a bridge beats a tunnel, loses to en*.
+      [{ utun2: [iface("10.2.0.1")], bridge0: [iface("10.3.0.1")] }, "10.3.0.1"],
+      [{ bridge0: [iface("10.3.0.1")], en0: [iface("10.4.0.1")] }, "10.4.0.1"],
+      // Only a tunnel has a private address: it is still the answer, not null.
+      [{ utun4: [iface("10.8.0.2")], lo0: [iface("127.0.0.1", true)] }, "10.8.0.2"],
+    ];
+    for (const [interfaces, expected] of rows) {
+      expect(pickLanAddress(interfaces), JSON.stringify(Object.keys(interfaces))).toBe(expected);
+    }
+  });
+
+  it("the real machine's answer obeys the same rule, whatever network this runs on", () => {
     const real = pickLanAddress();
     if (real !== null) expect(real).toMatch(/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/);
   });
@@ -337,23 +396,62 @@ describe("the snapshot reaches every phone (T1396b)", () => {
   });
 });
 
-describe("a phone's write reaches the page exactly, or not at all (T1396b)", () => {
-  it("relays exactly the PhoneSet, attributed to the phone that holds the stream, and answers 204", async () => {
+describe("a phone's write reaches the page exactly, under the phone that sent it, or not at all (T1396b)", () => {
+  it("relays exactly the PhoneSet, attributed to the phone its `p` names, and answers 204", async () => {
     const { state, ca, sink } = await openDoor();
-    await openStream(at(state.url, PHONE_EVENTS_PATH), ca);
-    await until(() => sink.states.length === 1, "the phone to arrive");
-    const arrived = sink.states[0];
-    const id = arrived?.open === true ? arrived.phones[0]?.phone : undefined;
-    expect(id).toBeTypeOf("string");
-    const answer = await fetchPinned(at(state.url, PHONE_SET_PATH), ca, { method: "POST", body: JSON.stringify(A_SET) });
+    const phone = await openStream(at(state.url, PHONE_EVENTS_PATH), ca);
+    // The id the stream said in `hello` IS the id the page is told about.
+    const arrived = sink.states.at(-1);
+    expect(arrived?.open === true && arrived.phones.map((peer) => peer.phone)).toEqual([phone.phone]);
+    const answer = await postSet(state.url, ca, phone.phone);
     expect(answer.status).toBe(204);
-    expect(sink.writes).toEqual([{ phone: id, set: A_SET }]);
+    expect(sink.writes).toEqual([{ phone: phone.phone, set: A_SET }]);
+  });
+
+  /*
+   * THE GAP THIS CLOSES: two tabs on one phone are one address and two streams. Guessing by
+   * address credited both tabs' writes to whichever stream opened last, so undo and
+   * ownership ("per phone", §T1396b) were per ADDRESS. Each write now carries its stream.
+   */
+  it("tells two streams from ONE address apart: each write lands under the stream it names", async () => {
+    const { state, ca, sink } = await openDoor();
+    const tabA = await openStream(at(state.url, PHONE_EVENTS_PATH), ca, "Tab A");
+    const tabB = await openStream(at(state.url, PHONE_EVENTS_PATH), ca, "Tab B");
+    expect(tabA.phone).not.toBe(tabB.phone);
+    const setA: PhoneSet = { handle: "h1", values: { value: 0.1 }, phase: "commit" };
+    const setB: PhoneSet = { handle: "h1", values: { value: 0.9 }, phase: "commit" };
+    // A first, then B: the OLDER stream's write must not be credited to the newer one.
+    expect((await postSet(state.url, ca, tabA.phone, JSON.stringify(setA))).status).toBe(204);
+    expect((await postSet(state.url, ca, tabB.phone, JSON.stringify(setB))).status).toBe(204);
+    expect(sink.writes).toEqual([
+      { phone: tabA.phone, set: setA },
+      { phone: tabB.phone, set: setB },
+    ]);
+  });
+
+  it("refuses with 409 and a sentence — relaying nothing — a write naming no phone, an unknown one, or one whose stream closed", async () => {
+    const { state, ca, sink } = await openDoor();
+    const gone = await openStream(at(state.url, PHONE_EVENTS_PATH), ca);
+    const live = await openStream(at(state.url, PHONE_EVENTS_PATH), ca);
+    gone.close();
+    await until(() => {
+      const last = sink.states.at(-1);
+      return last?.open === true && last.phones.length === 1;
+    }, "the closed stream to leave");
+    for (const phone of [null, "", "not-a-phone", gone.phone]) {
+      const answer = await postSet(state.url, ca, phone);
+      expect(answer.status, `p=${String(phone)}`).toBe(409);
+      expect(answer.body).toContain("Reconnecting");
+    }
+    expect(sink.writes).toEqual([]);
+    // The legitimate case the 409 must not swallow: the stream still open is served.
+    expect((await postSet(state.url, ca, live.phone)).status).toBe(204);
+    expect(sink.writes).toEqual([{ phone: live.phone, set: A_SET }]);
   });
 
   it("refuses oversized and malformed bodies with a sentence, and relays none of them", async () => {
     const { state, ca, sink } = await openDoor();
-    await openStream(at(state.url, PHONE_EVENTS_PATH), ca);
-    await until(() => sink.states.length === 1, "the phone to arrive");
+    const phone = await openStream(at(state.url, PHONE_EVENTS_PATH), ca);
     const bodies = [
       JSON.stringify({ ...A_SET, values: { value: 1, pad: "x".repeat(5000) } }),
       JSON.stringify({ handle: "h1", values: { value: 1 }, phase: "live", pad: "y".repeat(4100) }),
@@ -365,17 +463,10 @@ describe("a phone's write reaches the page exactly, or not at all (T1396b)", () 
       JSON.stringify({ handle: "h1", values: { value: 1 }, phase: "later" }),
     ];
     for (const body of bodies) {
-      const answer = await fetchPinned(at(state.url, PHONE_SET_PATH), ca, { method: "POST", body });
+      const answer = await postSet(state.url, ca, phone.phone, body);
       expect(answer.status, body.slice(0, 60)).toBe(400);
       expect(answer.body.length, "a 400 says why").toBeGreaterThan(10);
     }
-    expect(sink.writes).toEqual([]);
-  });
-
-  it("refuses a write from an address with no open stream: a token alone is not a phone", async () => {
-    const { state, ca, sink } = await openDoor();
-    const answer = await fetchPinned(at(state.url, PHONE_SET_PATH), ca, { method: "POST", body: JSON.stringify(A_SET) });
-    expect(answer.status).toBe(409);
     expect(sink.writes).toEqual([]);
   });
 });
@@ -532,12 +623,11 @@ describe("the phone door over the device bridge (T1396b)", () => {
     expect(phone.events[0]).toEqual({ type: "snapshot", snapshot: SNAPSHOT_A });
     await until(() => reply(received, "phoneState") !== undefined, "phoneState");
     const came = reply(received, "phoneState")?.["state"] as PhoneDoorState;
-    const phoneId = came.open ? came.phones[0]?.phone : undefined;
-    expect(came.open && came.phones.map((peer) => peer.userAgent)).toEqual(["Pixel Test"]);
+    expect(came.open && came.phones.map((peer) => [peer.phone, peer.userAgent])).toEqual([[phone.phone, "Pixel Test"]]);
 
-    expect((await fetchPinned(at(opened.url, PHONE_SET_PATH), ca, { method: "POST", body: JSON.stringify(A_SET) })).status).toBe(204);
+    expect((await postSet(opened.url, ca, phone.phone)).status).toBe(204);
     await until(() => reply(received, "phoneWrite") !== undefined, "phoneWrite");
-    expect(reply(received, "phoneWrite")).toEqual({ type: "phoneWrite", stream: "phone", phone: phoneId, set: A_SET });
+    expect(reply(received, "phoneWrite")).toEqual({ type: "phoneWrite", stream: "phone", phone: phone.phone, set: A_SET });
 
     socket.close();
     await until(() => phone.ended, "the phone's stream to end with the page");
