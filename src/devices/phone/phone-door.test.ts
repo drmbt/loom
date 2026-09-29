@@ -15,16 +15,22 @@ import {
   pickLanAddress,
   type PhoneDoor,
   type PhoneDoorOptions,
+  type PhoneDoorSink,
 } from "./phone-door.ts";
 import { phonePageHtml } from "./phone-page.ts";
 import {
   PHONE_EVENTS_PATH,
   PHONE_PAGE_PATH,
   PHONE_PEER_PARAM,
+  PHONE_SDP_MAX_CHARS,
   PHONE_SET_PATH,
+  PHONE_SIGNAL_MAX_BYTES,
+  PHONE_SIGNAL_PATH,
   type PhoneDoorState,
   type PhoneEvent,
   type PhoneSet,
+  type PhoneSignalFromPhone,
+  type PhoneSignalToPhone,
   type PhoneSnapshot,
 } from "./phone-protocol.ts";
 import { createDeviceDoors } from "../doors.ts";
@@ -69,16 +75,20 @@ async function until(predicate: () => boolean, what: string, budgetMs = 5_000): 
 interface Recorded {
   readonly writes: Array<{ phone: string; set: PhoneSet }>;
   readonly states: PhoneDoorState[];
+  readonly signals: Array<{ phone: string; message: PhoneSignalFromPhone }>;
 }
 
-function recorder(): Recorded & { onWrite(phone: string, set: PhoneSet): void; onState(state: PhoneDoorState): void } {
+function recorder(): Recorded & PhoneDoorSink {
   const writes: Array<{ phone: string; set: PhoneSet }> = [];
   const states: PhoneDoorState[] = [];
+  const signals: Array<{ phone: string; message: PhoneSignalFromPhone }> = [];
   return {
     writes,
     states,
+    signals,
     onWrite: (phone, set) => writes.push({ phone, set }),
     onState: (state) => states.push(state),
+    onSignal: (phone, message) => signals.push({ phone, message }),
   };
 }
 
@@ -101,6 +111,13 @@ function at(url: string, path: string, token?: string | null): string {
   if (token === null) parsed.searchParams.delete("t");
   else if (token !== undefined) parsed.searchParams.set("t", token);
   return parsed.toString();
+}
+
+/** T1397b: a camera signal to the door naming `phone` — or, with null, naming none. */
+function postSignal(doorUrl: string, ca: string, phone: string | null, body: string, token?: string | null): Promise<Answer> {
+  const url = new URL(at(doorUrl, PHONE_SIGNAL_PATH, token));
+  if (phone !== null) url.searchParams.set(PHONE_PEER_PARAM, phone);
+  return fetchPinned(url.toString(), ca, { method: "POST", body });
 }
 
 /** A write to the door naming `phone` in `PHONE_PEER_PARAM` — or, with null, naming none. */
@@ -471,6 +488,87 @@ describe("a phone's write reaches the page exactly, under the phone that sent it
   });
 });
 
+/*
+ * T1397b — THE CAMERA HANDSHAKE THROUGH THE DOOR. The helper relays signalling only, so
+ * what it must get right is WHO: a phone's offer reaches the page under that phone's id,
+ * the page's answer reaches THAT phone's stream and no other, and nothing crosses without
+ * the token, a named open stream and a body inside its caps.
+ */
+const OFFER = { kind: "offer", sdp: "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n", name: "Back cam" } as const;
+const ANSWER: PhoneSignalToPhone = { kind: "answer", sdp: "v=0\r\no=- 3 4 IN IP4 127.0.0.1\r\n" };
+
+describe("a phone's camera handshake is relayed, to and from the phone that sent it, and nothing else (T1397b)", () => {
+  it("relays the phone's offer to the page under its `p`, extra keys stripped, and the page's answer down that phone's stream only", async () => {
+    const { door, state, ca, sink } = await openDoor();
+    const sender = await openStream(at(state.url, PHONE_EVENTS_PATH), ca, "Sender");
+    const bystander = await openStream(at(state.url, PHONE_EVENTS_PATH), ca, "Bystander");
+    const answer = await postSignal(state.url, ca, sender.phone, JSON.stringify({ ...OFFER, smuggled: "x" }));
+    expect(answer.status).toBe(204);
+    expect(sink.signals).toEqual([{ phone: sender.phone, message: OFFER }]);
+
+    expect(door.signal(sender.phone, ANSWER)).toBe(true);
+    const ice: PhoneSignalToPhone = { kind: "ice", candidate: "candidate:1 1 udp 1 10.0.0.2 5000 typ host", sdpMid: "0", sdpMLineIndex: 0 };
+    expect(door.signal(sender.phone, ice)).toBe(true);
+    await until(() => sender.events.length === 2, "the answer and the candidate on the sender's stream");
+    expect(sender.events).toEqual([
+      { type: "signal", message: ANSWER },
+      { type: "signal", message: ice },
+    ]);
+    // A phone that is not connected is told nothing, and the door says so.
+    expect(door.signal("not-a-phone", ANSWER)).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(bystander.events).toEqual([]);
+  });
+
+  it("refuses without the token (403), without an open named stream (409), and past the caps or the shape (400) — relaying none of them", async () => {
+    const { state, ca, sink } = await openDoor();
+    const phone = await openStream(at(state.url, PHONE_EVENTS_PATH), ca);
+    const offer = JSON.stringify(OFFER);
+    expect((await postSignal(state.url, ca, phone.phone, offer, null)).status).toBe(403);
+    for (const named of [null, "", "not-a-phone"]) {
+      expect((await postSignal(state.url, ca, named, offer)).status, `p=${String(named)}`).toBe(409);
+    }
+    const bodies = [
+      // Over the byte cap: the door stops reading.
+      JSON.stringify({ ...OFFER, sdp: "x".repeat(PHONE_SIGNAL_MAX_BYTES) }),
+      // Under the byte cap, over the SDP's own.
+      JSON.stringify({ ...OFFER, sdp: "x".repeat(PHONE_SDP_MAX_CHARS + 1) }),
+      JSON.stringify({ ...OFFER, name: "n".repeat(41) }),
+      JSON.stringify({ kind: "offer", name: "no sdp" }),
+      // A phone does not answer; only the page does.
+      JSON.stringify(ANSWER),
+      JSON.stringify({ kind: "ice", candidate: 7, sdpMid: "0", sdpMLineIndex: 0 }),
+      JSON.stringify({ kind: "ice", candidate: "c", sdpMid: "0", sdpMLineIndex: -1 }),
+      JSON.stringify([OFFER]),
+      "not json",
+    ];
+    for (const body of bodies) {
+      const answer = await postSignal(state.url, ca, phone.phone, body);
+      expect(answer.status, body.slice(0, 60)).toBe(400);
+      expect(answer.body.length, "a 400 says why").toBeGreaterThan(10);
+    }
+    expect(sink.signals).toEqual([]);
+    // The legitimate case none of those refusals may swallow: a bye, and a candidate with no mid.
+    expect((await postSignal(state.url, ca, phone.phone, JSON.stringify({ kind: "bye" }))).status).toBe(204);
+    const ice = { kind: "ice", candidate: "candidate:2 1 udp 1 10.0.0.3 5001 typ host", sdpMid: null, sdpMLineIndex: null };
+    expect((await postSignal(state.url, ca, phone.phone, JSON.stringify(ice))).status).toBe(204);
+    expect(sink.signals).toEqual([
+      { phone: phone.phone, message: { kind: "bye" } },
+      { phone: phone.phone, message: ice },
+    ]);
+  });
+
+  it("a closed door relays nothing either way", async () => {
+    const { door, state, ca, sink } = await openDoor();
+    const phone = await openStream(at(state.url, PHONE_EVENTS_PATH), ca);
+    door.close("closed for the test");
+    await until(() => phone.ended, "the stream to end");
+    expect(door.signal(phone.phone, ANSWER)).toBe(false);
+    await expect(postSignal(state.url, ca, phone.phone, JSON.stringify(OFFER))).rejects.toThrow();
+    expect(sink.signals).toEqual([]);
+  });
+});
+
 describe("closing the door (T1396b)", () => {
   it("tells every phone `closed`, ends the streams, and the token dies with the opening", async () => {
     const { door, state, ca } = await openDoor();
@@ -633,6 +731,42 @@ describe("the phone door over the device bridge (T1396b)", () => {
     await until(() => phone.ended, "the phone's stream to end with the page");
     expect(phone.events.at(-1)?.type).toBe("closed");
     await expect(fetchPinned(opened.url, ca)).rejects.toThrow();
+  });
+
+  it("T1397b: relays a camera handshake both ways over the device socket — to the named phone only, malformed page signals dropped", async () => {
+    const helper = await helperWith(true);
+    const { socket, received } = await attachDevice(helper);
+    socket.send(JSON.stringify({ type: "phoneOpen", id: 1 }));
+    await until(() => reply(received, "phoneOpened", 1) !== undefined, "phoneOpened");
+    const opened = reply(received, "phoneOpened", 1)?.["state"] as PhoneDoorState;
+    if (!opened.open) throw new Error(opened.reason);
+    const ca = readFileSync(join(sharedCertDir, "cert.pem"), "utf8");
+    const sender = await openStream(at(opened.url, PHONE_EVENTS_PATH), ca, "Sender");
+    const bystander = await openStream(at(opened.url, PHONE_EVENTS_PATH), ca, "Bystander");
+
+    expect((await postSignal(opened.url, ca, sender.phone, JSON.stringify(OFFER))).status).toBe(204);
+    await until(() => reply(received, "phoneSignal") !== undefined, "phoneSignal on the page's socket");
+    expect(reply(received, "phoneSignal")).toEqual({ type: "phoneSignal", stream: "phone", phone: sender.phone, message: OFFER });
+
+    // A page signal that is not one (an SDP that is not a string) goes nowhere; the
+    // well-formed one after it arrives alone, and only on the phone it names.
+    socket.send(JSON.stringify({ type: "phoneSignal", phone: sender.phone, message: { kind: "answer", sdp: 42 } }));
+    socket.send(JSON.stringify({ type: "phoneSignal", phone: sender.phone, message: ANSWER }));
+    // The Webcam's Capture parameters, asked of the phone — and one outside a camera's range, dropped.
+    const request: PhoneSignalToPhone = { kind: "request", facing: "user", width: 1280, height: 720, frameRate: 30, exact: false };
+    socket.send(JSON.stringify({ type: "phoneSignal", phone: sender.phone, message: { ...request, width: -1 } }));
+    socket.send(JSON.stringify({ type: "phoneSignal", phone: sender.phone, message: request }));
+    await until(() => sender.events.filter((event) => event.type === "signal").length === 2, "the answer and request on the sender's stream");
+    expect(sender.events.filter((event) => event.type === "signal")).toEqual([
+      { type: "signal", message: ANSWER },
+      { type: "signal", message: request },
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(bystander.events.filter((event) => event.type === "signal")).toEqual([]);
+
+    socket.close();
+    await until(() => sender.ended, "the sender's stream to end with the page");
+    expect(sender.events.at(-1)?.type).toBe("closed");
   });
 
   it("phoneClose closes the door and says so; the phones are told", async () => {

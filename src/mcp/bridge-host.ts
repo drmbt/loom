@@ -25,7 +25,7 @@ import type { BridgeSocket } from "@devices/transport/bridge-socket.ts";
 import type { TerminalHost, TerminalSession } from "@devices/terminal-host.ts";
 import { DEVICE_HELPER_TERMINAL_COMMAND, PHONE_DOOR_UNAVAILABLE } from "@devices/helper.ts";
 import type { PhoneDoor } from "@devices/phone/phone-door.ts";
-import type { PhoneDoorState, PhoneSnapshot } from "@devices/phone/phone-protocol.ts";
+import { parsePhoneSignal, type PhoneDoorState, type PhoneSnapshot } from "@devices/phone/phone-protocol.ts";
 import {
   createLoopbackWebSocketServer,
   type LoopbackConnection,
@@ -827,6 +827,11 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
               if (device !== socket) return;
               send(socket, { type: "phoneState", stream: "phone", state });
             },
+            // T1397b: a phone's camera handshake, relayed as the door shape-checked it.
+            onSignal: (phone, signal) => {
+              if (device !== socket) return;
+              send(socket, { type: "phoneSignal", stream: "phone", phone, message: signal });
+            },
           })
           .then((state: PhoneDoorState) => {
             if (device !== socket) return;
@@ -861,6 +866,17 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
         const candidate = snapshot as Record<string, unknown>;
         if (typeof candidate["seq"] !== "number" || !Array.isArray(candidate["panels"])) return;
         options.phone?.publish(snapshot as PhoneSnapshot);
+        return;
+      }
+      case "phoneSignal": {
+        // T1397b — the page's half of one phone's camera handshake. Told, not asked: it
+        // goes down that phone's stream only, and is dropped when that phone is gone.
+        // Shape-checked here as well as on the page, because the phone parses it next.
+        const phone = message["phone"];
+        if (typeof phone !== "string") return;
+        const signal = parsePhoneSignal(message["message"], "page");
+        if (typeof signal === "string") return;
+        options.phone?.signal(phone, signal);
         return;
       }
       case "deviceAck":

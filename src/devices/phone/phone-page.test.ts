@@ -1,8 +1,16 @@
 import { createRequire } from "node:module";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PHONE_EXPIRED_SENTENCE, phonePageHtml } from "./phone-page.ts";
-import { PHONE_EVENTS_PATH, PHONE_SET_PATH, type PhoneEvent, type PhoneSet, type PhoneSnapshot } from "./phone-protocol.ts";
+import { PHONE_EXPIRED_SENTENCE, PHONE_NAME_STORAGE_KEY, phonePageHtml } from "./phone-page.ts";
+import {
+  PHONE_EVENTS_PATH,
+  PHONE_SET_PATH,
+  PHONE_SIGNAL_PATH,
+  type PhoneEvent,
+  type PhoneSet,
+  type PhoneSignalToPhone,
+  type PhoneSnapshot,
+} from "./phone-protocol.ts";
 
 /**
  * T1396b — the phone page, driven as the phone runs it: the SERVED HTML string is parsed by
@@ -20,6 +28,7 @@ interface PageWindow extends Window {
   PointerEvent: typeof PointerEvent;
   MouseEvent: typeof MouseEvent;
   HTMLElement: typeof HTMLElement;
+  Event: typeof Event;
 }
 const { JSDOM, VirtualConsole } = createRequire(import.meta.url)("jsdom") as {
   JSDOM: new (html: string, options: Record<string, unknown>) => { window: PageWindow };
@@ -60,11 +69,101 @@ class FakeEventSource {
 
 const PHONE_ID = "ph-1";
 
-function openPage(options: { hello?: boolean } = {}) {
+/*
+ * T1397b — the phone's camera and WebRTC, faked at the page's own globals like the network
+ * above: what is asserted is what the phone would put on the wire (the signal POSTs) and
+ * what it hands its peer connection (the page's answer and candidates).
+ */
+class FakeTrack {
+  stopped = false;
+  readonly facing: string;
+  constructor(facing: string) {
+    this.facing = facing;
+  }
+  stop(): void {
+    this.stopped = true;
+  }
+  getSettings(): { width: number; height: number } {
+    return { width: 1280, height: 720 };
+  }
+}
+
+class FakeStream {
+  readonly tracks: FakeTrack[];
+  constructor(tracks: FakeTrack[]) {
+    this.tracks = tracks;
+  }
+  getTracks(): FakeTrack[] {
+    return this.tracks;
+  }
+  getVideoTracks(): FakeTrack[] {
+    return this.tracks;
+  }
+}
+
+class FakePeer {
+  readonly added: FakeTrack[] = [];
+  readonly replaced: FakeTrack[] = [];
+  readonly remoteIce: unknown[] = [];
+  closed = false;
+  connectionState = "new";
+  localDescription: { type: string; sdp: string } | null = null;
+  remoteDescription: { type: string; sdp: string } | null = null;
+  onicecandidate: ((event: { candidate: unknown }) => void) | null = null;
+  onconnectionstatechange: (() => void) | null = null;
+  readonly config: unknown;
+  constructor(config: unknown) {
+    this.config = config;
+  }
+  addTrack(track: FakeTrack): void {
+    this.added.push(track);
+  }
+  getSenders(): Array<{ replaceTrack(track: FakeTrack): Promise<void> }> {
+    return [{ replaceTrack: (track) => (this.replaced.push(track), Promise.resolve()) }];
+  }
+  createOffer(): Promise<{ type: string; sdp: string }> {
+    return Promise.resolve({ type: "offer", sdp: "OFFER-SDP" });
+  }
+  setLocalDescription(description: { type: string; sdp: string }): Promise<void> {
+    this.localDescription = description;
+    return Promise.resolve();
+  }
+  setRemoteDescription(description: { type: string; sdp: string }): Promise<void> {
+    this.remoteDescription = description;
+    return Promise.resolve();
+  }
+  addIceCandidate(candidate: unknown): Promise<void> {
+    this.remoteIce.push(candidate);
+    return Promise.resolve();
+  }
+  close(): void {
+    this.closed = true;
+  }
+  /** The browser found a local candidate. */
+  candidate(candidate: { candidate: string; sdpMid: string | null; sdpMLineIndex: number | null }): void {
+    this.onicecandidate?.({ candidate });
+  }
+  state(next: string): void {
+    this.connectionState = next;
+    this.onconnectionstatechange?.();
+  }
+}
+
+interface CameraOptions {
+  /** Leave the camera API off the page (an insecure context, an old browser). */
+  readonly none?: boolean;
+  /** What `getUserMedia` does; default: a fresh one-track stream. */
+  readonly open?: (constraints: unknown) => Promise<FakeStream>;
+  readonly userAgent?: string;
+}
+
+function openPage(options: { hello?: boolean; camera?: CameraOptions } = {}) {
   const frames: (() => void)[] = [];
   const posts: Post[] = [];
   const sources: FakeEventSource[] = [];
   const otherRequests: string[] = [];
+  const peers: FakePeer[] = [];
+  const opened: Array<{ constraints: unknown; stream: FakeStream }> = [];
   let open = 0;
   let maxOpen = 0;
   const virtualConsole = new VirtualConsole();
@@ -77,6 +176,34 @@ function openPage(options: { hello?: boolean } = {}) {
     runScripts: "dangerously",
     beforeParse(win: PageWindow) {
       const globals = win as unknown as Record<string, unknown>;
+      // One storage per origin across every JSDOM in this process: start each page clean.
+      win.localStorage.clear();
+      const camera = options.camera ?? {};
+      if (camera.userAgent !== undefined) {
+        Object.defineProperty(win.navigator, "userAgent", { value: camera.userAgent, configurable: true });
+      }
+      if (camera.none !== true) {
+        Object.defineProperty(win.navigator, "mediaDevices", {
+          configurable: true,
+          value: {
+            getUserMedia: (constraints: unknown) => {
+              const made = camera.open
+                ? camera.open(constraints)
+                : Promise.resolve(new FakeStream([new FakeTrack(String(opened.length))]));
+              return made.then((stream) => {
+                opened.push({ constraints, stream });
+                return stream;
+              });
+            },
+          },
+        });
+        globals["RTCPeerConnection"] = class extends FakePeer {
+          constructor(config: unknown) {
+            super(config);
+            peers.push(this);
+          }
+        };
+      }
       globals["EventSource"] = class extends FakeEventSource {
         constructor(url: string) {
           super(url);
@@ -129,6 +256,19 @@ function openPage(options: { hello?: boolean } = {}) {
     sources,
     posts,
     otherRequests,
+    peers,
+    opened,
+    /** T1397b: every camera signal the phone posted, in order, with the URL it went to. */
+    signals(): Array<{ url: string; body: unknown }> {
+      return posts.filter((post) => post.url.startsWith(PHONE_SIGNAL_PATH)).map((post) => ({ url: post.url, body: post.set }));
+    },
+    /** Let the page's promise chains run (getUserMedia, createOffer, …). */
+    flush,
+    camera(id: string): HTMLElement {
+      const found = doc.getElementById(id);
+      if (found === null) throw new Error(`no #${id}`);
+      return found;
+    },
     get maxOpen() {
       return maxOpen;
     },
@@ -490,5 +630,235 @@ describe("T1396b phone page — the document the helper serves", () => {
     page.source.readyState = 1;
     page.source.onopen?.();
     expect(page.status()).toBe("");
+  });
+});
+
+describe("T1397b phone page — Send camera", () => {
+  /** Press a camera-section button by its text. */
+  const press = (page: ReturnType<typeof openPage>, text: string): void => {
+    const button = [...page.camera("camera").querySelectorAll<HTMLButtonElement>("button")].find(
+      (each) => each.textContent === text,
+    );
+    if (button === undefined) throw new Error(`no camera button "${text}"`);
+    button.click();
+  };
+  const state = (page: ReturnType<typeof openPage>): string => page.camera("camState").textContent ?? "";
+  const signal = (page: ReturnType<typeof openPage>, message: PhoneSignalToPhone): void =>
+    page.emit({ type: "signal", message });
+  const kinds = (page: ReturnType<typeof openPage>): string[] =>
+    page.signals().map((each) => (each.body as { kind: string }).kind);
+
+  it("opens the chosen camera, builds a LAN-only peer, and posts the offer under this phone's id and name — its candidates after it, one POST at a time", async () => {
+    const page = openPage();
+    const name = page.camera("camName") as HTMLInputElement;
+    name.value = "  Back cam  ";
+    name.dispatchEvent(new page.win.Event("change"));
+    press(page, "Start camera");
+    await page.flush();
+
+    expect(page.opened.map((each) => each.constraints)).toEqual([
+      { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+    ]);
+    const peer = page.peers[0];
+    if (peer === undefined) throw new Error("no peer connection");
+    // No STUN, no TURN: the stream never leaves the room, and nobody outside learns where the phone is.
+    expect(peer.config).toEqual({ iceServers: [] });
+    expect(peer.added).toEqual(page.opened[0]?.stream.tracks);
+    // The phone found a candidate while its offer was still on the wire: it waits its turn.
+    const ice = { candidate: "candidate:1 1 udp 2122260223 192.168.1.40 50000 typ host", sdpMid: "0", sdpMLineIndex: 0 };
+    peer.candidate(ice);
+    expect(page.signals()).toEqual([
+      { url: `${PHONE_SIGNAL_PATH}?t=${TOKEN}&p=${PHONE_ID}`, body: { kind: "offer", sdp: "OFFER-SDP", name: "Back cam" } },
+    ]);
+    await page.drain();
+    expect(page.signals().map((each) => each.body)).toEqual([
+      { kind: "offer", sdp: "OFFER-SDP", name: "Back cam" },
+      { kind: "ice", ...ice },
+    ]);
+    expect(page.maxOpen).toBe(1);
+    // The name is the phone's own, kept for next time.
+    expect(page.win.localStorage.getItem(PHONE_NAME_STORAGE_KEY)).toBe("Back cam");
+    expect((page.camera("camPreview") as HTMLVideoElement).hidden).toBe(false);
+    expect((page.camera("camName") as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("applies the page's answer, holds the page's candidates until it is in, and says when it is sending", async () => {
+    const page = openPage();
+    press(page, "Start camera");
+    await page.flush();
+    const peer = page.peers[0]!;
+    const early = { kind: "ice", candidate: "candidate:9 1 udp 1 fd00::1 5000 typ host", sdpMid: "0", sdpMLineIndex: 0 } as const;
+    signal(page, early);
+    expect(peer.remoteIce).toEqual([]);
+    signal(page, { kind: "answer", sdp: "ANSWER-SDP" });
+    await page.flush();
+    expect(peer.remoteDescription).toEqual({ type: "answer", sdp: "ANSWER-SDP" });
+    const late = { kind: "ice", candidate: "candidate:10 1 udp 1 192.168.1.20 5001 typ host", sdpMid: "0", sdpMLineIndex: 0 } as const;
+    signal(page, late);
+    const strip = ({ candidate, sdpMid, sdpMLineIndex }: typeof early | typeof late) => ({ candidate, sdpMid, sdpMLineIndex });
+    expect(peer.remoteIce).toEqual([strip(early), strip(late)]);
+    expect(state(page)).toBe("Connecting to Loom…");
+    peer.state("connected");
+    expect(state(page)).toBe("Sending to Loom — 1280×720.");
+  });
+
+  it("Stop tells the page (bye), closes the connection and turns the camera off", async () => {
+    const page = openPage();
+    press(page, "Start camera");
+    await page.flush();
+    await page.drain();
+    press(page, "Stop camera");
+    await page.drain();
+    expect(kinds(page)).toEqual(["offer", "bye"]);
+    expect(page.peers[0]?.closed).toBe(true);
+    expect(page.opened[0]?.stream.tracks.every((track) => track.stopped)).toBe(true);
+    expect((page.camera("camPreview") as HTMLVideoElement).hidden).toBe(true);
+    expect(state(page)).toBe("Not sending.");
+  });
+
+  it("Front or a new size while sending re-opens the camera and swaps the track on the SAME connection — no new offer", async () => {
+    const page = openPage();
+    press(page, "Start camera");
+    await page.flush();
+    press(page, "1080p");
+    await page.flush();
+    press(page, "Front");
+    await page.flush();
+    await page.drain();
+    expect(page.opened.map((each) => each.constraints)).toEqual([
+      { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+      { video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+      { video: { facingMode: { ideal: "user" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+    ]);
+    expect(page.peers).toHaveLength(1);
+    expect(page.peers[0]?.replaced).toEqual([page.opened[1]?.stream.tracks[0], page.opened[2]?.stream.tracks[0]]);
+    // The camera that was replaced is off; the one sending is not.
+    expect(page.opened.map((each) => each.stream.tracks[0]?.stopped)).toEqual([true, true, false]);
+    expect(kinds(page)).toEqual(["offer"]);
+    expect(page.camera("camera").querySelector('[data-facing="user"]')?.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  /*
+   * The desk's Webcam asks (its Capture parameters); the phone's own buttons stay; the
+   * latest choice from either end wins. A request re-opens the camera on the same
+   * connection, and one it cannot meet (Require) stops the camera and tells the desk why.
+   */
+  it("a desk request re-points the camera — facing, size, rate, Require — on the same connection; a later button press is newer", async () => {
+    const page = openPage();
+    press(page, "Start camera");
+    await page.flush();
+    signal(page, { kind: "request", facing: "user", width: 1920, height: 1080, frameRate: 30, exact: true });
+    await page.flush();
+    expect(page.opened.at(-1)?.constraints).toEqual({
+      video: { facingMode: { ideal: "user" }, width: { exact: 1920 }, height: { exact: 1080 }, frameRate: { exact: 30 } },
+      audio: false,
+    });
+    expect(page.peers).toHaveLength(1);
+    expect(page.peers[0]?.replaced).toEqual([page.opened[1]?.stream.tracks[0]]);
+    // The phone's buttons show what the desk chose.
+    const pressed = [...page.camera("camera").querySelectorAll('button[aria-pressed="true"]')].map((b) => b.textContent);
+    expect(pressed).toEqual(["Front", "1080p"]);
+    // An unasked member leaves the phone's own choice alone; the next button press is simply newer.
+    signal(page, { kind: "request", facing: null, width: 0, height: 0, frameRate: 0, exact: false });
+    await page.flush();
+    press(page, "Back");
+    await page.flush();
+    expect(page.opened.at(-1)?.constraints).toEqual({
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false,
+    });
+  });
+
+  it("a Required size the camera cannot open stops the camera, and the bye tells the desk why", async () => {
+    let calls = 0;
+    const page = openPage({
+      camera: {
+        open: () =>
+          ++calls === 1
+            ? Promise.resolve(new FakeStream([new FakeTrack("first")]))
+            : Promise.reject(Object.assign(new Error("no such mode"), { name: "OverconstrainedError" })),
+      },
+    });
+    press(page, "Start camera");
+    await page.flush();
+    await page.drain();
+    signal(page, { kind: "request", facing: null, width: 7680, height: 4320, frameRate: 0, exact: true });
+    await page.flush();
+    await page.drain();
+    expect(page.signals().at(-1)?.body).toEqual({ kind: "bye", reason: "This phone has no camera that matches." });
+    expect(page.peers[0]?.closed).toBe(true);
+    expect(state(page)).toBe("This phone has no camera that matches.");
+  });
+
+  it("the page's bye, or the door closing, stops the camera and says why", async () => {
+    const page = openPage();
+    press(page, "Start camera");
+    await page.flush();
+    signal(page, { kind: "bye", reason: "The Loom tab stopped receiving." });
+    expect(page.peers[0]?.closed).toBe(true);
+    expect(page.opened[0]?.stream.tracks[0]?.stopped).toBe(true);
+    expect(state(page)).toBe("The Loom tab stopped receiving.");
+
+    press(page, "Start camera");
+    await page.flush();
+    await page.drain();
+    page.emit({ type: "closed", reason: "Loom closed the phone door." });
+    expect(page.peers[1]?.closed).toBe(true);
+    expect(page.opened[1]?.stream.tracks[0]?.stopped).toBe(true);
+    await page.drain();
+    // Neither was answered with a bye of the phone's own: the page already knows.
+    expect(kinds(page)).toEqual(["offer", "offer"]);
+  });
+
+  it("a new event stream (a reconnect) offers again under the new id — the page dropped the old one's camera", async () => {
+    const page = openPage();
+    press(page, "Start camera");
+    await page.flush();
+    await page.drain();
+    page.hello("ph-2");
+    await page.flush();
+    await page.drain();
+    expect(page.peers).toHaveLength(2);
+    expect(page.peers[0]?.closed).toBe(true);
+    // The same camera, a fresh handshake.
+    expect(page.peers[1]?.added).toEqual(page.opened[0]?.stream.tracks);
+    expect(page.signals().map((each) => [each.url.split("p=")[1], (each.body as { kind: string }).kind])).toEqual([
+      [PHONE_ID, "offer"],
+      ["ph-2", "offer"],
+    ]);
+  });
+
+  it("a refused camera, and a browser with no camera API, are said in words — and nothing is sent", async () => {
+    const refused = openPage({
+      camera: { open: () => Promise.reject(Object.assign(new Error("denied"), { name: "NotAllowedError" })) },
+    });
+    press(refused, "Start camera");
+    await refused.flush();
+    expect(state(refused)).toContain("Camera access was refused");
+    expect(refused.peers).toEqual([]);
+
+    const none = openPage({ camera: { none: true } });
+    press(none, "Start camera");
+    expect(state(none)).toBe("This browser cannot open a camera on this page.");
+    expect(none.signals()).toEqual([]);
+  });
+
+  it("waits for its stream's hello before it can start, and names itself after the phone's model", () => {
+    const early = openPage({ hello: false, camera: { userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/AP1A) Chrome/129" } });
+    expect((early.camera("camGo") as HTMLButtonElement).disabled).toBe(true);
+    expect(state(early)).toBe("Waiting for Loom…");
+    expect((early.camera("camName") as HTMLInputElement).value).toBe("Pixel 8");
+    early.hello("ph-9");
+    expect((early.camera("camGo") as HTMLButtonElement).disabled).toBe(false);
+
+    const agents: Array<[string, string]> = [
+      ["Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", "iPhone"],
+      // A reduced agent says "K" where the model was; that names nothing.
+      ["Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/129 Mobile", "Android"],
+    ];
+    for (const [userAgent, expected] of agents) {
+      const page = openPage({ camera: { userAgent } });
+      expect((page.camera("camName") as HTMLInputElement).value, userAgent).toBe(expected);
+    }
   });
 });

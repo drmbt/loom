@@ -27,6 +27,7 @@ import { OSC_CHANNEL_PREFIX } from "../domain/osc/osc-address.ts";
  */
 import type { OscBridgeState } from "../domain/osc/osc-status.ts";
 import type { OscMessage } from "./osc-codec.ts";
+<<<<<<< ours
 import type {
   LaserCommand,
   LaserOutcome,
@@ -35,6 +36,18 @@ import type {
   VisionSegmentRequest,
 } from "./device-protocol.ts";
 import type { PhoneDoorState, PhonePeer, PhoneSet, PhoneSnapshot } from "./phone/phone-protocol.ts";
+=======
+import type { LaserCommand, LaserOutcome, VisionOutcome, VisionSegmentRequest } from "./device-protocol.ts";
+import {
+  parsePhoneSignal,
+  type PhoneDoorState,
+  type PhonePeer,
+  type PhoneSet,
+  type PhoneSignalFromPhone,
+  type PhoneSignalToPhone,
+  type PhoneSnapshot,
+} from "./phone/phone-protocol.ts";
+>>>>>>> theirs
 
 /**
  * THE PAGE HALF OF THE DEVICE ROLE (T942 tier 3) — TRANSPORT ONLY (§V192).
@@ -157,6 +170,14 @@ export interface DeviceClient {
    * away, since the helper closes it then too. Returns an unsubscribe.
    */
   onPhoneState(listener: (state: PhoneDoorState) => void): () => void;
+  /**
+   * T1397b — the page's half of one phone's camera handshake, told to the helper for that
+   * phone's stream. Dropped unattached: a handshake that cannot reach the phone is one the
+   * phone restarts when its stream comes back.
+   */
+  phoneSignal(phone: string, message: PhoneSignalToPhone): void;
+  /** T1397b — PUSH: a phone's half of its camera handshake, shape-checked. Returns an unsubscribe. */
+  onPhoneSignal(listener: (phone: string, message: PhoneSignalFromPhone) => void): () => void;
   dispose(): void;
 }
 
@@ -189,9 +210,13 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
   let phoneDeferred: Array<() => void> = [];
   const phoneWriteListeners = new Set<(phone: string, set: PhoneSet) => void>();
   const phoneStateListeners = new Set<(state: PhoneDoorState) => void>();
+<<<<<<< ours
   /** B232: model downloads awaiting their one owed reply, and the streams they opened. */
   const modelPending = new Map<number, (outcome: ModelFetchOutcome) => void>();
   const modelStreams = new Map<string, ModelStreamSink>();
+=======
+  const phoneSignalListeners = new Set<(phone: string, message: PhoneSignalFromPhone) => void>();
+>>>>>>> theirs
   let disposed = false;
 
   const publish = (state: OscBridgeState): void => {
@@ -441,6 +466,16 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
         for (const listener of [...phoneWriteListeners]) listener(phone, set as PhoneSet);
         return;
       }
+      case "phoneSignal": {
+        // T1397b: a PUSH, shape-checked again here — this is the last hop before a browser
+        // hands the SDP to `RTCPeerConnection`, and the helper is a process, not a promise.
+        const phone = message["phone"];
+        if (typeof phone !== "string") return;
+        const signal = parsePhoneSignal(message["message"], "phone");
+        if (typeof signal === "string") return;
+        for (const listener of [...phoneSignalListeners]) listener(phone, signal);
+        return;
+      }
       default:
         return;
     }
@@ -650,6 +685,15 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
       phoneStateListeners.add(listener);
       return () => {
         phoneStateListeners.delete(listener);
+      };
+    },
+    phoneSignal(phone, signal) {
+      if (attached) send({ type: "phoneSignal", phone, message: signal });
+    },
+    onPhoneSignal(listener) {
+      phoneSignalListeners.add(listener);
+      return () => {
+        phoneSignalListeners.delete(listener);
       };
     },
     reconnectRemembered() {

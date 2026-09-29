@@ -11,12 +11,17 @@ import {
   PHONE_PAGE_PATH,
   PHONE_PEER_PARAM,
   PHONE_SET_PATH,
+  PHONE_SIGNAL_MAX_BYTES,
+  PHONE_SIGNAL_PATH,
   PHONE_TOKEN_PARAM,
+  parsePhoneSignal,
   type PhoneDoorState,
   type PhoneEvent,
   type PhoneFirewallBlock,
   type PhonePeer,
   type PhoneSet,
+  type PhoneSignalFromPhone,
+  type PhoneSignalToPhone,
   type PhoneSnapshot,
 } from "./phone-protocol.ts";
 import { phonePageHtml } from "./phone-page.ts";
@@ -59,9 +64,12 @@ import { probeMacFirewall } from "./mac-firewall.ts";
  *
  * ## Routing is a table on purpose
  *
- * §T1397b adds WebRTC signalling on this same door. A route is one entry in `routes`
- * below, keyed by method and path, and every entry sits behind the same token check —
- * so the next route cannot forget it.
+ * A route is one entry in `routes` below, keyed by method and path, and every entry sits
+ * behind the same token check — so the next route cannot forget it. §T1397b's WebRTC
+ * signalling was the second writing route (`PHONE_SIGNAL_PATH`): a phone's offer, ICE
+ * candidates and bye go up to the page, and the page's answer, candidates and bye come
+ * back down that one phone's event stream (`signal`). The door relays; it never reads an
+ * SDP past its shape and length (`parsePhoneSignal`), and the video never touches it.
  *
  * ## Every OS call is a parameter with a real default
  *
@@ -275,6 +283,8 @@ export interface PhoneDoorSink {
   onWrite(phone: string, set: PhoneSet): void;
   /** The door changed on its own: a phone came or went, or the listener failed. */
   onState(state: PhoneDoorState): void;
+  /** T1397b: a phone holding the token sent its half of a camera handshake. Shape-checked. */
+  onSignal(phone: string, message: PhoneSignalFromPhone): void;
 }
 
 export interface PhoneDoorOptions {
@@ -310,6 +320,12 @@ export interface PhoneDoor {
   release(reason: string): void;
   /** Store the page's current snapshot and send it to every phone. */
   publish(snapshot: PhoneSnapshot): void;
+  /**
+   * T1397b: the page's half of one phone's camera handshake, down THAT phone's stream and
+   * no other. False — and nothing sent — when the door is closed or no stream by that id
+   * is open (the phone left; its next stream offers again under a new id).
+   */
+  signal(phone: string, message: PhoneSignalToPhone): boolean;
   state(): PhoneDoorState;
   dispose(): void;
 }
@@ -398,7 +414,51 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
     response.end(sentence);
   };
 
-  /** Every route, behind the one token check. §T1397b's signalling is one more row here. */
+  /**
+   * A POST body, whole, or a 400 once it passes `max` bytes (and the socket closed, rather
+   * than read to the end for a body that will be refused anyway).
+   */
+  const readBody = (
+    request: IncomingMessage,
+    response: ServerResponse,
+    max: number,
+    tooBig: string,
+    then: (text: string) => void,
+  ): void => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    let refused = false;
+    request.on("data", (chunk: Buffer) => {
+      if (refused) return;
+      size += chunk.length;
+      if (size > max) {
+        refused = true;
+        response.setHeader("Connection", "close");
+        refuse(response, 400, tooBig);
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on("end", () => {
+      if (!refused) then(Buffer.concat(chunks).toString("utf8"));
+    });
+  };
+
+  /**
+   * WHICH PHONE SENT IT: the one the request names (`PHONE_PEER_PARAM`, the id its stream
+   * said in `hello`), and only while that stream is open. Not guessed from the address —
+   * two tabs on one phone share it and are two phones here, each with its own undo. An id
+   * with no open stream is refused with a 409, never relayed under.
+   */
+  const namedPhone = (door: Opened, url: URL, response: ServerResponse): Phone | null => {
+    const named = url.searchParams.get(PHONE_PEER_PARAM);
+    const phone = named === null ? undefined : door.phones.get(named);
+    if (phone !== undefined) return phone;
+    refuse(response, 409, "This phone's connection to Loom is not open, so the change was not sent. Reconnecting.");
+    return null;
+  };
+
+  /** Every route, behind the one token check. */
   const routes: Record<
     string,
     (door: Opened, request: IncomingMessage, response: ServerResponse, url: URL) => void
@@ -442,47 +502,52 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
       door.sink.onState(state());
     },
     [`POST ${PHONE_SET_PATH}`]: (door, request, response, url) => {
-      let size = 0;
-      const chunks: Buffer[] = [];
-      let refused = false;
-      request.on("data", (chunk: Buffer) => {
-        if (refused) return;
-        size += chunk.length;
-        if (size > PHONE_SET_MAX_BYTES) {
-          refused = true;
-          response.setHeader("Connection", "close");
-          refuse(response, 400, `A phone write is at most ${String(PHONE_SET_MAX_BYTES)} bytes; this one was not relayed.`);
-          return;
-        }
-        chunks.push(chunk);
-      });
-      request.on("end", () => {
-        if (refused) return;
-        const set = parsePhoneSet(Buffer.concat(chunks).toString("utf8"));
-        if (typeof set === "string") {
-          refuse(response, 400, set);
-          return;
-        }
-        /*
-         * WHICH PHONE WROTE: the one the write names (`PHONE_PEER_PARAM`, the id its
-         * stream said in `hello`), and only while that stream is open. Not guessed from
-         * the address — two tabs on one phone share it and are two phones here, each
-         * with its own undo. An id with no open stream is refused, never written under.
-         */
-        const named = url.searchParams.get(PHONE_PEER_PARAM);
-        const phone = named === null ? undefined : door.phones.get(named);
-        if (phone === undefined) {
-          refuse(
-            response,
-            409,
-            "This phone's connection to Loom is not open, so the change was not sent. Reconnecting.",
-          );
-          return;
-        }
-        door.sink.onWrite(phone.peer.phone, set);
-        response.writeHead(204, BASE_HEADERS);
-        response.end();
-      });
+      readBody(
+        request,
+        response,
+        PHONE_SET_MAX_BYTES,
+        `A phone write is at most ${String(PHONE_SET_MAX_BYTES)} bytes; this one was not relayed.`,
+        (text) => {
+          const set = parsePhoneSet(text);
+          if (typeof set === "string") {
+            refuse(response, 400, set);
+            return;
+          }
+          const phone = namedPhone(door, url, response);
+          if (phone === null) return;
+          door.sink.onWrite(phone.peer.phone, set);
+          response.writeHead(204, BASE_HEADERS);
+          response.end();
+        },
+      );
+    },
+    // T1397b: a phone's half of its camera handshake, relayed to the page as it came.
+    [`POST ${PHONE_SIGNAL_PATH}`]: (door, request, response, url) => {
+      readBody(
+        request,
+        response,
+        PHONE_SIGNAL_MAX_BYTES,
+        `A camera signal is at most ${String(PHONE_SIGNAL_MAX_BYTES)} bytes; this one was not relayed.`,
+        (text) => {
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            refuse(response, 400, "A camera signal must be one JSON object; this body did not parse.");
+            return;
+          }
+          const message = parsePhoneSignal(parsed, "phone");
+          if (typeof message === "string") {
+            refuse(response, 400, message);
+            return;
+          }
+          const phone = namedPhone(door, url, response);
+          if (phone === null) return;
+          door.sink.onSignal(phone.peer.phone, message);
+          response.writeHead(204, BASE_HEADERS);
+          response.end();
+        },
+      );
     },
   };
 
@@ -620,6 +685,12 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
       snapshot = next;
       if (opened === null) return;
       for (const phone of opened.phones.values()) writeEvent(phone.response, { type: "snapshot", snapshot: next });
+    },
+    signal(phone, message) {
+      const target = opened?.phones.get(phone);
+      if (target === undefined) return false;
+      writeEvent(target.response, { type: "signal", message });
+      return true;
     },
     state,
     dispose() {

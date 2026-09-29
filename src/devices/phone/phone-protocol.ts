@@ -123,7 +123,162 @@ export type PhoneEvent =
   | { readonly type: "hello"; readonly phone: string }
   | { readonly type: "snapshot"; readonly snapshot: PhoneSnapshot }
   /** The page went away or closed the door. The phone shows `reason` and stops sending. */
-  | { readonly type: "closed"; readonly reason: string };
+  | { readonly type: "closed"; readonly reason: string }
+  /** T1397b: the page's half of this phone's camera handshake, relayed as the page sent it. */
+  | { readonly type: "signal"; readonly message: PhoneSignalToPhone };
+
+/* ------------------------------------------------ the camera handshake (T1397b) */
+
+/**
+ * T1397b — POST: one `PhoneSignalFromPhone` as a JSON body, the phone's half of a WebRTC
+ * handshake. Token and `PHONE_PEER_PARAM` exactly as `PHONE_SET_PATH`; answered 204, 409
+ * for a phone whose stream is not open, 400 with a sentence for a body that is not one.
+ *
+ * ## The helper relays signalling and nothing else
+ *
+ * The phone has the camera, so the phone OFFERS; the page ANSWERS (a receive-only video
+ * transceiver, which is what answering a send-only offer with no tracks of its own
+ * produces). The video itself goes phone → page directly, peer to peer on the wifi. The
+ * helper carries the offer, the answer, the ICE candidates and a `bye` between the two, one
+ * JSON object at a time, and never reads an SDP past its type and length: the only party
+ * that interprets one is a browser.
+ *
+ * LAN ONLY, NO STUN/TURN: both halves build their `RTCPeerConnection` with `iceServers: []`.
+ * On one wifi the host candidates are enough, and a STUN server would be a third party on
+ * the internet learning this machine's address for a stream that never leaves the room.
+ */
+export const PHONE_SIGNAL_PATH = "/signal";
+/** The largest signal body the door accepts. An offer for one video track is a few KB. */
+export const PHONE_SIGNAL_MAX_BYTES = 32_768;
+/** The longest SDP either half may relay, in characters — the body cap less its envelope. */
+export const PHONE_SDP_MAX_CHARS = 30_000;
+/** The longest ICE candidate line. A real one is well under 200 characters. */
+export const PHONE_ICE_MAX_CHARS = 1_024;
+/** The longest name a phone may send under (a Webcam node's `phone:<name>` device). */
+export const PHONE_NAME_MAX_CHARS = 40;
+/** The longest reason a page's `bye` may carry. */
+export const PHONE_REASON_MAX_CHARS = 200;
+
+/** One trickled ICE candidate: the three fields `RTCIceCandidateInit` needs, nothing else. */
+export interface PhoneIceCandidate {
+  readonly candidate: string;
+  readonly sdpMid: string | null;
+  readonly sdpMLineIndex: number | null;
+}
+
+/** PHONE → PAGE, through `PHONE_SIGNAL_PATH` and the `phoneSignal` push. */
+export type PhoneSignalFromPhone =
+  /**
+   * `name` is what the phone's owner typed on the phone page (remembered by that phone),
+   * and what a Webcam node's `phone:<name>` device matches. Not the connection id: that
+   * is minted per stream and changes on every reconnect, and a saved document must find
+   * "Back cam" again tomorrow.
+   */
+  | { readonly kind: "offer"; readonly sdp: string; readonly name: string }
+  | ({ readonly kind: "ice" } & PhoneIceCandidate)
+  /** The phone stopped sending — `reason` when it did not choose to (a camera it could not open). */
+  | { readonly kind: "bye"; readonly reason?: string };
+
+/**
+ * What the desk asks a sending phone's camera for: the Webcam node's Capture parameters
+ * (§T1043), passed on as they stand. 0 (or a null facing) is UNASKED, and the phone keeps
+ * what it has for that member. `exact` is the node's Require fit, for size and rate only —
+ * facing is always a preference, for the reason `media.ts` gives.
+ *
+ * The phone's own Front/Back and resolution buttons stay, and the LATEST choice from either
+ * end wins: a request re-points the phone's selection (its buttons show it), and a button
+ * pressed on the phone afterwards is simply newer. The desk sends a request only when a
+ * Webcam node on a phone asks for something, when it opens that phone and each time one of
+ * those parameters changes (the media hook re-opens on any Capture change).
+ */
+export interface PhoneCameraRequest {
+  readonly facing: "user" | "environment" | null;
+  readonly width: number;
+  readonly height: number;
+  readonly frameRate: number;
+  readonly exact: boolean;
+}
+
+/** PAGE → PHONE, through the `phoneSignal` request and the `signal` event. */
+export type PhoneSignalToPhone =
+  | { readonly kind: "answer"; readonly sdp: string }
+  | ({ readonly kind: "ice" } & PhoneIceCandidate)
+  /** The page stopped receiving; the phone shows `reason` and stops its camera. */
+  | { readonly kind: "bye"; readonly reason: string }
+  /** The desk asks the camera for a facing, a size and a rate. The phone re-opens its camera. */
+  | ({ readonly kind: "request" } & PhoneCameraRequest);
+
+/**
+ * The one shape check a signal gets at every hop that crosses a process (the door, the
+ * bridge host, the device client): the kind is one that direction may send, every field
+ * is the right type and inside its cap, and nothing else is carried — the result is a
+ * fresh object, so an extra key never rides along. Returns the signal, or a sentence
+ * saying why it is not one. An SDP is checked for type and length only (see above).
+ */
+export function parsePhoneSignal(value: unknown, from: "phone"): PhoneSignalFromPhone | string;
+export function parsePhoneSignal(value: unknown, from: "page"): PhoneSignalToPhone | string;
+export function parsePhoneSignal(value: unknown, from: "phone" | "page"): PhoneSignalFromPhone | PhoneSignalToPhone | string {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return "A camera signal must be one JSON object.";
+  const record = value as Record<string, unknown>;
+  const kind = record["kind"];
+  const text = (key: string, max: number): string | null => {
+    const field = record[key];
+    return typeof field === "string" && field.length <= max ? field : null;
+  };
+  if (kind === "ice") {
+    const candidate = text("candidate", PHONE_ICE_MAX_CHARS);
+    // Absent reads as null: `RTCIceCandidateInit` treats the two alike.
+    const mid = record["sdpMid"] ?? null;
+    const line = record["sdpMLineIndex"] ?? null;
+    if (candidate === null) return `An ICE signal needs a \`candidate\` string of at most ${String(PHONE_ICE_MAX_CHARS)} characters.`;
+    if (mid !== null && (typeof mid !== "string" || mid.length > 64)) return "An ICE signal's `sdpMid` is a short string or null.";
+    if (line !== null && (typeof line !== "number" || !Number.isInteger(line) || line < 0 || line > 255)) {
+      return "An ICE signal's `sdpMLineIndex` is a small whole number or null.";
+    }
+    return { kind: "ice", candidate, sdpMid: mid as string | null, sdpMLineIndex: line as number | null };
+  }
+  if (from === "phone") {
+    if (kind === "bye") {
+      if (record["reason"] === undefined) return { kind: "bye" };
+      const reason = text("reason", PHONE_REASON_MAX_CHARS);
+      if (reason === null) return `A bye's \`reason\` is a string of at most ${String(PHONE_REASON_MAX_CHARS)} characters.`;
+      return { kind: "bye", reason };
+    }
+    if (kind !== "offer") return "A phone's camera signal is `offer`, `ice` or `bye`.";
+    const sdp = text("sdp", PHONE_SDP_MAX_CHARS);
+    if (sdp === null || sdp === "") return `An offer needs an \`sdp\` string of at most ${String(PHONE_SDP_MAX_CHARS)} characters.`;
+    const name = text("name", PHONE_NAME_MAX_CHARS);
+    if (name === null) return `An offer needs a \`name\` string of at most ${String(PHONE_NAME_MAX_CHARS)} characters.`;
+    return { kind: "offer", sdp, name: name.trim() };
+  }
+  if (kind === "bye") {
+    const reason = text("reason", PHONE_REASON_MAX_CHARS);
+    if (reason === null) return `A bye needs a \`reason\` string of at most ${String(PHONE_REASON_MAX_CHARS)} characters.`;
+    return { kind: "bye", reason };
+  }
+  if (kind === "request") {
+    const facing = record["facing"] ?? null;
+    if (facing !== null && facing !== "user" && facing !== "environment") {
+      return "A camera request's `facing` is `user`, `environment` or null.";
+    }
+    const whole = (key: string, max: number): number | null => {
+      const field = record[key];
+      return typeof field === "number" && Number.isInteger(field) && field >= 0 && field <= max ? field : null;
+    };
+    const width = whole("width", 7680);
+    const height = whole("height", 4320);
+    const frameRate = whole("frameRate", 240);
+    if (width === null || height === null || frameRate === null) {
+      return "A camera request's `width`, `height` and `frameRate` are whole numbers within a camera's range (0 = unasked).";
+    }
+    if (typeof record["exact"] !== "boolean") return "A camera request's `exact` is a boolean.";
+    return { kind: "request", facing, width, height, frameRate, exact: record["exact"] };
+  }
+  if (kind !== "answer") return "A page's camera signal is `answer`, `ice`, `bye` or `request`.";
+  const sdp = text("sdp", PHONE_SDP_MAX_CHARS);
+  if (sdp === null || sdp === "") return `An answer needs an \`sdp\` string of at most ${String(PHONE_SDP_MAX_CHARS)} characters.`;
+  return { kind: "answer", sdp };
+}
 
 /** Who the helper says a phone is: an id per connection, and what its browser called itself. */
 export interface PhonePeer {
@@ -145,7 +300,12 @@ export type PhoneClientMessage =
   /** Close it and drop every phone. One owed reply: `phoneOpened` with `open: false`. */
   | { readonly type: "phoneClose"; readonly id: number }
   /** The current snapshot. Told, not asked: no `id`, no reply. Fanned out to every phone. */
-  | { readonly type: "phonePublish"; readonly snapshot: PhoneSnapshot };
+  | { readonly type: "phonePublish"; readonly snapshot: PhoneSnapshot }
+  /**
+   * T1397b — the page's half of one phone's camera handshake. Told, not asked: relayed to
+   * that phone's stream only, and dropped when no phone by that id is connected.
+   */
+  | { readonly type: "phoneSignal"; readonly phone: string; readonly message: PhoneSignalToPhone };
 
 /**
  * T1511b — the macOS application firewall will refuse every phone before it reaches the
@@ -190,4 +350,6 @@ export type PhoneHostMessage =
   /** PUSH. A phone wrote. The page vets it; the helper has already checked the token. */
   | { readonly type: "phoneWrite"; readonly stream: "phone"; readonly phone: string; readonly set: PhoneSet }
   /** PUSH. The door's state changed on its own: a phone came or went, the listener failed. */
-  | { readonly type: "phoneState"; readonly stream: "phone"; readonly state: PhoneDoorState };
+  | { readonly type: "phoneState"; readonly stream: "phone"; readonly state: PhoneDoorState }
+  /** PUSH (T1397b). A phone's half of its camera handshake; the token was checked, the shape too. */
+  | { readonly type: "phoneSignal"; readonly stream: "phone"; readonly phone: string; readonly message: PhoneSignalFromPhone };
