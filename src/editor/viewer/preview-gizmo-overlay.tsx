@@ -69,12 +69,27 @@ import styles from "./viewer.module.css";
  *
  * The loop does not start at all while `active` is false, which is every document with no
  * 3D tile offering a world-space vec3.
+ *
+ * ## §T1491b — picture handles, on a texture tile
+ *
+ * A Corner Pin's four pins are points on the node's OWN OUTPUT PICTURE (normalised, y up),
+ * so its tile offers them with no camera at all: the fitted picture rect above IS the
+ * coordinate frame, a pin at (u, v) sits at `rect.x + u·width, rect.y + (1 − v)·height`, and
+ * a drag inverts that. Everything else is this layer's and the store's, unchanged — the
+ * placement arithmetic §V118 letterboxes, the one measurement at pointerdown, the refusal,
+ * the live/commit gesture that is one undo group. A tile carries a `basis` only when it is
+ * a 3D picture; a texture tile carries none and offers only picture handles. A pin past the
+ * frame (overscan) is drawn past the picture, where its value puts it — it is still the
+ * point the drag moves.
  */
 
 /** Everything one tile needs to place and drag its handles. */
 export interface PreviewGizmoTile {
-  /** The compiler's published basis for this tile's synthesized pass. */
-  readonly basis: OrbitCameraBasis;
+  /**
+   * The compiler's published basis for this tile's synthesized pass. Absent on a texture
+   * tile, which has no camera and offers only picture handles (§T1491b).
+   */
+  readonly basis?: OrbitCameraBasis;
   /** This pane's live inspection deltas, or undefined for the baked framing. */
   readonly orbit: PreviewOrbit | undefined;
   /** The synthesized target's pixel size — §V118's letterbox input. */
@@ -100,7 +115,8 @@ export interface PreviewGizmoOverlaysProps {
 interface Placement {
   readonly nodeId: NodeId;
   readonly handle: GizmoHandle;
-  readonly camera: TileCamera;
+  /** Null on a texture tile: its picture handles are placed by the rect alone (§T1491b). */
+  readonly camera: TileCamera | null;
   readonly rect: PictureRect;
   readonly x: number;
   readonly y: number;
@@ -117,14 +133,13 @@ function samePlacements(a: readonly Placement[], b: readonly Placement[]): boole
     // The camera is compared through its POSE, not its matrix: two poses that project
     // this handle to the same pixel can still define different drag planes, and the
     // pointerdown handler reads the camera off the cached placement.
-    const pose = (side: Placement): readonly number[] => [
-      ...side.camera.pose.eye,
-      ...side.camera.pose.lookAt,
-    ];
+    const pose = (side: Placement): readonly number[] =>
+      side.camera === null ? [] : [...side.camera.pose.eye, ...side.camera.pose.lookAt];
     return (
       left.nodeId === right.nodeId &&
       left.handle.key === right.handle.key &&
       left.handle.refusal === right.handle.refusal &&
+      left.handle.value.length === right.handle.value.length &&
       left.handle.value.every((v, i) => v === right.handle.value[i]) &&
       left.x === right.x &&
       left.y === right.y &&
@@ -133,6 +148,7 @@ function samePlacements(a: readonly Placement[], b: readonly Placement[]): boole
       left.rect.y === right.rect.y &&
       left.rect.width === right.rect.width &&
       left.rect.height === right.rect.height &&
+      pose(left).length === pose(right).length &&
       pose(left).every((v, i) => v === pose(right)[i])
     );
   });
@@ -166,8 +182,17 @@ export function PreviewGizmoOverlays({ bounds, tile, store, active }: PreviewGiz
             },
             { x: tx, y: ty, zoom },
           );
-          const camera = tileCamera(facts.basis, facts.orbit);
+          const camera = facts.basis === undefined ? null : tileCamera(facts.basis, facts.orbit);
           for (const handle of facts.handles) {
+            if (handle.space === "picture") {
+              // §T1491b — y UP in the value, y DOWN on the screen.
+              const [u, v] = handle.value;
+              const x = rect.x + u * rect.width;
+              const y = rect.y + (1 - v) * rect.height;
+              placements.push({ nodeId: id, handle, camera, rect, x, y, zoom });
+              continue;
+            }
+            if (camera === null) continue;
             const point = handleScreenPoint(camera, handle.value, rect);
             // Off-frame and behind-camera are both "nowhere to draw it". The tile orbits
             // and dollies, so the value is one wheel turn from being reachable; a handle
@@ -256,8 +281,9 @@ function GizmoHandleControl({
     origin: { x: number; y: number };
     grabX: number;
     grabY: number;
-    start: readonly [number, number, number];
-    camera: TileCamera;
+    /** The handle as the press found it: its space, and the value the plane goes through. */
+    start: GizmoHandle;
+    camera: TileCamera | null;
     rect: PictureRect;
   } | null>(null);
 
@@ -276,7 +302,7 @@ function GizmoHandleControl({
         // offset between the press and the handle's own centre rides along.
         grabX: event.clientX - origin.x - x,
         grabY: event.clientY - origin.y - y,
-        start: handle.value,
+        start: handle,
         camera,
         rect,
       };
@@ -290,11 +316,21 @@ function GizmoHandleControl({
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       const active = drag.current;
       if (active === null || active.pointerId !== event.pointerId) return;
-      const world = pointerToPlane(active.camera, active.start, active.rect, {
+      const pointer = {
         x: event.clientX - active.origin.x - active.grabX,
         y: event.clientY - active.origin.y - active.grabY,
-      });
-      store.drag(nodeId, handle.key, world);
+      };
+      if (active.start.space === "picture") {
+        // §T1491b — the placement inverted: the picture rect is the whole frame.
+        const { rect: frame } = active;
+        store.drag(nodeId, handle.key, [
+          (pointer.x - frame.x) / frame.width,
+          1 - (pointer.y - frame.y) / frame.height,
+        ]);
+        return;
+      }
+      if (active.camera === null) return;
+      store.drag(nodeId, handle.key, pointerToPlane(active.camera, active.start.value, active.rect, pointer));
     },
     [handle.key, nodeId, store],
   );
@@ -315,7 +351,13 @@ function GizmoHandleControl({
       data-testid={`preview-gizmo-${nodeId}-${handle.key}`}
       data-locked={locked ? "true" : undefined}
       aria-label={locked ? `${handle.label} handle — ${handle.refusal ?? ""}` : `${handle.label} handle`}
-      title={locked ? (handle.refusal ?? "") : `Drag ${handle.label} across the view plane`}
+      title={
+        locked
+          ? (handle.refusal ?? "")
+          : handle.space === "picture"
+            ? `Drag ${handle.label} on the picture`
+            : `Drag ${handle.label} across the view plane`
+      }
       style={{ ...cssVars({ "--chrome-zoom": zoom }), left: `${String(x)}px`, top: `${String(y)}px` }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

@@ -44,13 +44,24 @@ export type { PreviewInspectOverlaysProps } from "./preview-inspect-overlay.tsx"
  */
 export { PreviewGizmoOverlays } from "./preview-gizmo-overlay.tsx";
 export type { PreviewGizmoOverlaysProps, PreviewGizmoTile } from "./preview-gizmo-overlay.tsx";
-export { GIZMO_LOCKED_REASON, createVec3GizmoStore, gizmoHandlesFor } from "./vec3-gizmo-store.ts";
+export {
+  GIZMO_LOCKED_REASON,
+  PICTURE_GIZMO_LOCKED_REASON,
+  createVec3GizmoStore,
+  gizmoHandlesFor,
+  offersPictureHandles,
+  pictureHandlesFor,
+} from "./vec3-gizmo-store.ts";
 export type {
   GizmoHandle,
+  PictureGizmoHandle,
+  WorldGizmoHandle,
   GizmoParameterFacts,
   Vec3GizmoEditor,
   Vec3GizmoStore,
 } from "./vec3-gizmo-store.ts";
+export { gizmoTilesFor } from "./gizmo-tiles.ts";
+export type { GizmoTileOutput } from "./gizmo-tiles.ts";
 export { handleScreenPoint, pointerToPlane, tileCamera } from "./gizmo-projection.ts";
 export type { HandlePoint, PictureRect, TileCamera } from "./gizmo-projection.ts";
 

@@ -74,7 +74,9 @@ export interface Vec3GizmoEditor {
 export const GIZMO_LOCKED_REASON = "not Constant — the gizmo writes all 3 axes";
 
 /** One draggable point: a node's world-space vec3 parameter, as the picture shows it. */
-export interface GizmoHandle {
+export interface WorldGizmoHandle {
+  /** Absent means world: every T935 handle is one, and none of them spells it. */
+  readonly space?: "world";
   /** The parameter key the drag writes. Also the handle's identity within its node. */
   readonly key: string;
   /** The manifest's label, for the accessible name. */
@@ -84,6 +86,22 @@ export interface GizmoHandle {
   /** Null when the drag may proceed; the reason it may not, otherwise (§T935(b)). */
   readonly refusal: string | null;
 }
+
+/**
+ * §T1491b — a point ON THE TILE'S OWN PICTURE: a `vector`/2 the manifest declares
+ * `handle: "picture"` (Corner Pin's four pins), normalised 0..1 with (0, 0) at the bottom
+ * left. No camera is involved — the picture rect IS the coordinate frame — so the same store,
+ * the same refusal and the same one-undo-group gesture carry it with no second system.
+ */
+export interface PictureGizmoHandle {
+  readonly space: "picture";
+  readonly key: string;
+  readonly label: string;
+  readonly value: readonly [number, number];
+  readonly refusal: string | null;
+}
+
+export type GizmoHandle = WorldGizmoHandle | PictureGizmoHandle;
 
 /** The resolved facts one node's handles are derived from (`resolveParameters`'s shape). */
 export interface GizmoParameterFacts {
@@ -163,14 +181,65 @@ export function gizmoHandlesFor(facts: GizmoParameterFacts): readonly GizmoHandl
   return handles;
 }
 
+/** §T1491b — the picture-handle refusal: the drag writes both axes, so one driven axis refuses. */
+export const PICTURE_GIZMO_LOCKED_REASON = "not Constant — the handle writes both axes";
+
+const asVec2 = (value: ParameterValue): readonly [number, number] | null => {
+  if (!Array.isArray(value) || value.length !== 2) return null;
+  const [x, y] = value as readonly unknown[];
+  if (typeof x !== "number" || typeof y !== "number") return null;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return [x, y];
+};
+
+/**
+ * §T1491b — THE PICTURE HANDLES a texture tile offers: every `vector`/2 its manifest DECLARES
+ * `handle: "picture"`, never one inferred from its range (§V437 — a uv offset or a seam is a
+ * `vector`/2 in 0..1 too, in some other image's coordinates). The §V146 and §V113 rules are
+ * `gizmoHandlesFor`'s, unchanged: an inactive point is not drawn, a driven one is drawn and
+ * refused.
+ */
+export function pictureHandlesFor(facts: GizmoParameterFacts): readonly PictureGizmoHandle[] {
+  const handles: PictureGizmoHandle[] = [];
+  for (const entry of facts.resolved) {
+    const definition = facts.schema[entry.key];
+    if (definition?.type !== "vector" || definition.size !== 2 || definition.handle !== "picture") continue;
+    if (definition.inactiveWhen?.(facts.values) != null) continue;
+    const value = asVec2(entry.value);
+    if (value === null) continue;
+    const locked =
+      entry.mode !== "static" ||
+      (entry.components ?? []).some((component) => component.mode !== "static");
+    handles.push({
+      space: "picture",
+      key: entry.key,
+      label: definition.label,
+      value,
+      refusal: locked ? PICTURE_GIZMO_LOCKED_REASON : null,
+    });
+  }
+  return handles;
+}
+
+/**
+ * True when a manifest declares any picture handle — the cheap gate the graph pane asks
+ * before resolving a node's parameters, so a compile does not resolve every node in the
+ * document to find the few with handles.
+ */
+export const offersPictureHandles = (schema: ParameterSchema): boolean =>
+  Object.values(schema).some((definition) => definition.type === "vector" && definition.handle === "picture");
+
 export interface Vec3GizmoStore {
   /**
    * Open a gesture on one handle. Returns null when it may proceed, or the refusal
    * reason when it may not — the caller neither captures the pointer nor writes.
    */
   begin(nodeId: NodeId, handle: GizmoHandle): string | null;
-  /** A live world position for an open gesture. Coalesced by the editor, per frame. */
-  drag(nodeId: NodeId, key: string, world: readonly [number, number, number]): void;
+  /**
+   * A live value for an open gesture — a world position, or (§T1491b) a picture point.
+   * Coalesced by the editor, per frame.
+   */
+  drag(nodeId: NodeId, key: string, value: readonly number[]): void;
   /** Close the gesture: one commit, one undo step, only if anything actually moved. */
   end(nodeId: NodeId, key: string): void;
   /** True while this handle owns a gesture — the caller's cursor and capture follow it. */
@@ -188,7 +257,7 @@ interface Session {
    * different keys — an empty record most of all — would open a second group and leave
    * the drag's own one hanging (§V15).
    */
-  last: readonly [number, number, number] | null;
+  last: readonly number[] | null;
 }
 
 export function createVec3GizmoStore(options: { editor: Vec3GizmoEditor }): Vec3GizmoStore {
@@ -203,14 +272,10 @@ export function createVec3GizmoStore(options: { editor: Vec3GizmoEditor }): Vec3
       return null;
     },
 
-    drag(nodeId, key, world) {
+    drag(nodeId, key, raw) {
       const session = sessions.get(identity(nodeId, key));
       if (session === undefined) return;
-      const value: readonly [number, number, number] = [
-        round6(world[0]),
-        round6(world[1]),
-        round6(world[2]),
-      ];
+      const value = raw.map(round6);
       session.last = value;
       options.editor.setStored(nodeId, { [key]: value }, "live");
     },

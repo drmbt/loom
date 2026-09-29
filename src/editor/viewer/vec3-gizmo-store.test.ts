@@ -8,8 +8,11 @@ import { allNodeDefinitions } from "@nodes/definitions/index.ts";
 import { createNodeRegistry } from "@nodes/registry/index.ts";
 import {
   GIZMO_LOCKED_REASON,
+  PICTURE_GIZMO_LOCKED_REASON,
   createVec3GizmoStore,
   gizmoHandlesFor,
+  offersPictureHandles,
+  pictureHandlesFor,
 } from "./vec3-gizmo-store.ts";
 import type { GizmoParameterFacts, Vec3GizmoEditor } from "./vec3-gizmo-store.ts";
 
@@ -348,6 +351,81 @@ describe("T935 — the derivation against the shipped node catalogue", () => {
       "row0",
       "row1",
       "row2",
+    ]);
+  });
+});
+
+/**
+ * §T1491b — PICTURE handles: a `vector`/2 the manifest DECLARES `handle: "picture"`, and
+ * nothing that merely looks like one. Against the shipped catalogue, so the answer is the
+ * app's: Corner Pin's four pins, and not Tile's seam or Mirror's pivot — both `vector`/2
+ * in 0..1, both in some other image's coordinates.
+ */
+describe("T1491b — which parameters are offered a PICTURE handle", () => {
+  const registry = createNodeRegistry(allNodeDefinitions).view();
+
+  const pictureHandlesOf = (type: string, overrides: Record<string, ParameterValue> = {}) => {
+    const definition = registry.get(type);
+    if (definition === undefined) throw new Error(`no definition for ${type}`);
+    const node: GraphNode = {
+      id: `${type}1` as NodeId,
+      type,
+      definitionVersion: definition.version,
+      position: { x: 0, y: 0 },
+      parameters: { ...defaultParameters(effectiveParameterSchema(definition, {})), ...overrides },
+    };
+    const resolved = resolveParameters(node, definition);
+    return pictureHandlesFor({
+      schema: effectiveParameterSchema(definition, node.parameters),
+      resolved: resolved.entries,
+      values: resolved.values,
+    });
+  };
+
+  it("gives Corner Pin its four pins, at their values, in the space the overlay places by", () => {
+    const handles = pictureHandlesOf("cornerPin", { pintr: [0.8, 0.9] });
+    expect(handles.map((handle) => handle.key)).toEqual(["pinbl", "pinbr", "pintr", "pintl"]);
+    expect(handles.every((handle) => handle.space === "picture" && handle.refusal === null)).toBe(true);
+    expect(handles[2]?.value).toEqual([0.8, 0.9]);
+    expect(handles[2]?.label).toBe("Pin Top Right");
+  });
+
+  it("gives an undeclared vector/2 in 0..1 NONE — Tile's seam, Mirror's pivot (§V437)", () => {
+    expect(pictureHandlesOf("tile")).toEqual([]);
+    expect(pictureHandlesOf("mirror")).toEqual([]);
+    // The cheap gate the graph pane asks first agrees, from the schema alone.
+    const schemaOf = (type: string) => {
+      const definition = registry.get(type);
+      if (definition === undefined) throw new Error(`no definition for ${type}`);
+      return effectiveParameterSchema(definition, {});
+    };
+    expect(offersPictureHandles(schemaOf("mirror"))).toBe(false);
+    expect(offersPictureHandles(schemaOf("cornerPin"))).toBe(true);
+  });
+
+  it("SHOWS a driven pin and refuses it, with the two-axis reason", () => {
+    const [handle] = pictureHandlesFor({
+      schema: {
+        pin: { type: "vector", size: 2, label: "Pin", default: [0, 0], handle: "picture" },
+      },
+      resolved: [{ key: "pin", value: [0.25, 0.5], mode: "expression" }],
+      values: { pin: [0.25, 0.5] },
+    });
+    expect(handle?.refusal).toBe(PICTURE_GIZMO_LOCKED_REASON);
+    expect(handle?.value).toEqual([0.25, 0.5]);
+  });
+
+  it("writes a picture point as TWO numbers, live then one commit, rounded to six places", () => {
+    const editor = recorder();
+    const store = createVec3GizmoStore({ editor });
+    const [pin] = pictureHandlesOf("cornerPin");
+    if (pin === undefined) throw new Error("no pin handle");
+    expect(store.begin(NODE, pin)).toBeNull();
+    store.drag(NODE, pin.key, [0.1234567891, 0.25]);
+    store.end(NODE, pin.key);
+    expect(editor.calls).toEqual([
+      { entries: { pinbl: [0.123457, 0.25] }, phase: "live" },
+      { entries: { pinbl: [0.123457, 0.25] }, phase: "commit" },
     ]);
   });
 });

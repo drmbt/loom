@@ -177,6 +177,13 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
       "the assertions are made against comes from `effectiveParameterSchema`.",
     reads: ["definition.parameters", "definition.parameters"],
   },
+  "src/nodes/definitions/corner-pin.test.ts": {
+    reason:
+      `${TYPE_ONLY_UNIT_TEST} T1491b's two reads pin what Corner Pin DECLARES: exactly its ` +
+      "four pins carry `handle: \"picture\"` (what the preview overlay offers), and Feather's " +
+      "`inactiveWhen` follows Outside. Both are properties of the manifest, not of an instance.",
+    reads: ["cornerPinNode.parameters", "cornerPinNode.parameters"],
+  },
   "src/nodes/definitions/annotate.test.ts": {
     reason:
       `${TYPE_ONLY_UNIT_TEST} T1262's three reads pin what the annotation box DECLARES — ` +
