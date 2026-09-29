@@ -176,25 +176,25 @@ describe("component.import — the identity rule (§T962, owner ruling 2026-09-2
     expect(result.output.reused).toEqual([{ componentId: "bloom", version: 1 }]);
   });
 
-  it("imports a same-id, same-version, DIFFERENT component as bloom-2 and leaves the installed one alone", async () => {
+  it("imports a same-id, same-version, DIFFERENT component as bloom1 and leaves the installed one alone", async () => {
     const file = await exported([bloomWith(9)], "bloom");
     const target = documentWith([bloomWith(4)]);
 
     const result = await target.bus.execute("component.import", { text: file.text }, ctx);
 
     expect(result.status).toBe("applied");
-    expect(catalogueOf(target.components)).toEqual(["bloom@1:Bloom", "bloom-2@1:Bloom-2"]);
+    expect(catalogueOf(target.components)).toEqual(["bloom@1:Bloom", "bloom1@1:Bloom1"]);
     // Neither merged nor overwritten: the document's own bloom still reads 4…
     expect(radiusIn(target.components, "bloom")).toBe(4);
     // …and the file's content arrived intact under the new name.
-    expect(radiusIn(target.components, "bloom-2")).toBe(9);
+    expect(radiusIn(target.components, "bloom1")).toBe(9);
     expect(target.store.view.getGraph().nodes[result.output.nodeId as string]?.type).toBe(
-      componentNodeType("bloom-2", 1),
+      componentNodeType("bloom1", 1),
     );
     expect(result.diagnostics.map((d) => d.code)).toEqual(["component.import.renamed"]);
   });
 
-  it("dropping the same file twice reuses the first import instead of minting bloom-3", async () => {
+  it("dropping the same file twice reuses the first import instead of minting bloom2", async () => {
     const file = await exported([bloomWith(9)], "bloom");
     const target = documentWith([bloomWith(4)]);
 
@@ -202,9 +202,9 @@ describe("component.import — the identity rule (§T962, owner ruling 2026-09-2
     const again = await target.bus.execute("component.import", { text: file.text }, ctx);
 
     expect(again.status).toBe("applied");
-    expect(catalogueOf(target.components)).toEqual(["bloom@1:Bloom", "bloom-2@1:Bloom-2"]);
+    expect(catalogueOf(target.components)).toEqual(["bloom@1:Bloom", "bloom1@1:Bloom1"]);
     expect(target.store.view.getGraph().nodes[again.output.nodeId as string]?.type).toBe(
-      componentNodeType("bloom-2", 1),
+      componentNodeType("bloom1", 1),
     );
   });
 
@@ -215,10 +215,10 @@ describe("component.import — the identity rule (§T962, owner ruling 2026-09-2
     const result = await target.bus.execute("component.import", { text: file.text }, ctx);
 
     expect(result.status, result.diagnostics.map((d) => d.message).join("; ")).toBe("applied");
-    expect(catalogueOf(target.components)).toEqual(["bloom@1:Bloom", "bloom-2@1:Bloom-2", "stack@1:Stack"]);
+    expect(catalogueOf(target.components)).toEqual(["bloom@1:Bloom", "bloom1@1:Bloom1", "stack@1:Stack"]);
     // The stack's inner instance follows the rename — it holds the FILE's bloom, not ours.
-    expect(target.components.get("stack", 1)?.graph.nodes.inner?.type).toBe(componentNodeType("bloom-2", 1));
-    expect(radiusIn(target.components, "bloom-2")).toBe(9);
+    expect(target.components.get("stack", 1)?.graph.nodes.inner?.type).toBe(componentNodeType("bloom1", 1));
+    expect(radiusIn(target.components, "bloom1")).toBe(9);
     expect(radiusIn(target.components, "bloom")).toBe(4);
   });
 
@@ -232,14 +232,14 @@ describe("component.import — the identity rule (§T962, owner ruling 2026-09-2
     expect(result.status).toBe("applied");
     expect(catalogueOf(target.components)).toEqual([
       "bloom@1:Bloom",
-      "bloom-2@1:Bloom-2",
+      "bloom1@1:Bloom1",
       "stack@1:Stack",
-      "stack-2@1:Stack-2",
+      "stack1@1:Stack1",
     ]);
     expect(target.components.get("stack", 1)?.graph.nodes.inner?.type).toBe(componentNodeType("bloom", 1));
-    expect(target.components.get("stack-2", 1)?.graph.nodes.inner?.type).toBe(componentNodeType("bloom-2", 1));
+    expect(target.components.get("stack1", 1)?.graph.nodes.inner?.type).toBe(componentNodeType("bloom1", 1));
     expect(target.store.view.getGraph().nodes[result.output.nodeId as string]?.type).toBe(
-      componentNodeType("stack-2", 1),
+      componentNodeType("stack1", 1),
     );
   });
 

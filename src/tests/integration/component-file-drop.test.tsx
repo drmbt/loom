@@ -98,11 +98,11 @@ describe("dropping a component file on the canvas (T1395b)", () => {
     expect(nodesOf(runtime).map((node) => node.type)).toEqual([componentNodeType("bloom", 1)]);
     const position = nodesOf(runtime)[0]?.position;
     expect(Number.isFinite(position?.x) && Number.isFinite(position?.y)).toBe(true);
-    // Same id, version and content: no bloom-2, nothing new in the library.
+    // Same id, version and content: no bloom1, nothing new in the library.
     expect(catalogue(runtime)).toEqual(before);
   });
 
-  it("an EXPORTED, edited Bloom arrives beside the starter as bloom-2 — the export writes through writeTextFile", async () => {
+  it("an EXPORTED, edited Bloom arrives beside the starter as bloom1 — the export writes through writeTextFile", async () => {
     // Document A edits its Bloom and exports it through the app's real writer (the picker
     // path of `writeTextFile`), which is what the library row's `export` runs.
     const source = newRuntime();
@@ -140,9 +140,9 @@ describe("dropping a component file on the canvas (T1395b)", () => {
     await drop(surface, new File([written], "Bloom.loom.json"));
 
     expect(refusals).toEqual([]);
-    expect(nodesOf(target).map((node) => node.type)).toEqual([componentNodeType("bloom-2", 1)]);
-    expect(target.components.get("bloom-2", 1)?.name).toBe("Bloom-2");
-    expect(target.components.get("bloom-2", 1)?.graph.nodes[firstId]?.label).toBe("edited");
+    expect(nodesOf(target).map((node) => node.type)).toEqual([componentNodeType("bloom1", 1)]);
+    expect(target.components.get("bloom1", 1)?.name).toBe("Bloom1");
+    expect(target.components.get("bloom1", 1)?.graph.nodes[firstId]?.label).toBe("edited");
     // B's own Bloom is exactly the shipped one still.
     expect(target.components.get("bloom", 1)?.graph.nodes[firstId]?.label).toBe(first.label);
   });

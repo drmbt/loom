@@ -8,6 +8,7 @@ import { buildProjectFile, detachComponentLibrary, type ProjectFile } from "../p
 import { parseProjectDocument, sortKeysDeep } from "../project/serialize.ts";
 import { withBoundaryPorts } from "./boundary-ports.ts";
 import { componentNodeType, parseComponentNodeType } from "./component-type.ts";
+import { renumberedName } from "../graph/names.ts";
 import { componentReferences } from "./recursion.ts";
 import { defaultPublishedValues } from "./published-parameter.ts";
 import { componentLibrarySchema } from "./schemas.ts";
@@ -38,18 +39,18 @@ import { componentLibrarySchema } from "./schemas.ts";
  *  - same id + version + content as an installed definition → the SAME component: reused,
  *    nothing installed, no duplicate;
  *  - an id nothing installed uses → installed as it is;
- *  - otherwise → imported under a new, unused id (`bloom` → `bloom-2`, display name
- *    `Bloom` → `Bloom-2`). Never merged into the installed id's version history, never
- *    overwriting it.
+ *  - otherwise → imported under a new, unused id, numbered the way every other name in
+ *    the app is (`renumberedName`: `bloom` → `bloom1`, display name `Bloom` → `Bloom1`).
+ *    Never merged into the installed id's version history, never overwriting it.
  *
  * Applied deepest dependency first, so a renamed nested component rewrites the instance
  * types of everything in the file that pointed at it before THOSE are compared — a parent
  * whose child had to be renamed is no longer identical to the installed parent either,
  * and is renamed in turn.
  *
- * The candidates `bloom-2`, `bloom-3`… are held to the same rule: a `bloom-2` already
+ * The candidates `bloom1`, `bloom2`… are held to the same rule: a `bloom1` already
  * installed with this version and this (renamed) content IS this component, so dropping
- * the same file twice reuses the first import instead of minting `bloom-3`.
+ * the same file twice reuses the first import instead of minting `bloom2`.
  */
 
 /** A component version, as a pair. */
@@ -357,7 +358,7 @@ function rewriteReferences(
   return nodes === null ? definition : { ...definition, graph: { ...definition.graph, nodes } };
 }
 
-const withoutCounter = (text: string): string => text.replace(/-\d+$/, "");
+const withoutCounter = (text: string): string => text.replace(/[0-9]+$/, "") || text;
 
 /** Applies the identity rule to a read file against the catalogue it is arriving in. */
 export function planComponentImport(
@@ -394,28 +395,30 @@ export function planComponentImport(
       install.push(rewritten);
       placed = rewritten;
     } else {
-      const idBase = withoutCounter(incoming.componentId);
-      const nameBase = withoutCounter(incoming.name);
-      let chosen: GraphComponentDefinition | undefined;
-      for (let counter = 2; chosen === undefined; counter += 1) {
-        const candidateId = `${idBase}-${counter}`;
-        if (fileIds.has(candidateId) || claimed.has(candidateId)) continue;
-        const candidate: GraphComponentDefinition = {
-          ...rewritten,
-          componentId: candidateId,
-          name: `${nameBase}-${counter}`,
-        };
-        const existing = catalogue.get(candidateId, incoming.version);
-        if (existing !== undefined && sameContent(withBoundaryPorts(candidate), existing)) {
-          // An earlier import of this very content, under the name it was given then.
-          reused.push({ componentId: candidateId, version: incoming.version });
-          chosen = existing;
-        } else if (!catalogue.has(candidateId)) {
-          install.push(candidate);
-          chosen = candidate;
-        }
+      // The app's one numbering rule (`renumberedName`, B41/B44): trailing digits strip to
+      // the word and the next free number appends — `bloom` → `bloom1`, `bloom1` → `bloom2`.
+      // A candidate is free when nothing claims it OR it already holds this very content (an
+      // earlier import of the same file, under the name it was given then — reused below).
+      const renamedTo = (candidateId: string): GraphComponentDefinition => ({
+        ...rewritten,
+        componentId: candidateId,
+        name: `${withoutCounter(incoming.name)}${candidateId.slice(withoutCounter(incoming.componentId).length)}`,
+      });
+      const candidateId = renumberedName(incoming.componentId, (candidate) => {
+        if (fileIds.has(candidate) || claimed.has(candidate)) return true;
+        if (!catalogue.has(candidate)) return false;
+        const existing = catalogue.get(candidate, incoming.version);
+        return existing === undefined || !sameContent(withBoundaryPorts(renamedTo(candidate)), existing);
+      });
+      const existing = catalogue.get(candidateId, incoming.version);
+      let chosen: GraphComponentDefinition;
+      if (existing !== undefined) {
+        reused.push({ componentId: candidateId, version: incoming.version });
+        chosen = existing;
+      } else {
+        chosen = renamedTo(candidateId);
+        install.push(chosen);
       }
-      if (chosen === undefined) throw new Error("unreachable: the rename loop exits with a choice");
       renamed.push({
         from: { componentId: incoming.componentId, version: incoming.version },
         to: { componentId: chosen.componentId, version: incoming.version },
