@@ -26,7 +26,7 @@ import { joinPanelOperations, movePanelMemberOperations, panelUnderDrop, soloPan
  * dropped on it — the same edge), never by typing its name; the Panel shows its widgets in
  * wiring order and rearranging them rewrites that order through the bus; the old Layout
  * text is an optional override that, when present, still decides exactly what it decided
- * before — so a document built on it (E81) shows what it showed.
+ * before — so a document built on it (E81 as it shipped at 972d4894) shows what it showed.
  *
  * Built through the real bus and registry, so the connect is accepted by the real port
  * rules (a widget's `out` into a Panel's variadic `controls`) and the order is the one the
@@ -178,11 +178,22 @@ describe("T1512b — the Layout text is an optional override, and it still decid
     expect(labels(graph, ids["$panel"]!)).toEqual(["alpha"]);
   });
 
-  it("E81, laid out by text before T1512b, resolves exactly as the text read then", () => {
+  it("E81's pre-T1512b Layout text, set on today's wired E81, resolves exactly as the text read then", () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const text = readFileSync(join(here, "../../../examples/E81-Phone-Desk.loom.json"), "utf8");
     const graph = (JSON.parse(text) as { graph: GraphDocument }).graph;
-    const panel = Object.values(graph.nodes).find((node) => node.type === "panel")!;
+    const wired = Object.values(graph.nodes).find((node) => node.type === "panel")!;
+    // E81 now joins its widgets by wire with Layout empty; this is the text it shipped with
+    // at 972d4894 — the shape of every document laid out by text before the wiring existed.
+    // Set on the WIRED Panel, so the override is shown winning over wires that disagree.
+    expect(panelLayout(graph, wired).source).toBe("wiring");
+    const panel: GraphNode = {
+      ...wired,
+      parameters: {
+        ...wired.parameters,
+        layout: "# Picture\n> Heat is brightness. Invert flips it.\nheat invert\n# Colour\n> Each press turns the hue a quarter.\nflash\n# Mapping\n> Drag the picture's top-right corner.\nwarp\n",
+      },
+    };
     // The pre-T1512b reading, spelled out: parse the text, resolve each name by label ?? id.
     const byName = new Map(
       Object.values(graph.nodes)

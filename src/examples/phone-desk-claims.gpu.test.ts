@@ -4,7 +4,8 @@ import type { BackendCapabilities } from "../domain/types/backend.ts";
 import { compileGraph } from "../compiler/index.ts";
 import { createNodeRegistry } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
-import { CONTROL_WIDGET_TYPES, controlChannel, parsePanelLayout } from "../nodes/definitions/controls.ts";
+import { CONTROL_WIDGET_TYPES, PANEL_INPUT, controlChannel, panelLayout, panelMembers } from "../nodes/definitions/controls.ts";
+import { incomingEdgesInOrder } from "../domain/graph/edge-order.ts";
 import { ANNOTATE_TYPE } from "../nodes/definitions/annotate.ts";
 import { DEVICE_HELPER_PHONE_COMMAND } from "../devices/helper.ts";
 import { phoneDeskDocument } from "./documents/phone-desk.ts";
@@ -211,7 +212,7 @@ describe("E81 Phone Desk — the Panel and the notes", () => {
   const nodes = Object.values(phoneDeskDocument.graph.nodes);
   const widgets = nodes.filter((node) => CONTROL_WIDGET_TYPES.has(node.type));
 
-  it("ships one of each widget, each read by an expression in exactly the map… form's spelling", () => {
+  it("ships one of each widget, each read by an expression in exactly a binding's spelling", () => {
     expect(widgets.map((node) => node.type).sort()).toEqual([...CONTROL_WIDGET_TYPES].sort());
     const sources = nodes.flatMap((node) =>
       Object.values(node.parameters).flatMap((stored) =>
@@ -221,24 +222,30 @@ describe("E81 Phone Desk — the Panel and the notes", () => {
       ),
     );
     for (const widget of widgets) {
-      // `op('<name>').chan.<channel>` — the prefix the controls pane writes, with the name it
-      // resolves (label) and the widget's own channel, suffixed where the type publishes more.
+      // `op('<name>').chan.<channel>` — the slot a binding from the parameter writes (T1514b),
+      // with the name it resolves (label) and the widget's own channel, suffixed where the
+      // type publishes more.
       const read = `op('${widget.label ?? widget.id}').chan.${controlChannel(widget.parameters)}`;
       expect(sources.some((source) => source.includes(read)), `${widget.label} drives nothing`).toBe(true);
     }
   });
 
-  it("has one Panel titled Phone Desk, published to phones, naming all four widgets", () => {
+  it("has one Panel titled Phone Desk, published to phones, showing all four widgets in the order they are wired", () => {
     const panels = nodes.filter((node) => node.type === "panel");
     expect(panels).toHaveLength(1);
     const panel = panels[0]!;
     expect(panel.parameters["title"]).toBe("Phone Desk");
     expect(panel.parameters["remote"]).toBe(true);
-    const rows = parsePanelLayout(panel.parameters["layout"] as string);
-    const named = rows.flatMap((row) => (row.kind === "widgets" ? row.names : []));
-    expect([...named].sort()).toEqual(widgets.map((node) => node.label ?? node.id).sort());
-    expect(rows.some((row) => row.kind === "heading")).toBe(true);
-    expect(rows.some((row) => row.kind === "text")).toBe(true);
+    const graph = phoneDeskDocument.graph;
+    // T1512b's idiom: membership is the wiring, with no Layout override to replace it.
+    expect(panel.parameters["layout"] ?? "").toBe("");
+    expect(panelLayout(graph, panel).source).toBe("wiring");
+    const wired = incomingEdgesInOrder(graph, panel.id, PANEL_INPUT).map((edge) => edge.source.nodeId);
+    const shown = panelMembers(graph, panel).map((node) => node.id);
+    // The order on the Panel IS the wiring order, and every widget is on it.
+    expect(shown).toEqual(wired);
+    expect(shown).toEqual(["heat", "invert", "flash", "warp"]);
+    expect([...shown].sort()).toEqual(widgets.map((node) => node.id).sort());
   });
 
   it("tells the reader the helper command the product builds", () => {

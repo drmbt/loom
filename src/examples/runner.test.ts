@@ -166,18 +166,19 @@ describe.each(examples)("example $fileName", (file) => {
     const { plan, document, result } = requireExample(file);
     const registry = createNodeRegistry(allNodeDefinitions);
 
-    /* E81: a node with NO PORTS AND NO VALUE — today exactly Annotate (a note box behind the
-       graph, T1262) and Panel (the controls pane's layout, T1388b) — cannot be wired, so
-       "reaches a sink" asks it a question it has no way to answer. The compiler prunes both
-       by design (`annotate.test.ts` pins it). They are the ONLY nodes allowed in `pruned`,
-       and the set is read off the manifests, so a node that grows a port is held to §V25
-       again the day it does. */
+    /* E81: a node with NO OUTPUT AND NO VALUE — today exactly Annotate (a note box behind the
+       graph, T1262) and Panel (the controls surface, T1388b) — has nothing to send toward a
+       sink, so "reaches a sink" asks it a question it has no way to answer. The compiler
+       prunes both by design (`annotate.test.ts` pins it). T1512b gave the Panel an INPUT —
+       widgets join it by wire — which changes nothing here: a wire into a node that sends
+       nothing on still ends at it. They are the ONLY nodes allowed in `pruned`, and the set
+       is read off the manifests, so a node that grows an output is held to §V25 again the
+       day it does. */
     const unwireable = Object.values(document.graph.nodes)
       .filter((node) => {
         const definition = registry.get(node.type);
         return (
           definition !== undefined &&
-          definition.inputs.length === 0 &&
           definition.outputs.length === 0 &&
           definition.sink !== true &&
           !isValueSourceDefinition(definition)

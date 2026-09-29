@@ -14,6 +14,18 @@
           "portId": "input"
         }
       },
+      "e10": {
+        "id": "e10",
+        "order": 3,
+        "source": {
+          "nodeId": "warp",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
       "e2": {
         "id": "e2",
         "source": {
@@ -67,6 +79,42 @@
         "target": {
           "nodeId": "out",
           "portId": "input"
+        }
+      },
+      "e7": {
+        "id": "e7",
+        "order": 0,
+        "source": {
+          "nodeId": "heat",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "e8": {
+        "id": "e8",
+        "order": 1,
+        "source": {
+          "nodeId": "invert",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "e9": {
+        "id": "e9",
+        "order": 2,
+        "source": {
+          "nodeId": "flash",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
         }
       }
     },
@@ -220,13 +268,13 @@
         "id": "noteControls",
         "label": "notecontrols1",
         "parameters": {
-          "body": "A widget is a value node: no picture, one number you set by hand.\nIts Channel is the name you read: op('heat').chan.heat.\nDrag it here on its node, or on the Panel. Button adds flashCount; XY Pad publishes warpX and warpY.",
+          "body": "A widget is a value node: no picture, one number you set by hand, read as op('heat').chan.heat.\nHeat is brightness and Invert flips it. Next hue turns the hue a quarter. Top-right pin drags the picture's corner.\nDrag it on its node or on the Panel. Button adds flashCount; XY Pad publishes warpX and warpY.",
           "color": "input",
           "title": "Controls"
         },
         "position": {
           "x": -1500,
-          "y": 600
+          "y": 800
         },
         "size": {
           "height": 200,
@@ -239,7 +287,7 @@
         "id": "noteMapping",
         "label": "notemapping1",
         "parameters": {
-          "body": "Controls pane: press map… under a widget, pick the node and the parameter.\nOr type it into the parameter's expression yourself: op('heat').chan.heat\nIt is maths: op('flash').chan.flashCount * 90 turns the hue a quarter per press.",
+          "body": "Right-click a parameter in the Inspector → Control from Panel: it makes the control, binds it and adds it to the Panel.\nDrive from ▸ binds a control you already have. A bound parameter shows ← Heat.\nUnderneath is an expression: op('heat').chan.heat. It is maths: op('flash').chan.flashCount * 90 turns the hue a quarter per press.",
           "color": "value",
           "title": "Mapping: a parameter follows a control"
         },
@@ -258,7 +306,7 @@
         "id": "notePanel",
         "label": "notepanel1",
         "parameters": {
-          "body": "panel1 lays the widgets out in the Controls pane. Layout, one row per line:\n# Heading\n> a note\nheat invert   (widget names side by side)\nPhone on: the panel is published to a paired phone.",
+          "body": "A widget joins panel1 by a wire: its out into the Panel's Controls, or drop the widget on the Panel.\nThe Panel shows them in wiring order: heat, invert, flash, warp.\nIts body on the canvas is the panel, live. The Controls tab is a bigger view of it.\nThe phone icon on its header publishes it to a paired phone.",
           "color": "composite",
           "title": "Panel"
         },
@@ -277,7 +325,7 @@
         "id": "notePhone",
         "label": "notephone1",
         "parameters": {
-          "body": "1. Start the helper: pnpm helper --phone\n2. Pair it in Agent → Connections.\n3. Press Phone in the Controls pane and scan the QR code.\n4. Accept the certificate once. The phone shows this panel and nothing else.",
+          "body": "1. Start the helper: pnpm helper --phone\n2. Pair it in Agent → Connections.\n3. Press the phone icon on panel1's header and scan the QR code.\n4. Accept the certificate once. The phone shows this panel and nothing else.\nA phone can also be a camera: in a Webcam node pick the device Phone · <name>.",
           "color": "color",
           "title": "Phone"
         },
@@ -286,7 +334,7 @@
           "y": 560
         },
         "size": {
-          "height": 240,
+          "height": 260,
           "width": 520
         },
         "type": "annotate"
@@ -326,7 +374,6 @@
         "id": "panel",
         "label": "panel1",
         "parameters": {
-          "layout": "# Picture\n> Heat is brightness. Invert flips it.\nheat invert\n# Colour\n> Each press turns the hue a quarter.\nflash\n# Mapping\n> Drag the picture's top-right corner.\nwarp\n",
           "remote": true,
           "title": "Phone Desk"
         },

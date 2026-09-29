@@ -7,17 +7,21 @@ import { DEVICE_HELPER_PHONE_COMMAND } from "../../devices/helper.ts";
  *   rings1(ramp) ─► level1(level) ─► hue1(hsv) ─► pin1(cornerPin) ─► lay1(over) ─► out1(output)
  *                     ▲ brightness     ▲ hueoffset   ▲ pintr.x / pintr.y
  *                     ▲ invert         │             │               bg1(solid) ┘
- *   heat(slider)  invert(toggle)  flash(button)  warp(xyPad)      panel1(panel, Phone on)
+ *   heat(slider)  invert(toggle)  flash(button)  warp(xyPad) ─► panel1(panel, Phone on)
+ *        └──────────────┴──────────────┴──── out → controls, in this order ──┘
  *
- * Four widget nodes (T1388b) drive a small picture, and one Panel lays them out in the
- * Controls pane with `remote` on, so a paired phone gets the same four controls (T1396b).
- * The last stage is Corner Pin (T1491b), the mapping, with its top-right pin on the XY pad:
- * the phone literally drags the corner of the projected picture.
+ * Four widget nodes (T1388b) drive a small picture, and one Panel shows them with `remote`
+ * on, so a paired phone gets the same four controls (T1396b). The widgets join the Panel
+ * the way T1512b made the idiom: WIRED into its `controls` input, the edge order being the
+ * order on the Panel, with the Layout text left empty (the override is for documents laid
+ * out before the wiring existed). The last stage is Corner Pin (T1491b), the mapping, with
+ * its top-right pin on the XY pad: the phone literally drags the corner of the projected
+ * picture.
  *
  * EVERY MAPPING IS THE APP'S OWN IDIOM: an expression slot reading `op('<widget>').chan.<ch>`,
- * byte for byte what the Controls pane's map… form writes (`controls-pane.tsx`), with the
- * static binding retained at the widget's own default so a host with no value graph renders
- * the same picture. The widgets are named after their channels (`heat` publishes `heat`),
+ * the slot a binding from the parameter writes (T1514b's "Control from Panel" / "Drive
+ * from ▸"), with the static binding retained at the widget's own default so a host with no
+ * value graph renders the same picture. The widgets are named after their channels (`heat` publishes `heat`),
  * so the expression reads the same word twice and a newcomer sees where each half comes from.
  *
  * The annotate boxes explain the idiom in the network itself. They sit BESIDE the nodes they
@@ -28,6 +32,8 @@ import { DEVICE_HELPER_PHONE_COMMAND } from "../../devices/helper.ts";
  */
 
 const NOTE_WIDTH = 520;
+/** Below the tallest widget, the XY pad, whose square body makes it ~340px tall (`node-box.ts`). */
+const NOTE_CONTROLS_Y = 800;
 
 export const phoneDeskDocument = document(
   "e81-phone-desk",
@@ -84,30 +90,17 @@ export const phoneDeskDocument = document(
       node("warp", "xyPad", [-600, 400], { channel: "warp", caption: "Top-right pin", x: 0.82, y: 0.78, min: 0, max: 1 }, { label: "warp" }),
 
       // ---- the surface a phone sees ---------------------------------------------------
-      node("panel", "panel", [0, 400], {
-        title: "Phone Desk",
-        layout: [
-          "# Picture",
-          "> Heat is brightness. Invert flips it.",
-          "heat invert",
-          "# Colour",
-          "> Each press turns the hue a quarter.",
-          "flash",
-          "# Mapping",
-          "> Drag the picture's top-right corner.",
-          "warp",
-          "",
-        ].join("\n"),
-        remote: true,
-      }, { label: "panel1" }),
+      // T1512b: the widgets JOIN the Panel by their wires (e7–e10, below), in the order the
+      // Panel shows them. Layout stays empty — the override would replace the wiring.
+      node("panel", "panel", [0, 400], { title: "Phone Desk", remote: true }, { label: "panel1" }),
 
       // ---- the annotations: how to do it yourself --------------------------------------
       node("noteMapping", "annotate", [-1500, -300], {
         title: "Mapping: a parameter follows a control",
         body: [
-          "Controls pane: press map… under a widget, pick the node and the parameter.",
-          "Or type it into the parameter's expression yourself: op('heat').chan.heat",
-          "It is maths: op('flash').chan.flashCount * 90 turns the hue a quarter per press.",
+          "Right-click a parameter in the Inspector → Control from Panel: it makes the control, binds it and adds it to the Panel.",
+          "Drive from ▸ binds a control you already have. A bound parameter shows ← Heat.",
+          "Underneath is an expression: op('heat').chan.heat. It is maths: op('flash').chan.flashCount * 90 turns the hue a quarter per press.",
         ].join("\n"),
         color: "value",
       }, { label: "notemapping1", size: { width: 740, height: 240 } }),
@@ -120,23 +113,22 @@ export const phoneDeskDocument = document(
         ].join("\n"),
         color: "output",
       }, { label: "notesurface1", size: { width: 858, height: 240 } }),
-      node("noteControls", "annotate", [-1500, 600], {
+      node("noteControls", "annotate", [-1500, NOTE_CONTROLS_Y], {
         title: "Controls",
         body: [
-          "A widget is a value node: no picture, one number you set by hand.",
-          "Its Channel is the name you read: op('heat').chan.heat.",
-          "Drag it here on its node, or on the Panel. Button adds flashCount; XY Pad publishes warpX and warpY.",
+          "A widget is a value node: no picture, one number you set by hand, read as op('heat').chan.heat.",
+          "Heat is brightness and Invert flips it. Next hue turns the hue a quarter. Top-right pin drags the picture's corner.",
+          "Drag it on its node or on the Panel. Button adds flashCount; XY Pad publishes warpX and warpY.",
         ].join("\n"),
         color: "input",
       }, { label: "notecontrols1", size: { width: 1078, height: 200 } }),
       node("notePanel", "annotate", [240, 260], {
         title: "Panel",
         body: [
-          "panel1 lays the widgets out in the Controls pane. Layout, one row per line:",
-          "# Heading",
-          "> a note",
-          "heat invert   (widget names side by side)",
-          "Phone on: the panel is published to a paired phone.",
+          "A widget joins panel1 by a wire: its out into the Panel's Controls, or drop the widget on the Panel.",
+          "The Panel shows them in wiring order: heat, invert, flash, warp.",
+          "Its body on the canvas is the panel, live. The Controls tab is a bigger view of it.",
+          "The phone icon on its header publishes it to a paired phone.",
         ].join("\n"),
         color: "composite",
       }, { label: "notepanel1", size: { width: NOTE_WIDTH, height: 260 } }),
@@ -145,11 +137,12 @@ export const phoneDeskDocument = document(
         body: [
           `1. Start the helper: ${DEVICE_HELPER_PHONE_COMMAND}`,
           "2. Pair it in Agent → Connections.",
-          "3. Press Phone in the Controls pane and scan the QR code.",
+          "3. Press the phone icon on panel1's header and scan the QR code.",
           "4. Accept the certificate once. The phone shows this panel and nothing else.",
+          "A phone can also be a camera: in a Webcam node pick the device Phone · <name>.",
         ].join("\n"),
         color: "color",
-      }, { label: "notephone1", size: { width: NOTE_WIDTH, height: 240 } }),
+      }, { label: "notephone1", size: { width: NOTE_WIDTH, height: 260 } }),
     ],
     [
       edge("e1", ["rings", "out"], ["level", "input"]),
@@ -158,6 +151,11 @@ export const phoneDeskDocument = document(
       edge("e4", ["pin", "out"], ["lay", "in1"]),
       edge("e5", ["bg", "out"], ["lay", "in2"]),
       edge("e6", ["lay", "out"], ["out", "input"]),
+      // The Panel's members, in the order it shows them (`panelLayout`, T1512b).
+      edge("e7", ["heat", "out"], ["panel", "controls"], 0),
+      edge("e8", ["invert", "out"], ["panel", "controls"], 1),
+      edge("e9", ["flash", "out"], ["panel", "controls"], 2),
+      edge("e10", ["warp", "out"], ["panel", "controls"], 3),
     ],
   ),
 );
