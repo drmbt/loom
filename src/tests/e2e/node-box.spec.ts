@@ -36,9 +36,11 @@ test.use({ viewport: { width: APP_VIEWPORT.width, height: APP_VIEWPORT.height } 
  * Chosen for the KINDS they contain rather than for coverage theatre: E25 carries
  * cameras, lights, materials, geometry and pointsets; E24 the whole value family and the
  * caches; E20 surfaces and kernels; E1 the plain texture chain. Between them they reach
- * every branch in `nodeHasPreview` and both port-row counts the model can produce.
+ * every branch in `nodeHasPreview` and both port-row counts the model can produce. E81
+ * carries the `.controls` region (T1512b): one of each widget, and a Panel whose body
+ * grows with the four widgets wired into it.
  */
-const EXAMPLES = ["E1 Feedback", "E20 Gooeyball", "E24 Audio", "E25 Stage"] as const;
+const EXAMPLES = ["E1 Feedback", "E20 Gooeyball", "E24 Audio", "E25 Stage", "E81 Phone Desk"] as const;
 
 const registry = createNodeRegistry(allNodeDefinitions).view();
 

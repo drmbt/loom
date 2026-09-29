@@ -4,6 +4,7 @@ import { incomingEdgesInOrder } from "./edge-order.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import { previewablePort } from "./previewable.ts";
 import { publishesValueChannels } from "@domain/types/node-definition.ts";
+import { CONTROL_WIDGET_TYPES, panelLayout, type PanelSection } from "@nodes/definitions/controls.ts";
 
 /**
  * WHAT A NODE ACTUALLY OCCUPIES, IN GRAPH-SPACE PIXELS (T460, §V389).
@@ -43,9 +44,14 @@ import { publishesValueChannels } from "@domain/types/node-definition.ts";
  * state: the same document renders with and without them depending on whether something
  * failed or an agent is mid-edit. They can only make a node TALLER, so the gutter in the
  * layout gate is what covers them; pretending to predict them would be a fiction with a
- * number attached. The `controls` region is not modelled because nothing supplies
- * `renderControls` — measured, not assumed: the prop exists on `GraphCanvas` and no
- * caller in the tree passes one.
+ * number attached.
+ *
+ * The `.controls` region IS modelled since the live controls (T1388b, T1512b) — the graph
+ * pane supplies `renderControls` (`control-bodies.tsx`) for exactly two kinds of node, and
+ * both are document state: a widget's own control, and a Panel's live body, whose height
+ * follows its members (`panelLayout`). One piece of it is not: the widget's "+ panel"
+ * button, drawn only while the document's ONE Panel lacks that widget — a widget waiting to
+ * be wired, not a laid-out document; the vertical gutter covers its one line.
  */
 
 /** `--node-width` in `node-view.module.css`. A node that was never resized is this wide. */
@@ -138,6 +144,97 @@ const PORT_ROW_GAP = 2;
 /** `.node` — a 1px border on every side, and `box-sizing: border-box` is global. */
 const NODE_BORDER = 1;
 
+/**
+ * T1512b — THE `.controls` REGION: a widget's own control, or a Panel's live body.
+ *
+ * Read off `node-view.module.css` (`.controls`), `control-widget.module.css` (`.node`
+ * size) and `panel-surface.module.css` (`.body`, `.stack`), and pinned like every other
+ * number here by `node-box.spec.ts`, which measures E81's widgets and Panel. The text rows
+ * inherit the node's `line-height: var(--lh-ui)` (1.35), so they are FRACTIONAL: 13.5 at
+ * `--fs-micro`, 14.85 at `--fs-meta`. The browser sums them unrounded and `offsetHeight`
+ * rounds the node once, so this model does the same (`nodeBox` rounds at the end).
+ */
+const LINE_HEIGHT = 1.35;
+const MICRO_LINE = 10 * LINE_HEIGHT;
+const META_LINE = 11 * LINE_HEIGHT;
+
+/** `.controls` — `padding: var(--space-2) var(--space-3)` and a hairline below. */
+const CONTROLS_PADDING = 4 * 2;
+const CONTROLS_BORDER = 1;
+/** The width a control gets: the node's content box less `.controls`' side padding. */
+const CONTROLS_CONTENT_WIDTH = NODE_WIDTH - NODE_BORDER * 2 - 6 * 2;
+
+/** `.widget` — `gap: var(--space-2)` between its caption row and its control. */
+const WIDGET_GAP = 4;
+/** `.track` — `height: var(--space-6)`. */
+const TRACK_HEIGHT = 16;
+/** `.toggle`/`.button` — `padding: var(--space-2) …` and a hairline all round. */
+const PRESSABLE_CHROME = 4 * 2 + 1 * 2;
+/** `.switch` — `height: var(--space-6)`, the tallest thing in a toggle. */
+const SWITCH_HEIGHT = 16;
+
+/**
+ * One widget at the node size (`ControlWidget size="node"`), the same wherever it is drawn
+ * on the canvas: in its own node, or stacked in a Panel's body — both are the `.controls`
+ * content width wide.
+ */
+function widgetBodyHeight(type: string): number {
+  switch (type) {
+    case "slider":
+      return MICRO_LINE + WIDGET_GAP + TRACK_HEIGHT;
+    case "toggle":
+      return PRESSABLE_CHROME + Math.max(MICRO_LINE, SWITCH_HEIGHT);
+    case "button":
+      return PRESSABLE_CHROME + MICRO_LINE;
+    case "xyPad":
+      // `.pad` is `aspect-ratio: 1` at the full width.
+      return MICRO_LINE + WIDGET_GAP + CONTROLS_CONTENT_WIDTH;
+    default:
+      return 0;
+  }
+}
+
+/** `.body` — `gap: var(--space-2)` between the title and each row. */
+const PANEL_BODY_GAP = 4;
+/** `.stack` — `gap: var(--space-3)` between widgets in one row. */
+const PANEL_STACK_GAP = 6;
+/** `.heading` — `margin-top: var(--space-3)`, one `--fs-micro` line. */
+const PANEL_HEADING_HEIGHT = 6 + MICRO_LINE;
+/**
+ * `.hint` — `PANEL_EMPTY_HINT` wraps to TWO `--fs-micro` lines at this width (measured).
+ * Measured rather than derived because a wrap is a fact about the font; the spec pins it.
+ */
+const PANEL_HINT_HEIGHT = 2 * MICRO_LINE;
+
+function panelRowHeight(row: PanelSection): number {
+  if (row.kind === "heading") return PANEL_HEADING_HEIGHT;
+  // An override's `> note` is one `--fs-meta` line; a longer one wraps, which this does
+  // not predict (the same reason the hint is measured) — the gutter covers it.
+  if (row.kind !== "widgets") return META_LINE;
+  const cells = row.cells.map((cell) => (cell.kind === "widget" ? widgetBodyHeight(cell.node.type) : META_LINE));
+  return cells.reduce((sum, height) => sum + height, 0) + PANEL_STACK_GAP * Math.max(0, cells.length - 1);
+}
+
+/**
+ * The `.controls` region's height for this node, or 0 when it draws none — which is every
+ * node that is neither a widget nor a Panel. A Panel's body is its title and its rows as
+ * `panelLayout` derives them, the SAME derivation the body renders from, so a widget wired
+ * into a Panel makes the Panel taller here exactly as it does on the canvas.
+ */
+export function nodeControlsHeight(node: GraphNode, graph?: Pick<GraphDocument, "nodes" | "edges">): number {
+  let content: number;
+  if (CONTROL_WIDGET_TYPES.has(node.type)) {
+    content = widgetBodyHeight(node.type);
+  } else if (node.type === "panel") {
+    const rows = graph === undefined ? [] : panelLayout(graph, node).rows;
+    const body = rows.length === 0 ? [PANEL_HINT_HEIGHT] : rows.map(panelRowHeight);
+    content = META_LINE + body.reduce((sum, height) => sum + PANEL_BODY_GAP + height, 0);
+  } else {
+    return 0;
+  }
+  return CONTROLS_PADDING + content + CONTROLS_BORDER;
+}
+
 export interface NodeBox {
   readonly x: number;
   readonly y: number;
@@ -215,8 +312,8 @@ export function nodeBox(
   definition: NodeDefinition | undefined,
   /** From `previewAspectOf(settings)` wherever a document is in hand (T668). */
   previewAspect: number = DEFAULT_PREVIEW_ASPECT,
-  /** T695 — see `nodePortRows`. Pass it wherever the graph is in hand. */
-  graph?: Pick<GraphDocument, "edges">,
+  /** T695 — see `nodePortRows`; T1512b — a Panel's body follows its wired members. Pass it wherever the graph is in hand. */
+  graph?: Pick<GraphDocument, "nodes" | "edges">,
 ): NodeBox {
   // A node the user resized fills the box they dragged (T208/§V116) — the document says
   // so outright, and nothing derived can override a stated size.
@@ -234,9 +331,11 @@ export function nodeBox(
     height += Math.floor(contentWidth / aspect) + PREVIEW_BORDER;
   }
   const rows = nodePortRows(node, definition, graph);
+  height += nodeControlsHeight(node, graph);
   height += PORTS_PADDING + (rows === 0 ? 0 : rows * PORT_ROW_HEIGHT + (rows - 1) * PORT_ROW_GAP);
 
-  return { x: node.position.x, y: node.position.y, width: NODE_WIDTH, height };
+  // Only the `.controls` region is fractional; `offsetHeight` rounds the node once.
+  return { x: node.position.x, y: node.position.y, width: NODE_WIDTH, height: Math.round(height) };
 }
 
 /** Do two boxes share any area? Touching edges do not count as overlapping. */

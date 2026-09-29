@@ -84,7 +84,7 @@ const sizeOf = (
   // document would under-measure exactly the nodes that fan in — the Composites and
   // Switches every example is built around — and the gutters would absorb the error until
   // one of them did not.
-  graph?: Pick<GraphDocument, "edges">,
+  graph?: Pick<GraphDocument, "nodes" | "edges">,
 ): { width: number; height: number } => {
   const box = nodeBox(node, registry.get(node.type), previewAspect, graph);
   return { width: box.width, height: box.height };
