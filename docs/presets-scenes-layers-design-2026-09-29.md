@@ -682,6 +682,12 @@ Also ruled with the above: **Corner Pin** (`cornerPin`, §T1491b) is the mapping
 
 A. **"Timeline clock" read as the transport's absolute timeline clock.** It pauses with the transport and advances only on produced frames, but it runs through loops and seeks, where the timeline position would replay the fade on every lap and reverse it on a backwards scrub. *Recommendation: confirm the absolute clock.* The alternative, the timeline position, makes a morph behave like a keyframe on the timeline.
 
+**Ruled 2026-09-29: the absolute clock.**
+
 B. **Cues placed on the timeline**, which an export would reproduce: for music videos and fixed shows. A live GO is not re-performed by an export, because commands do not run during a render. Timeline cues would need the cue list to act as a pure function of the playhead, applying values as drivers without writing the document. *Recommendation: a separate row after S5, only if you want exports of cued shows.*
 
+**Ruled 2026-09-29: a separate row after S5 (§T1508b).**
+
 C. **What BACK means.** This design fires the previous cue (with its morph). The other common meaning moves the standby back one without firing. *Recommendation: fire*, because moving the standby is already a tap on the list.
+
+**Ruled 2026-09-29: BACK fires the previous cue.**
