@@ -117,7 +117,7 @@ function failure(reason: string, code: string): ParseProjectFailure {
   return { ok: false, reason, diagnostics: [{ severity: "error", code, message: reason }] };
 }
 
-function sortKeysDeep(value: unknown): unknown {
+export function sortKeysDeep(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeysDeep);
   if (value !== null && typeof value === "object") {
     const sorted: Record<string, unknown> = {};

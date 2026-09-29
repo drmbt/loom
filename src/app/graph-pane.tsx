@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent as ReactDragEvent, ReactNode, RefObject } from "react";
 import { ReactFlowProvider, useConnection, useNodesInitialized, useReactFlow } from "@xyflow/react";
 import type { Viewport } from "@xyflow/react";
-import type { CommandResult } from "@domain/types/commands.ts";
+import type { CommandResult, CommandStatus } from "@domain/types/commands.ts";
+import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { LoomBus } from "@domain/commands/index.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId, PortId } from "@domain/types/ids.ts";
@@ -124,6 +125,12 @@ export interface GraphPaneProps {
    * which is the same object whenever nobody is inside a component.
    */
   rootBus?: LoomBus;
+  /**
+   * T1395b: where a refused file drop says why — the app's notice path, the same one a
+   * refused hotkey reaches. Optional like the other sinks; a caller without one still
+   * gets a document the refusal left untouched.
+   */
+  onCommandRefused?: (result: { status: CommandStatus; diagnostics: RuntimeDiagnostic[] }) => void;
 }
 
 const EMPTY_GRAPH: GraphDocument = { revision: 0, nodes: {}, edges: {}, groups: {} };
@@ -198,6 +205,7 @@ function GraphPaneInner({
   orbits,
   interest,
   rootBus: rootBusProp,
+  onCommandRefused,
 }: GraphPaneProps) {
   // T519: `documentIdentity` — which DOCUMENT the previews below are showing. Taken
   // from the runtime rather than threaded as a prop, because the runtime IS the loaded
@@ -968,11 +976,58 @@ function GraphPaneInner({
     event.dataTransfer.dropEffect = "copy";
   }, []);
 
+  /**
+   * T1395b — a component FILE dropped on the canvas: installed by the §T962 identity rule
+   * and placed where it landed, through `component.import` on this pane's bus (so inside a
+   * component the drop lands inside it, and §V83 is checked against where it lands). A
+   * refusal — a whole project, a malformed file — changes nothing and says why.
+   */
+  const importFiles = useCallback(
+    async (files: readonly File[], at: { x: number; y: number }) => {
+      for (const [index, file] of files.entries()) {
+        if (!file.name.toLowerCase().endsWith(".json")) {
+          onCommandRefused?.({
+            status: "rejected",
+            diagnostics: [
+              {
+                severity: "error",
+                code: "component.import.notAComponent",
+                message: `"${file.name}" is not a component file; only .loom.json component files can be dropped on the canvas.`,
+              },
+            ],
+          });
+          continue;
+        }
+        const text = await file.text();
+        // Several files fan out down-right, so their instances do not land on one another.
+        const position = { x: at.x + index * 40, y: at.y + index * 40 };
+        const result = await bus.execute("component.import", { text, fileName: file.name, position }, invocation);
+        if (result.status !== "applied" || result.output.nodeId === null) {
+          onCommandRefused?.(result);
+          continue;
+        }
+        await selectCreatedNodes(bus, invocation, {
+          status: result.status,
+          output: { createdIds: { imported: result.output.nodeId } },
+        });
+      }
+    },
+    [bus, invocation, onCommandRefused],
+  );
+
   const onDrop = useCallback(
     (event: ReactDragEvent<HTMLDivElement>) => {
       const payload = readNodeDragPayload(event.dataTransfer);
-      // A foreign drag (a file, a URL, another app) is not ours: leave it alone.
-      if (payload === null) return;
+      if (payload === null) {
+        const files = Array.from(event.dataTransfer.files ?? []);
+        // A drag carrying no file and no node (a URL, text from another app) is not ours.
+        if (files.length === 0) return;
+        // Ours from here, including a file we refuse: the browser's default for a dropped
+        // file is to navigate the tab to it, which would close the project.
+        event.preventDefault();
+        void importFiles(files, flowPosition({ x: event.clientX, y: event.clientY }));
+        return;
+      }
       event.preventDefault();
       addNodeAt(
         payload.type,
@@ -981,7 +1036,7 @@ function GraphPaneInner({
         portDrag,
       );
     },
-    [addNodeAt, flowPosition, portDrag],
+    [addNodeAt, flowPosition, importFiles, portDrag],
   );
 
   return (

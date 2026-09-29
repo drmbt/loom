@@ -2043,6 +2043,7 @@ export function App({
                 portDrag={portDrag}
                 onPortDragChange={onPortDragChange}
                 onPatchResult={onPatchResult}
+                onCommandRefused={reportRefusal}
                 actionsRef={actionsRef}
                 /*
                  * T1051 — the SAME backend inside a component: this was `null` inside,

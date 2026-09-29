@@ -30,6 +30,7 @@ import { availableUpgrade, planComponentUpgrade } from "./upgrade.ts";
 import type { ComponentUpgradePlan } from "./upgrade.ts";
 import { describeRecursion, wouldRecurse } from "./recursion.ts";
 import type { ComponentRegistry } from "./registry.ts";
+import { registerComponentFileCommands, type ComponentFileWriter } from "./file-commands.ts";
 
 /**
  * Component commands (T129–T132, T136), registered by declaration merging like every
@@ -223,6 +224,11 @@ export interface ComponentCommandOptions {
   host?: ComponentHost | null;
   /** Mints component ids. Defaults to the store's id factory. */
   newComponentId?: () => ComponentId;
+  /**
+   * Where `component.export` writes (T1395b): the composition root's `writeTextFile`.
+   * Absent on a session bus or a headless harness, where export refuses by name.
+   */
+  writeFile?: ComponentFileWriter;
 }
 
 function info(code: string, message: string, suggestion?: string): RuntimeDiagnostic {
@@ -1095,5 +1101,12 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
       }
       return summaries;
     },
+  });
+
+  // T1395b: one component crossing a document boundary as a file.
+  registerComponentFileCommands(bus, {
+    components,
+    host,
+    ...(options.writeFile === undefined ? {} : { writeFile: options.writeFile }),
   });
 }

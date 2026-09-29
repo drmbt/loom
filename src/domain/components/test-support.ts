@@ -9,6 +9,7 @@ import type { LoomBus } from "../commands/bus.ts";
 import { createTestRegistry } from "../../nodes/registry/test-nodes.ts";
 import { componentNodeType } from "./component-type.ts";
 import { registerComponentCommands } from "./commands.ts";
+import type { ComponentFileWriter } from "./file-commands.ts";
 import { createComponentSystem, type ComponentRegistry } from "./registry.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 
@@ -24,6 +25,8 @@ export interface ComponentHarness {
 export function createComponentHarness(
   idPrefix = "t",
   initialGraph?: GraphDocument,
+  /** T1395b: what `component.export` writes through; absent, export refuses by name. */
+  writeFile?: ComponentFileWriter,
 ): ComponentHarness {
   const store = createGraphStore({
     ids: createSequentialIdFactory(idPrefix),
@@ -32,7 +35,10 @@ export function createComponentHarness(
   });
   const system = createComponentSystem(createTestRegistry().view());
   const { bus } = createDomainBus({ store, registry: system.nodes });
-  registerComponentCommands(bus, { components: system.components });
+  registerComponentCommands(bus, {
+    components: system.components,
+    ...(writeFile === undefined ? {} : { writeFile }),
+  });
   return { store, bus, components: system.components, nodes: system.nodes };
 }
 

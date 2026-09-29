@@ -170,6 +170,31 @@ describe("ComponentLibrary (T188)", () => {
     expect(componentInstances(harness.bus.store.getGraph())).toHaveLength(1);
   });
 
+  it("exports a row to a file through the bus, and says where it went (T1395b)", async () => {
+    const written: Array<{ fileName: string; text: string }> = [];
+    const harness = createComponentHarness("c", graphOf([]), async (file) => {
+      written.push({ fileName: file.fileName, text: file.text });
+      return { kind: "saved", fileName: "my-bloom.loom.json" };
+    });
+    harness.components.register(bloomComponent("bloom", 1, [blurKnob]));
+    render(
+      <ComponentLibrary
+        bus={harness.bus}
+        context={context}
+        components={harness.components.view()}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Export Bloom" }));
+
+    // The notice names the file the WRITER reported, not the one it was offered.
+    expect(await screen.findByText('Exported "Bloom" to my-bloom.loom.json.')).toBeDefined();
+    expect(written.map((file) => file.fileName)).toEqual(["Bloom.loom.json"]);
+    const library = (JSON.parse(written[0]?.text ?? "{}") as { componentLibrary?: { components: Array<{ componentId: string }> } })
+      .componentLibrary;
+    expect(library?.components.map((each) => each.componentId)).toEqual(["bloom"]);
+  });
+
   it("cannot save with nothing selected", () => {
     const harness = setup();
     render(

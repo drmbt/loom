@@ -147,6 +147,17 @@ export function ComponentLibrary({
     }
   };
 
+  /** T1395b: the file another document can drop on its canvas. */
+  const exportComponent = async (summary: ComponentSummary): Promise<void> => {
+    const outcome = await bus.execute(
+      "component.export",
+      { componentId: summary.componentId, version: summary.version },
+      context,
+    );
+    if (outcome.output.saved) setMessage(`Exported "${summary.name}" to ${outcome.output.fileName ?? "a file"}.`);
+    else report(outcome.diagnostics);
+  };
+
   const upgrade = async (nodeId: NodeId): Promise<void> => {
     const outcome = await bus.execute("component.upgradeInstance", { nodeId }, context);
     report(outcome.diagnostics);
@@ -237,6 +248,13 @@ export function ComponentLibrary({
                 onClick={() => void instantiate(summary, "detached")}
               >
                 copy
+              </Button>
+              <Button
+                aria-label={`Export ${summary.name}`}
+                title={`Export ${summary.name} to a file`}
+                onClick={() => void exportComponent(summary)}
+              >
+                export
               </Button>
             </div>
           ))
