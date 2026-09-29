@@ -365,7 +365,7 @@ function CameraDesk({ runtime, deviceClient, environment }: {
   deviceClient: () => DeviceClient;
   environment: PhoneCameraEnvironment;
 }) {
-  const door = usePhoneDoor({ deviceClient, bus: runtime.bus, invocation: runtime.invocation, schedule: soon });
+  const door = usePhoneDoor({ deviceClient, attached: true, bus: runtime.bus, invocation: runtime.invocation, schedule: soon });
   const graph = useSyncExternalStore(runtime.bus.store.subscribe, runtime.bus.store.getGraph);
   // As `app.tsx` composes them: the phone hook's opener is how the media hook opens a phone.
   const cameras = usePhoneCameras({ deviceClient, door: door.state, environment });

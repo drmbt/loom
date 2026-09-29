@@ -120,7 +120,7 @@ afterAll(() => {
   rmSync(certDir, { recursive: true, force: true });
 });
 
-const sink = () => ({ onWrite: () => undefined, onState: () => undefined });
+const sink = () => ({ onWrite: () => undefined, onState: () => undefined, onSignal: () => undefined });
 
 async function openWith(firewall: PhoneDoorOptions["firewall"]): Promise<PhoneDoorState> {
   const door = createPhoneDoor({ lanAddress: () => "127.0.0.1", port: 0, certDir, ...(firewall ? { firewall } : {}) });

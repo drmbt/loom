@@ -27,7 +27,6 @@ import { OSC_CHANNEL_PREFIX } from "../domain/osc/osc-address.ts";
  */
 import type { OscBridgeState } from "../domain/osc/osc-status.ts";
 import type { OscMessage } from "./osc-codec.ts";
-<<<<<<< ours
 import type {
   LaserCommand,
   LaserOutcome,
@@ -35,9 +34,6 @@ import type {
   VisionOutcome,
   VisionSegmentRequest,
 } from "./device-protocol.ts";
-import type { PhoneDoorState, PhonePeer, PhoneSet, PhoneSnapshot } from "./phone/phone-protocol.ts";
-=======
-import type { LaserCommand, LaserOutcome, VisionOutcome, VisionSegmentRequest } from "./device-protocol.ts";
 import {
   parsePhoneSignal,
   type PhoneDoorState,
@@ -47,7 +43,6 @@ import {
   type PhoneSignalToPhone,
   type PhoneSnapshot,
 } from "./phone/phone-protocol.ts";
->>>>>>> theirs
 
 /**
  * THE PAGE HALF OF THE DEVICE ROLE (T942 tier 3) — TRANSPORT ONLY (§V192).
@@ -210,13 +205,10 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
   let phoneDeferred: Array<() => void> = [];
   const phoneWriteListeners = new Set<(phone: string, set: PhoneSet) => void>();
   const phoneStateListeners = new Set<(state: PhoneDoorState) => void>();
-<<<<<<< ours
+  const phoneSignalListeners = new Set<(phone: string, message: PhoneSignalFromPhone) => void>();
   /** B232: model downloads awaiting their one owed reply, and the streams they opened. */
   const modelPending = new Map<number, (outcome: ModelFetchOutcome) => void>();
   const modelStreams = new Map<string, ModelStreamSink>();
-=======
-  const phoneSignalListeners = new Set<(phone: string, message: PhoneSignalFromPhone) => void>();
->>>>>>> theirs
   let disposed = false;
 
   const publish = (state: OscBridgeState): void => {
