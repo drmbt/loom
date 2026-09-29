@@ -214,6 +214,16 @@ export interface LoomBackend extends RenderBackend {
   setFrameSource?(source: FrameSource | null): void;
 
   /**
+   * T1409b — the SAME frames, for the session's other loops (node previews, viewer
+   * synthesis, the Syphon/NDI pump). A request made here is answered by the source
+   * `setFrameSource` set (this realm's while there is none, or once it has closed), and a
+   * request still pending when the source changes moves to the new one — a request left
+   * on a hidden editor's rAF would never be answered. Optional like `setFrameSource`;
+   * a loop given a backend without it schedules on its own window.
+   */
+  readonly frames?: FrameSource;
+
+  /**
    * Creates the preview system's runtime host on a shared surface (T161, doc §12.2):
    * tile passes sample the MAIN program's outputs as external bindings, render into
    * pooled tile targets, and composite to the surface at per-tile viewports — GPU to

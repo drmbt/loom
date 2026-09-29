@@ -61,6 +61,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  // Before the timers: the stubs sit on top of the fake rAF, and must come off first.
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -155,6 +157,51 @@ describe("useNodePreviews (T185)", () => {
     // the tile is live, so a suspended slot never has to go blank to show something.
     expect(snapshot.preview?.facts).toEqual({ width: 64, height: 64, format: "rgba8unorm" });
 
+    nodeRuntime.dispose();
+  });
+
+  /*
+   * T1409b — with a perform window driving the show, the tiles tick on ITS frames. The
+   * editor's rAF is stubbed to a request nobody ever answers: a hidden editor tab.
+   */
+  it("classifies on the perform window's frames while the editor's are parked", () => {
+    vi.stubGlobal("requestAnimationFrame", () => 1);
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    const waiting: Array<(time: number) => void> = [];
+    const performWindow = {
+      requestAnimationFrame: (callback: (time: number) => void) => waiting.push(callback),
+      cancelAnimationFrame: () => {},
+    };
+    const nodeRuntime = createNodeRuntimeStore();
+    const bounds = createPreviewSlotBounds();
+    bounds.publish("n1", { x: 0, y: 0, width: 200, height: 120 });
+    const canvas = document.createElement("canvas");
+    canvas.getBoundingClientRect = () =>
+      ({ x: 0, y: 0, top: 0, left: 0, right: 400, bottom: 300, width: 400, height: 300 }) as DOMRect;
+
+    renderHook(() =>
+      useNodePreviews({
+        backend: { ...fakeBackend(), frames: performWindow } as unknown as LoomBackend,
+        canvasRef: { current: canvas },
+        bounds,
+        graph: graphWith("test.blur"),
+        registry: createTestRegistry().view(),
+        compiledOutputs: [{ nodeId: "n1", portId: "out", resourceId: "res:n1:out",
+          resourceKind: "target", size: [64, 64], format: "rgba8unorm", space: "linear", temporal: false }],
+        nodeRuntime,
+        getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+        getNodePosition: () => ({ x: 0, y: 0 }),
+        getNodeBoxes: () => [],
+        previewFps: 20,
+        previewLongEdge: 192,
+        documentIdentity: "document-under-test",
+      }),
+    );
+
+    for (const callback of waiting.splice(0)) callback(0);
+    vi.advanceTimersByTime(150); // NodeRuntimeStore's coalesced flush (§V16)
+
+    expect(nodeRuntime.get("n1").preview?.state.kind).toBe("live");
     nodeRuntime.dispose();
   });
 

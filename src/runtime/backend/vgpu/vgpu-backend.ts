@@ -365,6 +365,10 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
   /** §T1391b: whose animation frames drive the realtime loop; null = this realm's. */
   let frameSource: FrameSource | null = null;
 
+  /** T1409b: requests pending through `frames`, by the id handed out, and where each waits. */
+  const followers = new Map<number, { callback: (time: number) => void; requester: FrameSource; handle: number }>();
+  let nextFollower = 1;
+
   /** The CSS box in device pixels, or undefined for a canvas with no layout (Offscreen). */
   function layoutSize(canvas: PresentableCanvas): readonly [number, number] | undefined {
     const laidOut = canvas as PresentableCanvas & {
@@ -605,6 +609,24 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       requestAnimationFrame: (cb) => setTimeout(() => cb(performance.now()), 16) as unknown as number,
       cancelAnimationFrame: (id) => clearTimeout(id as unknown as ReturnType<typeof setTimeout>),
     };
+  }
+
+  /** T1409b: park one `frames` request on the current source, or this realm's frames. */
+  function placeFollower(id: number, callback: (time: number) => void): void {
+    const requester = frameSource === null || frameSource.closed === true ? realmFrames() : frameSource;
+    const handle = requester.requestAnimationFrame((time) => {
+      followers.delete(id);
+      callback(time);
+    });
+    followers.set(id, { callback, requester, handle });
+  }
+
+  /** T1409b: every request still waiting moves to the source that now drives the frames. */
+  function moveFollowers(): void {
+    for (const [id, { callback, requester, handle }] of [...followers]) {
+      requester.cancelAnimationFrame(handle);
+      placeFollower(id, callback);
+    }
   }
 
   /**
@@ -2432,6 +2454,21 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // Only rAF-scheduled loops move; a timer loop has no window to follow.
       stopLoops();
       if (session && !halted) restartLoops();
+      moveFollowers();
+    },
+
+    frames: {
+      requestAnimationFrame(callback: (time: number) => void): number {
+        const id = nextFollower++;
+        placeFollower(id, callback);
+        return id;
+      },
+      cancelAnimationFrame(id: number): void {
+        const pending = followers.get(id);
+        if (pending === undefined) return;
+        followers.delete(id);
+        pending.requester.cancelAnimationFrame(pending.handle);
+      },
     },
 
     present(canvas: PresentableCanvas, options: PresentationOptions): PresentationHandle {

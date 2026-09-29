@@ -49,6 +49,9 @@ export function useNativeOutputs(runtime: AppRuntime, backend: LoomBackend | nul
     const messages = new Map<string, RuntimeDiagnostic>();
     let disposed = false;
     let frame = 0;
+    // T1409b: the backend's frames — a perform window's while it drives the show, so a
+    // hidden editor does not freeze Syphon/NDI while the perform window keeps playing.
+    const frames = backend.frames ?? window;
     const report = (id: string, message: string | null) => {
       if (disposed || (message === null ? !messages.has(id) : messages.get(id)?.message === message)) return;
       if (message === null) messages.delete(id);
@@ -128,9 +131,9 @@ export function useNativeOutputs(runtime: AppRuntime, backend: LoomBackend | nul
           report(request.id, String(error));
         }
       }
-      frame = window.requestAnimationFrame(tick);
+      frame = frames.requestAnimationFrame(tick);
     };
-    frame = window.requestAnimationFrame(tick);
+    frame = frames.requestAnimationFrame(tick);
     const timer = window.setInterval(() => {
       for (const [id, entry] of entries) {
         if (!entry.session || entry.polling) continue;
@@ -144,7 +147,7 @@ export function useNativeOutputs(runtime: AppRuntime, backend: LoomBackend | nul
       }
     }, 1000);
     return () => {
-      disposed = true; window.cancelAnimationFrame(frame); window.clearInterval(timer);
+      disposed = true; frames.cancelAnimationFrame(frame); window.clearInterval(timer);
       if (controller.current === owned) controller.current = null;
       for (const [id, entry] of entries) close(id, entry);
     };

@@ -12,14 +12,13 @@ import type { LoomBackend } from "@runtime/backend/index.ts";
 vi.mock("@devices/native-output.ts", () => ({ desktopOutputBridge: vi.fn() }));
 vi.mock("@devices/native-output-session.ts", () => ({ createNativeOutputSession: vi.fn() }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.resetAllMocks(); });
-function setup(type = "syphonOut") {
+function setup(type = "syphonOut", backend = {} as LoomBackend) {
   const runtime = createAppRuntime({ identityStorage: null, actor: { kind: "human", id: "test", label: "Test" } });
   const graph: GraphDocument = { revision: 1, groups: {}, nodes: {
     source: { id: "source", type: "checker", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} },
     sink: { id: "sink", type, definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { name: "Test" } },
   }, edges: { wire: { id: "wire", source: { nodeId: "source", portId: "out" }, target: { nodeId: "sink", portId: "input" } } } };
   const compiled = { order: ["source", "sink"], outputs: [{ nodeId: "source", portId: "out", resourceId: "source:out", size: [1920, 1080] }] } as unknown as CompiledGraph;
-  const backend = {} as LoomBackend;
   const sessions: ReturnType<typeof createNativeOutputSession>[] = [];
   vi.mocked(desktopOutputBridge).mockReturnValue({} as never);
   vi.mocked(createNativeOutputSession).mockImplementation(() => {
@@ -44,6 +43,21 @@ it.each(["syphonOut", "ndiOut", "spoutOut"])("%s publishes full input size, surv
   expect(h.sessions[0]!.update).toHaveBeenCalledWith({ resourceId: "source:out", size: [1280, 720] });
   h.view.rerender({ graph: { ...h.graph, nodes: {} }, compiled: h.compiled }); await h.tick();
   expect(h.sessions[0]!.close).toHaveBeenCalledOnce();
+});
+/* T1409b: with a perform window driving the show, the pump runs on ITS frames. The editor's
+   rAF is the stub `setup` installs, and nothing here ever calls it — a hidden editor. */
+it("publishes on the perform window's frames while the editor's are parked", async () => {
+  const waiting: Array<(time: number) => void> = [];
+  const performWindow = {
+    requestAnimationFrame: (callback: (time: number) => void) => waiting.push(callback),
+    cancelAnimationFrame: () => {},
+  };
+  const h = setup("syphonOut", { frames: performWindow } as unknown as LoomBackend);
+  for (let frame = 0; frame < 2; frame += 1) {
+    await act(async () => { for (const callback of waiting.splice(0)) callback(0); });
+  }
+  expect(createNativeOutputSession).toHaveBeenCalledOnce();
+  expect(h.sessions[0]!.pump).toHaveBeenCalledTimes(2);
 });
 it("retiring one of two outputs leaves the other session intact", async () => {
   const h = setup();

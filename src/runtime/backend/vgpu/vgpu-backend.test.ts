@@ -816,6 +816,51 @@ describe("vgpu backend — the loop follows a frame source (§T1391b, §V202, T3
     await until(() => ticks > 1, "realm frames after the source closed");
     control.stop();
   });
+
+  /*
+   * T1409b — `frames` is what previews, viewer synthesis and the Syphon/NDI pump schedule
+   * on. Each of those loops re-requests from inside its tick, so a request that is already
+   * WAITING when the source changes is the one that matters: left on a hidden editor's rAF
+   * it is never answered, and the loop is dead until the editor comes back.
+   */
+  it("answers `frames` requests from the source, and moves a waiting request when the source changes", async () => {
+    const { backend } = await harness();
+    const frames = backend.frames!;
+    const source = manualSource();
+    let answered = 0;
+
+    // Waiting on this realm's frames when the perform window takes over.
+    frames.requestAnimationFrame(() => (answered += 1));
+    backend.setFrameSource?.(source);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(answered).toBe(0);
+    expect(source.pending()).toBe(1);
+    source.flush();
+    expect(answered).toBe(1);
+
+    // Waiting on the source when it is released: this realm answers it instead.
+    frames.requestAnimationFrame(() => (answered += 1));
+    backend.setFrameSource?.(null);
+    expect(source.pending()).toBe(0);
+    await until(() => answered === 2, "a waiting request answered by this realm after release");
+
+    // A cancelled request is answered by nobody, wherever it was waiting.
+    backend.setFrameSource?.(source);
+    const id = frames.requestAnimationFrame(() => (answered += 1));
+    frames.cancelAnimationFrame(id);
+    expect(source.pending()).toBe(0);
+  });
+
+  it("answers `frames` from this realm once the source window has closed", async () => {
+    const { backend } = await harness();
+    const source = manualSource();
+    backend.setFrameSource?.(source);
+    source.closed = true;
+    let answered = 0;
+    backend.frames!.requestAnimationFrame(() => (answered += 1));
+    expect(source.pending()).toBe(0);
+    await until(() => answered === 1, "this realm's frame after the source closed");
+  });
 });
 
 describe("vgpu backend — presentation seam (T87, §V64/§V70)", () => {

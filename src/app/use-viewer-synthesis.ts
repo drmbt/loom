@@ -162,14 +162,16 @@ export function useViewerSynthesis(inputs: ViewerSynthesisInputs): void {
       });
     };
 
+    // T1409b: on the backend's frames — a perform window's while one drives the show.
+    const frames = backend.frames ?? window;
     const tick = (): void => {
-      frameHandle = requestAnimationFrame(tick);
+      frameHandle = frames.requestAnimationFrame(tick);
       step();
     };
-    frameHandle = requestAnimationFrame(tick);
+    frameHandle = frames.requestAnimationFrame(tick);
 
     return () => {
-      cancelAnimationFrame(frameHandle);
+      frames.cancelAnimationFrame(frameHandle);
       system.reset();
       host.dispose();
     };

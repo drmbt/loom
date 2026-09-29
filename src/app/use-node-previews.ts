@@ -1012,8 +1012,11 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
       }
     };
 
+    // T1409b: on the backend's frames — a perform window's while one drives the show, so
+    // the tiles do not park with a hidden editor while the realtime loop keeps running.
+    const frames = backend.frames ?? window;
     const tick = (): void => {
-      frameHandle = requestAnimationFrame(tick);
+      frameHandle = frames.requestAnimationFrame(tick);
       step();
     };
     /*
@@ -1029,12 +1032,12 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
      */
     stepRef.current = step;
     boundaryRef.current = crossDocumentBoundary;
-    frameHandle = requestAnimationFrame(tick);
+    frameHandle = frames.requestAnimationFrame(tick);
 
     return () => {
       stepRef.current = null;
       boundaryRef.current = null;
-      cancelAnimationFrame(frameHandle);
+      frames.cancelAnimationFrame(frameHandle);
       system.reset();
       host.dispose();
     };
