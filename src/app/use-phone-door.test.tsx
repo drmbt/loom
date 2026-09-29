@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DeviceClient } from "@devices/device-client.ts";
+import { PHONE_DOOR_UNAVAILABLE } from "@devices/helper.ts";
 import type { PhoneDoorState, PhoneSet, PhoneSnapshot } from "@devices/phone/phone-protocol.ts";
 import { ControlsPane } from "@editor/controls/controls-pane.tsx";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
@@ -161,7 +162,7 @@ describe("T1396b — the phone door, page side", () => {
 
   it("shows the helper's reason verbatim when the door stays shut, and a closed socket closes it", async () => {
     const runtime = await runtimeWithPanel();
-    const reason = "This helper was started without --phone, so it has no phone door.";
+    const reason = PHONE_DOOR_UNAVAILABLE;
     const helper = fakeClient({ open: false, reason });
     render(<Desk runtime={runtime} client={helper.client} />);
     await act(async () => {
