@@ -132,6 +132,22 @@ const CAMERA_FACING_OPTIONS = [
   { value: "environment", label: "Back (environment)" },
 ] as const;
 
+/**
+ * T1397b — A PHONE IS A WEBCAM DEVICE. `device: "phone:<name>"` names a phone sending its
+ * camera over the phone door (§T1396b) under that name; the media hook receives it over
+ * WebRTC instead of `getUserMedia`, and everything downstream of the element is the
+ * webcam's own. One camera node rather than a second one, by the owner's rule: fewer
+ * concepts. The prefix cannot collide with a browser `deviceId`, which is an opaque hex
+ * string or "default".
+ */
+export const PHONE_CAMERA_DEVICE_PREFIX = "phone:";
+
+/** The phone a `device` value names, or null when it names a local camera. */
+export function phoneCameraName(device: unknown): string | null {
+  if (typeof device !== "string" || !device.startsWith(PHONE_CAMERA_DEVICE_PREFIX)) return null;
+  return device.slice(PHONE_CAMERA_DEVICE_PREFIX.length).trim();
+}
+
 /** Nothing in the Capture group is asked for. The Fit control has nothing to apply to. */
 function asksForNothing(values: Readonly<Record<string, ParameterValue>>): boolean {
   const asked = (key: string): boolean => {
@@ -209,7 +225,7 @@ export const webcamNode: NodeDefinition = {
       label: "Device",
       default: "",
       description:
-        "Camera device id, from the inspector's device picker. Empty = the system default. Device names are hidden by the browser until camera access is granted.",
+        "Camera device id, from the inspector's device picker. Empty = the system default. Device names are hidden by the browser until camera access is granted. `phone:<name>` is a phone sending its camera over the phone door under that name (the picker lists the phones sending now); the Capture parameters are then asked of the phone, and its own buttons can change them too — the latest choice wins.",
     },
     width: {
       type: "number",
@@ -259,7 +275,8 @@ export const webcamNode: NodeDefinition = {
       description:
         "Which camera to prefer where the device has more than one — the front or the back camera of a phone or tablet. ALWAYS asked as a preference, never a requirement, even under Require: most desktop webcams report no facing mode at all, so an exact request would refuse to open the only camera on the machine. A camera that reports no facing is reported as unknown rather than guessed at. Changing this re-opens the camera.",
       inactiveWhen: (values) =>
-        typeof values["device"] === "string" && values["device"].trim() !== ""
+        // T1397b: a phone has a front and a back, and is asked for one.
+        typeof values["device"] === "string" && values["device"].trim() !== "" && phoneCameraName(values["device"]) === null
           ? "A specific camera is chosen in Device, so the facing preference does not apply — the device decides which camera this is."
           : null,
     },

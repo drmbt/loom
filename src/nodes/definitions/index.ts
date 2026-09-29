@@ -124,6 +124,8 @@ export {
   mediaSourceIdFor,
   MEDIA_TEXTURE_KEY,
   mediaNodeDefinitions,
+  PHONE_CAMERA_DEVICE_PREFIX,
+  phoneCameraName,
 } from "./media.ts";
 export {
   VALUE_PORT,

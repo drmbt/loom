@@ -16,9 +16,20 @@ export interface PhoneRefusal {
   readonly count: number;
 }
 
+/** T1397b: one phone's camera as the desk hears it (`use-phone-cameras.ts`). */
+export interface PhoneCameraView {
+  /** The door's id for the phone (`PhonePeer.phone`). */
+  readonly phone: string;
+  /** The name the phone sends under. */
+  readonly name: string;
+  readonly state: "connecting" | "live" | "ended";
+}
+
 export interface PhoneDoorView {
   /** Null until this page first asks for the door. */
   readonly state: PhoneDoorState | null;
+  /** T1397b: which phones are sending a camera. Absent where nothing receives cameras. */
+  readonly cameras?: readonly PhoneCameraView[];
   /** An open or close is in flight. */
   readonly pending: boolean;
   /** How many Panels the last snapshot carried — zero means nothing is published. */
@@ -32,7 +43,19 @@ export interface PhoneDoorView {
 }
 
 export const PHONE_NOTHING_PUBLISHED =
-  "No Panel is published yet, so a phone sees nothing. Turn on Phone on a Panel to publish it.";
+  "No Panel is published yet, so a phone sees no controls (it can still send its camera). Turn on Phone on a Panel to publish it.";
+
+/** T1397b: what a phone's line in the popover adds when it is sending its camera. */
+export function phoneCameraLine(camera: PhoneCameraView): string {
+  switch (camera.state) {
+    case "live":
+      return `sending camera “${camera.name}”`;
+    case "connecting":
+      return `camera “${camera.name}” connecting`;
+    case "ended":
+      return `camera “${camera.name}” stopped`;
+  }
+}
 
 export const PHONE_AWAITING_HELPER = "Opens by itself once the helper attaches.";
 

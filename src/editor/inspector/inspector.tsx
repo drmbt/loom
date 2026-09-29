@@ -181,6 +181,8 @@ export interface InspectorProps {
    * §V986 answer to "we cannot see" rather than a fabricated stand-in.
    */
   cameraStatus?: (nodeId: NodeId) => CameraStatus | null;
+  /** T1397b: the names phones are sending cameras under now, offered as Webcam devices. */
+  phoneCameras?: readonly string[];
   /**
    * T942: the session's ONE Web MIDI access, for the MIDI section shown on `midiIn`.
    * Absent = no session MIDI wiring (tests, embeds) — section hidden, exactly as the
@@ -323,6 +325,7 @@ export function Inspector({
   channelNames,
   audioStatus,
   cameraStatus,
+  phoneCameras,
   midi,
   laser,
   performWindows,
@@ -850,6 +853,7 @@ export function Inspector({
            stale while still looking like a measurement. `audioStatus` is read the same
            way three lines up, for the same stated reason. */
         status={cameraStatus?.(node.id) ?? null}
+        {...(phoneCameras === undefined ? {} : { phones: phoneCameras })}
         editor={editor}
       />
     ) : null;

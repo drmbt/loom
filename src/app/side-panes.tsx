@@ -167,6 +167,8 @@ export interface InspectorPaneProps {
    * the Inspector's Camera section. Passed straight through; this pane measures nothing.
    */
   cameraStatus?: (nodeId: NodeId) => import("@/app/camera-request.ts").CameraStatus | null;
+  /** T1397b: the names phones are sending cameras under now, for the Webcam's device picker. */
+  phoneCameras?: readonly string[];
   /**
    * T942: the session's ONE Web MIDI access, for the Inspector's MIDI section — its state,
    * its ports, its permission request and its learn arming. Absent = no session MIDI
@@ -272,6 +274,7 @@ export function InspectorPane({
   unknownParameters = [],
   audioStatus,
   cameraStatus,
+  phoneCameras,
   midi,
   laser,
   performWindows,
@@ -349,6 +352,7 @@ export function InspectorPane({
       {...(channelNames === undefined ? {} : { channelNames })}
       {...(audioStatus === undefined ? {} : { audioStatus })}
       {...(cameraStatus === undefined ? {} : { cameraStatus })}
+      {...(phoneCameras === undefined ? {} : { phoneCameras })}
       {...(midi === undefined ? {} : { midi })}
       {...(laser === undefined ? {} : { laser })}
       {...(performWindows === undefined ? {} : { performWindows })}

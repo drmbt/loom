@@ -7,12 +7,13 @@ import type { ParameterValue } from "@domain/types/parameters.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
 import { resolveParameters } from "@domain/parameters/index.ts";
-import { mediaNodeDefinitions, mediaSourceIdFor } from "@nodes/definitions/index.ts";
+import { mediaNodeDefinitions, mediaSourceIdFor, phoneCameraName } from "@nodes/definitions/index.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import type { CameraStatus } from "./camera-request.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 import type { MediaControlRegistry } from "./media-commands.ts";
+import type { PhoneCameraOpener } from "./use-phone-cameras.ts";
 import {
   applyMediaPlayhead,
   createMediaTransportRunner,
@@ -99,6 +100,11 @@ export interface OpenedCamera {
    * microphone path already does (`use-audio-input.ts` stops its tracks on teardown).
    */
   stop(): void;
+  /**
+   * T1397b — why no frames are arriving, when the source knows: a phone camera opens at
+   * once and may not be sending yet. Null (or absent, for a local camera) while it is.
+   */
+  waiting?(): string | null;
 }
 
 /**
@@ -406,6 +412,8 @@ export function useMediaSources(
   environment?: MediaEnvironment,
   /** T493: where `media.cue` and `media.reload` find this node. Optional for tests. */
   controls?: MediaControlRegistry,
+  /** T1397b: how a Webcam whose device is `phone:<name>` is opened. Absent: no phone door here. */
+  phones?: PhoneCameraOpener,
 ): MediaWiring {
   const [diagnostics, setDiagnostics] = useState<readonly RuntimeDiagnostic[]>(NO_DIAGNOSTICS);
   /**
@@ -633,8 +641,20 @@ export function useMediaSources(
 
         let element: MediaElement;
         let camera: OpenedCamera | null = null;
+        /*
+         * T1397b — a phone is a webcam DEVICE (`phone:<name>`), received over WebRTC from the
+         * phone door rather than opened with `getUserMedia`. The opener never refuses — a
+         * phone not sending yet opens black and says why (`waiting`) — so none of the
+         * vanished-device fallback below applies: there is no local camera to fall back to
+         * that the user meant. Everything after the element is the webcam's own.
+         */
+        const phone = request.type === "webcam" ? phoneCameraName(request.camera.device) : null;
         try {
-          if (request.type === "webcam") {
+          if (phone !== null) {
+            if (phones === undefined) throw new Error("This page has no phone door to receive a phone camera.");
+            camera = phones.open(request.nodeId, phone, request.camera);
+            element = camera.element;
+          } else if (request.type === "webcam") {
             try {
               camera = await env.openCamera(request.camera);
             } catch (constrained) {
@@ -758,6 +778,9 @@ export function useMediaSources(
           const size = media.size();
           if (size === null || !live) return;
           matchNodeResolution(request.nodeId, size.width, size.height);
+          // T1397b: a phone keeps listening — turned on its side it swaps width and height
+          // mid-stream, and a new session from it is a new stream on the same element.
+          if (phone !== null) return;
           element.removeEventListener("loadedmetadata", applySize);
           element.removeEventListener("resize", applySize);
         };
@@ -807,7 +830,7 @@ export function useMediaSources(
     };
     // `key` is the identity of the request set; `requestsRef` carries the values, so a
     // node moving on the canvas does not restart a camera.
-  }, [backend, controls, environment, key, reloadNonce]);
+  }, [backend, controls, environment, key, reloadNonce, phones]);
 
   /**
    * What each Text node draws, pushed after registration (T243, T312).
@@ -878,8 +901,11 @@ export function useMediaSources(
         limits: null,
       };
     }
+    // T1397b: a phone camera that is open but not sending says so, beside what it last got.
+    const waiting = entry.camera.waiting?.() ?? null;
     return {
-      kind: "live",
+      kind: waiting === null ? "live" : "error",
+      ...(waiting === null ? {} : { message: waiting }),
       requested: entry.requested,
       granted: entry.camera.grant(),
       limits: entry.camera.limits(),

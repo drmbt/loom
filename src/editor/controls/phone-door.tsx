@@ -5,6 +5,7 @@ import {
   PHONE_AWAITING_HELPER,
   PHONE_NOTHING_PUBLISHED,
   PHONE_SCAN_HINT,
+  phoneCameraLine,
   phoneLabel,
   shortFingerprint,
   type PhoneDoorView,
@@ -82,9 +83,16 @@ export function PhoneDoorButton({ door }: { readonly door: PhoneDoorView }) {
             </p>
             {state.phones.length > 0 ? (
               <ul className={styles.phones}>
-                {state.phones.map((peer) => (
-                  <li key={peer.phone} title={peer.userAgent}>{phoneLabel(peer.userAgent)}</li>
-                ))}
+                {state.phones.map((peer) => {
+                  // T1397b: which of them is sending its camera, and under what name.
+                  const camera = door.cameras?.find((each) => each.phone === peer.phone);
+                  return (
+                    <li key={peer.phone} title={peer.userAgent} data-phone-camera={camera?.state}>
+                      {phoneLabel(peer.userAgent)}
+                      {camera === undefined ? null : <span className={styles.camera}> · {phoneCameraLine(camera)}</span>}
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
             <Button variant="danger" onClick={door.close} disabled={door.pending}>Close door</Button>

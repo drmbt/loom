@@ -99,6 +99,7 @@ import type { LoomBackend } from "@runtime/backend/index.ts";
 import { useMediaSources } from "./use-media-sources.ts";
 import { useMeshSources } from "./use-mesh-sources.ts";
 import { useNativeInputs } from "./use-native-inputs.ts";
+import { usePhoneCameras } from "./use-phone-cameras.ts";
 import { useNativeOutputs } from "./use-native-outputs.ts";
 import { drainNativeViewerOutputs } from "./native-viewer-outputs.ts";
 import { createMediaControlRegistry, useMediaCommands } from "./media-commands.ts";
@@ -808,6 +809,11 @@ export function App({
    */
   const mediaControls = useMemo(() => createMediaControlRegistry(), []);
   useMediaCommands(runtime.bus, mediaControls);
+  // T1397b: phones sending their cameras over the phone door — a Webcam whose device is
+  // `phone:<name>` opens through this rather than getUserMedia.
+  const phoneCameras = usePhoneCameras({ deviceClient: osc.deviceClient, door: phoneDoor.state });
+  // The Phone popover lists which phones are sending, beside the door's own state.
+  const phoneView = useMemo(() => ({ ...phoneDoor, cameras: phoneCameras.feeds }), [phoneDoor, phoneCameras.feeds]);
   const media = useMediaSources(
     runtime,
     backend ?? null,
@@ -819,6 +825,7 @@ export function App({
     compile.compiled,
     undefined,
     mediaControls,
+    phoneCameras.opener,
   );
   const nativeInputs = useNativeInputs(runtime, backend ?? null, compile.flatGraph, compile.compiled);
   // T1353b: Mesh File In — reads the file, feeds its buffers, writes its measured size.
@@ -1419,6 +1426,7 @@ export function App({
       ...media.diagnostics,
       ...meshes.diagnostics,
       ...nativeInputs.diagnostics,
+      ...phoneCameras.diagnostics,
       ...nativeOutputs.diagnostics,
       // T1340b — the host-level limitation a node declares about itself. Same list as
       // everything else, which is what makes the node badge and this panel agree.
@@ -1453,6 +1461,7 @@ export function App({
     media.diagnostics,
     meshes.diagnostics,
     nativeInputs.diagnostics,
+    phoneCameras.diagnostics,
     nativeOutputs.diagnostics,
     osc.diagnostics,
     laser.diagnostics,
@@ -2173,6 +2182,8 @@ export function App({
                 /* T1043: the camera's REQUEST beside its GRANT, read live per render
                    (§V986) — the media hook is the only thing holding the open track. */
                 cameraStatus={media.cameraStatus}
+                /* T1397b: phones sending now, offered as Webcam devices. */
+                phoneCameras={phoneCameras.sending}
                 midi={midi}
                 laser={laser.session}
                 performWindows={perform.surface}
@@ -2234,7 +2245,7 @@ export function App({
           terminal={terminalPane}
           controls={
             <ErrorBoundary name="Controls">
-              <ControlsPane graph={compile.graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation} phone={phoneDoor} />
+              <ControlsPane graph={compile.graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation} phone={phoneView} />
             </ErrorBoundary>
           }
         />

@@ -63,6 +63,31 @@ describe("WebcamSection (T810)", () => {
     expect(editor.calls).toEqual([["cam", "device", "usb-cam-3", "commit"]]);
   });
 
+  /*
+   * T1397b: a phone is a webcam device. The phones sending now sit beside the local
+   * cameras, and the one a saved document names is shown even while it is not sending —
+   * a picker that dropped it would show "System default" for a node that is not using it.
+   */
+  it("lists the phones sending now as devices, keeps a stored phone that is not, and writes `phone:<name>`", async () => {
+    mockDevices([{ deviceId: "cam-1", label: "FaceTime HD" }]);
+    const editor = editorStub();
+    render(
+      <WebcamSection nodeId={"cam" as never} device="phone:Front" status={null} phones={["Back cam"]} editor={editor} />,
+    );
+    await waitFor(() => expect(screen.getByText("FaceTime HD")).toBeTruthy());
+    const select = screen.getByLabelText("Camera device") as HTMLSelectElement;
+    expect([...select.options].map((option) => [option.value, option.textContent])).toEqual([
+      ["", "System default"],
+      ["cam-1", "FaceTime HD"],
+      ["phone:", "Phone · any"],
+      ["phone:Back cam", "Phone · Back cam"],
+      ["phone:Front", "Phone · Front (not sending)"],
+    ]);
+    select.value = "phone:Back cam";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(editor.calls).toEqual([["cam", "device", "phone:Back cam", "commit"]]);
+  });
+
   it("lists only cameras — microphones are the other picker's business", async () => {
     mockDevices([
       { deviceId: "mic-1", label: "Microphone", kind: "audioinput" },

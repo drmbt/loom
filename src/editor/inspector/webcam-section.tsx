@@ -3,6 +3,7 @@ import type { NodeId } from "@domain/types/ids.ts";
 import { ControlRow } from "@ui/controls/control-row.tsx";
 import { EnumField } from "@ui/controls/enum-field.tsx";
 import { cameraShortfall, type CameraStatus } from "@/app/camera-request.ts";
+import { PHONE_CAMERA_DEVICE_PREFIX, phoneCameraName } from "@nodes/definitions/index.ts";
 import type { ParameterEditor } from "./parameter-editor.ts";
 import styles from "./inspector.module.css";
 
@@ -95,7 +96,27 @@ export interface WebcamSectionProps {
    * the first frame — and the section then says nothing about a grant it does not have.
    */
   status: CameraStatus | null;
+  /**
+   * T1397b: the names phones are sending cameras under now, over the phone door. Each is a
+   * device here (`phone:<name>`), beside the local cameras. Absent where nothing receives.
+   */
+  phones?: readonly string[];
   editor: ParameterEditor;
+}
+
+/**
+ * T1397b — the phone entries of the picker: every phone sending now, "any phone" once one
+ * is, and the stored phone even while it is NOT sending (a saved document names a phone
+ * that has not pressed Send camera yet; the picker must still show what is chosen).
+ */
+function phoneOptions(device: string, phones: readonly string[]): Array<{ value: string; label: string }> {
+  const options = phones.map((name) => ({ value: `${PHONE_CAMERA_DEVICE_PREFIX}${name}`, label: `Phone · ${name}` }));
+  if (phones.length > 0) options.unshift({ value: PHONE_CAMERA_DEVICE_PREFIX, label: "Phone · any" });
+  const stored = phoneCameraName(device);
+  if (stored !== null && !options.some((option) => option.value === device)) {
+    options.push({ value: device, label: stored === "" ? "Phone · any (none sending)" : `Phone · ${stored} (not sending)` });
+  }
+  return options;
 }
 
 /** A requested number, or the word for "you asked for nothing", which is not zero. */
@@ -158,7 +179,7 @@ export function webcamSectionParameters(): readonly string[] {
   return ["device"];
 }
 
-export function WebcamSection({ nodeId, device, status, editor }: WebcamSectionProps) {
+export function WebcamSection({ nodeId, device, status, phones = [], editor }: WebcamSectionProps) {
   const { devices, unlabelled } = useVideoDevices();
   const granted = status === null ? null : grantedText(status);
   const shortfall = status === null ? null : cameraShortfall(status.requested, status.granted);
@@ -206,6 +227,7 @@ export function WebcamSection({ nodeId, device, status, editor }: WebcamSectionP
               value: entry.deviceId,
               label: entry.label === "" ? `Camera ${String(index + 1)}` : entry.label,
             })),
+            ...phoneOptions(device, phones),
           ]}
           onChange={(next) => editor.setParameter(nodeId, "device", next, "commit")}
         />

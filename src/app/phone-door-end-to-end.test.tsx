@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -13,11 +13,17 @@ import {
   PHONE_EVENTS_PATH,
   PHONE_PEER_PARAM,
   PHONE_SET_PATH,
+  PHONE_SIGNAL_PATH,
   phoneActorId,
   type PhoneEvent,
   type PhoneSet,
+  type PhoneSignalFromPhone,
   type PhoneSnapshot,
 } from "@devices/phone/phone-protocol.ts";
+import type { LoomBackend } from "@runtime/backend/index.ts";
+import type { PhonePeerConnection } from "./phone-camera-receiver.ts";
+import { usePhoneCameras, type PhoneCameraEnvironment } from "./use-phone-cameras.ts";
+import { useMediaSources, type MediaEnvironment } from "./use-media-sources.ts";
 import { ControlsPane } from "@editor/controls/controls-pane.tsx";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { createBridgeHost } from "../mcp/bridge-host.ts";
@@ -312,5 +318,229 @@ describe("T1396b — a phone drives a published slider through the whole stack",
     expect(storedValue(runtime, secret)).toBe(0.5);
     expect(runtime.bus.store.getAudit().length).toBe(auditAfterWrite);
     expect(JSON.stringify(snapshots(phone))).not.toContain(secret);
+  });
+});
+
+/*
+ * T1397b — A PHONE'S CAMERA HANDSHAKE, THROUGH THE WHOLE STACK. The same parties and real
+ * sockets as above, plus the desk's `usePhoneCameras` and `useMediaSources` composed as
+ * `app.tsx` composes them, with a Webcam whose device is `phone:back cam`: the phone (node
+ * https) posts an offer to the door, the helper relays it over the loopback device socket,
+ * the desk asks the phone for the Webcam's facing and answers, and both come back down the
+ * phone's own event stream. WebRTC cannot run under node/jsdom, so the fakes are the
+ * desk's `RTCPeerConnection` and `<video>` (the phone hook's environment seam) and a media
+ * environment with no local camera — every wire is real.
+ */
+class DeskPeer implements PhonePeerConnection {
+  connectionState = "new";
+  localDescription: { sdp: string } | null = null;
+  onicecandidate: PhonePeerConnection["onicecandidate"] = null;
+  ontrack: PhonePeerConnection["ontrack"] = null;
+  onconnectionstatechange: (() => void) | null = null;
+  remote: { type: string; sdp: string } | null = null;
+  readonly ice: unknown[] = [];
+  closed = false;
+  setRemoteDescription(description: { type: "offer"; sdp: string }): Promise<void> {
+    this.remote = description;
+    return Promise.resolve();
+  }
+  createAnswer(): Promise<{ type: string; sdp: string }> {
+    return Promise.resolve({ type: "answer", sdp: "v=0 desk answer" });
+  }
+  setLocalDescription(description: { type: string; sdp?: string }): Promise<void> {
+    this.localDescription = { sdp: description.sdp ?? "" };
+    return Promise.resolve();
+  }
+  addIceCandidate(candidate: unknown): Promise<void> {
+    this.ice.push(candidate);
+    return Promise.resolve();
+  }
+  close(): void {
+    this.closed = true;
+  }
+}
+
+function CameraDesk({ runtime, deviceClient, environment }: {
+  runtime: AppRuntime;
+  deviceClient: () => DeviceClient;
+  environment: PhoneCameraEnvironment;
+}) {
+  const door = usePhoneDoor({ deviceClient, bus: runtime.bus, invocation: runtime.invocation, schedule: soon });
+  const graph = useSyncExternalStore(runtime.bus.store.subscribe, runtime.bus.store.getGraph);
+  // As `app.tsx` composes them: the phone hook's opener is how the media hook opens a phone.
+  const cameras = usePhoneCameras({ deviceClient, door: door.state, environment });
+  useMediaSources(runtime, environmentBackend, graph, null, noLocalMedia, undefined, cameras.opener);
+  const view = useMemo(() => ({ ...door, cameras: cameras.feeds }), [door, cameras.feeds]);
+  return <ControlsPane graph={graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation} phone={view} />;
+}
+
+/** The desk has no local camera or file here: a phone is the only thing that may open. */
+const noLocalMedia: MediaEnvironment = {
+  openFile: () => Promise.reject(new Error("no files in this test")),
+  openStill: () => Promise.reject(new Error("no stills in this test")),
+  openCamera: () => Promise.reject(new Error("getUserMedia must not be reached for a phone device")),
+};
+
+/** What the renderer would find under each source id. */
+const registered = new Map<string, unknown>();
+const environmentBackend = {
+  registerMediaSource(id: string, source: unknown) {
+    registered.set(id, source);
+    return () => {
+      if (registered.get(id) === source) registered.delete(id);
+    };
+  },
+} as unknown as LoomBackend;
+
+function postPhoneSignal(url: string, ca: string, signal: PhoneSignalFromPhone): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = httpsRequest(url, { method: "POST", ca, agent: false, headers: { "Content-Type": "application/json" } }, (res) => {
+      res.resume();
+      res.on("end", () => resolve(res.statusCode ?? 0));
+    });
+    req.on("error", reject);
+    req.end(JSON.stringify(signal));
+  });
+}
+
+describe("T1397b — a phone's camera handshake crosses the whole stack to a Webcam on that phone", () => {
+  it("offer up through the helper, the desk's request and answer down the phone's own stream, the track on the webcam's source, the popover saying who sends — and bye lets go", async () => {
+    registered.clear();
+    const certDir = mkdtempSync(join(tmpdir(), "loom-phone-cam-cert-"));
+    const handoffDir = mkdtempSync(join(tmpdir(), "loom-phone-cam-"));
+    const doors = createDeviceDoors({
+      udpSocketFactory: () => {
+        throw new Error("no UDP in this test");
+      },
+      phone: { enabled: true, lanAddress: () => "127.0.0.1", port: 0, certDir },
+    });
+    const helper = createBridgeHost({
+      devices: doors.devices,
+      laser: doors.laser,
+      vision: doors.vision,
+      ...(doors.phone ? { phone: doors.phone } : {}),
+      port: 0,
+      handoffDir,
+    });
+    cleanups.push(() => {
+      helper.dispose();
+      doors.dispose();
+      rmSync(handoffDir, { recursive: true, force: true });
+      rmSync(certDir, { recursive: true, force: true });
+    });
+    await until(() => helper.status().port != null, "the helper to bind");
+    const jsdomEvent = globalThis.Event;
+    globalThis.Event = await nodeEventClass();
+    cleanups.push(() => {
+      globalThis.Event = jsdomEvent;
+    });
+    const client = createDeviceClient({
+      port: helper.status().port ?? 0,
+      client: "e2e camera desk",
+      memory: { read: () => null, write: () => undefined, forget: () => undefined },
+      autoConnect: false,
+      onState: () => undefined,
+      onReadings: () => undefined,
+    });
+    cleanups.push(() => client.dispose());
+    client.connect(helper.pairingCode);
+
+    const runtime = createAppRuntime({ identityStorage: null, actor: { kind: "human", id: "desk", label: "Desk" } });
+    const added = await runtime.bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: runtime.bus.store.getRevision(),
+        label: "camera",
+        operations: [
+          {
+            op: "addNode",
+            ref: "$cam",
+            type: "webcam",
+            position: { x: 0, y: 0 },
+            label: "cam1",
+            parameters: { device: "phone:back cam", facing: "user" },
+          },
+        ],
+      } as never,
+      runtime.invocation,
+    );
+    expect(added.output.status).toBe("applied");
+    const cam = nodeId(runtime, "cam1");
+    const peers: DeskPeer[] = [];
+    /** What the node's element has been told to show, in order. */
+    const shown: Array<MediaStream | null> = [];
+    const environment: PhoneCameraEnvironment = {
+      createPeer: () => {
+        const peer = new DeskPeer();
+        peers.push(peer);
+        return peer;
+      },
+      createVideo: () => ({
+        element: { videoWidth: 0, videoHeight: 0, addEventListener: () => undefined, removeEventListener: () => undefined },
+        show: (stream) => void shown.push(stream),
+        stop: () => undefined,
+      }),
+    };
+    const deviceClient = (): DeviceClient => client;
+    render(<CameraDesk runtime={runtime} deviceClient={deviceClient} environment={environment} />);
+    act(() => {
+      fireEvent.click(screen.getAllByRole("button", { name: /^Phone/ })[0]!);
+    });
+    await rendered(() => document.querySelector("[data-phone-url]") !== null, "the door's URL");
+    const doorUrl = document.querySelector("[data-phone-url]")?.textContent ?? "";
+    const ca = readFileSync(join(certDir, "cert.pem"), "utf8");
+    const at = (path: string, phone?: string): string => {
+      const url = new URL(doorUrl);
+      url.pathname = path;
+      if (phone !== undefined) url.searchParams.set(PHONE_PEER_PARAM, phone);
+      return url.toString();
+    };
+
+    const phone = openPhoneStream(at(PHONE_EVENTS_PATH), ca);
+    await rendered(() => phone.events[0]?.type === "hello", "the phone's hello");
+    const hello = phone.events[0];
+    const phoneId = hello?.type === "hello" ? hello.phone : "";
+    // The desk hears the phone arrive before the phone can offer (one ordered socket).
+    await rendered(() => document.body.textContent?.includes("1 connected") === true, "the phone listed");
+
+    // UP: the offer, through the door and the loopback socket, to the desk's peer.
+    const offer: PhoneSignalFromPhone = { kind: "offer", sdp: "v=0 phone offer", name: "Back Cam" };
+    expect(await postPhoneSignal(at(PHONE_SIGNAL_PATH, phoneId), ca, offer)).toBe(204);
+    await rendered(() => peers[0]?.remote !== null && peers[0] !== undefined, "the desk to take the offer");
+    expect(peers[0]?.remote).toEqual({ type: "offer", sdp: "v=0 phone offer" });
+    // DOWN: the Webcam's facing asked of the phone, and the desk's answer — on this phone's
+    // own event stream.
+    const signals = () => phone.events.flatMap((event) => (event.type === "signal" ? [event.message] : []));
+    await rendered(() => signals().length === 2, "the request and the answer on the phone");
+    expect(signals()).toEqual([
+      { kind: "request", facing: "user", width: 0, height: 0, frameRate: 0, exact: false },
+      { kind: "answer", sdp: "v=0 desk answer" },
+    ]);
+    // The desk's candidates go down the same way; the phone's come up.
+    act(() => peers[0]?.onicecandidate?.({ candidate: { candidate: "candidate:1 1 udp 1 abc.local 5000 typ host", sdpMid: "0", sdpMLineIndex: 0 } }));
+    const phoneIce = { kind: "ice", candidate: "candidate:2 1 udp 1 127.0.0.1 5001 typ host", sdpMid: "0", sdpMLineIndex: 0 } as const;
+    expect(await postPhoneSignal(at(PHONE_SIGNAL_PATH, phoneId), ca, phoneIce)).toBe(204);
+    await rendered(() => peers[0]?.ice.length === 1, "the phone's candidate on the desk's peer");
+    await rendered(() => signals().length === 3, "the desk's candidate on the phone");
+
+    // The track arrives: the Webcam on "phone:back cam" shows the phone named "Back Cam",
+    // through the source the media hook registered for it.
+    expect(registered.has(`media:${cam}`)).toBe(true);
+    const track = { id: "phone-stream" } as unknown as MediaStream;
+    act(() => peers[0]?.ontrack?.({ streams: [track] }));
+    expect(shown).toEqual([track]);
+    act(() => {
+      peers[0]!.connectionState = "connected";
+      peers[0]!.onconnectionstatechange?.();
+    });
+    await rendered(() => document.querySelector('[data-phone-camera="live"]') !== null, "the popover to say it sends");
+    expect(document.querySelector('[data-phone-camera="live"]')?.textContent).toContain("sending camera “Back Cam”");
+
+    // The phone stops: its bye crosses the same way and the desk lets go.
+    expect(await postPhoneSignal(at(PHONE_SIGNAL_PATH, phoneId), ca, { kind: "bye" })).toBe(204);
+    await rendered(() => peers[0]?.closed === true, "the desk's peer to close");
+    // The element lets go of the stream; the source stays, so the texture keeps its last frame.
+    await rendered(() => shown.at(-1) === null, "the node's element to let the stream go");
+    expect(registered.has(`media:${cam}`)).toBe(true);
   });
 });
