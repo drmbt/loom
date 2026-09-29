@@ -74,6 +74,11 @@
      token nothing else repurposes — not by a literal hiding in one component. */
   --estop: #c81e1e;
   --estop-fg: #ffffff;
+  /* T1396b — the phone door's QR code. Dark on light is what a phone camera's decoder
+     expects (an inverted code fails on many readers), so these are fixed like --estop
+     rather than following the dark theme. */
+  --qr-ink: #000000;
+  --qr-paper: #ffffff;
   --component: #9a86e8; /* component-instance identity (T639c) — violet, no status hue */
 
   /* ---- world axes ----------------------------------------------------

@@ -28,6 +28,7 @@ import { OSC_CHANNEL_PREFIX } from "../domain/osc/osc-address.ts";
 import type { OscBridgeState } from "../domain/osc/osc-status.ts";
 import type { OscMessage } from "./osc-codec.ts";
 import type { LaserCommand, LaserOutcome, VisionOutcome, VisionSegmentRequest } from "./device-protocol.ts";
+import type { PhoneDoorState, PhonePeer, PhoneSet, PhoneSnapshot } from "./phone/phone-protocol.ts";
 
 /**
  * THE PAGE HALF OF THE DEVICE ROLE (T942 tier 3) — TRANSPORT ONLY (§V192).
@@ -122,6 +123,25 @@ export interface DeviceClient {
    * the caller can surface its sentence per node rather than as a thrown mystery.
    */
   vision(request: VisionSegmentRequest): Promise<VisionOutcome>;
+  /**
+   * T1396b — ask the helper to open its phone door (or report the one already open).
+   * RESOLVES with the door's state either way: a closed state carries the helper's own
+   * reason (no `--phone`, no LAN address), or this client's when no helper is attached.
+   * Asked while an attachment is still being made, the request waits for it.
+   */
+  phoneOpen(): Promise<PhoneDoorState>;
+  /** T1396b — close the door and drop every phone. Resolves with the closed state. */
+  phoneClose(): Promise<PhoneDoorState>;
+  /** T1396b — the current snapshot, told to the helper for every phone. Dropped unattached. */
+  phonePublish(snapshot: PhoneSnapshot): void;
+  /** T1396b — PUSH: a phone wrote. Unvetted: the page's vet decides. Returns an unsubscribe. */
+  onPhoneWrite(listener: (phone: string, set: PhoneSet) => void): () => void;
+  /**
+   * T1396b — PUSH: the door changed on its own (a phone came or went, the listener
+   * failed) — and, from this client, the door CLOSED because the device socket went
+   * away, since the helper closes it then too. Returns an unsubscribe.
+   */
+  onPhoneState(listener: (state: PhoneDoorState) => void): () => void;
   dispose(): void;
 }
 
@@ -148,6 +168,12 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
   /** T1029: segmentations awaiting their one owed mask. */
   const visionPending = new Map<number, (outcome: VisionOutcome) => void>();
   const laserStateListeners = new Set<(detail: string) => void>();
+  /** T1396b: phoneOpen/phoneClose awaiting their one owed `phoneOpened`. */
+  const phonePending = new Map<number, (state: PhoneDoorState) => void>();
+  /** T1396b: phone requests asked while the attachment was still being made. */
+  let phoneDeferred: Array<() => void> = [];
+  const phoneWriteListeners = new Set<(phone: string, set: PhoneSet) => void>();
+  const phoneStateListeners = new Set<(state: PhoneDoorState) => void>();
   let disposed = false;
 
   const publish = (state: OscBridgeState): void => {
@@ -181,6 +207,34 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
     pending.clear();
   };
 
+  /**
+   * T1396b — the device socket is gone, so the door is: the helper closes its LAN
+   * listener when the page's device socket goes away, and every owed answer is now this.
+   */
+  const closePhoneDoor = (reason: string): void => {
+    const closed: PhoneDoorState = { open: false, reason };
+    phoneDeferred = [];
+    for (const [, resolve] of phonePending) resolve(closed);
+    phonePending.clear();
+    for (const listener of [...phoneStateListeners]) listener(closed);
+  };
+
+  const phoneRequest = (type: "phoneOpen" | "phoneClose"): Promise<PhoneDoorState> => {
+    if (socket === null || (!attached && !wanted)) {
+      return Promise.resolve({
+        open: false,
+        reason: `No device bridge is attached, so there is no phone door — ${DEVICE_HELPER_START}.`,
+      });
+    }
+    const id = nextId++;
+    const answered = new Promise<PhoneDoorState>((resolve) => {
+      phonePending.set(id, resolve);
+    });
+    if (attached) send({ type, id });
+    else phoneDeferred.push(() => send({ type, id }));
+    return answered;
+  };
+
   const handle = (message: Record<string, unknown>): void => {
     switch (message["type"]) {
       case "deviceAttached": {
@@ -189,6 +243,9 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
         streams.clear();
         publish({ kind: "attached" });
         reconcile();
+        const deferred = phoneDeferred;
+        phoneDeferred = [];
+        for (const run of deferred) run();
         return;
       }
       case "refused": {
@@ -198,6 +255,7 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
         memory.forget();
         closeSocket();
         publish({ kind: "refused", reason: typeof said === "string" ? said : "no reason given" });
+        closePhoneDoor(`The device bridge refused this tab: ${typeof said === "string" ? said : "no reason given"}`);
         return;
       }
       case "deviceSubscribed": {
@@ -298,6 +356,33 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
         resolve(message["outcome"] as VisionOutcome);
         return;
       }
+      case "phoneOpened": {
+        const id = message["id"];
+        if (typeof id !== "number") return;
+        const resolve = phonePending.get(id);
+        if (resolve === undefined) return;
+        phonePending.delete(id);
+        resolve(readDoorState(message["state"]));
+        return;
+      }
+      case "phoneState": {
+        // A PUSH (no `id`), routed by its type; `stream: "phone"` is its tag.
+        const state = readDoorState(message["state"]);
+        for (const listener of [...phoneStateListeners]) listener(state);
+        return;
+      }
+      case "phoneWrite": {
+        const phone = message["phone"];
+        const set = message["set"];
+        if (typeof phone !== "string" || typeof set !== "object" || set === null) return;
+        const record = set as Record<string, unknown>;
+        const values = record["values"];
+        if (typeof record["handle"] !== "string" || typeof values !== "object" || values === null) return;
+        // Shape only. WHAT may be written is the page's vet (`phone-snapshot.ts`), which
+        // re-checks every field; this just refuses to hand it something that is not a set.
+        for (const listener of [...phoneWriteListeners]) listener(phone, set as PhoneSet);
+        return;
+      }
       default:
         return;
     }
@@ -358,6 +443,7 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
           delivery: "failed",
           reason: "The device bridge closed before this send was answered.",
         });
+        closePhoneDoor("The device bridge closed the connection, and the phone door with it.");
         if (!wanted) return;
         wanted = false;
         publish(wasAttached ? { kind: "error", reason: "The device bridge closed the connection." } : { kind: "unreachable" });
@@ -373,6 +459,7 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
       attached = false;
       if (disconnectOptions?.forget === true) memory.forget();
       settleAll({ delivery: "refused", reason: "The device bridge was disconnected." });
+      closePhoneDoor("The device bridge was disconnected, and the phone door with it.");
       closeSocket();
       publish({ kind: "idle" });
     },
@@ -433,6 +520,27 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
       send({ type: "deviceVision", id, request });
       return settled;
     },
+    phoneOpen() {
+      return phoneRequest("phoneOpen");
+    },
+    phoneClose() {
+      return phoneRequest("phoneClose");
+    },
+    phonePublish(snapshot) {
+      if (attached) send({ type: "phonePublish", snapshot });
+    },
+    onPhoneWrite(listener) {
+      phoneWriteListeners.add(listener);
+      return () => {
+        phoneWriteListeners.delete(listener);
+      };
+    },
+    onPhoneState(listener) {
+      phoneStateListeners.add(listener);
+      return () => {
+        phoneStateListeners.delete(listener);
+      };
+    },
     reconnectRemembered() {
       if (wanted || attached || disposed) return;
       const code = memory.read();
@@ -445,6 +553,7 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
       wanted = false;
       attached = false;
       settleAll({ delivery: "refused", reason: "The tab went away." });
+      closePhoneDoor("The tab went away.");
       closeSocket();
     },
   };
@@ -455,6 +564,40 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
   if (remembered !== null && options.autoConnect !== false) client.connect(remembered);
 
   return client;
+}
+
+/**
+ * T1396b — a door state off the socket, validated field by field. Anything unreadable is a
+ * CLOSED door with a sentence saying so: a page that believed a door open on a garbled
+ * answer would show a QR code for a URL that does not exist.
+ */
+function readDoorState(value: unknown): PhoneDoorState {
+  const unreadable: PhoneDoorState = {
+    open: false,
+    reason: "The device bridge answered the phone door with something unreadable.",
+  };
+  if (typeof value !== "object" || value === null) return unreadable;
+  const record = value as Record<string, unknown>;
+  const url = record["url"];
+  const fingerprint = record["fingerprint"];
+  if (record["open"] === true && typeof url === "string" && typeof fingerprint === "string") {
+    const phones = Array.isArray(record["phones"]) ? (record["phones"] as unknown[]) : [];
+    return {
+      open: true,
+      url,
+      fingerprint,
+      phones: phones.flatMap((peer): PhonePeer[] => {
+        if (typeof peer !== "object" || peer === null) return [];
+        const entry = peer as Record<string, unknown>;
+        const phone = entry["phone"];
+        const userAgent = entry["userAgent"];
+        return typeof phone === "string" ? [{ phone, userAgent: typeof userAgent === "string" ? userAgent : "" }] : [];
+      }),
+    };
+  }
+  const reason = record["reason"];
+  if (record["open"] === false && typeof reason === "string") return { open: false, reason };
+  return unreadable;
 }
 
 /**

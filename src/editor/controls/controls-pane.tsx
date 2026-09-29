@@ -10,6 +10,8 @@ import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
 import { CONTROL_WIDGET_TYPES, controlChannel, parsePanelLayout, type PanelRow } from "@nodes/definitions/controls.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
+import { PhoneDoorButton } from "./phone-door.tsx";
+import type { PhoneDoorView } from "./phone-door-copy.ts";
 import styles from "./controls-pane.module.css";
 
 /**
@@ -29,6 +31,8 @@ export interface ControlsPaneProps {
   readonly registry: NodeRegistryView;
   readonly bus: LoomBus;
   readonly invocation: InvocationContext;
+  /** T1396b — the phone door; absent where no device attachment exists (tests, headless). */
+  readonly phone?: PhoneDoorView;
 }
 
 const nameOf = (node: GraphNode): string => node.label ?? node.id;
@@ -92,7 +96,7 @@ function MapForm({ graph, registry, widget, onMap }: { graph: GraphDocument; reg
   );
 }
 
-export function ControlsPane({ graph, registry, bus, invocation }: ControlsPaneProps) {
+export function ControlsPane({ graph, registry, bus, invocation, phone }: ControlsPaneProps) {
   const editor = useMemo(() => createParameterEditor({ bus, context: invocation }), [bus, invocation]);
   useEffect(() => () => editor.dispose(), [editor]);
   const write = useMemo<ControlWrite>(() => (nodeId, entries, phase) => editor.setStored(nodeId, entries, phase), [editor]);
@@ -133,6 +137,7 @@ export function ControlsPane({ graph, registry, bus, invocation }: ControlsPaneP
     return (
       <div className={styles.empty}>
         <p>No controls</p>
+        {phone === undefined ? null : <PhoneDoorButton door={phone} />}
       </div>
     );
   }
@@ -146,6 +151,7 @@ export function ControlsPane({ graph, registry, bus, invocation }: ControlsPaneP
             {panels.map((candidate) => <option key={candidate.id} value={candidate.id}>{String(candidate.parameters["title"] ?? nameOf(candidate))}</option>)}
           </select>
         ) : null}
+        {phone === undefined ? null : <PhoneDoorButton door={phone} />}
       </header>
       {rows.map((row, index) =>
         row.kind === "heading" ? (

@@ -1,0 +1,64 @@
+/* T1396b — the phone door popover. Tokens only. */
+.popover {
+  width: calc(var(--space-48) * 5.5);
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.qr {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* The quiet zone is the svg's own ground: a scanner needs light around dark. */
+  background: var(--qr-paper);
+  border-radius: var(--radius);
+}
+.qrInk {
+  fill: var(--qr-ink);
+}
+.url {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  overflow-wrap: anywhere;
+  user-select: all;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-panel);
+  border-radius: var(--radius-sm);
+}
+.dim,
+.meta {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-meta);
+}
+.meta code {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+.warn {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--fs-meta);
+}
+.reason {
+  margin: 0;
+  font-size: var(--fs-meta);
+  overflow-wrap: anywhere;
+}
+.phones {
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--fs-meta);
+}
+.refusal {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  color: var(--warn);
+  font-size: var(--fs-meta);
+}

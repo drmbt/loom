@@ -175,6 +175,15 @@ export const controlPanelNode: NodeDefinition = {
       multiline: true,
       description: "One row per line: `# Heading`, `> a note`, or widget node names side by side.",
     },
+    // T1396b: the phone door publishes a Panel only when this is on. Absent in a document
+    // saved before it existed = off, which is what the default says, so no migration.
+    remote: {
+      type: "boolean",
+      label: "Phone",
+      default: false,
+      description:
+        "Publishes this panel to the phone door: a phone paired from the controls pane sees these controls and can move them, and nothing else in the project.",
+    },
   },
   compile: noPasses,
 };

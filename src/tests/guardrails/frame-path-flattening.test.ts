@@ -114,6 +114,16 @@ const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
     reads: 1,
     why: "`useAgentPorts` — `render_preview` and `describe_output` answer an agent TOOL CALL, on demand, and describe the document the agent is patching by the ids it patches with (§V30).",
   },
+  {
+    file: "app/phone-writes.ts",
+    reads: 1,
+    why: "T1396b: NOT per frame — once per phone WRITE, to vet it against the AUTHORED document: a Panel names its widgets by their authored names (the controls pane's rule) and the write patches that authored node by id through the bus. A widget inside a component is not publishable (T1143).",
+  },
+  {
+    file: "app/use-phone-door.ts",
+    reads: 1,
+    why: "T1396b: NOT a frame path — only while the phone door is open, at most once per animation frame and only after a DOCUMENT change, to build what the phones see from the AUTHORED Panels (the same document the controls pane lays out and a phone write patches).",
+  },
 ];
 
 const DECLARED_FRAME_PATHS: ReadonlyArray<{ file: string; what: string }> = [

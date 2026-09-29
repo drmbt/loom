@@ -92,6 +92,7 @@ import { useMidiInput } from "./use-midi-input.ts";
 import { useOscBridge } from "./use-osc-bridge.ts";
 import { useLaserBridge } from "./use-laser-bridge.ts";
 import { useVisionBridge } from "./use-vision-bridge.ts";
+import { phoneDoorNotices, usePhoneDoor } from "./use-phone-door.ts";
 import { helperFactFrom, useRequirementDiagnostics } from "./use-requirement-diagnostics.ts";
 import { pageHostFacts } from "@devices/host-shell.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
@@ -448,6 +449,8 @@ export function App({
     // T1067: the FLAT document, so a coverage spent inside a component resolves too.
     graph: () => runtime.flattened.current().graph,
   });
+  // T1396b: the phone door — published Panels to phones on the LAN, over the same client.
+  const phoneDoor = usePhoneDoor({ deviceClient: osc.deviceClient, bus: runtime.bus, invocation: runtime.invocation });
 
   /**
    * The value graph's external channels are a MERGE of FOUR now (§T976), and the order
@@ -1705,11 +1708,14 @@ export function App({
     // it does, and a named failure if it does not. Appended last so a halted GPU or a
     // blocked autosave still reads first.
     list.push(...depth.notices);
+    // T1396b: a refused phone write is said, never swallowed.
+    list.push(...phoneDoorNotices(phoneDoor));
 
     return list;
   }, [
     autosave,
     depth.notices,
+    phoneDoor,
     exampleLinkOutcome,
     floatBlocked,
     outputStale,
@@ -2219,7 +2225,7 @@ export function App({
           terminal={terminalPane}
           controls={
             <ErrorBoundary name="Controls">
-              <ControlsPane graph={compile.graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation} />
+              <ControlsPane graph={compile.graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation} phone={phoneDoor} />
             </ErrorBoundary>
           }
         />
