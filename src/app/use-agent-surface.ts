@@ -112,6 +112,12 @@ export const PAGE_GRANT_ROUTES = {
     guidance:
       "No surface in this browser tab can issue the localFile grant. The user saves through the app's own Save control, which opens the browser's file picker — the consent gesture a tool call cannot stand in for.",
   },
+  /** T1494b: `import_component`. The person installs a component file themselves. */
+  componentInstall: {
+    obtainable: false,
+    guidance:
+      "No surface in this browser tab can issue the componentInstall grant. The user installs a component file by dropping it on the canvas or through the canvas menu's Import component row — the consent gesture a tool call cannot stand in for.",
+  },
 } satisfies Partial<Record<CapabilityClass, CapabilityGrantRoute>>;
 
 export interface AgentSurfaceState {

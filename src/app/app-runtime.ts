@@ -22,7 +22,7 @@ import type { TelemetryHub } from "@runtime/telemetry/index.ts";
 import type { LayoutStorage } from "./layout-storage.ts";
 import { defaultLayoutStorage } from "./layout-storage.ts";
 import { registerProjectCommands } from "./project-commands.ts";
-import { writeProjectFile } from "./project-io.ts";
+import { readProjectFile, writeProjectFile } from "./project-io.ts";
 
 /**
  * Everything the app is made of, built once (T51).
@@ -249,7 +249,12 @@ export function createAppRuntime(options: AppRuntimeOptions = {}): AppRuntime {
     systemClipboard: createBrowserSystemClipboard(),
   });
   // T1395b: `component.export` writes through the same picker-then-download ladder a save does.
-  registerComponentCommands(bus, { components, writeFile: (file) => writeProjectFile(file) });
+  // T1494b: and `component.import` with no file in hand asks through the open picker.
+  registerComponentCommands(bus, {
+    components,
+    writeFile: (file) => writeProjectFile(file),
+    readFile: () => readProjectFile(),
+  });
   registerProjectCommands(bus);
   const nodeRuntime = createNodeRuntimeStore();
 

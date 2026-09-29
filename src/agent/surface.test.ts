@@ -514,7 +514,8 @@ describe("a permanent denial says so (T1097, §V38)", () => {
     const tools = wired.surface.listTools();
 
     const gated = tools.filter((tool) => tool.capabilities.length > 0).map((tool) => tool.name);
-    expect(gated).toEqual(["render_preview", "describe_output", "read_points", "save_project"]);
+    // T1494b: the fifth, `import_component` — §V38's "component install", a decision.
+    expect(gated).toEqual(["render_preview", "describe_output", "read_points", "save_project", "import_component"]);
 
     for (const name of gated) {
       const tool = tools.find((candidate) => candidate.name === name);

@@ -66,7 +66,8 @@ export interface ComponentCatalogue {
 }
 
 export const componentImportInputSchema = z.object({
-  text: z.string().min(1),
+  /** Absent: the command asks its reader for a file (T1494b — the palette and menu doors). */
+  text: z.string().min(1).optional(),
   fileName: z.string().optional(),
   position: z.object({ x: z.number().finite(), y: z.number().finite() }).optional(),
 });
@@ -74,6 +75,8 @@ export const componentImportInputSchema = z.object({
 export const componentExportInputSchema = z.object({
   componentId: z.string().min(1),
   version: z.number().int().positive().optional(),
+  /** `text` hands the file's bytes back instead of writing them (T1494b — the agent door). */
+  destination: z.enum(["file", "text"]).optional(),
 });
 
 const refKey = (componentId: ComponentId, version: number): string => `${componentId}@${version}`;

@@ -30,7 +30,7 @@ import { availableUpgrade, planComponentUpgrade } from "./upgrade.ts";
 import type { ComponentUpgradePlan } from "./upgrade.ts";
 import { describeRecursion, wouldRecurse } from "./recursion.ts";
 import type { ComponentRegistry } from "./registry.ts";
-import { registerComponentFileCommands, type ComponentFileWriter } from "./file-commands.ts";
+import { registerComponentFileCommands, type ComponentFileReader, type ComponentFileWriter } from "./file-commands.ts";
 
 /**
  * Component commands (T129–T132, T136), registered by declaration merging like every
@@ -229,6 +229,8 @@ export interface ComponentCommandOptions {
    * Absent on a session bus or a headless harness, where export refuses by name.
    */
   writeFile?: ComponentFileWriter;
+  /** Where `component.import` asks for a file when it is given none (T1494b). Absent: it refuses. */
+  readFile?: ComponentFileReader;
 }
 
 function info(code: string, message: string, suggestion?: string): RuntimeDiagnostic {
@@ -1108,5 +1110,6 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
     components,
     host,
     ...(options.writeFile === undefined ? {} : { writeFile: options.writeFile }),
+    ...(options.readFile === undefined ? {} : { readFile: options.readFile }),
   });
 }

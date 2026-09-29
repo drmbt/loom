@@ -77,6 +77,9 @@ const APP_REGISTERED = [
   // that whole time in `PLANNED_COMMANDS` — a built command the menus called a promise —
   // because "is it live" asked here can only mean "is it on THIS bus".
   "component.publishParameter",
+  // T1494b: the same registration, the same reason — the file rows' commands.
+  "component.import",
+  "component.export",
   // T415: registered by the mounted graph canvas (`src/editor/nodes/rename-session.ts`),
   // for the same reason as `ui.showNodeInfo` — WHICH node title is an input box is not
   // document state, so the domain bus does not own it. Live, not planned: the menu row

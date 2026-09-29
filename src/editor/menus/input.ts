@@ -1,7 +1,8 @@
 import type { MenuItem, MenuTarget } from "@domain/types/menus.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
+import { parseComponentNodeType } from "@domain/components/component-type.ts";
 import type { MenuContext } from "./guards.ts";
-import { edgesForTarget } from "./guards.ts";
+import { edgesForTarget, nodeForTarget } from "./guards.ts";
 
 /**
  * Turning a target into command input (T126).
@@ -95,6 +96,15 @@ const cursorPosition: InputBuilder = (_item, target) =>
     ? { ok: true, input: {} }
     : { ok: true, input: { position: { x: target.position.x, y: target.position.y } } };
 
+/** T1494b: the component a clicked instance runs — the id and version its type names. */
+const componentRef: InputBuilder = (_item, target, context) => {
+  const node = nodeForTarget(target, context);
+  const ref = node === undefined ? null : parseComponentNodeType(node.type);
+  return ref === null
+    ? { ok: false, reason: "Only a component instance can be exported." }
+    : { ok: true, input: { componentId: ref.componentId, version: ref.version } };
+};
+
 /** "Add node here": the leaf item names the type, the target says where. */
 const addNode: InputBuilder = (item, target, context) => {
   const type = (item.input as { type?: unknown } | undefined)?.type;
@@ -132,6 +142,7 @@ const parameterRefWith: InputBuilder = (item, target) => {
 const BUILDERS: Record<string, InputBuilder> = {
   "canvas:graph.applyPatch": addNode,
   "canvas:ui.openNodeSearch": cursorPosition,
+  "canvas:component.import": cursorPosition,
   "port:graph.applyPatch": disconnect,
   "edge:graph.applyPatch": disconnect,
 
@@ -190,6 +201,7 @@ const BUILDERS: Record<string, InputBuilder> = {
   "parameter.revert": parameterRef,
   "parameter.setMode": parameterRefWith,
   "component.publishParameter": parameterRef,
+  "component.export": componentRef,
 };
 
 /**

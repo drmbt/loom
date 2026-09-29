@@ -35,6 +35,13 @@ import type { ComponentRegistry } from "./registry.ts";
  * EXPORT writes through a port, never the DOM: `writeFile` is the composition root's
  * `writeTextFile` ladder (picker, then download), and a bus without one — a component
  * session, a headless harness — refuses by name rather than pretending to have saved.
+ *
+ * T1494b: the same ports make the other doors. IMPORT without `text` asks `readFile` (the
+ * composition root's open picker), so the palette and the canvas menu run the command
+ * with no file in hand. EXPORT with `destination: "text"` writes nothing and returns the
+ * bytes, which is the agent's door: an agent has no picker and no disk (`save_project`
+ * sits behind a `localFile` grant nothing issues), and the text is the document's own
+ * content, which it can already read.
  */
 declare module "../types/commands.ts" {
   interface CommandMap {
@@ -46,8 +53,8 @@ declare module "../types/commands.ts" {
 }
 
 export interface ComponentImportInput {
-  /** The file's text. */
-  text: string;
+  /** The file's text. Absent: the command's `readFile` asks the user for one. */
+  text?: string;
   /** Named in every refusal, so the message says WHICH file. */
   fileName?: string;
   /** Where the instance lands, in graph coordinates. */
@@ -70,11 +77,16 @@ export interface ComponentExportInput {
   componentId: ComponentId;
   /** Omitted means the latest installed version. */
   version?: number;
+  /** `"text"` returns the file's text instead of writing it. Omitted means `"file"`. */
+  destination?: "file" | "text";
 }
 
 export interface ComponentExportOutput {
   saved: boolean;
+  /** The name written — or, for `destination: "text"`, the name a save would use. */
   fileName: string | null;
+  /** The file's text, for `destination: "text"` only. */
+  text: string | null;
   /** Every definition the file carries, deepest first; the exported one is last. */
   components: readonly ComponentRef[];
 }
@@ -87,10 +99,19 @@ export type ComponentFileWriteOutcome =
 
 export type ComponentFileWriter = (file: ProjectFile) => Promise<ComponentFileWriteOutcome>;
 
+/** The open picker's outcome, as much of it as the command reads. */
+export type ComponentFileReadOutcome =
+  | { readonly kind: "opened"; readonly fileName: string; readonly text: string }
+  | { readonly kind: "cancelled" }
+  | { readonly kind: "failed"; readonly reason: string };
+
+export type ComponentFileReader = () => Promise<ComponentFileReadOutcome>;
+
 export interface ComponentFileCommandOptions {
   components: ComponentRegistry;
   host: { componentId: ComponentId; version: number } | null;
   writeFile?: ComponentFileWriter;
+  readFile?: ComponentFileReader;
 }
 
 function error(code: string, message: string, suggestion?: string): RuntimeDiagnostic {
@@ -112,7 +133,7 @@ const IMPORT_REFUSED: Omit<ComponentImportOutput, "diagnostics"> = {
   renamed: [],
 };
 
-const EXPORT_REFUSED: ComponentExportOutput = { saved: false, fileName: null, components: [] };
+const EXPORT_REFUSED: ComponentExportOutput = { saved: false, fileName: null, text: null, components: [] };
 
 export function registerComponentFileCommands(bus: LoomBus, options: ComponentFileCommandOptions): void {
   const { components, host } = options;
@@ -120,7 +141,7 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
   bus.registerCommand({
     name: "component.import",
     description: "Import a component file: reuse it if it is already installed, otherwise install it (renamed if its name is taken), and place it.",
-    handler: (input, context): CommandOutcome<ComponentImportOutput> => {
+    handler: async (input, context): Promise<CommandOutcome<ComponentImportOutput>> => {
       const revision = context.store.getRevision();
       const diagnostics: RuntimeDiagnostic[] = [];
       const refuse = (...found: readonly RuntimeDiagnostic[]): CommandOutcome<ComponentImportOutput> => {
@@ -138,7 +159,33 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
           ),
         );
       }
-      const { text, fileName, position } = parsedInput.data;
+      const { position } = parsedInput.data;
+      let { text, fileName } = parsedInput.data;
+      if (text === undefined) {
+        if (options.readFile === undefined) {
+          return refuse(
+            error(
+              "component.import.input",
+              "Importing a component needs the text of a component file.",
+              "Drop a .loom.json component file on the canvas.",
+            ),
+          );
+        }
+        // §V36: a dry run must not open a picker.
+        if (context.dryRun) {
+          return refuse(
+            error("component.import.input", "A dry run cannot ask for a file.", "Pass the file's text to validate it."),
+          );
+        }
+        const picked = await options.readFile();
+        // A cancelled picker is not a failure, and is not reported as one (project.save's rule).
+        if (picked.kind === "cancelled") return refuse();
+        if (picked.kind === "failed") {
+          return refuse(error("component.import.readFailed", `The component file could not be read: ${picked.reason}`));
+        }
+        text = picked.text;
+        fileName = picked.fileName;
+      }
 
       const read = readComponentFile(text, fileName);
       if (!read.ok) return refuse(...read.diagnostics);
@@ -278,10 +325,14 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
       const parsedInput = componentExportInputSchema.safeParse(input);
       if (!parsedInput.success) {
         return refuse(
-          error("component.export.input", "Exporting needs the id of an installed component.", "Use Export on a row of the component library."),
+          error(
+            "component.export.input",
+            "Exporting needs the id of an installed component.",
+            "Use Export on a row of the component library, or Component > Export component on an instance's menu.",
+          ),
         );
       }
-      const { componentId, version } = parsedInput.data;
+      const { componentId, version, destination } = parsedInput.data;
       const root = version === undefined ? components.latest(componentId) : components.get(componentId, version);
       if (root === undefined) {
         return refuse(
@@ -311,7 +362,14 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
 
       // §V36: a dry run must not open a picker or write a byte.
       if (context.dryRun) {
-        return { status: "validated", revision, output: { saved: false, fileName: null, components: carried } };
+        return { status: "validated", revision, output: { saved: false, fileName: null, text: null, components: carried } };
+      }
+      if (destination === "text") {
+        return {
+          status: "applied",
+          revision,
+          output: { saved: false, fileName: file.fileName, text: file.text, components: carried },
+        };
       }
       if (options.writeFile === undefined) {
         return refuse(
@@ -333,6 +391,7 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
         output: {
           saved: outcome.kind === "saved",
           fileName: outcome.kind === "saved" ? outcome.fileName : null,
+          text: null,
           components: carried,
         },
       };

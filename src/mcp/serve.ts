@@ -241,8 +241,9 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
    * modules the app uses, never a re-implementation. What is NOT registered is waived
    * BY NAME in the T597 parity gates: transport.play/pause (there is no frame loop —
    * this server renders one offline frame per change), project.save (the page's save
-   * targets a browser project store this process does not have), and graph.setOutput
-   * (a deliberate stub on every surface, see mutate.ts).
+   * targets a browser project store this process does not have), graph.setOutput
+   * (a deliberate stub on every surface, see mutate.ts), and component.import/export
+   * (T1494b: this twin has no component catalogue at all).
    */
   attachStateSources(bus, {
     selection: () => ({ nodeIds: [], edgeIds: [] }),

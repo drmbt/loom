@@ -60,7 +60,9 @@ import type { Actor, CapabilityClass } from "@domain/types/commands.ts";
  * `--grant-export`, because a person who allowed full-fidelity pixels has already allowed
  * a thumbnail. That is the grant issuer deciding, which is the only party §V38 permits to.
  *
- * `save_project` writes a file, so it needs `localFile`.
+ * `save_project` writes a file, so it needs `localFile`. `import_component` adds definitions
+ * to the document's catalogue that undo does not take back, which is §V38's "component
+ * install", so it needs `componentInstall` (T1494b).
  *
  * ## Two places declare a gate, and this one was incomplete (T1115, T1146)
  *
@@ -77,6 +79,7 @@ export const TOOL_CAPABILITIES: Readonly<Record<string, readonly CapabilityClass
   describe_output: Object.freeze(["previewSnapshot"] as const),
   read_points: Object.freeze(["export"] as const),
   save_project: Object.freeze(["localFile"] as const),
+  import_component: Object.freeze(["componentInstall"] as const),
 });
 
 export function capabilitiesForTool(tool: string): readonly CapabilityClass[] {

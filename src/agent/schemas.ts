@@ -322,6 +322,28 @@ export const historyInput = z.object({ dryRun }).strict();
 export const saveProjectInput = z.object({ saveAs: z.boolean().optional() }).strict();
 
 /**
+ * T1494b: a component file crosses as TEXT, never as a path — the page cannot open a path,
+ * and a tool that works on one transport is the split §V39 exists to prevent (§V485).
+ */
+export const importComponentInput = z
+  .object({
+    text: z.string().min(1),
+    /** Named in every refusal, so the message says which file. */
+    fileName: z.string().min(1).optional(),
+    position: position.optional(),
+    dryRun,
+  })
+  .strict();
+
+export const exportComponentInput = z
+  .object({
+    componentId: z.string().min(1),
+    /** Omitted: the latest installed version. */
+    version: z.number().int().positive().optional(),
+  })
+  .strict();
+
+/**
  * Tool input types are INFERRED from the schemas above, never hand-written beside them.
  * Two declarations of the same shape drift, and the one that drifts silently is always
  * the type — the schema is what actually runs.
@@ -362,3 +384,5 @@ export type SetOutputInput = z.infer<typeof setOutputInput>;
 export type ResetFeedbackInput = z.infer<typeof resetFeedbackInput>;
 export type HistoryInput = z.infer<typeof historyInput>;
 export type SaveProjectInput = z.infer<typeof saveProjectInput>;
+export type ImportComponentInput = z.infer<typeof importComponentInput>;
+export type ExportComponentInput = z.infer<typeof exportComponentInput>;

@@ -94,6 +94,9 @@ export function canvasMenu(registry: NodeRegistryView): MenuSchema {
       // the background double-click are the same command, so all three open one browser
       // at one position (§V78, §V307).
       { command: "ui.openNodeSearch", label: "Search nodes…" },
+      // T1494b: the drop's twin for a user who would rather pick the file — the same
+      // command, landing at the click's graph point like "Add node" (§V78).
+      { command: "component.import", label: "Import component…" },
       { separator: true },
       { command: "graph.paste", label: "Paste" },
       { command: "graph.selectAll", label: "Select all" },
@@ -206,6 +209,9 @@ export const NODE_MENU: MenuSchema = {
       submenu: [
         { command: "graph.diveIn", label: "Dive in", when: "isComponentInstance" },
         { command: "ui.createComponent", label: "Save as component…" },
+        // T1494b: the library row's Export, from the instance itself. No `when`: the
+        // builder refuses on any other node BY NAME, so the row greys with the reason.
+        { command: "component.export", label: "Export component…" },
       ],
     },
     { separator: true },

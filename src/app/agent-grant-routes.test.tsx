@@ -130,7 +130,7 @@ describe("the tab's agent surface tells the truth about grants it can never hold
     expect(first?.message).toContain("camera frame");
   });
 
-  it("marks all four capability-gated tools, not just the one someone tried", () => {
+  it("marks all five capability-gated tools, not just the one someone tried", () => {
     const { surface } = pageSurface();
     const gated = surface.listTools()
       .filter((tool) => tool.capabilities.length > 0)
@@ -149,6 +149,9 @@ describe("the tab's agent surface tells the truth about grants it can never hold
       { name: "describe_output", ungranted: ["previewSnapshot"], unobtainable: [] },
       { name: "read_points", ungranted: ["export"], unobtainable: ["export"] },
       { name: "save_project", ungranted: ["localFile"], unobtainable: ["localFile"] },
+      // T1494b: installing a component file is §V38's "component install"; in a tab the
+      // person drops the file themselves.
+      { name: "import_component", ungranted: ["componentInstall"], unobtainable: ["componentInstall"] },
     ]);
   });
 
