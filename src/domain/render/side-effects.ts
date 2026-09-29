@@ -155,6 +155,7 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   mirror: "none",
   crop: "none",
   tile: "none",
+  cornerPin: "none",
   level: "none",
   hsv: "none",
   threshold: "none",

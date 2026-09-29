@@ -148,6 +148,14 @@ export interface VectorParameter extends ParameterBase {
   /** Which ends of `min`/`max` are a LIMIT rather than slider travel (§B111). */
   range?: NumericRangeKind;
   step?: number;
+  /**
+   * §T1491b — the value is a POINT ON THIS NODE'S OUTPUT PICTURE, normalised 0..1 with
+   * (0, 0) at the bottom left, so the node's preview tile offers a handle that drags it.
+   * Declared, never inferred (§V437): a `vector`/2 bounded 0..1 is as often a uv offset, a
+   * seam or a pivot in the INPUT's coordinates, and a handle drawn on the output for one of
+   * those would sit somewhere the parameter does not point. Only meaningful at size 2.
+   */
+  handle?: "picture";
 }
 
 export interface StringParameter extends ParameterBase {

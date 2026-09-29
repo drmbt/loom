@@ -91,6 +91,8 @@ describe("core catalogue (T70, T40)", () => {
       "mirror",
       "crop",
       "tile",
+      // T1491b: the 2D projection-mapping warp.
+      "cornerPin",
       "level",
       "hsv",
       "threshold",
