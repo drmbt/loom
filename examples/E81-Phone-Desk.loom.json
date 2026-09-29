@@ -1,0 +1,499 @@
+{
+  "assets": [],
+  "createdAt": "2026-08-29T00:00:00.000Z",
+  "graph": {
+    "edges": {
+      "e1": {
+        "id": "e1",
+        "source": {
+          "nodeId": "rings",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "level",
+          "portId": "input"
+        }
+      },
+      "e2": {
+        "id": "e2",
+        "source": {
+          "nodeId": "level",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "hue",
+          "portId": "input"
+        }
+      },
+      "e3": {
+        "id": "e3",
+        "source": {
+          "nodeId": "hue",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "pin",
+          "portId": "input"
+        }
+      },
+      "e4": {
+        "id": "e4",
+        "source": {
+          "nodeId": "pin",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lay",
+          "portId": "in1"
+        }
+      },
+      "e5": {
+        "id": "e5",
+        "source": {
+          "nodeId": "bg",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lay",
+          "portId": "in2"
+        }
+      },
+      "e6": {
+        "id": "e6",
+        "source": {
+          "nodeId": "lay",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "out",
+          "portId": "input"
+        }
+      }
+    },
+    "groups": {},
+    "nodes": {
+      "bg": {
+        "definitionVersion": 1,
+        "id": "bg",
+        "label": "bg1",
+        "parameters": {
+          "color": [
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        "position": {
+          "x": -300,
+          "y": 216
+        },
+        "type": "solid"
+      },
+      "flash": {
+        "definitionVersion": 1,
+        "id": "flash",
+        "label": "flash",
+        "parameters": {
+          "caption": "Next hue",
+          "channel": "flash",
+          "held": false,
+          "presses": 0
+        },
+        "position": {
+          "x": -900,
+          "y": 400
+        },
+        "type": "button"
+      },
+      "heat": {
+        "definitionVersion": 1,
+        "id": "heat",
+        "label": "heat",
+        "parameters": {
+          "caption": "Heat",
+          "channel": "heat",
+          "max": 2,
+          "min": 0,
+          "step": 0,
+          "value": 1
+        },
+        "position": {
+          "x": -1500,
+          "y": 400
+        },
+        "type": "slider"
+      },
+      "hue": {
+        "definitionVersion": 1,
+        "id": "hue",
+        "label": "hue1",
+        "parameters": {
+          "hueoffset": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('flash').chan.flashCount * 90"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -900,
+          "y": 0
+        },
+        "type": "hsv"
+      },
+      "invert": {
+        "definitionVersion": 1,
+        "id": "invert",
+        "label": "invert",
+        "parameters": {
+          "caption": "Invert",
+          "channel": "invert",
+          "on": false
+        },
+        "position": {
+          "x": -1200,
+          "y": 400
+        },
+        "type": "toggle"
+      },
+      "lay": {
+        "definitionVersion": 1,
+        "id": "lay",
+        "label": "lay1",
+        "parameters": {
+          "opacity": 1
+        },
+        "position": {
+          "x": -300,
+          "y": 0
+        },
+        "type": "over"
+      },
+      "level": {
+        "definitionVersion": 1,
+        "id": "level",
+        "label": "level1",
+        "parameters": {
+          "brightness": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('heat').chan.heat"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "invert": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('invert').chan.invert"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -1200,
+          "y": 0
+        },
+        "type": "level"
+      },
+      "noteControls": {
+        "definitionVersion": 1,
+        "id": "noteControls",
+        "label": "notecontrols1",
+        "parameters": {
+          "body": "A widget is a value node: no picture, one number you set by hand.\nIts Channel is the name you read: op('heat').chan.heat.\nDrag it here on its node, or on the Panel. Button adds flashCount; XY Pad publishes warpX and warpY.",
+          "color": "input",
+          "title": "Controls"
+        },
+        "position": {
+          "x": -1500,
+          "y": 600
+        },
+        "size": {
+          "height": 200,
+          "width": 1078
+        },
+        "type": "annotate"
+      },
+      "noteMapping": {
+        "definitionVersion": 1,
+        "id": "noteMapping",
+        "label": "notemapping1",
+        "parameters": {
+          "body": "Controls pane: press map… under a widget, pick the node and the parameter.\nOr type it into the parameter's expression yourself: op('heat').chan.heat\nIt is maths: op('flash').chan.flashCount * 90 turns the hue a quarter per press.",
+          "color": "value",
+          "title": "Mapping: a parameter follows a control"
+        },
+        "position": {
+          "x": -1500,
+          "y": -300
+        },
+        "size": {
+          "height": 240,
+          "width": 740
+        },
+        "type": "annotate"
+      },
+      "notePanel": {
+        "definitionVersion": 1,
+        "id": "notePanel",
+        "label": "notepanel1",
+        "parameters": {
+          "body": "panel1 lays the widgets out in the Controls pane. Layout, one row per line:\n# Heading\n> a note\nheat invert   (widget names side by side)\nPhone on: the panel is published to a paired phone.",
+          "color": "composite",
+          "title": "Panel"
+        },
+        "position": {
+          "x": 240,
+          "y": 260
+        },
+        "size": {
+          "height": 260,
+          "width": 520
+        },
+        "type": "annotate"
+      },
+      "notePhone": {
+        "definitionVersion": 1,
+        "id": "notePhone",
+        "label": "notephone1",
+        "parameters": {
+          "body": "1. Start the helper: pnpm helper --phone\n2. Pair it in Agent → Connections.\n3. Press Phone in the Controls pane and scan the QR code.\n4. Accept the certificate once. The phone shows this panel and nothing else.",
+          "color": "color",
+          "title": "Phone"
+        },
+        "position": {
+          "x": 240,
+          "y": 560
+        },
+        "size": {
+          "height": 240,
+          "width": 520
+        },
+        "type": "annotate"
+      },
+      "noteSurface": {
+        "definitionVersion": 1,
+        "id": "noteSurface",
+        "label": "notesurface1",
+        "parameters": {
+          "body": "pin1 pins the picture's four corners onto the output.\nDrag the pins on its preview tile to fit a wall.\nThe top-right pin reads the pad: pintr x is op('warp').chan.warpX, y is op('warp').chan.warpY.",
+          "color": "output",
+          "title": "Mapping to a surface: Corner Pin"
+        },
+        "position": {
+          "x": -680,
+          "y": -300
+        },
+        "size": {
+          "height": 240,
+          "width": 858
+        },
+        "type": "annotate"
+      },
+      "out": {
+        "definitionVersion": 1,
+        "id": "out",
+        "label": "out1",
+        "parameters": {},
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "type": "output"
+      },
+      "panel": {
+        "definitionVersion": 1,
+        "id": "panel",
+        "label": "panel1",
+        "parameters": {
+          "layout": "# Picture\n> Heat is brightness. Invert flips it.\nheat invert\n# Colour\n> Each press turns the hue a quarter.\nflash\n# Mapping\n> Drag the picture's top-right corner.\nwarp\n",
+          "remote": true,
+          "title": "Phone Desk"
+        },
+        "position": {
+          "x": 0,
+          "y": 400
+        },
+        "type": "panel"
+      },
+      "pin": {
+        "definitionVersion": 1,
+        "id": "pin",
+        "label": "pin1",
+        "parameters": {
+          "extend": "zero",
+          "feather": 0,
+          "pintr": [
+            0.82,
+            0.78
+          ],
+          "pintr.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('warp').chan.warpX"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.82
+              }
+            },
+            "mode": "expression"
+          },
+          "pintr.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('warp').chan.warpY"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.78
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -600,
+          "y": 0
+        },
+        "type": "cornerPin"
+      },
+      "rings": {
+        "definitionVersion": 2,
+        "id": "rings",
+        "label": "rings1",
+        "parameters": {
+          "interp": "linear",
+          "period": 2.5,
+          "phase": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "abstime * 0.04"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "stops": [
+            {
+              "color": [
+                0.02,
+                0.03,
+                0.08,
+                1
+              ],
+              "position": 0
+            },
+            {
+              "color": [
+                0.1,
+                0.35,
+                0.9,
+                1
+              ],
+              "position": 0.3
+            },
+            {
+              "color": [
+                0.95,
+                0.25,
+                0.55,
+                1
+              ],
+              "position": 0.55
+            },
+            {
+              "color": [
+                1,
+                0.75,
+                0.2,
+                1
+              ],
+              "position": 0.8
+            },
+            {
+              "color": [
+                0.02,
+                0.03,
+                0.08,
+                1
+              ],
+              "position": 1
+            }
+          ],
+          "type": "radial"
+        },
+        "position": {
+          "x": -1500,
+          "y": 0
+        },
+        "type": "ramp"
+      },
+      "warp": {
+        "definitionVersion": 1,
+        "id": "warp",
+        "label": "warp",
+        "parameters": {
+          "caption": "Top-right pin",
+          "channel": "warp",
+          "max": 1,
+          "min": 0,
+          "x": 0.82,
+          "y": 0.78
+        },
+        "position": {
+          "x": -600,
+          "y": 400
+        },
+        "type": "xyPad"
+      }
+    },
+    "revision": 1
+  },
+  "name": "E81 Phone Desk",
+  "projectId": "example-e81-phone-desk",
+  "schemaVersion": 5,
+  "settings": {
+    "limits": {
+      "maxBufferBytes": 268435456,
+      "maxDispatch": 65535,
+      "maxResolution": 4096,
+      "memoryBudgetBytes": 1073741824
+    },
+    "outputResolution": {
+      "height": 720,
+      "width": 1280
+    },
+    "previewFps": 30,
+    "previewLongEdge": 192,
+    "randomSeed": 81,
+    "workingFormat": "rgba16float"
+  },
+  "updatedAt": "2026-08-29T00:00:00.000Z"
+}

@@ -112,6 +112,7 @@ describe("examples: the gate", () => {
       "E79-Crucible.loom.json",
       "E8-Slit-Scan.loom.json",
       "E80-Azulejo.loom.json",
+      "E81-Phone-Desk.loom.json",
       "E9-Ember.loom.json",
     ]);
   });
@@ -163,15 +164,34 @@ describe.each(examples)("example $fileName", (file) => {
    */
   it("has no dead nodes: every node reaches a sink", () => {
     const { plan, document, result } = requireExample(file);
+    const registry = createNodeRegistry(allNodeDefinitions);
 
-    expect(plan.pruned).toEqual([]);
+    /* E81: a node with NO PORTS AND NO VALUE — today exactly Annotate (a note box behind the
+       graph, T1262) and Panel (the controls pane's layout, T1388b) — cannot be wired, so
+       "reaches a sink" asks it a question it has no way to answer. The compiler prunes both
+       by design (`annotate.test.ts` pins it). They are the ONLY nodes allowed in `pruned`,
+       and the set is read off the manifests, so a node that grows a port is held to §V25
+       again the day it does. */
+    const unwireable = Object.values(document.graph.nodes)
+      .filter((node) => {
+        const definition = registry.get(node.type);
+        return (
+          definition !== undefined &&
+          definition.inputs.length === 0 &&
+          definition.outputs.length === 0 &&
+          definition.sink !== true &&
+          !isValueSourceDefinition(definition)
+        );
+      })
+      .map((node) => node.id)
+      .sort();
+    expect([...plan.pruned].sort()).toEqual(unwireable);
     // Not every live node is a PLAN node. A value source (LFO, Constant, Timer) has no
     // ports and never compiles to GPU work — it is alive through channel addressing, and
     // `plan.order` correctly omits it (§V173b). Asserting order === all node ids would
     // therefore fail on a working document, so the claim is split: everything is live,
     // and everything that should compile did.
-    const registry = createNodeRegistry(allNodeDefinitions);
-    expect([...documentLiveness(document.graph, registry).dead]).toEqual([]);
+    expect([...documentLiveness(document.graph, registry).dead]).toEqual(unwireable);
     /* T956: a component INSTANCE flattens into `<id>/<inner>` plan nodes (E47's holo1 is
        the first shipped case), and the plan is compiled from that FLATTENED document — so
        the flattened document is where the expected order is read from. T1236: an instance
@@ -186,6 +206,7 @@ describe.each(examples)("example $fileName", (file) => {
       .filter((id) => {
         const node = logical.nodes[id];
         if (node === undefined) return true;
+        if (unwireable.includes(id)) return false;
         const definition = registry.get(node.type);
         // `isValueSourceDefinition`, not a local `valueChannel === undefined` test. The
         // narrower spelling was right while the LFO/Constant/Timer trio were the only

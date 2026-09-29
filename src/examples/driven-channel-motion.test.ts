@@ -330,6 +330,15 @@ const DELIBERATELY_STILL: Record<string, string> = {
      is a 16 s and a 24 s sample-and-hold doing what they say).
      ⚠ These two rows are also §T1139's fourth instance: an `lfo` at amplitude 0 is a
      CONSTANT NODE spelled with the wrong operator, because there is no constant node. */
+  /* E81's five lanes are LIVE CONTROLS (T1388b): a Slider, Toggle, Button and XY Pad are
+     CLOCKLESS by definition and move only when a hand or a paired phone moves them, which
+     no offline horizon does. The published control IS the thing that turns each one on,
+     and `phone-desk-claims.gpu.test.ts` moves every widget and asserts the render follows. */
+  "E81-Phone-Desk.loom.json heat.heat": "Slider: moves by hand only; the claims test moves it",
+  "E81-Phone-Desk.loom.json invert.invert": "Toggle: moves by hand only; the claims test flips it",
+  "E81-Phone-Desk.loom.json flash.flashCount": "Button presses: by hand only; the claims test presses it",
+  "E81-Phone-Desk.loom.json warp.warpX": "XY Pad: moves by hand only; the claims test drags it",
+  "E81-Phone-Desk.loom.json warp.warpY": "XY Pad: moves by hand only; the claims test drags it",
   "TimeGrid.loom.json churnx1.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
   "TimeGrid.loom.json churny1.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
   /* ⚑ E70's TEMPO LANE, AND IT IS A DIFFERENT KIND OF ROW FROM THE FOUR ABOVE — not a knob

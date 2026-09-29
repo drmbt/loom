@@ -407,6 +407,12 @@
     "f0max": 1,
     "cardFloor": 0.0212
   },
+  "E81-Phone-Desk.loom.json": {
+    "motion": 0.0647,
+    "range": 0.5753,
+    "f0max": 0.5878,
+    "cardFloor": 0
+  },
   "E9-Ember.loom.json": {
     "motion": 0.13639,
     "range": 1,

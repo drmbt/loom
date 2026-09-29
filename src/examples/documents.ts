@@ -2,10 +2,12 @@ export { resonanceDocument } from "./documents/resonance.ts";
 export { verdantLotusDocument, emberMonolithsDocument, aetherOrreryDocument } from "./documents/monument-halls.ts";
 export { crucibleDocument } from "./documents/crucible.ts";
 export { azulejoDocument } from "./documents/azulejo.ts";
+export { phoneDeskDocument } from "./documents/phone-desk.ts";
 import { resonanceDocument } from "./documents/resonance.ts";
 import { verdantLotusDocument, emberMonolithsDocument, aetherOrreryDocument } from "./documents/monument-halls.ts";
 import { crucibleDocument } from "./documents/crucible.ts";
 import { azulejoDocument } from "./documents/azulejo.ts";
+import { phoneDeskDocument } from "./documents/phone-desk.ts";
 import type { ProjectDocument } from "../domain/types/graph.ts";
 export { EXAMPLE_TIMESTAMP } from "./documents/builders.ts";
 export { feedbackEchoDocument } from "./documents/feedback-echo.ts";
@@ -142,6 +144,7 @@ export const EXAMPLE_DOCUMENTS: readonly ProjectDocument[] = [
   aetherOrreryDocument,
   crucibleDocument,
   azulejoDocument,
+  phoneDeskDocument,
   feedbackEchoDocument,
   reactionDiffusionDocument,
   animatedNoiseFieldDocument,
