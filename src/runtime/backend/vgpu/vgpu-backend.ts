@@ -3142,9 +3142,10 @@ function isPipelineCompileError(error: unknown): boolean {
 
 /**
  * A device-side pipeline failure, attributed to its pass and node (§V27). The error's
- * `where` is `<label>.compileSync` and effects are labelled with the pass id (or its
- * label), so the owning pass — and through it the node badge — is recoverable. The
- * `cause` carries Dawn's real message, line and column included.
+ * `where` is `<label>.compileSync` and every pipeline is labelled with its pass id, so
+ * the owning pass — and through it the node badge — is recoverable. Only the id: a pass's
+ * human label is shared by every pass of its node type, which blamed the wrong node (B229).
+ * The `cause` carries Dawn's real message, line and column included.
  */
 function pipelineFailureDiagnostic(
   error: unknown,
@@ -3153,11 +3154,7 @@ function pipelineFailureDiagnostic(
   const shaped = error as { where?: unknown; cause?: unknown; message?: unknown };
   const where = typeof shaped.where === "string" ? shaped.where : "";
   const label = where.replace(/\.(compileSync|compile|pipelineFor)$/, "");
-  const pass = passes.find(
-    (candidate) =>
-      candidate.id === label ||
-      (candidate.kind === "effect" && candidate.label !== undefined && candidate.label === label),
-  );
+  const pass = passes.find((candidate) => candidate.id === label);
   const nodeId =
     pass !== undefined && pass.kind !== "swap" && pass.kind !== "counter" ? pass.nodeId : undefined;
   const causeMessage =

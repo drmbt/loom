@@ -867,7 +867,10 @@ export function buildResources(
     try {
       const created = effect(gpu, pass.shader, {
         set: setBag,
-        label: pass.label ?? pass.id,
+        // B229: the pass id, never `pass.label`. vgpu reports an async pipeline failure as
+        // `<label>.compileSync`, and a human label is shared by every pass of a node type
+        // ("Custom WGSL"), so it named the first such pass in the plan, not the broken one.
+        label: pass.id,
       });
       // Builds the render pipeline now, so the first frame encodes without creating one (§V8).
       created.compileSync(resolveTarget());

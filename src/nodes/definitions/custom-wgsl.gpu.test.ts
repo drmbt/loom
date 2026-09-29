@@ -7,6 +7,7 @@ import type { RuntimeDiagnostic } from "../../domain/types/diagnostics.ts";
 // import is legal (§V3), and this is that boundary's node entry point.
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { createVgpuBackend } from "../../runtime/backend/vgpu/vgpu-backend.ts";
+import { BackendDiagnosticCode } from "../../runtime/backend/diagnostics.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { customWgslNode } from "./custom-wgsl.ts";
 import { outputNode } from "./output.ts";
@@ -154,4 +155,87 @@ describe("shared WGSL modules render what a paste renders (T1286)", () => {
     // Not "the same mean", not "within a tolerance": the same bytes (§V147).
     expect(Buffer.compare(imported, pasted)).toBe(0);
   }, 120_000);
+});
+
+/**
+ * B229 ON A REAL DEVICE: A BROKEN SHADER IS BLAMED ON THE NODE THAT HOLDS IT.
+ *
+ * Every Custom WGSL pass carries the same human label, and Dawn reports a failed pipeline
+ * under the label it was built with — so a failure attributed through that label named the
+ * FIRST Custom WGSL in the plan, a node that compiled fine (§V27). The broken shader here
+ * is the SECOND of two, and it has to parse: vgpu reflects WGSL before Dawn sees it, and a
+ * reflection failure is caught synchronously with the right node already. A call to a
+ * function that does not exist parses and fails only at the device, the path the bug was on.
+ */
+const BROKEN_BODY = `@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  return notAFunction(uv) * textureSample(inputTexture, inputSampler, uv);
+}`;
+
+/** Solid -> fine (default source) -> broken -> Output. */
+function twoCustomGraph(): GraphDocument {
+  return {
+    revision: 1,
+    nodes: {
+      source: { id: "source", type: "solid", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} },
+      fine: { id: "fine", type: "customWgsl", definitionVersion: 1, position: { x: 200, y: 0 }, parameters: {} },
+      broken: {
+        id: "broken",
+        type: "customWgsl",
+        definitionVersion: 1,
+        position: { x: 400, y: 0 },
+        parameters: { source: BROKEN_BODY },
+      },
+      out: { id: "out", type: "output", definitionVersion: 1, position: { x: 600, y: 0 }, parameters: {} },
+    },
+    edges: {
+      e1: { id: "e1", source: { nodeId: "source", portId: "out" }, target: { nodeId: "fine", portId: "input" } },
+      e2: { id: "e2", source: { nodeId: "fine", portId: "out" }, target: { nodeId: "broken", portId: "input" } },
+      e3: { id: "e3", source: { nodeId: "broken", portId: "out" }, target: { nodeId: "out", portId: "input" } },
+    },
+    groups: {},
+  };
+}
+
+describe("a device compile failure names the node whose shader failed (B229, §V27)", () => {
+  it("the second of two Custom WGSL nodes breaks, and the problem names it — not the first", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+    const backend = createVgpuBackend({ host: nodeGpuHost() });
+    const diagnostics: RuntimeDiagnostic[] = [];
+    backend.onDiagnostic((diagnostic) => diagnostics.push(diagnostic));
+    try {
+      const capabilities = await backend.initialize({});
+      const plan = compileGraph({
+        graph: twoCustomGraph(),
+        settings,
+        registry: createNodeRegistry([solidNode, customWgslNode, outputNode]).view(),
+        capabilities,
+      });
+      // The graph compiler does not parse WGSL: this failure can only happen at the device.
+      expect(plan.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+      // Both passes are in the plan, the fine one FIRST — the order a label lookup got wrong.
+      const custom = (plan.passes as ReadonlyArray<{ readonly id: string; readonly nodeId?: string }>).filter(
+        (pass) => pass.nodeId === "fine" || pass.nodeId === "broken",
+      );
+      expect(custom.map((pass) => pass.nodeId)).toEqual(["fine", "broken"]);
+      const brokenPassId = custom[1]!.id;
+
+      await expect(backend.compile(plan)).rejects.toBeDefined();
+
+      const failures = diagnostics.filter((d) => d.code === BackendDiagnosticCode.compileFailed);
+      expect(failures.length, "the device failure reached the problems tab").toBeGreaterThan(0);
+      // What the problems tab and the node badge read: the node that holds the broken shader.
+      expect(failures.map((d) => d.nodeId)).toEqual(failures.map(() => "broken"));
+      expect(failures.map((d) => d.message.startsWith(`Pass "${brokenPassId}" failed to compile`))).toEqual(
+        failures.map(() => true),
+      );
+      // And nothing is pinned on the node that compiled fine.
+      expect(diagnostics.filter((d) => d.nodeId === "fine")).toEqual([]);
+    } finally {
+      backend.dispose();
+    }
+  }, 60_000);
 });
