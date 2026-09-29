@@ -59,6 +59,49 @@ it("publishes on the perform window's frames while the editor's are parked", asy
   expect(createNativeOutputSession).toHaveBeenCalledOnce();
   expect(h.sessions[0]!.pump).toHaveBeenCalledTimes(2);
 });
+/* T1489b: a Syphon/NDI error reaches the UI within one poll period while the editor is
+   hidden and a perform window drives the show. The editor's timers are the throttled
+   ones here: `setInterval` is stubbed to a timer that never fires. */
+function statusHarness() {
+  let clock = 0;
+  const now = vi.spyOn(performance, "now").mockImplementation(() => clock);
+  let poll: (() => void) | null = null;
+  vi.stubGlobal("setInterval", vi.fn((callback: () => void) => { poll = callback; return 7; }));
+  vi.stubGlobal("clearInterval", vi.fn());
+  const fail = (session: ReturnType<typeof createNativeOutputSession>) =>
+    vi.mocked(session.status).mockResolvedValue({ copied: 1, dropped: 0, error: "Syphon server stopped" });
+  const settle = () => act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  return { now, fail, settle, advance: (ms: number) => { clock += ms; }, poll: () => poll?.() };
+}
+it("reports a status error within one poll period on the perform window's frames", async () => {
+  const s = statusHarness();
+  try {
+    const waiting: Array<(time: number) => void> = [];
+    const performWindow = { requestAnimationFrame: (callback: (time: number) => void) => waiting.push(callback), cancelAnimationFrame: () => {} };
+    const h = setup("syphonOut", { frames: performWindow } as unknown as LoomBackend);
+    const frame = () => act(async () => { for (const callback of waiting.splice(0)) callback(0); });
+    await frame(); await s.settle();
+    s.fail(h.sessions[0]!);
+    // Not once per frame: a frame inside the period does not ask.
+    s.advance(999); await frame(); await s.settle();
+    expect(h.sessions[0]!.status).not.toHaveBeenCalled();
+    s.advance(1); await frame(); await s.settle();
+    expect(h.view.result.current.diagnostics.map(d => d.message)).toEqual(["Error: Syphon server stopped"]);
+    expect(h.sessions[0]!.close).toHaveBeenCalledOnce();
+  } finally { s.now.mockRestore(); }
+});
+/* T1489b: with no frames served at all (a hidden editor, no perform window) the editor's
+   timer still polls, as it always has. */
+it("still polls status on the editor's timer when no frames are served", async () => {
+  const s = statusHarness();
+  try {
+    const h = setup(); await h.tick(); await s.settle();
+    s.fail(h.sessions[0]!);
+    s.advance(1000); await act(async () => { s.poll(); }); await s.settle();
+    expect(h.view.result.current.diagnostics.map(d => d.message)).toEqual(["Error: Syphon server stopped"]);
+    expect(h.sessions[0]!.close).toHaveBeenCalledOnce();
+  } finally { s.now.mockRestore(); }
+});
 it("retiring one of two outputs leaves the other session intact", async () => {
   const h = setup();
   const graph = { ...h.graph, nodes: { ...h.graph.nodes, second: { ...h.graph.nodes["sink"]!, id: "second", parameters: { name: "Second" } } },

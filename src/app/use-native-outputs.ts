@@ -17,6 +17,7 @@ const TYPES = new Set(Object.entries(EMISSION_PUMPS)
   .filter(([, path]) => path === "src/app/use-native-outputs.ts").map(([type]) => type));
 type Session = ReturnType<typeof createNativeOutputSession>;
 type Entry = { key: string; selectionKey?: string; session?: Session; polling: boolean };
+const STATUS_POLL_MS = 1000;
 
 export function useNativeOutputs(runtime: AppRuntime, backend: LoomBackend | null,
   graph: GraphDocument, compiled: CompiledGraph | null) {
@@ -131,10 +132,22 @@ export function useNativeOutputs(runtime: AppRuntime, backend: LoomBackend | nul
           report(request.id, String(error));
         }
       }
+      poll();
       frame = frames.requestAnimationFrame(tick);
     };
-    frame = frames.requestAnimationFrame(tick);
-    const timer = window.setInterval(() => {
+    /*
+     * T1489b — the status poll, on the frames AND on the editor's timer. A hidden editor's
+     * timers are throttled, so on the timer alone a Syphon/NDI error surfaced late while a
+     * perform window drove the show; from the tick it arrives within one period whenever
+     * frames are served. The timer stays for the case with none (a hidden editor and no
+     * perform window), which it has always covered. Gated on this realm's clock, so the
+     * two doors poll once per period between them and never once per frame.
+     */
+    let lastPoll = performance.now();
+    const poll = () => {
+      const now = performance.now();
+      if (now - lastPoll < STATUS_POLL_MS) return;
+      lastPoll = now;
       for (const [id, entry] of entries) {
         if (!entry.session || entry.polling) continue;
         entry.polling = true;
@@ -145,7 +158,9 @@ export function useNativeOutputs(runtime: AppRuntime, backend: LoomBackend | nul
           close(id, entry); entries.set(id, { key: entry.key, polling: false }); report(id, String(error));
         }).finally(() => { entry.polling = false; });
       }
-    }, 1000);
+    };
+    frame = frames.requestAnimationFrame(tick);
+    const timer = window.setInterval(poll, STATUS_POLL_MS);
     return () => {
       disposed = true; frames.cancelAnimationFrame(frame); window.clearInterval(timer);
       if (controller.current === owned) controller.current = null;
