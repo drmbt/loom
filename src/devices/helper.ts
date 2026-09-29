@@ -70,6 +70,18 @@ export const HELPER_TERMINAL_FLAG = "--terminal";
  */
 export const HELPER_ALL_FLAG = "--all";
 
+/**
+ * The flag that ARMS the PHONE door (T1396b).
+ *
+ * The first door on the LAN rather than loopback, so it gets the terminal's treatment and
+ * one step more: the flag only BUILDS the door; nothing listens until the paired editor
+ * asks, and it closes when that editor goes. It is deliberately NOT folded into
+ * `HELPER_ALL_FLAG`: `--all` means "every door on this machine", and this one reaches past
+ * the machine — the owner approved it as opt-in per session, which a one-word convenience
+ * that already exists in people's scripts would quietly undo.
+ */
+export const HELPER_PHONE_FLAG = "--phone";
+
 /** The literal command. One place, because it is expected to be renamed. */
 export const DEVICE_HELPER_COMMAND = `pnpm ${HELPER_SCRIPT}`;
 
@@ -78,6 +90,29 @@ export const DEVICE_HELPER_TERMINAL_COMMAND = `${DEVICE_HELPER_COMMAND} ${HELPER
 
 /** The one-command form: device bridge, agent server, terminal and export grant (T1343b). */
 export const DEVICE_HELPER_ALL_COMMAND = `${DEVICE_HELPER_COMMAND} ${HELPER_ALL_FLAG}`;
+
+/** The command that arms the phone door (T1396b). Not implied by `--all`. */
+export const DEVICE_HELPER_PHONE_COMMAND = `${DEVICE_HELPER_COMMAND} ${HELPER_PHONE_FLAG}`;
+
+/**
+ * T1396b — WHAT `--phone` DID AT STARTUP, WHICH IS NOT MUCH, SAID SO.
+ *
+ * The flag arms a door that opens later, from the editor, so the line a person reads when
+ * the helper starts must not read as "your controls are now on the wifi". It names what
+ * will be reachable once opened, by whom, and when it shuts again.
+ */
+export const HELPER_PHONE_BANNER =
+  "Phone door ARMED, not open: nothing listens on the network until the paired Loom tab " +
+  "opens it. Then phones on this wifi that scan its QR code may move the controls that tab " +
+  "published, and nothing else; it closes when the tab closes it or goes away.";
+
+/**
+ * T1396b — the answer a page gets when it asks to open a door this helper does not have.
+ * Here and not in the bridge because it names the command (T1110).
+ */
+export const PHONE_DOOR_UNAVAILABLE =
+  "this Loom helper was started without the phone door, so no phone can reach this session. " +
+  `Restart it as \`${DEVICE_HELPER_PHONE_COMMAND}\` to open one from the editor.`;
 
 /**
  * The command for someone who wants NOTHING to do with agents (T1111).
@@ -107,7 +142,8 @@ export const HELPER_ALL_BANNER =
   `Started with \`${HELPER_ALL_FLAG}\`: device bridge (OSC, laser, Apple Vision), agent ` +
   "server on stdio, TERMINAL (a paired Loom tab may open shells as you), and the EXPORT " +
   "GRANT (an attached agent may read rendered pixels and readback buffers). " +
-  `\`${DEVICE_HELPER_COMMAND}\` on its own opens the first two and neither of the last two.`;
+  `\`${DEVICE_HELPER_COMMAND}\` on its own opens the first two and neither of the last two. ` +
+  `The PHONE door is not among them — it reaches past this machine; add \`${HELPER_PHONE_FLAG}\` for it.`;
 
 /**
  * WHY `--all --devices-only` IS REFUSED BY NAME (T1343b).

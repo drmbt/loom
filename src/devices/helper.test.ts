@@ -9,11 +9,14 @@ import {
   DEVICE_HELPER_ALL_COMMAND,
   DEVICE_HELPER_COMMAND,
   DEVICE_HELPER_DEVICES_ONLY_COMMAND,
+  DEVICE_HELPER_PHONE_COMMAND,
   DEVICE_HELPER_TERMINAL_COMMAND,
   HELPER_ALL_BANNER,
   HELPER_ALL_DEVICES_ONLY_REFUSAL,
   HELPER_ALL_FLAG,
   HELPER_DEVICES_ONLY_FLAG,
+  HELPER_PHONE_BANNER,
+  HELPER_PHONE_FLAG,
   HELPER_SCRIPT,
   HELPER_TERMINAL_FLAG,
   HELPER_DOCS_URL,
@@ -191,6 +194,61 @@ describe("the helper command has exactly one spelling (T1110)", () => {
   it("builds the all-inclusive command from the same script name (T1343b)", () => {
     expect(DEVICE_HELPER_ALL_COMMAND).toBe(`${DEVICE_HELPER_COMMAND} ${HELPER_ALL_FLAG}`);
   });
+
+  /*
+   * T1396b — the fifth spelling, same rule. The phone door's refusal and the helper's
+   * startup line both name `--phone`, and both interpolate it from helper.ts.
+   */
+  it("the --phone flag is not spelled into a string anywhere else under src/ (T1396b)", () => {
+    const offenders: string[] = [];
+    for (const path of sourceFiles(SRC)) {
+      if (ALLOWED.has(path)) continue;
+      if (literalText(path).some((text) => text.includes(HELPER_PHONE_FLAG))) {
+        offenders.push(relative(SRC, path));
+      }
+    }
+    expect(offenders, "Import HELPER_PHONE_FLAG from @devices/helper.ts instead").toEqual([]);
+  });
+
+  it("builds the phone command from the same script name (T1396b)", () => {
+    expect(DEVICE_HELPER_PHONE_COMMAND).toBe(`${DEVICE_HELPER_COMMAND} ${HELPER_PHONE_FLAG}`);
+  });
+});
+
+/**
+ * T1396b — THE PHONE DOOR IS ITS OWN AFFIRMATIVE ACT, AND `--all` IS NOT ONE.
+ *
+ * `--all` means every door ON THIS MACHINE; the phone door is the first one that listens on
+ * the LAN, and the owner approved it opt-in per session. So the ruling is asserted three
+ * ways, each of which can regress on its own: `--all` does not arm it, `--phone` does (in
+ * both modes, since the door rides the device role), and the `--all` banner tells the
+ * reader it was left out and which flag adds it.
+ */
+describe("`--phone` arms the phone door, and `--all` does not (T1396b)", () => {
+  it("is NOT implied by --all", () => {
+    const all = resolveHelperInvocation([HELPER_ALL_FLAG]);
+    expect(all.kind === "stdio" && all.phone).toBe(false);
+    expect(HELPER_ALL_BANNER).toContain(HELPER_PHONE_FLAG);
+  });
+
+  it("is armed by --phone alone, with the agent server or without it", () => {
+    const stdio = resolveHelperInvocation([HELPER_PHONE_FLAG]);
+    expect(stdio.kind === "stdio" && stdio.phone).toBe(true);
+    expect(stdio.kind === "stdio" && stdio.terminal).toBe(false);
+    expect(resolveHelperInvocation([HELPER_DEVICES_ONLY_FLAG, HELPER_PHONE_FLAG])).toEqual({
+      kind: "devices",
+      terminal: false,
+      phone: true,
+    });
+    expect(resolveHelperInvocation([HELPER_ALL_FLAG, HELPER_PHONE_FLAG]).kind === "stdio").toBe(true);
+    const bare = resolveHelperInvocation([]);
+    expect(bare.kind === "stdio" && bare.phone).toBe(false);
+  });
+
+  it("says at startup that the door is armed and NOT open", () => {
+    expect(HELPER_PHONE_BANNER).toContain("not open");
+    expect(HELPER_PHONE_BANNER).toContain("QR code");
+  });
 });
 
 /**
@@ -234,7 +292,7 @@ describe("`--all` opens every door, and only when asked (T1343b)", () => {
     expect(exportOnly.kind === "stdio" && exportOnly.grantExport).toBe(true);
     expect(exportOnly.kind === "stdio" && exportOnly.terminal).toBe(false);
     const devicesTerminal = resolveHelperInvocation([HELPER_DEVICES_ONLY_FLAG, HELPER_TERMINAL_FLAG]);
-    expect(devicesTerminal).toEqual({ kind: "devices", terminal: true });
+    expect(devicesTerminal).toEqual({ kind: "devices", terminal: true, phone: false });
   });
 
   /*

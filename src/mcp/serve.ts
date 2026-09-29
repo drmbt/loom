@@ -25,6 +25,8 @@ import {
   HELPER_ALL_DEVICES_ONLY_REFUSAL,
   HELPER_ALL_FLAG,
   HELPER_DEVICES_ONLY_FLAG,
+  HELPER_PHONE_BANNER,
+  HELPER_PHONE_FLAG,
   HELPER_TERMINAL_FLAG,
 } from "@devices/helper.ts";
 
@@ -152,6 +154,12 @@ export interface HeadlessMcpServerOptions {
      * `{ enabled: true, spawn }` to prove the wiring without a real shell.
      */
     readonly terminal?: import("@devices/doors.ts").TerminalDoorOptions;
+    /**
+     * T1396b — the phone door. OFF unless the invocation carried `--phone`, mapped by the
+     * entry points below like the terminal's flag. A gate passes `{ enabled: true, … }`
+     * with a loopback address and a temp certificate directory.
+     */
+    readonly phone?: import("@devices/doors.ts").PhoneDoorEnableOptions;
     /**
      * How the DEVICE role opens UDP sockets (T942 tier 3). Injected ONLY by tests.
      *
@@ -315,8 +323,10 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
           ...(options.bridge.laser === undefined ? {} : { laser: options.bridge.laser }),
           ...(options.bridge.vision === undefined ? {} : { vision: options.bridge.vision }),
           ...(options.bridge.terminal === undefined ? {} : { terminal: options.bridge.terminal }),
+          ...(options.bridge.phone === undefined ? {} : { phone: options.bridge.phone }),
         });
   if (doors?.terminal) options.bridge?.announce?.(terminalDoorBanner(doors.terminal));
+  if (doors?.phone) options.bridge?.announce?.(HELPER_PHONE_BANNER);
   const bridge =
     options.bridge === undefined
       ? null
@@ -327,6 +337,7 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
           operatorGrantedSnapshots: options.grantExport === true,
           ...(doors === null ? {} : { devices: doors.devices, laser: doors.laser, vision: doors.vision }),
           ...(doors?.terminal ? { terminal: doors.terminal } : {}),
+          ...(doors?.phone ? { phone: doors.phone } : {}),
           ...(options.bridge.port === undefined ? {} : { port: options.bridge.port }),
           ...(options.bridge.handoffDir === undefined ? {} : { handoffDir: options.bridge.handoffDir }),
           ...(options.bridge.proxyRetryMs === undefined ? {} : { proxyRetryMs: options.bridge.proxyRetryMs }),
@@ -494,7 +505,7 @@ function terminalDoorBanner(door: TerminalHost): string {
 }
 
 export function serveStdio(
-  options: { readonly terminal?: boolean; readonly grantExport?: boolean } = {},
+  options: { readonly terminal?: boolean; readonly grantExport?: boolean; readonly phone?: boolean } = {},
 ): void {
   const server = createHeadlessMcpServer({
     send: (message) => {
@@ -510,12 +521,14 @@ export function serveStdio(
         process.stderr.write(`[loom bridge] ${message}\n`);
       },
       ...(options.terminal === true ? { terminal: { enabled: true } } : {}),
+      ...(options.phone === true ? { phone: { enabled: true } } : {}),
     },
   });
-  if (options.terminal === true) {
+  if (options.terminal === true || options.phone === true) {
     // T1263: an MCP client kills this process with a signal, and every shell it opened
-    // must go with it. The device helper below has always done this for the laser (G2);
-    // here it is worth doing only once there is a child process to take along.
+    // must go with it (and, T1396b, every phone is told the door closed). The device
+    // helper below has always done this for the laser (G2); here it is worth doing only
+    // once there is a child process or a LAN listener to take along.
     let closing = false;
     const close = (): void => {
       if (closing) return;
@@ -581,6 +594,8 @@ export interface DeviceHelperOptions {
    * else; ignored when `doors` is injected whole (the gate then decided already).
    */
   readonly terminal?: boolean;
+  /** T1396b — arm the phone door. Read from `--phone`; ignored when `doors` is injected. */
+  readonly phone?: boolean;
   /** Where a HUMAN reads the pairing code and every refusal (§V233/§V288). */
   readonly announce?: (message: string) => void;
   /** The three doors. Defaulted to the real ones; injected whole by a gate. */
@@ -604,8 +619,14 @@ export interface DeviceHelper {
 
 export function createDeviceHelper(options: DeviceHelperOptions = {}): DeviceHelper {
   const announce = options.announce ?? ((): void => undefined);
-  const doors = options.doors ?? createDeviceDoors({ terminal: { enabled: options.terminal === true } });
+  const doors =
+    options.doors ??
+    createDeviceDoors({
+      terminal: { enabled: options.terminal === true },
+      phone: { enabled: options.phone === true },
+    });
   if (doors.terminal) announce(terminalDoorBanner(doors.terminal));
+  if (doors.phone) announce(HELPER_PHONE_BANNER);
   const bridge = createBridgeHost({
     // NO `headless` — that absence IS the mode, and it is what makes the agent doors
     // unserveable rather than merely closed. See `bridge-host.ts`.
@@ -613,6 +634,7 @@ export function createDeviceHelper(options: DeviceHelperOptions = {}): DeviceHel
     laser: doors.laser,
     vision: doors.vision,
     ...(doors.terminal ? { terminal: doors.terminal } : {}),
+    ...(doors.phone ? { phone: doors.phone } : {}),
     ...(options.port === undefined ? {} : { port: options.port }),
     ...(options.handoffDir === undefined ? {} : { handoffDir: options.handoffDir }),
     ...(options.retryMs === undefined ? {} : { proxyRetryMs: options.retryMs }),
@@ -635,9 +657,10 @@ export function createDeviceHelper(options: DeviceHelperOptions = {}): DeviceHel
 }
 
 /** `pnpm helper --devices-only`: the device bridge, and a process that stays up for it. */
-export function serveDevices(options: { readonly terminal?: boolean } = {}): void {
+export function serveDevices(options: { readonly terminal?: boolean; readonly phone?: boolean } = {}): void {
   const helper = createDeviceHelper({
     ...(options.terminal === true ? { terminal: true } : {}),
+    ...(options.phone === true ? { phone: true } : {}),
     announce: (message) => {
       // stderr, exactly as `serveStdio` uses it, so there is one announce channel and one
       // shape of line in the two modes. Nothing writes stdout here — there is no protocol
@@ -676,13 +699,18 @@ export function serveDevices(options: { readonly terminal?: boolean } = {}): voi
  * command line, one reader. `--terminal` and `--devices-only` stay orthogonal (a shell with
  * no agent server is a real thing to want, §T1263); `--all` implies both grants and is
  * refused BY NAME against `--devices-only` rather than losing to precedence.
+ *
+ * T1396b — `--phone` is read here and ONLY on its own: `--all` does not imply it, because
+ * `--all` is "every door on this machine" and this door is on the LAN. It combines with
+ * either mode, since the phone door rides the device role both modes have.
  */
 export type HelperInvocation =
   | { readonly kind: "refused"; readonly reason: string }
-  | { readonly kind: "devices"; readonly terminal: boolean }
+  | { readonly kind: "devices"; readonly terminal: boolean; readonly phone: boolean }
   | {
       readonly kind: "stdio";
       readonly terminal: boolean;
+      readonly phone: boolean;
       readonly grantExport: boolean;
       /** The `--all` startup line, or null when this invocation opened nothing extra. */
       readonly banner: string | null;
@@ -695,10 +723,12 @@ export function resolveHelperInvocation(args: readonly string[]): HelperInvocati
   // one of the doors at stake is a shell. Refuse before anything binds, dials or spawns.
   if (all && devicesOnly) return { kind: "refused", reason: HELPER_ALL_DEVICES_ONLY_REFUSAL };
   const terminal = all || args.includes(HELPER_TERMINAL_FLAG);
-  if (devicesOnly) return { kind: "devices", terminal };
+  const phone = args.includes(HELPER_PHONE_FLAG);
+  if (devicesOnly) return { kind: "devices", terminal, phone };
   return {
     kind: "stdio",
     terminal,
+    phone,
     grantExport: all || args.includes("--grant-export"),
     banner: all ? HELPER_ALL_BANNER : null,
   };
@@ -713,11 +743,11 @@ if (process.argv[1]?.endsWith("serve.ts") === true) {
     process.stderr.write(`[loom helper] ${invocation.reason}\n`);
     process.exit(2);
   } else if (invocation.kind === "devices") {
-    serveDevices({ terminal: invocation.terminal });
+    serveDevices({ terminal: invocation.terminal, phone: invocation.phone });
   } else {
     // Before the doors open, not after: the reader of the one-command form learns what is
     // reachable from the line that scrolls past first (T1343b).
     if (invocation.banner !== null) process.stderr.write(`[loom helper] ${invocation.banner}\n`);
-    serveStdio({ terminal: invocation.terminal, grantExport: invocation.grantExport });
+    serveStdio({ terminal: invocation.terminal, grantExport: invocation.grantExport, phone: invocation.phone });
   }
 }

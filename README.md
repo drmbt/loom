@@ -58,6 +58,7 @@ pnpm helper --terminal       # …and terminal panes can open a shell
 pnpm helper --grant-export   # …and an attached agent may read pixels and readbacks
 pnpm helper --all            # every door above, in one flag
 pnpm helper --devices-only   # OSC, laser and Person Mask only — no agent server at all
+pnpm helper --phone          # …and the editor may open a phone door on your wifi (not in --all)
 ```
 
 `--all` is the one to remember. It is **not the default, and that is deliberate**:
@@ -71,6 +72,14 @@ you cannot see is a grant you cannot revoke.
 `pnpm helper --all` and `pnpm helper --devices-only` contradict each other, one adding every
 door and the other removing all but one. The helper **refuses the pair by name** and starts
 nothing, rather than letting flag order pick a winner.
+
+`pnpm helper --phone` is the one door `--all` leaves out, because it is the one that listens
+on your network rather than on this machine. The flag only arms it: nothing listens until
+the paired editor opens it, on this machine's LAN address over HTTPS with a self-signed
+certificate (made with `openssl`, kept in `~/.loom/phone-door/` so a phone accepts it once),
+behind a QR code whose token dies when the door closes. A phone holding it can move the
+controls the editor published and nothing else. The door closes when the editor closes it
+or goes away.
 
 ## Terminal
 

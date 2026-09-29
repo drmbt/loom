@@ -2,10 +2,11 @@ import { createDeviceHub, nodeUdpSocketFactory, type DeviceHub, type UdpSocketFa
 import { createLaserHost, nodeLaserDiscovery, nodeTcpSocketFactory, type LaserHost } from "./laser-host.ts";
 import { createVisionHost, nodeVisionStart, type VisionHost } from "./vision-host.ts";
 import { createTerminalHost, type TerminalHost, type TerminalHostOptions } from "./terminal-host.ts";
+import { createPhoneDoor, type PhoneDoor, type PhoneDoorOptions } from "./phone/phone-door.ts";
 
 /**
  * THE THINGS A PAGE CANNOT DO, BUILT IN ONE PLACE (T1111, extracted from `serve.ts`;
- * T1263 added the fourth, the opt-in terminal door).
+ * T1263 added the fourth, the opt-in terminal door; T1396b the fifth, the opt-in phone door).
  *
  * ## Why this exists
  *
@@ -45,6 +46,13 @@ export interface DeviceDoors {
    * desktop host opens the same door with `openTerminalDoor()` and no flag at all.
    */
   readonly terminal: TerminalHost | null;
+  /**
+   * T1396b — the FIFTH door, NULL by default like the terminal, and the only one that
+   * listens on the LAN. Built only when the host said so (`phone.enabled`, the browser
+   * product's `--phone`); even built, it binds nothing until the paired page sends
+   * `phoneOpen`, and its absence is what the bridge answers `phoneOpen` with, by name.
+   */
+  readonly phone: PhoneDoor | null;
   dispose(): void;
 }
 
@@ -69,6 +77,16 @@ export interface DeviceDoorOptions {
    * real `node-pty` unless a gate injects `spawn`.
    */
   readonly terminal?: TerminalDoorOptions;
+  /**
+   * T1396b — the phone door. ABSENT or `enabled: false` builds none. `enabled: true` builds
+   * the real one (LAN address, `~/.loom/phone-door`, `openssl`) unless a gate injects the
+   * address and the certificate directory.
+   */
+  readonly phone?: PhoneDoorEnableOptions;
+}
+
+export interface PhoneDoorEnableOptions extends PhoneDoorOptions {
+  readonly enabled: boolean;
 }
 
 export interface TerminalDoorOptions extends TerminalHostOptions {
@@ -114,11 +132,16 @@ export function createDeviceDoors(options: DeviceDoorOptions = {}): DeviceDoors 
     options.terminal?.enabled === true
       ? createTerminalHost((({ enabled: _enabled, ...rest }) => rest)(options.terminal))
       : null;
+  const phone =
+    options.phone?.enabled === true
+      ? createPhoneDoor((({ enabled: _enabled, ...rest }) => rest)(options.phone))
+      : null;
   return {
     devices,
     laser,
     vision,
     terminal,
+    phone,
     dispose() {
       // The bridge host disposes the laser and the vision worker with the DEVICE CLIENT
       // (that is G2's page-death path), and the hub when the whole bridge goes. This is the
@@ -128,6 +151,8 @@ export function createDeviceDoors(options: DeviceDoorOptions = {}): DeviceDoors 
       laser.dispose();
       vision.dispose();
       terminal?.dispose();
+      // T1396b: and every phone's stream is told `closed` before the listener goes.
+      phone?.dispose();
     },
   };
 }

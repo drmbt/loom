@@ -23,7 +23,9 @@ import { createBridgeProxy, type BridgeProxy } from "./bridge-proxy.ts";
 import type { DeviceHub, DeviceSession } from "@devices/device-hub.ts";
 import type { BridgeSocket } from "@devices/transport/bridge-socket.ts";
 import type { TerminalHost, TerminalSession } from "@devices/terminal-host.ts";
-import { DEVICE_HELPER_TERMINAL_COMMAND } from "@devices/helper.ts";
+import { DEVICE_HELPER_TERMINAL_COMMAND, PHONE_DOOR_UNAVAILABLE } from "@devices/helper.ts";
+import type { PhoneDoor } from "@devices/phone/phone-door.ts";
+import type { PhoneDoorState, PhoneSnapshot } from "@devices/phone/phone-protocol.ts";
 import {
   createLoopbackWebSocketServer,
   type LoopbackConnection,
@@ -265,6 +267,15 @@ export interface BridgeHostOptions {
    * socket: it gets its own socket, its own credential check, and dies with that socket.
    */
   readonly terminal?: TerminalHost;
+  /**
+   * T1396b — the phone door, present only when the helper was started with `--phone`.
+   * NOT a role: the page that asks for it is the attached DEVICE client, on its own socket
+   * (`phoneOpen`/`phoneClose`/`phonePublish`), and the door's pushes ride that socket. So
+   * the door lives exactly as long as that client — `releaseDevice` closes it and drops
+   * its snapshot, and the token dies with it. ABSENT, `phoneOpen` is answered `open: false`
+   * with a reason naming the command to restart with.
+   */
+  readonly phone?: PhoneDoor;
   /**
    * Whether THIS helper's own invocation carried `--grant-export` (T1220).
    *
@@ -535,6 +546,9 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     // T1029 — same posture, no hazard: just a child process that should not outlive
     // the one page it served. The next attach re-spawns from the compiled cache.
     options.vision?.dispose();
+    // T1396b — the phone door was opened BY this client and serves only its snapshot, so
+    // it closes with it: every phone is told why, and the QR code it scanned stops working.
+    options.phone?.release(`the Loom tab that opened this door went away (${reason})`);
     notice({ severity: "info", message: `Device bridge released: ${reason}.` });
   };
 
@@ -735,6 +749,64 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
             });
           },
         );
+        return;
+      }
+      case "phoneOpen": {
+        // T1396b — open the LAN door (or report the one already open). One owed reply,
+        // `phoneOpened`, whichever way it goes; the door never rejects, it says why not.
+        const id = message["id"];
+        if (typeof id !== "number") return;
+        const door = options.phone;
+        if (door === undefined) {
+          send(socket, { type: "phoneOpened", id, state: { open: false, reason: PHONE_DOOR_UNAVAILABLE } });
+          return;
+        }
+        void door
+          .open({
+            // PUSHES, like the device streams: no id, nothing waiting, and nothing at all
+            // once this socket is no longer the device client.
+            onWrite: (phone, set) => {
+              if (device !== socket) return;
+              send(socket, { type: "phoneWrite", stream: "phone", phone, set });
+            },
+            onState: (state) => {
+              if (device !== socket) return;
+              send(socket, { type: "phoneState", stream: "phone", state });
+            },
+          })
+          .then((state: PhoneDoorState) => {
+            if (device !== socket) return;
+            send(socket, { type: "phoneOpened", id, state });
+            if (!state.open) return;
+            // The address without the token: the operator learns where the door is; the
+            // credential stays in the tab that shows the QR code.
+            const where = state.url.split("?")[0] ?? state.url;
+            notice({
+              severity: "info",
+              message: `Phone door OPEN on ${where} for ${deviceClient ?? "a Loom tab"}: phones on this network holding its QR code may move the controls that tab published, and nothing else.`,
+            });
+          });
+        return;
+      }
+      case "phoneClose": {
+        const id = message["id"];
+        if (typeof id !== "number") return;
+        const door = options.phone;
+        const state: PhoneDoorState =
+          door === undefined
+            ? { open: false, reason: PHONE_DOOR_UNAVAILABLE }
+            : door.close("the Loom tab closed the phone door.");
+        send(socket, { type: "phoneOpened", id, state });
+        return;
+      }
+      case "phonePublish": {
+        // Told, not asked: no id, no reply. The page is the paired party, so the check is
+        // only that it is a snapshot at all — what is IN it is the page's decision.
+        const snapshot = message["snapshot"];
+        if (typeof snapshot !== "object" || snapshot === null) return;
+        const candidate = snapshot as Record<string, unknown>;
+        if (typeof candidate["seq"] !== "number" || !Array.isArray(candidate["panels"])) return;
+        options.phone?.publish(snapshot as PhoneSnapshot);
         return;
       }
       case "deviceAck":
