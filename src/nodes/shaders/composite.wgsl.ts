@@ -37,10 +37,10 @@ import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
  * operator and per layer count, so each keeps its own pass signature and nothing branches
  * at runtime.
  *
- * `expr` is a WGSL expression over `front` and `back` (both `vec4f`, straight alpha)
- * producing the result `vec4f`. It becomes the body of `blendPixel`, which the fold calls
- * once per layer — so there is still ONE definition of what "multiply" means (§V140) no
- * matter how many inputs are wired.
+ * `blend` names a row of `BLEND_PIXELS`: a WGSL expression over `front` and `back` (both
+ * `vec4f`, straight alpha) producing the result `vec4f`. It becomes the body of
+ * `blendPixel`, which the fold calls once per layer — so there is still ONE definition of
+ * what "multiply" means (§V140) no matter how many inputs are wired.
  *
  * THE FOLD IS LEFT TO RIGHT WITH THE FIRST INPUT IN FRONT:
  *
@@ -58,7 +58,7 @@ import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
  * `opacity` scales the FRONT and nothing else, unchanged from the two-input version: it is
  * the layer you are placing, not the stack you are placing it on.
  */
-export function blendFragmentWgsl(expr: string, layers = 1): EmittedWgsl {
+export function blendFragmentWgsl(blend: BlendType, layers = 1): EmittedWgsl {
   const count = Math.max(1, Math.floor(layers));
   const declarations = Array.from(
     { length: count },
@@ -70,9 +70,7 @@ export function blendFragmentWgsl(expr: string, layers = 1): EmittedWgsl {
       `  acc = blendPixel(acc, textureSampleLevel(backTexture${index}, inputSampler, uv, 0.0));`,
   ).join("\n");
 
-  return wgsl`fn blendPixel(front: vec4f, back: vec4f) -> vec4f {
-  return ${expr};
-}
+  return wgsl`${blendPixelWgsl(blend)}
 
 struct Params {
   opacity: f32,
@@ -115,46 +113,63 @@ const PORTER_DUFF_WGSL = `fn porterDuff(front: vec4f, back: vec4f, fa: f32, fb: 
   return vec4f(rgb / max(outAlpha, 1e-6), outAlpha);
 }`;
 
-/** Builds one Porter-Duff operator from its coverage weights. */
-function porterDuffFragmentWgsl(fa: string, fb: string, layers: number): EmittedWgsl {
-  return wgsl`${PORTER_DUFF_WGSL}
+/** One Porter-Duff operator, as the call its coverage weights make. */
+function porterDuffPixel(fa: string, fb: string): { readonly expression: string; readonly porterDuff: boolean } {
+  return { expression: `porterDuff(front, back, ${fa}, ${fb})`, porterDuff: true };
+}
 
-${blendFragmentWgsl(`porterDuff(front, back, ${fa}, ${fb})`, layers)}`;
+/** One arithmetic operator: an expression over `front` and `back` that needs no helper. */
+function arithmeticPixel(expression: string): { readonly expression: string; readonly porterDuff: boolean } {
+  return { expression, porterDuff: false };
 }
 
 /**
- * Every blend the family ships, as a builder over the layer count (T226, §V140).
+ * Every blend the family ships, as the expression that combines two pixels (T226, §V140).
  *
- * A table of builders rather than a table of strings: the shader text now depends on how
+ * A table of expressions rather than of finished shaders: the shader text depends on how
  * many inputs are wired, and the alternative — building all ten at every count up front —
  * would generate text nobody asks for. The KEYS are the operation names saved in
  * documents, so this map is also the list of what `operation` may legally say.
  */
-const BLEND_BUILDERS = {
-  over: (layers: number) => porterDuffFragmentWgsl("1.0", "1.0 - front.a", layers),
-  under: (layers: number) => porterDuffFragmentWgsl("1.0 - back.a", "1.0", layers),
-  inside: (layers: number) => porterDuffFragmentWgsl("back.a", "0.0", layers),
-  outside: (layers: number) => porterDuffFragmentWgsl("1.0 - back.a", "0.0", layers),
-  atop: (layers: number) => porterDuffFragmentWgsl("back.a", "1.0 - front.a", layers),
-  xor: (layers: number) => porterDuffFragmentWgsl("1.0 - back.a", "1.0 - front.a", layers),
+const BLEND_PIXELS = {
+  over: porterDuffPixel("1.0", "1.0 - front.a"),
+  under: porterDuffPixel("1.0 - back.a", "1.0"),
+  inside: porterDuffPixel("back.a", "0.0"),
+  outside: porterDuffPixel("1.0 - back.a", "0.0"),
+  atop: porterDuffPixel("back.a", "1.0 - front.a"),
+  xor: porterDuffPixel("1.0 - back.a", "1.0 - front.a"),
   // The arithmetic operators work per channel across RGBA, as TD's Composite TOP does —
   // adding two images adds their alpha too. Only the Porter-Duff set is coverage-aware.
-  add: (layers: number) => blendFragmentWgsl(`front + back`, layers),
-  multiply: (layers: number) => blendFragmentWgsl(`front * back`, layers),
-  screen: (layers: number) =>
-    blendFragmentWgsl(`vec4f(1.0) - ((vec4f(1.0) - front) * (vec4f(1.0) - back))`, layers),
-  difference: (layers: number) => blendFragmentWgsl(`abs(front - back)`, layers),
+  add: arithmeticPixel(`front + back`),
+  multiply: arithmeticPixel(`front * back`),
+  screen: arithmeticPixel(`vec4f(1.0) - ((vec4f(1.0) - front) * (vec4f(1.0) - back))`),
+  difference: arithmeticPixel(`abs(front - back)`),
 } as const;
 
-export type BlendType = keyof typeof BLEND_BUILDERS;
+export type BlendType = keyof typeof BLEND_PIXELS;
 
 export function isBlendType(value: unknown): value is BlendType {
-  return typeof value === "string" && value in BLEND_BUILDERS;
+  return typeof value === "string" && value in BLEND_PIXELS;
+}
+
+/**
+ * `blendPixel(front, back)` for one operation, after the Porter-Duff helper when the
+ * operation calls it — the ONE definition of what that operation means (§V140).
+ *
+ * Exported for Layer (T1498b), which applies the same pixel differently — mixed over the
+ * stack below by its opacity — and must not grow a second copy of what "screen" means.
+ */
+export function blendPixelWgsl(blend: BlendType): string {
+  const { expression, porterDuff } = BLEND_PIXELS[blend];
+  const pixel = `fn blendPixel(front: vec4f, back: vec4f) -> vec4f {
+  return ${expression};
+}`;
+  return porterDuff ? `${PORTER_DUFF_WGSL}\n\n${pixel}` : pixel;
 }
 
 /** The shader for one operation folding `layers` inputs behind the front one. */
 export function blendShaderFor(blend: BlendType, layers: number): EmittedWgsl {
-  return BLEND_BUILDERS[blend](layers);
+  return blendFragmentWgsl(blend, layers);
 }
 
 /**

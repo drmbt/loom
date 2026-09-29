@@ -13,6 +13,7 @@ import { filmNodes } from "./film.ts";
 import { cameraBlurNode } from "./camera-blur.ts";
 import { echoNode } from "./echo.ts";
 import { compositeNodes } from "./composite.ts";
+import { layerNode } from "./layer.ts";
 import { temporalNodes } from "./feedback.ts";
 import { cacheNode } from "./cache.ts";
 import { pointNodeDefinitions } from "./points.ts";
@@ -261,6 +262,8 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   // T1421b: the camera path's motion blur.
   cameraBlurNode,
   ...compositeNodes,
+  // T1498b: the performance stack's layer — bypass is off, opacity the fade.
+  layerNode,
   ...temporalNodes,
   cacheNode,
   echoNode,

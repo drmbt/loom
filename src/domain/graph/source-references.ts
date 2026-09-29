@@ -52,6 +52,8 @@ export const SOURCE_REFERENCE_PARAMETERS: Readonly<Record<string, ReadonlyArray<
   cameraBlur: [{ parameter: "camera", input: "camera" }],
   // §T1391b: a Window Out shows a node by name as well as by wire (the owner's ruling).
   window: [{ parameter: "source", input: "input" }],
+  // T1498b: a Layer shows its picture by name as well as by wire, so only the named look cooks.
+  layer: [{ parameter: "picture", input: "picture" }],
 };
 
 export function sourceReferencesOf(nodeType: string): ReadonlyArray<SourceReferenceSpec> {

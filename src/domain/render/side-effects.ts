@@ -185,6 +185,7 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   screen: "none",
   difference: "none",
   mask: "none",
+  layer: "none",
   // Temporal.
   feedback: "none",
   cache: "none",

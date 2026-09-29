@@ -230,6 +230,7 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   screen: "pure",
   difference: "pure",
   mask: "pure",
+  layer: "pure",
   // Temporal: history, not wall clock. A take seeks to the in point, which REPLAYS and
   // clears temporal state (§V170), so the take starts from the state that belongs to that
   // frame rather than from whatever was on screen.

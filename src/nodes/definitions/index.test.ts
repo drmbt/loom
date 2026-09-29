@@ -123,6 +123,8 @@ describe("core catalogue (T70, T40)", () => {
       "screen",
       "difference",
       "mask",
+      // T1498b: the performance stack's layer.
+      "layer",
       "feedback",
       "cache",
       // T1402b: a trail that owns its history (a ring), so no Feedback wiring.
