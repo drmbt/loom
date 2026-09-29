@@ -113,6 +113,7 @@
  */
 
 import type { OscMessage } from "./osc-codec.ts";
+import type { PhoneClientMessage, PhoneHostMessage } from "./phone/phone-protocol.ts";
 
 /** What a device client asks the helper to open. One kind today; the union is the seam. */
 export type DeviceSourceSpec = {
@@ -276,7 +277,9 @@ export type DeviceClientMessage =
    *  every ask has exactly one answer and nothing about a mask is unsolicited. */
   | { readonly type: "deviceVision"; readonly id: number; readonly request: VisionSegmentRequest }
   /** Flow control. No `id`, no reply; a `coalesce` stream accepts and ignores it. */
-  | { readonly type: "deviceAck"; readonly stream: string; readonly seq: number };
+  | { readonly type: "deviceAck"; readonly stream: string; readonly seq: number }
+  /** T1396b: the phone door, opened and fed by the page (`./phone/phone-protocol.ts`). */
+  | PhoneClientMessage;
 
 /** HOST → PAGE, device role. Replies carry `id`; pushes carry `stream` and never `id`. */
 export type DeviceHostMessage =
@@ -311,7 +314,9 @@ export type DeviceHostMessage =
       readonly stream: string;
       readonly state: "open" | "error" | "closed";
       readonly detail: string;
-    };
+    }
+  /** T1396b: the phone door's replies and pushes (`./phone/phone-protocol.ts`). */
+  | PhoneHostMessage;
 
 /** The lowest UDP port this helper will bind. Below 1024 needs privilege we must not want. */
 export const MIN_OSC_PORT = 1024;
