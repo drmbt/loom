@@ -24,6 +24,8 @@ export interface PhoneDoorView {
   /** How many Panels the last snapshot carried — zero means nothing is published. */
   readonly publishedPanels: number;
   readonly refusal: PhoneRefusal | null;
+  /** T1495b: asked for while no helper is attached — it opens by itself when one attaches. */
+  readonly awaitingHelper: boolean;
   open(): void;
   close(): void;
   dismissRefusal(): void;
@@ -31,6 +33,8 @@ export interface PhoneDoorView {
 
 export const PHONE_NOTHING_PUBLISHED =
   "No Panel is published yet, so a phone sees nothing. Turn on Phone on a Panel to publish it.";
+
+export const PHONE_AWAITING_HELPER = "Opens by itself once the helper attaches.";
 
 export const PHONE_SCAN_HINT = "Scan with a phone on the same wifi. Accept the certificate once.";
 

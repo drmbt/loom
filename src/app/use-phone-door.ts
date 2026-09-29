@@ -40,12 +40,22 @@ import type { Notice } from "./notices.tsx";
  * the listener then too), and the tab going away takes the socket with it. The hook also
  * asks for a close when it unmounts, best-effort, so a remount does not leave a door open
  * nobody on this page is watching.
+ *
+ * ## When the helper arrives after the ask (T1495b)
+ *
+ * A door asked for while no helper is attached answers with the helper's absence, and
+ * nothing would ask again. So the ask is REMEMBERED until a door actually opens (or the
+ * user closes it), and the rising edge of the device attachment — the same one the OSC
+ * status line reports — asks again by itself. Only the edge: an attached helper that
+ * refused the door (no `--phone`) is not asked twice in a row.
  */
 
 export interface PhoneDoorOptions {
   readonly deviceClient: () => DeviceClient | null;
   readonly bus: LoomBus;
   readonly invocation: InvocationContext;
+  /** Whether the device client is attached to a helper now (T1495b). */
+  readonly attached: boolean;
   /** Injected by tests; the default is the animation frame. */
   readonly schedule?: FrameScheduler;
 }
@@ -56,12 +66,14 @@ export type PhoneDoorBinding = PhoneDoorView;
 const NO_CLIENT = `No device bridge is attached, so there is no phone door — ${DEVICE_HELPER_START}.`;
 
 export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
-  const { deviceClient, bus, invocation } = options;
+  const { deviceClient, bus, invocation, attached } = options;
   const schedule = options.schedule ?? rafScheduler;
   const [state, setState] = useState<PhoneDoorState | null>(null);
   const [pending, setPending] = useState(false);
   const [refusal, setRefusal] = useState<PhoneRefusal | null>(null);
   const [publishedPanels, setPublishedPanels] = useState(0);
+  /** T1495b: asked for, and not yet had — an attachment arriving asks again. */
+  const [wanted, setWanted] = useState(false);
   const seq = useRef(0);
   const lastSent = useRef<string | null>(null);
   const phones = useRef<ReadonlySet<string>>(new Set());
@@ -92,6 +104,7 @@ export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
       const arrived = [...present].some((phone) => !phones.current.has(phone));
       phones.current = present;
       setState(next);
+      if (next.open) setWanted(false);
       if (!next.open) {
         lastSent.current = null;
         return;
@@ -155,6 +168,7 @@ export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
 
   const openDoor = useCallback((): void => {
     asked.current = true;
+    setWanted(true);
     const client = deviceClient();
     if (client === null) {
       setState({ open: false, reason: NO_CLIENT });
@@ -170,6 +184,7 @@ export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
   }, [deviceClient, adopt]);
 
   const closeDoor = useCallback((): void => {
+    setWanted(false);
     const client = deviceClient();
     if (client === null) return;
     setPending(true);
@@ -179,11 +194,19 @@ export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
     });
   }, [deviceClient, adopt]);
 
+  // T1495b: the helper attached — ask again for a door asked for while it was absent.
+  useEffect(() => {
+    if (attached && wanted && !pending) openDoor();
+    // The RISING EDGE of the attachment only: what it reads is current in this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attached]);
+
   const dismissRefusal = useCallback(() => setRefusal(null), []);
+  const awaitingHelper = wanted && !attached;
 
   return useMemo(
-    () => ({ state, pending, publishedPanels, refusal, open: openDoor, close: closeDoor, dismissRefusal }),
-    [state, pending, publishedPanels, refusal, openDoor, closeDoor, dismissRefusal],
+    () => ({ state, pending, publishedPanels, refusal, awaitingHelper, open: openDoor, close: closeDoor, dismissRefusal }),
+    [state, pending, publishedPanels, refusal, awaitingHelper, openDoor, closeDoor, dismissRefusal],
   );
 }
 

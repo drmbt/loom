@@ -25,12 +25,17 @@ afterEach(cleanup);
 
 const URL_WITH_TOKEN = "https://192.168.1.20:47811/?t=abc123";
 
-function fakeClient(opened: PhoneDoorState) {
+function fakeClient(initially: PhoneDoorState) {
   const writes = new Set<(phone: string, set: PhoneSet) => void>();
   const states = new Set<(state: PhoneDoorState) => void>();
   const published: PhoneSnapshot[] = [];
+  /** What the helper answers the next `phoneOpen` with, and how often it was asked. */
+  const door = { answer: initially, asked: 0 };
   const client = {
-    phoneOpen: () => Promise.resolve(opened),
+    phoneOpen: () => {
+      door.asked += 1;
+      return Promise.resolve(door.answer);
+    },
     phoneClose: () => Promise.resolve({ open: false, reason: "closed by the page" } as PhoneDoorState),
     phonePublish: (snapshot: PhoneSnapshot) => published.push(snapshot),
     onPhoneWrite: (listener: (phone: string, set: PhoneSet) => void) => {
@@ -45,6 +50,7 @@ function fakeClient(opened: PhoneDoorState) {
   } as unknown as DeviceClient;
   return {
     client,
+    door,
     published,
     phoneWrites: (phone: string, set: PhoneSet) => {
       for (const listener of writes) listener(phone, set);
@@ -78,8 +84,8 @@ const soon = (callback: () => void): (() => void) => {
   return () => clearTimeout(timer);
 };
 
-function Desk({ runtime, client }: { runtime: AppRuntime; client: DeviceClient }) {
-  const door = usePhoneDoor({ deviceClient: () => client, bus: runtime.bus, invocation: runtime.invocation, schedule: soon });
+function Desk({ runtime, client, attached = true }: { runtime: AppRuntime; client: DeviceClient; attached?: boolean }) {
+  const door = usePhoneDoor({ deviceClient: () => client, bus: runtime.bus, invocation: runtime.invocation, attached, schedule: soon });
   const graph = useSyncExternalStore(runtime.bus.store.subscribe, runtime.bus.store.getGraph);
   return (
     <>
@@ -202,5 +208,75 @@ describe("T1396b — the phone door, page side", () => {
     });
     expect(screen.getByText(/No Panel is published yet/)).not.toBeNull();
     expect(helper.published.at(-1)?.panels).toEqual([]);
+  });
+});
+
+/**
+ * T1495b — THE HELPER STARTED AFTER THE PAGE. The page asked for the door while no helper
+ * was attached and got the helper's absence; the user then starts `--phone` and pairs. The
+ * door must open on the attachment by itself — and ONLY because it was asked for: a LAN
+ * listener that opened on an attach nobody asked for would be the door opening itself.
+ */
+describe("T1495b — the phone door follows the device attachment", () => {
+  const ABSENT: PhoneDoorState = { open: false, reason: "No device bridge is attached, so there is no phone door." };
+  const OPEN: PhoneDoorState = { open: true, url: URL_WITH_TOKEN, fingerprint: "ff", phones: [] };
+  const doorState = () => document.querySelector("[data-phone-door]")?.getAttribute("data-phone-door");
+
+  it("opens by itself when the helper attaches after the ask — no Try again", async () => {
+    const runtime = await runtimeWithPanel();
+    const helper = fakeClient(ABSENT);
+    const { rerender } = render(<Desk runtime={runtime} client={helper.client} attached={false} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Phone/ }));
+      await settle();
+    });
+    expect(document.querySelector("[data-phone-reason]")?.textContent).toBe(ABSENT.reason);
+    expect(document.querySelector("[data-phone-awaiting]")).not.toBeNull();
+    expect(doorState()).toBe("closed");
+
+    // `pnpm helper --phone` runs, the tab pairs: the attachment rises.
+    helper.door.answer = OPEN;
+    await act(async () => {
+      rerender(<Desk runtime={runtime} client={helper.client} attached />);
+      await settle();
+    });
+    expect(helper.door.asked).toBe(2);
+    expect(doorState()).toBe("open");
+    expect(document.querySelector("svg[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe(URL_WITH_TOKEN);
+    expect(document.querySelector("[data-phone-awaiting]")).toBeNull();
+  });
+
+  it("opens nothing on an attach nobody asked for, or after the user closed the door", async () => {
+    const runtime = await runtimeWithPanel();
+    const helper = fakeClient(OPEN);
+    const { rerender } = render(<Desk runtime={runtime} client={helper.client} attached={false} />);
+    await act(async () => {
+      rerender(<Desk runtime={runtime} client={helper.client} attached />);
+      await settle();
+    });
+    expect(helper.door.asked).toBe(0);
+    expect(doorState()).toBe("closed");
+
+    // Asked for, opened, then CLOSED by the user: a later re-attach leaves it closed.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Phone/ }));
+      await settle();
+    });
+    expect(doorState()).toBe("open");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Close door" }));
+      await settle();
+    });
+    expect(doorState()).toBe("closed");
+    await act(async () => {
+      rerender(<Desk runtime={runtime} client={helper.client} attached={false} />);
+      await settle();
+    });
+    await act(async () => {
+      rerender(<Desk runtime={runtime} client={helper.client} attached />);
+      await settle();
+    });
+    expect(helper.door.asked).toBe(1);
+    expect(doorState()).toBe("closed");
   });
 });

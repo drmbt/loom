@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Button, PopoverContent, PopoverHeader, PopoverRoot, PopoverTrigger } from "@ui/index.ts";
 import { encodeQr, qrToSvgPath } from "@devices/phone/qr.ts";
 import {
+  PHONE_AWAITING_HELPER,
   PHONE_NOTHING_PUBLISHED,
   PHONE_SCAN_HINT,
   phoneLabel,
@@ -61,6 +62,7 @@ export function PhoneDoorButton({ door }: { readonly door: PhoneDoorView }) {
         {state !== null && !state.open && !door.pending ? (
           <div className={styles.section}>
             <p className={styles.reason} data-phone-reason>{state.reason}</p>
+            {door.awaitingHelper ? <p className={styles.dim} data-phone-awaiting>{PHONE_AWAITING_HELPER}</p> : null}
             <Button variant="outline" onClick={door.open}>Try again</Button>
           </div>
         ) : null}

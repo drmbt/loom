@@ -450,7 +450,13 @@ export function App({
     graph: () => runtime.flattened.current().graph,
   });
   // T1396b: the phone door — published Panels to phones on the LAN, over the same client.
-  const phoneDoor = usePhoneDoor({ deviceClient: osc.deviceClient, bus: runtime.bus, invocation: runtime.invocation });
+  // T1495b: it follows the attachment, so a helper started after the ask still opens it.
+  const phoneDoor = usePhoneDoor({
+    deviceClient: osc.deviceClient,
+    bus: runtime.bus,
+    invocation: runtime.invocation,
+    attached: osc.state.kind === "attached" || osc.state.kind === "listening",
+  });
 
   /**
    * The value graph's external channels are a MERGE of FOUR now (§T976), and the order

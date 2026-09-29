@@ -89,7 +89,8 @@ const soon = (callback: () => void): (() => void) => {
  * hands it over (a `useCallback`): the hook closes the door when it changes.
  */
 function Desk({ runtime, deviceClient }: { runtime: AppRuntime; deviceClient: () => DeviceClient }) {
-  const door = usePhoneDoor({ deviceClient, bus: runtime.bus, invocation: runtime.invocation, schedule: soon });
+  // The e2e pairs before the desk mounts, so the helper is attached from the first render.
+  const door = usePhoneDoor({ deviceClient, attached: true, bus: runtime.bus, invocation: runtime.invocation, schedule: soon });
   const graph = useSyncExternalStore(runtime.bus.store.subscribe, runtime.bus.store.getGraph);
   return (
     <>
