@@ -2,17 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
-import type { ParameterValue } from "@domain/types/parameters.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
-import { isParameterSlot, staticBindingValue, withMode } from "@domain/parameters/slots.ts";
-import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
+import { isParameterSlot } from "@domain/parameters/slots.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { CONTROL_WIDGET_TYPES, panelLayout, panelTitle } from "@nodes/definitions/controls.ts";
 import { isRemotePanel } from "@devices/phone/phone-snapshot.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
 import { movePanelMemberOperations } from "./panel-join.ts";
+import { unbindOperations } from "./parameter-controls.ts";
 import { PanelRows } from "./panel-surface.tsx";
 import { PhoneDoorButton } from "./phone-door.tsx";
 import type { PhoneDoorView } from "./phone-door-copy.ts";
@@ -99,21 +98,11 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
 
   /**
    * T1513b — a chip's ×: the target parameter goes back to Constant holding the value it
-   * retained (§V108 — the expression stays retained in its slot, as any mode switch leaves
-   * it), one patch, undoable. A slot with no retained constant falls back to the schema's
-   * default, which is what the parameter showed before anything drove it.
+   * retained, one patch, undoable. T1514b: the SAME unbind the Inspector's "← Heat" chip
+   * and `control.unbindParameter` run (`unbindOperations`).
    */
-  const unbind = (target: Target): void => {
-    const node = graph.nodes[target.nodeId];
-    const stored = node?.parameters[target.key];
-    if (node === undefined || !isParameterSlot(stored)) return;
-    const definition = registry.get(node.type);
-    const declared = definition === undefined ? undefined : effectiveParameterSchema(definition, node.parameters)[target.key];
-    const fallback = staticBindingValue(stored) ?? (declared !== undefined && "default" in declared ? (declared.default as ParameterValue) : 0);
-    const slot = withMode(stored, "static", fallback);
-    if (slot === null) return;
-    apply([{ op: "setParameters", nodeId: target.nodeId, parameters: { [target.key]: slot } }], `Unbind ${target.label}`);
-  };
+  const unbind = (target: Target): void =>
+    apply(unbindOperations(graph, registry, target.nodeId, [target.key]), `Unbind ${target.label}`);
 
   if (widgets.length === 0 && panel === undefined) {
     return (

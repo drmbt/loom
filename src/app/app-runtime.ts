@@ -22,6 +22,7 @@ import type { TelemetryHub } from "@runtime/telemetry/index.ts";
 import type { LayoutStorage } from "./layout-storage.ts";
 import { defaultLayoutStorage } from "./layout-storage.ts";
 import { registerProjectCommands } from "./project-commands.ts";
+import { registerControlCommands } from "@editor/controls/control-commands.ts";
 import { readProjectFile, writeProjectFile } from "./project-io.ts";
 
 /**
@@ -256,6 +257,8 @@ export function createAppRuntime(options: AppRuntimeOptions = {}): AppRuntime {
     readFile: () => readProjectFile(),
   });
   registerProjectCommands(bus);
+  // T1514b: mapping starts from the parameter — the Inspector's right-click rows name these.
+  registerControlCommands(bus);
   const nodeRuntime = createNodeRuntimeStore();
 
   // §V16: the hub sinks into the channel the canvas ALREADY owns. A second per-node

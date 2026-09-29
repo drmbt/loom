@@ -233,7 +233,7 @@ export function ContextMenuHost({
   );
 
   const schema = useMemo(
-    () => (opened === null ? null : menuSchemaFor(opened.target.surface, opened.context.registry)),
+    () => (opened === null ? null : menuSchemaFor(opened.target.surface, opened.context.registry, opened.context, opened.target)),
     [opened],
   );
 

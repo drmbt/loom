@@ -3,6 +3,7 @@ import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { parseComponentNodeType } from "@domain/components/component-type.ts";
 import type { MenuContext } from "./guards.ts";
 import { edgesForTarget, nodeForTarget } from "./guards.ts";
+import { bindParameterPlan, boundControls, controlFromParameterPlan } from "@editor/controls/parameter-controls.ts";
 
 /**
  * Turning a target into command input (T126).
@@ -134,6 +135,38 @@ const parameterRefWith: InputBuilder = (item, target) => {
 };
 
 /**
+ * T1514b — the parameter-first mapping rows. Each resolves the SAME plan its command will
+ * run (`parameter-controls.ts`), so a row that cannot complete — a text parameter has no
+ * control, nothing drives the row, there is no control yet — renders disabled with the
+ * command's own reason instead of dispatching into a refusal.
+ */
+const controlFromParameter: InputBuilder = (item, target, context) => {
+  const base = parameterRefWith(item, target, context);
+  if (!base.ok) return base;
+  const input = base.input as { nodeId: string; parameterKey: string; panelId?: string };
+  const plan = controlFromParameterPlan(context.graph, context.registry, input.nodeId, input.parameterKey, input.panelId);
+  return plan.ok ? base : { ok: false, reason: plan.reason };
+};
+
+const bindControl: InputBuilder = (item, target, context) => {
+  const base = parameterRefWith(item, target, context);
+  if (!base.ok) return base;
+  const input = base.input as { nodeId: string; parameterKey: string; controlId?: string; channel?: string };
+  if (input.controlId === undefined) return { ok: false, reason: "No controls yet — “Control from Panel” makes one." };
+  const plan = bindParameterPlan(context.graph, context.registry, input.nodeId, input.parameterKey, input.controlId, input.channel);
+  return plan.ok ? base : { ok: false, reason: plan.reason };
+};
+
+const unbindControl: InputBuilder = (item, target, context) => {
+  const base = parameterRef(item, target, context);
+  if (!base.ok) return base;
+  const input = base.input as { nodeId: string; parameterKey: string };
+  return boundControls(context.graph, context.registry, input.nodeId, input.parameterKey).length === 0
+    ? { ok: false, reason: "No control drives this parameter." }
+    : base;
+};
+
+/**
  * Keyed by `surface:command` first, then by `command`. The surface key exists because
  * `graph.applyPatch` is a real, registered command that means something different on
  * each surface — which is how "delete edge" and "disconnect port" work TODAY instead of
@@ -202,6 +235,9 @@ const BUILDERS: Record<string, InputBuilder> = {
   "parameter.setMode": parameterRefWith,
   "component.publishParameter": parameterRef,
   "component.export": componentRef,
+  "control.fromParameter": controlFromParameter,
+  "control.bindParameter": bindControl,
+  "control.unbindParameter": unbindControl,
 };
 
 /**

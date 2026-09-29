@@ -27,6 +27,8 @@ import { parameterSources, referenceParameters } from "./reference-parameters.ts
 import { channelPickAvailable } from "./channel-pick-parameters.ts";
 import { AudioSection, audioSectionParameters } from "./audio-section.tsx";
 import { SyncOffsetSuggestion } from "./sync-offset-suggestion.tsx";
+import { BoundControlChips } from "@editor/controls/bound-control-chips.tsx";
+import { boundControls } from "@editor/controls/parameter-controls.ts";
 import { WebcamSection, webcamSectionParameters } from "./webcam-section.tsx";
 import type { CameraStatus } from "@/app/camera-request.ts";
 import { NativeInputSection, nativeInputSectionParameters } from "./syphon-section.tsx";
@@ -986,6 +988,8 @@ export function Inspector({
                 onStoredChange={rowWriters.stored}
                 onChange={rowWriters.changeFor(entry.key)}
               />
+              {/* T1514b: "← Heat" when a control drives this row, with × to let go of it. */}
+              <BoundControlChips bus={bus} invocation={context} nodeId={node.id} bound={boundControls(graph, bus.registry, node.id, entry.key)} />
               {/*
                 T1321b — the suggestion belongs AT the field, not on a status line across
                 the panel. This is the one site every generic parameter row is built at, and

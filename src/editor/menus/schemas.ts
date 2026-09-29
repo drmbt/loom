@@ -21,7 +21,22 @@ import { TOGGLE_MINIMAP_COMMAND } from "@editor/graph-canvas/minimap-command.ts"
 // `@editor/nodes` barrel, which exports React surfaces.
 import { TOGGLE_TIMING_OVERLAY_COMMAND } from "@editor/nodes/timing-overlay-command.ts";
 import { TOGGLE_EDGE_FLOW_COMMAND } from "@editor/edges/edge-flow-command.ts";
-import type { MenuGuardName } from "./guards.ts";
+// T1514b: the parameter-first mapping rows. The command constants and the menu's view of
+// the document (which Panels, which controls) come from the controls editor's pure module.
+import {
+  BIND_CONTROL_COMMAND,
+  CONTROL_FROM_PARAMETER_COMMAND,
+  UNBIND_CONTROL_COMMAND,
+} from "@editor/controls/control-commands.ts";
+import {
+  controlCaptionOf,
+  controlChannelChoices,
+  controlTypeFor,
+  driveCandidates,
+  panelChoices,
+} from "@editor/controls/parameter-controls.ts";
+import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
+import type { MenuContext, MenuGuardName } from "./guards.ts";
 
 /**
  * The menus themselves (T127, §V78).
@@ -328,6 +343,64 @@ export const PARAMETER_MENU: MenuSchema = {
 };
 
 /**
+ * T1514b — MAPPING STARTS FROM THE PARAMETER (owner ruling 2026-09-29: *"the whole mapping
+ * section is a bit confusing"*). Three rows at the top of the parameter menu, built on open
+ * from the document the menu snapshotted, because what they offer IS the document:
+ *
+ * - "Control from Panel" — the fitting control, bound, on a Panel. With several Panels it
+ *   is a submenu of their titles; with one or none it is a row (none: it makes a Panel).
+ * - "Drive from ▸" — every existing control by caption; a Button offers held / count and
+ *   an XY pad X / Y, except on a 2-vector, which an XY pad drives whole.
+ * - "Unlink control" — offered always and refused BY NAME when nothing drives the row
+ *   (§V288): a vanished row teaches nothing.
+ *
+ * They sit at the top rather than in a submenu because they are the gesture the owner asked
+ * for by name; the parameter menu's item cap is raised for them in `schemas.test.ts`.
+ * Every leaf names a registered command, and the input builders refuse — with the reason —
+ * on a parameter no control fits (`input.ts`), so a text row shows the row greyed and why.
+ */
+export function parameterControlRows(context?: MenuContext, target?: MenuTarget): MenuItem[] {
+  const graph = context?.graph;
+  const panels = graph === undefined ? [] : panelChoices(graph);
+  const fromPanel: MenuItem =
+    panels.length > 1
+      ? {
+          label: "Control from Panel",
+          submenu: panels.map((panel) => ({ command: CONTROL_FROM_PARAMETER_COMMAND, input: { panelId: panel.id }, label: panel.title })),
+        }
+      : { command: CONTROL_FROM_PARAMETER_COMMAND, label: "Control from Panel" };
+
+  const node = graph === undefined || target?.nodeId === undefined ? undefined : graph.nodes[target.nodeId];
+  const definition =
+    node === undefined || target?.parameterKey === undefined || context === undefined
+      ? undefined
+      : effectiveParameterSchema(context.registry.get(node.type), node.parameters)[target.parameterKey];
+  const wholeVector = definition !== undefined && controlTypeFor(definition) === "xyPad";
+  const leaves: MenuItem[] = (graph === undefined ? [] : driveCandidates(graph, target?.nodeId)).flatMap((control): MenuItem[] => {
+    const caption = controlCaptionOf(control);
+    if (wholeVector) {
+      return control.type === "xyPad" ? [{ command: BIND_CONTROL_COMMAND, input: { controlId: control.id }, label: caption }] : [];
+    }
+    const choices = controlChannelChoices(control);
+    const only = choices.length === 1 ? choices[0] : undefined;
+    if (only !== undefined) {
+      return [{ command: BIND_CONTROL_COMMAND, input: { controlId: control.id, channel: only.channel }, label: caption }];
+    }
+    return [
+      {
+        label: caption,
+        submenu: choices.map((choice) => ({ command: BIND_CONTROL_COMMAND, input: { controlId: control.id, channel: choice.channel }, label: choice.label })),
+      },
+    ];
+  });
+  // No control to offer: one row that refuses with the reason, rather than an empty submenu.
+  const driveFrom: MenuItem =
+    leaves.length === 0 ? { command: BIND_CONTROL_COMMAND, label: "Drive from" } : { label: "Drive from", submenu: leaves };
+
+  return [fromPanel, driveFrom, { command: UNBIND_CONTROL_COMMAND, label: "Unlink control" }];
+}
+
+/**
  * §T1393b — a value node's CHANNEL row. One copy captures every form — the reference
  * `op('lfo1').chan.value`, the channel's name, the reading on screen — and the paste rows
  * on a parameter choose (the owner's "universal copy with a selective paste").
@@ -341,6 +414,9 @@ const CHANNEL_MENU: MenuSchema = {
 export function menuSchemaFor(
   surface: MenuTarget["surface"],
   registry: NodeRegistryView,
+  /** T1514b: the document the menu opened on, and what was clicked — the parameter menu's control rows read both. */
+  context?: MenuContext,
+  target?: MenuTarget,
 ): MenuSchema {
   switch (surface) {
     case "canvas":
@@ -352,7 +428,10 @@ export function menuSchemaFor(
     case "edge":
       return EDGE_MENU;
     case "parameter":
-      return PARAMETER_MENU;
+      return {
+        surface: "parameter",
+        entries: [...parameterControlRows(context, target), { separator: true }, ...PARAMETER_MENU.entries],
+      };
     case "channel":
       return CHANNEL_MENU;
   }

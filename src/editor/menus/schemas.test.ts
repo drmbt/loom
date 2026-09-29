@@ -123,6 +123,12 @@ const APP_REGISTERED = [
   // on its bus and its door buses — whether the overview map is on screen is a property
   // of a look at the graph, persisted per person. Live, not planned: this row and `o`.
   "view.toggleMinimap",
+  // T1514b: registered by the composition root (`registerControlCommands` in
+  // `app-runtime.ts`), like the component commands — the plans live with the controls
+  // editor, not in the domain. Live, not planned: the parameter menu's three control rows.
+  "control.fromParameter",
+  "control.bindParameter",
+  "control.unbindParameter",
 ];
 
 describe("what the menus promise but nobody has built", () => {
@@ -169,7 +175,10 @@ describe("shape", () => {
     // A twenty-item menu is a failure of design; nesting goes in submenus. Eleven is the
     // node menu with TouchDesigner's Info action added (T145) — raised deliberately, and
     // only once. The next item that wants in should displace one or open a submenu.
-    expect(top.length).toBeLessThanOrEqual(11);
+    // T1514b: the parameter menu carries the owner's parameter-first mapping rows ("Control
+    // from Panel", "Drive from ▸", "Unlink control") on top of its eleven, by his ruling —
+    // raised by exactly those three, for that surface only.
+    expect(top.length).toBeLessThanOrEqual(surface === "parameter" ? 14 : 11);
     expect(top.length).toBeGreaterThan(0);
   });
 
