@@ -37,7 +37,7 @@ export interface BindControlInput extends ControlParameterRef {
 declare module "@domain/types/commands.ts" {
   interface CommandMap {
     /** Make the fitting control for a parameter, bind it and put it on a Panel — one patch. */
-    "control.fromParameter": { input: ControlFromParameterInput; output: GraphPatchResult };
+    "control.fromParameter": { input: ControlFromParameterInput; output: GraphPatchResult & { readonly keepSelection?: true } };
     /** Bind a parameter to an existing control's channel. */
     "control.bindParameter": { input: BindControlInput; output: GraphPatchResult };
     /** Let go of the control a parameter reads; it keeps the value it retained. */
@@ -70,8 +70,13 @@ export function registerControlCommands(bus: LoomBus): void {
   bus.registerCommand({
     name: CONTROL_FROM_PARAMETER_COMMAND,
     description: "Create the fitting control (slider, toggle, XY pad) for a parameter, bind it and add it to a Panel (T1514b).",
-    handler: (input, context) =>
-      run(context, controlFromParameterPlan(context.graph, context.registry, input.nodeId, input.parameterKey, input.panelId), input.nodeId),
+    handler: (input, context) => {
+      const outcome = run(context, controlFromParameterPlan(context.graph, context.registry, input.nodeId, input.parameterKey, input.panelId), input.nodeId);
+      // The control and Panel it makes are a side-effect of binding the parameter the person
+      // is mapping in the Inspector; taking the selection would move the Inspector off it
+      // (`selectCreatedNodes` reads this flag).
+      return { ...outcome, output: { ...outcome.output, keepSelection: true } };
+    },
   });
 
   bus.registerCommand({

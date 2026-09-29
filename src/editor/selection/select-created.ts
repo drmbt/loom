@@ -152,7 +152,10 @@ export async function selectCreatedNodes(
 ): Promise<void> {
   if (result === null || result.status !== "applied") return;
   if (invocation.actor.kind !== "human") return;
-  const output = result.output as { createdIds?: Record<string, string> } | null | undefined;
+  const output = result.output as { createdIds?: Record<string, string>; keepSelection?: true } | null | undefined;
+  // T1514b: a command whose created nodes are a side-effect of editing something else (a
+  // control made FROM a parameter) says so, and the selection stays where the person is.
+  if (output?.keepSelection === true) return;
   const createdIds = output?.createdIds;
   if (createdIds === undefined) return;
 

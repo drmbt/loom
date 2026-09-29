@@ -268,6 +268,44 @@ describe("what must NOT take the selection", () => {
     });
   });
 
+  /**
+   * T1514b: "Control from Panel" is asked FROM a parameter in the Inspector. Moving the
+   * selection to the slider it made would take the Inspector off the parameter the person
+   * is mapping, and the "← caption" chip that confirms the binding would be on a node they
+   * are no longer looking at. The nodes it creates are a side-effect of binding, not the
+   * thing the user added.
+   */
+  it("keeps the mapped node selected after Control from Panel", async () => {
+    const runtime = newRuntime();
+    const seeded = await seed(runtime, [
+      { op: "addNode", ref: "$l", type: "level", position: { x: 0, y: 0 } },
+    ]);
+    const level = seeded.output.createdIds["$l"] as NodeId;
+    const { view } = await mountApp(runtime);
+
+    await act(async () => {
+      fireEvent.click(nodeElement(view.container, level));
+    });
+    await waitFor(() => {
+      expect(selectedIds(view.container)).toEqual([level]);
+    });
+
+    const made = await act(async () =>
+      runtime.bus.execute("control.fromParameter", { nodeId: level, parameterKey: "brightness" }, runtime.invocation),
+    );
+    expect(made.status).toBe("applied");
+    const created = Object.values(made.output.createdIds);
+    expect(created.length).toBeGreaterThan(0);
+    await waitFor(() => {
+      for (const id of created) expect(nodeElement(view.container, id)).toBeTruthy();
+    });
+
+    await act(async () => {
+      await selectCreatedNodes(runtime.bus, runtime.invocation, made);
+    });
+    expect(selectedIds(view.container)).toEqual([level]);
+  });
+
   it("does not select a node that UNDO put back", async () => {
     const runtime = newRuntime();
     const seeded = await seed(runtime, [
