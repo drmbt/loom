@@ -154,6 +154,29 @@ describe("T1516b — EDIT mode arranges, through the bus", () => {
     expect(rectOf("member:invert")).toBe("4,0,2,1");
   });
 
+  it("T1518b — the board area scrolls under a held control: scrolled a row, it lands a row lower", async () => {
+    // In a short dock the spare rows are below the fold of the board area, which scrolls by
+    // itself (the toolbar stays). A drag is measured in board space, so wheeling the board
+    // while holding a control carries it down exactly as moving the pointer would.
+    const { runtime } = await desk();
+    render(<Pane runtime={runtime} />);
+    await edit();
+    const workspace = document.querySelector("[data-controls-pane] [data-board-workspace]") as HTMLElement;
+    const mover = screen.getByRole("button", { name: "Move Invert" });
+    const before = undoDepth(runtime);
+    await act(async () => {
+      fireEvent.pointerDown(mover, { clientX: 100, clientY: 100, pointerId: 1 });
+      workspace.scrollTop = PITCH;
+      // The pointer has not moved on screen; the board moved under it.
+      fireEvent.pointerMove(mover, { clientX: 100, clientY: 100, pointerId: 1 });
+      fireEvent.pointerUp(mover, { clientX: 100, clientY: 100, pointerId: 1 });
+      await settle();
+    });
+    expect(workspace.scrollTop).toBe(PITCH);
+    expect(rectOf("member:invert")).toBe("4,1,2,1");
+    expect(undoDepth(runtime)).toBe(before + 1);
+  });
+
   it("dragging the corner resizes, one undo step", async () => {
     const { runtime } = await desk();
     render(<Pane runtime={runtime} />);

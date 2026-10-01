@@ -166,7 +166,10 @@
 /*
  * T1516b — a widget on a board FILLS its rect, whatever the cell size: the tab's fixed
  * cells or the Panel node's scaled body. The font comes from the board, not from here.
- * A container, so a toggle too narrow for its switch drops the pill and keeps the words.
+ *
+ * T1518b — and everything inside it is sized in EM, so it scales with the type the board
+ * chose for the cell (`board-fit.ts`, which carries these same numbers to decide what
+ * fits). Change a width here and change it there.
  */
 .board {
   display: flex;
@@ -174,7 +177,6 @@
   width: 100%;
   height: 100%;
   gap: 0;
-  container-type: inline-size;
 }
 .board .track,
 .board .pad,
@@ -190,8 +192,39 @@
 }
 .board .toggle,
 .board .button {
-  padding: 0 var(--space-2);
-  gap: var(--space-2);
+  padding: 0 0.2em;
+  gap: 0.25em;
+}
+.board .switch {
+  width: 2.2em;
+  height: 1.25em;
+}
+.board .knob {
+  left: 0.2em;
+  width: 0.85em;
+  height: 0.85em;
+}
+.board .on .knob {
+  left: auto;
+  right: 0.2em;
+}
+/* No room for On/Off: the switch alone says it, small, beside a whole caption (T1518b). */
+.board .mini .switch {
+  width: 1.1em;
+  height: 0.7em;
+}
+.board .mini .knob {
+  left: 0.1em;
+  width: 0.45em;
+  height: 0.45em;
+}
+.board .mini.on .knob {
+  left: auto;
+  right: 0.1em;
+}
+.board .state,
+.board .count {
+  font-size: 0.85em;
 }
 /* Caption and value laid over a board slider's bar, or the top edge of a board pad. */
 .overlay {
@@ -200,7 +233,7 @@
   height: 100%;
   display: flex;
   align-items: center;
-  padding: 0 var(--space-2);
+  padding: 0 0.35em;
   pointer-events: none;
 }
 .pad .overlay {
@@ -213,22 +246,10 @@
 }
 .overlay .head {
   flex: 1 1 auto;
+  gap: 0.5em;
 }
 .overlay .caption {
   color: var(--text);
-}
-/* A small board cell cuts the value short rather than letting it run out of the control. */
-.overlay .readout {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-@container (max-width: 64px) {
-  .board .switch {
-    display: none;
-  }
 }
 /* T1512b — a widget's one-press "add to the Panel", under its control on the canvas. */
 .addToPanel {

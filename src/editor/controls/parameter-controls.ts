@@ -75,6 +75,30 @@ function rowKeys(definition: ParameterDefinition | undefined, key: string): stri
   return names === null ? [key] : [key, ...names.map((name) => componentKey(key, name))];
 }
 
+/** One parameter a widget drives: the node, the key, and how a chip names it. */
+export interface ControlTarget {
+  readonly nodeId: NodeId;
+  readonly key: string;
+  readonly label: string;
+}
+
+/** Every parameter in the document whose ACTIVE expression reads this widget (T1513b's chips). */
+export function controlTargets(graph: Pick<GraphDocument, "nodes">, widget: GraphNode): ControlTarget[] {
+  const nameOf = (node: GraphNode): string => node.label ?? node.id;
+  const needle = `op('${nameOf(widget)}')`;
+  const found: ControlTarget[] = [];
+  for (const node of Object.values(graph.nodes)) {
+    for (const [key, stored] of Object.entries(node.parameters)) {
+      if (!isParameterSlot(stored)) continue;
+      const expression = stored.bindings.expression;
+      if (stored.mode === "expression" && expression?.kind === "expression" && expression.source.includes(needle)) {
+        found.push({ nodeId: node.id, key, label: `${nameOf(node)}.${key}` });
+      }
+    }
+  }
+  return found;
+}
+
 /** One key of a row that a control drives, and the control. */
 export interface BoundControl {
   readonly key: string;

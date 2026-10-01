@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
-import type { NodeId } from "@domain/types/ids.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
-import { isParameterSlot } from "@domain/parameters/slots.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { CONTROL_WIDGET_TYPES, panelBoard, panelTitle } from "@nodes/definitions/controls.ts";
 import { isRemotePanel } from "@devices/phone/phone-snapshot.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
-import { unbindOperations } from "./parameter-controls.ts";
-import { PanelBoardEditor, PanelBoardGrid } from "./panel-board.tsx";
+import { ControlTargets } from "./control-targets.tsx";
+import { controlTargets } from "./parameter-controls.ts";
+import { PanelBoardEditor, PanelBoardGrid, Pencil } from "./panel-board.tsx";
 import { PanelRows } from "./panel-surface.tsx";
 import { PhoneDoorButton } from "./phone-door.tsx";
 import { PANEL_EMPTY_HINT, type PhoneDoorView } from "./phone-door-copy.ts";
@@ -39,6 +38,11 @@ import surface from "./panel-surface.module.css";
  * it drives (× unlink) and Remove from panel (`PanelBoardEditor`). The auto-fill grid and the
  * ‹ › reorder of T1513b are gone for wired Panels; a Panel laid out by the legacy override
  * text keeps its rows, with their chips.
+ *
+ * T1518b — while arranging, the pane itself stops scrolling (`data-editing`) and the board
+ * area scrolls instead, so in a short bottom dock the header and the toolbar stay put and
+ * the spare rows are a scroll of the board away. The same editor opens from the pencil on
+ * the Panel node's header (`panel-edit.tsx`).
  */
 
 export interface ControlsPaneProps {
@@ -48,40 +52,6 @@ export interface ControlsPaneProps {
   readonly invocation: InvocationContext;
   /** T1396b — the phone door; absent where no device attachment exists (tests, headless). */
   readonly phone?: PhoneDoorView;
-}
-
-const nameOf = (node: GraphNode): string => node.label ?? node.id;
-
-/** One parameter a widget drives: the node, the key, and how a chip names it. */
-interface Target {
-  readonly nodeId: NodeId;
-  readonly key: string;
-  readonly label: string;
-}
-
-/** Every parameter in the document whose ACTIVE expression reads this widget. */
-function targetsOf(graph: GraphDocument, widget: GraphNode): Target[] {
-  const needle = `op('${nameOf(widget)}')`;
-  const found: Target[] = [];
-  for (const node of Object.values(graph.nodes)) {
-    for (const [key, stored] of Object.entries(node.parameters)) {
-      if (!isParameterSlot(stored)) continue;
-      const expression = stored.bindings.expression;
-      if (stored.mode === "expression" && expression?.kind === "expression" && expression.source.includes(needle)) {
-        found.push({ nodeId: node.id, key, label: `${nameOf(node)}.${key}` });
-      }
-    }
-  }
-  return found;
-}
-
-/** The pencil: edit mode's switch. */
-function Pencil() {
-  return (
-    <svg className={styles.icon} viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-      <path d="M2 10l.6-2.4L8.2 2l1.8 1.8-5.6 5.6L2 10zM7.2 3l1.8 1.8" />
-    </svg>
-  );
 }
 
 export function ControlsPane({ graph, registry, bus, invocation, phone }: ControlsPaneProps) {
@@ -101,14 +71,6 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
     void bus.execute("graph.applyPatch", { baseRevision: bus.store.getRevision(), label, operations }, invocation);
   };
 
-  /**
-   * T1513b — a chip's ×: the target parameter goes back to Constant holding the value it
-   * retained, one patch, undoable. T1514b: the SAME unbind the Inspector's "← Heat" chip
-   * and `control.unbindParameter` run (`unbindOperations`).
-   */
-  const unbind = (target: Target): void =>
-    apply(unbindOperations(graph, registry, target.nodeId, [target.key]), `Unbind ${target.label}`);
-
   if (widgets.length === 0 && panel === undefined) {
     return (
       <div className={styles.empty}>
@@ -118,27 +80,16 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
     );
   }
 
-  /** What a widget drives, as chips with × — under a card, or in edit mode's side list. */
-  const renderTargets = (widget: GraphNode) => {
-    const targets = targetsOf(graph, widget);
-    return (
-      <ul className={styles.chips} aria-label={`${nameOf(widget)} drives`}>
-        {targets.map((target) => (
-          <li key={`${target.nodeId}.${target.key}`} className={styles.chip} title={target.label} data-target={target.label}>
-            <span className={styles.chipLabel}>{target.label}</span>
-            <button type="button" className={styles.chipRemove} aria-label={`Unbind ${target.label}`} title={`Unbind ${target.label}`} onClick={() => unbind(target)}>
-              ×
-            </button>
-          </li>
-        ))}
-      </ul>
-    );
-  };
+  /** What a widget drives, as chips with × (`ControlTargets`) — under a card. */
   const renderMeta = (widget: GraphNode) =>
-    targetsOf(graph, widget).length === 0 ? null : <div className={styles.meta}>{renderTargets(widget)}</div>;
+    controlTargets(graph, widget).length === 0 ? null : (
+      <div className={styles.meta}>
+        <ControlTargets graph={graph} registry={registry} widget={widget} apply={apply} />
+      </div>
+    );
 
   return (
-    <div className={styles.pane} data-controls-pane>
+    <div className={styles.pane} data-controls-pane data-editing={editing && board !== null ? true : undefined}>
       <header className={styles.header}>
         <h2 className={styles.title}>{panel === undefined ? "All controls" : panelTitle(panel)}</h2>
         {panels.length > 1 ? (
@@ -185,7 +136,7 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
       ) : board === null ? (
         <PanelRows graph={graph} panel={panel} write={write} size="panel" renderMeta={renderMeta} />
       ) : editing ? (
-        <PanelBoardEditor graph={graph} panelId={panel.id} board={board} write={write} apply={apply} renderTargets={renderTargets} />
+        <PanelBoardEditor graph={graph} panelId={panel.id} board={board} write={write} apply={apply} registry={registry} />
       ) : board.items.length === 0 ? (
         <p className={surface.hint} data-panel-empty>{PANEL_EMPTY_HINT}</p>
       ) : (

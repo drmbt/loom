@@ -4,6 +4,7 @@ import type { GraphEdge, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { PortKind } from "@domain/types/ports.ts";
 import { ANNOTATE_TYPE } from "@nodes/definitions/annotate.ts";
+import { isOneSocketInput } from "@nodes/definitions/controls.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 
 /**
@@ -211,6 +212,8 @@ function targetHandles(
     const node = nodes[edge.target.nodeId];
     if (node === undefined) continue;
     if (registry.port(node.type, edge.target.portId, "input")?.variadic !== true) continue;
+    // T1518b: a one-socket variadic input draws every wire to its one plain handle.
+    if (isOneSocketInput(node.type, edge.target.portId)) continue;
     incomingEdgesInOrder({ edges }, edge.target.nodeId, edge.target.portId).forEach(
       (occupant, slot) => {
         handles.set(occupant.id, variadicHandleId(occupant.target.portId, slot));

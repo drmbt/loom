@@ -443,6 +443,15 @@
   padding: var(--space-2) 0;
 }
 
+/* T1518b — no outputs: the inputs take the whole width. Same rows, so the same height. */
+.inputsOnly {
+  grid-template-columns: 1fr;
+}
+
+.inputsOnly .outputs {
+  display: none;
+}
+
 .column {
   display: flex;
   flex-direction: column;
@@ -480,6 +489,15 @@
   font-family: var(--font-mono);
   font-size: var(--fs-micro);
   color: var(--text-dim);
+}
+
+/* T1518b — a one-socket variadic input's count ("4 wired"), quieter than its label. */
+.portCount {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+  opacity: 0.75;
 }
 
 /*

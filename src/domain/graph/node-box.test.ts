@@ -4,7 +4,7 @@ import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import type { GraphDocument, GraphEdge, GraphNode } from "../types/graph.ts";
 import type { EdgeId, NodeId } from "../types/ids.ts";
-import { boxesOverlap, nodeBox } from "./node-box.ts";
+import { boxesOverlap, nodeBox, nodePortRows } from "./node-box.ts";
 
 /**
  * T1512b — A PANEL'S BOX GROWS WITH WHAT IS WIRED INTO IT, because its canvas body draws
@@ -44,8 +44,9 @@ describe("T1512b — node-box models the Panel body from its members", () => {
   it("a Panel laid out by its override text stacks its widgets, as the browser measured", () => {
     const empty = boxOf(graphOf([...widgets, panel], []), "panel");
     expect(empty.height).toBe(103);
-    // The four widgets stacked in the body (T1512b's measured 422px Panel, which also had
-    // four more sockets on its variadic input: 4 × (14 + 2) = 64px fewer here, unwired).
+    // The four widgets stacked in the body (T1512b's measured 422px Panel, which then also
+    // drew four more sockets on its variadic input: 4 × (14 + 2) = 64px that no Panel has
+    // since T1518b, wired or not).
     const override = at("panel", "panel", { title: "Desk", layout: "heat invert flash warp" });
     expect(boxOf(graphOf([...widgets, override], []), "panel").height).toBe(422 - 64);
   });
@@ -63,9 +64,11 @@ describe("T1512b — node-box models the Panel body from its members", () => {
 
   it("the gate can now see a note under a wired Panel", () => {
     const graph = graphOf([...widgets, panel], ["heat", "invert", "flash", "warp"]);
-    // 200px below the Panel's top clears its title and port rows and lands on its body.
-    const note: GraphNode = { ...at("note", "annotate"), position: { x: 0, y: 200 }, size: { width: 300, height: 100 } } as GraphNode;
+    // 120px below the Panel's top clears an UNWIRED Panel entirely (103px) and lands on the
+    // board of a wired one (158px since T1518b took the per-wire sockets away; it was 222).
+    const note: GraphNode = { ...at("note", "annotate"), position: { x: 0, y: 120 }, size: { width: 300, height: 100 } } as GraphNode;
     expect(boxesOverlap(boxOf(graph, "panel"), nodeBox(note, registry.get("annotate")))).toBe(true);
+    expect(boxesOverlap(boxOf(graphOf([...widgets, panel], []), "panel"), nodeBox(note, registry.get("annotate")))).toBe(false);
   });
 });
 
@@ -94,8 +97,8 @@ describe("T1516b — node-box follows the board", () => {
   it("is the title plus rows × the canvas cell, with nothing stored (the four flow onto four rows)", () => {
     // Flowed: slider 4×1 + toggle 2×1 + button 2×1 on row 0, the pad 3×3 under them — four rows.
     const flowed = boxOf(graphOf([...widgets, panel], ALL), "panel");
-    // border 2 + title 24 + controls (8 + 14.85 title + 4 gap + 4 × 20.5 + 1) + ports (8 + 5 × 14 + 4 × 2).
-    expect(flowed.height).toBe(Math.round(2 + 24 + (8 + 14.85 + 4 + 4 * 20.5 + 1) + (8 + 5 * 14 + 4 * 2)));
+    // border 2 + title 24 + controls (8 + 14.85 title + 4 gap + 4 × 20.5 + 1) + ports (8 + ONE 14px row, T1518b).
+    expect(flowed.height).toBe(Math.round(2 + 24 + (8 + 14.85 + 4 + 4 * 20.5 + 1) + (8 + 14)));
   });
 
   it("moving a control so the board loses a row makes the Panel one canvas cell shorter", () => {
@@ -120,6 +123,48 @@ describe("T1516b — node-box follows the board", () => {
         { member: "warp", rect: { x: 8, y: 0, w: 2, h: 2 } },
       ],
     };
-    expect(heightWith(oneRow)).toBe(Math.round(2 + 24 + (8 + 14.85 + 4 + 2 * 10.25 + 1) + (8 + 5 * 14 + 4 * 2)));
+    expect(heightWith(oneRow)).toBe(Math.round(2 + 24 + (8 + 14.85 + 4 + 2 * 10.25 + 1) + (8 + 14)));
+  });
+});
+
+/**
+ * T1518b — THE PANEL'S CONTROLS INPUT IS ONE ROW, HOWEVER MANY WIRES LAND ON IT. The canvas
+ * draws one "Controls · 4 wired" socket instead of a socket per wire plus a spare (five rows
+ * on E81, a column taller than the board), so the model must stop counting them — or the
+ * layout gate would reserve 64px under every wired Panel that the browser never draws, and
+ * `node-box.spec.ts` (which measures E81's Panel) would say so.
+ *
+ * And the rule is the PANEL'S: every other variadic input still draws a socket per wire
+ * (T695 — a drop needs a slot to aim at where order is the operation), so its rows still grow.
+ */
+describe("T1518b — a one-socket input is one port row", () => {
+  const ALL = ["heat", "invert", "flash", "warp"];
+  const rowsOf = (graph: GraphDocument, id: string) => nodePortRows(graph.nodes[id]!, registry.get(graph.nodes[id]!.type), graph);
+
+  it("a Panel has one port row unwired and one with four wires", () => {
+    expect(rowsOf(graphOf([...widgets, panel], []), "panel")).toBe(1);
+    expect(rowsOf(graphOf([...widgets, panel], ALL), "panel")).toBe(1);
+  });
+
+  it("so wiring a control in changes the Panel's height only by what the BOARD gained", () => {
+    // One row of the default board either way: a slider (4×1), then a toggle (2×1) beside it.
+    const one = boxOf(graphOf([...widgets, panel], ["heat"]), "panel");
+    const two = boxOf(graphOf([...widgets, panel], ["heat", "invert"]), "panel");
+    expect(two.height).toBe(one.height);
+    expect(one.height).toBe(Math.round(2 + 24 + (8 + 14.85 + 4 + 20.5 + 1) + (8 + 14)));
+  });
+
+  it("another variadic input still grows a row per wire, plus its spare (T695)", () => {
+    const composite = at("comp", "composite");
+    const layers = ["a", "b"].map((id) => at(id, "solid"));
+    const edges = Object.fromEntries(
+      layers.map((layer, order) => [
+        `l${String(order)}`,
+        { id: `l${String(order)}` as EdgeId, source: { nodeId: layer.id, portId: "out" }, target: { nodeId: composite.id, portId: "in2" }, order } as GraphEdge,
+      ]),
+    );
+    const graph = { ...graphOf([composite, ...layers], []), edges } as GraphDocument;
+    // Front (1) + Behind: two wires and the spare (3).
+    expect(rowsOf(graph, "comp")).toBe(4);
   });
 });

@@ -3,6 +3,7 @@ import { useStore } from "zustand";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { GraphStoreView } from "@domain/graph/store.ts";
 import type { NodeId } from "@domain/types/ids.ts";
+import { controlsContentWidth } from "@domain/graph/node-box.ts";
 import { panelBoard, panelLayout, panelTitle } from "@nodes/definitions/controls.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
 import { PanelBoardGrid } from "./panel-board.tsx";
@@ -76,7 +77,8 @@ export function PanelRows({ graph, panel, write, size, renderMeta }: PanelRowsPr
  * and the Panel node's own slice (§V16) never changes when it does.
  *
  * The board is the tab's board scaled to the node's width (`PanelBoardGrid variant="canvas"`),
- * from the same `panelBoard`; it is played here and arranged in the Controls tab.
+ * from the same `panelBoard`; it is played here and arranged in the Controls tab — or in
+ * the popover the pencil on this node's header opens (T1518b, `panel-edit.tsx`).
  */
 export function PanelNodeBody({ store, panelId, write }: { readonly store: GraphStoreView; readonly panelId: NodeId; readonly write: ControlWrite }) {
   const graph = useStore(store, (state) => state.graph);
@@ -91,7 +93,8 @@ export function PanelNodeBody({ store, panelId, write }: { readonly store: Graph
       ) : board.items.length === 0 ? (
         <p className={styles.hint} data-panel-empty>{PANEL_EMPTY_HINT}</p>
       ) : (
-        <PanelBoardGrid board={board} write={write} variant="canvas" />
+        // T1518b: the width the node gives its body, so type is sized for the real cell.
+        <PanelBoardGrid board={board} write={write} variant="canvas" widthPx={controlsContentWidth(panel)} />
       )}
     </div>
   );

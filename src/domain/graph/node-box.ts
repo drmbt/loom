@@ -4,7 +4,7 @@ import { incomingEdgesInOrder } from "./edge-order.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import { previewablePort } from "./previewable.ts";
 import { publishesValueChannels } from "@domain/types/node-definition.ts";
-import { CONTROL_WIDGET_TYPES, panelBoard, panelLayout, type PanelSection } from "@nodes/definitions/controls.ts";
+import { CONTROL_WIDGET_TYPES, isOneSocketInput, panelBoard, panelLayout, type PanelSection } from "@nodes/definitions/controls.ts";
 
 /**
  * WHAT A NODE ACTUALLY OCCUPIES, IN GRAPH-SPACE PIXELS (T460, §V389).
@@ -164,6 +164,15 @@ const CONTROLS_BORDER = 1;
 /** The width a control gets: the node's content box less `.controls`' side padding. */
 const CONTROLS_CONTENT_WIDTH = NODE_WIDTH - NODE_BORDER * 2 - 6 * 2;
 
+/**
+ * T1518b — the same content width for a node as drawn, resized or not: what the Panel's
+ * canvas board scales its cells to, so the board's caption fit (`board-fit.ts`) sizes type
+ * for the cell the browser will actually draw.
+ */
+export function controlsContentWidth(node: Pick<GraphNode, "size">): number {
+  return (node.size?.width ?? NODE_WIDTH) - NODE_BORDER * 2 - 6 * 2;
+}
+
 /** `.widget` — `gap: var(--space-2)` between its caption row and its control. */
 const WIDGET_GAP = 4;
 /** `.track` — `height: var(--space-6)`. */
@@ -315,7 +324,8 @@ export function nodePortRows(
   const inputs = visible.reduce(
     (rows, port) =>
       rows +
-      (port.variadic === true && graph !== undefined
+      // T1518b: a one-socket variadic input (the Panel's Controls) is one row however wired.
+      (port.variadic === true && graph !== undefined && !isOneSocketInput(node.type, port.id)
         ? incomingEdgesInOrder(graph, node.id, port.id).length + 1
         : 1),
     0,

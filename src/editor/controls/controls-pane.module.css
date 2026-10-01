@@ -90,12 +90,13 @@
   color: var(--signal);
   border-color: var(--signal);
 }
-.icon {
-  width: 12px;
-  height: 12px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
+/*
+ * T1518b — arranging in a short dock: the pane stops scrolling and the board area scrolls
+ * instead (`panel-board.module.css` `.workspace`), so the header and the toolbar stay put
+ * and the spare rows below the board are a scroll of the board away.
+ */
+.pane[data-editing] {
+  overflow: hidden;
 }
 .empty {
   display: flex;

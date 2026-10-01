@@ -13,6 +13,7 @@ import { describePortType } from "@domain/graph/port-compat.ts";
 import { nameBaseFor } from "@domain/graph/names.ts";
 import { sourceReferenceForInput } from "@domain/graph/source-references.ts";
 import { isComponentInputBoundary, isComponentOutputBoundary } from "@nodes/definitions/index.ts";
+import { isOneSocketInput } from "@nodes/definitions/controls.ts";
 import { isComponentNodeType, parseComponentNodeType } from "@domain/components/component-type.ts";
 import type { CommandResult } from "@domain/types/commands.ts";
 import type { NodeId } from "@domain/types/ids.ts";
@@ -498,7 +499,9 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
           <div className={cx(styles.controls, "nodrag", "nopan")}>{controls}</div>
         )}
 
-        <div className={styles.ports} ref={portsRef}>
+        {/* T1518b: a node with no outputs (a Panel, a sink) gives its inputs the whole
+            width — the Panel's one row reads "Controls 4 wired", which half a node cut. */}
+        <div className={cx(styles.ports, definition?.outputs.length === 0 && styles.inputsOnly)} ref={portsRef}>
           <ul className={cx(styles.column, styles.inputs)}>
             {/*
               T457 (V387): a reference-fed input is PLUMBING — the compiler synthesizes
@@ -511,8 +514,11 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
               .filter((port) => sourceReferenceForInput(node.type, port.id) === undefined)
               .map((port) =>
                 // T695: a variadic input is N sockets plus a spare, not one socket that
-                // swallows everything. See `VariadicPortRows`.
-                port.variadic === true ? (
+                // swallows everything. See `VariadicPortRows`. T1518b: except the Panel's
+                // Controls, which IS one socket that takes many wires (`OneSocketRow`).
+                port.variadic === true && isOneSocketInput(node.type, port.id) ? (
+                  <OneSocketRow key={port.id} nodeId={id as NodeId} port={port} />
+                ) : port.variadic === true ? (
                   <VariadicPortRows key={port.id} nodeId={id as NodeId} port={port} />
                 ) : (
                   <PortRow key={port.id} port={port} side="input" />
@@ -992,6 +998,25 @@ function VariadicPortRows({ nodeId, port }: { nodeId: NodeId; port: PortDefiniti
   );
 }
 
+/**
+ * T1518b — ONE SOCKET, MANY WIRES: the Panel's Controls input. Its members are arranged on
+ * the board, so a socket per wire was a column taller than the board with nothing to aim
+ * at. Every wire lands on this one plain handle (`derive.ts` stamps the port id), a drop
+ * on it appends (`connect-drop.ts`, no slot), and the row says how many are wired. The
+ * stored edges and their order (§V131) are exactly what they were.
+ */
+function OneSocketRow({ nodeId, port }: { nodeId: NodeId; port: PortDefinition }) {
+  const { store } = useGraphCanvas();
+  const wired = useStore(
+    store,
+    useCallback(
+      (state: { graph: GraphDocument }) => incomingEdgesInOrder(state.graph, nodeId, port.id).length,
+      [nodeId, port.id],
+    ),
+  );
+  return <PortRow port={port} side="input" wired={wired} />;
+}
+
 interface PortRowProps {
   port: PortDefinition;
   side: "input" | "output";
@@ -999,6 +1024,8 @@ interface PortRowProps {
   slot?: number;
   /** T695 — false for the spare socket at the end, which is drawn quieter (§V90). */
   occupied?: boolean;
+  /** T1518b — a one-socket variadic input's wire count, said after its label. */
+  wired?: number;
 }
 
 /**
@@ -1006,7 +1033,7 @@ interface PortRowProps {
  * the same token the edges leaving it use, which is what makes the colour readable as a
  * type rather than as decoration.
  */
-const PortRow = memo(function PortRow({ port, side, slot, occupied }: PortRowProps) {
+const PortRow = memo(function PortRow({ port, side, slot, occupied, wired }: PortRowProps) {
   const description = describePortType(port.type);
   // A variadic socket is addressed by slot, and the projection stamps the SAME id on the
   // edge that lands there (`derive.ts`). An ordinary port stays its own plain id, so no
@@ -1034,10 +1061,21 @@ const PortRow = memo(function PortRow({ port, side, slot, occupied }: PortRowPro
         // it affords — drop here to add, drop on a filled one to replace — is the gesture
         // itself, and a sentence pinned to every variadic port in the graph is the chrome
         // this project keeps deleting.
-        title={slot === undefined || occupied === true ? `${label} — ${description}` : `${label} — ${description}, empty`}
+        title={
+          wired !== undefined
+            ? `${label} — ${description}, ${String(wired)} wired`
+            : slot === undefined || occupied === true
+              ? `${label} — ${description}`
+              : `${label} — ${description}, empty`
+        }
         isConnectable
       />
       <span className={styles.portLabel}>{label}</span>
+      {wired === undefined || wired === 0 ? null : (
+        <span className={styles.portCount} data-wired={wired}>
+          {wired} wired
+        </span>
+      )}
     </li>
   );
 });

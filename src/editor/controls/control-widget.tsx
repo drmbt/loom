@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { EditPhase } from "@ui/controls/types.ts";
-import { controlChannel } from "@nodes/definitions/controls.ts";
+import { controlCaption, formatControlValue as format, isDrivenParameter as isDriven } from "./board-fit.ts";
 import styles from "./control-widget.module.css";
 
 /**
@@ -25,6 +25,10 @@ import styles from "./control-widget.module.css";
  * its header laid over the top, a toggle or button fills its cells. The same states, drawn
  * at whatever size the board says — the Controls tab's fixed cells or the Panel node's
  * scaled-down body.
+ *
+ * T1518b — and says only what the rect has room for (`showValue`, decided by `board-fit.ts`):
+ * with no room for both, the VALUE goes and the caption stays whole — a slider or pad shows
+ * its caption alone, a toggle its caption and a small switch (no On/Off), a button no count.
  */
 
 /** Writes a control's keys as ONE patch — an XY drag moves x and y in one undo group. */
@@ -39,19 +43,13 @@ export interface ControlWidgetProps {
   readonly write: ControlWrite;
   /** Bigger touch targets on a Panel; compact in a node body; filling its rect on a board (T1516b). */
   readonly size?: "node" | "panel" | "board";
+  /** T1518b — on a board: false when the rect has no room for the value beside the caption. Default true. */
+  readonly showValue?: boolean;
 }
 
 const num = (value: unknown, fallback: number): number => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
-/** A stored parameter that is not a plain value (an expression or binding slot) is driven. */
-const isDriven = (value: unknown): boolean => value !== null && typeof value === "object" && !Array.isArray(value);
-
 function snap(value: number, step: number): number {
   return step > 0 ? Math.round(value / step) * step : value;
-}
-
-function format(value: number): string {
-  const magnitude = Math.abs(value);
-  return magnitude >= 100 ? value.toFixed(0) : magnitude >= 10 ? value.toFixed(1) : value.toFixed(2);
 }
 
 /** Pointer drag over an element as 0..1 along x (and y, top = 1). */
@@ -90,17 +88,17 @@ interface WidgetProps extends ControlWidgetProps {
   readonly className: string;
 }
 
-/** Caption left, value right, on one row — the value never takes a row of its own. */
-function Head({ caption, value }: { caption: string; value: string }) {
+/** Caption left, value right, on one row — the value never takes a row of its own. `null`: no room for it (T1518b). */
+function Head({ caption, value }: { caption: string; value: string | null }) {
   return (
     <div className={styles.head}>
       <span className={styles.caption} title={caption}>{caption}</span>
-      <span className={styles.readout}>{value}</span>
+      {value === null ? null : <span className={styles.readout}>{value}</span>}
     </div>
   );
 }
 
-function Slider({ nodeId, parameters, write, caption, className, size }: WidgetProps) {
+function Slider({ nodeId, parameters, write, caption, className, size, showValue }: WidgetProps) {
   const min = num(parameters["min"], 0);
   const max = num(parameters["max"], 1);
   const step = num(parameters["step"], 0);
@@ -110,7 +108,7 @@ function Slider({ nodeId, parameters, write, caption, className, size }: WidgetP
   const drag = useDrag((x, _y, phase) => {
     if (!driven) write(nodeId, { value: snap(min + x * (max - min), step) }, phase);
   });
-  const head = <Head caption={caption} value={driven ? "driven" : format(value)} />;
+  const head = <Head caption={caption} value={showValue === false ? null : driven ? "driven" : format(value)} />;
   // On a board the caption and value sit INSIDE the bar, so a one-row slider is one row.
   const board = size === "board";
   return (
@@ -133,7 +131,7 @@ function Slider({ nodeId, parameters, write, caption, className, size }: WidgetP
   );
 }
 
-function Toggle({ nodeId, parameters, write, caption, className }: WidgetProps) {
+function Toggle({ nodeId, parameters, write, caption, className, showValue }: WidgetProps) {
   const on = parameters["on"] === true;
   return (
     <div className={className} data-control="toggle" data-control-node={nodeId}>
@@ -141,20 +139,20 @@ function Toggle({ nodeId, parameters, write, caption, className }: WidgetProps) 
         type="button"
         role="switch"
         aria-checked={on}
-        className={`${styles.toggle} ${on ? styles.on : ""}`}
+        className={`${styles.toggle} ${on ? styles.on : ""} ${showValue === false ? styles.mini : ""}`}
         onClick={() => write(nodeId, { on: !on }, "commit")}
       >
         <span className={styles.caption} title={caption}>{caption}</span>
         <span className={styles.switch} aria-hidden="true">
           <span className={styles.knob} />
         </span>
-        <span className={styles.state}>{on ? "On" : "Off"}</span>
+        {showValue === false ? null : <span className={styles.state}>{on ? "On" : "Off"}</span>}
       </button>
     </div>
   );
 }
 
-function Button({ nodeId, parameters, write, caption, className }: WidgetProps) {
+function Button({ nodeId, parameters, write, caption, className, showValue }: WidgetProps) {
   const held = parameters["held"] === true;
   const presses = num(parameters["presses"], 0);
   // Pressed from the pointer's own edge, not only from the document's echo of it.
@@ -183,13 +181,13 @@ function Button({ nodeId, parameters, write, caption, className }: WidgetProps) 
         }}
       >
         <span className={styles.caption} title={caption}>{caption}</span>
-        <span className={styles.count} title="Presses" data-press-count={presses}>×{presses}</span>
+        {showValue === false ? null : <span className={styles.count} title="Presses" data-press-count={presses}>×{presses}</span>}
       </button>
     </div>
   );
 }
 
-function XYPad({ nodeId, parameters, write, caption, className, size }: WidgetProps) {
+function XYPad({ nodeId, parameters, write, caption, className, size, showValue }: WidgetProps) {
   const min = num(parameters["min"], 0);
   const max = num(parameters["max"], 1);
   const x = num(parameters["x"], 0.5);
@@ -199,7 +197,7 @@ function XYPad({ nodeId, parameters, write, caption, className, size }: WidgetPr
   const drag = useDrag((u, v, phase) => {
     if (!driven) write(nodeId, { x: min + u * span, y: min + v * span }, phase);
   });
-  const head = <Head caption={caption} value={driven ? "driven" : `${format(x)}, ${format(y)}`} />;
+  const head = <Head caption={caption} value={showValue === false ? null : driven ? "driven" : `${format(x)}, ${format(y)}`} />;
   // On a board the pad fills its rect and the header is laid over its top edge.
   const board = size === "board";
   return (
@@ -223,8 +221,7 @@ const WIDGETS: Readonly<Record<string, (props: WidgetProps) => ReturnType<typeof
 export function ControlWidget(props: ControlWidgetProps) {
   const Widget = WIDGETS[props.type];
   if (Widget === undefined) return null;
-  const channel = controlChannel(props.parameters);
-  const caption = typeof props.parameters["caption"] === "string" && props.parameters["caption"] !== "" ? props.parameters["caption"] : channel;
+  const caption = controlCaption(props.parameters);
   const className = `${styles.widget} ${props.size === "panel" ? styles.panel : props.size === "board" ? styles.board : styles.node}`;
   return <Widget {...props} caption={caption} className={className} />;
 }

@@ -169,6 +169,18 @@ export function parsePanelLayout(layout: string): PanelRow[] {
  */
 export const PANEL_INPUT = "controls";
 
+/**
+ * T1518b — a variadic input drawn as ONE socket that takes every wire, instead of one
+ * socket per wire plus a spare (T695). The Panel's `controls` only: its members are
+ * arranged on the board, not by socket, so N labelled rows were a tower taller than the
+ * board with nothing to aim at. The stored edges and their `order` (§V131) are unchanged —
+ * a wire dropped on the one socket appends — so this is a rule about DRAWING, read by the
+ * node view, the edge projection and the layout model (`node-box.ts`) alike.
+ */
+export function isOneSocketInput(nodeType: string, portId: string): boolean {
+  return nodeType === "panel" && portId === PANEL_INPUT;
+}
+
 /** The layout text a fresh Panel carried before T1512b: a heading and no controls — never an override. */
 const LEGACY_DEFAULT_LAYOUT = "# Controls";
 

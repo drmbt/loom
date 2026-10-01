@@ -43,13 +43,28 @@
 }
 
 /* ---- edit mode ---------------------------------------------------------------- */
+.pencil {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+/*
+ * T1518b — the editor takes the height it is given and SCROLLS ITS BOARD AREA: in a short
+ * bottom dock (and in the popover the Panel node's pencil opens) the toolbar stays in
+ * view and the spare rows are reached by scrolling the board, not the page.
+ */
 .editor {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   gap: var(--space-3);
 }
 .toolbar {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: var(--space-4);
 }
@@ -82,8 +97,21 @@
 }
 .workspace {
   display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
   align-items: flex-start;
   gap: var(--space-5);
+  /* Room for the selection ring, which the scroll box would otherwise clip. */
+  padding: var(--focus-ring-width);
+}
+/* The Panel node's pencil: the same editor, in a popover wide enough for an eight-column board. */
+.popover.popover {
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  max-width: min(calc(100vw - var(--space-7)), calc(var(--space-48) * 18));
+  overflow: hidden;
 }
 /* An empty cell, drawn only while editing: where a control can go. */
 .slot {
@@ -136,6 +164,8 @@
   border-color: var(--error);
 }
 .inspect {
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);

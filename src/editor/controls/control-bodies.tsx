@@ -9,6 +9,7 @@ import { isRemotePanel } from "@devices/phone/phone-snapshot.ts";
 import { CONTROL_WIDGET_TYPES } from "@nodes/definitions/controls.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
 import { joinPanelOperations, soloPanelFor } from "./panel-join.ts";
+import { PanelEdit } from "./panel-edit.tsx";
 import { PanelNodeBody } from "./panel-surface.tsx";
 import { PhoneDoorButton } from "./phone-door.tsx";
 import type { PhoneDoorView } from "./phone-door-copy.ts";
@@ -21,7 +22,9 @@ import styles from "./control-widget.module.css";
  * - A widget's body IS its control, plus — while the document has exactly one Panel the
  *   widget is not on — a small "add to panel" button: the one-press version of wiring it.
  * - A Panel's body is the Panel itself, live (`PanelNodeBody`), and its header carries the
- *   phone icon (`PhoneDoorButton`) that publishes it and opens the door's popover there.
+ *   phone icon (`PhoneDoorButton`) that publishes it and opens the door's popover there,
+ *   and — T1518b — the pencil (`PanelEdit`, `panel-edit.tsx`) that opens the board's edit
+ *   surface: the SAME `PanelBoardEditor` the Controls tab's pencil shows, beside the node.
  *
  * Here rather than in the graph pane so the tests mount the SAME seams the product does.
  * Every closure is keyed on stable things (the bus, the writer, the door view) so the
@@ -101,10 +104,15 @@ export function useControlBodies({ bus, invocation, write, phone }: ControlBodie
   );
   const renderHeaderControls = useCallback(
     (nodeId: NodeId): ReactNode => {
-      if (phone === undefined || bus.store.getGraph().nodes[nodeId]?.type !== "panel") return null;
-      return <PanelPhone bus={bus} invocation={invocation} panelId={nodeId} door={phone} />;
+      if (bus.store.getGraph().nodes[nodeId]?.type !== "panel") return null;
+      return (
+        <>
+          <PanelEdit bus={bus} invocation={invocation} panelId={nodeId} write={write} />
+          {phone === undefined ? null : <PanelPhone bus={bus} invocation={invocation} panelId={nodeId} door={phone} />}
+        </>
+      );
     },
-    [bus, invocation, phone],
+    [bus, invocation, phone, write],
   );
   return { renderControls, renderHeaderControls };
 }
