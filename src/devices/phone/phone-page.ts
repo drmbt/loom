@@ -18,6 +18,11 @@
  * of the app's one palette when it is built, so the phone looks like Loom and this file
  * holds no literal colour. A token that disappears from the palette fails loudly here
  * rather than rendering a page with no colours.
+ *
+ * T1517b — TABS: a bottom bar with one tab per published Panel and a Camera tab, so the
+ * camera is one tap away rather than under every Panel. A Panel with a board (§T1516b) is
+ * drawn on a grid of square cells, one column = the page's width / columns; without one,
+ * its rows. Tabs only show and hide: a running camera keeps sending under any tab.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -53,6 +58,9 @@ export const PHONE_EXPIRED_SENTENCE = "This link has expired — scan the QR cod
 /** T1397b: where the phone keeps the name it sends its camera under (its `localStorage`). */
 export const PHONE_NAME_STORAGE_KEY = "loom.phone.cameraName";
 
+/** T1517b: where the phone keeps the tab it last showed (its `localStorage`). */
+export const PHONE_TAB_STORAGE_KEY = "loom.phone.tab";
+
 function paletteBlock(): string {
   // A path, not `new URL(…, import.meta.url)`: vite rewrites that form into an asset URL.
   const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../ui/tokens.css"), "utf8");
@@ -75,9 +83,13 @@ html, body {
   -webkit-text-size-adjust: 100%;
 }
 body {
+  /* --pad is the page gutter; --bar the bottom tab bar's height above the safe area. */
+  --pad: 12px;
+  --bar: 64px;
+  --gap: 6px;
   min-height: 100vh;
-  padding: calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right))
-    calc(24px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+  padding: calc(var(--pad) + env(safe-area-inset-top)) calc(var(--pad) + env(safe-area-inset-right))
+    calc(var(--bar) + var(--pad) + env(safe-area-inset-bottom)) calc(var(--pad) + env(safe-area-inset-left));
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
@@ -98,10 +110,10 @@ body {
 }
 #notice {
   position: fixed;
-  left: calc(12px + env(safe-area-inset-left));
-  right: calc(12px + env(safe-area-inset-right));
-  bottom: calc(12px + env(safe-area-inset-bottom));
-  z-index: 3;
+  left: calc(var(--pad) + env(safe-area-inset-left));
+  right: calc(var(--pad) + env(safe-area-inset-right));
+  bottom: calc(var(--bar) + var(--pad) + env(safe-area-inset-bottom));
+  z-index: 4;
   padding: 14px 16px;
   border: 1px solid var(--error);
   border-radius: 12px;
@@ -112,15 +124,48 @@ body {
 #notice.final { top: 40%; bottom: auto; text-align: center; font-size: 18px; }
 [hidden] { display: none !important; }
 .empty { color: var(--text-dim); text-align: center; margin-top: 30vh; }
-.panel {
-  margin: 0 0 16px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
+/* T1517b: the bottom tab bar — one tab per Panel, then Camera. */
+#tabs {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+  min-height: calc(var(--bar) + env(safe-area-inset-bottom));
+  padding: 6px calc(8px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
+  border-top: 1px solid var(--line);
   background: var(--bg-panel);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.panel > h1 { margin: 0 0 10px; font-size: 17px; font-weight: 600; }
+#tabs::-webkit-scrollbar { display: none; }
+#tabs button {
+  flex: 1 1 0;
+  min-width: 72px;
+  max-width: 220px;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+#tabs button[aria-selected="true"] { background: var(--bg-raise); color: var(--text); box-shadow: inset 0 -3px 0 var(--signal); }
+#tabs .tabname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tabs .dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--signal); }
+#tabs .dot.live { background: var(--ok); }
+.panel { margin: 0; }
 .panel > h2 { margin: 16px 0 8px; font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
+.panel > h2:first-child { margin-top: 4px; }
 .panel > p { margin: 8px 0; color: var(--text-dim); font-size: 15px; }
 .row { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0; }
 .w { flex: 1 1 140px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -128,8 +173,8 @@ body {
 .w.slider { flex: 1 1 280px; }
 .w.xyPad { flex: 1 1 240px; max-width: 480px; }
 .cap { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; color: var(--text-dim); }
-.cap .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cap .val { color: var(--text); font-variant-numeric: tabular-nums; }
+.cap .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap .val { flex: none; color: var(--text); font-variant-numeric: tabular-nums; }
 .ctl { touch-action: none; user-select: none; -webkit-user-select: none; }
 .track {
   position: relative;
@@ -153,6 +198,7 @@ button.ctl {
   font-weight: 600;
 }
 button.ctl.on { border-color: var(--signal); background: color-mix(in srgb, var(--signal) 30%, var(--bg-raise)); }
+button.ctl .name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 button.ctl .state { display: block; font-size: 13px; font-weight: 400; color: var(--text-dim); }
 button.ctl.on .state { color: var(--text); }
 .pad {
@@ -175,14 +221,99 @@ button.ctl.on .state { color: var(--text); }
   pointer-events: none;
 }
 .stopped .ctl { opacity: 0.4; }
-/* T1397b: Send camera. */
-.cam { margin-top: 24px; }
-.field { display: flex; flex-direction: column; gap: 6px; margin: 0 0 12px; font-size: 14px; color: var(--text-dim); }
+/*
+ * T1517b: a Panel's BOARD (T1516b) — the owner's arrangement on a grid of square cells,
+ * one column = the page's width / columns. The row height is that same column width, read
+ * from the wrapper's inline size (cqi); the vw line before it is for a browser without
+ * container units. Each item sits at its rect through grid-column / grid-row.
+ */
+.boardwrap { container-type: inline-size; }
+.board {
+  display: grid;
+  gap: var(--gap);
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  grid-auto-rows: calc((100vw - 2 * var(--pad) - (var(--cols) - 1) * var(--gap)) / var(--cols));
+  grid-auto-rows: calc((100cqi - (var(--cols) - 1) * var(--gap)) / var(--cols));
+}
+.board .w { position: relative; display: block; min-height: 0; }
+.board .w > .ctl { position: absolute; inset: 0; width: auto; height: auto; min-height: 0; aspect-ratio: auto; border-radius: 10px; }
+.board .w > .cap {
+  position: absolute;
+  z-index: 1;
+  left: 10px;
+  right: 10px;
+  top: 0;
+  bottom: 0;
+  align-items: center;
+  color: var(--text);
+  pointer-events: none;
+}
+.board .w.xyPad > .cap { top: 6px; bottom: auto; }
+.board .w > button.ctl { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2px 6px; overflow: hidden; font-size: 14px; }
+.board .w > button.ctl .name { max-width: 100%; }
+.board .w > button.ctl .state { font-size: 11px; }
+/* A grid item is sized by the grid, so it can be its own size container: a cell too short
+   for two lines keeps the caption, and the button's On colour says its state. */
+.board .w.toggle, .board .w.button { container-type: size; }
+@container (max-height: 46px) { button.ctl .state { display: none; } }
+.board .label {
+  display: flex;
+  align-items: flex-end;
+  min-width: 0;
+  padding: 0 2px 4px;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+/* T1397b + T1517b: the Camera tab — the preview fills what the tab bar leaves. */
+#camera {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: calc(100vh - var(--bar) - 2 * var(--pad) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  height: calc(100dvh - var(--bar) - 2 * var(--pad) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  min-height: 320px;
+}
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 160px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+#camPreview { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--bg-void); }
+.camstate {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--bg-void) 70%, transparent);
+  color: var(--text-dim);
+  font-size: 14px;
+  text-align: center;
+}
+.stage.idle .camstate { top: 50%; bottom: auto; transform: translateY(-50%); background: none; font-size: 15px; }
+.camctl { display: flex; gap: 8px; }
+.seg { display: flex; gap: 6px; min-width: 0; }
+.camctl .seg:first-child { flex: 2 1 0; }
+.camctl .seg:last-child { flex: 3 1 0; }
+.seg button.ctl { flex: 1 1 0; min-width: 0; min-height: 48px; padding: 4px 2px; font-size: 15px; }
+#camGo { flex: none; min-height: 52px; }
+.field { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; color: var(--text-dim); }
 .field input {
-  padding: 12px 14px;
-  border: 1px solid var(--line-hot);
-  border-radius: 12px;
-  background: var(--bg-raise);
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-panel);
   color: var(--text);
   /* 16px keeps iOS from zooming the page when the field takes focus. */
   font: inherit;
@@ -190,18 +321,6 @@ button.ctl.on .state { color: var(--text); }
   user-select: text;
   -webkit-user-select: text;
 }
-.seg { display: flex; gap: 8px; margin: 0 0 12px; }
-.seg button.ctl { flex: 1 1 0; min-height: 48px; }
-#camPreview {
-  display: block;
-  width: 100%;
-  max-height: 40vh;
-  margin: 12px 0 0;
-  border-radius: 12px;
-  background: var(--bg-raise);
-  object-fit: contain;
-}
-.camstate { margin: 10px 0 0; color: var(--text-dim); font-size: 14px; }
 `;
 
 /**
@@ -545,9 +664,27 @@ const CLIENT = String.raw`
 
   /* ------------------------------------------------------------------------- snapshots */
 
+  /* A Panel's board (T1516b) when it carries a usable one; its rows otherwise. */
+  function boardOf(p) { return p.board && Array.isArray(p.board.items) ? p.board : null; }
+  function widgetsOf(p) {
+    var out = [];
+    var board = boardOf(p);
+    if (board) board.items.forEach(function (item) { if (item.kind === "widget" && item.widget) out.push(item.widget); });
+    else (p.rows || []).forEach(function (r) { if (r.kind === "widgets") r.widgets.forEach(function (w) { out.push(w); }); });
+    return out;
+  }
+
   function shape(panels) {
     return JSON.stringify(panels.map(function (p) {
-      return [p.title, p.rows.map(function (r) {
+      var board = boardOf(p);
+      if (board) {
+        return [p.title, board.columns, board.items.map(function (item) {
+          var r = item.rect || {};
+          var w = item.widget || {};
+          return [item.kind, r.x, r.y, r.w, r.h, item.text, w.kind, w.handle, w.caption];
+        })];
+      }
+      return [p.title, (p.rows || []).map(function (r) {
         return r.kind === "widgets"
           ? r.widgets.map(function (w) { return [w.kind, w.handle, w.caption]; })
           : [r.kind, r.text];
@@ -555,15 +692,67 @@ const CLIENT = String.raw`
     }));
   }
 
+  function place(handle, w) {
+    var build = BUILDERS[w.kind];
+    if (!build) return null;
+    var view = build(w);
+    views[handle] = view;
+    view.update();
+    return view.el;
+  }
+
+  function drawRows(section, rows) {
+    rows.forEach(function (r) {
+      if (r.kind === "heading") section.appendChild(el("h2", "", r.text));
+      else if (r.kind === "text") section.appendChild(el("p", "", r.text));
+      else if (r.kind === "widgets") {
+        var row = el("div", "row");
+        r.widgets.forEach(function (w) {
+          var node = place(w.handle, w);
+          if (node) row.appendChild(node);
+        });
+        section.appendChild(row);
+      }
+    });
+  }
+
+  /*
+   * T1517b: the board on a grid of square cells. A rect is in whole cells from the top-left
+   * one; it becomes grid lines (1-based) and spans, kept inside the board's columns.
+   */
+  function whole(v, lo, hi) {
+    v = Math.floor(Number(v));
+    if (!(v === v)) v = lo;
+    return v < lo ? lo : v > hi ? hi : v;
+  }
+  function drawBoard(section, board) {
+    var cols = whole(board.columns, 1, 64);
+    var wrap = el("div", "boardwrap");
+    var grid = el("div", "board");
+    grid.style.setProperty("--cols", String(cols));
+    board.items.forEach(function (item) {
+      var node = null;
+      if (item.kind === "label") node = el("div", "label", String(item.text || ""));
+      else if (item.kind === "widget" && item.widget) node = place(item.widget.handle, item.widget);
+      if (node === null) return;
+      var r = item.rect || {};
+      var x = whole(r.x, 0, cols - 1);
+      var y = whole(r.y, 0, 9999);
+      node.style.gridColumn = (x + 1) + " / span " + whole(r.w, 1, cols - x);
+      node.style.gridRow = (y + 1) + " / span " + whole(r.h, 1, 9999);
+      grid.appendChild(node);
+    });
+    wrap.appendChild(grid);
+    section.appendChild(wrap);
+  }
+
   function render() {
     var panels = snapshot.panels;
     var next = shape(panels);
     if (next === signature) {
       panels.forEach(function (p) {
-        p.rows.forEach(function (r) {
-          if (r.kind === "widgets") r.widgets.forEach(function (w) {
-            if (views[w.handle]) { views[w.handle].widget = w; views[w.handle].update(); }
-          });
+        widgetsOf(p).forEach(function (w) {
+          if (views[w.handle]) { views[w.handle].widget = w; views[w.handle].update(); }
         });
       });
       return;
@@ -571,32 +760,92 @@ const CLIENT = String.raw`
     signature = next;
     views = {};
     panelsEl.textContent = "";
+    var list = [];
     if (panels.length === 0) {
-      panelsEl.appendChild(el("p", "empty", "Nothing is published to this phone yet."));
-      return;
+      panelsEl.appendChild(el("p", "empty", "Nothing is published to this phone yet. The Camera tab works without it."));
+      list.push({ key: TAB_NONE, label: "Controls" });
     }
+    var seen = {};
     panels.forEach(function (p) {
+      var title = String(p.title || "") || "Panel";
+      // Two Panels may share a title: the second is its own tab all the same.
+      var key = "panel:" + title;
+      seen[key] = (seen[key] || 0) + 1;
+      if (seen[key] > 1) key += "#" + seen[key];
       var section = el("section", "panel");
-      section.appendChild(el("h1", "", p.title));
-      p.rows.forEach(function (r) {
-        if (r.kind === "heading") section.appendChild(el("h2", "", r.text));
-        else if (r.kind === "text") section.appendChild(el("p", "", r.text));
-        else if (r.kind === "widgets") {
-          var row = el("div", "row");
-          r.widgets.forEach(function (w) {
-            var build = BUILDERS[w.kind];
-            if (!build) return;
-            var view = build(w);
-            views[w.handle] = view;
-            view.update();
-            row.appendChild(view.el);
-          });
-          section.appendChild(row);
-        }
-      });
+      section.setAttribute("role", "tabpanel");
+      section.setAttribute("aria-label", title);
+      section.setAttribute("data-tab", key);
+      var board = boardOf(p);
+      if (board) drawBoard(section, board);
+      else drawRows(section, p.rows || []);
       panelsEl.appendChild(section);
+      list.push({ key: key, label: title });
     });
+    list.push({ key: TAB_CAMERA, label: "Camera" });
+    buildTabs(list);
   }
+
+  /* ------------------------------------------------------------------- tabs (T1517b) */
+
+  /*
+   * One tab per Panel, then Camera. The tab the owner last chose is kept on the phone; a
+   * Panel that is no longer published shows the first tab instead (without forgetting the
+   * choice, so the Panel's tab comes back if the Panel does). Switching only shows and
+   * hides: a running camera keeps sending, a held control keeps its gesture.
+   */
+  var TAB_CAMERA = "camera";
+  var TAB_NONE = "panels";
+  var tabsEl = document.getElementById("tabs");
+  var tabs = [];
+  var chosen = readTab();
+
+  function readTab() {
+    try { return localStorage.getItem(CONFIG.tabKey) || ""; } catch (x) { return ""; }
+  }
+  function keepTab(key) {
+    try { localStorage.setItem(CONFIG.tabKey, key); } catch (x) { /* storage off: this visit only */ }
+  }
+  function buildTabs(list) {
+    tabs = list;
+    tabsEl.textContent = "";
+    list.forEach(function (t) {
+      var b = el("button", "");
+      b.type = "button";
+      b.setAttribute("role", "tab");
+      b.setAttribute("data-tab", t.key);
+      b.setAttribute("aria-label", t.label);
+      b.appendChild(el("span", "tabname", t.label));
+      if (t.key === TAB_CAMERA) {
+        var dot = el("span", "dot");
+        dot.hidden = true;
+        b.appendChild(dot);
+      }
+      tabsEl.appendChild(b);
+    });
+    showTab();
+    camRender();
+  }
+  function showTab() {
+    var shown = tabs.length > 0 ? tabs[0].key : TAB_CAMERA;
+    for (var i = 0; i < tabs.length; i++) if (tabs[i].key === chosen) shown = chosen;
+    var buttons = tabsEl.querySelectorAll("button[data-tab]");
+    for (var j = 0; j < buttons.length; j++) {
+      var on = buttons[j].getAttribute("data-tab") === shown;
+      buttons[j].setAttribute("aria-selected", on ? "true" : "false");
+    }
+    panelsEl.hidden = shown === TAB_CAMERA;
+    camEl.hidden = shown !== TAB_CAMERA;
+    var sections = panelsEl.querySelectorAll("section[data-tab]");
+    for (var k = 0; k < sections.length; k++) sections[k].hidden = sections[k].getAttribute("data-tab") !== shown;
+  }
+  tabsEl.addEventListener("click", function (event) {
+    var b = event.target && event.target.closest ? event.target.closest("button[data-tab]") : null;
+    if (b === null) return;
+    chosen = b.getAttribute("data-tab");
+    keepTab(chosen);
+    showTab();
+  });
 
   function onSnapshot(s) {
     if (!s || typeof s.seq !== "number" || !Array.isArray(s.panels)) return;
@@ -626,6 +875,7 @@ const CLIENT = String.raw`
   var camGo = document.getElementById("camGo");
   var camPreview = document.getElementById("camPreview");
   var camStateEl = document.getElementById("camState");
+  var camStageEl = document.getElementById("camStage");
   var SIZES = { "480": [854, 480], "720": [1280, 720], "1080": [1920, 1080] };
   // What the camera is asked for: this phone's buttons set it, and so does the desk's
   // "request" (a Webcam node's Capture parameters) — the latest from either end wins.
@@ -714,6 +964,13 @@ const CLIENT = String.raw`
       b.setAttribute("aria-pressed", on ? "true" : "false");
     }
     camStateEl.textContent = camLine();
+    camStageEl.classList.toggle("idle", camPreview.hidden);
+    // T1517b: the Camera tab says it is live from any tab.
+    var dot = tabsEl.querySelector(".dot");
+    if (dot) {
+      dot.hidden = !busy;
+      dot.classList.toggle("live", cam.pc !== null && cam.pc.connectionState === "connected");
+    }
   }
   function camSay(text) {
     cam.said = text;
@@ -939,7 +1196,8 @@ const CLIENT = String.raw`
       else camStart();
     }
   });
-  camRender();
+  // Before the first snapshot: the Panel area (saying it is connecting) and Camera.
+  buildTabs([{ key: TAB_NONE, label: "Controls" }, { key: TAB_CAMERA, label: "Camera" }]);
 
   /* ---------------------------------------------------------------------------- events */
 
@@ -987,6 +1245,7 @@ export function phonePageHtml(): string {
     expired: PHONE_EXPIRED_SENTENCE,
     signal: PHONE_SIGNAL_PATH,
     nameKey: PHONE_NAME_STORAGE_KEY,
+    tabKey: PHONE_TAB_STORAGE_KEY,
     nameMax: PHONE_NAME_MAX_CHARS,
     reasonMax: PHONE_REASON_MAX_CHARS,
   });
@@ -1006,10 +1265,13 @@ export function phonePageHtml(): string {
     "<body>",
     '<div id="status" role="status" hidden></div>',
     '<main id="panels"><p class="empty">Connecting to Loom…</p></main>',
-    // T1397b: outside `#panels`, which every snapshot redraws.
-    '<section id="camera" class="panel cam" aria-label="Send camera">',
-    "<h1>Send camera</h1>",
-    `<label class="field">Name <input id="camName" type="text" maxlength="${String(PHONE_NAME_MAX_CHARS)}" autocomplete="off" spellcheck="false"></label>`,
+    // T1397b: outside `#panels`, which every snapshot redraws. T1517b: the Camera tab.
+    '<section id="camera" role="tabpanel" aria-label="Send camera" hidden>',
+    '<div id="camStage" class="stage idle">',
+    '<video id="camPreview" muted playsinline autoplay hidden></video>',
+    '<p id="camState" class="camstate" role="status"></p>',
+    "</div>",
+    '<div class="camctl">',
     '<div class="seg" role="group" aria-label="Camera">',
     '<button type="button" class="ctl" data-facing="user">Front</button>',
     '<button type="button" class="ctl" data-facing="environment">Back</button>',
@@ -1019,10 +1281,11 @@ export function phonePageHtml(): string {
     '<button type="button" class="ctl" data-res="720">720p</button>',
     '<button type="button" class="ctl" data-res="1080">1080p</button>',
     "</div>",
+    "</div>",
     '<button id="camGo" type="button" class="ctl">Start camera</button>',
-    '<video id="camPreview" muted playsinline autoplay hidden></video>',
-    '<p id="camState" class="camstate" role="status"></p>',
+    `<label class="field">Sends as <input id="camName" type="text" maxlength="${String(PHONE_NAME_MAX_CHARS)}" autocomplete="off" spellcheck="false"></label>`,
     "</section>",
+    '<nav id="tabs" role="tablist" aria-label="Panels and camera"></nav>',
     '<div id="notice" role="alert" hidden></div>',
     `<script>\nvar CONFIG = ${config};\n${CLIENT}</script>`,
     "</body>",

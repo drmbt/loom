@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PHONE_EXPIRED_SENTENCE, PHONE_NAME_STORAGE_KEY, phonePageHtml } from "./phone-page.ts";
+import { PHONE_EXPIRED_SENTENCE, PHONE_NAME_STORAGE_KEY, PHONE_TAB_STORAGE_KEY, phonePageHtml } from "./phone-page.ts";
 import {
   PHONE_EVENTS_PATH,
   PHONE_SET_PATH,
@@ -157,7 +157,7 @@ interface CameraOptions {
   readonly userAgent?: string;
 }
 
-function openPage(options: { hello?: boolean; camera?: CameraOptions } = {}) {
+function openPage(options: { hello?: boolean; camera?: CameraOptions; storage?: Record<string, string> } = {}) {
   const frames: (() => void)[] = [];
   const posts: Post[] = [];
   const sources: FakeEventSource[] = [];
@@ -178,6 +178,7 @@ function openPage(options: { hello?: boolean; camera?: CameraOptions } = {}) {
       const globals = win as unknown as Record<string, unknown>;
       // One storage per origin across every JSDOM in this process: start each page clean.
       win.localStorage.clear();
+      for (const [key, value] of Object.entries(options.storage ?? {})) win.localStorage.setItem(key, value);
       const camera = options.camera ?? {};
       if (camera.userAgent !== undefined) {
         Object.defineProperty(win.navigator, "userAgent", { value: camera.userAgent, configurable: true });
@@ -441,7 +442,8 @@ describe("T1396b phone page — the document the helper serves", () => {
     const page = openPage();
     expect(page.doc.getElementById("panels")?.textContent).toContain("Connecting");
     page.snapshot(SNAPSHOT);
-    expect(page.doc.querySelector(".panel h1")?.textContent).toBe("Stage");
+    // T1517b: the Panel's title is its tab, not a heading over its controls.
+    expect([...page.doc.querySelectorAll("#tabs [role=tab]")].map((tab) => tab.textContent)).toEqual(["Stage", "Camera"]);
     expect(page.doc.querySelector(".panel h2")?.textContent).toBe("Look");
     expect(page.doc.querySelector(".panel p")?.textContent).toBe("Drive the bloom from the floor.");
     expect([...page.doc.querySelectorAll(".w")].map((w) => w.className)).toEqual([
@@ -860,5 +862,224 @@ describe("T1397b phone page — Send camera", () => {
       const page = openPage({ camera: { userAgent } });
       expect((page.camera("camName") as HTMLInputElement).value, userAgent).toBe(expected);
     }
+  });
+});
+
+/*
+ * T1517b — the phone page in tabs: one per Panel and a Camera tab, a bottom bar, so the
+ * camera is one tap away instead of below every Panel; a Panel with a board (T1516b) is
+ * drawn as the owner arranged it in the editor, cell for cell.
+ */
+describe("T1517b phone page — tabs, the board, the Camera tab", () => {
+  const BOARD: PhoneSnapshot = {
+    seq: 9,
+    panels: [
+      {
+        title: "Stage",
+        // A Panel with a board draws the board; these legacy rows must not appear.
+        rows: [{ kind: "heading", text: "Legacy layout" }],
+        board: {
+          columns: 8,
+          rows: 5,
+          items: [
+            { kind: "label", rect: { x: 0, y: 0, w: 8, h: 1 }, text: "Look" },
+            {
+              kind: "widget",
+              rect: { x: 0, y: 1, w: 4, h: 1 },
+              widget: { kind: "slider", handle: "h-bloom", caption: "Bloom", value: 0.25, min: 0, max: 1, step: 0 },
+            },
+            { kind: "widget", rect: { x: 4, y: 1, w: 2, h: 1 }, widget: { kind: "toggle", handle: "h-strobe", caption: "Strobe", on: false } },
+            { kind: "widget", rect: { x: 6, y: 1, w: 2, h: 1 }, widget: { kind: "button", handle: "h-flash", caption: "Flash", held: false } },
+            {
+              kind: "widget",
+              rect: { x: 5, y: 2, w: 3, h: 3 },
+              widget: { kind: "xyPad", handle: "h-center", caption: "Center", x: 0, y: 0, min: -1, max: 1 },
+            },
+          ],
+        },
+      },
+      {
+        title: "Lights",
+        rows: [
+          { kind: "heading", text: "House" },
+          { kind: "widgets", widgets: [{ kind: "slider", handle: "h-dim", caption: "Dim", value: 0.5, min: 0, max: 1, step: 0 }] },
+        ],
+      },
+    ],
+  };
+  type Page = ReturnType<typeof openPage>;
+  const tabLabels = (page: Page): string[] => [...page.doc.querySelectorAll("#tabs [role=tab]")].map((tab) => tab.textContent ?? "");
+  const tab = (page: Page, label: string): HTMLElement => {
+    const found = [...page.doc.querySelectorAll<HTMLElement>("#tabs [role=tab]")].find((each) => each.textContent === label);
+    if (found === undefined) throw new Error(`no tab "${label}"`);
+    return found;
+  };
+  /** What is on screen: the selected tab and each content area's visibility, by name. */
+  const showing = (page: Page) => ({
+    selected: [...page.doc.querySelectorAll("#tabs [aria-selected=true]")].map((each) => each.textContent),
+    panels: [...page.doc.querySelectorAll<HTMLElement>("#panels section")]
+      .filter((section) => !section.hidden && !page.camera("panels").hidden)
+      .map((section) => section.getAttribute("aria-label")),
+    camera: !page.camera("camera").hidden,
+  });
+  const press = (page: Page, text: string): void => {
+    const button = [...page.camera("camera").querySelectorAll<HTMLButtonElement>("button")].find((each) => each.textContent === text);
+    if (button === undefined) throw new Error(`no camera button "${text}"`);
+    button.click();
+  };
+
+  it("the bottom bar has one tab per published Panel, then Camera — and Camera even before anything is published", () => {
+    const page = openPage();
+    // Before the first snapshot: the Panel area (connecting) and the camera, which works without it.
+    expect(tabLabels(page)).toEqual(["Controls", "Camera"]);
+    expect(page.doc.querySelector("#tabs")?.getAttribute("role")).toBe("tablist");
+    page.snapshot(BOARD);
+    expect(tabLabels(page)).toEqual(["Stage", "Lights", "Camera"]);
+    // Nothing published: the Panel area says so, and the Camera tab is still there.
+    page.snapshot({ seq: 10, panels: [] });
+    expect(tabLabels(page)).toEqual(["Controls", "Camera"]);
+    expect(page.camera("panels").textContent).toContain("Nothing is published");
+    tab(page, "Camera").click();
+    expect(showing(page).camera).toBe(true);
+  });
+
+  it("a tab shows its own content and nothing else", () => {
+    const page = openPage();
+    page.snapshot(BOARD);
+    expect(showing(page)).toEqual({ selected: ["Stage"], panels: ["Stage"], camera: false });
+    tab(page, "Lights").click();
+    expect(showing(page)).toEqual({ selected: ["Lights"], panels: ["Lights"], camera: false });
+    tab(page, "Camera").click();
+    expect(showing(page)).toEqual({ selected: ["Camera"], panels: [], camera: true });
+    // A republished snapshot with a new shape redraws the tabs, not the choice.
+    page.snapshot({ ...BOARD, seq: 11, panels: [...BOARD.panels, { title: "Extra", rows: [] }] });
+    expect(showing(page)).toEqual({ selected: ["Camera"], panels: [], camera: true });
+  });
+
+  it("the phone remembers the last tab chosen; a Panel no longer published falls back to the first tab", () => {
+    const first = openPage();
+    first.snapshot(BOARD);
+    tab(first, "Lights").click();
+    const kept = first.win.localStorage.getItem(PHONE_TAB_STORAGE_KEY);
+    expect(kept).not.toBeNull();
+
+    // Next visit: the same tab, as soon as the Panel it names arrives.
+    const again = openPage({ storage: { [PHONE_TAB_STORAGE_KEY]: kept! } });
+    again.snapshot(BOARD);
+    expect(showing(again)).toEqual({ selected: ["Lights"], panels: ["Lights"], camera: false });
+
+    // The camera tab is there before any snapshot is.
+    const camera = openPage({ storage: { [PHONE_TAB_STORAGE_KEY]: "camera" } });
+    expect(showing(camera)).toEqual({ selected: ["Camera"], panels: [], camera: true });
+
+    // A tab whose Panel is gone: the first tab, and the choice is not overwritten by the fallback.
+    const gone = openPage({ storage: { [PHONE_TAB_STORAGE_KEY]: "panel:Gone" } });
+    gone.snapshot(BOARD);
+    expect(showing(gone)).toEqual({ selected: ["Stage"], panels: ["Stage"], camera: false });
+    expect(gone.win.localStorage.getItem(PHONE_TAB_STORAGE_KEY)).toBe("panel:Gone");
+    // And the Lights Panel going away while it is shown does the same.
+    again.snapshot({ seq: 12, panels: [BOARD.panels[0]!] });
+    expect(showing(again)).toEqual({ selected: ["Stage"], panels: ["Stage"], camera: false });
+  });
+
+  /*
+   * The board is the owner's arrangement: each control at its rect, in cells. jsdom lays
+   * nothing out, so what is asserted is the grid placement the page asks the browser for —
+   * 1-based grid lines, spans in cells, the column count the cell width is derived from.
+   */
+  it("a Panel with a board puts every control and label at its rect, on a grid of the board's columns; its legacy rows are not drawn", () => {
+    const page = openPage();
+    page.snapshot(BOARD);
+    const stage = page.doc.querySelector<HTMLElement>('#panels section[aria-label="Stage"]')!;
+    const grid = stage.querySelector<HTMLElement>(".board")!;
+    expect(grid.style.getPropertyValue("--cols")).toBe("8");
+    const placed = [...grid.children].map((child) => {
+      const item = child as HTMLElement;
+      return [item.className, item.querySelector(".name")?.textContent ?? item.textContent, item.style.gridColumn, item.style.gridRow];
+    });
+    expect(placed).toEqual([
+      ["label", "Look", "1 / span 8", "1 / span 1"],
+      ["w slider", "Bloom", "1 / span 4", "2 / span 1"],
+      ["w toggle", "Strobe", "5 / span 2", "2 / span 1"],
+      ["w button", "Flash", "7 / span 2", "2 / span 1"],
+      ["w xyPad", "Center", "6 / span 3", "3 / span 3"],
+    ]);
+    expect(stage.textContent).not.toContain("Legacy layout");
+    // A board's controls are the same live controls as a row's: values drawn, captions inline.
+    expect(page.value("Bloom")).toBe("0.25");
+    expect(page.value("Center")).toBe("0.00, 0.00");
+  });
+
+  it("a rect past the board's edge is kept on the board, not pushed off the screen", () => {
+    const page = openPage();
+    const slider = { kind: "slider", handle: "h-x", caption: "Wide", value: 0, min: 0, max: 1, step: 0 } as const;
+    page.snapshot({
+      seq: 1,
+      panels: [{ title: "P", rows: [], board: { columns: 4, rows: 1, items: [{ kind: "widget", rect: { x: 6, y: 0, w: 9, h: 0 }, widget: slider }] } }],
+    });
+    const item = page.widget("Wide");
+    expect([item.style.gridColumn, item.style.gridRow]).toEqual(["4 / span 1", "1 / span 1"]);
+  });
+
+  it("a Panel without a board still draws its rows", () => {
+    const page = openPage();
+    page.snapshot(BOARD);
+    const lights = page.doc.querySelector<HTMLElement>('#panels section[aria-label="Lights"]')!;
+    expect(lights.querySelector(".board")).toBeNull();
+    expect(lights.querySelector("h2")?.textContent).toBe("House");
+    expect(lights.querySelector(".row .name")?.textContent).toBe("Dim");
+    expect(page.value("Dim")).toBe("0.50");
+  });
+
+  it("a slider on a board keeps the write rules: at most one live POST per frame, one in flight, the commit last", async () => {
+    const page = openPage();
+    page.snapshot(BOARD);
+    const bloom = track(page, "Bloom");
+    page.pointer("pointerdown", bloom, 50);
+    page.pointer("pointermove", bloom, 80);
+    expect(page.posts).toHaveLength(0);
+    page.frame();
+    page.pointer("pointermove", bloom, 100);
+    page.frame();
+    page.pointer("pointermove", bloom, 120);
+    page.frame();
+    expect(page.posts.map((p) => p.set)).toEqual([{ handle: "h-bloom", values: { value: 0.4 }, phase: "live" }]);
+    page.pointer("pointerup", bloom, 150);
+    await page.drain();
+    const sent = page.posts.map((p) => p.set);
+    expect(page.maxOpen).toBe(1);
+    expect(sent).toEqual([
+      { handle: "h-bloom", values: { value: 0.4 }, phase: "live" },
+      { handle: "h-bloom", values: { value: 0.6 }, phase: "live" },
+      { handle: "h-bloom", values: { value: 0.75 }, phase: "commit" },
+    ]);
+  });
+
+  it("switching to a Panel while the camera sends keeps it sending — no bye, no closed connection, no stopped track — and the Camera tab says it is live", async () => {
+    const page = openPage();
+    page.snapshot(BOARD);
+    tab(page, "Camera").click();
+    press(page, "Start camera");
+    await page.flush();
+    await page.drain();
+    const peer = page.peers[0]!;
+    peer.state("connected");
+    const dot = (): HTMLElement => page.doc.querySelector<HTMLElement>("#tabs .dot")!;
+    expect([dot().hidden, dot().classList.contains("live")]).toEqual([false, true]);
+
+    tab(page, "Stage").click();
+    // A snapshot of a new shape redraws every tab while the camera runs.
+    page.snapshot({ ...BOARD, seq: 13, panels: [...BOARD.panels, { title: "Extra", rows: [] }] });
+    track(page, "Strobe").click();
+    await page.drain();
+    expect(showing(page)).toEqual({ selected: ["Stage"], panels: ["Stage"], camera: false });
+    expect(page.signals().map((each) => (each.body as { kind: string }).kind)).toEqual(["offer"]);
+    expect(peer.closed).toBe(false);
+    expect(page.opened[0]?.stream.tracks[0]?.stopped).toBe(false);
+    expect([dot().hidden, dot().classList.contains("live")]).toEqual([false, true]);
+
+    tab(page, "Camera").click();
+    expect((page.camera("camPreview") as HTMLVideoElement).hidden).toBe(false);
+    expect(page.camera("camGo").textContent).toBe("Stop camera");
   });
 });
