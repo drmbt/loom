@@ -86,6 +86,34 @@ export type PhoneRow =
 export interface PhonePanel {
   readonly title: string;
   readonly rows: readonly PhoneRow[];
+  /**
+   * T1516b: the Panel's free board — every control placed and sized on a grid by the owner.
+   * When present the phone draws THIS, not `rows` (which stays for a Panel laid out by the
+   * legacy text override). Same grid as the editor, so the phone shows the arrangement the
+   * owner made; the phone scales one column to `width / columns`.
+   */
+  readonly board?: PhoneBoard;
+}
+
+/** A rectangle on a Panel board, in whole grid cells; (0, 0) is the top-left cell. */
+export interface BoardRect {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+/** One thing on a board: a control, or a free text label the owner placed (no node). */
+export type PhoneBoardItem =
+  | { readonly kind: "widget"; readonly rect: BoardRect; readonly widget: PhoneWidget }
+  | { readonly kind: "label"; readonly rect: BoardRect; readonly text: string };
+
+export interface PhoneBoard {
+  /** Grid width in cells. Cells are square. */
+  readonly columns: number;
+  /** Grid height in cells: the bottom edge of the lowest item. */
+  readonly rows: number;
+  readonly items: readonly PhoneBoardItem[];
 }
 
 /** Everything a phone can see. Replaced whole on every change; there is no diff protocol. */
