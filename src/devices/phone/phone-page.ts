@@ -249,6 +249,13 @@ button.ctl.on .state { color: var(--text); }
   pointer-events: none;
 }
 .board .w.xyPad > .cap { top: 6px; bottom: auto; }
+/* The slider's handle passes under its caption and value: each sits on a chip of the
+   page's ground, so the line never cuts through the text. */
+.board .w.slider > .cap .name, .board .w.slider > .cap .val {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background-color: var(--bg-void);
+}
 .board .w > button.ctl { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2px 6px; overflow: hidden; font-size: 14px; }
 .board .w > button.ctl .name { max-width: 100%; }
 .board .w > button.ctl .state { font-size: 11px; }
@@ -834,8 +841,14 @@ const CLIENT = String.raw`
       var on = buttons[j].getAttribute("data-tab") === shown;
       buttons[j].setAttribute("aria-selected", on ? "true" : "false");
     }
+    var reveal = camEl.hidden && shown === TAB_CAMERA;
     panelsEl.hidden = shown === TAB_CAMERA;
     camEl.hidden = shown !== TAB_CAMERA;
+    // iOS may pause a preview that was out of view: the Camera tab coming back resumes it.
+    if (reveal && cam.pc !== null && camPreview.srcObject) {
+      var playing = camPreview.play ? camPreview.play() : null;
+      if (playing && typeof playing.catch === "function") playing.catch(function () { /* the next tap will do */ });
+    }
     var sections = panelsEl.querySelectorAll("section[data-tab]");
     for (var k = 0; k < sections.length; k++) sections[k].hidden = sections[k].getAttribute("data-tab") !== shown;
   }

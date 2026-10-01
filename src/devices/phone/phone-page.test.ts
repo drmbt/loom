@@ -166,6 +166,7 @@ function openPage(options: { hello?: boolean; camera?: CameraOptions; storage?: 
   const opened: Array<{ constraints: unknown; stream: FakeStream }> = [];
   let open = 0;
   let maxOpen = 0;
+  let plays = 0;
   const virtualConsole = new VirtualConsole();
   for (const level of ["jsdomError", "error", "warn", "info", "log", "debug"]) {
     virtualConsole.on(level, (...args) => noise.push([level, ...args.map(String)]));
@@ -212,6 +213,11 @@ function openPage(options: { hello?: boolean; camera?: CameraOptions; storage?: 
         }
       };
       globals["requestAnimationFrame"] = (callback: () => void) => frames.push(callback);
+      // jsdom has no media playback (it logs "not implemented"): count the preview's play() calls.
+      (globals["HTMLMediaElement"] as typeof HTMLMediaElement).prototype.play = () => {
+        plays += 1;
+        return Promise.resolve();
+      };
       globals["fetch"] = (url: string, init: { method?: string; body?: string }) => {
         if (init?.method !== "POST" || !url.startsWith(PHONE_SET_PATH)) otherRequests.push(url);
         open += 1;
@@ -272,6 +278,10 @@ function openPage(options: { hello?: boolean; camera?: CameraOptions; storage?: 
     },
     get maxOpen() {
       return maxOpen;
+    },
+    /** T1517b: how often the camera preview was asked to play. */
+    get plays() {
+      return plays;
     },
     emit(event: PhoneEvent) {
       latest().onmessage?.({ data: JSON.stringify(event) });
@@ -1081,5 +1091,49 @@ describe("T1517b phone page — tabs, the board, the Camera tab", () => {
     tab(page, "Camera").click();
     expect((page.camera("camPreview") as HTMLVideoElement).hidden).toBe(false);
     expect(page.camera("camGo").textContent).toBe("Stop camera");
+  });
+
+  /*
+   * iOS may pause a <video> that was out of view and not resume it on its own: the camera
+   * still sends, but the phone's own preview freezes. Coming back to the Camera tab while
+   * sending asks the preview to play — once per return, not on every redraw.
+   */
+  it("coming back to the Camera tab while sending resumes the preview — once, and not when the camera is off", async () => {
+    const page = openPage();
+    page.snapshot(BOARD);
+    tab(page, "Camera").click();
+    tab(page, "Stage").click();
+    tab(page, "Camera").click();
+    expect(page.plays).toBe(0); // nothing to resume: the camera is off
+
+    press(page, "Start camera");
+    await page.flush();
+    await page.drain();
+    tab(page, "Stage").click();
+    tab(page, "Camera").click();
+    expect(page.plays).toBe(1);
+    // Already showing: a tap on its own tab, or a redraw of the tabs, is not a return.
+    tab(page, "Camera").click();
+    page.snapshot({ ...BOARD, seq: 14, panels: [...BOARD.panels, { title: "Extra", rows: [] }] });
+    expect(page.plays).toBe(1);
+  });
+
+  /*
+   * A board slider draws its caption and value inside the bar, and the handle line runs
+   * under them: each sits on a chip of the page's ground colour, on a layer above the
+   * track, so the line never cuts through the digits. jsdom paints nothing, so what is
+   * asserted is the style the browser is given for the text.
+   */
+  it("a board slider's caption and value sit on a ground-coloured chip, a layer above the handle", () => {
+    const page = openPage();
+    page.snapshot(BOARD);
+    const slider = page.widget("Bloom");
+    for (const part of [".val", ".name"]) {
+      const style = page.win.getComputedStyle(slider.querySelector(part)!);
+      expect(style.backgroundColor, part).toContain("var(--bg-void)");
+      expect(style.paddingLeft, part).toBe("6px");
+    }
+    expect(page.win.getComputedStyle(slider.querySelector(".cap")!).zIndex).toBe("1");
+    expect(page.win.getComputedStyle(slider.querySelector(".track")!).zIndex).not.toBe("1");
   });
 });
