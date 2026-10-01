@@ -163,6 +163,73 @@
   cursor: not-allowed;
   opacity: 0.6;
 }
+/*
+ * T1516b — a widget on a board FILLS its rect, whatever the cell size: the tab's fixed
+ * cells or the Panel node's scaled body. The font comes from the board, not from here.
+ * A container, so a toggle too narrow for its switch drops the pill and keeps the words.
+ */
+.board {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  gap: 0;
+  container-type: inline-size;
+}
+.board .track,
+.board .pad,
+.board .toggle,
+.board .button {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+.board .pad {
+  aspect-ratio: auto;
+  overflow: hidden;
+}
+.board .toggle,
+.board .button {
+  padding: 0 var(--space-2);
+  gap: var(--space-2);
+}
+/* Caption and value laid over a board slider's bar, or the top edge of a board pad. */
+.overlay {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  pointer-events: none;
+}
+.pad .overlay {
+  height: auto;
+  padding-top: var(--space-1);
+}
+/* Under the words, the fill steps back so the caption reads over it. */
+.board .fill {
+  opacity: 0.5;
+}
+.overlay .head {
+  flex: 1 1 auto;
+}
+.overlay .caption {
+  color: var(--text);
+}
+/* A small board cell cuts the value short rather than letting it run out of the control. */
+.overlay .readout {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container (max-width: 64px) {
+  .board .switch {
+    display: none;
+  }
+}
 /* T1512b — a widget's one-press "add to the Panel", under its control on the canvas. */
 .addToPanel {
   justify-self: start;

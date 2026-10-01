@@ -68,12 +68,6 @@
   color: var(--text);
   background: var(--bg-hover);
 }
-.order {
-  display: inline-flex;
-  flex: 0 0 auto;
-  gap: var(--space-1);
-  margin-left: auto;
-}
 .iconButton {
   display: inline-flex;
   align-items: center;
@@ -90,6 +84,11 @@
 .iconButton:hover {
   color: var(--text);
   background: var(--bg-hover);
+}
+/* T1516b — the pencil while edit mode is on. */
+.active {
+  color: var(--signal);
+  border-color: var(--signal);
 }
 .icon {
   width: 12px;

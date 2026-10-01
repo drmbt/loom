@@ -4,7 +4,7 @@ import type { BackendCapabilities } from "../domain/types/backend.ts";
 import { compileGraph } from "../compiler/index.ts";
 import { createNodeRegistry } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
-import { CONTROL_WIDGET_TYPES, PANEL_INPUT, controlChannel, panelLayout, panelMembers } from "../nodes/definitions/controls.ts";
+import { CONTROL_WIDGET_TYPES, PANEL_INPUT, boardRectsOverlap, controlChannel, panelBoard, panelLayout, panelMembers, parsePanelBoard } from "../nodes/definitions/controls.ts";
 import { incomingEdgesInOrder } from "../domain/graph/edge-order.ts";
 import { ANNOTATE_TYPE } from "../nodes/definitions/annotate.ts";
 import { DEVICE_HELPER_PHONE_COMMAND } from "../devices/helper.ts";
@@ -246,6 +246,26 @@ describe("E81 Phone Desk — the Panel and the notes", () => {
     expect(shown).toEqual(wired);
     expect(shown).toEqual(["heat", "invert", "flash", "warp"]);
     expect([...shown].sort()).toEqual(widgets.map((node) => node.id).sort());
+  });
+
+  /**
+   * T1516b — the Panel is ARRANGED, not flowed: every widget sits at a rect its stored board
+   * names (a deliberate layout a newcomer can read the idea off), on one shared grid, with no
+   * two items on the same cell, and the board fits the eight columns it declares.
+   */
+  it("has a stored board placing every widget deliberately, with no overlaps", () => {
+    const graph = phoneDeskDocument.graph;
+    const panel = nodes.find((node) => node.type === "panel")!;
+    const stored = parsePanelBoard(panel.parameters["board"]);
+    const storedMembers = stored.items.flatMap((item) => ("member" in item ? [item.member] : []));
+    expect([...storedMembers].sort()).toEqual(panelMembers(graph, panel).map((node) => node.label).sort());
+    const board = panelBoard(graph, panel)!;
+    expect(board.columns).toBe(8);
+    expect(board.items.some((item) => item.kind === "label")).toBe(true);
+    for (const [index, item] of board.items.entries()) {
+      expect(item.rect.x + item.rect.w).toBeLessThanOrEqual(board.columns);
+      for (const other of board.items.slice(index + 1)) expect(boardRectsOverlap(item.rect, other.rect), `${item.key} on ${other.key}`).toBe(false);
+    }
   });
 
   it("tells the reader the helper command the product builds", () => {

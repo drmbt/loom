@@ -4,7 +4,7 @@ import { incomingEdgesInOrder } from "./edge-order.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import { previewablePort } from "./previewable.ts";
 import { publishesValueChannels } from "@domain/types/node-definition.ts";
-import { CONTROL_WIDGET_TYPES, panelLayout, type PanelSection } from "@nodes/definitions/controls.ts";
+import { CONTROL_WIDGET_TYPES, panelBoard, panelLayout, type PanelSection } from "@nodes/definitions/controls.ts";
 
 /**
  * WHAT A NODE ACTUALLY OCCUPIES, IN GRAPH-SPACE PIXELS (T460, §V389).
@@ -216,9 +216,20 @@ function panelRowHeight(row: PanelSection): number {
 }
 
 /**
+ * T1516b — a board Panel's body: the board scaled to the `.controls` content width with
+ * square cells (`panel-board.module.css` `.canvas`, `aspect-ratio: columns / rows`), so its
+ * height is that width × rows / columns — the canvas cell is `CONTROLS_CONTENT_WIDTH /
+ * columns` and the board is `rows` of them. Fractional, like the text rows above.
+ */
+function panelBoardHeight(rows: number, columns: number): number {
+  return (CONTROLS_CONTENT_WIDTH * rows) / columns;
+}
+
+/**
  * The `.controls` region's height for this node, or 0 when it draws none — which is every
- * node that is neither a widget nor a Panel. A Panel's body is its title and its rows as
- * `panelLayout` derives them, the SAME derivation the body renders from, so a widget wired
+ * node that is neither a widget nor a Panel. A Panel's body is its title and its board as
+ * `panelBoard` derives it (T1516b) — or, laid out by the legacy override text, its rows as
+ * `panelLayout` derives them — the SAME derivation the body renders from, so a widget wired
  * into a Panel makes the Panel taller here exactly as it does on the canvas.
  */
 export function nodeControlsHeight(node: GraphNode, graph?: Pick<GraphDocument, "nodes" | "edges">): number {
@@ -226,8 +237,14 @@ export function nodeControlsHeight(node: GraphNode, graph?: Pick<GraphDocument, 
   if (CONTROL_WIDGET_TYPES.has(node.type)) {
     content = widgetBodyHeight(node.type);
   } else if (node.type === "panel") {
-    const rows = graph === undefined ? [] : panelLayout(graph, node).rows;
-    const body = rows.length === 0 ? [PANEL_HINT_HEIGHT] : rows.map(panelRowHeight);
+    const board = graph === undefined ? null : panelBoard(graph, node);
+    const rows = graph === undefined || board !== null ? [] : panelLayout(graph, node).rows;
+    const body =
+      board !== null && board.items.length > 0
+        ? [panelBoardHeight(board.rows, board.columns)]
+        : rows.length === 0
+          ? [PANEL_HINT_HEIGHT]
+          : rows.map(panelRowHeight);
     content = META_LINE + body.reduce((sum, height) => sum + PANEL_BODY_GAP + height, 0);
   } else {
     return 0;

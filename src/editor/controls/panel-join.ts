@@ -1,16 +1,17 @@
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
-import type { EdgeId, NodeId } from "@domain/types/ids.ts";
+import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { incomingEdgesInOrder } from "@domain/graph/edge-order.ts";
 import { CONTROL_WIDGET_TYPES, PANEL_INPUT } from "@nodes/definitions/controls.ts";
 
 /**
- * T1512b — HOW A WIDGET JOINS A PANEL, AND MOVES ON IT, as patch operations.
+ * T1512b — HOW A WIDGET JOINS A PANEL, as patch operations.
  *
  * Membership is wiring (`panelLayout`, `controls.ts`), so every gesture that changes it is
- * an edge edit through the bus: dropping a widget node on a Panel, the widget's own "add
- * to panel" button, and the Controls tab's move buttons all come here, and the answer is
- * one patch — undoable as one step — or nothing at all.
+ * an edge edit through the bus: dropping a widget node on a Panel and the widget's own "add
+ * to panel" button both come here, and the answer is one patch — undoable as one step — or
+ * nothing at all. Where a member SITS is the Panel's board (T1516b, `panel-board-edit.ts`),
+ * which replaced the Controls tab's move-earlier/later buttons.
  */
 
 type Graph = Pick<GraphDocument, "nodes" | "edges">;
@@ -69,26 +70,4 @@ export function soloPanelFor(graph: Graph, widgetId: NodeId): NodeId | null {
   }
   if (only === null) return null;
   return joinPanelOperations(graph, widgetId, only.id).length === 0 ? null : only.id;
-}
-
-/**
- * The widget moved one place earlier (-1) or later (+1) on a wired Panel: the COMPLETE new
- * edge order (`reorderEdges`, §V131), or nothing at an end. A widget wired twice moves by
- * its first wire, which is the one the Panel shows it at.
- */
-export function movePanelMemberOperations(graph: Graph, panelId: NodeId, widgetId: NodeId, delta: -1 | 1): GraphPatchOperation[] {
-  const edges = incomingEdgesInOrder(graph, panelId, PANEL_INPUT);
-  const shown = edges.filter(
-    (edge, index) =>
-      CONTROL_WIDGET_TYPES.has(graph.nodes[edge.source.nodeId]?.type ?? "") &&
-      edges.findIndex((other) => other.source.nodeId === edge.source.nodeId) === index,
-  );
-  const at = shown.findIndex((edge) => edge.source.nodeId === widgetId);
-  const neighbour = shown[at + delta];
-  if (at < 0 || neighbour === undefined) return [];
-  const order: EdgeId[] = edges.map((edge) => edge.id);
-  const from = order.indexOf(shown[at]!.id);
-  const to = order.indexOf(neighbour.id);
-  [order[from], order[to]] = [order[to]!, order[from]!];
-  return [{ op: "reorderEdges", nodeId: panelId, portId: PANEL_INPUT, edgeIds: order }];
 }

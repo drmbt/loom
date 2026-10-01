@@ -1,0 +1,164 @@
+/* T1516b — a Panel board: the tab's fixed cells, the canvas body's scaled ones, and edit mode. Tokens only. */
+
+/* The Controls tab: fixed cells (columns and gap from `panel-board.tsx`), never stretched to the pane. */
+.tab {
+  display: grid;
+  justify-content: start;
+  align-content: start;
+  font-size: var(--fs-ui);
+}
+/*
+ * The Panel node's body: the same grid scaled to the node's width, square cells — the
+ * aspect ratio is columns / rows (`node-box.ts` models exactly this). Hidden overflow lets
+ * the ratio, not the content, decide the height.
+ */
+.canvas {
+  display: grid;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  font-size: var(--fs-micro);
+}
+.item {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+/* On the canvas the cells have no gap; a hairline of padding keeps neighbours apart. */
+.canvas .item {
+  padding: 1px;
+}
+.label {
+  align-self: end;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--weight-header);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ---- edit mode ---------------------------------------------------------------- */
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-meta);
+  color: var(--text-dim);
+}
+.number {
+  width: calc(var(--space-6) * 3);
+}
+.text {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.tool {
+  padding: var(--space-1) var(--space-3);
+  font: inherit;
+  font-size: var(--fs-meta);
+  color: var(--text);
+  background: var(--bg-raise);
+  border: var(--border-hairline);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.tool:hover {
+  background: var(--bg-hover);
+}
+.workspace {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-5);
+}
+/* An empty cell, drawn only while editing: where a control can go. */
+.slot {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+}
+.editable {
+  outline: var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+}
+.selected {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+}
+.inert {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+/* The whole item is the move handle; the corner is the resize handle on top of it. */
+.mover {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  touch-action: none;
+}
+.mover:active {
+  cursor: grabbing;
+}
+.handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--space-6);
+  height: var(--space-6);
+  background: linear-gradient(135deg, transparent 50%, var(--signal) 50%);
+  border-bottom-right-radius: var(--radius-sm);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+/* Where a drag would land: amber when it fits, red when the no-overlap rule refuses it. */
+.ghost {
+  z-index: 1;
+  border: var(--focus-ring-width) dashed var(--signal);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+}
+.blocked {
+  border-color: var(--error);
+}
+.inspect {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: calc(var(--space-48) * 4);
+  flex: 0 0 auto;
+  padding: var(--space-4);
+  background: var(--bg-raise);
+  border: var(--border-hairline);
+  border-radius: var(--radius);
+}
+.inspectTitle {
+  margin: 0;
+  font-size: var(--fs-ui);
+}
+.inspectMeta {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.hint {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-dim);
+}

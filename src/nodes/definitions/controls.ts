@@ -178,7 +178,7 @@ export const controlPanelNode: NodeDefinition = {
   title: "Panel",
   category: "value",
   description:
-    "A performance surface: wire Slider, Toggle, Button and XY Pad nodes into Controls (or drop one on the Panel) and they show on the Panel's body, in the Controls tab and, with Phone on, on a phone — in wiring order.",
+    "A performance surface: wire Slider, Toggle, Button and XY Pad nodes into Controls (or drop one on the Panel) and they show on the Panel's body, in the Controls tab and, with Phone on, on a phone — on a board you arrange with the pencil in the Controls tab.",
   tags: ["control", "panel", "ui", "surface", "perform", "live", "dashboard"],
   inputs: [{ id: PANEL_INPUT, label: "Controls", type: VALUE_PORT, optional: true, variadic: true }],
   outputs: [],
@@ -202,6 +202,18 @@ export const controlPanelNode: NodeDefinition = {
       default: false,
       description:
         "Publishes this panel to the phone door: a phone paired from the Panel's phone icon sees these controls and can move them, and nothing else in the project.",
+    },
+    // T1516b: the free board — where each control sits, in grid cells. Written by the
+    // Controls tab's edit mode, one patch per gesture; JSON like the preset bank, and last
+    // in the manifest because it is code (T1052).
+    board: {
+      type: "code",
+      language: "json",
+      label: "Board",
+      group: "Advanced",
+      default: "",
+      description:
+        "Where each control sits on the Panel, in square grid cells — written by the pencil in the Controls tab. Empty: every control flows into the first free spot.",
     },
   },
   compile: noPasses,
@@ -312,4 +324,199 @@ export function panelMembers(graph: Pick<GraphDocument, "nodes" | "edges">, pane
   return panelLayout(graph, panel).rows.flatMap((row) =>
     row.kind === "widgets" ? row.cells.flatMap((cell) => (cell.kind === "widget" ? [cell.node] : [])) : [],
   );
+}
+
+/* ------------------------------------------------------------------ the board */
+
+/**
+ * T1516b — A RECTANGLE ON A PANEL BOARD, in whole square cells; (0, 0) is the top-left cell.
+ * The same shape as the phone contract's `BoardRect` (`phone-protocol.ts`), declared here
+ * because a node definition imports nothing from the device layer.
+ */
+export interface BoardRect {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+/**
+ * One stored board item: a widget the Panel shows, by NAME (`label ?? id`, the way the
+ * layout override names them), or a free text label. Names rather than node ids because a
+ * name is this app's reference currency (§V129): the rename clause (`names.ts`, kind 6)
+ * carries it through a rename AND through a paste, which mints new ids but keeps — or
+ * renumbers through that same clause — the names (§V320).
+ */
+export type StoredBoardItem =
+  | { readonly member: string; readonly rect: BoardRect }
+  | { readonly label: string; readonly rect: BoardRect };
+
+/** What the Panel's `board` parameter holds, parsed. */
+export interface StoredBoard {
+  readonly columns: number;
+  readonly items: readonly StoredBoardItem[];
+}
+
+/** A fresh board is eight cells wide (owner, T1516b). */
+export const BOARD_DEFAULT_COLUMNS = 8;
+/** The widest board the column field accepts. */
+export const BOARD_MAX_COLUMNS = 24;
+
+/** A size in whole cells. */
+export interface CellSize {
+  readonly w: number;
+  readonly h: number;
+}
+
+/** The size a control takes when it first lands on a board (owner, T1516b). */
+const DEFAULT_SIZE: Readonly<Record<string, CellSize>> = {
+  slider: { w: 4, h: 1 },
+  toggle: { w: 2, h: 1 },
+  button: { w: 2, h: 1 },
+  xyPad: { w: 3, h: 3 },
+};
+
+/** The default size of an item of this widget type, or of a label (`null`). */
+export function boardDefaultSize(type: string | null): CellSize {
+  return (type === null ? undefined : DEFAULT_SIZE[type]) ?? { w: 2, h: 1 };
+}
+
+/** The smallest an item may be resized to: a pad needs 2×2 to be draggable at all. */
+export function boardMinimumSize(type: string | null): CellSize {
+  return type === "xyPad" ? { w: 2, h: 2 } : { w: 1, h: 1 };
+}
+
+const isInt = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value);
+
+function parseRect(value: unknown): BoardRect | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { x, y, w, h } = value as Record<string, unknown>;
+  if (!isInt(x) || !isInt(y) || !isInt(w) || !isInt(h)) return null;
+  return { x, y, w, h };
+}
+
+const EMPTY_BOARD: StoredBoard = { columns: BOARD_DEFAULT_COLUMNS, items: [] };
+
+/**
+ * The stored board, read forgivingly: empty text, malformed JSON or a driven slot is an
+ * empty eight-column board (every member then flows), and an item that is not a member or
+ * a label with a whole-cell rect is skipped rather than failing the Panel.
+ */
+export function parsePanelBoard(stored: StoredParameter | undefined): StoredBoard {
+  const text = plainValue(stored);
+  if (typeof text !== "string" || text.trim() === "") return EMPTY_BOARD;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return EMPTY_BOARD;
+  }
+  if (typeof raw !== "object" || raw === null) return EMPTY_BOARD;
+  const record = raw as Record<string, unknown>;
+  const columns = isInt(record["columns"]) ? Math.min(BOARD_MAX_COLUMNS, Math.max(1, record["columns"])) : BOARD_DEFAULT_COLUMNS;
+  const items: StoredBoardItem[] = [];
+  for (const entry of Array.isArray(record["items"]) ? (record["items"] as unknown[]) : []) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const item = entry as Record<string, unknown>;
+    const rect = parseRect(item["rect"]);
+    if (rect === null) continue;
+    if (typeof item["member"] === "string") items.push({ member: item["member"], rect });
+    else if (typeof item["label"] === "string") items.push({ label: item["label"], rect });
+  }
+  return { columns, items };
+}
+
+/** The board as the parameter stores it: one item per line, so the Advanced view stays readable. */
+export function serializePanelBoard(board: StoredBoard): string {
+  const items = board.items.map((item) => `    ${JSON.stringify(item)}`);
+  return `{\n  "columns": ${String(board.columns)},\n  "items": [${items.length === 0 ? "" : `\n${items.join(",\n")}\n  `}]\n}`;
+}
+
+/** One thing on a derived board. `key` names it for an edit gesture: `member:<name>` or `label:<n>`. */
+export type PanelBoardItem =
+  | { readonly kind: "widget"; readonly key: string; readonly node: GraphNode; readonly rect: BoardRect }
+  | { readonly kind: "label"; readonly key: string; readonly text: string; readonly rect: BoardRect };
+
+export interface PanelBoard {
+  readonly columns: number;
+  /** The bottom edge of the lowest item, in cells. */
+  readonly rows: number;
+  /** Stored items in stored order, then the members that flowed, in wiring order. */
+  readonly items: readonly PanelBoardItem[];
+}
+
+/** Do two rects share a cell? Touching edges do not. */
+export const boardRectsOverlap = (a: BoardRect, b: BoardRect): boolean =>
+  a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/** A stored rect pulled inside the board's columns and up to the item's minimum size. */
+function clampRect(rect: BoardRect, columns: number, minimum: CellSize): BoardRect {
+  const w = Math.min(columns, Math.max(minimum.w, rect.w));
+  const h = Math.max(minimum.h, rect.h);
+  return { x: Math.min(columns - w, Math.max(0, rect.x)), y: Math.max(0, rect.y), w, h };
+}
+
+/**
+ * The first free spot for an item of `size`, row-major: the top row first, then the
+ * leftmost cell, where it overlaps nothing already placed. Deterministic, so one document
+ * lays out the same on every surface and every load.
+ */
+export function firstFreeRect(placed: readonly BoardRect[], columns: number, size: CellSize): BoardRect {
+  const w = Math.min(columns, size.w);
+  for (let y = 0; ; y += 1) {
+    for (let x = 0; x + w <= columns; x += 1) {
+      const rect = { x, y, w, h: size.h };
+      if (!placed.some((other) => boardRectsOverlap(rect, other))) return rect;
+    }
+  }
+}
+
+/**
+ * T1516b — WHERE EVERYTHING SITS ON A PANEL: the ONE derivation behind the Controls tab, the
+ * Panel's canvas body, the phone snapshot (`PhonePanel.board`) and the layout model
+ * (`node-box.ts`), so no two of them can place a control differently.
+ *
+ * A Panel laid out by its legacy Layout override has no board (`null`) — its rows render
+ * as they always did. Otherwise the members are `panelMembers` (the widgets wired in, in
+ * wiring order): a member the stored board names keeps its stored rect (pulled inside the
+ * columns and up to its minimum size), labels keep theirs, and every member with no stored
+ * rect flows into the first free spot at its type's default size. A stored item whose widget
+ * is no longer wired is left out here — and out of storage at the next write, because every
+ * write stores this derivation (`storedBoardOf`).
+ */
+export function panelBoard(graph: Pick<GraphDocument, "nodes" | "edges">, panel: GraphNode): PanelBoard | null {
+  if (panelLayoutOverride(panel) !== null) return null;
+  const stored = parsePanelBoard(panel.parameters["board"]);
+  const { columns } = stored;
+  const members = new Map(panelMembers(graph, panel).map((node) => [controlNameOf(node), node]));
+  const items: PanelBoardItem[] = [];
+  const placed = new Set<string>();
+  let labels = 0;
+  for (const item of stored.items) {
+    if ("label" in item) {
+      items.push({ kind: "label", key: `label:${String(labels)}`, text: item.label, rect: clampRect(item.rect, columns, boardMinimumSize(null)) });
+      labels += 1;
+      continue;
+    }
+    const node = members.get(item.member);
+    if (node === undefined || placed.has(item.member)) continue;
+    placed.add(item.member);
+    items.push({ kind: "widget", key: `member:${item.member}`, node, rect: clampRect(item.rect, columns, boardMinimumSize(node.type)) });
+  }
+  for (const [name, node] of members) {
+    if (placed.has(name)) continue;
+    const rect = firstFreeRect(items.map((item) => item.rect), columns, boardDefaultSize(node.type));
+    items.push({ kind: "widget", key: `member:${name}`, node, rect });
+  }
+  return { columns, rows: items.reduce((bottom, item) => Math.max(bottom, item.rect.y + item.rect.h), 0), items };
+}
+
+/** A derived board as storage: every item at the rect it is drawn at now. */
+export function storedBoardOf(board: PanelBoard): StoredBoard {
+  return {
+    columns: board.columns,
+    items: board.items.map((item): StoredBoardItem =>
+      item.kind === "label" ? { label: item.text, rect: item.rect } : { member: controlNameOf(item.node), rect: item.rect },
+    ),
+  };
 }

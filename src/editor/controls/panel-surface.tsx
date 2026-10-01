@@ -3,8 +3,9 @@ import { useStore } from "zustand";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { GraphStoreView } from "@domain/graph/store.ts";
 import type { NodeId } from "@domain/types/ids.ts";
-import { panelLayout, panelTitle } from "@nodes/definitions/controls.ts";
+import { panelBoard, panelLayout, panelTitle } from "@nodes/definitions/controls.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
+import { PanelBoardGrid } from "./panel-board.tsx";
 import { PANEL_EMPTY_HINT } from "./phone-door-copy.ts";
 import styles from "./panel-surface.module.css";
 
@@ -17,7 +18,10 @@ import styles from "./panel-surface.module.css";
  *
  * Every widget is the live `ControlWidget`, writing its node through the parameter editor
  * the caller hands in (one undo group per gesture, §V15). `renderMeta` lets the Controls tab
- * put its mapping and ordering tools under each widget; the canvas body has none.
+ * put what each widget drives under it; the canvas body has none.
+ *
+ * T1516b — since the board, these rows are what a Panel laid out by its legacy Layout
+ * override draws (`panelBoard` is null for it). A wired Panel draws its board.
  */
 
 export interface PanelRowsProps {
@@ -66,18 +70,29 @@ export function PanelRows({ graph, panel, write, size, renderMeta }: PanelRowsPr
 }
 
 /**
- * The Panel node's own body on the canvas: its title and its rows, live. Its own store
- * subscription, because the body shows OTHER nodes' values — a widget moved anywhere must
- * move here too, and the Panel node's own slice (§V16) never changes when it does.
+ * The Panel node's own body on the canvas: its title and its board (T1516b) — or, for a
+ * Panel laid out by the legacy override text, its rows — live. Its own store subscription,
+ * because the body shows OTHER nodes' values — a widget moved anywhere must move here too,
+ * and the Panel node's own slice (§V16) never changes when it does.
+ *
+ * The board is the tab's board scaled to the node's width (`PanelBoardGrid variant="canvas"`),
+ * from the same `panelBoard`; it is played here and arranged in the Controls tab.
  */
 export function PanelNodeBody({ store, panelId, write }: { readonly store: GraphStoreView; readonly panelId: NodeId; readonly write: ControlWrite }) {
   const graph = useStore(store, (state) => state.graph);
   const panel = graph.nodes[panelId];
   if (panel === undefined) return null;
+  const board = panelBoard(graph, panel);
   return (
     <div className={styles.body} data-panel-body={panelId}>
       <div className={styles.title}>{panelTitle(panel)}</div>
-      <PanelRows graph={graph} panel={panel} write={write} size="node" />
+      {board === null ? (
+        <PanelRows graph={graph} panel={panel} write={write} size="node" />
+      ) : board.items.length === 0 ? (
+        <p className={styles.hint} data-panel-empty>{PANEL_EMPTY_HINT}</p>
+      ) : (
+        <PanelBoardGrid board={board} write={write} variant="canvas" />
+      )}
     </div>
   );
 }

@@ -6,35 +6,39 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { isParameterSlot } from "@domain/parameters/slots.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
-import { CONTROL_WIDGET_TYPES, panelLayout, panelTitle } from "@nodes/definitions/controls.ts";
+import { CONTROL_WIDGET_TYPES, panelBoard, panelTitle } from "@nodes/definitions/controls.ts";
 import { isRemotePanel } from "@devices/phone/phone-snapshot.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
-import { movePanelMemberOperations } from "./panel-join.ts";
 import { unbindOperations } from "./parameter-controls.ts";
+import { PanelBoardEditor, PanelBoardGrid } from "./panel-board.tsx";
 import { PanelRows } from "./panel-surface.tsx";
 import { PhoneDoorButton } from "./phone-door.tsx";
-import type { PhoneDoorView } from "./phone-door-copy.ts";
+import { PANEL_EMPTY_HINT, type PhoneDoorView } from "./phone-door-copy.ts";
 import styles from "./controls-pane.module.css";
 import surface from "./panel-surface.module.css";
 
 /**
  * T1388b — THE CONTROLS PANE: a Panel node's layout as a performance surface.
  *
- * Headings, notes and rows of widgets, each one the live control of its node (drag it here
- * or on the canvas; both are the same parameters). Under every widget: what it drives — the
- * parameters whose expression reads its channel — as chips, each with a × that unbinds it.
- *
  * With no Panel in the document the pane still works: it lays out every widget there is, so
- * dropping a Slider on the canvas is already a control you can perform with.
+ * dropping a Slider on the canvas is already a control you can perform with. Under every
+ * widget there: what it drives — the parameters whose expression reads its channel — as
+ * chips, each with a × that unbinds it.
  *
- * T1512b — with a Panel, this is a BIGGER VIEW OF THE PANEL NODE: the same rows from the
- * same `panelLayout` through the same `PanelRows` the node body draws, the same phone icon
- * (`PhoneDoorButton`) in the header, and — while the Panel follows its wiring — buttons
- * that move a widget earlier or later, rewriting the edge order through the bus.
+ * T1512b — with a Panel, this is a BIGGER VIEW OF THE PANEL NODE, with the same phone icon
+ * (`PhoneDoorButton`) in the header.
  *
  * T1513b — the "map…" form is gone from the cards: mapping starts FROM THE PARAMETER
  * (§T1514b, owner ruling), and a card says only what its control drives, and lets go of it.
+ *
+ * T1516b — a wired Panel is a FREE BOARD (`panelBoard`), and this pane splits PLAYING it from
+ * ARRANGING it. Play (the default) draws the board at fixed compact cells and only operates
+ * the controls — no chips, no arrows. The pencil in the header is edit mode: controls go
+ * inert, drag to move and resize on the grid, labels, the column count, and per control what
+ * it drives (× unlink) and Remove from panel (`PanelBoardEditor`). The auto-fill grid and the
+ * ‹ › reorder of T1513b are gone for wired Panels; a Panel laid out by the legacy override
+ * text keeps its rows, with their chips.
  */
 
 export interface ControlsPaneProps {
@@ -71,11 +75,11 @@ function targetsOf(graph: GraphDocument, widget: GraphNode): Target[] {
   return found;
 }
 
-/** A small arrow, for the move-earlier / move-later buttons. */
-function Arrow({ direction }: { direction: "left" | "right" }) {
+/** The pencil: edit mode's switch. */
+function Pencil() {
   return (
     <svg className={styles.icon} viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-      <path d={direction === "left" ? "M7.5 2.5 4 6l3.5 3.5" : "M4.5 2.5 8 6 4.5 9.5"} />
+      <path d="M2 10l.6-2.4L8.2 2l1.8 1.8-5.6 5.6L2 10zM7.2 3l1.8 1.8" />
     </svg>
   );
 }
@@ -88,8 +92,9 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
   const panels = useMemo(() => Object.values(graph.nodes).filter((node) => node.type === "panel"), [graph]);
   const widgets = useMemo(() => Object.values(graph.nodes).filter((node) => CONTROL_WIDGET_TYPES.has(node.type)), [graph]);
   const [chosen, setChosen] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   const panel = panels.find((candidate) => candidate.id === chosen) ?? panels[0];
-  const wired = panel !== undefined && panelLayout(graph, panel).source === "wiring";
+  const board = panel === undefined ? null : panelBoard(graph, panel);
 
   const apply = (operations: GraphPatchOperation[], label: string): void => {
     if (operations.length === 0) return;
@@ -113,35 +118,24 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
     );
   }
 
-  const renderMeta = (widget: GraphNode) => {
+  /** What a widget drives, as chips with × — under a card, or in edit mode's side list. */
+  const renderTargets = (widget: GraphNode) => {
     const targets = targetsOf(graph, widget);
-    const movable = wired && panel !== undefined;
-    if (targets.length === 0 && !movable) return null;
     return (
-      <div className={styles.meta}>
-        <ul className={styles.chips} aria-label={`${nameOf(widget)} drives`}>
-          {targets.map((target) => (
-            <li key={`${target.nodeId}.${target.key}`} className={styles.chip} title={target.label} data-target={target.label}>
-              <span className={styles.chipLabel}>{target.label}</span>
-              <button type="button" className={styles.chipRemove} aria-label={`Unbind ${target.label}`} title={`Unbind ${target.label}`} onClick={() => unbind(target)}>
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-        {movable ? (
-          <span className={styles.order}>
-            <button type="button" className={styles.iconButton} aria-label={`Move ${nameOf(widget)} earlier`} title="Move earlier" onClick={() => apply(movePanelMemberOperations(graph, panel.id, widget.id, -1), "Reorder panel")}>
-              <Arrow direction="left" />
+      <ul className={styles.chips} aria-label={`${nameOf(widget)} drives`}>
+        {targets.map((target) => (
+          <li key={`${target.nodeId}.${target.key}`} className={styles.chip} title={target.label} data-target={target.label}>
+            <span className={styles.chipLabel}>{target.label}</span>
+            <button type="button" className={styles.chipRemove} aria-label={`Unbind ${target.label}`} title={`Unbind ${target.label}`} onClick={() => unbind(target)}>
+              ×
             </button>
-            <button type="button" className={styles.iconButton} aria-label={`Move ${nameOf(widget)} later`} title="Move later" onClick={() => apply(movePanelMemberOperations(graph, panel.id, widget.id, 1), "Reorder panel")}>
-              <Arrow direction="right" />
-            </button>
-          </span>
-        ) : null}
-      </div>
+          </li>
+        ))}
+      </ul>
     );
   };
+  const renderMeta = (widget: GraphNode) =>
+    targetsOf(graph, widget).length === 0 ? null : <div className={styles.meta}>{renderTargets(widget)}</div>;
 
   return (
     <div className={styles.pane} data-controls-pane>
@@ -152,6 +146,18 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
             {panels.map((candidate) => <option key={candidate.id} value={candidate.id}>{panelTitle(candidate)}</option>)}
           </select>
         ) : null}
+        {board === null ? null : (
+          <button
+            type="button"
+            className={`${styles.iconButton} ${editing ? styles.active : ""}`}
+            aria-label="Edit board"
+            aria-pressed={editing}
+            title={editing ? "Done arranging" : "Arrange the board"}
+            onClick={() => setEditing(!editing)}
+          >
+            <Pencil />
+          </button>
+        )}
         {phone === undefined ? null : (
           <PhoneDoorButton
             door={phone}
@@ -176,8 +182,14 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
             </div>
           ))}
         </div>
-      ) : (
+      ) : board === null ? (
         <PanelRows graph={graph} panel={panel} write={write} size="panel" renderMeta={renderMeta} />
+      ) : editing ? (
+        <PanelBoardEditor graph={graph} panelId={panel.id} board={board} write={write} apply={apply} renderTargets={renderTargets} />
+      ) : board.items.length === 0 ? (
+        <p className={surface.hint} data-panel-empty>{PANEL_EMPTY_HINT}</p>
+      ) : (
+        <PanelBoardGrid board={board} write={write} variant="tab" />
       )}
     </div>
   );

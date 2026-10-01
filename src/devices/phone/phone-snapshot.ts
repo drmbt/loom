@@ -11,12 +11,15 @@ import {
   controlSliderNode,
   controlToggleNode,
   controlXYNode,
+  panelBoard,
   panelLayout,
   panelMembers,
   panelTitle,
 } from "../../nodes/definitions/controls.ts";
 import {
   PHONE_WRITABLE_KEYS,
+  type PhoneBoard,
+  type PhoneBoardItem,
   type PhonePanel,
   type PhoneRow,
   type PhoneSet,
@@ -201,16 +204,37 @@ function phoneWidget(node: WidgetNode): PhoneWidget {
   }
 }
 
+/**
+ * T1516b — a wired Panel's board as the phone draws it: the SAME `panelBoard` the Controls
+ * tab and the canvas body draw, so the owner's arrangement is the phone's. A widget the
+ * phone may not reach (driven) leaves its rect empty rather than moving anything else up —
+ * the board is the owner's arrangement, not a flow. A Panel laid out by the legacy override
+ * has no board; the phone draws its `rows`.
+ */
+function phoneBoard(graph: GraphDocument, panel: GraphNode): PhoneBoard | undefined {
+  const board = panelBoard(graph, panel);
+  if (board === null) return undefined;
+  const items = board.items.flatMap((item): PhoneBoardItem[] => {
+    if (item.kind === "label") return [{ kind: "label", rect: item.rect, text: item.text }];
+    const node = item.node;
+    return isWidgetKind(node.type) && !isDriven(node, node.type) ? [{ kind: "widget", rect: item.rect, widget: phoneWidget(node as WidgetNode) }] : [];
+  });
+  return { columns: board.columns, rows: board.rows, items };
+}
+
 /** Everything a phone can see, from every Panel whose Phone switch is on. */
 export function buildPhoneSnapshot(graph: GraphDocument, seq: number): PhoneSnapshot {
   const panels: PhonePanel[] = remoteLayouts(graph).map(({ panel, rows }) => {
+    const board = phoneBoard(graph, panel);
     return {
       title: panelTitle(panel),
+      // Kept for a wired Panel too: a phone page from before the board still draws these.
       rows: rows.flatMap((row): PhoneRow[] => {
         if (row.kind !== "widgets") return [row];
         const widgets = row.nodes.map(phoneWidget);
         return widgets.length === 0 ? [] : [{ kind: "widgets", widgets }];
       }),
+      ...(board === undefined ? {} : { board }),
     };
   });
   return { seq, panels };

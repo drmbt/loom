@@ -19,6 +19,12 @@ import styles from "./control-widget.module.css";
  * one header row above its bar, a toggle as a switch that says On or Off, a button that
  * looks pressed while held and counts its presses, an XY pad capped in size with its value in
  * its header row.
+ *
+ * T1516b — on a Panel BOARD (`size="board"`) a widget FILLS the rect the owner gave it: a
+ * one-row slider is a bar with its caption and value inside it, a pad fills its square with
+ * its header laid over the top, a toggle or button fills its cells. The same states, drawn
+ * at whatever size the board says — the Controls tab's fixed cells or the Panel node's
+ * scaled-down body.
  */
 
 /** Writes a control's keys as ONE patch — an XY drag moves x and y in one undo group. */
@@ -31,8 +37,8 @@ export interface ControlWidgetProps {
   readonly type: string;
   readonly parameters: Readonly<Record<string, unknown>>;
   readonly write: ControlWrite;
-  /** Bigger touch targets on a Panel; compact in a node body. */
-  readonly size?: "node" | "panel";
+  /** Bigger touch targets on a Panel; compact in a node body; filling its rect on a board (T1516b). */
+  readonly size?: "node" | "panel" | "board";
 }
 
 const num = (value: unknown, fallback: number): number => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
@@ -94,7 +100,7 @@ function Head({ caption, value }: { caption: string; value: string }) {
   );
 }
 
-function Slider({ nodeId, parameters, write, caption, className }: WidgetProps) {
+function Slider({ nodeId, parameters, write, caption, className, size }: WidgetProps) {
   const min = num(parameters["min"], 0);
   const max = num(parameters["max"], 1);
   const step = num(parameters["step"], 0);
@@ -104,9 +110,12 @@ function Slider({ nodeId, parameters, write, caption, className }: WidgetProps) 
   const drag = useDrag((x, _y, phase) => {
     if (!driven) write(nodeId, { value: snap(min + x * (max - min), step) }, phase);
   });
+  const head = <Head caption={caption} value={driven ? "driven" : format(value)} />;
+  // On a board the caption and value sit INSIDE the bar, so a one-row slider is one row.
+  const board = size === "board";
   return (
     <div className={className} data-control="slider" data-control-node={nodeId}>
-      <Head caption={caption} value={driven ? "driven" : format(value)} />
+      {board ? null : head}
       <div
         {...drag}
         className={`${styles.track} ${driven ? styles.driven : ""}`}
@@ -118,6 +127,7 @@ function Slider({ nodeId, parameters, write, caption, className }: WidgetProps) 
         title={driven ? `${caption} is driven — its value comes from an expression` : caption}
       >
         <div className={styles.fill} style={{ width: `${share * 100}%` }} />
+        {board ? <div className={styles.overlay}>{head}</div> : null}
       </div>
     </div>
   );
@@ -179,7 +189,7 @@ function Button({ nodeId, parameters, write, caption, className }: WidgetProps) 
   );
 }
 
-function XYPad({ nodeId, parameters, write, caption, className }: WidgetProps) {
+function XYPad({ nodeId, parameters, write, caption, className, size }: WidgetProps) {
   const min = num(parameters["min"], 0);
   const max = num(parameters["max"], 1);
   const x = num(parameters["x"], 0.5);
@@ -189,10 +199,14 @@ function XYPad({ nodeId, parameters, write, caption, className }: WidgetProps) {
   const drag = useDrag((u, v, phase) => {
     if (!driven) write(nodeId, { x: min + u * span, y: min + v * span }, phase);
   });
+  const head = <Head caption={caption} value={driven ? "driven" : `${format(x)}, ${format(y)}`} />;
+  // On a board the pad fills its rect and the header is laid over its top edge.
+  const board = size === "board";
   return (
     <div className={className} data-control="xy" data-control-node={nodeId}>
-      <Head caption={caption} value={driven ? "driven" : `${format(x)}, ${format(y)}`} />
+      {board ? null : head}
       <div {...drag} className={`${styles.pad} ${driven ? styles.driven : ""}`} aria-label={caption} role="group">
+        {board ? <div className={styles.overlay}>{head}</div> : null}
         <div className={styles.puck} style={{ left: `${((x - min) / span) * 100}%`, bottom: `${((y - min) / span) * 100}%` }} />
       </div>
     </div>
@@ -211,6 +225,6 @@ export function ControlWidget(props: ControlWidgetProps) {
   if (Widget === undefined) return null;
   const channel = controlChannel(props.parameters);
   const caption = typeof props.parameters["caption"] === "string" && props.parameters["caption"] !== "" ? props.parameters["caption"] : channel;
-  const className = `${styles.widget} ${props.size === "panel" ? styles.panel : styles.node}`;
+  const className = `${styles.widget} ${props.size === "panel" ? styles.panel : props.size === "board" ? styles.board : styles.node}`;
   return <Widget {...props} caption={caption} className={className} />;
 }

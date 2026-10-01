@@ -185,3 +185,54 @@ describe("T1512b — the canvas body, the Controls tab and the phone agree", () 
     });
   }
 });
+
+/**
+ * T1516b — ONE BOARD, THREE PLACES: the Panel's canvas body, the Controls tab and the phone
+ * snapshot place every control and label at the same rect on the same grid, because all
+ * three read `panelBoard`. Read back from what each one actually draws or sends — the DOM's
+ * grid placement and the snapshot's `board` — for a board with stored rects, a label, and a
+ * member that flowed.
+ */
+describe("T1516b — the canvas body, the Controls tab and the phone draw the identical board", () => {
+  /** Each item as `<node id or label text>@x,y,w,h`, in drawing order. */
+  const drawn = (root: HTMLElement): string[] =>
+    [...root.querySelectorAll("[data-board-item]")].map((item) => {
+      const control = item.querySelector("[data-control-node]");
+      return `${control?.getAttribute("data-control-node") ?? item.textContent ?? ""}@${item.getAttribute("data-rect") ?? ""}`;
+    });
+
+  it("for a board with stored rects, a label and a flowed member", async () => {
+    const board = JSON.stringify({
+      columns: 6,
+      items: [
+        { label: "Look", rect: { x: 0, y: 0, w: 3, h: 1 } },
+        { member: "charlie", rect: { x: 3, y: 0, w: 3, h: 3 } },
+        { member: "alpha", rect: { x: 0, y: 1, w: 3, h: 1 } },
+      ],
+    });
+    const { runtime, ids } = await runtimeWith([
+      add("a", "slider", "alpha"),
+      add("b", "toggle", "bravo"),
+      add("c", "xyPad", "charlie"),
+      add("panel", "panel", "panel1", { remote: true, board }),
+      wire("c", "panel"),
+      wire("a", "panel"),
+      wire("b", "panel"),
+    ]);
+    const canvas = render(<OnCanvas runtime={runtime} nodeId={ids["$panel"]!} />);
+    const onCanvas = drawn(canvas.container.querySelector("[data-panel-body]") as HTMLElement);
+    const tab = render(<Tab runtime={runtime} />);
+    const inTab = drawn(tab.container.querySelector("[data-controls-pane]") as HTMLElement);
+    const phone = buildPhoneSnapshot(runtime.bus.store.getGraph(), 1).panels[0]!.board!;
+    const onPhone = phone.items.map(
+      (item) => `${item.kind === "label" ? item.text : item.widget.handle}@${[item.rect.x, item.rect.y, item.rect.w, item.rect.h].join(",")}`,
+    );
+    expect(onCanvas).toEqual([`Look@0,0,3,1`, `${ids["$c"]}@3,0,3,3`, `${ids["$a"]}@0,1,3,1`, `${ids["$b"]}@0,2,2,1`]);
+    expect(inTab).toEqual(onCanvas);
+    expect(onPhone).toEqual(onCanvas);
+    // The grid they share: six columns, three rows.
+    expect(phone).toMatchObject({ columns: 6, rows: 3 });
+    expect(canvas.container.querySelector("[data-panel-board='canvas']")?.getAttribute("data-columns")).toBe("6");
+    expect(tab.container.querySelector("[data-panel-board='tab']")?.getAttribute("data-rows")).toBe("3");
+  });
+});

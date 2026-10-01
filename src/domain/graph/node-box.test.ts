@@ -41,19 +41,19 @@ const panel = at("panel", "panel", { title: "Desk" });
 const boxOf = (graph: GraphDocument, id: string) => nodeBox(graph.nodes[id]!, registry.get(graph.nodes[id]!.type), undefined, graph);
 
 describe("T1512b — node-box models the Panel body from its members", () => {
-  it("a Panel with four wired widgets is as tall as its body draws them, not four port rows taller", () => {
+  it("a Panel laid out by its override text stacks its widgets, as the browser measured", () => {
     const empty = boxOf(graphOf([...widgets, panel], []), "panel");
-    const wired = boxOf(graphOf([...widgets, panel], ["heat", "invert", "flash", "warp"]), "panel");
     expect(empty.height).toBe(103);
-    expect(wired.height).toBe(422);
-    // Four more sockets on the variadic input are 4 × (14 + 2) = 64px; the rest is the body.
-    expect(wired.height - empty.height).toBeGreaterThan(64 + 200);
+    // The four widgets stacked in the body (T1512b's measured 422px Panel, which also had
+    // four more sockets on its variadic input: 4 × (14 + 2) = 64px fewer here, unwired).
+    const override = at("panel", "panel", { title: "Desk", layout: "heat invert flash warp" });
+    expect(boxOf(graphOf([...widgets, override], []), "panel").height).toBe(422 - 64);
   });
 
-  it("each wired widget adds its own body: the XY pad's square outweighs a slider", () => {
+  it("a wired widget makes the Panel taller: the XY pad's three rows outweigh a slider's one", () => {
     const withSlider = boxOf(graphOf([...widgets, panel], ["heat"]), "panel");
     const withPad = boxOf(graphOf([...widgets, panel], ["warp"]), "panel");
-    expect(withPad.height - withSlider.height).toBeGreaterThan(100);
+    expect(withPad.height).toBeGreaterThan(withSlider.height);
   });
 
   it("a widget that only EXISTS is not on the Panel — membership is the wire", () => {
@@ -66,5 +66,60 @@ describe("T1512b — node-box models the Panel body from its members", () => {
     // 200px below the Panel's top clears its title and port rows and lands on its body.
     const note: GraphNode = { ...at("note", "annotate"), position: { x: 0, y: 200 }, size: { width: 300, height: 100 } } as GraphNode;
     expect(boxesOverlap(boxOf(graph, "panel"), nodeBox(note, registry.get("annotate")))).toBe(true);
+  });
+});
+
+/**
+ * T1516b — A BOARD PANEL'S BODY IS ITS BOARD, SCALED TO THE NODE: the title, then `rows`
+ * square cells of `164 / columns` px (the `.controls` content width). So the box follows
+ * the ARRANGEMENT, not the member count: the same four widgets on two rows are a shorter
+ * Panel than on four, and a wider grid is a shorter one again. The layout gate reads this,
+ * so a board rearranged in a shipped example moves its Panel's box exactly as the canvas.
+ */
+describe("T1516b — node-box follows the board", () => {
+  const ALL = ["heat", "invert", "flash", "warp"];
+  const boardPanel = (board: object) => at("panel", "panel", { title: "Desk", board: JSON.stringify(board) });
+  const heightWith = (board: object) => boxOf(graphOf([...widgets, boardPanel(board)], ALL), "panel").height;
+  /** Pad on the left (3×3), the rest stacked beside it: three rows. */
+  const threeRows = {
+    columns: 8,
+    items: [
+      { member: "warp", rect: { x: 0, y: 0, w: 3, h: 3 } },
+      { member: "heat", rect: { x: 3, y: 0, w: 5, h: 1 } },
+      { member: "invert", rect: { x: 3, y: 1, w: 2, h: 1 } },
+      { member: "flash", rect: { x: 5, y: 1, w: 3, h: 1 } },
+    ],
+  };
+
+  it("is the title plus rows × the canvas cell, with nothing stored (the four flow onto four rows)", () => {
+    // Flowed: slider 4×1 + toggle 2×1 + button 2×1 on row 0, the pad 3×3 under them — four rows.
+    const flowed = boxOf(graphOf([...widgets, panel], ALL), "panel");
+    // border 2 + title 24 + controls (8 + 14.85 title + 4 gap + 4 × 20.5 + 1) + ports (8 + 5 × 14 + 4 × 2).
+    expect(flowed.height).toBe(Math.round(2 + 24 + (8 + 14.85 + 4 + 4 * 20.5 + 1) + (8 + 5 * 14 + 4 * 2)));
+  });
+
+  it("moving a control so the board loses a row makes the Panel one canvas cell shorter", () => {
+    const four = heightWith({ ...threeRows, items: [...threeRows.items.slice(0, 3), { member: "flash", rect: { x: 3, y: 3, w: 3, h: 1 } }] });
+    const three = heightWith(threeRows);
+    // One 20.5px cell (164 / 8); each box is rounded once, so the difference is 20 or 21.
+    expect(Math.abs(four - three - 20.5)).toBeLessThanOrEqual(0.5);
+  });
+
+  it("a wider grid draws the same board with smaller cells, so a shorter Panel", () => {
+    expect(heightWith({ ...threeRows, columns: 16 })).toBeLessThan(heightWith(threeRows));
+  });
+
+  it("a member's stored rect wins over where it would flow", () => {
+    // Stored: everything on ONE row of a 16-wide board — one row of 10.25px cells.
+    const oneRow = {
+      columns: 16,
+      items: [
+        { member: "heat", rect: { x: 0, y: 0, w: 4, h: 1 } },
+        { member: "invert", rect: { x: 4, y: 0, w: 2, h: 1 } },
+        { member: "flash", rect: { x: 6, y: 0, w: 2, h: 1 } },
+        { member: "warp", rect: { x: 8, y: 0, w: 2, h: 2 } },
+      ],
+    };
+    expect(heightWith(oneRow)).toBe(Math.round(2 + 24 + (8 + 14.85 + 4 + 2 * 10.25 + 1) + (8 + 5 * 14 + 4 * 2)));
   });
 });

@@ -36,6 +36,8 @@ describe("the code-parameter census (T492)", () => {
       // schemas are (§V458) — it is hand-editable structured data, so it gets the JSON
       // editor and the code pane from the manifest rather than from a UI special case.
       "midiIn.mapping:json",
+      // T1516b: a Panel's board — written by the Controls tab's edit mode, JSON like the bank.
+      "panel.board:json",
       "pointKernel.attributes:json",
       "pointKernel.group:wgsl",
       "pointKernel.kernel:wgsl",

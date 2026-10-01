@@ -16,7 +16,7 @@ import type { GraphPatchOperation } from "../../domain/types/patch.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { CONTROL_WIDGET_TYPES, panelLayout, panelMembers, parsePanelLayout } from "../../nodes/definitions/controls.ts";
-import { joinPanelOperations, movePanelMemberOperations, panelUnderDrop, soloPanelFor } from "./panel-join.ts";
+import { joinPanelOperations, panelUnderDrop, soloPanelFor } from "./panel-join.ts";
 
 /**
  * T1512b — WHICH WIDGETS A PANEL SHOWS, AND IN WHAT ORDER, decided by `panelLayout`: the
@@ -89,28 +89,6 @@ describe("T1512b — a Panel's members are the widgets wired into it, in wiring 
     expect(createValueGraphSession(registry).evaluate(graph, frame).diagnostics).toEqual([]);
   });
 
-  it("moving a widget earlier or later rewrites the edge order through the bus, one patch", async () => {
-    const { bus, ids } = await documentWith([
-      add("a", "slider", "alpha"),
-      add("b", "toggle", "bravo"),
-      add("c", "button", "charlie"),
-      add("panel", "panel", "panel1"),
-      wire("a", "panel"),
-      wire("b", "panel"),
-      wire("c", "panel"),
-    ]);
-    const panel = ids["$panel"]!;
-    await apply(bus, movePanelMemberOperations(bus.store.getGraph(), panel, ids["$c"]!, -1));
-    expect(labels(bus.store.getGraph(), panel)).toEqual(["alpha", "charlie", "bravo"]);
-    await apply(bus, movePanelMemberOperations(bus.store.getGraph(), panel, ids["$a"]!, 1));
-    expect(labels(bus.store.getGraph(), panel)).toEqual(["charlie", "alpha", "bravo"]);
-    // At an end there is nowhere to go: no patch at all.
-    expect(movePanelMemberOperations(bus.store.getGraph(), panel, ids["$c"]!, -1)).toEqual([]);
-    expect(movePanelMemberOperations(bus.store.getGraph(), panel, ids["$b"]!, 1)).toEqual([]);
-    // Undo is one step per move.
-    await bus.execute("graph.undo", {}, contextFor(alice));
-    expect(labels(bus.store.getGraph(), panel)).toEqual(["alpha", "charlie", "bravo"]);
-  });
 });
 
 describe("T1512b — dropping a widget on a Panel wires it", () => {

@@ -1,5 +1,6 @@
 import { settings, node, edge, graph, document, expressionSlot } from "./builders.ts";
 import { DEVICE_HELPER_PHONE_COMMAND } from "../../devices/helper.ts";
+import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 
 /**
  * E81 — Phone Desk. THE LIVE CONTROLS, WIRED THE WAY A USER WIRES THEM.
@@ -30,6 +31,18 @@ import { DEVICE_HELPER_PHONE_COMMAND } from "../../devices/helper.ts";
  *
  * `rings1` drifts on `abstime` so the card moves with nobody at the controls.
  */
+
+/** T1516b — the Panel's board: eight columns, three rows. */
+const PHONE_DESK_BOARD = serializePanelBoard({
+  columns: 8,
+  items: [
+    { label: "Picture", rect: { x: 0, y: 0, w: 5, h: 1 } },
+    { member: "heat", rect: { x: 0, y: 1, w: 5, h: 1 } },
+    { member: "invert", rect: { x: 0, y: 2, w: 2, h: 1 } },
+    { member: "flash", rect: { x: 2, y: 2, w: 3, h: 1 } },
+    { member: "warp", rect: { x: 5, y: 0, w: 3, h: 3 } },
+  ],
+});
 
 const NOTE_WIDTH = 520;
 /** Below the tallest widget, the XY pad, whose square body makes it ~340px tall (`node-box.ts`). */
@@ -90,9 +103,12 @@ export const phoneDeskDocument = document(
       node("warp", "xyPad", [-600, 400], { channel: "warp", caption: "Top-right pin", x: 0.82, y: 0.78, min: 0, max: 1 }, { label: "warp" }),
 
       // ---- the surface a phone sees ---------------------------------------------------
-      // T1512b: the widgets JOIN the Panel by their wires (e7–e10, below), in the order the
-      // Panel shows them. Layout stays empty — the override would replace the wiring.
-      node("panel", "panel", [0, 400], { title: "Phone Desk", remote: true }, { label: "panel1" }),
+      // T1512b: the widgets JOIN the Panel by their wires (e7–e10, below). Layout stays
+      // empty — the override would replace the wiring and the board.
+      // T1516b: and they SIT where its board says — the pad a square on the right, the
+      // slider a bar under a label, the toggle and button side by side under it — the
+      // arrangement the Controls tab's pencil writes, and the one the phone draws.
+      node("panel", "panel", [0, 400], { title: "Phone Desk", remote: true, board: PHONE_DESK_BOARD }, { label: "panel1" }),
 
       // ---- the annotations: how to do it yourself --------------------------------------
       node("noteMapping", "annotate", [-1500, -300], {
@@ -126,8 +142,8 @@ export const phoneDeskDocument = document(
         title: "Panel",
         body: [
           "A widget joins panel1 by a wire: its out into the Panel's Controls, or drop the widget on the Panel.",
-          "The Panel shows them in wiring order: heat, invert, flash, warp.",
-          "Its body on the canvas is the panel, live. The Controls tab is a bigger view of it.",
+          "The Panel is a board: the pencil in the Controls tab moves and sizes each control and adds labels.",
+          "Its body on the canvas is the same board, live. The Controls tab is a bigger view of it.",
           "The phone icon on its header publishes it to a paired phone.",
         ].join("\n"),
         color: "composite",

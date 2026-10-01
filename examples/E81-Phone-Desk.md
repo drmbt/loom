@@ -66,11 +66,13 @@ XY pad that drives both.
 ## The Panel
 
 `panel1` is the surface. A widget joins it by a wire: the widget's `out` into the Panel's
-**Controls** input. Dropping a widget node onto the Panel makes the same wire. The Panel shows
-its widgets in the order they are wired, here `heat`, `invert`, `flash`, `warp`, and you can
-rearrange them from the Controls tab.
+**Controls** input. Dropping a widget node onto the Panel makes the same wire. A new widget
+lands in the first free spot of the Panel's board; here the board is arranged: the pad a
+square on the right, `heat` a bar under a "Picture" label, `invert` and `flash` side by side.
+Press the pencil in the Controls tab to arrange it yourself: drag a control to move it, drag
+its corner to resize it, add labels.
 
-The Panel's body on the canvas is the panel itself, live: move a control there and the picture
+The Panel's body on the canvas is the same board, live: move a control there and the picture
 follows. The Controls tab is a bigger view of the same Panel. The phone icon on the Panel's
 header publishes it (its **Phone** switch is on here). A phone sees only published panels, and
 nothing else in the project.

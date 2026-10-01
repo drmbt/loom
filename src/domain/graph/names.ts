@@ -4,6 +4,7 @@ import { isParameterSlot } from "../parameters/slots.ts";
 import { sourceReferenceTokens, sourceReferencesOf } from "./source-references.ts";
 import { PRESETS_NODE_TYPE, parsePresetBank, serializePresetBank, type Preset } from "../presets/bank.ts";
 import type { StoredParameter } from "../types/parameters.ts";
+import { parsePanelBoard, serializePanelBoard } from "../../nodes/definitions/controls.ts";
 
 /**
  * Node names as identifiers (T221/T222, §V127-§V129).
@@ -277,11 +278,30 @@ const presetBankClause: ReferenceClause = (node, name, rename) => {
   return touched;
 };
 
+/**
+ * Kind 6 (T1516b, §V320): a PANEL BOARD places its members by node name. Without this a
+ * renamed widget would fall off its stored rect and flow to the first free spot, and a
+ * pasted Panel + widgets whose names collided would place the copies by the ORIGINALS'
+ * names — matching nothing wired into the copy, so the arrangement silently lost. Only
+ * member names move; labels are free text and keep their spelling.
+ */
+const panelBoardClause: ReferenceClause = (node, name, rename) => {
+  if (node.type !== "panel" || typeof node.parameters["board"] !== "string") return 0;
+  const board = parsePanelBoard(node.parameters["board"]);
+  if (!board.items.some((item) => "member" in item && item.member === name)) return 0;
+  if (rename !== null) {
+    const items = board.items.map((item) => ("member" in item && item.member === name ? { ...item, member: rename } : item));
+    node.parameters["board"] = serializePanelBoard({ ...board, items });
+  }
+  return 1;
+};
+
 const REFERENCE_CLAUSES: readonly ReferenceClause[] = [
   expressionClause,
   drivenChannelClause,
   sourceReferenceClause,
   presetBankClause,
+  panelBoardClause,
 ];
 
 /**

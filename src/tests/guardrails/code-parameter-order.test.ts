@@ -100,6 +100,8 @@ describe("T1052 — a node's code editors sort last", () => {
       "customWgslMulti",
       "materialWgsl",
       "midiIn",
+      // T1516b: a Panel's board, JSON written by the Controls tab's edit mode.
+      "panel",
       "pointKernel",
       "pointKernelAdvanced",
       // T1496b: the preset bank's JSON, hand-editable like the MIDI mapping.
