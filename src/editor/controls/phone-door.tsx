@@ -16,6 +16,7 @@ import {
 } from "./phone-door-copy.ts";
 import styles from "./phone-door.module.css";
 import { FirewallNote } from "./firewall-note.tsx";
+import { popoverEventStops } from "./popover-events.ts";
 
 /**
  * T1396b — the phone door's popover: open the door, show the QR code a phone scans, the
@@ -116,7 +117,9 @@ export function PhoneDoorButton({ door, panel }: PhoneDoorButtonProps) {
           {phones > 0 ? <span className={styles.count}>{phones}</span> : null}
         </button>
       </PopoverTrigger>
-      <PopoverContent className={styles.popover} aria-label="Phone door">
+      {/* T1518b: on a Panel node, a press in here closed the popover before its click landed
+          — "Stop publishing" and "Close door" did nothing (`popover-events.ts`). */}
+      <PopoverContent className={styles.popover} aria-label="Phone door" {...popoverEventStops}>
         <PopoverHeader>Phone door</PopoverHeader>
         {panel === undefined ? null : (
           <div className={styles.publish} data-phone-published={published ? "on" : "off"}>

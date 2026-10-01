@@ -190,7 +190,7 @@ export const controlPanelNode: NodeDefinition = {
   title: "Panel",
   category: "value",
   description:
-    "A performance surface: wire Slider, Toggle, Button and XY Pad nodes into Controls (or drop one on the Panel) and they show on the Panel's body, in the Controls tab and, with Phone on, on a phone — on a board you arrange with the pencil in the Controls tab.",
+    "A performance surface: wire Slider, Toggle, Button and XY Pad nodes into Controls (or drop one on the Panel) and they show on the Panel's body, in the Controls tab and, with Phone on, on a phone — on a board you arrange with the pencil on the Panel or in the Controls tab.",
   tags: ["control", "panel", "ui", "surface", "perform", "live", "dashboard"],
   inputs: [{ id: PANEL_INPUT, label: "Controls", type: VALUE_PORT, optional: true, variadic: true }],
   outputs: [],
@@ -216,7 +216,7 @@ export const controlPanelNode: NodeDefinition = {
         "Publishes this panel to the phone door: a phone paired from the Panel's phone icon sees these controls and can move them, and nothing else in the project.",
     },
     // T1516b: the free board — where each control sits, in grid cells. Written by the
-    // Controls tab's edit mode, one patch per gesture; JSON like the preset bank, and last
+    // board's edit mode (the pencil, on the Panel node and in the Controls tab; T1518b), one patch per gesture; JSON like the preset bank, and last
     // in the manifest because it is code (T1052).
     board: {
       type: "code",
@@ -225,7 +225,7 @@ export const controlPanelNode: NodeDefinition = {
       group: "Advanced",
       default: "",
       description:
-        "Where each control sits on the Panel, in square grid cells — written by the pencil in the Controls tab. Empty: every control flows into the first free spot.",
+        "Where each control sits on the Panel, in square grid cells — written by the pencil on the Panel or in the Controls tab. Empty: every control flows into the first free spot.",
     },
   },
   compile: noPasses,

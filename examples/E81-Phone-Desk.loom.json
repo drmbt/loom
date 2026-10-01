@@ -306,7 +306,7 @@
         "id": "notePanel",
         "label": "notepanel1",
         "parameters": {
-          "body": "A widget joins panel1 by a wire: its out into the Panel's Controls, or drop the widget on the Panel.\nThe Panel is a board: the pencil in the Controls tab moves and sizes each control and adds labels.\nIts body on the canvas is the same board, live. The Controls tab is a bigger view of it.\nThe phone icon on its header publishes it to a paired phone.",
+          "body": "A widget joins panel1 by a wire: its out into the Panel's Controls, or drop the widget on the Panel.\nThe Panel is a board: the pencil on the Panel or in the Controls tab moves and sizes each control and adds labels.\nIts body on the canvas is the same board, live. The Controls tab is a bigger view of it.\nThe phone icon on its header publishes it to a paired phone.",
           "color": "composite",
           "title": "Panel"
         },

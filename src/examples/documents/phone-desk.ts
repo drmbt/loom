@@ -107,7 +107,7 @@ export const phoneDeskDocument = document(
       // empty — the override would replace the wiring and the board.
       // T1516b: and they SIT where its board says — the pad a square on the right, the
       // slider a bar under a label, the toggle and button side by side under it — the
-      // arrangement the Controls tab's pencil writes, and the one the phone draws.
+      // arrangement the pencil writes (on the Panel, or in the Controls tab), and the one the phone draws.
       node("panel", "panel", [0, 400], { title: "Phone Desk", remote: true, board: PHONE_DESK_BOARD }, { label: "panel1" }),
 
       // ---- the annotations: how to do it yourself --------------------------------------
@@ -142,7 +142,7 @@ export const phoneDeskDocument = document(
         title: "Panel",
         body: [
           "A widget joins panel1 by a wire: its out into the Panel's Controls, or drop the widget on the Panel.",
-          "The Panel is a board: the pencil in the Controls tab moves and sizes each control and adds labels.",
+          "The Panel is a board: the pencil on the Panel or in the Controls tab moves and sizes each control and adds labels.",
           "Its body on the canvas is the same board, live. The Controls tab is a bigger view of it.",
           "The phone icon on its header publishes it to a paired phone.",
         ].join("\n"),

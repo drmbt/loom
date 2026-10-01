@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent, SyntheticEvent } from "react";
 import { useStore } from "zustand";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
@@ -8,6 +7,7 @@ import { panelBoard, panelLayoutOverride, panelTitle } from "@nodes/definitions/
 import { PopoverContent, PopoverHeader, PopoverRoot, PopoverTrigger, cx } from "@ui/index.ts";
 import type { ControlWrite } from "./control-widget.tsx";
 import { PanelBoardEditor, Pencil } from "./panel-board.tsx";
+import { popoverEventStops } from "./popover-events.ts";
 import boardStyles from "./panel-board.module.css";
 import doorStyles from "./phone-door.module.css";
 
@@ -28,16 +28,6 @@ interface PanelEditProps {
   readonly panelId: NodeId;
   readonly write: ControlWrite;
 }
-
-const stopHere = (event: SyntheticEvent): void => event.stopPropagation();
-/**
- * Only the keys React Flow's node wrapper acts on (arrows nudge the node, Enter and Space
- * select it). Every other key keeps bubbling: stopping it here would stop the native event
- * too, and the keymap's window listener — undo, in the middle of arranging — with it.
- */
-const stopNodeKeys = (event: ReactKeyboardEvent): void => {
-  if (event.key.startsWith("Arrow") || event.key === "Enter" || event.key === " ") event.stopPropagation();
-};
 
 /** The edit surface itself, mounted only while the popover is open: it reads the whole document. */
 function PanelEditSurface({ bus, invocation, panelId, write }: PanelEditProps) {
@@ -80,8 +70,8 @@ export function PanelEdit({ bus, invocation, panelId, write }: PanelEditProps) {
           aria-pressed={editing}
           title={editing ? "Done arranging" : "Arrange the board"}
           // §V20: a press on header chrome must not start a node drag or a canvas pan.
-          onPointerDown={stopHere}
-          onMouseDown={stopHere}
+          onPointerDown={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
         >
           <Pencil />
         </button>
@@ -90,20 +80,8 @@ export function PanelEdit({ bus, invocation, panelId, write }: PanelEditProps) {
         className={boardStyles.popover}
         aria-label="Edit board"
         data-board-popover={panelId}
-        /*
-         * The popover is portalled out of the node in the DOM but NOT in React: its events
-         * still bubble to the node and the graph pane. Measured, in the browser: a press on
-         * "Remove from panel" reached the pane's `onPointerDown` (`keymap/pane.ts`), which
-         * took focus, which Radix reads as focus leaving the popover — it closed between
-         * pointerdown and click, and the click never landed. The same path would hand an
-         * arrow key meant for a board control to React Flow's node nudge, and a double
-         * click to the header's rename. So the editor's presses and keys stop here.
-         */
-        onPointerDown={stopHere}
-        onMouseDown={stopHere}
-        onClick={stopHere}
-        onDoubleClick={stopHere}
-        onKeyDown={stopNodeKeys}
+        // The editor's presses and node keys stay in the editor (`popover-events.ts`).
+        {...popoverEventStops}
       >
         <PanelEditSurface bus={bus} invocation={invocation} panelId={panelId} write={write} />
       </PopoverContent>

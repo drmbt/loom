@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo, useRef, useSyncExternalStore } from "react";
+import type { ReactNode } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DeviceClient } from "@devices/device-client.ts";
@@ -9,6 +10,7 @@ import { ControlsPane } from "@editor/controls/controls-pane.tsx";
 import { useControlBodies } from "@editor/controls/control-bodies.tsx";
 import { CanvasFixture } from "@editor/graph-canvas/canvas-fixture.tsx";
 import { fixtureContext, installFlowStubs, nodeProps } from "@editor/graph-canvas/testing.tsx";
+import { useKeymapPane } from "@editor/keymap/pane.ts";
 import { NodeView } from "@editor/nodes/node-view.tsx";
 import type { NodeId } from "@domain/types/ids.ts";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
@@ -341,5 +343,62 @@ describe("T1512b — the Panel node's header phone icon", () => {
     expect(screen.getByRole("button", { name: /^Phone/ }).getAttribute("aria-pressed")).toBe("true");
     expect(document.querySelector("svg[data-phone-qr]")?.getAttribute("data-phone-qr")).toBe(URL_WITH_TOKEN);
     expect(helper.published.at(-1)?.panels.map((shown) => shown.title)).toEqual(["Furnace"]);
+  });
+
+  /**
+   * T1518b — THE BUTTONS IN THAT POPOVER DO WHAT THEY SAY. Found in the browser: on the canvas
+   * the popover is portalled out of the node in the DOM but not in React, so a press on
+   * "Stop publishing" bubbled to the graph pane, whose own `onPointerDown` takes focus
+   * (`useKeymapPane`, B66/B67) — and Radix read that as focus leaving the popover and closed
+   * it between pointerdown and click. The click never landed: the Panel stayed published,
+   * the door stayed open. So the Panel sits inside the REAL pane here, and each press is the
+   * whole gesture a hand makes, not a bare click that would skip the step that broke it.
+   */
+  function GraphPane({ children }: { children: ReactNode }) {
+    const ref = useRef<HTMLDivElement | null>(null);
+    return <div {...useKeymapPane("graph", ref)}>{children}</div>;
+  }
+
+  /** Pointer down, up, click — re-finding the button each time, as it must still be there. */
+  async function press(name: string): Promise<void> {
+    const find = () => screen.getByRole("button", { name });
+    await act(async () => {
+      fireEvent.pointerDown(find(), { pointerId: 1 });
+      await settle();
+    });
+    await act(async () => {
+      fireEvent.pointerUp(find(), { pointerId: 1 });
+      fireEvent.click(find());
+      await settle();
+    });
+  }
+
+  it("Stop publishing turns the Panel's Phone off, and Close door closes the door — inside the graph pane", async () => {
+    const runtime = await runtimeWithPanel();
+    const panel = Object.values(runtime.bus.store.getGraph().nodes).find((node) => node.type === "panel")!;
+    const remote = () => runtime.bus.store.getGraph().nodes[panel.id]!.parameters["remote"];
+    const doorState = () => document.querySelector("[data-phone-door]")?.getAttribute("data-phone-door");
+    const helper = fakeClient({ open: true, url: URL_WITH_TOKEN, fingerprint: "ff", phones: [] });
+    const view = render(
+      <GraphPane>
+        <PanelOnCanvas runtime={runtime} client={helper.client} panelId={panel.id} />
+      </GraphPane>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Phone/ }));
+      await settle();
+    });
+    expect(remote()).toBe(true);
+    expect(doorState()).toBe("open");
+
+    await press("Stop publishing");
+    expect(remote()).toBe(false);
+    // The popover is still there, and says so: the way back is the same button.
+    expect(screen.getByRole("button", { name: "Publish" })).not.toBeNull();
+
+    await press("Close door");
+    expect(doorState()).toBe("closed");
+    // The press stayed in the popover: the pane behind it never took focus.
+    expect(document.activeElement).not.toBe(view.container.firstElementChild);
   });
 });

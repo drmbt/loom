@@ -69,8 +69,8 @@ XY pad that drives both.
 **Controls** input. Dropping a widget node onto the Panel makes the same wire. A new widget
 lands in the first free spot of the Panel's board; here the board is arranged: the pad a
 square on the right, `heat` a bar under a "Picture" label, `invert` and `flash` side by side.
-Press the pencil in the Controls tab to arrange it yourself: drag a control to move it, drag
-its corner to resize it, add labels.
+Press the pencil on the Panel's header, or in the Controls tab, to arrange it yourself: drag a
+control to move it, drag its corner to resize it, add labels.
 
 The Panel's body on the canvas is the same board, live: move a control there and the picture
 follows. The Controls tab is a bigger view of the same Panel. The phone icon on the Panel's
