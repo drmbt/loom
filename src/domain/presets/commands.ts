@@ -1,4 +1,5 @@
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
+import type { FrameClock } from "../types/frame.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId, Revision } from "../types/ids.ts";
 import type { ParameterDefinition, ParameterSchema, StoredParameter } from "../types/parameters.ts";
@@ -18,16 +19,29 @@ import {
 } from "../parameters/slots.ts";
 import { defaultParameterValue, validateParameters } from "../parameters/validate.ts";
 import {
+  MORPH_CURVES,
   PRESETS_NODE_TYPE,
   isPresetName,
   parsePresetBank,
   parsePresetTargets,
   serializePresetBank,
+  type MorphCurve,
+  type MorphSpec,
   type Preset,
   type PresetBank,
   type PresetTarget,
   type PresetValues,
 } from "./bank.ts";
+import {
+  MAX_MORPH_RECORDS,
+  morphRunning,
+  nextMorphRecords,
+  parseMorphRecords,
+  sameStored,
+  serializeMorphRecords,
+  type MorphRecord,
+} from "./morph.ts";
+import { bankMorphRecords } from "./morph-index.ts";
 
 /**
  * T1496b (§T1398b S1) — `preset.store` and `preset.recall`: a bank's Store captures its
@@ -60,12 +74,30 @@ import {
  * static (§B166) and leave an expression in effect — so a recall writes it as a
  * static-mode slot instead, keeping the slot's other bindings (§V108: never destructive).
  *
+ * ## A morph commits the END state, and a record beside it (T1497b, the design doc §5)
+ *
+ * A recall with a non-zero morph writes exactly the values a cut writes — the document
+ * holds the destination from that moment, so the inspector, Store, a save, the phone and
+ * undo all see it — plus ONE record in the bank's `morphs` parameter, in the SAME patch:
+ * where each changed key came from, the absolute clock's reading at the recall, the
+ * duration and the curve. The fade is the resolver's business (`resolve.ts`, through
+ * `morph-index.ts`), a pure function of the document and the frame; nothing here runs per
+ * frame, and one undo takes the record away together with the values, so the screen cuts
+ * back. Which morph applies is §5.1's precedence: the recall's own `morph`, else the
+ * preset's, else the bank's `morph` / `curve` parameters.
+ *
+ * The handler reads NO clock (§V44). `context.frameClock` is the last frame the app's
+ * transport produced, attached to the bus the way the channel resolver is; a bus with no
+ * app has none, and a morph asked for there commits as a cut and says so
+ * (`preset.recall.morphUnavailable`) — the values land either way.
+ *
  * ## Seams left for the later slices
  *
- * `planPresetRecall` is THE recall planner: the cue list's GO (§T1500b) runs it and adds
- * its own `current`/`standby` to the same patch. A preset's `on` (§T1498b), `recalls`
- * (§T1499b) and `morph` (§T1497b) are parsed by `bank.ts` and NOT applied here; a recall
- * that meets one says so by name rather than dropping it quietly.
+ * `planPresetRecall` is THE recall planner: the cue list's GO (§T1500b) runs it with the
+ * cue's morph and adds its own `current`/`standby` to the same patch. A preset's `on`
+ * (§T1498b) and `recalls` (§T1499b) are parsed by `bank.ts` and NOT applied here; a
+ * recall that meets one says so by name rather than dropping it quietly. A shot's nested
+ * values (§T1499b) join the planner's one `written` map, so its morph is still one record.
  */
 
 declare module "../types/commands.ts" {
@@ -99,6 +131,11 @@ export interface PresetRecallInput {
   nodeId: NodeId;
   /** The preset to recall. Absent: the bank's resolved `select`. */
   name?: string;
+  /**
+   * T1497b: how THIS recall is carried out, overriding the preset's and the bank's morph
+   * (the design doc §5.1). `seconds: 0` is a cut whatever the preset says.
+   */
+  morph?: MorphSpec;
 }
 
 export interface PresetRecallOutput {
@@ -108,6 +145,12 @@ export interface PresetRecallOutput {
   applied: readonly string[];
   /** `node` or `node.key` for every entry skipped, each with a warning in `diagnostics`. */
   skipped: readonly string[];
+  /**
+   * T1497b: the morph the screen is now doing, or `null` when the recall was a cut — asked
+   * for as one, nothing left to fade, or no frame clock attached (headless), which
+   * `diagnostics` then names.
+   */
+  morph: MorphSpec | null;
 }
 
 function diagnostic(
@@ -267,11 +310,26 @@ export function capturePresetValues(
 }
 
 export interface PresetRecallPlan {
-  /** One `setParameters` per target node, then the bank's `current`. Empty when nothing applies. */
+  /**
+   * One `setParameters` per target node, then the bank's `current` (with its `morphs` when
+   * they changed), then any other bank whose records lost keys. Empty when nothing applies.
+   */
   readonly operations: readonly GraphPatchOperation[];
   readonly applied: readonly string[];
   readonly skipped: readonly string[];
   readonly diagnostics: readonly RuntimeDiagnostic[];
+  /** T1497b: the morph a record was written for, or `null` when this recall is a cut. */
+  readonly morph: MorphSpec | null;
+}
+
+export interface PresetRecallPlanOptions {
+  /**
+   * T1497b: the morph this recall is carried out with, ALREADY DECIDED by §5.1's precedence
+   * (`presetMorph`). Absent, or zero seconds, is a cut.
+   */
+  readonly morph?: MorphSpec | undefined;
+  /** The app's frame clock (`CommandContext.frameClock`). Absent = no app; a morph cuts. */
+  readonly clock?: FrameClock | undefined;
 }
 
 /**
@@ -295,11 +353,15 @@ export function planPresetRecall(
   registry: NodeRegistryView,
   bankNode: GraphNode,
   preset: Preset,
+  options: PresetRecallPlanOptions = {},
 ): PresetRecallPlan {
   const operations: GraphPatchOperation[] = [];
   const applied: string[] = [];
   const skipped: string[] = [];
   const diagnostics: RuntimeDiagnostic[] = [];
+  /** T1497b: node NAME → key → the stored form before / after, for every key written. */
+  const before: Record<string, Record<string, StoredParameter>> = {};
+  const after: Record<string, Record<string, StoredParameter>> = {};
   const skip = (name: string, code: string, message: string, nodeId?: NodeId): void => {
     skipped.push(name);
     diagnostics.push(diagnostic("warning", code, message, nodeId));
@@ -343,6 +405,10 @@ export function planPresetRecall(
       }
       writes[key] = recallValue(node.parameters[key], stored);
       applied.push(name);
+      // What the key holds NOW, as a slot a fade can start from: nothing stored is the
+      // default Store would have captured for it (`unstoredValue`).
+      (before[nodeName] ??= {})[key] = node.parameters[key] ?? unstoredValue(node, schema, key, keyDefinition);
+      (after[nodeName] ??= {})[key] = writes[key] as StoredParameter;
     }
     if (Object.keys(writes).length === 0) continue;
     operations.push({ op: "setParameters", nodeId: node.id, parameters: writes });
@@ -367,7 +433,6 @@ export function planPresetRecall(
   const unapplied: Array<[keyof Preset, string]> = [
     ["on", "layer on/off (§T1498b)"],
     ["recalls", "other banks' presets (§T1499b)"],
-    ["morph", "a morph (§T1497b)"],
   ];
   for (const [field, what] of unapplied) {
     if (preset[field] === undefined) continue;
@@ -376,10 +441,111 @@ export function planPresetRecall(
     );
   }
 
+  let morph: MorphSpec | null = null;
   if (operations.length > 0) {
-    operations.push({ op: "setParameters", nodeId: bankNode.id, parameters: { current: preset.name } });
+    const { clock } = options;
+    const asked = options.morph !== undefined && options.morph.seconds > 0 ? options.morph : null;
+    if (asked !== null && clock === undefined) {
+      // §V338: name what would make it present. The values below land regardless.
+      diagnostics.push(
+        diagnostic(
+          "info",
+          "preset.recall.morphUnavailable",
+          `Preset "${preset.name}" asks for a ${String(asked.seconds)} s morph, but no frame clock is attached here, so it was recalled as a cut.`,
+          bankNode.id,
+          "A morph fades on the running app's transport; a headless bus has no transport, and the end state is what it commits.",
+        ),
+      );
+    }
+
+    const own = parseMorphRecords(bankNode.parameters["morphs"]);
+    const others = new Map(
+      bankMorphRecords(graph)
+        .filter((bank) => bank.bankId !== bankNode.id)
+        .map((bank) => [bank.bankId, bank.records] as const),
+    );
+    /** A key some record is still fading: it MOVES on screen even where this recall changes nothing. */
+    const moving = (nodeName: string, key: string): boolean =>
+      clock !== undefined &&
+      [own, ...others.values()].some((records) =>
+        records.some((record) => morphRunning(record, clock) && record.to[nodeName]?.[key] !== undefined),
+      );
+
+    let record: MorphRecord | null = null;
+    if (asked !== null && clock !== undefined) {
+      const from: Record<string, Record<string, StoredParameter>> = {};
+      const to: Record<string, Record<string, StoredParameter>> = {};
+      for (const [nodeName, keys] of Object.entries(after)) {
+        for (const [key, written] of Object.entries(keys)) {
+          const held = before[nodeName]?.[key];
+          if (held === undefined || (sameStored(held, written) && !moving(nodeName, key))) continue;
+          (from[nodeName] ??= {})[key] = copied(held);
+          (to[nodeName] ??= {})[key] = copied(written);
+        }
+      }
+      if (Object.keys(to).length > 0) {
+        record = { epoch: clock.epoch, start: clock.absTimeSeconds, seconds: asked.seconds, curve: asked.curve, preset: preset.name, from, to };
+        morph = asked;
+      }
+    }
+
+    const book = nextMorphRecords({
+      own,
+      others,
+      clock,
+      applied: Object.fromEntries(Object.entries(after).map(([nodeName, keys]) => [nodeName, Object.keys(keys)])),
+      record,
+    });
+    for (const gone of book.dropped) {
+      diagnostics.push(
+        diagnostic(
+          "warning",
+          "preset.recall.morphDropped",
+          `Bank "${bankName(bankNode)}" already had ${String(MAX_MORPH_RECORDS)} morphs running, so the oldest ("${gone.preset}") was dropped; the keys only it covered jumped to their end values.`,
+          bankNode.id,
+        ),
+      );
+    }
+    const morphs = serializeMorphRecords(book.own);
+    operations.push({
+      op: "setParameters",
+      nodeId: bankNode.id,
+      // Written only when the list actually changes, so a cut on a bank with nothing
+      // fading is the same one-key write it was before morphs existed.
+      parameters: { current: preset.name, ...(morphs === serializeMorphRecords(own) ? {} : { morphs }) },
+    });
+    for (const [bankId, records] of book.others) {
+      operations.push({ op: "setParameters", nodeId: bankId, parameters: { morphs: serializeMorphRecords(records) } });
+    }
   }
-  return { operations, applied, skipped, diagnostics };
+  return { operations, applied, skipped, diagnostics, morph };
+}
+
+/** The bank's own parameters, through the one read path (§V61). */
+function resolvedBank(node: GraphNode, context: CommandContext): Readonly<Record<string, unknown>> {
+  return resolveParameters(node, context.registry.get(node.type), {
+    ...(context.channels === undefined ? {} : { channels: context.channels }),
+  }).values;
+}
+
+/** A `MorphSpec` off the wire, or `null` when it is not one. */
+function readMorphSpec(raw: unknown): MorphSpec | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const { seconds, curve } = raw as { seconds?: unknown; curve?: unknown };
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return null;
+  if (!MORPH_CURVES.includes(curve as MorphCurve)) return null;
+  return { seconds, curve: curve as MorphCurve };
+}
+
+/**
+ * WHICH morph a recall is carried out with (the design doc §5.1): the first present of the
+ * caller's own, the preset's, the bank's `morph` / `curve` parameters. The cue list
+ * (§T1500b) passes its cue's morph as `own`, which is where its rung of the ladder sits.
+ */
+export function presetMorph(own: MorphSpec | undefined, preset: Preset, bank: Readonly<Record<string, unknown>>): MorphSpec {
+  if (own !== undefined) return own;
+  if (preset.morph !== undefined) return preset.morph;
+  return readMorphSpec({ seconds: bank["morph"], curve: bank["curve"] }) ?? { seconds: 0, curve: "smooth" };
 }
 
 /** A context whose `apply` always opens a fresh undo group (§V34 "unless explicitly split"). */
@@ -387,12 +553,9 @@ function splitUndoContext(context: CommandContext): CommandContext {
   return { ...context, apply: (request) => context.apply({ ...request, splitUndo: true }) };
 }
 
-/** The bank's `select`, through the one read path (§V61). Empty when unset or not a name. */
-function resolvedSelect(node: GraphNode, context: CommandContext): string {
-  const resolved = resolveParameters(node, context.registry.get(node.type), {
-    ...(context.channels === undefined ? {} : { channels: context.channels }),
-  });
-  const select = resolved.values["select"];
+/** The bank's `select`. Empty when unset or not a name. */
+function resolvedSelect(bank: Readonly<Record<string, unknown>>): string {
+  const select = bank["select"];
   return typeof select === "string" ? select.trim() : "";
 }
 
@@ -406,7 +569,7 @@ function recallRefusal(
   preset: string | null = null,
   skipped: readonly string[] = [],
 ): CommandOutcome<PresetRecallOutput> {
-  return { status: "rejected", revision, diagnostics, output: { ok: false, preset, applied: [], skipped } };
+  return { status: "rejected", revision, diagnostics, output: { ok: false, preset, applied: [], skipped, morph: null } };
 }
 
 export function registerPresetCommands(bus: LoomBus): void {
@@ -471,13 +634,15 @@ export function registerPresetCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: PRESET_RECALL_COMMAND,
-    description: "Recall a bank's preset: every target it holds written back as one patch, one undo step (§T1496b).",
+    description:
+      "Recall a bank's preset: every target it holds written back as one patch, one undo step (§T1496b); with a morph, the end state commits at once and the screen fades to it (§T1497b).",
     handler: (input, context) => {
       const revision = context.store.getRevision();
       const found = requireBank(context.graph, input?.nodeId);
       if (!found.ok) return recallRefusal(revision, [found.diagnostic]);
       const { node, bank } = found;
-      const name = typeof input.name === "string" ? input.name.trim() : resolvedSelect(node, context);
+      const settings = resolvedBank(node, context);
+      const name = typeof input.name === "string" ? input.name.trim() : resolvedSelect(settings);
       if (name === "") {
         return recallRefusal(revision, [
           diagnostic("error", "preset.recall.noName", `Bank "${bankName(node)}": no preset was named and its Select is empty.`, node.id),
@@ -496,7 +661,25 @@ export function registerPresetCommands(bus: LoomBus): void {
           ),
         ]);
       }
-      const plan = planPresetRecall(context.graph, context.registry, node, preset);
+      const own = input.morph === undefined ? undefined : readMorphSpec(input.morph);
+      if (own === null) {
+        return recallRefusal(
+          revision,
+          [
+            diagnostic(
+              "error",
+              "preset.recall.morph",
+              `Bank "${bankName(node)}": the morph must be { seconds ≥ 0, curve: ${MORPH_CURVES.join(" | ")} }; nothing was changed.`,
+              node.id,
+            ),
+          ],
+          name,
+        );
+      }
+      const plan = planPresetRecall(context.graph, context.registry, node, preset, {
+        morph: presetMorph(own, preset, settings),
+        clock: context.frameClock,
+      });
       if (plan.applied.length === 0) {
         // Ruling 4: refused only when NOTHING is left — and then loudly, naming why.
         return recallRefusal(
@@ -520,9 +703,9 @@ export function registerPresetCommands(bus: LoomBus): void {
         revision: outcome.revision ?? revision,
         diagnostics,
         ...(outcome.undoGroupId === undefined ? {} : { undoGroupId: outcome.undoGroupId }),
-        output: { ok, preset: name, applied: ok ? plan.applied : [], skipped: plan.skipped },
+        output: { ok, preset: name, applied: ok ? plan.applied : [], skipped: plan.skipped, morph: ok ? plan.morph : null },
       };
     },
-    rejectionOutput: (input) => ({ ok: false, preset: typeof input?.name === "string" ? input.name : null, applied: [], skipped: [] }),
+    rejectionOutput: (input) => ({ ok: false, preset: typeof input?.name === "string" ? input.name : null, applied: [], skipped: [], morph: null }),
   });
 }

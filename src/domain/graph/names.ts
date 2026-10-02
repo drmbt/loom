@@ -2,7 +2,8 @@ import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import { isParameterSlot } from "../parameters/slots.ts";
 import { sourceReferenceTokens, sourceReferencesOf } from "./source-references.ts";
-import { PRESETS_NODE_TYPE, parsePresetBank, serializePresetBank, type Preset } from "../presets/bank.ts";
+import { PRESETS_NODE_TYPE, parsePresetBank, serializePresetBank, type Preset, type PresetValues } from "../presets/bank.ts";
+import { parseMorphRecords, serializeMorphRecords, type MorphRecord } from "../presets/morph.ts";
 import type { StoredParameter } from "../types/parameters.ts";
 import { parsePanelBoard, serializePanelBoard } from "../../nodes/definitions/controls.ts";
 
@@ -226,10 +227,43 @@ function renamedKey<T>(record: Readonly<Record<string, T>>, name: string, rename
  *
  * `select` and `current` hold PRESET names, not node names, and are deliberately left
  * alone: a node rename must not touch a preset that happens to share its spelling.
+ *
+ * T1497b: the bank's MORPH RECORDS are the same kind of reference — `from` and `to` are
+ * keyed by node name and hold stored slots — so they move with the rename too. Left
+ * behind, a fade in flight would lose its node the moment it was renamed (the name
+ * resolves to nothing, so the key simply cuts), and a pasted bank would fade the ORIGINALS.
  */
 const presetBankClause: ReferenceClause = (node, name, rename) => {
   if (node.type !== PRESETS_NODE_TYPE) return 0;
   let touched = 0;
+
+  /** One name-keyed record of stored slots: kinds 1 and 2 over each slot, then the key itself. */
+  const walkValues = (values: PresetValues): { values: PresetValues; hits: number } => {
+    let hits = 0;
+    const walked: Record<string, Record<string, StoredParameter>> = {};
+    for (const [nodeName, record] of Object.entries(values)) {
+      const standIn: GraphNode = { id: node.id, type: "", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { ...record } };
+      hits += expressionClause(standIn, name, rename) + drivenChannelClause(standIn, name, rename);
+      walked[nodeName] = standIn.parameters;
+    }
+    if (name in walked) hits += 1;
+    return { values: rename === null ? walked : renamedKey(walked, name, rename), hits };
+  };
+
+  const records = parseMorphRecords(node.parameters["morphs"]);
+  if (records.length > 0) {
+    let recordHits = 0;
+    const renamed = records.map((record): MorphRecord => {
+      const from = walkValues(record.from);
+      const to = walkValues(record.to);
+      recordHits += from.hits + to.hits;
+      return { ...record, from: from.values, to: to.values };
+    });
+    if (recordHits > 0) {
+      if (rename !== null) node.parameters["morphs"] = serializeMorphRecords(renamed);
+      touched += 1;
+    }
+  }
 
   const targets = node.parameters["targets"];
   if (typeof targets === "string") {
@@ -251,14 +285,9 @@ const presetBankClause: ReferenceClause = (node, name, rename) => {
   if (!parsed.ok) return touched;
   let bankTouched = 0;
   const presets = parsed.bank.presets.map((preset): Preset => {
-    const values: Record<string, Record<string, StoredParameter>> = {};
-    for (const [nodeName, record] of Object.entries(preset.values)) {
-      const standIn: GraphNode = { id: node.id, type: "", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { ...record } };
-      bankTouched += expressionClause(standIn, name, rename) + drivenChannelClause(standIn, name, rename);
-      values[nodeName] = standIn.parameters;
-    }
-    if (name in values) bankTouched += 1;
-    let next: Preset = { ...preset, values: rename === null ? values : renamedKey(values, name, rename) };
+    const walked = walkValues(preset.values);
+    bankTouched += walked.hits;
+    let next: Preset = { ...preset, values: walked.values };
     if (preset.on !== undefined && name in preset.on) {
       bankTouched += 1;
       if (rename !== null) next = { ...next, on: renamedKey(preset.on, name, rename) };

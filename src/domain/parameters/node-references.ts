@@ -11,6 +11,7 @@ import {
   effectiveParameterSchema,
   resolveParameterSchema,
   type ChannelResolver,
+  type ParameterMorphs,
   type ResolvedParameters,
   type ResolveParametersOptions,
 } from "./resolve.ts";
@@ -319,6 +320,12 @@ export interface ParameterReadContext {
   readonly frame?: FrameEvaluationInput | undefined;
   /** Absent = `op('x').chan.*` reports "no channel resolver" and §V108's static stands. */
   readonly channels?: ChannelResolver | undefined;
+  /**
+   * T1497b: the preset morphs in flight. Here for the reason `frame` is: `op('level1').par.brightness`
+   * is resolved INSIDE the reader, and a reader built without them would hand a reference
+   * the destination while the parameter it reads is still fading on screen.
+   */
+  readonly morphs?: ParameterMorphs | undefined;
 }
 
 /**
@@ -341,10 +348,11 @@ export interface ParameterReadContext {
  */
 export function createParameterReadOptions(
   context: ParameterReadContext,
-): Pick<ResolveParametersOptions, "frame" | "channels" | "nodes"> {
+): Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs"> {
   const base = {
     ...(context.channels === undefined ? {} : { channels: context.channels }),
     ...(context.frame === undefined ? {} : { frame: context.frame }),
+    ...(context.morphs === undefined ? {} : { morphs: context.morphs }),
   };
   return {
     nodes: createNodeReferenceReader({

@@ -13,6 +13,7 @@ import type {
   QueryOutput,
 } from "../types/commands.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
+import type { FrameClock } from "../types/frame.ts";
 import type { GraphDocument, ProjectSettings } from "../types/graph.ts";
 import type { ChannelResolver } from "../parameters/resolve.ts";
 import type { Revision } from "../types/ids.ts";
@@ -133,6 +134,21 @@ export interface CommandContext {
    * "the channel is not attached", which is a claim about the DOCUMENT.
    */
   readonly channels: ChannelResolver | undefined;
+  /**
+   * T1497b — THE ABSOLUTE CLOCK'S READING at the last frame the app's transport produced,
+   * or `undefined` when no app is attached (or it has produced no frame yet).
+   *
+   * A preset recall stamps its morph record with this (`start`, `epoch`), and it arrives
+   * here for the channel resolver's reason: every caller of a command — a Panel, the
+   * phone, the keymap, a pulse, the cue list, an agent — must stamp the SAME moment, and
+   * none of them should have to know there is a moment to stamp. It is also how §V44
+   * holds on the command side: the handler reads the frame the transport already
+   * produced, never `Date.now`.
+   *
+   * UNDEFINED IS A REAL ANSWER, as for `channels` (§V338): a headless bus has no
+   * transport, and a morph requested there commits as a cut and says why.
+   */
+  readonly frameClock: FrameClock | undefined;
   /** The sole mutation primitive available to a handler (§V29). */
   apply: (request: ApplyRequest) => AppliedInfo;
   /**
@@ -293,6 +309,17 @@ export interface LoomBus extends AppCommandBus {
   /** What is currently attached, for the composition root and its gates. */
   readonly channelResolver: () => ChannelResolver | undefined;
   /**
+   * Publishes the running transport's absolute clock into every `CommandContext` (T1497b).
+   * See `CommandContext.frameClock`.
+   *
+   * A READ FUNCTION, like the two beside it: the reading moves every frame, and a value
+   * captured at attach time would stamp every morph with the moment the app mounted.
+   * Last attach wins — the bus has no unregister and React mounts more than once.
+   */
+  attachFrameClock: (read: () => FrameClock | undefined) => void;
+  /** What a command invoked now would read, for the composition root and its gates. */
+  readonly frameClock: () => FrameClock | undefined;
+  /**
    * Publishes the composition root's ONE flattened document (T615, §V82).
    *
    * A command addresses a node by id, and inside a component instance the only id that
@@ -362,6 +389,8 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
   let readChannels: (() => ChannelResolver | undefined) | null = null;
   /** T615: likewise — null is "no app", and a handler falls back to the document. */
   let readFlattened: (() => GraphDocument | undefined) | null = null;
+  /** T1497b: likewise — null is "no app", and a morph commits as a cut. */
+  let readFrameClock: (() => FrameClock | undefined) | null = null;
 
   const bus: LoomBus = {
     store: store.view,
@@ -377,6 +406,11 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
       readFlattened = read;
     },
     flattenedGraph: () => readFlattened?.() ?? undefined,
+
+    attachFrameClock(read: () => FrameClock | undefined): void {
+      readFrameClock = read;
+    },
+    frameClock: () => readFrameClock?.() ?? undefined,
 
     registerCommand<TName extends CommandName>(registration: CommandRegistration<TName>): void {
       if (commands.has(registration.name)) {
@@ -477,6 +511,8 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
         // T593: read AT INVOCATION, so a handler sees the ladder the app is compiling
         // through right now rather than the one it held when the command registered.
         channels: readChannels?.() ?? undefined,
+        // T1497b: likewise read AT INVOCATION — the frame on screen when the command ran.
+        frameClock: readFrameClock?.() ?? undefined,
         holds: (capability: CapabilityClass): boolean => grants.has(context.actor, capability),
         applySettings: (request: ApplySettingsRequest): AppliedInfo =>
           store.internals.applySettings({

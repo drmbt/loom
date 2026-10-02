@@ -54,6 +54,8 @@ export type {
   BindLookupResult,
   ChannelResolver,
   ParameterDriver,
+  ParameterMorphStep,
+  ParameterMorphs,
   ParameterDriverContext,
   ParameterSource,
   ParentBindResolver,

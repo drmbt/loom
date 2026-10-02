@@ -54,6 +54,18 @@ export interface LiveClockOptions {
    * has a named gate; forgetting to opt OUT would silently corrupt a render.
    */
   presenting?: () => boolean;
+  /**
+   * T1497b — the absolute clock's EPOCH, published as `FrameEvaluationInput.absEpoch`.
+   *
+   * A getter read PER FRAME, like `fps` and `seed`, and for the same reason: the id is the
+   * APP's to mint — at session start, when a render zeroes the absolute clock, when another
+   * document opens — and a copy captured here would go stale at exactly those moments. This
+   * clock never mints one itself: an id has to differ between two sessions, which a count
+   * of frames cannot (§V44 keeps the wall clock and randomness out of everything a frame
+   * carries except through the composition root). Absent, frames carry no epoch and every
+   * preset morph record is finished for them.
+   */
+  epoch?: () => string | undefined;
 }
 
 /**
@@ -250,6 +262,7 @@ export function liveClock(options: LiveClockOptions = {}): TransportSource {
       }
       hasEmittedAbs = true;
       const absIndex = absFrameIndex;
+      const epoch = options.epoch?.();
 
       // Divided rather than accumulated, so frame N lands on exactly N/fps with no
       // accumulated rounding — but divided from an EPOCH, not from zero, so that changing
@@ -281,6 +294,10 @@ export function liveClock(options: LiveClockOptions = {}): TransportSource {
         wallDeltaSeconds,
         absFrameIndex: absIndex,
         absTimeSeconds: absSeconds,
+        // T1497b: which run of the absolute clock that count belongs to. Omitted, never
+        // `undefined`, when the app minted none — a frame without the field is one whose
+        // transport has no epoch at all.
+        ...(epoch === undefined ? {} : { absEpoch: epoch }),
         // T1426b: the project's rate, not the display's; live frames are never accumulated.
         fps,
         subframes: 1,

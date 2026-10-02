@@ -126,6 +126,53 @@ export interface ParameterDriverContext {
 export type ParameterDriver = (context: ParameterDriverContext) => ParameterValue | undefined;
 
 /**
+ * T1497b (§T1398b S2) — ONE STEP OF A PRESET MORPH on one stored key: the slot the key held
+ * before a recall, the slot that recall wrote, and how far along its fade is at the frame.
+ */
+export interface ParameterMorphStep {
+  /** The stored form BEFORE the recall. Resolved live, so an expression keeps moving. */
+  readonly from: StoredParameter;
+  /** The stored form the recall WROTE. */
+  readonly to: StoredParameter;
+  /** Progress at the frame, 0..1, with the record's curve already applied. */
+  readonly progress: number;
+}
+
+/**
+ * T1497b — the MORPHS a document's preset banks have in flight, as the resolver asks about
+ * them. The second of the two things that outrank a stored slot, after `drivers`.
+ *
+ * ## Why the resolver, and why a function of the frame (the design doc §5.3)
+ *
+ * A recall with a morph commits its END state at once: the document, the inspector, a
+ * save and undo all hold the destination. The fade exists only in what is RENDERED, so it
+ * cannot be a second write path — it has to be the one read path (§V61, §V109) answering
+ * differently while a frame is in hand. Hence: no `frame`, no morph, and a control, a
+ * validate or a structural compile reads the destination exactly as before.
+ *
+ * Declared here structurally, like `ParentBindResolver`, so this module never imports the
+ * presets layer: `src/domain/presets/morph-index.ts` builds one per document revision.
+ * Which keys may fade at all (numbers, vectors, colours; never a structural key) is the
+ * INDEX's decision — it holds the definitions — so `keysOf` and `stepsAt` cannot disagree
+ * about it, and the frame compiler's "what animates" is the same set the fold moves.
+ */
+export interface ParameterMorphs {
+  /**
+   * The stored keys of one node that some record covers. CANDIDATES: whether any of them
+   * still moves is a question about a frame. What the values-only compile re-resolves.
+   */
+  keysOf(nodeId: string): ReadonlySet<string> | undefined;
+  /**
+   * The steps still running on one stored key at `frame`, oldest first, or `undefined` when
+   * nothing fades — no record, every record finished, another epoch, or the key was edited
+   * since. The NEWEST step's `to` is the slot the key stores now.
+   */
+  stepsAt(nodeId: string, key: string, frame: FrameEvaluationInput): readonly ParameterMorphStep[] | undefined;
+  /** Is any key at all still fading at `frame`? What lets a still document stop redrawing. */
+  activeAt(frame: FrameEvaluationInput): boolean;
+}
+
+/**
  * T897/T901: the marker a chan read's no-resolver failure carries, matched above the
  * expression fallback to give that state the INFO tier the old driven mode gave it. Lives
  * here (the leaf both sides import) so the two spellings cannot drift and no import cycle
@@ -175,6 +222,11 @@ export interface ResolveParametersOptions {
    * it is showing, so the two agree by construction rather than by discipline.
    */
   nodes?: NodeReferenceReader | undefined;
+  /**
+   * T1497b: the preset morphs in flight (see `ParameterMorphs`). Read only when `frame` is
+   * present; absent, every key resolves to what the document stores — the destination.
+   */
+  morphs?: ParameterMorphs | undefined;
 }
 
 export interface ResolvedParameters {
@@ -771,6 +823,96 @@ function resolveStored(
   }
 }
 
+/** The inverse of `srgbToLinear`: linear light → a display-encoded channel. */
+function linearToSrgb(channel: number): number {
+  const c = clamp01(channel);
+  return c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055;
+}
+
+/** `a` at 0, `b` at 1 — written so both ends are EXACT, which `a + (b - a) * t` is not. */
+const mix = (a: number, b: number, t: number): number => a * (1 - t) + b * t;
+
+const isNumberTuple = (value: unknown): value is readonly number[] =>
+  Array.isArray(value) && value.every((entry) => typeof entry === "number" && Number.isFinite(entry));
+
+/**
+ * T1497b — one step of the fold: `a` blended toward `b` by `t`, or `undefined` when this
+ * parameter type has no in-between and the change is a CUT (the design doc §5.3).
+ *
+ * Numbers, vectors and colours blend. A `space: "display"` colour blends in LINEAR light —
+ * the working space evaluation decodes to (§V56) — and is handed back display-encoded,
+ * because everything below this point is in stored space and `evaluationValue` decodes
+ * exactly once on the way out; blending the picker's numbers instead would put a dark
+ * band through the middle of every colour fade. Alpha is coverage and is never encoded.
+ */
+function blendValues(
+  definition: ParameterDefinition,
+  a: ParameterValue,
+  b: ParameterValue,
+  t: number,
+): ParameterValue | undefined {
+  if (definition.type === "number") {
+    return typeof a === "number" && typeof b === "number" ? mix(a, b, t) : undefined;
+  }
+  if (definition.type === "vector") {
+    if (!isNumberTuple(a) || !isNumberTuple(b) || a.length !== b.length) return undefined;
+    return a.map((entry, index) => mix(entry, b[index] as number, t));
+  }
+  if (definition.type === "color") {
+    if (!isNumberTuple(a) || !isNumberTuple(b) || a.length !== 4 || b.length !== 4) return undefined;
+    if (definition.space !== "display") return a.map((entry, index) => mix(entry, b[index] as number, t));
+    const light = (index: number): number =>
+      linearToSrgb(mix(srgbToLinear(a[index] as number), srgbToLinear(b[index] as number), t));
+    return [light(0), light(1), light(2), mix(a[3] as number, b[3] as number, t)];
+  }
+  return undefined;
+}
+
+/**
+ * T1497b — WHAT ONE STORED KEY IS WORTH AT A FRAME, preset morphs included.
+ *
+ * Every read of a stored key comes through here rather than through `resolveStored`
+ * directly — the bare key, a compound's base, each of its component slots, and a sibling
+ * read by a bind — so a morphing value is the same number to all of them (§V109).
+ *
+ * The fold is the design doc's §5.3, verbatim: start from the OLDEST running record's
+ * `from` slot and blend through the records in order,
+ * `V = blend(V, resolve(to_i), progress_i)`. Both ends are RESOLVED, at this frame, by the
+ * same `resolveStored` everything else uses — so an end that is an expression keeps
+ * moving through the fade, and a second recall mid-fade starts from the value the first
+ * had reached on screen, with no jump. The newest step's `to` is the slot the document
+ * stores, so its resolution is the settled one and is not computed twice.
+ *
+ * A step that cannot blend (a type with no in-between, an end that did not resolve to the
+ * shape the parameter wants, a blend the manifest refuses) leaves the settled value in
+ * effect: the document already holds the destination, so falling back IS the cut.
+ */
+function resolveStoredAt(
+  context: ResolveContext,
+  key: string,
+  definition: ParameterDefinition,
+  stored: StoredParameter | undefined,
+): StoredResolution {
+  const settled = resolveStored(context, key, definition, stored);
+  const { frame, morphs } = context.options;
+  if (frame === undefined || morphs === undefined) return settled;
+  const steps = morphs.stepsAt(context.node.id, key, frame);
+  if (steps === undefined || steps.length === 0) return settled;
+
+  // The ends are resolved for their VALUE only: a `from` slot in map mode must not file a
+  // mapping for a parameter that is no longer mapped.
+  const ends: ResolveContext = { node: context.node, options: context.options, visited: context.visited };
+  let value: ParameterValue | undefined = resolveStored(ends, key, definition, (steps[0] as ParameterMorphStep).from).value;
+  for (let index = 0; index < steps.length; index += 1) {
+    const step = steps[index] as ParameterMorphStep;
+    const target = index === steps.length - 1 ? settled.value : resolveStored(ends, key, definition, step.to).value;
+    value = blendValues(definition, value, target, step.progress);
+    if (value === undefined) return settled;
+  }
+  if (validateParameterValue(key, definition, value, context.node.id) !== null) return settled;
+  return { ...settled, value, source: "driven", driven: true };
+}
+
 /**
  * A bind ref, resolved. `parent.*` goes through the injected resolver (§V81); anything
  * else is a sibling parameter on the same node — bare (`radius`, `color`) or a
@@ -900,7 +1042,7 @@ function resolveEffective(
   try {
     const names = componentNamesFor(definition);
     if (names === null) {
-      const resolved = resolveStored(context, key, definition, context.node.parameters[key]);
+      const resolved = resolveStoredAt(context, key, definition, context.node.parameters[key]);
       return { ok: true, value: resolved.value };
     }
     const compound = resolveCompound(context, key, definition, names);
@@ -925,7 +1067,7 @@ function resolveCompound(
   definition: ParameterDefinition,
   names: readonly string[],
 ): CompoundResolution {
-  const base = resolveStored(context, key, definition, context.node.parameters[key]);
+  const base = resolveStoredAt(context, key, definition, context.node.parameters[key]);
   const assembled: number[] = Array.isArray(base.value)
     ? [...(base.value as readonly number[])]
     : (defaultParameterValue(definition) as readonly number[]).slice();
@@ -945,7 +1087,7 @@ function resolveCompound(
       });
       continue;
     }
-    const resolved = resolveStored(
+    const resolved = resolveStoredAt(
       context,
       componentKey(key, name),
       componentDefinition(definition, name, index),
@@ -1006,7 +1148,7 @@ export function resolveParameter(
   const names = componentNamesFor(definition);
 
   if (names === null) {
-    const resolved = resolveStored(context, key, definition, stored);
+    const resolved = resolveStoredAt(context, key, definition, stored);
     return {
       key,
       definition,

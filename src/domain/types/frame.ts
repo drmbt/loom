@@ -71,6 +71,22 @@ export interface FrameEvaluationInput {
   /** `absFrameIndex` in seconds, at the timeline's rate. Never a wall reading (T461). */
   absTimeSeconds?: number;
   /**
+   * T1497b — WHICH RUN of the absolute clock `absTimeSeconds` counts in: an opaque id the
+   * app mints each time that clock starts from zero (session start, a render's
+   * `resetAbsolute`) and when a different document opens.
+   *
+   * A preset morph is stamped with the absolute time of its recall, and `absTimeSeconds`
+   * alone cannot say whether a stamp belongs to THIS count: a render zeroes the clock, so
+   * a record stamped at live second 3 would replay three seconds into the next export, on
+   * every export. A record from another epoch is FINISHED, which is what makes a saved
+   * document render its end state byte-identically (the design doc §5.4).
+   *
+   * Compared for equality and nothing else — never parsed, never ordered, never shown.
+   * Optional (§V68): a transport that mints none (the offline transport, a preview's own
+   * clock) publishes none, and every morph record is then finished for its frames.
+   */
+  absEpoch?: string;
+  /**
    * T1426b — the PROJECT's frame rate: frames of the finished picture per second.
    *
    * Not `1 / deltaSeconds`, and that is the point of it: the live clock may advance several
@@ -87,6 +103,21 @@ export interface FrameEvaluationInput {
    * that draws its own shutter blur reads it to stand down when accumulation provides one.
    */
   subframes?: number;
+}
+
+/**
+ * T1497b — THE ABSOLUTE CLOCK AS A COMMAND READS IT: the epoch and `absTimeSeconds` of the
+ * last frame the transport produced.
+ *
+ * A preset recall stamps its morph with this, and it is how §V44 holds on the command side:
+ * the handler reads no clock of its own. The app attaches the reader to the bus
+ * (`LoomBus.attachFrameClock`), so a Panel, the phone, the keymap, a pulse and an agent all
+ * stamp the same moment without doing anything. A bus with no app has none, and a morph
+ * requested there commits as a cut.
+ */
+export interface FrameClock {
+  readonly epoch: string;
+  readonly absTimeSeconds: number;
 }
 
 /**

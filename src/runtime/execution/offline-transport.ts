@@ -14,6 +14,12 @@ export interface OfflineTransportOptions {
    * sub-frame. Default 1.
    */
   readonly subframes?: number;
+  /**
+   * T1497b: the absolute clock's epoch this sequence counts in, published as `absEpoch`.
+   * For a harness standing where the live session stands (a morph gate names the epoch its
+   * records were stamped with). Absent — every export — frames carry none.
+   */
+  readonly epoch?: string;
 }
 
 /**
@@ -77,6 +83,9 @@ export function offlineTransport(options: OfflineTransportOptions): TransportSou
         // clocks agree until something wraps the timeline and diverge only then.
         absFrameIndex: absIndex,
         absTimeSeconds: absIndex / options.fps,
+        // T1497b: only a caller that NAMES an epoch gets one. An export passes none, so
+        // every morph record in the document is finished and the take is its end state.
+        ...(options.epoch === undefined ? {} : { absEpoch: options.epoch }),
         // T1426b/T1435b: the rates an expression reads as `fps` and `subframes`.
         fps: projectRate,
         subframes,

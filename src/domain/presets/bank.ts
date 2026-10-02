@@ -19,12 +19,15 @@ import { isParameterSlot } from "../parameters/slots.ts";
 /** The node type every bank is. Named once here; the definition and the rename clause read it. */
 export const PRESETS_NODE_TYPE = "presets";
 
-/** The curve a morph eases along. Applied by §T1497b (S2); parsed here so the shape is one. */
+/** The curve a morph eases along (`easeMorph`, `morph.ts`); parsed here so the shape is one. */
 export type MorphCurve = "linear" | "smooth" | "in" | "out";
 
 export const MORPH_CURVES: readonly MorphCurve[] = ["linear", "smooth", "in", "out"];
 
-/** How a change is carried out over time. seconds 0 = a cut. Applied by §T1497b (S2). */
+/**
+ * How a change is carried out over time. `seconds` 0 = a cut. Seconds of the transport's
+ * ABSOLUTE clock (T1497b, the design doc §5.4): they pass only while frames are produced.
+ */
 export interface MorphSpec {
   readonly seconds: number;
   readonly curve: MorphCurve;
@@ -48,7 +51,7 @@ export interface Preset {
   readonly on?: Readonly<Record<string, boolean>>;
   /** Other banks' presets in the same patch. Applied by §T1499b (S4); reported unapplied here. */
   readonly recalls?: ReadonlyArray<{ readonly bank: string; readonly preset: string }>;
-  /** This preset's own morph. Applied by §T1497b (S2); reported unapplied here. */
+  /** This preset's own morph. Absent means the bank's `morph` / `curve` (T1497b, §5.1). */
   readonly morph?: MorphSpec;
 }
 
@@ -66,7 +69,7 @@ const plainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** A bare `ParameterValue` or a slot — the two shapes `GraphNode.parameters` holds. */
-function isStoredShape(value: unknown): value is StoredParameter {
+export function isStoredShape(value: unknown): value is StoredParameter {
   if (value === null) return true;
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "string") return true;
   if (Array.isArray(value)) return true;
