@@ -1554,7 +1554,11 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
         "here, so every `op('name').chan.x` expression reports `parameter.channels.unavailable` in " +
         "`get_diagnostics` and the parameter stays on its retained value. That is a property of this process, " +
         "not of your graph — attach a Loom tab and the same document runs against a real cursor and real " +
-        "channels. Do not report a pointer-driven graph as broken on the evidence of a headless frame.";
+        "channels. Do not report a pointer-driven graph as broken on the evidence of a headless frame. " +
+        // T1502b: the same absence, on the preset side. A morph fades on the app's transport;
+        // here the end values commit at once, and the tool result is where that is said.
+        "There is NO TRANSPORT either, so a preset recall or a cue GO that asks for a morph commits as a CUT: " +
+        "its result reads `transition: \"cut\"` with `morphUnavailable: true`. Do not report a fade from here.";
       if (current.mode === "proxying") {
         if (current.pairingCode === null) {
           return (

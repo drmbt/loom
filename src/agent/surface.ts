@@ -18,6 +18,7 @@ import { mutationTools } from "./tools/mutate.ts";
 import { pointsTools } from "./tools/points.ts";
 import { previewTools } from "./tools/preview.ts";
 import { componentTools } from "./tools/components.ts";
+import { presetTools } from "./tools/presets.ts";
 import { libraryTools } from "./tools/library.ts";
 import { readTools } from "./tools/read.ts";
 import { workflowTools } from "./tools/workflow.ts";
@@ -172,6 +173,7 @@ const ALL_TOOLS: readonly AgentTool[] = [
   ...mutationTools,
   ...workflowTools,
   ...componentTools,
+  ...presetTools,
 ];
 
 /** Tool kind → the presence state the UI shows while it runs (§V42). */

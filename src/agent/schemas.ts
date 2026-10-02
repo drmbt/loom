@@ -5,6 +5,7 @@ import {
   storedParameterSchema,
 } from "@domain/types/schemas.ts";
 import { channelExpression } from "@domain/parameters/slots.ts";
+import { MORPH_CURVES, type MorphCurve } from "@domain/presets/bank.ts";
 
 /**
  * Tool input schemas — the "schema" half of "transport plus schema" (§V39, §V66).
@@ -344,6 +345,62 @@ export const exportComponentInput = z
   .strict();
 
 /**
+ * T1502b: preset banks and the cue list. Every field is one the COMMAND reads
+ * (`preset.store`, `preset.recall`, `preset.delete`, `cue.go` / `cue.back` / `cue.fire` /
+ * `cue.setStandby`) — nothing here is a tool-side option, because a field the command does
+ * not take would have to be implemented in the adapter (§V39).
+ *
+ * The curve list is the domain's (`MORPH_CURVES`), not a second copy of it: a curve added
+ * to the bank's parser is one the agent can ask for in the same commit.
+ */
+const morphSpec = z
+  .object({
+    /** 0 is a cut, whatever the preset or the bank says. */
+    seconds: finite.min(0),
+    curve: z.enum(MORPH_CURVES as unknown as [MorphCurve, ...MorphCurve[]]),
+  })
+  .strict();
+
+export const listPresetsInput = z
+  .object({
+    /** One bank. Omitted: every Presets bank in the document. */
+    nodeId: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const storePresetInput = z.object({ nodeId: z.string().min(1), name: z.string().min(1), dryRun }).strict();
+
+export const recallPresetInput = z
+  .object({
+    nodeId: z.string().min(1),
+    /** Omitted: the preset named in the bank's Select. */
+    name: z.string().min(1).optional(),
+    /** How THIS recall is carried out, over the preset's and the bank's own morph. */
+    morph: morphSpec.optional(),
+    dryRun,
+  })
+  .strict();
+
+export const deletePresetInput = z.object({ nodeId: z.string().min(1), name: z.string().min(1), dryRun }).strict();
+
+export const listCuesInput = z
+  .object({
+    /** One cue list. Omitted: every Cue List in the document. */
+    nodeId: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const cueStepInput = z
+  .object({
+    /** Omitted: the one cue list whose Keys switch is on — refused, naming them, when none or several are. */
+    nodeId: z.string().min(1).optional(),
+    dryRun,
+  })
+  .strict();
+
+export const cueNamedInput = z.object({ nodeId: z.string().min(1), cue: z.string().min(1), dryRun }).strict();
+
+/**
  * Tool input types are INFERRED from the schemas above, never hand-written beside them.
  * Two declarations of the same shape drift, and the one that drifts silently is always
  * the type — the schema is what actually runs.
@@ -386,3 +443,10 @@ export type HistoryInput = z.infer<typeof historyInput>;
 export type SaveProjectInput = z.infer<typeof saveProjectInput>;
 export type ImportComponentInput = z.infer<typeof importComponentInput>;
 export type ExportComponentInput = z.infer<typeof exportComponentInput>;
+export type ListPresetsInput = z.infer<typeof listPresetsInput>;
+export type StorePresetInput = z.infer<typeof storePresetInput>;
+export type RecallPresetInput = z.infer<typeof recallPresetInput>;
+export type DeletePresetInput = z.infer<typeof deletePresetInput>;
+export type ListCuesInput = z.infer<typeof listCuesInput>;
+export type CueStepInput = z.infer<typeof cueStepInput>;
+export type CueNamedInput = z.infer<typeof cueNamedInput>;

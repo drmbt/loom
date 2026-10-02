@@ -117,6 +117,8 @@ describe("command bus — registration surface (§V39)", () => {
       "parameter.revert",
       "parameter.setMode",
       // T1496b: a preset bank's Store and Recall are document edits, so every bus has them.
+      // T1502b: and Delete beside them.
+      "preset.delete",
       "preset.recall",
       "preset.store",
       // T272: settings are document state, so they mutate through the domain bus like

@@ -448,6 +448,84 @@ describe("T597/§V39 — the headless server offers the full catalogue", () => {
           `"${name}" is waived as unavailable but the server now offers it — delete the waiver`,
         ).toBe(true);
       }
+      // T1502b: the preset and cue tools are PRESENT here, not merely not-dead — `dead`
+      // above cannot see a tool that was never published. Their commands are registered by
+      // `createDomainBus` itself, so this process offers every one of them.
+      const offered = tools.filter((tool) => !tool.description.includes(marker)).map((tool) => tool.name);
+      expect(offered).toEqual(
+        expect.arrayContaining([
+          "list_presets",
+          "store_preset",
+          "recall_preset",
+          "delete_preset",
+          "list_cues",
+          "cue_go",
+          "cue_back",
+          "cue_fire",
+          "set_cue_standby",
+        ]),
+      );
+    } finally {
+      server.dispose();
+    }
+  }, 60_000);
+
+  /**
+   * T1502b — A HEADLESS RECALL WITH A MORPH IS A CUT, AND THE WIRE SAYS SO.
+   *
+   * This process has no transport: it renders one offline frame per edit, so nothing can
+   * fade. `preset.recall` commits the end values and adds an `info` diagnostic; an agent
+   * that asked for a 2 s morph and read "ok" would tell its user a fade happened. So the
+   * bytes a client reads over JSON-RPC are asserted here: `transition: "cut"` and
+   * `morphUnavailable: true`, on the real server, through the real catalogue.
+   */
+  it("stores, recalls and lists a bank over JSON-RPC, and reports the morph it could not perform as a cut", async () => {
+    const { createHeadlessMcpServer } = await import("./serve.ts");
+    const sent: Array<Record<string, unknown>> = [];
+    const server = createHeadlessMcpServer({ send: (message) => sent.push(message) });
+    let id = 0;
+    const call = async (name: string, args: Record<string, unknown>) => {
+      id += 1;
+      await server.receive({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
+      const reply = sent.findLast((message) => message["id"] === id) as { result?: Record<string, unknown> };
+      return JSON.parse((reply.result?.["content"] as Array<{ text: string }>)[0]?.text ?? "{}") as {
+        status: string;
+        data: Record<string, unknown>;
+        diagnostics: Array<{ code: string; message: string }>;
+      };
+    };
+    const said = (reply: { diagnostics: Array<{ message: string }> }): string => reply.diagnostics.map((each) => each.message).join("; ");
+    try {
+      await server.ready.catch(() => {});
+      await server.receive({ jsonrpc: "2.0", id: 0, method: "initialize", params: {} });
+
+      const built = await call("apply_graph_patch", {
+        baseRevision: 0,
+        operations: [
+          { op: "addNode", ref: "$blur", type: "blur", label: "blur1", position: { x: 0, y: 0 }, parameters: { size: 4 } },
+          { op: "addNode", ref: "$bank", type: "presets", label: "looks", position: { x: 0, y: 300 }, parameters: { targets: "blur1.size" } },
+        ],
+      });
+      expect(built.status, said(built)).toBe("ok");
+      const created = built.data["createdIds"] as Record<string, string>;
+      const bank = created["$bank"] as string;
+      const blur = created["$blur"] as string;
+
+      expect((await call("store_preset", { nodeId: bank, name: "soft" })).status).toBe("ok");
+      expect((await call("set_parameters", { nodeId: blur, parameters: { size: 30 } })).status).toBe("ok");
+
+      const recalled = await call("recall_preset", { nodeId: bank, name: "soft", morph: { seconds: 2, curve: "linear" } });
+      expect(recalled.status).toBe("ok");
+      expect(recalled.data).toMatchObject({ preset: "soft", applied: ["blur1.size"], transition: "cut", morphUnavailable: true, record: null });
+      expect(recalled.diagnostics.map((each) => each.code)).toContain("preset.recall.morphUnavailable");
+
+      // The values landed: the cut is real, only the fade is not.
+      const node = await call("get_node", { nodeId: blur });
+      expect((node.data["node"] as { parameters: Record<string, unknown> }).parameters["size"]).toBe(4);
+
+      const listed = await call("list_presets", {});
+      expect(listed.data["clockSeconds"]).toBeNull();
+      expect(listed.data["banks"]).toMatchObject([{ name: "looks", current: "soft", targets: ["blur1.size"], morphs: [] }]);
     } finally {
       server.dispose();
     }

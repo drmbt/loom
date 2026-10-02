@@ -12,6 +12,7 @@ import { registerValidateCommand } from "./validate-command.ts";
 import { registerSettingsCommands } from "./settings-commands.ts";
 import { registerPresetCommands } from "../presets/commands.ts";
 import { registerCueCommands } from "../presets/cue-commands.ts";
+import { registerPresetDeleteCommand } from "../presets/delete-command.ts";
 
 export {
   CapabilityDeniedError,
@@ -129,6 +130,8 @@ export function createDomainBus(options: DomainBusOptions = {}): { bus: LoomBus;
   registerPresetCommands(bus);
   // T1500b: the cue list's GO / BACK / fire / standby, beside the recall they are made of.
   registerCueCommands(bus);
+  // T1502b: Delete, the third of a bank's three edits, in its own file (`delete-command.ts`).
+  registerPresetDeleteCommand(bus);
   return { bus, store };
 }
 export { LOOM_CLIPBOARD_TYPE, decodeLoomClipboard, encodeLoomClipboard } from "./loom-clipboard.ts";

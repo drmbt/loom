@@ -1274,6 +1274,10 @@ describe("a headless session says what it cannot supply (T1211, §V941)", () => 
     // And that it is the PROCESS, not the graph — the misreading that cost the owner the day.
     expect(instructions).toContain("not of your graph");
     expect(instructions).toContain("attach a Loom tab");
+    // T1502b: the transport is absent here too, so a morph is a cut — said before the recall,
+    // in the words the recall's own result uses.
+    expect(instructions).toContain("NO TRANSPORT");
+    expect(instructions).toContain('`transition: "cut"` with `morphUnavailable: true`');
   });
 
   it("names the failure on the parameter when a pointer drive is wired through the real tools", async () => {
