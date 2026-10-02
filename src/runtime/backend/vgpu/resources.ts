@@ -296,6 +296,25 @@ export interface ExternalResources {
   readonly bufferPairs?: ReadonlyMap<string, PingPongStorage>;
 }
 
+/**
+ * T1521b — what the device said while ONE pass's pipeline objects were being created.
+ *
+ * vgpu opens an error scope around the pipeline and around nothing else, so whatever the
+ * device objects to BEFORE that — the shader module above all, which is where a WGSL error
+ * is actually raised — went out on the uncaptured path, naming no pass and no node. The
+ * pipeline then failed inside vgpu's scope with "is invalid due to a previous error", and
+ * the node got that sentence while the reason sat in a separate row with no owner (§V27).
+ *
+ * A scope answers with the FIRST error raised inside it, so there is one per pass, opened
+ * around that pass alone: whose error it is, is then a fact about the scope rather than a
+ * reading of the message.
+ */
+export interface PassBuildVerdict {
+  readonly passId: string;
+  /** The first validation error raised while the pass was built, or null. */
+  readonly error: Promise<GPUError | null>;
+}
+
 export const noExternalResources: ExternalResources = {
   targets: new Map(),
   pingPongs: new Map(),
@@ -394,6 +413,14 @@ export function buildResources(
    * because a half-built main program rendering quietly is §V9's bug inverted.
    */
   tolerate?: { diagnostics: RuntimeDiagnostic[] },
+  /**
+   * T1521b: when given, every effect and draw pass is BUILT inside its own device error
+   * scope and the scope's answer lands here. A dispatch still is not (§T1522b). The caller
+   * owns the answers from then on — a verdict nobody reads is an error nobody was told
+   * about, which is why a caller that does not collect them gets no scopes at all and its
+   * errors stay on the uncaptured path, where the net is.
+   */
+  verdicts?: PassBuildVerdict[],
 ): ResourceSet {
   guard.assertOutsideFrame("plan resources");
 
@@ -725,6 +752,28 @@ export function buildResources(
     if (dynamicBuf.length > 0) dynamicBuffers.set(passId, dynamicBuf);
   };
 
+  const raw = gpu.gpu;
+  /** T1521b: runs `build` inside a device error scope whose answer is `passId`'s verdict. */
+  const underScope = (passId: string, build: () => void): void => {
+    // The mock device has no error scopes, and neither does a caller that collects none.
+    if (
+      verdicts === undefined ||
+      typeof raw.pushErrorScope !== "function" ||
+      typeof raw.popErrorScope !== "function"
+    ) {
+      build();
+      return;
+    }
+    raw.pushErrorScope("validation");
+    try {
+      build();
+    } finally {
+      // Popped whether or not `build` threw: vgpu's own scope sits inside this one and is
+      // balanced on both of its paths, so the stack is exactly as it was found.
+      verdicts.push({ passId, error: raw.popErrorScope() });
+    }
+  };
+
   for (const pass of passes) {
     if (pass.kind === "dispatch") {
       // T172: kernels run in frames. Carried pipelines skip WGSL recompilation exactly
@@ -787,21 +836,23 @@ export function buildResources(
       if (bag === undefined) continue;
       if (pass.sharedBinding !== undefined) bag[pass.sharedBinding] = shared;
       try {
-        const created = draw(gpu, {
-          shader: pass.shader,
-          set: bag,
-          label: pass.id,
-          // Topology rides on a minimal geometry descriptor — vgpu has no top-level
-          // topology option; a buffer-less GeometryLike carries it for vertex-pulling
-          // draws (positions come from storage buffers, not vertex buffers).
-          geometry: { topology: pass.topology, vertexCount: pass.vertexCount ?? 6 },
-          ...(typeof pass.instances === "number" ? { instances: pass.instances } : {}),
-          ...(pass.blend === undefined ? {} : { blend: pass.blend }),
-          /* T917: additive light draws stop writing depth; they still test against it. */
-          ...(pass.depthWrite === false ? { depth: { write: false } } : {}),
+        underScope(pass.id, () => {
+          const created = draw(gpu, {
+            shader: pass.shader,
+            set: bag,
+            label: pass.id,
+            // Topology rides on a minimal geometry descriptor — vgpu has no top-level
+            // topology option; a buffer-less GeometryLike carries it for vertex-pulling
+            // draws (positions come from storage buffers, not vertex buffers).
+            geometry: { topology: pass.topology, vertexCount: pass.vertexCount ?? 6 },
+            ...(typeof pass.instances === "number" ? { instances: pass.instances } : {}),
+            ...(pass.blend === undefined ? {} : { blend: pass.blend }),
+            /* T917: additive light draws stop writing depth; they still test against it. */
+            ...(pass.depthWrite === false ? { depth: { write: false } } : {}),
+          });
+          created.compileSync(resolveTarget());
+          draws.set(pass.id, created);
         });
-        created.compileSync(resolveTarget());
-        draws.set(pass.id, created);
         renderTargets.set(pass.id, resolveTarget);
         noteDynamicBindings(pass.id, pass.buffers ?? [], pass.textures ?? []);
         note("effectsBuilt");
@@ -865,16 +916,18 @@ export function buildResources(
     if (!setBag) continue;
 
     try {
-      const created = effect(gpu, pass.shader, {
-        set: setBag,
-        // B229: the pass id, never `pass.label`. vgpu reports an async pipeline failure as
-        // `<label>.compileSync`, and a human label is shared by every pass of a node type
-        // ("Custom WGSL"), so it named the first such pass in the plan, not the broken one.
-        label: pass.id,
+      underScope(pass.id, () => {
+        const created = effect(gpu, pass.shader, {
+          set: setBag,
+          // B229: the pass id, never `pass.label`. vgpu reports an async pipeline failure as
+          // `<label>.compileSync`, and a human label is shared by every pass of a node type
+          // ("Custom WGSL"), so it named the first such pass in the plan, not the broken one.
+          label: pass.id,
+        });
+        // Builds the render pipeline now, so the first frame encodes without creating one (§V8).
+        created.compileSync(resolveTarget());
+        effects.set(pass.id, created);
       });
-      // Builds the render pipeline now, so the first frame encodes without creating one (§V8).
-      created.compileSync(resolveTarget());
-      effects.set(pass.id, created);
       renderTargets.set(pass.id, resolveTarget);
       note("effectsBuilt");
 

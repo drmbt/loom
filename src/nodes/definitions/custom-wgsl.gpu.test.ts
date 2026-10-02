@@ -312,3 +312,108 @@ describe("every node sharing a broken shader carries the failure (T1490b, §V27)
     }
   }, 60_000);
 });
+
+/**
+ * T1521b — THE BADGE SAYS WHAT IS WRONG WITH THE SHADER.
+ *
+ * A failed pipeline's own device message is `[Invalid ShaderModule "…"] is invalid due to a
+ * previous error` — true, and no use to whoever has to fix the shader. The previous error,
+ * the one with the symbol and the position, was raised when the MODULE was created, outside
+ * the pipeline's error scope, and so arrived as a second diagnostic naming no node at all:
+ * the node said "something earlier went wrong" and a nodeless row said what, with nothing
+ * tying the two together (§V27).
+ *
+ * `BROKEN_BODY` calls `notAFunction` on its line 6, column 10. That is the position asserted,
+ * and it is the AUTHOR'S: the module the device actually compiled has vgpu's vertex stage in
+ * front of this text and reports the same call on its line 19.
+ */
+const BROKEN_REASON = "6:10 unresolved call target 'notAFunction'";
+
+/** Everything the problems tab was told, as (code, node, message) — nothing filtered out. */
+const told = (diagnostics: readonly RuntimeDiagnostic[]): ReadonlyArray<readonly [string, string | undefined, string]> =>
+  diagnostics.map((d) => [d.code, d.nodeId, d.message] as const);
+
+const customPassId = (plan: { readonly passes: ReadonlyArray<unknown> }, nodeId: string): string => {
+  const pass = (plan.passes as ReadonlyArray<{ readonly id: string; readonly nodeId?: string }>).find(
+    (candidate) => candidate.nodeId === nodeId,
+  );
+  if (pass === undefined) throw new Error(`no pass for node "${nodeId}"`);
+  return pass.id;
+};
+
+describe("a compile-failed diagnostic carries the compiler's own message (T1521b, §V27)", () => {
+  it("names the unresolved symbol and its line on the broken node, and says it once", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+    const backend = createVgpuBackend({ host: nodeGpuHost() });
+    const diagnostics: RuntimeDiagnostic[] = [];
+    backend.onDiagnostic((diagnostic) => diagnostics.push(diagnostic));
+    try {
+      const capabilities = await backend.initialize({});
+      const registry = createNodeRegistry([solidNode, customWgslNode, outputNode]).view();
+      const plan = compileGraph({ graph: twoCustomGraph(), settings, registry, capabilities });
+      expect(plan.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+
+      await expect(backend.compile(plan)).rejects.toBeDefined();
+
+      // What the badge reads — the symbol and where it is — and the WHOLE of what was said:
+      // one row, on the node. No second row repeating the reason without saying whose it is,
+      // and none repeating it on the node either.
+      expect(told(diagnostics)).toEqual([
+        [
+          BackendDiagnosticCode.compileFailed,
+          "broken",
+          `Pass "${customPassId(plan, "broken")}" failed to compile on the device: ${BROKEN_REASON}`,
+        ],
+      ]);
+
+      // The same broken bytes on another node, compiled LATER: vgpu still holds the invalid
+      // module for that source, so the device raises no parse error this time — and the node
+      // is owed the reason all the same.
+      const later = twoCustomGraph();
+      later.nodes["again"] = { ...later.nodes["broken"]!, id: "again" };
+      delete later.nodes["broken"];
+      later.edges["e2"] = { id: "e2", source: { nodeId: "fine", portId: "out" }, target: { nodeId: "again", portId: "input" } };
+      later.edges["e3"] = { id: "e3", source: { nodeId: "again", portId: "out" }, target: { nodeId: "out", portId: "input" } };
+      const laterPlan = compileGraph({ graph: later, settings, registry, capabilities });
+      await expect(backend.compile(laterPlan)).rejects.toBeDefined();
+      expect(told(diagnostics.slice(1))).toEqual([
+        [
+          BackendDiagnosticCode.compileFailed,
+          "again",
+          `Pass "${customPassId(laterPlan, "again")}" failed to compile on the device: ${BROKEN_REASON}`,
+        ],
+      ]);
+    } finally {
+      backend.dispose();
+    }
+  }, 60_000);
+
+  it("tells both of two byte-identical broken nodes the same reason", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+    const backend = createVgpuBackend({ host: nodeGpuHost() });
+    const diagnostics: RuntimeDiagnostic[] = [];
+    backend.onDiagnostic((diagnostic) => diagnostics.push(diagnostic));
+    try {
+      const capabilities = await backend.initialize({});
+      const plan = compileGraph({
+        graph: twinBrokenGraph(),
+        settings,
+        registry: createNodeRegistry([solidNode, customWgslNode, outputNode]).view(),
+        capabilities,
+      });
+      await expect(backend.compile(plan)).rejects.toBeDefined();
+
+      // Only the first of the twins ever had its module created, so only its scope caught
+      // anything; the reason is asked of the SOURCE, which both of them hold.
+      expect(told(diagnostics)).toEqual(
+        ["first", "second"].map((nodeId) => [
+          BackendDiagnosticCode.compileFailed,
+          nodeId,
+          `Pass "${customPassId(plan, nodeId)}" failed to compile on the device: ${BROKEN_REASON}`,
+        ]),
+      );
+    } finally {
+      backend.dispose();
+    }
+  }, 60_000);
+});

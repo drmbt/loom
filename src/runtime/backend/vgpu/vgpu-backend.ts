@@ -67,6 +67,7 @@ import {
   toMutable,
   type CarryOver,
   type ExternalResources,
+  type PassBuildVerdict,
   type ResourceSet,
 } from "./resources.ts";
 
@@ -2040,18 +2041,40 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // awaited via `settled()` BEFORE the program is installed, or a broken shader
       // replaces (and releases) the last valid program with all lights green.
       const asyncErrors: unknown[] = [];
+      // T1521b: what the device said while each pass was BUILT — the shader module's own
+      // error above all, which vgpu's pipeline scope does not cover.
+      const verdicts: PassBuildVerdict[] = [];
+      let deviceVerdicts: Awaited<ReturnType<typeof deviceVerdictDiagnostics>>;
       compileErrorWindow = true;
       const unsubscribe = active.gpu.onError((error: unknown) => {
         asyncErrors.push(error);
       });
       try {
-        resources = buildResources(active.gpu, read.resources, read.passes, guard, carry, stats);
+        resources = buildResources(
+          active.gpu,
+          read.resources,
+          read.passes,
+          guard,
+          carry,
+          stats,
+          noExternalResources,
+          undefined,
+          verdicts,
+        );
         // Twice, deliberately: the first settle drains the tracked error-scope pops, whose
         // handlers only THEN enqueue the listener delivery; the second drains those.
         await active.gpu.settled();
         await active.gpu.settled();
         // T1490b: inside the window, so the verdicts it draws out land in `asyncErrors`.
         await askPassesSharingAFailedShader(active.gpu, read.passes, resources, asyncErrors);
+        // T1521b: read here, not below — asking the compiler for its reasons is a wait, and
+        // everything after the window closes runs to the install without one.
+        deviceVerdicts = await deviceVerdictDiagnostics(
+          (active.gpu.device as { gpu?: GPUDevice }).gpu,
+          asyncErrors.filter(isPipelineCompileError),
+          await passBuildErrors(verdicts),
+          read.passes,
+        );
       } catch (error) {
         // T95 (§V9, §V27): shader and allocation failures must reach onDiagnostic — the
         // problems tab listens there, not on thrown errors. The previous program is
@@ -2069,13 +2092,17 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             ),
           );
         }
+        // T1521b: the build threw on the CPU side, so no verdict below is ever reached —
+        // and whatever a pass's scope caught before that would otherwise be said nowhere.
+        for (const [passId, message] of await passBuildErrors(verdicts)) {
+          hub.report(passBuildNotice(passId, message, read.passes));
+        }
         throw error;
       } finally {
         unsubscribe();
         compileErrorWindow = false;
       }
 
-      const pipelineFailures = asyncErrors.filter(isPipelineCompileError);
       // Anything else the device reported in the window (a dropped readback, say) still
       // reaches the problems tab — it just does not veto the install.
       for (const other of asyncErrors) {
@@ -2084,15 +2111,14 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           backendDiagnostic("warning", BackendDiagnosticCode.frameError, describeError(other)),
         );
       }
-      if (pipelineFailures.length > 0) {
+      const { failures: failureDiagnostics, notices } = deviceVerdicts;
+      for (const notice of notices) hub.report(notice);
+      if (failureDiagnostics.length > 0) {
         // §V9: the previous program stays installed and keeps rendering, flagged stale.
         // The half-built resources are released — except objects carried from (and still
         // owned by) the retained program.
         stale = program !== undefined;
         releaseResourcesExcept(resources, program?.resources);
-        const failureDiagnostics = pipelineFailures.map((error) =>
-          pipelineFailureDiagnostic(error, read.passes),
-        );
         for (const diagnostic of failureDiagnostics) hub.report(diagnostic);
         throw new ResourceBuildError(failureDiagnostics);
       }
@@ -3230,16 +3256,136 @@ async function askPassesSharingAFailedShader(
   }
 }
 
+/** T1521b: the scopes' answers, by pass id — only the passes the device objected to. */
+async function passBuildErrors(verdicts: readonly PassBuildVerdict[]): Promise<Map<string, string>> {
+  const errors = new Map<string, string>();
+  for (const verdict of verdicts) {
+    // A scope that could not be read is said under its pass too, never dropped.
+    const message = await verdict.error.then((error) => error?.message, describeError);
+    if (message !== undefined) errors.set(verdict.passId, message);
+  }
+  return errors;
+}
+
+/** The node a pass belongs to, for the kinds that are built against the device. */
+function builtPassNodeId(pass: PassDescriptor | undefined): string | undefined {
+  return pass !== undefined && (pass.kind === "effect" || pass.kind === "draw" || pass.kind === "dispatch")
+    ? pass.nodeId
+    : undefined;
+}
+
+/**
+ * T1521b: something the device objected to while a pass was built that is NOT the reason
+ * a failure already gives. It used to reach the problems tab from the uncaptured path with
+ * no node on it; the scope it was caught in says whose it is, so it keeps its row and
+ * gains an owner (§V469: an error with no other home is never the one that gets dropped).
+ */
+function passBuildNotice(
+  passId: string,
+  message: string,
+  passes: readonly PassDescriptor[],
+): RuntimeDiagnostic {
+  const nodeId = builtPassNodeId(passes.find((candidate) => candidate.id === passId));
+  return backendDiagnostic(
+    "error",
+    BackendDiagnosticCode.frameError,
+    `GPU validation error while building pass "${passId}": ${message}`,
+    {
+      ...(nodeId === undefined ? {} : { nodeId }),
+      suggestion: "The failing pass renders nothing. Check binding counts and formats against device limits.",
+    },
+  );
+}
+
+/** A WGSL error as the device's compiler reports it: 1-based, in the source it was handed. */
+interface WgslError {
+  readonly line: number;
+  readonly column: number;
+  readonly message: string;
+}
+
+/**
+ * T1521b — ASK THE COMPILER WHAT IS WRONG WITH A SOURCE.
+ *
+ * vgpu holds a pass's real shader module and exposes neither it nor its compilation info,
+ * and it keeps an invalid module cached under its source: the device raises the parse
+ * error ONCE per session, for whichever pass got there first. So the question is put again,
+ * to a module created only to be read — which answers for every pass holding that source,
+ * on every compile, however long ago vgpu's copy was made.
+ *
+ * It is handed the PASS'S text, not what vgpu compiled. An effect's module is that text
+ * behind vgpu's fullscreen vertex stage, which puts the author's line 6 on the device's
+ * line 19; compiled alone, the positions are the ones the pass counts in — and the editor
+ * too, for a node that emits its author's text as written (§V27).
+ */
+async function wgslErrorsOf(raw: GPUDevice | undefined, source: string): Promise<readonly WgslError[]> {
+  if (raw === undefined || typeof raw.createShaderModule !== "function") return [];
+  // Scoped as `compileShader` scopes its own: this module is EXPECTED to be invalid, and
+  // what is wrong with it is read off the compilation info rather than raised a second time.
+  raw.pushErrorScope?.("validation");
+  const module = raw.createShaderModule({ code: source });
+  await raw.popErrorScope?.();
+  const info = await module.getCompilationInfo?.();
+  return (info?.messages ?? [])
+    .filter((message) => message.type === "error")
+    .map((message) => ({ line: message.lineNum, column: message.linePos, message: message.message }));
+}
+
+/**
+ * T1521b — THE DEVICE'S VERDICTS ON A BUILD, EACH WITH ITS REASON AND ITS NODE (§V27).
+ *
+ * A failed pipeline says "[Invalid ShaderModule] is invalid due to a previous error". The
+ * reason a node's badge owes its author is the previous error, so each failure is given, in
+ * order of preference: the compiler's own messages for the pass's WGSL, with line and
+ * column; what the device raised while the pass was built (a layout over a device limit is
+ * not a WGSL error, and is just as much the reason); and only then the pipeline's sentence.
+ *
+ * `notices` is every build error a failure does NOT already state. One that the failure
+ * repeats — the same text, or the compiler message inside the device's longer one — would
+ * be the old nodeless duplicate with a node on it; anything else is a different error and
+ * is reported in its own right.
+ */
+async function deviceVerdictDiagnostics(
+  raw: GPUDevice | undefined,
+  pipelineFailures: readonly unknown[],
+  buildErrors: ReadonlyMap<string, string>,
+  passes: readonly PassDescriptor[],
+): Promise<{ failures: RuntimeDiagnostic[]; notices: RuntimeDiagnostic[] }> {
+  const failures: RuntimeDiagnostic[] = [];
+  const told = new Set<string>();
+  for (const error of pipelineFailures) {
+    const label = failedPipelineLabel(error);
+    const pass = passes.find((candidate) => candidate.id === label);
+    const wgsl =
+      pass !== undefined && (pass.kind === "effect" || pass.kind === "draw")
+        ? await wgslErrorsOf(raw, pass.shader)
+        : [];
+    const built = buildErrors.get(label);
+    const reason =
+      wgsl.length > 0 ? wgsl.map((entry) => `${entry.line}:${entry.column} ${entry.message}`).join("\n") : built;
+    if (built !== undefined && (reason === built || wgsl.some((entry) => built.includes(entry.message)))) {
+      told.add(label);
+    }
+    failures.push(pipelineFailureDiagnostic(error, passes, reason));
+  }
+  const notices = [...buildErrors]
+    .filter(([passId]) => !told.has(passId))
+    .map(([passId, message]) => passBuildNotice(passId, message, passes));
+  return { failures, notices };
+}
+
 /**
  * A device-side pipeline failure, attributed to its pass and node (§V27). The error's
  * `where` is `<label>.compileSync` and every pipeline is labelled with its pass id, so
  * the owning pass — and through it the node badge — is recoverable. Only the id: a pass's
  * human label is shared by every pass of its node type, which blamed the wrong node (B229).
- * The `cause` carries Dawn's real message, line and column included.
+ * `reason` is why (T1521b); without one the `cause` — Dawn's message for the PIPELINE,
+ * which for a broken shader only points at an earlier error — is all there is to say.
  */
 function pipelineFailureDiagnostic(
   error: unknown,
   passes: readonly PassDescriptor[],
+  reason?: string,
 ): ReturnType<typeof backendDiagnostic> {
   const shaped = error as { where?: unknown; cause?: unknown; message?: unknown };
   const label = failedPipelineLabel(error);
@@ -3247,7 +3393,9 @@ function pipelineFailureDiagnostic(
   const nodeId =
     pass !== undefined && pass.kind !== "swap" && pass.kind !== "counter" ? pass.nodeId : undefined;
   const causeMessage =
-    shaped.cause instanceof Error
+    reason !== undefined
+      ? reason
+      : shaped.cause instanceof Error
       ? shaped.cause.message
       : typeof (shaped.cause as { message?: unknown } | undefined)?.message === "string"
         ? String((shaped.cause as { message: string }).message)
