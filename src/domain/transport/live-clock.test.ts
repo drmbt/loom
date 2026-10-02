@@ -263,3 +263,36 @@ describe("fps as a live setting (T272)", () => {
     expect(last).toBe(9999 / 60);
   });
 });
+
+describe("the absolute clock's epoch (T1497b)", () => {
+  it("publishes the app's epoch per frame, so a new one reaches the next frame with no reset", () => {
+    let epoch = "session-1";
+    const clock = liveClock({ fps: () => 60, now: () => 0, epoch: () => epoch });
+    expect(clock.next().absEpoch).toBe("session-1");
+    // A render zeroes the count and the APP mints a new id beside it: the count restarts,
+    // and no frame of the new run can be mistaken for one of the old.
+    clock.resetAbsolute();
+    epoch = "take-1";
+    const first = clock.next();
+    expect(first.absEpoch).toBe("take-1");
+    expect(first.absTimeSeconds).toBe(0);
+  });
+
+  it("a seek and a lap leave the epoch alone, as they leave the count running", () => {
+    const clock = liveClock({ fps: () => 60, now: () => 0, epoch: () => "session-1" });
+    for (let i = 0; i < 10; i += 1) clock.next();
+    clock.reset();
+    const afterSeek = clock.next();
+    clock.wrapTo?.(0);
+    const afterLap = clock.next();
+    expect([afterSeek.absEpoch, afterLap.absEpoch]).toEqual(["session-1", "session-1"]);
+    expect(afterLap.absFrameIndex).toBe(11);
+  });
+
+  it("a clock given no epoch publishes none — the field is absent, not undefined", () => {
+    const frame = liveClock({ fps: () => 60, now: () => 0 }).next();
+    expect("absEpoch" in frame).toBe(false);
+    const unminted = liveClock({ fps: () => 60, now: () => 0, epoch: () => undefined }).next();
+    expect("absEpoch" in unminted).toBe(false);
+  });
+});

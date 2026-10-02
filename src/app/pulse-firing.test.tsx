@@ -3,6 +3,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { componentNodeType } from "@domain/components/index.ts";
+import { serializePresetBank } from "@domain/presets/bank.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import {
@@ -13,6 +14,7 @@ import {
 import { createAppRuntime } from "./app-runtime.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 import { usePulseFiring } from "./pulse-firing.ts";
+import { renderRangeHolderFor } from "./render-range.ts";
 
 /**
  * Expression-fired pulses reach a node INSIDE a component (T615, T214, §V125).
@@ -114,6 +116,150 @@ describe("usePulseFiring — a pulse inside a component fires, and lands on ITS 
     // shared an armed state — the failure a single-instance fixture cannot see (§V461).
     expect(cleared.map((entry) => entry.join(",")).sort()).toEqual([`${one}/fb`, `${two}/fb`]);
     expect(PULSE_CROSSES_AT_SECONDS).toBeGreaterThan(0);
+    runtime.dispose();
+  });
+});
+
+/**
+ * T1497b — A RENDER DOES NOT FIRE A PULSE THAT EDITS THE DOCUMENT (the design doc §5.4).
+ *
+ * `renderFrameRange` steps the live transport, so this observer runs once per exported
+ * frame. A preset bank's `recall` pulse on a beat expression would therefore recall —
+ * i.e. REWRITE THE PROJECT — in the middle of its own export, and the second export of
+ * the same file would start from a different document than the first. The take is marked
+ * the way the app marks it: the render holder's `busy()`, which `use-render-range.ts`
+ * sets before the take's first step.
+ *
+ * Three assertions, because the guard has two ways to be wrong: it must withhold the
+ * recall, it must NOT withhold a pulse that is part of the picture (a Feedback's reset
+ * fires during a take exactly as it does in playback), and it must not leave a stale
+ * edge behind to fire on the first live frame after the take.
+ */
+describe("usePulseFiring — a take fires no command that edits the document (T1497b)", () => {
+  /** A Level at 0.2 and a bank whose Recall pulse arms a quarter-second in, on preset `bright`. */
+  async function stage(): Promise<{ runtime: AppRuntime; level: string; bank: string }> {
+    const runtime = newRuntime();
+    let level = "";
+    let bank = "";
+    await act(async () => {
+      const first = await seed(runtime, [
+        { op: "addNode", ref: "$level", type: "level", position: { x: 0, y: 0 }, parameters: { brightness: 0.2 } },
+      ]);
+      expect(first.status).toBe("applied");
+      level = first.output.createdIds["$level"] ?? "";
+      const name = runtime.bus.store.getGraph().nodes[level]?.label ?? "";
+      expect(name).not.toBe("");
+      const second = await seed(runtime, [
+        {
+          op: "addNode",
+          ref: "$bank",
+          type: "presets",
+          position: { x: 0, y: 200 },
+          parameters: {
+            targets: name,
+            select: "bright",
+            presets: serializePresetBank({ version: 1, presets: [{ name: "bright", values: { [name]: { brightness: 0.8 } } }] }),
+            recall: {
+              mode: "expression",
+              bindings: {
+                static: { kind: "static", value: false },
+                expression: { kind: "expression", source: `max(0, sign(time - ${String(PULSE_CROSSES_AT_SECONDS)}))` },
+              },
+            },
+          },
+        },
+      ]);
+      expect(second.status, JSON.stringify(second.diagnostics)).toBe("applied");
+      bank = second.output.createdIds["$bank"] ?? "";
+    });
+    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current().graph);
+    return { runtime, level, bank };
+  }
+
+  const brightness = (runtime: AppRuntime, level: string): unknown => runtime.bus.store.getGraph().nodes[level]?.parameters["brightness"];
+  const commandsSince = (runtime: AppRuntime, from: number): string[] =>
+    runtime.bus.store
+      .getAudit()
+      .slice(from)
+      .map((entry) => entry.command);
+
+  it("live, the beat recalls: the document changes (the wire the take must cut)", async () => {
+    const { runtime, level } = await stage();
+    const auditBefore = runtime.bus.store.getAudit().length;
+    const { result } = renderHook(() => usePulseFiring(runtime, runtime.invocation));
+    await act(async () => {
+      for (let frameIndex = 0; frameIndex < 40; frameIndex += 1) result.current.observe(frameAt(frameIndex));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(brightness(runtime, level)).toBe(0.8);
+    expect(commandsSince(runtime, auditBefore)).toContain("preset.recall");
+    runtime.dispose();
+  });
+
+  it("during a take the same frames fire nothing, and the edge is not left to fire afterwards", async () => {
+    const { runtime, level } = await stage();
+    let taking = true;
+    renderRangeHolderFor(runtime.bus).current = {
+      busy: () => taking,
+      render: async () => ({ kind: "rendered", frames: 0, fileName: null }),
+    };
+    const revision = runtime.bus.store.getRevision();
+    const auditBefore = runtime.bus.store.getAudit().length;
+    const { result } = renderHook(() => usePulseFiring(runtime, runtime.invocation));
+    await act(async () => {
+      for (let frameIndex = 0; frameIndex < 40; frameIndex += 1) result.current.observe(frameAt(frameIndex));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // No command at all: not the recall, and not a rejected `parameter.pulse` either.
+    expect(commandsSince(runtime, auditBefore)).toEqual([]);
+    expect(runtime.bus.store.getRevision()).toBe(revision);
+    expect(brightness(runtime, level)).toBe(0.2);
+
+    // The take ends with the expression still armed. That is a LEVEL, not a new edge.
+    taking = false;
+    await act(async () => {
+      for (let frameIndex = 40; frameIndex < 50; frameIndex += 1) result.current.observe(frameAt(frameIndex));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(commandsSince(runtime, auditBefore)).toEqual([]);
+    expect(brightness(runtime, level)).toBe(0.2);
+    renderRangeHolderFor(runtime.bus).current = null;
+    runtime.dispose();
+  });
+
+  it("a pulse that is part of the PICTURE still fires during a take: a Feedback's reset", async () => {
+    const runtime = newRuntime();
+    runtime.components.register(animatedComponentDefinition());
+    const cleared: string[][] = [];
+    runtime.bus.registerCommand({
+      name: "runtime.resetFeedback",
+      description: "Test double for the feedback reset a pulse fires.",
+      handler: (input) => {
+        cleared.push([...(input.nodeIds ?? [])]);
+        return { status: "applied", output: { cleared: 1 }, diagnostics: [] };
+      },
+      rejectionOutput: () => ({ cleared: 0 }),
+    });
+    let one = "";
+    await act(async () => {
+      const seeded = await seed(runtime, [
+        { op: "addNode", ref: "$one", type: componentNodeType(ANIMATED_COMPONENT_ID, 1), position: { x: 0, y: 0 }, parameters: { rate: 0.5 } },
+      ]);
+      expect(seeded.status).toBe("applied");
+      one = seeded.output.createdIds["$one"] ?? "";
+    });
+    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current().graph);
+    renderRangeHolderFor(runtime.bus).current = {
+      busy: () => true,
+      render: async () => ({ kind: "rendered", frames: 0, fileName: null }),
+    };
+    const { result } = renderHook(() => usePulseFiring(runtime, runtime.invocation));
+    await act(async () => {
+      for (let frameIndex = 0; frameIndex < 40; frameIndex += 1) result.current.observe(frameAt(frameIndex));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(cleared.map((entry) => entry.join(","))).toEqual([`${one}/fb`]);
+    renderRangeHolderFor(runtime.bus).current = null;
     runtime.dispose();
   });
 });
