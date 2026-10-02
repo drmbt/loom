@@ -416,6 +416,30 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
    * otherwise push uniforms at passes the backend had not created yet.
    */
   const planRef = useRef<CompiledGraph | null>(null);
+  /**
+   * B234 — THE `animate` THAT BELONGS TO `planRef`, which is not the newest one.
+   *
+   * `animate` and `compiled` arrive together, built from one request (`useGraphCompile`),
+   * and a frame's values are only meaningful against the plan of the same request. But
+   * `animateRef` moves at RENDER and `planRef` moves when `backend.compile` RESOLVES, so
+   * across a structural edit there is an interval — as long as the compile takes — where
+   * the newest `animate` is the next document's and the plan the backend holds is the
+   * previous one's. A frame in that interval diffed the two, found them structurally
+   * different (they are: the DOCUMENT changed), refused the push and reported
+   * `animation/structuralDrift` — a claim about an animated parameter that no parameter
+   * had earned — while everything the installed plan animates froze until the install.
+   * Found on E82: `1 open` bypasses two layers with a fade starting.
+   *
+   * So the function the frame calls is held beside the plan it was built for, and moves
+   * with it: at the install, at a values-only handover, and at any render that brings a
+   * new `animate` for the plan already installed (an editor-only revision reuses the plan
+   * and still re-keys the closure). Until the next plan lands, the installed one keeps
+   * animating on its own document's values.
+   */
+  const installedAnimateRef = useRef<AnimateFrame | null>(null);
+  const compiledRef = useRef<CompiledGraph | null>(compiled);
+  compiledRef.current = compiled;
+  if (compiled !== null && compiled === planRef.current) installedAnimateRef.current = animate;
   const animatorRef = useRef(createUniformAnimator());
   const driftRef = useRef(false);
   const pointerRef = useRef<PointerSource | null>(null);
@@ -466,7 +490,8 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
    * once instead of every frame.
    */
   const pushAnimatedValues = useCallback((inputs: FrameInputs) => {
-    const animateFrame = animateRef.current;
+    // B234: the installed plan's own `animate`, never the newest render's.
+    const animateFrame = installedAnimateRef.current;
     const base = planRef.current;
     const live = backend;
     if (animateFrame === null || base === null || live === null || live === undefined) return;
@@ -760,6 +785,7 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
         // Later pushes diff against the newest values, so a slider dragged through ten
         // positions writes each block once, not ten times against a stale base.
         planRef.current = compiled;
+        installedAnimateRef.current = animate;
         /*
          * T1163: deliberately NOT announced. This branch runs only for a plan `push` has
          * verified to be a values-only variation of the installed one (§V5), so it carries
@@ -806,6 +832,9 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
         // The structural plan the per-frame push diffs against. Reset together, so a
         // recompile never leaves the animator comparing against a plan that is gone.
         planRef.current = compiled;
+        // B234: and its `animate` with it. The newest one if a render has re-keyed it for
+        // this same plan while the compile was in flight; otherwise the one it came with.
+        installedAnimateRef.current = compiledRef.current === compiled ? animateRef.current : animate;
         // T1163 — HERE, inside the `.then`, is the moment the backend actually holds it.
         // The generation guard above has already dropped a superseded install, so this
         // can only ever announce the newest plan that landed.

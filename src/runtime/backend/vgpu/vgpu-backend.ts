@@ -2647,6 +2647,22 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             return pass === undefined || !("clear" in pass) || pass.clear !== false;
           };
           const encodeCommand = (f: Frame): void => {
+            /*
+             * B234 — PASSES WHOSE SOURCE IN THE MAIN PROGRAM IS GONE ARE NOT ENCODED.
+             *
+             * A main recompile destroys the objects it drops, and a preview pass that
+             * bound one keeps naming it: `refreshPreviewExternals` and the re-pointing
+             * below can only move a binding to a source that still exists. The program
+             * that stops naming it is the caller's to send, and it arrives a React commit
+             * behind the install — so a tick in between encoded the pass, the device
+             * refused the WHOLE submit ("Destroyed texture … used in a submit"; a watched
+             * pointset's storage says the same of a buffer) and every other tile's
+             * refresh went with it. Skipped, the one tile holds its last picture.
+             */
+            const orphaned = new Set<string>();
+            for (const external of h.externalBindings) {
+              if (presentationSource(external.resourceId) === undefined) orphaned.add(external.passId);
+            }
             // Ping-pong-sourced bindings swap identity per frame — re-point first,
             // exactly as the main program's rebindDynamicTextures does.
             for (const [passId, bindings] of set.dynamicTextures) {
@@ -2685,6 +2701,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
                   set.buffers.get(binding.resourceId) ??
                   program?.resources.buffers.get(binding.resourceId);
                 if (plain) values[binding.binding] = plain;
+                else orphaned.add(passId); // B234: the main program no longer has it.
               }
               drawable.set(values);
             }
@@ -2695,6 +2712,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             // the pass descriptor: a stock scene's backdrop clears, the object drawn
             // over it must not.
             for (const passId of command.refresh) {
+              if (orphaned.has(passId)) continue; // B234
               const drawable = set.effects.get(passId) ?? set.draws.get(passId);
               const resolve = set.renderTargets.get(passId);
               if (drawable && resolve) {
