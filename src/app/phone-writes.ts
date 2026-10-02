@@ -2,6 +2,7 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import type { Actor, InvocationContext } from "@domain/types/commands.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { FrameScheduler } from "@ui/controls/coalesce.ts";
+import { refusalMessage } from "@editor/inspector/command-refusal.ts";
 import { createParameterEditor, type ParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { phoneActorId, type PhoneSet } from "@devices/phone/phone-protocol.ts";
 import { vetPhoneSet } from "@devices/phone/phone-snapshot.ts";
@@ -36,6 +37,18 @@ import { vetPhoneSet } from "@devices/phone/phone-snapshot.ts";
  * phone's writes run in order on one chain, and a button write (or any commit) waits
  * for the editor to settle before the next is vetted. A slider's live frames do not
  * wait: they only need clamping, and waiting would undo the per-frame coalescing.
+ *
+ * ## Banks, layers and cue lists (T1503b, §T1398b ruling 12)
+ *
+ * A vetted write is one of three things (`PhoneVet.action`). `parameters` is the editor
+ * path above. `command` is one of the vet's four — recall, GO, BACK, standby — run on the
+ * bus under the phone's actor, so the audit says `human remote-<phone>` did it and its
+ * one undo group lands on that phone's stack; the command and its input are the VET's,
+ * never the phone's, and the vet names no Store. `layerOn` is one `setNodeUi { bypassed }`
+ * written as the state asked for, and not at all when the layer is already so — the
+ * desk's own rule (`board-members.tsx`), so a double tap is one undo step, not a flip
+ * back. Both wait for the editor to settle first and run on the phone's lane: a press
+ * sent after a fader lift lands after it.
  */
 
 export interface PhoneWritesOptions {
@@ -67,6 +80,8 @@ export function phoneActor(phone: string): Actor {
 }
 
 interface Lane {
+  /** The page's invocation with this phone as its actor: what every write of its runs under. */
+  readonly context: InvocationContext;
   readonly editor: ParameterEditor;
   chain: Promise<void>;
   /** Buttons this phone pressed and has not released. */
@@ -79,10 +94,12 @@ export function createPhoneWrites(options: PhoneWritesOptions): PhoneWrites {
   const laneFor = (phone: string): Lane => {
     const existing = lanes.get(phone);
     if (existing !== undefined) return existing;
+    const context: InvocationContext = { ...options.invocation, actor: phoneActor(phone) };
     const lane: Lane = {
+      context,
       editor: createParameterEditor({
         bus: options.bus,
-        context: { ...options.invocation, actor: phoneActor(phone) },
+        context,
         ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
         onDiagnostics: (diagnostics) => {
           for (const diagnostic of diagnostics) options.onRefused(phone, diagnostic.message);
@@ -99,6 +116,29 @@ export function createPhoneWrites(options: PhoneWritesOptions): PhoneWrites {
     const vet = vetPhoneSet(options.bus.store.getGraph(), set);
     if (!vet.ok) {
       if (report) options.onRefused(phone, vet.reason);
+      return;
+    }
+    if (vet.action !== "parameters") {
+      await lane.editor.settled();
+      const { bus } = options;
+      if (vet.action === "layerOn") {
+        // Read at the write, not from what the phone drew: already so = nothing to write.
+        if ((bus.store.getGraph().nodes[vet.nodeId]?.ui?.bypassed !== true) === vet.on) return;
+      }
+      const result =
+        vet.action === "command"
+          ? await bus.execute(vet.command, vet.input, lane.context)
+          : await bus.execute(
+              "graph.applyPatch",
+              {
+                baseRevision: bus.store.getRevision(),
+                label: `${vet.on ? "Layer on" : "Layer off"} (${vet.caption})`,
+                operations: [{ op: "setNodeUi", nodeId: vet.nodeId, ui: { bypassed: !vet.on } }],
+              },
+              lane.context,
+            );
+      const refused = refusalMessage(result);
+      if (refused !== null && report) options.onRefused(phone, refused);
       return;
     }
     lane.editor.setStored(vet.nodeId, vet.entries, vet.phase);

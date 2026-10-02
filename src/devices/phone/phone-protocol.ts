@@ -75,6 +75,47 @@ export type PhoneWidget =
       readonly y: number;
       readonly min: number;
       readonly max: number;
+    }
+  /*
+   * T1503b (§T1398b ruling 12) — a Presets bank, a Layer and a Cue List named on a remote
+   * Panel's board. They are drawn on a BOARD only (`PhoneBoardItem`); `rows` never carry
+   * one. A phone recalls, switches, fades and steps; it never stores a preset or edits a cue.
+   */
+  | {
+      readonly kind: "preset";
+      /** The bank node's id, as for the widgets above. */
+      readonly handle: string;
+      readonly caption: string;
+      /** Preset NAMES, in bank order — a button each. */
+      readonly presets: readonly string[];
+      /** The preset recalled last (the destination, from the moment of the recall), or null. */
+      readonly current: string | null;
+      /** A fade is still running on screen. Set when it starts, cleared when it ends. */
+      readonly morphing: boolean;
+    }
+  | {
+      readonly kind: "layer";
+      readonly handle: string;
+      readonly caption: string;
+      /** Not bypassed. */
+      readonly on: boolean;
+      /** The fader's level. Meaningful only while `opacityWritable`: a driven opacity has no level to show. */
+      readonly opacity: number;
+      /** False when the document drives the opacity: the phone draws the fader read-only. */
+      readonly opacityWritable: boolean;
+    }
+  | {
+      readonly kind: "cueList";
+      readonly handle: string;
+      readonly caption: string;
+      /** Cue NAMES, in list order — what `standby` may name. */
+      readonly cues: readonly string[];
+      /** The cue that fired last, or null before the first GO. */
+      readonly current: string | null;
+      /** The cue GO fires now (the standby, else the one after `current`), or null when GO would be refused. */
+      readonly next: string | null;
+      readonly canGo: boolean;
+      readonly canBack: boolean;
     };
 
 /** A Panel's row, with widget names already resolved to what the phone may draw. */
@@ -129,7 +170,16 @@ export const PHONE_WRITABLE_KEYS = {
   toggle: ["on"],
   button: ["held"],
   xyPad: ["x", "y"],
+  // T1503b. `recall` and `standby` carry a NAME (a list can change between the snapshot a
+  // phone drew and its tap, and a stale index would recall the wrong preset); `go` and
+  // `back` carry `true`. All but `opacity` are `commit` only. There is no `store`.
+  preset: ["recall"],
+  layer: ["on", "opacity"],
+  cueList: ["go", "back", "standby"],
 } as const satisfies Record<PhoneWidget["kind"], readonly string[]>;
+
+/** T1503b: the longest string a phone write's value may be — a preset or a cue name. */
+export const PHONE_VALUE_MAX_CHARS = 120;
 
 /**
  * One write from a phone. `live` while a finger is moving, `commit` when it lifts — the same
@@ -138,7 +188,8 @@ export const PHONE_WRITABLE_KEYS = {
  */
 export interface PhoneSet {
   readonly handle: string;
-  readonly values: Readonly<Record<string, number | boolean>>;
+  /** A string is a NAME (T1503b: `recall`, `standby`), at most `PHONE_VALUE_MAX_CHARS` long. */
+  readonly values: Readonly<Record<string, number | boolean | string>>;
   readonly phase: "live" | "commit";
 }
 

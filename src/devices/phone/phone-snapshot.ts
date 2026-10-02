@@ -1,11 +1,29 @@
+import type { FrameClock } from "../../domain/types/frame.ts";
 import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
 import type { NodeId } from "../../domain/types/ids.ts";
 import type { NodeDefinition } from "../../domain/types/node-definition.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { isParameterSlot, staticBindingValue } from "../../domain/parameters/slots.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
+import { PRESETS_NODE_TYPE, parsePresetBank } from "../../domain/presets/bank.ts";
+import { PRESET_RECALL_COMMAND } from "../../domain/presets/commands.ts";
+import { CUE_SET_STANDBY_COMMAND } from "../../domain/presets/cue-commands.ts";
+import {
+  CUE_BACK_COMMAND,
+  CUE_GO_COMMAND,
+  CUE_LIST_NODE_TYPE,
+  nextCueName,
+  parseCueList,
+  previousCue,
+  type CueList,
+  type CuePosition,
+} from "../../domain/presets/cue-list.ts";
+import { morphRunning, parseMorphRecords, type MorphRecord } from "../../domain/presets/morph.ts";
+import { layerNode } from "../../nodes/definitions/layer.ts";
 import {
   CONTROL_WIDGET_TYPES,
+  LAYER_NODE_TYPE,
+  controlNameOf,
   controlButtonNode,
   controlChannel,
   controlSliderNode,
@@ -62,6 +80,19 @@ import {
  * Max is left out too, because the range the phone would draw is not the range in force.
  * The Panel's own Phone switch follows the same rule: only a plain (or static) `true`
  * publishes it; a switch an expression flips is not a door an expression gets to open.
+ *
+ * ## Banks, layers and cue lists (T1503b, §T1398b ruling 12)
+ *
+ * A Presets bank, a Layer and a Cue List join a Panel's BOARD by name (`panelBoard`, T1501b),
+ * and a phone reaches exactly the ones on a board whose Panel has Phone on —
+ * `publishedMembers`, the same one-rule-for-both as the widgets. What a phone may do to one
+ * is recall a preset, switch a layer and move its opacity, and GO / BACK / stand a cue by.
+ * `PHONE_COMMANDS` is every bus command the vet can name, and Store and Delete are not in
+ * it: there is no key a phone can send that the vet turns into either.
+ *
+ * A layer whose opacity the document drives IS published, unlike a driven widget: its
+ * switch is still the phone's to press. The fader is marked not writable
+ * (`opacityWritable`), and a write to it is refused.
  */
 
 /** The plain value behind a stored parameter, or `DRIVEN` when a non-static mode is in force. */
@@ -74,9 +105,11 @@ function plain(stored: StoredParameter | undefined): unknown {
 const num = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
-type WidgetNode = GraphNode & { readonly type: PhoneWidget["kind"] };
+/** The four control widgets: each is a node type and a phone kind by one name. */
+type ControlKind = "slider" | "toggle" | "button" | "xyPad";
+type WidgetNode = GraphNode & { readonly type: ControlKind };
 
-const WIDGET_DEFINITIONS: Readonly<Record<PhoneWidget["kind"], NodeDefinition>> = {
+const WIDGET_DEFINITIONS: Readonly<Record<ControlKind, NodeDefinition>> = {
   slider: controlSliderNode,
   toggle: controlToggleNode,
   button: controlButtonNode,
@@ -93,7 +126,7 @@ function declared(node: WidgetNode, key: string): number {
 }
 
 /** Keys the phone READS per widget type — driven on any of them leaves the widget out. */
-const READ_KEYS: Readonly<Record<PhoneWidget["kind"], readonly string[]>> = {
+const READ_KEYS: Readonly<Record<ControlKind, readonly string[]>> = {
   slider: ["value", "min", "max", "step"],
   toggle: ["on"],
   // `presses` is written by the page on a press edge, so it must not be driven either.
@@ -101,10 +134,10 @@ const READ_KEYS: Readonly<Record<PhoneWidget["kind"], readonly string[]>> = {
   xyPad: ["x", "y", "min", "max"],
 };
 
-const isWidgetKind = (type: string): type is PhoneWidget["kind"] =>
+const isWidgetKind = (type: string): type is ControlKind =>
   CONTROL_WIDGET_TYPES.has(type) && Object.hasOwn(PHONE_WRITABLE_KEYS, type);
 
-function isDriven(node: GraphNode, kind: PhoneWidget["kind"]): boolean {
+function isDriven(node: GraphNode, kind: ControlKind): boolean {
   return READ_KEYS[kind].some((key) => plain(node.parameters[key]) === DRIVEN);
 }
 
@@ -204,6 +237,126 @@ function phoneWidget(node: WidgetNode): PhoneWidget {
   }
 }
 
+/* ------------------------------------------------- banks, layers, cue lists (T1503b) */
+
+type MemberKind = "preset" | "layer" | "cueList";
+
+/** The phone kind a board's by-name member is drawn as, by node type (`BOARD_NAMED_TYPES`). */
+const MEMBER_KINDS: Readonly<Record<string, MemberKind>> = {
+  [PRESETS_NODE_TYPE]: "preset",
+  [LAYER_NODE_TYPE]: "layer",
+  [CUE_LIST_NODE_TYPE]: "cueList",
+};
+
+const memberKind = (node: GraphNode): MemberKind | null => MEMBER_KINDS[node.type] ?? null;
+
+/**
+ * The other half of the one decision: bank / layer / cue-list node id → node, for every one
+ * a phone may see and operate — those on the board of a Panel whose Phone switch is on.
+ */
+export function publishedMembers(graph: GraphDocument): Map<NodeId, GraphNode> {
+  const out = new Map<NodeId, GraphNode>();
+  for (const panel of Object.values(graph.nodes)) {
+    if (!isRemotePanel(panel)) continue;
+    for (const item of panelBoard(graph, panel)?.items ?? []) {
+      if (item.kind === "widget" && memberKind(item.node) !== null) out.set(item.node.id, item.node);
+    }
+  }
+  return out;
+}
+
+/** A stored text parameter, trimmed; a driven one reads as empty. */
+const textOf = (stored: StoredParameter | undefined): string => {
+  const value = plain(stored);
+  return typeof value === "string" ? value.trim() : "";
+};
+
+/** A bank's preset names, in bank order; an unreadable bank has none. */
+function presetNames(bank: GraphNode): string[] {
+  const parsed = parsePresetBank(plain(bank.parameters["presets"]));
+  return parsed.ok ? parsed.bank.presets.map((preset) => preset.name) : [];
+}
+
+/** The fades a bank still has to do on this clock. No clock (no frame loop): none. */
+function runningMorphs(bank: GraphNode, clock: FrameClock | undefined): MorphRecord[] {
+  if (clock === undefined) return [];
+  return parseMorphRecords(plain(bank.parameters["morphs"])).filter((record) => morphRunning(record, clock));
+}
+
+/**
+ * Every fade behind a `morphing: true` in the snapshot built at `clock`. The page watches
+ * THESE records against its frame clock and rebuilds the snapshot when one stops running —
+ * the end of a fade changes nothing in the document, so nothing else would say so.
+ */
+export function publishedMorphs(graph: GraphDocument, clock: FrameClock | undefined): MorphRecord[] {
+  if (clock === undefined) return [];
+  return [...publishedMembers(graph).values()].flatMap((node) => (memberKind(node) === "preset" ? runningMorphs(node, clock) : []));
+}
+
+interface LayerOpacity {
+  /** The level, inside the range; the declared default when the document drives it. */
+  readonly value: number;
+  readonly writable: boolean;
+  readonly range: readonly [number, number];
+}
+
+/** A layer's opacity through the schema funnel (§T903): its range and default are the layer's own. */
+function layerOpacity(layer: GraphNode): LayerOpacity {
+  const definition = effectiveParameterSchema(layerNode, layer.parameters)["opacity"] as Record<string, unknown> | undefined;
+  const range: [number, number] = [num(definition?.["min"], 0), num(definition?.["max"], 1)];
+  const fallback = num(definition?.["default"], 1);
+  const stored = plain(layer.parameters["opacity"]);
+  if (stored === DRIVEN) return { value: fallback, writable: false, range };
+  return { value: clamp(num(stored, fallback), range), writable: true, range };
+}
+
+/** A cue list's cues and where it stands, as the desk's pad reads them (`board-members.tsx`). */
+function cueState(node: GraphNode): { readonly list: CueList | null; readonly position: CuePosition } {
+  const parsed = parseCueList(plain(node.parameters["cues"]));
+  return {
+    list: parsed.ok ? parsed.list : null,
+    position: {
+      current: textOf(node.parameters["current"]),
+      standby: textOf(node.parameters["standby"]),
+      wrap: plain(node.parameters["wrap"]) === true,
+    },
+  };
+}
+
+function memberWidget(node: GraphNode, kind: MemberKind, clock: FrameClock | undefined): PhoneWidget {
+  const handle = node.id;
+  const caption = controlNameOf(node);
+  switch (kind) {
+    case "preset":
+      return {
+        kind,
+        handle,
+        caption,
+        presets: presetNames(node),
+        current: textOf(node.parameters["current"]) || null,
+        morphing: runningMorphs(node, clock).length > 0,
+      };
+    case "layer": {
+      const opacity = layerOpacity(node);
+      return { kind, handle, caption, on: node.ui?.bypassed !== true, opacity: opacity.value, opacityWritable: opacity.writable };
+    }
+    case "cueList": {
+      const { list, position } = cueState(node);
+      const next = list === null ? null : nextCueName(list, position);
+      return {
+        kind,
+        handle,
+        caption,
+        cues: list === null ? [] : list.cues.map((cue) => cue.name),
+        current: position.current || null,
+        next,
+        canGo: next !== null,
+        canBack: list !== null && previousCue(list, position).ok,
+      };
+    }
+  }
+}
+
 /**
  * T1516b — a wired Panel's board as the phone draws it: the SAME `panelBoard` the Controls
  * tab and the canvas body draw, so the owner's arrangement is the phone's. A widget the
@@ -211,21 +364,28 @@ function phoneWidget(node: WidgetNode): PhoneWidget {
  * the board is the owner's arrangement, not a flow. A Panel laid out by the legacy override
  * has no board; the phone draws its `rows`.
  */
-function phoneBoard(graph: GraphDocument, panel: GraphNode): PhoneBoard | undefined {
+function phoneBoard(graph: GraphDocument, panel: GraphNode, clock: FrameClock | undefined): PhoneBoard | undefined {
   const board = panelBoard(graph, panel);
   if (board === null) return undefined;
   const items = board.items.flatMap((item): PhoneBoardItem[] => {
     if (item.kind === "label") return [{ kind: "label", rect: item.rect, text: item.text }];
     const node = item.node;
+    // T1503b: a bank, a layer or a cue list — on the board by name, drawn at its rect.
+    const member = memberKind(node);
+    if (member !== null) return [{ kind: "widget", rect: item.rect, widget: memberWidget(node, member, clock) }];
     return isWidgetKind(node.type) && !isDriven(node, node.type) ? [{ kind: "widget", rect: item.rect, widget: phoneWidget(node as WidgetNode) }] : [];
   });
   return { columns: board.columns, rows: board.rows, items };
 }
 
-/** Everything a phone can see, from every Panel whose Phone switch is on. */
-export function buildPhoneSnapshot(graph: GraphDocument, seq: number): PhoneSnapshot {
+/**
+ * Everything a phone can see, from every Panel whose Phone switch is on. `clock` is the
+ * page's frame clock (`bus.frameClock()`), read only to say whether a bank is `morphing`;
+ * without one nothing is.
+ */
+export function buildPhoneSnapshot(graph: GraphDocument, seq: number, clock?: FrameClock): PhoneSnapshot {
   const panels: PhonePanel[] = remoteLayouts(graph).map(({ panel, rows }) => {
-    const board = phoneBoard(graph, panel);
+    const board = phoneBoard(graph, panel, clock);
     return {
       title: panelTitle(panel),
       // Kept for a wired Panel too: a phone page from before the board still draws these.
@@ -242,15 +402,37 @@ export function buildPhoneSnapshot(graph: GraphDocument, seq: number): PhoneSnap
 
 /* ------------------------------------------------------------------ the vet */
 
-/** What a vetted phone write becomes: one `setParameters` on one widget node. */
+/**
+ * T1503b — EVERY BUS COMMAND A PHONE CAN CAUSE, beside the parameter and bypass patches.
+ * Recall and the cue list's three; `preset.store` and `preset.delete` are not here, and
+ * `PhoneCommandCall` cannot spell them (§T1398b ruling 12: no Store from the phone).
+ */
+export const PHONE_COMMANDS = [PRESET_RECALL_COMMAND, CUE_GO_COMMAND, CUE_BACK_COMMAND, CUE_SET_STANDBY_COMMAND] as const;
+
+/** One command and the input the VET built for it — nothing the phone sent rides along but a checked name. */
+export type PhoneCommandCall =
+  | { readonly command: typeof PRESET_RECALL_COMMAND; readonly input: { readonly nodeId: NodeId; readonly name: string } }
+  | { readonly command: typeof CUE_GO_COMMAND | typeof CUE_BACK_COMMAND; readonly input: { readonly nodeId: NodeId } }
+  | { readonly command: typeof CUE_SET_STANDBY_COMMAND; readonly input: { readonly nodeId: NodeId; readonly cue: string } };
+
+/**
+ * What a vetted phone write becomes:
+ *  - `parameters`: one `setParameters` on one node, through the phone's parameter editor;
+ *  - `command` (T1503b): one of `PHONE_COMMANDS`, run on the bus as the phone;
+ *  - `layerOn` (T1503b): the STATE a layer's switch was asked for — written as that state
+ *    (`setNodeUi { bypassed }`), never a flip, so a double tap cannot switch it back.
+ */
 export type PhoneVet =
   | {
       readonly ok: true;
+      readonly action: "parameters";
       readonly nodeId: NodeId;
-      readonly kind: PhoneWidget["kind"];
+      readonly kind: ControlKind | "layer";
       readonly entries: Readonly<Record<string, number | boolean>>;
       readonly phase: PhoneSet["phase"];
     }
+  | ({ readonly ok: true; readonly action: "command" } & PhoneCommandCall)
+  | { readonly ok: true; readonly action: "layerOn"; readonly nodeId: NodeId; readonly caption: string; readonly on: boolean }
   | { readonly ok: false; readonly reason: string };
 
 const refuse = (reason: string): PhoneVet => ({ ok: false, reason });
@@ -268,6 +450,9 @@ export function vetPhoneSet(graph: GraphDocument, set: PhoneSet): PhoneVet {
   const handle = typeof set.handle === "string" ? (set.handle as NodeId) : null;
   const node = handle === null ? undefined : publishedWidgets(graph).get(handle);
   if (node === undefined) {
+    const member = handle === null ? undefined : publishedMembers(graph).get(handle);
+    const memberIs = member === undefined ? null : memberKind(member);
+    if (member !== undefined && memberIs !== null) return vetMember(member, memberIs, set);
     // Also where a widget lands whose Panel was just switched off, and a driven widget
     // on a published Panel — told apart here only when the widget really is on one.
     const named = handle === null ? undefined : graph.nodes[handle];
@@ -295,7 +480,7 @@ export function vetPhoneSet(graph: GraphDocument, set: PhoneSet): PhoneVet {
     const value = values[key];
     return typeof value === "boolean" ? value : null;
   };
-  const ok = (entries: Record<string, number | boolean>): PhoneVet => ({ ok: true, nodeId: node.id, kind, entries, phase: set.phase });
+  const ok = (entries: Record<string, number | boolean>): PhoneVet => ({ ok: true, action: "parameters", nodeId: node.id, kind, entries, phase: set.phase });
   const notNumber = refuse(`A phone sent “${caption}” something that is not a finite number.`);
   const notFlag = refuse(`A phone sent “${caption}” something that is not true or false.`);
 
@@ -330,6 +515,68 @@ export function vetPhoneSet(graph: GraphDocument, set: PhoneSet): PhoneVet {
       // is not a second press. Both keys every time, so press and release are one
       // gesture identity in the parameter editor — ONE undo group per press (§V15).
       return ok({ held, presses: held && p("held") !== true ? presses + 1 : presses });
+    }
+  }
+}
+
+/**
+ * T1503b — one write to a bank, a layer or a cue list that IS on a remote Panel's board.
+ *
+ * One key per write: each of these is one press (or one fader), and a write naming two
+ * things at once has no order to do them in. Everything but a layer's opacity is `commit`
+ * only — a recall or a GO is a press, not a drag, and a `live` one is refused by name.
+ * A NAME (`recall`, `standby`) is checked against the bank or the list as it is NOW.
+ */
+function vetMember(node: GraphNode, kind: MemberKind, set: PhoneSet): PhoneVet {
+  const caption = controlNameOf(node);
+  const values = typeof set.values === "object" && set.values !== null ? set.values : {};
+  const keys = Object.keys(values);
+  if (keys.length === 0) return refuse(`A phone's write to “${caption}” carried no values.`);
+  const writable: readonly string[] = PHONE_WRITABLE_KEYS[kind];
+  if (!keys.every((key) => writable.includes(key))) {
+    return refuse(`A phone tried to write a key a ${kind} does not let a phone write, on “${caption}”.`);
+  }
+  if (keys.length > 1) return refuse(`A phone sent “${caption}” two things in one write; a ${kind} takes one at a time.`);
+  const key = keys[0] as string;
+  const value = values[key];
+  const pressOnly = (what: string): PhoneVet | null =>
+    set.phase === "commit" ? null : refuse(`A phone sent “${caption}” ${what} as a live drag; it is one press, sent once.`);
+  const call = (command: PhoneCommandCall): PhoneVet => ({ ok: true, action: "command", ...command });
+
+  switch (kind) {
+    case "preset": {
+      const live = pressOnly("a recall");
+      if (live !== null) return live;
+      // Not quoted back: what a phone sent is data off the LAN, not copy.
+      if (typeof value !== "string" || !presetNames(node).includes(value)) {
+        return refuse(`“${caption}” has no preset by the name a phone asked for; it was renamed or deleted since the phone drew it.`);
+      }
+      return call({ command: PRESET_RECALL_COMMAND, input: { nodeId: node.id, name: value } });
+    }
+    case "layer": {
+      if (key === "on") {
+        const live = pressOnly("its switch");
+        if (live !== null) return live;
+        if (typeof value !== "boolean") return refuse(`A phone sent “${caption}” something that is not true or false.`);
+        return { ok: true, action: "layerOn", nodeId: node.id, caption, on: value };
+      }
+      const opacity = layerOpacity(node);
+      if (!opacity.writable) return refuse(`“${caption}” has its opacity driven by the document, so a phone cannot move it.`);
+      if (typeof value !== "number" || !Number.isFinite(value)) return refuse(`A phone sent “${caption}” something that is not a finite number.`);
+      return { ok: true, action: "parameters", nodeId: node.id, kind, entries: { opacity: clamp(value, opacity.range) }, phase: set.phase };
+    }
+    case "cueList": {
+      const live = pressOnly(key === "standby" ? "a standby" : key === "go" ? "a GO" : "a BACK");
+      if (live !== null) return live;
+      if (key === "standby") {
+        const { list } = cueState(node);
+        if (typeof value !== "string" || list === null || !list.cues.some((cue) => cue.name === value)) {
+          return refuse(`“${caption}” has no cue by the name a phone asked for; it was renamed or deleted since the phone drew it.`);
+        }
+        return call({ command: CUE_SET_STANDBY_COMMAND, input: { nodeId: node.id, cue: value } });
+      }
+      if (value !== true) return refuse(`A phone sent “${caption}” a press that is not a press.`);
+      return call({ command: key === "go" ? CUE_GO_COMMAND : CUE_BACK_COMMAND, input: { nodeId: node.id } });
     }
   }
 }

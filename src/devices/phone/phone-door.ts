@@ -14,6 +14,7 @@ import {
   PHONE_SIGNAL_MAX_BYTES,
   PHONE_SIGNAL_PATH,
   PHONE_TOKEN_PARAM,
+  PHONE_VALUE_MAX_CHARS,
   parsePhoneSignal,
   type PhoneDoorState,
   type PhoneEvent,
@@ -728,8 +729,10 @@ export function parsePhoneSet(text: string): PhoneSet | string {
   const entries = Object.entries(values as Record<string, unknown>);
   for (const [key, value] of entries) {
     if (typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) continue;
-    return `A phone write's values are finite numbers or booleans, and \`${key}\` is not.`;
+    // T1503b: a NAME — a preset to recall, a cue to stand by. WHICH name is the page's vet.
+    if (typeof value === "string" && value.length <= PHONE_VALUE_MAX_CHARS) continue;
+    return `A phone write's values are finite numbers, booleans or names of at most ${String(PHONE_VALUE_MAX_CHARS)} characters, and \`${key}\` is not.`;
   }
   // A fresh object of own properties: a `__proto__` key stays a key, never a prototype.
-  return { handle, values: Object.fromEntries(entries) as Record<string, number | boolean>, phase };
+  return { handle, values: Object.fromEntries(entries) as Record<string, number | boolean | string>, phase };
 }

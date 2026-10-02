@@ -8,8 +8,11 @@ import type { GraphDocument } from "../../domain/types/graph.ts";
 import type { GraphPatchOperation } from "../../domain/types/patch.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
-import { buildPhoneSnapshot, vetPhoneSet } from "./phone-snapshot.ts";
-import type { PhoneSet } from "./phone-protocol.ts";
+import type { FrameClock } from "../../domain/types/frame.ts";
+import { serializeCueList, serializePresetBank } from "../../domain/presets/index.ts";
+import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
+import { PHONE_COMMANDS, buildPhoneSnapshot, publishedMorphs, vetPhoneSet } from "./phone-snapshot.ts";
+import { PHONE_WRITABLE_KEYS, type PhoneBoardItem, type PhoneSet, type PhoneWidget } from "./phone-protocol.ts";
 
 /**
  * T1396b — WHAT A PHONE SEES, AND WHAT IT MAY WRITE, decided from the document alone.
@@ -48,7 +51,7 @@ const STAGE: GraphPatchOperation[] = [
   add("desk", "panel", "panel2", { title: "Desk only", layout: "secret1" }),
 ];
 
-const set = (handle: string, values: Record<string, number | boolean>, phase: PhoneSet["phase"] = "commit"): PhoneSet => ({
+const set = (handle: string, values: Record<string, number | boolean | string>, phase: PhoneSet["phase"] = "commit"): PhoneSet => ({
   handle,
   values,
   phase,
@@ -230,5 +233,315 @@ describe("T1512b — the phone follows a Panel's wiring order", () => {
     );
     expect(handles(bus)).toEqual([ids["$strobe"]]);
     expect(vetPhoneSet(bus.store.getGraph(), set(ids["$fader"]!, { value: 0.5 })).ok).toBe(false);
+  });
+});
+
+/**
+ * T1503b (§T1398b ruling 12) — A BANK, A LAYER AND A CUE LIST ON THE PHONE. What the owner
+ * ruled: a phone reaches the ones named on a Panel whose Phone switch is on, and nothing
+ * else; it recalls, switches, fades and steps; it never stores. Each test is what a phone
+ * user (or somebody on the wifi with the token) would meet.
+ */
+describe("T1503b — banks, layers and cue lists on the phone", () => {
+  const LOOKS = serializePresetBank({
+    version: 1,
+    presets: [
+      { name: "soft", values: { blur1: { size: 4 } } },
+      { name: "hard", values: { blur1: { size: 20 } } },
+    ],
+  });
+  const CUES = serializeCueList({
+    version: 1,
+    cues: [
+      { name: "1", bank: "looks", preset: "soft" },
+      { name: "2", bank: "looks", preset: "hard" },
+    ],
+  });
+  const board = (members: ReadonlyArray<readonly [string, number, number, number, number]>): string =>
+    serializePanelBoard({ columns: 8, items: members.map(([member, x, y, w, h]) => ({ member, rect: { x, y, w, h } })) });
+
+  /** `looks`, `fx` and `set` on a published Panel; a second bank and layer on a Panel that is NOT. */
+  const show = (layer: Record<string, unknown> = {}): GraphPatchOperation[] => [
+    add("blur", "blur", "blur1", { size: 9 }),
+    add("looks", "presets", "looks", { targets: "blur1", presets: LOOKS }),
+    add("fx", "layer", "fx", layer),
+    add("set", "cueList", "set", { cues: CUES }),
+    add("stage", "panel", "panel1", { title: "Show", remote: true, board: board([["looks", 0, 0, 4, 1], ["fx", 4, 0, 4, 1], ["set", 0, 1, 4, 2]]) }),
+    add("private", "presets", "privateLooks", { targets: "blur1", presets: LOOKS }),
+    add("privateFx", "layer", "privateFx"),
+    add("privateSet", "cueList", "privateSet", { cues: CUES }),
+    add("desk", "panel", "panel2", { title: "Desk only", board: board([["privateLooks", 0, 0, 4, 1], ["privateFx", 4, 0, 2, 1], ["privateSet", 0, 1, 4, 2]]) }),
+  ];
+
+  const boardItems = (graph: GraphDocument, clock?: FrameClock): readonly PhoneBoardItem[] =>
+    buildPhoneSnapshot(graph, 1, clock).panels[0]?.board?.items ?? [];
+  const widgetOf = <K extends PhoneWidget["kind"]>(graph: GraphDocument, kind: K, clock?: FrameClock): Extract<PhoneWidget, { kind: K }> => {
+    const found = boardItems(graph, clock).flatMap((item) => (item.kind === "widget" && item.widget.kind === kind ? [item.widget] : []))[0];
+    if (found === undefined) throw new Error(`no ${kind} on the phone's board`);
+    return found as Extract<PhoneWidget, { kind: K }>;
+  };
+  const refusal = (graph: GraphDocument, write: PhoneSet): string => {
+    const vet = vetPhoneSet(graph, write);
+    expect(vet.ok, JSON.stringify(write)).toBe(false);
+    return vet.ok ? "" : vet.reason;
+  };
+  const UNPUBLISHED = "A phone tried to move a control that is not published to the phone door.";
+  const patch = (bus: LoomBus, operations: GraphPatchOperation[]) =>
+    bus.execute("graph.applyPatch", { baseRevision: bus.store.getRevision(), operations }, contextFor(alice));
+
+  it("draws each at its rect with what a phone needs to operate it — and nothing from a Panel that is not published", async () => {
+    const { bus, ids } = await documentWith(show({ opacity: 0.5 }));
+    const snapshot = buildPhoneSnapshot(bus.store.getGraph(), 1);
+    expect(snapshot.panels.map((panel) => panel.title)).toEqual(["Show"]);
+    expect(snapshot.panels[0]!.board).toEqual({
+      columns: 8,
+      rows: 3,
+      items: [
+        {
+          kind: "widget",
+          rect: { x: 0, y: 0, w: 4, h: 1 },
+          widget: { kind: "preset", handle: ids["$looks"], caption: "looks", presets: ["soft", "hard"], current: null, morphing: false },
+        },
+        {
+          kind: "widget",
+          rect: { x: 4, y: 0, w: 4, h: 1 },
+          widget: { kind: "layer", handle: ids["$fx"], caption: "fx", on: true, opacity: 0.5, opacityWritable: true },
+        },
+        {
+          kind: "widget",
+          rect: { x: 0, y: 1, w: 4, h: 2 },
+          // Nothing fired yet: GO would fire the first cue, and there is nothing to go BACK to.
+          widget: { kind: "cueList", handle: ids["$set"], caption: "set", cues: ["1", "2"], current: null, next: "1", canGo: true, canBack: false },
+        },
+      ],
+    });
+    const wire = JSON.stringify(snapshot);
+    for (const hidden of ["$private", "$privateFx", "$privateSet"]) expect(wire).not.toContain(ids[hidden]!);
+    // What a preset HOLDS never leaves the page: a phone gets names to press, not values.
+    expect(wire).not.toContain("blur1");
+  });
+
+  it("shows where the set is after a GO: the bank's current preset, the list's current and next, and BACK now possible", async () => {
+    const { bus, ids } = await documentWith(show());
+    await bus.execute("cue.go", { nodeId: ids["$set"] as never }, contextFor(alice));
+    const graph = bus.store.getGraph();
+    expect(widgetOf(graph, "preset").current).toBe("soft");
+    expect(widgetOf(graph, "cueList")).toMatchObject({ current: "1", next: "2", canGo: true, canBack: false });
+    await bus.execute("cue.go", { nodeId: ids["$set"] as never }, contextFor(alice));
+    // The last cue with Wrap off: GO has nowhere to go and the phone is told so.
+    expect(widgetOf(bus.store.getGraph(), "cueList")).toMatchObject({ current: "2", next: null, canGo: false, canBack: true });
+    expect(widgetOf(bus.store.getGraph(), "preset").current).toBe("hard");
+  });
+
+  it("turns each press into the one bus command it means, with an input the page built", async () => {
+    const { bus, ids } = await documentWith(show());
+    const graph = bus.store.getGraph();
+    expect(vetPhoneSet(graph, set(ids["$looks"]!, { recall: "hard" }))).toEqual({
+      ok: true,
+      action: "command",
+      command: "preset.recall",
+      input: { nodeId: ids["$looks"], name: "hard" },
+    });
+    expect(vetPhoneSet(graph, set(ids["$set"]!, { go: true }))).toEqual({ ok: true, action: "command", command: "cue.go", input: { nodeId: ids["$set"] } });
+    expect(vetPhoneSet(graph, set(ids["$set"]!, { back: true }))).toEqual({ ok: true, action: "command", command: "cue.back", input: { nodeId: ids["$set"] } });
+    expect(vetPhoneSet(graph, set(ids["$set"]!, { standby: "2" }))).toEqual({
+      ok: true,
+      action: "command",
+      command: "cue.setStandby",
+      input: { nodeId: ids["$set"], cue: "2" },
+    });
+    // A layer's switch is the STATE asked for, and its fader a clamped parameter write.
+    expect(vetPhoneSet(graph, set(ids["$fx"]!, { on: false }))).toEqual({ ok: true, action: "layerOn", nodeId: ids["$fx"], caption: "fx", on: false });
+    expect(vetPhoneSet(graph, set(ids["$fx"]!, { opacity: 0.25 }, "live"))).toEqual({
+      ok: true,
+      action: "parameters",
+      nodeId: ids["$fx"],
+      kind: "layer",
+      entries: { opacity: 0.25 },
+      phase: "live",
+    });
+    expect(vetPhoneSet(graph, set(ids["$fx"]!, { opacity: 7 }))).toMatchObject({ ok: true, entries: { opacity: 1 } });
+    expect(vetPhoneSet(graph, set(ids["$fx"]!, { opacity: -2 }))).toMatchObject({ ok: true, entries: { opacity: 0 } });
+  });
+
+  it("refuses a bank, a layer and a cue list that are NOT on a remote Panel — and the published ones the moment the Phone switch goes off", async () => {
+    const { bus, ids } = await documentWith(show());
+    const graph = bus.store.getGraph();
+    // The very writes that work on the published three, aimed at the three on the desk-only Panel.
+    expect(refusal(graph, set(ids["$private"]!, { recall: "hard" }))).toBe(UNPUBLISHED);
+    expect(refusal(graph, set(ids["$privateFx"]!, { on: false }))).toBe(UNPUBLISHED);
+    expect(refusal(graph, set(ids["$privateFx"]!, { opacity: 0.5 }))).toBe(UNPUBLISHED);
+    expect(refusal(graph, set(ids["$privateSet"]!, { go: true }))).toBe(UNPUBLISHED);
+    expect(refusal(graph, set(ids["$privateSet"]!, { standby: "2" }))).toBe(UNPUBLISHED);
+    // The legitimate case the check must not swallow.
+    expect(vetPhoneSet(graph, set(ids["$looks"]!, { recall: "hard" })).ok).toBe(true);
+
+    await patch(bus, [{ op: "setParameters", nodeId: ids["$stage"] as never, parameters: { remote: false } }]);
+    const after = bus.store.getGraph();
+    expect(refusal(after, set(ids["$looks"]!, { recall: "hard" }))).toBe(UNPUBLISHED);
+    expect(refusal(after, set(ids["$fx"]!, { on: false }))).toBe(UNPUBLISHED);
+    expect(refusal(after, set(ids["$set"]!, { go: true }))).toBe(UNPUBLISHED);
+    expect(buildPhoneSnapshot(after, 2).panels).toEqual([]);
+  });
+
+  it("refuses a bank taken off the published board, though its Panel is still published", async () => {
+    const { bus, ids } = await documentWith(show());
+    await patch(bus, [
+      { op: "setParameters", nodeId: ids["$stage"] as never, parameters: { board: board([["fx", 4, 0, 4, 1], ["set", 0, 1, 4, 2]]) } },
+    ]);
+    const graph = bus.store.getGraph();
+    expect(refusal(graph, set(ids["$looks"]!, { recall: "hard" }))).toBe(UNPUBLISHED);
+    expect(vetPhoneSet(graph, set(ids["$set"]!, { go: true })).ok).toBe(true);
+  });
+
+  it("refuses a live recall, GO, BACK, standby and switch by name — each is one press, sent on the lift", async () => {
+    const { bus, ids } = await documentWith(show());
+    const graph = bus.store.getGraph();
+    expect(refusal(graph, set(ids["$looks"]!, { recall: "hard" }, "live"))).toBe("A phone sent “looks” a recall as a live drag; it is one press, sent once.");
+    expect(refusal(graph, set(ids["$set"]!, { go: true }, "live"))).toBe("A phone sent “set” a GO as a live drag; it is one press, sent once.");
+    expect(refusal(graph, set(ids["$set"]!, { back: true }, "live"))).toBe("A phone sent “set” a BACK as a live drag; it is one press, sent once.");
+    expect(refusal(graph, set(ids["$set"]!, { standby: "2" }, "live"))).toBe("A phone sent “set” a standby as a live drag; it is one press, sent once.");
+    expect(refusal(graph, set(ids["$fx"]!, { on: false }, "live"))).toBe("A phone sent “fx” its switch as a live drag; it is one press, sent once.");
+    // The one thing here that IS a drag.
+    expect(vetPhoneSet(graph, set(ids["$fx"]!, { opacity: 0.5 }, "live")).ok).toBe(true);
+  });
+
+  it("refuses a stale preset or cue name by naming the bank or list — a name the phone drew a moment ago included", async () => {
+    const { bus, ids } = await documentWith(show());
+    const stale = refusal(bus.store.getGraph(), set(ids["$looks"]!, { recall: "harder" }));
+    expect(stale).toBe("“looks” has no preset by the name a phone asked for; it was renamed or deleted since the phone drew it.");
+    // What the phone sent is data off the LAN: it is not quoted into the desk's notice.
+    expect(stale).not.toContain("harder");
+    expect(refusal(bus.store.getGraph(), set(ids["$set"]!, { standby: "9" }))).toBe(
+      "“set” has no cue by the name a phone asked for; it was renamed or deleted since the phone drew it.",
+    );
+    // "hard" is on the phone's screen; then the desk deletes it. The tap that follows is refused.
+    expect(vetPhoneSet(bus.store.getGraph(), set(ids["$looks"]!, { recall: "hard" })).ok).toBe(true);
+    await patch(bus, [
+      {
+        op: "setParameters",
+        nodeId: ids["$looks"] as never,
+        parameters: { presets: serializePresetBank({ version: 1, presets: [{ name: "soft", values: { blur1: { size: 4 } } }] }) },
+      },
+    ]);
+    expect(refusal(bus.store.getGraph(), set(ids["$looks"]!, { recall: "hard" }))).toMatch(/^“looks” has no preset by the name/);
+    // A name is a string: an index, a flag or a number names nothing.
+    expect(refusal(bus.store.getGraph(), set(ids["$looks"]!, { recall: 0 }))).toMatch(/^“looks” has no preset by the name/);
+    expect(refusal(bus.store.getGraph(), set(ids["$looks"]!, { recall: true }))).toMatch(/^“looks” has no preset by the name/);
+  });
+
+  it("shows a driven opacity as not writable and refuses a write to it — while the layer's switch stays the phone's", async () => {
+    const driven = { mode: "expression", bindings: { expression: { kind: "expression", source: "0.5" } } };
+    const { bus, ids } = await documentWith(show({ opacity: driven }));
+    const graph = bus.store.getGraph();
+    expect(widgetOf(graph, "layer")).toMatchObject({ handle: ids["$fx"], on: true, opacityWritable: false });
+    expect(refusal(graph, set(ids["$fx"]!, { opacity: 0.2 }))).toBe("“fx” has its opacity driven by the document, so a phone cannot move it.");
+    expect(refusal(graph, set(ids["$fx"]!, { opacity: 0.2 }, "live"))).toBe("“fx” has its opacity driven by the document, so a phone cannot move it.");
+    expect(vetPhoneSet(graph, set(ids["$fx"]!, { on: false }))).toMatchObject({ ok: true, action: "layerOn", on: false });
+  });
+
+  it("refuses keys a phone may not write, two things in one write, and values of the wrong kind", async () => {
+    const { bus, ids } = await documentWith(show());
+    const graph = bus.store.getGraph();
+    expect(refusal(graph, set(ids["$looks"]!, { current: "hard" }))).toMatch(/a preset does not let a phone write/);
+    expect(refusal(graph, set(ids["$fx"]!, { blend: 1 }))).toMatch(/a layer does not let a phone write/);
+    expect(refusal(graph, set(ids["$set"]!, { cues: "[]" }))).toMatch(/a cueList does not let a phone write/);
+    expect(refusal(graph, set(ids["$fx"]!, { on: true, opacity: 0.5 }))).toMatch(/two things in one write/);
+    expect(refusal(graph, set(ids["$set"]!, { go: true, back: true }))).toMatch(/two things in one write/);
+    expect(refusal(graph, set(ids["$set"]!, { go: false }))).toMatch(/a press that is not a press/);
+    expect(refusal(graph, set(ids["$set"]!, { go: "1" }))).toMatch(/a press that is not a press/);
+    expect(refusal(graph, set(ids["$fx"]!, { on: "yes" }))).toMatch(/not true or false/);
+    expect(refusal(graph, set(ids["$fx"]!, { opacity: "0.5" }))).toMatch(/not a finite number/);
+    expect(refusal(graph, set(ids["$looks"]!, {}))).toMatch(/carried no values/);
+  });
+
+  it("sets `morphing` when a fade starts and clears it when the fade's clock passes its end", async () => {
+    const { bus, ids } = await documentWith(show());
+    let clock: FrameClock | undefined = { epoch: "run-1", absTimeSeconds: 10 };
+    bus.attachFrameClock(() => clock);
+    expect(widgetOf(bus.store.getGraph(), "preset", clock).morphing).toBe(false);
+
+    const recalled = await bus.execute("preset.recall", { nodeId: ids["$looks"] as never, name: "hard", morph: { seconds: 2, curve: "linear" } }, contextFor(alice));
+    expect(recalled.status).toBe("applied");
+    const graph = bus.store.getGraph();
+    // The destination is `current` at once; the fade is what `morphing` says is still to do.
+    expect(widgetOf(graph, "preset", clock)).toMatchObject({ current: "hard", morphing: true });
+    expect(publishedMorphs(graph, clock)).toHaveLength(1);
+    expect(widgetOf(graph, "preset", { epoch: "run-1", absTimeSeconds: 11.99 }).morphing).toBe(true);
+    // The SAME document, a later clock: the fade is over and nothing was written to say so.
+    expect(widgetOf(graph, "preset", { epoch: "run-1", absTimeSeconds: 12 })).toMatchObject({ current: "hard", morphing: false });
+    expect(publishedMorphs(graph, { epoch: "run-1", absTimeSeconds: 12 })).toEqual([]);
+    // A render zeroed the clock (another epoch), or no frame loop at all: nothing is fading.
+    expect(widgetOf(graph, "preset", { epoch: "run-2", absTimeSeconds: 0 }).morphing).toBe(false);
+    clock = undefined;
+    expect(widgetOf(graph, "preset", clock).morphing).toBe(false);
+  });
+
+  it("a fade on a bank the phone cannot see is not the phone's to watch", async () => {
+    const { bus, ids } = await documentWith(show());
+    const clock: FrameClock = { epoch: "run-1", absTimeSeconds: 10 };
+    bus.attachFrameClock(() => clock);
+    await bus.execute("preset.recall", { nodeId: ids["$private"] as never, name: "hard", morph: { seconds: 2, curve: "linear" } }, contextFor(alice));
+    expect(publishedMorphs(bus.store.getGraph(), clock)).toEqual([]);
+    expect(widgetOf(bus.store.getGraph(), "preset", clock).morphing).toBe(false);
+  });
+
+  /*
+   * RULING 12: NO STORE FROM THE PHONE. Asserted by ENUMERATION of what the vet can return,
+   * not by reading its source: every handle in the document (published or not, and one that
+   * names nothing) × every key a phone may write plus the ones somebody would try
+   * (`store`, `delete`, the command names themselves, a `morph`) × every kind of value ×
+   * both phases, alone and in pairs. Whatever comes back as a command is one of four, and
+   * its input holds a node id and at most one checked name — so there is no write a phone
+   * can send that becomes `preset.store` or `preset.delete`, or a recall with its own morph.
+   */
+  it("no write a phone can send becomes preset.store or preset.delete — only recall, GO, BACK and standby", async () => {
+    const { bus, ids } = await documentWith(show());
+    const graph = bus.store.getGraph();
+    const handles = [...Object.values(ids), "nothing-here"];
+    const keys = [
+      ...new Set(Object.values(PHONE_WRITABLE_KEYS).flat()),
+      "store",
+      "delete",
+      "name",
+      "morph",
+      "command",
+      "presets",
+      "targets",
+      "preset.store",
+      "preset.delete",
+      "preset.recall",
+    ];
+    const values: Array<number | boolean | string> = [true, false, 0, 0.5, "soft", "hard", "1", "2", "newPreset", "store", "preset.store", "preset.delete"];
+    const commands = new Map<string, Set<string>>();
+    let asked = 0;
+    const ask = (write: PhoneSet): void => {
+      asked += 1;
+      const vet = vetPhoneSet(graph, write);
+      if (!vet.ok || vet.action !== "command") return;
+      const inputKeys = commands.get(vet.command) ?? new Set<string>();
+      for (const key of Object.keys(vet.input)) inputKeys.add(key);
+      commands.set(vet.command, inputKeys);
+    };
+    for (const handle of handles) {
+      for (const phase of ["live", "commit"] as const) {
+        for (const key of keys) {
+          for (const value of values) {
+            ask({ handle, values: { [key]: value }, phase });
+            for (const other of keys) if (other !== key) ask({ handle, values: { [key]: value, [other]: value }, phase });
+          }
+        }
+      }
+    }
+    expect(asked).toBeGreaterThan(50_000);
+    const reached = Object.fromEntries([...commands].map(([command, inputKeys]) => [command, [...inputKeys].sort()]));
+    // All four are reachable (the enumeration is not vacuous) and nothing else is.
+    expect(reached).toEqual({
+      "preset.recall": ["name", "nodeId"],
+      "cue.go": ["nodeId"],
+      "cue.back": ["nodeId"],
+      "cue.setStandby": ["cue", "nodeId"],
+    });
+    expect([...PHONE_COMMANDS].sort()).toEqual(["cue.back", "cue.go", "cue.setStandby", "preset.recall"]);
   });
 });

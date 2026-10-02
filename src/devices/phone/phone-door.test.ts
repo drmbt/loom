@@ -26,6 +26,7 @@ import {
   PHONE_SET_PATH,
   PHONE_SIGNAL_MAX_BYTES,
   PHONE_SIGNAL_PATH,
+  PHONE_VALUE_MAX_CHARS,
   type PhoneDoorState,
   type PhoneEvent,
   type PhoneSet,
@@ -475,7 +476,10 @@ describe("a phone's write reaches the page exactly, under the phone that sent it
       "not json",
       JSON.stringify([A_SET]),
       JSON.stringify({ values: { value: 1 }, phase: "live" }),
-      JSON.stringify({ handle: "h1", values: { value: "1" }, phase: "live" }),
+      // T1503b: a value may be a NAME, but not a longer one than a name is, and nothing nested.
+      JSON.stringify({ handle: "h1", values: { recall: "x".repeat(PHONE_VALUE_MAX_CHARS + 1) }, phase: "commit" }),
+      JSON.stringify({ handle: "h1", values: { recall: { name: "soft" } }, phase: "commit" }),
+      JSON.stringify({ handle: "h1", values: { recall: null }, phase: "commit" }),
       JSON.stringify({ handle: "h1", values: [1], phase: "live" }),
       JSON.stringify({ handle: "h1", values: { value: 1 }, phase: "later" }),
     ];
@@ -485,6 +489,23 @@ describe("a phone's write reaches the page exactly, under the phone that sent it
       expect(answer.body.length, "a 400 says why").toBeGreaterThan(10);
     }
     expect(sink.writes).toEqual([]);
+  });
+
+  /*
+   * T1503b: `recall` and `standby` carry a preset's or a cue's NAME. The door hands the page
+   * the string exactly as sent — which name is real is the page's vet, against the document.
+   */
+  it("relays a write whose value is a name, as sent — up to the longest a name may be", async () => {
+    const { state, ca, sink } = await openDoor();
+    const phone = await openStream(at(state.url, PHONE_EVENTS_PATH), ca);
+    const recall: PhoneSet = { handle: "bank1", values: { recall: "hard" }, phase: "commit" };
+    const longest: PhoneSet = { handle: "set1", values: { standby: "c".repeat(PHONE_VALUE_MAX_CHARS) }, phase: "commit" };
+    expect((await postSet(state.url, ca, phone.phone, JSON.stringify(recall))).status).toBe(204);
+    expect((await postSet(state.url, ca, phone.phone, JSON.stringify(longest))).status).toBe(204);
+    expect(sink.writes).toEqual([
+      { phone: phone.phone, set: recall },
+      { phone: phone.phone, set: longest },
+    ]);
   });
 });
 
