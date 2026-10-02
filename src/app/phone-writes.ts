@@ -2,7 +2,7 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import type { Actor, InvocationContext } from "@domain/types/commands.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { FrameScheduler } from "@ui/controls/coalesce.ts";
-import { refusalMessage } from "@editor/inspector/command-refusal.ts";
+import { refusalMessage, type CommandAnswer } from "@editor/inspector/command-refusal.ts";
 import { createParameterEditor, type ParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { phoneActorId, type PhoneSet } from "@devices/phone/phone-protocol.ts";
 import { vetPhoneSet } from "@devices/phone/phone-snapshot.ts";
@@ -49,6 +49,16 @@ import { vetPhoneSet } from "@devices/phone/phone-snapshot.ts";
  * desk's own rule (`board-members.tsx`), so a double tap is one undo step, not a flip
  * back. Both wait for the editor to settle first and run on the phone's lane: a press
  * sent after a fader lift lands after it.
+ *
+ * ## A refusal names its control (T1526b)
+ *
+ * Every refusal is reported with the control it is about, so the phone that pressed can be
+ * shown the sentence on that control (`use-phone-door.ts` sends it; the desk's notice is
+ * unchanged). The control is the VET's node id, never the handle the phone sent: a write
+ * that named nothing published is reported with none. Three classes, one report each:
+ * the vet refused; the bus REJECTED the command or patch; the bus answered CONFLICT (the
+ * desk changed the same node between the vet and the write). A conflict on a press used
+ * to be dropped without a word here; it is said now, in the bus's own sentence.
  */
 
 export interface PhoneWritesOptions {
@@ -57,8 +67,12 @@ export interface PhoneWritesOptions {
   readonly invocation: InvocationContext;
   /** Injected by tests; the default is the animation frame. */
   readonly schedule?: FrameScheduler;
-  /** A write the vet or the bus refused — never silence (§V365). */
-  readonly onRefused: (phone: string, reason: string) => void;
+  /**
+   * A write the vet or the bus refused — never silence (§V365). `handle` (T1526b) is the
+   * published control the refusal is about, as the vet named it, or "" when the write
+   * named none.
+   */
+  readonly onRefused: (phone: string, reason: string, handle: string) => void;
 }
 
 export interface PhoneWrites {
@@ -86,6 +100,13 @@ interface Lane {
   chain: Promise<void>;
   /** Buttons this phone pressed and has not released. */
   readonly held: Set<NodeId>;
+  /** The control this phone's editor wrote last: what a patch the bus did not apply is reported against. */
+  last: NodeId | null;
+}
+
+/** The sentence of a result the bus did not apply — rejected, or conflicting — else null. */
+function unapplied(result: CommandAnswer): string | null {
+  return refusalMessage(result) ?? (result.status === "conflict" ? (result.diagnostics[0]?.message ?? "Refused") : null);
 }
 
 export function createPhoneWrites(options: PhoneWritesOptions): PhoneWrites {
@@ -102,11 +123,12 @@ export function createPhoneWrites(options: PhoneWritesOptions): PhoneWrites {
         context,
         ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
         onDiagnostics: (diagnostics) => {
-          for (const diagnostic of diagnostics) options.onRefused(phone, diagnostic.message);
+          for (const diagnostic of diagnostics) options.onRefused(phone, diagnostic.message, lane.last ?? "");
         },
       }),
       chain: Promise.resolve(),
       held: new Set(),
+      last: null,
     };
     lanes.set(phone, lane);
     return lane;
@@ -115,7 +137,7 @@ export function createPhoneWrites(options: PhoneWritesOptions): PhoneWrites {
   const apply = async (lane: Lane, phone: string, set: PhoneSet, report: boolean): Promise<void> => {
     const vet = vetPhoneSet(options.bus.store.getGraph(), set);
     if (!vet.ok) {
-      if (report) options.onRefused(phone, vet.reason);
+      if (report) options.onRefused(phone, vet.reason, vet.nodeId ?? "");
       return;
     }
     if (vet.action !== "parameters") {
@@ -137,10 +159,11 @@ export function createPhoneWrites(options: PhoneWritesOptions): PhoneWrites {
               },
               lane.context,
             );
-      const refused = refusalMessage(result);
-      if (refused !== null && report) options.onRefused(phone, refused);
+      const refused = unapplied(result);
+      if (refused !== null && report) options.onRefused(phone, refused, vet.action === "command" ? vet.input.nodeId : vet.nodeId);
       return;
     }
+    lane.last = vet.nodeId;
     lane.editor.setStored(vet.nodeId, vet.entries, vet.phase);
     if (vet.kind === "button") {
       if (vet.entries["held"] === true) lane.held.add(vet.nodeId);

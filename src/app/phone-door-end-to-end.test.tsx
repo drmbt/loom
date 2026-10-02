@@ -556,6 +556,10 @@ describe("T1397b — a phone's camera handshake crosses the whole stack to a Web
  * and THIS phone, the two presses are the phone's own two undo steps, and the phone's next
  * picture carries the new `current` — the only way it learns its press took. A bank on a
  * Panel that is not published is unreachable, and a `store` key changes nothing.
+ *
+ * T1526b: and each refusal is TOLD to the phone that pressed — over the same real sockets,
+ * back down its own event stream — ending with the one a phone meets in a show: GO past the
+ * end of a list whose Wrap is off, refused by the bus in the cue command's own sentence.
  */
 describe("T1503b — a phone recalls a preset and presses GO through the whole stack", () => {
   const LOOKS = serializePresetBank({
@@ -586,7 +590,7 @@ describe("T1503b — a phone recalls a preset and presses GO through the whole s
     return undefined;
   };
 
-  it("recall and GO change the document as the phone, land on the phone's undo stack, and the echo carries the new current", async () => {
+  it("recall and GO change the document as the phone, land on the phone's undo stack, and the echo carries the new current — and a GO past the end is refused TO the phone that pressed", async () => {
     const certDir = mkdtempSync(join(tmpdir(), "loom-phone-set-cert-"));
     const handoffDir = mkdtempSync(join(tmpdir(), "loom-phone-set-"));
     const doors = createDeviceDoors({
@@ -722,5 +726,41 @@ describe("T1503b — a phone recalls a preset and presses GO through the whole s
     expect(parameter(runtime, backstage, "current") ?? "").toBe("");
     expect(parameter(runtime, looks, "presets")).toBe(LOOKS);
     expect(runtime.bus.store.getAudit().length).toBe(auditAfter);
+
+    /*
+     * T1526b — AND THE PHONE IS TOLD. Until this row those two refusals were said at the
+     * desk only. They also went back down THIS phone's stream, each as the sentence the desk
+     * shows: the bank's on the bank (the id the snapshot gave), the unpublished one on no
+     * control at all — the backstage bank's id is not this phone's to hear back.
+     */
+    const refusals = (stream: PhoneStream): Array<{ handle: string; reason: string }> =>
+      stream.events.flatMap((event) => (event.type === "refused" ? [{ handle: event.handle, reason: event.reason }] : []));
+    await rendered(() => refusals(phone).length === 2, "both refusals on the phone's stream");
+    expect(refusals(phone)).toEqual([
+      { handle: "", reason: "A phone tried to move a control that is not published to the phone door." },
+      { handle: looks, reason: "A phone tried to write a key a preset does not let a phone write, on “looks”." },
+    ]);
+
+    // A second phone joins the set; it presses nothing.
+    const bystander = openPhoneStream(at(PHONE_EVENTS_PATH), ca);
+    await rendered(() => snapshots(bystander).length >= 1, "the second phone's first snapshot");
+
+    // GO to the last cue — then GO once more. Wrap is off, so the vet passes it (GO is a
+    // press the list takes) and the BUS refuses: the command's own sentence reaches the
+    // phone that pressed, on the list it pressed, and nothing in the document moves.
+    expect(await postPhoneSet(at(PHONE_SET_PATH, phoneId), ca, { handle: list, values: { go: true }, phase: "commit" })).toBe(204);
+    await rendered(() => parameter(runtime, list, "current") === "2", "GO to reach the last cue");
+    const revision = runtime.bus.store.getRevision();
+    expect(await postPhoneSet(at(PHONE_SET_PATH, phoneId), ca, { handle: list, values: { go: true }, phase: "commit" })).toBe(204);
+    await rendered(() => refusals(phone).length === 3, "the phone to be told its GO was refused");
+    const pastTheEnd = 'Cue list "set": "2" is its last cue and Wrap is off; nothing was fired.';
+    expect(refusals(phone)[2]).toEqual({ handle: list, reason: pastTheEnd });
+    expect(parameter(runtime, list, "current")).toBe("2");
+    expect(parameter(runtime, blur, "size")).toBe(20);
+    expect(runtime.bus.store.getRevision()).toBe(revision);
+    // The desk is told the same sentence, as before.
+    await rendered(() => document.querySelector("[data-phone-refusal]")?.textContent?.includes(pastTheEnd) === true, "the desk to say the same sentence");
+    // The phone that pressed nothing is told nothing.
+    expect(refusals(bystander)).toEqual([]);
   });
 });

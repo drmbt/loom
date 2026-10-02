@@ -32,6 +32,17 @@
  * phone shows the arrangement the owner made. Every press is ONE commit; nothing is lit
  * ahead of Loom's answer for a recall or a GO, because a refused press must light nothing.
  * There is no Store here, and no key this page sends that could become one.
+ *
+ * T1526b — A REFUSED PRESS IS SAID ON THE CONTROL. Loom tells this phone (`refused`, down
+ * its own stream) which control and why; the sentence hangs under that control for about
+ * three seconds, out of flow so nothing else moves, and the control is outlined meanwhile.
+ * It hangs over whatever is below, so the next press anywhere takes it away (the control
+ * under it is being used); a newer refusal replaces it; and what the finger had drawn
+ * ahead of Loom's answer (a switch, a fader) goes back to the document's.
+ * A refusal about nothing this page shows is the page's notice instead. Also: a layer's
+ * switch names its picture, a cue shows its note (in the list, and for the standby beside
+ * `current ▸ next`), and the list scrolls ITSELF — never the page — to keep the standby in
+ * view when Loom moves it.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -177,7 +188,7 @@ body {
 .panel > h2:first-child { margin-top: 4px; }
 .panel > p { margin: 8px 0; color: var(--text-dim); font-size: 15px; }
 .row { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0; }
-.w { flex: 1 1 140px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.w { position: relative; flex: 1 1 140px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 /* Full width on a phone, side by side once two fit. */
 .w.slider { flex: 1 1 280px; }
 .w.xyPad { flex: 1 1 240px; max-width: 480px; }
@@ -230,6 +241,34 @@ button.ctl.on .state { color: var(--text); }
   pointer-events: none;
 }
 .stopped .ctl { opacity: 0.4; }
+/*
+ * T1526b: Loom refused this control's press. The sentence hangs under the control, out of
+ * flow — no other control moves — and takes no touch; the outline is the refused state.
+ * Both go after a few seconds. .end hangs it from the control's right edge instead, for a
+ * control on the right half of the screen.
+ */
+.w.refused { z-index: 3; outline: 1px solid var(--error); outline-offset: 1px; border-radius: 10px; }
+.w > .said {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 4px);
+  left: 0;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(300px, 86vw);
+  padding: 6px 8px;
+  border: 1px solid var(--error);
+  border-radius: 8px;
+  background: var(--bg-raise);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.3;
+  white-space: normal;
+  text-align: left;
+  pointer-events: none;
+}
+.w > .said.end { left: auto; right: 0; }
 /*
  * T1517b: a Panel's BOARD (T1516b) — the owner's arrangement on a grid of square cells,
  * one column = the page's width / columns. The row height is that same column width, read
@@ -331,6 +370,9 @@ button.ctl.on .state { color: var(--text); }
 .board .w.layer[data-layout="beside"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .board .w.layer .sw .state { margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--text-dim); }
 .board .w.layer .sw.on .state { color: var(--text); }
+/* T1526b: what the layer shows, beside its name — where the switch has the width for it. */
+.board .w.layer .sw .pic { margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--text-dim); }
+.board .w.layer[data-layout="switch"] .sw .pic { display: none; }
 .fader {
   position: relative;
   display: flex;
@@ -376,9 +418,14 @@ button.ctl.on .state { color: var(--text); }
 .w.cueList .cues .now, .w.cueList .cues .next { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .w.cueList .cues .arrow { flex: none; color: var(--text-dim); }
 .w.cueList .cues .next { color: var(--signal); }
-.w.cueList .cuelist { flex: 2 1 0; min-height: 0; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+/* position: the rows' offsets are measured from the list, which scrolls itself to its standby (T1526b). */
+.w.cueList .cuelist { position: relative; flex: 2 1 0; min-height: 0; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
 .w.cueList .cuelist .press { flex: 0 0 34px; text-align: left; }
 .w.cueList .cuelist .press.standby { border-color: var(--signal); }
+/* T1526b: a cue's note, dim beside its name; no note, no gap. */
+.w.cueList .note { margin-left: 8px; font-weight: 400; color: var(--text-dim); }
+.w.cueList .cues .note { min-width: 0; margin-left: 0; overflow: hidden; text-overflow: ellipsis; }
+.w.cueList .note:empty { display: none; }
 .w.cueList .gobar { flex: 1 1 0; min-height: 0; display: flex; gap: 2px; }
 .w.cueList .gobar .back { flex: 1 1 0; }
 .w.cueList .gobar .go { flex: 2 1 0; border-color: var(--signal); font-size: 20px; letter-spacing: 0.04em; }
@@ -463,6 +510,8 @@ const CLIENT = String.raw`
   var queue = [];      // [{ handle, live, commit }] in send order; latest value per slot only
   var inFlight = false;
   var noticeTimer = 0;
+  var refusals = {};   // handle -> { line, timer }: Loom's sentence for a refused press, on its control
+  var REFUSED_MS = 3000;
   var source = null;
   var phone = "";      // this stream's id, from its "hello"; every write names it
 
@@ -535,6 +584,7 @@ const CLIENT = String.raw`
   }
   function commit(handle, values) {
     if (stopped) return;
+    clearRefusals();
     if (wanted[handle] !== undefined) {
       openEntry(handle).live = wanted[handle];
       delete wanted[handle];
@@ -591,6 +641,58 @@ const CLIENT = String.raw`
         if (set.phase === "commit") acknowledged(set.handle);
         pump();
       });
+  }
+
+  /* ------------------------------------------------------- refused presses (T1526b) */
+
+  /*
+   * Loom tells THIS phone when it refused a press: the control (the handle the snapshot
+   * gave) and its sentence. The sentence hangs under the control for REFUSED_MS, out of
+   * flow so nothing else moves, and the control is outlined. Out of flow means OVER what
+   * is below it, so the next press — on any control — takes every sentence away: the
+   * person has moved on, and the control they are pressing may be the one under it. A
+   * newer refusal of the same control replaces its sentence; a redraw of the page keeps it.
+   */
+  function own(map, key) { return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined; }
+  function clearRefusal(handle) {
+    var r = own(refusals, handle);
+    if (!r) return;
+    clearTimeout(r.timer);
+    delete refusals[handle];
+    if (r.line.parentNode) r.line.parentNode.removeChild(r.line);
+    var v = own(views, handle);
+    if (v) v.el.classList.remove("refused");
+  }
+  function clearRefusals() {
+    for (var h in refusals) clearRefusal(h);
+  }
+  function drawRefusal(handle) {
+    var r = own(refusals, handle);
+    var v = own(views, handle);
+    if (!r || !v) return;
+    v.el.classList.add("refused");
+    v.el.appendChild(r.line);
+    // A control on the right half of the screen hangs its sentence leftwards, onto the screen.
+    var rect = box(v.el);
+    r.line.classList.toggle("end", rect.left + rect.width / 2 > window.innerWidth / 2);
+  }
+  function onRefused(event) {
+    var reason = String(event.reason || "") || "Loom refused that.";
+    var handle = typeof event.handle === "string" ? event.handle : "";
+    var v = own(views, handle);
+    // Nothing on this page to say it on (the control is no longer published): the notice.
+    if (!v) { flash(reason); return; }
+    clearRefusal(handle);
+    var line = el("div", "said", reason);
+    line.setAttribute("role", "alert");
+    refusals[handle] = { line: line, timer: setTimeout(function () { clearRefusal(handle); }, REFUSED_MS) };
+    drawRefusal(handle);
+    // What the finger drew ahead of Loom's answer is not what the document holds: back to
+    // the snapshot's — unless the finger is still down, or a later write of it is on its way.
+    for (var id in drags) if (drags[id].handle === handle) return;
+    if (pending(handle)) return;
+    delete overrides[handle];
+    v.update();
   }
 
   /* --------------------------------------------------------------------------- widgets */
@@ -748,6 +850,7 @@ const CLIENT = String.raw`
     if (stopped) return;
     event.preventDefault();
     capture(target, event);
+    clearRefusals();
     var values = views[handle].valuesAt(event);
     drags[event.pointerId] = { handle: handle, last: values };
     setLocal(handle, values);
@@ -832,6 +935,9 @@ const CLIENT = String.raw`
     root.setAttribute("data-layout", layout);
     var sw = pressButton("sw");
     sw.appendChild(el("span", "lbl", w.caption));
+    // T1526b: what the layer shows, beside its name.
+    var pic = el("span", "pic");
+    sw.appendChild(pic);
     var state = el("span", "state");
     sw.appendChild(state);
     root.appendChild(sw);
@@ -863,6 +969,8 @@ const CLIENT = String.raw`
       sw.classList.toggle("on", on);
       sw.setAttribute("aria-pressed", on ? "true" : "false");
       state.textContent = on ? "On" : "Off";
+      pic.textContent = typeof c.picture === "string" ? c.picture : "";
+      pic.hidden = pic.textContent === "";
       if (fader === null) return;
       var free = c.opacityWritable === true;
       var s = free ? clamp01(c.opacity) * 100 : 0;
@@ -894,26 +1002,34 @@ const CLIENT = String.raw`
     root.setAttribute("role", "group");
     root.setAttribute("aria-label", w.caption);
     root.setAttribute("data-layout", layout);
-    var now = null, next = null;
+    var now = null, next = null, nextNote = null;
     if (layout !== "buttons") {
       var line = el("div", "cues");
       now = el("span", "now");
       next = el("span", "next");
+      // T1526b: the standby's note — what the operator wrote to read before pressing GO.
+      nextNote = el("span", "note");
       line.appendChild(now);
       line.appendChild(el("span", "arrow", "▸"));
       line.appendChild(next);
+      line.appendChild(nextNote);
       root.appendChild(line);
     }
     // Three rows or more: the list itself, a cue a row — a tap stands that cue by.
     var cueButtons = [];
+    var cueNotes = [];
+    var list = null;
     if (layout === "stacked" && h >= 3) {
-      var list = el("div", "cuelist");
+      list = el("div", "cuelist");
       (Array.isArray(w.cues) ? w.cues : []).forEach(function (name) {
         var b = pressButton("cue", String(name));
         b.setAttribute("data-cue", String(name));
         b.addEventListener("click", function () { press(w.handle, { standby: name }); });
+        var note = el("span", "note");
+        b.appendChild(note);
         list.appendChild(b);
         cueButtons.push(b);
+        cueNotes.push(note);
       });
       root.appendChild(list);
     }
@@ -928,10 +1044,16 @@ const CLIENT = String.raw`
     var view = { widget: w, el: root };
     view.update = function () {
       var c = views[w.handle].widget;
+      // T1526b: one note per cue, in the order of the cues.
+      var names = Array.isArray(c.cues) ? c.cues : [];
+      var notes = Array.isArray(c.notes) ? c.notes : [];
+      function noteOf(index) { return index >= 0 && typeof notes[index] === "string" ? notes[index] : ""; }
       if (now !== null) {
         now.textContent = c.current || "—";
         next.textContent = c.next || "—";
+        nextNote.textContent = noteOf(names.indexOf(c.next));
       }
+      cueNotes.forEach(function (note, index) { note.textContent = noteOf(index); });
       // What Loom would refuse is not offered: GO past the end, BACK before the first cue.
       go.disabled = c.canGo !== true;
       back.disabled = c.canBack !== true;
@@ -941,6 +1063,24 @@ const CLIENT = String.raw`
         b.classList.toggle("standby", name === c.next);
         b.setAttribute("aria-pressed", name === c.next ? "true" : "false");
       });
+    };
+    /*
+     * T1526b: the list keeps its standby in view. It scrolls ITSELF (scrollTop), never the
+     * page — a GO pressed at the desk must not move this phone's screen under a finger —
+     * and only when Loom MOVED the standby: a list the owner scrolled stays where they
+     * left it. A list not laid out yet (another tab is showing) waits until it is.
+     */
+    var followed;
+    view.follow = function () {
+      var c = views[w.handle].widget;
+      if (list === null || c.next === followed || list.clientHeight === 0) return;
+      followed = c.next;
+      for (var i = 0; i < cueButtons.length; i++) {
+        var b = cueButtons[i];
+        if (b.getAttribute("data-cue") !== c.next) continue;
+        if (b.offsetTop < list.scrollTop) list.scrollTop = b.offsetTop;
+        else if (b.offsetTop + b.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = b.offsetTop + b.offsetHeight - list.clientHeight;
+      }
     };
     return view;
   }
@@ -986,12 +1126,19 @@ const CLIENT = String.raw`
     }));
   }
 
+  /* T1526b: every cue list on the page keeps its standby in view (see buildCueList). */
+  function follow() {
+    for (var h in views) if (views[h].follow) views[h].follow();
+  }
+
   function place(handle, w, rect) {
     var build = BUILDERS[w.kind];
     if (!build) return null;
     var view = build(w, rect);
     views[handle] = view;
     view.update();
+    // T1526b: a refusal still showing stays on its control through a redraw.
+    drawRefusal(handle);
     return view.el;
   }
 
@@ -1049,6 +1196,7 @@ const CLIENT = String.raw`
           if (views[w.handle]) { views[w.handle].widget = w; views[w.handle].update(); }
         });
       });
+      follow();
       return;
     }
     signature = next;
@@ -1138,6 +1286,8 @@ const CLIENT = String.raw`
     }
     var sections = panelsEl.querySelectorAll("section[data-tab]");
     for (var k = 0; k < sections.length; k++) sections[k].hidden = sections[k].getAttribute("data-tab") !== shown;
+    // A list that was drawn while its tab was hidden finds its standby now.
+    follow();
   }
   tabsEl.addEventListener("click", function (event) {
     var b = event.target && event.target.closest ? event.target.closest("button[data-tab]") : null;
@@ -1525,6 +1675,7 @@ const CLIENT = String.raw`
       }
       else if (event.type === "snapshot") onSnapshot(event.snapshot);
       else if (event.type === "signal") camSignal(event.message);
+      else if (event.type === "refused") onRefused(event);
       else if (event.type === "closed") stop(String(event.reason || "Loom closed this door."));
     };
   }

@@ -41,6 +41,8 @@ function fakeClient(initially: PhoneDoorState) {
   const writes = new Set<(phone: string, set: PhoneSet) => void>();
   const states = new Set<(state: PhoneDoorState) => void>();
   const published: PhoneSnapshot[] = [];
+  /** T1526b: every refusal the page told a phone — [phone, handle, reason], in order. */
+  const refused: Array<[string, string, string]> = [];
   /** What the helper answers the next `phoneOpen` with, and how often it was asked. */
   const door = { answer: initially, asked: 0 };
   const client = {
@@ -50,6 +52,7 @@ function fakeClient(initially: PhoneDoorState) {
     },
     phoneClose: () => Promise.resolve({ open: false, reason: "closed by the page" } as PhoneDoorState),
     phonePublish: (snapshot: PhoneSnapshot) => published.push(snapshot),
+    phoneRefuse: (phone: string, handle: string, reason: string) => refused.push([phone, handle, reason]),
     onPhoneWrite: (listener: (phone: string, set: PhoneSet) => void) => {
       writes.add(listener);
       return () => writes.delete(listener);
@@ -64,6 +67,7 @@ function fakeClient(initially: PhoneDoorState) {
     client,
     door,
     published,
+    refused,
     phoneWrites: (phone: string, set: PhoneSet) => {
       for (const listener of writes) listener(phone, set);
     },
@@ -186,6 +190,41 @@ describe("T1396b — the phone door, page side", () => {
     const sentence = "A phone tried to write a key a slider does not let a phone write, on “heat”.";
     expect(document.querySelector("[data-phone-refusal]")?.textContent).toContain(sentence);
     expect(document.querySelector('[data-notice="phone-refused"]')?.textContent).toContain(sentence);
+  });
+
+  /*
+   * T1526b: the desk's notice was the ONLY place a refusal was said — the phone that pressed
+   * saw nothing change. The page now tells that phone, through the helper: who, the control
+   * (the id the snapshot gave it), and the same sentence the desk shows. An applied write
+   * tells nobody anything, and one phone's refusal is not addressed to another.
+   */
+  it("T1526b: tells the phone that pressed — and only it — with the control and the sentence the desk shows", async () => {
+    const runtime = await runtimeWithPanel();
+    const helper = fakeClient({ open: true, url: URL_WITH_TOKEN, fingerprint: "ff", phones: [] });
+    render(<Desk runtime={runtime} client={helper.client} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Phone/ }));
+      await settle();
+    });
+    const fader = faderId(runtime);
+    await act(async () => {
+      // p1 moves the slider (applied); p2 tries a key a phone may not write, then a node that is no published control.
+      helper.phoneWrites("p1", { handle: fader, values: { value: 0.6 }, phase: "commit" });
+      helper.phoneWrites("p2", { handle: fader, values: { max: 50 }, phase: "commit" });
+      helper.phoneWrites("p2", { handle: "not-a-control", values: { value: 1 }, phase: "commit" });
+      await settle();
+    });
+    expect(runtime.bus.store.getGraph().nodes[fader]!.parameters["value"]).toBe(0.6);
+    const keyRefused = "A phone tried to write a key a slider does not let a phone write, on “heat”.";
+    const unpublished = "A phone tried to move a control that is not published to the phone door.";
+    expect(helper.refused).toEqual([
+      ["p2", fader, keyRefused],
+      // What the phone sent as a handle does not come back: the refusal names no control.
+      ["p2", "", unpublished],
+    ]);
+    // The desk's notice is still said — the latest refusal, and the count of both.
+    expect(document.querySelector('[data-notice="phone-refused"]')?.textContent).toContain(unpublished);
+    expect(document.querySelector('[data-notice="phone-refused"]')?.textContent).toContain("2 phone writes refused");
   });
 
   it("shows the helper's reason verbatim when the door stays shut, and a closed socket closes it", async () => {

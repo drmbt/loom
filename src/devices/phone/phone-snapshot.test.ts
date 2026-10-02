@@ -305,13 +305,13 @@ describe("T1503b — banks, layers and cue lists on the phone", () => {
         {
           kind: "widget",
           rect: { x: 4, y: 0, w: 4, h: 1 },
-          widget: { kind: "layer", handle: ids["$fx"], caption: "fx", on: true, opacity: 0.5, opacityWritable: true },
+          widget: { kind: "layer", handle: ids["$fx"], caption: "fx", on: true, opacity: 0.5, opacityWritable: true, picture: "" },
         },
         {
           kind: "widget",
           rect: { x: 0, y: 1, w: 4, h: 2 },
           // Nothing fired yet: GO would fire the first cue, and there is nothing to go BACK to.
-          widget: { kind: "cueList", handle: ids["$set"], caption: "set", cues: ["1", "2"], current: null, next: "1", canGo: true, canBack: false },
+          widget: { kind: "cueList", handle: ids["$set"], caption: "set", cues: ["1", "2"], notes: ["", ""], current: null, next: "1", canGo: true, canBack: false },
         },
       ],
     });
@@ -319,6 +319,70 @@ describe("T1503b — banks, layers and cue lists on the phone", () => {
     for (const hidden of ["$private", "$privateFx", "$privateSet"]) expect(wire).not.toContain(ids[hidden]!);
     // What a preset HOLDS never leaves the page: a phone gets names to press, not values.
     expect(wire).not.toContain("blur1");
+  });
+
+  /*
+   * T1526b — the two fields the design (§9.2) names for the label: which picture a layer
+   * holds, and what the operator noted on each cue. Both are the document's own words for a
+   * person to read; neither is an id, and neither is anything a phone can write by.
+   */
+  it("T1526b: names a layer's picture — the name its Picture holds, and follows it when the layer is pointed at another look", async () => {
+    const none = await documentWith(show());
+    expect(widgetOf(none.bus.store.getGraph(), "layer").picture).toBe("");
+    const { bus, ids } = await documentWith(show({ picture: " blur1 " }));
+    // The NAME the owner typed (trimmed) — never the id of the node it names.
+    expect(widgetOf(bus.store.getGraph(), "layer").picture).toBe("blur1");
+    expect(JSON.stringify(widgetOf(bus.store.getGraph(), "layer"))).not.toContain(ids["$blur"]!);
+    await patch(bus, [{ op: "setParameters", nodeId: ids["$fx"] as never, parameters: { picture: "city" } }]);
+    expect(widgetOf(bus.store.getGraph(), "layer").picture).toBe("city");
+    // A layer on a Panel that is not published sends nothing, its picture included.
+    await patch(bus, [{ op: "setParameters", nodeId: ids["$privateFx"] as never, parameters: { picture: "backstageLook" } }]);
+    expect(JSON.stringify(buildPhoneSnapshot(bus.store.getGraph(), 1))).not.toContain("backstageLook");
+  });
+
+  it("T1526b: sends each cue's note beside its name, in list order — empty where a cue has none", async () => {
+    const cues = serializeCueList({
+      version: 1,
+      cues: [
+        { name: "1", bank: "looks", preset: "soft", note: "house lights out" },
+        { name: "2", bank: "looks", preset: "hard" },
+        { name: "3", bank: "looks", preset: "soft", note: "  bows  " },
+      ],
+    });
+    const { bus, ids } = await documentWith(show());
+    await patch(bus, [{ op: "setParameters", nodeId: ids["$set"] as never, parameters: { cues } }]);
+    const list = widgetOf(bus.store.getGraph(), "cueList");
+    expect(list.cues).toEqual(["1", "2", "3"]);
+    expect(list.notes).toEqual(["house lights out", "", "bows"]);
+    // A note is read, never addressed: `standby` still takes the cue's NAME and nothing else.
+    expect(refusal(bus.store.getGraph(), set(ids["$set"]!, { standby: "house lights out" }))).toMatch(/has no cue by the name/);
+    expect(vetPhoneSet(bus.store.getGraph(), set(ids["$set"]!, { standby: "3" })).ok).toBe(true);
+  });
+
+  /*
+   * T1526b: a refusal says WHICH control, so the phone that pressed can be shown the
+   * sentence on it. The id is the vet's own — the node it found among the published ones —
+   * and absent for a write that named nothing published: the handle a phone sent never
+   * comes back, and an unpublished node's id never leaves the page.
+   */
+  it("T1526b: a refusal about a published control names it; one about anything else names nothing", async () => {
+    const { bus, ids } = await documentWith(show({ opacity: { mode: "expression", bindings: { expression: { kind: "expression", source: "0.5" } } } }));
+    const graph = bus.store.getGraph();
+    const about = (write: PhoneSet): string | undefined => {
+      const vet = vetPhoneSet(graph, write);
+      expect(vet.ok, JSON.stringify(write)).toBe(false);
+      return vet.ok ? undefined : vet.nodeId;
+    };
+    expect(about(set(ids["$looks"]!, { recall: "harder" }))).toBe(ids["$looks"]);
+    expect(about(set(ids["$looks"]!, { recall: "hard" }, "live"))).toBe(ids["$looks"]);
+    expect(about(set(ids["$looks"]!, { store: "mine" }))).toBe(ids["$looks"]);
+    expect(about(set(ids["$fx"]!, { opacity: 0.2 }))).toBe(ids["$fx"]);
+    expect(about(set(ids["$set"]!, { standby: "9" }))).toBe(ids["$set"]);
+    expect(about(set(ids["$set"]!, { go: true, back: true }))).toBe(ids["$set"]);
+    // Not published, a node that is no control, and a handle that names nothing at all.
+    for (const handle of [ids["$private"]!, ids["$privateFx"]!, ids["$privateSet"]!, ids["$blur"]!, ids["$desk"]!, "nothing-here"]) {
+      expect(about(set(handle, { recall: "hard" })), handle).toBeUndefined();
+    }
   });
 
   it("shows where the set is after a GO: the bank's current preset, the list's current and next, and BACK now possible", async () => {

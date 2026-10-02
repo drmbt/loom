@@ -103,6 +103,8 @@ export type PhoneWidget =
       readonly opacity: number;
       /** False when the document drives the opacity: the phone draws the fader read-only. */
       readonly opacityWritable: boolean;
+      /** T1526b: what the layer shows, for its label — the node NAME its Picture parameter holds; empty when it holds none. */
+      readonly picture: string;
     }
   | {
       readonly kind: "cueList";
@@ -110,6 +112,8 @@ export type PhoneWidget =
       readonly caption: string;
       /** Cue NAMES, in list order — what `standby` may name. */
       readonly cues: readonly string[];
+      /** T1526b: each cue's operator note, in the order of `cues` (one per cue); empty where a cue has none. */
+      readonly notes: readonly string[];
       /** The cue that fired last, or null before the first GO. */
       readonly current: string | null;
       /** The cue GO fires now (the standby, else the one after `current`), or null when GO would be refused. */
@@ -204,7 +208,62 @@ export type PhoneEvent =
   /** The page went away or closed the door. The phone shows `reason` and stops sending. */
   | { readonly type: "closed"; readonly reason: string }
   /** T1397b: the page's half of this phone's camera handshake, relayed as the page sent it. */
-  | { readonly type: "signal"; readonly message: PhoneSignalToPhone };
+  | { readonly type: "signal"; readonly message: PhoneSignalToPhone }
+  /** T1526b: the page refused one of THIS phone's writes. Sent down that phone's stream and no other. */
+  | ({ readonly type: "refused" } & PhoneRefused);
+
+/* ------------------------------------------------ a refused write, told (T1526b) */
+
+/** The longest sentence a phone is told its write was refused with. The page that sends one cuts it to this. */
+export const PHONE_REFUSAL_MAX_CHARS = 300;
+/** The longest handle a refusal names. A handle is a node id the page published; a real one is far shorter. */
+export const PHONE_HANDLE_MAX_CHARS = 128;
+
+/**
+ * T1526b — WHAT A PHONE IS TOLD WHEN ITS PRESS IS REFUSED. Until this, a recall, a GO or a
+ * write the page's vet or the bus refused was said at the desk only, and the phone saw
+ * nothing change.
+ *
+ * Both fields are the PAGE's, never the phone's own bytes coming back (LAN data is not
+ * copy, and a phone never sees a node id it was not given):
+ *  - `handle` is the control the refusal is about when the page's vet found it among the
+ *    ones it published — the id the snapshot gave that phone. It is "" when the write named
+ *    nothing published; the phone then shows the sentence as a notice, on no control.
+ *  - `reason` is the vet's sentence or the bus command's own, cut to
+ *    `PHONE_REFUSAL_MAX_CHARS`. Neither quotes what the phone sent.
+ */
+export interface PhoneRefused {
+  readonly handle: string;
+  readonly reason: string;
+}
+
+/** The refusal the page sends: its sentence cut to the cap, and a handle too long to be one of its ids dropped. */
+export function phoneRefused(handle: string, reason: string): PhoneRefused {
+  return {
+    handle: handle.length <= PHONE_HANDLE_MAX_CHARS ? handle : "",
+    reason: reason.length <= PHONE_REFUSAL_MAX_CHARS ? reason : `${reason.slice(0, PHONE_REFUSAL_MAX_CHARS - 1)}…`,
+  };
+}
+
+/**
+ * The one shape check a refusal gets at each hop after the page (the bridge host, the
+ * door): two strings inside their caps, a sentence that says something, and nothing else
+ * carried — the result is a fresh object. Returns the refusal, or a sentence saying why
+ * it is not one.
+ */
+export function parsePhoneRefused(value: unknown): PhoneRefused | string {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return "A refusal must be one JSON object.";
+  const record = value as Record<string, unknown>;
+  const handle = record["handle"];
+  const reason = record["reason"];
+  if (typeof handle !== "string" || handle.length > PHONE_HANDLE_MAX_CHARS) {
+    return `A refusal's \`handle\` is a string of at most ${String(PHONE_HANDLE_MAX_CHARS)} characters.`;
+  }
+  if (typeof reason !== "string" || reason === "" || reason.length > PHONE_REFUSAL_MAX_CHARS) {
+    return `A refusal needs a \`reason\` sentence of at most ${String(PHONE_REFUSAL_MAX_CHARS)} characters.`;
+  }
+  return { handle, reason };
+}
 
 /* ------------------------------------------------ the camera handshake (T1397b) */
 
@@ -384,7 +443,12 @@ export type PhoneClientMessage =
    * T1397b — the page's half of one phone's camera handshake. Told, not asked: relayed to
    * that phone's stream only, and dropped when no phone by that id is connected.
    */
-  | { readonly type: "phoneSignal"; readonly phone: string; readonly message: PhoneSignalToPhone };
+  | { readonly type: "phoneSignal"; readonly phone: string; readonly message: PhoneSignalToPhone }
+  /**
+   * T1526b — the page refused one of that phone's writes (`PhoneRefused`). Told, not asked:
+   * relayed to that phone's stream only as a `refused` event, dropped when it is gone.
+   */
+  | ({ readonly type: "phoneRefuse"; readonly phone: string } & PhoneRefused);
 
 /**
  * T1511b — the macOS application firewall will refuse every phone before it reaches the

@@ -160,8 +160,23 @@ interface CameraOptions {
   readonly userAgent?: string;
 }
 
-function openPage(options: { hello?: boolean; camera?: CameraOptions; storage?: Record<string, string> } = {}) {
+/**
+ * T1526b: jsdom lays nothing out, so a test of the cue list's own scrolling says what the
+ * browser would have measured — every cue row `row` px tall and `pitch` px apart, in a list
+ * `list` px tall (and 0 while its tab is hidden, as a list with no box is).
+ */
+interface CueLayout {
+  readonly row: number;
+  readonly pitch: number;
+  readonly list: number;
+}
+
+function openPage(options: { hello?: boolean; camera?: CameraOptions; storage?: Record<string, string>; cueLayout?: CueLayout } = {}) {
   const frames: (() => void)[] = [];
+  /** T1526b: the page's own timers (its notice, a refusal's few seconds), run by `elapse`. */
+  let timers: Array<{ id: number; at: number; callback: () => void }> = [];
+  let now = 0;
+  let timerIds = 0;
   const posts: Post[] = [];
   const sources: FakeEventSource[] = [];
   const otherRequests: string[] = [];
@@ -216,6 +231,37 @@ function openPage(options: { hello?: boolean; camera?: CameraOptions; storage?: 
         }
       };
       globals["requestAnimationFrame"] = (callback: () => void) => frames.push(callback);
+      globals["setTimeout"] = (callback: () => void, ms = 0) => {
+        timerIds += 1;
+        timers.push({ id: timerIds, at: now + ms, callback });
+        return timerIds;
+      };
+      globals["clearTimeout"] = (id: number) => {
+        timers = timers.filter((timer) => timer.id !== id);
+      };
+      const cueLayout = options.cueLayout;
+      if (cueLayout !== undefined) {
+        const cueIndex = (element: Element): number =>
+          element.hasAttribute("data-cue") && element.parentElement !== null ? [...element.parentElement.children].indexOf(element) : -1;
+        Object.defineProperty(win.HTMLElement.prototype, "offsetTop", {
+          configurable: true,
+          get(this: HTMLElement) {
+            return Math.max(0, cueIndex(this)) * cueLayout.pitch;
+          },
+        });
+        Object.defineProperty(win.HTMLElement.prototype, "offsetHeight", {
+          configurable: true,
+          get(this: HTMLElement) {
+            return cueIndex(this) >= 0 ? cueLayout.row : 0;
+          },
+        });
+        Object.defineProperty(Object.getPrototypeOf(win.HTMLElement.prototype), "clientHeight", {
+          configurable: true,
+          get(this: Element) {
+            return this.classList.contains("cuelist") && this.closest("[hidden]") === null ? cueLayout.list : 0;
+          },
+        });
+      }
       // jsdom has no media playback (it logs "not implemented"): count the preview's play() calls.
       (globals["HTMLMediaElement"] as typeof HTMLMediaElement).prototype.play = () => {
         plays += 1;
@@ -300,6 +346,16 @@ function openPage(options: { hello?: boolean; camera?: CameraOptions; storage?: 
     frame() {
       const due = frames.splice(0);
       for (const callback of due) callback();
+    },
+    /** T1526b: `ms` of the page's own clock pass; its timers that came due run, in order. */
+    elapse(ms: number) {
+      now += ms;
+      for (;;) {
+        const due = timers.filter((timer) => timer.at <= now).sort((a, b) => a.at - b.at)[0];
+        if (due === undefined) return;
+        timers = timers.filter((timer) => timer !== due);
+        due.callback();
+      }
     },
     /** Answer the oldest unanswered POST and let the page react. */
     async settle(status = 204, body = "") {
@@ -1152,9 +1208,9 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
   type Page = ReturnType<typeof openPage>;
   type Widget = Extract<PhoneSnapshot["panels"][number]["board"], object>["items"][number];
   const LOOKS = { kind: "preset", handle: "h-looks", caption: "looks", presets: ["soft", "hard", "strobe"], current: "soft", morphing: false } as const;
-  const FX = { kind: "layer", handle: "h-fx", caption: "fx", on: true, opacity: 0.5, opacityWritable: true } as const;
-  const KEY = { kind: "layer", handle: "h-key", caption: "key", on: false, opacity: 1, opacityWritable: true } as const;
-  const SET = { kind: "cueList", handle: "h-set", caption: "set", cues: ["1", "2", "3"], current: "1", next: "2", canGo: true, canBack: false } as const;
+  const FX = { kind: "layer", handle: "h-fx", caption: "fx", on: true, opacity: 0.5, opacityWritable: true, picture: "" } as const;
+  const KEY = { kind: "layer", handle: "h-key", caption: "key", on: false, opacity: 1, opacityWritable: true, picture: "" } as const;
+  const SET = { kind: "cueList", handle: "h-set", caption: "set", cues: ["1", "2", "3"], notes: ["", "", ""], current: "1", next: "2", canGo: true, canBack: false } as const;
 
   /** A board holding all three kinds; `over` replaces fields of a widget by handle. */
   function show(seq: number, over: Record<string, Record<string, unknown>> = {}): PhoneSnapshot {
@@ -1434,5 +1490,240 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
     page.frame();
     await page.flush();
     expect(page.posts).toHaveLength(0);
+  });
+
+  /**
+   * T1526b — A REFUSED PRESS IS SAID ON THE PHONE THAT PRESSED, ON THE CONTROL IT PRESSED.
+   * Until this, a GO past the end of the list, or a recall of a preset deleted a moment
+   * ago, looked on the phone like a press that did nothing: the refusal was said at the
+   * desk only. What is asserted is what the person holding the phone sees — Loom's
+   * sentence, where, and for how long — and that nothing else on the board moves for it.
+   */
+  describe("T1526b — a refused press is said on its control", () => {
+    const PAST_THE_END = 'Cue list "set": "3" is its last cue and Wrap is off; nothing was fired.';
+    /** Every refusal sentence on screen: [the control's classes, the sentence]. */
+    const said = (page: Page): Array<[string, string]> =>
+      [...page.doc.querySelectorAll<HTMLElement>(".w > .said")].map((line) => [line.parentElement!.className, line.textContent ?? ""]);
+    const refuse = (page: Page, handle: string, reason: string): void => page.emit({ type: "refused", handle, reason });
+    const placed = (page: Page): string[][] =>
+      [...part(page, ".board").children].map((child) => [(child as HTMLElement).style.gridColumn, (child as HTMLElement).style.gridRow]);
+
+    it("shows Loom's sentence on the control it names, outlined, for three seconds — and no other control moves", async () => {
+      const page = openPage();
+      page.snapshot(show(1));
+      const before = placed(page);
+      (part(page, ".w.cueList .go") as HTMLButtonElement).click();
+      await page.drain();
+      refuse(page, "h-set", PAST_THE_END);
+      expect(said(page)).toEqual([["w cueList refused", PAST_THE_END]]);
+      // On the control, not in the page's notice — and that control alone is marked.
+      expect(page.notice()).toBe("");
+      expect(page.doc.querySelectorAll(".w.refused")).toHaveLength(1);
+      const line = part(page, ".w.cueList > .said");
+      expect(line.getAttribute("role")).toBe("alert");
+      // Out of flow and inside its own item: the board holds the same four items at the
+      // same rects, and the sentence takes no touch from the GO button it hangs near.
+      const style = page.win.getComputedStyle(line);
+      expect([style.position, style.pointerEvents]).toEqual(["absolute", "none"]);
+      expect(placed(page)).toEqual(before);
+      expect(part(page, ".board").children).toHaveLength(4);
+
+      page.elapse(2999);
+      expect(said(page)).toHaveLength(1);
+      page.elapse(1);
+      expect(said(page)).toEqual([]);
+      expect(page.doc.querySelectorAll(".w.refused")).toHaveLength(0);
+    });
+
+    it("a newer refusal replaces the sentence and starts its own three seconds; the next press, on any control, takes every sentence away", async () => {
+      const page = openPage();
+      page.snapshot(show(1));
+      refuse(page, "h-set", "first");
+      page.elapse(2000);
+      refuse(page, "h-set", "second");
+      expect(said(page)).toEqual([["w cueList refused", "second"]]);
+      // Two more seconds: past the FIRST sentence's end, inside the second's.
+      page.elapse(2000);
+      expect(said(page)).toEqual([["w cueList refused", "second"]]);
+      // Another control refused meanwhile: each keeps its own sentence.
+      refuse(page, "h-looks", "third");
+      expect(said(page)).toEqual([
+        ["w preset refused", "third"],
+        ["w cueList refused", "second"],
+      ]);
+      // A sentence hangs over the controls below it. The next press — here on a layer's
+      // switch, a control neither sentence is about — takes both away at once.
+      layer(page, "key").querySelector<HTMLButtonElement>(".sw")!.click();
+      expect(said(page)).toEqual([]);
+      expect(page.doc.querySelectorAll(".w.refused")).toHaveLength(0);
+      await page.drain();
+      // And their clocks went with them: nothing comes back, nothing throws, when they would have ended.
+      page.elapse(3000);
+      expect(said(page)).toEqual([]);
+    });
+
+    it("stays on its control through a redraw of the board, and still ends on time", () => {
+      const page = openPage();
+      page.snapshot(show(1));
+      refuse(page, "h-looks", "“looks” has no preset by the name a phone asked for.");
+      page.elapse(1000);
+      // The desk's rename arrives: a new preset list is a new strip of buttons — a rebuilt board.
+      const strip = part(page, ".w.preset");
+      page.snapshot(show(2, { "h-looks": { presets: ["soft", "harder", "strobe"] } }));
+      expect(part(page, ".w.preset")).not.toBe(strip);
+      expect(said(page)).toEqual([["w preset refused", "“looks” has no preset by the name a phone asked for."]]);
+      page.elapse(2000);
+      expect(said(page)).toEqual([]);
+      expect(part(page, ".w.preset").classList.contains("refused")).toBe(false);
+    });
+
+    it("a refused switch goes back to what Loom holds — an answered one that was not refused keeps the finger's state", async () => {
+      const page = openPage();
+      page.snapshot(show(1));
+      const sw = layer(page, "fx").querySelector<HTMLButtonElement>(".sw")!;
+      sw.click();
+      await page.drain();
+      // Relayed (204) and no word from Loom yet: what the finger set stands.
+      expect([sw.querySelector(".state")?.textContent, sw.getAttribute("aria-pressed")]).toEqual(["Off", "false"]);
+      refuse(page, "h-fx", "A phone tried to move a control that is not published to the phone door.");
+      // Nothing was written, so no snapshot will come to correct it: the page corrects itself.
+      expect([sw.querySelector(".state")?.textContent, sw.getAttribute("aria-pressed")]).toEqual(["On", "true"]);
+    });
+
+    it("does not pull a fader from under a finger that is still down; the lift's refusal puts it back", async () => {
+      const page = openPage();
+      page.snapshot(show(1));
+      const fader = layer(page, "fx").querySelector<HTMLElement>(".fader")!;
+      const shown = (): string => fader.querySelector(".val")?.textContent ?? "";
+      page.pointer("pointerdown", fader, 150);
+      page.frame();
+      await page.settle();
+      refuse(page, "h-fx", "“fx” has its opacity driven by the document, so a phone cannot move it.");
+      expect(said(page)).toHaveLength(1);
+      expect(shown()).toBe("0.75");
+      // The lift is a new press: the sentence goes, and comes back with the lift's own refusal.
+      page.pointer("pointerup", fader, 150);
+      expect(said(page)).toEqual([]);
+      await page.drain();
+      refuse(page, "h-fx", "“fx” has its opacity driven by the document, so a phone cannot move it.");
+      expect(said(page)).toHaveLength(1);
+      expect(shown()).toBe("0.50");
+    });
+
+    it("a refusal naming nothing this page shows is the page's notice — a handle is never looked up as anything but a control", () => {
+      const page = openPage();
+      page.snapshot(show(1));
+      // "" is what Loom sends for a write that named nothing published; the rest are what a
+      // stale page (the control was unpublished since) or a hostile relay could carry.
+      for (const handle of ["", "h-gone", "__proto__", "constructor", "toString"]) {
+        const reason = `refused (${handle})`;
+        refuse(page, handle, reason);
+        expect(page.notice(), handle).toBe(reason);
+        expect(said(page), handle).toEqual([]);
+      }
+      expect(page.doc.querySelectorAll(".w.refused")).toHaveLength(0);
+    });
+
+    it("says nothing once the door has closed", () => {
+      const page = openPage();
+      page.snapshot(show(1));
+      page.emit({ type: "closed", reason: "The door was closed at the desk." });
+      refuse(page, "h-set", PAST_THE_END);
+      refuse(page, "", PAST_THE_END);
+      expect(said(page)).toEqual([]);
+      expect(page.notice()).toBe("The door was closed at the desk.");
+    });
+  });
+
+  /**
+   * T1526b — the two fields the design (§9.2) names and the first cut left out, and the
+   * list that follows its standby: what a person running a set from a phone reads before
+   * pressing GO — which picture a layer holds, what the operator noted on the next cue —
+   * and a cue list long enough to scroll that keeps "next" on screen by itself.
+   */
+  describe("T1526b — a layer's picture, a cue's note, the standby in view", () => {
+    it("a layer's switch names its picture and follows it — hidden where the switch is too narrow for it", () => {
+      const page = openPage();
+      page.snapshot(show(1, { "h-fx": { picture: "city" }, "h-key": { picture: "smoke" } }));
+      const pic = (caption: string): HTMLElement => layer(page, caption).querySelector<HTMLElement>(".sw .pic")!;
+      expect([pic("fx").textContent, pic("fx").hidden]).toEqual(["city", false]);
+      expect(page.win.getComputedStyle(pic("fx")).display).not.toBe("none");
+      // `key` is two cells wide (a switch and nothing else): no room beside its name.
+      expect(page.win.getComputedStyle(pic("key")).display).toBe("none");
+      // Loom points the layer at another look: the label follows, the switch is not rebuilt.
+      const sw = layer(page, "fx").querySelector(".sw");
+      page.snapshot(show(2, { "h-fx": { picture: "riot" } }));
+      expect(layer(page, "fx").querySelector(".sw")).toBe(sw);
+      expect(pic("fx").textContent).toBe("riot");
+      // No picture: nothing drawn, and no gap left for it.
+      page.snapshot(show(3));
+      expect([pic("fx").textContent, pic("fx").hidden]).toEqual(["", true]);
+    });
+
+    it("a cue shows its note — beside its name in the list, and the standby's beside current ▸ next", () => {
+      const page = openPage();
+      const notes = ["", "house lights out", "bows"];
+      page.snapshot(show(1, { "h-set": { notes } }));
+      const note = (cue: string): string => part(page, `.w.cueList [data-cue="${cue}"] .note`).textContent ?? "";
+      const standbyNote = (): string => part(page, ".w.cueList .cues .note").textContent ?? "";
+      expect(["1", "2", "3"].map(note)).toEqual(notes);
+      // GO fires cue 2 next: its note is the one to read before pressing.
+      expect(standbyNote()).toBe("house lights out");
+      page.snapshot(show(2, { "h-set": { notes, current: "2", next: "3", canBack: true } }));
+      expect(standbyNote()).toBe("bows");
+      // The operator rewrites a note at the desk: the phone follows.
+      page.snapshot(show(3, { "h-set": { notes: ["", "house lights out", "bows, then blackout"], current: "2", next: "3", canBack: true } }));
+      expect(note("3")).toBe("bows, then blackout");
+      expect(standbyNote()).toBe("bows, then blackout");
+      // The end of the list: no standby, no note.
+      page.snapshot(show(4, { "h-set": { notes, current: "3", next: null, canGo: false, canBack: true } }));
+      expect(standbyNote()).toBe("");
+      // The cue's NAME is still what a tap stands by.
+      expect(part(page, '.w.cueList [data-cue="2"]').getAttribute("data-cue")).toBe("2");
+    });
+
+    /*
+     * Eight cues, 34 px rows 36 px apart, in a list 72 px tall (two rows show). jsdom lays
+     * nothing out, so those numbers are given to it; what is asserted is the scroll offset
+     * the page leaves the LIST at. The page itself is never scrolled: jsdom has no
+     * `scrollIntoView` and logs `window.scrollTo`, so either would fail this file's
+     * no-noise check.
+     */
+    const CUES = ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"];
+    const LAYOUT = { row: 34, pitch: 36, list: 72 };
+    const standing = (seq: number, next: string, current = "c1"): PhoneSnapshot =>
+      show(seq, { "h-set": { cues: CUES, notes: CUES.map(() => ""), current, next, canBack: true } });
+
+    it("the cue list scrolls itself to keep the standby in view when Loom moves it — and stays where a finger left it otherwise", () => {
+      const page = openPage({ cueLayout: LAYOUT });
+      page.snapshot(standing(1, "c2"));
+      const list = part(page, ".w.cueList .cuelist");
+      // c2 is rows 36–70 of the 72 that show: in view already.
+      expect(list.scrollTop).toBe(0);
+      // Loom stands c6 by (180–214): scrolled just far enough that all of it shows.
+      page.snapshot(standing(2, "c6"));
+      expect(list.scrollTop).toBe(214 - 72);
+      // And back to the first cue (0–34), above what shows.
+      page.snapshot(standing(3, "c1"));
+      expect(list.scrollTop).toBe(0);
+      // The owner scrolls down to read ahead; a snapshot that does not move the standby
+      // (cue c3 fired by name at the desk, the standby still c1) leaves the list alone.
+      list.scrollTop = 100;
+      page.snapshot(standing(4, "c1", "c3"));
+      expect(list.scrollTop).toBe(100);
+      // The next move of the standby is followed again.
+      page.snapshot(standing(5, "c8", "c3"));
+      expect(list.scrollTop).toBe(7 * 36 + 34 - 72);
+    });
+
+    it("a list drawn while another tab shows finds its standby when its own tab is shown", () => {
+      const page = openPage({ cueLayout: LAYOUT, storage: { [PHONE_TAB_STORAGE_KEY]: "camera" } });
+      page.snapshot(standing(1, "c6"));
+      const list = part(page, ".w.cueList .cuelist");
+      // Not laid out: there is nothing to scroll yet, and the standby is not counted as shown.
+      expect(list.scrollTop).toBe(0);
+      part(page, '#tabs [data-tab="panel:Show"]').click();
+      expect(list.scrollTop).toBe(214 - 72);
+    });
   });
 });

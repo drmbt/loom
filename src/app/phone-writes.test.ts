@@ -332,6 +332,114 @@ describe("T1503b — a phone's presses on banks, layers and cue lists", () => {
   });
 
   /*
+   * T1526b — EVERY REFUSAL IS REPORTED WITH ITS CONTROL, so the phone that pressed can be
+   * shown the sentence on what it pressed. One test per way a write ends up not applied:
+   * the vet refuses, the bus rejects the command, the bus rejects the editor's patch, the
+   * bus answers conflict. Each is through the real bus; the report is what `use-phone-door`
+   * sends to that phone, so its three fields are asserted whole.
+   */
+  describe("T1526b — a refusal is reported with the phone and the control it is about", () => {
+    type Report = [phone: string, reason: string, handle: string];
+    const reporting = (bus: LoomBus, reports: Report[]) =>
+      createPhoneWrites({ bus, invocation: desk, schedule: manualFrames().schedule, onRefused: (...report) => reports.push(report) });
+
+    it("the vet's refusal names the published control it is about — and nothing when the write named none", async () => {
+      const { bus, id } = await show();
+      const reports: Report[] = [];
+      const writes = reporting(bus, reports);
+      const revision = bus.store.getRevision();
+      await writes.write("p1", press(id("looks"), { recall: "harder" }));
+      await writes.write("p2", press(id("set"), { standby: "9" }));
+      // `blur1` is in the document and on no Panel: its id is not the phone's to hear back.
+      await writes.write("p1", press(id("blur"), { size: 1 }));
+      await writes.write("p1", press("nothing-here" as NodeId, { recall: "hard" }));
+      expect(reports).toEqual([
+        ["p1", "“looks” has no preset by the name a phone asked for; it was renamed or deleted since the phone drew it.", id("looks")],
+        ["p2", "“set” has no cue by the name a phone asked for; it was renamed or deleted since the phone drew it.", id("set")],
+        ["p1", "A phone tried to move a control that is not published to the phone door.", ""],
+        ["p1", "A phone tried to move a control that is not published to the phone door.", ""],
+      ]);
+      expect(bus.store.getRevision()).toBe(revision);
+    });
+
+    it("a command the bus rejects is reported in the command's own sentence, on the list that was pressed: GO past the end without Wrap", async () => {
+      const { bus, id } = await show();
+      const reports: Report[] = [];
+      const writes = reporting(bus, reports);
+      await writes.write("p1", press(id("set"), { go: true }));
+      await writes.write("p1", press(id("set"), { go: true }));
+      expect(value(bus, id("set"), "current")).toBe("2");
+      expect(reports).toEqual([]);
+      const revision = bus.store.getRevision();
+      await writes.write("p1", press(id("set"), { go: true }));
+      expect(reports).toEqual([["p1", 'Cue list "set": "2" is its last cue and Wrap is off; nothing was fired.', id("set")]]);
+      expect(bus.store.getRevision()).toBe(revision);
+      expect(value(bus, id("set"), "current")).toBe("2");
+    });
+
+    /*
+     * The two the vet cannot see coming: the document changes BETWEEN the vet and the write.
+     * The race is made real, not mocked — a desk edit lands on the same node just before the
+     * phone's own patch reaches the real bus — so the answer is the real bus's.
+     */
+    const racing = (bus: LoomBus, before: () => Promise<unknown>): LoomBus => {
+      const execute = bus.execute.bind(bus);
+      let raced = false;
+      return Object.assign(Object.create(bus) as LoomBus, {
+        execute: (async (name: string, input: unknown, context: { actor: { id: string } }) => {
+          if (name === "graph.applyPatch" && context.actor.id.startsWith("remote-") && !raced) {
+            raced = true;
+            await before();
+          }
+          return execute(name as never, input as never, context as never);
+        }) as LoomBus["execute"],
+      });
+    };
+
+    it("a press that CONFLICTS with a desk edit made a moment before is said, not dropped — on the layer that was pressed", async () => {
+      const { bus, id } = await show();
+      const reports: Report[] = [];
+      // The desk moves the layer's opacity between the phone's vet and its switch write.
+      const raced = racing(bus, () =>
+        bus.execute("graph.applyPatch", { baseRevision: bus.store.getRevision(), operations: [{ op: "setParameters", nodeId: id("fx"), parameters: { opacity: 0.3 } }] }, desk),
+      );
+      const writes = reporting(raced, reports);
+      const auditBefore = bus.store.getAudit().length;
+      await writes.write("p1", press(id("fx"), { on: false }));
+      expect(bus.store.getAudit().slice(auditBefore).map((entry) => [entry.actor.id, entry.status])).toEqual([
+        ["alice", "applied"],
+        ["remote-p1", "conflict"],
+      ]);
+      // Not switched, and the phone is told so with the bus's sentence.
+      expect(bypassed(bus, id("fx"))).toBe(false);
+      expect(reports).toHaveLength(1);
+      expect(reports[0]![0]).toBe("p1");
+      expect(reports[0]![1]).toMatch(/^Patch was built against revision \d+, the document is at \d+/);
+      expect(reports[0]![2]).toBe(id("fx"));
+      // The legitimate case the report must not swallow: pressed again, with no race, it switches and says nothing.
+      await writes.write("p1", press(id("fx"), { on: false }));
+      expect(bypassed(bus, id("fx"))).toBe(true);
+      expect(reports).toHaveLength(1);
+    });
+
+    it("a fader write the bus does not apply is reported on the control that phone moved last", async () => {
+      const { bus, id } = await show();
+      const reports: Report[] = [];
+      // The layer is deleted at the desk between the phone's vet and its fader write.
+      const raced = racing(bus, () => bus.execute("graph.applyPatch", { baseRevision: bus.store.getRevision(), operations: [{ op: "removeNodes", nodeIds: [id("fx")] }] }, desk));
+      const writes = reporting(raced, reports);
+      await writes.write("p1", { handle: id("fx"), values: { opacity: 0.25 }, phase: "commit" });
+      await writes.settled();
+      expect(bus.store.getGraph().nodes[id("fx")]).toBeUndefined();
+      expect(reports.length).toBeGreaterThanOrEqual(1);
+      for (const report of reports) {
+        expect([report[0], report[2]]).toEqual(["p1", id("fx")]);
+        expect(report[1].length).toBeGreaterThan(10);
+      }
+    });
+  });
+
+  /*
    * RULING 12, THROUGH THE REAL BUS: everything a phone could send at the three — every key
    * the contract names and the ones somebody would try — and afterwards the bank holds the
    * presets it held, byte for byte, and the bus was never asked for a Store or a Delete.

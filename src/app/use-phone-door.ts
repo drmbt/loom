@@ -44,7 +44,11 @@ import type { Notice } from "./notices.tsx";
  *
  * Every `phoneWrite` goes to `createPhoneWrites` — vetted against the document as it is
  * now and applied as that phone's own human actor (see that module). A refusal is kept as
- * `refusal` and becomes a notice (`phoneDoorNotices`); the popover shows it too.
+ * `refusal` and becomes a notice (`phoneDoorNotices`); the popover shows it too. And the
+ * phone that pressed is TOLD (T1526b): the same sentence, with the control it is about,
+ * goes back through the helper to that phone's stream only (`phoneRefuse`), where the page
+ * shows it on the control. Until then a refused recall or GO looked, on the phone, like a
+ * press that did nothing.
  *
  * ## When the door is closed without anybody pressing Close
  *
@@ -93,6 +97,9 @@ export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
   const asked = useRef(false);
   /** The open door's publish, so a phone arriving can force one send. */
   const publishNow = useRef<(() => void) | null>(null);
+  /** The device client as of this render, for the refusal a phone is told (`writes` outlives a render). */
+  const clientNow = useRef(deviceClient);
+  clientNow.current = deviceClient;
 
   const writes = useMemo(
     () =>
@@ -100,7 +107,11 @@ export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
         bus,
         invocation,
         ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
-        onRefused: (phone, reason) => setRefusal((previous) => ({ phone, reason, count: (previous?.count ?? 0) + 1 })),
+        onRefused: (phone, reason, handle) => {
+          setRefusal((previous) => ({ phone, reason, count: (previous?.count ?? 0) + 1 }));
+          // T1526b: and the phone that pressed is told, on the control it pressed.
+          clientNow.current()?.phoneRefuse(phone, handle, reason);
+        },
       }),
     // The scheduler is injected once by a test; a new one per render would drop open gestures.
     // eslint-disable-next-line react-hooks/exhaustive-deps

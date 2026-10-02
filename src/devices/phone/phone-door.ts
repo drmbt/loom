@@ -15,11 +15,13 @@ import {
   PHONE_SIGNAL_PATH,
   PHONE_TOKEN_PARAM,
   PHONE_VALUE_MAX_CHARS,
+  parsePhoneRefused,
   parsePhoneSignal,
   type PhoneDoorState,
   type PhoneEvent,
   type PhoneFirewallBlock,
   type PhonePeer,
+  type PhoneRefused,
   type PhoneSet,
   type PhoneSignalFromPhone,
   type PhoneSignalToPhone,
@@ -39,7 +41,8 @@ import { probeMacFirewall } from "./mac-firewall.ts";
  * show a phone the controls the paired page chose to publish (`PhoneSnapshot`), and carry
  * a phone's `PhoneSet` back to that page. It holds no document, no tool and no bus. The
  * page vets every write and performs it (`phone-protocol.ts`); the door checks the token
- * and the shape and relays.
+ * and the shape and relays. When the page refuses a write it says so through the door
+ * (`refuse`, T1526b): its sentence goes down the stream of the phone that wrote, and no other.
  *
  * ## The posture, one clause per owner condition (2026-09-27)
  *
@@ -327,6 +330,13 @@ export interface PhoneDoor {
    * is open (the phone left; its next stream offers again under a new id).
    */
   signal(phone: string, message: PhoneSignalToPhone): boolean;
+  /**
+   * T1526b: the page refused one of that phone's writes — said down THAT phone's stream
+   * and no other, as a `refused` event. Shape-checked again here (the last hop before a
+   * phone draws the sentence). False — and nothing sent — when it is not a refusal, the
+   * door is closed, or no stream by that id is open.
+   */
+  refuse(phone: string, refused: PhoneRefused): boolean;
   state(): PhoneDoorState;
   dispose(): void;
 }
@@ -691,6 +701,13 @@ export function createPhoneDoor(options: PhoneDoorOptions = {}): PhoneDoor {
       const target = opened?.phones.get(phone);
       if (target === undefined) return false;
       writeEvent(target.response, { type: "signal", message });
+      return true;
+    },
+    refuse(phone, refused) {
+      const target = opened?.phones.get(phone);
+      const checked = parsePhoneRefused(refused);
+      if (target === undefined || typeof checked === "string") return false;
+      writeEvent(target.response, { type: "refused", ...checked });
       return true;
     },
     state,

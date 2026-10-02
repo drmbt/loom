@@ -338,7 +338,17 @@ function memberWidget(node: GraphNode, kind: MemberKind, clock: FrameClock | und
       };
     case "layer": {
       const opacity = layerOpacity(node);
-      return { kind, handle, caption, on: node.ui?.bypassed !== true, opacity: opacity.value, opacityWritable: opacity.writable };
+      return {
+        kind,
+        handle,
+        caption,
+        on: node.ui?.bypassed !== true,
+        opacity: opacity.value,
+        opacityWritable: opacity.writable,
+        // T1526b: the name in its Picture parameter — a layer takes its picture by name, and
+        // the bus refuses a wire into that input (`apply-patch.ts`, port.sourceReference).
+        picture: textOf(node.parameters["picture"]),
+      };
     }
     case "cueList": {
       const { list, position } = cueState(node);
@@ -348,6 +358,7 @@ function memberWidget(node: GraphNode, kind: MemberKind, clock: FrameClock | und
         handle,
         caption,
         cues: list === null ? [] : list.cues.map((cue) => cue.name),
+        notes: list === null ? [] : list.cues.map((cue) => cue.note?.trim() ?? ""),
         current: position.current || null,
         next,
         canGo: next !== null,
@@ -433,9 +444,14 @@ export type PhoneVet =
     }
   | ({ readonly ok: true; readonly action: "command" } & PhoneCommandCall)
   | { readonly ok: true; readonly action: "layerOn"; readonly nodeId: NodeId; readonly caption: string; readonly on: boolean }
-  | { readonly ok: false; readonly reason: string };
+  /**
+   * `nodeId` (T1526b) is the control the refusal is about, present only when the write
+   * named one that IS published — the id the snapshot gave the phone, so it is the page's
+   * own to send back with the sentence. A write that named nothing published carries none.
+   */
+  | { readonly ok: false; readonly reason: string; readonly nodeId?: NodeId };
 
-const refuse = (reason: string): PhoneVet => ({ ok: false, reason });
+const refuse = (reason: string, nodeId?: NodeId): PhoneVet => ({ ok: false, reason, ...(nodeId === undefined ? {} : { nodeId }) });
 
 /**
  * One phone write, checked against the document as it is NOW.
@@ -463,12 +479,14 @@ export function vetPhoneSet(graph: GraphDocument, set: PhoneSet): PhoneVet {
   }
   const kind = node.type;
   const caption = captionOf(node);
+  /** A refusal about THIS widget: it is published, so the phone that moved it can be shown the sentence on it (T1526b). */
+  const no = (reason: string): PhoneVet => refuse(reason, node.id);
   const values = typeof set.values === "object" && set.values !== null ? set.values : {};
   const keys = Object.keys(values);
-  if (keys.length === 0) return refuse(`A phone's write to “${caption}” carried no values.`);
+  if (keys.length === 0) return no(`A phone's write to “${caption}” carried no values.`);
   const writable: readonly string[] = PHONE_WRITABLE_KEYS[kind];
   if (!keys.every((key) => writable.includes(key))) {
-    return refuse(`A phone tried to write a key a ${kind} does not let a phone write, on “${caption}”.`);
+    return no(`A phone tried to write a key a ${kind} does not let a phone write, on “${caption}”.`);
   }
 
   const p = (key: string): unknown => plain(node.parameters[key]);
@@ -481,8 +499,8 @@ export function vetPhoneSet(graph: GraphDocument, set: PhoneSet): PhoneVet {
     return typeof value === "boolean" ? value : null;
   };
   const ok = (entries: Record<string, number | boolean>): PhoneVet => ({ ok: true, action: "parameters", nodeId: node.id, kind, entries, phase: set.phase });
-  const notNumber = refuse(`A phone sent “${caption}” something that is not a finite number.`);
-  const notFlag = refuse(`A phone sent “${caption}” something that is not true or false.`);
+  const notNumber = no(`A phone sent “${caption}” something that is not a finite number.`);
+  const notFlag = no(`A phone sent “${caption}” something that is not true or false.`);
 
   switch (kind) {
     case "slider": {
@@ -529,18 +547,20 @@ export function vetPhoneSet(graph: GraphDocument, set: PhoneSet): PhoneVet {
  */
 function vetMember(node: GraphNode, kind: MemberKind, set: PhoneSet): PhoneVet {
   const caption = controlNameOf(node);
+  /** A refusal about THIS member: it is published, so the phone that pressed it can be shown the sentence on it (T1526b). */
+  const no = (reason: string): PhoneVet => refuse(reason, node.id);
   const values = typeof set.values === "object" && set.values !== null ? set.values : {};
   const keys = Object.keys(values);
-  if (keys.length === 0) return refuse(`A phone's write to “${caption}” carried no values.`);
+  if (keys.length === 0) return no(`A phone's write to “${caption}” carried no values.`);
   const writable: readonly string[] = PHONE_WRITABLE_KEYS[kind];
   if (!keys.every((key) => writable.includes(key))) {
-    return refuse(`A phone tried to write a key a ${kind} does not let a phone write, on “${caption}”.`);
+    return no(`A phone tried to write a key a ${kind} does not let a phone write, on “${caption}”.`);
   }
-  if (keys.length > 1) return refuse(`A phone sent “${caption}” two things in one write; a ${kind} takes one at a time.`);
+  if (keys.length > 1) return no(`A phone sent “${caption}” two things in one write; a ${kind} takes one at a time.`);
   const key = keys[0] as string;
   const value = values[key];
   const pressOnly = (what: string): PhoneVet | null =>
-    set.phase === "commit" ? null : refuse(`A phone sent “${caption}” ${what} as a live drag; it is one press, sent once.`);
+    set.phase === "commit" ? null : no(`A phone sent “${caption}” ${what} as a live drag; it is one press, sent once.`);
   const call = (command: PhoneCommandCall): PhoneVet => ({ ok: true, action: "command", ...command });
 
   switch (kind) {
@@ -549,7 +569,7 @@ function vetMember(node: GraphNode, kind: MemberKind, set: PhoneSet): PhoneVet {
       if (live !== null) return live;
       // Not quoted back: what a phone sent is data off the LAN, not copy.
       if (typeof value !== "string" || !presetNames(node).includes(value)) {
-        return refuse(`“${caption}” has no preset by the name a phone asked for; it was renamed or deleted since the phone drew it.`);
+        return no(`“${caption}” has no preset by the name a phone asked for; it was renamed or deleted since the phone drew it.`);
       }
       return call({ command: PRESET_RECALL_COMMAND, input: { nodeId: node.id, name: value } });
     }
@@ -557,12 +577,12 @@ function vetMember(node: GraphNode, kind: MemberKind, set: PhoneSet): PhoneVet {
       if (key === "on") {
         const live = pressOnly("its switch");
         if (live !== null) return live;
-        if (typeof value !== "boolean") return refuse(`A phone sent “${caption}” something that is not true or false.`);
+        if (typeof value !== "boolean") return no(`A phone sent “${caption}” something that is not true or false.`);
         return { ok: true, action: "layerOn", nodeId: node.id, caption, on: value };
       }
       const opacity = layerOpacity(node);
-      if (!opacity.writable) return refuse(`“${caption}” has its opacity driven by the document, so a phone cannot move it.`);
-      if (typeof value !== "number" || !Number.isFinite(value)) return refuse(`A phone sent “${caption}” something that is not a finite number.`);
+      if (!opacity.writable) return no(`“${caption}” has its opacity driven by the document, so a phone cannot move it.`);
+      if (typeof value !== "number" || !Number.isFinite(value)) return no(`A phone sent “${caption}” something that is not a finite number.`);
       return { ok: true, action: "parameters", nodeId: node.id, kind, entries: { opacity: clamp(value, opacity.range) }, phase: set.phase };
     }
     case "cueList": {
@@ -571,11 +591,11 @@ function vetMember(node: GraphNode, kind: MemberKind, set: PhoneSet): PhoneVet {
       if (key === "standby") {
         const { list } = cueState(node);
         if (typeof value !== "string" || list === null || !list.cues.some((cue) => cue.name === value)) {
-          return refuse(`“${caption}” has no cue by the name a phone asked for; it was renamed or deleted since the phone drew it.`);
+          return no(`“${caption}” has no cue by the name a phone asked for; it was renamed or deleted since the phone drew it.`);
         }
         return call({ command: CUE_SET_STANDBY_COMMAND, input: { nodeId: node.id, cue: value } });
       }
-      if (value !== true) return refuse(`A phone sent “${caption}” a press that is not a press.`);
+      if (value !== true) return no(`A phone sent “${caption}” a press that is not a press.`);
       return call({ command: key === "go" ? CUE_GO_COMMAND : CUE_BACK_COMMAND, input: { nodeId: node.id } });
     }
   }

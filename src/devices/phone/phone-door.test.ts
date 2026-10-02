@@ -20,8 +20,10 @@ import {
 import { phonePageHtml } from "./phone-page.ts";
 import {
   PHONE_EVENTS_PATH,
+  PHONE_HANDLE_MAX_CHARS,
   PHONE_PAGE_PATH,
   PHONE_PEER_PARAM,
+  PHONE_REFUSAL_MAX_CHARS,
   PHONE_SDP_MAX_CHARS,
   PHONE_SET_PATH,
   PHONE_SIGNAL_MAX_BYTES,
@@ -29,6 +31,7 @@ import {
   PHONE_VALUE_MAX_CHARS,
   type PhoneDoorState,
   type PhoneEvent,
+  type PhoneRefused,
   type PhoneSet,
   type PhoneSignalFromPhone,
   type PhoneSignalToPhone,
@@ -590,6 +593,61 @@ describe("a phone's camera handshake is relayed, to and from the phone that sent
   });
 });
 
+/*
+ * T1526b — A REFUSED PRESS IS TOLD TO THE PHONE THAT PRESSED. The page's sentence goes down
+ * ONE stream. Who is the whole point: with eight phones on a set, "GO was refused" on the
+ * seven that did not press GO would be a lie on each of them.
+ */
+const REFUSED: PhoneRefused = { handle: "set1", reason: 'Cue list "set": "2" is its last cue and Wrap is off; nothing was fired.' };
+
+describe("a refused write is told to the phone that sent it, and to no other (T1526b)", () => {
+  it("sends `refused` — the control and the page's sentence — down the named phone's stream only", async () => {
+    const { door, state, ca } = await openDoor();
+    const presser = await openStream(at(state.url, PHONE_EVENTS_PATH), ca, "Presser");
+    const bystander = await openStream(at(state.url, PHONE_EVENTS_PATH), ca, "Bystander");
+    // An extra key never rides along: the event is the two fields and its type.
+    expect(door.refuse(presser.phone, { ...REFUSED, smuggled: "x" } as PhoneRefused)).toBe(true);
+    await until(() => presser.events.length === 1, "the refusal on the presser's stream");
+    expect(presser.events).toEqual([{ type: "refused", handle: "set1", reason: REFUSED.reason }]);
+    // A write that named nothing published is refused with no control: "" is a handle too.
+    expect(door.refuse(presser.phone, { handle: "", reason: "Not published." })).toBe(true);
+    await until(() => presser.events.length === 2, "the second refusal");
+    expect(presser.events[1]).toEqual({ type: "refused", handle: "", reason: "Not published." });
+    // A phone that is not connected is told nothing, and the door says so.
+    expect(door.refuse("not-a-phone", REFUSED)).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(bystander.events).toEqual([]);
+  });
+
+  it("sends nothing that is not a refusal: a sentence or a handle past its cap, an empty sentence, a wrong type", async () => {
+    const { door, state, ca } = await openDoor();
+    const phone = await openStream(at(state.url, PHONE_EVENTS_PATH), ca);
+    const not: unknown[] = [
+      { handle: "set1", reason: "r".repeat(PHONE_REFUSAL_MAX_CHARS + 1) },
+      { handle: "h".repeat(PHONE_HANDLE_MAX_CHARS + 1), reason: "Refused." },
+      { handle: "set1", reason: "" },
+      { handle: 7, reason: "Refused." },
+      { handle: "set1" },
+      [REFUSED],
+    ];
+    for (const each of not) expect(door.refuse(phone.phone, each as PhoneRefused), JSON.stringify(each).slice(0, 60)).toBe(false);
+    // The legitimate case the caps must not swallow: a sentence and a handle AT them.
+    const longest: PhoneRefused = { handle: "h".repeat(PHONE_HANDLE_MAX_CHARS), reason: "r".repeat(PHONE_REFUSAL_MAX_CHARS) };
+    expect(door.refuse(phone.phone, longest)).toBe(true);
+    await until(() => phone.events.length === 1, "the refusal at the caps");
+    expect(phone.events).toEqual([{ type: "refused", ...longest }]);
+  });
+
+  it("a closed door tells nobody", async () => {
+    const { door, state, ca } = await openDoor();
+    const phone = await openStream(at(state.url, PHONE_EVENTS_PATH), ca);
+    door.close("closed for the test");
+    await until(() => phone.ended, "the stream to end");
+    expect(door.refuse(phone.phone, REFUSED)).toBe(false);
+    expect(phone.events.filter((event) => event.type === "refused")).toEqual([]);
+  });
+});
+
 describe("closing the door (T1396b)", () => {
   it("tells every phone `closed`, ends the streams, and the token dies with the opening", async () => {
     const { door, state, ca } = await openDoor();
@@ -788,6 +846,31 @@ describe("the phone door over the device bridge (T1396b)", () => {
     socket.close();
     await until(() => sender.ended, "the sender's stream to end with the page");
     expect(sender.events.at(-1)?.type).toBe("closed");
+  });
+
+  it("T1526b: relays the page's refusal over the device socket to the named phone only — malformed ones dropped, an over-long sentence not relayed", async () => {
+    const helper = await helperWith(true);
+    const { socket, received } = await attachDevice(helper);
+    socket.send(JSON.stringify({ type: "phoneOpen", id: 1 }));
+    await until(() => reply(received, "phoneOpened", 1) !== undefined, "phoneOpened");
+    const opened = reply(received, "phoneOpened", 1)?.["state"] as PhoneDoorState;
+    if (!opened.open) throw new Error(opened.reason);
+    const ca = readFileSync(join(sharedCertDir, "cert.pem"), "utf8");
+    const presser = await openStream(at(opened.url, PHONE_EVENTS_PATH), ca, "Presser");
+    const bystander = await openStream(at(opened.url, PHONE_EVENTS_PATH), ca, "Bystander");
+
+    // What the page says after its vet or the bus refused the presser's write. Each of the
+    // first four is not a refusal (or names nobody) and goes nowhere; the fifth arrives alone.
+    const tell = (message: Record<string, unknown>): void => socket.send(JSON.stringify({ type: "phoneRefuse", ...message }));
+    tell({ phone: presser.phone, handle: "set1", reason: 42 });
+    tell({ phone: presser.phone, handle: "set1", reason: "r".repeat(PHONE_REFUSAL_MAX_CHARS + 1) });
+    tell({ phone: presser.phone, reason: "No handle at all." });
+    tell({ handle: "set1", reason: "No phone named." });
+    tell({ phone: presser.phone, ...REFUSED, smuggled: "x" });
+    await until(() => presser.events.some((event) => event.type === "refused"), "the refusal on the presser's stream");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(presser.events.filter((event) => event.type === "refused")).toEqual([{ type: "refused", ...REFUSED }]);
+    expect(bystander.events.filter((event) => event.type === "refused")).toEqual([]);
   });
 
   it("phoneClose closes the door and says so; the phones are told", async () => {

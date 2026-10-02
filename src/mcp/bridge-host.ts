@@ -25,7 +25,7 @@ import type { BridgeSocket } from "@devices/transport/bridge-socket.ts";
 import type { TerminalHost, TerminalSession } from "@devices/terminal-host.ts";
 import { DEVICE_HELPER_TERMINAL_COMMAND, PHONE_DOOR_UNAVAILABLE } from "@devices/helper.ts";
 import type { PhoneDoor } from "@devices/phone/phone-door.ts";
-import { parsePhoneSignal, type PhoneDoorState, type PhoneSnapshot } from "@devices/phone/phone-protocol.ts";
+import { parsePhoneRefused, parsePhoneSignal, type PhoneDoorState, type PhoneSnapshot } from "@devices/phone/phone-protocol.ts";
 import {
   createLoopbackWebSocketServer,
   type LoopbackConnection,
@@ -877,6 +877,17 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
         const signal = parsePhoneSignal(message["message"], "page");
         if (typeof signal === "string") return;
         options.phone?.signal(phone, signal);
+        return;
+      }
+      case "phoneRefuse": {
+        // T1526b — the page refused one of that phone's writes. Told, not asked: it goes
+        // down that phone's stream only, and is dropped when that phone is gone or the
+        // message is not a refusal (two capped strings; the phone draws the sentence next).
+        const phone = message["phone"];
+        if (typeof phone !== "string") return;
+        const refused = parsePhoneRefused(message);
+        if (typeof refused === "string") return;
+        options.phone?.refuse(phone, refused);
         return;
       }
       case "deviceAck":

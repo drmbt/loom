@@ -36,6 +36,7 @@ import type {
 } from "./device-protocol.ts";
 import {
   parsePhoneSignal,
+  phoneRefused,
   type PhoneDoorState,
   type PhonePeer,
   type PhoneSet,
@@ -173,6 +174,12 @@ export interface DeviceClient {
   phoneSignal(phone: string, message: PhoneSignalToPhone): void;
   /** T1397b — PUSH: a phone's half of its camera handshake, shape-checked. Returns an unsubscribe. */
   onPhoneSignal(listener: (phone: string, message: PhoneSignalFromPhone) => void): () => void;
+  /**
+   * T1526b — tell ONE phone that the page refused its write: the control it was aimed at
+   * (`handle`, "" when it named none the page published) and the page's sentence, cut to
+   * the contract's cap here. Told, not asked; dropped unattached.
+   */
+  phoneRefuse(phone: string, handle: string, reason: string): void;
   dispose(): void;
 }
 
@@ -687,6 +694,10 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
       return () => {
         phoneSignalListeners.delete(listener);
       };
+    },
+    phoneRefuse(phone, handle, reason) {
+      // An empty sentence says nothing, and the helper would drop it: not sent.
+      if (attached && reason !== "") send({ type: "phoneRefuse", phone, ...phoneRefused(handle, reason) });
     },
     reconnectRemembered() {
       if (wanted || attached || disposed) return;

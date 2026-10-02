@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createDeviceClient } from "../device-client.ts";
 import type { BridgeSocket, PairingMemory } from "../transport/bridge-socket.ts";
-import type { PhoneDoorState, PhoneSet } from "./phone-protocol.ts";
+import { PHONE_HANDLE_MAX_CHARS, PHONE_REFUSAL_MAX_CHARS, parsePhoneRefused, type PhoneDoorState, type PhoneSet } from "./phone-protocol.ts";
 
 /**
  * T1396b — the device client's phone half, faked at the socket so the claims are about
@@ -85,6 +85,38 @@ describe("T1396b — the device client's phone door", () => {
     socket().hear({ type: "phoneState", stream: "phone", state: { ...OPEN, phones: [{ phone: "p1", userAgent: "iPhone" }] } });
     expect(writes).toEqual([["p1", set]]);
     expect(states).toEqual([{ ...OPEN, phones: [{ phone: "p1", userAgent: "iPhone" }] }]);
+  });
+
+  /*
+   * T1526b: the page tells ONE phone its write was refused. What leaves the page is inside
+   * the contract's caps — the helper drops anything past them, and a sentence dropped is a
+   * phone told nothing, which is the bug this row closes. So a long sentence is CUT here,
+   * not sent whole to be refused.
+   */
+  it("T1526b: a refusal goes out for the named phone, its sentence cut to the cap — and not at all unattached or with nothing to say", async () => {
+    const { client, socket } = harness("ABCD-EFGH");
+    client.phoneRefuse("p1", "nd_1", "Said before the helper attached.");
+    await tick();
+    socket().hear({ type: "deviceAttached" });
+    const refusals = () => socket().sent.filter((message) => message["type"] === "phoneRefuse");
+    expect(refusals()).toEqual([]);
+
+    client.phoneRefuse("p1", "nd_1", "“heat” is driven by the document, so a phone cannot move it.");
+    // No control to name (the write named nothing published): the handle is empty, and still sent.
+    client.phoneRefuse("p2", "", "A phone tried to move a control that is not published to the phone door.");
+    client.phoneRefuse("p1", "nd_1", "");
+    const long = `${"A long sentence. ".repeat(40)}The end.`;
+    client.phoneRefuse("p1", "nd_1", long);
+    client.phoneRefuse("p1", "x".repeat(PHONE_HANDLE_MAX_CHARS + 1), "A handle no node id is as long as.");
+    expect(refusals()).toEqual([
+      { type: "phoneRefuse", phone: "p1", handle: "nd_1", reason: "“heat” is driven by the document, so a phone cannot move it." },
+      { type: "phoneRefuse", phone: "p2", handle: "", reason: "A phone tried to move a control that is not published to the phone door." },
+      { type: "phoneRefuse", phone: "p1", handle: "nd_1", reason: `${long.slice(0, PHONE_REFUSAL_MAX_CHARS - 1)}…` },
+      { type: "phoneRefuse", phone: "p1", handle: "", reason: "A handle no node id is as long as." },
+    ]);
+    // Everything that left is something the helper's own check accepts.
+    for (const sent of refusals()) expect(typeof parsePhoneRefused(sent)).toBe("object");
+    expect((refusals()[2]!["reason"] as string).length).toBe(PHONE_REFUSAL_MAX_CHARS);
   });
 
   it("T1511b: a firewall block the helper measured reaches the page; a malformed one is dropped, never guessed", async () => {
