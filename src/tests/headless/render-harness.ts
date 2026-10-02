@@ -12,6 +12,7 @@ import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { meshSourceIdsFor, prepareMesh, type PreparedMesh } from "../../points/mesh.ts";
 import { createVgpuBackend } from "../../runtime/backend/vgpu/vgpu-backend.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
+import { buildMorphIndex } from "../../domain/presets/morph-index.ts";
 import { createUniformAnimator } from "../../app/animate-parameters.ts";
 import type { AudioFeatures } from "../../domain/types/frame.ts";
 import type { FeatureTrackRecorder } from "../../domain/audio/feature-track.ts";
@@ -84,6 +85,14 @@ export interface HeadlessRenderRequest {
    * from there instead of rendering every earlier frame unseen.
    */
   readonly startFrame?: number;
+  /**
+   * T1497b: the absolute clock's EPOCH every frame of this render counts in
+   * (`FrameEvaluationInput.absEpoch`). A preset morph record fades only for frames of its
+   * own epoch, so a gate that wants to see a fade stands where the live session stands and
+   * names the epoch its record was stamped with. Absent — every export, every thumbnail,
+   * every other gate — frames carry none and each record is finished: the end state.
+   */
+  readonly absEpoch?: string;
   /**
    * T1435b: the caller averages this many consecutive frames into one output frame, so
    * `fps` is the SUB-frame rate. Every frame then reports `fps / subframes` as the project
@@ -778,6 +787,8 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
           });
     /** What the value graph and every compile read. §V437: the raw document is not it. */
     const logicalGraph = flattened?.graph ?? request.graph;
+    /** T1497b: the preset morphs in flight — the flattening's, or the document's own. */
+    const morphs = flattened?.morphs ?? buildMorphIndex({ document: request.graph, registry: registry(request.nodes) });
 
     const plan = compileGraph({
       graph: request.graph,
@@ -931,7 +942,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
       backend,
       ...(audioSeam === undefined ? {} : { audio: audioSeam }),
       // §V45: the seed is the project's, not the transport's own invention.
-      transport: offlineTransport({ fps, seed: settings.randomSeed, mode: "fixed-step", ...(request.subframes === undefined ? {} : { subframes: request.subframes }), ...(request.startFrame === undefined ? {} : { startFrame: request.startFrame }) }),
+      transport: offlineTransport({ fps, seed: settings.randomSeed, mode: "fixed-step", ...(request.subframes === undefined ? {} : { subframes: request.subframes }), ...(request.startFrame === undefined ? {} : { startFrame: request.startFrame }), ...(request.absEpoch === undefined ? {} : { epoch: request.absEpoch }) }),
       pointer: pointerSource,
       resolution: () => [settings.outputResolution.width, settings.outputResolution.height],
       ...(valueSession === null || animator === null
@@ -950,6 +961,9 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
                 // driver's source.
                 pointer: inputs.pointer,
                 ...(inputs.audio === undefined ? {} : { audio: inputs.audio }),
+                // T1497b: the same morph index the per-frame compile below derives, so a
+                // recalled widget publishes the fading value here as it does live.
+                morphs,
                 // T655/T654: analyze readbacks enter the value graph here — the same
                 // extras.channels seam `useValueGraph` threads live, number-narrowed
                 // the same way.

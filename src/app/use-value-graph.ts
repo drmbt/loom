@@ -158,7 +158,10 @@ export function useValueGraph(runtime: AppRuntime, externalChannels?: ChannelRes
       // value node inside a component never evaluate at all — the flat ids `c1/wob` and
       // `c2/wob` are also what gives two instances of one Lag two trajectories (§V79),
       // since the session keys its state by node id.
-      const result = session.evaluate(runtimeRef.current.flattened.current().graph, inputs.frame, {
+      const flattened = runtimeRef.current.flattened.current();
+      const result = session.evaluate(flattened.graph, inputs.frame, {
+        // T1497b: the same morph index the plan compiles with (it rides on the flattening).
+        morphs: flattened.morphs,
         // §V182: the SAME pointer the shaders read. A second DOM listener would drift by a
         // frame and the CPU and GPU halves of one graph would disagree about the cursor.
         pointer: inputs.pointer,

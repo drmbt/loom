@@ -84,10 +84,12 @@ function withTimeProbe(probe: TimeProbe | undefined): { timeProbe?: TimeProbe } 
   return probe === undefined ? {} : { timeProbe: probe };
 }
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
+import type { ParameterMorphs } from "../domain/parameters/resolve.ts";
+import { buildMorphIndex } from "../domain/presets/morph-index.ts";
 import { outputPixelScale } from "../domain/types/graph.ts";
 import { orderNodes } from "./topology.ts";
 import { isTemporalOutput, validateGraph, validateRequiredInputs } from "./validate.ts";
-import type { ResolvedNode } from "./validate.ts";
+import type { ParameterResolution, ResolvedNode } from "./validate.ts";
 import { outputKey } from "./types.ts";
 import type {
   ActiveSink,
@@ -841,6 +843,12 @@ export interface RetainedCompile {
   readonly nodes: ReadonlyMap<NodeId, RetainedNodeCompile>;
   /** Scene payloads published at the base resolution, by `outputKey`. */
   readonly scenePayloads: ReadonlyMap<string, ScenePayload>;
+  /**
+   * T1497b: the preset morphs this compile resolved with — the request's own, else the
+   * flattening's, else built from the document. Kept so every frame spliced over this
+   * plan reads the SAME index the plan's "what animates" was classified from.
+   */
+  readonly morphs: ParameterMorphs;
 }
 
 export interface CompileGraphResult {
@@ -891,6 +899,24 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
   const flatGraph = flattened?.graph ?? request.graph;
 
   /**
+   * T1497b — THE PRESET MORPHS IN FLIGHT, derived HERE rather than asked of each caller.
+   *
+   * A recall with a morph commits its end state and a record; what is on screen until the
+   * fade ends is the resolver's fold over that record (the design doc §5.3). Every
+   * compiler entry point comes through this function, so supplying the index once means
+   * no `compileGraph` caller can render a fading document at its destination by
+   * forgetting an option — the reader's rule in `validateGraph`, one field over (§V61).
+   *
+   * The flattening already carries the index when there is one (it is where published
+   * knobs are followed into a component). A caller's own wins, as its `nodes` does.
+   * It does nothing without a frame that names an epoch: a structural compile, and every
+   * export, resolve the destination.
+   */
+  const morphs =
+    request.resolution?.morphs ?? flattened?.morphs ?? buildMorphIndex({ document: request.graph, registry });
+  const reading: ParameterResolution = { ...(request.resolution ?? {}), morphs };
+
+  /**
    * T350 (§V285) / T447 (§V373): a SOURCE REFERENCE synthesizes the exact edge the wired
    * shape had. The document stays a DAG; everything downstream — V13 validation,
    * inheritance through the input, the temporal split, the pair, the swap — is the
@@ -916,7 +942,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
         ];
 
   // 1. definitions, parameters, connections (T24)
-  const validatedRaw = validateGraph(graph, registry, request.resolution ?? {});
+  const validatedRaw = validateGraph(graph, registry, reading);
   diagnostics.push(...validatedRaw.diagnostics);
 
   // 1b. splice passthrough nodes (T223, §V130): a Null is a WIRE. Its consumers bind
@@ -1225,7 +1251,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       // read it — the §V220 shape, and the whole of B47.
       colorPolicy: colorPolicyOf(settings),
       // T1421b: the node's parameters along its own path (the Camera's derivative).
-      ...withTimeProbe(timeProbeFor(node, definition, graph, registry, request.resolution ?? {}, settings)),
+      ...withTimeProbe(timeProbeFor(node, definition, graph, registry, reading, settings)),
     };
 
     let description: CompiledNodeDescription;
@@ -2447,7 +2473,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       signature: structure.signature,
       estimatedResourceBytes,
     },
-    retained: { request, graph, order: topology.order, nodes: retainedNodes, scenePayloads: sceneInfoByOutput },
+    retained: { request, graph, order: topology.order, nodes: retainedNodes, scenePayloads: sceneInfoByOutput, morphs },
   };
 }
 

@@ -11,7 +11,7 @@ import type {
   FrameCompiler,
   ParameterResolution,
 } from "@compiler/index.ts";
-import { graphChannelResolver, hasAnimatedParameters } from "@domain/channels/graph-channels.ts";
+import { graphChannelResolver, hasAnimatedParameters, nodeHasAnimatedParameters } from "@domain/channels/graph-channels.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import { analyzeReadbacks, nodeCategories, telemetryPlan } from "@runtime/telemetry/index.ts";
@@ -539,6 +539,20 @@ export function useGraphCompile(
     // expression; nothing was ever asked to evaluate it.
     if (request === null || !hasAnimatedParameters(flatGraph)) return null;
     /**
+     * T1497b — A FADE ENDS, AND THEN THE DOCUMENT IS STILL AGAIN (the design doc §5.3).
+     *
+     * A morph record stays in its bank until the next recall tidies it, so "does this
+     * revision hold a record" would keep an otherwise still document re-resolving every
+     * frame for the rest of the session. When the records are the ONLY thing that
+     * animates, each frame is first asked whether any of them is still fading — and one
+     * frame more is compiled after the last, because that is the frame that pushes the
+     * END value: the fold never reaches p = 1 on a frame it still calls "running", so
+     * stopping with it would leave the GPU one step short of the destination.
+     */
+    const morphs = flattened.morphs;
+    const morphsOnly = !Object.values(flatGraph.nodes).some(nodeHasAnimatedParameters);
+    let landingOwed = false;
+    /**
      * T1182 — the per-frame compile is VALUES-ONLY wherever the compiler can prove it.
      *
      * `prepareFrameCompiler` compiles once in full and, when no animated parameter is
@@ -575,6 +589,11 @@ export function useGraphCompile(
       }
     };
     return (frame: FrameEvaluationInput): CompiledGraph | null => {
+      if (morphsOnly) {
+        const fading = morphs.activeAt(frame);
+        if (!fading && !landingOwed) return null;
+        landingOwed = fading;
+      }
       if (frameCompiler === undefined) {
         frameCompiler = prepare();
         runtime.telemetry.setFrameCompileReason(frameCompiler?.reason ?? null);
@@ -592,7 +611,7 @@ export function useGraphCompile(
       }
       return compileSafely({ ...request, resolution: { frame, channels } }).compiled;
     };
-  }, [request, channels, flatGraph, runtime]);
+  }, [request, channels, flatGraph, flattened, runtime]);
 
   // Nothing animates: no frame compiler, no reason to show (T1254).
   useEffect(() => {

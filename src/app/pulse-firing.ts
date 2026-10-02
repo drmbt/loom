@@ -4,7 +4,9 @@ import type { InvocationContext } from "@domain/types/commands.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import { createPulseWatcher } from "@domain/parameters/pulse.ts";
+import { RENDER_BLOCKED_PULSE_COMMANDS } from "@domain/presets/commands.ts";
 import type { AppRuntime } from "./app-runtime.ts";
+import { renderRangeHolderFor } from "./render-range.ts";
 
 /**
  * Expression-fired pulses, in the running app (T214, §V125).
@@ -25,6 +27,18 @@ import type { AppRuntime } from "./app-runtime.ts";
  * the watcher's step is a read of the document plus a resolve, and it dispatches only on
  * an edge. A pulse that fires sixty times a second is a user expression saying "fire
  * every frame", and quietly deciding otherwise would be the tool overruling it.
+ *
+ * ## The one thing a TAKE does not fire (T1497b)
+ *
+ * `renderFrameRange` steps this same transport, so this observer runs once per exported
+ * frame — measured, not assumed: a reset pulse fires during a take exactly as it does in
+ * playback, which is right (it is part of the picture). A pulse whose command EDITS THE
+ * DOCUMENT is the exception (`RENDER_BLOCKED_PULSE_COMMANDS`: a preset recall today): a
+ * render shows the document as saved and must leave it as it found it. The watcher still
+ * STEPS on those frames, so the armed levels stay true and the first live frame after the
+ * take does not see a stale edge; only the dispatch is withheld. The holder's `busy()` is
+ * set synchronously before the take's first step and cleared in its `finally` (T949), so
+ * there is no frame of a take on which this reads "live".
  */
 export interface PulseFiring {
   /** Steps the watcher for one frame and fires whatever just went armed. */
@@ -70,7 +84,9 @@ export function usePulseFiring(
         frame,
         channelsRef.current?.(),
       );
+      const taking = renderRangeHolderFor(bus).current?.busy() === true;
       for (const fire of fires) {
+        if (taking && RENDER_BLOCKED_PULSE_COMMANDS.has(fire.definition.fires)) continue;
         void bus
           .execute(
             "parameter.pulse",

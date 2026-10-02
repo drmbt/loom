@@ -5,6 +5,7 @@ import type { NodeId } from "../types/ids.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { effectiveParameterSchema, type ChannelResolver } from "../parameters/resolve.ts";
 import { nodeNames } from "../graph/names.ts";
+import { hasMorphRecords } from "../presets/morph-index.ts";
 import { storedStaticValue } from "../parameters/slots.ts";
 import { defaultParameterValue } from "../parameters/validate.ts";
 
@@ -104,9 +105,16 @@ const ZERO_FRAME: FrameEvaluationInput = {
  * True when any parameter in the document animates per frame — an expression or driven
  * slot at any key. The frame loop uses this to decide whether values-only recompiles
  * run at frame rate at all; a static project pays nothing.
+ *
+ * T1497b: or a preset bank holds a MORPH RECORD. A morphing key stores a plain value —
+ * its destination — so no slot mode gives it away, and a document that is otherwise
+ * still would never be asked for the frames its fade is made of (the design doc §5.3).
+ * This is the per-REVISION half of the question; whether a record still has a fade to do
+ * is a question about a frame (`ParameterMorphs.activeAt`), and the frame loop asks that
+ * one too, so a finished fade stops costing a per-frame resolve.
  */
 export function hasAnimatedParameters(graph: GraphDocument): boolean {
-  return Object.values(graph.nodes).some(nodeHasAnimatedParameters);
+  return Object.values(graph.nodes).some(nodeHasAnimatedParameters) || hasMorphRecords(graph);
 }
 
 /**

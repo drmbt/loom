@@ -218,6 +218,17 @@ export interface FrameLoopOptions {
   readonly documentBoundary?: boolean | undefined;
 }
 
+/**
+ * T1497b: an id for one run of the absolute clock. Opaque — compared for equality and
+ * nothing else — and unique ACROSS sessions, which is the property a frame count cannot
+ * give: a record saved in one session must not match the clock of the next.
+ */
+function mintClockEpoch(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
   const { bus, backend, compiled, settings } = options;
   const animate = options.animate ?? null;
@@ -334,8 +345,31 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
    */
   const resetFeedbackRef = useRef(false);
   if (resetFeedback) resetFeedbackRef.current = true;
+  /**
+   * T1497b — THE ABSOLUTE CLOCK'S EPOCH, minted here and nowhere else in the app.
+   *
+   * A preset morph is stamped with `absTimeSeconds`, and that count is only meaningful
+   * within one run of the clock (the design doc §5.4). A new id is minted at the three
+   * moments a stamp stops meaning what it said:
+   *
+   *  - the SESSION starts — so a file saved mid-fade reopens at its end state;
+   *  - a RENDER zeroes the clock (`resetAbsoluteClock` below) — so a take renders the
+   *    document as saved, and a record stamped at live second 3 does not replay three
+   *    seconds into every export;
+   *  - ANOTHER DOCUMENT opens — the count runs on through a load (T461), so without this
+   *    a file saved mid-fade and reopened in the same session would pick its fade back up
+   *    at whatever the clock happens to read.
+   *
+   * The clock reads it through a getter, per frame, like `fps` and `seed`.
+   */
+  const epochRef = useRef<string | null>(null);
+  if (epochRef.current === null) epochRef.current = mintClockEpoch();
   const documentBoundaryRef = useRef(false);
-  if (documentBoundary) documentBoundaryRef.current = true;
+  if (documentBoundary) {
+    // Once per boundary, not once per render that still carries the flag.
+    if (!documentBoundaryRef.current) epochRef.current = mintClockEpoch();
+    documentBoundaryRef.current = true;
+  }
   /**
    * WORK OWED, not a flag observed (T733, B141).
    *
@@ -470,6 +504,24 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
     registerTransportCommands(bus);
   }, [bus]);
 
+  /**
+   * T1497b — THE FRAME CLOCK, published to the bus (`CommandContext.frameClock`).
+   *
+   * A recall with a morph stamps its record with the absolute clock's reading, and §V44
+   * says the command may not read a clock: it reads the last frame THIS loop produced.
+   * Both fields come off that one frame — never today's epoch beside an older frame's
+   * count, which after a render would place a fade's start minutes into a clock that has
+   * just been zeroed. No frame yet (no backend, or nothing rendered) is "no clock", and
+   * a morph then commits as a cut and says so.
+   */
+  useEffect(() => {
+    bus.attachFrameClock(() => {
+      const frame = latestFrameRef.current?.frame;
+      if (frame?.absEpoch === undefined || frame.absTimeSeconds === undefined) return undefined;
+      return { epoch: frame.absEpoch, absTimeSeconds: frame.absTimeSeconds };
+    });
+  }, [bus]);
+
   useEffect(() => {
     if (backend === null || backend === undefined) {
       driverRef.current = null;
@@ -499,6 +551,8 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       // T1100: the document's seed, per frame (§V45's live half). See `seedRef` above.
       seed: () => seedRef.current,
       presenting: () => driverRef.current?.running === true,
+      // T1497b: which run of the absolute clock a frame counts in. See `epochRef`.
+      epoch: () => epochRef.current ?? undefined,
     });
 
     /**
@@ -627,7 +681,12 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       },
       // T467: the RENDER path's verb. The live paths never call this — a seek or a lap
       // leaves the absolute clock growing (T461); only a take starts its clock at zero.
-      resetAbsoluteClock: () => transport.resetAbsolute(),
+      // T1497b: zeroing the count starts a new EPOCH, in the same breath — every morph
+      // record already in the document is finished for the take, and stays finished after.
+      resetAbsoluteClock: () => {
+        transport.resetAbsolute();
+        epochRef.current = mintClockEpoch();
+      },
       isLooping: () => loopingRef.current,
       toggleLoop: () => {
         loopingRef.current = !loopingRef.current;

@@ -5,7 +5,7 @@ import type { ScenePayload } from "../domain/types/scene.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
 import type { ParameterValue } from "../domain/types/parameters.ts";
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
-import type { ParameterMapBinding } from "../domain/parameters/resolve.ts";
+import type { ParameterMapBinding, ParameterMorphs } from "../domain/parameters/resolve.ts";
 import { createParameterReadOptions } from "../domain/parameters/node-references.ts";
 import type { PassDescriptor } from "../runtime/backend/plan.ts";
 import { passStructureKey, readPass } from "../runtime/backend/plan.ts";
@@ -41,8 +41,9 @@ import type { ActiveSink, CompileRequest, CompiledGraph, CompiledInputBinding, C
  * description (`RetainedNodeCompile`). A frame then:
  *
  *   1. re-resolves parameters for the nodes that ANIMATE (expression / driven / bind —
- *      `animatedRootKeys` mirrors `nodeHasAnimatedParameters`), through the same
- *      resolver and the same `op()` reader the full compile uses (§V61, §V939);
+ *      `animatedRootKeys` mirrors `nodeHasAnimatedParameters` — and, T1497b, a key a
+ *      preset morph record covers), through the same resolver and the same `op()` reader
+ *      the full compile uses (§V61, §V939);
  *   2. re-runs `definition.compile` for those nodes, and for every node downstream of
  *      them through a SCENE PAYLOAD edge — a payload is a CPU value that travels
  *      (camera → render), so its consumers' uniforms move when it does;
@@ -104,14 +105,20 @@ export interface FrameCompiler {
  * is declared on the compound. The mode list is `nodeHasAnimatedParameters`'s
  * (`graph-channels.ts`); `frame-compile.test.ts` holds the two together on every
  * shipped example.
+ *
+ * T1497b: plus every key a preset MORPH record covers. A morphing key stores a plain
+ * value — the destination — so no mode gives it away; the index is what knows (the
+ * design doc §5.3). The index only ever lists keys that may fade, never a structural
+ * one (`morphableKey`), so a morph cannot push a document off the values-only path.
  */
-export function animatedRootKeys(node: GraphNode): ReadonlySet<string> {
+export function animatedRootKeys(node: GraphNode, morphs?: ParameterMorphs): ReadonlySet<string> {
   const keys = new Set<string>();
   for (const [key, stored] of Object.entries(node.parameters)) {
     if (typeof stored !== "object" || stored === null || Array.isArray(stored)) continue;
     const mode = (stored as { mode?: unknown }).mode;
     if (mode === "expression" || mode === "driven" || mode === "bind") keys.add(key.split(".")[0] as string);
   }
+  for (const key of morphs?.keysOf(node.id) ?? []) keys.add(key.split(".")[0] as string);
   return keys;
 }
 
@@ -161,7 +168,7 @@ function classify(
   for (const nodeId of retained.order) {
     const record = retained.nodes.get(nodeId);
     if (record === undefined) continue;
-    const keys = animatedRootKeys(record.node);
+    const keys = animatedRootKeys(record.node, retained.morphs);
     if (keys.size === 0) continue;
     const structural = structuralParameterKeys(record.definition, record.node.parameters);
     for (const key of [...keys].sort()) {
@@ -297,6 +304,9 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
 
   const compileFrame = (resolution: ParameterResolution): CompiledGraph | null => {
     if (reason !== null) return null;
+    // T1497b: the morph index the BASE was compiled and classified with, unless the
+    // caller brings its own — the same precedence `compileGraphRetaining` applies.
+    const morphs = resolution.morphs ?? retained.morphs;
     // The same reader `validateGraph` builds (§V939): a caller's own `nodes` wins, as there.
     const reader: ParameterResolution =
       resolution.nodes === undefined
@@ -307,9 +317,10 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
               registry: request.registry,
               frame: resolution.frame,
               channels: resolution.channels,
+              morphs,
             }),
           }
-        : resolution;
+        : { ...resolution, morphs };
     // Per-frame resolution diagnostics (a clamped expression, an unattached channel) are
     // dropped, exactly as the full per-frame compile's were by its one consumer.
     const discarded: RuntimeDiagnostic[] = [];
@@ -331,7 +342,7 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
       const sceneMoved = bindingsReadScene(record.context.inputs, recompiled);
       if (frameValues === undefined && !sceneMoved) continue;
       // T1421b: the probe moves with the frame, exactly as the full compile's does.
-      const probe = timeProbeFor(record.node, record.definition, retained.graph, request.registry, resolution, retained.request.settings);
+      const probe = timeProbeFor(record.node, record.definition, retained.graph, request.registry, { ...resolution, morphs }, retained.request.settings);
       const context: CompilerNodeContext = {
         ...record.context,
         ...(frameValues === undefined ? {} : frameValues),

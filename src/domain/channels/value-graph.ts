@@ -4,7 +4,7 @@ import type { AudioFeatures, FrameEvaluationInput } from "../types/frame.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { NodeDefinition, ValueChannels } from "../types/node-definition.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
-import type { ChannelResolver } from "../parameters/resolve.ts";
+import type { ChannelResolver, ParameterMorphs } from "../parameters/resolve.ts";
 import { resolveParameterSchema, effectiveParameterSchema } from "../parameters/resolve.ts";
 import { bypassPassthroughPorts } from "../graph/bypass.ts";
 
@@ -108,6 +108,12 @@ export interface ValueGraphSession {
       audio?: AudioFeatures;
       /** T654: external channels (analyze, or anything published) for `channelIn`. */
       channels?: (name: string) => number | undefined;
+      /**
+       * T1497b: the preset morphs in flight (`FlattenedGraph.morphs`). A widget or a
+       * Constant a bank recalls with a morph publishes the FADING value, the same number
+       * the plan's uniforms carry that frame — one read path (§V61, §V109).
+       */
+      morphs?: ParameterMorphs;
     },
   ): ValueGraphResult;
   /** Clears every node's persistent state (§V181) — transport reset, backward seek. */
@@ -278,7 +284,10 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
         }
 
         // Frame-scoped, channel-free parameter resolution (see the module note).
-        const resolved = resolveParameterSchema(node, effectiveParameterSchema(member.definition, node.parameters), { frame });
+        const resolved = resolveParameterSchema(node, effectiveParameterSchema(member.definition, node.parameters), {
+          frame,
+          ...(extras.morphs === undefined ? {} : { morphs: extras.morphs }),
+        });
         const state = states.get(nodeId) ?? {};
         states.set(nodeId, state);
 

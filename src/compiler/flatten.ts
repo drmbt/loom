@@ -13,7 +13,8 @@ import type {
   ParameterValue,
   StoredParameter,
 } from "../domain/types/parameters.ts";
-import type { ResolvedParameters } from "../domain/parameters/resolve.ts";
+import type { ParameterMorphs, ResolvedParameters } from "../domain/parameters/resolve.ts";
+import { NO_MORPHS, buildMorphIndex, type PublishedOrigin } from "../domain/presets/morph-index.ts";
 import { renumberedName, rewriteNodeNameReferences } from "../domain/graph/names.ts";
 import { isPreviewablePortKind } from "../domain/graph/previewable.ts";
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
@@ -28,6 +29,7 @@ import {
   detectComponentRecursion,
   effectiveInternalOverrides,
   instanceDisplayNames,
+  internalParameterPath,
   isComponentInstance,
   parentBindResolver,
   parentScopeDrivers,
@@ -138,6 +140,25 @@ export interface FlattenedGraph {
   readonly diagnostics: ReadonlyArray<RuntimeDiagnostic>;
   /** True when at least one instance was inlined. */
   readonly changed: boolean;
+  /**
+   * T1497b: flattened node id → key → the ROOT document parameter that value was
+   * published from (§V80's fan-out, followed through every nesting level).
+   *
+   * Inlining dissolves an instance, so nothing called `city` is left to resolve — only
+   * the internal parameters its published page was written onto. A preset morph is
+   * recorded against the instance's key (that is what the bank targets and what the
+   * recall wrote), and this is the map that lets it reach the parameters actually on the
+   * GPU. An instance's own `overrides` win over publishing and therefore have no origin.
+   */
+  readonly publishedOrigins: ReadonlyMap<NodeId, Readonly<Record<string, PublishedOrigin>>>;
+  /**
+   * T1497b: the preset morphs in flight in this document, indexed over THIS flattening
+   * (`buildMorphIndex`). Here because the flattening is the one object every frame path
+   * already holds and already shares (T615, §V529) — the compile, the value graph and the
+   * frame loop's "does anything move" all read the same index, built once per
+   * `(document revision, catalogue revision)` like the flat graph itself.
+   */
+  readonly morphs: ParameterMorphs;
 }
 
 /** The published parameter page of a component, as a parameter schema. */
@@ -145,6 +166,51 @@ function publishedSchema(definition: GraphComponentDefinition): ParameterSchema 
   const schema: ParameterSchema = {};
   for (const published of definition.parameters) schema[published.key] = published.definition;
   return schema;
+}
+
+/** T1497b: `LevelInput.origins`, grouped by internal node like the overrides they shadow. */
+function originsByNode(
+  origins: Readonly<Record<string, PublishedOrigin>>,
+): Map<NodeId, Record<string, PublishedOrigin>> {
+  const grouped = new Map<NodeId, Record<string, PublishedOrigin>>();
+  for (const path of Object.keys(origins).sort()) {
+    const parsed = parseInternalParameterPath(path);
+    const origin = origins[path];
+    if (parsed === null || origin === undefined) continue;
+    const forNode = grouped.get(parsed.nodeId) ?? {};
+    grouped.set(parsed.nodeId, forNode);
+    forNode[parsed.key] = origin;
+  }
+  return grouped;
+}
+
+/**
+ * T1497b: where each internal parameter of ONE instance takes its published value from,
+ * keyed like `effectiveInternalOverrides` and built in the same order (a later published
+ * parameter wins a shared target; the instance's own `overrides` win over both and so
+ * leave no origin).
+ *
+ * `inherited` is this instance's own published keys' origins when it is itself inside a
+ * component — a knob fed from one level up passes that origin on — and `null` at the
+ * root, where the instance's stored parameters ARE the origin.
+ */
+function publishedOriginsFor(
+  definition: GraphComponentDefinition,
+  instance: GraphNode,
+  rootNodeId: NodeId | null,
+  inherited: Readonly<Record<string, PublishedOrigin>>,
+): Record<string, PublishedOrigin> {
+  const own = readComponentInstance(instance)?.overrides ?? {};
+  const origins: Record<string, PublishedOrigin> = {};
+  for (const published of definition.parameters) {
+    const origin = rootNodeId === null ? inherited[published.key] : { nodeId: rootNodeId, key: published.key };
+    if (origin === undefined) continue;
+    for (const target of published.targets) {
+      const path = internalParameterPath(target.nodeId, target.key);
+      if (!(path in own)) origins[path] = origin;
+    }
+  }
+  return origins;
 }
 
 /** Overrides addressed `<internalNodeId>/<key>`, grouped by internal node. */
@@ -285,6 +351,8 @@ interface LevelInput {
    * own unresolved slot, so the internal parameter it drives re-resolves per frame.
    */
   readonly overrides: Readonly<Record<string, StoredParameter>>;
+  /** T1497b: for the overrides that are a published fan-out, the root parameter they came from. */
+  readonly origins: Readonly<Record<string, PublishedOrigin>>;
   /** Published values of the enclosing instances, outermost first (§V81). */
   readonly chain: ReadonlyArray<Readonly<Record<string, ParameterValue>>>;
 }
@@ -390,6 +458,8 @@ function identityFlattening(graph: GraphDocument): FlattenedGraph {
     recursion: null,
     diagnostics: [],
     changed: false,
+    publishedOrigins: new Map(),
+    morphs: NO_MORPHS,
   };
 }
 
@@ -406,7 +476,11 @@ function identityFlattening(graph: GraphDocument): FlattenedGraph {
 export function flattenComponents(request: FlattenRequest): FlattenedGraph {
   // T1176: the overwhelming majority of documents have nothing to flatten. See
   // `flatteningIsIdentity`.
-  if (flatteningIsIdentity(request.graph)) return identityFlattening(request.graph);
+  if (flatteningIsIdentity(request.graph)) {
+    const identity = identityFlattening(request.graph);
+    // T1497b: nothing was inlined, so the document's own nodes are what resolves.
+    return { ...identity, morphs: buildMorphIndex({ document: request.graph, registry: request.registry, flattened: identity }) };
+  }
 
   const diagnostics: RuntimeDiagnostic[] = [];
 
@@ -430,6 +504,8 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       recursion,
       diagnostics,
       changed: false,
+      publishedOrigins: new Map(),
+      morphs: NO_MORPHS,
     };
   }
 
@@ -437,6 +513,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
   const edges: Record<string, GraphEdge> = {};
   const sources = new Map<NodeId, ComponentSource>();
   const instanceOutputs = new Map<NodeId, ReadonlyMap<PortId, FlatEndpoint>>();
+  const publishedOrigins = new Map<NodeId, Readonly<Record<string, PublishedOrigin>>>();
   const sinks: ActiveSink[] = [];
   /** Flattened instance id -> display name, the pieces a source path is made of. */
   const instanceNames: Record<NodeId, string> = {};
@@ -610,6 +687,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     const levelGraph = withUniqueNames(input.graph);
     const scope = buildParentScope(input.chain);
     const grouped = overridesByNode(input.overrides);
+    const origins = originsByNode(input.origins);
     /** Raw instance id -> the boundary of the subgraph it expanded into. */
     const childInputs = new Map<NodeId, ReadonlyMap<PortId, FlatEndpoint>>();
     const childOutputs = new Map<NodeId, ReadonlyMap<PortId, FlatEndpoint>>();
@@ -640,6 +718,9 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       if (instance === null) {
         addNode(resolved, flatId);
         recordSource(flatId, input.path, node, node.label ?? nodeId);
+        // T1497b: the published values this node carries, and where each came from.
+        const publishedFrom = origins.get(nodeId);
+        if (publishedFrom !== undefined) publishedOrigins.set(flatId, publishedFrom);
         continue;
       }
 
@@ -717,6 +798,12 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
         prefix: flatId,
         path: [...input.path, flatId],
         overrides: childOverrides,
+        origins: publishedOriginsFor(
+          componentDefinition,
+          resolved,
+          input.definition === null ? node.id : null,
+          origins.get(nodeId) ?? {},
+        ),
         chain: [...input.chain, published],
       });
       // Inner overrides land first; the outer instance can override one nested
@@ -844,23 +931,29 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     prefix: "",
     path: [],
     overrides: {},
+    origins: {},
     chain: [],
   });
 
+  const graph: GraphDocument = {
+    revision: request.graph.revision,
+    nodes,
+    edges,
+    // Groups are a canvas affordance, not a logical one: a flattened graph has no canvas.
+    groups: {},
+  };
   return {
-    graph: {
-      revision: request.graph.revision,
-      nodes,
-      edges,
-      // Groups are a canvas affordance, not a logical one: a flattened graph has no canvas.
-      groups: {},
-    },
+    graph,
     sources,
     instanceOutputs,
     sinks,
     recursion: null,
     diagnostics,
     changed,
+    publishedOrigins,
+    // T1497b: against the ROOT document (the banks and the nodes they name live there)
+    // and this flattening (what actually resolves).
+    morphs: buildMorphIndex({ document: request.graph, registry: request.registry, flattened: { graph, publishedOrigins } }),
   };
 }
 

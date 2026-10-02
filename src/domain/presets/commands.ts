@@ -110,6 +110,22 @@ declare module "../types/commands.ts" {
 export const PRESET_STORE_COMMAND = "preset.store";
 export const PRESET_RECALL_COMMAND = "preset.recall";
 
+/**
+ * T1497b — THE PULSE-FIRED COMMANDS A RENDER MUST NOT FIRE (the design doc §5.4).
+ *
+ * A take renders the document AS SAVED. Most pulses are part of that picture: a
+ * Feedback's reset on `frame % 120 == 0` is a deterministic function of the frame and
+ * touches no document, so the take fires it exactly as playback does. A RECALL is not —
+ * it EDITS the document, so a `recall` pulse on a beat expression would rewrite the
+ * project in the middle of its own export, and the second export of the same file would
+ * start from a different document than the first. A live performance is not re-performed
+ * by a render (T467); timeline-placed cues, which an export WOULD reproduce, are §T1508b.
+ *
+ * Named here, by the commands that own the behaviour, and read by the app's pulse watcher
+ * (`src/app/pulse-firing.ts`). The cue list's `cue.go` / `cue.back` (§T1500b) join it.
+ */
+export const RENDER_BLOCKED_PULSE_COMMANDS: ReadonlySet<string> = new Set([PRESET_RECALL_COMMAND]);
+
 export interface PresetStoreInput {
   /** The bank node. */
   nodeId: NodeId;

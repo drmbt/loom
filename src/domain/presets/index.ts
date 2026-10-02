@@ -30,6 +30,7 @@ export type { MorphIndexInput, PublishedOrigin, PublishedOrigins } from "./morph
 export {
   PRESET_RECALL_COMMAND,
   PRESET_STORE_COMMAND,
+  RENDER_BLOCKED_PULSE_COMMANDS,
   capturePresetValues,
   planPresetRecall,
   presetMorph,

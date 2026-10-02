@@ -33,7 +33,7 @@ import type { CompileEdge } from "./types.ts";
  * topology, same resources — so the resulting plan differs only in its uniform VALUES,
  * which is what makes the update path `updateUniforms` rather than a recompile (§V5).
  */
-export type ParameterResolution = Pick<ResolveParametersOptions, "frame" | "channels" | "nodes">;
+export type ParameterResolution = Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs">;
 
 export interface ResolvedNode {
   readonly node: GraphNode;
@@ -191,7 +191,9 @@ export function validateGraph(
       ? // T1129/§V837: the reader and its base come from the one factory, not from a
         // `base` spelled out here. The `frame` and `channels` it re-supplies are the ones
         // `options` already carries, so this spread changes nothing but where they come from.
-        { ...options, ...createParameterReadOptions({ graph, registry, frame: options.frame, channels: options.channels }) }
+        // T1497b: and the preset morphs in flight, for the same reason — a reference to a
+        // fading parameter must read the fading value.
+        { ...options, ...createParameterReadOptions({ graph, registry, frame: options.frame, channels: options.channels, morphs: options.morphs }) }
       : options;
 
   for (const nodeId of Object.keys(graph.nodes).sort()) {
