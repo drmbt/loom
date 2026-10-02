@@ -1,4 +1,3 @@
-import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { nodeByName, nodeNames } from "../graph/names.ts";
 import type { NodeReferenceReader, NodeReferenceResult } from "../expressions/index.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
@@ -12,6 +11,7 @@ import {
   resolveParameterSchema,
   type ChannelResolver,
   type ParameterMorphs,
+  type ParameterSchemaSource,
   type ResolvedParameters,
   type ResolveParametersOptions,
 } from "./resolve.ts";
@@ -312,7 +312,12 @@ function targetOf(
 /** What a call site knows: the graph being read, the catalogue, and WHEN. */
 export interface ParameterReadContext {
   readonly graph: GraphDocument;
-  readonly registry: NodeRegistryView;
+  /**
+   * The catalogue, as the ONE thing this reads from it: a type's schema source (§T903).
+   * Structural, so the pulse watcher — which is handed exactly that and no more — asks
+   * this factory for its reader like every other call site (T1500b).
+   */
+  readonly registry: { readonly get: (type: string) => ParameterSchemaSource | undefined };
   /**
    * The moment. A PARAMETER rather than a field the caller sets afterwards, because
    * setting it on the resolve and forgetting it on the reader is the entire bug (§B46).

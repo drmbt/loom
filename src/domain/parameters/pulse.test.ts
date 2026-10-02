@@ -194,3 +194,47 @@ describe("a DRIVEN pulse fires through the channel resolver (T628, T593's class)
     }
   });
 });
+
+/**
+ * T1500b — A PULSE ON ANOTHER NODE'S CHANNEL OR PARAMETER FIRES.
+ *
+ * The `driven` mode above is the retired spelling (§T897): a channel read is an EXPRESSION
+ * term now, `op('pad1').chan.note`, and it is read inside the node-reference reader. The
+ * watcher resolved without one, so the idiom the design names for every live trigger — a
+ * MIDI pad, a beat, a Button on a pulse — evaluated to "no reader", fell back to the
+ * retained `false`, and never fired. Written as the literal bug: the expression a user
+ * types, through the watcher the app steps.
+ */
+describe("a pulse expression that names another node fires (T1500b)", () => {
+  const source: GraphNode = { id: "n2", type: "feedback", label: "pad1", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { decay: 0 } };
+  const graphOf = (expression: string, decay = 0): GraphDocument => ({
+    revision: 1,
+    nodes: { n1: node(expression), n2: { ...source, parameters: { decay } } },
+    edges: {},
+    groups: {},
+  });
+
+  it("op('pad1').chan.note: one fire per rising edge of the channel, none with the wire cut (§V461)", () => {
+    // The pad: down on frames 2–4 and again on frame 6.
+    const down = new Set([2, 3, 4, 6]);
+    const channels = (name: string, context: { frame?: FrameEvaluationInput }) =>
+      name === "pad1:note" ? (down.has(context.frame?.frameIndex ?? -1) ? 1 : 0) : undefined;
+    const graph = graphOf("op('pad1').chan.note");
+
+    const wired = createPulseWatcher(registry);
+    const fired = [0, 1, 2, 3, 4, 5, 6, 7].map((index) => wired.step(graph, frameAt(index), channels as never).length);
+    // Frame 2 and frame 6 are the two presses; HOLDING through 3 and 4 fires nothing.
+    expect(fired).toEqual([0, 0, 1, 0, 0, 0, 1, 0]);
+
+    // No channel behind the name: the same frames fire nothing.
+    const unwired = createPulseWatcher(registry);
+    expect([0, 1, 2, 3, 4, 5, 6, 7].map((index) => unwired.step(graph, frameAt(index), (() => undefined) as never).length)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it("op('pad1').par.decay: another node's PARAMETER arms it too, read at the watcher's own frame", () => {
+    const watcher = createPulseWatcher(registry);
+    expect(watcher.step(graphOf("op('pad1').par.decay", 0), frameAt(0))).toEqual([]);
+    expect(watcher.step(graphOf("op('pad1').par.decay", 1), frameAt(1)).map((fire) => fire.nodeId)).toEqual(["n1"]);
+    expect(watcher.step(graphOf("op('pad1').par.decay", 1), frameAt(2))).toEqual([]);
+  });
+});

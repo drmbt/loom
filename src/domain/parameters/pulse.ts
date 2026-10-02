@@ -8,6 +8,7 @@ import type {
 } from "../types/parameters.ts";
 import { isParameterSlot } from "./slots.ts";
 import { effectiveParameterSchema, resolveParameter } from "./resolve.ts";
+import { createParameterReadOptions } from "./node-references.ts";
 import type { ChannelResolver, ParameterSchemaSource } from "./resolve.ts";
 
 /**
@@ -149,6 +150,20 @@ export function createPulseWatcher(registry: SchemaSource): PulseWatcher {
     step(graph, frame, channels) {
       const fires: PulseFire[] = [];
       const next = new Map<string, boolean>();
+      /*
+       * T1500b — THE NODE-REFERENCE READER rides along too, or a pulse on
+       * `op('midi1').chan.pad` never fires. §T628 handed the watcher the channel resolver
+       * when a channel read was the `driven` MODE; §T897 then made a channel read an
+       * EXPRESSION term, read INSIDE the reader — and this resolve never had one, so every
+       * pulse naming another node (a MIDI pad, a beat, a Button) fell back to its retained
+       * `false` and stayed there. §B8's shape a fifth time, and closed the way §T1129
+       * closes it: the reader and the frame and channels it reads through come from the
+       * ONE factory, together. Built once per step and only when a pulse is actually
+       * watched, so a document with none pays nothing and several share one name index.
+       */
+      let read: ReturnType<typeof createParameterReadOptions> | undefined;
+      const readOptions = (): ReturnType<typeof createParameterReadOptions> =>
+        (read ??= createParameterReadOptions({ graph, registry, frame, channels }));
 
       for (const nodeId of Object.keys(graph.nodes).sort()) {
         const node = graph.nodes[nodeId];
@@ -164,11 +179,7 @@ export function createPulseWatcher(registry: SchemaSource): PulseWatcher {
            * an LFO wired to a reset pulse was a wire that did nothing, with every unit
            * suite green because each was handed the resolver it was testing.
            */
-          const resolved = resolveParameter(node, key, definition, {
-            frame,
-            schema,
-            ...(channels === undefined ? {} : { channels }),
-          });
+          const resolved = resolveParameter(node, key, definition, { ...readOptions(), schema });
           const isArmed = isPulseArmed(resolved.value);
           const mapKey = armedKey(nodeId, key);
           next.set(mapKey, isArmed);
