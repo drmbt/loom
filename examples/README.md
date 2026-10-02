@@ -102,6 +102,7 @@ happened:
 | [E79 Crucible](./E79-Crucible.md) | A white-hot ring with a belted sphere inside it — plates that split on every hit over a lava heart — in a black void of machinery at three scales, five coloured lights among the hulls each on its own SPECTRUM row (Select → Range → Beat / Tail, T1347b/T1348b), dust, red haze, a slow orbit. |
 | [E80 Azulejo](./E80-Azulejo.md) | Two picture layers and a person-shaped window between them: a wall of blue-and-white tiles with the people in front of the camera cut out of it, and a night city playing inside the cut. Every layer is a Switch — stand-in shaders ship, a Movie File In or the webcam (browser Matte or Apple Vision Person Mask) replaces each one. |
 | [E81 Phone Desk](./E81-Phone-Desk.md) | The live controls, pre-wired and annotated in the network: a Slider, a Toggle, a Button and an XY Pad drive a picture through `op('name').chan` expressions, a Panel lays them out with Phone on so a paired phone gets the same controls, and a Corner Pin puts the pad on the picture's top-right corner. |
+| [E82 Set List](./E82-Set-List.md) | A set played from banks, shots, layers and a cue list: two looks and a glitch effect on a Layer stack, a Corner Pin as the mapping, three Presets banks (`looks`, `fx`, and `shots` that switch layers and recall the other two), a Cue List of five cues with their own morph times, and a Show desk Panel with the shots, GO and BACK, the FX layer's switch and fader and two sliders, published to a phone. |
 
 ## Running them
 

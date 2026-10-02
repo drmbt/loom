@@ -1,0 +1,813 @@
+{
+  "assets": [],
+  "createdAt": "2026-08-29T00:00:00.000Z",
+  "graph": {
+    "edges": {
+      "e1": {
+        "id": "e1",
+        "source": {
+          "nodeId": "source",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "layerRings",
+          "portId": "below"
+        }
+      },
+      "e10": {
+        "id": "e10",
+        "source": {
+          "nodeId": "tear",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "shear",
+          "portId": "disp"
+        }
+      },
+      "e11": {
+        "id": "e11",
+        "source": {
+          "nodeId": "shear",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "glitch",
+          "portId": "input"
+        }
+      },
+      "e12": {
+        "id": "e12",
+        "order": 0,
+        "source": {
+          "nodeId": "master",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "desk",
+          "portId": "controls"
+        }
+      },
+      "e13": {
+        "id": "e13",
+        "order": 1,
+        "source": {
+          "nodeId": "keystone",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "desk",
+          "portId": "controls"
+        }
+      },
+      "e14": {
+        "id": "e14",
+        "source": {
+          "nodeId": "black",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "onBlack",
+          "portId": "in2"
+        }
+      },
+      "e15": {
+        "id": "e15",
+        "source": {
+          "nodeId": "onBlack",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "out",
+          "portId": "input"
+        }
+      },
+      "e2": {
+        "id": "e2",
+        "source": {
+          "nodeId": "layerRings",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "layerGrid",
+          "portId": "below"
+        }
+      },
+      "e3": {
+        "id": "e3",
+        "source": {
+          "nodeId": "layerGrid",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "layerFx",
+          "portId": "below"
+        }
+      },
+      "e4": {
+        "id": "e4",
+        "source": {
+          "nodeId": "layerFx",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "dim",
+          "portId": "input"
+        }
+      },
+      "e5": {
+        "id": "e5",
+        "source": {
+          "nodeId": "dim",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "pin",
+          "portId": "input"
+        }
+      },
+      "e6": {
+        "id": "e6",
+        "source": {
+          "nodeId": "pin",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "onBlack",
+          "portId": "in1"
+        }
+      },
+      "e7": {
+        "id": "e7",
+        "source": {
+          "nodeId": "ringsSrc",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "rings",
+          "portId": "input"
+        }
+      },
+      "e8": {
+        "id": "e8",
+        "source": {
+          "nodeId": "gridSrc",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "grid",
+          "portId": "input"
+        }
+      },
+      "e9": {
+        "id": "e9",
+        "source": {
+          "nodeId": "layerGrid",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "shear",
+          "portId": "source"
+        }
+      }
+    },
+    "groups": {},
+    "nodes": {
+      "black": {
+        "definitionVersion": 1,
+        "id": "black",
+        "label": "black",
+        "parameters": {
+          "color": [
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        "position": {
+          "x": 0,
+          "y": 250
+        },
+        "type": "solid"
+      },
+      "desk": {
+        "definitionVersion": 1,
+        "id": "desk",
+        "label": "desk",
+        "parameters": {
+          "board": "{\n  \"columns\": 8,\n  \"items\": [\n    {\"label\":\"Shots\",\"rect\":{\"x\":0,\"y\":0,\"w\":8,\"h\":1}},\n    {\"member\":\"shots\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"set\",\"rect\":{\"x\":0,\"y\":2,\"w\":4,\"h\":2}},\n    {\"label\":\"Glitch FX\",\"rect\":{\"x\":4,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"layerFx\",\"rect\":{\"x\":4,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"master\",\"rect\":{\"x\":0,\"y\":4,\"w\":4,\"h\":1}},\n    {\"member\":\"keystone\",\"rect\":{\"x\":4,\"y\":4,\"w\":4,\"h\":1}}\n  ]\n}",
+          "remote": true,
+          "title": "Show desk"
+        },
+        "position": {
+          "x": -560,
+          "y": 780
+        },
+        "type": "panel"
+      },
+      "dim": {
+        "definitionVersion": 1,
+        "id": "dim",
+        "label": "dim",
+        "parameters": {
+          "brightness": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('master').chan.master"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -600,
+          "y": 0
+        },
+        "type": "level"
+      },
+      "fx": {
+        "definitionVersion": 1,
+        "id": "fx",
+        "label": "fx",
+        "parameters": {
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"clean\",\n      \"values\": {\n        \"shear\": {\n          \"weight\": [\n            0,\n            0\n          ]\n        },\n        \"glitch\": {\n          \"hueoffset\": 0,\n          \"saturation\": 1,\n          \"value\": 1\n        }\n      }\n    },\n    {\n      \"name\": \"dirty\",\n      \"values\": {\n        \"shear\": {\n          \"weight\": [\n            0.15,\n            0\n          ]\n        },\n        \"glitch\": {\n          \"hueoffset\": -30,\n          \"saturation\": 1.6,\n          \"value\": 1.1\n        }\n      }\n    },\n    {\n      \"name\": \"acid\",\n      \"values\": {\n        \"shear\": {\n          \"weight\": [\n            0.05,\n            0.05\n          ]\n        },\n        \"glitch\": {\n          \"hueoffset\": 140,\n          \"saturation\": 2,\n          \"value\": 1\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "shear.weight glitch"
+        },
+        "position": {
+          "x": -2180,
+          "y": 780
+        },
+        "type": "presets"
+      },
+      "glitch": {
+        "definitionVersion": 1,
+        "id": "glitch",
+        "label": "glitch",
+        "parameters": {
+          "hueoffset": 0,
+          "saturation": 1,
+          "value": 1
+        },
+        "position": {
+          "x": -900,
+          "y": 250
+        },
+        "type": "hsv"
+      },
+      "grid": {
+        "definitionVersion": 1,
+        "id": "grid",
+        "label": "grid",
+        "parameters": {
+          "extend": "repeat",
+          "r": 0,
+          "s": [
+            1,
+            1
+          ]
+        },
+        "position": {
+          "x": -2100,
+          "y": 500
+        },
+        "type": "transform"
+      },
+      "gridSrc": {
+        "definitionVersion": 1,
+        "id": "gridSrc",
+        "label": "gridSrc",
+        "parameters": {
+          "color1": [
+            0.22,
+            0.28,
+            0.5,
+            1
+          ],
+          "color2": [
+            1,
+            0.95,
+            0.8,
+            1
+          ],
+          "size": [
+            8,
+            4.5
+          ]
+        },
+        "position": {
+          "x": -2400,
+          "y": 500
+        },
+        "type": "checker"
+      },
+      "keystone": {
+        "definitionVersion": 1,
+        "id": "keystone",
+        "label": "keystone",
+        "parameters": {
+          "caption": "Keystone",
+          "channel": "keystone",
+          "max": 0.4,
+          "min": 0,
+          "step": 0,
+          "value": 0.12
+        },
+        "position": {
+          "x": -780,
+          "y": 780
+        },
+        "type": "slider"
+      },
+      "layerFx": {
+        "definitionVersion": 1,
+        "id": "layerFx",
+        "label": "layerFx",
+        "parameters": {
+          "blend": "replace",
+          "opacity": 0,
+          "picture": "glitch"
+        },
+        "position": {
+          "x": -900,
+          "y": 0
+        },
+        "type": "layer"
+      },
+      "layerGrid": {
+        "definitionVersion": 1,
+        "id": "layerGrid",
+        "label": "layerGrid",
+        "parameters": {
+          "blend": "multiply",
+          "opacity": 0,
+          "picture": "grid"
+        },
+        "position": {
+          "x": -1500,
+          "y": 0
+        },
+        "type": "layer"
+      },
+      "layerRings": {
+        "definitionVersion": 1,
+        "id": "layerRings",
+        "label": "layerRings",
+        "parameters": {
+          "blend": "screen",
+          "opacity": 0.25,
+          "picture": "rings"
+        },
+        "position": {
+          "x": -1800,
+          "y": 0
+        },
+        "type": "layer"
+      },
+      "looks": {
+        "definitionVersion": 1,
+        "id": "looks",
+        "label": "looks",
+        "parameters": {
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"dawn\",\n      \"values\": {\n        \"ringsSrc\": {\n          \"period\": 2.5\n        },\n        \"rings\": {\n          \"hueoffset\": 0,\n          \"saturation\": 0.7,\n          \"value\": 1\n        },\n        \"grid\": {\n          \"r\": 0,\n          \"s\": [\n            1,\n            1\n          ]\n        }\n      }\n    },\n    {\n      \"name\": \"noon\",\n      \"values\": {\n        \"ringsSrc\": {\n          \"period\": 5\n        },\n        \"rings\": {\n          \"hueoffset\": 40,\n          \"saturation\": 1.2,\n          \"value\": 1.1\n        },\n        \"grid\": {\n          \"r\": 15,\n          \"s\": [\n            1.5,\n            1.5\n          ]\n        }\n      }\n    },\n    {\n      \"name\": \"riot\",\n      \"values\": {\n        \"ringsSrc\": {\n          \"period\": 9\n        },\n        \"rings\": {\n          \"hueoffset\": 120,\n          \"saturation\": 1.8,\n          \"value\": 1.2\n        },\n        \"grid\": {\n          \"r\": {\n            \"mode\": \"expression\",\n            \"bindings\": {\n              \"static\": {\n                \"kind\": \"static\",\n                \"value\": 45\n              },\n              \"expression\": {\n                \"kind\": \"expression\",\n                \"source\": \"sin(abstime * 0.7) * 45\"\n              }\n            }\n          },\n          \"s\": [\n            0.6,\n            0.6\n          ]\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "ringsSrc.period rings grid.r grid.s"
+        },
+        "position": {
+          "x": -2400,
+          "y": 780
+        },
+        "type": "presets"
+      },
+      "master": {
+        "definitionVersion": 1,
+        "id": "master",
+        "label": "master",
+        "parameters": {
+          "caption": "Master",
+          "channel": "master",
+          "max": 1.5,
+          "min": 0,
+          "step": 0,
+          "value": 1
+        },
+        "position": {
+          "x": -1000,
+          "y": 780
+        },
+        "type": "slider"
+      },
+      "noteBanks": {
+        "definitionVersion": 1,
+        "id": "noteBanks",
+        "label": "noteBanks",
+        "parameters": {
+          "body": "A Presets node is a bank. Targets lists what it holds: a node, or node.key.\nStore saves the targets under a name. Recall writes them back in one undo step.\nA preset keeps the whole slot: riot holds an expression for the grid's rotation, and Recall brings the expression back.\nlooks holds both looks' settings; fx holds the glitch chain's.",
+          "color": "value",
+          "title": "Banks: Store and Recall"
+        },
+        "position": {
+          "x": -2400,
+          "y": 860
+        },
+        "size": {
+          "height": 180,
+          "width": 400
+        },
+        "type": "annotate"
+      },
+      "noteCues": {
+        "definitionVersion": 1,
+        "id": "noteCues",
+        "label": "noteCues",
+        "parameters": {
+          "body": "set is the running order: each cue names a bank and a preset, with its own morph time.\nGO fires the next cue and moves on; BACK fires the one before. Wrap goes round after the last.\nPress GO on the Show desk, or use the GO key and the BACK key (Help lists them under Shortcuts).\n1 open fades over 2 s, 2 warm over 4 s, 3 cross over 1 s, 4 drop cuts, 5 out fades over 4 s.",
+          "color": "temporal",
+          "title": "Cue list"
+        },
+        "position": {
+          "x": -1520,
+          "y": 860
+        },
+        "size": {
+          "height": 220,
+          "width": 460
+        },
+        "type": "annotate"
+      },
+      "noteLayers": {
+        "definitionVersion": 1,
+        "id": "noteLayers",
+        "label": "noteLayers",
+        "parameters": {
+          "body": "The stack runs left to right through Below. Picture names the look a layer adds (the dashed line).\nOff is bypass: the stack passes through and the look stops rendering, so an off layer costs nothing.\nOpacity is the fade. At 0 the look still renders until you switch the layer off.\nlayerFx shows glitch, the stack run through the effect, with Replace: its Opacity is the wet/dry.",
+          "color": "composite",
+          "title": "Layers"
+        },
+        "position": {
+          "x": -1800,
+          "y": -190
+        },
+        "size": {
+          "height": 140,
+          "width": 600
+        },
+        "type": "annotate"
+      },
+      "noteLooks": {
+        "definitionVersion": 1,
+        "id": "noteLooks",
+        "label": "noteLooks",
+        "parameters": {
+          "body": "A look is a picture a layer shows by name: here rings (ringsSrc into rings) and grid (gridSrc into grid).\nsource stands in for a camera. Wire a Webcam there instead, or pick its device Phone · <name>.\nA look can be any chain, or a component you saved.",
+          "color": "generator",
+          "title": "Looks"
+        },
+        "position": {
+          "x": -2960,
+          "y": 250
+        },
+        "size": {
+          "height": 140,
+          "width": 520
+        },
+        "type": "annotate"
+      },
+      "noteMapping": {
+        "definitionVersion": 1,
+        "id": "noteMapping",
+        "label": "noteMapping",
+        "parameters": {
+          "body": "pin is the last stage: it pins the picture's corners onto your surface.\nDrag the pins on its preview tile. The Keystone slider pulls the two top pins in.\nFor a projector, add a Window Out, set its Source to onBlack and open it on that screen.",
+          "color": "output",
+          "title": "Mapping: Corner Pin"
+        },
+        "position": {
+          "x": -600,
+          "y": -190
+        },
+        "size": {
+          "height": 140,
+          "width": 460
+        },
+        "type": "annotate"
+      },
+      "notePhone": {
+        "definitionVersion": 1,
+        "id": "notePhone",
+        "label": "notePhone",
+        "parameters": {
+          "body": "desk shows the shots, GO and BACK, the FX layer's switch and fader, and two sliders.\nDrop a bank, a layer or a cue list on a Panel to add it; arrange it with the pencil.\n1. Start the helper: pnpm helper --phone\n2. Pair it in Agent → Connections.\n3. Press the phone icon on desk's header and scan the QR code.\nThe phone gets this desk and nothing else in the project.",
+          "color": "input",
+          "title": "Show desk and phone"
+        },
+        "position": {
+          "x": -340,
+          "y": 780
+        },
+        "size": {
+          "height": 180,
+          "width": 540
+        },
+        "type": "annotate"
+      },
+      "noteShots": {
+        "definitionVersion": 1,
+        "id": "noteShots",
+        "label": "noteShots",
+        "parameters": {
+          "body": "A shot is a preset that sets layers and recalls other banks' presets in the same step.\ndrop switches layerRings off and layerFx on, sets the FX to 0.85, and recalls looks riot and fx dirty.\nIts own values win over what it recalls. A shot with a morph fades everything it changed together.",
+          "color": "color",
+          "title": "Shots"
+        },
+        "position": {
+          "x": -1960,
+          "y": 860
+        },
+        "size": {
+          "height": 180,
+          "width": 400
+        },
+        "type": "annotate"
+      },
+      "onBlack": {
+        "definitionVersion": 1,
+        "id": "onBlack",
+        "label": "onBlack",
+        "parameters": {
+          "opacity": 1
+        },
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "type": "over"
+      },
+      "out": {
+        "definitionVersion": 1,
+        "id": "out",
+        "label": "out",
+        "parameters": {},
+        "position": {
+          "x": 300,
+          "y": 0
+        },
+        "type": "output"
+      },
+      "pin": {
+        "definitionVersion": 1,
+        "id": "pin",
+        "label": "pin",
+        "parameters": {
+          "extend": "zero",
+          "feather": 0,
+          "pintl": [
+            0.12,
+            1
+          ],
+          "pintl.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('keystone').chan.keystone"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.12
+              }
+            },
+            "mode": "expression"
+          },
+          "pintr": [
+            0.88,
+            1
+          ],
+          "pintr.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "1 - op('keystone').chan.keystone"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.88
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -300,
+          "y": 0
+        },
+        "type": "cornerPin"
+      },
+      "rings": {
+        "definitionVersion": 1,
+        "id": "rings",
+        "label": "rings",
+        "parameters": {
+          "hueoffset": 0,
+          "saturation": 0.7,
+          "value": 1
+        },
+        "position": {
+          "x": -2100,
+          "y": 250
+        },
+        "type": "hsv"
+      },
+      "ringsSrc": {
+        "definitionVersion": 2,
+        "id": "ringsSrc",
+        "label": "ringsSrc",
+        "parameters": {
+          "interp": "linear",
+          "period": 2.5,
+          "phase": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "abstime * 0.04"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "stops": [
+            {
+              "color": [
+                0.02,
+                0.03,
+                0.08,
+                1
+              ],
+              "position": 0
+            },
+            {
+              "color": [
+                0.1,
+                0.35,
+                0.9,
+                1
+              ],
+              "position": 0.3
+            },
+            {
+              "color": [
+                0.95,
+                0.25,
+                0.55,
+                1
+              ],
+              "position": 0.55
+            },
+            {
+              "color": [
+                1,
+                0.75,
+                0.2,
+                1
+              ],
+              "position": 0.8
+            },
+            {
+              "color": [
+                0.02,
+                0.03,
+                0.08,
+                1
+              ],
+              "position": 1
+            }
+          ],
+          "type": "radial"
+        },
+        "position": {
+          "x": -2400,
+          "y": 250
+        },
+        "type": "ramp"
+      },
+      "set": {
+        "definitionVersion": 1,
+        "id": "set",
+        "label": "set",
+        "parameters": {
+          "cues": "{\n  \"version\": 1,\n  \"cues\": [\n    {\n      \"name\": \"1 open\",\n      \"bank\": \"shots\",\n      \"preset\": \"open\",\n      \"note\": \"rings alone\"\n    },\n    {\n      \"name\": \"2 warm\",\n      \"bank\": \"looks\",\n      \"preset\": \"noon\",\n      \"morph\": {\n        \"seconds\": 4,\n        \"curve\": \"smooth\"\n      },\n      \"note\": \"the looks go to noon\"\n    },\n    {\n      \"name\": \"3 cross\",\n      \"bank\": \"shots\",\n      \"preset\": \"cross\",\n      \"morph\": {\n        \"seconds\": 1,\n        \"curve\": \"linear\"\n      },\n      \"note\": \"grid fades in over the rings\"\n    },\n    {\n      \"name\": \"4 drop\",\n      \"bank\": \"shots\",\n      \"preset\": \"drop\",\n      \"note\": \"cut: rings off, riot, glitch on\"\n    },\n    {\n      \"name\": \"5 out\",\n      \"bank\": \"shots\",\n      \"preset\": \"out\",\n      \"note\": \"back to the rings; GO again wraps to 1\"\n    }\n  ]\n}\n",
+          "keys": true,
+          "wrap": true
+        },
+        "position": {
+          "x": -1520,
+          "y": 780
+        },
+        "type": "cueList"
+      },
+      "shear": {
+        "definitionVersion": 1,
+        "id": "shear",
+        "label": "shear",
+        "parameters": {
+          "extend": "repeat",
+          "sourcex": "red",
+          "sourcey": "red",
+          "weight": [
+            0,
+            0
+          ]
+        },
+        "position": {
+          "x": -1200,
+          "y": 250
+        },
+        "type": "displace"
+      },
+      "shots": {
+        "definitionVersion": 1,
+        "id": "shots",
+        "label": "shots",
+        "parameters": {
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"open\",\n      \"values\": {\n        \"layerRings\": {\n          \"opacity\": 1\n        },\n        \"layerGrid\": {\n          \"opacity\": 0\n        },\n        \"layerFx\": {\n          \"opacity\": 0\n        }\n      },\n      \"on\": {\n        \"layerRings\": true,\n        \"layerGrid\": false,\n        \"layerFx\": false\n      },\n      \"recalls\": [\n        {\n          \"bank\": \"looks\",\n          \"preset\": \"dawn\"\n        },\n        {\n          \"bank\": \"fx\",\n          \"preset\": \"clean\"\n        }\n      ],\n      \"morph\": {\n        \"seconds\": 2,\n        \"curve\": \"smooth\"\n      }\n    },\n    {\n      \"name\": \"cross\",\n      \"values\": {\n        \"layerGrid\": {\n          \"opacity\": 1\n        }\n      },\n      \"on\": {\n        \"layerGrid\": true\n      },\n      \"morph\": {\n        \"seconds\": 2,\n        \"curve\": \"smooth\"\n      }\n    },\n    {\n      \"name\": \"drop\",\n      \"values\": {\n        \"layerFx\": {\n          \"opacity\": 0.85\n        }\n      },\n      \"on\": {\n        \"layerRings\": false,\n        \"layerFx\": true\n      },\n      \"recalls\": [\n        {\n          \"bank\": \"looks\",\n          \"preset\": \"riot\"\n        },\n        {\n          \"bank\": \"fx\",\n          \"preset\": \"dirty\"\n        }\n      ]\n    },\n    {\n      \"name\": \"out\",\n      \"values\": {\n        \"layerRings\": {\n          \"opacity\": 1\n        },\n        \"layerGrid\": {\n          \"opacity\": 0\n        },\n        \"layerFx\": {\n          \"opacity\": 0\n        }\n      },\n      \"on\": {\n        \"layerRings\": true\n      },\n      \"recalls\": [\n        {\n          \"bank\": \"looks\",\n          \"preset\": \"dawn\"\n        }\n      ],\n      \"morph\": {\n        \"seconds\": 4,\n        \"curve\": \"smooth\"\n      }\n    }\n  ]\n}\n",
+          "targets": "layerRings.opacity layerGrid.opacity layerFx.opacity"
+        },
+        "position": {
+          "x": -1960,
+          "y": 780
+        },
+        "type": "presets"
+      },
+      "source": {
+        "definitionVersion": 1,
+        "id": "source",
+        "label": "source",
+        "parameters": {
+          "amp": 0.4,
+          "harmon": 2,
+          "mono": false,
+          "offset": -0.36,
+          "period": 0.8,
+          "speed": 0.12,
+          "type": "simplex3d"
+        },
+        "position": {
+          "x": -2400,
+          "y": 0
+        },
+        "type": "noise"
+      },
+      "tear": {
+        "definitionVersion": 1,
+        "id": "tear",
+        "label": "tear",
+        "parameters": {
+          "amp": 1,
+          "harmon": 0,
+          "mono": true,
+          "offset": 0,
+          "period": 1,
+          "s": [
+            8,
+            0.04,
+            1
+          ],
+          "speed": 3,
+          "type": "random"
+        },
+        "position": {
+          "x": -1500,
+          "y": 500
+        },
+        "type": "noise"
+      }
+    },
+    "revision": 1
+  },
+  "name": "E82 Set List",
+  "projectId": "example-e82-set-list",
+  "schemaVersion": 5,
+  "settings": {
+    "limits": {
+      "maxBufferBytes": 268435456,
+      "maxDispatch": 65535,
+      "maxResolution": 4096,
+      "memoryBudgetBytes": 1073741824
+    },
+    "outputResolution": {
+      "height": 720,
+      "width": 1280
+    },
+    "previewFps": 30,
+    "previewLongEdge": 192,
+    "randomSeed": 82,
+    "workingFormat": "rgba16float"
+  },
+  "updatedAt": "2026-08-29T00:00:00.000Z"
+}

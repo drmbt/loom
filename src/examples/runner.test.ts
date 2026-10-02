@@ -113,6 +113,7 @@ describe("examples: the gate", () => {
       "E8-Slit-Scan.loom.json",
       "E80-Azulejo.loom.json",
       "E81-Phone-Desk.loom.json",
+      "E82-Set-List.loom.json",
       "E9-Ember.loom.json",
     ]);
   });

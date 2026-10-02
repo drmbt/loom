@@ -339,6 +339,10 @@ const DELIBERATELY_STILL: Record<string, string> = {
   "E81-Phone-Desk.loom.json flash.flashCount": "Button presses: by hand only; the claims test presses it",
   "E81-Phone-Desk.loom.json warp.warpX": "XY Pad: moves by hand only; the claims test drags it",
   "E81-Phone-Desk.loom.json warp.warpY": "XY Pad: moves by hand only; the claims test drags it",
+  /* E82's two lanes are the Show desk's sliders, clockless for E81's reason;
+     `set-list-claims.gpu.test.ts` moves both and asserts the render follows. */
+  "E82-Set-List.loom.json master.master": "Slider: moves by hand only; the claims test moves it",
+  "E82-Set-List.loom.json keystone.keystone": "Slider: moves by hand only; the claims test moves it",
   "TimeGrid.loom.json churnx1.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
   "TimeGrid.loom.json churny1.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
   /* ⚑ E70's TEMPO LANE, AND IT IS A DIFFERENT KIND OF ROW FROM THE FOUR ABOVE — not a knob
