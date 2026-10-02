@@ -414,11 +414,11 @@ export function buildResources(
    */
   tolerate?: { diagnostics: RuntimeDiagnostic[] },
   /**
-   * T1521b: when given, every effect and draw pass is BUILT inside its own device error
-   * scope and the scope's answer lands here. A dispatch still is not (§T1522b). The caller
-   * owns the answers from then on — a verdict nobody reads is an error nobody was told
-   * about, which is why a caller that does not collect them gets no scopes at all and its
-   * errors stay on the uncaptured path, where the net is.
+   * T1521b: when given, every effect, draw and (T1522b) dispatch pass is BUILT inside its
+   * own device error scope and the scope's answer lands here. The caller owns the answers
+   * from then on — a verdict nobody reads is an error nobody was told about, which is why a
+   * caller that does not collect them gets no scopes at all and its errors stay on the
+   * uncaptured path, where the net is.
    */
   verdicts?: PassBuildVerdict[],
 ): ResourceSet {
@@ -790,7 +790,12 @@ export function buildResources(
       const bag = buildComputeDrawBag(pass.id, pass.nodeId, pass.buffers ?? [], pass.textures ?? [], pass.uniforms, pass.uniformBinding);
       if (bag === undefined) continue;
       try {
-        computes.set(pass.id, compute(gpu, pass.shader, { set: bag, entry: pass.entryPoint, label: pass.id }));
+        // T1522b: vgpu builds a compute's module and pipeline with no error scope of its
+        // own, so this one is the only thing standing between a broken kernel and an
+        // uncaptured error that names no pass.
+        underScope(pass.id, () => {
+          computes.set(pass.id, compute(gpu, pass.shader, { set: bag, entry: pass.entryPoint, label: pass.id }));
+        });
         noteDynamicBindings(pass.id, pass.buffers ?? [], pass.textures ?? []);
         note("effectsBuilt");
       } catch (error) {

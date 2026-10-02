@@ -3344,6 +3344,13 @@ async function wgslErrorsOf(raw: GPUDevice | undefined, source: string): Promise
  * repeats — the same text, or the compiler message inside the device's longer one — would
  * be the old nodeless duplicate with a node on it; anything else is a different error and
  * is reported in its own right.
+ *
+ * T1522b — A DISPATCH FAILS HERE TOO. vgpu gives a compute pipeline no error scope and no
+ * error sink, so nothing in `pipelineFailures` ever names one: a kernel the device refused
+ * compiled "successfully", was installed over the last good program (§V9) and failed on
+ * every frame after that, nodelessly. The scope the pass was built in is the only verdict
+ * it has, so for a dispatch that scope's error IS the failure — whatever it was, because a
+ * compute pipeline built from a refused module, layout or bind group cannot run either way.
  */
 async function deviceVerdictDiagnostics(
   raw: GPUDevice | undefined,
@@ -3351,13 +3358,21 @@ async function deviceVerdictDiagnostics(
   buildErrors: ReadonlyMap<string, string>,
   passes: readonly PassDescriptor[],
 ): Promise<{ failures: RuntimeDiagnostic[]; notices: RuntimeDiagnostic[] }> {
+  const failed = pipelineFailures.map((error) => ({
+    label: failedPipelineLabel(error),
+    cause: pipelineFailureCause(error),
+  }));
+  for (const [passId, message] of buildErrors) {
+    if (passes.find((candidate) => candidate.id === passId)?.kind === "dispatch") {
+      failed.push({ label: passId, cause: message });
+    }
+  }
   const failures: RuntimeDiagnostic[] = [];
   const told = new Set<string>();
-  for (const error of pipelineFailures) {
-    const label = failedPipelineLabel(error);
+  for (const { label, cause } of failed) {
     const pass = passes.find((candidate) => candidate.id === label);
     const wgsl =
-      pass !== undefined && (pass.kind === "effect" || pass.kind === "draw")
+      pass !== undefined && (pass.kind === "effect" || pass.kind === "draw" || pass.kind === "dispatch")
         ? await wgslErrorsOf(raw, pass.shader)
         : [];
     const built = buildErrors.get(label);
@@ -3366,7 +3381,7 @@ async function deviceVerdictDiagnostics(
     if (built !== undefined && (reason === built || wgsl.some((entry) => built.includes(entry.message)))) {
       told.add(label);
     }
-    failures.push(pipelineFailureDiagnostic(error, passes, reason));
+    failures.push(deviceFailureDiagnostic(label, reason ?? cause, passes));
   }
   const notices = [...buildErrors]
     .filter(([passId]) => !told.has(passId))
@@ -3375,35 +3390,38 @@ async function deviceVerdictDiagnostics(
 }
 
 /**
- * A device-side pipeline failure, attributed to its pass and node (§V27). The error's
- * `where` is `<label>.compileSync` and every pipeline is labelled with its pass id, so
- * the owning pass — and through it the node badge — is recoverable. Only the id: a pass's
- * human label is shared by every pass of its node type, which blamed the wrong node (B229).
- * `reason` is why (T1521b); without one the `cause` — Dawn's message for the PIPELINE,
- * which for a broken shader only points at an earlier error — is all there is to say.
+ * What the device said about a failed PIPELINE, off vgpu's error: the `cause` carries
+ * Dawn's message — which for a broken shader only points at an earlier error (T1521b).
  */
-function pipelineFailureDiagnostic(
-  error: unknown,
+function pipelineFailureCause(error: unknown): string {
+  const shaped = error as { cause?: unknown };
+  return shaped.cause instanceof Error
+    ? shaped.cause.message
+    : typeof (shaped.cause as { message?: unknown } | undefined)?.message === "string"
+      ? String((shaped.cause as { message: string }).message)
+      : describeError(error);
+}
+
+/**
+ * A device-side build failure, attributed to its pass and node (§V27). `label` is what the
+ * failed object was built under — a pipeline's comes off the error's `where`
+ * (`<label>.compileSync`), a dispatch's off the scope it was built in (T1522b) — and every
+ * one is labelled with its pass id, so the owning pass — and through it the node badge — is
+ * recoverable. Only the id: a pass's human label is shared by every pass of its node type,
+ * which blamed the wrong node (B229).
+ */
+function deviceFailureDiagnostic(
+  label: string,
+  reason: string,
   passes: readonly PassDescriptor[],
-  reason?: string,
 ): ReturnType<typeof backendDiagnostic> {
-  const shaped = error as { where?: unknown; cause?: unknown; message?: unknown };
-  const label = failedPipelineLabel(error);
   const pass = passes.find((candidate) => candidate.id === label);
   const nodeId =
     pass !== undefined && pass.kind !== "swap" && pass.kind !== "counter" ? pass.nodeId : undefined;
-  const causeMessage =
-    reason !== undefined
-      ? reason
-      : shaped.cause instanceof Error
-      ? shaped.cause.message
-      : typeof (shaped.cause as { message?: unknown } | undefined)?.message === "string"
-        ? String((shaped.cause as { message: string }).message)
-        : describeError(error);
   return backendDiagnostic(
     "error",
     BackendDiagnosticCode.compileFailed,
-    `${pass === undefined ? (label.length > 0 ? `"${label}"` : "A pipeline") : `Pass "${pass.id}"`} failed to compile on the device: ${causeMessage}`,
+    `${pass === undefined ? (label.length > 0 ? `"${label}"` : "A pipeline") : `Pass "${pass.id}"`} failed to compile on the device: ${reason}`,
     {
       ...(nodeId === undefined ? {} : { nodeId }),
       suggestion: "The previous program is retained and still renders (§V9); fix the shader and recompile.",

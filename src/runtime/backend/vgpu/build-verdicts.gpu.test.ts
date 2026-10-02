@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { compileGraph } from "../../../compiler/index.ts";
 import type { LogicalExecutionPlan } from "../../../domain/types/backend.ts";
 import type { RuntimeDiagnostic } from "../../../domain/types/diagnostics.ts";
+import { allNodeDefinitions } from "../../../nodes/definitions/index.ts";
+import { createNodeRegistry } from "../../../nodes/registry/registry.ts";
 import { BackendDiagnosticCode } from "../diagnostics.ts";
 import { createVgpuBackend } from "./vgpu-backend.ts";
 import { nodeGpuHost, probeDawn } from "./node-gpu-host.ts";
@@ -126,5 +129,101 @@ describe("what the device says while a pass is built is told on that pass's node
     expect(layout[0]!.message).toContain(
       `The number of sampled textures (${granted + 1}) in the Fragment stage exceeds the maximum per-stage limit (${granted})`,
     );
+  }, 60_000);
+});
+
+/**
+ * T1522b — A BROKEN COMPUTE SHADER IS ITS NODE'S FAILURE, NOT A NODELESS ERROR.
+ *
+ * vgpu builds a dispatch's module and pipeline directly: no shared cache, and no error scope
+ * of its own around either. A kernel that parses and then fails at the device — a call to a
+ * function that does not exist — therefore said nothing through the pipeline path at all.
+ * The compile SUCCEEDED, the broken program was installed over the last good one (§V9), and
+ * the device's objections arrived on the uncaptured path naming no node.
+ *
+ * The kernel is the author's text inside a GENERATED module, so the position the device
+ * reports is that module's. It is derived here from the pass's own shader rather than
+ * written down: the claim is that the compiler's position reaches the badge, whatever the
+ * generator puts in front of the author's lines.
+ */
+const BROKEN_KERNEL = `fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  q.position = notAFunction(p.position);
+  return q;
+}`;
+
+function brokenKernelPlan() {
+  return compileGraph({
+    graph: {
+      revision: 1,
+      nodes: {
+        sim: {
+          id: "sim",
+          type: "pointKernel",
+          definitionVersion: 1,
+          position: { x: 0, y: 0 },
+          parameters: { capacity: 8, seed: 7, kernel: BROKEN_KERNEL },
+        },
+        draw: { id: "draw", type: "renderPoints", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { count: 8, sizePixels: 6 } },
+        out: { id: "out", type: "output", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} },
+      },
+      edges: {
+        e1: { id: "e1", source: { nodeId: "sim", portId: "out" }, target: { nodeId: "draw", portId: "points" } },
+        e2: { id: "e2", source: { nodeId: "draw", portId: "out" }, target: { nodeId: "out", portId: "input" } },
+      },
+      groups: {},
+    },
+    settings: {
+      outputResolution: { width: 64, height: 64 },
+      workingFormat: "rgba8unorm",
+      randomSeed: 7,
+      previewLongEdge: 192,
+      previewFps: 20,
+      limits: { maxResolution: 4096, maxDispatch: 65535, maxBufferBytes: 268_435_456, memoryBudgetBytes: 1_073_741_824 },
+    },
+    registry: createNodeRegistry(allNodeDefinitions).view(),
+    capabilities: {
+      tier: "B",
+      features: [],
+      formats: ["rgba8unorm", "rgba8unorm-srgb", "rgba16float", "r32float"],
+      timestampQuery: false,
+      limits: { maxTextureDimension2D: 8192 },
+    },
+  });
+}
+
+describe("a broken dispatch shader fails the compile on its own node (T1522b, §V27)", () => {
+  it("names the node, the pass and the unresolved symbol, and nothing is left nodeless", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    const plan = brokenKernelPlan();
+    // The graph compiler does not parse WGSL: this failure can only happen at the device.
+    expect(plan.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const kernel = (plan.passes as ReadonlyArray<{ id: string; kind: string; nodeId?: string; shader?: string }>).find(
+      (pass) => pass.kind === "dispatch" && pass.nodeId === "sim" && pass.shader?.includes("notAFunction") === true,
+    );
+    if (kernel?.shader === undefined) throw new Error("the kernel's dispatch pass is not in the plan");
+    const lines = kernel.shader.split("\n");
+    const line = lines.findIndex((text) => text.includes("notAFunction"));
+    const at = `${line + 1}:${lines[line]!.indexOf("notAFunction") + 1}`;
+
+    const backend = createVgpuBackend({ host: nodeGpuHost() });
+    const diagnostics: RuntimeDiagnostic[] = [];
+    backend.onDiagnostic((diagnostic) => diagnostics.push(diagnostic));
+    try {
+      await backend.initialize({});
+      // §V9: a program whose kernel cannot run is not installed over the one that could.
+      await expect(backend.compile(plan)).rejects.toBeDefined();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(diagnostics.filter((d) => d.severity !== "info").map((d) => [d.code, d.nodeId, d.message])).toEqual([
+        [
+          BackendDiagnosticCode.compileFailed,
+          "sim",
+          `Pass "${kernel.id}" failed to compile on the device: ${at} unresolved call target 'notAFunction'`,
+        ],
+      ]);
+    } finally {
+      backend.dispose();
+    }
   }, 60_000);
 });
