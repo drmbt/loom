@@ -4,7 +4,7 @@ import type { GraphComponentDefinition } from "../types/components.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { ComponentId, NodeId, PortId } from "../types/ids.ts";
 import type { GraphPatchOperation } from "../types/patch.ts";
-import type { StoredParameter } from "../types/parameters.ts";
+import type { ParameterDefinition, StoredParameter } from "../types/parameters.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import { createFlattenedGraphSource } from "../../app/flattened-graph.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
@@ -15,7 +15,7 @@ import { componentNodeType, createComponentSystem } from "../components/index.ts
 import { createSequentialIdFactory } from "../graph/ids.ts";
 import { createGraphStore } from "../graph/store.ts";
 import type { ResolvedParameter, ChannelResolver } from "../parameters/resolve.ts";
-import { resolveParameters } from "../parameters/resolve.ts";
+import { effectiveParameterSchema, resolveParameters } from "../parameters/resolve.ts";
 import { buildMorphIndex } from "../presets/morph-index.ts";
 import { presetBankNode, presetSession } from "../presets/test-support.ts";
 import { graphChannelResolver, hasAnimatedParameters } from "./graph-channels.ts";
@@ -416,6 +416,10 @@ describe("T1524b: a source parameter a bank is fading publishes the fading value
     ...(epoch === null ? {} : { absEpoch: epoch }),
   });
 
+  /** The driven parameter's definition, through the funnel (§T903). */
+  const brightnessOf = (level: GraphNode): ParameterDefinition =>
+    effectiveParameterSchema(levelNode, level.parameters)["brightness"] as ParameterDefinition;
+
   async function fading(): Promise<{ graph: GraphDocument; level: GraphNode }> {
     const level = node("n-level", "level", {
       label: "level1",
@@ -439,7 +443,7 @@ describe("T1524b: a source parameter a bank is fading publishes the fading value
     // The document holds the destination, which is what the static view reads.
     expect(graph.nodes["n-knob"]?.parameters["value"]).toBe(0.8);
     const channels = graphChannelResolver(graph, registry, buildMorphIndex({ document: graph, registry }));
-    const context = (frame?: FrameEvaluationInput) => ({ node: level, key: "brightness", definition: levelNode.parameters["brightness"]!, frame });
+    const context = (frame?: FrameEvaluationInput) => ({ node: level, key: "brightness", definition: brightnessOf(level), frame });
 
     expect(channels("knob", context(at(0)))).toBe(0.2);
     expect(channels("knob", context(at(30)))).toBe(0.5);
@@ -459,7 +463,7 @@ describe("T1524b: a source parameter a bank is fading publishes the fading value
   it("cut the wire: built without the index, the same frame reads the destination", async () => {
     const { graph, level } = await fading();
     const channels = graphChannelResolver(graph, registry);
-    expect(channels("knob", { node: level, key: "brightness", definition: levelNode.parameters["brightness"]!, frame: at(30) })).toBe(0.8);
+    expect(channels("knob", { node: level, key: "brightness", definition: brightnessOf(level), frame: at(30) })).toBe(0.8);
   });
 
   it("an edit mid-fade wins at once, here as on the picture", async () => {
@@ -467,6 +471,6 @@ describe("T1524b: a source parameter a bank is fading publishes the fading value
     const knob = graph.nodes["n-knob"] as GraphNode;
     const edited: GraphDocument = { ...graph, nodes: { ...graph.nodes, "n-knob": { ...knob, parameters: { ...knob.parameters, value: 0.6 } } } };
     const channels = graphChannelResolver(edited, registry, buildMorphIndex({ document: edited, registry }));
-    expect(channels("knob", { node: level, key: "brightness", definition: levelNode.parameters["brightness"]!, frame: at(30) })).toBe(0.6);
+    expect(channels("knob", { node: level, key: "brightness", definition: brightnessOf(level), frame: at(30) })).toBe(0.6);
   });
 });
