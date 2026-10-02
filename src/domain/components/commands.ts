@@ -10,8 +10,10 @@ import type { ParameterDefinition, ParameterValue } from "../types/parameters.ts
 import type { GraphPatchResult } from "../types/patch.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts";
 import { applyGraphPatch } from "../commands/apply-patch.ts";
+import { attachClipboardComponents } from "../commands/loom-clipboard.ts";
 import { renumberedName, rewriteNodeNameReferences } from "../graph/names.ts";
 import { withBoundaryPorts } from "./boundary-ports.ts";
+import { componentClipboard } from "./component-clipboard.ts";
 import { componentNodeType } from "./component-type.ts";
 import { readComponentInstance, PARENT_BINDINGS_STATE_KEY } from "./instance.ts";
 import { parseParentReference } from "./parent-scope.ts";
@@ -1112,4 +1114,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
     ...(options.writeFile === undefined ? {} : { writeFile: options.writeFile }),
     ...(options.readFile === undefined ? {} : { readFile: options.readFile }),
   });
+  // T1493b: and crossing it on the clipboard — a node copy carries the definitions its
+  // instances need, and `graph.paste` installs them by the same identity rule.
+  attachClipboardComponents(bus, componentClipboard({ components, host }));
 }

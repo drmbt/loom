@@ -3,6 +3,7 @@ import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { ComponentId, NodeId } from "../types/ids.ts";
 import type { CommandOutcome, LoomBus } from "../commands/bus.ts";
 import type { ProjectFile } from "../project/project-file.ts";
+import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import {
   buildComponentFile,
   collectComponentDependencies,
@@ -135,6 +136,82 @@ const IMPORT_REFUSED: Omit<ComponentImportOutput, "diagnostics"> = {
 
 const EXPORT_REFUSED: ComponentExportOutput = { saved: false, fileName: null, text: null, components: [] };
 
+/**
+ * THE WHOLE PLAN, VALIDATED BEFORE ANYTHING IS WRITTEN — what is wrong with installing
+ * `install` and placing an instance of each of `placed`, or nothing. Shared by the two
+ * carriers a component arrives by: a file (`component.import`) and a node copy (T1493b).
+ *
+ * A scratch catalogue layered over the live one registers the definitions in order — the
+ * same checks the live `register` runs, nested types resolving scratch-first — and
+ * recursion is walked across both, because the scratch alone cannot see an installed
+ * component's graph.
+ */
+export function importPlanProblems(
+  install: readonly GraphComponentDefinition[],
+  placed: readonly ComponentRef[],
+  target: {
+    components: ComponentRegistry;
+    registry: NodeRegistryView;
+    host: { componentId: ComponentId; version: number } | null;
+  },
+): RuntimeDiagnostic[] {
+  const planned = new Map(install.map((definition) => [`${definition.componentId}@${definition.version}`, definition]));
+  const combined: ComponentGraphSource = {
+    graphOf: (id, version) => planned.get(`${id}@${version}`)?.graph ?? target.components.graphOf(id, version),
+  };
+  const scratch = createComponentSystem(target.registry);
+  for (const definition of install) {
+    const recursion = detectComponentRecursion({
+      componentId: definition.componentId,
+      graph: definition.graph,
+      source: combined,
+    });
+    if (recursion !== null) return [error("component.recursion", describeRecursion(recursion))];
+    try {
+      scratch.components.register(definition);
+    } catch (thrown) {
+      if (thrown instanceof ComponentDefinitionError) {
+        return thrown.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+      }
+      throw thrown;
+    }
+  }
+  // §V83 at the drop point: placing an instance must not close a loop through the
+  // component being edited.
+  for (const each of placed) {
+    const placement = wouldRecurse(target.host?.componentId ?? null, each.componentId, each.version, combined);
+    if (placement !== null) {
+      return [error("component.recursion", describeRecursion(placement), "A component may not contain itself (§V83).")];
+    }
+  }
+  return [];
+}
+
+/**
+ * Registers `install` in order and returns the undo of exactly that. Each definition was
+ * proven by `importPlanProblems`; one that throws anyway takes the earlier ones back out.
+ */
+export function installDefinitions(
+  install: readonly GraphComponentDefinition[],
+  components: ComponentRegistry,
+): () => void {
+  const registered: GraphComponentDefinition[] = [];
+  const uninstall = (): void => {
+    for (const definition of registered.reverse()) components.remove(definition.componentId, definition.version);
+    registered.length = 0;
+  };
+  try {
+    for (const definition of install) {
+      components.register(definition);
+      registered.push(definition);
+    }
+  } catch (thrown) {
+    uninstall();
+    throw thrown;
+  }
+  return uninstall;
+}
+
 export function registerComponentFileCommands(bus: LoomBus, options: ComponentFileCommandOptions): void {
   const { components, host } = options;
 
@@ -203,39 +280,8 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
         );
       }
 
-      // THE WHOLE PLAN, VALIDATED BEFORE ANYTHING IS WRITTEN. A scratch catalogue layered
-      // over the live one registers the definitions in order — the same checks the live
-      // `register` runs, nested types resolving scratch-first — and recursion is walked
-      // across both, because the scratch alone cannot see an installed component's graph.
-      const planned = new Map(plan.install.map((definition) => [`${definition.componentId}@${definition.version}`, definition]));
-      const combined: ComponentGraphSource = {
-        graphOf: (id, version) => planned.get(`${id}@${version}`)?.graph ?? components.graphOf(id, version),
-      };
-      const scratch = createComponentSystem(context.registry);
-      for (const definition of plan.install) {
-        const recursion = detectComponentRecursion({
-          componentId: definition.componentId,
-          graph: definition.graph,
-          source: combined,
-        });
-        if (recursion !== null) return refuse(error("component.recursion", describeRecursion(recursion)));
-        try {
-          scratch.components.register(definition);
-        } catch (thrown) {
-          if (thrown instanceof ComponentDefinitionError) {
-            return refuse(...thrown.diagnostics.filter((diagnostic) => diagnostic.severity === "error"));
-          }
-          throw thrown;
-        }
-      }
-      // §V83 at the drop point: placing the root where the user dropped it must not close
-      // a loop through the component being edited.
-      const placement = wouldRecurse(host?.componentId ?? null, plan.root.componentId, plan.root.version, combined);
-      if (placement !== null) {
-        return refuse(
-          error("component.recursion", describeRecursion(placement), "A component may not contain itself (§V83)."),
-        );
-      }
+      const problems = importPlanProblems(plan.install, [plan.root], { components, registry: context.registry, host });
+      if (problems.length > 0) return refuse(...problems);
 
       for (const rename of plan.renamed) {
         diagnostics.push({
@@ -267,13 +313,9 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
 
       // Definitions first, so the instance never names a type that is not installed. The
       // registrations were each proven above; if the patch still fails, they come back out.
-      const registered: GraphComponentDefinition[] = [];
       const nodeId = context.ids.node();
+      const uninstall = installDefinitions(plan.install, components);
       try {
-        for (const definition of plan.install) {
-          components.register(definition);
-          registered.push(definition);
-        }
         const applied = context.apply({
           label: `Import "${root.name}"`,
           recipe: (draft) => {
@@ -303,7 +345,7 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
           },
         };
       } catch (thrown) {
-        for (const definition of registered.reverse()) components.remove(definition.componentId, definition.version);
+        uninstall();
         throw thrown;
       }
     },

@@ -6,8 +6,8 @@ import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "./bus.ts";
 import { nodeNames, renumberedName, rewriteNodeNameReferences } from "../graph/names.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
-import { encodeLoomClipboard, readLoomClipboard } from "./loom-clipboard.ts";
-import type { SystemClipboard } from "./loom-clipboard.ts";
+import { clipboardComponentsFor, encodeLoomClipboard, readLoomClipboard } from "./loom-clipboard.ts";
+import type { ClipboardArrival, SystemClipboard } from "./loom-clipboard.ts";
 
 /**
  * The editing commands the keymap and the palette name (§V52, §V29).
@@ -358,12 +358,19 @@ function registerToggle(
  * §T1393b — a node copy that came back off the SYSTEM clipboard (another window, another
  * document), checked before it is trusted: every node must be a type THIS document's
  * registry can build. A component instance whose definition this document does not hold
- * is refused BY NAME — components are document-scoped until §T1395b rules on identity,
- * and a paste that dropped the instance silently would lose the part the user copied it for.
+ * is refused BY NAME — a paste that dropped the instance silently would lose the part the
+ * user copied it for.
+ *
+ * §T1493b: unless the copy CARRIED the definition. `arrival` is the plan for what it
+ * carried (the §T1395b identity rule): an instance of a component it answers for takes the
+ * type this document will know it by, which is a renamed one when the id is taken here by
+ * a different component. A copy without definitions — an older build's, or one whose
+ * definitions do not read — has no arrival and is refused by name exactly as before.
  */
 function foreignClipboard(
   payload: { readonly nodes: readonly unknown[]; readonly edges: readonly unknown[] },
   registry: CommandContext["registry"],
+  arrival: ClipboardArrival | null,
 ): Clipboard | { readonly refusal: string } {
   const nodes: ClipboardNode[] = [];
   for (const raw of payload.nodes) {
@@ -371,7 +378,8 @@ function foreignClipboard(
     if (typeof node.sourceId !== "string" || typeof node.type !== "string" || typeof node.position !== "object") {
       return { refusal: "The copied nodes are not in a shape this build can read." };
     }
-    if (registry.get(node.type) === undefined) {
+    const arriving = arrival?.types.get(node.type);
+    if (arriving === undefined && registry.get(node.type) === undefined) {
       return {
         refusal: node.type.startsWith("component:")
           ? `The copied "${node.label ?? node.sourceId}" is an instance of ${node.type}, which this document does not have. Copy it from a document that holds the component, or add the component here first.`
@@ -380,7 +388,7 @@ function foreignClipboard(
     }
     nodes.push({
       sourceId: node.sourceId,
-      type: node.type,
+      type: arriving ?? node.type,
       label: node.label,
       position: { ...(node.position as { x: number; y: number }) },
       parameters: { ...(node.parameters ?? {}) },
@@ -412,7 +420,15 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
   let written: string | null = null;
   const mirror = (copied: Clipboard): void => {
     if (options.systemClipboard === undefined) return;
-    written = encodeLoomClipboard({ kind: "nodes", nodes: copied.nodes, edges: copied.edges });
+    // §T1493b: the definitions the copied instances need travel with them, so the paste
+    // can install what another document lacks.
+    const components = clipboardComponentsFor(bus)?.carry(copied.nodes.map((node) => node.type)) ?? [];
+    written = encodeLoomClipboard({
+      kind: "nodes",
+      nodes: copied.nodes,
+      edges: copied.edges,
+      ...(components.length === 0 ? {} : { components }),
+    });
     options.systemClipboard.write(written, written);
   };
 
@@ -493,22 +509,63 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
        * clipboard already, so reading it back changes nothing and the cascade continues.
        */
       const system = await readLoomClipboard(options.systemClipboard);
+      /** A copy from elsewhere: this bus's clipboard only once it has landed. */
+      let arriving: { clipboard: Clipboard; text: string | null; arrival: ClipboardArrival | null } | null = null;
       if (system?.payload?.kind === "nodes" && system.text !== written) {
-        const foreign = foreignClipboard(system.payload, context.registry);
+        const { payload } = system;
+        /*
+         * §T1493b: what the copy carried is PLANNED first (an identical component reused,
+         * one whose id is taken by a different component renamed), so the nodes are checked
+         * against the catalogue as it will be, under the types it will hold.
+         */
+        let arrival: ClipboardArrival | null = null;
+        if (payload.components !== undefined) {
+          const types = payload.nodes
+            .map((raw) => (raw as Partial<ClipboardNode> | null)?.type)
+            .filter((type): type is string => typeof type === "string");
+          const received = clipboardComponentsFor(bus)?.receive(types, payload.components, context.registry);
+          if (received !== undefined && "refusal" in received) {
+            return rejected(context.store.getRevision(), received.refusal, "clipboard.foreign");
+          }
+          arrival = received ?? null;
+        }
+        const foreign = foreignClipboard(payload, context.registry, arrival);
         if ("refusal" in foreign) return rejected(context.store.getRevision(), foreign.refusal, "clipboard.foreign");
         if (foreign.nodes.length > 0 && !context.dryRun) {
-          clipboard = foreign;
-          pasteCount = 0;
-          written = system.text;
+          arriving = { clipboard: foreign, text: system.text, arrival };
         }
       }
-      if (clipboard.nodes.length === 0) {
+      const pasting = arriving?.clipboard ?? clipboard;
+      if (pasting.nodes.length === 0) {
         return rejected(context.store.getRevision(), "The clipboard is empty.", "clipboard.empty");
       }
-      const step = pasteCount + 1;
+      const step = arriving === null ? pasteCount + 1 : 1;
       const offset = input.offset ?? { x: CASCADE.x * step, y: CASCADE.y * step };
-      const outcome = patchThrough(context, "Paste", recreateOperations(clipboard, offset, context.graph));
-      if (outcome.status === "applied" && !context.dryRun && input.offset === undefined) {
+      /*
+       * Definitions first, so no pasted instance names a type that is not installed; then
+       * the ONE patch, which is the paste's one undo step (§V34). Undo removes the nodes
+       * and leaves the definitions installed, as `component.import` does. A patch that
+       * does not land takes them back out: a refused paste leaves the catalogue and the
+       * document exactly as they were (§V32), and the next paste reads the copy again.
+       */
+      const uninstall = arriving?.arrival?.install();
+      let outcome: CommandOutcome<GraphPatchResult>;
+      try {
+        outcome = patchThrough(context, "Paste", recreateOperations(pasting, offset, context.graph));
+      } catch (thrown) {
+        uninstall?.();
+        throw thrown;
+      }
+      if (outcome.status !== "applied") {
+        uninstall?.();
+        return outcome;
+      }
+      if (arriving !== null) {
+        clipboard = arriving.clipboard;
+        written = arriving.text;
+        pasteCount = 0;
+      }
+      if (!context.dryRun && input.offset === undefined) {
         pasteCount = step;
       }
       return outcome;

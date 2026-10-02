@@ -177,6 +177,51 @@ export function buildComponentFile(input: BuildComponentFileInput): ProjectFile 
 // Import: reading
 // ---------------------------------------------------------------------------------------
 
+export type OrderDefinitionsResult =
+  | { readonly ok: true; readonly definitions: readonly GraphComponentDefinition[] }
+  | { readonly ok: false; readonly cycle: readonly string[] };
+
+/**
+ * `roots` and everything they reach among `carried`, deepest dependency first — the order
+ * `planComponentImport` needs — or the loop that makes that order impossible (§V83). A
+ * reference `carried` does not hold is left for the plan to resolve against the target.
+ * What arrives is not trusted to be in order: a file's library is sorted by id, and a
+ * clipboard is whatever wrote it (T1493b).
+ */
+export function orderDeepestFirst(
+  roots: readonly GraphComponentDefinition[],
+  carried: (reference: ComponentRef) => GraphComponentDefinition | undefined,
+): OrderDefinitionsResult {
+  const ordered: GraphComponentDefinition[] = [];
+  const done = new Set<string>();
+  const onStack: string[] = [];
+  const loop: { cycle: string[] | null } = { cycle: null };
+  const visit = (definition: GraphComponentDefinition): void => {
+    const key = refKey(definition.componentId, definition.version);
+    onStack.push(key);
+    for (const reference of componentReferences(definition.graph)) {
+      if (loop.cycle !== null) return;
+      const nestedKey = refKey(reference.componentId, reference.version);
+      const at = onStack.indexOf(nestedKey);
+      if (at >= 0) {
+        loop.cycle = [...onStack.slice(at), nestedKey];
+        return;
+      }
+      const nested = carried(reference);
+      if (nested === undefined || done.has(nestedKey)) continue;
+      visit(nested);
+    }
+    onStack.pop();
+    done.add(key);
+    ordered.push(definition);
+  };
+  for (const root of roots) {
+    if (loop.cycle !== null) break;
+    if (!done.has(refKey(root.componentId, root.version))) visit(root);
+  }
+  return loop.cycle === null ? { ok: true, definitions: ordered } : { ok: false, cycle: loop.cycle };
+}
+
 export type ReadComponentFileResult =
   | {
       readonly ok: true;
@@ -283,44 +328,20 @@ export function readComponentFile(text: string, fileName = "The file"): ReadComp
   }
 
   // Deepest first, from the root, refusing a loop (§V83) before anything is planned.
-  const ordered: GraphComponentDefinition[] = [];
-  const done = new Set<string>();
-  const onStack: string[] = [];
-  const loop: { cycle: string[] | null } = { cycle: null };
-  const visit = (definition: GraphComponentDefinition): void => {
-    const key = refKey(definition.componentId, definition.version);
-    onStack.push(key);
-    for (const reference of componentReferences(definition.graph)) {
-      if (loop.cycle !== null) return;
-      const nestedKey = refKey(reference.componentId, reference.version);
-      const at = onStack.indexOf(nestedKey);
-      if (at >= 0) {
-        loop.cycle = [...onStack.slice(at), nestedKey];
-        return;
-      }
-      const nested = byKey.get(nestedKey);
-      // Not in the file: resolved against the target catalogue when the import is planned.
-      if (nested === undefined || done.has(nestedKey)) continue;
-      visit(nested);
-    }
-    onStack.pop();
-    done.add(key);
-    ordered.push(definition);
-  };
-  visit(root);
-  if (loop.cycle !== null) {
+  const ordered = orderDeepestFirst([root], (reference) => byKey.get(refKey(reference.componentId, reference.version)));
+  if (!ordered.ok) {
     return {
       ok: false,
       diagnostics: [
         error(
           "component.recursion",
-          `${label} is refused: its components contain each other (${loop.cycle.join(" → ")}).`,
+          `${label} is refused: its components contain each other (${ordered.cycle.join(" → ")}).`,
           "A component may not contain itself, directly or through another component (§V83).",
         ),
       ],
     };
   }
-  return { ok: true, root, definitions: ordered };
+  return { ok: true, root, definitions: ordered.definitions };
 }
 
 // ---------------------------------------------------------------------------------------

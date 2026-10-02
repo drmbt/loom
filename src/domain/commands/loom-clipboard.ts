@@ -17,6 +17,8 @@
  * be refused (permission, no user gesture). A missing or refused clipboard degrades to the
  * bus clipboard, which is exactly what every paste did before this existed.
  */
+import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
+import type { LoomBus } from "./bus.ts";
 
 /** The clipboard type Loom's payload travels under (Chrome's web custom format prefix). */
 export const LOOM_CLIPBOARD_TYPE = "web application/x-loom+json";
@@ -37,7 +39,16 @@ export interface ChannelCopy {
 }
 
 export type LoomClipboardPayload =
-  | { readonly kind: "nodes"; readonly nodes: readonly unknown[]; readonly edges: readonly unknown[] }
+  | {
+      readonly kind: "nodes";
+      readonly nodes: readonly unknown[];
+      readonly edges: readonly unknown[];
+      /**
+       * §T1493b: the component definitions the copied instances need, with everything they
+       * nest. Absent on a copy with no instances, and on one written before this existed.
+       */
+      readonly components?: readonly unknown[];
+    }
   | { readonly kind: "parameter"; readonly parameter: Readonly<Record<string, unknown>> }
   | { readonly kind: "channel"; readonly channel: ChannelCopy };
 
@@ -67,7 +78,12 @@ export function decodeLoomClipboard(text: string | null): LoomClipboardPayload |
   switch (record["kind"]) {
     case "nodes":
       return Array.isArray(record["nodes"]) && Array.isArray(record["edges"])
-        ? { kind: "nodes", nodes: record["nodes"], edges: record["edges"] }
+        ? {
+            kind: "nodes",
+            nodes: record["nodes"],
+            edges: record["edges"],
+            ...(Array.isArray(record["components"]) ? { components: record["components"] } : {}),
+          }
         : null;
     case "parameter":
       return typeof record["parameter"] === "object" && record["parameter"] !== null
@@ -101,4 +117,48 @@ export async function readLoomClipboard(
   } catch {
     return null;
   }
+}
+
+/**
+ * §T1493b — THE COMPONENTS A NODE COPY TAKES WITH IT, as the clipboard sees them.
+ *
+ * A component is document-scoped (§T962), so an instance copied into a document that lacks
+ * its definition used to be refused. The copy now carries the definitions, and the paste
+ * installs them by the §T1395b identity rule. The clipboard commands do not know what a
+ * component is; whoever owns the catalogue attaches this (`registerComponentCommands`),
+ * and a bus without one copies and pastes exactly as before.
+ */
+export interface ClipboardComponents {
+  /** The definitions the node `types` instance and everything those nest, deepest first. */
+  carry(types: readonly string[]): readonly unknown[];
+  /**
+   * Plans `carried` into this document for the copied node `types`, writing nothing. A
+   * plan that could not be installed whole is a refusal, in words.
+   */
+  receive(
+    types: readonly string[],
+    carried: readonly unknown[],
+    registry: NodeRegistryView,
+  ): ClipboardArrival | { readonly refusal: string };
+}
+
+export interface ClipboardArrival {
+  /**
+   * Copied instance type → the type THIS document knows that component by: the same type
+   * when it is reused or installed as it is, a renamed one (`bloom` → `bloom1`) when the
+   * id is taken by a different component. Only the types the copy's definitions answer.
+   */
+  readonly types: ReadonlyMap<string, string>;
+  /** Registers what the plan installs, and returns the undo of exactly that. */
+  install(): () => void;
+}
+
+const clipboardComponents = new WeakMap<LoomBus, ClipboardComponents>();
+
+export function attachClipboardComponents(bus: LoomBus, components: ClipboardComponents): void {
+  clipboardComponents.set(bus, components);
+}
+
+export function clipboardComponentsFor(bus: LoomBus): ClipboardComponents | undefined {
+  return clipboardComponents.get(bus);
 }
