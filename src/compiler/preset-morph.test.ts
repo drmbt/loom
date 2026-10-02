@@ -342,3 +342,217 @@ describe("T1497b: a morph on a look's PUBLISHED knob fades the internal paramete
     expect(flattened.morphs.activeAt(frameAt(30, "take-1"))).toBe(false);
   });
 });
+
+/* ------------------------------------------------------------------------------------ */
+/* T1524b: the three ways into a component that used to CUT                               */
+/* ------------------------------------------------------------------------------------ */
+
+const bindTo = (ref: string, retained: number): StoredParameter =>
+  ({ mode: "bind", bindings: { bind: { kind: "bind", ref }, static: { kind: "static", value: retained } } }) as StoredParameter;
+
+const gainKnob = {
+  key: "gain",
+  definition: { type: "number", label: "Gain", default: 1, min: 0, max: 8, range: "floor" },
+  // No targets: this knob exists only to be read as `parent.gain` (§V81).
+  targets: [],
+};
+
+/** A look whose Level READS the knob — `parent.gain` as a bind slot, or as the legacy state binding. */
+function boundComponent(how: "slot" | "state"): GraphComponentDefinition {
+  const grade: GraphNode =
+    how === "slot"
+      ? node("grade", "level", { brightness: bindTo("parent.gain", 1) })
+      : { ...node("grade", "level", { brightness: 1 }), state: { parentBindings: { brightness: "parent.gain" } } };
+  return {
+    componentId: "bound",
+    version: 1,
+    name: "Bound",
+    graph: {
+      revision: 1,
+      groups: {},
+      nodes: { src: node("src", "solid", { color: [1, 1, 1, 1] }), grade },
+      edges: { e0: edge("e0", ["src", "out"], ["grade", "input"]) },
+    },
+    inputs: [],
+    outputs: [{ externalId: "out", label: "Out", nodeId: "grade", portId: "out" }],
+    parameters: [gainKnob],
+  } as unknown as GraphComponentDefinition;
+}
+
+/** A component holding a `bound` whose knob is itself bound one level up: `parent.amount`. */
+function outerBoundComponent(): GraphComponentDefinition {
+  return {
+    componentId: "outer",
+    version: 1,
+    name: "Outer",
+    graph: {
+      revision: 1,
+      groups: {},
+      nodes: { inner: node("inner", componentNodeType("bound", 1), { gain: bindTo("parent.amount", 1) }) },
+      edges: {},
+    },
+    inputs: [],
+    outputs: [{ externalId: "out", label: "Out", nodeId: "inner", portId: "out" }],
+    parameters: [{ key: "amount", definition: gainKnob.definition, targets: [] }],
+  } as unknown as GraphComponentDefinition;
+}
+
+/** A disc: a Circle whose centre is published as `at`, a vector the instance may set per channel. */
+function discComponent(): GraphComponentDefinition {
+  return {
+    componentId: "disc",
+    version: 1,
+    name: "Disc",
+    graph: { revision: 1, groups: {}, nodes: { dot: node("dot", "circle", { center: [0.5, 0.5] }) }, edges: {} },
+    inputs: [],
+    outputs: [{ externalId: "out", label: "Out", nodeId: "dot", portId: "out" }],
+    parameters: [
+      {
+        key: "at",
+        definition: { type: "vector", size: 2, label: "At", default: [0.5, 0.5], min: -2, max: 3, range: "soft" },
+        targets: [{ nodeId: "dot", key: "center" }],
+      },
+    ],
+  } as unknown as GraphComponentDefinition;
+}
+
+/** `city` is an instance holding `before`; the bank's one preset writes `after` onto it. */
+function cityDocument(componentId: string, before: Record<string, StoredParameter>, after: Record<string, StoredParameter>): GraphDocument {
+  return {
+    revision: 1,
+    groups: {},
+    nodes: {
+      city: node("city", componentNodeType(componentId, 1), before),
+      out: node("out", "output", {}, "out1"),
+      bank: presetBankNode("bank", "looks", "city", [{ name: "bright", values: { city: after } }]),
+    },
+    edges: { e1: edge("e1", ["city", "out"], ["out", "input"]) },
+  };
+}
+
+/** The recalled document compiled at a frame through BOTH frame paths, which must agree. */
+async function fadingInstance(
+  definitions: readonly GraphComponentDefinition[],
+  document: GraphDocument,
+): Promise<{ graph: GraphDocument; flattened: ReturnType<typeof flattenComponents>; at: (index: number, nodeId: string, key: string) => unknown; settled: (nodeId: string, key: string) => unknown }> {
+  const system = createComponentSystem(registry, [...definitions]);
+  const components = system.components.view();
+  const graph = await recalled(document, system.nodes);
+  const flattened = flattenComponents({ graph, registry: system.nodes, components });
+  const request: CompileRequest = { graph, settings, registry: system.nodes, capabilities: TIER_B_CAPABILITIES, components, flattened };
+  const prepared = prepareFrameCompiler(request);
+  return {
+    graph,
+    flattened,
+    settled: (nodeId, key) => uniformOf(compileGraph(request), nodeId, key),
+    at(index, nodeId, key) {
+      const frame = frameAt(index);
+      const full = uniformOf(compileGraph({ ...request, resolution: { frame } }), nodeId, key);
+      // The values-only path the live loop runs hands back the same number, or it is not a fade.
+      const spliced = prepared.compileFrame({ frame });
+      expect(spliced, String(prepared.reason)).not.toBeNull();
+      expect(uniformOf(spliced as CompiledGraph, nodeId, key)).toEqual(full);
+      return full;
+    },
+  };
+}
+
+describe("T1524b: a `parent.<key>` read of a morphing knob fades with it", () => {
+  it.each(["slot", "state"] as const)("the Level bound to parent.gain (%s) is 0.5 at frame 30 and 0.8 after", async (how) => {
+    const run = await fadingInstance([boundComponent(how)], cityDocument("bound", { gain: 0.2 }, { gain: 0.8 }));
+    // Flattening wrote the VALUE the scope resolved to, and now says where it came from.
+    expect(run.flattened.graph.nodes["city/grade"]?.parameters["brightness"]).toBe(0.8);
+    expect(run.flattened.publishedOrigins.get("city/grade")).toEqual({ brightness: { nodeId: "city", key: "gain", baked: true } });
+    expect(run.settled("city/grade", "brightness")).toBe(0.8);
+    expect(run.at(0, "city/grade", "brightness")).toBe(0.2);
+    expect(run.at(30, "city/grade", "brightness")).toBe(0.5);
+    expect(run.at(60, "city/grade", "brightness")).toBe(0.8);
+    expect(run.at(600, "city/grade", "brightness")).toBe(0.8);
+  });
+
+  it("two levels in: a knob that is itself bound to parent.amount carries the fade down", async () => {
+    const run = await fadingInstance(
+      [boundComponent("slot"), outerBoundComponent()],
+      cityDocument("outer", { amount: 0.2 }, { amount: 0.8 }),
+    );
+    expect(run.flattened.publishedOrigins.get("city/inner/grade")).toEqual({ brightness: { nodeId: "city", key: "amount", baked: true } });
+    expect(run.at(30, "city/inner/grade", "brightness")).toBe(0.5);
+    expect(run.at(60, "city/inner/grade", "brightness")).toBe(0.8);
+  });
+
+  it("cut the wire: a document with no bind is not given an origin, and an unrelated knob moves nothing", async () => {
+    // The legitimate case the origin must not swallow: the same component, the Level NOT bound.
+    const unbound = { ...boundComponent("slot"), graph: { ...boundComponent("slot").graph, nodes: { ...boundComponent("slot").graph.nodes, grade: node("grade", "level", { brightness: 1 }) } } } as GraphComponentDefinition;
+    const run = await fadingInstance([unbound], cityDocument("bound", { gain: 0.2 }, { gain: 0.8 }));
+    expect(run.flattened.publishedOrigins.get("city/grade")).toBeUndefined();
+    expect(run.at(30, "city/grade", "brightness")).toBe(1);
+  });
+});
+
+describe("T1524b: a compound published PER COMPONENT fades channel by channel", () => {
+  it("a recall of `at.x` moves only that channel of the internal centre: 0.5 at frame 30", async () => {
+    const run = await fadingInstance(
+      [discComponent()],
+      cityDocument("disc", { at: [0.1, 0.7], "at.x": 0.2 }, { "at.x": 0.8 }),
+    );
+    // Inside, the centre is the ASSEMBLED tuple: no `center.x` slot exists to ask about.
+    expect(run.flattened.graph.nodes["city/dot"]?.parameters).toMatchObject({ center: [0.8, 0.7] });
+    expect(run.flattened.graph.nodes["city/dot"]?.parameters["center.x"]).toBeUndefined();
+    expect([...(run.flattened.morphs.keysOf("city/dot") ?? [])]).toEqual(["center.x"]);
+    expect(run.at(0, "city/dot", "center")).toEqual([0.2, 0.7]);
+    expect(run.at(30, "city/dot", "center")).toEqual([0.5, 0.7]);
+    expect(run.at(60, "city/dot", "center")).toEqual([0.8, 0.7]);
+  });
+
+  it("a recall of the BARE key fades the channels it holds and leaves an overridden channel where it is", async () => {
+    const run = await fadingInstance(
+      [discComponent()],
+      cityDocument("disc", { at: [0.2, 0.1], "at.y": 0.7 }, { at: [0.8, 0.9] }),
+    );
+    // y is the instance's own override before, during and after: the bare key's 0.1 → 0.9
+    // never shows, and a fold that blended the bare tuples would drag y through 0.4.
+    expect(run.at(0, "city/dot", "center")).toEqual([0.2, 0.7]);
+    expect(run.at(30, "city/dot", "center")).toEqual([0.5, 0.7]);
+    expect(run.at(60, "city/dot", "center")).toEqual([0.8, 0.7]);
+  });
+
+  it("a channel the component AUTHORS on its own node outranks the published one, and does not fade", async () => {
+    const authored = {
+      ...discComponent(),
+      graph: { revision: 1, groups: {}, nodes: { dot: node("dot", "circle", { center: [0.5, 0.5], "center.x": 0.3 }) }, edges: {} },
+    } as unknown as GraphComponentDefinition;
+    const run = await fadingInstance([authored], cityDocument("disc", { at: [0.1, 0.7], "at.x": 0.2 }, { "at.x": 0.8 }));
+    expect(run.flattened.morphs.keysOf("city/dot")).toBeUndefined();
+    expect(run.at(30, "city/dot", "center")).toEqual([0.3, 0.7]);
+  });
+});
+
+describe("T1524b: a BIND-mode end fades from, and to, the value flattening wrote for it", () => {
+  /** `look` with a second published knob for the first to bind to; only `brightness` drives the Level. */
+  function twoKnobLook(): GraphComponentDefinition {
+    const look = lookComponent();
+    return { ...look, parameters: [...look.parameters, { ...gainKnob, key: "trim" }] } as unknown as GraphComponentDefinition;
+  }
+
+  it("static → bind: the Level fades 0.2 → the sibling knob's 0.8", async () => {
+    const run = await fadingInstance(
+      [twoKnobLook()],
+      cityDocument("look", { brightness: 0.2, trim: 0.8 }, { brightness: bindTo("trim", 0.2) }),
+    );
+    expect(run.settled("city/grade", "brightness")).toBe(0.8);
+    expect(run.at(0, "city/grade", "brightness")).toBe(0.2);
+    expect(run.at(30, "city/grade", "brightness")).toBe(0.5);
+    expect(run.at(60, "city/grade", "brightness")).toBe(0.8);
+  });
+
+  it("bind → static: the fade STARTS on the value the bind showed, not on its retained static", async () => {
+    const run = await fadingInstance(
+      [twoKnobLook()],
+      // The bind reads `trim` (0.2); its retained static is 0.9 and must never be seen.
+      cityDocument("look", { brightness: bindTo("trim", 0.9), trim: 0.2 }, { brightness: 0.8 }),
+    );
+    expect(run.at(0, "city/grade", "brightness")).toBe(0.2);
+    expect(run.at(30, "city/grade", "brightness")).toBe(0.5);
+    expect(run.at(60, "city/grade", "brightness")).toBe(0.8);
+  });
+});

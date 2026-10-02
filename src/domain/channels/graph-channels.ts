@@ -1,9 +1,9 @@
 import type { GraphDocument } from "../types/graph.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
-import type { ParameterValue } from "../types/parameters.ts";
+import type { ParameterValue, StoredParameter } from "../types/parameters.ts";
 import type { NodeId } from "../types/ids.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
-import { effectiveParameterSchema, type ChannelResolver } from "../parameters/resolve.ts";
+import { effectiveParameterSchema, resolveParameterSchema, type ChannelResolver, type ParameterMorphs } from "../parameters/resolve.ts";
 import { nodeNames } from "../graph/names.ts";
 import { hasMorphRecords } from "../presets/morph-index.ts";
 import { storedStaticValue } from "../parameters/slots.ts";
@@ -28,10 +28,17 @@ import { defaultParameterValue } from "../parameters/validate.ts";
  * channel graph is exactly the kind of loop §V110 exists to prevent. Modulating an
  * LFO's frequency is real (TD does it) and arrives with channel-graph cycle detection,
  * not by accident.
+ *
+ * T1524b: `morphs` is the preset morphs in flight over this same graph
+ * (`FlattenedGraph.morphs`). A source parameter a bank is still fading stores its
+ * DESTINATION, so the static view alone would publish the end value while the value graph
+ * in front of this backstop — and the picture — are half-way there. The fading keys are
+ * therefore read through the resolver's own fold, over that same static view.
  */
 export function graphChannelResolver(
   graph: GraphDocument,
   registry: NodeRegistryView,
+  morphs?: ParameterMorphs,
 ): ChannelResolver {
   /**
    * ═══════════════════════════════════════════════════════════════════════════════════
@@ -83,8 +90,27 @@ export function graphChannelResolver(
     const values: Record<string, ParameterValue> = {};
     // T903: through the funnel, so a value node that reflects its own schema publishes the
     // controls it actually has. Every node with no hook returns its static schema unchanged.
-    for (const [key, parameter] of Object.entries(effectiveParameterSchema(definition, node.parameters))) {
+    const schema = effectiveParameterSchema(definition, node.parameters);
+    for (const [key, parameter] of Object.entries(schema)) {
       values[key] = storedStaticValue(node.parameters[key]) ?? defaultParameterValue(parameter);
+    }
+    // T1524b: a key a preset bank is fading, at this frame. The fold is the resolver's
+    // (`resolveStoredAt`) — nothing here blends — and it settles on the same static view
+    // the loop above reads, with no channel resolver and no reader, so this stays the
+    // read the module note asks for. `driven` is the fold's own mark: a key whose fade is
+    // over, or belongs to another epoch, keeps the value the loop gave it.
+    const fading = context.frame === undefined ? undefined : morphs?.keysOf(nodeId);
+    if (fading !== undefined && context.frame !== undefined) {
+      const parameters: Record<string, StoredParameter> = {};
+      for (const [key, stored] of Object.entries(node.parameters)) {
+        const retained = storedStaticValue(stored);
+        if (retained !== undefined) parameters[key] = retained;
+      }
+      const resolved = resolveParameterSchema({ ...node, parameters }, schema, { frame: context.frame, morphs });
+      for (const key of fading) {
+        const root = key.split(".")[0] as string;
+        if (resolved.get(root)?.driven === true) values[root] = resolved.values[root] as ParameterValue;
+      }
     }
     const frame: FrameEvaluationInput = context.frame ?? ZERO_FRAME;
     const value = definition.valueChannel(values, frame);

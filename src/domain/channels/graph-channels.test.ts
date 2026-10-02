@@ -8,7 +8,7 @@ import type { StoredParameter } from "../types/parameters.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import { createFlattenedGraphSource } from "../../app/flattened-graph.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
-import { allNodeDefinitions, blurNode } from "../../nodes/definitions/index.ts";
+import { allNodeDefinitions, blurNode, levelNode } from "../../nodes/definitions/index.ts";
 import { alice, contextFor, patch } from "../commands/test-support.ts";
 import { createDomainBus } from "../commands/index.ts";
 import { componentNodeType, createComponentSystem } from "../components/index.ts";
@@ -16,6 +16,8 @@ import { createSequentialIdFactory } from "../graph/ids.ts";
 import { createGraphStore } from "../graph/store.ts";
 import type { ResolvedParameter, ChannelResolver } from "../parameters/resolve.ts";
 import { resolveParameters } from "../parameters/resolve.ts";
+import { buildMorphIndex } from "../presets/morph-index.ts";
+import { presetBankNode, presetSession } from "../presets/test-support.ts";
 import { graphChannelResolver, hasAnimatedParameters } from "./graph-channels.ts";
 
 /**
@@ -395,3 +397,76 @@ function dialbox(dialId: "dialA" | "dialB", spareId: "dialA" | "dialB"): GraphCo
     parameters: [],
   };
 }
+
+/**
+ * T1524b — THE BACKSTOP PUBLISHES THE FADE, NOT THE DESTINATION.
+ *
+ * A recall with a morph commits the end value at once, so the static view this resolver
+ * reads is already the destination: a parameter driven by `knob` jumped while the value
+ * graph in front of the backstop, and the picture, were half-way. The recall here is the
+ * real command on the real bus; the index is the real `buildMorphIndex`.
+ */
+describe("T1524b: a source parameter a bank is fading publishes the fading value", () => {
+  const EPOCH = "session-1";
+  const at = (index: number, epoch: string | null = EPOCH): FrameEvaluationInput => ({
+    ...frameAt(index / 60),
+    frameIndex: index,
+    absFrameIndex: index,
+    absTimeSeconds: index / 60,
+    ...(epoch === null ? {} : { absEpoch: epoch }),
+  });
+
+  async function fading(): Promise<{ graph: GraphDocument; level: GraphNode }> {
+    const level = node("n-level", "level", {
+      label: "level1",
+      parameters: { brightness: { mode: "driven", bindings: { driven: { kind: "driven", channel: "knob" } } } },
+    });
+    const session = presetSession(
+      graphWith(
+        constantNode("n-knob", "knob", 0.2),
+        level,
+        presetBankNode("n-bank", "looks", "knob", [{ name: "bright", values: { knob: { value: 0.8 } } }]),
+      ),
+      registry,
+    );
+    session.at({ epoch: EPOCH, absTimeSeconds: 0 });
+    await session.recall("n-bank", "bright", { seconds: 1, curve: "linear" });
+    return { graph: session.graph(), level };
+  }
+
+  it("the channel is 0.5 at frame 30 of a 1 s linear 0.2 → 0.8, and 0.8 once it has landed", async () => {
+    const { graph, level } = await fading();
+    // The document holds the destination, which is what the static view reads.
+    expect(graph.nodes["n-knob"]?.parameters["value"]).toBe(0.8);
+    const channels = graphChannelResolver(graph, registry, buildMorphIndex({ document: graph, registry }));
+    const context = (frame?: FrameEvaluationInput) => ({ node: level, key: "brightness", definition: levelNode.parameters["brightness"]!, frame });
+
+    expect(channels("knob", context(at(0)))).toBe(0.2);
+    expect(channels("knob", context(at(30)))).toBe(0.5);
+    expect(channels("knob", context(at(60)))).toBe(0.8);
+    expect(channels("knob", context(at(600)))).toBe(0.8);
+    // Another epoch — a render's — no epoch, and no frame at all: the destination.
+    expect(channels("knob", context(at(30, "take-1")))).toBe(0.8);
+    expect(channels("knob", context(at(30, null)))).toBe(0.8);
+    expect(channels("knob", context())).toBe(0.8);
+
+    // What the consumer reads back: the parameter the channel drives, through the one resolver.
+    const driven = (frame: FrameEvaluationInput): unknown => resolveParameters(level, levelNode, { frame, channels }).values["brightness"];
+    expect(driven(at(30))).toBe(0.5);
+    expect(driven(at(60))).toBe(0.8);
+  });
+
+  it("cut the wire: built without the index, the same frame reads the destination", async () => {
+    const { graph, level } = await fading();
+    const channels = graphChannelResolver(graph, registry);
+    expect(channels("knob", { node: level, key: "brightness", definition: levelNode.parameters["brightness"]!, frame: at(30) })).toBe(0.8);
+  });
+
+  it("an edit mid-fade wins at once, here as on the picture", async () => {
+    const { graph, level } = await fading();
+    const knob = graph.nodes["n-knob"] as GraphNode;
+    const edited: GraphDocument = { ...graph, nodes: { ...graph.nodes, "n-knob": { ...knob, parameters: { ...knob.parameters, value: 0.6 } } } };
+    const channels = graphChannelResolver(edited, registry, buildMorphIndex({ document: edited, registry }));
+    expect(channels("knob", { node: level, key: "brightness", definition: levelNode.parameters["brightness"]!, frame: at(30) })).toBe(0.6);
+  });
+});

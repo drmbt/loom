@@ -1078,10 +1078,27 @@ function resolveCompound(
     const name = names[index] as string;
     const storedComponent = context.node.parameters[componentKey(key, name)];
     if (storedComponent === undefined) {
+      /*
+       * T1524b — A CHANNEL WITH NO SLOT OF ITS OWN CAN STILL BE FADING. Inside a component
+       * a compound published per component (`tint.r` on the instance) arrives ASSEMBLED on
+       * the internal parameter (§V80), so the channel a recall moved has no slot here to
+       * ask about — and its morph is indexed under this component key all the same
+       * (`morph-index.ts`). The channel the base holds is its settled value, and the fade
+       * is the same fold every stored key goes through; with no step it is not entered.
+       */
+      const held = assembled[index] ?? 0;
+      const { frame, morphs } = context.options;
+      const faded =
+        frame !== undefined && morphs?.stepsAt(context.node.id, componentKey(key, name), frame) !== undefined
+          ? resolveStoredAt(context, componentKey(key, name), componentDefinition(definition, name, index), held)
+          : null;
+      const value = faded !== null && typeof faded.value === "number" ? faded.value : held;
+      assembled[index] = value;
+      driven = driven || faded?.driven === true;
       components.push({
         name,
         mode: base.mode,
-        value: assembled[index] ?? 0,
+        value,
         slot: undefined,
         diagnostic: null,
       });

@@ -34,7 +34,9 @@ import {
   parentBindResolver,
   parentScopeDrivers,
   parseInternalParameterPath,
+  parseParentReference,
   readComponentInstance,
+  readParentBindings,
 } from "../domain/components/index.ts";
 import type { ComponentRegistryView } from "../domain/components/index.ts";
 import { CompilerDiagnosticCode, compilerDiagnostic } from "./diagnostics.ts";
@@ -149,6 +151,9 @@ export interface FlattenedGraph {
    * recorded against the instance's key (that is what the bank targets and what the
    * recall wrote), and this is the map that lets it reach the parameters actually on the
    * GPU. An instance's own `overrides` win over publishing and therefore have no origin.
+   *
+   * T1524b: a `parent.<key>` read (§V81) has an origin too, marked `baked` — the internal
+   * parameter holds the value the scope resolved to, never the publisher's slot.
    */
   readonly publishedOrigins: ReadonlyMap<NodeId, Readonly<Record<string, PublishedOrigin>>>;
   /**
@@ -201,9 +206,10 @@ function publishedOriginsFor(
   inherited: Readonly<Record<string, PublishedOrigin>>,
 ): Record<string, PublishedOrigin> {
   const own = readComponentInstance(instance)?.overrides ?? {};
+  const keyOrigins = publishedKeyOrigins(definition, rootNodeId, inherited);
   const origins: Record<string, PublishedOrigin> = {};
   for (const published of definition.parameters) {
-    const origin = rootNodeId === null ? inherited[published.key] : { nodeId: rootNodeId, key: published.key };
+    const origin = keyOrigins[published.key];
     if (origin === undefined) continue;
     for (const target of published.targets) {
       const path = internalParameterPath(target.nodeId, target.key);
@@ -211,6 +217,42 @@ function publishedOriginsFor(
     }
   }
   return origins;
+}
+
+/**
+ * Where each PUBLISHED KEY of one instance takes its value from, in the root document:
+ * itself at the root (`rootNodeId`), and whatever fed it from one level up otherwise
+ * (`inherited` — a fan-out, or since T1524b a `parent.<key>` bind). Both of the ways a
+ * published value reaches the inside read this one rule: §V80's fan-out
+ * (`publishedOriginsFor`) and §V81's `parent.<key>` scope (`LevelInput.scopeOrigins`).
+ */
+function publishedKeyOrigins(
+  definition: GraphComponentDefinition,
+  rootNodeId: NodeId | null,
+  inherited: Readonly<Record<string, PublishedOrigin>>,
+): Record<string, PublishedOrigin> {
+  const origins: Record<string, PublishedOrigin> = {};
+  for (const published of definition.parameters) {
+    const origin = rootNodeId === null ? inherited[published.key] : { nodeId: rootNodeId, key: published.key };
+    if (origin !== undefined) origins[published.key] = origin;
+  }
+  return origins;
+}
+
+/**
+ * T1524b: the origin of a `parent.<key>` read — the root parameter behind the published
+ * key the reference names, marked `baked` because flattening writes the VALUE it read
+ * (§V81) and never the publisher's slot. `undefined` when the reference names nothing, or
+ * a key no root parameter stands behind.
+ */
+function parentOrigin(
+  scopeOrigins: ReadonlyArray<Readonly<Record<string, PublishedOrigin>>>,
+  ref: string,
+): PublishedOrigin | undefined {
+  const reference = parseParentReference(ref);
+  if (reference === null) return undefined;
+  const origin = scopeOrigins[scopeOrigins.length - reference.hops]?.[reference.key];
+  return origin === undefined ? undefined : { nodeId: origin.nodeId, key: origin.key, baked: true };
 }
 
 /** Overrides addressed `<internalNodeId>/<key>`, grouped by internal node. */
@@ -355,6 +397,8 @@ interface LevelInput {
   readonly origins: Readonly<Record<string, PublishedOrigin>>;
   /** Published values of the enclosing instances, outermost first (§V81). */
   readonly chain: ReadonlyArray<Readonly<Record<string, ParameterValue>>>;
+  /** T1524b: `chain`'s twin — each enclosing instance's published key → the root parameter behind it. */
+  readonly scopeOrigins: ReadonlyArray<Readonly<Record<string, PublishedOrigin>>>;
 }
 
 interface LevelResult {
@@ -592,6 +636,9 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     forNode: Readonly<Record<string, StoredParameter>>,
     scope: ParentScope | undefined,
     flatId: NodeId,
+    scopeOrigins: ReadonlyArray<Readonly<Record<string, PublishedOrigin>>>,
+    /** T1524b: filled with the root parameter behind each `parent.<key>` value written below. */
+    bound: Record<string, PublishedOrigin>,
   ): Record<string, StoredParameter> => {
     const parameters: Record<string, StoredParameter> = { ...node.parameters };
     for (const key of Object.keys(forNode).sort()) {
@@ -627,6 +674,8 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
         continue;
       }
       parameters[key] = lookup.value;
+      const origin = parentOrigin(scopeOrigins, binding.ref);
+      if (origin !== undefined) bound[key] = origin;
     }
 
     const drivers = parentScopeDrivers(node, scope, {
@@ -662,7 +711,10 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
         continue;
       }
       const driven = drivers[key]?.({ node, key, definition: parameterDefinition });
-      if (driven !== undefined) parameters[key] = driven;
+      if (driven === undefined) continue;
+      parameters[key] = driven;
+      const origin = parentOrigin(scopeOrigins, readParentBindings(node)[key] ?? "");
+      if (origin !== undefined) bound[key] = origin;
     }
     return parameters;
   };
@@ -712,15 +764,17 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
             // published knob would resolve to nothing exactly where §T880 aims it.
             effectiveParameterSchema(request.registry.get(node.type), node.parameters)
           : publishedSchema(componentDefinition);
-      const parameters = effectiveParameters(node, schema, grouped.get(nodeId) ?? {}, scope, flatId);
+      // T1524b: the root parameters this node's values came from — the published fan-out
+      // (§V80) and, beside it, every `parent.<key>` read `effectiveParameters` resolves.
+      const publishedFrom: Record<string, PublishedOrigin> = { ...origins.get(nodeId) };
+      const parameters = effectiveParameters(node, schema, grouped.get(nodeId) ?? {}, scope, flatId, input.scopeOrigins, publishedFrom);
       const resolved: GraphNode = { ...node, id: flatId, parameters };
 
       if (instance === null) {
         addNode(resolved, flatId);
         recordSource(flatId, input.path, node, node.label ?? nodeId);
         // T1497b: the published values this node carries, and where each came from.
-        const publishedFrom = origins.get(nodeId);
-        if (publishedFrom !== undefined) publishedOrigins.set(flatId, publishedFrom);
+        if (Object.keys(publishedFrom).length > 0) publishedOrigins.set(flatId, publishedFrom);
         continue;
       }
 
@@ -802,9 +856,13 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
           componentDefinition,
           resolved,
           input.definition === null ? node.id : null,
-          origins.get(nodeId) ?? {},
+          publishedFrom,
         ),
         chain: [...input.chain, published],
+        scopeOrigins: [
+          ...input.scopeOrigins,
+          publishedKeyOrigins(componentDefinition, input.definition === null ? node.id : null, publishedFrom),
+        ],
       });
       // Inner overrides land first; the outer instance can override one nested
       // descendant without editing the shared definition or its sibling instance.
@@ -933,6 +991,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     overrides: {},
     origins: {},
     chain: [],
+    scopeOrigins: [],
   });
 
   const graph: GraphDocument = {

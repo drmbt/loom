@@ -2,11 +2,11 @@ import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import type { NodeDefinition } from "../types/node-definition.ts";
-import type { StoredParameter } from "../types/parameters.ts";
+import type { ParameterSchema, StoredParameter } from "../types/parameters.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { nodeNames } from "../graph/names.ts";
-import { effectiveParameterSchema, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
-import { componentAddressedDefinition, isParameterSlot, parseComponentKey } from "../parameters/slots.ts";
+import { effectiveParameterSchema, resolveParameter, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
+import { componentAddressedDefinition, componentNamesFor, isParameterSlot, parseComponentKey } from "../parameters/slots.ts";
 import { PRESETS_NODE_TYPE } from "./bank.ts";
 import { easeMorph, morphProgress, parseMorphRecords, sameStored, type MorphRecord } from "./morph.ts";
 
@@ -50,14 +50,41 @@ import { easeMorph, morphProgress, parseMorphRecords, sameStored, type MorphReco
  * internal parameter, the ROOT document parameter its value came from
  * (`PublishedOrigins`), and a chain on the instance's published key is indexed under
  * every internal parameter it fans out to. The ends are resolved on the internal node,
- * exactly as an animated knob's slot is, so only ends that mean the same thing one level
- * in may travel — the whitelist is §T1017's (a `bind` is relative and does not).
+ * exactly as an animated knob's slot is.
+ *
+ * ## An end travels as what flattening WROTE for it (T1524b)
+ *
+ * The fold starts from the value the internal parameter showed before the recall, so each
+ * end has to be the thing flattening put there while that end was stored — and that is
+ * one of two things (`publishedPage`, `flatten.ts`):
+ *
+ *  - the instance's own SLOT, unresolved, when it is an expression or a channel read on a
+ *    published fan-out (§T1017). It means the same one level in, so it travels as it is
+ *    and keeps moving through the fade;
+ *  - a plain VALUE, resolved on the instance where its scope is, for everything else: a
+ *    static, a `bind` (relative — the same text one level in names another knob), a
+ *    compound the instance overrides per component (assembled), and every end that
+ *    reaches its target through a `parent.<key>` bind, which flattening always bakes
+ *    (`PublishedOrigin.baked`). `bakedEnd` resolves it the same way, through the one read
+ *    path, so the fade starts on the number that was on screen.
+ *
+ * A COMPONENT key of the instance (`tint.r`) has no stored twin inside — the target holds
+ * the assembled compound — so its chain is indexed under the target's own component key
+ * (`color.r`, matched by POSITION: the published and the internal compound are authored
+ * separately) and the resolver fades that channel of the assembled value.
  */
 
 /** The root document parameter an internal (flattened) parameter took its value from. */
 export interface PublishedOrigin {
   readonly nodeId: NodeId;
   readonly key: string;
+  /**
+   * T1524b: the value arrived through a `parent.<key>` bind (§V81), which flattening
+   * RESOLVES where the scope is and writes as a plain value — so the internal parameter
+   * never holds the publisher's slot, whatever its mode. Absent on §V80's fan-out, where
+   * an animated knob hands its slot down (§T1017).
+   */
+  readonly baked?: true;
 }
 
 /** Flattened node id → key → where that value was published from. */
@@ -112,9 +139,26 @@ export function morphableKey(definition: NodeDefinition | undefined, node: Graph
   return true;
 }
 
-/** An end that resolves to the same thing on an internal parameter as on the instance (§T1017). */
-function travelsInward(stored: StoredParameter): boolean {
-  return !isParameterSlot(stored) || stored.mode === "static" || stored.mode === "expression" || stored.mode === "driven";
+/** An end flattening hands down as its own unresolved SLOT (§T1017's hop-invariant modes). */
+function travelsAsSlot(stored: StoredParameter | undefined): boolean {
+  return isParameterSlot(stored) && (stored.mode === "expression" || stored.mode === "driven");
+}
+
+/**
+ * T1524b — one end of a fade as flattening WROTE it for an internal parameter: `stored`
+ * resolved at `key` of the instance, in stored space, with no frame — the read
+ * `publishedPage` makes (`flatten.ts`), on the same node with only this key swapped. A
+ * bare compound comes back ASSEMBLED over the component slots the instance holds now; a
+ * component key comes back as that one channel.
+ */
+function bakedEnd(node: GraphNode, schema: ParameterSchema, key: string, stored: StoredParameter): StoredParameter | undefined {
+  const channel = schema[key] === undefined ? parseComponentKey(key) : null;
+  const base = channel === null ? key : channel.base;
+  const definition = schema[base];
+  if (definition === undefined) return undefined;
+  const resolved = resolveParameter({ ...node, parameters: { ...node.parameters, [key]: stored } }, base, definition, { schema });
+  if (channel === null) return resolved.value;
+  return resolved.components?.find((each) => each.name === channel.component)?.value;
 }
 
 interface Link {
@@ -165,13 +209,13 @@ export function buildMorphIndex(input: MorphIndexInput): ParameterMorphs {
 
   const graph = input.flattened?.graph ?? document;
   /** `rootNodeId\u0000key` → the flattened parameters that value was fanned out onto. */
-  const fanOut = new Map<string, Array<{ nodeId: NodeId; key: string }>>();
+  const fanOut = new Map<string, Array<{ nodeId: NodeId; key: string; baked: boolean }>>();
   for (const [flatId, keys] of input.flattened?.publishedOrigins ?? []) {
     for (const [key, origin] of Object.entries(keys)) {
       const address = `${origin.nodeId}\u0000${origin.key}`;
       const list = fanOut.get(address) ?? [];
       fanOut.set(address, list);
-      list.push({ nodeId: flatId, key });
+      list.push({ nodeId: flatId, key, baked: origin.baked === true });
     }
   }
 
@@ -207,17 +251,56 @@ export function buildMorphIndex(input: MorphIndexInput): ParameterMorphs {
         if (flatNode !== undefined && flatNode.type === rootNode.type && morphableKey(registry.get(flatNode.type), flatNode, key)) {
           file(nodeId, key, epoch, links);
         }
-        const targets = fanOut.get(`${nodeId}\u0000${key}`);
+        // Inside a component. `key` is a published key, or one CHANNEL of a published
+        // compound (`tint.r`); either way the targets are the published key's.
+        const schema = effectiveParameterSchema(registry.get(rootNode.type), rootNode.parameters);
+        const channel = schema[key] === undefined ? parseComponentKey(key) : null;
+        const published = channel === null ? key : channel.base;
+        const targets = fanOut.get(`${nodeId}\u0000${published}`);
         if (targets === undefined) continue;
-        // A compound published per component reaches its targets assembled, so a fade on
-        // the bare key would blend past a channel the instance overrides; and an end that
-        // is relative to the instance (a bind) means something else one level in. Both cut.
-        const overridden = Object.keys(rootNode.parameters).some((stored) => stored.startsWith(`${key}.`));
-        if (overridden || !links.every((link) => travelsInward(link.from) && travelsInward(link.to))) continue;
+        const publishedDefinition = schema[published];
+        const position =
+          channel === null || publishedDefinition === undefined
+            ? -1
+            : (componentNamesFor(publishedDefinition)?.indexOf(channel.component) ?? -1);
+        if (channel !== null && position < 0) continue;
+        /** The instance's own slot rides inward on a fan-out; a `parent.` bind never carries one. */
+        const slotInside = travelsAsSlot(rootNode.parameters[published]);
+
+        /** Each end resolved on the instance ONCE, however many targets read it. */
+        const baked = new Map<StoredParameter, StoredParameter | undefined>();
+        const bake = (stored: StoredParameter): StoredParameter | undefined => {
+          if (!baked.has(stored)) baked.set(stored, bakedEnd(rootNode, schema, key, stored));
+          return baked.get(stored);
+        };
+
         for (const target of targets) {
           const internal = graph.nodes[target.nodeId];
-          if (internal === undefined || !morphableKey(registry.get(internal.type), internal, target.key)) continue;
-          file(target.nodeId, target.key, epoch, links);
+          if (internal === undefined) continue;
+          const definition = registry.get(internal.type);
+          let targetKey = target.key;
+          if (channel !== null) {
+            // The target holds the instance's own slot at the bare key: the channel the
+            // instance overrides is not on screen inside at all, so there is nothing to fade.
+            if (slotInside && !target.baked) continue;
+            const targetDefinition = effectiveParameterSchema(definition, internal.parameters)[target.key];
+            const name = targetDefinition === undefined ? undefined : componentNamesFor(targetDefinition)?.[position];
+            if (name === undefined) continue;
+            targetKey = `${target.key}.${name}`;
+            // A channel the component AUTHORS on the target outranks the published one.
+            if (internal.parameters[targetKey] !== undefined) continue;
+          }
+          if (!morphableKey(definition, internal, targetKey)) continue;
+          const end = (stored: StoredParameter): StoredParameter | undefined =>
+            channel === null && !target.baked && travelsAsSlot(stored) ? stored : bake(stored);
+          const inward: Link[] = [];
+          for (const link of links) {
+            const from = end(link.from);
+            const to = end(link.to);
+            if (from === undefined || to === undefined) break;
+            inward.push({ record: link.record, from, to });
+          }
+          if (inward.length === links.length) file(target.nodeId, targetKey, epoch, inward);
         }
       }
     }
