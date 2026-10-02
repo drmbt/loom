@@ -2050,6 +2050,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         // handlers only THEN enqueue the listener delivery; the second drains those.
         await active.gpu.settled();
         await active.gpu.settled();
+        // T1490b: inside the window, so the verdicts it draws out land in `asyncErrors`.
+        await askPassesSharingAFailedShader(active.gpu, read.passes, resources, asyncErrors);
       } catch (error) {
         // T95 (§V9, §V27): shader and allocation failures must reach onDiagnostic — the
         // problems tab listens there, not on thrown errors. The previous program is
@@ -3181,6 +3183,53 @@ function isPipelineCompileError(error: unknown): boolean {
   );
 }
 
+/** The label a failed pipeline was built under — its pass id (B229) — off the error's `where`. */
+function failedPipelineLabel(error: unknown): string {
+  const where = (error as { where?: unknown }).where;
+  return typeof where === "string" ? where.replace(/\.(compileSync|compile|pipelineFor)$/, "") : "";
+}
+
+/**
+ * T1490b — EVERY PASS THAT SHARES A FAILED SHADER GETS ITS OWN VERDICT (§V27).
+ *
+ * vgpu keeps one shader module per byte-identical source and one pipeline per module and
+ * target signature. The second pass with the same broken WGSL is therefore handed the
+ * first one's cache entry: the device compiles once and reports once, under whichever pass
+ * compiled first, and the other node — a copy-pasted Custom WGSL — renders nothing and
+ * carries no diagnostic.
+ *
+ * vgpu evicts a failed entry when its verdict lands, so each such pass is compiled AGAIN
+ * here and the device answers under that pass's own label. One at a time, settling between:
+ * two twins asked together would share an entry all over again.
+ *
+ * The verdict stays the device's, never an inference from equal text. A pass with the same
+ * source whose own pipeline is fine (another target format, say) finds its valid entry in
+ * the cache, compiles nothing and reports nothing.
+ */
+async function askPassesSharingAFailedShader(
+  gpu: { settled(): Promise<unknown> },
+  passes: readonly PassDescriptor[],
+  resources: ResourceSet,
+  asyncErrors: readonly unknown[],
+): Promise<void> {
+  // Only what goes through vgpu's shared pipeline cache: a dispatch builds its own module.
+  const shaderOf = (pass: PassDescriptor): string | undefined =>
+    pass.kind === "effect" || pass.kind === "draw" ? pass.shader : undefined;
+  const failed = new Set(asyncErrors.filter(isPipelineCompileError).map(failedPipelineLabel));
+  const failedShaders = new Set(passes.filter((pass) => failed.has(pass.id)).map(shaderOf));
+  for (const pass of passes) {
+    const shader = shaderOf(pass);
+    if (shader === undefined || !failedShaders.has(shader) || failed.has(pass.id)) continue;
+    const pipeline = resources.effects.get(pass.id) ?? resources.draws.get(pass.id);
+    const target = resources.renderTargets.get(pass.id);
+    if (pipeline === undefined || target === undefined) continue;
+    pipeline.compileSync(target());
+    // Twice, for the reason `compile()` gives: the pop, then the listener delivery.
+    await gpu.settled();
+    await gpu.settled();
+  }
+}
+
 /**
  * A device-side pipeline failure, attributed to its pass and node (§V27). The error's
  * `where` is `<label>.compileSync` and every pipeline is labelled with its pass id, so
@@ -3193,8 +3242,7 @@ function pipelineFailureDiagnostic(
   passes: readonly PassDescriptor[],
 ): ReturnType<typeof backendDiagnostic> {
   const shaped = error as { where?: unknown; cause?: unknown; message?: unknown };
-  const where = typeof shaped.where === "string" ? shaped.where : "";
-  const label = where.replace(/\.(compileSync|compile|pipelineFor)$/, "");
+  const label = failedPipelineLabel(error);
   const pass = passes.find((candidate) => candidate.id === label);
   const nodeId =
     pass !== undefined && pass.kind !== "swap" && pass.kind !== "counter" ? pass.nodeId : undefined;

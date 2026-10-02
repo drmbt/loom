@@ -239,3 +239,76 @@ describe("a device compile failure names the node whose shader failed (B229, §V
     }
   }, 60_000);
 });
+
+/**
+ * T1490b — TWO NODES, THE SAME BROKEN BYTES, AND BOTH ARE TOLD.
+ *
+ * The residual of B229. A copy-pasted Custom WGSL node carries its original's source to the
+ * byte, and vgpu keys its pipeline cache on the source text: the second pass is handed the
+ * first one's entry, so the device compiles once and reports once — under the pass that got
+ * there first. The other node rendered nothing and said nothing (§V27): no badge, no row in
+ * the problems tab, and fixing the one that WAS named left a second failure to be found.
+ */
+
+/** Solid -> first (broken) -> second (the same broken bytes) -> Output. */
+function twinBrokenGraph(): GraphDocument {
+  const twin = (id: string, x: number): GraphDocument["nodes"][string] => ({
+    id,
+    type: "customWgsl",
+    definitionVersion: 1,
+    position: { x, y: 0 },
+    parameters: { source: BROKEN_BODY },
+  });
+  return {
+    revision: 1,
+    nodes: {
+      source: { id: "source", type: "solid", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} },
+      first: twin("first", 200),
+      second: twin("second", 400),
+      out: { id: "out", type: "output", definitionVersion: 1, position: { x: 600, y: 0 }, parameters: {} },
+    },
+    edges: {
+      e1: { id: "e1", source: { nodeId: "source", portId: "out" }, target: { nodeId: "first", portId: "input" } },
+      e2: { id: "e2", source: { nodeId: "first", portId: "out" }, target: { nodeId: "second", portId: "input" } },
+      e3: { id: "e3", source: { nodeId: "second", portId: "out" }, target: { nodeId: "out", portId: "input" } },
+    },
+    groups: {},
+  };
+}
+
+describe("every node sharing a broken shader carries the failure (T1490b, §V27)", () => {
+  it("two Custom WGSL nodes with byte-identical broken source are each named by their own diagnostic", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+    const backend = createVgpuBackend({ host: nodeGpuHost() });
+    const diagnostics: RuntimeDiagnostic[] = [];
+    backend.onDiagnostic((diagnostic) => diagnostics.push(diagnostic));
+    try {
+      const capabilities = await backend.initialize({});
+      const plan = compileGraph({
+        graph: twinBrokenGraph(),
+        settings,
+        registry: createNodeRegistry([solidNode, customWgslNode, outputNode]).view(),
+        capabilities,
+      });
+      expect(plan.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+      const custom = (plan.passes as ReadonlyArray<{ readonly id: string; readonly nodeId?: string }>).filter(
+        (pass) => pass.nodeId === "first" || pass.nodeId === "second",
+      );
+      expect(custom.map((pass) => pass.nodeId)).toEqual(["first", "second"]);
+
+      await expect(backend.compile(plan)).rejects.toBeDefined();
+
+      const failures = diagnostics.filter((d) => d.code === BackendDiagnosticCode.compileFailed);
+      // What the badges read: ONE failure per node that holds the broken shader, each under
+      // its own pass id — neither node is left to render nothing in silence, and neither
+      // is told twice.
+      expect(failures.map((d) => d.nodeId).sort()).toEqual(["first", "second"]);
+      for (const pass of custom) {
+        const own = failures.filter((d) => d.nodeId === pass.nodeId);
+        expect(own.map((d) => d.message.startsWith(`Pass "${pass.id}" failed to compile`))).toEqual([true]);
+      }
+    } finally {
+      backend.dispose();
+    }
+  }, 60_000);
+});
