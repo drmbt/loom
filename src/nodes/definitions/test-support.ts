@@ -177,9 +177,11 @@ export function readNodePlan(
 }
 
 /**
- * T1262 — a definition with NO ports and no sink declaration is OUTSIDE THE PLAN BY
+ * T1262 — a definition with NO OUTPUTS and no sink declaration is OUTSIDE THE PLAN BY
  * CONSTRUCTION: no sink can reach it, so `compileGraph` prunes it and emits nothing for
- * it, on every device. The catalogue sweeps (headless here, Dawn in
+ * it, on every device. (It was "no ports" until T1512b gave the Panel a `controls` input:
+ * wires arrive at a Panel, nothing leaves it, and it is pruned exactly as before — the
+ * inputs were never what made a node unreachable.) The catalogue sweeps (headless here, Dawn in
  * `catalogue-dawn.gpu.test.ts`) have nothing to compile for such a type and check the
  * prune instead. Derived from the manifest, not a name list, so the next portless note
  * cannot be forgotten.
@@ -189,7 +191,7 @@ export function outsidePlanByConstruction(definition: {
   readonly outputs: ReadonlyArray<unknown>;
   readonly sink?: boolean | undefined;
 }): boolean {
-  return definition.inputs.length === 0 && definition.outputs.length === 0 && definition.sink !== true;
+  return definition.outputs.length === 0 && definition.sink !== true;
 }
 
 /**
@@ -252,6 +254,10 @@ export function minimalGraphFor(
       nodes[`${feedId}src`] = mk(`${feedId}src`, "pointGrid");
       nodes[feedId] = mk(feedId, "pointProximity", { neighbors: 2, radius: 1 });
       edges[`${feedId}link`] = mkEdge(`${feedId}link`, [`${feedId}src`, "out"], [feedId, "points"]);
+    } else if (port.type.kind === "value") {
+      // T1512b: the Panel's `controls` input takes VALUE wires (widget nodes). A checker
+      // feeding it was a port-compat refusal that read as a broken node (§V886 again).
+      nodes[feedId] = mk(feedId, "slider");
     } else {
       nodes[feedId] = mk(feedId, port.type.kind === "pointset" ? "pointGrid" : "checker");
     }
