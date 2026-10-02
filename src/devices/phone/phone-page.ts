@@ -23,6 +23,15 @@
  * camera is one tap away rather than under every Panel. A Panel with a board (§T1516b) is
  * drawn on a grid of square cells, one column = the page's width / columns; without one,
  * its rows. Tabs only show and hide: a running camera keeps sending under any tab.
+ *
+ * T1503b — A BANK, A LAYER AND A CUE LIST on a board (§T1398b ruling 12): a strip of preset
+ * buttons with the current one lit and a mark on it while its fade runs; a layer's switch
+ * and, when the rect has room, its opacity fader (a driven one is shown and does not move);
+ * BACK, a large GO and `current ▸ next`, with the cue list to tap a standby from when the
+ * rect is three rows or taller. Laid out by the desk's own rules (`board-fit.ts`), so the
+ * phone shows the arrangement the owner made. Every press is ONE commit; nothing is lit
+ * ahead of Loom's answer for a recall or a GO, because a refused press must light nothing.
+ * There is no Store here, and no key this page sends that could become one.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -275,6 +284,104 @@ button.ctl.on .state { color: var(--text); }
   text-transform: uppercase;
   color: var(--text-dim);
 }
+/*
+ * T1503b: a bank, a layer and a cue list on a board. .press is every button in them; the
+ * parts share the item's rect the way the desk's do (data-layout).
+ */
+.board .w .press {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--line-hot);
+  border-radius: 8px;
+  background: var(--bg-raise);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board .w .press.on { border-color: var(--signal); background: color-mix(in srgb, var(--signal) 30%, var(--bg-raise)); }
+.board .w .press:active { background: color-mix(in srgb, var(--signal) 45%, var(--bg-raise)); }
+.board .w .press:disabled { opacity: 0.4; }
+.stopped .press, .stopped .fader { opacity: 0.4; }
+.board .w.preset {
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(var(--per), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--rows), minmax(0, 1fr));
+}
+.board .w.preset .none { align-self: center; color: var(--text-dim); font-size: 13px; }
+/* The fade mark: a bar along the foot of the preset being faded to, until the fade ends. */
+.board .w .press.fading::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--signal);
+  animation: fademark 0.7s ease-in-out infinite alternate;
+}
+@keyframes fademark { from { opacity: 0.2; } to { opacity: 1; } }
+.board .w.layer { display: grid; gap: 2px; grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); }
+.board .w.layer[data-layout="beside"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.board .w.layer .sw .state { margin-left: 6px; font-size: 11px; font-weight: 400; color: var(--text-dim); }
+.board .w.layer .sw.on .state { color: var(--text); }
+.fader {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 8px;
+  border: 1px solid var(--line-hot);
+  border-radius: 8px;
+  background: var(--bg-raise);
+  font-size: 13px;
+  overflow: hidden;
+  touch-action: none;
+}
+.fader .lbl, .fader .val { position: relative; z-index: 1; white-space: nowrap; }
+.fader .lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-dim); }
+.fader .val { font-variant-numeric: tabular-nums; }
+/* Driven by the document: said, drawn without a level, and it does not take a finger. */
+.fader.driven { border-style: dashed; touch-action: auto; }
+.fader.driven .fill, .fader.driven .thumb { display: none; }
+.fader.driven .val { color: var(--text-dim); }
+.board .w.cueList { display: flex; flex-direction: column; gap: 2px; }
+.board .w.cueList[data-layout="beside"] { flex-direction: row; }
+.w.cueList .cues {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 26px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--bg-panel);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.w.cueList[data-layout="beside"] .cues { flex: 1 1 0; }
+.w.cueList .cues .now, .w.cueList .cues .next { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.w.cueList .cues .arrow { flex: none; color: var(--text-dim); }
+.w.cueList .cues .next { color: var(--signal); }
+.w.cueList .cuelist { flex: 2 1 0; min-height: 0; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+.w.cueList .cuelist .press { flex: 0 0 34px; text-align: left; }
+.w.cueList .cuelist .press.standby { border-color: var(--signal); }
+.w.cueList .gobar { flex: 1 1 0; min-height: 0; display: flex; gap: 2px; }
+.w.cueList .gobar .back { flex: 1 1 0; }
+.w.cueList .gobar .go { flex: 2 1 0; border-color: var(--signal); font-size: 20px; letter-spacing: 0.04em; }
 /* T1397b + T1517b: the Camera tab — the preview fills what the tab bar leaves. */
 #camera {
   display: flex;
@@ -667,7 +774,186 @@ const CLIENT = String.raw`
   window.addEventListener("pointerup", function (event) { end(event, false); });
   window.addEventListener("pointercancel", function (event) { end(event, true); });
 
-  var BUILDERS = { slider: buildSlider, toggle: buildToggle, button: buildButton, xyPad: buildPad };
+  /* ------------------------------------------- banks, layers, cue lists (T1503b) */
+
+  /*
+   * A press is ONE commit. For a recall, a GO, a BACK and a standby nothing is drawn ahead
+   * of Loom's answer: the lit preset and the cue names are the document's, and they change
+   * when the next snapshot says so. A layer's switch and fader behave like a toggle and a
+   * slider — shown at once, live then commit — and say the STATE asked for, never "flip".
+   * The layouts are the desk's (board-fit.ts): the same rect shows the same parts.
+   */
+  function press(handle, values) {
+    if (stopped) return;
+    commit(handle, values);
+  }
+  function pressButton(cls, text) {
+    var b = el("button", "press" + (cls ? " " + cls : ""), text);
+    b.type = "button";
+    return b;
+  }
+  function cells(rect, key) {
+    var v = rect ? Math.floor(Number(rect[key])) : 1;
+    return v === v && v >= 1 ? v : 1;
+  }
+
+  function buildPreset(w, rect) {
+    var root = el("div", "w preset");
+    root.setAttribute("role", "group");
+    root.setAttribute("aria-label", w.caption);
+    var names = Array.isArray(w.presets) ? w.presets : [];
+    var rows = Math.max(1, Math.min(cells(rect, "h"), names.length));
+    root.style.setProperty("--rows", String(rows));
+    root.style.setProperty("--per", String(Math.max(1, Math.ceil(names.length / rows))));
+    var buttons = names.map(function (name) {
+      var b = pressButton("", String(name));
+      b.setAttribute("data-preset", String(name));
+      b.addEventListener("click", function () { press(w.handle, { recall: name }); });
+      root.appendChild(b);
+      return b;
+    });
+    if (buttons.length === 0) root.appendChild(el("span", "none", "No presets"));
+    var view = { widget: w, el: root };
+    view.update = function () {
+      var c = views[w.handle].widget;
+      buttons.forEach(function (b) {
+        var lit = b.getAttribute("data-preset") === c.current;
+        b.classList.toggle("on", lit);
+        b.classList.toggle("fading", lit && c.morphing === true);
+        b.setAttribute("aria-pressed", lit ? "true" : "false");
+      });
+    };
+    return view;
+  }
+
+  function buildLayer(w, rect) {
+    var layout = cells(rect, "h") >= 2 ? "stacked" : cells(rect, "w") >= 4 ? "beside" : "switch";
+    var root = el("div", "w layer");
+    root.setAttribute("data-layout", layout);
+    var sw = pressButton("sw");
+    sw.appendChild(el("span", "lbl", w.caption));
+    var state = el("span", "state");
+    sw.appendChild(state);
+    root.appendChild(sw);
+    var fader = null, fill = null, thumb = null, val = null;
+    if (layout !== "switch") {
+      fader = el("div", "fader");
+      fader.setAttribute("role", "slider");
+      fader.setAttribute("aria-label", w.caption + " opacity");
+      fader.setAttribute("aria-valuemin", "0");
+      fader.setAttribute("aria-valuemax", "1");
+      fill = el("div", "fill");
+      thumb = el("div", "thumb");
+      val = el("span", "val");
+      fader.appendChild(fill);
+      fader.appendChild(thumb);
+      fader.appendChild(el("span", "lbl", "Opacity"));
+      fader.appendChild(val);
+      root.appendChild(fader);
+      fader.addEventListener("pointerdown", function (event) {
+        // Driven by the document: shown, and a finger does not move it.
+        if (views[w.handle].widget.opacityWritable !== true) return;
+        begin(w.handle, event, fader);
+      });
+    }
+    var view = { widget: w, el: root, target: fader };
+    view.update = function () {
+      var c = current(w.handle);
+      var on = c.on === true;
+      sw.classList.toggle("on", on);
+      sw.setAttribute("aria-pressed", on ? "true" : "false");
+      state.textContent = on ? "On" : "Off";
+      if (fader === null) return;
+      var free = c.opacityWritable === true;
+      var s = free ? clamp01(c.opacity) * 100 : 0;
+      fader.classList.toggle("driven", !free);
+      fader.setAttribute("aria-disabled", free ? "false" : "true");
+      if (free) fader.setAttribute("aria-valuenow", String(c.opacity));
+      else fader.removeAttribute("aria-valuenow");
+      fill.style.width = s + "%";
+      thumb.style.left = s + "%";
+      val.textContent = free ? format(c.opacity) : "driven";
+    };
+    view.valuesAt = function (event) {
+      var r = box(views[w.handle].target);
+      return { opacity: tidy(clamp01((event.clientX - r.left) / Math.max(r.width, 1))) };
+    };
+    sw.addEventListener("click", function () {
+      if (stopped) return;
+      var next = !(current(w.handle).on === true);
+      setLocal(w.handle, { on: next });
+      commit(w.handle, { on: next });
+    });
+    return view;
+  }
+
+  function buildCueList(w, rect) {
+    var h = cells(rect, "h");
+    var layout = h >= 2 ? "stacked" : cells(rect, "w") >= 6 ? "beside" : "buttons";
+    var root = el("div", "w cueList");
+    root.setAttribute("role", "group");
+    root.setAttribute("aria-label", w.caption);
+    root.setAttribute("data-layout", layout);
+    var now = null, next = null;
+    if (layout !== "buttons") {
+      var line = el("div", "cues");
+      now = el("span", "now");
+      next = el("span", "next");
+      line.appendChild(now);
+      line.appendChild(el("span", "arrow", "▸"));
+      line.appendChild(next);
+      root.appendChild(line);
+    }
+    // Three rows or more: the list itself, a cue a row — a tap stands that cue by.
+    var cueButtons = [];
+    if (layout === "stacked" && h >= 3) {
+      var list = el("div", "cuelist");
+      (Array.isArray(w.cues) ? w.cues : []).forEach(function (name) {
+        var b = pressButton("cue", String(name));
+        b.setAttribute("data-cue", String(name));
+        b.addEventListener("click", function () { press(w.handle, { standby: name }); });
+        list.appendChild(b);
+        cueButtons.push(b);
+      });
+      root.appendChild(list);
+    }
+    var bar = el("div", "gobar");
+    var back = pressButton("back", "BACK");
+    var go = pressButton("go", "GO");
+    back.addEventListener("click", function () { press(w.handle, { back: true }); });
+    go.addEventListener("click", function () { press(w.handle, { go: true }); });
+    bar.appendChild(back);
+    bar.appendChild(go);
+    root.appendChild(bar);
+    var view = { widget: w, el: root };
+    view.update = function () {
+      var c = views[w.handle].widget;
+      if (now !== null) {
+        now.textContent = c.current || "—";
+        next.textContent = c.next || "—";
+      }
+      // What Loom would refuse is not offered: GO past the end, BACK before the first cue.
+      go.disabled = c.canGo !== true;
+      back.disabled = c.canBack !== true;
+      cueButtons.forEach(function (b) {
+        var name = b.getAttribute("data-cue");
+        b.classList.toggle("on", name === c.current);
+        b.classList.toggle("standby", name === c.next);
+        b.setAttribute("aria-pressed", name === c.next ? "true" : "false");
+      });
+    };
+    return view;
+  }
+
+  var BUILDERS = {
+    slider: buildSlider,
+    toggle: buildToggle,
+    button: buildButton,
+    xyPad: buildPad,
+    preset: buildPreset,
+    layer: buildLayer,
+    cueList: buildCueList,
+  };
 
   /* ------------------------------------------------------------------------- snapshots */
 
@@ -688,7 +974,8 @@ const CLIENT = String.raw`
         return [p.title, board.columns, board.items.map(function (item) {
           var r = item.rect || {};
           var w = item.widget || {};
-          return [item.kind, r.x, r.y, r.w, r.h, item.text, w.kind, w.handle, w.caption];
+          // T1503b: a bank's presets and a list's cues are its buttons — a new name redraws.
+          return [item.kind, r.x, r.y, r.w, r.h, item.text, w.kind, w.handle, w.caption, w.presets, w.cues];
         })];
       }
       return [p.title, (p.rows || []).map(function (r) {
@@ -699,10 +986,10 @@ const CLIENT = String.raw`
     }));
   }
 
-  function place(handle, w) {
+  function place(handle, w, rect) {
     var build = BUILDERS[w.kind];
     if (!build) return null;
-    var view = build(w);
+    var view = build(w, rect);
     views[handle] = view;
     view.update();
     return view.el;
@@ -740,7 +1027,7 @@ const CLIENT = String.raw`
     board.items.forEach(function (item) {
       var node = null;
       if (item.kind === "label") node = el("div", "label", String(item.text || ""));
-      else if (item.kind === "widget" && item.widget) node = place(item.widget.handle, item.widget);
+      else if (item.kind === "widget" && item.widget) node = place(item.widget.handle, item.widget, item.rect);
       if (node === null) return;
       var r = item.rect || {};
       var x = whole(r.x, 0, cols - 1);

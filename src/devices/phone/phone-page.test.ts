@@ -2,10 +2,13 @@ import { createRequire } from "node:module";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { PHONE_EXPIRED_SENTENCE, PHONE_NAME_STORAGE_KEY, PHONE_TAB_STORAGE_KEY, phonePageHtml } from "./phone-page.ts";
+import { cueListBoardLayout, layerBoardLayout, presetStripGrid } from "../../editor/controls/board-fit.ts";
 import {
   PHONE_EVENTS_PATH,
   PHONE_SET_PATH,
   PHONE_SIGNAL_PATH,
+  PHONE_WRITABLE_KEYS,
+  type BoardRect,
   type PhoneEvent,
   type PhoneSet,
   type PhoneSignalToPhone,
@@ -1135,5 +1138,301 @@ describe("T1517b phone page — tabs, the board, the Camera tab", () => {
     }
     expect(page.win.getComputedStyle(slider.querySelector(".cap")!).zIndex).toBe("1");
     expect(page.win.getComputedStyle(slider.querySelector(".track")!).zIndex).not.toBe("1");
+  });
+});
+
+/**
+ * T1503b (§T1398b ruling 12) — A BANK, A LAYER AND A CUE LIST ON THE PHONE PAGE, as the
+ * person holding the phone meets them: a strip of preset buttons, a layer's switch and
+ * fader, GO and BACK with where the set is. What is asserted is what the phone puts on the
+ * wire for each touch, and what it shows — which for a recall and a GO is what LOOM says
+ * happened, never what the finger hoped.
+ */
+describe("T1503b phone page — banks, layers and cue lists", () => {
+  type Page = ReturnType<typeof openPage>;
+  type Widget = Extract<PhoneSnapshot["panels"][number]["board"], object>["items"][number];
+  const LOOKS = { kind: "preset", handle: "h-looks", caption: "looks", presets: ["soft", "hard", "strobe"], current: "soft", morphing: false } as const;
+  const FX = { kind: "layer", handle: "h-fx", caption: "fx", on: true, opacity: 0.5, opacityWritable: true } as const;
+  const KEY = { kind: "layer", handle: "h-key", caption: "key", on: false, opacity: 1, opacityWritable: true } as const;
+  const SET = { kind: "cueList", handle: "h-set", caption: "set", cues: ["1", "2", "3"], current: "1", next: "2", canGo: true, canBack: false } as const;
+
+  /** A board holding all three kinds; `over` replaces fields of a widget by handle. */
+  function show(seq: number, over: Record<string, Record<string, unknown>> = {}): PhoneSnapshot {
+    const item = (rect: BoardRect, widget: { handle: string }): Widget =>
+      ({ kind: "widget", rect, widget: { ...widget, ...(over[widget.handle] ?? {}) } }) as Widget;
+    return {
+      seq,
+      panels: [
+        {
+          title: "Show",
+          rows: [],
+          board: {
+            columns: 8,
+            rows: 6,
+            items: [
+              item({ x: 0, y: 0, w: 8, h: 1 }, LOOKS),
+              item({ x: 0, y: 1, w: 6, h: 1 }, FX),
+              item({ x: 6, y: 1, w: 2, h: 1 }, KEY),
+              item({ x: 0, y: 2, w: 8, h: 4 }, SET),
+            ],
+          },
+        },
+      ],
+    };
+  }
+  const part = (page: Page, selector: string): HTMLElement => {
+    const found = page.doc.querySelector<HTMLElement>(selector);
+    if (found === null) throw new Error(`nothing matches ${selector}`);
+    return found;
+  };
+  const preset = (page: Page, name: string): HTMLButtonElement => part(page, `.w.preset [data-preset="${name}"]`) as HTMLButtonElement;
+  const lit = (page: Page): string[] =>
+    [...page.doc.querySelectorAll<HTMLElement>(".w.preset [data-preset]")].filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.textContent ?? "");
+  const fading = (page: Page): string[] => [...page.doc.querySelectorAll<HTMLElement>(".w.preset .fading")].map((b) => b.textContent ?? "");
+  /** The layer whose switch is captioned `caption`. */
+  const layer = (page: Page, caption: string): HTMLElement => {
+    const found = [...page.doc.querySelectorAll<HTMLElement>(".w.layer")].find((w) => w.querySelector(".sw .lbl")?.textContent === caption);
+    if (found === undefined) throw new Error(`no layer ${caption}`);
+    return found;
+  };
+  const cueLine = (page: Page): string => part(page, ".w.cueList .cues").textContent ?? "";
+  const sets = (page: Page) => page.posts.map((post) => post.set);
+
+  it("draws all three at their rects: the strip with the current preset lit, the switch and fader, GO, BACK and where the set is", () => {
+    const page = openPage();
+    page.snapshot(show(1));
+    const grid = part(page, ".board");
+    expect([...grid.children].map((child) => [child.className, (child as HTMLElement).style.gridColumn, (child as HTMLElement).style.gridRow])).toEqual([
+      ["w preset", "1 / span 8", "1 / span 1"],
+      ["w layer", "1 / span 6", "2 / span 1"],
+      ["w layer", "7 / span 2", "2 / span 1"],
+      ["w cueList", "1 / span 8", "3 / span 4"],
+    ]);
+    expect([...page.doc.querySelectorAll(".w.preset [data-preset]")].map((b) => b.textContent)).toEqual(["soft", "hard", "strobe"]);
+    expect(lit(page)).toEqual(["soft"]);
+    expect(fading(page)).toEqual([]);
+    // fx: on, with its fader at half; key: off, and too small a rect for a fader.
+    expect(layer(page, "fx").querySelector(".sw")?.getAttribute("aria-pressed")).toBe("true");
+    expect(layer(page, "fx").querySelector(".sw .state")?.textContent).toBe("On");
+    expect(layer(page, "fx").querySelector(".fader .val")?.textContent).toBe("0.50");
+    expect(layer(page, "fx").querySelector<HTMLElement>(".fader .fill")?.style.width).toBe("50%");
+    expect(layer(page, "key").querySelector(".sw .state")?.textContent).toBe("Off");
+    expect(layer(page, "key").querySelector(".fader")).toBeNull();
+    expect(cueLine(page)).toBe("1▸2");
+    expect((part(page, ".w.cueList .go") as HTMLButtonElement).disabled).toBe(false);
+    // Cue 1 is the first: there is nothing to go BACK to, and the phone does not offer it.
+    expect((part(page, ".w.cueList .back") as HTMLButtonElement).disabled).toBe(true);
+    expect([...page.doc.querySelectorAll(".w.cueList [data-cue]")].map((b) => b.textContent)).toEqual(["1", "2", "3"]);
+  });
+
+  it("a preset tap is exactly one commit naming the preset — and the lit button moves only when Loom says it was recalled", async () => {
+    const page = openPage();
+    page.snapshot(show(1));
+    preset(page, "hard").click();
+    expect(sets(page)).toEqual([{ handle: "h-looks", values: { recall: "hard" }, phase: "commit" }]);
+    await page.drain();
+    expect(sets(page)).toHaveLength(1);
+    // Answered 204, but no snapshot yet: the page (not the helper) decides, so nothing has moved.
+    expect(lit(page)).toEqual(["soft"]);
+    page.snapshot(show(2, { "h-looks": { current: "hard" } }));
+    expect(lit(page)).toEqual(["hard"]);
+  });
+
+  it("marks the preset being faded to while `morphing`, and clears the mark when the fade ends", () => {
+    const page = openPage();
+    page.snapshot(show(1));
+    page.snapshot(show(2, { "h-looks": { current: "hard", morphing: true } }));
+    expect(lit(page)).toEqual(["hard"]);
+    expect(fading(page)).toEqual(["hard"]);
+    page.snapshot(show(3, { "h-looks": { current: "hard", morphing: false } }));
+    expect(lit(page)).toEqual(["hard"]);
+    expect(fading(page)).toEqual([]);
+  });
+
+  it("two presets tapped in a hurry are two commits, in order, one in flight at a time", async () => {
+    const page = openPage();
+    page.snapshot(show(1));
+    preset(page, "hard").click();
+    preset(page, "strobe").click();
+    await page.drain();
+    expect(page.maxOpen).toBe(1);
+    expect(sets(page)).toEqual([
+      { handle: "h-looks", values: { recall: "hard" }, phase: "commit" },
+      { handle: "h-looks", values: { recall: "strobe" }, phase: "commit" },
+    ]);
+  });
+
+  it("a bank that gains a preset gets its button", () => {
+    const page = openPage();
+    page.snapshot(show(1));
+    page.snapshot(show(2, { "h-looks": { presets: ["soft", "hard", "strobe", "wash"] } }));
+    expect([...page.doc.querySelectorAll(".w.preset [data-preset]")].map((b) => b.textContent)).toEqual(["soft", "hard", "strobe", "wash"]);
+    expect(lit(page)).toEqual(["soft"]);
+  });
+
+  it("a layer's switch sends the STATE it now shows — off, then on — one commit a tap", async () => {
+    const page = openPage();
+    page.snapshot(show(1));
+    const sw = layer(page, "fx").querySelector<HTMLButtonElement>(".sw")!;
+    sw.click();
+    expect(sw.querySelector(".state")?.textContent).toBe("Off");
+    sw.click();
+    expect(sw.querySelector(".state")?.textContent).toBe("On");
+    await page.drain();
+    expect(sets(page)).toEqual([
+      { handle: "h-fx", values: { on: false }, phase: "commit" },
+      { handle: "h-fx", values: { on: true }, phase: "commit" },
+    ]);
+  });
+
+  it("a layer's fader keeps the slider's write rules: one live POST a frame, latest value only, the commit last", async () => {
+    const page = openPage();
+    page.snapshot(show(1));
+    const fader = layer(page, "fx").querySelector<HTMLElement>(".fader")!;
+    page.pointer("pointerdown", fader, 50);
+    page.pointer("pointermove", fader, 80);
+    expect(page.posts).toHaveLength(0);
+    page.frame();
+    page.pointer("pointermove", fader, 100);
+    page.frame();
+    page.pointer("pointermove", fader, 120);
+    page.frame();
+    expect(sets(page)).toEqual([{ handle: "h-fx", values: { opacity: 0.4 }, phase: "live" }]);
+    // The finger's value shows at once, whatever the last snapshot said.
+    expect(fader.querySelector(".val")?.textContent).toBe("0.60");
+    page.pointer("pointerup", fader, 150);
+    await page.drain();
+    expect(page.maxOpen).toBe(1);
+    expect(sets(page)).toEqual([
+      { handle: "h-fx", values: { opacity: 0.4 }, phase: "live" },
+      { handle: "h-fx", values: { opacity: 0.6 }, phase: "live" },
+      { handle: "h-fx", values: { opacity: 0.75 }, phase: "commit" },
+    ]);
+  });
+
+  it("a driven opacity is shown as driven and a finger on it sends nothing — the switch beside it still works", async () => {
+    const page = openPage();
+    page.snapshot(show(1, { "h-fx": { opacityWritable: false } }));
+    const fader = layer(page, "fx").querySelector<HTMLElement>(".fader")!;
+    expect(fader.querySelector(".val")?.textContent).toBe("driven");
+    expect(fader.getAttribute("aria-disabled")).toBe("true");
+    expect(fader.classList.contains("driven")).toBe(true);
+    page.pointer("pointerdown", fader, 50);
+    page.pointer("pointermove", fader, 150);
+    page.frame();
+    page.pointer("pointerup", fader, 150);
+    await page.drain();
+    expect(page.posts).toHaveLength(0);
+    layer(page, "fx").querySelector<HTMLButtonElement>(".sw")!.click();
+    await page.drain();
+    expect(sets(page)).toEqual([{ handle: "h-fx", values: { on: false }, phase: "commit" }]);
+    // Freed again at the desk: the fader takes the finger.
+    page.snapshot(show(2, { "h-fx": { opacityWritable: true, on: false } }));
+    page.pointer("pointerdown", fader.isConnected ? fader : layer(page, "fx").querySelector<HTMLElement>(".fader")!, 100);
+    page.pointer("pointerup", layer(page, "fx").querySelector<HTMLElement>(".fader")!, 100);
+    await page.drain();
+    expect(sets(page).at(-1)).toEqual({ handle: "h-fx", values: { opacity: 0.5 }, phase: "commit" });
+  });
+
+  it("GO and BACK are one commit each, a cue tapped in the list stands it by, and the names follow Loom's answer", async () => {
+    const page = openPage();
+    page.snapshot(show(1));
+    const go = part(page, ".w.cueList .go") as HTMLButtonElement;
+    const back = part(page, ".w.cueList .back") as HTMLButtonElement;
+    go.click();
+    // BACK is not on offer at the first cue: a tap on it is nothing on the wire.
+    back.click();
+    await page.drain();
+    expect(sets(page)).toEqual([{ handle: "h-set", values: { go: true }, phase: "commit" }]);
+    expect(cueLine(page)).toBe("1▸2");
+
+    page.snapshot(show(2, { "h-set": { current: "2", next: "3", canBack: true } }));
+    expect(cueLine(page)).toBe("2▸3");
+    back.click();
+    part(page, '.w.cueList [data-cue="1"]').click();
+    await page.drain();
+    expect(sets(page).slice(1)).toEqual([
+      { handle: "h-set", values: { back: true }, phase: "commit" },
+      { handle: "h-set", values: { standby: "1" }, phase: "commit" },
+    ]);
+    // The standby is marked in the list once Loom says it stands by.
+    page.snapshot(show(3, { "h-set": { current: "2", next: "1", canBack: true } }));
+    expect(cueLine(page)).toBe("2▸1");
+    expect([...page.doc.querySelectorAll(".w.cueList [data-cue].standby")].map((b) => b.textContent)).toEqual(["1"]);
+    expect([...page.doc.querySelectorAll(".w.cueList [data-cue].on")].map((b) => b.textContent)).toEqual(["2"]);
+
+    // The end of the list with Wrap off: GO is not offered, and "next" is a dash.
+    page.snapshot(show(4, { "h-set": { current: "3", next: null, canGo: false, canBack: true } }));
+    expect(cueLine(page)).toBe("3▸—");
+    expect(go.disabled).toBe(true);
+  });
+
+  it("lays each out by the desk's own rule for the rect, so the phone shows the owner's arrangement", () => {
+    const rects: BoardRect[] = [
+      { x: 0, y: 0, w: 2, h: 1 },
+      { x: 0, y: 0, w: 4, h: 1 },
+      { x: 0, y: 0, w: 6, h: 1 },
+      { x: 0, y: 0, w: 2, h: 2 },
+      { x: 0, y: 0, w: 8, h: 3 },
+    ];
+    for (const [index, rect] of rects.entries()) {
+      const page = openPage();
+      const at = (y: number): BoardRect => ({ ...rect, y });
+      page.snapshot({
+        seq: index,
+        panels: [
+          {
+            title: "P",
+            rows: [],
+            board: {
+              columns: 8,
+              rows: 9,
+              items: [
+                { kind: "widget", rect: at(0), widget: FX },
+                { kind: "widget", rect: at(3), widget: SET },
+                { kind: "widget", rect: at(6), widget: LOOKS },
+              ],
+            },
+          },
+        ],
+      });
+      const where = JSON.stringify(rect);
+      expect(part(page, ".w.layer").getAttribute("data-layout"), where).toBe(layerBoardLayout(rect));
+      expect(part(page, ".w.cueList").getAttribute("data-layout"), where).toBe(cueListBoardLayout(rect));
+      const strip = presetStripGrid(LOOKS.presets.length, rect.h);
+      expect([part(page, ".w.preset").style.getPropertyValue("--rows"), part(page, ".w.preset").style.getPropertyValue("--per")], where).toEqual([
+        String(strip.rows),
+        String(strip.perRow),
+      ]);
+    }
+  });
+
+  it("every button on the three sends only a key the contract lets a phone write — there is nothing to Store with", async () => {
+    const page = openPage();
+    page.snapshot(show(1, { "h-set": { current: "2", next: "3", canBack: true } }));
+    const kinds: Record<string, keyof typeof PHONE_WRITABLE_KEYS> = { "h-looks": "preset", "h-fx": "layer", "h-key": "layer", "h-set": "cueList" };
+    const buttons = [...page.doc.querySelectorAll<HTMLButtonElement>(".w.preset button, .w.layer button, .w.cueList button")];
+    expect(buttons.length).toBe(3 + 2 + 3 + 2);
+    for (const button of buttons) button.click();
+    await page.drain();
+    expect(sets(page)).toHaveLength(buttons.length);
+    for (const sent of sets(page)) {
+      const allowed: readonly string[] = PHONE_WRITABLE_KEYS[kinds[sent.handle]!];
+      expect(Object.keys(sent.values).every((key) => allowed.includes(key)), JSON.stringify(sent)).toBe(true);
+      expect(sent.phase).toBe("commit");
+    }
+    expect(JSON.stringify(sets(page))).not.toMatch(/store|delete/i);
+  });
+
+  it("sends nothing from any of them once the door has closed", async () => {
+    const page = openPage();
+    page.snapshot(show(1));
+    page.emit({ type: "closed", reason: "The door was closed at the desk." });
+    preset(page, "hard").click();
+    layer(page, "fx").querySelector<HTMLButtonElement>(".sw")!.click();
+    (part(page, ".w.cueList .go") as HTMLButtonElement).click();
+    page.frame();
+    await page.flush();
+    expect(page.posts).toHaveLength(0);
   });
 });

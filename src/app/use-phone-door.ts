@@ -5,7 +5,8 @@ import { rafScheduler, type FrameScheduler } from "@ui/controls/coalesce.ts";
 import type { DeviceClient } from "@devices/device-client.ts";
 import { DEVICE_HELPER_START } from "@devices/helper.ts";
 import type { PhoneDoorState } from "@devices/phone/phone-protocol.ts";
-import { buildPhoneSnapshot } from "@devices/phone/phone-snapshot.ts";
+import { morphRunning, type MorphRecord } from "@domain/presets/index.ts";
+import { buildPhoneSnapshot, publishedMorphs } from "@devices/phone/phone-snapshot.ts";
 import type { PhoneDoorView, PhoneRefusal } from "@editor/controls/phone-door-copy.ts";
 import { createPhoneWrites } from "./phone-writes.ts";
 import type { Notice } from "./notices.tsx";
@@ -27,6 +28,17 @@ import type { Notice } from "./notices.tsx";
  * a change nobody on a phone can see (a node moved, an unpublished parameter) sends
  * nothing at all. A phone arriving forces one send, so a late joiner is never waiting on
  * the next edit for its first picture.
+ *
+ * ## The end of a fade (T1503b)
+ *
+ * A bank's `morphing` is true while a recall's fade is still running on the page's frame
+ * clock. The START is a document change (the recall wrote its morph record), so the rule
+ * above publishes it. The END changes nothing in the document: the clock simply passes the
+ * record's end. So while a published snapshot says some bank is morphing, the hook holds
+ * the records behind that and asks `morphRunning` of them once a frame — a handful of
+ * comparisons, not a rebuilt snapshot — and rebuilds exactly when one stops running (the
+ * clock crossed its end, or a render zeroed the clock). Two publishes per fade, and no
+ * frame callback at all while nothing fades.
  *
  * ## What it writes
  *
@@ -142,9 +154,29 @@ export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
     const client = deviceClient();
     if (client === null) return;
     let cancel: (() => void) | null = null;
+    /** T1503b: the fades behind the last snapshot's `morphing` flags, and the frame watch on them. */
+    let fading: readonly MorphRecord[] = [];
+    let cancelWatch: (() => void) | null = null;
+    const watch = (): void => {
+      cancelWatch = null;
+      // Nothing fading any more (an undo took the record away): the watch ends here.
+      if (fading.length === 0) return;
+      const clock = bus.frameClock();
+      if (clock !== undefined && fading.every((record) => morphRunning(record, clock))) {
+        cancelWatch = schedule(watch);
+        return;
+      }
+      // A fade ended. This publish stands in for one a document change had queued.
+      cancel?.();
+      publish();
+    };
     const publish = (): void => {
       cancel = null;
-      const snapshot = buildPhoneSnapshot(bus.store.getGraph(), 0);
+      const graph = bus.store.getGraph();
+      const clock = bus.frameClock();
+      const snapshot = buildPhoneSnapshot(graph, 0, clock);
+      fading = publishedMorphs(graph, clock);
+      if (fading.length > 0) cancelWatch ??= schedule(watch);
       const body = JSON.stringify(snapshot.panels);
       setPublishedPanels(snapshot.panels.length);
       if (body === lastSent.current) return;
@@ -161,6 +193,7 @@ export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
       publishNow.current = null;
       unsubscribe();
       cancel?.();
+      cancelWatch?.();
     };
     // `schedule` is stable per mount (see `writes`).
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -12,7 +12,11 @@ import { CanvasFixture } from "@editor/graph-canvas/canvas-fixture.tsx";
 import { fixtureContext, installFlowStubs, nodeProps } from "@editor/graph-canvas/testing.tsx";
 import { useKeymapPane } from "@editor/keymap/pane.ts";
 import { NodeView } from "@editor/nodes/node-view.tsx";
+import type { FrameClock } from "@domain/types/frame.ts";
 import type { NodeId } from "@domain/types/ids.ts";
+import { serializePresetBank } from "@domain/presets/index.ts";
+import type { FrameScheduler } from "@ui/controls/coalesce.ts";
+import { serializePanelBoard } from "@nodes/definitions/controls.ts";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { createAppRuntime, type AppRuntime } from "./app-runtime.ts";
 import { NoticeStrip } from "./notices.tsx";
@@ -92,8 +96,18 @@ const soon = (callback: () => void): (() => void) => {
   return () => clearTimeout(timer);
 };
 
-function Desk({ runtime, client, attached = true }: { runtime: AppRuntime; client: DeviceClient; attached?: boolean }) {
-  const door = usePhoneDoor({ deviceClient: () => client, bus: runtime.bus, invocation: runtime.invocation, attached, schedule: soon });
+function Desk({
+  runtime,
+  client,
+  attached = true,
+  schedule = soon,
+}: {
+  runtime: AppRuntime;
+  client: DeviceClient;
+  attached?: boolean;
+  schedule?: FrameScheduler;
+}) {
+  const door = usePhoneDoor({ deviceClient: () => client, bus: runtime.bus, invocation: runtime.invocation, attached, schedule });
   const graph = useSyncExternalStore(runtime.bus.store.subscribe, runtime.bus.store.getGraph);
   return (
     <>
@@ -400,5 +414,143 @@ describe("T1512b — the Panel node's header phone icon", () => {
     expect(doorState()).toBe("closed");
     // The press stayed in the popover: the pane behind it never took focus.
     expect(document.activeElement).not.toBe(view.container.firstElementChild);
+  });
+});
+
+/**
+ * T1503b (§T1398b ruling 12, the design doc §5.5) — A FADE ON THE PHONE. A phone that
+ * recalls a preset with a morph sees the destination lit at once and a fade mark until the
+ * fade is over. The start is a document change; the END is not — the frame clock simply
+ * passes the record's end — so this is the test that the phones are told anyway, exactly
+ * twice per fade, and that a page with nothing fading does no per-frame work for it.
+ */
+describe("T1503b — the phone door tells phones when a fade starts and when it ends", () => {
+  const LOOKS = serializePresetBank({
+    version: 1,
+    presets: [
+      { name: "soft", values: { blur1: { size: 4 } } },
+      { name: "hard", values: { blur1: { size: 20 } } },
+    ],
+  });
+
+  async function runtimeWithBank(): Promise<{ runtime: AppRuntime; looks: NodeId }> {
+    const runtime = createAppRuntime({ identityStorage: null, actor: { kind: "human", id: "desk", label: "Desk" } });
+    const result = await runtime.bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: runtime.bus.store.getRevision(),
+        label: "setup",
+        operations: [
+          { op: "addNode", ref: "$blur", type: "blur", position: { x: 0, y: 0 }, label: "blur1", parameters: { size: 9 } },
+          // The bank's own Morph: two seconds. A phone cannot name one; it gets the bank's.
+          { op: "addNode", ref: "$looks", type: "presets", position: { x: 0, y: 100 }, label: "looks", parameters: { targets: "blur1", presets: LOOKS, morph: 2, curve: "linear" } },
+          {
+            op: "addNode",
+            ref: "$panel",
+            type: "panel",
+            position: { x: 0, y: 200 },
+            label: "panel1",
+            parameters: { title: "Show", remote: true, board: serializePanelBoard({ columns: 8, items: [{ member: "looks", rect: { x: 0, y: 0, w: 4, h: 1 } }] }) },
+          },
+        ],
+      } as never,
+      runtime.invocation,
+    );
+    expect(result.output.status).toBe("applied");
+    return { runtime, looks: (result.output.createdIds as Record<string, NodeId>)["$looks"]! };
+  }
+
+  /** What each published snapshot told the phones about the bank. */
+  const told = (published: readonly PhoneSnapshot[]) =>
+    published.map((snapshot) => {
+      const item = snapshot.panels[0]?.board?.items[0];
+      const bank = item?.kind === "widget" && item.widget.kind === "preset" ? item.widget : null;
+      return bank === null ? null : { current: bank.current, morphing: bank.morphing };
+    });
+
+  it("publishes `morphing` at the recall and clears it when the frame clock passes the fade's end — two publishes, no document change for the second", async () => {
+    const { runtime, looks } = await runtimeWithBank();
+    let clock: FrameClock = { epoch: "run-1", absTimeSeconds: 5 };
+    runtime.bus.attachFrameClock(() => clock);
+    let frames = 0;
+    const counted: FrameScheduler = (callback) => {
+      frames += 1;
+      return soon(callback);
+    };
+    const helper = fakeClient({ open: true, url: URL_WITH_TOKEN, fingerprint: "ff", phones: [] });
+    render(<Desk runtime={runtime} client={helper.client} schedule={counted} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Phone/ }));
+      await settle();
+    });
+    expect(told(helper.published)).toEqual([{ current: null, morphing: false }]);
+    // Nothing fading: the door asks for no frames at all.
+    const idle = frames;
+    await act(settle);
+    expect(frames).toBe(idle);
+
+    await act(async () => {
+      helper.phoneWrites("p1", { handle: looks, values: { recall: "hard" }, phase: "commit" });
+      await settle();
+    });
+    // The destination at once, and the fade still to do.
+    expect(told(helper.published)).toEqual([
+      { current: null, morphing: false },
+      { current: "hard", morphing: true },
+    ]);
+
+    // Frames go by with the fade still running (and a paused transport is exactly this): nothing more is sent.
+    clock = { epoch: "run-1", absTimeSeconds: 6.9 };
+    await act(settle);
+    expect(helper.published).toHaveLength(2);
+
+    // The clock passes the end. The document does not change — only the clock did.
+    const revision = runtime.bus.store.getRevision();
+    clock = { epoch: "run-1", absTimeSeconds: 7 };
+    await act(settle);
+    expect(runtime.bus.store.getRevision()).toBe(revision);
+    expect(told(helper.published)).toEqual([
+      { current: null, morphing: false },
+      { current: "hard", morphing: true },
+      { current: "hard", morphing: false },
+    ]);
+    expect(helper.published.at(-1)!.seq).toBeGreaterThan(helper.published.at(-2)!.seq);
+
+    // The fade is over and so is the watch: more frames, nothing asked for, nothing sent.
+    const after = frames;
+    clock = { epoch: "run-1", absTimeSeconds: 9 };
+    await act(settle);
+    expect(frames).toBe(after);
+    expect(helper.published).toHaveLength(3);
+  });
+
+  it("an undo that takes the fade away mid-fade clears `morphing` with it, and the watch stops", async () => {
+    const { runtime, looks } = await runtimeWithBank();
+    const clock: FrameClock = { epoch: "run-1", absTimeSeconds: 5 };
+    runtime.bus.attachFrameClock(() => clock);
+    let frames = 0;
+    const counted: FrameScheduler = (callback) => {
+      frames += 1;
+      return soon(callback);
+    };
+    const helper = fakeClient({ open: true, url: URL_WITH_TOKEN, fingerprint: "ff", phones: [] });
+    render(<Desk runtime={runtime} client={helper.client} schedule={counted} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Phone/ }));
+      await settle();
+    });
+    await act(async () => {
+      helper.phoneWrites("p1", { handle: looks, values: { recall: "hard" }, phase: "commit" });
+      await settle();
+    });
+    expect(told(helper.published).at(-1)).toEqual({ current: "hard", morphing: true });
+    await act(async () => {
+      await runtime.bus.execute("graph.undo", {}, { ...runtime.invocation, actor: { kind: "human", id: "remote-p1", label: "Phone" } });
+      await settle();
+    });
+    expect(told(helper.published).at(-1)).toEqual({ current: null, morphing: false });
+    const after = frames;
+    await act(settle);
+    expect(frames).toBe(after);
   });
 });

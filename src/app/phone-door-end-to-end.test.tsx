@@ -19,7 +19,10 @@ import {
   type PhoneSet,
   type PhoneSignalFromPhone,
   type PhoneSnapshot,
+  type PhoneWidget,
 } from "@devices/phone/phone-protocol.ts";
+import { serializeCueList, serializePresetBank } from "@domain/presets/index.ts";
+import { serializePanelBoard } from "@nodes/definitions/controls.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import type { PhonePeerConnection } from "./phone-camera-receiver.ts";
 import { usePhoneCameras, type PhoneCameraEnvironment } from "./use-phone-cameras.ts";
@@ -542,5 +545,182 @@ describe("T1397b — a phone's camera handshake crosses the whole stack to a Web
     // The element lets go of the stream; the source stays, so the texture keeps its last frame.
     await rendered(() => shown.at(-1) === null, "the node's element to let the stream go");
     expect(registered.has(`media:${cam}`)).toBe(true);
+  });
+});
+
+/*
+ * T1503b (§T1398b ruling 12) — A PHONE RUNS THE SET, THROUGH THE WHOLE STACK. The same
+ * parties and real sockets as the first test: a phone over HTTPS recalls a preset and
+ * presses GO on a bank and a cue list named on a published Panel. What each end reads
+ * back: the document holds the look and the list's position, the audit names the command
+ * and THIS phone, the two presses are the phone's own two undo steps, and the phone's next
+ * picture carries the new `current` — the only way it learns its press took. A bank on a
+ * Panel that is not published is unreachable, and a `store` key changes nothing.
+ */
+describe("T1503b — a phone recalls a preset and presses GO through the whole stack", () => {
+  const LOOKS = serializePresetBank({
+    version: 1,
+    presets: [
+      { name: "soft", values: { blur1: { size: 4 } } },
+      { name: "hard", values: { blur1: { size: 20 } } },
+    ],
+  });
+  const CUES = serializeCueList({
+    version: 1,
+    cues: [
+      { name: "1", bank: "looks", preset: "soft" },
+      { name: "2", bank: "looks", preset: "hard" },
+    ],
+  });
+  const boardOf = (...members: string[]): string =>
+    serializePanelBoard({ columns: 8, items: members.map((member, index) => ({ member, rect: { x: 0, y: index * 2, w: 4, h: 2 } })) });
+
+  const parameter = (runtime: AppRuntime, id: string, key: string): unknown => runtime.bus.store.getGraph().nodes[id as never]?.parameters[key];
+  /** A board widget in a snapshot, by handle and kind. */
+  const onBoard = <K extends PhoneWidget["kind"]>(snapshot: PhoneSnapshot | undefined, handle: string, kind: K): Extract<PhoneWidget, { kind: K }> | undefined => {
+    for (const panel of snapshot?.panels ?? []) {
+      for (const item of panel.board?.items ?? []) {
+        if (item.kind === "widget" && item.widget.handle === handle && item.widget.kind === kind) return item.widget as Extract<PhoneWidget, { kind: K }>;
+      }
+    }
+    return undefined;
+  };
+
+  it("recall and GO change the document as the phone, land on the phone's undo stack, and the echo carries the new current", async () => {
+    const certDir = mkdtempSync(join(tmpdir(), "loom-phone-set-cert-"));
+    const handoffDir = mkdtempSync(join(tmpdir(), "loom-phone-set-"));
+    const doors = createDeviceDoors({
+      udpSocketFactory: () => {
+        throw new Error("no UDP in this test");
+      },
+      phone: { enabled: true, lanAddress: () => "127.0.0.1", port: 0, certDir },
+    });
+    const helper = createBridgeHost({
+      devices: doors.devices,
+      laser: doors.laser,
+      vision: doors.vision,
+      ...(doors.phone ? { phone: doors.phone } : {}),
+      port: 0,
+      handoffDir,
+    });
+    cleanups.push(() => {
+      helper.dispose();
+      doors.dispose();
+      rmSync(handoffDir, { recursive: true, force: true });
+      rmSync(certDir, { recursive: true, force: true });
+    });
+    await until(() => helper.status().port != null, "the helper to bind");
+    const jsdomEvent = globalThis.Event;
+    globalThis.Event = await nodeEventClass();
+    cleanups.push(() => {
+      globalThis.Event = jsdomEvent;
+    });
+    const client = createDeviceClient({
+      port: helper.status().port ?? 0,
+      client: "e2e set desk",
+      memory: { read: () => null, write: () => undefined, forget: () => undefined },
+      autoConnect: false,
+      onState: () => undefined,
+      onReadings: () => undefined,
+    });
+    cleanups.push(() => client.dispose());
+    client.connect(helper.pairingCode);
+
+    // blur1 at 9; `looks` and `set` on the published Panel's board; `backstage` on one that is not.
+    const runtime = createAppRuntime({ identityStorage: null, actor: { kind: "human", id: "desk", label: "Desk" } });
+    const staged = await runtime.bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: runtime.bus.store.getRevision(),
+        label: "set",
+        operations: [
+          { op: "addNode", ref: "$blur", type: "blur", position: { x: 0, y: 0 }, label: "blur1", parameters: { size: 9 } },
+          { op: "addNode", ref: "$looks", type: "presets", position: { x: 0, y: 100 }, label: "looks", parameters: { targets: "blur1", presets: LOOKS } },
+          { op: "addNode", ref: "$set", type: "cueList", position: { x: 0, y: 200 }, label: "set", parameters: { cues: CUES } },
+          { op: "addNode", ref: "$shown", type: "panel", position: { x: 0, y: 300 }, label: "panel1", parameters: { title: "Show", remote: true, board: boardOf("looks", "set") } },
+          { op: "addNode", ref: "$backstage", type: "presets", position: { x: 400, y: 100 }, label: "backstage", parameters: { targets: "blur1", presets: LOOKS } },
+          { op: "addNode", ref: "$hidden", type: "panel", position: { x: 400, y: 300 }, label: "panel2", parameters: { title: "Backstage", remote: false, board: boardOf("backstage") } },
+        ],
+      } as never,
+      runtime.invocation,
+    );
+    expect(staged.output.status).toBe("applied");
+    const blur = nodeId(runtime, "blur1");
+    const looks = nodeId(runtime, "looks");
+    const list = nodeId(runtime, "set");
+    const backstage = nodeId(runtime, "backstage");
+    const deviceClient = (): DeviceClient => client;
+    render(<Desk runtime={runtime} deviceClient={deviceClient} />);
+
+    act(() => {
+      fireEvent.click(screen.getAllByRole("button", { name: /^Phone/ })[0]!);
+    });
+    await rendered(() => document.querySelector("[data-phone-url]") !== null, "the desk to show the door's URL");
+    const doorUrl = document.querySelector("[data-phone-url]")?.textContent ?? "";
+    const ca = readFileSync(join(certDir, "cert.pem"), "utf8");
+    const at = (path: string, phone?: string): string => {
+      const url = new URL(doorUrl);
+      url.pathname = path;
+      if (phone !== undefined) url.searchParams.set(PHONE_PEER_PARAM, phone);
+      return url.toString();
+    };
+
+    // THE PHONE: the published board holds the bank and the list; the backstage bank is nowhere.
+    const phone = openPhoneStream(at(PHONE_EVENTS_PATH), ca);
+    await rendered(() => snapshots(phone).length >= 1, "the phone's first snapshot");
+    const hello = phone.events[0];
+    const phoneId = hello?.type === "hello" ? hello.phone : "";
+    expect(phoneId).not.toBe("");
+    const first = snapshots(phone).at(-1);
+    expect(first?.panels.map((panel) => panel.title)).toEqual(["Show"]);
+    expect(onBoard(first, looks, "preset")).toEqual({ kind: "preset", handle: looks, caption: "looks", presets: ["soft", "hard"], current: null, morphing: false });
+    expect(onBoard(first, list, "cueList")).toMatchObject({ cues: ["1", "2"], current: null, next: "1", canGo: true, canBack: false });
+    expect(JSON.stringify(snapshots(phone))).not.toContain(backstage);
+
+    const phoneActor = { kind: "human", id: phoneActorId(phoneId), label: "Phone" } as const;
+    const deskUndo = runtime.bus.store.getHistory(runtime.invocation.actor).undo.length;
+    const auditBefore = runtime.bus.store.getAudit().length;
+
+    // A tap on "hard": one commit carrying the preset's NAME.
+    expect(await postPhoneSet(at(PHONE_SET_PATH, phoneId), ca, { handle: looks, values: { recall: "hard" }, phase: "commit" })).toBe(204);
+    await rendered(() => parameter(runtime, blur, "size") === 20, "the recall to land in the document");
+    expect(parameter(runtime, looks, "current")).toBe("hard");
+    // …and the phone learns it took from its next picture.
+    await rendered(() => onBoard(snapshots(phone).at(-1), looks, "preset")?.current === "hard", "the echo to carry the new current preset");
+
+    // GO: the list's first cue fires — its preset recalled, the list moved on.
+    expect(await postPhoneSet(at(PHONE_SET_PATH, phoneId), ca, { handle: list, values: { go: true }, phase: "commit" })).toBe(204);
+    await rendered(() => parameter(runtime, list, "current") === "1", "GO to land in the document");
+    expect(parameter(runtime, blur, "size")).toBe(4);
+    expect(parameter(runtime, looks, "current")).toBe("soft");
+    await rendered(() => onBoard(snapshots(phone).at(-1), list, "cueList")?.current === "1", "the echo to carry the new current cue");
+    const echoed = snapshots(phone).at(-1);
+    expect(onBoard(echoed, list, "cueList")).toMatchObject({ current: "1", next: "2", canGo: true, canBack: false });
+    expect(onBoard(echoed, looks, "preset")?.current).toBe("soft");
+    expect(echoed!.seq).toBeGreaterThan(first!.seq);
+
+    // The audit names the command and THIS phone; the two presses are the phone's two undo steps.
+    expect(runtime.bus.store.getAudit().slice(auditBefore).map((entry) => [entry.command, entry.actor.kind, entry.actor.id, entry.status])).toEqual([
+      ["preset.recall", "human", phoneActorId(phoneId), "applied"],
+      ["cue.go", "human", phoneActorId(phoneId), "applied"],
+    ]);
+    expect(runtime.bus.store.getHistory(phoneActor).undo).toHaveLength(2);
+    expect(runtime.bus.store.getHistory(runtime.invocation.actor).undo).toHaveLength(deskUndo);
+
+    // The bank on the unpublished Panel, and a `store` on the published one: relayed by the
+    // helper (it cannot know), refused by the desk, nothing stored, nothing audited.
+    const auditAfter = runtime.bus.store.getAudit().length;
+    expect(await postPhoneSet(at(PHONE_SET_PATH, phoneId), ca, { handle: backstage, values: { recall: "hard" }, phase: "commit" })).toBe(204);
+    await rendered(() => document.querySelector("[data-phone-refusal]") !== null, "the desk to say it refused");
+    expect(document.querySelector("[data-phone-refusal]")?.textContent).toContain("not published to the phone door");
+    expect(await postPhoneSet(at(PHONE_SET_PATH, phoneId), ca, { handle: looks, values: { store: "mine" }, phase: "commit" })).toBe(204);
+    await rendered(
+      () => document.querySelector("[data-phone-refusal]")?.textContent?.includes("does not let a phone write") === true,
+      "the desk to say it refused the store",
+    );
+    expect(parameter(runtime, blur, "size")).toBe(4);
+    expect(parameter(runtime, backstage, "current") ?? "").toBe("");
+    expect(parameter(runtime, looks, "presets")).toBe(LOOKS);
+    expect(runtime.bus.store.getAudit().length).toBe(auditAfter);
   });
 });
