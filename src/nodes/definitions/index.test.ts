@@ -45,6 +45,8 @@ describe("the code-parameter census (T492)", () => {
       "pointKernelAdvanced.group:wgsl",
       "pointKernelAdvanced.kernel:wgsl",
       "pointKernelAdvanced.spawn:wgsl",
+      // T1497b: the bank's fades in flight — written by Recall, inspectable, same reason.
+      "presets.morphs:json",
       // T1496b: the preset bank, hand-editable structured data like the MIDI mapping.
       "presets.presets:json",
     ]);

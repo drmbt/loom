@@ -7,6 +7,8 @@ import type { BackendCapabilities, CompiledExecutionPlan } from "@domain/types/b
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { serializePresetBank } from "@domain/presets/bank.ts";
 import { parseMorphRecords } from "@domain/presets/morph.ts";
+import { serializeProjectDocument } from "@domain/project/index.ts";
+import type { CompiledGraph } from "@compiler/index.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { App } from "./app.tsx";
 import { createAppRuntime } from "./app-runtime.ts";
@@ -53,7 +55,10 @@ async function seed(runtime: AppRuntime, operations: GraphPatchOperation[]) {
   );
 }
 
-type Event = { kind: "render" } | { kind: "uniforms"; passId: string; values: Record<string, unknown> };
+type Event =
+  | { kind: "render" }
+  | { kind: "uniforms"; passId: string; values: Record<string, unknown> }
+  | { kind: "compile"; plan: CompiledGraph };
 
 function recordingBackend(): { backend: LoomBackend; tick: () => void; events: Event[] } {
   let onFrame: (() => void) | null = null;
@@ -72,7 +77,10 @@ function recordingBackend(): { backend: LoomBackend; tick: () => void; events: E
       estimatedResourceBytes: 0,
     },
     initialize: () => Promise.resolve(CAPABILITIES),
-    compile: (plan: unknown) => Promise.resolve({ id: "fixture", logical: plan } as CompiledExecutionPlan),
+    compile: (plan: unknown) => {
+      events.push({ kind: "compile", plan: plan as CompiledGraph });
+      return Promise.resolve({ id: "fixture", logical: plan } as CompiledExecutionPlan);
+    },
     render() {
       events.push({ kind: "render" });
     },
@@ -147,10 +155,28 @@ async function stage(): Promise<{ runtime: AppRuntime; level: string; bank: stri
   return { runtime, level, bank };
 }
 
-async function mount(runtime: AppRuntime, fixture: ReturnType<typeof recordingBackend>): Promise<void> {
+async function mount(
+  runtime: AppRuntime,
+  fixture: ReturnType<typeof recordingBackend>,
+  onRuntimeChange?: (next: AppRuntime) => void,
+): Promise<void> {
   const status: GpuStatus = { kind: "ready", capabilities: CAPABILITIES, baseline: true, backend: fixture.backend };
   await act(async () => {
-    render(<App runtime={runtime} storage={createMemoryStorage()} gpuProbe={() => Promise.resolve(status)} />);
+    render(
+      <App
+        runtime={runtime}
+        storage={createMemoryStorage()}
+        gpuProbe={() => Promise.resolve(status)}
+        {...(onRuntimeChange === undefined ? {} : { onRuntimeChange })}
+      />,
+    );
+  });
+}
+
+/** Lets a compile's `.then` and the effects behind it land. */
+async function settle(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 60));
   });
 }
 
@@ -257,5 +283,55 @@ describe("T1497b — a recall with a morph fades the picture in the composed app
     for (let index = 0; index < 5; index += 1) await frame(fixture, level);
     expect(onGpu(fixture, level)).toBe(0.8);
     runtime.dispose();
+  });
+
+  it("a file saved mid-fade and opened again in the SAME session shows its end state", async () => {
+    const { runtime, level, bank } = await stage();
+    const fixture = recordingBackend();
+    let current = runtime;
+    await mount(runtime, fixture, (next) => {
+      current = next;
+    });
+    for (let index = 0; index < 3; index += 1) await frame(fixture, level);
+    await act(async () => {
+      await runtime.bus.execute("preset.recall", { nodeId: bank, name: "bright", morph: { seconds: 60, curve: "linear" } }, runtime.invocation);
+    });
+    await frame(fixture, level);
+    expect(onGpu(fixture, level) as number).toBeLessThan(0.8);
+    const live = runtime.bus.frameClock();
+
+    // Saved as it stands — destination in the values, the fade in the record — and opened
+    // through the bus, the door the file picker uses. An open adopts a NEW runtime.
+    const text = serializeProjectDocument(runtime.projectDocument());
+    await act(async () => {
+      await runtime.bus.execute("project.open", { text, fileName: "saved.loom.json" }, runtime.invocation);
+    });
+    await settle();
+    expect(current).not.toBe(runtime);
+    expect(parseMorphRecords(current.bus.store.getGraph().nodes[bank]?.parameters["morphs"])).toHaveLength(1);
+
+    const mark = fixture.events.length;
+    for (let index = 0; index < 12; index += 1) {
+      await act(async () => {
+        fixture.tick();
+      });
+    }
+    // The new clock counts from zero in a NEW epoch — and its first frames pass straight
+    // through the absolute time the saved record was stamped at.
+    const reopened = current.bus.frameClock();
+    expect(reopened?.epoch).toBeDefined();
+    expect(reopened?.epoch).not.toBe(live?.epoch);
+    expect(reopened?.absTimeSeconds).toBeGreaterThan(live?.absTimeSeconds ?? Number.POSITIVE_INFINITY);
+
+    // Nothing the reopened document pushed is a fading value …
+    const pushed = fixture.events
+      .slice(mark)
+      .flatMap((event) => (event.kind === "uniforms" && event.passId.startsWith(level) && "brightness" in event.values ? [event.values["brightness"]] : []));
+    expect(pushed.filter((value) => value !== 0.8)).toEqual([]);
+    // … and the plan the backend holds for it is the destination.
+    const plans = fixture.events.flatMap((event) => (event.kind === "compile" ? [event.plan] : []));
+    const pass = (plans.at(-1)?.passes ?? []).find((entry) => "nodeId" in entry && entry.nodeId === level && "uniforms" in entry);
+    expect((pass as { uniforms?: Record<string, unknown> } | undefined)?.uniforms?.["brightness"]).toBe(0.8);
+    current.dispose();
   });
 });

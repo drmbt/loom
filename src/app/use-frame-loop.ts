@@ -349,21 +349,25 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
    * T1497b — THE ABSOLUTE CLOCK'S EPOCH, minted here and nowhere else in the app.
    *
    * A preset morph is stamped with `absTimeSeconds`, and that count is only meaningful
-   * within one run of the clock (the design doc §5.4). A new id is minted at the three
-   * moments a stamp stops meaning what it said:
+   * within one run of the clock (the design doc §5.4). The rule is the doc's: a new id
+   * EVERY TIME THE ABSOLUTE CLOCK STARTS FROM ZERO — which is two places in this file:
    *
-   *  - the SESSION starts — so a file saved mid-fade reopens at its end state;
+   *  - a TRANSPORT is built (the driver effect below). That is the session's start, and
+   *    it is also every document open: an open adopts a new runtime, the bus changes, and
+   *    the effect builds a fresh clock at zero. A file saved mid-fade and reopened would
+   *    otherwise replay its fade when the new clock reached the old stamp;
    *  - a RENDER zeroes the clock (`resetAbsoluteClock` below) — so a take renders the
    *    document as saved, and a record stamped at live second 3 does not replay three
-   *    seconds into every export;
-   *  - ANOTHER DOCUMENT opens — the count runs on through a load (T461), so without this
-   *    a file saved mid-fade and reopened in the same session would pick its fade back up
-   *    at whatever the clock happens to read.
+   *    seconds into every export.
    *
-   * The clock reads it through a getter, per frame, like `fps` and `seed`.
+   * And once more where the clock does NOT restart but a stamp still stops meaning what
+   * it said: a DOCUMENT BOUNDARY that keeps the transport. The count runs on through it
+   * (T461), and the incoming file's records belong to another performance.
+   *
+   * The clock reads it through a getter, per frame, like `fps` and `seed`. Null until the
+   * first transport exists, which is also until the first frame does.
    */
   const epochRef = useRef<string | null>(null);
-  if (epochRef.current === null) epochRef.current = mintClockEpoch();
   const documentBoundaryRef = useRef(false);
   if (documentBoundary) {
     // Once per boundary, not once per render that still carries the flag.
@@ -546,6 +550,8 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
     // driver, and every one of those must advance exactly one frame per call or a slow
     // machine renders a different file (T431, §V44). `driverRef` is read PER FRAME for the
     // same reason fps is — the answer changes while the transport does not.
+    // T1497b: a new clock counts from zero, so it counts in a new epoch. See `epochRef`.
+    epochRef.current = mintClockEpoch();
     const transport = liveClock({
       fps: () => fpsRef.current,
       // T1100: the document's seed, per frame (§V45's live half). See `seedRef` above.

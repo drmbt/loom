@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { componentNodeType, createComponentSystem } from "../domain/components/index.ts";
 import { hasAnimatedParameters } from "../domain/channels/graph-channels.ts";
+import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import { defaultParameters } from "../domain/parameters/validate.ts";
 import { NO_MORPHS, buildMorphIndex, morphableKey } from "../domain/presets/morph-index.ts";
 import { parseMorphRecords } from "../domain/presets/morph.ts";
@@ -173,7 +174,7 @@ describe("T1497b: a structural key in a recall CUTS — it never animates (§5.3
   it("no key the compiler treats as structure is morphable, for every registered node type", () => {
     const structural: string[] = [];
     for (const definition of allNodeDefinitions) {
-      const stored = defaultParameters(definition.parameters);
+      const stored = defaultParameters(effectiveParameterSchema(definition, {}));
       const subject: GraphNode = node("subject", definition.type, stored);
       for (const key of structuralParameterKeys(definition, stored)) {
         structural.push(`${definition.type}.${key}`);
@@ -185,7 +186,7 @@ describe("T1497b: a structural key in a recall CUTS — it never animates (§5.3
     expect(structural).toContain("cache.frames");
     expect(structural).toContain("window.width");
     const windowOut = allNodeDefinitions.find((definition) => definition.type === "window") as NodeDefinition;
-    expect(windowOut.parameters["width"]?.compileTime).not.toBe(true);
+    expect(effectiveParameterSchema(windowOut, {})["width"]?.compileTime).not.toBe(true);
     // The legitimate case the rule must not swallow: an ordinary number fades.
     const level = allNodeDefinitions.find((definition) => definition.type === "level") as NodeDefinition;
     expect(morphableKey(level, node("subject", "level"), "brightness")).toBe(true);

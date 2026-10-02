@@ -31,7 +31,7 @@ export const presetsNode: NodeDefinition = {
   title: "Presets",
   category: "value",
   description:
-    "A bank of presets: named snapshots of the parameters of the nodes in Targets, stored and recalled whole. Targets lists node names (every parameter of that node — for a component, its published page) or node.key (one parameter), separated by spaces or commas. Store saves them under a name; Recall writes every one back in one step that one undo reverses, expressions and modes included. A target that has since been deleted, or a value that no longer fits, is skipped with a warning naming it; a recall with nothing left to apply is refused. The Recall pulse recalls the preset named in Select, so a MIDI pad, a beat or a Button can fire it. With Morph above zero a recall fades instead of cutting: the parameters take their new values at once — the inspector, a save and undo all see the destination — and the picture blends to them over that many seconds, pausing when the transport pauses and running on through a loop. Numbers, vectors and colours blend; a menu, a switch, a name or a structural setting cuts at the start. Recalling again mid-fade carries on from what is on screen, and editing a fading parameter by hand takes it over at once. An export renders the end state. Use one bank per look, per FX chain, or per set of layers.",
+    "A bank of presets: named snapshots of the parameters of the nodes in Targets, stored and recalled whole. Targets lists node names (every parameter of that node — for a component, its published page) or node.key (one parameter), separated by spaces or commas. Store saves them under a name; Recall writes every one back in one step that one undo reverses, expressions and modes included. A target that has since been deleted, or a value that no longer fits, is skipped with a warning naming it; a recall with nothing left to apply is refused. The Recall pulse recalls the preset named in Select, so a MIDI pad, a beat or a Button can fire it. With Morph above zero a recall fades to its values instead of cutting. Use one bank per look, per FX chain, or per set of layers.",
   tags: ["preset", "presets", "bank", "snapshot", "recall", "store", "look", "perform", "live", "cue"],
   inputs: [],
   outputs: [],
@@ -65,7 +65,7 @@ export const presetsNode: NodeDefinition = {
       range: "floor",
       unit: "seconds",
       description:
-        "How long a recall takes to arrive, in seconds of playback. 0 cuts. A preset that carries its own morph, or a recall that names one, overrides this.",
+        "How long a recall takes to arrive, in seconds of playback. 0 cuts. The parameters take their new values at once — the inspector, a save and undo all see the destination — and the picture blends to them, pausing when the transport pauses and running on through a loop. Numbers, vectors and colours blend; a menu, a switch, a name or a structural setting cuts at the start. Recalling again mid-fade carries on from what is on screen; editing a fading parameter by hand takes it over at once. An export renders the end state. A preset that carries its own morph, or a recall that names one, overrides this.",
     },
     curve: {
       type: "enum",
