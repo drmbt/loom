@@ -2,7 +2,7 @@ import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
-import type { ChannelResolver } from "@domain/parameters/resolve.ts";
+import type { ChannelResolver, ParameterMorphs } from "@domain/parameters/resolve.ts";
 import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
 import {
   createMediaClock,
@@ -138,6 +138,15 @@ export interface MediaTransportContext {
   readonly registry: NodeRegistryView;
   /** The value graph's resolver, so a DRIVEN speed or trim reaches here like any other. */
   readonly channels: () => ChannelResolver | undefined;
+  /**
+   * T1524b: the preset morphs in flight over `graph()` (`FlattenedGraph.morphs`), so a
+   * speed, a trim or a volume a bank is fading reaches the element at the value the
+   * picture is at that frame, not at its destination. Read per step, like `channels`, and
+   * REQUIRED like it: an optional getter nothing supplies is how a door ends up resolving
+   * without it (§V272). `undefined` — and `cue()`, which has no frame — reads what the
+   * document stores.
+   */
+  readonly morphs: () => ParameterMorphs | undefined;
 }
 
 /**
@@ -184,6 +193,7 @@ export function createMediaTransportRunner(
       registry: context.registry,
       ...(frame === undefined ? {} : { frame }),
       ...(channels === undefined ? {} : { channels }),
+      morphs: context.morphs(),
     }));
     return (key) => resolved.get(key)?.value;
   };

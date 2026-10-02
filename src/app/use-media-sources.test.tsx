@@ -2,6 +2,8 @@
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { GraphDocument } from "@domain/types/graph.ts";
+import type { GraphPatchOperation } from "@domain/types/patch.ts";
+import { serializePresetBank } from "@domain/presets/bank.ts";
 import type { MediaSource, LoomBackend } from "@runtime/backend/index.ts";
 import { mediaSourceIdFor } from "@nodes/definitions/index.ts";
 import { createAppRuntime } from "./app-runtime.ts";
@@ -1638,5 +1640,103 @@ describe("the media pulses on a still (T1223, §V369)", () => {
     );
     expect(reloaded.status).toBe("applied");
     expect(reloaded.output).toEqual({ reloaded: 1 });
+  });
+});
+
+/**
+ * T1524b — THE HOOK HANDS ITS RUNNERS THE MORPH INDEX (§V222, the wiring half).
+ *
+ * `media-playback.test.ts` proves a runner GIVEN the index resolves the fading value. It
+ * cannot see whether `useMediaSources` gives it one — "built, tested, never wired" — so
+ * this is the real runtime: the document in its store, the recall on its bus, the index
+ * off its flattening, and the ELEMENT asserted.
+ */
+describe("T1524b — a speed a preset bank is fading reaches the element at its half-way rate", () => {
+  it("speed 1 → 3 over 1 s plays at rate 2 on frame 30, and at 3 once the fade has landed", async () => {
+    const runtime = newRuntime();
+    const seed = (operations: GraphPatchOperation[]) =>
+      runtime.bus.execute(
+        "graph.applyPatch",
+        { baseRevision: runtime.bus.store.getRevision(), operations, label: "seed" },
+        runtime.invocation,
+      );
+    const first = await seed([
+      { op: "addNode", ref: "$movie", type: "movieFileIn", position: { x: 0, y: 0 }, parameters: { file: "blob:clip", speed: 1, playMode: "timeline" } },
+    ]);
+    expect(first.status, JSON.stringify(first.diagnostics)).toBe("applied");
+    const movie = first.output.createdIds["$movie"] ?? "";
+    const name = runtime.bus.store.getGraph().nodes[movie]?.label ?? "";
+    const second = await seed([
+      {
+        op: "addNode",
+        ref: "$bank",
+        type: "presets",
+        position: { x: 0, y: 300 },
+        parameters: {
+          targets: name,
+          presets: serializePresetBank({ version: 1, presets: [{ name: "fast", values: { [name]: { speed: 3 } } }] }),
+        },
+      },
+    ]);
+    expect(second.status, JSON.stringify(second.diagnostics)).toBe("applied");
+    const bank = second.output.createdIds["$bank"] ?? "";
+
+    const { backend, registered } = fakeBackend();
+    const element = fakeElement();
+    let wiring: MediaWiring | null = null;
+    const environment: MediaEnvironment = {
+      openStill: () => Promise.reject(new Error("no still in this test")),
+      openFile: () => Promise.resolve(element as unknown as MediaElement),
+      openCamera: () => Promise.reject(new Error("not used")),
+    };
+    const harness = () => (
+      <Harness
+        runtime={runtime}
+        backend={backend}
+        // What `app.tsx` passes: the flat document of the same flattening the index rides on.
+        graph={runtime.flattened.current().graph}
+        environment={environment}
+        onWiring={(value) => {
+          wiring = value;
+        }}
+      />
+    );
+    let view: ReturnType<typeof render> | null = null;
+    await act(async () => {
+      view = render(harness());
+    });
+    await waitFor(() => expect(registered.has(mediaSourceIdFor(movie))).toBe(true));
+
+    // The recall is stamped with the clock of the last frame produced: absolute time 0.
+    const EPOCH = "session-1";
+    runtime.bus.attachFrameClock(() => ({ epoch: EPOCH, absTimeSeconds: 0 }));
+    await act(async () => {
+      const result = await runtime.bus.execute("preset.recall", { nodeId: bank, name: "fast", morph: { seconds: 1, curve: "linear" } }, runtime.invocation);
+      expect(result.status).toBe("applied");
+    });
+    expect(runtime.bus.store.getGraph().nodes[movie]?.parameters["speed"]).toBe(3);
+    await act(async () => {
+      (view as unknown as ReturnType<typeof render>).rerender(harness());
+    });
+
+    const frameAt = (index: number): FrameEvaluationInput => ({
+      timeSeconds: index / 60,
+      deltaSeconds: 1 / 60,
+      frameIndex: index,
+      mode: "realtime",
+      randomSeed: 1,
+      absFrameIndex: index,
+      absTimeSeconds: index / 60,
+      absEpoch: EPOCH,
+    });
+    act(() => (wiring as unknown as MediaWiring).sync(frameAt(30)));
+    // Half-way: rate 2, half a second in — second ONE. Unwired, the document's 3 gives 1.5.
+    expect(element.playbackRate).toBe(2);
+    expect(element.currentTime).toBe(1);
+
+    act(() => (wiring as unknown as MediaWiring).sync(frameAt(60)));
+    expect(element.playbackRate).toBe(3);
+    expect(element.currentTime).toBe(3);
+    runtime.dispose();
   });
 });

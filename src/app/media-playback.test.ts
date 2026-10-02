@@ -13,6 +13,8 @@ import { MEDIA_OPEN_TIMEOUT_MS, awaitMediaReady } from "./media-sources.ts";
 import { mediaPlayhead, type MediaTransportValues } from "@domain/media/transport.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
+import { buildMorphIndex } from "@domain/presets/morph-index.ts";
+import { presetBankNode, presetSession } from "@domain/presets/test-support.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
 
@@ -187,6 +189,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
       graph: () => graph,
       registry,
       channels: () => undefined,
+      morphs: () => undefined,
     });
 
   it("a node with NO transport parameters stored reads the manifest default, which T586 moved to free run", () => {
@@ -262,6 +265,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
       graph: () => graph,
       registry,
       channels: () => (channel) => (channel === "rate" ? 4 : undefined),
+      morphs: () => undefined,
     });
     expect(runner.step(frame(2), 10)?.head.position).toBe(8);
   });
@@ -271,6 +275,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
       graph: () => graphWith({}),
       registry,
       channels: () => undefined,
+      morphs: () => undefined,
     });
     expect(runner.step(frame(1), 10)).toBeNull();
   });
@@ -469,6 +474,7 @@ describe("T1155 — a DRIVEN transport parameter reaches the playhead", () => {
       graph: () => drivenCue,
       registry,
       channels: () => sweeping(index) as never,
+      morphs: () => undefined,
     });
 
     const positions: number[] = [];
@@ -495,5 +501,82 @@ describe("T1155 — a DRIVEN transport parameter reaches the playhead", () => {
        retained 4 appears exactly where the sweep passes through it (frames 40 and 100)
        and nowhere else, which a resolve without the reader could never produce. */
     expect(positions.filter((value) => value === 4)).toHaveLength(2);
+  });
+});
+
+/**
+ * T1524b — A TRANSPORT PARAMETER A PRESET BANK IS FADING FOLLOWS THE FADE.
+ *
+ * A recall with a morph commits the destination at once, so a runner that resolves
+ * without the morph index hands the element the END speed on the frame of the recall
+ * while the picture is still on its way. The recall is the real command on the real bus;
+ * the index is the real `buildMorphIndex`; what is asserted is the transport the runner
+ * resolved — the value `applyMediaPlayhead` hands a `<video>` — and the playhead it gives.
+ */
+describe("T1524b — a morphing transport parameter reaches the runner at its half-way value", () => {
+  const registry = createNodeRegistry(allNodeDefinitions).view();
+  const EPOCH = "session-1";
+  const frameAt = (index: number, epoch: string | null = EPOCH): FrameEvaluationInput => ({
+    timeSeconds: index / 60,
+    deltaSeconds: 1 / 60,
+    frameIndex: index,
+    mode: "realtime",
+    randomSeed: 1,
+    absFrameIndex: index,
+    absTimeSeconds: index / 60,
+    ...(epoch === null ? {} : { absEpoch: epoch }),
+  });
+
+  /** A timeline-locked movie at speed 1 and volume 0.2, and a bank that takes them to 3 and 0.8 over one second. */
+  async function fading(): Promise<GraphDocument> {
+    const session = presetSession(
+      {
+        revision: 1,
+        groups: {},
+        edges: {},
+        nodes: {
+          m: { id: "m", type: "movieFileIn", label: "movie1", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { playMode: "timeline", speed: 1, trimStart: 0 } },
+          bank: presetBankNode("bank", "looks", "movie1", [{ name: "fast", values: { movie1: { speed: 3, trimStart: 2 } } }]),
+        },
+      } as unknown as GraphDocument,
+      registry,
+    );
+    session.at({ epoch: EPOCH, absTimeSeconds: 0 });
+    await session.recall("bank", "fast", { seconds: 1, curve: "linear" });
+    return session.graph();
+  }
+
+  it("speed 1 → 3 and trimStart 0 → 2 over 1 s read 2 and 1 at frame 30, and their end values once landed", async () => {
+    const graph = await fading();
+    // The document holds the destination from the moment of the recall.
+    expect(graph.nodes["m"]?.parameters).toMatchObject({ speed: 3, trimStart: 2 });
+    const morphs = buildMorphIndex({ document: graph, registry });
+    const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, morphs: () => morphs });
+
+    const start = runner.step(frameAt(0), 10);
+    expect(start?.transport.speed).toBe(1);
+    expect(start?.transport.trimStart).toBe(0);
+
+    const half = runner.step(frameAt(30), 10);
+    expect(half?.transport.speed).toBe(2);
+    expect(half?.transport.trimStart).toBe(1);
+    // The same resolve the audio door reads `volume` from (§B8's shape) carries the fade too.
+    expect(half?.read("speed")).toBe(2);
+    // …and it is the playhead that moves: half a second at speed 2, from the trim's 1.
+    expect(half?.head.start).toBe(1);
+    expect(half?.head.position).toBe(2);
+
+    const landed = runner.step(frameAt(60), 10);
+    expect(landed?.transport.speed).toBe(3);
+    expect(landed?.transport.trimStart).toBe(2);
+    expect(runner.step(frameAt(600), 10)?.transport.speed).toBe(3);
+    // Another epoch — a take — reads the destination on every frame.
+    expect(runner.step(frameAt(30, "take-1"), 10)?.transport.speed).toBe(3);
+  });
+
+  it("cut the wire: a runner handed no index hands over the end value at half-time", async () => {
+    const graph = await fading();
+    const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, morphs: () => undefined });
+    expect(runner.step(frameAt(30), 10)?.transport.speed).toBe(3);
   });
 });

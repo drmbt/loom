@@ -425,7 +425,9 @@ export function useGraphCompile(
   const channels = useMemo(() => {
     // T615: the FLAT document. T238's single-channel shorthand is the backstop behind the
     // value graph, and a backstop that cannot see inside a component is not one.
-    const graphChannels = graphChannelResolver(flatGraph, runtime.registry);
+    // T1524b: with the morph index of the same flattening, so a source parameter a bank is
+    // fading publishes the fading value here too, not its destination.
+    const graphChannels = graphChannelResolver(flatGraph, runtime.registry, flattened.morphs);
     if (extraChannels.length === 0) return graphChannels;
     const merged: ChannelResolver = (channel, context) => {
       for (const resolver of extraChannels) {
@@ -438,7 +440,7 @@ export function useGraphCompile(
       return graphChannels(channel, context);
     };
     return merged;
-  }, [extraChannels, flatGraph, runtime]);
+  }, [extraChannels, flatGraph, flattened, runtime]);
 
   /**
    * The SAME object, published to the bus (T593, B121, §V61).

@@ -19,6 +19,10 @@ import { liveClock } from "@domain/transport/live-clock.ts";
 import { projectRange } from "@domain/types/graph.ts";
 import { absFrameIndexOf } from "@domain/types/frame.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
+import { createValueGraphSession } from "@domain/channels/value-graph.ts";
+import { createComponentSystem } from "@domain/components/index.ts";
+import { presetBankNode, presetSession } from "@domain/presets/test-support.ts";
+import { flattenComponents } from "@compiler/flatten.ts";
 import { messagesFor, oscPumpEmittingTypes, oscPumpListeningTypes, useOscBridge } from "./use-osc-bridge.ts";
 
 /**
@@ -394,6 +398,108 @@ describe("oscOut transmits only what the document configured (§T950 gap 4)", ()
     // that answered a stale number would still have sent, to the wrong place — and one
     // that answered frame 0 forever would have sent both datagrams to 9001.
     expect(sends.map((message) => (message as { to?: { port?: number } }).to?.port)).toEqual([9001, 9002]);
+  });
+
+  /*
+   * T1524b — A PRESET MORPH REACHES THE WIRE AS A FADE, NOT AS A JUMP.
+   *
+   * A recall with a morph commits the destination at once. What an `oscOut` SENDS is the
+   * value graph's bag, and what it sends it WITH — Rate, destination — is the pump's own
+   * parameter read; both have to see the fade, and one thing must not: a port is where a
+   * datagram goes, and a port that faded would pass through other ports.
+   *
+   * The recall is the real command on the real bus, the index is the one flattening
+   * builds, the bags are the real value graph's, and what is asserted is the packet handed
+   * to the device socket.
+   */
+  const MORPH_EPOCH = "session-1";
+  const morphFrame = (index: number): FrameEvaluationInput => ({
+    timeSeconds: index / 60,
+    deltaSeconds: 1 / 60,
+    frameIndex: index,
+    mode: "realtime",
+    randomSeed: 1,
+    absFrameIndex: index,
+    absTimeSeconds: index / 60,
+    absEpoch: MORPH_EPOCH,
+  });
+
+  /** `document` after the bank's `go` preset is recalled with a 1 s linear morph on frame 0, flattened. */
+  async function fadingDocument(document: GraphDocument) {
+    const session = presetSession(document, registry);
+    session.at({ epoch: MORPH_EPOCH, absTimeSeconds: 0 });
+    await session.recall("bank", "go", { seconds: 1, curve: "linear" });
+    const system = createComponentSystem(registry, []);
+    return flattenComponents({ graph: session.graph(), registry: system.nodes, components: system.components.view() });
+  }
+
+  type Sent = { to?: { port?: number }; packets?: ReadonlyArray<{ address: string; args: number[] }> };
+  const sendsOf = (socket: ReturnType<typeof fakeSocket>): Sent[] =>
+    socket.sent.filter((message) => message["type"] === "deviceSend") as Sent[];
+
+  it("T1524b: the value an oscOut sends is 0.5 at frame 30 of a 1 s linear 0.2 → 0.8, and 0.8 once landed", async () => {
+    const base = graphOf({
+      knob: { type: "constant", label: "knob", parameters: { value: 0.2 } },
+      send: { type: "oscOut", label: "send1", parameters: { host: "127.0.0.1", port: 9001, rate: 120 } },
+    });
+    const flattened = await fadingDocument({
+      ...base,
+      nodes: { ...base.nodes, bank: presetBankNode("bank", "looks", "knob", [{ name: "go", values: { knob: { value: 0.8 } } }]) },
+      edges: { e1: { id: "e1", source: { nodeId: "knob", portId: "out" }, target: { nodeId: "send", portId: "in" } } },
+    } as unknown as GraphDocument);
+    // The document holds the destination; only what is rendered — and sent — is on its way.
+    expect(flattened.graph.nodes["knob"]?.parameters["value"]).toBe(0.8);
+
+    const { socket, hook } = pumped(flattened.graph);
+    const values = createValueGraphSession(registry);
+    for (const index of [30, 60]) {
+      const frame = morphFrame(index);
+      // The order `advanceChannels` runs them in: the value graph, then the pump (§V179).
+      const result = values.evaluate(flattened.graph, frame, { morphs: flattened.morphs });
+      await act(async () => {
+        hook.result.current.sync(frame, flattened.graph, registry, result.byId, result.resolver, LIVE, flattened.morphs);
+        await Promise.resolve();
+      });
+    }
+    expect(sendsOf(socket).map((message) => message.packets)).toEqual([
+      [{ address: "/send1", args: [0.5] }],
+      [{ address: "/send1", args: [0.8] }],
+    ]);
+  });
+
+  it("T1524b: the pump's own Rate fades, and its PORT cuts to the destination", async () => {
+    const base = graphOf({
+      send: { type: "oscOut", label: "send1", parameters: { host: "127.0.0.1", port: 9001, rate: 240 } },
+    });
+    const flattened = await fadingDocument({
+      ...base,
+      nodes: { ...base.nodes, bank: presetBankNode("bank", "looks", "send1", [{ name: "go", values: { send1: { port: 9003, rate: 2 } } }]) },
+    } as unknown as GraphDocument);
+    // Both keys are numbers, so the index offers both to the fold; the pump is what knows a port from a quantity.
+    expect([...(flattened.morphs.keysOf("send") ?? [])].sort()).toEqual(["port", "rate"]);
+
+    const { socket, hook } = pumped(flattened.graph);
+    const bags = new Map([["send" as NodeId, { value: 0.5 }]]);
+    const run = async (frames: readonly number[]): Promise<Sent[]> => {
+      socket.sent.length = 0;
+      for (const index of frames) {
+        await act(async () => {
+          hook.result.current.sync(morphFrame(index), flattened.graph, registry, bags, NO_CHANNELS, LIVE, flattened.morphs);
+          await Promise.resolve();
+        });
+      }
+      return sendsOf(socket);
+    };
+
+    // Mid-fade the Rate is about 120 a second (240 → 2, half-way), so three consecutive
+    // 60 fps frames are three sends. The document's 2 a second would let only the first through.
+    const during = await run([30, 31, 32]);
+    // And every one of them goes to the END port: half-way to 9003 is 9002, which nobody named.
+    expect(during.map((message) => message.to?.port)).toEqual([9003, 9003, 9003]);
+
+    // Landed: the document's rate, two a second — one send in three consecutive frames.
+    const after = await run([90, 91, 92]);
+    expect(after.map((message) => message.to?.port)).toEqual([9003]);
   });
 
   it("is refusing because the NODE says it acts on the world, not because it is called oscOut", () => {

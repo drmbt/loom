@@ -871,6 +871,8 @@ export function App({
     mediaControls,
     // T1229: the grid a bound file is pre-analysed on — the same rate the track below records at.
     () => projectFps(runtime.settings),
+    // T1524b: the morph index of that same flattening, so a fading volume or speed follows the fade.
+    () => runtime.flattened.current().morphs,
   );
   // T452: the recorder WRAPS that read, so the track holds what the engine actually saw.
   const audioTrack = useAudioTrack({
@@ -927,6 +929,8 @@ export function App({
          * and one frame is a real firing for the hardware this axis exists to protect.
          */
         renderRangeHolderFor(runtime.bus).current?.busy() === true ? "blocked" : "live-session",
+        // T1524b: the same index the value graph above and the plan resolve with.
+        runtime.flattened.current().morphs,
       );
       // T950 — the laser pump's assessment, same policy source and the same reasoning
       // as osc.sync above: a take is not a live session, checked per frame.

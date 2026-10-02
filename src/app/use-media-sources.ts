@@ -762,6 +762,8 @@ export function useMediaSources(
               graph: () => graphRef.current,
               registry: runtimeRef.current.registry,
               channels: () => channelsRef.current,
+              // T1524b: the index of the same flattening `graph` is (T615), read per step.
+              morphs: () => runtimeRef.current.flattened.current().morphs,
             });
             livePlayers.set(request.nodeId, { element: playable, runner });
             playerOpened.push(request.nodeId);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
-import type { ChannelResolver } from "@domain/parameters/resolve.ts";
+import type { ChannelResolver, ParameterMorphs } from "@domain/parameters/resolve.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
@@ -182,6 +182,14 @@ export interface OscBridgeBinding {
      * thing it would silently default is a datagram at somebody's lighting rig.
      */
     policy: SideEffectPolicy,
+    /**
+     * T1524b: the preset morphs in flight over `graph` (`FlattenedGraph.morphs`). The bags
+     * already carry the fade — the value graph resolved them with this index — and this is
+     * what puts the node's OWN parameters on the same read path: a Rate a bank is fading,
+     * and an expression on one that reads a fading parameter by `op()`. A PORT is where a
+     * datagram goes, not how much of something there is, so it never fades (see `sync`).
+     */
+    morphs?: ParameterMorphs,
   ) => void;
   /**
    * Why OSC is not working, keyed to the node it concerns (§V359, §V365).
@@ -290,6 +298,7 @@ export function useOscBridge(options: OscBridgeOptions = {}): OscBridgeBinding {
       bags: ReadonlyMap<NodeId, Readonly<Record<string, number>>>,
       channels: ChannelResolver,
       policy: SideEffectPolicy,
+      morphs?: ParameterMorphs,
     ): void => {
       const live = client.current;
       if (live === null) return;
@@ -317,7 +326,18 @@ export function useOscBridge(options: OscBridgeOptions = {}): OscBridgeBinding {
        * Built once per frame, not per node — two frames in one evaluation is a value that
        * is right on its own and wrong in context.
        */
-      const readOptions = createParameterReadOptions({ graph, registry, frame, channels });
+      const readOptions = createParameterReadOptions({ graph, registry, frame, channels, morphs });
+      /*
+       * T1524b — A PORT CUTS. A number fades through every value in between, and for a
+       * port those are other ports — or no port at all (9001 → 9003 passes 9001.7): a
+       * listening socket would close and reopen each frame of the fade and a send would
+       * go to an address nobody named. So the ports are read as the document stores
+       * them, the destination, exactly as they were before the pump took the index — own
+       * key or one read through `op()`. Only a frame with a fade in flight pays for the
+       * second read.
+       */
+      const settledOptions =
+        morphs?.activeAt(frame) === true ? createParameterReadOptions({ graph, registry, frame, channels }) : null;
 
       /*
        * §T1006 — THE SET THIS PUMP OWNS IS DERIVED, IN BOTH DIRECTIONS.
@@ -351,11 +371,13 @@ export function useOscBridge(options: OscBridgeOptions = {}): OscBridgeBinding {
         // same way a driven `speed` does on a media node — nothing here knows about modes.
         const resolved = resolveParameters(node, definition, readOptions);
         const read = (key: string): unknown => resolved.get(key)?.value;
+        const settled = settledOptions === null ? resolved : resolveParameters(node, definition, settledOptions);
+        const readPort = (key: string): unknown => settled.get(key)?.value;
 
         if (listens) {
           // The parameter the DEFINITION named, not an assumed `"port"` — that is what
           // makes the declaration load-bearing rather than decorative.
-          const port = read(definition.listensOn?.portParameter ?? "");
+          const port = readPort(definition.listensOn?.portParameter ?? "");
           if (typeof port === "number" && Number.isInteger(port) && port > 0) {
             ports.push(port);
             wanting.push(nodeId);
@@ -366,7 +388,7 @@ export function useOscBridge(options: OscBridgeOptions = {}): OscBridgeBinding {
         if (!emits) continue;
 
         const host = typeof read("host") === "string" ? (read("host") as string).trim() : "";
-        const port = typeof read("port") === "number" ? (read("port") as number) : 0;
+        const port = typeof readPort("port") === "number" ? (readPort("port") as number) : 0;
         // A node with no destination is not asking for a helper — it is unconfigured, and
         // saying "start the helper" about it would be answering a question nobody asked.
         if (host === "" || port <= 0) continue;

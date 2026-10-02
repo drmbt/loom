@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { AudioFeatures, FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { FrameRange, GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
-import type { ChannelResolver } from "@domain/parameters/resolve.ts";
+import type { ChannelResolver, ParameterMorphs } from "@domain/parameters/resolve.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
 import { createHopAnalyser } from "@domain/audio/analysis/hop-analyser.ts";
@@ -443,6 +443,11 @@ export function useAudioInput(
   controls?: MediaControlRegistry,
   /** T1229: the project's frame rate — the grid a file is pre-analysed on. Absent, no file is pre-analysed. */
   fps?: () => number,
+  /**
+   * T1524b: the preset morphs in flight over the graph `getGraph` returns, so a transport
+   * parameter or the volume a bank is fading follows the fade instead of cutting to its end.
+   */
+  getMorphs?: () => ParameterMorphs | undefined,
 ): AudioInputSource {
   const captureRef = useRef<LiveCapture | null>(null);
   const configRef = useRef<CaptureConfig | null>(null);
@@ -465,6 +470,8 @@ export function useAudioInput(
   const configKeyRef = useRef<string>("");
   const getGraphRef = useRef(getGraph);
   getGraphRef.current = getGraph;
+  const getMorphsRef = useRef(getMorphs);
+  getMorphsRef.current = getMorphs;
   const registryRef = useRef(registry);
   registryRef.current = registry;
   /** T493: the transport of the node whose file is playing. Null for a mic. */
@@ -637,6 +644,7 @@ export function useAudioInput(
               graph: () => getGraphRef.current(),
               registry: nodeRegistry,
               channels: () => channelsRef.current,
+              morphs: () => getMorphsRef.current?.(),
             });
             runnerRef.current = runner;
             releaseControlRef.current =
