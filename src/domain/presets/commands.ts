@@ -91,13 +91,38 @@ import { bankMorphRecords } from "./morph-index.ts";
  * app has none, and a morph asked for there commits as a cut and says so
  * (`preset.recall.morphUnavailable`) — the values land either way.
  *
- * ## Seams left for the later slices
+ * ## A shot: other banks' presets, in the same patch (T1499b, the design doc §8.1)
+ *
+ * A preset's `recalls` name other banks' presets. The planner EXPANDS them depth-first
+ * and lays every preset's values into one map before it resolves a single name, so a shot
+ * is still one patch — one revision, one undo, one audit entry — however many banks it
+ * reaches, and its morph is still ONE record, in the recalled bank, over every key the
+ * shot changed. What is laid later wins: a preset's recalls in the order written, then
+ * the preset's OWN values over all of them (ruling 14). The same holds at every level, so
+ * the shot itself always has the last word. A nested preset's own `morph` is not read:
+ * the shot is the recall, and §5.1's ladder is about the recall.
+ *
+ * A CYCLE is refused, naming the banks on it, and so is a nesting deeper than
+ * `MAX_RECALL_DEPTH`: both are mistakes in the bank's text, not targets that went away,
+ * so nothing is written rather than a guess at where to stop. A recall that names a bank
+ * or a preset that is NOT THERE is ruling 4's case instead — skipped with a warning that
+ * names it, and the rest applies.
+ *
+ * Each nested bank a preset actually wrote something from gets its `current` in the same
+ * patch: `current` is "the last preset recalled", and a Panel beside the shots bank would
+ * otherwise go on highlighting the look the shot just replaced.
+ *
+ * ## Layer on/off (T1498b's seam, the design doc §4.4 step 5 and §7.2)
+ *
+ * A preset's `on` map is written as `setNodeUi { bypassed: !on }` on each named Layer, in
+ * the same patch, so a layer's on/off is undone with the rest of the recall. Always a cut
+ * — it is structural. Only a Layer: the doc's `on` is "layer on/off", and bypassing an
+ * arbitrary node from a bank is not something it rules in.
+ *
+ * ## The seam the cue list uses
  *
  * `planPresetRecall` is THE recall planner: the cue list's GO (§T1500b) runs it with the
- * cue's morph and adds its own `current`/`standby` to the same patch. A preset's `on`
- * (§T1498b) and `recalls` (§T1499b) are parsed by `bank.ts` and NOT applied here; a
- * recall that meets one says so by name rather than dropping it quietly. A shot's nested
- * values (§T1499b) join the planner's one `written` map, so its morph is still one record.
+ * cue's morph and adds its own `current`/`standby` to the same patch.
  */
 
 declare module "../types/commands.ts" {
@@ -327,15 +352,24 @@ export function capturePresetValues(
 
 export interface PresetRecallPlan {
   /**
-   * One `setParameters` per target node, then the bank's `current` (with its `morphs` when
-   * they changed), then any other bank whose records lost keys. Empty when nothing applies.
+   * One `setParameters` per target node, one `setNodeUi` per layer switched, then the
+   * bank's `current` (with its `morphs` when they changed), then every other bank the
+   * recall touched: a nested bank's `current` (T1499b), a bank whose records lost keys.
+   * Empty when nothing applies.
    */
   readonly operations: readonly GraphPatchOperation[];
+  /** `node.key` for every value written, and `layer.on` for every layer switched. */
   readonly applied: readonly string[];
   readonly skipped: readonly string[];
   readonly diagnostics: readonly RuntimeDiagnostic[];
   /** T1497b: the morph a record was written for, or `null` when this recall is a cut. */
   readonly morph: MorphSpec | null;
+  /**
+   * T1499b: the preset's `recalls` cannot be expanded at all (a cycle, or nested too
+   * deep). `operations` and `applied` are empty and `diagnostics` holds the error that
+   * names why — so a caller that refuses on "nothing applied" already refuses this.
+   */
+  readonly refused: boolean;
 }
 
 export interface PresetRecallPlanOptions {
@@ -359,10 +393,122 @@ function recallValue(existing: StoredParameter | undefined, stored: StoredParame
 }
 
 /**
- * THE recall planner (the design doc §4.4 steps 3 and 5): resolves the preset's node
- * names in `graph` NOW, checks each key against that node's effective schema, and builds
- * the operations for the one patch. Pure — no bus, no store — so the cue list's GO
- * (§T1500b) runs exactly this and a pad recall and a cue recall cannot disagree.
+ * T1499b — HOW DEEP A SHOT'S `recalls` MAY NEST (ruling 14: "depth 4"). The recalled
+ * preset is depth 0 and each `recalls` hop is one deeper, so a shot may reach four banks
+ * down a chain and a fifth hop is refused.
+ */
+export const MAX_RECALL_DEPTH = 4;
+
+/** The node type a preset's `on` switches: `layerNode.type` (`src/nodes/definitions/layer.ts`). */
+const LAYER_NODE_TYPE = "layer";
+
+/** One preset on a recall's expansion, and how many `recalls` hops it sits from the recalled one. */
+interface RecallStep {
+  readonly bank: GraphNode;
+  readonly preset: Preset;
+  readonly depth: number;
+}
+
+/** A value on the merged map, and the preset that had the last word on it. */
+interface Laid<T> {
+  readonly value: T;
+  readonly from: RecallStep;
+}
+
+/** How a message names the preset an entry came from: the recalled one bare, a nested one with its bank. */
+function said(step: RecallStep): string {
+  return step.depth === 0 ? `Preset "${step.preset.name}"` : `Preset "${step.preset.name}" (${bankName(step.bank)})`;
+}
+
+const quotedList = (names: readonly string[]): string =>
+  names.length < 2 ? `"${names[0] ?? ""}"` : `${names.slice(0, -1).map((name) => `"${name}"`).join(", ")} and "${names.at(-1) ?? ""}"`;
+
+/**
+ * T1499b — a preset's `recalls`, expanded depth-first (the design doc §4.4 step 2) into
+ * the order their values are LAID: a preset's recalls first, in the order written, then
+ * the preset itself, so the recalled preset comes last and its own values win.
+ *
+ * A cycle or a chain deeper than `MAX_RECALL_DEPTH` returns the refusal instead. A cycle
+ * is the same (bank, preset) pair met again on the path that led to it — two presets of
+ * one bank on a chain is not one, and ends.
+ */
+function expandRecalls(
+  graph: GraphDocument,
+  top: RecallStep,
+  skip: (name: string, code: string, message: string, nodeId?: NodeId) => void,
+): { ok: true; steps: readonly RecallStep[] } | { ok: false; diagnostic: RuntimeDiagnostic } {
+  const steps: RecallStep[] = [];
+  const path: RecallStep[] = [];
+  const spelled = (chain: readonly RecallStep[]): string => chain.map((step) => `${bankName(step.bank)}.${step.preset.name}`).join(" → ");
+  const recalling = `Recalling "${top.preset.name}" (${bankName(top.bank)})`;
+
+  const visit = (step: RecallStep): RuntimeDiagnostic | null => {
+    path.push(step);
+    for (const recall of step.preset.recalls ?? []) {
+      const entry = `${recall.bank}.${recall.preset}`;
+      const asks = `${said(step)} recalls "${recall.preset}" from "${recall.bank}"`;
+      const bankId = nodeByName(graph, recall.bank);
+      const bank = bankId === undefined ? undefined : graph.nodes[bankId];
+      if (bank === undefined) {
+        skip(entry, "preset.recalls.missing", `${asks}, and no node is named "${recall.bank}"; skipped.`, step.bank.id);
+        continue;
+      }
+      if (bank.type !== PRESETS_NODE_TYPE) {
+        skip(entry, "preset.recalls.type", `${asks}, and "${recall.bank}" is a ${bank.type} node, not a Presets bank; skipped.`, bank.id);
+        continue;
+      }
+      const parsed = parsePresetBank(bank.parameters["presets"]);
+      if (!parsed.ok) {
+        skip(entry, "preset.recalls.malformed", `${asks}, and bank "${recall.bank}" cannot be read (${parsed.reason}); skipped.`, bank.id);
+        continue;
+      }
+      const preset = parsed.bank.presets.find((candidate) => candidate.name === recall.preset);
+      if (preset === undefined) {
+        skip(entry, "preset.recalls.unknown", `${asks}, and bank "${recall.bank}" has no preset "${recall.preset}"; skipped.`, bank.id);
+        continue;
+      }
+      const next: RecallStep = { bank, preset, depth: step.depth + 1 };
+      const loop = path.findIndex((on) => on.bank.id === bank.id && on.preset.name === preset.name);
+      if (loop >= 0) {
+        const cycle = [...path.slice(loop), next];
+        const banks = [...new Set(cycle.map((on) => bankName(on.bank)))];
+        return diagnostic(
+          "error",
+          "preset.recall.cycle",
+          `${recalling} goes round in a circle: ${spelled(cycle)}. ${
+            banks.length === 1 ? `Bank ${quotedList(banks)} recalls itself` : `Banks ${quotedList(banks)} recall each other`
+          }; nothing was changed.`,
+          step.bank.id,
+          "Take one of those recalls out of the Presets field.",
+        );
+      }
+      if (next.depth > MAX_RECALL_DEPTH) {
+        return diagnostic(
+          "error",
+          "preset.recall.depth",
+          `${recalling} nests its recalls ${String(next.depth)} deep (${spelled([...path, next])}); the limit is ${String(MAX_RECALL_DEPTH)}. Nothing was changed.`,
+          step.bank.id,
+          "Recall the deeper presets from the shot itself.",
+        );
+      }
+      const refusal = visit(next);
+      if (refusal !== null) return refusal;
+    }
+    path.pop();
+    steps.push(step);
+    return null;
+  };
+
+  const refusal = visit(top);
+  return refusal === null ? { ok: true, steps } : { ok: false, diagnostic: refusal };
+}
+
+/**
+ * THE recall planner (the design doc §4.4 steps 2, 3 and 5): expands the preset's
+ * `recalls`, resolves every node name in `graph` NOW, checks each key against that node's
+ * effective schema, and builds the operations for the one patch. Pure — no bus, no store —
+ * so the cue list's GO (§T1500b) runs exactly this and a pad recall and a cue recall
+ * cannot disagree.
  */
 export function planPresetRecall(
   graph: GraphDocument,
@@ -383,44 +529,84 @@ export function planPresetRecall(
     diagnostics.push(diagnostic("warning", code, message, nodeId));
   };
 
-  for (const nodeName of Object.keys(preset.values).sort()) {
-    const record = preset.values[nodeName] ?? {};
+  const expansion = expandRecalls(graph, { bank: bankNode, preset, depth: 0 }, skip);
+  if (!expansion.ok) {
+    return { operations: [], applied: [], skipped, diagnostics: [...diagnostics, expansion.diagnostic], morph: null, refused: true };
+  }
+
+  /*
+   * T1499b: ONE map for the whole shot, laid in expansion order, so whatever is laid later
+   * wins — a nested preset under the one that recalls it, the recalled preset over all.
+   * Everything below reads this map, never a preset, which is why a shot is one patch and
+   * its morph one record.
+   */
+  const values = new Map<string, Map<string, Laid<StoredParameter>>>();
+  const layers = new Map<string, Laid<boolean>>();
+  for (const step of expansion.steps) {
+    for (const [nodeName, record] of Object.entries(step.preset.values)) {
+      if (nodeByName(graph, nodeName) === step.bank.id) {
+        skip(nodeName, "preset.target.self", `${said(step)} holds values for the bank itself; they were skipped.`, step.bank.id);
+        continue;
+      }
+      const laid = values.get(nodeName) ?? new Map<string, Laid<StoredParameter>>();
+      values.set(nodeName, laid);
+      for (const [key, stored] of Object.entries(record)) {
+        // A compound laid over ANOTHER preset's per-component slot (`color` over `color.r`,
+        // §V113) takes the channel too, or the nested value would still win it.
+        for (const [other, under] of laid) {
+          if (under.from !== step && parseComponentKey(other)?.base === key) laid.delete(other);
+        }
+        laid.set(key, { value: stored, from: step });
+      }
+    }
+    for (const [nodeName, on] of Object.entries(step.preset.on ?? {})) layers.set(nodeName, { value: on, from: step });
+  }
+  /** The presets something was actually written from. */
+  const wrote = new Set<RecallStep>();
+
+  for (const nodeName of [...values.keys()].sort()) {
+    const record = values.get(nodeName) ?? new Map<string, Laid<StoredParameter>>();
+    /** A node-level skip is said once per preset that held values for the node. */
+    const skipNode = (code: string, message: (who: string) => string, nodeId?: NodeId): void => {
+      skipped.push(nodeName);
+      for (const from of new Set([...record.values()].map((laid) => laid.from))) {
+        diagnostics.push(diagnostic("warning", code, message(said(from)), nodeId));
+      }
+    };
     const nodeId = nodeByName(graph, nodeName);
     const node = nodeId === undefined ? undefined : graph.nodes[nodeId];
     if (node === undefined) {
-      skip(nodeName, "preset.target.missing", `Preset "${preset.name}": no node is named "${nodeName}"; its values were skipped.`);
-      continue;
-    }
-    if (node.id === bankNode.id) {
-      skip(nodeName, "preset.target.self", `Preset "${preset.name}" holds values for the bank itself; they were skipped.`, node.id);
+      skipNode("preset.target.missing", (who) => `${who}: no node is named "${nodeName}"; its values were skipped.`);
       continue;
     }
     const definition = registry.get(node.type);
     if (definition === undefined) {
-      skip(nodeName, "preset.target.unknownType", `Preset "${preset.name}": "${nodeName}" is a ${node.type} node this build does not know; skipped.`, node.id);
+      skipNode("preset.target.unknownType", (who) => `${who}: "${nodeName}" is a ${node.type} node this build does not know; skipped.`, node.id);
       continue;
     }
     const schema = effectiveParameterSchema(definition, node.parameters);
     const writes: Record<string, StoredParameter> = {};
-    for (const key of Object.keys(record).sort()) {
-      const stored = record[key];
+    for (const [key, laid] of [...record].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+      const stored = laid.value;
+      const who = said(laid.from);
       const name = `${nodeName}.${key}`;
       const keyDefinition = definitionFor(schema, key);
-      if (stored === undefined || keyDefinition === undefined) {
-        skip(name, "preset.target.key", `Preset "${preset.name}": "${nodeName}" has no parameter "${key}"; skipped.`, node.id);
+      if (keyDefinition === undefined) {
+        skip(name, "preset.target.key", `${who}: "${nodeName}" has no parameter "${key}"; skipped.`, node.id);
         continue;
       }
       if (keyDefinition.type === "pulse") {
-        skip(name, "preset.target.pulse", `Preset "${preset.name}": "${name}" is a pulse, which fires rather than holds a value; skipped.`, node.id);
+        skip(name, "preset.target.pulse", `${who}: "${name}" is a pulse, which fires rather than holds a value; skipped.`, node.id);
         continue;
       }
       const invalid = validateParameters(schema, { [key]: stored }, node.id);
       if (invalid.length > 0) {
-        skip(name, "preset.value.invalid", `Preset "${preset.name}": the value for "${name}" does not fit it (${invalid[0]?.message ?? "invalid"}); skipped.`, node.id);
+        skip(name, "preset.value.invalid", `${who}: the value for "${name}" does not fit it (${invalid[0]?.message ?? "invalid"}); skipped.`, node.id);
         continue;
       }
       writes[key] = recallValue(node.parameters[key], stored);
       applied.push(name);
+      wrote.add(laid.from);
       // What the key holds NOW, as a slot a fade can start from: nothing stored is the
       // default Store would have captured for it (`unstoredValue`).
       (before[nodeName] ??= {})[key] = node.parameters[key] ?? unstoredValue(node, schema, key, keyDefinition);
@@ -446,15 +632,33 @@ export function planPresetRecall(
     }
   }
 
-  const unapplied: Array<[keyof Preset, string]> = [
-    ["on", "layer on/off (§T1498b)"],
-    ["recalls", "other banks' presets (§T1499b)"],
-  ];
-  for (const [field, what] of unapplied) {
-    if (preset[field] === undefined) continue;
-    diagnostics.push(
-      diagnostic("warning", "preset.recall.unapplied", `Preset "${preset.name}" holds ${what}, which this build does not apply; its values were recalled as a cut.`, bankNode.id),
-    );
+  // Layer on/off (the design doc §4.4 step 5, §7.2): the bypass flag, in the same patch.
+  for (const layerName of [...layers.keys()].sort()) {
+    const laid = layers.get(layerName);
+    if (laid === undefined) continue;
+    const name = `${layerName}.on`;
+    const nodeId = nodeByName(graph, layerName);
+    const node = nodeId === undefined ? undefined : graph.nodes[nodeId];
+    if (node === undefined) {
+      skip(name, "preset.on.missing", `${said(laid.from)}: no node is named "${layerName}"; its on/off was skipped.`);
+      continue;
+    }
+    if (node.type !== LAYER_NODE_TYPE) {
+      skip(name, "preset.on.notLayer", `${said(laid.from)}: "${layerName}" is a ${node.type} node, and on/off switches a Layer; skipped.`, node.id);
+      continue;
+    }
+    operations.push({ op: "setNodeUi", nodeId: node.id, ui: { bypassed: !laid.value } });
+    applied.push(name);
+    wrote.add(laid.from);
+  }
+
+  /*
+   * T1499b: every OTHER bank a preset was actually written from shows that preset as its
+   * `current`. A bank reached twice shows the later one; the recalled bank's own is below.
+   */
+  const elsewhere = new Map<NodeId, Record<string, StoredParameter>>();
+  for (const step of expansion.steps) {
+    if (step.bank.id !== bankNode.id && wrote.has(step)) elsewhere.set(step.bank.id, { current: step.preset.name });
   }
 
   let morph: MorphSpec | null = null;
@@ -531,10 +735,13 @@ export function planPresetRecall(
       parameters: { current: preset.name, ...(morphs === serializeMorphRecords(own) ? {} : { morphs }) },
     });
     for (const [bankId, records] of book.others) {
-      operations.push({ op: "setParameters", nodeId: bankId, parameters: { morphs: serializeMorphRecords(records) } });
+      elsewhere.set(bankId, { ...elsewhere.get(bankId), morphs: serializeMorphRecords(records) });
+    }
+    for (const bankId of [...elsewhere.keys()].sort()) {
+      operations.push({ op: "setParameters", nodeId: bankId, parameters: elsewhere.get(bankId) ?? {} });
     }
   }
-  return { operations, applied, skipped, diagnostics, morph };
+  return { operations, applied, skipped, diagnostics, morph, refused: false };
 }
 
 /** The bank's own parameters, through the one read path (§V61). */
@@ -696,6 +903,8 @@ export function registerPresetCommands(bus: LoomBus): void {
         morph: presetMorph(own, preset, settings),
         clock: context.frameClock,
       });
+      // T1499b: a cycle or too deep a nesting is refused by the planner, which names it.
+      if (plan.refused) return recallRefusal(revision, [...plan.diagnostics], name, plan.skipped);
       if (plan.applied.length === 0) {
         // Ruling 4: refused only when NOTHING is left — and then loudly, naming why.
         return recallRefusal(

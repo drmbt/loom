@@ -1,7 +1,7 @@
 /**
  * T1496b (§T1398b): preset banks — the data (`bank.ts`) and the Store / Recall commands.
  * T1497b: the morph record (`morph.ts`) and the per-revision index the resolver reads
- * (`morph-index.ts`).
+ * (`morph-index.ts`). T1499b: shots — a preset's `recalls` and `on`, in the same planner.
  */
 export {
   EMPTY_PRESET_BANK_JSON,
@@ -28,6 +28,7 @@ export type { MorphBookkeeping, MorphBookkeepingInput, MorphKeys, MorphRecord } 
 export { NO_MORPHS, bankMorphRecords, buildMorphIndex, hasMorphRecords, morphableKey } from "./morph-index.ts";
 export type { MorphIndexInput, PublishedOrigin, PublishedOrigins } from "./morph-index.ts";
 export {
+  MAX_RECALL_DEPTH,
   PRESET_RECALL_COMMAND,
   PRESET_STORE_COMMAND,
   RENDER_BLOCKED_PULSE_COMMANDS,

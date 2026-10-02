@@ -98,7 +98,7 @@ export const presetsNode: NodeDefinition = {
       label: "Presets",
       default: EMPTY_PRESET_BANK_JSON,
       description:
-        "The bank: { version: 1, presets: [{ name, values: { node: { key: value } } }] }. Written by Store; editable by hand. Each value is kept as stored — an expression stays an expression.",
+        "The bank: { version: 1, presets: [{ name, values: { node: { key: value } } }] }. Written by Store; editable by hand. Each value is kept as stored — an expression stays an expression. By hand a preset can also hold on: { layerName: true | false }, which switches Layer nodes on or off in the same step, and recalls: [{ bank, preset }], which recalls other banks' presets in the same step (a shot): its own values win over theirs, a later recall over an earlier one, up to 4 deep, and banks that recall each other in a circle are refused.",
     },
     /*
      * T1497b — THE FADES IN FLIGHT, as document state for the bank's own reason: one undo

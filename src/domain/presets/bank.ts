@@ -47,9 +47,13 @@ export interface Preset {
   readonly name: string;
   /** node NAME → key → the STORED form, written back verbatim (ruling 2). */
   readonly values: PresetValues;
-  /** node NAME → layer on/off. Applied by §T1498b (S3); a recall here reports it unapplied. */
+  /** Layer NAME → on/off (the design doc §7.2). A recall writes it as `ui.bypassed = !on`. Always a cut. */
   readonly on?: Readonly<Record<string, boolean>>;
-  /** Other banks' presets in the same patch. Applied by §T1499b (S4); reported unapplied here. */
+  /**
+   * A SHOT (T1499b, the design doc §8.1): other banks' presets recalled in the same patch,
+   * in this order, under this preset's own values. Cycle-checked and depth-limited by the
+   * planner (`commands.ts`).
+   */
   readonly recalls?: ReadonlyArray<{ readonly bank: string; readonly preset: string }>;
   /** This preset's own morph. Absent means the bank's `morph` / `curve` (T1497b, §5.1). */
   readonly morph?: MorphSpec;

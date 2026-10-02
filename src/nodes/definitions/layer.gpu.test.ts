@@ -1,6 +1,10 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { alice, contextFor } from "../../domain/commands/test-support.ts";
+import { presetBankNode, presetSession } from "../../domain/presets/test-support.ts";
 import type { GraphDocument, GraphEdge, GraphNode, ProjectSettings } from "../../domain/types/graph.ts";
+import { createNodeRegistry } from "../registry/registry.ts";
+import { allNodeDefinitions } from "./index.ts";
 // The sanctioned Dawn host: `src/runtime/backend/vgpu/` is the only place a `vgpu`
 // import is legal (§V3), and this is that boundary's node entry point.
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
@@ -24,6 +28,9 @@ import { decodeComponents } from "../../tests/headless/pixel-compare.ts";
  *    are not, and swapping the name swaps both the passes and the picture.
  *  - A DRIVEN OPACITY moves the picture per frame, off a retained static the render would
  *    show if the expression were not reaching the GPU.
+ *  - A PRESET SWITCHES IT (T1499b, S3's last acceptance line): a bank's `on`, recalled
+ *    through the real bus, is the same bypass — after the recall's one patch the picture's
+ *    chain has no pass, and one undo brings it back.
  *
  * ## Why these colours, and why rgba16float
  *
@@ -271,5 +278,59 @@ describe("T1498b — Layer on Dawn", () => {
     expect(second).toEqual(mix(BELOW, PICTURE, 0.5));
     expect(first).not.toEqual(second);
     expect(first).not.toEqual(PICTURE);
+  }, 120_000);
+
+  it("a preset's `on` bypasses the layer in its one patch: after the recall the picture's chain has no pass", async () => {
+    requireDawn();
+    // The bank rides in the document like any node. `dark` also moves the layer's opacity,
+    // so the on/off is seen to land WITH a value, in the same revision.
+    const graph = layerGraph({ layer: { picture: "city", blend: "replace" } });
+    const withBank = {
+      ...graph,
+      nodes: {
+        ...graph.nodes,
+        bank: presetBankNode("bank", "looks", "layer1", [
+          { name: "dark", values: { layer1: { opacity: 0.5 } }, on: { layer1: false } },
+          { name: "lit", values: {}, on: { layer1: true } },
+        ]),
+      },
+    } as GraphDocument;
+    const session = presetSession(withBank, createNodeRegistry(allNodeDefinitions).view());
+    const chain = ["citySrc", "city", "layer"];
+
+    // Premise: before the recall the layer is on, its picture cooks and shows.
+    const before = await render(session.graph(), "out");
+    for (const nodeId of chain) expect(cooked(before).has(nodeId), `before: ${nodeId}`).toBe(true);
+    expect(centre(before)).toEqual(PICTURE);
+
+    const revision = session.store.view.getRevision();
+    await session.recall("bank", "dark");
+    // ONE patch: the bypass and the opacity arrived in the same revision.
+    expect(session.store.view.getRevision()).toBe(revision + 1);
+    expect(session.graph().nodes["layer"]?.ui?.bypassed).toBe(true);
+    expect(session.graph().nodes["layer"]?.parameters["opacity"]).toBe(0.5);
+
+    const off = await render(session.graph(), "out");
+    for (const nodeId of [...chain, "smokeSrc", "smoke"]) {
+      expect(cooked(off).has(nodeId), `after the recall: ${nodeId} still has a pass`).toBe(false);
+    }
+    expect(cooked(off).has("base")).toBe(true);
+    // Off, not faded: at opacity 0.5 a layer still ON would show the half-mix.
+    expect(centre(off)).toEqual(BELOW);
+    expect(centre(off)).not.toEqual(mix(BELOW, PICTURE, 0.5));
+
+    // One undo takes the bypass back with the value: the chain cooks and the picture shows.
+    const undone = await session.bus.execute("graph.undo", {}, contextFor(alice));
+    expect(undone.status).toBe("applied");
+    const again = await render(session.graph(), "out");
+    for (const nodeId of chain) expect(cooked(again).has(nodeId), `after undo: ${nodeId}`).toBe(true);
+    expect(centre(again)).toEqual(PICTURE);
+
+    // And `on: true` is the way back a performer uses: off by one preset, on by another.
+    await session.recall("bank", "dark");
+    await session.recall("bank", "lit");
+    const lit = await render(session.graph(), "out");
+    for (const nodeId of chain) expect(cooked(lit).has(nodeId), `lit: ${nodeId}`).toBe(true);
+    expect(centre(lit)).toEqual(mix(BELOW, PICTURE, 0.5));
   }, 120_000);
 });
