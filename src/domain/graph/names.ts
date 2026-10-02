@@ -4,6 +4,7 @@ import { isParameterSlot } from "../parameters/slots.ts";
 import { sourceReferenceTokens, sourceReferencesOf } from "./source-references.ts";
 import { PRESETS_NODE_TYPE, parsePresetBank, serializePresetBank, type Preset, type PresetValues } from "../presets/bank.ts";
 import { parseMorphRecords, serializeMorphRecords, type MorphRecord } from "../presets/morph.ts";
+import { CUE_LIST_NODE_TYPE, parseCueList, serializeCueList } from "../presets/cue-list.ts";
 import type { StoredParameter } from "../types/parameters.ts";
 import { parsePanelBoard, serializePanelBoard } from "../../nodes/definitions/controls.ts";
 
@@ -325,12 +326,31 @@ const panelBoardClause: ReferenceClause = (node, name, rename) => {
   return 1;
 };
 
+/**
+ * Kind 7 (T1500b, §V320): a CUE LIST names each cue's BANK by node name. Left behind, a
+ * renamed bank's cues would be refused as naming no node, and a cue list pasted beside its
+ * banks would fire the ORIGINALS' presets — §V320's first-wins misbind, on stage. Only
+ * `bank` moves: a cue's own name, its `preset`, and the list's `current` / `standby` are
+ * not node names, and a node rename must not touch a cue that happens to share a spelling.
+ */
+const cueListClause: ReferenceClause = (node, name, rename) => {
+  if (node.type !== CUE_LIST_NODE_TYPE) return 0;
+  const parsed = parseCueList(node.parameters["cues"]);
+  if (!parsed.ok || !parsed.list.cues.some((cue) => cue.bank === name)) return 0;
+  if (rename !== null) {
+    const cues = parsed.list.cues.map((cue) => (cue.bank === name ? { ...cue, bank: rename } : cue));
+    node.parameters["cues"] = serializeCueList({ version: 1, cues });
+  }
+  return 1;
+};
+
 const REFERENCE_CLAUSES: readonly ReferenceClause[] = [
   expressionClause,
   drivenChannelClause,
   sourceReferenceClause,
   presetBankClause,
   panelBoardClause,
+  cueListClause,
 ];
 
 /**

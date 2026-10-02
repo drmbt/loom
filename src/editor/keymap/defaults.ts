@@ -551,6 +551,26 @@ const APP_BINDINGS: readonly KeyBinding[] = [
     description: "Open the selected Window Out nodes' windows — every Window Out when none is selected — or close them if they are all open.",
   },
   {
+    // T1500b: the cue list's GO and BACK. Global, because the performer's hands are on the
+    // show and not on a pane, and chords a browser leaves alone, beside `perform.toggle`.
+    // No node travels with a key: the command acts on the ONE cue list whose Keys switch is
+    // on, and refuses — naming the lists — when there is none or more than one.
+    id: "cue.go",
+    keys: "mod+alt+g",
+    context: "global",
+    command: "cue.go",
+    label: "Cue list: GO",
+    description: "Fire the standby cue of the cue list whose Keys switch is on, and move its standby on.",
+  },
+  {
+    id: "cue.back",
+    keys: "mod+alt+b",
+    context: "global",
+    command: "cue.back",
+    label: "Cue list: BACK",
+    description: "Fire the cue before the current one, on the cue list whose Keys switch is on.",
+  },
+  {
     id: "runtime.resetFeedback",
     keys: "mod+shift+r",
     context: "global",

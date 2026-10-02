@@ -96,6 +96,8 @@ const REFLECTING = WITH_CODE.filter(
 describe("T1052 — a node's code editors sort last", () => {
   it("covers every node type in the catalogue that declares one", () => {
     expect(WITH_CODE.map((definition) => definition.type).sort()).toEqual([
+      // T1500b: the cue list's JSON, hand-editable like the bank's.
+      "cueList",
       "customWgsl",
       "customWgslMulti",
       "materialWgsl",

@@ -384,6 +384,8 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   panel: "pure",
   // T1496b: a preset bank — no ports, no passes; a recall is a document edit, never a frame read.
   presets: "pure",
+  // T1500b: a cue list — no ports, no passes; a GO is a document edit, never a frame read.
+  cueList: "pure",
   valueBeat: "pure",
   valueSelect: "pure",
   audioPattern: "pure",

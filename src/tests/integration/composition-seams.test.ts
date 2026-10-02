@@ -1136,6 +1136,16 @@ const COMMANDS_WITH_NO_INVOKER: ReadonlyArray<{ name: string; reason: string }> 
     reason:
       "KNOWN GAP, sliced on purpose. §T1496b (S1) landed the bank and its commands; the Store BUTTON is §T1501b's (the inspector's bank section and the Panel row) and the agent's store_preset is §T1502b's. Recall already has an invoker — the bank's own pulse names it.",
   },
+  {
+    name: "cue.fire",
+    reason:
+      "KNOWN GAP, sliced on purpose. §T1500b (S5) landed the cue list and its commands; firing a NAMED cue is the agent's cue_fire, which is §T1502b's. GO and BACK already have invokers — the list's own pulses and the two keys name them.",
+  },
+  {
+    name: "cue.setStandby",
+    reason:
+      "KNOWN GAP, sliced on purpose. §T1500b (S5) landed the command; the surface that moves the standby is a TAP on a cue in the Panel's cue-list row (§T1501b), the phone's cueList control (§T1503b) and the agent's cue_set_standby (§T1502b).",
+  },
 ];
 
 describe("§V356/B68 — every command has something that invokes it", () => {

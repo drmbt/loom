@@ -27,6 +27,8 @@ describe("the code-parameter census (T492)", () => {
       )
       .sort();
     expect(census).toEqual([
+      // T1500b: the cue list, hand-editable structured data like the bank.
+      "cueList.cues:json",
       "customWgsl.source:wgsl",
       // T1365b: Custom WGSL with more inputs carries the same source parameter.
       "customWgslMulti.source:wgsl",
@@ -216,6 +218,8 @@ describe("core catalogue (T70, T40)", () => {
       "panel",
       // T1496b: the preset bank — Store/Recall a set of nodes' parameters as one step.
       "presets",
+      // T1500b: the cue list — GO / BACK through an ordered list of preset recalls.
+      "cueList",
       // T414: sound as channels — the value family's third input source after Mouse
       // and the trio. Deliberately named for what it IS, not a TD analog.
       "audioIn",

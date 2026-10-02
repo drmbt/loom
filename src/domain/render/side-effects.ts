@@ -282,6 +282,8 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   panel: "none",
   // T1496b: a preset bank writes the document through the bus; nothing leaves the process.
   presets: "none",
+  // T1500b: a cue list writes the document through the bus; nothing leaves the process.
+  cueList: "none",
   valueBeat: "none",
   valueSelect: "none",
   audioPattern: "none",

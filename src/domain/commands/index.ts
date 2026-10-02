@@ -11,6 +11,7 @@ import { registerParameterCommands } from "./parameter-commands.ts";
 import { registerValidateCommand } from "./validate-command.ts";
 import { registerSettingsCommands } from "./settings-commands.ts";
 import { registerPresetCommands } from "../presets/commands.ts";
+import { registerCueCommands } from "../presets/cue-commands.ts";
 
 export {
   CapabilityDeniedError,
@@ -126,6 +127,8 @@ export function createDomainBus(options: DomainBusOptions = {}): { bus: LoomBus;
   // T1496b: preset Store/Recall are graph edits like any other, so every bus has them —
   // the app, the headless helper and the tests alike, with no second registration site.
   registerPresetCommands(bus);
+  // T1500b: the cue list's GO / BACK / fire / standby, beside the recall they are made of.
+  registerCueCommands(bus);
   return { bus, store };
 }
 export { LOOM_CLIPBOARD_TYPE, decodeLoomClipboard, encodeLoomClipboard } from "./loom-clipboard.ts";

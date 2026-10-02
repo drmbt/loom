@@ -33,7 +33,7 @@ import { renderRangeHolderFor } from "./render-range.ts";
  * `renderFrameRange` steps this same transport, so this observer runs once per exported
  * frame — measured, not assumed: a reset pulse fires during a take exactly as it does in
  * playback, which is right (it is part of the picture). A pulse whose command EDITS THE
- * DOCUMENT is the exception (`RENDER_BLOCKED_PULSE_COMMANDS`: a preset recall today): a
+ * DOCUMENT is the exception (`RENDER_BLOCKED_PULSE_COMMANDS`: a preset recall, and a cue list's GO and BACK): a
  * render shows the document as saved and must leave it as it found it. The watcher still
  * STEPS on those frames, so the armed levels stay true and the first live frame after the
  * take does not see a stale edge; only the dispatch is withheld. The holder's `busy()` is

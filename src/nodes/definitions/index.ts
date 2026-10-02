@@ -44,6 +44,7 @@ import { valueGraphNodeDefinitions } from "./value-graph-nodes.ts";
 import { valueStructureNodeDefinitions } from "./value-structure-nodes.ts";
 import { controlNodeDefinitions } from "./controls.ts";
 import { presetsNode } from "./presets.ts";
+import { cueListNode } from "./cue-list.ts";
 export { audioFileInNode, audioInNode, audioPatternNode } from "./audio.ts";
 export { cameraNode, geometryNode, lightNode, renderNode, sceneNodeDefinitions } from "./scene.ts";
 import { audioFileInNode, audioInNode, audioPatternNode } from "./audio.ts";
@@ -109,6 +110,7 @@ export { pointKernelAdvancedNode, liveCountBufferId } from "./point-kernel-advan
 export { slitScanNode } from "./slit-scan.ts";
 export { midiInNode } from "./midi.ts";
 export { presetsNode } from "./presets.ts";
+export { cueListNode } from "./cue-list.ts";
 export { oscInNode, oscOutNode } from "./osc.ts";
 export {
   annotateNode,
@@ -294,6 +296,8 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   ...controlNodeDefinitions,
   // T1496b: the preset bank — Store/Recall a set of nodes' parameters as one step.
   presetsNode,
+  // T1500b: the cue list — GO / BACK through an ordered list of preset recalls.
+  cueListNode,
   audioInNode,
   audioFileInNode,
   audioPatternNode,

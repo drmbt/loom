@@ -75,6 +75,11 @@ describe("command bus — registration surface (§V39)", () => {
     // Exact, not toContain: a new registration should have to be declared here.
     expect(harness.bus.listCommands()).toEqual([
       "channel.copy",
+      // T1500b: a cue list's GO / BACK / fire / standby are document edits too.
+      "cue.back",
+      "cue.fire",
+      "cue.go",
+      "cue.setStandby",
       "graph.applyPatch",
       "graph.copySelection",
       "graph.cutSelection",
@@ -124,7 +129,8 @@ describe("command bus — registration surface (§V39)", () => {
     // is document state, so an unwired bus genuinely cannot answer them, and
     // `hasQuery(...)` staying false is what lets an adapter report that honestly instead
     // of publishing a tool that returns an empty selection nobody made.
-    expect(harness.bus.listQueries()).toEqual(["graph.audit", "graph.get", "graph.history"]);
+    // T1500b: `cue.list` reads the document, so an unwired bus CAN answer it.
+    expect(harness.bus.listQueries()).toEqual(["cue.list", "graph.audit", "graph.get", "graph.history"]);
     expect(harness.bus.hasCommand("graph.applyPatch")).toBe(true);
     expect(harness.bus.hasCommand("nope")).toBe(false);
   });

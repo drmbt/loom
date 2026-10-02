@@ -42,6 +42,7 @@ import {
   type MorphRecord,
 } from "./morph.ts";
 import { bankMorphRecords } from "./morph-index.ts";
+import { CUE_BACK_COMMAND, CUE_GO_COMMAND } from "./cue-list.ts";
 
 /**
  * T1496b (§T1398b S1) — `preset.store` and `preset.recall`: a bank's Store captures its
@@ -147,9 +148,10 @@ export const PRESET_RECALL_COMMAND = "preset.recall";
  * by a render (T467); timeline-placed cues, which an export WOULD reproduce, are §T1508b.
  *
  * Named here, by the commands that own the behaviour, and read by the app's pulse watcher
- * (`src/app/pulse-firing.ts`). The cue list's `cue.go` / `cue.back` (§T1500b) join it.
+ * (`src/app/pulse-firing.ts`). The cue list's GO and BACK (T1500b) are recalls with a
+ * position attached, so its two pulses are here for the same reason.
  */
-export const RENDER_BLOCKED_PULSE_COMMANDS: ReadonlySet<string> = new Set([PRESET_RECALL_COMMAND]);
+export const RENDER_BLOCKED_PULSE_COMMANDS: ReadonlySet<string> = new Set([PRESET_RECALL_COMMAND, CUE_GO_COMMAND, CUE_BACK_COMMAND]);
 
 export interface PresetStoreInput {
   /** The bank node. */
