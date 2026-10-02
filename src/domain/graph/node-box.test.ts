@@ -167,6 +167,14 @@ describe("T1518b — a one-socket input is one port row", () => {
     // Front (1) + Behind: two wires and the spare (3).
     expect(rowsOf(graph, "comp")).toBe(4);
   });
+
+  it("B233: a reference input that takes a wire is a row; a name-only one is not", () => {
+    // The model counts what the canvas draws, by the same predicate (`isNameOnlyInput`).
+    // A Layer draws Below AND Picture; a Feedback draws no input socket, only its output.
+    const graph = graphOf([at("layer", "layer"), at("fb", "feedback")], []);
+    expect(rowsOf(graph, "layer")).toBe(2);
+    expect(rowsOf(graph, "fb")).toBe(1);
+  });
 });
 
 /**

@@ -1,5 +1,5 @@
 import { nodeNames } from "../domain/graph/names.ts";
-import { sourceReferenceTokens, sourceReferencesOf } from "../domain/graph/source-references.ts";
+import { liveSourceReferenceTokens, sourceReferencesOf } from "../domain/graph/source-references.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
 import type { GraphDocument, GraphEdge } from "../domain/types/graph.ts";
 import type { NodeRegistryView } from "../nodes/registry/registry.ts";
@@ -54,12 +54,17 @@ export function synthesizeSourceReferenceEdges(
     const node = graph.nodes[nodeId];
     if (node === undefined) continue;
     for (const spec of sourceReferencesOf(node.type)) {
-      const tokens = sourceReferenceTokens(spec, node.parameters);
+      // B233: on an input that also takes a wire (`wire: true`), a wire WINS and the name
+      // is dormant — no synthesized edge, no refusal, and no complaint about a dormant
+      // name that dangles. The rule lives in `liveSourceReferenceTokens`, which the
+      // dependency walk and liveness read too, so none of them follows a name this skips.
+      const tokens = liveSourceReferenceTokens(spec, { id: nodeId, parameters: node.parameters }, graph.edges);
+      if (tokens.length === 0) continue; // unnamed, or the name is dormant: nothing to synthesize
       const wired = Object.values(graph.edges).find(
         (edge) => edge.target.nodeId === nodeId && edge.target.portId === spec.input,
       );
-      if (tokens.length === 0) continue; // unwired AND unnamed = the ordinary missing-input story
       if (wired !== undefined) {
+        // A NAME-ONLY input that arrives wired as well (§V285, §V372): one link, one truth.
         diagnostics.push(
           compilerDiagnostic(
             "error",

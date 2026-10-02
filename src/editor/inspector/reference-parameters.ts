@@ -1,3 +1,4 @@
+import { nodeDisplayName } from "@domain/graph/diagnostic-names.ts";
 import { nodeNames } from "@domain/graph/names.ts";
 import {
   channelTargetName,
@@ -6,7 +7,7 @@ import {
 } from "@domain/graph/parameter-dependencies.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
 import { isComponentKeyOf, parseComponentKey } from "@domain/parameters/slots.ts";
-import { sourceReferenceTokens, sourceReferencesOf } from "@domain/graph/source-references.ts";
+import { overridingWire, sourceReferenceTokens, sourceReferencesOf } from "@domain/graph/source-references.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import { REFERENCE_KIND_COLOR } from "@editor/edges/index.ts";
@@ -84,6 +85,15 @@ export function referenceParameters(
       return { name, type: target?.type ?? null };
     });
 
+    /*
+     * B233 — a wire on an input that takes one WINS, and the name written here is dormant.
+     * The compiler and the canvas both read that rule (`liveSourceReferenceTokens`); this
+     * is the third surface, and it asks the same module which wire it is. A field that
+     * went on showing the name as if it were the picture would be the panel disagreeing
+     * with the plan about what the node shows (§V109).
+     */
+    const wire = overridingWire(spec, node.id, graph.edges);
+
     models.set(spec.parameter, {
       // The canvas's own table (§T248/§T391), read here rather than copied — the swatch
       // beside the parameter and the dashed line it causes are the same colour BY
@@ -93,6 +103,7 @@ export function referenceParameters(
       candidates,
       list: spec.list === true,
       noun,
+      ...(wire === undefined ? {} : { overriddenBy: nodeDisplayName(graph, wire.source.nodeId) }),
     });
   }
 

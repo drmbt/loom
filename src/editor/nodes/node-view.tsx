@@ -11,7 +11,7 @@ import { cx } from "@ui/cx.ts";
 import { portFamilyColor } from "@ui/ports.ts";
 import { describePortType } from "@domain/graph/port-compat.ts";
 import { nameBaseFor } from "@domain/graph/names.ts";
-import { sourceReferenceForInput } from "@domain/graph/source-references.ts";
+import { isNameOnlyInput } from "@domain/graph/source-references.ts";
 import { isComponentInputBoundary, isComponentOutputBoundary } from "@nodes/definitions/index.ts";
 import { isOneSocketInput } from "@nodes/definitions/controls.ts";
 import { isComponentNodeType, parseComponentNodeType } from "@domain/components/component-type.ts";
@@ -510,9 +510,14 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
               (apply-patch's port.sourceReference). A socket the user cannot connect
               invites the wire and then refuses it, so it does not render at all; the
               relationship is already visible as the hued reference line (T248/T391).
+
+              B233: the rule is "a socket exactly where a wire is accepted", so a reference
+              input that ALSO takes a wire (a Layer's picture, a Window Out's input) is drawn
+              like any input. Without it there was nothing to drop on, and React Flow could
+              not draw an edge the document already held.
             */}
             {(definition?.inputs ?? [])
-              .filter((port) => sourceReferenceForInput(node.type, port.id) === undefined)
+              .filter((port) => !isNameOnlyInput(node.type, port.id))
               .map((port) =>
                 // T695: a variadic input is N sockets plus a spare, not one socket that
                 // swallows everything. See `VariadicPortRows`. T1518b: except the Panel's

@@ -1,5 +1,5 @@
 import { parseComponentNodeType } from "@domain/components/component-type.ts";
-import { sourceReferenceForInput } from "@domain/graph/source-references.ts";
+import { isNameOnlyInput } from "@domain/graph/source-references.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import { incomingEdgesInOrder } from "./edge-order.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
@@ -313,10 +313,11 @@ export function nodeHasPreview(node: GraphNode, definition: NodeDefinition | und
 /**
  * Port ROWS, which is the taller of the two columns — they sit side by side in a grid.
  *
- * Inputs fed by a source REFERENCE are filtered out of the rendered list (T457/§V387: a
- * socket the user cannot connect does not render), so counting the manifest's inputs
- * would overstate the height of exactly the nodes E25 is full of — `render`, `geometry`,
- * `camera` — every one of which takes its scene, material and lights by name.
+ * Inputs fed ONLY by a source REFERENCE are filtered out of the rendered list (T457/§V387:
+ * a socket the user cannot connect does not render; B233: one that also takes a wire
+ * does), so counting the manifest's inputs would overstate the height of exactly the
+ * nodes E25 is full of — `render`, `geometry`, `camera` — every one of which takes its
+ * scene, material and lights by name.
  */
 export function nodePortRows(
   node: GraphNode,
@@ -332,9 +333,7 @@ export function nodePortRows(
   graph?: Pick<GraphDocument, "edges">,
 ): number {
   if (definition === undefined) return 0;
-  const visible = definition.inputs.filter(
-    (port) => sourceReferenceForInput(node.type, port.id) === undefined,
-  );
+  const visible = definition.inputs.filter((port) => !isNameOnlyInput(node.type, port.id));
   const inputs = visible.reduce(
     (rows, port) =>
       rows +

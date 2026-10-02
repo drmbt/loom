@@ -3,7 +3,7 @@ import type { NodeId } from "../types/ids.ts";
 import { isParameterSlot } from "../parameters/slots.ts";
 import { parseExpression, type ExpressionAst } from "../expressions/index.ts";
 import { nodeNames } from "./names.ts";
-import { sourceReferenceTokens, sourceReferencesOf } from "./source-references.ts";
+import { liveSourceReferenceTokens, sourceReferencesOf } from "./source-references.ts";
 import type { SourceReferenceSpec } from "./source-references.ts";
 
 /**
@@ -198,16 +198,23 @@ export function sourceReferenceKind(
   }
 }
 
-/** The `kind: "feedback"` half: a source-reference parameter, resolved like any name. */
+/**
+ * The `kind: "feedback"` half: a source-reference parameter, resolved like any name.
+ *
+ * B233: LIVE names only. A name a wire overrides is no dependency — it draws no line,
+ * closes no cycle and keeps nothing cooking — which is the compiler's answer too, because
+ * both read `liveSourceReferenceTokens`.
+ */
 function sourceReferenceDependency(
   node: GraphNode,
   nodeId: NodeId,
   byName: ReadonlyMap<string, NodeId>,
+  edges: GraphDocument["edges"],
 ): ParameterDependency[] {
   const found: ParameterDependency[] = [];
   for (const spec of sourceReferencesOf(node.type)) {
     const kind = sourceReferenceKind(node.type, spec);
-    for (const name of sourceReferenceTokens(spec, node.parameters)) {
+    for (const name of liveSourceReferenceTokens(spec, { id: nodeId, parameters: node.parameters }, edges)) {
       const to = byName.get(name);
       if (to === undefined) continue;
       found.push({ from: nodeId, parameterKey: spec.parameter, kind, address: name, to });
@@ -242,7 +249,7 @@ export function parameterDependencies(graph: GraphDocument): Map<NodeId, Paramet
       if (to === undefined) continue;
       outgoing.push({ from: nodeId, parameterKey, kind, address, to });
     }
-    outgoing.push(...sourceReferenceDependency(node, nodeId, byName));
+    outgoing.push(...sourceReferenceDependency(node, nodeId, byName, graph.edges));
     if (outgoing.length > 0) found.set(nodeId, outgoing);
   }
 
@@ -253,7 +260,7 @@ export function parameterDependencies(graph: GraphDocument): Map<NodeId, Paramet
 export function dependenciesFrom(graph: GraphDocument, node: GraphNode, nodeId: NodeId): ParameterDependency[] {
   const byName = nodeNames(graph);
   const outgoing: ParameterDependency[] = [];
-  outgoing.push(...sourceReferenceDependency(node, nodeId, byName));
+  outgoing.push(...sourceReferenceDependency(node, nodeId, byName, graph.edges));
   for (const { parameterKey, kind, address } of bindingTargets(node.parameters)) {
     const to = byName.get(targetNameOf(kind, address));
     if (to === undefined) continue;

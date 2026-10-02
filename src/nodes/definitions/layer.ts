@@ -39,6 +39,14 @@ import type { LayerBlend } from "../shaders/layer.wgsl.ts";
  * synthesizes the edge a wire would have made, so a named picture and a wired one compile
  * to the same plan, and ONLY the named node cooks — changing the name from one look to
  * another is one parameter write that moves which chain the plan reaches.
+ *
+ * ## The picture by wire, and both at once (B233)
+ *
+ * `wire: true`: the input takes a wire in the app as well (a socket, `connect` allowed) —
+ * it carries a texture, and the name is the convenience. With both a wire and a name THE
+ * WIRE WINS and the name is dormant: it cooks nothing and draws no line, and disconnecting
+ * the wire returns the layer to the look it names. The rule is stated once, in
+ * `domain/graph/source-references.ts`.
  */
 export const layerNode: NodeDefinition = {
   type: "layer",
@@ -59,17 +67,18 @@ export const layerNode: NodeDefinition = {
       id: "picture",
       label: "Picture",
       type: RGBA_TEXTURE,
-      description: "What this layer shows: a look, or any node. Wire it, or name it in Picture.",
+      description: "What this layer shows: a look, or any node. Wire it, or name it in Picture. A wire wins over the name.",
     },
   ],
   outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],
-  sourceReferences: [{ parameter: "picture", input: "picture" }],
+  sourceReferences: [{ parameter: "picture", input: "picture", wire: true }],
   parameters: {
     picture: {
       type: "string",
       label: "Picture (a look, or any node)",
       default: "",
-      description: "A node to show, by name, instead of a wire into Picture. Only the named node renders.",
+      description:
+        "A node to show, by name, when nothing is wired into Picture. A wire wins over the name. Only the node shown renders.",
     },
     opacity: {
       type: "number",

@@ -31,7 +31,9 @@ const FIT_MODES = ["fit", "fill", "stretch"] as const;
  *
  * The wired `input`, or — the TD Window COMP's path — the node NAMED in Source, through the
  * same by-name reference Feedback and Render use (a dashed line on the canvas). The owner
- * ruled both.
+ * ruled both, so the reference declares `wire: true` (B233): with a wire AND a name the
+ * wire wins and the name is dormant until the wire is taken away
+ * (`domain/graph/source-references.ts`).
  *
  * ## The window's own settings
  *
@@ -56,13 +58,13 @@ export const windowOutNode: NodeDefinition = {
   inputs: [{ id: "input", label: "Input", type: RGBA_TEXTURE }],
   outputs: [],
   previewInput: "input",
-  sourceReferences: [{ parameter: "source", input: "input" }],
+  sourceReferences: [{ parameter: "source", input: "input", wire: true }],
   parameters: {
     source: {
       type: "string",
       label: "Source",
       default: "",
-      description: "A node to show, by name, instead of a wire into Input.",
+      description: "A node to show, by name, when nothing is wired into Input. A wire wins over the name.",
     },
     width: {
       type: "number",

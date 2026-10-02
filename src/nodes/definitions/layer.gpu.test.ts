@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { alice, contextFor } from "../../domain/commands/test-support.ts";
 import { presetBankNode, presetSession } from "../../domain/presets/test-support.ts";
 import type { GraphDocument, GraphEdge, GraphNode, ProjectSettings } from "../../domain/types/graph.ts";
+import type { GraphPatchOperation } from "../../domain/types/patch.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
 // The sanctioned Dawn host: `src/runtime/backend/vgpu/` is the only place a `vgpu`
@@ -332,5 +333,60 @@ describe("T1498b — Layer on Dawn", () => {
     const lit = await render(session.graph(), "out");
     for (const nodeId of chain) expect(cooked(lit).has(nodeId), `lit: ${nodeId}`).toBe(true);
     expect(centre(lit)).toEqual(mix(BELOW, PICTURE, 0.5));
+  }, 120_000);
+});
+
+describe("B233 — a wire into `picture`, made through the bus", () => {
+  /**
+   * The owner's ruling 11 is "by wire OR by name", and until B233 the bus refused the wire
+   * (`port.sourceReference`), so the wired cases above could only be reached by a document
+   * written by hand. Here the wire is the app's own `connect`, laid over a layer that
+   * already NAMES a look — the case that needs a rule. The rule: the wire wins and the
+   * name is dormant, so the picture is the wired look's to the bit, the named look has no
+   * pass, and taking the wire away returns the layer to the look it names.
+   */
+  it("wins over the name bit for bit, cooks only the wired look, and disconnecting returns to the name", async () => {
+    requireDawn();
+    const session = presetSession(
+      layerGraph({ layer: { picture: "smoke" } }),
+      createNodeRegistry(allNodeDefinitions).view(),
+    );
+    const apply = (operations: GraphPatchOperation[]) =>
+      session.bus.execute(
+        "graph.applyPatch",
+        { baseRevision: session.store.view.getRevision(), operations },
+        contextFor(alice),
+      );
+
+    // Premise: by name the layer shows smoke (opaque magenta over anything is magenta).
+    const named = await render(session.graph(), "layer");
+    expect(centre(named)).toEqual([1, 0, 1, 1]);
+    expect(["smokeSrc", "smoke"].every((id) => cooked(named).has(id))).toBe(true);
+
+    const connected = await apply([
+      { op: "connect", ref: "$wire", source: { nodeId: "city", portId: "out" }, target: { nodeId: "layer", portId: "picture" } },
+    ]);
+    expect(connected.diagnostics).toEqual([]);
+    expect(connected.status).toBe("applied");
+    // The name is still written: it is what the layer returns to.
+    expect(session.graph().nodes["layer"]?.parameters["picture"]).toBe("smoke");
+
+    // Cyan at coverage 0.5 over opaque yellow — city's picture, not smoke's magenta.
+    const wired = await render(session.graph(), "layer");
+    expect(centre(wired)).toEqual([0.5, 1, 0.5, 1]);
+    expect(centre(wired)).not.toEqual(centre(named));
+    // The same bytes as a layer that was only ever wired: the dormant name changes nothing.
+    const wireOnly = await render(layerGraph({ wired: "city" }), "layer");
+    expect(Array.from(wired.frames[0]!.bytes)).toEqual(Array.from(wireOnly.frames[0]!.bytes));
+    expect(["citySrc", "city"].every((id) => cooked(wired).has(id))).toBe(true);
+    // Dormant means free: the named look has no pass while the wire is there.
+    expect(["smokeSrc", "smoke"].some((id) => cooked(wired).has(id))).toBe(false);
+
+    const disconnected = await apply([{ op: "disconnect", edgeIds: [connected.output.createdIds["$wire"] as string] }]);
+    expect(disconnected.status).toBe("applied");
+    const back = await render(session.graph(), "layer");
+    expect(Array.from(back.frames[0]!.bytes)).toEqual(Array.from(named.frames[0]!.bytes));
+    expect(["smokeSrc", "smoke"].every((id) => cooked(back).has(id))).toBe(true);
+    expect(["citySrc", "city"].some((id) => cooked(back).has(id))).toBe(false);
   }, 120_000);
 });

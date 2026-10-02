@@ -128,7 +128,8 @@ export function documentLiveness(graph: GraphDocument, registry: NodeRegistryVie
       parameters: node.parameters,
       isValueSource: isValueSourceDefinition(definition),
       isSink: definition?.sink === true,
-      sourceNames: sourceReferenceNames(node.type, node.parameters),
+      // B233: LIVE names only — a name a wire overrides reaches nothing.
+      sourceNames: sourceReferenceNames(node, graph.edges),
     });
   }
   const producers = new Map<NodeId, NodeId[]>();

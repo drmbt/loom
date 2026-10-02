@@ -22,11 +22,10 @@ import { serializeCueList, type Cue } from "../../domain/presets/cue-list.ts";
  * or multiples". The performance role is a LOOK (ruling 7); the stack reads bottom to top
  * through each Layer's `below`: input → look → look → FX → mapping → output.
  *
- * EVERY LAYER TAKES ITS PICTURE BY NAME (the design doc §3 writes all three that way). It
- * is also the only way the product offers: `picture` is a source-reference input, so the
- * canvas draws no socket for it and `connect` refuses a wire into it
- * (`port.sourceReference`, `apply-patch.ts`). An example wired there would show a graph
- * nobody can build — and React Flow cannot draw an edge to a socket that is not rendered.
+ * EVERY LAYER TAKES ITS PICTURE BY NAME (the design doc §3 writes all three that way).
+ * When this was written it was also the only way the app offered; since B233 `picture`
+ * takes a wire too, and a wire wins over the name. The example stays by name: that is
+ * what a preset recalls, and swapping a look is one parameter write.
  *
  * IT SHIPS BEFORE THE FIRST GO: the rings layer ghosted at 0.25 over the input, the grid
  * and FX layers ON at opacity 0, every bank's Current and the list's Current empty. The

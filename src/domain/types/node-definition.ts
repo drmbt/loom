@@ -471,8 +471,15 @@ export interface NodeDefinition {
    * `list` marks a whitespace/comma-separated name LIST (order = draw/light order).
    * Mirrored by the domain-side SOURCE_REFERENCE_PARAMETERS table; index.test.ts pins
    * the two to each other in both directions.
+   * `wire` (B233) marks an input that ALSO takes a wire, which then wins over the name;
+   * the rule and the reason it is opt-in are in `domain/graph/source-references.ts`.
    */
-  sourceReferences?: ReadonlyArray<{ readonly parameter: string; readonly input: PortId; readonly list?: boolean }>;
+  sourceReferences?: ReadonlyArray<{
+    readonly parameter: string;
+    readonly input: PortId;
+    readonly list?: boolean;
+    readonly wire?: boolean;
+  }>;
   /**
    * Marks this node as an ACTIVE SINK: the compiler traces dependencies backward from
    * sinks and prunes everything else (§V25). Declared, never inferred — "has no outputs"

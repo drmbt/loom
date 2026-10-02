@@ -87,6 +87,13 @@ export interface ReferenceFieldProps {
   list: boolean;
   /** What the reference feeds, as the port declares it — `camera`, `material`, `scene`. */
   noun: string;
+  /**
+   * B233 — the name of the node WIRED into the input this reference feeds, when a wire is
+   * there and wins over the name. The written name is then dormant: it stays editable (it
+   * is what the input returns to when the wire goes), but the row says which wire is the
+   * source and drops the dashed mark, because the canvas draws no line for a dormant name.
+   */
+  overriddenBy?: string | undefined;
   disabled?: boolean;
   id?: string;
   describedBy?: string;
@@ -107,6 +114,7 @@ export function ReferenceField({
   candidates,
   list,
   noun,
+  overriddenBy,
   disabled = false,
   id,
   describedBy,
@@ -159,13 +167,15 @@ export function ReferenceField({
    * per NAMED reference — beside the select when the parameter holds a single name (the
    * select is the reference there), and on every chip when it holds a list (each chip is
    * its own line). `aria-hidden`, because the text beside it already says everything.
+   * B233: none while a wire overrides the name — the mark IS the line, and there is none.
    */
-  const dash = <span className={styles.referenceDash} aria-hidden />;
+  const dash = overriddenBy === undefined ? <span className={styles.referenceDash} aria-hidden /> : null;
 
   return (
     <div
       className={styles.reference}
       data-reference-noun={noun}
+      {...(overriddenBy === undefined ? {} : { "data-reference-overridden": overriddenBy })}
       /*
        * The relationship's colour, as a custom property the stylesheet reads — so the
        * dashed mark is painted from the SAME token the canvas line is stroked with. §V17
@@ -232,6 +242,16 @@ export function ReferenceField({
           onChange={pick}
         />
       </div>
+      {overriddenBy === undefined ? null : (
+        /*
+         * B233 — a STATE BADGE and the node, never a sentence (§V90): the row says the
+         * input is wired and from what; why that outranks the name is on hover.
+         */
+        <div className={styles.referenceOverride} title="A wire into this input wins over the name">
+          <TypeBadge label="wired" />
+          <span className={styles.referenceName}>{overriddenBy}</span>
+        </div>
+      )}
     </div>
   );
 }

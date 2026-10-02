@@ -539,6 +539,19 @@ describe("T457 (V387) — reference-fed inputs render NO socket", () => {
     const inputs = [...container.querySelectorAll('[data-handlepos="left"]')];
     expect(inputs).toEqual([]);
   });
+
+  it("B233: a reference input that ALSO takes a wire draws its socket (Layer's picture, Window Out's input)", () => {
+    // §V387's rule is "a socket exactly where a wire is accepted". These two are named
+    // AND wired (ruling 11, §T1391b); with no socket there was nothing to drop on and
+    // React Flow could not draw an edge the document already held.
+    const socketsOf = (type: string) =>
+      [...mountNode(type, { graph: graphWith(type), registry: catalogue }).container.querySelectorAll('[data-handlepos="left"]')].map(
+        (handle) => handle.getAttribute("data-handleid"),
+      );
+    expect(socketsOf("layer")).toEqual(["below", "picture"]);
+    cleanup();
+    expect(socketsOf("window")).toEqual(["input"]);
+  });
 });
 
 describe("T462 (§V85) — a scene payload node owns a preview slot", () => {

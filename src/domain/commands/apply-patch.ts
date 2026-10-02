@@ -518,8 +518,10 @@ function executeOperation(
       // input — the loop is a NAME, and the dashed line shows it. Legacy documents
       // that arrive wired still load and compile; they just cannot grow new wires
       // here, or the confusing shape survives forever and the migration never ends.
+      // B233: an input that declares `wire: true` (a Layer's picture, a Window Out's
+      // input) takes the wire — it carries a texture, and its name is the convenience.
       const sourceSpec = sourceReferenceForInput(targetNode.type, operation.target.portId);
-      if (sourceSpec !== undefined) {
+      if (sourceSpec !== undefined && sourceSpec.wire !== true) {
         fail(
           "port.sourceReference",
           `"${targetNode.type}" takes its source by NAME, not a wire — set its "${sourceSpec.parameter}" parameter to the source node's name instead.`,

@@ -1,6 +1,13 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { createDomainBus } from "../../domain/commands/index.ts";
+import { alice, contextFor } from "../../domain/commands/test-support.ts";
+import { createSequentialIdFactory } from "../../domain/graph/ids.ts";
+import { createGraphStore } from "../../domain/graph/store.ts";
 import type { GraphDocument, ProjectSettings } from "../../domain/types/graph.ts";
+import type { GraphPatchOperation } from "../../domain/types/patch.ts";
+import { createNodeRegistry } from "../registry/registry.ts";
+import { allNodeDefinitions } from "./index.ts";
 // The sanctioned Dawn host: `src/runtime/backend/vgpu/` is the only place a `vgpu`
 // import is legal (§V3), and this is that boundary's node entry point.
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
@@ -93,5 +100,66 @@ describe("Window Out places its input by Fit (§T1391b)", () => {
         else expect(fit(x, y), `x ${x} y ${y}`).toEqual(short(x, y - 25));
       }
     }
+  }, 120_000);
+});
+
+describe("B233 — a wire into a Window Out's input, made through the bus", () => {
+  /**
+   * §T1391b ruled "input by WIRE OR NODE NAME"; the bus refused the wire. Here a window
+   * that NAMES a flat green takes a wire from the ramp through the app's own `connect`:
+   * the wire wins, so the window shows the ramp to the bit, and disconnecting returns it
+   * to the green it names.
+   */
+  it("wins over the Source name bit for bit, and disconnecting returns to the name", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn unavailable: ${dawnError}`);
+    const GREEN = [0, 1, 0, 1];
+    const wireOnly = graph("stretch", 200, 100);
+    const named: GraphDocument = {
+      ...wireOnly,
+      nodes: {
+        ...wireOnly.nodes,
+        flat: { id: "flat", type: "solid", definitionVersion: 1, position: { x: 0, y: 200 }, parameters: { color: GREEN }, label: "flat" },
+        win: { ...wireOnly.nodes["win"]!, parameters: { ...wireOnly.nodes["win"]!.parameters, source: "flat" } },
+      },
+      edges: {},
+    };
+    const store = createGraphStore({ ids: createSequentialIdFactory("t"), initialGraph: named });
+    const { bus } = createDomainBus({ store, registry: createNodeRegistry(allNodeDefinitions).view() });
+    const apply = (operations: GraphPatchOperation[]) =>
+      bus.execute("graph.applyPatch", { baseRevision: bus.store.getRevision(), operations }, contextFor(alice));
+    const shown = async (document: GraphDocument) => {
+      const result = await renderHeadless({
+        host: nodeGpuHost(),
+        graph: document,
+        settings,
+        frames: 1,
+        capture: [0],
+        outputNodeId: "win",
+        outputPortId: "$target",
+        displaySinks: ["win"],
+      });
+      expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+      const frame = result.frames[0]!;
+      return { bytes: Array.from(frame.bytes), pixels: decodeComponents(frame.bytes, frame.format) };
+    };
+
+    // Premise: by name the window is the flat green, everywhere.
+    const byName = await shown(bus.store.getGraph());
+    expect(Array.from(byName.pixels.slice(0, 4))).toEqual(GREEN);
+
+    const connected = await apply([
+      { op: "connect", ref: "$wire", source: { nodeId: "ramp", portId: "out" }, target: { nodeId: "win", portId: "input" } },
+    ]);
+    expect(connected.diagnostics).toEqual([]);
+    expect(connected.status).toBe("applied");
+    expect(bus.store.getGraph().nodes["win"]?.parameters["source"]).toBe("flat");
+
+    // The ramp, exactly as a window that was only ever wired shows it — and not the green.
+    const wired = await shown(bus.store.getGraph());
+    expect(wired.bytes).toEqual((await shown(wireOnly)).bytes);
+    expect(wired.bytes).not.toEqual(byName.bytes);
+
+    await apply([{ op: "disconnect", edgeIds: [connected.output.createdIds["$wire"] as string] }]);
+    expect((await shown(bus.store.getGraph())).bytes).toEqual(byName.bytes);
   }, 120_000);
 });

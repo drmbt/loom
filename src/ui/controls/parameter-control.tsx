@@ -628,6 +628,7 @@ function ParameterControlImpl({
             candidates={reference.candidates}
             list={reference.list}
             noun={reference.noun}
+            overriddenBy={reference.overriddenBy}
             onChange={(next, phase) => emit(next, phase)}
           />,
           { hint: reference.noun },
