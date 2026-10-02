@@ -18,7 +18,7 @@ import { levelNode } from "../../nodes/definitions/color.ts";
 import { layerNode } from "../../nodes/definitions/layer.ts";
 import { presetsNode } from "../../nodes/definitions/presets.ts";
 import { serializePresetBank, type MorphSpec, type Preset } from "./bank.ts";
-import { MAX_RECALL_DEPTH } from "./commands.ts";
+import { MAX_RECALL_DEPTH, planPresetRecall } from "./commands.ts";
 import { parseMorphRecords, type MorphRecord } from "./morph.ts";
 import { buildMorphIndex } from "./morph-index.ts";
 
@@ -276,6 +276,23 @@ describe("a cycle between two banks is refused, naming both (S4)", () => {
     expect(result.status).toBe("rejected");
     expect(result.diagnostics[0]?.message).toContain('Bank "shots" recalls itself');
     expect(run.stored("city", "brightness")).toBe(0.2);
+  });
+
+  it("the planner itself says so: no operations, nothing applied, `refused` — what the cue list's GO reads (§T1500b)", () => {
+    const run = session(looped());
+    const graph = run.store.view.getGraph();
+    const shots = graph.nodes["shots"]!;
+    const drop: Preset = { name: "drop", values: { city: { brightness: 0.9 } }, recalls: [{ bank: "cityLooks", preset: "riot" }] };
+    const plan = planPresetRecall(graph, registry, shots, drop);
+    // A caller that only knows "nothing applied means refuse" must refuse this too.
+    expect(plan.refused).toBe(true);
+    expect(plan.operations).toEqual([]);
+    expect(plan.applied).toEqual([]);
+    expect(plan.diagnostics.map((each) => [each.severity, each.code])).toEqual([["error", "preset.recall.cycle"]]);
+    // And an ordinary preset is not refused.
+    const plain = planPresetRecall(graph, registry, shots, { name: "plain", values: { city: { brightness: 0.9 } } });
+    expect(plain.refused).toBe(false);
+    expect(plain.applied).toEqual(["city.brightness"]);
   });
 
   it("the legitimate case the check could swallow: two presets of ONE bank on a chain end, and apply", async () => {

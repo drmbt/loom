@@ -182,7 +182,7 @@ export interface PresetRecallInput {
 export interface PresetRecallOutput {
   ok: boolean;
   preset: string | null;
-  /** `node.key` for every value written. */
+  /** `node.key` for every value written, and `layer.on` for every layer switched (T1499b). */
   applied: readonly string[];
   /** `node` or `node.key` for every entry skipped, each with a warning in `diagnostics`. */
   skipped: readonly string[];
@@ -858,7 +858,7 @@ export function registerPresetCommands(bus: LoomBus): void {
   bus.registerCommand({
     name: PRESET_RECALL_COMMAND,
     description:
-      "Recall a bank's preset: every target it holds written back as one patch, one undo step (§T1496b); with a morph, the end state commits at once and the screen fades to it (§T1497b).",
+      "Recall a bank's preset: every target it holds written back as one patch, one undo step (§T1496b); with a morph, the end state commits at once and the screen fades to it (§T1497b). A preset's recalls (other banks' presets) and its layer on/off ride in the same patch (§T1499b).",
     handler: (input, context) => {
       const revision = context.store.getRevision();
       const found = requireBank(context.graph, input?.nodeId);
