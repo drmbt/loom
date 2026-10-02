@@ -1,3 +1,4 @@
+import { parseComponentNodeType } from "@domain/components/component-type.ts";
 import { sourceReferenceForInput } from "@domain/graph/source-references.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import { incomingEdgesInOrder } from "./edge-order.ts";
@@ -44,7 +45,9 @@ import { CONTROL_WIDGET_TYPES, isOneSocketInput, panelBoard, panelLayout, type P
  * state: the same document renders with and without them depending on whether something
  * failed or an agent is mid-edit. They can only make a node TALLER, so the gutter in the
  * layout gate is what covers them; pretending to predict them would be a fiction with a
- * number attached.
+ * number attached. The inference note (T1487b) is the same kind of row. `node-view.tsx`
+ * marks each `data-runtime-row`, which is how the measuring spec leaves them out of the
+ * box it compares (T1515b).
  *
  * The `.controls` region IS modelled since the live controls (T1388b, T1512b) — the graph
  * pane supplies `renderControls` (`control-bodies.tsx`) for exactly two kinds of node, and
@@ -143,6 +146,14 @@ const PORT_ROW_GAP = 2;
 
 /** `.node` — a 1px border on every side, and `box-sizing: border-box` is global. */
 const NODE_BORDER = 1;
+
+/**
+ * `.node[data-component]` — `border-top: 2px solid var(--component)` (T603's mark of a
+ * linked instance) REPLACES the 1px top hairline, so an instance is one pixel taller than
+ * the same ports on a plain node. T1515b: found the first time the measuring spec sized an
+ * instance from its definition at all — 164 modelled, 165 rendered, on every one shipped.
+ */
+const COMPONENT_BORDER_TOP = 2;
 
 /**
  * T1512b — THE `.controls` REGION: a widget's own control, or a Panel's live body.
@@ -349,7 +360,9 @@ export function nodeBox(
   }
 
   const contentWidth = NODE_WIDTH - NODE_BORDER * 2;
-  let height = NODE_BORDER * 2 + TITLE_HEIGHT;
+  let height =
+    // The same predicate `node-view.tsx` sets `data-component` on.
+    (parseComponentNodeType(node.type) === null ? NODE_BORDER : COMPONENT_BORDER_TOP) + NODE_BORDER + TITLE_HEIGHT;
   if (nodeHasPreview(node, definition)) {
     // T1168: a plot's slot is a constant, checked FIRST — `publishesValueChannels` is the
     // same predicate, in the same order, that `renderPreview` and `node-view.tsx` use, so

@@ -456,6 +456,7 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
         {agent === null ? null : (
           <p
             className={styles.agent}
+            data-runtime-row=""
             data-agent={agent.kind}
             style={cssVars({ "--agent-color": AGENT_TOKEN[agent.kind] })}
           >
@@ -537,7 +538,7 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
         </div>
 
         {message === null || message === undefined ? null : (
-          <p className={styles.message} title={message}>
+          <p className={styles.message} data-runtime-row="" title={message}>
             {message}
           </p>
         )}
@@ -548,6 +549,7 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
         {snapshot.inferenceNote === null ? null : (
           <p
             className={styles.inferenceNote}
+            data-runtime-row=""
             data-tone={snapshot.inferenceNote.tone}
             data-testid={`node-inference-note-${id}`}
             title={snapshot.inferenceNote.text}
@@ -567,6 +569,7 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
           <button
             type="button"
             className={cx("nodrag", styles.moreDiagnostics)}
+            data-runtime-row=""
             onClick={(event) => {
               event.stopPropagation();
               showProblems();

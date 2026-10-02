@@ -168,3 +168,20 @@ describe("T1518b — a one-socket input is one port row", () => {
     expect(rowsOf(graph, "comp")).toBe(4);
   });
 });
+
+/**
+ * T1515b — A LINKED INSTANCE IS ONE PIXEL TALLER THAN ITS PORTS ALONE: `.node[data-component]`
+ * draws a 2px top border where every other node has a hairline. The §V389 gate lays shipped
+ * examples out against this box, and `node-box.spec.ts` measured every shipped instance at
+ * 165px against a modelled 164 the first time it sized one from its definition at all.
+ */
+describe("T1515b — node-box models a component instance's own border", () => {
+  it("an instance is the same definition's box plus the thicker top border", () => {
+    const definition = registry.get("blur");
+    expect(definition).toBeDefined();
+    const plain = nodeBox(at("plain", "blur"), definition);
+    const instance = nodeBox(at("instance", "component:audioAnalysis@1"), definition);
+    expect(instance.height).toBe(plain.height + 1);
+    expect(instance.width).toBe(plain.width);
+  });
+});
