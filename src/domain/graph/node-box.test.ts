@@ -193,3 +193,45 @@ describe("T1515b — node-box models a component instance's own border", () => {
     expect(instance.width).toBe(plain.width);
   });
 });
+
+/**
+ * T1527b — A NODE THE ONE PANEL LACKS DRAWS "+ panel", AND THE BUTTON TAKES ROOM. A widget,
+ * a Presets bank, a Layer and a Cue List each offer the one-press join while the document
+ * has exactly one Panel they are not on (`soloPanelFor`, the function the canvas draws the
+ * button from). The §V389 gate lays shipped examples out against this box: E82 keeps two
+ * banks and two layers off its desk on purpose, and each rendered 29px taller than the gate
+ * believed — a note authored 32px under one of them would have sat 3px from it, gate green.
+ *
+ * Every height below is Chromium's, measured on a canvas holding one of each node: with no
+ * Panel, with one, and with two (2026-10-02; `node-box.spec.ts` pins E82's four the same way).
+ */
+describe("T1527b — node-box models the \"+ panel\" button", () => {
+  const offered = [at("heat", "slider"), at("invert", "toggle"), at("flash", "button"), at("warp", "xyPad"), at("looks", "presets"), at("set", "cueList"), at("wash", "layer")];
+  const heights = (graph: GraphDocument) => Object.fromEntries(offered.map((node) => [node.id, boxOf(graph, node.id).height]));
+  const BARE = { heat: 191, invert: 183, flash: 181, warp: 339, looks: 34, set: 34, wash: 164 };
+  const desk = (id: string, parameters: Record<string, unknown> = {}) => at(id, "panel", { title: "Desk", ...parameters });
+  /** The three named kinds as board items — for them the item IS the membership (T1501b). */
+  const naming = { board: JSON.stringify({ columns: 8, items: ["looks", "set", "wash"].map((member, y) => ({ member, rect: { x: 0, y, w: 4, h: 1 } })) }) };
+
+  it("off the document's one Panel, each is taller by the button — as the browser measured", () => {
+    expect(heights(graphOf([...offered, panel], []))).toEqual({ heat: 212, invert: 205, flash: 202, warp: 360, looks: 63, set: 63, wash: 193 });
+  });
+
+  it("on the Panel — wired, or named on its board — the button is gone and so is its room", () => {
+    const joined = graphOf([...offered, desk("panel", naming)], ["heat", "invert", "flash", "warp"]);
+    expect(heights(joined)).toEqual(BARE);
+    // One member at a time: a bank on the desk does not take the button off the layer beside it.
+    const bankOnly = { board: JSON.stringify({ columns: 8, items: [{ member: "looks", rect: { x: 0, y: 0, w: 4, h: 1 } }] }) };
+    expect(heights(graphOf([...offered, desk("panel", bankOnly)], ["heat"]))).toEqual({ ...BARE, invert: 205, flash: 202, warp: 360, set: 63, wash: 193 });
+  });
+
+  it("with no Panel, or two, there is no one Panel to offer — no button, no room", () => {
+    expect(heights(graphOf(offered, []))).toEqual(BARE);
+    expect(heights(graphOf([...offered, panel, desk("second")], []))).toEqual(BARE);
+  });
+
+  it("a Panel laid out by its legacy text has no board: it still takes a widget, never a bank", () => {
+    const legacy = graphOf([...offered, desk("panel", { layout: "heat" })], []);
+    expect(heights(legacy)).toEqual({ ...BARE, heat: 212, invert: 205, flash: 202, warp: 360 });
+  });
+});

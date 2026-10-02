@@ -5,7 +5,15 @@ import { incomingEdgesInOrder } from "./edge-order.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import { previewablePort } from "./previewable.ts";
 import { publishesValueChannels } from "@domain/types/node-definition.ts";
-import { CONTROL_WIDGET_TYPES, isOneSocketInput, panelBoard, panelLayout, type PanelSection } from "@nodes/definitions/controls.ts";
+import {
+  BOARD_NAMED_TYPES,
+  CONTROL_WIDGET_TYPES,
+  isOneSocketInput,
+  panelBoard,
+  panelLayout,
+  soloPanelFor,
+  type PanelSection,
+} from "@nodes/definitions/controls.ts";
 
 /**
  * WHAT A NODE ACTUALLY OCCUPIES, IN GRAPH-SPACE PIXELS (T460, §V389).
@@ -50,14 +58,13 @@ import { CONTROL_WIDGET_TYPES, isOneSocketInput, panelBoard, panelLayout, type P
  * box it compares (T1515b).
  *
  * The `.controls` region IS modelled since the live controls (T1388b, T1512b) — the graph
- * pane supplies `renderControls` (`control-bodies.tsx`) for exactly two kinds of node, and
- * both are document state: a widget's own control, and a Panel's live body, whose height
- * follows its members (`panelLayout`). One piece of it is not: the widget's "+ panel"
- * button, drawn only while the document's ONE Panel lacks that widget — a widget waiting to
- * be wired, not a laid-out document; the vertical gutter covers its one line. T1501b: a
- * Presets bank, a Layer and a Cue List draw the same "+ panel" under the same condition and
- * NOTHING else in this region (empty, it takes no room), so they stay unmodelled here for
- * the same reason — on a Panel, which is the laid-out state, they are exactly their box.
+ * pane supplies `renderControls` (`control-bodies.tsx`), and what it draws is document state:
+ * a widget's own control, and a Panel's live body, whose height follows its members
+ * (`panelLayout`). T1527b: so is the "+ panel" button a widget, a Presets bank, a Layer and
+ * a Cue List draw while the document's ONE Panel lacks them (`ADD_TO_PANEL_HEIGHT` below).
+ * It was left to the gutter as "a node waiting to be joined, not a laid-out document" until
+ * E82 shipped two banks and two layers that are deliberately off its Panel, 29px taller on
+ * the canvas than here.
  */
 
 /** `--node-width` in `node-view.module.css`. A node that was never resized is this wide. */
@@ -217,6 +224,17 @@ function widgetBodyHeight(type: string): number {
   }
 }
 
+/**
+ * T1527b — THE "+ panel" BUTTON (`.addToPanel`, `control-widget.module.css`): its
+ * `margin-top: var(--space-2)`, one `--fs-micro` line, and a hairline above and below.
+ * Under a widget's control it is a second flex child of `.controls`, so that region's
+ * `gap: var(--space-1)` comes with it; on a bank, a layer or a cue list it is the region's
+ * only child. Drawn when `soloPanelFor` (`controls.ts`) names a Panel — the canvas asks the
+ * same function (`control-bodies.tsx`), so the model and the DOM cannot decide differently.
+ */
+const ADD_TO_PANEL_HEIGHT = 4 + MICRO_LINE + 1 * 2;
+const CONTROLS_GAP = 2;
+
 /** `.body` — `gap: var(--space-2)` between the title and each row. */
 const PANEL_BODY_GAP = 4;
 /** `.stack` — `gap: var(--space-3)` between widgets in one row. */
@@ -250,7 +268,8 @@ function panelBoardHeight(rows: number, columns: number): number {
 
 /**
  * The `.controls` region's height for this node, or 0 when it draws none — which is every
- * node that is neither a widget nor a Panel. A Panel's body is its title and its board as
+ * node that is neither a widget nor a Panel, nor (T1527b) a bank, a layer or a cue list the
+ * document's one Panel lacks. A Panel's body is its title and its board as
  * `panelBoard` derives it (T1516b) — or, laid out by the legacy override text, its rows as
  * `panelLayout` derives them — the SAME derivation the body renders from, so a widget wired
  * into a Panel makes the Panel taller here exactly as it does on the canvas.
@@ -259,6 +278,12 @@ export function nodeControlsHeight(node: GraphNode, graph?: Pick<GraphDocument, 
   let content: number;
   if (CONTROL_WIDGET_TYPES.has(node.type)) {
     content = widgetBodyHeight(node.type);
+    if (graph !== undefined && soloPanelFor(graph, node.id) !== null) content += CONTROLS_GAP + ADD_TO_PANEL_HEIGHT;
+  } else if (BOARD_NAMED_TYPES.has(node.type)) {
+    // The button is all this region ever holds on these nodes; without it the region is
+    // empty and takes no room (`.controls:empty`, `node-view.module.css`).
+    if (graph === undefined || soloPanelFor(graph, node.id) === null) return 0;
+    content = ADD_TO_PANEL_HEIGHT;
   } else if (node.type === "panel") {
     const board = graph === undefined ? null : panelBoard(graph, node);
     const rows = graph === undefined || board !== null ? [] : panelLayout(graph, node).rows;

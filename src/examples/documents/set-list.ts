@@ -154,8 +154,11 @@ const LOOK_A_Y = 250;
 const LOOK_B_Y = 500;
 const DESK_Y = 780;
 const NOTE_Y = -190;
-/** Under the bank row: a bank's box is its header alone. */
-const DESK_NOTE_Y = 860;
+/**
+ * Under the bank row. A bank's box is its header — plus, on `looks` and `fx`, the "+ panel"
+ * button a bank off the one Panel draws (T1527b: 63px, not 34), which is what this clears.
+ */
+const DESK_NOTE_Y = 890;
 
 export const setListDocument = document(
   "e82-set-list",

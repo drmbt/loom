@@ -15,10 +15,10 @@ import type { NodeId } from "../../domain/types/ids.ts";
 import type { GraphPatchOperation } from "../../domain/types/patch.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
-import { CONTROL_WIDGET_TYPES, panelBoard, panelLayout, panelMembers, parsePanelBoard, parsePanelLayout } from "../../nodes/definitions/controls.ts";
+import { CONTROL_WIDGET_TYPES, panelBoard, panelLayout, panelMembers, parsePanelBoard, parsePanelLayout, soloPanelFor } from "../../nodes/definitions/controls.ts";
 import { serializePresetBank } from "../../domain/presets/bank.ts";
 import { removeFromPanelOperations } from "./panel-board-edit.ts";
-import { joinPanelOperations, panelUnderDrop, soloPanelFor } from "./panel-join.ts";
+import { joinPanelOperations, panelUnderDrop } from "./panel-join.ts";
 
 /**
  * T1512b — WHICH WIDGETS A PANEL SHOWS, AND IN WHAT ORDER, decided by `panelLayout`: the

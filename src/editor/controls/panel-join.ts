@@ -1,8 +1,7 @@
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
-import { incomingEdgesInOrder } from "@domain/graph/edge-order.ts";
-import { BOARD_NAMED_TYPES, CONTROL_WIDGET_TYPES, PANEL_INPUT, panelBoard } from "@nodes/definitions/controls.ts";
+import { BOARD_NAMED_TYPES, CONTROL_WIDGET_TYPES, PANEL_INPUT, panelBoard, panelLacks } from "@nodes/definitions/controls.ts";
 import { boardOperations, boardWithMember } from "./panel-board-edit.ts";
 
 /**
@@ -32,14 +31,14 @@ const joinsPanel = (type: string | undefined): boolean => type !== undefined && 
 export function joinPanelOperations(graph: Graph, widgetId: NodeId, panelId: NodeId): GraphPatchOperation[] {
   const widget = graph.nodes[widgetId];
   const panel = graph.nodes[panelId];
-  if (widget === undefined || panel === undefined || panel.type !== "panel") return [];
+  // T1527b: whether there is anything to write is `panelLacks` — the same answer the "+ panel"
+  // button and the layout model's room for it come from (`soloPanelFor`, `controls.ts`).
+  if (widget === undefined || panel === undefined || !panelLacks(graph, panel, widget)) return [];
   if (BOARD_NAMED_TYPES.has(widget.type)) {
     const board = panelBoard(graph, panel);
     const stored = board === null ? null : boardWithMember(board, widget);
     return stored === null ? [] : boardOperations(panelId, stored);
   }
-  if (!CONTROL_WIDGET_TYPES.has(widget.type)) return [];
-  if (incomingEdgesInOrder(graph, panelId, PANEL_INPUT).some((edge) => edge.source.nodeId === widgetId)) return [];
   return [{ op: "connect", source: { nodeId: widgetId, portId: "out" }, target: { nodeId: panelId, portId: PANEL_INPUT } }];
 }
 
@@ -74,17 +73,5 @@ export function panelUnderDrop(
   return hit;
 }
 
-/**
- * The document's only Panel, when the widget is not on it yet — what the widget's own
- * "add to panel" button offers. With two Panels there is no one answer, so it offers none.
- */
-export function soloPanelFor(graph: Graph, widgetId: NodeId): NodeId | null {
-  let only: GraphNode | null = null;
-  for (const node of Object.values(graph.nodes)) {
-    if (node.type !== "panel") continue;
-    if (only !== null) return null;
-    only = node;
-  }
-  if (only === null) return null;
-  return joinPanelOperations(graph, widgetId, only.id).length === 0 ? null : only.id;
-}
+// T1527b: `soloPanelFor` — when the "+ panel" button is offered — lives in `controls.ts`,
+// where the layout model (`node-box.ts`) can ask it too.

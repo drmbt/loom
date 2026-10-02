@@ -1,5 +1,6 @@
 import type { CompiledNodeDescription, NodeDefinition } from "../../domain/types/node-definition.ts";
 import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
+import type { NodeId } from "../../domain/types/ids.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { incomingEdgesInOrder } from "../../domain/graph/edge-order.ts";
 import { isParameterSlot, staticBindingValue } from "../../domain/parameters/slots.ts";
@@ -585,4 +586,42 @@ export function storedBoardOf(board: PanelBoard): StoredBoard {
       item.kind === "label" ? { label: item.text, rect: item.rect } : { member: controlNameOf(item.node), rect: item.rect },
     ),
   };
+}
+
+/**
+ * T1527b — CAN THIS NODE STILL JOIN THAT PANEL: a widget not yet wired into its Controls;
+ * a bank, a layer or a cue list its board does not show yet (a Panel laid out by its legacy
+ * Layout text has no board, so it takes none of them). The ONE answer behind the patch
+ * that joins them (`joinPanelOperations`, `panel-join.ts`) and `soloPanelFor` below.
+ */
+export function panelLacks(graph: Pick<GraphDocument, "nodes" | "edges">, panel: GraphNode, node: GraphNode): boolean {
+  if (panel.type !== "panel") return false;
+  if (BOARD_NAMED_TYPES.has(node.type)) {
+    const board = panelBoard(graph, panel);
+    return board !== null && !board.items.some((item) => item.kind === "widget" && item.node.id === node.id);
+  }
+  if (!CONTROL_WIDGET_TYPES.has(node.type)) return false;
+  return !incomingEdgesInOrder(graph, panel.id, PANEL_INPUT).some((edge) => edge.source.nodeId === node.id);
+}
+
+/**
+ * The document's only Panel, when the node is not on it yet — what the node's own "+ panel"
+ * button offers. With two Panels there is no one answer, so it offers none.
+ *
+ * T1527b: here rather than in the editor because TWO things ask it and must not disagree —
+ * the canvas, which draws the button (`control-bodies.tsx`), and the layout model, which
+ * gives the button its room (`nodeControlsHeight`, `src/domain/graph/node-box.ts`, which
+ * cannot import the editor). While only the canvas asked, E82's two banks and two layers
+ * rendered 29px taller than the §V389 gate laid them out.
+ */
+export function soloPanelFor(graph: Pick<GraphDocument, "nodes" | "edges">, nodeId: NodeId): NodeId | null {
+  const node = graph.nodes[nodeId];
+  if (node === undefined) return null;
+  let only: GraphNode | null = null;
+  for (const each of Object.values(graph.nodes)) {
+    if (each.type !== "panel") continue;
+    if (only !== null) return null;
+    only = each;
+  }
+  return only !== null && panelLacks(graph, only, node) ? only.id : null;
 }
