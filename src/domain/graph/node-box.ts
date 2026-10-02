@@ -54,7 +54,10 @@ import { CONTROL_WIDGET_TYPES, isOneSocketInput, panelBoard, panelLayout, type P
  * both are document state: a widget's own control, and a Panel's live body, whose height
  * follows its members (`panelLayout`). One piece of it is not: the widget's "+ panel"
  * button, drawn only while the document's ONE Panel lacks that widget — a widget waiting to
- * be wired, not a laid-out document; the vertical gutter covers its one line.
+ * be wired, not a laid-out document; the vertical gutter covers its one line. T1501b: a
+ * Presets bank, a Layer and a Cue List draw the same "+ panel" under the same condition and
+ * NOTHING else in this region (empty, it takes no room), so they stay unmodelled here for
+ * the same reason — on a Panel, which is the laid-out state, they are exactly their box.
  */
 
 /** `--node-width` in `node-view.module.css`. A node that was never resized is this wide. */

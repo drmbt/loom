@@ -2,7 +2,8 @@ import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { incomingEdgesInOrder } from "@domain/graph/edge-order.ts";
-import { CONTROL_WIDGET_TYPES, PANEL_INPUT } from "@nodes/definitions/controls.ts";
+import { BOARD_NAMED_TYPES, CONTROL_WIDGET_TYPES, PANEL_INPUT, panelBoard } from "@nodes/definitions/controls.ts";
+import { boardOperations, boardWithMember } from "./panel-board-edit.ts";
 
 /**
  * T1512b — HOW A WIDGET JOINS A PANEL, as patch operations.
@@ -12,16 +13,32 @@ import { CONTROL_WIDGET_TYPES, PANEL_INPUT } from "@nodes/definitions/controls.t
  * to panel" button both come here, and the answer is one patch — undoable as one step — or
  * nothing at all. Where a member SITS is the Panel's board (T1516b, `panel-board-edit.ts`),
  * which replaced the Controls tab's move-earlier/later buttons.
+ *
+ * T1501b — a Presets bank, a Layer and a Cue List join the same two ways, but BY NAME:
+ * none of them has a value output to wire, so the patch is one board write that adds an
+ * item naming the node (`boardWithMember`). A Panel laid out by its legacy Layout text has
+ * no board, so it takes none of them.
  */
 
 type Graph = Pick<GraphDocument, "nodes" | "edges">;
 
-/** The widget's `out` wired into the Panel's Controls, or nothing when it already is. */
+/** The node kinds a Panel takes: the widgets it wires in, and the kinds its board names. */
+const joinsPanel = (type: string | undefined): boolean => type !== undefined && (CONTROL_WIDGET_TYPES.has(type) || BOARD_NAMED_TYPES.has(type));
+
+/**
+ * What putting this node on that Panel writes, or nothing when it is already there: a
+ * widget's `out` wired into the Panel's Controls; a bank, layer or cue list named on its board.
+ */
 export function joinPanelOperations(graph: Graph, widgetId: NodeId, panelId: NodeId): GraphPatchOperation[] {
   const widget = graph.nodes[widgetId];
   const panel = graph.nodes[panelId];
-  if (widget === undefined || panel === undefined) return [];
-  if (!CONTROL_WIDGET_TYPES.has(widget.type) || panel.type !== "panel") return [];
+  if (widget === undefined || panel === undefined || panel.type !== "panel") return [];
+  if (BOARD_NAMED_TYPES.has(widget.type)) {
+    const board = panelBoard(graph, panel);
+    const stored = board === null ? null : boardWithMember(board, widget);
+    return stored === null ? [] : boardOperations(panelId, stored);
+  }
+  if (!CONTROL_WIDGET_TYPES.has(widget.type)) return [];
   if (incomingEdgesInOrder(graph, panelId, PANEL_INPUT).some((edge) => edge.source.nodeId === widgetId)) return [];
   return [{ op: "connect", source: { nodeId: widgetId, portId: "out" }, target: { nodeId: panelId, portId: PANEL_INPUT } }];
 }
@@ -38,7 +55,7 @@ export interface CanvasBox {
  * The Panel a widget was dropped ON: the one whose box holds the widget's centre. Graph
  * space both sides, so it means the same thing at every zoom (§V142, as T213's splice).
  * The topmost-drawn Panel wins when two overlap — the last in document order, which is
- * the one React Flow paints last.
+ * the one React Flow paints last. T1501b: a bank, a layer and a cue list drop the same way.
  */
 export function panelUnderDrop(
   graph: Graph,
@@ -46,7 +63,7 @@ export function panelUnderDrop(
   centre: { readonly x: number; readonly y: number },
   boxOf: (nodeId: NodeId) => CanvasBox | null,
 ): NodeId | null {
-  if (!CONTROL_WIDGET_TYPES.has(graph.nodes[widgetId]?.type ?? "")) return null;
+  if (!joinsPanel(graph.nodes[widgetId]?.type)) return null;
   let hit: NodeId | null = null;
   for (const node of Object.values(graph.nodes)) {
     if (node.type !== "panel") continue;

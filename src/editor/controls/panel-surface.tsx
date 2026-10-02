@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { useStore } from "zustand";
+import type { LoomBus } from "@domain/commands/bus.ts";
+import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
-import type { GraphStoreView } from "@domain/graph/store.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { controlsContentWidth } from "@domain/graph/node-box.ts";
 import { panelBoard, panelLayout, panelTitle } from "@nodes/definitions/controls.ts";
@@ -79,9 +80,22 @@ export function PanelRows({ graph, panel, write, size, renderMeta }: PanelRowsPr
  * The board is the tab's board scaled to the node's width (`PanelBoardGrid variant="canvas"`),
  * from the same `panelBoard`; it is played here and arranged in the Controls tab — or in
  * the popover the pencil on this node's header opens (T1518b, `panel-edit.tsx`).
+ *
+ * T1501b: handed the bus, not only its store — a board's bank, layer and cue-list items
+ * press commands (`board-members.tsx`).
  */
-export function PanelNodeBody({ store, panelId, write }: { readonly store: GraphStoreView; readonly panelId: NodeId; readonly write: ControlWrite }) {
-  const graph = useStore(store, (state) => state.graph);
+export function PanelNodeBody({
+  bus,
+  invocation,
+  panelId,
+  write,
+}: {
+  readonly bus: LoomBus;
+  readonly invocation: InvocationContext;
+  readonly panelId: NodeId;
+  readonly write: ControlWrite;
+}) {
+  const graph = useStore(bus.store, (state) => state.graph);
   const panel = graph.nodes[panelId];
   if (panel === undefined) return null;
   const board = panelBoard(graph, panel);
@@ -94,7 +108,7 @@ export function PanelNodeBody({ store, panelId, write }: { readonly store: Graph
         <p className={styles.hint} data-panel-empty>{PANEL_EMPTY_HINT}</p>
       ) : (
         // T1518b: the width the node gives its body, so type is sized for the real cell.
-        <PanelBoardGrid board={board} write={write} variant="canvas" widthPx={controlsContentWidth(panel)} />
+        <PanelBoardGrid board={board} write={write} bus={bus} invocation={invocation} variant="canvas" widthPx={controlsContentWidth(panel)} />
       )}
     </div>
   );

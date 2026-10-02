@@ -433,6 +433,14 @@
   padding: var(--space-2) var(--space-3);
   border-bottom: var(--border-hairline);
 }
+/*
+  T1501b: a bank, a layer and a cue list fill this region with ONE thing — their "+ panel"
+  — and only while a Panel is there to join. With nothing to offer it renders no element,
+  and an empty region must not cost the node a padded band and a hairline.
+*/
+.controls:empty {
+  display: none;
+}
 
 /* ---- ports ------------------------------------------------------------ */
 

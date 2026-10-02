@@ -6,7 +6,7 @@ import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { isRemotePanel } from "@devices/phone/phone-snapshot.ts";
-import { CONTROL_WIDGET_TYPES } from "@nodes/definitions/controls.ts";
+import { BOARD_NAMED_TYPES, CONTROL_WIDGET_TYPES } from "@nodes/definitions/controls.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
 import { joinPanelOperations, soloPanelFor } from "./panel-join.ts";
 import { PanelEdit } from "./panel-edit.tsx";
@@ -25,6 +25,10 @@ import styles from "./control-widget.module.css";
  *   phone icon (`PhoneDoorButton`) that publishes it and opens the door's popover there,
  *   and — T1518b — the pencil (`PanelEdit`, `panel-edit.tsx`) that opens the board's edit
  *   surface: the SAME `PanelBoardEditor` the Controls tab's pencil shows, beside the node.
+ *
+ * - T1501b: a Presets bank, a Layer and a Cue List join a Panel by name, not by wire, so
+ *   their body offers the same one-press "+ panel" — and nothing else: with no Panel to
+ *   offer, the region is empty and takes no room (`.controls:empty`, `node-view.module.css`).
  *
  * Here rather than in the graph pane so the tests mount the SAME seams the product does.
  * Every closure is keyed on stable things (the bus, the writer, the door view) so the
@@ -91,7 +95,8 @@ export function useControlBodies({ bus, invocation, write, phone }: ControlBodie
     (nodeId: NodeId): ReactNode => {
       const node = bus.store.getGraph().nodes[nodeId];
       if (node === undefined) return null;
-      if (node.type === "panel") return <PanelNodeBody store={bus.store} panelId={nodeId} write={write} />;
+      if (node.type === "panel") return <PanelNodeBody bus={bus} invocation={invocation} panelId={nodeId} write={write} />;
+      if (BOARD_NAMED_TYPES.has(node.type)) return <AddToPanel bus={bus} invocation={invocation} widgetId={nodeId} />;
       if (!CONTROL_WIDGET_TYPES.has(node.type)) return null;
       return (
         <>

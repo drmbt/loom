@@ -164,3 +164,59 @@ export function boardFit({ kind, caption, valueEm, widthPx, cellPx }: BoardFitRe
   }
   return { fontPx: BOARD_FONT_MIN_PX, value: false, caption: "cut" };
 }
+
+/* ------------------------------------------------------------------ T1501b */
+
+/** How a board's cells are sized: the tab's fixed cells with a gap, or the canvas body's scaled ones. */
+export interface BoardCells {
+  readonly cellPx: number;
+  /** The content width, in px, of an item `w` cells wide. */
+  readonly widthOf: (w: number) => number;
+}
+
+/** A board rect's size, in whole cells. */
+interface Cells {
+  readonly w: number;
+  readonly h: number;
+}
+
+/**
+ * T1501b — A BANK'S STRIP: one button per preset, spread over the rows its rect has. A 4×1
+ * strip of six presets is six narrow buttons; give it a second row and it is 3 + 3. Never
+ * more rows than presets, so two presets in a 4×2 rect are two tall buttons, not a gap.
+ */
+export function presetStripGrid(count: number, rows: number): { readonly rows: number; readonly perRow: number } {
+  const used = Math.max(1, Math.min(rows, count));
+  return { rows: used, perRow: Math.max(1, Math.ceil(count / used)) };
+}
+
+/** Cells a board layer needs across before its fader sits BESIDE its switch: two for each. */
+const LAYER_FADER_BESIDE_COLUMNS = 4;
+
+/**
+ * T1501b — A LAYER ON A BOARD is its switch, plus its opacity fader when the rect has room:
+ * `stacked` under the switch from two rows up, `beside` it on one row from four cells
+ * across. A smaller rect — the 2×1 a layer lands at — is the `switch` alone.
+ */
+export type LayerBoardLayout = "switch" | "stacked" | "beside";
+
+export function layerBoardLayout(size: Cells): LayerBoardLayout {
+  if (size.h >= 2) return "stacked";
+  return size.w >= LAYER_FADER_BESIDE_COLUMNS ? "beside" : "switch";
+}
+
+/** Cells a board cue list needs across before the cue names sit BESIDE its buttons. */
+const CUE_NAMES_BESIDE_COLUMNS = 6;
+
+/**
+ * T1501b — A CUE LIST ON A BOARD is BACK and GO, plus where the set is — the current cue
+ * and the one standing by — when the rect has room: `stacked` above the buttons from two
+ * rows up (the 4×2 a list lands at), `beside` them on one row from six cells across. A
+ * smaller rect is the `buttons` alone: the names go before a button does.
+ */
+export type CueBoardLayout = "buttons" | "stacked" | "beside";
+
+export function cueListBoardLayout(size: Cells): CueBoardLayout {
+  if (size.h >= 2) return "stacked";
+  return size.w >= CUE_NAMES_BESIDE_COLUMNS ? "beside" : "buttons";
+}

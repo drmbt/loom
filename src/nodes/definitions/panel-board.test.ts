@@ -162,3 +162,75 @@ describe("T1516b — the board survives a rename and a paste (§V320)", () => {
     expect(placed(graph, graph.nodes[ids["$panel"]!]!)).toEqual(original);
   });
 });
+
+/**
+ * T1501b — a Presets bank, a Layer and a Cue List sit on a board WITHOUT a wire: none of
+ * them can be wired into a value input, so the board item naming them is the membership.
+ * What the owner relies on: the three he put on the Panel are there at his rects next to
+ * the wired controls; a wired control still needs its wire; a node he deleted is gone from
+ * the board; and — because the item is a NAME — a rename and a paste keep it pointed at the
+ * right node, exactly as they do for a widget.
+ */
+describe("T1501b — a bank, a layer and a cue list are board members by name", () => {
+  const THREE: GraphPatchOperation[] = [add("looks", "presets", "looks"), add("fx", "layer", "fx"), add("set", "cueList", "set")];
+  const stored: StoredBoardItem[] = [
+    { member: "looks", rect: { x: 0, y: 0, w: 4, h: 1 } },
+    { member: "fx", rect: { x: 4, y: 0, w: 2, h: 1 } },
+    { member: "set", rect: { x: 0, y: 1, w: 4, h: 2 } },
+  ];
+
+  it("keeps a stored item naming one of them with no wire, beside the wired widgets that flow", async () => {
+    const { bus } = await documentWith([...FOUR, ...THREE, add("panel", "panel", "panel1", { board: board(stored) }), wire("heat", "panel")]);
+    const graph = bus.store.getGraph();
+    expect(placed(graph)).toEqual(["looks@0,0,4,1", "fx@4,0,2,1", "set@0,1,4,2", "heat@4,1,4,1"]);
+    expect((panelBoard(graph, panelOf(graph))?.items ?? []).map((item) => (item.kind === "widget" ? item.node.type : "label"))).toEqual(["presets", "layer", "cueList", "slider"]);
+  });
+
+  it("an item naming any OTHER kind of node is no member: a widget still needs its wire, a blur never joins", async () => {
+    const { bus } = await documentWith([
+      ...FOUR,
+      add("blur", "blur", "soften"),
+      add("panel", "panel", "panel1", {
+        board: board([
+          { member: "flash", rect: { x: 0, y: 0, w: 2, h: 1 } },
+          { member: "soften", rect: { x: 2, y: 0, w: 2, h: 1 } },
+        ]),
+      }),
+    ]);
+    expect(placed(bus.store.getGraph())).toEqual([]);
+  });
+
+  it("drops the item from the board when its node is deleted — the others stay where they were", async () => {
+    const { bus, ids } = await documentWith([...THREE, add("panel", "panel", "panel1", { board: board(stored) })]);
+    const removed = await bus.execute("graph.removeNodes", { nodeIds: [ids["$looks"]!] }, contextFor(alice));
+    expect(removed.status).toBe("applied");
+    expect(placed(bus.store.getGraph())).toEqual(["fx@4,0,2,1", "set@0,1,4,2"]);
+  });
+
+  it("renaming a member keeps it on the board, at its rect (the kind-6 clause rewrites the item)", async () => {
+    const { bus, ids } = await documentWith([...THREE, add("panel", "panel", "panel1", { board: board(stored) })]);
+    const renamed = await bus.execute(
+      "graph.applyPatch",
+      { baseRevision: bus.store.getRevision(), operations: [{ op: "setNodeLabel", nodeId: ids["$fx"]!, label: "glitch" }] },
+      contextFor(alice),
+    );
+    expect(renamed.output.status).toBe("applied");
+    expect(placed(bus.store.getGraph())).toEqual(["looks@0,0,4,1", "glitch@4,0,2,1", "set@0,1,4,2"]);
+  });
+
+  it("a pasted Panel + members shows the COPIES at the original rects, and the original keeps its own", async () => {
+    const { bus, ids } = await documentWith([...THREE, add("panel", "panel", "panel1", { board: board(stored) })]);
+    const original = placed(bus.store.getGraph());
+    await bus.execute("graph.copySelection", { nodeIds: [ids["$looks"]!, ids["$fx"]!, ids["$set"]!, ids["$panel"]!] }, contextFor(alice));
+    const pasted = await bus.execute("graph.paste", {}, contextFor(alice));
+    expect(pasted.status).toBe("applied");
+    const graph = bus.store.getGraph();
+    const copy = Object.values(graph.nodes).find((node) => node.type === "panel" && node.id !== ids["$panel"])!;
+    const members = (panelBoard(graph, copy)?.items ?? []).flatMap((item) => (item.kind === "widget" ? [item.node.id] : []));
+    expect(members).toHaveLength(3);
+    // Not one of the originals: a copy that pressed the ORIGINAL bank's presets would be §V320's misbind.
+    expect(members.some((id) => id === ids["$looks"] || id === ids["$fx"] || id === ids["$set"])).toBe(false);
+    expect(placed(graph, copy).map((entry) => entry.replace(/^(looks|fx|set)\d+@/, "$1@"))).toEqual(original);
+    expect(placed(graph, graph.nodes[ids["$panel"]!]!)).toEqual(original);
+  });
+});

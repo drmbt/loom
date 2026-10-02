@@ -38,6 +38,9 @@ import { LaserSection, laserSectionParameters } from "./laser-section.tsx";
 import { WindowSection, windowSectionParameters } from "./window-section.tsx";
 import type { WindowSectionSurface } from "./window-section.tsx";
 import { ComponentSection, componentSectionParameters } from "./component-section.tsx";
+import { PresetBankSection, presetBankSectionParameters } from "./preset-bank-section.tsx";
+import { CueListSection, cueListSectionParameters } from "./cue-list-section.tsx";
+import { CUE_LIST_NODE_TYPE, PRESETS_NODE_TYPE } from "@domain/presets/index.ts";
 import { isComponentNodeType } from "@domain/components/component-type.ts";
 import { LASER_OUT_TYPE } from "@nodes/definitions/laser-out.ts";
 import { WINDOW_OUT_TYPE } from "@nodes/definitions/window-out.ts";
@@ -641,6 +644,10 @@ export function Inspector({
      when a registry view is supplied: headless mounts and plain-node inspectors carry
      no components and render no section. */
   const showsComponentSection = components !== undefined && isComponentNodeType(node.type);
+  // T1501b: the bank's and the cue list's sections need no session surface — they run bus
+  // commands and read the document — so they show on every such node, keyed on the TYPE.
+  const showsPresetBankSection = node.type === PRESETS_NODE_TYPE;
+  const showsCueListSection = node.type === CUE_LIST_NODE_TYPE;
   const presentedBySections = new Set<string>([
     ...(showsAudioSection ? audioSectionParameters(node.type as "audioIn" | "audioFileIn") : []),
     ...(showsWebcamSection ? webcamSectionParameters() : []),
@@ -649,6 +656,8 @@ export function Inspector({
     ...(showsLaserSection ? laserSectionParameters() : []),
     ...(showsWindowSection ? windowSectionParameters() : []),
     ...(showsComponentSection ? componentSectionParameters() : []),
+    ...(showsPresetBankSection ? presetBankSectionParameters() : []),
+    ...(showsCueListSection ? cueListSectionParameters() : []),
   ]);
   const groups = groupParameters(
     resolved.entries.filter((entry) => !presentedBySections.has(entry.key)),
@@ -896,6 +905,35 @@ export function Inspector({
       <ComponentSection bus={bus} context={context} nodeId={node.id} components={components} />
     ) : null;
 
+  /* T1501b: Store / Recall / Delete on the bank, and the cue table, standby and GO / BACK
+     on the cue list — the controls, above the JSON they write. */
+  const text = (key: string): string => (typeof resolved.values[key] === "string" ? (resolved.values[key] as string) : "");
+  const presetBankSection = showsPresetBankSection ? (
+    <PresetBankSection
+      nodeId={node.id}
+      targets={text("targets")}
+      presets={text("presets")}
+      current={text("current")}
+      graph={graph}
+      bus={bus}
+      context={context}
+      editor={editor}
+    />
+  ) : null;
+  const cueListSection = showsCueListSection ? (
+    <CueListSection
+      nodeId={node.id}
+      cues={text("cues")}
+      current={text("current").trim()}
+      standby={text("standby").trim()}
+      wrap={resolved.values["wrap"] === true}
+      graph={graph}
+      bus={bus}
+      context={context}
+      editor={editor}
+    />
+  ) : null;
+
   const midiSection =
     showsMidiSection && node.type === "midiIn" ? (
       <MidiSection
@@ -1107,6 +1145,8 @@ export function Inspector({
         {laserSection}
         {windowSection}
         {componentSection}
+        {presetBankSection}
+        {cueListSection}
         {parameterSections}
         {commonSection}
         {connectionsSection}
@@ -1132,6 +1172,8 @@ export function Inspector({
           {laserSection}
           {windowSection}
         {componentSection}
+          {presetBankSection}
+          {cueListSection}
           {parameterSections}
         </TabsContent>
         <TabsContent className={cx(styles.page, styles.page)} value="common">

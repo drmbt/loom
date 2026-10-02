@@ -136,11 +136,11 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
       ) : board === null ? (
         <PanelRows graph={graph} panel={panel} write={write} size="panel" renderMeta={renderMeta} />
       ) : editing ? (
-        <PanelBoardEditor graph={graph} panelId={panel.id} board={board} write={write} apply={apply} registry={registry} />
+        <PanelBoardEditor graph={graph} panelId={panel.id} board={board} write={write} bus={bus} invocation={invocation} apply={apply} registry={registry} />
       ) : board.items.length === 0 ? (
         <p className={surface.hint} data-panel-empty>{PANEL_EMPTY_HINT}</p>
       ) : (
-        <PanelBoardGrid board={board} write={write} variant="tab" />
+        <PanelBoardGrid board={board} write={write} bus={bus} invocation={invocation} variant="tab" />
       )}
     </div>
   );

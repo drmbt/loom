@@ -1,13 +1,16 @@
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { incomingEdgesInOrder } from "@domain/graph/edge-order.ts";
 import {
   BOARD_MAX_COLUMNS,
+  BOARD_NAMED_TYPES,
   PANEL_INPUT,
   boardDefaultSize,
+  boardMemberSize,
   boardMinimumSize,
   boardRectsOverlap,
+  controlNameOf,
   firstFreeRect,
   serializePanelBoard,
   storedBoardOf,
@@ -66,6 +69,19 @@ export function boardWithLabel(board: PanelBoard, text: string): { readonly stor
   return { stored: { ...stored, items: [...stored.items, { label: text, rect }] }, key: `label:${String(labels)}` };
 }
 
+/**
+ * T1501b — a bank, a layer or a cue list JOINS the board: an item naming it, in the first
+ * free spot at the size the node asks for (`boardMemberSize`). `null` when it is not one of
+ * those kinds or the board already shows it — for these nodes the item IS the membership.
+ */
+export function boardWithMember(board: PanelBoard, node: GraphNode): StoredBoard | null {
+  if (!BOARD_NAMED_TYPES.has(node.type)) return null;
+  if (board.items.some((item) => item.kind === "widget" && item.node.id === node.id)) return null;
+  const stored = storedBoardOf(board);
+  const rect = firstFreeRect(board.items.map((item) => item.rect), board.columns, boardMemberSize(node));
+  return { ...stored, items: [...stored.items, { member: controlNameOf(node), rect }] };
+}
+
 /** A label's text changed; `null` when it is not a label or the text is the same. */
 export function boardWithLabelText(board: PanelBoard, key: string, text: string): StoredBoard | null {
   const item = board.items.find((each) => each.key === key);
@@ -98,6 +114,9 @@ export function boardOperations(panelId: NodeId, stored: StoredBoard): GraphPatc
 /**
  * "Remove from panel": the widget's wires into the Panel's Controls are cut and its rect
  * leaves the board, in ONE patch — one undo brings both back. The widget node stays.
+ *
+ * T1501b: a bank, a layer or a cue list has no wire — its item was the membership — so
+ * removing it is the board write alone.
  */
 export function removeFromPanelOperations(
   graph: Pick<GraphDocument, "nodes" | "edges">,
@@ -110,5 +129,5 @@ export function removeFromPanelOperations(
   const edgeIds = incomingEdgesInOrder(graph, panelId, PANEL_INPUT)
     .filter((edge) => edge.source.nodeId === item.node.id)
     .map((edge) => edge.id);
-  return [{ op: "disconnect", edgeIds }, ...boardOperations(panelId, boardWithout(board, key))];
+  return [...(edgeIds.length === 0 ? [] : [{ op: "disconnect" as const, edgeIds }]), ...boardOperations(panelId, boardWithout(board, key))];
 }

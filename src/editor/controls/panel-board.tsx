@@ -1,17 +1,23 @@
 import { useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { LoomBus } from "@domain/commands/bus.ts";
+import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import {
   BOARD_MAX_COLUMNS,
+  BOARD_NAMED_TYPES,
+  CONTROL_WIDGET_TYPES,
+  controlNameOf,
   type BoardRect,
   type PanelBoard,
   type PanelBoardItem,
   type StoredBoard,
 } from "@nodes/definitions/controls.ts";
-import { boardFit, boardValueEm, controlCaption, type BoardFit } from "./board-fit.ts";
+import { boardBaseFontPx, boardFit, boardValueEm, controlCaption, type BoardCells, type BoardFit } from "./board-fit.ts";
+import { BoardMember } from "./board-members.tsx";
 import { ControlTargets } from "./control-targets.tsx";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
 import {
@@ -46,6 +52,11 @@ import styles from "./panel-board.module.css";
  * T1518b — every item is drawn at the type size its rect has room for, and says only what
  * fits (`board-fit.ts`): the value goes before the caption is cut, never both. The same
  * rule at the tab's fixed cells and at the canvas body's scaled ones.
+ *
+ * T1501b — a board also holds a Presets bank (a strip of preset buttons), a Layer (its
+ * switch and fader) and a Cue List (GO / BACK), drawn by `board-members.tsx` at their
+ * rects like any widget, in both places and in edit mode. They press bus commands, so a
+ * board is handed the bus and the invocation it writes under.
  */
 
 /** The pencil: edit mode's switch — in the Controls tab's header and on the Panel node's (T1518b). */
@@ -73,12 +84,7 @@ const placement = (rect: BoardRect): CSSProperties => ({
 /** `.canvas .item` — `padding: 1px`, both sides. */
 const CANVAS_ITEM_PADDING_PX = 2;
 
-/** How a board's cells are sized: the tab's fixed cells with a gap, or the canvas body's scaled ones. */
-interface CellMetrics {
-  readonly cellPx: number;
-  /** The content width, in px, of an item `w` cells wide. */
-  readonly widthOf: (w: number) => number;
-}
+type CellMetrics = BoardCells;
 
 const TAB_CELLS: CellMetrics = { cellPx: BOARD_CELL_PX, widthOf: (w) => w * BOARD_CELL_PX + (w - 1) * BOARD_GAP_PX };
 
@@ -92,6 +98,8 @@ const canvasCells = (widthPx: number, columns: number): CellMetrics => {
 function fitOf(item: PanelBoardItem, cells: CellMetrics): BoardFit {
   const widthPx = cells.widthOf(item.rect.w);
   if (item.kind === "label") return boardFit({ kind: "label", caption: item.text, valueEm: 0, widthPx, cellPx: cells.cellPx });
+  // T1501b: a bank, a layer and a cue list are several parts; each part fits itself (`board-members.tsx`).
+  if (BOARD_NAMED_TYPES.has(item.node.type)) return { fontPx: boardBaseFontPx(cells.cellPx), value: true, caption: "whole" };
   const parameters = item.node.parameters as Record<string, unknown>;
   return boardFit({ kind: item.node.type, caption: controlCaption(parameters), valueEm: boardValueEm(item.node.type, parameters), widthPx, cellPx: cells.cellPx });
 }
@@ -104,26 +112,36 @@ const rectAttr = (rect: BoardRect): string => `${String(rect.x)},${String(rect.y
 /** What a board item is called in an accessible name. */
 function boardItemName(item: PanelBoardItem): string {
   if (item.kind === "label") return item.text === "" ? "label" : item.text;
+  if (BOARD_NAMED_TYPES.has(item.node.type)) return controlNameOf(item.node);
   return controlCaption(item.node.parameters as Record<string, unknown>);
 }
 
-function Item({ item, write, fit }: { readonly item: PanelBoardItem; readonly write: ControlWrite; readonly fit: BoardFit }) {
+/** What a board needs to PLAY: the parameter writer, and the bus its bank, layer and cue-list items press. */
+interface BoardPlay {
+  readonly write: ControlWrite;
+  readonly bus: LoomBus;
+  readonly invocation: InvocationContext;
+}
+
+function Item({ item, fit, cells, write, bus, invocation }: BoardPlay & { readonly item: PanelBoardItem; readonly fit: BoardFit; readonly cells: CellMetrics }) {
   if (item.kind === "label") return <div className={styles.label}>{item.text}</div>;
+  if (BOARD_NAMED_TYPES.has(item.node.type)) {
+    return <BoardMember node={item.node} rect={item.rect} cells={cells} bus={bus} invocation={invocation} write={write} />;
+  }
   return (
     <ControlWidget nodeId={item.node.id} type={item.node.type} parameters={item.node.parameters as Record<string, unknown>} write={write} size="board" showValue={fit.value} />
   );
 }
 
-export interface PanelBoardGridProps {
+export interface PanelBoardGridProps extends BoardPlay {
   readonly board: PanelBoard;
-  readonly write: ControlWrite;
   readonly variant: "canvas" | "tab";
   /** `variant="canvas"`: the width the board is scaled to, in px (`controlsContentWidth`), so type is sized for the real cell. */
   readonly widthPx?: number;
 }
 
 /** PLAY mode: the board, operable, nothing else. */
-export function PanelBoardGrid({ board, write, variant, widthPx }: PanelBoardGridProps) {
+export function PanelBoardGrid({ board, write, bus, invocation, variant, widthPx }: PanelBoardGridProps) {
   const cells = variant === "canvas" && widthPx !== undefined ? canvasCells(widthPx, board.columns) : TAB_CELLS;
   const grid: CSSProperties =
     variant === "canvas"
@@ -143,7 +161,7 @@ export function PanelBoardGrid({ board, write, variant, widthPx }: PanelBoardGri
         const fit = fitOf(item, cells);
         return (
           <div key={item.key} className={styles.item} style={itemStyle(item, fit)} data-board-item={item.key} data-rect={rectAttr(item.rect)} data-caption-fit={fit.caption}>
-            <Item item={item} write={write} fit={fit} />
+            <Item item={item} fit={fit} cells={cells} write={write} bus={bus} invocation={invocation} />
           </div>
         );
       })}
@@ -153,11 +171,10 @@ export function PanelBoardGrid({ board, write, variant, widthPx }: PanelBoardGri
 
 /* ------------------------------------------------------------------ edit mode */
 
-export interface PanelBoardEditorProps {
+export interface PanelBoardEditorProps extends BoardPlay {
   readonly graph: Pick<GraphDocument, "nodes" | "edges">;
   readonly panelId: NodeId;
   readonly board: PanelBoard;
-  readonly write: ControlWrite;
   /** Sends ONE patch through the bus. */
   readonly apply: (operations: GraphPatchOperation[], label: string) => void;
   /** For the Drives chips' × (`ControlTargets`): unbinding reads the target's declared default. */
@@ -187,7 +204,7 @@ const capture = (event: ReactPointerEvent<HTMLElement>): void => {
   }
 };
 
-export function PanelBoardEditor({ graph, panelId, board, write, apply, registry }: PanelBoardEditorProps) {
+export function PanelBoardEditor({ graph, panelId, board, write, bus, invocation, apply, registry }: PanelBoardEditorProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [ghost, setGhost] = useState<{ readonly key: string; readonly rect: BoardRect; readonly fits: boolean } | null>(null);
   const drag = useRef<Drag | null>(null);
@@ -307,7 +324,7 @@ export function PanelBoardEditor({ graph, panelId, board, write, apply, registry
               >
                 {/* Inert: in edit mode a control is a thing to place, not to play. */}
                 <div className={styles.inert} inert>
-                  <Item item={item} write={write} fit={fit} />
+                  <Item item={item} fit={fit} cells={TAB_CELLS} write={write} bus={bus} invocation={invocation} />
                 </div>
                 <div
                   className={styles.mover}
@@ -344,8 +361,13 @@ export function PanelBoardEditor({ graph, panelId, board, write, apply, registry
           ) : chosen.kind === "widget" ? (
             <>
               <h3 className={styles.inspectTitle}>{boardItemName(chosen)}</h3>
-              <p className={styles.inspectMeta}>Drives</p>
-              <ControlTargets graph={graph} registry={registry} widget={chosen.node} apply={apply} />
+              {/* T1501b: a bank, a layer or a cue list publishes no channel, so it drives nothing to list. */}
+              {CONTROL_WIDGET_TYPES.has(chosen.node.type) ? (
+                <>
+                  <p className={styles.inspectMeta}>Drives</p>
+                  <ControlTargets graph={graph} registry={registry} widget={chosen.node} apply={apply} />
+                </>
+              ) : null}
               <button
                 type="button"
                 className={styles.tool}

@@ -141,3 +141,39 @@ describe("T1512b — a widget dropped on a Panel joins it", () => {
     expect(edges(runtime)).toHaveLength(0);
   }, 20_000);
 });
+
+/**
+ * T1501b — a Layer (and a Presets bank, a Cue List) has nothing to wire into a Panel's value
+ * input, so the same drop puts it on the Panel's BOARD by name: one board write riding in
+ * the move's patch, no wire, one undo — and the Panel's body shows the layer's switch.
+ */
+describe("T1501b — a Layer dropped on a Panel joins its board by name", () => {
+  it("writes the board item in the same patch as the move, with no wire, one undo step", async () => {
+    const { runtime, view, ids } = await mount([{ op: "addNode", ref: "$fx", type: "layer", position: { x: 0, y: 200 }, label: "fx" }]);
+    const fx = Object.values(runtime.bus.store.getGraph().nodes).find((node) => node.label === "fx")!.id;
+    await waitFor(() => {
+      expect(view.container.querySelector(`.react-flow__node[data-id="${fx}"]`)).not.toBeNull();
+    });
+    const actor = runtime.invocation.actor;
+    const before = runtime.bus.store.getHistory(actor).undo.length;
+    const board = () => String(runtime.bus.store.getGraph().nodes[ids.panel]?.parameters["board"] ?? "");
+
+    await dragNodeCentreTo(view.container, fx, { x: 520 + 178 / 2, y: 60 }, runtime);
+
+    await waitFor(() => {
+      expect(board()).toContain('{"member":"fx","rect":{"x":0,"y":0,"w":2,"h":1}}');
+    });
+    expect(edges(runtime)).toHaveLength(0);
+    expect(runtime.bus.store.getHistory(actor).undo.length).toBe(before + 1);
+    await waitFor(() => {
+      const body = view.container.querySelector(`[data-panel-body="${ids.panel}"]`);
+      expect(body?.querySelector('[data-board-member="layer"] [role="switch"]')).not.toBeNull();
+    });
+
+    await act(async () => {
+      await runtime.bus.execute("graph.undo", {}, runtime.invocation);
+    });
+    expect(board()).not.toContain('"fx"');
+    expect(runtime.bus.store.getGraph().nodes[fx]?.position).toEqual({ x: 0, y: 200 });
+  }, 20_000);
+});

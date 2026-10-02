@@ -15,7 +15,9 @@ import type { NodeId } from "../../domain/types/ids.ts";
 import type { GraphPatchOperation } from "../../domain/types/patch.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
-import { CONTROL_WIDGET_TYPES, panelLayout, panelMembers, parsePanelLayout } from "../../nodes/definitions/controls.ts";
+import { CONTROL_WIDGET_TYPES, panelBoard, panelLayout, panelMembers, parsePanelBoard, parsePanelLayout } from "../../nodes/definitions/controls.ts";
+import { serializePresetBank } from "../../domain/presets/bank.ts";
+import { removeFromPanelOperations } from "./panel-board-edit.ts";
 import { joinPanelOperations, panelUnderDrop, soloPanelFor } from "./panel-join.ts";
 
 /**
@@ -188,5 +190,80 @@ describe("T1512b — the Layout text is an optional override, and it still decid
     expect(now).toEqual(before);
     // Non-vacuous: E81 names four widgets under three headings.
     expect(now.flat().filter((cell) => typeof cell === "string")).toHaveLength(4);
+  });
+});
+
+/**
+ * T1501b — a Presets bank, a Layer and a Cue List cannot be wired into a Panel (no value
+ * output), so the same two gestures — the drop and "+ panel" — write a board item that
+ * NAMES the node instead. What the owner relies on: it lands at a sensible size in the
+ * first free spot without moving anything already there; doing it twice adds nothing;
+ * taking it off again is one write; and a node that is none of these still never joins.
+ */
+describe("T1501b — a bank, a layer and a cue list join a Panel by name", () => {
+  const bankOf = (count: number): string =>
+    serializePresetBank({ version: 1, presets: Array.from({ length: count }, (_unused, index) => ({ name: `p${String(index + 1)}`, values: {} })) });
+  const stored = (graph: GraphDocument, panel: NodeId): string[] =>
+    parsePanelBoard(graph.nodes[panel]!.parameters["board"]).items.map(
+      (item) => `${"member" in item ? item.member : `"${item.label}"`}@${String(item.rect.x)},${String(item.rect.y)},${String(item.rect.w)},${String(item.rect.h)}`,
+    );
+
+  it("each lands at its own size in the first free spot: bank 4×1, layer 2×1, cue list 4×2 — and a bank of six takes two rows", async () => {
+    const { bus, ids } = await documentWith([
+      add("looks", "presets", "looks", { presets: bankOf(3) }),
+      add("fx", "layer", "fx"),
+      add("set", "cueList", "set"),
+      add("big", "presets", "big", { presets: bankOf(6) }),
+      add("panel", "panel", "panel1"),
+    ]);
+    const panel = ids["$panel"]!;
+    for (const ref of ["$looks", "$fx", "$set", "$big"]) {
+      const operations = joinPanelOperations(bus.store.getGraph(), ids[ref]!, panel);
+      // ONE operation — the board write — and no wire.
+      expect(operations.map((operation) => operation.op)).toEqual(["setParameters"]);
+      await apply(bus, operations);
+    }
+    expect(stored(bus.store.getGraph(), panel)).toEqual(["looks@0,0,4,1", "fx@4,0,2,1", "set@0,1,4,2", "big@4,1,4,2"]);
+    expect(Object.keys(bus.store.getGraph().edges)).toEqual([]);
+    // Already there: nothing to write, and the node's own "+ panel" stops offering.
+    expect(joinPanelOperations(bus.store.getGraph(), ids["$fx"]!, panel)).toEqual([]);
+    expect(soloPanelFor(bus.store.getGraph(), ids["$fx"]!)).toBeNull();
+  });
+
+  it("the drop finds the Panel for these kinds too, and still not for any other node", async () => {
+    const { bus, ids } = await documentWith([add("fx", "layer", "fx"), add("blur", "blur", "blur1"), add("panel", "panel", "panel1")]);
+    const panel = ids["$panel"]!;
+    const boxOf = (id: NodeId) => (id === panel ? { x: 400, y: 100, width: 178, height: 240 } : null);
+    const graph = bus.store.getGraph();
+    expect(panelUnderDrop(graph, ids["$fx"]!, { x: 480, y: 200 }, boxOf)).toBe(panel);
+    expect(panelUnderDrop(graph, ids["$fx"]!, { x: 380, y: 200 }, boxOf)).toBeNull();
+    expect(panelUnderDrop(graph, ids["$blur"]!, { x: 480, y: 200 }, boxOf)).toBeNull();
+    expect(joinPanelOperations(graph, ids["$blur"]!, panel)).toEqual([]);
+  });
+
+  it("joining pins the wired widgets where they are drawn — nothing already on the board moves", async () => {
+    const { bus, ids } = await documentWith([add("a", "slider", "alpha"), add("fx", "layer", "fx"), add("panel", "panel", "panel1"), wire("a", "panel")]);
+    const panel = ids["$panel"]!;
+    await apply(bus, joinPanelOperations(bus.store.getGraph(), ids["$fx"]!, panel));
+    expect(stored(bus.store.getGraph(), panel)).toEqual(["alpha@0,0,4,1", "fx@4,0,2,1"]);
+  });
+
+  it("a Panel laid out by its legacy Layout text has no board, so it takes none of them", async () => {
+    const { bus, ids } = await documentWith([add("fx", "layer", "fx"), add("panel", "panel", "panel1", { layout: "# Desk\nalpha" })]);
+    expect(joinPanelOperations(bus.store.getGraph(), ids["$fx"]!, ids["$panel"]!)).toEqual([]);
+    expect(soloPanelFor(bus.store.getGraph(), ids["$fx"]!)).toBeNull();
+  });
+
+  it("Remove from panel is the board write alone — there is no wire to cut — and the node stays", async () => {
+    const { bus, ids } = await documentWith([add("looks", "presets", "looks"), add("fx", "layer", "fx"), add("panel", "panel", "panel1")]);
+    const panel = ids["$panel"]!;
+    await apply(bus, joinPanelOperations(bus.store.getGraph(), ids["$looks"]!, panel));
+    await apply(bus, joinPanelOperations(bus.store.getGraph(), ids["$fx"]!, panel));
+    const graph = bus.store.getGraph();
+    const operations = removeFromPanelOperations(graph, panel, panelBoard(graph, graph.nodes[panel]!)!, "member:looks");
+    expect(operations.map((operation) => operation.op)).toEqual(["setParameters"]);
+    await apply(bus, operations);
+    expect(stored(bus.store.getGraph(), panel)).toEqual(["fx@4,0,2,1"]);
+    expect(bus.store.getGraph().nodes[ids["$looks"]!]).toBeDefined();
   });
 });

@@ -43,6 +43,8 @@ function PanelEditSurface({ bus, invocation, panelId, write }: PanelEditProps) {
         panelId={panelId}
         board={board}
         write={write}
+        bus={bus}
+        invocation={invocation}
         apply={(operations, label) => {
           if (operations.length === 0) return;
           void bus.execute("graph.applyPatch", { baseRevision: bus.store.getRevision(), label, operations }, invocation);

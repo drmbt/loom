@@ -1,0 +1,153 @@
+/*
+ * T1501b — a Presets bank, a Layer and a Cue List on a Panel board. Tokens only.
+ * Like a board widget (T1518b) everything is sized in EM: the type comes from the board
+ * (`board-fit.ts`, `board-members.tsx`), so the tab's fixed cells and the Panel node's
+ * scaled ones draw the same thing at two sizes.
+ */
+.member {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  font-family: var(--font-ui);
+  color: var(--text);
+  user-select: none;
+  touch-action: none;
+}
+/* A bank's strip: one button per preset, on as many rows as the rect has. */
+.strip {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 1px;
+  min-width: 0;
+  min-height: 0;
+}
+/* A press: a preset, BACK, GO. Raised at rest, like a Button widget. */
+.press {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 0.2em;
+  overflow: hidden;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-raise);
+  border: var(--border-hairline);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-raise);
+  cursor: pointer;
+}
+.press:hover {
+  background: var(--bg-hover);
+}
+.press:active {
+  box-shadow: var(--shadow-inset);
+}
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The preset recalled last. */
+.lit,
+.lit:hover {
+  color: var(--bg-void);
+  background: var(--signal);
+  box-shadow: var(--shadow-inset);
+}
+/* A morph in flight: a bar along the foot of the button being faded to. */
+.fade {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 0.3em;
+  background: var(--signal);
+  pointer-events: none;
+}
+.lit .fade {
+  background: var(--bg-void);
+}
+.empty {
+  align-self: center;
+  min-width: 0;
+  padding: 0 0.35em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+/* A layer's switch and fader; a cue list's names and buttons. */
+.parts {
+  display: grid;
+  gap: 1px;
+}
+.stacked {
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+}
+.beside {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.part {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.cueNames {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 0.35em;
+  overflow: hidden;
+  white-space: nowrap;
+  background: var(--bg-sunken);
+  border: var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+.cueNow,
+.cueNext {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cueNow {
+  color: var(--signal);
+}
+.cueArrow {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+}
+/* BACK takes a third, GO the rest. */
+.cueButtons {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 1px;
+  min-width: 0;
+  min-height: 0;
+}
+.go,
+.go:hover {
+  font-weight: var(--weight-header);
+  color: var(--bg-void);
+  background: var(--signal);
+}
+/* What the bus said when it refused a press, across the foot of the item. */
+.refusal {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 0 0.35em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85em;
+  color: var(--bg-void);
+  background: var(--error);
+  pointer-events: none;
+}

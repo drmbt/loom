@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { BOARD_FONT_MAX_PX, BOARD_FONT_MIN_PX, boardFit, boardValueEm, uiTextEm } from "./board-fit.ts";
+import {
+  BOARD_FONT_MAX_PX,
+  BOARD_FONT_MIN_PX,
+  boardFit,
+  boardValueEm,
+  cueListBoardLayout,
+  layerBoardLayout,
+  presetStripGrid,
+  uiTextEm,
+} from "./board-fit.ts";
 
 /**
  * T1518b — WHAT A BOARD CELL SAYS WHEN IT IS SMALL. The owner's screenshot of E81's Panel on
@@ -81,5 +90,37 @@ describe("T1518b — a readout does not come and go mid-drag", () => {
     expect(low).toBe(high);
     // …and a driven slider for the word it prints instead.
     expect(boardValueEm("slider", { min: 0, max: 1, value: { mode: "expression" } })).toBeCloseTo("driven".length * 0.6, 6);
+  });
+});
+
+/**
+ * T1501b — what a bank, a layer and a cue list show at the rect the owner gave them. The
+ * rule is the board's own: the essential thing stays (the presets, the switch, GO and
+ * BACK) and the rest joins when there is room for it.
+ */
+describe("T1501b — what a bank, a layer and a cue list have room for", () => {
+  it("a bank spreads its presets over the rows it has, and never leaves a row empty", () => {
+    expect(presetStripGrid(4, 1)).toEqual({ rows: 1, perRow: 4 });
+    // Six on one row are six slivers; a second row makes them 3 + 3.
+    expect(presetStripGrid(6, 1)).toEqual({ rows: 1, perRow: 6 });
+    expect(presetStripGrid(6, 2)).toEqual({ rows: 2, perRow: 3 });
+    expect(presetStripGrid(5, 2)).toEqual({ rows: 2, perRow: 3 });
+    // Two presets in a three-row rect are two rows, not two buttons over a blank row.
+    expect(presetStripGrid(2, 3)).toEqual({ rows: 2, perRow: 1 });
+  });
+
+  it("a layer is its switch at 2×1, with the fader under it from two rows and beside it from four cells", () => {
+    expect(layerBoardLayout({ w: 2, h: 1 })).toBe("switch");
+    expect(layerBoardLayout({ w: 3, h: 1 })).toBe("switch");
+    expect(layerBoardLayout({ w: 4, h: 1 })).toBe("beside");
+    expect(layerBoardLayout({ w: 2, h: 2 })).toBe("stacked");
+    expect(layerBoardLayout({ w: 1, h: 3 })).toBe("stacked");
+  });
+
+  it("a cue list keeps BACK and GO at any size; the cue names join above them at two rows, beside them from six cells", () => {
+    expect(cueListBoardLayout({ w: 2, h: 1 })).toBe("buttons");
+    expect(cueListBoardLayout({ w: 5, h: 1 })).toBe("buttons");
+    expect(cueListBoardLayout({ w: 6, h: 1 })).toBe("beside");
+    expect(cueListBoardLayout({ w: 4, h: 2 })).toBe("stacked");
   });
 });

@@ -3,6 +3,8 @@ import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { incomingEdgesInOrder } from "../../domain/graph/edge-order.ts";
 import { isParameterSlot, staticBindingValue } from "../../domain/parameters/slots.ts";
+import { PRESETS_NODE_TYPE, parsePresetBank } from "../../domain/presets/bank.ts";
+import { CUE_LIST_NODE_TYPE } from "../../domain/presets/cue-list.ts";
 import { VALUE_PORT } from "./common-ports.ts";
 
 const noPasses = (): CompiledNodeDescription => ({ passes: [] });
@@ -190,7 +192,7 @@ export const controlPanelNode: NodeDefinition = {
   title: "Panel",
   category: "value",
   description:
-    "A performance surface: wire Slider, Toggle, Button and XY Pad nodes into Controls (or drop one on the Panel) and they show on the Panel's body, in the Controls tab and, with Phone on, on a phone — on a board you arrange with the pencil on the Panel or in the Controls tab.",
+    "A performance surface: wire Slider, Toggle, Button and XY Pad nodes into Controls (or drop one on the Panel) and they show on the Panel's body, in the Controls tab and, with Phone on, on a phone — on a board you arrange with the pencil on the Panel or in the Controls tab. Drop a Presets bank, a Layer or a Cue List on the Panel and it joins the board too: a button per preset, the layer's switch and fader, GO and BACK.",
   tags: ["control", "panel", "ui", "surface", "perform", "live", "dashboard"],
   inputs: [{ id: PANEL_INPUT, label: "Controls", type: VALUE_PORT, optional: true, variadic: true }],
   outputs: [],
@@ -241,6 +243,18 @@ export const controlNodeDefinitions: readonly NodeDefinition[] = [
 
 /** Widget types a Panel lays out. */
 export const CONTROL_WIDGET_TYPES: ReadonlySet<string> = new Set(["slider", "toggle", "button", "xyPad"]);
+
+/** The Layer node's type (`layer.ts`), named here for the board and the surfaces that draw it. */
+export const LAYER_NODE_TYPE = "layer";
+
+/**
+ * T1501b — THE NODES A BOARD SHOWS BY NAME, WITH NO WIRE: a Presets bank (a button per
+ * preset), a Layer (its switch and fader) and a Cue List (GO / BACK). None of them can be
+ * wired into the Panel's value input — a bank and a cue list have no ports, and a layer's
+ * output is a picture — so they join by a board item that NAMES them (`{member:<name>}`),
+ * written when one is dropped on the Panel or its "+ panel" is pressed (`panel-join.ts`).
+ */
+export const BOARD_NAMED_TYPES: ReadonlySet<string> = new Set([PRESETS_NODE_TYPE, LAYER_NODE_TYPE, CUE_LIST_NODE_TYPE]);
 
 /* ------------------------------------------------------------ membership */
 
@@ -358,6 +372,9 @@ export interface BoardRect {
  * name is this app's reference currency (§V129): the rename clause (`names.ts`, kind 6)
  * carries it through a rename AND through a paste, which mints new ids but keeps — or
  * renumbers through that same clause — the names (§V320).
+ *
+ * T1501b: for a widget the item only PLACES a member the wiring made; for a bank, a layer
+ * or a cue list (`BOARD_NAMED_TYPES`) the item IS the membership — there is no wire.
  */
 export type StoredBoardItem =
   | { readonly member: string; readonly rect: BoardRect }
@@ -386,6 +403,10 @@ const DEFAULT_SIZE: Readonly<Record<string, CellSize>> = {
   toggle: { w: 2, h: 1 },
   button: { w: 2, h: 1 },
   xyPad: { w: 3, h: 3 },
+  // T1501b: a strip of preset buttons, a layer's switch, GO over BACK and the cue names.
+  [PRESETS_NODE_TYPE]: { w: 4, h: 1 },
+  [LAYER_NODE_TYPE]: { w: 2, h: 1 },
+  [CUE_LIST_NODE_TYPE]: { w: 4, h: 2 },
 };
 
 /** The default size of an item of this widget type, or of a label (`null`). */
@@ -393,8 +414,26 @@ export function boardDefaultSize(type: string | null): CellSize {
   return (type === null ? undefined : DEFAULT_SIZE[type]) ?? { w: 2, h: 1 };
 }
 
-/** The smallest an item may be resized to: a pad needs 2×2 to be draggable at all. */
+/** How many preset buttons a bank's strip puts on one board row at its default width. */
+export const PRESETS_PER_BOARD_ROW = 4;
+
+/**
+ * T1501b — the size THIS node takes when it joins a board: its type's default, except that
+ * a bank grows a row for every four presets it already holds, so a bank of ten does not
+ * land as ten slivers on one row. Read once, at the join; after that the stored rect is
+ * the owner's, and a bank that gains presets fits them into the rect it has.
+ */
+export function boardMemberSize(node: GraphNode): CellSize {
+  const size = boardDefaultSize(node.type);
+  if (node.type !== PRESETS_NODE_TYPE) return size;
+  const parsed = parsePresetBank(plainValue(node.parameters["presets"]));
+  const count = parsed.ok ? parsed.bank.presets.length : 0;
+  return { w: size.w, h: Math.max(size.h, Math.ceil(count / PRESETS_PER_BOARD_ROW)) };
+}
+
+/** The smallest an item may be resized to: a pad needs 2×2 to be draggable at all, a cue list a cell each for BACK and GO. */
 export function boardMinimumSize(type: string | null): CellSize {
+  if (type === CUE_LIST_NODE_TYPE) return { w: 2, h: 1 };
   return type === "xyPad" ? { w: 2, h: 2 } : { w: 1, h: 1 };
 }
 
@@ -495,12 +534,27 @@ export function firstFreeRect(placed: readonly BoardRect[], columns: number, siz
  * rect flows into the first free spot at its type's default size. A stored item whose widget
  * is no longer wired is left out here — and out of storage at the next write, because every
  * write stores this derivation (`storedBoardOf`).
+ *
+ * T1501b — a stored item that names a Presets bank, a Layer or a Cue List
+ * (`BOARD_NAMED_TYPES`) is a member WITHOUT a wire: the item is the membership, so it is
+ * kept while a node of one of those kinds carries that name and dropped — here, and from
+ * storage at the next write — once the node is gone. It is still a `widget` item (a node at
+ * a rect); what is drawn there follows `node.type`. A wired widget of the same name wins.
  */
 export function panelBoard(graph: Pick<GraphDocument, "nodes" | "edges">, panel: GraphNode): PanelBoard | null {
   if (panelLayoutOverride(panel) !== null) return null;
   const stored = parsePanelBoard(panel.parameters["board"]);
   const { columns } = stored;
   const members = new Map(panelMembers(graph, panel).map((node) => [controlNameOf(node), node]));
+  let named: Map<string, GraphNode> | null = null;
+  const namedMember = (name: string): GraphNode | undefined => {
+    named ??= new Map(
+      Object.values(graph.nodes)
+        .filter((node) => BOARD_NAMED_TYPES.has(node.type))
+        .map((node) => [controlNameOf(node), node]),
+    );
+    return named.get(name);
+  };
   const items: PanelBoardItem[] = [];
   const placed = new Set<string>();
   let labels = 0;
@@ -510,7 +564,7 @@ export function panelBoard(graph: Pick<GraphDocument, "nodes" | "edges">, panel:
       labels += 1;
       continue;
     }
-    const node = members.get(item.member);
+    const node = members.get(item.member) ?? namedMember(item.member);
     if (node === undefined || placed.has(item.member)) continue;
     placed.add(item.member);
     items.push({ kind: "widget", key: `member:${item.member}`, node, rect: clampRect(item.rect, columns, boardMinimumSize(node.type)) });
