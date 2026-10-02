@@ -11,6 +11,7 @@ import {
   componentImportInputSchema,
   planComponentImport,
   readComponentFile,
+  sessionOnlyAssets,
   type ComponentRef,
   type ComponentRename,
 } from "./component-file.ts";
@@ -32,6 +33,11 @@ import type { ComponentRegistry } from "./registry.ts";
  * document exactly as they were (§V32). The instance is one patch, one undo step (§V34);
  * undo removes the instance and leaves the imported definitions installed, the same as
  * `component.saveSelection` does.
+ *
+ * EXPORT carries what the component's internals reference: the components it nests, and
+ * the files its nodes read — which are URLs inside its own graph, so they travel as they
+ * are, except a file picked for this session only, which is refused by name (T1492b; the
+ * measurement is in `component-file.ts`).
  *
  * EXPORT writes through a port, never the DOM: `writeFile` is the composition root's
  * `writeTextFile` ladder (picker, then download), and a bus without one — a component
@@ -391,6 +397,20 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
             error(
               "component.export.missingDependency",
               `"${root.name}" nests ${reference.componentId} v${reference.version}, which is not installed, so the file would not open anywhere else.`,
+            ),
+          ),
+        );
+      }
+      // T1492b: a file picked for this session is an object URL — bytes this page holds
+      // under a name that is dead everywhere else. Refused by name, not exported broken.
+      const stranded = sessionOnlyAssets(collected.definitions, context.registry);
+      if (stranded.length > 0) {
+        return refuse(
+          ...stranded.map((each) =>
+            error(
+              "component.export.sessionAsset",
+              `"${root.name}" was not exported: "${each.nodeName}" in "${each.componentName}" reads "${each.fileName}", a file picked for this session only, which no other document could open.`,
+              `Clear ${each.parameterLabel} on "${each.nodeName}" or point it at a URL, then export again.`,
             ),
           ),
         );

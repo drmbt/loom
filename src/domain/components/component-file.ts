@@ -4,6 +4,9 @@ import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { GraphDocument, ProjectDocument, ProjectSettings } from "../types/graph.ts";
 import type { ComponentId } from "../types/ids.ts";
 import { SCHEMA_VERSION } from "../types/schemas.ts";
+import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
+import { pictureFileName } from "../media/picture-file.ts";
+import { effectiveParameterSchema } from "../parameters/resolve.ts";
 import { buildProjectFile, detachComponentLibrary, type ProjectFile } from "../project/project-file.ts";
 import { parseProjectDocument, sortKeysDeep } from "../project/serialize.ts";
 import { withBoundaryPorts } from "./boundary-ports.ts";
@@ -127,6 +130,74 @@ export function collectComponentDependencies(
   };
   visit(root);
   return missing.length > 0 ? { ok: false, missing } : { ok: true, definitions: ordered };
+}
+
+/**
+ * THE FILES A COMPONENT'S INTERNALS READ (T1492b) — measured before anything was built.
+ *
+ * A node's file is an `asset`-typed PARAMETER holding a URL string: `file` on Movie File
+ * In, Audio File In and Mesh File In. There is no asset table behind it. `AssetReference`
+ * and `ProjectDocument.assets` exist as a type and a schema, every writer writes `[]`, and
+ * no node holds an `assetId`. So the reference lives INSIDE the definition's graph, which
+ * has two consequences:
+ *
+ *  - it already travels: an export carries it with the node, an import has nothing extra
+ *    to install, and the loaders read the FLATTENED graph (T615), so it resolves in the
+ *    document it arrives in;
+ *  - it has no identity of its own to clash: the file a component reads is part of that
+ *    component's content, so the component rule above already decides it — same id and
+ *    same file is the same component, same id and a different file is renamed.
+ *
+ * What cannot travel is an OBJECT URL (`blob:…`), which is what the file picker and the
+ * agent's `attach_asset` write: it names bytes the page that made it is holding, and is
+ * dead in every other session. Exported, it would open everywhere as a node that never
+ * loads — so `component.export` refuses it by name instead.
+ */
+export interface SessionOnlyAsset {
+  /** The carried component whose graph holds the node — the root or one it nests. */
+  readonly componentName: string;
+  readonly nodeName: string;
+  readonly parameterLabel: string;
+  /** The picked file's own name, which the picker keeps in the URL's fragment. */
+  readonly fileName: string;
+}
+
+/** The object URL inside a stored value, whatever wraps it (a bare string, `{url}`, a mode envelope). */
+function objectUrlIn(value: unknown): string | null {
+  if (typeof value === "string") return value.startsWith("blob:") ? value : null;
+  if (typeof value !== "object" || value === null) return null;
+  for (const each of Object.values(value)) {
+    const found = objectUrlIn(each);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
+/** Every asset parameter in `definitions` bound to a file that exists in this session only. */
+export function sessionOnlyAssets(
+  definitions: readonly GraphComponentDefinition[],
+  registry: NodeRegistryView,
+): SessionOnlyAsset[] {
+  const found: SessionOnlyAsset[] = [];
+  for (const definition of definitions) {
+    for (const nodeId of Object.keys(definition.graph.nodes).sort()) {
+      const node = definition.graph.nodes[nodeId];
+      if (node === undefined) continue;
+      const schema = effectiveParameterSchema(registry.get(node.type), node.parameters);
+      for (const [key, parameter] of Object.entries(schema)) {
+        if (parameter.type !== "asset") continue;
+        const url = objectUrlIn(node.parameters[key]);
+        if (url === null) continue;
+        found.push({
+          componentName: definition.name,
+          nodeName: node.label ?? nodeId,
+          parameterLabel: parameter.label,
+          fileName: pictureFileName(url),
+        });
+      }
+    }
+  }
+  return found;
 }
 
 export interface BuildComponentFileInput {
