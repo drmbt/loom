@@ -175,7 +175,18 @@ export interface MorphIndexInput {
    * The flattening the frame paths resolve on, when the caller has one. Absent, the
    * document itself is what resolves and there are no published fan-outs to follow.
    */
-  readonly flattened?: { readonly graph: GraphDocument; readonly publishedOrigins: PublishedOrigins } | undefined;
+  readonly flattened?:
+    | {
+        readonly graph: GraphDocument;
+        readonly publishedOrigins: PublishedOrigins;
+        /**
+         * T1524b: root instance id → its PUBLISHED page as a schema. The ends of a fade
+         * are resolved on the instance, and its schema lives in the component catalogue;
+         * `registry` answers for an instance only when it is the component-aware view.
+         */
+        readonly instanceSchemas?: ReadonlyMap<NodeId, ParameterSchema> | undefined;
+      }
+    | undefined;
 }
 
 export function buildMorphIndex(input: MorphIndexInput): ParameterMorphs {
@@ -252,12 +263,15 @@ export function buildMorphIndex(input: MorphIndexInput): ParameterMorphs {
           file(nodeId, key, epoch, links);
         }
         // Inside a component. `key` is a published key, or one CHANNEL of a published
-        // compound (`tint.r`); either way the targets are the published key's.
-        const schema = effectiveParameterSchema(registry.get(rootNode.type), rootNode.parameters);
-        const channel = schema[key] === undefined ? parseComponentKey(key) : null;
+        // compound (`tint.r`); either way the targets are the published key's. Asked
+        // before any schema is: almost every chain is on a plain node and has none.
+        const direct = fanOut.get(`${nodeId}\u0000${key}`);
+        const channel = direct === undefined ? parseComponentKey(key) : null;
         const published = channel === null ? key : channel.base;
-        const targets = fanOut.get(`${nodeId}\u0000${published}`);
+        const targets = direct ?? (channel === null ? undefined : fanOut.get(`${nodeId}\u0000${published}`));
         if (targets === undefined) continue;
+        const schema =
+          input.flattened?.instanceSchemas?.get(nodeId) ?? effectiveParameterSchema(registry.get(rootNode.type), rootNode.parameters);
         const publishedDefinition = schema[published];
         const position =
           channel === null || publishedDefinition === undefined

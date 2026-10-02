@@ -98,8 +98,9 @@ export function graphChannelResolver(
     // (`resolveStoredAt`) — nothing here blends — and it settles on the same static view
     // the loop above reads, with no channel resolver and no reader, so this stays the
     // read the module note asks for. `driven` is the fold's own mark: a key whose fade is
-    // over, or belongs to another epoch, keeps the value the loop gave it.
-    const fading = context.frame === undefined ? undefined : morphs?.keysOf(nodeId);
+    // over keeps the value the loop gave it — and once every fade is over, or the frame
+    // is another epoch's, nothing is resolved here at all.
+    const fading = context.frame !== undefined && morphs?.activeAt(context.frame) === true ? morphs.keysOf(nodeId) : undefined;
     if (fading !== undefined && context.frame !== undefined) {
       const parameters: Record<string, StoredParameter> = {};
       for (const [key, stored] of Object.entries(node.parameters)) {

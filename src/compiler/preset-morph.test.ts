@@ -480,6 +480,19 @@ describe("T1524b: a `parent.<key>` read of a morphing knob fades with it", () =>
     expect(run.at(60, "city/inner/grade", "brightness")).toBe(0.8);
   });
 
+  it("needs no component-aware registry: flattening handed the PLAIN node registry indexes the same fade", async () => {
+    // What the offline harness hands `flattenComponents`. The ends are resolved on the
+    // instance, whose schema is the component's published page — not a registry lookup.
+    const system = createComponentSystem(registry, [boundComponent("slot")]);
+    const components = system.components.view();
+    const graph = await recalled(cityDocument("bound", { gain: 0.2 }, { gain: 0.8 }), system.nodes);
+    expect(registry.get(componentNodeType("bound", 1))).toBeUndefined();
+    const flattened = flattenComponents({ graph, registry, components });
+    expect([...(flattened.morphs.keysOf("city/grade") ?? [])]).toEqual(["brightness"]);
+    const request: CompileRequest = { graph, settings, registry, capabilities: TIER_B_CAPABILITIES, components, flattened };
+    expect(uniformOf(compileGraph({ ...request, resolution: { frame: frameAt(30) } }), "city/grade", "brightness")).toBe(0.5);
+  });
+
   it("cut the wire: a document with no bind is not given an origin, and an unrelated knob moves nothing", async () => {
     // The legitimate case the origin must not swallow: the same component, the Level NOT bound.
     const unbound = { ...boundComponent("slot"), graph: { ...boundComponent("slot").graph, nodes: { ...boundComponent("slot").graph.nodes, grade: node("grade", "level", { brightness: 1 }) } } } as GraphComponentDefinition;

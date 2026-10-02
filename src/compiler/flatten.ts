@@ -558,6 +558,12 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
   const sources = new Map<NodeId, ComponentSource>();
   const instanceOutputs = new Map<NodeId, ReadonlyMap<PortId, FlatEndpoint>>();
   const publishedOrigins = new Map<NodeId, Readonly<Record<string, PublishedOrigin>>>();
+  /**
+   * T1524b: each ROOT instance's published page as a schema, for the morph index — which
+   * resolves a fade's ends on the instance and so must not depend on `request.registry`
+   * being the component-aware view (the offline harness hands a plain one).
+   */
+  const instanceSchemas = new Map<NodeId, ParameterSchema>();
   const sinks: ActiveSink[] = [];
   /** Flattened instance id -> display name, the pieces a source path is made of. */
   const instanceNames: Record<NodeId, string> = {};
@@ -816,6 +822,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
         continue;
       }
 
+      if (input.definition === null) instanceSchemas.set(node.id, publishedSchema(componentDefinition));
       const label = node.label ?? names[nodeId] ?? componentDefinition.name;
       instanceNames[flatId] = label;
       recordSource(flatId, input.path, node, label);
@@ -1012,7 +1019,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     publishedOrigins,
     // T1497b: against the ROOT document (the banks and the nodes they name live there)
     // and this flattening (what actually resolves).
-    morphs: buildMorphIndex({ document: request.graph, registry: request.registry, flattened: { graph, publishedOrigins } }),
+    morphs: buildMorphIndex({ document: request.graph, registry: request.registry, flattened: { graph, publishedOrigins, instanceSchemas } }),
   };
 }
 
