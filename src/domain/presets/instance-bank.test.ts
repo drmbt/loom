@@ -678,6 +678,28 @@ describe("T1541b — detaching a look's instance rewrites its page bank", () => 
     expect(doc.graph().nodes["rootSolid"]?.parameters["amount"]).toBe(0.1);
   });
 
+  /**
+   * B238 — the carried fade only survives if the copies STORE the value the fade is heading
+   * to. The morph index's edit rule drops a chain whose key no longer holds the newest
+   * record's `to`, and detach used to write the definition's radius 4 where cityA's page
+   * said 2 — so the rewritten bank kept a record nothing would ever play.
+   */
+  it("B238: the fade it carries is still indexed on the copies — they store the value it is heading to", async () => {
+    const doc = documentWith(twoLooks());
+    doc.at({ epoch: "e1", absTimeSeconds: 0 });
+    expect((await doc.bus.execute("preset.recall", { nodeId: "a", name: "calm", morph: { seconds: 1, curve: "linear" } }, ctx)).status).toBe("applied");
+    expect((await doc.bus.execute("component.detach", { nodeId: "a" }, ctx)).status).toBe("applied");
+
+    const blurCopy = byLabel(doc, "blurA");
+    const solidCopy = byLabel(doc, "solid");
+    expect(blurCopy?.parameters["radius"]).toBe(2);
+    expect(solidCopy?.parameters["amount"]).toBe(0.25);
+    const index = buildMorphIndex({ document: doc.graph(), registry: doc.bus.registry });
+    const half = { absEpoch: "e1", absTimeSeconds: 0.5 } as never;
+    expect(index.stepsAt(blurCopy!.id, "radius", half)?.map((step) => [step.from, step.to, step.progress])).toEqual([[10, 2, 0.5]]);
+    expect(index.stepsAt(solidCopy!.id, "amount", half)?.map((step) => [step.from, step.to, step.progress])).toEqual([[0.9, 0.25, 0.5]]);
+  });
+
   it("cannot be exact when a preset holds a key the page does not publish: left as it was, and named as inert", async () => {
     const odd: Preset = { name: "odd", values: { parent: { blur: 3, glow: 1 } } };
     const doc = documentWith(twoLooks(), { definitions: [city([CALM, odd])] });

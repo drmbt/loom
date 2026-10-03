@@ -58,7 +58,7 @@ import { buildTimelineCueIndex, withTimelineCues } from "./timeline-cues.ts";
  *
  * The fold starts from the value the internal parameter showed before the recall, so each
  * end has to be the thing flattening put there while that end was stored — and that is
- * one of two things (`publishedPage`, `flatten.ts`):
+ * one of two things (`publishedPage`, `components/published-page.ts`):
  *
  *  - the instance's own SLOT, unresolved, when it is an expression or a channel read on a
  *    published fan-out (§T1017). It means the same one level in, so it travels as it is
@@ -162,7 +162,7 @@ function travelsAsSlot(stored: StoredParameter | undefined): boolean {
 /**
  * T1524b — one end of a fade as flattening WROTE it for an internal parameter: `stored`
  * resolved at `key` of the instance, in stored space, with no frame — the read
- * `publishedPage` makes (`flatten.ts`), on the same node with only this key swapped. A
+ * `publishedPage` makes (`components/published-page.ts`), on the same node with only this key swapped. A
  * bare compound comes back ASSEMBLED over the component slots the instance holds now; a
  * component key comes back as that one channel.
  */

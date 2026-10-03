@@ -102,6 +102,9 @@ export {
 } from "./published-parameter.ts";
 
 
+export { HOP_INVARIANT_MODES, publishedPage, publishedSchema } from "./published-page.ts";
+export type { PublishedPage } from "./published-page.ts";
+
 export {
   componentSourcePath,
   effectiveInternalOverrides,

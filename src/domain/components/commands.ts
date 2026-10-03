@@ -35,6 +35,9 @@ import type { ComponentRegistry } from "./registry.ts";
 import { registerComponentFileCommands, type ComponentFileReader, type ComponentFileWriter } from "./file-commands.ts";
 import { pageBanksOf, presetCatalogueHolderFor } from "../presets/bank-view.ts";
 import { detachedPageBank } from "../presets/detach-page-bank.ts";
+import { effectiveParameterSchema } from "../parameters/resolve.ts";
+import { detachedValues, nestedParentReads } from "./detach-values.ts";
+import { publishedSchema } from "./published-page.ts";
 
 /**
  * Component commands (T129–T132, T136), registered by declaration merging like every
@@ -738,13 +741,29 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         return fail();
       }
 
-      const dangling = danglingParentBindings(definition.graph);
-      if (dangling.length > 0) {
+      // B238: the copies hold what the instance's page put on screen — flattening's rule,
+      // written once (`detachedValues`) — not the definition's own values.
+      const definitionOf = (node: GraphNode): GraphComponentDefinition | undefined => {
+        const nested = readComponentInstance(node);
+        return nested === null ? undefined : components.get(nested.componentId, nested.version);
+      };
+      const values = detachedValues({
+        definition,
+        instance,
+        schemaOf: (node) => {
+          const nested = definitionOf(node);
+          return nested === undefined ? effectiveParameterSchema(context.registry.get(node.type), node.parameters) : publishedSchema(nested);
+        },
+      });
+      const look = instance.label ?? input.nodeId;
+      for (const nestedId of nestedParentReads(definition.graph, definitionOf)) {
+        const nested = definition.graph.nodes[nestedId];
         diagnostics.push({
           severity: "warning",
-          code: "component.detach.parentBindings",
-          message: `${dangling.length} node(s) referenced parent.<key>; the copy has no parent, so those bindings no longer resolve.`,
+          code: "component.detach.nestedParentReads",
+          message: `"${nested?.label ?? nestedId}" inside "${look}" holds a component that reads past its own parent with parent.parent.<key>; with "${look}" detached, that read names one component further out.`,
           nodeId: input.nodeId,
+          suggestion: "Undo the detach, or bind those parameters inside the nested component instead.",
         });
       }
 
@@ -754,6 +773,23 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         recipe: (draft) => {
           const remap = copyInternalGraph(draft, definition.graph, instance.position, context.ids);
           created.push(...Object.values(remap));
+          let baked = 0;
+          for (const internalId of Object.keys(remap).sort()) {
+            const copyId = remap[internalId] as NodeId;
+            const copied = draft.nodes[copyId];
+            if (copied === undefined) continue;
+            const written = values.copy(internalId, copied);
+            draft.nodes[copyId] = written.node;
+            baked += written.baked;
+          }
+          if (baked > 0) {
+            diagnostics.push({
+              severity: "info",
+              code: "component.detach.parentValues",
+              message: `${baked} parameter(s) read "${look}"'s page through parent.<key>; the copies hold the values they read.`,
+              nodeId: input.nodeId,
+            });
+          }
           diagnostics.push(...rewritePageBanks(draft, definition, instance, remap));
 
           const inputById = new Map(definition.inputs.map((port) => [port.externalId, port]));
