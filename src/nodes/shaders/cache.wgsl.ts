@@ -10,8 +10,8 @@ import { wgsl } from "../../runtime/backend/wgsl.ts";
  * how §T1149 lost a session and §T1153 got a row. T1204 corrected both ends.
  *
  * That the tap is a uniform is what makes it DRIVABLE (T1204): a delay of n(t) frames, not
- * merely of n — see `cache.ts` for why an async source's own reported lag is the thing you
- * point it at. Per-PIXEL time displacement (slit-scan, T321) is a different shader still.
+ * merely of n. The offset counts rendered inputs archived by this ring, not timeline
+ * frame numbers. Per-PIXEL time displacement (slit-scan, T321) is a different shader still.
  */
 export const CACHE_BLIT_WGSL = wgsl`@group(0) @binding(0) var inputSampler: sampler;
 @group(0) @binding(1) var inputTexture: texture_2d<f32>;
@@ -31,7 +31,8 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
  * The array view is one object for the life of the ring; what changes per frame is a
  * NUMBER, and numbers travel as uniforms (§V5). The layer arithmetic below replicates
  * `Ring.tapView` exactly, §V229 clamp included: before the ring fills, the deepest
- * readable slice stands in for a deeper tap — never a layer nobody has written.
+ * readable slice stands in for a deeper tap by default. Strict History instead returns
+ * transparent pixels when the exact tap is unavailable; tap 0 reads the current input.
  */
 export const CACHE_READ_WGSL = wgsl`@group(0) @binding(0) var inputSampler: sampler;
 @group(0) @binding(1) var ringTexture: texture_2d_array<f32>;
@@ -42,11 +43,20 @@ struct CacheTap {
   ringLatest: f32,
   ringWritten: f32,
   ringFrames: f32,
+  strictHistory: f32,
 };
 @group(0) @binding(2) var<uniform> cacheTap: CacheTap;
 
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  if (cacheTap.tap < 0.5) {
+    return textureSampleLevel(liveTexture, inputSampler, uv, 0.0);
+  }
+  let frames = max(cacheTap.ringFrames, 1.0);
+  let available = min(cacheTap.ringWritten, frames - 1.0);
+  if (cacheTap.strictHistory > 0.5 && cacheTap.tap > available) {
+    return vec4f(0.0);
+  }
   /* B160 \u2014 \u00a7V229's "never black" was FALSE on frame 0: with nothing archived yet,
      the clamp below still indexed a never-written layer. An empty cache now reads the
      ring's WRITE TARGET \u2014 the frame this node's own write pass just composed \u2014 so
@@ -55,7 +65,6 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   if (cacheTap.ringWritten < 0.5) {
     return textureSampleLevel(liveTexture, inputSampler, uv, 0.0);
   }
-  let frames = max(cacheTap.ringFrames, 1.0);
   /* \u00a7V229: while filling, the deepest available layer stands in for a deeper tap. */
   let back = clamp(cacheTap.tap, 1.0, max(cacheTap.ringWritten, 1.0));
   let layer = i32(round(cacheTap.ringLatest - (back - 1.0) + frames * 2.0)) % i32(frames);

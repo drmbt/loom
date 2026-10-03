@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { flattenedNodeId } from "../compiler/flatten.ts";
+import { flattenedNodeId, flattenComponents } from "../compiler/flatten.ts";
+import { componentNodeType } from "../domain/components/component-type.ts";
 import { compileGraph } from "../compiler/index.ts";
 import { createComponentSystem } from "../domain/components/registry.ts";
 import { graphComponentDefinitionSchema } from "../domain/components/schemas.ts";
 import { readComponentInstance } from "../domain/components/instance.ts";
 import { defaultParameterValue } from "../domain/parameters/validate.ts";
+import { createParameterReadOptions } from "../domain/parameters/node-references.ts";
+import { effectiveParameterSchema, resolveParameterSchema } from "../domain/parameters/resolve.ts";
 import {
   PROJECT_FILE_EXTENSION,
   loadProject,
@@ -16,7 +19,8 @@ import { createNodeRegistry } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
 import { listStarterComponentFiles } from "./catalogue.ts";
 import { buildStarterComponentFiles } from "./component-files.ts";
-import { STARTER_COMPONENT_SPECS } from "./starter-components.ts";
+import { STARTER_COMPONENT_SPECS, buildStarterComponents } from "./starter-components.ts";
+import { graph, node } from "./documents/builders.ts";
 import { TIER_B_CAPABILITIES, messagesOf } from "./runner.ts";
 
 /**
@@ -74,7 +78,7 @@ describe("the shipped starter components are what the save path writes (§V94)",
     }
   });
 
-  it("names the eleven the spec asks for", () => {
+  it("names the twelve the spec asks for", () => {
     expect(STARTER_COMPONENT_SPECS.map((spec) => spec.name).sort()).toEqual([
       "Antialias",
       "AudioAnalysis",
@@ -85,9 +89,70 @@ describe("the shipped starter components are what the save path writes (§V94)",
       "DisplacementStack",
       "FeedbackEcho",
       "Kaleidoscope",
+      "MatteCut",
       "MediaGrade",
       "TimeGrid",
     ]);
+  });
+
+  it("authors MatteCut with one shared picture input and preserves automatic alignment", async () => {
+    const built = (await buildStarterComponents()).find(component => component.spec.componentId === "matteCut");
+    if (built === undefined) throw new Error("MatteCut was not authored.");
+    const definition = built.definition;
+    expect(definition.inputs.map(input => input.externalId)).toEqual(["picture"]);
+    expect(definition.inputs[0]?.label).toBe("Picture");
+    expect(definition.outputs.map(output => output.externalId)).toEqual(["out", "mask"]);
+    expect(definition.outputs.find(output => output.externalId === "out")).toMatchObject({
+      nodeId: "out_out", portId: "out", label: "Cutout",
+    });
+    expect(definition.outputs.find(output => output.externalId === "mask")).toMatchObject({
+      nodeId: "matte", portId: "out", label: "Mask",
+    });
+    const inputId = definition.inputs[0]!.nodeId;
+    expect(Object.values(definition.graph.edges).filter(edge => edge.source.nodeId === inputId)
+      .map(edge => edge.target.nodeId).sort()).toEqual(["history", "matte"]);
+    expect(definition.graph.nodes["history"]?.parameters).toMatchObject({
+      frames: 24, scale: 0.5, strictHistory: true,
+      index: { mode: "expression", bindings: {
+        static: { value: 0 },
+        expression: { source: "64 + op('matte1').chan.ready * (op('matte1').chan.cacheFrames - 64)" },
+      } },
+    });
+    expect(definition.graph.nodes["cut"]?.parameters).toMatchObject({ channel: "red", apply: "alpha" });
+    expect(definition.parameters.map(parameter => parameter.key).sort()).toEqual(["history", "model", "scale", "smoothing"]);
+    expect(definition.parameters.flatMap(parameter => parameter.targets).some(target => target.key === "index")).toBe(false);
+
+    const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view(), [definition]);
+    const flat = flattenComponents({
+      graph: graph([
+        node("collision", "circle", [-300, 0], {}, { label: "matte1" }),
+        node("first", componentNodeType(definition.componentId, definition.version), [0, 0]),
+        node("second", componentNodeType(definition.componentId, definition.version), [300, 0]),
+      ], []),
+      registry: system.nodes,
+      components: system.components.view(),
+    });
+    expect(flat.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+    const firstMatte = flat.graph.nodes[flattenedNodeId("first", "matte")]!;
+    const secondMatte = flat.graph.nodes[flattenedNodeId("second", "matte")]!;
+    expect(firstMatte.label).not.toBe("matte1");
+    expect(secondMatte.label).not.toBe(firstMatte.label);
+    const channels = new Map([
+      [`${firstMatte.label}:ready`, 0], [`${firstMatte.label}:cacheFrames`, 3],
+      [`${secondMatte.label}:ready`, 1], [`${secondMatte.label}:cacheFrames`, 9],
+    ]);
+    const indexOf = (instance: string) => {
+      const history = flat.graph.nodes[flattenedNodeId(instance, "history")]!;
+      const resolved = resolveParameterSchema(history, effectiveParameterSchema(system.nodes.get(history.type), history.parameters),
+        createParameterReadOptions({ graph: flat.graph, registry: system.nodes, channels: name => channels.get(name) }));
+      expect(resolved.diagnostics).toEqual([]);
+      return resolved.values["index"];
+    };
+    expect(indexOf("first")).toBe(64);
+    expect(indexOf("second")).toBe(9);
+    channels.set(`${firstMatte.label}:ready`, 1);
+    expect(indexOf("first")).toBe(3);
+    expect(indexOf("second")).toBe(9);
   });
 
   it.each([...shipped.keys()])("%s survives a load/save round trip", (fileName) => {

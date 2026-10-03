@@ -12,6 +12,9 @@ import type { GraphDocument, ProjectDocument, ProjectSettings } from "../domain/
 import type { ComponentId, NodeId } from "../domain/types/ids.ts";
 import { SCHEMA_VERSION } from "../domain/types/schemas.ts";
 import { channelExpression } from "../domain/parameters/slots.ts";
+import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
+import { matteNode } from "../nodes/definitions/matte.ts";
+import { MATTE_MEDIAPIPE } from "../runtime/models/model-catalogue.ts";
 import {
   EXAMPLE_TIMESTAMP,
   bloomDocument,
@@ -19,7 +22,7 @@ import {
   feedbackEchoDocument,
   kaleidoscopeDocument,
 } from "./documents.ts";
-import { document, edge, graph, node, settings } from "./documents/builders.ts";
+import { document, edge, expressionSlot, graph, node, settings } from "./documents/builders.ts";
 import { FXAA_WGSL } from "./shaders/fxaa.wgsl.ts";
 import { DEPTH_CARVE_KERNEL, DEPTH_PAINT_KERNEL } from "./shaders/depth-points.wgsl.ts";
 import { TIME_GRID_BREAK_WGSL, TIME_GRID_MAP_WGSL, TIME_GRID_SWEEP_WGSL } from "./shaders/time-grid.wgsl.ts";
@@ -98,6 +101,10 @@ export interface StarterComponentSpec {
    * component the first time it is instantiated.
    */
   readonly publish: readonly PublishedParameter[];
+  /** Rename boundary nodes through authoring commands while preserving socket addresses. */
+  readonly boundaryLabels?: Readonly<Record<NodeId, string>>;
+  /** Extra useful results, exposed through the same command as user-authored ports. */
+  readonly exposeOutputs?: readonly { nodeId: NodeId; portId: string; externalId: string; label: string }[];
 }
 
 export interface StarterComponent {
@@ -1375,6 +1382,43 @@ const antialiasHost: ProjectDocument = {
   projectId: "component-antialias-host",
 };
 
+/** Delay the picture to the source frame of the most recent person matte. */
+export const matteCutHost: ProjectDocument = {
+  ...document(
+    "matte-cut-host",
+    "MatteCut",
+    settings({ randomSeed: 7 }),
+    graph(
+      [
+        node("picture", "movieFileIn", [-600, 0], {}, { label: "picture1" }),
+        node("matte", "matte", [-300, -140], {
+          model: MATTE_MEDIAPIPE.id, smoothing: 1,
+        }, { label: "matte1" }),
+        node("history", "cache", [-300, 140], {
+          frames: 24, scale: 0.5, strictHistory: true,
+        }, { label: "history1", parameters: {
+          // ready is 0/1. Tap64 is beyond every legal history and hides the neutral mask.
+          index: expressionSlot("64 + op('matte1').chan.ready * (op('matte1').chan.cacheFrames - 64)", 0),
+        } }),
+        node("cut", "mask", [0, 0], { channel: "red", apply: "alpha" }, { label: "cut1" }),
+        node("out", "output", [300, 0], { toneMap: "none" }, { label: "out1" }),
+      ],
+      [
+        edge("e-picture-matte", ["picture", "out"], ["matte", "input"]),
+        edge("e-picture-history", ["picture", "out"], ["history", "input"]),
+        edge("e-history-cut", ["history", "out"], ["cut", "input"]),
+        edge("e-matte-cut", ["matte", "out"], ["cut", "mask"]),
+        edge("e-cut-out", ["cut", "out"], ["out", "input"]),
+      ],
+    ),
+  ),
+  projectId: "component-matte-cut-host",
+};
+
+const matteCutSchema = effectiveParameterSchema(matteNode, matteCutHost.graph.nodes["matte"]!.parameters);
+const matteCutModel = matteCutSchema["model"];
+if (matteCutModel?.type !== "enum") throw new Error("MatteCut requires the Matte model chooser.");
+
 /**
  * The specs.
  *
@@ -1382,6 +1426,53 @@ const antialiasHost: ProjectDocument = {
  * that are chains rather than effects, the grade, then the audio analyser.
  */
 export const STARTER_COMPONENT_SPECS: readonly StarterComponentSpec[] = [
+  {
+    componentId: "matteCut",
+    name: "MatteCut",
+    description:
+      "Person cutout with the picture delayed to match the latest Matte result. Select a movie in the demo's Movie File In, or connect any picture source. Missing or expired history stays transparent; History and Scale set its memory cost. Model download requires consent.",
+    host: matteCutHost,
+    selection: ["matte", "history", "cut"],
+    portNames: { "matte.input": "picture", "history.input": "picture" },
+    boundaryLabels: { in_picture: "Picture", out_out: "Cutout" },
+    exposeOutputs: [
+      { nodeId: "matte", portId: "out", externalId: "mask", label: "Mask" },
+    ],
+    publish: [
+      {
+        key: "model",
+        definition: { ...matteCutModel, default: MATTE_MEDIAPIPE.id },
+        targets: [{ nodeId: "matte", key: "model" }],
+      },
+      {
+        key: "smoothing",
+        definition: {
+          type: "number", label: "Smoothing", group: "Matte", default: 1,
+          min: 0.05, max: 1, range: "bounded", step: 0.05,
+          description: "1 uses the latest matte without temporal blending. Lower values blend previous results for steadier edges and add motion lag that delaying the picture cannot remove.",
+        },
+        targets: [{ nodeId: "matte", key: "smoothing" }],
+      },
+      {
+        key: "history",
+        definition: {
+          type: "number", label: "History", group: "Alignment", default: 24,
+          min: 2, max: 64, range: "bounded", step: 1, compileTime: true,
+          description: "Frames of picture history to allocate. Increase for slower inference; a result older than this history produces transparent output rather than a mismatched cutout. Each frame costs a texture at Scale.",
+        },
+        targets: [{ nodeId: "history", key: "frames" }],
+      },
+      {
+        key: "scale",
+        definition: {
+          type: "number", label: "Scale", group: "Alignment", default: 0.5,
+          min: 0.125, max: 1, range: "bounded", step: 0.125, compileTime: true,
+          description: "Picture history resolution relative to the input. Half scale uses a quarter of full-scale history memory; 1 preserves the original resolution.",
+        },
+        targets: [{ nodeId: "history", key: "scale" }],
+      },
+    ],
+  },
   {
     componentId: "feedbackEcho",
     name: "FeedbackEcho",
@@ -2232,6 +2323,18 @@ async function authorComponent(
     ids: createSequentialIdFactory(`${spec.componentId}-inside`),
   });
   try {
+    if (spec.boundaryLabels !== undefined) {
+      const renamed = await session.bus.execute("graph.applyPatch", {
+        baseRevision: session.bus.store.getRevision(),
+        operations: Object.entries(spec.boundaryLabels).map(([nodeId, label]) => ({
+          op: "setNodeLabel" as const, nodeId, label,
+        })),
+      }, AUTHORING_CONTEXT);
+      if (renamed.status !== "applied") {
+        throw new StarterComponentError(spec, "graph.applyPatch",
+          renamed.diagnostics.map(diagnostic => diagnostic.message).join(" "));
+      }
+    }
     /*
      * T969 — THE TIDY, AND IT IS A GESTURE, NOT A POST-PROCESS.
      *
@@ -2269,6 +2372,16 @@ async function authorComponent(
           "graph.layoutAll",
           laid.diagnostics.map((diagnostic) => diagnostic.message).join(" ") || "rejected",
         );
+      }
+    }
+
+    for (const output of spec.exposeOutputs ?? []) {
+      const result = await session.bus.execute(
+        "component.exposePort", { direction: "output", ...output }, AUTHORING_CONTEXT,
+      );
+      if (!result.output.ok) {
+        throw new StarterComponentError(spec, "component.exposePort",
+          result.diagnostics.map(diagnostic => diagnostic.message).join(" "));
       }
     }
 

@@ -1,0 +1,360 @@
+{
+  "assets": [],
+  "componentLibrary": {
+    "components": [
+      {
+        "componentId": "matteCut",
+        "description": "Person cutout with the picture delayed to match the latest Matte result. Select a movie in the demo's Movie File In, or connect any picture source. Missing or expired history stays transparent; History and Scale set its memory cost. Model download requires consent.",
+        "graph": {
+          "edges": {
+            "e-history-cut": {
+              "id": "e-history-cut",
+              "source": {
+                "nodeId": "history",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "cut",
+                "portId": "input"
+              }
+            },
+            "e-matte-cut": {
+              "id": "e-matte-cut",
+              "source": {
+                "nodeId": "matte",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "cut",
+                "portId": "mask"
+              }
+            },
+            "in_picture_feed_1": {
+              "id": "in_picture_feed_1",
+              "source": {
+                "nodeId": "in_picture",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "history",
+                "portId": "input"
+              }
+            },
+            "in_picture_feed_2": {
+              "id": "in_picture_feed_2",
+              "source": {
+                "nodeId": "in_picture",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "matte",
+                "portId": "input"
+              }
+            },
+            "out_out_feed": {
+              "id": "out_out_feed",
+              "source": {
+                "nodeId": "cut",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "out_out",
+                "portId": "in"
+              }
+            }
+          },
+          "groups": {},
+          "nodes": {
+            "cut": {
+              "definitionVersion": 1,
+              "id": "cut",
+              "label": "cut1",
+              "parameters": {
+                "apply": "alpha",
+                "channel": "red"
+              },
+              "position": {
+                "x": 516,
+                "y": -82
+              },
+              "type": "mask"
+            },
+            "history": {
+              "definitionVersion": 1,
+              "id": "history",
+              "label": "history1",
+              "parameters": {
+                "frames": 24,
+                "index": {
+                  "bindings": {
+                    "expression": {
+                      "kind": "expression",
+                      "source": "64 + op('matte1').chan.ready * (op('matte1').chan.cacheFrames - 64)"
+                    },
+                    "static": {
+                      "kind": "static",
+                      "value": 0
+                    }
+                  },
+                  "mode": "expression"
+                },
+                "scale": 0.5,
+                "strictHistory": true
+              },
+              "position": {
+                "x": 258,
+                "y": -168
+              },
+              "type": "cache"
+            },
+            "in_picture": {
+              "definitionVersion": 1,
+              "id": "in_picture",
+              "label": "Picture",
+              "parameters": {},
+              "position": {
+                "x": 0,
+                "y": -74
+              },
+              "type": "componentIn"
+            },
+            "matte": {
+              "definitionVersion": 1,
+              "id": "matte",
+              "label": "matte1",
+              "parameters": {
+                "model": "mediapipe-selfie-segmenter",
+                "smoothing": 1
+              },
+              "position": {
+                "x": 258,
+                "y": 20
+              },
+              "type": "matte"
+            },
+            "out_out": {
+              "definitionVersion": 1,
+              "id": "out_out",
+              "label": "Cutout",
+              "parameters": {},
+              "position": {
+                "x": 774,
+                "y": -74
+              },
+              "type": "componentOut"
+            }
+          },
+          "revision": 2
+        },
+        "inputs": [
+          {
+            "externalId": "picture",
+            "label": "Picture",
+            "nodeId": "in_picture",
+            "portId": "in"
+          }
+        ],
+        "name": "MatteCut",
+        "outputs": [
+          {
+            "externalId": "out",
+            "label": "Cutout",
+            "nodeId": "out_out",
+            "portId": "out"
+          },
+          {
+            "externalId": "mask",
+            "label": "Mask",
+            "nodeId": "matte",
+            "portId": "out"
+          }
+        ],
+        "parameters": [
+          {
+            "definition": {
+              "compileTime": true,
+              "default": "mediapipe-selfie-segmenter",
+              "description": "Which matting model runs. Three of them are ONNX models that differ in kind rather than in degree; the fourth, MediaPipe, is a different runtime and is described last. EVERY TIME BELOW WAS measured 2026-09-03 on one machine (Apple M3 Max, macOS, Chrome 151, Metal): they are an ordering that held there, not a promise about your hardware — the Backend control and the node's info popup are how you get your own numbers. MODNet full precision is the reliable default: measured, it finds the same subject in the same place from a bright frame down to a very dark one, and the GPU provider executes it at a measured 30 ms. MODNet quantized is the same network at a quarter of the download, and what it trades for those bytes is not detail but the RANGE OF PICTURES it can take, so GIVE IT A BRIGHT ONE. Below about 0.2 mean input brightness its coverage collapses to a fortieth and lands in the wrong part of the frame, where full precision stays flat across that whole range — and that threshold sits inside the working range, because pictures reach this node in LINEAR light: over seven measured frames the square this node actually builds read 0.10 to 0.56 mean, either side of the cliff, and brightening those same frames moved this model's matte further than any of the other three (they agree with themselves at IoU 0.86-0.99 across the two, this one at 0.278-0.695). It also measured slower on the GPU provider than on threaded CPU there — 400 ms against 311 ms, on a provider where full precision measured 30 ms — and that is ONE GPU's result on a quantized build, the kind that differs between vendors, so pin the Backend control below and read the info popup rather than inheriting it. Robust Video Matting is the one built for VIDEO: it carries what it saw last frame in a recurrent state, which measured 1.75x steadier than the same model run frame-by-frame, and it needs no temporal smoothing of its own. It reaches the GPU provider too, where its five Detail Ratio settings measured 12-36 ms, so against MODNet there it is roughly a wash and the choice between them is about character rather than speed; 172 ms on a single wasm thread is the floor a machine without WebGPU pays. Its weights are GPL-3.0, downloaded by your browser rather than shipped with the app. MediaPipe SelfieSegmenter measured the fastest of the four, and it is quick because it is a 250 KB model doing a smaller job: 3.7 ms of inference and about 6 ms by the time the matte is on the GPU, flat from a 256 to a 720 square, against 30 ms for MODNet and 20 ms for Robust Video Matting. It runs on its own runtime rather than an onnxruntime execution provider, so this node offers no Backend chooser while it is selected — it picks its own GPU path and falls back on its own, and the node's info popup reports which one actually opened. What you trade is not softness — measured on the same frame it leaves MORE of a gradient at the edge than MODNet does, not less — but FINE DETAIL: MODNet resolves individual hair strands that this rounds off. What you gain besides speed is REJECTION: on the same test frame MODNet read a painting of a figure as a person and this did not. Neither is better than the other, so pick it by watching the picture on your own footage. It always runs at the default square — the model works at 256 internally and upsamples, so a bigger input buys no detail and only costs time. Downloaded once per machine on first use, with your consent — the size in each option is the download it commits you to. Licence: Apache-2.0, GPL-3.0.",
+              "label": "Model",
+              "options": [
+                {
+                  "label": "MODNet (24.7 MB)",
+                  "value": "modnet-photographic"
+                },
+                {
+                  "label": "MODNet quantized (6.3 MB)",
+                  "value": "modnet-photographic-quantized"
+                },
+                {
+                  "label": "Robust Video Matting (14.3 MB)",
+                  "value": "rvm-mobilenetv3"
+                },
+                {
+                  "label": "MediaPipe SelfieSegmenter (0.2 MB)",
+                  "value": "mediapipe-selfie-segmenter"
+                }
+              ],
+              "type": "enum"
+            },
+            "key": "model",
+            "targets": [
+              {
+                "key": "model",
+                "nodeId": "matte"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": 1,
+              "description": "1 uses the latest matte without temporal blending. Lower values blend previous results for steadier edges and add motion lag that delaying the picture cannot remove.",
+              "group": "Matte",
+              "label": "Smoothing",
+              "max": 1,
+              "min": 0.05,
+              "range": "bounded",
+              "step": 0.05,
+              "type": "number"
+            },
+            "key": "smoothing",
+            "targets": [
+              {
+                "key": "smoothing",
+                "nodeId": "matte"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "compileTime": true,
+              "default": 24,
+              "description": "Frames of picture history to allocate. Increase for slower inference; a result older than this history produces transparent output rather than a mismatched cutout. Each frame costs a texture at Scale.",
+              "group": "Alignment",
+              "label": "History",
+              "max": 64,
+              "min": 2,
+              "range": "bounded",
+              "step": 1,
+              "type": "number"
+            },
+            "key": "history",
+            "targets": [
+              {
+                "key": "frames",
+                "nodeId": "history"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "compileTime": true,
+              "default": 0.5,
+              "description": "Picture history resolution relative to the input. Half scale uses a quarter of full-scale history memory; 1 preserves the original resolution.",
+              "group": "Alignment",
+              "label": "Scale",
+              "max": 1,
+              "min": 0.125,
+              "range": "bounded",
+              "step": 0.125,
+              "type": "number"
+            },
+            "key": "scale",
+            "targets": [
+              {
+                "key": "scale",
+                "nodeId": "history"
+              }
+            ]
+          }
+        ],
+        "version": 1
+      }
+    ],
+    "schemaVersion": 1
+  },
+  "createdAt": "2026-08-29T00:00:00.000Z",
+  "graph": {
+    "edges": {
+      "ed_matteCut2": {
+        "id": "ed_matteCut2",
+        "source": {
+          "nodeId": "picture",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_matteCut1",
+          "portId": "picture"
+        }
+      },
+      "ed_matteCut3": {
+        "id": "ed_matteCut3",
+        "source": {
+          "nodeId": "nd_matteCut1",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "out",
+          "portId": "input"
+        }
+      }
+    },
+    "groups": {},
+    "nodes": {
+      "nd_matteCut1": {
+        "definitionVersion": 1,
+        "id": "nd_matteCut1",
+        "parameters": {},
+        "position": {
+          "x": -200,
+          "y": 0
+        },
+        "type": "component:matteCut@1"
+      },
+      "out": {
+        "definitionVersion": 1,
+        "id": "out",
+        "label": "out1",
+        "parameters": {
+          "toneMap": "none"
+        },
+        "position": {
+          "x": 300,
+          "y": 0
+        },
+        "type": "output"
+      },
+      "picture": {
+        "definitionVersion": 1,
+        "id": "picture",
+        "label": "picture1",
+        "parameters": {},
+        "position": {
+          "x": -600,
+          "y": 0
+        },
+        "type": "movieFileIn"
+      }
+    },
+    "revision": 2
+  },
+  "name": "MatteCut",
+  "projectId": "component-matteCut",
+  "schemaVersion": 5,
+  "settings": {
+    "limits": {
+      "maxBufferBytes": 268435456,
+      "maxDispatch": 65535,
+      "maxResolution": 4096,
+      "memoryBudgetBytes": 1073741824
+    },
+    "outputResolution": {
+      "height": 720,
+      "width": 1280
+    },
+    "previewFps": 30,
+    "previewLongEdge": 192,
+    "randomSeed": 7,
+    "workingFormat": "rgba16float"
+  },
+  "updatedAt": "2026-08-29T00:00:00.000Z"
+}

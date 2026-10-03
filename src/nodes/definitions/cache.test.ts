@@ -59,18 +59,20 @@ describe("Cache (T237)", () => {
       { binding: "ringTexture", resourceId: ring, array: true },
       { binding: "liveTexture", resourceId: ring, live: true },
     ]);
-    expect(read?.uniforms).toEqual({ tap: 3, ringLatest: 0, ringWritten: 0, ringFrames: 8 });
+    expect(read?.uniforms).toEqual({ tap: 3, ringLatest: 0, ringWritten: 0, ringFrames: 8, strictHistory: 0 });
     expect(read?.uniformBinding).toBe("cacheTap");
   });
 
-  it("never taps the slice it is writing", () => {
-    // Tap 0 would be a read of the texture the write pass is still filling — the hazard a
-    // ping-pong's read/write split exists to prevent, and the reason the plan reader
-    // refuses a tap below 1 rather than trusting each node to remember.
-    const taps = [0, -4, 1].map(
-      (index) => (passes({ index }).at(1)?.uniforms as { tap?: number } | undefined)?.tap,
-    );
-    expect(taps).toEqual([1, 1, 1]);
+  it("allows a zero-delay read of the completed write pass", () => {
+    const taps = [0, -4, 1].map(index => passes({ index }).at(1)?.uniforms?.tap);
+    expect(taps).toEqual([0, 0, 1]);
+  });
+
+  it("preserves an unavailable tap for strict compensation rather than returning wrong history", () => {
+    const result = compiled({ frames: 8, index: 12, strictHistory: true });
+    expect(passes({ frames: 8, index: 12, strictHistory: true })[1]?.uniforms)
+      .toMatchObject({ tap: 12, strictHistory: 1 });
+    expect(result.diagnostics?.[0]?.code).toBe("node.compile.historyUnavailable");
   });
 
   it("clamps a tap deeper than the ring and SAYS so", () => {

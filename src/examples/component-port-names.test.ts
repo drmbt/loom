@@ -189,10 +189,11 @@ const PUBLISHED_INPUTS: Readonly<Record<string, readonly string[]>> = {
   feedbackEcho: ["picture"],
   kaleidoscope: ["picture"],
   mediaGrade: ["picture"],
+  matteCut: ["picture"],
   timeGrid: ["matte", "picture"],
 };
 
-describe("the eleven shipped components publish speaking input names (T1194)", () => {
+describe("the twelve shipped components publish speaking input names (T1194)", () => {
   const shipped = shippedComponents();
 
   it("names every input for what the signal IS", () => {
@@ -221,8 +222,9 @@ describe("the eleven shipped components publish speaking input names (T1194)", (
     // reads well outside and `field_2` inside is only half the ask.
     for (const definition of shipped) {
       for (const port of definition.inputs) {
-        expect(port.label, `${definition.name}.${port.externalId}`).toBe(port.externalId);
-        expect(definition.graph.nodes[port.nodeId]?.label).toBe(port.externalId);
+        // Presentation casing may change; the saved wire address remains stable.
+        expect(port.label.toLowerCase(), `${definition.name}.${port.externalId}`).toBe(port.externalId);
+        expect(definition.graph.nodes[port.nodeId]?.label).toBe(port.label);
       }
     }
   });

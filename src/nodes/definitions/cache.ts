@@ -3,7 +3,7 @@ import type { EffectPassDescriptor } from "../../runtime/backend/plan.ts";
 import { scratchResourceId } from "../../compiler/resources.ts";
 import { RGBA_TEXTURE } from "./common-ports.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
-import { readNumber } from "./parameter-readers.ts";
+import { readFlag, readNumber } from "./parameter-readers.ts";
 import { CACHE_BLIT_WGSL, CACHE_READ_WGSL } from "../shaders/cache.wgsl.ts";
 
 /**
@@ -39,27 +39,21 @@ import { CACHE_BLIT_WGSL, CACHE_READ_WGSL } from "../shaders/cache.wgsl.ts";
  * anyone pay for 64 frames of texture to reach a tap of 3. Per-PIXEL offsets are still a
  * different node (slit-scan, T321); this is one offset for the whole image.
  *
- * WHY A DRIVABLE TAP IS THE LATENCY MECHANISM (T1204). An async source — a person matte,
- * a monocular depth model, a pose solver — hands back a result computed from a frame that
- * is already N frames old, and N is not a constant: matte inference measured 30-400 ms
- * across execution providers (T1044, T1085). Compositing its output against a LIVE sibling
- * branch puts the mask behind the picture. The fix is to delay the sibling by the same N,
- * which is this node with `index` driven by the source's own reported lag. A hand-typed
- * offset is wrong the moment the provider or the resolution changes; a driven one is not.
- * At 60 fps, 400 ms is 24 frames — inside the 64-frame ceiling, at a cost the node states.
+ * A tap counts ARCHIVED RENDERS, not project frame numbers. Async alignment therefore
+ * needs the source's age in the same history; project frames may skip or wrap while this
+ * ring advances once per rendered input. Index 0 reads the current write target.
  *
  * ⚠ SIZE `frames` FOR THE DEEPEST LAG YOU EXPECT, not for the typical one. A tap beyond
- * the history clamps to the oldest slice, and for a STATIC tap the compiler says so
+ * the history normally clamps to the oldest slice, and for a STATIC tap the compiler says so
  * (`node.compile.tapClamped`, below). A DRIVEN one gets no such warning, because the
  * structural compile only ever sees the retained static and the per-frame compiles are
  * value pushes whose diagnostics nothing reads — so a 24-frame lag driving an 8-frame ring
- * is a silent 7-frame delay. That is the one seam in this mechanism and it is stated here
- * rather than papered over; the same applies to a lag of 0, which clamps up to a tap of 1
- * (there is no tap 0), which is why `ready` exists beside `lagFrames` (T976).
+ * is a silent 7-frame delay. Strict History preserves the requested tap and returns
+ * transparent pixels when that exact archived render is unavailable instead.
  *
- * BEFORE THE RING HAS FILLED a tap reads the OLDEST slice written, never black (§V229).
- * Black would flash on every reset and, worse, would differ between a live session and a
- * headless render that started at frame 0 — a divergence that only parity runs catch.
+ * By default, an empty ring passes the current input through and a filling ring holds its
+ * oldest available slice (§V229). Strict History makes an unavailable positive tap
+ * transparent, including immediately after reset; tap 0 always reads the current input.
  */
 
 /** Node-local key for the ring; the compiler namespaces it per node. */
@@ -82,7 +76,7 @@ export const cacheNode: NodeDefinition = {
   inputs: [
     {
       id: "input",
-      label: "In",
+      label: "Picture",
       type: RGBA_TEXTURE,
       description: "Written into the ring every frame.",
     },
@@ -90,9 +84,9 @@ export const cacheNode: NodeDefinition = {
   outputs: [
     {
       id: "out",
-      label: "Out",
+      label: "Delayed",
       type: RGBA_TEXTURE,
-      description: "The frame `index` frames ago. Holds the oldest one until the ring fills.",
+      description: "The input `index` rendered frames ago. Unavailable history holds the oldest input, or is transparent with Strict History.",
     },
   ],
   parameters: {
@@ -112,17 +106,23 @@ export const cacheNode: NodeDefinition = {
       type: "number",
       label: "Index",
       default: 1,
-      min: 1,
+      min: 0,
       max: 63,
-      range: "bounded",
+      range: "floor",
       // T1047: frames back is a count, so the step is 1. See the note on Switch's index.
       step: 1,
       // T1204: NOT compileTime. The tap is a number in the read pass's uniform block and
       // has been since T425; driving it writes four bytes, never a pipeline (§V5). The
-      // shader clamps it, so a driven value beyond the history is the oldest frame rather
-      // than a never-written layer (§V229) — the same rule a static tap gets.
+      // shader holds the oldest available frame by default. Strict History instead
+      // returns transparent pixels for an unavailable exact tap.
       description:
-        "How many frames back to read. 1 is the previous frame, like Feedback. Drivable — point it at a source's reported latency to line two branches up.",
+        "How many rendered inputs back to read. 0 is current; 1 is previous, like Feedback. Drivable; use an age measured in the same rendered history for alignment.",
+    },
+    strictHistory: {
+      type: "boolean",
+      label: "Strict History",
+      default: false,
+      description: "Return transparent pixels when the requested input is not in history, instead of substituting the oldest available input.",
     },
     resetPulse: {
       type: "pulse",
@@ -163,19 +163,21 @@ export const cacheNode: NodeDefinition = {
     }
 
     const frames = Math.max(2, Math.round(readNumber(parameters, "frames", CACHE_DEFAULT_FRAMES)));
-    const requested = Math.max(1, Math.round(readNumber(parameters, "index", 1)));
+    const requested = Math.max(0, Math.round(readNumber(parameters, "index", 1)));
+    const strictHistory = readFlag(parameters, "strictHistory", false);
     // A ring of N holds N-1 readable frames behind the one being written. Asking deeper
     // is clamped rather than silently wrapped — and SAID, because "my 12-frame delay looks
     // like an 8-frame delay" is otherwise indistinguishable from the node not working.
-    const index = Math.min(requested, frames - 1);
+    // Strict mode must retain the request so the shader can reject missing history.
+    const index = strictHistory === 1 ? requested : Math.min(requested, frames - 1);
     const diagnostics =
-      requested === index
+      requested <= frames - 1
         ? []
         : [
             {
               severity: "warning" as const,
-              code: "node.compile.tapClamped",
-              message: `Node "${nodeId}" reads ${requested} frames back from a ${frames}-frame cache; the deepest it holds is ${frames - 1}.`,
+              code: strictHistory ? "node.compile.historyUnavailable" : "node.compile.tapClamped",
+              message: `Node "${nodeId}" reads ${requested} frames back from a ${frames}-frame cache; the deepest it holds is ${frames - 1}.${strictHistory ? " Strict History outputs transparency until the requested frame is available." : ""}`,
               nodeId,
               suggestion: `Raise Frames above ${requested}, or lower Index to ${frames - 1}.`,
             },
@@ -211,7 +213,7 @@ export const cacheNode: NodeDefinition = {
       // block, so nothing rebinds per frame. The backend's T321 head loop merges
       // ringLatest/ringWritten/ringFrames into `cacheTap` every frame by name.
       // B160: the `live` binding is the ring's write target — what the shader reads
-      // while `ringWritten` is zero, so frame 0 passes the input through (§V229).
+      // at tap 0, and while `ringWritten` is zero in the default mode (§V229).
       textures: [
         { binding: "ringTexture", resourceId: ring, array: true },
         { binding: "liveTexture", resourceId: ring, live: true },
@@ -220,7 +222,7 @@ export const cacheNode: NodeDefinition = {
       // The ring head trio is RESERVED here at zero — vgpu matches uniforms by name,
       // and the backend overwrites all three every frame from the ring's own counters
       // (the T367 pointer convention: present exactly when the block declares it).
-      uniforms: { tap: index, ringLatest: 0, ringWritten: 0, ringFrames: frames },
+      uniforms: { tap: index, ringLatest: 0, ringWritten: 0, ringFrames: frames, strictHistory },
       uniformBinding: "cacheTap",
       nodeId,
       label: "Cache Read",

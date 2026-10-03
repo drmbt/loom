@@ -128,7 +128,8 @@ step — there is no list to add it to.
 ## `components/` — the starter component set
 
 `components/` holds the shipped components (T190, §V94): FeedbackEcho, Bloom,
-Kaleidoscope, DisplacementStack, MediaGrade. They are a **different library with a
+Kaleidoscope, DisplacementStack, MediaGrade, AudioLevel, AudioAnalysis, DepthPoints,
+DepthCut, TimeGrid, Antialias, and MatteCut. They are a **different library with a
 different verb** — you *instantiate* a component, you *open* an example (§V93) — which is
 why they sit in a subdirectory: `listExamples` and the browser's example glob both read
 this directory non-recursively, so a component can never appear as a project to open.
@@ -199,3 +200,11 @@ It checks **one** pixel property, deliberately, and only for E12: with the stirr
 the dye reaches thirty-two times more of the frame than with it off. "It flows" is a claim
 about pixels, and every other assertion in the suite is one a motionless fluid would also
 satisfy (§V147, B15). There is still no reference-image comparison anywhere.
+
+`MatteCut` shares its picture input between a person matte and a frame-history cache,
+then applies the matte to the matching cached picture's alpha. Feed Movie File In,
+Webcam In, or Screen In. Model, Smoothing, History, and Scale are published.
+Smoothing 1 keeps one source-frame identity; lower settings blend masks over time.
+Missing results/history produce transparency. See
+[alignment and timing](../docs/matte-cache-alignment-2026-10-03.md) for timing expressions
+and memory limits.
