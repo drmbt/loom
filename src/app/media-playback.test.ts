@@ -73,6 +73,40 @@ function fakeElement(duration = 10, at = 0) {
 }
 
 describe("T493 — the element is corrected on DRIFT, not every frame", () => {
+  it("continuous playback recovers startup lag without repeatedly restarting decoder buffering", () => {
+    const element = fakeElement(60);
+    let buffering = 0.3;
+    applyMediaPlayhead(element, BASE, mediaPlayhead(BASE, 0, 60), false);
+    // Native media advances on its own clock, after an initial audio-buffering delay.
+    // A seek would impose another delay, which reproduced the endless real Chrome loop.
+    const seekCount = () => element.calls.filter(call => call.startsWith("seek:")).length;
+    for (let tick = 1; tick <= 600; tick++) {
+      const delta = 1 / 60;
+      if (buffering > 0) buffering -= delta;
+      else {
+        // Mutate the double's clock without logging a decoder seek.
+        const prior = element.calls.length;
+        element.currentTime += delta * element.playbackRate;
+        (element.calls as string[]).splice(prior);
+      }
+      const before = seekCount();
+      const seeked = applyMediaPlayhead(element, BASE, mediaPlayhead(BASE, tick / 60, 60), true);
+      if (seeked) buffering = 0.3;
+      expect(seekCount()).toBe(before);
+      expect(element.playbackRate).toBeGreaterThanOrEqual(0.95);
+      expect(element.playbackRate).toBeLessThanOrEqual(1.05);
+    }
+    expect(seekCount()).toBe(0);
+    expect(Math.abs(10 - element.currentTime)).toBeLessThan(0.04);
+  });
+
+  it("a deliberate discontinuity seeks exactly even inside the ordinary drift tolerance", () => {
+    const element = fakeElement(10, 3);
+    const head = mediaPlayhead(BASE, 3.05, 10);
+    expect(applyMediaPlayhead(element, BASE, head, false)).toBe(true);
+    expect(element.currentTime).toBe(head.position);
+  });
+
   it("plays and does not seek while it is already where the playhead says", () => {
     const element = fakeElement(10, 3);
     const seeked = applyMediaPlayhead(element, BASE, mediaPlayhead(BASE, 3, 10));
@@ -157,6 +191,43 @@ describe("T493 — held states PAUSE the element, because the position no longer
     applyMediaPlayhead(element, black, head);
     expect(element.paused).toBe(true);
   });
+
+  it("Hold Last pauses at the out point rather than playing beyond a trimmed window", () => {
+    const element = fakeElement(10, 2);
+    const hold = { ...BASE, extend: "hold" as const, trimEnd: 2 };
+    applyMediaPlayhead(element, hold, mediaPlayhead(hold, 3, 10), true);
+    expect(element.paused).toBe(true);
+    expect(element.currentTime).toBe(2);
+  });
+
+  it("a collapsed known trim window holds, while unknown metadata still allows playback", () => {
+    const collapsed = { ...BASE, trimStart: 2, trimEnd: 2 };
+    const element = fakeElement(10);
+    applyMediaPlayhead(element, collapsed, mediaPlayhead(collapsed, 3, 10), true);
+    expect(element.paused).toBe(true);
+    expect(element.currentTime).toBe(2);
+    for (const duration of [0, Infinity]) {
+      const unknown = fakeElement(duration);
+      applyMediaPlayhead(unknown, BASE, mediaPlayhead(BASE, 0, 0), true);
+      expect(unknown.paused).toBe(false);
+    }
+  });
+
+  it("a fractional cue only seeks once when the native clock reports microsecond precision", () => {
+    const element = fakeElement(10);
+    let nativeTime = 0;
+    let writes = 0;
+    Object.defineProperty(element, "currentTime", {
+      get: () => nativeTime,
+      set: (value: number) => { nativeTime = Math.round(value * 1e6) / 1e6; writes++; },
+    });
+    const cue = { ...BASE, cue: true, cuePoint: 1 / 3 };
+    const head = mediaPlayhead(cue, 0, 10);
+    for (let frame = 0; frame < 60; frame++) applyMediaPlayhead(element, cue, head, false);
+    expect(writes).toBe(1);
+    expect(element.paused).toBe(true);
+    expect(Math.abs(nativeTime - head.position)).toBeLessThan(1e-6);
+  });
 });
 
 describe("T493 — the runner reads the node's REAL parameters, through the real resolver", () => {
@@ -191,6 +262,30 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
       channels: () => undefined,
       morphs: () => undefined,
     });
+
+  it("marks ordinary playback continuous and cue pulses, trims, scrubs and laps as discontinuities", () => {
+    const graph = graphWith({ playMode: "timeline" });
+    const runner = runnerFor(graph);
+    expect(runner.step(frame(0), 10)?.continuous).toBe(false);
+    expect(runner.step(frame(1 / 60), 10)?.continuous).toBe(true);
+    expect(runner.step(frame(3), 10)?.continuous).toBe(false);
+    expect(runner.step(frame(3 + 1 / 60), 10)?.continuous).toBe(true);
+    graph.nodes["m"]!.parameters["trimStart"] = 1;
+    expect(runner.step(frame(3 + 2 / 60), 10)?.continuous).toBe(false);
+    runner.reset();
+    expect(runner.step(frame(8.99), 10)?.continuous).toBe(false);
+    expect(runner.step({ ...frame(9.01), deltaSeconds: 0.02 }, 10)?.continuous).toBe(false);
+    graph.nodes["m"]!.parameters["playMode"] = "freeRun";
+    graph.nodes["m"]!.parameters["cuePoint"] = 2;
+    runner.reset();
+    runner.step(frame(0), 10);
+    expect(runner.step(frame(1 / 60), 10)?.continuous).toBe(true);
+    runner.cue();
+    expect(runner.step(frame(2 / 60), 10)?.continuous).toBe(false);
+    expect(runner.step(frame(3 / 60), 10)?.continuous).toBe(true);
+    runner.step({ ...frame(4 / 60), mode: "offline" }, 10);
+    expect(runner.step(frame(5 / 60), 10)?.continuous).toBe(false);
+  });
 
   it("a node with NO transport parameters stored reads the manifest default, which T586 moved to free run", () => {
     const stepped = runnerFor(graphWith({})).step(frame(2), 10);

@@ -242,8 +242,9 @@ export function syncAudioMediaElement(
   transport: MediaTransportValues,
   head: MediaPlayhead,
   offlineRender: boolean,
+  continuous?: boolean,
 ): boolean {
-  if (!offlineRender) return applyMediaPlayhead(element, transport, head);
+  if (!offlineRender) return applyMediaPlayhead(element, transport, head, continuous);
   if (!element.paused) element.pause();
   return false;
 }
@@ -795,7 +796,7 @@ export function useAudioInput(
     const deterministicOfflineAudio = renderMutedRef.current &&
       offlineRef.current !== null &&
       stepped.transport.playMode !== "freeRun";
-    syncAudioMediaElement(capture.element, stepped.transport, stepped.head, deterministicOfflineAudio);
+    syncAudioMediaElement(capture.element, stepped.transport, stepped.head, deterministicOfflineAudio, stepped.continuous);
     if (capture.gain !== undefined) {
       // Read from the SAME resolve the playhead came from, so volume and position can
       // never come from two different reads of one frame (§B8's shape). And `visible`

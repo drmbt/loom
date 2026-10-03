@@ -15,13 +15,13 @@ import type { AppRuntime } from "./app-runtime.ts";
 import type { MediaControlRegistry } from "./media-commands.ts";
 import type { PhoneCameraOpener } from "./use-phone-cameras.ts";
 import {
-  applyMediaPlayhead,
   createMediaTransportRunner,
   durationOf,
   playableMedia,
   type MediaTransportRunner,
   type PlayableMedia,
 } from "./media-playback.ts";
+import { createMovieAudioPlayback, type MovieAudioPlayback } from "./movie-audio-playback.ts";
 import {
   hdrPictureRefusal,
   pictureFileKind,
@@ -61,10 +61,9 @@ import {
  *
  * ## A generated source has no intrinsic size (T312)
  *
- * `copyExternalImageToTexture` asserts matching extents, so whatever a source produces
- * must be exactly the size of the node's target. A video HAS an intrinsic size and the
- * node adopts it (below). Everything we GENERATE — text today, anything procedural later —
- * has none, so the arrow points the other way: the source is told the node's RESOLVED
+ * External image textures follow their intrinsic source extent independently of the
+ * output target. Everything we GENERATE — text today, anything procedural later —
+ * has no intrinsic extent, so the source is told the node's RESOLVED
  * size and draws at it. That is why this hook takes the resolved sizes rather than the
  * project resolution: a per-node resolution override (§V50) would otherwise produce a
  * canvas of one size and a target of another, and the upload would fail rather than scale.
@@ -393,6 +392,8 @@ export interface MediaWiring {
    * notices, and an element left running would drift arbitrarily far while nothing moved.
    */
   setRunning(running: boolean): void;
+  /** Silence movie monitoring for an export, including exports using realtime frames. */
+  muteMonitorForRender(): () => void;
   /**
    * T1043 — what one webcam node's camera is ASKING FOR and what it actually GOT.
    *
@@ -416,6 +417,8 @@ export function useMediaSources(
   phones?: PhoneCameraOpener,
 ): MediaWiring {
   const [diagnostics, setDiagnostics] = useState<readonly RuntimeDiagnostic[]>(NO_DIAGNOSTICS);
+  const [playbackDiagnostics, setPlaybackDiagnostics] = useState<readonly RuntimeDiagnostic[]>(NO_DIAGNOSTICS);
+  const renderMuteLeases = useRef(0);
   /**
    * T493 — a `reload` pulse re-opens the file, which is STRUCTURAL: the element is torn
    * down and rebuilt, exactly as a changed URL already does. So it is a dependency of the
@@ -474,7 +477,7 @@ export function useMediaSources(
    * `compileMedia`'s shared shape.
    */
   const playersRef = useRef(
-    new Map<NodeId, { element: PlayableMedia; runner: MediaTransportRunner }>(),
+    new Map<NodeId, { element: PlayableMedia; runner: MediaTransportRunner; audio: MovieAudioPlayback }>(),
   );
   /**
    * T1043 — live cameras by node: what was asked for, and the door that can still be asked
@@ -519,10 +522,16 @@ export function useMediaSources(
 
     /**
      * §V29 — the resolution override is a bus patch like every other edit, so it is
-     * undoable, audited and attributed. Written once, when the size is first known.
+     * undoable, audited and attributed. Cameras retain their granted-size default,
+     * while an explicit Common override takes precedence. Files use project-sized
+     * outputs by default; their full source extent belongs to the external texture.
      */
+    const matchedSizes = new Map<NodeId, { width: number; height: number }>();
     const matchNodeResolution = (nodeId: NodeId, width: number, height: number) => {
       const current = graphRef.current.nodes[nodeId]?.resolution;
+      const previous = matchedSizes.get(nodeId);
+      if (current !== undefined && current.mode !== "auto"
+        && !(current.mode === "fixed" && current.width === previous?.width && current.height === previous.height)) return;
       if (
         current !== undefined &&
         current.mode === "fixed" &&
@@ -531,17 +540,16 @@ export function useMediaSources(
       ) {
         return;
       }
-      void runtimeRef.current.bus.execute(
-        "graph.applyPatch",
-        {
-          baseRevision: runtimeRef.current.bus.store.getRevision(),
-          label: "Match media size",
-          operations: [
-            { op: "setNodeResolution", nodeId, resolution: { mode: "fixed", width, height } },
-          ],
-        },
-        runtimeRef.current.invocation,
-      );
+      matchedSizes.set(nodeId, { width, height });
+      const active = runtimeRef.current;
+      void active.bus.execute("node.setResolution", { nodeId, resolution: { mode: "fixed", width, height } }, active.invocation)
+        .then(result => {
+          if (result.status !== "applied") throw new Error(result.diagnostics.map(d => d.message).join("; "));
+        }).catch(error => {
+          if (!live) return;
+          reported.push(diagnostic(nodeId, "The camera output resolution could not be set.", String(error)));
+          setDiagnostics([...reported]);
+        });
     };
 
     // TEXT first, and synchronously: there is nothing to await, no permission to ask for
@@ -622,11 +630,7 @@ export function useMediaSources(
               still.source,
             );
             stillOpened.push({ source: still, unregister: unregisterStill });
-            // The size is known the moment the decode resolves — no `loadedmetadata` to
-            // wait for — and the node must adopt it for the same reason a video's node
-            // does: `copyExternalImageToTexture` asserts matching extents (T312).
-            const size = still.size();
-            if (size !== null) matchNodeResolution(request.nodeId, size.width, size.height);
+            // The source keeps its full intrinsic extent; Common chooses the output size.
             const releaseStill = controls?.register(request.nodeId, {
               // NO `cue`, deliberately: a still has no playhead to cue TO, and a registered
               // no-op would make `media.cue` report success while nothing moved (§V369).
@@ -765,7 +769,19 @@ export function useMediaSources(
               // T1524b: the index of the same flattening `graph` is (T615), read per step.
               morphs: () => runtimeRef.current.flattened.current().morphs,
             });
-            livePlayers.set(request.nodeId, { element: playable, runner });
+            const audio = createMovieAudioPlayback(playable, window, message => {
+              if (!live) return;
+              setPlaybackDiagnostics(previous => {
+                const others = previous.filter(entry => entry.nodeId !== request.nodeId);
+                return message === null ? others : [...others, {
+                  severity: "warning", code: "media.playback", nodeId: request.nodeId, message,
+                  suggestion: "Click or press a key in the page to retry movie playback.",
+                }];
+              });
+            });
+            audio.setRenderMuted(renderMuteLeases.current > 0);
+            if (!runningRef.current) audio.pause();
+            livePlayers.set(request.nodeId, { element: playable, runner, audio });
             playerOpened.push(request.nodeId);
             const release = controls?.register(request.nodeId, {
               cue: () => runner.cue(),
@@ -779,7 +795,7 @@ export function useMediaSources(
         const applySize = () => {
           const size = media.size();
           if (size === null || !live) return;
-          matchNodeResolution(request.nodeId, size.width, size.height);
+          if (request.type === "webcam") matchNodeResolution(request.nodeId, size.width, size.height);
           // T1397b: a phone keeps listening — turned on its side it swaps width and height
           // mid-stream, and a new session from it is a new stream on the same element.
           if (phone !== null) return;
@@ -825,10 +841,14 @@ export function useMediaSources(
         entry.source.dispose();
         liveText.delete(entry.nodeId);
       }
-      for (const nodeId of playerOpened) livePlayers.delete(nodeId);
+      for (const nodeId of playerOpened) {
+        livePlayers.get(nodeId)?.audio.dispose();
+        livePlayers.delete(nodeId);
+      }
       for (const nodeId of cameraOpened) liveCameras.delete(nodeId);
       for (const release of released) release();
       setDiagnostics(NO_DIAGNOSTICS);
+      setPlaybackDiagnostics(NO_DIAGNOSTICS);
     };
     // `key` is the identity of the request set; `requestsRef` carries the values, so a
     // node moving on the canvas does not restart a camera.
@@ -860,10 +880,10 @@ export function useMediaSources(
   const sync = useCallback((frame: FrameEvaluationInput, channels?: ChannelResolver) => {
     channelsRef.current = channels;
     runningRef.current = true;
-    for (const { element, runner } of playersRef.current.values()) {
+    for (const { element, runner, audio } of playersRef.current.values()) {
       const stepped = runner.step(frame, durationOf(element));
       if (stepped === null) continue;
-      applyMediaPlayhead(element, stepped.transport, stepped.head);
+      audio.sync(stepped, frame.mode);
     }
   }, []);
 
@@ -873,9 +893,19 @@ export function useMediaSources(
     // Paused: the timeline is not producing frames, so nothing will correct the drift.
     // Stop where we are rather than letting the element run on its own clock — that is
     // the state that made "pause" and "the picture froze but the sound kept going".
-    for (const { element } of playersRef.current.values()) {
-      if (!element.paused) element.pause();
-    }
+    for (const { audio } of playersRef.current.values()) audio.pause();
+  }, []);
+
+  const muteMonitorForRender = useCallback(() => {
+    renderMuteLeases.current++;
+    for (const { audio } of playersRef.current.values()) audio.setRenderMuted(true);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      renderMuteLeases.current--;
+      for (const { audio } of playersRef.current.values()) audio.setRenderMuted(renderMuteLeases.current > 0);
+    };
   }, []);
 
   /**
@@ -916,6 +946,10 @@ export function useMediaSources(
 
   // T465: the problems tab's Clear empties every ACCUMULATING source; anything still
   // real re-reports on its own and thereby proves it is live.
-  const clearDiagnostics = useCallback(() => setDiagnostics([]), []);
-  return { diagnostics, clearDiagnostics, sync, setRunning, cameraStatus };
+  const clearDiagnostics = useCallback(() => {
+    setDiagnostics([]);
+    setPlaybackDiagnostics([]);
+  }, []);
+  const allDiagnostics = useMemo(() => [...diagnostics, ...playbackDiagnostics], [diagnostics, playbackDiagnostics]);
+  return { diagnostics: allDiagnostics, clearDiagnostics, sync, setRunning, muteMonitorForRender, cameraStatus };
 }

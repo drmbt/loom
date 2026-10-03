@@ -28,14 +28,12 @@ import type { NodeRegistryView } from "@nodes/registry/registry.ts";
  *
  * Writing `currentTime` sixty times a second re-seeks the decoder sixty times a second and
  * the picture stutters and the sound clicks. So the element PLAYS — at `playbackRate` —
- * and this only intervenes when it has drifted past `SEEK_TOLERANCE_SECONDS` from where
- * the timeline says it should be. That is what makes the two clocks agree without
- * fighting: the element does the smooth interpolation it is good at, and the derived
- * playhead does the correcting.
+ * and ordinary continuous playback corrects drift with a bounded rate adjustment. A
+ * seek would restart audio buffering and can recreate the very lag it tries to correct.
+ * The transport runner marks deliberate discontinuities, which still seek exactly.
  *
- * A LOOP is that same correction and needs no special case at all: at the lap the derived
- * position jumps from the out point back to the in point, the drift is a whole window
- * wide, and the seek happens. Same for a scrub, a cue, a trim edit and a speed change.
+ * A loop, scrub, cue, trim edit or speed change is a new target rather than clock drift.
+ * Standalone callers without continuity information retain the tolerance-based policy.
  *
  * ## Reverse is a scrub, and says so
  *
@@ -65,9 +63,24 @@ export const SEEK_TOLERANCE_SECONDS = 0.15;
 /** Browsers clamp playback rate; outside this range they throw or silently ignore. */
 const MIN_RATE = 0.0625;
 const MAX_RATE = 16;
+// Native media clocks round positions to microseconds; fractional-frame targets cannot
+// be represented exactly. Comparing them bit-for-bit restarts a held seek every frame.
+const POSITION_PRECISION_SECONDS = 1e-6;
+const MAX_RATE_CORRECTION = 0.05;
+// Four-second convergence time constant, bounded above so audio never races to catch up.
+const DRIFT_RATE_GAIN = 0.25;
+
+/** Whether the shared transport requires a held decoder, including blocked autoplay. */
+export function isMediaPlayheadHeld(transport: MediaTransportValues, head: MediaPlayhead, duration = 0): boolean {
+  const speed = Number.isFinite(transport.speed) ? transport.speed : 1;
+  return head.cued || head.done || (Number.isFinite(duration) && duration > 0 && head.start === head.end)
+    || speed <= 0 || !head.visible || (transport.playMode === "freeRun" && !transport.play);
+}
 
 /**
- * Put the element where the playhead says, as cheaply as the element allows.
+ * Put the element where the playhead says, without restarting continuous audio.
+ * `continuous: true` converges by rate; false seeks exactly. An omitted argument is the
+ * standalone drift policy, for callers that do not own a transport history.
  *
  * Returns whether it seeked, so a caller can assert the "only corrects on drift" property
  * rather than trust it.
@@ -76,33 +89,37 @@ export function applyMediaPlayhead(
   element: PlayableMedia,
   transport: MediaTransportValues,
   head: MediaPlayhead,
+  continuous?: boolean,
 ): boolean {
   const speed = Number.isFinite(transport.speed) ? transport.speed : 1;
   // HELD: a cue, a stopped free-run transport, a zero or reverse speed, or a `black`
   // extend that has taken us outside the window. In every one of those the element must
   // not be running on its own clock, because the position no longer advances with it.
-  const held =
-    head.cued ||
-    speed <= 0 ||
-    !head.visible ||
-    (transport.playMode === "freeRun" && !transport.play);
+  const held = isMediaPlayheadHeld(transport, head, element.duration);
 
   if (held) {
     if (!element.paused) element.pause();
     // Reverse and cue both need the exact frame, so the tolerance does not apply: this is
     // a scrub, and a scrub that lands "close enough" is the wrong frame.
-    if (element.currentTime !== head.position) {
+    if (Math.abs(element.currentTime - head.position) > POSITION_PRECISION_SECONDS) {
       element.currentTime = head.position;
       return true;
     }
     return false;
   }
 
-  const rate = Math.min(MAX_RATE, Math.max(MIN_RATE, speed));
+  const drift = head.position - element.currentTime;
+  // Seeking restarts the audio decoder's buffering. Correcting ordinary startup lag
+  // with a seek can therefore recreate that lag forever. During a continuous run,
+  // gently converge on the target instead; discontinuities still seek exactly.
+  const correction = continuous === true
+    ? Math.max(-MAX_RATE_CORRECTION, Math.min(MAX_RATE_CORRECTION, drift * DRIFT_RATE_GAIN)) : 0;
+  const rate = Math.min(MAX_RATE, Math.max(MIN_RATE, speed * (1 + correction)));
   if (element.playbackRate !== rate) element.playbackRate = rate;
   if (element.paused) void element.play();
 
-  if (Math.abs(element.currentTime - head.position) > SEEK_TOLERANCE_SECONDS) {
+  if (continuous === false ? Math.abs(drift) > POSITION_PRECISION_SECONDS
+    : continuous !== true && Math.abs(drift) > SEEK_TOLERANCE_SECONDS) {
     element.currentTime = head.position;
     return true;
   }
@@ -117,6 +134,8 @@ export function applyMediaPlayhead(
 export interface MediaSteppedTransport {
   readonly transport: MediaTransportValues;
   readonly head: MediaPlayhead;
+  /** Native playback can converge smoothly; false marks a cue, scrub, lap or edit. */
+  readonly continuous: boolean;
   /**
    * Everything else the node resolved this frame — `volume`, and whatever a door adds
    * next. Handed back rather than re-resolved by the caller so the audio hook's volume
@@ -164,6 +183,8 @@ export function createMediaTransportRunner(
 ): MediaTransportRunner {
   const clock: MediaClock = createMediaClock();
   let lastDuration = 0;
+  let previous: { transport: MediaTransportValues; head: MediaPlayhead; time: number; mode: FrameEvaluationInput["mode"] } | null = null;
+  let cuePending = false;
 
   const readAll = (
     frame?: FrameEvaluationInput,
@@ -205,7 +226,19 @@ export function createMediaTransportRunner(
       const transport = mediaTransportFrom(read);
       lastDuration = duration;
       const elapsed = clock.advance(transport, frame.deltaSeconds, frame.timeSeconds);
-      return { transport, head: mediaPlayhead(transport, elapsed, duration), read };
+      const head = mediaPlayhead(transport, elapsed, duration);
+      const continuous = frame.mode === "realtime" && previous !== null && previous.mode === frame.mode && !cuePending
+        && !isMediaPlayheadHeld(transport, head, duration) && !isMediaPlayheadHeld(previous.transport, previous.head, duration)
+        && transport.playMode === previous.transport.playMode
+        && transport.speed === previous.transport.speed
+        && transport.trimStart === previous.transport.trimStart && transport.trimEnd === previous.transport.trimEnd
+        && transport.extend === previous.transport.extend
+        && head.laps === previous.head.laps && head.position >= previous.head.position
+        && (transport.playMode === "freeRun"
+          || Math.abs(frame.timeSeconds - previous.time - frame.deltaSeconds) < 1e-6);
+      previous = { transport, head, time: frame.timeSeconds, mode: frame.mode };
+      cuePending = false;
+      return { transport, head, continuous, read };
     },
     cue() {
       const read = readAll();
@@ -216,9 +249,12 @@ export function createMediaTransportRunner(
       const head = mediaPlayhead(transport, 0, lastDuration);
       const point = Math.max(head.start, Math.min(head.end > head.start ? head.end : Infinity, transport.cuePoint));
       clock.cueTo(transport, head, point);
+      cuePending = true;
     },
     reset() {
       clock.reset();
+      previous = null;
+      cuePending = false;
     },
   };
 }

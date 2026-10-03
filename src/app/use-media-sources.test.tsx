@@ -67,6 +67,8 @@ function fakeElement(width = 640, height = 360) {
     // T493: the transport half of a `<video>`. A camera stand-in keeps none of these, so
     // `playableMedia` correctly declines to drive it.
     currentTime: 0,
+    muted: true,
+    volume: 1,
     playbackRate: 1,
     duration: 12,
     paused: true,
@@ -180,6 +182,136 @@ function newRuntime(): AppRuntime {
     actor: { kind: "human", id: "tester", label: "Tester" },
   });
 }
+
+describe("movie sound and output extent share the existing media session", () => {
+  const frame: FrameEvaluationInput = { timeSeconds: 3, deltaSeconds: 1 / 60, frameIndex: 180, mode: "realtime", randomSeed: 1 };
+  const environmentFor = (element: ReturnType<typeof fakeElement>): MediaEnvironment => ({
+    openFile: () => Promise.resolve(element),
+    openStill: () => Promise.reject(new Error("not a still")),
+    openCamera: () => Promise.resolve(fakeCamera(element)),
+  });
+
+  it("reads audio and driven volume at the transport frame without reopening the decoder", async () => {
+    const runtime = newRuntime();
+    const { backend } = fakeBackend();
+    const element = fakeElement();
+    const environment = environmentFor(element);
+    let opens = 0;
+    environment.openFile = () => { opens++; return Promise.resolve(element); };
+    let wiring!: MediaWiring;
+    const draw = (graph: GraphDocument) => <Harness runtime={runtime} backend={backend} graph={graph} environment={environment} onWiring={value => { wiring = value; }} />;
+    const view = render(draw(graphWith({ movie: { type: "movieFileIn", parameters: { file: "blob:clip" } } })));
+    await waitFor(() => expect(opens).toBe(1));
+    act(() => wiring.sync(frame));
+    expect(element.muted).toBe(true);
+    view.rerender(draw(graphWith({ movie: { type: "movieFileIn", parameters: {
+      file: "blob:clip", audio: true, volume: { mode: "expression", bindings: {
+        static: { kind: "static", value: 0.9 }, expression: { kind: "expression", source: "time * 0.1" },
+      } },
+    } } })));
+    act(() => wiring.sync(frame));
+    expect(element.muted).toBe(false);
+    expect(element.volume).toBeCloseTo(0.3, 10);
+    expect(opens).toBe(1);
+    view.unmount();
+    expect(element.muted).toBe(true);
+    expect(element.paused).toBe(true);
+  });
+
+  it("holds nested export leases even when export frames are realtime, then restores sound once", async () => {
+    const runtime = newRuntime();
+    const { backend, registered } = fakeBackend();
+    const element = fakeElement();
+    let wiring!: MediaWiring;
+    render(<Harness runtime={runtime} backend={backend} graph={graphWith({ movie: {
+      type: "movieFileIn", parameters: { file: "blob:clip", audio: true, volume: 0.4 },
+    } })} environment={environmentFor(element)} onWiring={value => { wiring = value; }} />);
+    await waitFor(() => expect(registered.has(mediaSourceIdFor("movie"))).toBe(true));
+    act(() => wiring.sync(frame));
+    expect(element.muted).toBe(false);
+    const first = wiring.muteMonitorForRender(), second = wiring.muteMonitorForRender();
+    expect(element.muted).toBe(true);
+    act(() => wiring.sync(frame));
+    expect(element.muted).toBe(true);
+    first(); first();
+    expect(element.muted).toBe(true);
+    second(); second();
+    expect(element.muted).toBe(false);
+    expect(element.volume).toBe(0.4);
+    act(() => wiring.setRunning(false));
+    expect(element.muted).toBe(true);
+    expect(element.paused).toBe(true);
+  });
+
+  it("reports browser denial once, retries on activation, and stops sound on node mute", async () => {
+    const runtime = newRuntime();
+    const { backend, registered } = fakeBackend();
+    const element = fakeElement();
+    const nativePlay = element.play;
+    let attempts = 0, denied = true;
+    element.play = () => {
+      attempts++;
+      if (denied) return Promise.reject(new DOMException("Denied", "NotAllowedError"));
+      nativePlay();
+      return Promise.resolve();
+    };
+    const environment = environmentFor(element);
+    let wiring!: MediaWiring;
+    const graph = graphWith({ movie: { type: "movieFileIn", parameters: { file: "blob:clip", audio: true } } });
+    const draw = (document: GraphDocument) => <Harness runtime={runtime} backend={backend} graph={document} environment={environment} onWiring={value => { wiring = value; }} />;
+    const view = render(draw(graph));
+    await waitFor(() => expect(registered.has(mediaSourceIdFor("movie"))).toBe(true));
+    await act(async () => { for (let i = 0; i < 60; i++) wiring.sync(frame); });
+    expect(attempts).toBe(1);
+    expect(wiring.diagnostics.filter(entry => entry.code === "media.playback")).toHaveLength(1);
+    expect(wiring.diagnostics[0]?.message).toContain("browser autoplay");
+    act(() => { for (let i = 0; i < 60; i++) wiring.sync(frame); });
+    expect(attempts).toBe(1);
+    denied = false;
+    await act(async () => { window.dispatchEvent(new Event("pointerdown")); });
+    expect(attempts).toBe(2);
+    expect(element.paused).toBe(false);
+    expect(wiring.diagnostics.filter(entry => entry.code === "media.playback")).toHaveLength(0);
+    view.rerender(draw({ ...graph, nodes: { ...graph.nodes, movie: { ...graph.nodes["movie"]!, ui: { muted: true } } } }));
+    expect(element.paused).toBe(true);
+    expect(element.muted).toBe(true);
+    window.dispatchEvent(new Event("keydown"));
+    expect(attempts).toBe(2);
+  });
+
+  it.each([false, true])("a 5184×2880 movie preserves %s Common override through metadata and resize", async override => {
+    const runtime = newRuntime();
+    const added = await runtime.bus.execute("graph.applyPatch", { baseRevision: runtime.bus.store.getRevision(), label: "seed",
+      operations: [{ op: "addNode", ref: "$movie", type: "movieFileIn", position: { x: 0, y: 0 }, parameters: { file: "blob:large" } }],
+    }, runtime.invocation);
+    expect(added.status).toBe("applied");
+    const nodeId = added.output.createdIds["$movie"]!;
+    const expected = override ? { mode: "fixed" as const, width: 320, height: 180 } : undefined;
+    if (expected) await runtime.bus.execute("node.setResolution", { nodeId, resolution: expected }, runtime.invocation);
+    const { backend, registered } = fakeBackend();
+    const element = fakeElement(5184, 2880);
+    render(<Harness runtime={runtime} backend={backend} graph={runtime.bus.store.getGraph()} environment={environmentFor(element)} />);
+    await waitFor(() => expect(registered.has(mediaSourceIdFor(nodeId))).toBe(true));
+    expect(runtime.bus.store.getGraph().nodes[nodeId]?.resolution).toEqual(expected);
+    act(() => { element.videoWidth = 3840; element.videoHeight = 2160; element.emit("loadedmetadata"); element.emit("resize"); });
+    expect(runtime.bus.store.getGraph().nodes[nodeId]?.resolution).toEqual(expected);
+  });
+
+  it("preserves a manual Common webcam extent when its initial granted frame arrives", async () => {
+    const runtime = newRuntime();
+    const added = await runtime.bus.execute("graph.applyPatch", { baseRevision: runtime.bus.store.getRevision(), label: "seed",
+      operations: [{ op: "addNode", ref: "$cam", type: "webcam", position: { x: 0, y: 0 } }],
+    }, runtime.invocation);
+    expect(added.status).toBe("applied");
+    const nodeId = added.output.createdIds["$cam"]!;
+    const resolution = { mode: "fixed" as const, width: 320, height: 180 };
+    await runtime.bus.execute("node.setResolution", { nodeId, resolution }, runtime.invocation);
+    const { backend, registered } = fakeBackend();
+    render(<Harness runtime={runtime} backend={backend} graph={runtime.bus.store.getGraph()} environment={environmentFor(fakeElement(1920, 1080))} />);
+    await waitFor(() => expect(registered.has(mediaSourceIdFor(nodeId))).toBe(true));
+    expect(runtime.bus.store.getGraph().nodes[nodeId]?.resolution).toEqual(resolution);
+  });
+});
 
 describe("media sources reach the backend (T264)", () => {
   it("registers a webcam under the key the compiler emits", async () => {
@@ -870,8 +1002,7 @@ describe("media sources reach the backend (T264)", () => {
       );
     });
 
-    // `copyExternalImageToTexture` will not scale: the node has to be the media's size or
-    // the upload fails. One patch, on the bus, so the change is undoable and attributed.
+    // A camera with no Common override retains its granted-size default.
     await waitFor(() => {
       expect(runtime.bus.store.getGraph().nodes[nodeId]?.resolution).toEqual({
         mode: "fixed",
@@ -983,14 +1114,10 @@ describe("media sources reach the backend (T264)", () => {
     });
     await waitFor(() => expect(registered.has(mediaSourceIdFor("movie"))).toBe(true));
 
-    // Ten frames of 0.1s, all reporting the SAME timeline second. The step is chosen so
-    // the seek schedule is exact rather than landing mid-window: this fake element does
-    // not play on its own, so it only moves when the derived position has drifted past
-    // `SEEK_TOLERANCE_SECONDS` (0.15). At 0.1 per frame the drift alternates 0.1 / 0.2, so
-    // every even frame corrects and the tenth lands the element exactly on 1.0. At 1/60
-    // the last correction falls short of the accumulator by a frame or two, which is
-    // correct behaviour and a fixture that cannot state an exact number (§V147).
+    // Native media advances independently of the project timeline. Model its own clock,
+    // rather than requiring the adapter to keep restarting the decoder with seeks.
     for (let index = 0; index < 10; index += 1) {
+      if (index > 0 && !element.paused) element.currentTime += 0.1;
       act(() =>
         (wiring as unknown as MediaWiring).sync({
           timeSeconds: 3,
@@ -1404,12 +1531,7 @@ describe("a still loads as a one-frame stream (T1223)", () => {
     expect(later?.frameId).toBe(1);
   });
 
-  /**
-   * T312 / the resolution match, for a source whose size is known at DECODE time rather
-   * than at `loadedmetadata`. `copyExternalImageToTexture` asserts matching extents, so a
-   * still that did not push its size would fail the upload rather than scale.
-   */
-  it("makes the node the image's own size", async () => {
+  it("keeps a still image's source size separate from its project-sized output", async () => {
     const runtime = newRuntime();
     // Seeded through the bus, like the video case: the patch is written against the STORE,
     // so a node that only exists in a literal has nothing to set a resolution on.
@@ -1456,13 +1578,7 @@ describe("a still loads as a one-frame stream (T1223)", () => {
     });
     await waitFor(() => expect(registered.has(mediaSourceIdFor(nodeId))).toBe(true));
 
-    await waitFor(() => {
-      expect(runtime.bus.store.getGraph().nodes[nodeId]?.resolution).toEqual({
-        mode: "fixed",
-        width: 2048,
-        height: 1024,
-      });
-    });
+    expect(runtime.bus.store.getGraph().nodes[nodeId]?.resolution).toBeUndefined();
   });
 
   /**

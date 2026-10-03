@@ -53,6 +53,8 @@ function fakeElement() {
       listeners.get(type)?.delete(listener);
     },
     currentTime: 0,
+    muted: true,
+    volume: 1,
     playbackRate: 1,
     duration: 12,
     // The environment hands over an element that is ALREADY playing (`openFile` kicks

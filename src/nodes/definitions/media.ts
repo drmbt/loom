@@ -3,8 +3,10 @@ import type { ParameterValue } from "../../domain/types/parameters.ts";
 import type { EffectPassDescriptor } from "../../runtime/backend/plan.ts";
 import { SHARED_SAMPLER_ID, scratchResourceId } from "../../compiler/resources.ts";
 import { MEDIA_TRANSPORT_PARAMETERS } from "../../domain/media/transport.ts";
+import { pictureFileKind } from "../../domain/media/picture-file.ts";
 import { RGBA_TEXTURE } from "./common-ports.ts";
 import { readCompileInputs } from "./compile-context.ts";
+import { readEnumIndex } from "./parameter-readers.ts";
 import { wgsl } from "../../runtime/backend/wgsl.ts";
 
 /**
@@ -53,18 +55,55 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   return textureSampleLevel(mediaTexture, mediaSampler, uv, 0.0);
 }`;
 
-export function compileMedia(context: unknown): CompiledNodeDescription {
-  const { nodeId, outputs } = readCompileInputs(context as Parameters<typeof readCompileInputs>[0]);
+const MEDIA_IMAGE_FIT_OPTIONS = [
+  { value: "fit", label: "Fit" }, { value: "fill", label: "Fill" }, { value: "stretch", label: "Stretch" },
+];
+
+export const MEDIA_IMAGE_FIT_PARAMETERS = {
+  imageFit: {
+    type: "enum", label: "Image fit", group: "Common", default: "fit",
+    options: MEDIA_IMAGE_FIT_OPTIONS,
+    description: "Fit keeps the whole image and its aspect, with transparent margins when needed. Fill crops the center to fill the output. Stretch fills without preserving aspect. Common Resolution controls the output size independently of the source.",
+  },
+} satisfies NodeDefinition["parameters"];
+
+const MEDIA_FIT_WGSL = wgsl`@group(0) @binding(0) var mediaSampler: sampler;
+@group(0) @binding(1) var mediaTexture: texture_2d<f32>;
+struct MediaFitParams { targetResolution: vec2f, imageFit: u32, };
+@group(0) @binding(2) var<uniform> params: MediaFitParams;
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let sourceSize = vec2f(textureDimensions(mediaTexture));
+  let sourceAspect = sourceSize.x / sourceSize.y;
+  let outputAspect = params.targetResolution.x / params.targetResolution.y;
+  var scale = vec2f(1.0);
+  if (params.imageFit == 0u) {
+    scale = vec2f(min(1.0, sourceAspect / outputAspect), min(1.0, outputAspect / sourceAspect));
+  } else if (params.imageFit == 1u) {
+    scale = vec2f(max(1.0, sourceAspect / outputAspect), max(1.0, outputAspect / sourceAspect));
+  }
+  let sourceUv = (uv - vec2f(0.5)) / scale + vec2f(0.5);
+  if (any(sourceUv < vec2f(0.0)) || any(sourceUv > vec2f(1.0))) { return vec4f(0.0); }
+  return textureSampleLevel(mediaTexture, mediaSampler, sourceUv, 0.0);
+}`;
+
+function compileMediaPass(context: unknown, fitted: boolean): CompiledNodeDescription {
+  const { nodeId, outputs, parameters, resolution } = readCompileInputs(context as Parameters<typeof readCompileInputs>[0]);
   const target = outputs["out"];
   if (target === undefined) return { passes: [] };
 
   const pass: EffectPassDescriptor = {
     kind: "effect",
     id: `${nodeId}:media`,
-    shader: MEDIA_BLIT_WGSL,
+    shader: fitted ? MEDIA_FIT_WGSL : MEDIA_BLIT_WGSL,
     target,
     samplers: [{ binding: "mediaSampler", resourceId: SHARED_SAMPLER_ID }],
     textures: [{ binding: "mediaTexture", resourceId: scratchResourceId(nodeId, MEDIA_TEXTURE_KEY) }],
+    ...(fitted ? {
+      uniformBinding: "params",
+      uniforms: { targetResolution: resolution, imageFit: readEnumIndex(parameters, "imageFit", MEDIA_IMAGE_FIT_OPTIONS, "fit") },
+    } : {}),
     nodeId,
   };
   return {
@@ -78,6 +117,14 @@ export function compileMedia(context: unknown): CompiledNodeDescription {
       },
     ],
   };
+}
+
+export function compileMedia(context: unknown): CompiledNodeDescription {
+  return compileMediaPass(context, false);
+}
+
+export function compileFittedMedia(context: unknown): CompiledNodeDescription {
+  return compileMediaPass(context, true);
 }
 
 /**
@@ -107,7 +154,7 @@ export const movieFileInNode: NodeDefinition = {
     "Plays a video file, or shows a still image (PNG, JPEG, WebP, AVIF, GIF, BMP) as a one-frame stream that uploads once and holds — transparent to everything downstream, which cannot tell the two apart. EXR and Radiance .hdr are REFUSED BY NAME rather than crushed into 8 bits; they need the float texture path (T1222). A video gets the transport: play mode, speed, cue, trim and an at-end behaviour — a still has no clock, so those render inactive and say so. Frames upload only when they change; black until a file is loaded. FREE RUN by default (T586): it keeps its own playhead, so Play and Cue Pulse drive it and a clip you just dropped in plays as soon as you press Play, whatever the timeline is doing. Lock it to the timeline and the playhead becomes TIMELINE-ANCHORED instead (§V436) — the position derives from the frame, so frame one of the clip lands on the in point, a scrub finds the same frame every time, and an offline render reproduces. Free run gives up all three of those, and a render says so by name rather than quietly handing you a take that differs from what you saw.",
   tags: ["media", "video", "image", "file", "transport"],
   inputs: [],
-  outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],
+  outputs: [{ id: "out", label: "Picture", type: RGBA_TEXTURE }],
   parameters: {
     /*
      * T1223 — ONE SLOT THAT TAKES EITHER, which is how TD's Movie File In has always
@@ -116,9 +163,20 @@ export const movieFileInNode: NodeDefinition = {
      */
     file: { type: "asset", label: "File", kind: "picture", group: "File" },
     ...MEDIA_TRANSPORT_PARAMETERS,
+    ...MEDIA_IMAGE_FIT_PARAMETERS,
+    audio: {
+      type: "boolean", label: "Audio", group: "Audio", default: false,
+      description: "Play this movie's embedded audio through the browser's audio output. Uses the same video element and transport, so play, pause, cue, trim and forward speed stay synchronized. Off preserves silent video playback; offline rendering is silent.",
+      inactiveWhen: values => pictureFileKind(String(values["file"] ?? "")) === "still" ? "A still image has no audio track." : null,
+    },
+    volume: {
+      type: "number", label: "Volume", group: "Audio", default: 1, min: 0, max: 1, step: 0.01, range: "bounded",
+      description: "Movie audio output level: 0 is silent, 1 is full volume.",
+      inactiveWhen: values => pictureFileKind(String(values["file"] ?? "")) === "still" ? "A still image has no audio track." : values["audio"] !== true ? "Enable Audio to hear the movie." : null,
+    },
   },
   resolutionPolicy: { kind: "project" },
-  compile: compileMedia,
+  compile: compileFittedMedia,
 };
 
 const CAMERA_FIT_OPTIONS = [
@@ -212,8 +270,9 @@ export const webcamNode: NodeDefinition = {
     "A live camera. Frames arrive on the device's schedule; the last frame holds if the stream ends. The Capture parameters ASK the camera for a size, a rate and a facing — they are requests, not settings, and the inspector's Camera section reports what the camera actually granted beside what was asked for. The node's output resolution always follows what ARRIVED.",
   tags: ["media", "camera", "live", "capture"],
   inputs: [],
-  outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],
+  outputs: [{ id: "out", label: "Picture", type: RGBA_TEXTURE }],
   parameters: {
+    ...MEDIA_IMAGE_FIT_PARAMETERS,
     /**
      * T810 — which camera, mirroring the microphone's `device` (T434) so the two read
      * as one convention. Empty string is the system default; the inspector's picker
@@ -295,7 +354,7 @@ export const webcamNode: NodeDefinition = {
     },
   },
   resolutionPolicy: { kind: "project" },
-  compile: compileMedia,
+  compile: compileFittedMedia,
 };
 
 const TEXT_ALIGN_OPTIONS = [
@@ -345,7 +404,7 @@ export const textNode: NodeDefinition = {
     "Draws a string, laid out by the browser and uploaded as a texture. Font size is in output pixels.",
   tags: ["text", "type", "generator"],
   inputs: [],
-  outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE, description: "Linear-space colour." }],
+  outputs: [{ id: "out", label: "Picture", type: RGBA_TEXTURE, description: "Linear-space colour." }],
   parameters: {
     // Defaults to the word "Text": a freshly dropped node has to show that it works.
     // Blank would be indistinguishable from a node that failed to rasterize.

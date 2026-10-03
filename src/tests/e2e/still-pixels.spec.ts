@@ -1,4 +1,5 @@
 import { deflateSync } from "node:zlib";
+import { writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import { APP_VIEWPORT, addNode, connect, fitAll, moveNode, openApp, selectNode } from "./app.ts";
 
@@ -99,7 +100,7 @@ function bandedPng(): Buffer {
   ]);
 }
 
-test("a picked PNG reaches the glass, and the same bytes are there a second later", async ({
+test("a full PNG fits a smaller Common output, and the same bytes stay on the glass", async ({
   page,
 }) => {
   await openApp(page);
@@ -126,6 +127,17 @@ test("a picked PNG reaches the glass, and the same bytes are there a second late
   // the value under test is the object URL the picker builds — fragment and all, which is
   // the only place a `blob:` URL carries the extension the loader classifies on.
   await selectNode(page, movie);
+  await page.getByRole("tab", { name: "Common", exact: true }).click();
+  await page.getByRole("combobox", { name: "Resolution mode", exact: true }).selectOption("custom");
+  for (const label of ["Width", "Height"]) {
+    const field = page.getByLabel(label, { exact: true });
+    await field.scrollIntoViewIfNeeded();
+    await field.click();
+    await field.fill("64");
+    await field.press("Enter");
+  }
+  await expect(page.getByRole("combobox", { name: "Image fit", exact: true })).toHaveValue("fit");
+  await page.getByRole("tab", { name: "Parameters", exact: true }).click();
   const picker = page.locator('input[type="file"]');
   await expect(picker).toHaveCount(1);
   await picker.setInputFiles({
@@ -208,4 +220,306 @@ test("a picked PNG reaches the glass, and the same bytes are there a second late
   );
   expect(framesLater).toBe(120);
   expect(await readBands()).toEqual(expected);
+});
+
+test("a movie plays its embedded audio on the same native video transport", async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  const browserErrors: string[] = [];
+  page.on("pageerror", error => {
+    browserErrors.push(error.message);
+    console.error("Movie browser exception:", error.stack);
+  });
+  await page.addInitScript(() => {
+    const videos: HTMLVideoElement[] = [];
+    const events: { kind: string; wall: number; time: number; target?: number }[] = [];
+    Object.assign(window, { movieAudioVideos: videos, movieAudioEvents: events });
+    const create = document.createElement.bind(document);
+    const time = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
+    if (time?.get === undefined || time.set === undefined) throw new Error("Native media clock descriptor is missing.");
+    const getTime = time.get;
+    const setTime = time.set;
+    document.createElement = ((name: string, options?: ElementCreationOptions) => {
+      const element = create(name, options);
+      if (name.toLowerCase() === "video") {
+        const video = element as HTMLVideoElement;
+        videos.push(video);
+        Object.defineProperty(video, "currentTime", {
+          get() { return getTime.call(video) as number; },
+          set(value: number) {
+            events.push({ kind: "set", wall: performance.now(), time: video.currentTime, target: value });
+            setTime.call(video, value);
+          },
+        });
+        for (const kind of ["seeking", "seeked", "play", "pause", "ended"]) {
+          video.addEventListener(kind, () => events.push({ kind, wall: performance.now(), time: video.currentTime }));
+        }
+      }
+      return element;
+    }) as typeof document.createElement;
+  });
+  await openApp(page);
+  const movie = await addNode(page, "input", "Movie File In");
+  const output = await addNode(page, "output", "Output");
+  await fitAll(page);
+  await moveNode(page, output, 260, 240);
+  await connect(page, { nodeId: movie, portId: "out" }, { nodeId: output, portId: "input" });
+  await expect(page.locator(".react-flow__edge")).toHaveCount(1);
+  await selectNode(page, movie);
+  await page.getByRole("tab", { name: "Common", exact: true }).click();
+  await page.getByRole("combobox", { name: "Resolution mode", exact: true }).selectOption("custom");
+  for (const label of ["Width", "Height"]) {
+    const field = page.getByLabel(label, { exact: true });
+    await field.scrollIntoViewIfNeeded();
+    await field.click();
+    await field.fill("64");
+    await field.press("Enter");
+  }
+  await page.getByRole("tab", { name: "Parameters", exact: true }).click();
+
+  // A real encoded audio track, never connected to the fixture's speaker output.
+  const fixture = await page.evaluate(async () => {
+    const mime = "video/webm;codecs=vp8,opus";
+    if (typeof MediaRecorder !== "function" || !MediaRecorder.isTypeSupported(mime)) {
+      throw new Error("Movie audio fixture requires MediaRecorder with WebM VP8/Opus support.");
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 64;
+    const draw = canvas.getContext("2d");
+    if (draw === null) throw new Error("Movie audio fixture requires a 2D canvas.");
+    draw.fillStyle = "blue";
+    draw.fillRect(0, 0, 64, 64);
+    const audio = new AudioContext();
+    const destination = audio.createMediaStreamDestination();
+    const oscillator = audio.createOscillator();
+    oscillator.frequency.value = 440;
+    oscillator.connect(destination);
+    const picture = canvas.captureStream(20);
+    const stream = new MediaStream([...picture.getVideoTracks(), ...destination.stream.getAudioTracks()]);
+    const recorder = new MediaRecorder(stream, { mimeType: mime });
+    const chunks: Blob[] = [];
+    let animation = 0;
+    let oscillatorStarted = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await audio.resume();
+      if (audio.state !== "running") throw new Error("Movie audio fixture AudioContext did not activate.");
+      oscillator.start();
+      oscillatorStarted = true;
+      const paint = () => {
+        draw.fillStyle = performance.now() % 200 < 100 ? "red" : "blue";
+        draw.fillRect(0, 0, 64, 64);
+        animation = requestAnimationFrame(paint);
+      };
+      paint();
+      await new Promise<void>((resolve, reject) => {
+        recorder.addEventListener("dataavailable", event => { if (event.data.size > 0) chunks.push(event.data); });
+        recorder.addEventListener("error", () => reject(new Error("Movie audio fixture MediaRecorder failed.")), { once: true });
+        recorder.addEventListener("stop", () => resolve(), { once: true });
+        recorder.start();
+        timer = setTimeout(() => recorder.stop(), 4000);
+      });
+      const bytes = [...new Uint8Array(await new Blob(chunks, { type: mime }).arrayBuffer())];
+      return { bytes, audioTracks: stream.getAudioTracks().length, videoTracks: stream.getVideoTracks().length };
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      cancelAnimationFrame(animation);
+      if (recorder.state !== "inactive") recorder.stop();
+      if (oscillatorStarted) oscillator.stop();
+      oscillator.disconnect();
+      for (const track of stream.getTracks()) track.stop();
+      await audio.close();
+    }
+  });
+  expect(fixture.audioTracks).toBe(1);
+  expect(fixture.videoTracks).toBe(1);
+  expect(fixture.bytes.length).toBeGreaterThan(1000);
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "loom-embedded-audio.webm", mimeType: "video/webm", buffer: Buffer.from(fixture.bytes),
+  });
+  const snapshot = () => page.evaluate(() => {
+    const videos = (window as unknown as { movieAudioVideos: HTMLVideoElement[] }).movieAudioVideos;
+    const video = videos[0];
+    return video === undefined ? null : {
+      count: videos.length, ready: video.readyState >= 2, paused: video.paused,
+      muted: video.muted, volume: video.volume, rate: video.playbackRate,
+      preservesPitch: video.preservesPitch, time: video.currentTime,
+    };
+  });
+  await expect.poll(snapshot).toMatchObject({ count: 1, ready: true, muted: true });
+  const audioSwitch = page.getByRole("switch", { name: "Audio", exact: true });
+  await audioSwitch.scrollIntoViewIfNeeded();
+  await audioSwitch.click();
+  const volume = page.getByLabel("Volume", { exact: true });
+  await volume.scrollIntoViewIfNeeded();
+  await volume.click();
+  await volume.fill("0.25");
+  await volume.press("Enter");
+  await expect.poll(snapshot).toMatchObject({ count: 1, paused: false, muted: false, volume: 0.25, preservesPitch: true });
+  expect(await page.evaluate(() => {
+    const video = (window as unknown as { movieAudioVideos: HTMLVideoElement[] }).movieAudioVideos[0];
+    if (video === undefined || !("captureStream" in video) || typeof video.captureStream !== "function") {
+      throw new Error("Decoded movie audio proof requires native video.captureStream.");
+    }
+    const decoded = (video as HTMLVideoElement & { captureStream(): MediaStream }).captureStream();
+    try { return decoded.getAudioTracks().length; }
+    finally { for (const track of decoded.getTracks()) track.stop(); }
+  })).toBe(1);
+
+  const clockProofs = [];
+  for (const fps of [30, 60]) {
+    for (const mode of ["freeRun", "timeline"]) {
+      const transport = page.getByRole("group", { name: "Transport", exact: true });
+      await transport.getByRole("button", { name: "Pause", exact: true }).click();
+      await page.getByRole("button", { name: "Project settings", exact: true }).click();
+      const fpsField = page.getByLabel("target fps", { exact: true });
+      await fpsField.scrollIntoViewIfNeeded();
+      await fpsField.click();
+      await fpsField.fill(String(fps));
+      await fpsField.press("Enter");
+      await page.keyboard.press("Escape");
+      const playMode = page.getByRole("combobox", { name: "Play Mode", exact: true });
+      await playMode.selectOption("freeRun");
+      const cuePulse = page.getByRole("button", { name: "Fire Cue Pulse", exact: true });
+      await cuePulse.scrollIntoViewIfNeeded();
+      await cuePulse.click();
+      await transport.getByRole("button", { name: "Reset time", exact: true }).click();
+      await playMode.selectOption(mode);
+      await transport.getByRole("button", { name: "Play", exact: true }).click();
+      await expect.poll(snapshot).toMatchObject({ count: 1, paused: false, muted: false });
+      await expect.poll(async () => (await snapshot())?.time).toBeGreaterThan(0.05);
+      const clockProof = await page.evaluate(async () => {
+        const win = window as unknown as {
+          movieAudioVideos: HTMLVideoElement[];
+          movieAudioEvents: { kind: string; wall: number; time: number; target?: number }[];
+        };
+        const video = win.movieAudioVideos[0];
+        if (video === undefined) throw new Error("Movie source video was not created.");
+        const start = performance.now();
+        const eventStart = win.movieAudioEvents.length;
+        const samples: { wall: number; time: number; rate: number; timelineFrame: string | null; timelineSeconds: string | null }[] = [];
+        await new Promise<void>(resolve => {
+          const tick = () => {
+            samples.push({ wall: performance.now() - start, time: video.currentTime, rate: video.playbackRate,
+              timelineFrame: document.querySelector<HTMLInputElement>('input[aria-label="Frame"]')?.value ?? null,
+              timelineSeconds: document.querySelector('[aria-label="Elapsed time"]')?.textContent ?? null,
+            });
+            if (performance.now() - start >= 3000) resolve();
+            else requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        });
+        return { samples, events: win.movieAudioEvents.slice(eventStart) };
+      });
+      clockProofs.push({ fps, mode, ...clockProof });
+      const path = testInfo.outputPath("movie-native-clock.json");
+      await writeFile(path, JSON.stringify(clockProofs, null, 2));
+      await testInfo.attach(`movie-native-clock-${fps}-${mode}`, { path, contentType: "application/json" });
+      console.log("Movie native clock", JSON.stringify({ fps, mode,
+        frames: clockProof.samples.length,
+        seeks: clockProof.events.filter(event => event.kind === "set").length,
+        first: clockProof.samples[0], last: clockProof.samples.at(-1),
+      }));
+      expect(new Set(clockProof.samples.map(sample => sample.time)).size).toBeGreaterThan(5);
+      for (const sample of clockProof.samples) {
+        expect(sample.rate).toBeGreaterThanOrEqual(0.95);
+        expect(sample.rate).toBeLessThanOrEqual(1.05);
+      }
+    }
+  }
+
+  await page.getByRole("combobox", { name: "Play Mode", exact: true }).selectOption("freeRun");
+
+  const cuePoint = page.getByLabel("Cue Point", { exact: true });
+  await cuePoint.scrollIntoViewIfNeeded();
+  await cuePoint.click();
+  await cuePoint.fill("0.5");
+  await cuePoint.press("Enter");
+  const cue = page.getByRole("switch", { name: "Cue", exact: true });
+  await cue.click();
+  await expect.poll(snapshot).toMatchObject({ count: 1, paused: true, muted: true, time: 0.5 });
+  const heldProof = await page.evaluate(async () => {
+    const events = (window as unknown as {
+      movieAudioEvents: { kind: string; wall: number; time: number; target?: number }[];
+    }).movieAudioEvents;
+    const eventStart = events.length;
+    const start = performance.now();
+    await new Promise<void>(resolve => {
+      const tick = () => { if (performance.now() - start >= 300) resolve(); else requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    });
+    return events.slice(eventStart);
+  });
+  expect(heldProof.filter(event => event.kind === "set")).toEqual([]);
+  expect((await snapshot())?.time).toBe(0.5);
+  await cue.click();
+  const cueEventStart = await page.evaluate(() => (
+    window as unknown as { movieAudioEvents: unknown[] }
+  ).movieAudioEvents.length);
+  await page.getByRole("button", { name: "Fire Cue Pulse", exact: true }).click();
+  await expect.poll(() => page.evaluate(start => (
+    window as unknown as { movieAudioEvents: { kind: string; target?: number }[] }
+  ).movieAudioEvents.slice(start).some(event => event.kind === "set"
+    && event.target !== undefined && event.target >= 0.5 && event.target < 0.6), cueEventStart)).toBe(true);
+  await expect.poll(snapshot).toMatchObject({ paused: false, muted: false });
+
+  for (const [label, value] of [["Trim Start", "0.25"], ["Trim End", "0.75"]] as const) {
+    const field = page.getByLabel(label, { exact: true });
+    await field.scrollIntoViewIfNeeded();
+    await field.click();
+    await field.fill(value);
+    await field.press("Enter");
+  }
+  const loopProof = await page.evaluate(async () => {
+    const events = (window as unknown as {
+      movieAudioEvents: { kind: string; wall: number; time: number; target?: number }[];
+    }).movieAudioEvents;
+    const eventStart = events.length;
+    const start = performance.now();
+    await new Promise<void>(resolve => {
+      const tick = () => { if (performance.now() - start >= 1200) resolve(); else requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    });
+    return events.slice(eventStart);
+  });
+  const loopSeeks = loopProof.filter(event => event.kind === "set");
+  expect(loopSeeks.length).toBeGreaterThanOrEqual(2);
+  for (const seek of loopSeeks) {
+    expect(seek.target).toBeGreaterThanOrEqual(0.25);
+    expect(seek.target).toBeLessThan(0.35);
+  }
+  const loopPath = testInfo.outputPath("movie-trim-loop.json");
+  await writeFile(loopPath, JSON.stringify({ heldProof, loopProof }, null, 2));
+  await testInfo.attach("movie-trim-loop", { path: loopPath, contentType: "application/json" });
+  console.log("Movie cue/trim", JSON.stringify({ cue: 0.5, heldWrites: 0, loopTargets: loopSeeks.map(seek => seek.target) }));
+
+  const play = page.getByRole("switch", { name: "Play", exact: true });
+  await play.scrollIntoViewIfNeeded();
+  await play.click();
+  await expect.poll(snapshot).toMatchObject({ count: 1, paused: true, muted: true });
+  const pausedTime = (await snapshot())?.time;
+  await page.evaluate(() => new Promise<void>(resolve => {
+    let frames = 0;
+    const tick = () => { if (++frames === 8) resolve(); else requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }));
+  expect((await snapshot())?.time).toBe(pausedTime);
+  await play.click();
+  await expect.poll(snapshot).toMatchObject({ count: 1, paused: false, muted: false });
+  await selectNode(page, movie);
+  await page.keyboard.press("Backspace");
+  await expect(page.locator(".react-flow__node")).toHaveCount(1);
+  await expect.poll(snapshot).toMatchObject({ count: 1, paused: true, muted: true });
+  for (const proof of clockProofs) {
+    expect(proof.events.filter(event => event.kind === "set" || event.kind === "seeking"),
+      `${proof.mode} at ${proof.fps} FPS must play continuously without destructive seeks`).toEqual([]);
+    const first = proof.samples[0];
+    const last = proof.samples.at(-1);
+    expect(first).toBeDefined();
+    expect(last).toBeDefined();
+    if (first !== undefined && last !== undefined) {
+      expect(last.time - first.time,
+        `${proof.mode} at ${proof.fps} FPS must advance its native media clock at playback speed`).toBeGreaterThan(2.5);
+    }
+  }
+  expect(browserErrors).toEqual([]);
 });
