@@ -25,7 +25,7 @@ import { browserPerformOpener, openPerformWindow } from "./perform-window.ts";
 import type { PerformWindowHandle } from "./perform-window.ts";
 import { MAPPING_OVERLAY_TOKENS, createMappingOverlay } from "./perform-mapping-overlay.ts";
 import type { MappingOverlay, MappingOverlayView } from "./perform-mapping-overlay.ts";
-import { mappingAbsentNote, mappingTargetsOf } from "./perform-mapping.ts";
+import { lensHorizon, mappingAbsentNote, mappingTargetsOf, pictureLensFor } from "./perform-mapping.ts";
 import type { MappingTarget, Size, WindowFit } from "./perform-mapping.ts";
 
 /**
@@ -242,6 +242,12 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
       const target = chosenOf(windowId, targetsOf(windowId, graph));
       if (target === undefined) return { note: mappingAbsentNote() };
       if (target.refusal !== null) return { note: target.refusal };
+      // §T1538b: the Corner Pins crossed, from their values RESOLVED as the window shows them.
+      const lens = pictureLensFor(target, (nodeId) => {
+        const node = graph.nodes[nodeId];
+        return node === undefined ? undefined : parametersOf(node, graph).values;
+      });
+      if (typeof lens === "string") return { note: lens };
       const facts = pictureFacts(windowId, graph);
       if (facts === null) return { note: WAITING_NOTE };
       const port = registry.get(graph.nodes[target.nodeId]?.type ?? "")?.outputs[0]?.id;
@@ -251,14 +257,20 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
           ? undefined
           : gizmoTilesFor([{ nodeId: target.nodeId, portId: port, size: facts.inputSize }], graph.nodes, registry).get(target.nodeId as NodeId);
       const handles = (tile?.handles ?? []).filter((handle): handle is PictureGizmoHandle => handle.space === "picture");
+      for (const handle of handles) {
+        const horizon = lensHorizon(lens, handle.value);
+        if (horizon !== null)
+          return { note: `${target.title} "${target.name}"'s ${handle.label} lies past ${horizon}'s horizon, so it has no place on this window.` };
+      }
       const how =
         target.kind === "gridWarp"
           ? "drag a point, Option-click to add a column (with Shift a row), right-click a point to delete one"
           : "drag a pin";
-      const note = `Editing ${target.title} "${target.name}": ${how}. M or Esc to stop.`;
+      const via = lens.length === 0 ? "" : ` through ${lens.map((step) => step.named).join(", ")}`;
+      const note = `Editing ${target.title} "${target.name}"${via}: ${how}. M or Esc to stop.`;
       return {
         note: session.message === null ? note : `${note} ${session.message}`,
-        edit: { nodeId: target.nodeId as NodeId, handles, grid: tile?.grid, picture: facts },
+        edit: { nodeId: target.nodeId as NodeId, handles, grid: tile?.grid, picture: facts, lens },
       };
     };
     const refresh = (windowId: string): void => {

@@ -9,13 +9,15 @@ import { DEFAULT_PROJECT_SETTINGS } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { StoredParameter } from "@domain/types/parameters.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
-import { gridOf } from "@nodes/definitions/grid-warp.ts";
+import { gridOf, gridWarpPoint } from "@nodes/definitions/grid-warp.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import type { LoomBackend, PresentationOptions } from "@runtime/backend/backend-types.ts";
 import { TIER_B_CAPABILITIES } from "@/examples/runner.ts";
 import { createDisplaySinkStore } from "./display-sinks.ts";
 import type { ScreenSource } from "./perform-screens.ts";
 import { usePerformWindows } from "./use-perform-windows.ts";
+import { lensHorizon, pictureLensFor, windowPicture } from "./perform-mapping.ts";
+import type { MappingTarget } from "./perform-mapping.ts";
 import type { PerformPlan } from "./use-perform-windows.ts";
 
 /**
@@ -277,17 +279,20 @@ describe("§T1536b — Edit mapping draws a Corner Pin's pins on the perform win
     expect(stage.at(stage.handle("pinbl"))).toEqual([400, 668.75]);
   });
 
-  it("with two warps on the chain, the nearest is edited and the far one is listed with its refusal", async () => {
-    const stage = await setup({ chain: ["checker", "gridWarp", "cornerPin"] });
+  it("with a Grid Warp in front, the nearest is edited and the Corner Pin behind it is listed with its refusal", async () => {
+    // §T1538b turned the other order (Grid Warp → Corner Pin) into a placed one; a Grid Warp
+    // downstream still moves the picture in a way this layer does not invert.
+    const stage = await setup({ chain: ["checker", "cornerPin", "gridWarp"] });
     const view = stage.surface().mapping(stage.windowId);
     expect(view.targets.map((target) => target.nodeId)).toEqual([stage.ids[2], stage.ids[1]]);
     expect(view.chosen).toBe(stage.ids[2]);
     expect(view.targets[1]?.refusal).toBe(
-      `Corner Pin "${stage.label(2)}" warps the picture again between Grid Warp "${stage.label(1)}" and this window, so its handles cannot be placed exactly here.`,
+      `Grid Warp "${stage.label(2)}" warps the picture again between Corner Pin "${stage.label(1)}" and this window, so its handles cannot be placed exactly here.`,
     );
     act(() => stage.surface().setEditingMapping(stage.windowId, true));
-    expect(stage.handle("pinbl")).not.toBeNull();
+    expect(stage.handle("p11")).not.toBeNull();
     act(() => stage.surface().chooseMapping(stage.windowId, stage.ids[1]!));
+    expect(stage.handle("p11")).toBeNull();
     expect(stage.handle("pinbl")).toBeNull();
     expect(stage.note()).toBe(view.targets[1]?.refusal);
   });
@@ -322,5 +327,285 @@ describe("§T1536b — a Grid Warp on the perform window", () => {
     await stage.settle();
     const after = gridOf(stage.bus.store.getGraph().nodes[stage.ids[1]!]?.parameters ?? {});
     expect([after.columns, after.us]).toEqual([3, [0, 0.5, 1]]);
+  });
+});
+
+/*
+ * §T1538b — A CORNER PIN BETWEEN THE EDITED NODE AND THE WINDOW.
+ *
+ * The expected pixels go through a homography solved HERE, independently of the node: the
+ * unique projective map taking four points to four points, from the 8×8 linear system
+ * (h₈ = 1) by Gaussian elimination. The node solves square → quad twice and composes
+ * (Heckbert's closed form); a map through the same four correspondences is the same map, so
+ * agreement is the check, not a restatement.
+ */
+type P2 = readonly [number, number];
+type Quad4 = readonly [P2, P2, P2, P2];
+
+function homographyThrough(from: Quad4, to: Quad4): (point: P2) => P2 {
+  const rows: number[][] = [];
+  for (let index = 0; index < 4; index += 1) {
+    const [x, y] = from[index]!;
+    const [u, v] = to[index]!;
+    rows.push([x, y, 1, 0, 0, 0, -x * u, -y * u, u]);
+    rows.push([0, 0, 0, x, y, 1, -x * v, -y * v, v]);
+  }
+  for (let column = 0; column < 8; column += 1) {
+    let pivot = column;
+    for (let row = column + 1; row < 8; row += 1) if (Math.abs(rows[row]![column]!) > Math.abs(rows[pivot]![column]!)) pivot = row;
+    [rows[column], rows[pivot]] = [rows[pivot]!, rows[column]!];
+    for (let row = 0; row < 8; row += 1) {
+      if (row === column) continue;
+      const factor = rows[row]![column]! / rows[column]![column]!;
+      for (let k = column; k < 9; k += 1) rows[row]![k]! -= factor * rows[column]![k]!;
+    }
+  }
+  const h = rows.map((row, index) => row[8]! / row[index]!);
+  return ([x, y]) => {
+    const w = h[6]! * x + h[7]! * y + 1;
+    return [(h[0]! * x + h[1]! * y + h[2]!) / w, (h[3]! * x + h[4]! * y + h[5]!) / w];
+  };
+}
+
+/** A non-trivial pin quad (no two sides parallel: a true perspective) and extract quad. */
+const PINS: Quad4 = [
+  [0.1, 0.15],
+  [0.85, 0.05],
+  [0.95, 0.9],
+  [0.2, 0.8],
+];
+const EXTRACT: Quad4 = [
+  [0.05, 0.1],
+  [0.9, 0],
+  [1, 0.95],
+  [0, 0.85],
+];
+const cornerPinValues = (pins: Quad4, extract: Quad4): Record<string, StoredParameter> => ({
+  pinbl: pins[0],
+  pinbr: pins[1],
+  pintr: pins[2],
+  pintl: pins[3],
+  extractbl: extract[0],
+  extractbr: extract[1],
+  extracttr: extract[2],
+  extracttl: extract[3],
+});
+/** Its input picture → its output picture, and back. */
+const pinned = homographyThrough(EXTRACT, PINS);
+const unpinned = homographyThrough(PINS, EXTRACT);
+/** This stage's window pixel of an output-picture point (Fit and letterbox, worked above). */
+const toWindowPixel = ([u, v]: P2): P2 => [windowX(u), windowY(v)];
+/** The inverse, worked by hand: undo the letterbox, then Fit's v_target = (v − 0.5)·0.5625 + 0.5. */
+const fromWindowPixel = ([x, y]: P2): P2 => [(x - 300) / 1000, (1 - y / 1000 - 0.5) / 0.5625 + 0.5];
+
+const expectNear = (actual: readonly number[], expected: readonly number[], digits = 9): void => {
+  expect(actual).toHaveLength(expected.length);
+  actual.forEach((value, index) => expect(value, `component ${String(index)}`).toBeCloseTo(expected[index]!, digits));
+};
+
+describe("§T1538b — Grid Warp → Corner Pin → Window Out: the Grid Warp is edited through the Corner Pin", () => {
+  const stageOf = () => setup({ chain: ["checker", "gridWarp", "cornerPin"], parameters: { 2: cornerPinValues(PINS, EXTRACT) } });
+
+  it("is placed, not refused: the Grid Warp is the default and its points land where the homography puts them", async () => {
+    const stage = await stageOf();
+    const view = stage.surface().mapping(stage.windowId);
+    expect(view.targets.map((target) => [target.nodeId, target.refusal])).toEqual([
+      [stage.ids[2], null],
+      [stage.ids[1], null],
+    ]);
+    act(() => stage.surface().chooseMapping(stage.windowId, stage.ids[1]!));
+    act(() => stage.surface().setEditingMapping(stage.windowId, true));
+    expect(stage.note()).toBe(
+      `Editing Grid Warp "${stage.label(1)}" through Corner Pin "${stage.label(2)}": drag a point, Option-click to add a column (with Shift a row), right-click a point to delete one. M or Esc to stop.`,
+    );
+    // The 3×3 identity grid: point (c, r) at (c/2, r/2) of the Grid Warp's picture. Every one
+    // is drawn — p00 lies OUTSIDE the Extract quad (its corner is at (0.05, 0.1)): the Corner
+    // Pin does not show that point, and the handle sits where the pinned plane, continued,
+    // puts it (§T1538b's decision: clamp-free, so it can be dragged back in).
+    for (let column = 0; column < 3; column += 1) {
+      for (let row = 0; row < 3; row += 1) {
+        const key = `p${String(column)}${String(row)}`;
+        expectNear(stage.at(stage.handle(key)), toWindowPixel(pinned([column / 2, row / 2])));
+      }
+    }
+    // Without the Corner Pin the centre point would be at the window's centre (800, 500): the
+    // map moved it, so this is not the identity passing for one.
+    const centre = stage.at(stage.handle("p11"));
+    expect(Math.hypot(centre[0] - 800, centre[1] - 500)).toBeGreaterThan(20);
+  });
+
+  it("draws the grid lines sampled on the Grid Warp, then each sample mapped through the Corner Pin", async () => {
+    const stage = await stageOf();
+    act(() => stage.surface().chooseMapping(stage.windowId, stage.ids[1]!));
+    act(() => stage.surface().setEditingMapping(stage.windowId, true));
+    const lines = stage.child.document.querySelectorAll('[data-testid="perform-mapping-outline"] polyline');
+    expect(lines).toHaveLength(6);
+    const grid = gridOf(stage.bus.store.getGraph().nodes[stage.ids[1]!]?.parameters ?? {});
+    // Column 1, the middle one: 2 cells × 16 samples + 1.
+    const drawn = (lines[1]?.getAttribute("points") ?? "").split(" ").map((pair) => pair.split(",").map(Number));
+    expect(drawn).toHaveLength(33);
+    drawn.forEach((point, step) => expectNear(point, toWindowPixel(pinned(gridWarpPoint(grid, 1, step / 16)))));
+  });
+
+  it("a drag on the window writes the inverse through the Corner Pin and the Fit, and one undo takes it back", async () => {
+    const stage = await stageOf();
+    act(() => stage.surface().chooseMapping(stage.windowId, stage.ids[1]!));
+    act(() => stage.surface().setEditingMapping(stage.windowId, true));
+    const point = stage.handle("p11")!;
+    const parameters = () => stage.bus.store.getGraph().nodes[stage.ids[1]!]?.parameters ?? {};
+    const before = parameters()["p11"];
+    const [x, y] = stage.at(point);
+    const groups = (await stage.bus.query("graph.audit", {}, context)).length;
+    fireEvent.pointerDown(point, { pointerId: 1, button: 0, clientX: x, clientY: y });
+    fireEvent.pointerMove(point, { pointerId: 1, clientX: 760, clientY: 520 });
+    await stage.settle();
+    fireEvent.pointerMove(point, { pointerId: 1, clientX: 800, clientY: 450 });
+    fireEvent.pointerUp(point, { pointerId: 1, clientX: 800, clientY: 450 });
+    await stage.settle();
+    // (800, 450) → the Corner Pin's output (0.5, 0.58889) → back through the pin and extract
+    // quads to the Grid Warp's own picture; the store keeps six decimals.
+    const expected = unpinned(fromWindowPixel([800, 450]));
+    expectNear(parameters()["p11"] as number[], expected, 6);
+    // Not the value a drag that ignored the Corner Pin would write.
+    expect(Math.hypot(expected[0] - 0.5, expected[1] - (0.05 / 0.5625 + 0.5))).toBeGreaterThan(0.01);
+    // And the point is drawn under the pointer.
+    expectNear(stage.at(stage.handle("p11")), [800, 450], 3);
+    const audit = (await stage.bus.query("graph.audit", {}, context)).slice(groups);
+    expect(audit.length).toBeGreaterThan(0);
+    expect(new Set(audit.map((entry) => entry.undoGroupId)).size).toBe(1);
+    await act(async () => {
+      await stage.bus.execute("graph.undo", {}, context);
+    });
+    expect(parameters()["p11"]).toEqual(before);
+  });
+
+  it("a degenerate Corner Pin refuses by name, with no handles: it renders nothing, so nothing behind it has a place", async () => {
+    // Bottom Right and Top Right swapped: a bow-tie, the node's own `cornerPin.pin.degenerate`.
+    const bowTie: Quad4 = [PINS[0], PINS[2], PINS[1], PINS[3]];
+    const stage = await setup({ chain: ["checker", "gridWarp", "cornerPin"], parameters: { 2: cornerPinValues(bowTie, EXTRACT) } });
+    act(() => stage.surface().chooseMapping(stage.windowId, stage.ids[1]!));
+    act(() => stage.surface().setEditingMapping(stage.windowId, true));
+    expect(stage.note()).toBe(
+      `Corner Pin "${stage.label(2)}"'s Pin quad cannot be pinned: it is self-intersecting or concave (corners out of order). It shows nothing, so Grid Warp "${stage.label(1)}"'s handles have no place on this window.`,
+    );
+    expect(stage.child.document.querySelectorAll('[data-testid^="perform-mapping-handle-"]')).toHaveLength(0);
+    expect(stage.child.document.querySelectorAll('[data-testid="perform-mapping-outline"] *')).toHaveLength(0);
+  });
+});
+
+describe("§T1538b — a Grid Warp point past the Corner Pin's horizon", () => {
+  it("refuses by name: the point has no place on this window, in any Outside mode", async () => {
+    // A trapezoid narrowing upward: w = 4t + 1 (see the pure case below), so a picture point
+    // below t = −¼ is past the horizon. Point 2,1 (p10) dragged to (0.5, −1) on its tile.
+    const receding: Quad4 = [
+      [0, 0],
+      [1, 0],
+      [0.6, 1],
+      [0.4, 1],
+    ];
+    const stage = await setup({
+      chain: ["checker", "gridWarp", "cornerPin"],
+      parameters: { 1: { p10: [0.5, -1] }, 2: { pinbl: receding[0], pinbr: receding[1], pintr: receding[2], pintl: receding[3], extend: "repeat" } },
+    });
+    act(() => stage.surface().chooseMapping(stage.windowId, stage.ids[1]!));
+    act(() => stage.surface().setEditingMapping(stage.windowId, true));
+    expect(stage.note()).toBe(
+      `Grid Warp "${stage.label(1)}"'s Point 2,1 lies past Corner Pin "${stage.label(2)}"'s horizon, so it has no place on this window.`,
+    );
+    expect(stage.child.document.querySelectorAll('[data-testid^="perform-mapping-handle-"]')).toHaveLength(0);
+  });
+});
+
+describe("§T1538b — Corner Pin → Corner Pin: the first is edited through the second", () => {
+  const FIRST: Quad4 = [
+    [0.2, 0.25],
+    [0.7, 0.2],
+    [0.75, 0.7],
+    [0.3, 0.8],
+  ];
+  const stageOf = () =>
+    setup({
+      chain: ["checker", "cornerPin", "cornerPin"],
+      parameters: { 1: { pinbl: FIRST[0], pinbr: FIRST[1], pintr: FIRST[2], pintl: FIRST[3] }, 2: cornerPinValues(PINS, EXTRACT) },
+    });
+
+  it("draws the first one's pins and pin quad where the second one shows them", async () => {
+    const stage = await stageOf();
+    const view = stage.surface().mapping(stage.windowId);
+    expect(view.targets.map((target) => [target.nodeId, target.refusal])).toEqual([
+      [stage.ids[2], null],
+      [stage.ids[1], null],
+    ]);
+    act(() => stage.surface().chooseMapping(stage.windowId, stage.ids[1]!));
+    act(() => stage.surface().setEditingMapping(stage.windowId, true));
+    const keys = ["pinbl", "pinbr", "pintr", "pintl"];
+    keys.forEach((key, index) => expectNear(stage.at(stage.handle(key)), toWindowPixel(pinned(FIRST[index]!))));
+    // A homography keeps lines straight: the mapped corners ARE the outline.
+    const outline = stage.child.document.querySelector('[data-testid="perform-mapping-outline"] polygon');
+    const corners = (outline?.getAttribute("points") ?? "").split(" ").map((pair) => pair.split(",").map(Number));
+    corners.forEach((corner, index) => expectNear(corner, toWindowPixel(pinned(FIRST[index]!))));
+  });
+
+  it("a drag on one of the first one's pins writes it back through the second", async () => {
+    const stage = await stageOf();
+    act(() => stage.surface().chooseMapping(stage.windowId, stage.ids[1]!));
+    act(() => stage.surface().setEditingMapping(stage.windowId, true));
+    const pin = stage.handle("pintr")!;
+    const [x, y] = stage.at(pin);
+    fireEvent.pointerDown(pin, { pointerId: 1, button: 0, clientX: x, clientY: y });
+    fireEvent.pointerMove(pin, { pointerId: 1, clientX: 1000, clientY: 300 });
+    fireEvent.pointerUp(pin, { pointerId: 1, clientX: 1000, clientY: 300 });
+    await stage.settle();
+    const written = stage.bus.store.getGraph().nodes[stage.ids[1]!]?.parameters["pintr"] as number[];
+    expectNear(written, unpinned(fromWindowPixel([1000, 300])), 6);
+  });
+});
+
+describe("§T1538b — the lens at its edges (pure)", () => {
+  const target = (through: MappingTarget["through"]): MappingTarget => ({ nodeId: "gw", name: "warp", kind: "gridWarp", title: "Grid Warp", refusal: null, through });
+  const values = (pins: Quad4, extract: Quad4 = [[0, 0], [1, 0], [1, 1], [0, 1]]) => cornerPinValues(pins, extract) as Record<string, never>;
+  /** A trapezoid narrowing upward: the pinned plane recedes, its vanishing point at (0.5, 1.25). */
+  const RECEDING: Quad4 = [
+    [0, 0],
+    [1, 0],
+    [0.6, 1],
+    [0.4, 1],
+  ];
+  const facts = { fit: "stretch" as const, inputSize: [1000, 1000] as const, targetSize: [1000, 1000] as const };
+
+  it("a point outside the Extract quad maps clamp-free to the continued plane, and back", () => {
+    const lens = pictureLensFor(target([{ nodeId: "cp", name: "pin" }]), () => values(PINS, EXTRACT));
+    if (typeof lens === "string") throw new Error(lens);
+    const outside: P2 = [1.2, -0.1];
+    const picture = windowPicture(facts, [1000, 1000], lens);
+    const shown = picture.toWindow(outside)!;
+    const [u, v] = pinned(outside);
+    expectNear(shown, [u * 1000, (1 - v) * 1000]);
+    expectNear(picture.fromWindow(shown)!, outside);
+  });
+
+  it("past a Corner Pin's horizon there is no place: named going forward, nothing coming back", () => {
+    const lens = pictureLensFor(target([{ nodeId: "cp", name: "pin" }]), () => values(RECEDING));
+    if (typeof lens === "string") throw new Error(lens);
+    // w = 4t + 1 for this quad (worked from Heckbert's form by hand): negative below t = −¼.
+    expect(lensHorizon(lens, [0.5, -1])).toBe('Corner Pin "pin"');
+    expect(lensHorizon(lens, [0.5, -0.2])).toBeNull();
+    const picture = windowPicture(facts, [1000, 1000], lens);
+    expect(picture.toWindow([0.5, -1])).toBeNull();
+    // Above the vanishing point the output shows no surface: a drag there writes nothing.
+    expect(picture.fromWindow([500, 1000 - 2 * 1000])).toBeNull();
+    expect(picture.fromWindow([500, 1000 - 1.2 * 1000])).not.toBeNull();
+  });
+
+  it("a degenerate Extract quad is refused by name too", () => {
+    const flat: Quad4 = [
+      [0, 0],
+      [0.5, 0],
+      [1, 0],
+      [0, 1],
+    ];
+    expect(pictureLensFor(target([{ nodeId: "cp", name: "pin" }]), () => values(PINS, flat))).toBe(
+      `Corner Pin "pin"'s Extract quad cannot be pinned: three corners are in a line (zero area). It shows nothing, so Grid Warp "warp"'s handles have no place on this window.`,
+    );
   });
 });

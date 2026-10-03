@@ -4,7 +4,7 @@ import type { GridAxis, WarpGrid } from "@nodes/definitions/grid-warp.ts";
 import { GRID_WARP_MAX } from "@nodes/shaders/grid-warp.wgsl.ts";
 import type { GridLineActions, PictureGizmoHandle, Vec3GizmoStore } from "@editor/viewer/index.ts";
 import { windowPicture } from "./perform-mapping.ts";
-import type { Point, WindowPicture, WindowPictureFacts } from "./perform-mapping.ts";
+import type { PictureLens, Point, WindowPicture, WindowPictureFacts } from "./perform-mapping.ts";
 
 /**
  * §T1536b — THE MAPPING HANDLES, DRAWN ON THE PERFORM WINDOW.
@@ -21,9 +21,13 @@ import type { Point, WindowPicture, WindowPictureFacts } from "./perform-mapping
  * what is refused is decided in one place), every drag goes through the same
  * `Vec3GizmoStore` — begin / live / commit, one undo group, the parameter editor's actor —
  * and a Grid Warp's line insert/delete is the same `GridLineActions` the tile calls. The
- * only thing that differs is the coordinate frame: `windowPicture` (the Window Out's Fit,
- * then the canvas's letterbox) where the tile has its fitted rect. Pointer events in this
- * document are already in window CSS pixels (the body has no margin), so nothing is measured.
+ * only thing that differs is the coordinate frame: `windowPicture` (any Corner Pins crossed,
+ * §T1538b, then the Window Out's Fit, then the canvas's letterbox) where the tile has its
+ * fitted rect. Every outline is mapped point by point through it: a Grid Warp's lines are
+ * sampled first, then each sample is mapped, so a Corner Pin downstream bends them exactly as
+ * it bends the picture; a sample with no place (past a Corner Pin's horizon) breaks the line.
+ * Pointer events in this document are already in window CSS pixels (the body has no margin),
+ * so nothing is measured.
  *
  * The gestures are the tile's: drag a point; Option/Alt-click the picture inserts a column
  * through the place (Alt+Shift a row), with the line drawn under the pointer while Alt is
@@ -36,6 +40,8 @@ export interface MappingOverlayEdit {
   /** A Grid Warp's effective grid; undefined for a Corner Pin (its outline is the pin quad). */
   readonly grid: WarpGrid | undefined;
   readonly picture: WindowPictureFacts;
+  /** §T1538b: the Corner Pins between the node and the window, in picture order. */
+  readonly lens: PictureLens;
 }
 
 export interface MappingOverlayView {
@@ -145,10 +151,19 @@ export function createMappingOverlay({ window: child, store, lines, tokens }: Ma
   const buttons = new Map<string, HTMLButtonElement>();
 
   const size = (): readonly [number, number] => [child.innerWidth, child.innerHeight];
-  const pictureOf = (edit: MappingOverlayEdit): WindowPicture => windowPicture(edit.picture, size());
-  const at = (picture: WindowPicture, point: Point): string => {
-    const [x, y] = picture.toWindow(point);
-    return `${String(x)},${String(y)}`;
+  const pictureOf = (edit: MappingOverlayEdit): WindowPicture => windowPicture(edit.picture, size(), edit.lens);
+  const at = (picture: WindowPicture, point: Point): string | null => {
+    const shown = picture.toWindow(point);
+    return shown === null ? null : `${String(shown[0])},${String(shown[1])}`;
+  };
+  /** A sampled line as polylines, broken where a sample has no place on the window. */
+  const runs = (samples: ReadonlyArray<string | null>): string[][] => {
+    const out: string[][] = [[]];
+    for (const sample of samples) {
+      if (sample !== null) (out[out.length - 1] as string[]).push(sample);
+      else if ((out[out.length - 1] as string[]).length > 0) out.push([]);
+    }
+    return out.filter((run) => run.length > 0);
   };
 
   const closeMenu = (): void => {
@@ -191,8 +206,10 @@ export function createMappingOverlay({ window: child, store, lines, tokens }: Ma
           buttons.set(handle.key, button);
           handleLayer.appendChild(button);
         }
-        const [x, y] = picture.toWindow(handle.value);
+        // No place (past a Corner Pin's horizon): the view refuses that before it gets here.
+        const [x, y] = picture.toWindow(handle.value) ?? [Number.NaN, Number.NaN];
         const locked = handle.refusal !== null;
+        button.style.display = Number.isNaN(x) ? "none" : "";
         button.style.left = `${String(x)}px`;
         button.style.top = `${String(y)}px`;
         button.style.borderStyle = locked ? "dashed" : "solid";
@@ -240,10 +257,11 @@ export function createMappingOverlay({ window: child, store, lines, tokens }: Ma
       const handle = current();
       if (event.button !== 0 || edit === undefined || handle === undefined) return;
       closeMenu();
-      // Refused before the pointer is captured: a locked handle writes nothing (§T935(b)).
-      if (store.begin(edit.nodeId, handle) !== null) return;
       const picture = pictureOf(edit);
-      const [x, y] = picture.toWindow(handle.value);
+      const shown = picture.toWindow(handle.value);
+      // Refused before the pointer is captured: a locked handle writes nothing (§T935(b)).
+      if (shown === null || store.begin(edit.nodeId, handle) !== null) return;
+      const [x, y] = shown;
       drag = { pointerId: event.pointerId, key, grabX: event.clientX - x, grabY: event.clientY - y, picture };
       button.setPointerCapture?.(event.pointerId);
       event.preventDefault();
@@ -252,8 +270,9 @@ export function createMappingOverlay({ window: child, store, lines, tokens }: Ma
     button.addEventListener("pointermove", (event) => {
       const edit = view.edit;
       if (drag === null || drag.pointerId !== event.pointerId || drag.key !== key || edit === undefined) return;
-      const [u, v] = drag.picture.fromWindow([event.clientX - drag.grabX, event.clientY - drag.grabY]);
-      store.drag(edit.nodeId, key, [u, v]);
+      const picture = drag.picture.fromWindow([event.clientX - drag.grabX, event.clientY - drag.grabY]);
+      // Past a Corner Pin's horizon there is no surface to put the point on: the move is skipped.
+      if (picture !== null) store.drag(edit.nodeId, key, [picture[0], picture[1]]);
     });
     const release = (event: PointerEvent): void => {
       const edit = view.edit;
@@ -278,9 +297,12 @@ export function createMappingOverlay({ window: child, store, lines, tokens }: Ma
     if (edit === undefined) return;
     const picture = pictureOf(edit);
     if (edit.grid === undefined) {
-      // A Corner Pin: the pinned picture's edge is the pin quad (a homography keeps it straight).
+      // A Corner Pin: the pinned picture's edge is the pin quad, and a homography downstream
+      // (§T1538b) keeps its edges straight — so the mapped corners are the exact outline.
+      const corners = edit.handles.map((handle) => at(picture, handle.value));
+      if (corners.some((corner) => corner === null)) return;
       const quad = doc.createElementNS(SVG, "polygon");
-      quad.setAttribute("points", edit.handles.map((handle) => at(picture, handle.value)).join(" "));
+      quad.setAttribute("points", corners.join(" "));
       outline.appendChild(quad);
       return;
     }
@@ -288,14 +310,16 @@ export function createMappingOverlay({ window: child, store, lines, tokens }: Ma
     const line = (axis: GridAxis, index: number): void => {
       const along = axis === "column" ? grid.rows : grid.columns;
       const steps = (along - 1) * STEPS_PER_CELL;
-      const points: string[] = [];
+      const points: Array<string | null> = [];
       for (let step = 0; step <= steps; step += 1) {
         const g = step / STEPS_PER_CELL;
         points.push(at(picture, axis === "column" ? gridWarpPoint(grid, index, g) : gridWarpPoint(grid, g, index)));
       }
-      const polyline = doc.createElementNS(SVG, "polyline");
-      polyline.setAttribute("points", points.join(" "));
-      outline.appendChild(polyline);
+      for (const run of runs(points)) {
+        const polyline = doc.createElementNS(SVG, "polyline");
+        polyline.setAttribute("points", run.join(" "));
+        outline.appendChild(polyline);
+      }
     };
     for (let column = 0; column < grid.columns; column += 1) line("column", column);
     for (let row = 0; row < grid.rows; row += 1) line("row", row);
@@ -317,18 +341,20 @@ export function createMappingOverlay({ window: child, store, lines, tokens }: Ma
     }
     const picture = pictureOf(edit);
     const along = axis === "column" ? grid.rows : grid.columns;
-    const points: string[] = [];
+    const points: Array<string | null> = [];
     for (let step = 0; step <= (along - 1) * STEPS_PER_CELL; step += 1) {
       const g = step / STEPS_PER_CELL;
       points.push(at(picture, axis === "column" ? gridWarpPoint(grid, hover.gu, g) : gridWarpPoint(grid, g, hover.gv)));
     }
-    insertLine.setAttribute("points", points.join(" "));
+    // One polyline: a hint under the pointer, so only the run with a place is drawn.
+    insertLine.setAttribute("points", (runs(points)[0] ?? []).join(" "));
   };
 
   const locate = (event: PointerEvent): { gu: number; gv: number } | null => {
     const edit = view.edit;
     if (edit?.grid === undefined) return null;
-    return gridWarpInverse(edit.grid, pictureOf(edit).fromWindow([event.clientX, event.clientY]));
+    const picture = pictureOf(edit).fromWindow([event.clientX, event.clientY]);
+    return picture === null ? null : gridWarpInverse(edit.grid, picture);
   };
   surface.addEventListener("pointermove", (event) => {
     hover = locate(event);

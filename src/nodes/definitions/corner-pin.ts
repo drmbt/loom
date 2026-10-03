@@ -158,6 +158,15 @@ function readQuad(parameters: Readonly<Record<string, ParameterValue>>, keys: re
   return keys.map((key, index) => readVector(parameters, key, IDENTITY_QUAD[index] as Point2)) as unknown as Quad;
 }
 
+/**
+ * The two quads as the compile reads them from resolved values — exported so a reader that
+ * maps a picture through this node (the perform window's edit-mapping lens, §T1538b) pins
+ * exactly the quads the pass was built from.
+ */
+export function cornerPinQuads(parameters: Readonly<Record<string, ParameterValue>>): { readonly pins: Quad; readonly extract: Quad } {
+  return { pins: readQuad(parameters, PIN_KEYS), extract: readQuad(parameters, EXTRACT_KEYS) };
+}
+
 /** Row `index` of a 3×3 as a vec4f uniform (the fourth lane is padding). */
 const row = (m: Mat3, index: number): number[] => [m[index * 3] ?? 0, m[index * 3 + 1] ?? 0, m[index * 3 + 2] ?? 0, 0];
 
@@ -238,8 +247,7 @@ export const cornerPinNode: NodeDefinition = {
       const what = target === undefined ? 'output port "out"' : 'input port "input"';
       return { passes: [], diagnostics: [missingCompileResource(nodeId, what)] };
     }
-    const pins = readQuad(parameters, PIN_KEYS);
-    const extract = readQuad(parameters, EXTRACT_KEYS);
+    const { pins, extract } = cornerPinQuads(parameters);
     const diagnostics: RuntimeDiagnostic[] = [];
     for (const [quad, name, code] of [
       [pins, "Pin", "cornerPin.pin.degenerate"],

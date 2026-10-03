@@ -1,8 +1,10 @@
 import { synthesizeSourceReferenceEdges } from "@compiler/source-reference-edges.ts";
 import { bypassPassthroughPorts } from "@domain/graph/bypass.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
+import type { ParameterValue } from "@domain/types/parameters.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
-import { cornerPinNode } from "@nodes/definitions/corner-pin.ts";
+import { applyHomography, cornerPinNode, cornerPinQuads, invertMat3, outputToSquare, quadDegeneracy, squareToQuad } from "@nodes/definitions/corner-pin.ts";
+import type { Mat3 } from "@nodes/definitions/corner-pin.ts";
 import { gridWarpNode } from "@nodes/definitions/grid-warp.ts";
 import { fitInsideRegion } from "@editor/nodes/preview-fit.ts";
 
@@ -16,20 +18,46 @@ import { fitInsideRegion } from "@editor/nodes/preview-fit.ts";
  * module answers the two questions that decides, purely, so a test can call them:
  *
  *  1. `mappingTargetsOf` — the mapping nodes on the window's input chain, nearest first, each
- *     with `null` when its picture reaches the window UNMOVED, or the named reason it does not.
- *  2. `windowPicture` — for an unmoved one, the exact map between its picture and the
- *     window's CSS pixels: the Window Out's Fit (the shader's `placed`, restated), then the
- *     canvas's `object-fit: contain` of the W×H target into the window.
+ *     with `null` when its picture reaches the window exactly mappable, or the named reason it
+ *     does not; and the Corner Pins its picture goes through on the way (§T1538b).
+ *  2. `pictureLensFor` — those Corner Pins as exact maps of the picture (`LensStep`s), or the
+ *     named refusal of a degenerate one.
+ *  3. `windowPicture` — the exact map between the mapping node's picture and the window's CSS
+ *     pixels: through the lens, then the Window Out's Fit (the shader's `placed`, restated),
+ *     then the canvas's `object-fit: contain` of the W×H target into the window.
  *
  * ## Exact, or refused — never guessed
  *
  * Between the mapping node and the window only nodes that keep every point of the picture
  * where it was (in normalised coordinates) are crossed: a bypassed node and a declared
  * passthrough (a wire, §T250), and the colour-only nodes in `GEOMETRY_PRESERVING`. Anything
- * else — a Transform, a Crop, a Flip, another Corner Pin or Grid Warp, a composite, a node
- * this list has never heard of — REFUSES that target with the blocking node named. The list
- * fails closed on purpose: a node missing from it costs a refusal the operator can read; a
- * node wrongly on it would put a handle where the parameter is not.
+ * else — a Transform, a Crop, a Flip, a Grid Warp, a composite, a node this list has never
+ * heard of — REFUSES that target with the blocking node named. The list fails closed on
+ * purpose: a node missing from it costs a refusal the operator can read; a node wrongly on it
+ * would put a handle where the parameter is not.
+ *
+ * ## A Corner Pin is crossed exactly (§T1538b)
+ *
+ * The documented stack is Grid Warp → Corner Pin (the outer perspective), so a Corner Pin is
+ * the one warp that does NOT block: it is an invertible homography, and its own CPU solve
+ * (`squareToQuad`, `invertMat3`, `outputToSquare` — imported, never restated) gives the map
+ * both ways. A point of its input goes extract quad → unit square → pin quad (forward, for
+ * drawing); a window point goes back the shader's way, pin quad → unit square → extract quad
+ * (inverse, for a drag). Corner Pins chain, so a Corner Pin behind a Corner Pin is edited
+ * through the one in front. The quads are read, through the node's own reader, from the
+ * parameters RESOLVED as the window shows them (the last rendered frame, channels, morphs).
+ *
+ * Refused, by name: a Corner Pin whose Pin or Extract quad is degenerate (the node's own
+ * `quadDegeneracy` — its `cornerPin.pin/extract.degenerate` warning, on which it renders
+ * nothing, so nothing behind it has a place), and a handle whose point lies past a Corner
+ * Pin's horizon (the homogeneous w is not positive: the shader shows nothing there in any
+ * Outside mode, and the projective division would put the handle on the wrong side).
+ * NOT refused: a handle outside the Extract quad. It is drawn where the pinned plane,
+ * continued, puts it — clamp-free, so it may sit outside the pin quad or off the window — and
+ * drags from there exactly. The Corner Pin does not show that point (Outside continues the
+ * Extract quad's own content in every mode, never the input beyond it), but the position is
+ * still the true one, and a clamped or hidden handle could not be dragged back in. Hold Edge /
+ * Repeat / Mirror copies are not handles: each point is drawn at its one homography position.
  *
  * A resolution change on a crossed node does not matter: the picture is stretched to the new
  * size in normalised coordinates, and Fit reads the size the Window Out actually samples
@@ -38,9 +66,9 @@ import { fitInsideRegion } from "@editor/nodes/preview-fit.ts";
  * ## Which one, when there are several
  *
  * Every Corner Pin / Grid Warp on the chain is listed (the inspector picks), nearest first;
- * the nearest is the default. Every one past the nearest sits behind a warp, so it is listed
- * with that refusal rather than hidden — the operator sees it exists and why it cannot be
- * dragged here. The chain past a non-preserving node is followed through the node's
+ * the nearest is the default. One behind Corner Pins only is placed through them (§T1538b);
+ * one behind any other warp is listed with that refusal rather than hidden — the operator
+ * sees it exists and why it cannot be dragged here. The chain past a non-preserving node is followed through the node's
  * resolution input (the input its picture derives from) only to list what lies beyond; a
  * node with none ends the walk. Nodes inside a component are not reached (the walk reads the
  * document root, where Window Outs live).
@@ -57,6 +85,18 @@ export interface MappingTarget {
   readonly title: string;
   /** Null when its handles land exactly on this window; the named reason they cannot, otherwise. */
   readonly refusal: string | null;
+  /**
+   * §T1538b: the Corner Pins its picture goes through to reach the window, in picture order
+   * (the one this node feeds first). Empty when nothing between moves the picture.
+   */
+  readonly through: readonly CornerPinCrossing[];
+}
+
+/** A Corner Pin crossed between a mapping node and the window. */
+export interface CornerPinCrossing {
+  readonly nodeId: string;
+  /** Its label, or its id when it has none. */
+  readonly name: string;
 }
 
 /**
@@ -89,6 +129,8 @@ export function mappingTargetsOf(graph: GraphDocument, registry: NodeRegistryVie
     edges.find((edge) => edge.target.nodeId === nodeId && edge.target.portId === portId)?.source.nodeId;
 
   const targets: MappingTarget[] = [];
+  /** §T1538b: the Corner Pins crossed so far with nothing blocking, nearest the window first. */
+  const lens: CornerPinCrossing[] = [];
   /** The first node on the way that moves the picture, as "<Title> "<name>" <what it does>". */
   let blocker: string | null = null;
   const refusal = (title: string, name: string): string | null =>
@@ -119,8 +161,13 @@ export function mappingTargetsOf(graph: GraphDocument, registry: NodeRegistryVie
     } else if (definition.passthrough !== undefined) {
       follow = definition.passthrough.input;
     } else if (MAPPING_KINDS[node.type] !== undefined) {
-      targets.push({ nodeId: current, name, kind: MAPPING_KINDS[node.type] as MappingKind, title: definition.title, refusal: refusal(definition.title, name) });
-      blocker ??= `${named} warps the picture again`;
+      const kind = MAPPING_KINDS[node.type] as MappingKind;
+      const through = blocker === null ? [...lens].reverse() : [];
+      targets.push({ nodeId: current, name, kind, title: definition.title, refusal: refusal(definition.title, name), through });
+      // §T1538b: a Corner Pin is an exact, invertible map — crossed, never a blocker.
+      if (kind === "cornerPin") {
+        if (blocker === null) lens.push({ nodeId: current, name });
+      } else blocker ??= `${named} warps the picture again`;
       follow = "input";
     } else if (GEOMETRY_PRESERVING[node.type] !== undefined) {
       follow = GEOMETRY_PRESERVING[node.type];
@@ -179,27 +226,108 @@ export function fitShown(facts: WindowPictureFacts, [u, v]: Point): Point {
   return [u, v];
 }
 
-export interface WindowPicture {
-  /** A point of the mapping node's picture (normalised, y up) → window CSS pixels. */
-  toWindow(point: Point): Point;
-  /** Window CSS pixels → the mapping node's picture. */
-  fromWindow(point: Point): Point;
+/**
+ * §T1538b — one Corner Pin as a map of the picture (normalised, y up). Null where the point
+ * lies past the pinned plane's horizon in that direction: it has no place.
+ */
+export interface LensStep {
+  /** `Corner Pin "<name>"`, for a refusal. */
+  readonly named: string;
+  /** A point of its input → where its output shows it (extract quad → pin quad). */
+  forward(point: Point): Point | null;
+  /** A point of its output → the point of its input shown there (the shader's way). */
+  inverse(point: Point): Point | null;
+}
+
+/** The Corner Pins crossed, in picture order; empty is the identity. */
+export type PictureLens = readonly LensStep[];
+
+/** `m` applied with the projective division, or null when the homogeneous w is not positive. */
+function projected(m: Mat3, point: Point): Point | null {
+  return m[6] * point[0] + m[7] * point[1] + m[8] > 0 ? applyHomography(m, point) : null;
 }
 
 /**
- * The whole map for a window of `windowSize` CSS pixels: Fit into the target, then the
- * canvas's `object-fit: contain` (`perform-window.ts`), which is `fitInsideRegion`'s
- * letterbox (§V118) — the bitmap is the target's size (`sizing: "source"`).
+ * The Corner Pins `target` reaches the window through, as exact maps built from their
+ * RESOLVED values (`valuesOf`: the values the compile reads); or the named refusal when one's
+ * quad is degenerate — the node's own `quadDegeneracy`, the condition its pass renders
+ * nothing on.
  */
-export function windowPicture(facts: WindowPictureFacts, windowSize: Size): WindowPicture {
+export function pictureLensFor(
+  target: MappingTarget,
+  valuesOf: (nodeId: string) => Readonly<Record<string, ParameterValue>> | undefined,
+): PictureLens | string {
+  const steps: LensStep[] = [];
+  for (const crossing of target.through) {
+    const named = `Corner Pin "${crossing.name}"`;
+    const nowhere = `It shows nothing, so ${target.title} "${target.name}"'s handles have no place on this window.`;
+    const values = valuesOf(crossing.nodeId);
+    if (values === undefined) return `${named} is not in the document. ${nowhere}`;
+    const { pins, extract } = cornerPinQuads(values);
+    for (const [quad, which] of [
+      [pins, "Pin"],
+      [extract, "Extract"],
+    ] as const) {
+      const reason = quadDegeneracy(quad);
+      if (reason !== null) return `${named}'s ${which} quad cannot be pinned: ${reason}. ${nowhere}`;
+    }
+    const toPins = squareToQuad(pins);
+    const toInput = squareToQuad(extract);
+    const fromInput = invertMat3(toInput);
+    const fromOutput = outputToSquare(pins);
+    if (fromInput === null || fromOutput === null) return `${named}'s quads have no inverse. ${nowhere}`;
+    steps.push({
+      named,
+      forward(point) {
+        const square = projected(fromInput, point);
+        return square === null ? null : projected(toPins, square);
+      },
+      inverse(point) {
+        const square = projected(fromOutput, point);
+        return square === null ? null : projected(toInput, square);
+      },
+    });
+  }
+  return steps;
+}
+
+/** The Corner Pin past whose horizon `point` lies, going forward through `lens`; null when none. */
+export function lensHorizon(lens: PictureLens, point: Point): string | null {
+  let at: Point | null = point;
+  for (const step of lens) {
+    at = step.forward(at);
+    if (at === null) return step.named;
+  }
+  return null;
+}
+
+export interface WindowPicture {
+  /** A point of the mapping node's picture (normalised, y up) → window CSS pixels; null past a Corner Pin's horizon. */
+  toWindow(point: Point): Point | null;
+  /** Window CSS pixels → the mapping node's picture; null where a Corner Pin shows no surface. */
+  fromWindow(point: Point): Point | null;
+}
+
+/**
+ * The whole map for a window of `windowSize` CSS pixels: through the Corner Pins crossed
+ * (§T1538b), Fit into the target, then the canvas's `object-fit: contain`
+ * (`perform-window.ts`), which is `fitInsideRegion`'s letterbox (§V118) — the bitmap is the
+ * target's size (`sizing: "source"`).
+ */
+export function windowPicture(facts: WindowPictureFacts, windowSize: Size, lens: PictureLens = []): WindowPicture {
   const rect = fitInsideRegion({ width: windowSize[0], height: windowSize[1] }, facts.targetSize);
   return {
     toWindow(point) {
-      const [x, y] = fitShown(facts, point);
+      let at: Point | null = point;
+      for (const step of lens) if (at !== null) at = step.forward(at);
+      if (at === null) return null;
+      const [x, y] = fitShown(facts, at);
       return [rect.x + x * rect.width, rect.y + (1 - y) * rect.height];
     },
     fromWindow([px, py]) {
-      return fitPlaced(facts, [(px - rect.x) / rect.width, 1 - (py - rect.y) / rect.height]);
+      let at: Point | null = fitPlaced(facts, [(px - rect.x) / rect.width, 1 - (py - rect.y) / rect.height]);
+      for (let index = lens.length - 1; index >= 0 && at !== null; index -= 1) at = (lens[index] as LensStep).inverse(at);
+      return at;
     },
   };
 }

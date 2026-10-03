@@ -62,6 +62,31 @@ describe("mappingTargetsOf — exact or refused, never guessed", () => {
     ]);
   });
 
+  it("§T1538b: Corner Pins are crossed — each target behind them carries them, in picture order", async () => {
+    const { graph, ids, windowId, label } = await chainOf(["gridWarp", "cornerPin", "level", "cornerPin"]);
+    expect(mappingTargetsOf(graph, registry, windowId)).toEqual([
+      expect.objectContaining({ nodeId: ids[4], kind: "cornerPin", refusal: null, through: [] }),
+      expect.objectContaining({ nodeId: ids[2], kind: "cornerPin", refusal: null, through: [{ nodeId: ids[4], name: label(4) }] }),
+      expect.objectContaining({
+        nodeId: ids[1],
+        kind: "gridWarp",
+        refusal: null,
+        through: [
+          { nodeId: ids[2], name: label(2) },
+          { nodeId: ids[4], name: label(4) },
+        ],
+      }),
+    ]);
+  });
+
+  it("§T1538b: a Transform in front of a Corner Pin still refuses what lies behind both", async () => {
+    const { graph, windowId, label } = await chainOf(["gridWarp", "cornerPin", "transform"]);
+    expect(mappingTargetsOf(graph, registry, windowId).map((target) => target.refusal)).toEqual([
+      `Transform "${label(3)}" moves the picture between Corner Pin "${label(2)}" and this window, so its handles cannot be placed exactly here.`,
+      `Transform "${label(3)}" moves the picture between Grid Warp "${label(1)}" and this window, so its handles cannot be placed exactly here.`,
+    ]);
+  });
+
   it("the same Transform, live, refuses it by name", async () => {
     const { graph, windowId, label } = await chainOf(["cornerPin", "transform"]);
     expect(mappingTargetsOf(graph, registry, windowId)[0]?.refusal).toBe(
