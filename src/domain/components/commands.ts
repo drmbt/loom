@@ -6,7 +6,7 @@ import type {
 } from "../types/components.ts";
 import type { GraphDocument, GraphEdge, GraphNode } from "../types/graph.ts";
 import type { ComponentId, NodeId, PortId, Revision } from "../types/ids.ts";
-import type { ParameterDefinition, ParameterValue } from "../types/parameters.ts";
+import type { ParameterDefinition, ParameterSchema, ParameterValue } from "../types/parameters.ts";
 import type { GraphPatchResult } from "../types/patch.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts";
 import { applyGraphPatch } from "../commands/apply-patch.ts";
@@ -468,6 +468,8 @@ function planDetach(input: {
   readonly components: ComponentRegistry;
   readonly registry: CommandContext["registry"];
   readonly outerTargets?: ReadonlyMap<string, readonly string[]>;
+  /** T1545b: the session host's published page, for the carried-range check. */
+  readonly outerSchema?: ParameterSchema;
 }): DetachPlan {
   const { definition, instance, nodeId } = input;
   const at = nodeId === undefined ? {} : { nodeId };
@@ -483,6 +485,7 @@ function planDetach(input: {
       return nested === undefined ? effectiveParameterSchema(input.registry.get(node.type), node.parameters) : publishedSchema(nested);
     },
     ...(input.outerTargets === undefined ? {} : { outerTargets: input.outerTargets }),
+    ...(input.outerSchema === undefined ? {} : { outerSchema: input.outerSchema }),
   });
   const look = instance.label ?? nodeId ?? definition.name;
   const diagnostics: RuntimeDiagnostic[] = [];
@@ -870,6 +873,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         components,
         registry: context.registry,
         ...(outerTargets.size === 0 ? {} : { outerTargets }),
+        ...(hostDefinition === undefined ? {} : { outerSchema: publishedSchema(hostDefinition) }),
       });
       diagnostics.push(...plan.diagnostics);
 

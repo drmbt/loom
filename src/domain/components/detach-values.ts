@@ -1,7 +1,8 @@
 import type { GraphComponentDefinition } from "../types/components.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
-import type { ParameterSchema, StoredParameter } from "../types/parameters.ts";
+import type { ParameterDefinition, ParameterSchema, StoredParameter } from "../types/parameters.ts";
+import { numericRangeOf } from "../parameters/expression-range.ts";
 import { resolveParameterSchema } from "../parameters/resolve.ts";
 import { isParameterSlot, parseComponentKey, storedStaticValue, withBinding } from "../parameters/slots.ts";
 import { effectiveInternalOverrides } from "./flatten.ts";
@@ -101,6 +102,38 @@ export interface DetachedValuesInput {
    * Absent at the root, where nothing publishes onto the instance.
    */
   readonly outerTargets?: ReadonlyMap<string, readonly string[]>;
+  /**
+   * T1545b — inside a component edit session: the outer component's published page, as a
+   * schema, so a carried `parent.<key>` read can be checked against the page knob it used
+   * to pass through (`mayRefuse`). Absent at the root, where nothing is in scope.
+   */
+  readonly outerSchema?: ParameterSchema;
+}
+
+/**
+ * T1545b — can `page` refuse a value `source` holds? Flattening does NOT clamp a value that
+ * reaches a page knob from outside (a `parent.` bind, a legacy binding, an outer fan-out):
+ * the knob's own check (`validateParameterValue`, the one `checkAgainstManifest` and
+ * `parentScopeDrivers` call) REFUSES it as an ERROR, and the page falls back — to the stored
+ * value (a legacy binding) or the knob default (a baked bind). A carried read skips that knob, and a copy checks the
+ * value only against its own parameter, so the two agree only while every value `source`
+ * can hold is one `page` accepts. A source the copies cannot see (`undefined`: past the
+ * outer page) counts as able to hold anything.
+ */
+export function mayRefuse(page: ParameterDefinition, source: ParameterDefinition | undefined): boolean {
+  if (source === undefined) return numericRangeOf(page) !== null || page.type === "enum";
+  if (source.type !== page.type) return true;
+  if (page.type === "vector" && source.type === "vector" && source.size !== page.size) return true;
+  if (page.type === "enum" && source.type === "enum") {
+    const allowed = new Set(page.options.map((option) => option.value));
+    return source.options.some((option) => !allowed.has(option.value));
+  }
+  const limits = numericRangeOf(page);
+  if (limits === null) return false;
+  const held = numericRangeOf(source);
+  if (limits.min !== null && (held === null || held.min === null || held.min < limits.min)) return true;
+  if (limits.max !== null && (held === null || held.max === null || held.max > limits.max)) return true;
+  return false;
 }
 
 /**
@@ -166,6 +199,31 @@ export function detachedValues(input: DetachedValuesInput): DetachedValues {
   for (const published of definition.parameters) {
     const carry = carryOf(published.key, new Set());
     if (carry !== undefined) carriedByKey.set(published.key, carry);
+  }
+
+  // T1545b: a carried read no longer passes through the page knob's check (`mayRefuse`).
+  // Said by name for each knob that drives or is read and could have refused, since no
+  // stored value on a copy can restate another parameter's range.
+  if (input.outerSchema !== undefined) {
+    const readOneHop = (key: string): boolean =>
+      Object.values(definition.graph.nodes).some((each) =>
+        [...Object.values(each.parameters).map(parentBindRef), ...Object.values(readParentBindings(each))].some((ref) => {
+          const reference = ref === undefined ? null : parseParentReference(ref);
+          return reference !== null && reference.hops === 1 && reference.key === key;
+        }),
+      );
+    for (const published of definition.parameters) {
+      const carry = carriedByKey.get(published.key);
+      if (carry === undefined || (published.targets.length === 0 && !readOneHop(published.key))) continue;
+      const ref = carry.kind === "slot" ? parentBindRef(carry.slot) : carry.kind === "legacy" ? carry.ref : formatParentReference({ hops: 1, key: carry.keys[carry.keys.length - 1] as string });
+      const reference = ref === undefined ? null : parseParentReference(ref);
+      if (reference === null) continue;
+      const source = reference.hops === 1 ? input.outerSchema[reference.key] : undefined;
+      if (!mayRefuse(published.definition, source)) continue;
+      inexact.push(
+        `"${look}"'s ${published.key} takes its value from ${ref}, which can hold values ${published.key}'s own range refuses; on "${look}" such a value is refused (an error) and ${published.key} falls back, while the copies read ${ref} without that check`,
+      );
+    }
   }
   const own = readComponentInstance(instance)?.overrides ?? {};
   /** Internal path → the carry on it, in the fan-out's order (a later published key wins a shared target). */

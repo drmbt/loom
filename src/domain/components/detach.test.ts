@@ -367,10 +367,10 @@ describe("B239 — detach inside a component edit session", () => {
    * level below the root, where OUTER's own page is in scope. The claim each time: the
    * root document flattens to the same internals before and after.
    */
-  async function detachInside(definition: GraphComponentDefinition, rootPage: Record<string, StoredParameter>) {
+  async function detachInside(definition: GraphComponentDefinition, rootPage: Record<string, StoredParameter>, inner: GraphComponentDefinition = look()) {
     const harness = createComponentHarness("t", graphOf([instanceOf("outer", rootPage)]));
     // LOOK first: OUTER's targets on `inner` validate against LOOK's page.
-    harness.components.register(look());
+    harness.components.register(inner);
     harness.components.register(definition);
     const flatten = () =>
       flattenComponents({ graph: harness.store.view.getGraph(), registry: harness.nodes, components: harness.components }).graph.nodes;
@@ -451,6 +451,39 @@ describe("B239 — detach inside a component edit session", () => {
     expect(inside.copies["blurB"]?.parameters["radius"]).toEqual(bindSlot("parent.ghost", 1));
     for (const [internalId, before, after] of inside.pairs) expect(after, internalId).toEqual(before);
     expect(inside.after[`inst/${inside.copies["blurB"]!.id}`]?.parameters["radius"]).toBe(9);
+  });
+
+  /**
+   * T1545b — A CARRIED READ SKIPS THE PAGE KNOB'S CHECK. Flattening does not clamp a value
+   * that reaches a page knob from outside: the knob refuses it, as an error, and the page keeps (here
+   * Blur's stored 2). The copies read parent.size directly and check it only against their
+   * own radius, so where OUTER's Size can hold what Blur refuses, detach says so by name.
+   */
+  const narrowBlur = (max: number): GraphComponentDefinition => ({
+    ...look(),
+    parameters: look().parameters.map((published) =>
+      published.key === "blur" ? { ...published, definition: { type: "number", label: "Blur", default: 4, min: 0, max } } : published,
+    ),
+  });
+  const legacyBlur = { state: { [PARENT_BINDINGS_STATE_KEY]: { blur: "parent.size" } } };
+
+  it("T1545b: OUTER's Size (0..64) can hold what Blur (0..10) refuses — said by name, and true: at Size 30 the instance drew Blur's own 2, the copies draw 30", async () => {
+    const inside = await detachInside(outer({ ...PAGE }, legacyBlur, scopeSize), { size: 30 }, narrowBlur(10));
+    expect(inside.codes).toContain("component.detach.inexact");
+    const blurA = inside.copies["blurA"]!.id;
+    expect(inside.before["inst/inner/blurA"]?.parameters["radius"]).toBe(2);
+    expect(inside.after[`inst/${blurA}`]?.parameters["radius"]).toBe(30);
+  });
+
+  it("T1545b: OUTER's Size (0..10) inside Blur's range (0..10) — nothing said, and every flattened internal matches", async () => {
+    const inside = await detachInside(
+      outer({ ...PAGE }, legacyBlur, [{ key: "size", definition: { type: "number", label: "Size", default: 4, min: 0, max: 10 }, targets: [] }]),
+      { size: 7 },
+      narrowBlur(10),
+    );
+    expect(inside.codes).not.toContain("component.detach.inexact");
+    for (const [internalId, before, after] of inside.pairs) expect(after, internalId).toEqual(before);
+    expect(inside.after[`inst/${inside.copies["blurA"]!.id}`]?.parameters["radius"]).toBe(7);
   });
 
   it("an outer knob whose only target cannot move (one channel of Tint) and that nothing reads is unpublished, and said by name", async () => {

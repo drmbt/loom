@@ -395,6 +395,47 @@ describe("B239 on Dawn — detach inside a component edit session draws what the
     expect(Buffer.compare(after.bytes, before.bytes)).toBe(0);
     expect(before.pixel).toEqual([0.125, 0.125, 0.125, 1]);
   }, 120_000);
+
+  /**
+   * T1545b — A CARRIED READ SKIPS THE PAGE KNOB'S CHECK. Flattening does not clamp what
+   * reaches a page knob from outside: the page knob REFUSES it, as an error, and falls back
+   * (here the instance's page holds `parent.glow`, and Bright is 0..1 bounded while FRAME's
+   * Glow is 0..8 floor). Inside Bright's range the copies draw what the instance drew, byte
+   * for byte. At Glow 2 the instance's compile is refused by name ("bright is 2, above its
+   * maximum 1"), while the copies read parent.glow straight onto Level's 0..8 brightness and
+   * draw 2 × 0.8 — no value on a copy can restate Bright's range, which is why detach says
+   * so by name.
+   */
+  it("T1545b: bright (0..1) carried from parent.glow (0..8): byte-identical at glow 0.25, and said by name because at glow 2 they part", async () => {
+    requireDawn();
+    const narrow = {
+      ...lookDefinition,
+      parameters: lookDefinition.parameters.map((published) =>
+        published.key === "bright" ? { ...published, definition: { type: "number", label: "Bright", default: 1, min: 0, max: 1, range: "bounded" } } : published,
+      ),
+    } as GraphComponentDefinition;
+    const glowBind = { mode: "bind", bindings: { bind: { kind: "bind", ref: "parent.glow" }, static: { kind: "static", value: 0.5 } } } as const;
+    const system = catalogue([narrow, frame({ parameters: { bright: glowBind, gain: 0.8 } }, [knob("glow", [])])]);
+    const root = (glow: number): GraphDocument =>
+      graphOf(
+        { scene: node("scene", componentNodeType("frame", 1), "scene", { glow }), out: node("out", "output", "out1", {}) },
+        { e9: { id: "e9", source: { nodeId: "scene", portId: "out" }, target: { nodeId: "out", portId: "input" } } },
+      );
+    const inRange = await renderWith(system, root(0.25));
+    await expect(renderWith(system, root(2))).rejects.toThrow('Parameter "bright" is 2, above its maximum 1.');
+    const session = openComponentSession({ components: system.components, nodes: system.nodes, componentId: "frame", version: 1 });
+    const result = await session.bus.execute("component.detach", { nodeId: "inner" }, contextFor(alice));
+    session.dispose();
+    expect(result.status, result.diagnostics.map((each) => each.message).join("; ")).toBe("applied");
+    const said = result.diagnostics.filter((each) => each.code === "component.detach.inexact").map((each) => each.message);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('"inner"\'s bright takes its value from parent.glow');
+    // Inside Bright's range: one picture (0.25 × 0.8 in binary16).
+    expect(inRange.pixel).toEqual([0.199951171875, 0.199951171875, 0.199951171875, 1]);
+    expect(Buffer.compare((await renderWith(system, root(0.25))).bytes, inRange.bytes)).toBe(0);
+    // Outside it the copies accept what the instance refused.
+    expect((await renderWith(system, root(2))).pixel).toEqual([1.599609375, 1.599609375, 1.599609375, 1]);
+  }, 120_000);
 });
 
 /**
