@@ -126,6 +126,13 @@ export type PhoneWidget =
        * the list read-only.
        */
       readonly following: boolean;
+      /**
+       * §T1544b: what a following list switches in the compiled structure at its cue times,
+       * as `node.key` (a Layer's on/off as `node.on`) — a read-only note, the inspector's
+       * "switches structure" line. Empty for a live list, and when the page builds the
+       * snapshot without a node registry.
+       */
+      readonly structure: readonly string[];
     };
 
 /** A Panel's row, with widget names already resolved to what the phone may draw. */

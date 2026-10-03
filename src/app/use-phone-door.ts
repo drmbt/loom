@@ -202,7 +202,7 @@ export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
       const clock = bus.frameClock();
       // T1505b: a look's instance on a remote board reads its presets from its component.
       const components = presetCatalogueHolderFor(bus).current?.components;
-      const snapshot = buildPhoneSnapshot(graph, 0, clock, components);
+      const snapshot = buildPhoneSnapshot(graph, 0, clock, components, bus.registry);
       fading = publishedMorphs(graph, clock, components);
       positions = publishedTimelinePositions(graph, clock);
       published = graph;

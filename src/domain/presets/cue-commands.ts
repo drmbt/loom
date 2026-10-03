@@ -29,7 +29,7 @@ import {
   type CuePosition,
 } from "./cue-list.ts";
 import { morphProgress, morphRunning, parseMorphRecords } from "./morph.ts";
-import { followsTimeline, timelineCuePosition, timelineCueWarnings } from "./timeline-cues.ts";
+import { followsTimeline, timelineCuePosition, timelineCueWarnings, timelineStructuralSettings } from "./timeline-cues.ts";
 
 /**
  * T1500b (§T1398b S5, ruling 15) — `cue.go`, `cue.back`, `cue.fire`, `cue.setStandby` and
@@ -184,6 +184,13 @@ export interface CueListReport {
   readonly timelineNext: string | null;
   /** T1508b: what the timeline skips on this list and why — untimed cues, structural keys, overlaps. */
   readonly warnings: readonly string[];
+  /**
+   * §T1544b: what a following list SWITCHES IN THE COMPILED STRUCTURE at its cue times, as
+   * `node.key` (a Layer's switch as `node.on`), sorted — the inspector's "switches structure"
+   * line. Empty for a live list. The document keeps its stored settings; the timeline
+   * overrides them while it follows.
+   */
+  readonly structure: readonly string[];
 }
 
 export interface CueListQueryOutput {
@@ -564,6 +571,7 @@ function reportList(bus: LoomBus, graph: GraphDocument, node: GraphNode): CueLis
     timelineCurrent: timeline.current,
     timelineNext: timeline.next,
     warnings: timelineCueWarnings(graph, bus.registry, node.id, presetCatalogueOf(bus)?.components).map((warning) => warning.diagnostic.message),
+    structure: timelineStructuralSettings(graph, bus.registry, node.id, presetCatalogueOf(bus)?.components),
   };
 }
 

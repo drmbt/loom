@@ -426,6 +426,9 @@ button.ctl.on .state { color: var(--text); }
 .w.cueList .note { margin-left: 8px; font-weight: 400; color: var(--text-dim); }
 .w.cueList .cues .note { min-width: 0; margin-left: 0; overflow: hidden; text-overflow: ellipsis; }
 .w.cueList .note:empty { display: none; }
+/* §T1544b: what a following list switches in the structure — read-only, like the inspector's line. */
+.w.cueList .structure { flex: none; font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.w.cueList .structure:empty { display: none; }
 .w.cueList .gobar { flex: 1 1 0; min-height: 0; display: flex; gap: 2px; }
 .w.cueList .gobar .back { flex: 1 1 0; }
 .w.cueList .gobar .go { flex: 2 1 0; border-color: var(--signal); font-size: 20px; letter-spacing: 0.04em; }
@@ -1033,6 +1036,9 @@ const CLIENT = String.raw`
       });
       root.appendChild(list);
     }
+    // §T1544b: the structure a following list switches at its cue times — a note, nothing to press.
+    var structureNote = el("div", "structure");
+    root.appendChild(structureNote);
     var bar = el("div", "gobar");
     var back = pressButton("back", "BACK");
     var go = pressButton("go", "GO");
@@ -1058,6 +1064,8 @@ const CLIENT = String.raw`
         nextNote.textContent = noteOf(names.indexOf(c.next));
       }
       cueNotes.forEach(function (note, index) { note.textContent = noteOf(index); });
+      var structure = following && Array.isArray(c.structure) ? c.structure : [];
+      structureNote.textContent = structure.length > 0 ? "⏱ Switches at its cue times: " + structure.join(", ") : "";
       // What Loom would refuse is not offered: GO past the end, BACK before the first cue.
       go.disabled = c.canGo !== true;
       back.disabled = c.canBack !== true;

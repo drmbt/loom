@@ -21,7 +21,8 @@ import {
   type CuePosition,
 } from "../../domain/presets/cue-list.ts";
 import { morphRunning, parseMorphRecords, type MorphRecord } from "../../domain/presets/morph.ts";
-import { followsTimeline, timelineCuePosition } from "../../domain/presets/timeline-cues.ts";
+import { followsTimeline, timelineCuePosition, timelineStructuralSettings } from "../../domain/presets/timeline-cues.ts";
+import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { layerNode } from "../../nodes/definitions/layer.ts";
 import {
   CONTROL_WIDGET_TYPES,
@@ -365,7 +366,14 @@ export function publishedTimelinePositions(graph: GraphDocument, clock: FrameClo
   return positions.join("\u0001");
 }
 
-function memberWidget(graph: GraphDocument, node: GraphNode, kind: MemberKind, clock: FrameClock | undefined, components: Catalogue): PhoneWidget {
+function memberWidget(
+  graph: GraphDocument,
+  node: GraphNode,
+  kind: MemberKind,
+  clock: FrameClock | undefined,
+  components: Catalogue,
+  registry: NodeRegistryView | undefined,
+): PhoneWidget {
   const handle = node.id;
   const caption = controlNameOf(node);
   switch (kind) {
@@ -400,7 +408,9 @@ function memberWidget(graph: GraphDocument, node: GraphNode, kind: MemberKind, c
       // has it, on the page's frame clock, and nothing a phone may press.
       if (followsTimeline(node)) {
         const at = timelinePosition(list, clock);
-        return { kind, handle, caption, cues, notes, current: at.current, next: at.next, canGo: false, canBack: false, following: true };
+        // §T1544b: and what it switches in the structure at its cue times, read-only (the inspector's note).
+        const structure = registry === undefined ? [] : timelineStructuralSettings(graph, registry, node.id, components);
+        return { kind, handle, caption, cues, notes, current: at.current, next: at.next, canGo: false, canBack: false, following: true, structure };
       }
       const next = list === null ? null : nextCueName(list, position);
       return {
@@ -414,6 +424,7 @@ function memberWidget(graph: GraphDocument, node: GraphNode, kind: MemberKind, c
         canGo: next !== null,
         canBack: list !== null && previousCue(list, position).ok,
         following: false,
+        structure: [],
       };
     }
   }
@@ -426,7 +437,13 @@ function memberWidget(graph: GraphDocument, node: GraphNode, kind: MemberKind, c
  * the board is the owner's arrangement, not a flow. A Panel laid out by the legacy override
  * has no board; the phone draws its `rows`.
  */
-function phoneBoard(graph: GraphDocument, panel: GraphNode, clock: FrameClock | undefined, components: Catalogue): PhoneBoard | undefined {
+function phoneBoard(
+  graph: GraphDocument,
+  panel: GraphNode,
+  clock: FrameClock | undefined,
+  components: Catalogue,
+  registry: NodeRegistryView | undefined,
+): PhoneBoard | undefined {
   const board = panelBoard(graph, panel);
   if (board === null) return undefined;
   const items = board.items.flatMap((item): PhoneBoardItem[] => {
@@ -434,7 +451,7 @@ function phoneBoard(graph: GraphDocument, panel: GraphNode, clock: FrameClock | 
     const node = item.node;
     // T1503b: a bank, a layer or a cue list — on the board by name, drawn at its rect.
     const member = memberKind(node, components);
-    if (member !== null) return [{ kind: "widget", rect: item.rect, widget: memberWidget(graph, node, member, clock, components) }];
+    if (member !== null) return [{ kind: "widget", rect: item.rect, widget: memberWidget(graph, node, member, clock, components, registry) }];
     return isWidgetKind(node.type) && !isDriven(node, node.type) ? [{ kind: "widget", rect: item.rect, widget: phoneWidget(node as WidgetNode) }] : [];
   });
   return { columns: board.columns, rows: board.rows, items };
@@ -445,9 +462,16 @@ function phoneBoard(graph: GraphDocument, panel: GraphNode, clock: FrameClock | 
  * page's frame clock (`bus.frameClock()`), read only to say whether a bank is `morphing`;
  * without one nothing is.
  */
-export function buildPhoneSnapshot(graph: GraphDocument, seq: number, clock?: FrameClock, components?: Catalogue): PhoneSnapshot {
+export function buildPhoneSnapshot(
+  graph: GraphDocument,
+  seq: number,
+  clock?: FrameClock,
+  components?: Catalogue,
+  /** §T1544b: the node registry, so a following cue list can say what structure it switches. */
+  registry?: NodeRegistryView,
+): PhoneSnapshot {
   const panels: PhonePanel[] = remoteLayouts(graph).map(({ panel, rows }) => {
-    const board = phoneBoard(graph, panel, clock, components);
+    const board = phoneBoard(graph, panel, clock, components, registry);
     return {
       title: panelTitle(panel),
       // Kept for a wired Panel too: a phone page from before the board still draws these.

@@ -758,13 +758,13 @@ describe("T1397b phone page — Send camera", () => {
     press(page, "Start camera");
     await page.flush();
     const peer = page.peers[0]!;
-    const early = { kind: "ice", candidate: "candidate:9 1 udp 1 fd00::1 5000 typ host", sdpMid: "0", sdpMLineIndex: 0 } as const;
+    const early = { kind: "ice", candidate: "candidate:9 1 udp 1 fd00::1 5000 typ host", sdpMid: "0", sdpMLineIndex: 0, structure: [] as readonly string[] } as const;
     signal(page, early);
     expect(peer.remoteIce).toEqual([]);
     signal(page, { kind: "answer", sdp: "ANSWER-SDP" });
     await page.flush();
     expect(peer.remoteDescription).toEqual({ type: "answer", sdp: "ANSWER-SDP" });
-    const late = { kind: "ice", candidate: "candidate:10 1 udp 1 192.168.1.20 5001 typ host", sdpMid: "0", sdpMLineIndex: 0 } as const;
+    const late = { kind: "ice", candidate: "candidate:10 1 udp 1 192.168.1.20 5001 typ host", sdpMid: "0", sdpMLineIndex: 0, structure: [] as readonly string[] } as const;
     signal(page, late);
     const strip = ({ candidate, sdpMid, sdpMLineIndex }: typeof early | typeof late) => ({ candidate, sdpMid, sdpMLineIndex });
     expect(peer.remoteIce).toEqual([strip(early), strip(late)]);
@@ -1081,7 +1081,7 @@ describe("T1517b phone page — tabs, the board, the Camera tab", () => {
 
   it("a rect past the board's edge is kept on the board, not pushed off the screen", () => {
     const page = openPage();
-    const slider = { kind: "slider", handle: "h-x", caption: "Wide", value: 0, min: 0, max: 1, step: 0 } as const;
+    const slider = { kind: "slider", handle: "h-x", caption: "Wide", value: 0, min: 0, max: 1, step: 0, structure: [] as readonly string[] } as const;
     page.snapshot({
       seq: 1,
       panels: [{ title: "P", rows: [], board: { columns: 4, rows: 1, items: [{ kind: "widget", rect: { x: 6, y: 0, w: 9, h: 0 }, widget: slider }] } }],
@@ -1207,10 +1207,10 @@ describe("T1517b phone page — tabs, the board, the Camera tab", () => {
 describe("T1503b phone page — banks, layers and cue lists", () => {
   type Page = ReturnType<typeof openPage>;
   type Widget = Extract<PhoneSnapshot["panels"][number]["board"], object>["items"][number];
-  const LOOKS = { kind: "preset", handle: "h-looks", caption: "looks", presets: ["soft", "hard", "strobe"], current: "soft", morphing: false } as const;
-  const FX = { kind: "layer", handle: "h-fx", caption: "fx", on: true, opacity: 0.5, opacityWritable: true, picture: "" } as const;
-  const KEY = { kind: "layer", handle: "h-key", caption: "key", on: false, opacity: 1, opacityWritable: true, picture: "" } as const;
-  const SET = { kind: "cueList", handle: "h-set", caption: "set", cues: ["1", "2", "3"], notes: ["", "", ""], current: "1", next: "2", canGo: true, canBack: false, following: false } as const;
+  const LOOKS = { kind: "preset", handle: "h-looks", caption: "looks", presets: ["soft", "hard", "strobe"], current: "soft", morphing: false, structure: [] as readonly string[] } as const;
+  const FX = { kind: "layer", handle: "h-fx", caption: "fx", on: true, opacity: 0.5, opacityWritable: true, picture: "", structure: [] as readonly string[] } as const;
+  const KEY = { kind: "layer", handle: "h-key", caption: "key", on: false, opacity: 1, opacityWritable: true, picture: "", structure: [] as readonly string[] } as const;
+  const SET = { kind: "cueList", handle: "h-set", caption: "set", cues: ["1", "2", "3"], notes: ["", "", ""], current: "1", next: "2", canGo: true, canBack: false, following: false, structure: [] as readonly string[] } as const;
 
   /** A board holding all three kinds; `over` replaces fields of a widget by handle. */
   function show(seq: number, over: Record<string, Record<string, unknown>> = {}): PhoneSnapshot {
@@ -1443,6 +1443,19 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
     page.snapshot(show(2, { "h-set": { following: false, current: "2", next: "3", canGo: true, canBack: true } }));
     expect([go.disabled, back.disabled, cue.disabled]).toEqual([false, false, false]);
     expect(cueLine(page)).toBe("2▸3");
+  });
+
+  it("§T1544b: a following list says what it switches in the structure — a note, nothing to press; live, no note", async () => {
+    const page = openPage();
+    page.snapshot(show(1, { "h-set": { following: true, current: "2", next: "3", canGo: false, canBack: false, structure: ["fx.on", "fx.picture"] } }));
+    const note = part(page, ".w.cueList .structure");
+    expect(note.textContent).toBe("⏱ Switches at its cue times: fx.on, fx.picture");
+    expect(note.querySelector("button")).toBeNull();
+    // A live list carries no structure, and the note is empty (hidden by `:empty`).
+    page.snapshot(show(2, { "h-set": { following: false, current: "2", next: "3", canGo: true, canBack: true, structure: [] } }));
+    expect(part(page, ".w.cueList .structure").textContent).toBe("");
+    await page.drain();
+    expect(sets(page)).toEqual([]);
   });
 
   it("lays each out by the desk's own rule for the rect, so the phone shows the owner's arrangement", () => {

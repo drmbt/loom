@@ -622,6 +622,7 @@ describe("the cue.list query reports cues, current, standby, the derived next an
         timelineCurrent: null,
         timelineNext: null,
         warnings: [],
+        structure: [],
       },
     ]);
 
@@ -638,6 +639,20 @@ describe("the cue.list query reports cues, current, standby, the derived next an
     await go(bus);
     await go(bus);
     expect(await next()).toBeNull();
+  });
+
+  it("§T1544b: a following list reports the structural settings it switches at its cue times; its live twin reports none", async () => {
+    const shader = node("shader", "test.customWgsl", "shader1", { source: "", amount: 1 });
+    const looks = presetBankNode("code", "code", "shader1", [{ name: "lit", values: { shader1: { source: "fn x() {}", amount: 0.5 } } }]);
+    const timed = (follow: "timeline" | "live"): GraphNode =>
+      cueList("list", "set", [{ name: "A", bank: "code", preset: "lit", at: 1 }], { follow });
+    const report = async (follow: "timeline" | "live") => {
+      const { bus } = session([shader, looks, timed(follow)]);
+      return (await bus.query("cue.list", { nodeId: "list" }, contextFor(alice))).lists[0];
+    };
+    // The compile-time Source switches structure; Amount is a value the timeline drives, not structure.
+    expect((await report("timeline"))?.structure).toEqual(["shader1.source"]);
+    expect((await report("live"))?.structure).toEqual([]);
   });
 
   it("without a nodeId reports every cue list, and a malformed one says why instead of vanishing", async () => {

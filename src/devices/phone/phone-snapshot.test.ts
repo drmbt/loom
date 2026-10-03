@@ -315,7 +315,7 @@ describe("T1503b — banks, layers and cue lists on the phone", () => {
           kind: "widget",
           rect: { x: 0, y: 1, w: 4, h: 2 },
           // Nothing fired yet: GO would fire the first cue, and there is nothing to go BACK to.
-          widget: { kind: "cueList", handle: ids["$set"], caption: "set", cues: ["1", "2"], notes: ["", ""], current: null, next: "1", canGo: true, canBack: false, following: false },
+          widget: { kind: "cueList", handle: ids["$set"], caption: "set", cues: ["1", "2"], notes: ["", ""], current: null, next: "1", canGo: true, canBack: false, following: false, structure: [] },
         },
       ],
     });
@@ -443,6 +443,41 @@ describe("T1503b — banks, layers and cue lists on the phone", () => {
     expect(widgetOf(bus.store.getGraph(), "cueList", at(1.5))).toMatchObject({ following: false, current: null, next: "1", canGo: true });
     expect(publishedTimelinePositions(bus.store.getGraph(), at(1.5))).toBe("");
     expect(vetPhoneSet(bus.store.getGraph(), set(ids["$set"]!, { go: true })).ok).toBe(true);
+  });
+
+  it("§T1544b: a following list carries what it switches in the structure — read-only, as the inspector says it; live, nothing", async () => {
+    // "hard" turns the fx Layer on: a structural setting the timeline cuts on cue 2's frame.
+    const presets = serializePresetBank({
+      version: 1,
+      presets: [
+        { name: "soft", values: { blur1: { size: 4 } } },
+        { name: "hard", values: { blur1: { size: 20 } }, on: { fx: true } },
+      ],
+    });
+    const timed = serializeCueList({
+      version: 1,
+      cues: [
+        { name: "1", bank: "looks", preset: "soft", at: 1 },
+        { name: "2", bank: "looks", preset: "hard", at: 2 },
+      ],
+    });
+    const { bus, ids } = await documentWith(show());
+    await patch(bus, [
+      { op: "setParameters", nodeId: ids["$looks"] as never, parameters: { targets: "blur1 fx", presets } },
+      { op: "setParameters", nodeId: ids["$set"] as never, parameters: { cues: timed, follow: "timeline" } },
+      { op: "setNodeUi", nodeId: ids["$fx"] as never, ui: { bypassed: true } },
+    ]);
+    const at: FrameClock = { epoch: "e", absTimeSeconds: 50, timeSeconds: 1.5, timelineRate: 30 };
+    const cueListOf = (graph: GraphDocument) => {
+      const items = buildPhoneSnapshot(graph, 1, at, undefined, bus.registry).panels[0]?.board?.items ?? [];
+      return items.flatMap((item) => (item.kind === "widget" && item.widget.kind === "cueList" ? [item.widget] : []))[0];
+    };
+    expect(cueListOf(bus.store.getGraph())).toMatchObject({ following: true, structure: ["fx.on"] });
+    // Without a registry the page cannot say, and says nothing rather than guessing.
+    expect(widgetOf(bus.store.getGraph(), "cueList", at)).toMatchObject({ following: true, structure: [] });
+    // The legitimate case: the same list on live switches nothing on the timeline.
+    await patch(bus, [{ op: "setParameters", nodeId: ids["$set"] as never, parameters: { follow: "live" } }]);
+    expect(cueListOf(bus.store.getGraph())).toMatchObject({ following: false, structure: [] });
   });
 
   it("turns each press into the one bus command it means, with an input the page built", async () => {

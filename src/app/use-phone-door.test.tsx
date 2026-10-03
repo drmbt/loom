@@ -14,7 +14,7 @@ import { useKeymapPane } from "@editor/keymap/pane.ts";
 import { NodeView } from "@editor/nodes/node-view.tsx";
 import type { FrameClock } from "@domain/types/frame.ts";
 import type { NodeId } from "@domain/types/ids.ts";
-import { serializePresetBank } from "@domain/presets/index.ts";
+import { serializeCueList, serializePresetBank } from "@domain/presets/index.ts";
 import type { FrameScheduler } from "@ui/controls/coalesce.ts";
 import { serializePanelBoard } from "@nodes/definitions/controls.ts";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
@@ -591,5 +591,56 @@ describe("T1503b — the phone door tells phones when a fade starts and when it 
     const after = frames;
     await act(settle);
     expect(frames).toBe(after);
+  });
+});
+
+/**
+ * §T1544b — the door hands the snapshot the bus's node REGISTRY, so a following cue list on a
+ * published Panel tells the phone what it switches in the structure at its cue times (the
+ * inspector's note). Without it the note would always be empty — built, tested, never wired.
+ */
+describe("§T1544b — a following cue list's structure note reaches the phone", () => {
+  it("publishes the structural settings a timed list switches: `fx.on` for a cue that turns the fx Layer on", async () => {
+    const runtime = createAppRuntime({ identityStorage: null, actor: { kind: "human", id: "desk", label: "Desk" } });
+    const presets = serializePresetBank({ version: 1, presets: [{ name: "drop", values: {}, on: { fx: true } }] });
+    const cues = serializeCueList({ version: 1, cues: [{ name: "1", bank: "looks", preset: "drop", at: 1 }] });
+    const result = await runtime.bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: runtime.bus.store.getRevision(),
+        label: "setup",
+        operations: [
+          { op: "addNode", ref: "$fx", type: "layer", position: { x: 0, y: 0 }, label: "fx" },
+          { op: "addNode", ref: "$looks", type: "presets", position: { x: 0, y: 100 }, label: "looks", parameters: { targets: "fx", presets } },
+          { op: "addNode", ref: "$set", type: "cueList", position: { x: 0, y: 200 }, label: "set", parameters: { cues, follow: "timeline" } },
+          {
+            op: "addNode",
+            ref: "$panel",
+            type: "panel",
+            position: { x: 0, y: 300 },
+            label: "panel1",
+            parameters: { title: "Show", remote: true, board: serializePanelBoard({ columns: 8, items: [{ member: "set", rect: { x: 0, y: 0, w: 4, h: 2 } }] }) },
+          },
+        ],
+      } as never,
+      runtime.invocation,
+    );
+    expect(result.output.status).toBe("applied");
+    const fx = (result.output.createdIds as Record<string, NodeId>)["$fx"]!;
+    const off = await runtime.bus.execute(
+      "graph.applyPatch",
+      { baseRevision: runtime.bus.store.getRevision(), operations: [{ op: "setNodeUi", nodeId: fx, ui: { bypassed: true } }] } as never,
+      runtime.invocation,
+    );
+    expect(off.output.status).toBe("applied");
+    const helper = fakeClient({ open: true, url: URL_WITH_TOKEN, fingerprint: "ff", phones: [] });
+    render(<Desk runtime={runtime} client={helper.client} schedule={soon} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Phone/ }));
+      await settle();
+    });
+    const item = helper.published.at(-1)?.panels[0]?.board?.items[0];
+    const list = item?.kind === "widget" && item.widget.kind === "cueList" ? item.widget : null;
+    expect(list).toMatchObject({ following: true, structure: ["fx.on"] });
   });
 });
