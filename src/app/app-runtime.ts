@@ -213,9 +213,16 @@ function projectMetaFrom(options: AppRuntimeOptions, projectId: string): Omit<Pr
   return options.settings === undefined ? rest : { ...rest, settings: options.settings };
 }
 
-export function createAppRuntime(options: AppRuntimeOptions = {}): AppRuntime {
-  const storage = options.identityStorage === undefined ? defaultLayoutStorage() : options.identityStorage;
-
+/**
+ * The catalogue a fresh runtime starts from, before its document's own library.
+ *
+ * §T1543b — exported so an Open loads a file against the catalogue the INCOMING runtime
+ * will hold. Loading against the open runtime's catalogue installed the file's library
+ * into the OUTGOING project — a catalogue write, which scheduled an autosave of the old
+ * project carrying the new file's components — and let the old project's own definitions
+ * answer for instances the file does not carry.
+ */
+export function createRuntimeCatalogue() {
   // The bus is given the COMPONENT-AWARE registry, not the raw node registry: a component
   // instance is an ordinary node whose type is `component:<id>@<version>`, and without the
   // wrapper every instance reads as an unknown node type. The wrapper composes over the
@@ -230,6 +237,13 @@ export function createAppRuntime(options: AppRuntimeOptions = {}): AppRuntime {
   // rather than the other way round: an instance is pinned to the definition it was saved
   // against (§V84), and the document is the authority on that.
   const starterComponents = installStarterComponents(components);
+  return { components, registry, starterComponents };
+}
+
+export function createAppRuntime(options: AppRuntimeOptions = {}): AppRuntime {
+  const storage = options.identityStorage === undefined ? defaultLayoutStorage() : options.identityStorage;
+
+  const { components, registry, starterComponents } = createRuntimeCatalogue();
   // T627: the opened document's own library (see the option's docblock). Same-id+version
   // registration REPLACES, which is exactly the §V84 authority order the starters note
   // above describes; an invalid definition refuses loudly rather than half-installing.

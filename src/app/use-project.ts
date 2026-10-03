@@ -3,6 +3,7 @@ import { buildProjectFile, loadProject, nextProjectFileName } from "@domain/proj
 import type { LoadProjectSuccess } from "@domain/project/index.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { AppRuntime } from "./app-runtime.ts";
+import { createRuntimeCatalogue } from "./app-runtime.ts";
 import { registerProjectCommands } from "./project-commands.ts";
 import type { ProjectNewResult, ProjectOpenResult, ProjectSaveResult } from "./project-commands.ts";
 import { readProjectFile, writeProjectFile } from "./project-io.ts";
@@ -222,7 +223,7 @@ export function useProject(runtime: AppRuntime, options: ProjectWiringOptions): 
 
   const open = useCallback(
     async (input: { text?: string | undefined; fileName?: string | undefined }): Promise<ProjectOpenResult> => {
-      const { runtime: current, read: readFile, onDocumentLoaded: adopt } = latest.current;
+      const { read: readFile, onDocumentLoaded: adopt } = latest.current;
 
       let text = input.text;
       let name = input.fileName ?? null;
@@ -246,9 +247,15 @@ export function useProject(runtime: AppRuntime, options: ProjectWiringOptions): 
         name = outcome.fileName;
       }
 
+      // §T1543b — against the catalogue the INCOMING runtime will hold, never the open
+      // one: installing the file's library into the outgoing catalogue is a write to the
+      // project being left (it scheduled an autosave of it), and its definitions would
+      // answer for instances the file does not carry. `adopt` registers `result.components`
+      // into the new runtime.
+      const incoming = createRuntimeCatalogue();
       const result = loadProject(text, {
-        nodes: current.registry,
-        components: current.components,
+        nodes: incoming.registry,
+        components: incoming.components,
       });
 
       if (!result.ok) {

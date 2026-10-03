@@ -1366,6 +1366,7 @@ export function App({
    * are live) and resolved ones do not. Deliberately no dismissed-set — nothing can
    * be silenced while still true.
    */
+  const { clearDiagnostics: clearEditingDiagnostics } = editing;
   const clearProblems = useCallback(() => {
     setRejection(NO_DIAGNOSTICS);
     autosave.clearDiagnostics();
@@ -1373,7 +1374,8 @@ export function App({
     project.clearDiagnostics();
     recovery.clearDiagnostics();
     frameLoop.clearDiagnostics();
-  }, [autosave, frameLoop, media, project, recovery]);
+    clearEditingDiagnostics();
+  }, [autosave, clearEditingDiagnostics, frameLoop, media, project, recovery]);
 
   // T1531b: the LAST-CLICKED node of a multi-selection — the canvas reports in append order.
   const selectedNodeId = primaryOf(selection);
@@ -1496,6 +1498,9 @@ export function App({
       ...project.diagnostics,
       ...recovery.diagnostics,
       ...frameLoop.diagnostics,
+      // §T1543b — the component editor's held notes: why it put you back out, and the
+      // session it reopened over an outside write.
+      ...editing.diagnostics,
       // T586 — what the LAST TAKE had to say about itself. A refusal reaches the user
       // through `reportRefusal`, which returns early on `applied`; a take that succeeds
       // and is nonetheless not reproducible had no channel at all before this.
@@ -1523,6 +1528,7 @@ export function App({
     project.diagnostics,
     recovery.diagnostics,
     rejection,
+    editing.diagnostics,
     renderRange.diagnostics,
     status,
   ]);

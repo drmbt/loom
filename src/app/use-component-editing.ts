@@ -65,11 +65,22 @@ export interface ComponentEditing {
   insideComponent: boolean;
   /** The active instance's effective child parameters and their published owners. */
   instanceParameters: InstanceParameters | undefined;
-  /** Path resolution problems — a stale instance, an uninstalled component (§V82). */
+  /**
+   * What the editor had to say, for the Problems list (§T1543b): the path that stopped
+   * resolving and put the user back out (a stale instance, an uninstalled component,
+   * §V82), and the session reopened over an outside write (§T1540b). Both are EVENTS —
+   * the path has already been truncated, the session already reopened — so they are held
+   * until the Problems list's Clear (T465) or the next project (T792), like every other
+   * accumulating source.
+   */
   diagnostics: readonly RuntimeDiagnostic[];
+  /** T465: empty the held notes; nothing here is still true once it has been said. */
+  clearDiagnostics: () => void;
   navigate: (path: ComponentPath) => void;
   exit: () => void;
 }
+
+const NO_NOTES: readonly RuntimeDiagnostic[] = [];
 
 export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
   const store = useMemo(() => createComponentNavigationStore(), []);
@@ -142,6 +153,12 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
    * editing is not a recoverable mistake, so the decision is made from what is true NOW,
    * and a path that is merely momentarily unresolvable stays put.
    */
+  /*
+   * §T1543b — and the reason it put them back out is HELD. The walk's own diagnostics
+   * cannot carry it: the path is truncated in this same effect, so the next render
+   * resolves cleanly and the reason is gone before anyone could read it.
+   */
+  const [ejected, setEjected] = useState<readonly RuntimeDiagnostic[]>(NO_NOTES);
   useEffect(() => {
     if (path.length === 0) return;
     const live = resolveComponentNavigation({
@@ -150,7 +167,13 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
       components: componentsView,
       nodes: runtime.registry,
     });
-    if (live.resolvedPath.length !== path.length) store.setPath(live.resolvedPath);
+    if (live.resolvedPath.length === path.length) return;
+    store.setPath(live.resolvedPath);
+    if (live.diagnostics.length === 0) return;
+    setEjected((current) => [
+      ...current,
+      ...live.diagnostics.filter((note) => !current.some((held) => held.code === note.code && held.message === note.message)),
+    ]);
   }, [componentsView, path, resolved, runtime.bus, runtime.registry, store]);
 
   const innermost = resolved.frames[resolved.frames.length - 1];
@@ -175,6 +198,21 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
     setReopened((count) => count + 1);
   }, []);
   useEffect(() => setRebased(null), [componentId, version]);
+  // T792: both notes are about the OUTGOING project, so they empty at the boundary. Declared
+  // AFTER the path walk on purpose: a new project truncates the old path in the same commit
+  // (it never existed there), and that is not news — this empties it before it is seen.
+  useEffect(() => {
+    setRebased(null);
+    setEjected(NO_NOTES);
+  }, [runtime]);
+  const clearDiagnostics = useCallback(() => {
+    setRebased(null);
+    setEjected(NO_NOTES);
+  }, []);
+  const diagnostics = useMemo(
+    () => (rebased === null ? ejected : [...ejected, rebased]),
+    [ejected, rebased],
+  );
 
   const [session, setSession] = useState<ComponentSession | null>(null);
   useEffect(() => {
@@ -294,7 +332,8 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
     definition: live ? (innermost?.definition ?? null) : null,
     insideComponent: componentId !== null,
     instanceParameters,
-    diagnostics: rebased === null ? resolved.diagnostics : [...resolved.diagnostics, rebased],
+    diagnostics,
+    clearDiagnostics,
     navigate,
     exit,
   };
