@@ -257,7 +257,7 @@ describe("T1508b — what covers a key, and what does not", () => {
     expect(buildMorphIndex({ document: graph, registry }).keysOf("layer")).toEqual(new Set(["opacity"]));
   });
 
-  it("§T1537b: a structural key on a component INSTANCE is still skipped, by name — its fan-out is not followed", () => {
+  it("§T1544b: a structural key on a component INSTANCE whose definition cannot be read is still skipped, by name — there is no fan-out to follow", () => {
     // A look instance whose published "mode" is compile-time (it is a Layer's blend within).
     // The component-AWARE registry answers for its type, as the app's does.
     const instanceType = componentNodeType("stack" as Parameters<typeof componentNodeType>[0], 1);
@@ -288,6 +288,71 @@ describe("T1508b — what covers a key, and what does not", () => {
     expect(said[0]?.diagnostic.message).toContain('"stack1.mode"');
     expect(said[0]?.diagnostic.message).toContain("inside a component");
     expect(plan.structure.size).toBe(0);
+  });
+
+  describe("§T1544b: a structural key on an instance follows its published fan-out, by flattening's rule", () => {
+    /** A Layer inside a component, its compile-time Blend published as `mode` — the page itself says nothing about structure. */
+    const stack = {
+      componentId: "stack",
+      version: 1,
+      name: "Stack",
+      graph: doc([
+        node("solid", "solid", "solid", { color: [1, 0, 0, 1] }),
+        node("layer", "layer", "layer", { opacity: 0.5, blend: "over", picture: "solid" }),
+      ]),
+      inputs: [{ externalId: "below", label: "Below", nodeId: "layer", portId: "below" }],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "layer", portId: "out" }],
+      parameters: [
+        {
+          key: "mode",
+          definition: { type: "enum", label: "Mode", default: "over", options: [{ value: "over", label: "Over" }, { value: "add", label: "Add" }] },
+          targets: [{ nodeId: "layer", key: "blend" }],
+        },
+        {
+          key: "mix",
+          definition: { type: "number", label: "Mix", default: 0.5, min: 0, max: 1, range: "bounded" },
+          targets: [{ nodeId: "layer", key: "opacity" }],
+        },
+      ],
+    } as unknown as GraphComponentDefinition;
+    const system = createComponentSystem(registry, [stack]);
+    const catalogue = system.components.view();
+    const graph = doc([
+      node("inst", componentNodeType("stack", 1), "stack1", { mode: "over", mix: 0.5 }),
+      presetBankNode("stage", "stage", "stack1", [{ name: "add", values: { stack1: { mode: "add", mix: 1 } } }]),
+      list("show", "show", [{ name: "swap", bank: "stage", preset: "add", morph: CUT, at: 1 }]),
+    ]);
+
+    it("planned as structure with no warning; the inner Layer's Blend is overridden in the flat graph from the cue frame on, and only there", () => {
+      const plan = planTimelineCues(graph, system.nodes, catalogue);
+      expect(plan.warnings.map((warning) => warning.diagnostic.code)).toEqual([]);
+      expect([...(plan.structure.get("inst")?.keys() ?? [])]).toEqual(["mode"]);
+
+      const flattened = flattenComponents({ graph, registry, components: catalogue });
+      const innerId = Object.keys(flattened.graph.nodes).find((id) => flattened.graph.nodes[id]?.type === "layer") as NodeId;
+      const structure = buildTimelineStructure({ document: graph, registry, components: catalogue, flattened });
+      if (structure === null) throw new Error("no structure");
+      expect(structure.crossings(FPS)).toEqual([30]);
+      expect(structure.atFrame(29, FPS)).toBe(DOCUMENT_STRUCTURE);
+      const cut = structure.atFrame(30, FPS);
+      expect(cut.parameters.get(innerId)).toEqual({ blend: "add" });
+      expect([...cut.parameters.keys()]).toEqual([innerId]);
+      const compiled = applyTimelineStructure(flattened.graph, cut);
+      expect(compiled.nodes[innerId]?.parameters["blend"]).toBe("add");
+      // The value half still drives the non-structural target: Mix reaches the opacity as a driver.
+      expect(buildMorphIndex({ document: graph, registry, components: catalogue, flattened }).keysOf(innerId)).toEqual(new Set(["opacity"]));
+    });
+
+    it("a cue setting the value the instance already holds switches nothing", () => {
+      const same = doc([
+        node("inst", componentNodeType("stack", 1), "stack1", { mode: "add", mix: 0.5 }),
+        presetBankNode("stage", "stage", "stack1", [{ name: "add", values: { stack1: { mode: "add" } } }]),
+        list("show", "show", [{ name: "swap", bank: "stage", preset: "add", morph: CUT, at: 1 }]),
+      ]);
+      const flattened = flattenComponents({ graph: same, registry, components: catalogue });
+      const structure = buildTimelineStructure({ document: same, registry, components: catalogue, flattened });
+      expect(structure?.atFrame(30, FPS)).toBe(DOCUMENT_STRUCTURE);
+    });
   });
 
   it("a cue with no At is skipped with a warning naming it; the timed ones still play", () => {

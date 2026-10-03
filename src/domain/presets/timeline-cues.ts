@@ -5,7 +5,8 @@ import type { NodeId } from "../types/ids.ts";
 import type { NodeDefinition } from "../types/node-definition.ts";
 import type { ParameterSchema, StoredParameter } from "../types/parameters.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
-import { isComponentNodeType } from "../components/component-type.ts";
+import { isComponentNodeType, parseComponentNodeType } from "../components/component-type.ts";
+import { publishedSchema } from "../components/published-page.ts";
 import { nodeByName } from "../graph/names.ts";
 import { effectiveParameterSchema, resolveParameters, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
 import { componentAddressedDefinition, parseComponentKey, storedStaticValue } from "../parameters/slots.ts";
@@ -60,9 +61,14 @@ import { morphableKey, publishedTargets, type MorphIndexInput } from "./morph-in
  * loop recompiles at a crossing (ahead of it, warmed, §T1507b), an export swaps plans on the
  * crossing frame, and both read the same function of the playhead.
  *
- * Still SKIPPED with a named warning (`cue.timeline.structural`): a structural key on a
- * component INSTANCE — it reaches the compile only through the instance's published fan-out,
- * which this override does not follow yet.
+ * A structural key on a component INSTANCE (§T1544b) reaches the compile only through the
+ * instance's published fan-out, so the override follows it: an instance key is structural
+ * when a parameter it is published onto is (`publishedReachesStructure`, judged by the
+ * definition), and the structure overrides those parameters inside the flat graph
+ * (`publishedTargets`, the flattening's own origins), each cut in the form flattening
+ * writes there. Still SKIPPED with the named warning (`cue.timeline.structural`): an
+ * instance whose definition cannot be read (no catalogue, or not installed) while its own
+ * page calls the key structural — there is no fan-out to follow.
  *
  * ## A timed list is all-timed (owner ruling 3)
  *
@@ -115,6 +121,41 @@ export function structuralCueKey(definition: NodeDefinition | undefined, node: G
 }
 
 /**
+ * §T1544b — does an instance's published `key` reach a STRUCTURAL parameter inside its
+ * component? Each of the published parameter's targets is judged by its own node's
+ * definition (`structuralCueKey`), through nested instances by the same rule — the
+ * parameters flattening's fan-out (§V80) writes the key onto. `undefined` when the
+ * definition cannot be read (no catalogue, or the component is not installed).
+ */
+function publishedReachesStructure(
+  node: GraphNode,
+  key: string,
+  registry: NodeRegistryView,
+  components: BankCatalogue | undefined,
+  depth = 0,
+): boolean | undefined {
+  const ref = parseComponentNodeType(node.type);
+  if (ref === null) return false;
+  const definition = components?.get(ref.componentId, ref.version);
+  if (definition === undefined) return undefined;
+  const direct = definition.parameters.find((entry) => entry.key === key);
+  const channel = direct === undefined ? parseComponentKey(key) : null;
+  const published = direct ?? (channel === null ? undefined : definition.parameters.find((entry) => entry.key === channel.base));
+  if (published === undefined) return false;
+  for (const target of published.targets) {
+    const inner = definition.graph.nodes[target.nodeId];
+    if (inner === undefined) continue;
+    if (isComponentNodeType(inner.type)) {
+      // A cycle is the flattener's to refuse (§V83); this only stops looking.
+      if (depth < 16 && publishedReachesStructure(inner, target.key, registry, components, depth + 1) === true) return true;
+      continue;
+    }
+    if (structuralCueKey(registry.get(inner.type), inner, target.key)) return true;
+  }
+  return false;
+}
+
+/**
  * §T1537b — one timed cue's STRUCTURAL setting on one target: a Layer's on/off
  * (`bypassed`), or a structural key's stored form (`parameter`). Always a cut at `at`.
  */
@@ -164,14 +205,14 @@ const nameOf = (node: GraphNode): string => node.label ?? node.id;
 /**
  * Every following list, planned: the end each timed cue applies, per root key, and every
  * warning — an untimed cue, a bank or preset that is not there, the planner's own skips, a
- * structural key on a component instance skipped, two lists on one key — and (§T1537b) the
+ * structural key on an instance whose definition cannot be read, two lists on one key — and (§T1537b) the
  * structural settings each timed cue cuts. Pure; per revision.
  *
  * T1541b: `components` is the catalogue a look's instance is a bank through (`bankOf`) —
  * the flattening's own, as recall reads the bus's. Without it a cue naming an instance is
  * skipped, saying why. An instance's preset reaches only its page (its `on` and `recalls`
- * are skipped by the recall planner), so it files no layer switch, and a structural key on
- * its page keeps the component-instance warning above.
+ * are skipped by the recall planner), so it files no layer switch; a structural key on its page is
+ * followed through the page's fan-out like any instance key (§T1544b).
  */
 export function planTimelineCues(document: GraphDocument, registry: NodeRegistryView, components?: BankCatalogue): TimelineCuePlan {
   const warnings: TimelineCueWarning[] = [];
@@ -250,19 +291,24 @@ export function planTimelineCues(document: GraphDocument, registry: NodeRegistry
         const node = nodeId === undefined ? undefined : document.nodes[nodeId];
         if (node === undefined) continue;
         const definition = registry.get(node.type);
+        const instance = isComponentNodeType(node.type);
         for (const [key, to] of Object.entries(keys)) {
-          if (structuralCueKey(definition, node, key)) {
-            if (isComponentNodeType(node.type)) {
-              warn(
-                cue.name,
-                "cue.timeline.structural",
-                `${where} sets "${nodeName}.${key}", which changes what is compiled inside a component; a timed cue cannot change that yet, so it is skipped.`,
-                "Set it in the document, or change it from a live list.",
-              );
-              continue;
-            }
-            fileStructural(node, key, `${nodeName}.${key}`, { key, parameter: to });
+          // §T1544b: an instance's key is structural when its published fan-out reaches a
+          // structural parameter inside — judged target by target, by the definition. Its
+          // other targets still take the value below (the value fold's `accepts` rule).
+          const reaches = instance ? publishedReachesStructure(node, key, registry, components) : false;
+          if (instance && reaches === undefined && structuralCueKey(definition, node, key)) {
+            warn(
+              cue.name,
+              "cue.timeline.structural",
+              `${where} sets "${nodeName}.${key}", which changes what is compiled inside a component whose definition cannot be read here; the timeline cannot follow its published parameter, so it is skipped.`,
+              "Set it in the document, or change it from a live list.",
+            );
             continue;
+          }
+          if (instance ? reaches === true : structuralCueKey(definition, node, key)) {
+            fileStructural(node, key, `${nodeName}.${key}`, { key, parameter: to });
+            if (!instance) continue;
           }
           const byKey = chains.get(node.id) ?? new Map<string, TimedLink[]>();
           chains.set(node.id, byKey);
@@ -365,11 +411,21 @@ interface FiledTimeline {
  */
 function plannerRegistry(input: MorphIndexInput): NodeRegistryView {
   const pages = input.flattened?.instanceSchemas;
-  if (pages === undefined || pages.size === 0) return input.registry;
   const byType = new Map<string, ParameterSchema>();
-  for (const [nodeId, schema] of pages) {
+  for (const [nodeId, schema] of pages ?? []) {
     const node = input.document.nodes[nodeId];
     if (node !== undefined && !input.registry.has(node.type)) byType.set(node.type, schema);
+  }
+  /*
+   * §T1544b: a flattening handed in WITHOUT its pages (`FlattenedGraph` does not carry them —
+   * the structure's callers hold that shape) answers through the catalogue instead: the
+   * published page IS the instance's schema (`publishedSchema`, flattening's own).
+   */
+  for (const node of Object.values(input.document.nodes)) {
+    if (node === undefined || byType.has(node.type) || input.registry.has(node.type)) continue;
+    const ref = parseComponentNodeType(node.type);
+    const definition = ref === null ? undefined : input.components?.get(ref.componentId, ref.version);
+    if (definition !== undefined) byType.set(node.type, publishedSchema(definition));
   }
   if (byType.size === 0) return input.registry;
   const base = input.registry;
@@ -556,11 +612,18 @@ export interface TimelineStructure {
   crossings(rate: number): readonly number[];
 }
 
-/** One overridable target, with what it holds when the timeline does not hold it. */
+/**
+ * One overridable target, with what it holds when the timeline does not hold it: a node of
+ * the graph that COMPILES (a root node, or — §T1544b — a parameter inside a component that
+ * an instance's published key fans out onto), and its cuts in cue order, each already in
+ * the form that node holds.
+ */
 interface StructuralTarget {
   readonly nodeId: NodeId;
+  /** The key the cuts set, or `LAYER_SWITCH_TARGET` for a Layer's switch. */
+  readonly key: string;
   readonly stored: StoredParameter | boolean | undefined;
-  readonly links: readonly StructuralLink[];
+  readonly links: ReadonlyArray<{ readonly at: number; readonly to: { readonly bypassed: boolean } | { readonly parameter: StoredParameter } }>;
 }
 
 const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
@@ -579,17 +642,46 @@ export function buildTimelineStructure(input: MorphIndexInput): TimelineStructur
   if (plan.structure.size === 0) return null;
 
   const targets: StructuralTarget[] = [];
+  /** §T1544b: a structural target inside a component, as the value fold's mirror takes the others. */
+  const structuralInside = (definition: NodeDefinition | undefined, node: GraphNode, key: string): boolean =>
+    definition !== undefined && structuralCueKey(definition, node, key);
   for (const nodeId of [...plan.structure.keys()].sort()) {
     const node = input.document.nodes[nodeId];
     const byTarget = plan.structure.get(nodeId);
     if (node === undefined || byTarget === undefined) continue;
     for (const target of [...byTarget.keys()].sort()) {
       const links = byTarget.get(target) ?? [];
+      if (target !== LAYER_SWITCH_TARGET && isComponentNodeType(node.type)) {
+        /*
+         * §T1544b — an INSTANCE's key does not exist in the graph that compiles: flattening
+         * wrote it onto parameters inside. Follow that fan-out (`publishedTargets`, the
+         * flattening's own `publishedOrigins`) to each structural one, every cut travelling
+         * as what flattening writes there (`end`), and override THOSE.
+         */
+        for (const inside of publishedTargets({ ...input, registry }, node, target, structuralInside)) {
+          const mapped: Array<StructuralTarget["links"][number]> = [];
+          for (const link of links) {
+            const end = "parameter" in link.to ? inside.end(link.to.parameter) : undefined;
+            if (end === undefined) break;
+            mapped.push({ at: link.at, to: { parameter: end } });
+          }
+          if (mapped.length !== links.length) continue;
+          const stored = inside.node.parameters[inside.key] ?? unstored(inside.definition, inside.node, inside.key);
+          targets.push({ nodeId: inside.nodeId, key: inside.key, stored, links: mapped });
+        }
+        continue;
+      }
       const stored =
         target === LAYER_SWITCH_TARGET ? node.ui?.bypassed === true : (node.parameters[target] ?? unstored(registry.get(node.type), node, target));
-      targets.push({ nodeId, stored, links });
+      targets.push({
+        nodeId,
+        key: target,
+        stored,
+        links: links.map((link) => ({ at: link.at, to: "bypassed" in link.to ? { bypassed: link.to.bypassed } : { parameter: link.to.parameter } })),
+      });
     }
   }
+  if (targets.length === 0) return null;
 
   /** One state per distinct structure, so equal structures are one object (and one plan). */
   const byKey = new Map<string, TimelineStructureState>([["", DOCUMENT_STRUCTURE]]);
@@ -619,7 +711,7 @@ export function buildTimelineStructure(input: MorphIndexInput): TimelineStructur
     const keyParts: unknown[] = [];
     for (const target of targets) {
       // In cue order, so the reached links are a prefix and the last one reached holds.
-      let held: StructuralLink | undefined;
+      let held: StructuralTarget["links"][number] | undefined;
       for (const link of target.links) {
         if (cueReachFrame(link.at, rate) > playhead) break;
         held = link;
@@ -633,8 +725,8 @@ export function buildTimelineStructure(input: MorphIndexInput): TimelineStructur
         if (sameJson(held.to.parameter, target.stored)) continue;
         const record = parameters.get(target.nodeId) ?? {};
         parameters.set(target.nodeId, record);
-        record[held.to.key] = held.to.parameter;
-        keyParts.push([target.nodeId, held.to.key, held.to.parameter]);
+        record[target.key] = held.to.parameter;
+        keyParts.push([target.nodeId, target.key, held.to.parameter]);
       }
     }
     const key = keyParts.length === 0 ? "" : JSON.stringify(keyParts);

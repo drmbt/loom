@@ -2,6 +2,10 @@ import { Buffer } from "node:buffer";
 
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { componentNodeType, createComponentSystem, type ComponentRegistryView } from "../../domain/components/index.ts";
+import type { GraphComponentDefinition } from "../../domain/types/components.ts";
+import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
+import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { presetBankNode } from "../../domain/presets/test-support.ts";
 import { serializeCueList, type Cue } from "../../domain/presets/cue-list.ts";
 import type { MorphSpec, Preset } from "../../domain/presets/bank.ts";
@@ -109,6 +113,8 @@ interface RenderOptions {
   readonly startFrame?: number;
   readonly frames?: number;
   readonly betweenFrames?: (control: HarnessControl, frameIndex: number) => void;
+  /** §T1544b: the component catalogue, for a document holding instances. */
+  readonly components?: ComponentRegistryView;
 }
 
 async function render(graph: GraphDocument, capture: readonly number[], options: RenderOptions = {}): Promise<Shot[]> {
@@ -123,6 +129,7 @@ async function render(graph: GraphDocument, capture: readonly number[], options:
     ...(options.epoch === undefined ? {} : { absEpoch: options.epoch }),
     ...(options.startFrame === undefined ? {} : { startFrame: options.startFrame }),
     ...(options.betweenFrames === undefined ? {} : { betweenFrames: options.betweenFrames }),
+    ...(options.components === undefined ? {} : { components: options.components }),
   });
   expect(result.frames.map((frame) => frame.frameIndex)).toEqual([...capture]);
   // The timeline drives structure without a warning: nothing it cuts is skipped any more.
@@ -226,5 +233,84 @@ describe("§T1537b on Dawn — a pure function of the playhead: seek, lap and pl
     expect(same(f60, await twin(false, "red", 60))).toBe(0);
     // The same document following the timeline shows the layer on frame 30 — the list is what differs.
     expect(same(f30, await one(SHOW_GRAPH(), 30))).not.toBe(0);
+  }, 180_000);
+});
+
+/* ------------------------------------------------------------------------------------ */
+/* §T1544b: a structural key on a component INSTANCE, on pixels                            */
+/* ------------------------------------------------------------------------------------ */
+
+/**
+ * A look whose Layer sits INSIDE a component: a blue Solid below, a red Solid as the
+ * picture (both wired, inside), opacity 0.5. The Layer's compile-time Blend is published as
+ * `mode` — the page itself says nothing about structure; flattening's fan-out writes it onto
+ * the Blend (§V80). A timed cue at 1.0 s sets the instance's `mode` from `over` to `add`, so
+ * frame 30 must be a document with `add` STORED, byte for byte, and frame 29 the stored
+ * `over`. Until §T1544b the cue was skipped with `cue.timeline.structural`.
+ */
+const stackLook = {
+  componentId: "stack",
+  version: 1,
+  name: "Stack",
+  graph: {
+    revision: 1,
+    nodes: {
+      blue: node("blue", "solid", "blue", { color: [0, 0, 1, 1] }),
+      red: node("red", "solid", "red", { color: [1, 0, 0, 1] }),
+      layer: node("layer", "layer", "layer", { opacity: 0.5, blend: "over" }),
+    },
+    edges: {
+      e0: { id: "e0", source: { nodeId: "blue", portId: "out" }, target: { nodeId: "layer", portId: "below" } },
+      e1: { id: "e1", source: { nodeId: "red", portId: "out" }, target: { nodeId: "layer", portId: "picture" } },
+    },
+    groups: {},
+  },
+  inputs: [],
+  outputs: [{ externalId: "out", label: "Out", nodeId: "layer", portId: "out" }],
+  parameters: [
+    {
+      key: "mode",
+      definition: { type: "enum", label: "Mode", default: "over", options: [{ value: "over", label: "Over" }, { value: "add", label: "Add" }] },
+      targets: [{ nodeId: "layer", key: "blend" }],
+    },
+  ],
+} as unknown as GraphComponentDefinition;
+
+const stacks = createComponentSystem(createNodeRegistry(allNodeDefinitions).view(), [stackLook]);
+
+/** The instance (holding `mode`) → Output; with `timed`, a bank and a following list that set `add` at 1.0 s. */
+function stackGraph(mode: "over" | "add", timed: boolean): GraphDocument {
+  return {
+    revision: 1,
+    nodes: {
+      look: node("look", componentNodeType("stack", 1), "stack1", { mode }),
+      out: node("out", "output", "out1", {}),
+      ...(timed
+        ? {
+            bank: presetBankNode("bank", "stage", "stack1", [{ name: "add", values: { stack1: { mode: "add" } } }]),
+            show: node("show", "cueList", "show", {
+              follow: "timeline",
+              cues: serializeCueList({ version: 1, cues: [{ name: "add", bank: "stage", preset: "add", morph: CUT, at: 1 }] }),
+            }),
+          }
+        : {}),
+    },
+    edges: { e1: { id: "e1", source: { nodeId: "look", portId: "out" }, target: { nodeId: "out", portId: "input" } } },
+    groups: {},
+  };
+}
+
+describe("§T1544b on Dawn — a timed cue switches an instance's structural published key on its cue frame", () => {
+  it("frame 29 is the stored `over`, frame 30 — the crossing — is `add`, each byte-exact against a document storing it; nothing written", async () => {
+    requireDawn();
+    const components = stacks.components.view();
+    const graph = stackGraph("over", true);
+    const before = JSON.stringify(graph);
+    const [f29, f30] = await render(graph, [29, 30], { components });
+    expect(same(f29, await one(stackGraph("over", false), 29, { components }))).toBe(0);
+    expect(same(f30, await one(stackGraph("add", false), 30, { components }))).toBe(0);
+    // Not vacuous: over and add are two different pictures.
+    expect(same(f29, f30)).not.toBe(0);
+    expect(JSON.stringify(graph)).toBe(before);
   }, 180_000);
 });

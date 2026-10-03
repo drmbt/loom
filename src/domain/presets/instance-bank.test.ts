@@ -715,10 +715,12 @@ describe("T1541b — detaching a look's instance rewrites its page bank", () => 
 });
 
 /**
- * T1541b × §T1537b — a timed cue naming a look's instance feeds the same planner the
- * structure is built from: a STRUCTURAL key on the look's page (a compile-time Source, here)
- * keeps §T1537b's component-instance warning and is not filed as structure, while the
- * look's ordinary keys still fade on the timeline.
+ * T1541b × §T1537b × §T1544b — a timed cue naming a look's instance feeds the same planner
+ * the structure is built from: a STRUCTURAL key on the look's page (a compile-time Source,
+ * here) is filed as structure — its published fan-out is followed (§T1544b) — with no
+ * warning, while the look's ordinary keys still fade on the timeline. (The warning kept for
+ * an unreadable definition is held in `timeline-cues.test.ts`: without a catalogue a cue
+ * naming an instance as its bank is skipped before any key is read.)
  */
 describe("T1541b — a timed cue on a look with a structural key on its page", () => {
   function glyph(): GraphComponentDefinition {
@@ -741,19 +743,17 @@ describe("T1541b — a timed cue on a look with a structural key on its page", (
     };
   }
 
-  it("warns the structural key by name, files no structure, and still times the number", () => {
-    const show = node("show", "cueList", "show", {
+  const show = (): GraphNode =>
+    node("show", "cueList", "show", {
       follow: "timeline",
       cues: serializeCueList({ version: 1, cues: [{ name: "A", bank: "glyph1", preset: "lit", at: 1 }] }),
     }, 400);
-    const doc = documentWith([instance("g", "glyph1", { code: "", gain: 1 }, "glyph"), show], { definitions: [glyph()] });
+
+  it("§T1544b: files the structural key as structure, warns nothing, and still times the number", () => {
+    const doc = documentWith([instance("g", "glyph1", { code: "", gain: 1 }, "glyph"), show()], { definitions: [glyph()] });
     const plan = planTimelineCues(doc.graph(), doc.bus.registry, doc.components);
-    const structural = plan.warnings.filter((warning) => warning.diagnostic.code === "cue.timeline.structural");
-    expect(structural.map((warning) => warning.cue)).toEqual(["A"]);
-    expect(structural[0]?.diagnostic.message).toContain('"glyph1.code"');
-    expect(structural[0]?.diagnostic.message).toContain("inside a component");
-    expect(plan.structure.size).toBe(0);
+    expect(plan.warnings.filter((warning) => warning.diagnostic.code === "cue.timeline.structural")).toEqual([]);
+    expect([...(plan.structure.get("g")?.keys() ?? [])]).toEqual(["code"]);
     expect(plan.chains.get("g")?.has("gain")).toBe(true);
-    expect(plan.chains.get("g")?.has("code")).toBe(false);
   });
 });
