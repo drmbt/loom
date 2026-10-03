@@ -1,12 +1,15 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { init } from "vgpu/node";
 
 import { compileGraph } from "../../../compiler/index.ts";
+import type { LogicalExecutionPlan } from "../../../domain/types/backend.ts";
 import type { RuntimeDiagnostic } from "../../../domain/types/diagnostics.ts";
 import type { GraphDocument, ProjectSettings } from "../../../domain/types/graph.ts";
 import { allNodeDefinitions } from "../../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../../nodes/registry/registry.ts";
 import { SHARED_WGSL_MODULES } from "../../../nodes/shaders/shared-modules.ts";
 import { BackendDiagnosticCode } from "../diagnostics.ts";
+import type { DeviceLossInfo, GpuHost, GpuSession } from "./gpu-host.ts";
 import { nodeGpuHost, probeDawn } from "./node-gpu-host.ts";
 import { createVgpuBackend } from "./vgpu-backend.ts";
 
@@ -19,6 +22,8 @@ import { createVgpuBackend } from "./vgpu-backend.ts";
  *     that. Each case below is the literal error through compiler + backend + Dawn, and
  *     asserts the AUTHOR'S `parameter line:col` — with the generated line asserted to be a
  *     different one, so a map that does nothing cannot pass.
+ * (b) A preview program's build and the device-loss rebuild used to leave their device
+ *     errors nodeless. Each now reaches the problems tab on its pass's node.
  * (c) An error that exists only in vgpu's combined module is stated by the device once;
  *     its reason must survive to a later compile of the same bytes.
  */
@@ -225,6 +230,196 @@ fn groupMatch(p: Point, ctx: PointCtx) -> bool {
     expect(failures[0]!.source).toBeUndefined();
   }, 60_000);
 });
+
+/** A canvas the way vgpu's `surface()` uses one: real device, real texture, no compositor. */
+function stubCanvas(device: GPUDevice): unknown {
+  let texture: GPUTexture | undefined;
+  const canvas = {
+    width: 8,
+    height: 8,
+    getContext(kind: string) {
+      if (kind !== "webgpu") return null;
+      return {
+        configure(config: { format: string }) {
+          texture?.destroy();
+          texture = device.createTexture({ size: [8, 8], format: config.format as GPUTextureFormat, usage: 0x10 | 0x04 | 0x01 });
+        },
+        unconfigure() {},
+        getCurrentTexture() {
+          return texture;
+        },
+      };
+    },
+  };
+  return canvas;
+}
+
+/** The Dawn host, with each session kept and the first one's loss in the test's hands. */
+function controllableHost(second?: () => Promise<GpuSession>): {
+  host: GpuHost;
+  session: () => GpuSession | undefined;
+  lose: (info: DeviceLossInfo) => void;
+} {
+  const base = nodeGpuHost();
+  let current: GpuSession | undefined;
+  let lose: (info: DeviceLossInfo) => void = () => {};
+  let created = 0;
+  return {
+    host: {
+      label: base.label,
+      async create(options) {
+        created += 1;
+        if (created > 1 && second !== undefined) {
+          current = await second();
+          return current;
+        }
+        const real = await base.create(options);
+        const lost = new Promise<DeviceLossInfo>((resolve) => {
+          lose = resolve;
+        });
+        current = { ...real, deviceLost: lost, dispose: () => real.dispose() };
+        return current;
+      },
+    },
+    session: () => current,
+    lose: (info) => lose(info),
+  };
+}
+
+const BROKEN_LENS = `@group(0) @binding(0) var lensSampler: sampler;
+@group(0) @binding(1) var lensTexture: texture_2d<f32>;
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  return notAFunction(textureSample(lensTexture, lensSampler, uv));
+}`;
+
+describe("previews and the device-loss rebuild tell a build error on its node (T1523b(b), §V27, §V288)", () => {
+  it("a preview program's broken pass is a compile failure on the previewed node, nothing nodeless", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+    const { host, session } = controllableHost();
+    const backend = createVgpuBackend({ host });
+    const diagnostics: RuntimeDiagnostic[] = [];
+    backend.onDiagnostic((diagnostic) => diagnostics.push(diagnostic));
+    try {
+      await backend.initialize({});
+      const device = session()!.gpu.gpu as unknown as GPUDevice;
+      const previews = backend.previewHost(stubCanvas(device) as never);
+      previews.setPreviewProgram({
+        resources: [
+          { kind: "sampler", id: "lens:sampler", filter: "linear" },
+          { kind: "target", id: "lens:source", size: [8, 8], format: "rgba8unorm" },
+          { kind: "target", id: "lens:tile", size: [8, 8], format: "rgba8unorm" },
+        ],
+        passes: [
+          {
+            kind: "effect",
+            id: "preview:lens",
+            shader: BROKEN_LENS,
+            target: "lens:tile",
+            textures: [{ binding: "lensTexture", resourceId: "lens:source" }],
+            samplers: [{ binding: "lensSampler", resourceId: "lens:sampler" }],
+            nodeId: "lens",
+          },
+        ],
+        signature: "broken-lens",
+      } as never);
+      await backend.whenSettled();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(told(diagnostics)).toEqual([
+        [
+          BackendDiagnosticCode.compileFailed,
+          "lens",
+          `Pass "preview:lens" failed to compile on the device: 6:10 unresolved call target 'notAFunction'`,
+        ],
+      ]);
+      previews.dispose();
+    } finally {
+      backend.dispose();
+    }
+  }, 60_000);
+
+  it("a pass the RESTORED device refuses is a compile failure on its node, nothing nodeless", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+    // The replacement device is a plain one: WebGPU's default storage-buffer limit, where
+    // the first was raised (T338). A dispatch over the default but within the raise
+    // compiles on the first device and is refused by the second — the shape a restore onto
+    // a lesser adapter takes.
+    const plain = await init({ label: "loom-restored" });
+    const fallback = plain.gpu.limits.maxStorageBuffersPerShaderStage;
+    const { host, lose } = controllableHost(async () => ({
+      gpu: plain,
+      deviceLost: new Promise<DeviceLossInfo>(() => {}),
+      dispose: () => plain.dispose(),
+    }));
+    const backend = createVgpuBackend({ host });
+    const diagnostics: RuntimeDiagnostic[] = [];
+    backend.onDiagnostic((diagnostic) => diagnostics.push(diagnostic));
+    try {
+      const capabilities = await backend.initialize({});
+      const granted = capabilities.limits["maxStorageBuffersPerShaderStage"] ?? 0;
+      // §V854: the fixture can only fail if the first device really grants more.
+      expect(granted).toBeGreaterThan(fallback);
+      await backend.compile(overboundPlan(fallback + 1));
+      expect(told(diagnostics)).toEqual([]);
+
+      lose({ reason: "destroyed", message: "simulated" });
+      const until = Date.now() + 10_000;
+      while (!diagnostics.some((d) => d.code === BackendDiagnosticCode.deviceRestored) && Date.now() < until) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const rows = told(diagnostics).filter(([code]) => code !== BackendDiagnosticCode.deviceLost);
+      expect(rows.map(([code, nodeId]) => [code, nodeId])).toEqual([[BackendDiagnosticCode.compileFailed, "kernel"]]);
+      expect(rows[0]![2]).toContain(
+        `Pass "overbound" failed to compile on the device: The number of storage buffers (${fallback + 1}) in the Compute stage exceeds the maximum per-stage limit (${fallback})`,
+      );
+    } finally {
+      backend.dispose();
+    }
+  }, 60_000);
+});
+
+/** A dispatch binding `bufferCount` storage buffers — error-net.gpu.test.ts's B33 shape. */
+function overboundPlan(bufferCount: number): LogicalExecutionPlan {
+  const declarations = Array.from(
+    { length: bufferCount },
+    (_, index) => `@group(0) @binding(${index + 1}) var<storage, read_write> b${index}: array<u32>;`,
+  ).join("\n");
+  const sum = Array.from({ length: bufferCount - 1 }, (_, index) => `b${index + 1}[gid.x]`).join(" + ");
+  return {
+    id: "overbound",
+    resources: Array.from({ length: bufferCount }, (_, index) => ({
+      kind: "buffer",
+      id: `buffer:${index}`,
+      stride: 4,
+      capacity: 64,
+      usage: "storage",
+    })),
+    passes: [
+      {
+        kind: "dispatch",
+        id: "overbound",
+        nodeId: "kernel",
+        shader: `
+${declarations}
+struct P { count: u32, };
+@group(0) @binding(0) var<uniform> params: P;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+  if (gid.x >= params.count) { return; }
+  b0[gid.x] = ${sum};
+}`,
+        entryPoint: "main",
+        workgroups: [1, 1, 1],
+        buffers: Array.from({ length: bufferCount }, (_, index) => ({ binding: `b${index}`, resourceId: `buffer:${index}` })),
+        uniforms: { count: 64 },
+        uniformBinding: "params",
+      },
+    ],
+  } as unknown as LogicalExecutionPlan;
+}
 
 describe("an error only vgpu's combined module has keeps its reason (T1523b(c))", () => {
   it("a later compile of the same bytes is told what the device said the first time", async () => {

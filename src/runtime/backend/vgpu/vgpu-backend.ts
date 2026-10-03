@@ -330,6 +330,11 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
   let unsubscribeErrorNet: (() => void) | undefined;
   /** True while compile()'s own listener owns pipeline-compile errors (B9's veto). */
   let compileErrorWindow = false;
+  /**
+   * T1523b: pass ids whose pipeline failures a pending `reportBuildVerdicts` is collecting —
+   * a preview's or a device rebuild's. Counted, because two builds can name one pass.
+   */
+  const claimedPipelineLabels = new Map<string, number>();
 
   function attachErrorNet(watched: GpuSession): void {
     unsubscribeErrorNet?.();
@@ -337,6 +342,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // During the compile window the B9 listener triages pipeline failures itself
       // (veto + release); reporting them here too would double every shader error.
       if (compileErrorWindow && isPipelineCompileError(error)) return;
+      // T1523b: a build that collects its own verdicts says this one on the pass's node.
+      if (isPipelineCompileError(error) && claimedPipelineLabels.has(failedPipelineLabel(error))) return;
       hub.report(
         backendDiagnostic(
           "error",
@@ -364,6 +371,70 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         (raw as { onuncapturederror: unknown }).onuncapturederror = null;
       }
     };
+  }
+
+  /**
+   * T1523b(b) — A BUILD THAT DOES NOT VETO STILL OWES EVERY ERROR ITS NODE (§V27, §V288).
+   *
+   * `compile()` reads its build's verdicts before it installs. The preview hosts and the
+   * device-loss rebuild build too — synchronously, with nothing to refuse — and their
+   * device errors went out on the uncaptured path (the module) and through the net (the
+   * pipeline), naming no node. They now build inside the same per-pass scopes, and this
+   * reads the answers afterwards: each failure becomes the same row `compile()` would
+   * write — the compiler's message, on the author's line, under the pass's node — with
+   * the suggestion that fits a build that kept nothing (`suggestion`).
+   *
+   * MUST be called synchronously after the build returns: the pipeline failures are
+   * delivered asynchronously, so the listener and the net's claim go up before the first
+   * await, or a failure could slip past both.
+   */
+  async function reportBuildVerdicts(
+    watched: GpuSession,
+    verdicts: readonly PassBuildVerdict[],
+    passes: readonly PassDescriptor[],
+    suggestion: string,
+  ): Promise<void> {
+    // The mock device opens no scopes; there is nothing to read.
+    if (verdicts.length === 0) return;
+    const labels = new Set(verdicts.map((verdict) => verdict.passId));
+    for (const label of labels) claimedPipelineLabels.set(label, (claimedPipelineLabels.get(label) ?? 0) + 1);
+    const pipelineFailures: unknown[] = [];
+    const unsubscribe = watched.gpu.onError((error: unknown) => {
+      if (isPipelineCompileError(error) && labels.has(failedPipelineLabel(error))) pipelineFailures.push(error);
+    });
+    try {
+      // Twice, for the reason `compile()` gives: the scope pops, then the listener delivery.
+      await watched.gpu.settled();
+      await watched.gpu.settled();
+      const { failures, notices } = await deviceVerdictDiagnostics(
+        (watched.gpu.device as { gpu?: GPUDevice }).gpu,
+        pipelineFailures,
+        await passBuildErrors(verdicts),
+        passes,
+        suggestion,
+      );
+      if (disposed) return;
+      for (const diagnostic of [...notices, ...failures]) hub.report(diagnostic);
+    } catch (error) {
+      // A device that died while answering is reported by the loss path; anything else is
+      // still said, never swallowed (§V469).
+      if (!disposed) {
+        hub.report(
+          backendDiagnostic(
+            "error",
+            BackendDiagnosticCode.frameError,
+            `Could not read the device's build verdicts: ${describeError(error)}`,
+          ),
+        );
+      }
+    } finally {
+      unsubscribe();
+      for (const label of labels) {
+        const left = (claimedPipelineLabels.get(label) ?? 1) - 1;
+        if (left > 0) claimedPipelineLabels.set(label, left);
+        else claimedPipelineLabels.delete(label);
+      }
+    }
   }
 
   interface PreviewHostState {
@@ -746,12 +817,29 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
 
       if (program) {
         // §V23: rebuilt from the retained plan, which is the compiled form of the domain graph.
-        program.resources = buildResources(
-          next.gpu,
-          program.resourceDescriptors,
-          program.passes,
-          guard,
-        );
+        // T1523b: inside the per-pass scopes, so what the new device refuses lands on its node.
+        // Read in a `finally`: a build that throws part-way still owes what its scopes caught.
+        const verdicts: PassBuildVerdict[] = [];
+        try {
+          program.resources = buildResources(
+            next.gpu,
+            program.resourceDescriptors,
+            program.passes,
+            guard,
+            emptyCarryOver,
+            undefined,
+            noExternalResources,
+            undefined,
+            verdicts,
+          );
+        } finally {
+          void reportBuildVerdicts(
+            next,
+            verdicts,
+            program.passes,
+            "The restored device refused this pass, so it renders nothing; fix it and recompile.",
+          );
+        }
         program.textureConsumers = indexBindingConsumers(program.resources.dynamicTextures);
         program.bufferConsumers = indexBindingConsumers(program.resources.dynamicBuffers);
         resourceBuilds += 1;
@@ -1950,16 +2038,31 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // partial set installs (good tiles keep working, the bad tile is absent), the
       // problems are reported, and `dirty` makes every subsequent main compile retry.
       const partial: { diagnostics: RuntimeDiagnostic[] } = { diagnostics: [] };
-      h.set = buildResources(
-        active.gpu,
-        h.program.resources,
-        h.program.passes,
-        guard,
-        { ...carry, shared: sharedFromMain ?? carry.shared },
-        stats,
-        mainExternals(),
-        partial,
-      );
+      // T1523b: inside the per-pass scopes, so a preview pass the device refuses is said on
+      // its node rather than as a nodeless validation error.
+      // Read in a `finally`: a build that throws part-way still owes what its scopes caught.
+      const verdicts: PassBuildVerdict[] = [];
+      const previewPasses = h.program.passes;
+      try {
+        h.set = buildResources(
+          active.gpu,
+          h.program.resources,
+          previewPasses,
+          guard,
+          { ...carry, shared: sharedFromMain ?? carry.shared },
+          stats,
+          mainExternals(),
+          partial,
+          verdicts,
+        );
+      } finally {
+        void reportBuildVerdicts(
+          active,
+          verdicts,
+          previewPasses,
+          "This preview tile renders nothing; the main output is unaffected.",
+        );
+      }
       h.stats = stats;
       h.dirty = partial.diagnostics.length > 0;
       for (const diagnostic of partial.diagnostics) {
@@ -3646,6 +3749,8 @@ async function deviceVerdictDiagnostics(
   pipelineFailures: readonly unknown[],
   buildErrors: ReadonlyMap<string, string>,
   passes: readonly PassDescriptor[],
+  /** T1523b: what a failure means for THIS build — a preview or a device rebuild retains nothing. */
+  suggestion?: string,
 ): Promise<{ failures: RuntimeDiagnostic[]; notices: RuntimeDiagnostic[] }> {
   const failed = pipelineFailures.map((error) => ({
     label: failedPipelineLabel(error),
@@ -3682,6 +3787,7 @@ async function deviceVerdictDiagnostics(
     failures.push(
       deviceFailureDiagnostic(label, reason ?? cause, passes, {
         ...(described?.source === undefined ? {} : { source: described.source }),
+        ...(suggestion === undefined ? {} : { suggestion }),
       }),
     );
   }
@@ -3716,7 +3822,7 @@ function deviceFailureDiagnostic(
   label: string,
   reason: string,
   passes: readonly PassDescriptor[],
-  options: { readonly source?: RuntimeDiagnostic["source"] } = {},
+  options: { readonly source?: RuntimeDiagnostic["source"]; readonly suggestion?: string } = {},
 ): ReturnType<typeof backendDiagnostic> {
   const pass = passes.find((candidate) => candidate.id === label);
   const nodeId =
@@ -3728,7 +3834,8 @@ function deviceFailureDiagnostic(
     {
       ...(nodeId === undefined ? {} : { nodeId }),
       ...(options.source === undefined ? {} : { source: options.source }),
-      suggestion: "The previous program is retained and still renders (§V9); fix the shader and recompile.",
+      suggestion:
+        options.suggestion ?? "The previous program is retained and still renders (§V9); fix the shader and recompile.",
     },
   );
 }
