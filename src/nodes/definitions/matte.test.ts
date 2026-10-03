@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { createDomainBus } from "../../domain/commands/index.ts";
+import { alice, contextFor } from "../../domain/commands/test-support.ts";
+import { createGraphStore } from "../../domain/graph/store.ts";
+import { validateGraph } from "../../compiler/validate.ts";
+import { createNodeRegistry } from "../registry/registry.ts";
 
 import { matteInputSideFor, matteNode } from "./matte.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
@@ -231,5 +236,52 @@ describe("§V146 — the producer-shaped knobs exist only where they mean someth
     expect(schemaFor({ ...stored, model: MATTE_ACCURATE.id })["backend"]).toBeDefined();
     // The stored pin is still in the bag, so moving back restores the user's choice.
     expect(stored.backend).toBe("webgpu");
+  });
+
+  it("retains model-specific settings across command switches without unknown-parameter warnings", async () => {
+    const registry = createNodeRegistry([matteNode]).view();
+    const store = createGraphStore();
+    const { bus } = createDomainBus({ store, registry });
+    const context = contextFor(alice);
+    const created = await bus.execute("graph.applyPatch", {
+      baseRevision: 0,
+      operations: [{ op: "addNode", ref: "$matte", type: "matte", position: { x: 0, y: 0 },
+        parameters: { model: MATTE_ACCURATE.id, backend: "webgpu", inputSide: "320" } }],
+    }, context);
+    expect(created.status).toBe("applied");
+    const id = created.output.createdIds["$matte"]!;
+    const change = async (parameters: Record<string, string>) => {
+      const result = await bus.execute("graph.applyPatch", {
+        baseRevision: store.view.getRevision(),
+        operations: [{ op: "setParameters", nodeId: id, parameters }],
+      }, context);
+      expect(result.status, JSON.stringify(result.diagnostics)).toBe("applied");
+    };
+    await change({ model: MATTE_RVM.id });
+    await change({ downsampleRatio: "0.375" });
+    await change({ model: MATTE_MEDIAPIPE.id });
+    const graph = store.view.getGraph();
+    const node = graph.nodes[id]!;
+    expect(node.parameters).toMatchObject({ backend: "webgpu", inputSide: "320", downsampleRatio: "0.375" });
+    const schema = schemaFor(node.parameters);
+    for (const key of ["backend", "inputSide", "downsampleRatio"]) expect(schema[key]).toBeUndefined();
+    const validated = validateGraph(graph, registry);
+    expect(validated.diagnostics.filter(d => d.code === "compiler/parameter-unknown")).toEqual([]);
+    for (const key of ["backend", "inputSide", "downsampleRatio"]) {
+      expect(validated.nodes.get(id)?.parameters[key]).toBeUndefined();
+    }
+    const withTypo = { ...graph, nodes: { ...graph.nodes, [id]: { ...node, parameters: { ...node.parameters, ghost: 1 } } } };
+    expect(validateGraph(withTypo, registry).diagnostics.filter(d => d.code === "compiler/parameter-unknown"))
+      .toEqual([expect.objectContaining({ message: expect.stringContaining('"ghost"') })]);
+    await change({ model: MATTE_ACCURATE.id });
+    const restored = store.view.getGraph().nodes[id]!;
+    expect(schemaFor(restored.parameters)["backend"]).toBeDefined();
+    expect(schemaFor(restored.parameters)["inputSide"]).toBeDefined();
+    expect(validateGraph(store.view.getGraph(), registry).nodes.get(id)?.parameters)
+      .toMatchObject({ backend: "webgpu", inputSide: "320" });
+    expect(validateGraph(store.view.getGraph(), registry).diagnostics.filter(d => d.code === "compiler/parameter-unknown"))
+      .toEqual([]);
+    await bus.execute("graph.undo", {}, context);
+    expect(store.view.getGraph().nodes[id]?.parameters["model"]).toBe(MATTE_MEDIAPIPE.id);
   });
 });

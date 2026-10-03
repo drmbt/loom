@@ -69,7 +69,8 @@ export function exampleRuntimeRequirements(project: unknown): readonly ExampleRu
        definition's business now, and re-deriving that list here would put the switch
        back under a different name. Transport is compile-time, so these are the same
        effective values the app runs on. */
-    const resolved = resolveNodeParameters(node, effectiveParameterSchema(definition, node.parameters), definition.title, diagnostics);
+    const resolved = resolveNodeParameters(node, effectiveParameterSchema(definition, node.parameters), definition.title, diagnostics,
+      undefined, definition.retainedParameterKeys);
     let declared: readonly RuntimeRequirementId[];
     try {
       declared = nodeRuntimeRequirements(definition, resolved.values);

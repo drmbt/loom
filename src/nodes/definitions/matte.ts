@@ -703,6 +703,12 @@ function matteParameters(stored: Readonly<Record<string, unknown>>) {
   };
 }
 
+// Derive the dormant keys from the same model schemas that own the controls. A key
+// present in every model never needs retention; variant-only settings do.
+const modelParameterSchemas = MATTE_MODELS.map(model => matteParameters({ model: model.id }));
+const retainedParameterKeys = [...new Set(modelParameterSchemas.flatMap(schema => Object.keys(schema)))]
+  .filter(key => modelParameterSchemas.some(schema => !(key in schema)));
+
 export const matteNode: NodeDefinition = {
   type: "matte",
   version: 1,
@@ -713,9 +719,10 @@ export const matteNode: NodeDefinition = {
     `${measuredOn("2026-09-03")} at around one per second on the GPU provider at 1280x720, and your machine will differ — ` +
     "and the matte is temporally smoothed in the worker, which steadies flickering edges at the cost of about a second of lag on fast motion. How much of the frame the current result claims is published on the node's `coverage` channel — zero there means the model ran and found nobody, which is not the same as the model being unavailable.",
   tags: ["matte", "matting", "segmentation", "person", "ml", "inference", "alpha"],
-  inputs: [{ id: "input", label: "Input", type: RGBA_TEXTURE }],
-  outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],
+  inputs: [{ id: "input", label: "Picture", type: RGBA_TEXTURE }],
+  outputs: [{ id: "out", label: "Mask", type: RGBA_TEXTURE }],
   parameters: matteParameters({}),
+  retainedParameterKeys,
   /**
    * PER-INSTANCE, because the Backend list is what THIS browser reports it can reach and a
    * stored pin has to stay visible even when it cannot (§T960's dynamic enum). A static

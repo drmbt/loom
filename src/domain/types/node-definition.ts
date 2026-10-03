@@ -361,6 +361,12 @@ export interface NodeDefinition {
    * already on disk keeps a home.
    */
   parametersFor?(stored: Readonly<Record<string, unknown>>): ParameterSchema;
+  /**
+   * Known variant keys intentionally retained in stored documents while absent from the
+   * effective schema. They are not resolved or offered as controls in that variant.
+   * Switching back restores the stored settings; other undeclared keys still warn.
+   */
+  retainedParameterKeys?: readonly string[];
   resolutionPolicy?: ResolutionPolicy;
   formatPolicy?: FormatPolicy;
   temporal?: TemporalDefinition;

@@ -94,6 +94,7 @@ export function resolveNodeParameters(
   typeLabel: string,
   diagnostics: RuntimeDiagnostic[],
   options: ParameterResolution = {},
+  retainedParameterKeys: readonly string[] = [],
 ): ResolvedParameters {
   const resolved = resolveParameterSchema(node, parameters, options);
 
@@ -117,6 +118,9 @@ export function resolveNodeParameters(
 
   for (const key of Object.keys(node.parameters).sort()) {
     if (key in parameters) continue;
+    // Variant settings stay in the document for a later switch, without becoming
+    // active parameters. Only the definition's explicit declaration exempts a key.
+    if (retainedParameterKeys.includes(key)) continue;
     // `color.r` addresses a component of a declared compound (§V113), not an unknown key.
     if (isComponentKeyOf(parameters, key)) continue;
     diagnostics.push(
@@ -232,6 +236,7 @@ export function validateGraph(
       definition.type,
       diagnostics,
       resolution,
+      definition.retainedParameterKeys,
     );
     nodes.set(nodeId, {
       node,
