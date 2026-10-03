@@ -3,6 +3,7 @@ import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { ParameterDefinition, ParameterSlot, ParameterValue, StoredParameter } from "@domain/types/parameters.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
+import type { BankCatalogue } from "@domain/presets/bank-view.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
 import {
   componentAddressedDefinition,
@@ -200,10 +201,19 @@ const ROW_GAP = 40;
  * A spot for a new node of `type` beside `anchor` (left of it, top-aligned), stepping down
  * past every box it would cover — `placeFree`'s collision rule at `placeRelative`'s anchor,
  * so a control lands next to the thing it drives and never on top of anything (§V389).
+ * T1547b: the neighbours are sized with the component catalogue the canvas reads, so a look's
+ * instance counts the "+ panel" button it draws (§T1541b).
  */
-function spotBeside(graph: Graph, registry: NodeRegistryView, type: string, anchor: { x: number; y: number }, extra: readonly GraphNode[]): { x: number; y: number } {
+function spotBeside(
+  graph: Graph,
+  registry: NodeRegistryView,
+  type: string,
+  anchor: { x: number; y: number },
+  extra: readonly GraphNode[],
+  catalogue: BankCatalogue | undefined,
+): { x: number; y: number } {
   const others = [...Object.values(graph.nodes), ...extra];
-  const boxes = others.map((node) => nodeBox(node, registry.get(node.type), undefined, graph));
+  const boxes = others.map((node) => nodeBox(node, registry.get(node.type), undefined, graph, catalogue));
   const probe = { id: "placement-probe", type, definitionVersion: 1, position: { x: anchor.x - NODE_WIDTH - COLUMN_GAP, y: anchor.y }, parameters: {} } as GraphNode;
   let candidate = nodeBox(probe, registry.get(type));
   for (let step = 0; step < boxes.length + 1; step += 1) {
@@ -243,6 +253,8 @@ const NO_CONTROL_REASON =
  *   channel (renumbered when taken, §V129), so the binding reads `op('brightness').chan.brightness`.
  * - the Panel: `panelId` when given; else the document's only Panel; else a new one
  *   titled "Controls". Several Panels and none named is refused — there is no one answer.
+ * - `catalogue`: the component catalogue (`presetCatalogueHolderFor`), so placement and the
+ *   join see a look's instance as the canvas draws it (T1547b).
  */
 export function controlFromParameterPlan(
   graph: Graph,
@@ -250,6 +262,7 @@ export function controlFromParameterPlan(
   nodeId: NodeId,
   key: string,
   panelId?: NodeId,
+  catalogue?: BankCatalogue,
 ): ControlPlan {
   const node = graph.nodes[nodeId];
   if (node === undefined) return refuse("control.node", `No node "${nodeId}".`);
@@ -302,13 +315,13 @@ export function controlFromParameterPlan(
     };
   }
 
-  const widgetAt = spotBeside(graph, registry, type, node.position, []);
+  const widgetAt = spotBeside(graph, registry, type, node.position, [], catalogue);
   const provisional = { id: WIDGET_REF, type, definitionVersion: 1, position: widgetAt, parameters: widget, label: name } as GraphNode;
   const operations: GraphPatchOperation[] = [{ op: "addNode", ref: WIDGET_REF, type, position: widgetAt, parameters: widget, label: name }];
   let panelRef: NodeId;
   let withNew: Graph = { nodes: { ...graph.nodes, [WIDGET_REF]: provisional }, edges: graph.edges };
   if (panel === null) {
-    const panelAt = spotBeside(graph, registry, "panel", widgetAt, [provisional]);
+    const panelAt = spotBeside(graph, registry, "panel", widgetAt, [provisional], catalogue);
     operations.push({ op: "addNode", ref: PANEL_REF, type: "panel", position: panelAt, parameters: { title: "Controls" }, label: panelName as string });
     const provisionalPanel = { id: PANEL_REF, type: "panel", definitionVersion: 1, position: panelAt, parameters: { title: "Controls" } } as GraphNode;
     withNew = { nodes: { ...withNew.nodes, [PANEL_REF]: provisionalPanel }, edges: graph.edges };
@@ -318,7 +331,7 @@ export function controlFromParameterPlan(
   }
   // Membership is wiring (T1512b): the SAME join the canvas drop and "+ panel" use, asked
   // about the graph as it will be once the new nodes exist.
-  operations.push(...joinPanelOperations(withNew, WIDGET_REF, panelRef));
+  operations.push(...joinPanelOperations(withNew, WIDGET_REF, panelRef, catalogue));
   operations.push({ op: "setParameters", nodeId, parameters: bindings });
   return { ok: true, label: `Control ${definition.label} from Panel`, operations };
 }

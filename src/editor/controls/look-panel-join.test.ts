@@ -6,7 +6,7 @@ import { registerComponentCommands } from "../../domain/components/commands.ts";
 import { createComponentSystem, type ComponentRegistry } from "../../domain/components/registry.ts";
 import { createSequentialIdFactory } from "../../domain/graph/ids.ts";
 import { layoutGraph } from "../../domain/graph/layout.ts";
-import { nodeBox, nodeControlsHeight } from "../../domain/graph/node-box.ts";
+import { boxesOverlap, nodeBox, nodeControlsHeight, NODE_WIDTH } from "../../domain/graph/node-box.ts";
 import { createGraphStore } from "../../domain/graph/store.ts";
 import { serializePresetBank } from "../../domain/presets/bank.ts";
 import type { GraphComponentDefinition } from "../../domain/types/components.ts";
@@ -16,6 +16,7 @@ import type { GraphPatchOperation } from "../../domain/types/patch.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { panelBoard, parsePanelBoard, soloPanelFor } from "../../nodes/definitions/controls.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
+import { registerControlCommands } from "./control-commands.ts";
 import { joinPanelOperations, panelUnderDrop } from "./panel-join.ts";
 
 /**
@@ -136,5 +137,57 @@ describe("T1541b — the layout model counts a look's “+ panel” (§V389)", (
     const below = Object.entries(positions).filter(([id, at]) => id !== city.id && at.x === positions[city.id]!.x && at.y > positions[city.id]!.y);
     expect(below.length).toBeGreaterThan(0);
     for (const [, at] of below) expect(at.y).toBeGreaterThanOrEqual(positions[city.id]!.y + height + 40);
+  });
+});
+
+describe("T1547b — Control from Panel places its control clear of a look's “+ panel” (§V389)", () => {
+  it("steps the new slider below the look's FULL box, button included, by the row gap", async () => {
+    // A look's instance with a Level just beside it, the Level's top 5 px below the look's
+    // body: inside the strip the look's "+ panel" button takes (the document's one Panel
+    // lacks it). Sized without the catalogue the look ends above the Level's top, so the
+    // slider was placed at the Level's height — on the button.
+    const store = createGraphStore({ ids: createSequentialIdFactory("k"), now: () => "2026-10-03T00:00:00.000Z" });
+    const system = createComponentSystem(registry, [definition("look", true)]);
+    const { bus } = createDomainBus({ store, registry: system.nodes });
+    registerComponentCommands(bus, { components: system.components });
+    registerControlCommands(bus);
+    const components = system.components;
+
+    const probe: GraphNode = { id: "probe", type: "component:look@1", label: "city", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} };
+    const levelY = nodeBox(probe, bus.registry.get(probe.type)).height + 5;
+    const setup = await bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: store.view.getRevision(),
+        label: "setup",
+        operations: [
+          add("city", "component:look@1", "city", 0),
+          { op: "addNode", ref: "$level", type: "level", position: { x: NODE_WIDTH + 80, y: levelY }, label: "level1", parameters: {} },
+          add("panel", "panel", "panel1", 2000),
+        ],
+      },
+      ctx,
+    );
+    expect(setup.output.status).toBe("applied");
+    const ids = setup.output.createdIds as Record<string, NodeId>;
+    const before = bus.store.getGraph();
+    const look = before.nodes[ids["$city"]!]!;
+    const lookBox = nodeBox(look, bus.registry.get(look.type), undefined, before, components);
+    // The premise: the look draws its button, and the Level's top is inside it.
+    expect(nodeControlsHeight(look, before, components)).toBeGreaterThan(5);
+    expect(lookBox.y + lookBox.height).toBeGreaterThan(levelY);
+
+    const made = await bus.execute("control.fromParameter", { nodeId: ids["$level"]!, parameterKey: "brightness" }, ctx);
+    expect(made.output.status).toBe("applied");
+
+    const after = bus.store.getGraph();
+    const slider = Object.values(after.nodes).find((node) => node.type === "slider")!;
+    const sliderBox = nodeBox(slider, bus.registry.get(slider.type), undefined, after, components);
+    // In the look's column, below its whole box — the box the canvas draws — by the row gap.
+    expect(sliderBox.x).toBe(lookBox.x);
+    expect(sliderBox.y).toBe(lookBox.y + lookBox.height + 40);
+    // On top of nothing, every box sized the way the canvas sizes it.
+    const boxes = Object.values(after.nodes).map((node) => nodeBox(node, bus.registry.get(node.type), undefined, after, components));
+    boxes.forEach((box, index) => boxes.slice(index + 1).forEach((other) => expect(boxesOverlap(box, other)).toBe(false)));
   });
 });

@@ -3,6 +3,7 @@ import type { CommandContext, CommandOutcome } from "@domain/commands/bus.ts";
 import { applyGraphPatch } from "@domain/commands/apply-patch.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchResult } from "@domain/types/patch.ts";
+import { presetCatalogueHolderFor } from "@domain/presets/bank-view.ts";
 import { bindParameterPlan, boundControls, controlFromParameterPlan, unbindOperations, type ControlPlan } from "./parameter-controls.ts";
 
 /**
@@ -71,7 +72,11 @@ export function registerControlCommands(bus: LoomBus): void {
     name: CONTROL_FROM_PARAMETER_COMMAND,
     description: "Create the fitting control (slider, toggle, XY pad) for a parameter, bind it and add it to a Panel (T1514b).",
     handler: (input, context) => {
-      const outcome = run(context, controlFromParameterPlan(context.graph, context.registry, input.nodeId, input.parameterKey, input.panelId), input.nodeId);
+      // T1547b: the catalogue the canvas sizes nodes with, so the control lands clear of a
+      // look's "+ panel" too.
+      const catalogue = presetCatalogueHolderFor(bus).current?.components;
+      const plan = controlFromParameterPlan(context.graph, context.registry, input.nodeId, input.parameterKey, input.panelId, catalogue);
+      const outcome = run(context, plan, input.nodeId);
       // The control and Panel it makes are a side-effect of binding the parameter the person
       // is mapping in the Inspector; taking the selection would move the Inspector off it
       // (`selectCreatedNodes` reads this flag).
