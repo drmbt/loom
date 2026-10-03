@@ -340,6 +340,23 @@ describe("T1503b — banks, layers and cue lists on the phone", () => {
     expect(JSON.stringify(buildPhoneSnapshot(bus.store.getGraph(), 1))).not.toContain("backstageLook");
   });
 
+  /*
+   * §B233 made the picture a `wire: true` reference: a wire into it wins and the name goes
+   * dormant. A phone label that still read the name would tell the performer the layer shows
+   * a look it no longer shows — the desk's item says "wired", and so must the phone.
+   */
+  it("T1527b: says \"wired\" while a wire feeds the layer's picture, and the name again once the wire is gone", async () => {
+    const { bus, ids } = await documentWith(show({ picture: "city" }));
+    expect(widgetOf(bus.store.getGraph(), "layer").picture).toBe("city");
+    await patch(bus, [{ op: "connect", source: { nodeId: ids["$blur"] as never, portId: "out" }, target: { nodeId: ids["$fx"] as never, portId: "picture" } }]);
+    expect(widgetOf(bus.store.getGraph(), "layer").picture).toBe("wired");
+    const graph = bus.store.getGraph();
+    const intoPicture = Object.values(graph.edges).filter((edge) => edge.target.nodeId === ids["$fx"] && edge.target.portId === "picture");
+    expect(intoPicture).toHaveLength(1);
+    await patch(bus, [{ op: "disconnect", edgeIds: intoPicture.map((edge) => edge.id) }]);
+    expect(widgetOf(bus.store.getGraph(), "layer").picture).toBe("city");
+  });
+
   it("T1526b: sends each cue's note beside its name, in list order — empty where a cue has none", async () => {
     const cues = serializeCueList({
       version: 1,

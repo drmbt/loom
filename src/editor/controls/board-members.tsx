@@ -2,9 +2,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useStore } from "zustand";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
-import type { NodeId } from "@domain/types/ids.ts";
-import { overridingWire, sourceReferencesOf } from "@domain/graph/source-references.ts";
+import type { GraphNode } from "@domain/types/graph.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
 import { isParameterSlot, staticBindingValue } from "@domain/parameters/slots.ts";
 import {
@@ -23,7 +21,7 @@ import {
   parseMorphRecords,
   parsePresetBank,
 } from "@domain/presets/index.ts";
-import { LAYER_NODE_TYPE, controlNameOf, type BoardRect } from "@nodes/definitions/controls.ts";
+import { LAYER_NODE_TYPE, controlNameOf, layerPicture, type BoardRect } from "@nodes/definitions/controls.ts";
 import { refusalMessage, type CommandAnswer } from "@editor/inspector/command-refusal.ts";
 import { boardFit, boardValueEm, cueListBoardLayout, cueListShowsCues, layerBoardLayout, presetStripGrid, type BoardCells } from "./board-fit.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
@@ -228,23 +226,6 @@ const declared = (definition: unknown, key: "default" | "min" | "max", fallback:
   const value = (definition as Record<string, unknown> | undefined)?.[key];
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 };
-
-/** What a wired picture is called on the item: the wire wins over the name (§B233). */
-const WIRED = "wired";
-
-/**
- * T1527b — WHAT A LAYER SHOWS, for its board item: the name in its Picture parameter, or
- * "wired" when a wire feeds the picture — by B233's rule, read through the same function
- * the compiler reads (`overridingWire`), so the item never names a picture the wire has
- * made dormant. Empty when it shows nothing.
- */
-function layerPicture(graph: Pick<GraphDocument, "nodes" | "edges">, nodeId: NodeId): string {
-  const node = graph.nodes[nodeId];
-  const spec = sourceReferencesOf(LAYER_NODE_TYPE).find((each) => each.parameter === "picture");
-  if (node === undefined || spec === undefined) return "";
-  if (overridingWire(spec, nodeId, graph.edges) !== undefined) return WIRED;
-  return text(node.parameters["picture"]);
-}
 
 function LayerStrip({ node, rect, cells, bus, invocation, write }: BoardMemberProps) {
   const name = controlNameOf(node);

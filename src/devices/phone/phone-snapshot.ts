@@ -24,6 +24,7 @@ import {
   CONTROL_WIDGET_TYPES,
   LAYER_NODE_TYPE,
   controlNameOf,
+  layerPicture,
   controlButtonNode,
   controlChannel,
   controlSliderNode,
@@ -323,7 +324,7 @@ function cueState(node: GraphNode): { readonly list: CueList | null; readonly po
   };
 }
 
-function memberWidget(node: GraphNode, kind: MemberKind, clock: FrameClock | undefined): PhoneWidget {
+function memberWidget(graph: GraphDocument, node: GraphNode, kind: MemberKind, clock: FrameClock | undefined): PhoneWidget {
   const handle = node.id;
   const caption = controlNameOf(node);
   switch (kind) {
@@ -345,9 +346,9 @@ function memberWidget(node: GraphNode, kind: MemberKind, clock: FrameClock | und
         on: node.ui?.bypassed !== true,
         opacity: opacity.value,
         opacityWritable: opacity.writable,
-        // T1526b: the name in its Picture parameter — a layer takes its picture by name, and
-        // the bus refuses a wire into that input (`apply-patch.ts`, port.sourceReference).
-        picture: textOf(node.parameters["picture"]),
+        // T1526b: what the layer shows — its Picture name, or "wired" when a wire feeds the
+        // picture (§B233: the wire wins), by the rule the desk's item reads (`layerPicture`).
+        picture: layerPicture(graph, node.id),
       };
     }
     case "cueList": {
@@ -383,7 +384,7 @@ function phoneBoard(graph: GraphDocument, panel: GraphNode, clock: FrameClock | 
     const node = item.node;
     // T1503b: a bank, a layer or a cue list — on the board by name, drawn at its rect.
     const member = memberKind(node);
-    if (member !== null) return [{ kind: "widget", rect: item.rect, widget: memberWidget(node, member, clock) }];
+    if (member !== null) return [{ kind: "widget", rect: item.rect, widget: memberWidget(graph, node, member, clock) }];
     return isWidgetKind(node.type) && !isDriven(node, node.type) ? [{ kind: "widget", rect: item.rect, widget: phoneWidget(node as WidgetNode) }] : [];
   });
   return { columns: board.columns, rows: board.rows, items };

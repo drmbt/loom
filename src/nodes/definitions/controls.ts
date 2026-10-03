@@ -3,6 +3,7 @@ import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
 import type { NodeId } from "../../domain/types/ids.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { incomingEdgesInOrder } from "../../domain/graph/edge-order.ts";
+import { overridingWire, sourceReferencesOf } from "../../domain/graph/source-references.ts";
 import { isParameterSlot, staticBindingValue } from "../../domain/parameters/slots.ts";
 import { PRESETS_NODE_TYPE, parsePresetBank } from "../../domain/presets/bank.ts";
 import { CUE_LIST_NODE_TYPE } from "../../domain/presets/cue-list.ts";
@@ -267,6 +268,24 @@ function plainValue(stored: StoredParameter | undefined): unknown {
 
 /** What a widget or Panel is called on a surface: the node's label, or its id. */
 export const controlNameOf = (node: GraphNode): string => node.label ?? node.id;
+
+/** What a wired picture is called on a Layer's item: the wire wins over the name (§B233). */
+const WIRED_PICTURE = "wired";
+
+/**
+ * T1527b — WHAT A LAYER SHOWS, for its board item on the desk and on the phone: the name in
+ * its Picture parameter, or "wired" when a wire feeds the picture — by B233's rule, read
+ * through the same function the compiler reads (`overridingWire`), so no surface names a
+ * picture the wire has made dormant. Empty when it shows nothing.
+ */
+export function layerPicture(graph: Pick<GraphDocument, "nodes" | "edges">, nodeId: NodeId): string {
+  const node = graph.nodes[nodeId];
+  const spec = sourceReferencesOf(LAYER_NODE_TYPE).find((each) => each.parameter === "picture");
+  if (node === undefined || spec === undefined) return "";
+  if (overridingWire(spec, nodeId, graph.edges) !== undefined) return WIRED_PICTURE;
+  const stored = plainValue(node.parameters["picture"]);
+  return typeof stored === "string" ? stored.trim() : "";
+}
 
 /** A Panel's title as every surface shows it: its Title, or the node's name. */
 export function panelTitle(panel: GraphNode): string {
