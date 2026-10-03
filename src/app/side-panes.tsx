@@ -47,6 +47,7 @@ import type { ScreenCaptureWiring } from "./use-screen-sources.ts";
 import { useViewerSynthesis } from "./use-viewer-synthesis.ts";
 import { useNativeOutput } from "./use-native-output.ts";
 import { useViewCameraOverride } from "./use-view-camera.ts";
+import { useViewerMapping, VIEWER_MAPPING_HINT, VIEWER_MAPPING_HINT_ON } from "./use-viewer-mapping.ts";
 import { useViewerFly } from "./use-viewer-fly.ts";
 import { VIEWER_NO_CAMERA_MESSAGE } from "./viewer-commands.ts";
 import type { GraphActions, PortDragOrigin } from "./graph-pane.tsx";
@@ -480,7 +481,11 @@ function formatChannel(value: number): string {
 
 export interface ViewerPaneProps {
   compiled: CompiledGraph | null;
-  /** Needed only to tell a declared Output node from a preview sink — see below. */
+  /**
+   * Needed to tell a declared Output node from a preview sink — see below — and, §T1536b,
+   * as the AUTHORED document the Edit mapping layer reads its targets from (live: the app
+   * hands `useGraphCompile`'s subscription, so a drag's write comes back through here).
+   */
   graph: GraphDocument;
   /** The live backend, when there is one. The runtime is handed the surface (§V64). */
   backend?: LoomBackend | null;
@@ -662,6 +667,8 @@ export function ViewerPane({
    */
   const outputsRef = useRef(choices);
   outputsRef.current = choices;
+  /** §T1536b: filled from `useViewerMapping` below, which needs the presentation's key. */
+  const editMappingRef = useRef<(on: boolean | undefined) => boolean>(() => false);
   useEffect(() => {
     const holder = registerViewerCommands(bus);
     const handlers = {
@@ -697,6 +704,8 @@ export function ViewerPane({
          comes through here — it is a gesture on the focused pane — but both land in the
          same store through the same arithmetic, so the two cannot drift. */
       fly: (direction: FlyAxis) => orbitStateRef.current.fly(direction),
+      /* §T1536b (viewer slice): `m`, the bar's toggle and an agent all set the one mode. */
+      editMapping: (on: boolean | undefined) => editMappingRef.current(on),
     };
     holder.current = handlers;
     return () => {
@@ -736,6 +745,21 @@ export function ViewerPane({
     ...(orbits === undefined ? {} : { orbits }),
   });
   const nativeOutput = useNativeOutput(backend, selected, documentIdentity, bus);
+  /*
+   * §T1536b (viewer slice) — EDIT MAPPING over this picture: the perform window's layer in a
+   * host box over the frame (`use-viewer-mapping.ts` decides which node's handles, and the
+   * map is this pane's own `fitInsideRegion` letterbox). Rebuilt when the canvas is (a float
+   * into another document, T705).
+   */
+  const mapping = useViewerMapping({
+    bus,
+    graph,
+    registry,
+    invocation,
+    output: selected === null ? null : { nodeId: selected.nodeId, size: selected.size },
+    surfaceKey: canvasKey,
+  });
+  editMappingRef.current = mapping.setEditing;
   /**
    * The probe's target, keyed on PRIMITIVES.
    *
@@ -1257,6 +1281,8 @@ export function ViewerPane({
       // 500ms ≈ the platform double-click interval: any dblclick whose sequence
       // overlaps a drag is the drag's tail, not a request.
       if (event.timeStamp - dragEndedAtRef.current < 500) return;
+      // §T1536b: a double click on the mapping layer is a mapping gesture (as on the window).
+      if ((event.target as Element | null)?.closest?.("[data-perform-mapping]") != null) return;
       toggleFullscreen();
     },
     [toggleFullscreen],
@@ -1273,7 +1299,10 @@ export function ViewerPane({
     <div
       {...viewerPaneProps}
       className={styles.viewer}
-      onKeyDown={fly.onKeyDown}
+      onKeyDown={(event) => {
+        // §T1536b: Escape leaves Edit mapping first, and only while it is on.
+        if (!mapping.onKeyDown(event)) fly.onKeyDown(event);
+      }}
       onKeyUp={fly.onKeyUp}
       onBlur={fly.onBlur}
       data-viewer-flying={fly.flying ? "true" : undefined}
@@ -1339,6 +1368,39 @@ export function ViewerPane({
           }
           flying={fly.flying}
         />
+        {/* §T1536b (viewer slice): beside the camera toggle — the other mode the picture's
+            own gestures switch into. The label carries the key and the way out (§V90). */}
+        <Tooltip label={mapping.editing ? VIEWER_MAPPING_HINT_ON : VIEWER_MAPPING_HINT}>
+          <Button
+            aria-label="Edit mapping"
+            aria-pressed={mapping.editing}
+            data-testid="viewer-mapping-toggle"
+            /* THIS viewer's mode, as the camera toggle beside it: with several viewers the
+               command's holder is the last one mounted (T405), and a click means this one. */
+            onClick={() => mapping.setEditing(undefined)}
+          >
+            <span className={styles.glyph} aria-hidden="true">
+              M
+            </span>
+          </Button>
+        </Tooltip>
+        {/* Several on the chain: pick which one, as the window's inspector section does.
+            A refused one stays listed (the layer's note names why) rather than hidden. */}
+        {mapping.editing && mapping.targets.length > 1 ? (
+          <select
+            aria-label="Mapping node to edit"
+            data-testid="viewer-mapping-target"
+            className={styles.select}
+            value={mapping.chosen ?? ""}
+            onChange={(event) => mapping.choose(event.target.value)}
+          >
+            {mapping.targets.map((target) => (
+              <option key={target.nodeId} value={target.nodeId}>
+                {target.label}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <Tooltip label={fullscreen ? "Leave fullscreen — Escape also works" : "Fullscreen"}>
           <Button
             aria-label={fullscreen ? "Leave fullscreen" : "Fullscreen"}
@@ -1427,6 +1489,10 @@ export function ViewerPane({
           <ViewerAxisGizmo orbits={orbits} nodeId={orbitNodeId} basis={orbitable ? flyBasis : null} />
           </div>
         )}
+        {/* §T1536b (viewer slice): the Edit mapping layer's host — empty to React, filled by
+            `perform-mapping-overlay.ts` while the mode is on. A sibling of the picture, over
+            the whole frame, so a handle off the picture (clamp-free, §T1538b) still shows. */}
+        <div ref={mapping.hostRef} className={styles.mappingHost} data-testid="viewer-mapping-host" />
       </div>
 
       {/*

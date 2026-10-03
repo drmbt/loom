@@ -52,6 +52,12 @@ declare module "@domain/types/commands.ts" {
      * on a pass nothing downstream reads, and there is no path from it to the document.
      */
     "viewer.fly": { input: { direction: string }; output: { moved: boolean } };
+    /**
+     * §T1536b (viewer slice): the viewer's "Edit mapping" mode — the Corner Pin / Grid Warp
+     * handles drawn over its picture. `on` sets it; absent, it toggles (`m`). View state, like
+     * the camera: the mode itself writes nothing; a drag in it is an ordinary parameter edit.
+     */
+    "viewer.editMapping": { input: { on?: boolean }; output: { editing: boolean } };
   }
 }
 
@@ -69,6 +75,8 @@ export interface ViewerHandlers {
   frameContent(): Promise<boolean>;
   /** §T1311b(b): one fly step. False = nothing with a camera is on screen to fly. */
   fly(direction: FlyAxis): boolean;
+  /** §T1536b: set (or, `undefined`, toggle) the viewer's edit-mapping mode; returns it. */
+  editMapping(on: boolean | undefined): boolean;
 }
 
 export interface ViewerHolder {
@@ -258,6 +266,39 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
           });
     },
     rejectionOutput: () => ({ moved: false }),
+  });
+
+  /*
+   * §T1536b (viewer slice) — EDIT MAPPING on the viewer, so `m` is a keymap row (rebindable,
+   * in the shortcut editor) and an agent or the palette can reach the same toggle as the bar
+   * button. Escape is NOT a row: a `viewer` binding on Escape would shadow the global
+   * `ui.cancel` row, which the keymap's own conflict check refuses — the pane answers Escape
+   * itself while the mode is on, as the perform window does.
+   */
+  bus.registerCommand({
+    name: "viewer.editMapping",
+    description: "Turn the viewer's Edit mapping mode on or off (Corner Pin / Grid Warp handles over the picture).",
+    handler: (input, context) => {
+      const revision = context.store.getRevision();
+      if (holder.current === null) {
+        return {
+          status: "rejected",
+          revision,
+          diagnostics: [
+            {
+              severity: "warning" as const,
+              code: "viewer.noPane",
+              message: "No viewer is on screen to edit mapping in.",
+              suggestion: "Open the viewer pane, then try again.",
+            },
+          ],
+          output: { editing: false },
+        };
+      }
+      if (context.dryRun) return { status: "validated", revision, output: { editing: false } };
+      return { status: "applied", revision, output: { editing: holder.current.editMapping(input.on) } };
+    },
+    rejectionOutput: () => ({ editing: false }),
   });
 
   return holder;

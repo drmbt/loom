@@ -150,8 +150,8 @@ export function outputToSquare(pins: Quad): Mat3 | null {
 
 const IDENTITY_MAT3: Mat3 = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 
-const PIN_KEYS = ["pinbl", "pinbr", "pintr", "pintl"] as const;
-const EXTRACT_KEYS = ["extractbl", "extractbr", "extracttr", "extracttl"] as const;
+export const PIN_KEYS = ["pinbl", "pinbr", "pintr", "pintl"] as const;
+export const EXTRACT_KEYS = ["extractbl", "extractbr", "extracttr", "extracttl"] as const;
 const CORNER_LABELS = ["Bottom Left", "Bottom Right", "Top Right", "Top Left"] as const;
 
 function readQuad(parameters: Readonly<Record<string, ParameterValue>>, keys: readonly string[]): Quad {

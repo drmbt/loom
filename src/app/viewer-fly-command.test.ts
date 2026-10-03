@@ -30,6 +30,7 @@ function setup(handlers?: Partial<ViewerHandlers>) {
         flown.push(direction);
         return true;
       },
+      editMapping: () => false,
       ...handlers,
     };
   }

@@ -149,6 +149,17 @@ const TD_GRAPH_BINDINGS: readonly KeyBinding[] = [
     }),
   ),
   {
+    // §T1536b (viewer slice) — the perform window's `M`, in the viewer: Corner Pin / Grid
+    // Warp handles over the picture. Escape leaves the mode, answered by the pane while it is
+    // on (a `viewer` row on Escape would shadow `ui.cancel`; see `viewer-commands.ts`).
+    id: "viewer.editMapping",
+    keys: "m",
+    context: "viewer",
+    command: "viewer.editMapping",
+    label: "Edit mapping — Corner Pin / Grid Warp handles",
+    description: "Draw the handles of the Corner Pin or Grid Warp the viewer shows (or that feeds it) over the picture. Escape leaves.",
+  },
+  {
     id: "node.toggleBypass",
     keys: "b",
     context: "graph",

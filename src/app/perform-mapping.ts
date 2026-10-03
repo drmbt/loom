@@ -26,6 +26,10 @@ import { fitInsideRegion } from "@editor/nodes/preview-fit.ts";
  *     pixels: through the lens, then the Window Out's Fit (the shader's `placed`, restated),
  *     then the canvas's `object-fit: contain` of the W×H target into the window.
  *
+ * The viewer pane asks the same questions (§T1536b, viewer slice): `mappingTargetsAt` walks
+ * from the node the viewer shows (itself first), and `viewerPicture` is its frame — the lens,
+ * then the viewer's own contain-fit, with no Fit step.
+ *
  * ## Exact, or refused — never guessed
  *
  * Between the mapping node and the window only nodes that keep every point of the picture
@@ -122,6 +126,27 @@ const WINDOW_INPUT = "input";
 
 /** The mapping nodes feeding `windowNodeId`, nearest first. */
 export function mappingTargetsOf(graph: GraphDocument, registry: NodeRegistryView, windowNodeId: string): readonly MappingTarget[] {
+  return walkMappingTargets(graph, registry, (into) => into(windowNodeId, WINDOW_INPUT), [windowNodeId], "this window");
+}
+
+/**
+ * §T1536b (viewer) — the mapping nodes whose handles the viewer can draw while it shows
+ * `nodeId`'s output, nearest first: `nodeId` itself when it is a Corner Pin / Grid Warp,
+ * then the chain behind it, crossed by exactly the window's rules. Upstream of a mapping
+ * node, or unrelated to one, the list is empty.
+ */
+export function mappingTargetsAt(graph: GraphDocument, registry: NodeRegistryView, nodeId: string): readonly MappingTarget[] {
+  return walkMappingTargets(graph, registry, () => nodeId, [], "the viewer");
+}
+
+/** The walk both surfaces share; `where` names the surface in a refusal ("this window", "the viewer"). */
+function walkMappingTargets(
+  graph: GraphDocument,
+  registry: NodeRegistryView,
+  start: (into: (nodeId: string, portId: string) => string | undefined) => string | undefined,
+  skip: readonly string[],
+  where: string,
+): readonly MappingTarget[] {
   // By-name sources become the edges the compile would synthesize (B233's wire-or-name rule).
   const wired = synthesizeSourceReferenceEdges(graph, registry).graph;
   const edges = Object.values(wired.edges);
@@ -134,10 +159,10 @@ export function mappingTargetsOf(graph: GraphDocument, registry: NodeRegistryVie
   /** The first node on the way that moves the picture, as "<Title> "<name>" <what it does>". */
   let blocker: string | null = null;
   const refusal = (title: string, name: string): string | null =>
-    blocker === null ? null : `${blocker} between ${title} "${name}" and this window, so its handles cannot be placed exactly here.`;
+    blocker === null ? null : `${blocker} between ${title} "${name}" and ${where}, so its handles cannot be placed exactly here.`;
 
-  const seen = new Set<string>([windowNodeId]);
-  let current = into(windowNodeId, WINDOW_INPUT);
+  const seen = new Set<string>(skip);
+  let current = start(into);
   while (current !== undefined && !seen.has(current)) {
     seen.add(current);
     const node = wired.nodes[current];
@@ -256,11 +281,12 @@ function projected(m: Mat3, point: Point): Point | null {
 export function pictureLensFor(
   target: MappingTarget,
   valuesOf: (nodeId: string) => Readonly<Record<string, ParameterValue>> | undefined,
+  where = "this window",
 ): PictureLens | string {
   const steps: LensStep[] = [];
   for (const crossing of target.through) {
     const named = `Corner Pin "${crossing.name}"`;
-    const nowhere = `It shows nothing, so ${target.title} "${target.name}"'s handles have no place on this window.`;
+    const nowhere = `It shows nothing, so ${target.title} "${target.name}"'s handles have no place on ${where}.`;
     const values = valuesOf(crossing.nodeId);
     if (values === undefined) return `${named} is not in the document. ${nowhere}`;
     const { pins, extract } = cornerPinQuads(values);
@@ -316,16 +342,39 @@ export interface WindowPicture {
  */
 export function windowPicture(facts: WindowPictureFacts, windowSize: Size, lens: PictureLens = []): WindowPicture {
   const rect = fitInsideRegion({ width: windowSize[0], height: windowSize[1] }, facts.targetSize);
+  return framedPicture(lens, rect, (point) => fitShown(facts, point), (point) => fitPlaced(facts, point));
+}
+
+/**
+ * §T1536b (viewer) — the map for the viewer pane: through the Corner Pins crossed, then
+ * straight into the picture box, which is `fitInsideRegion`'s letterbox of the shown output
+ * (`pictureSize`) in the viewer's frame (`frameSize`, CSS pixels) — the identical call
+ * `side-panes.tsx` sizes `.picture` with (T1158), whose canvas fills that box exactly. No Fit
+ * step: the viewer shows the output whole.
+ */
+export function viewerPicture(pictureSize: Size, frameSize: Size, lens: PictureLens = []): WindowPicture {
+  const rect = fitInsideRegion({ width: frameSize[0], height: frameSize[1] }, pictureSize);
+  const same = (point: Point): Point => point;
+  return framedPicture(lens, rect, same, same);
+}
+
+/** Through `lens`, then `shown` into the unit target, then into `rect` (CSS pixels, y down); and back. */
+function framedPicture(
+  lens: PictureLens,
+  rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  shown: (point: Point) => Point,
+  placed: (point: Point) => Point,
+): WindowPicture {
   return {
     toWindow(point) {
       let at: Point | null = point;
       for (const step of lens) if (at !== null) at = step.forward(at);
       if (at === null) return null;
-      const [x, y] = fitShown(facts, at);
+      const [x, y] = shown(at);
       return [rect.x + x * rect.width, rect.y + (1 - y) * rect.height];
     },
     fromWindow([px, py]) {
-      let at: Point | null = fitPlaced(facts, [(px - rect.x) / rect.width, 1 - (py - rect.y) / rect.height]);
+      let at: Point | null = placed([(px - rect.x) / rect.width, 1 - (py - rect.y) / rect.height]);
       for (let index = lens.length - 1; index >= 0 && at !== null; index -= 1) at = (lens[index] as LensStep).inverse(at);
       return at;
     },

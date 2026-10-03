@@ -1,10 +1,14 @@
+import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
+import type { ParameterValue } from "@domain/types/parameters.ts";
 import { GRID_WARP_MIN, gridWarpInverse, gridWarpPoint, parsePointKey } from "@nodes/definitions/grid-warp.ts";
 import type { GridAxis, WarpGrid } from "@nodes/definitions/grid-warp.ts";
 import { GRID_WARP_MAX } from "@nodes/shaders/grid-warp.wgsl.ts";
+import type { NodeRegistryView } from "@nodes/registry/registry.ts";
+import { gizmoTilesFor } from "@editor/viewer/index.ts";
 import type { GridLineActions, PictureGizmoHandle, Vec3GizmoStore } from "@editor/viewer/index.ts";
-import { windowPicture } from "./perform-mapping.ts";
-import type { PictureLens, Point, WindowPicture, WindowPictureFacts } from "./perform-mapping.ts";
+import { lensHorizon, pictureLensFor } from "./perform-mapping.ts";
+import type { MappingTarget, PictureLens, Point, Size, WindowPicture } from "./perform-mapping.ts";
 
 /**
  * §T1536b — THE MAPPING HANDLES, DRAWN ON THE PERFORM WINDOW.
@@ -32,6 +36,16 @@ import type { PictureLens, Point, WindowPicture, WindowPictureFacts } from "./pe
  * The gestures are the tile's: drag a point; Option/Alt-click the picture inserts a column
  * through the place (Alt+Shift a row), with the line drawn under the pointer while Alt is
  * held; right-click a Grid Warp point for "Delete column N" / "Delete row N".
+ *
+ * ## The viewer pane is the same layer in a host element (§T1536b, viewer slice)
+ *
+ * Given a `host`, the layer is mounted inside it (absolute, filling it) rather than fixed
+ * over a whole window, measures the host for its size, and turns pointer positions into the
+ * host's own pixels. The frame is the edit's `place`: the window passes its Fit + letterbox
+ * map, the viewer its own contain-fit (`viewerPicture`); the gestures, the write path and
+ * what is drawn are this file's, once. `mappingOverlayView` is the one derivation of what a
+ * surface shows (which handles, which note, which refusal), so the two surfaces cannot
+ * disagree about a target either.
  */
 
 export interface MappingOverlayEdit {
@@ -39,9 +53,11 @@ export interface MappingOverlayEdit {
   readonly handles: readonly PictureGizmoHandle[];
   /** A Grid Warp's effective grid; undefined for a Corner Pin (its outline is the pin quad). */
   readonly grid: WarpGrid | undefined;
-  readonly picture: WindowPictureFacts;
-  /** §T1538b: the Corner Pins between the node and the window, in picture order. */
-  readonly lens: PictureLens;
+  /**
+   * The exact map between the node's picture and the layer's pixels, for a layer of `size`
+   * CSS pixels — the Corner Pins between (§T1538b) included.
+   */
+  readonly place: (size: Size) => WindowPicture;
 }
 
 export interface MappingOverlayView {
@@ -52,8 +68,13 @@ export interface MappingOverlayView {
 }
 
 export interface MappingOverlayDeps {
-  /** The perform window. */
+  /** The window the layer lives in: the perform window, or the viewer's own. */
   readonly window: Window;
+  /**
+   * The element to mount in (the viewer's frame). Absent: a fixed layer over the whole
+   * window, sized by the window (the perform window).
+   */
+  readonly host?: HTMLElement | undefined;
   readonly store: Vec3GizmoStore;
   readonly lines: GridLineActions;
   /** Token values from the editor's stylesheet, set on the layer as custom properties. */
@@ -82,13 +103,13 @@ interface DragState {
   readonly picture: WindowPicture;
 }
 
-export function createMappingOverlay({ window: child, store, lines, tokens }: MappingOverlayDeps): MappingOverlay {
-  const doc = child.document;
+export function createMappingOverlay({ window: child, host, store, lines, tokens }: MappingOverlayDeps): MappingOverlay {
+  const doc = host?.ownerDocument ?? child.document;
   const root = doc.createElement("div");
   root.dataset["performMapping"] = "on";
   root.dataset["testid"] = "perform-mapping";
   for (const [name, value] of Object.entries(tokens)) if (value !== "") root.style.setProperty(name, value);
-  Object.assign(root.style, { position: "fixed", inset: "0", pointerEvents: "none", overflow: "hidden", fontFamily: "var(--font-ui)", fontSize: "var(--fs-ui)" });
+  Object.assign(root.style, { position: host === undefined ? "fixed" : "absolute", inset: "0", pointerEvents: "none", overflow: "hidden", fontFamily: "var(--font-ui)", fontSize: "var(--fs-ui)" });
 
   const svg = doc.createElementNS(SVG, "svg");
   svg.setAttribute("aria-hidden", "true");
@@ -141,7 +162,7 @@ export function createMappingOverlay({ window: child, store, lines, tokens }: Ma
     pointerEvents: "auto",
   });
   root.append(svg, surface, handleLayer, note, menu);
-  doc.body.appendChild(root);
+  (host ?? doc.body).appendChild(root);
 
   let view: MappingOverlayView = { note: "" };
   let alt = false;
@@ -150,8 +171,14 @@ export function createMappingOverlay({ window: child, store, lines, tokens }: Ma
   let drag: DragState | null = null;
   const buttons = new Map<string, HTMLButtonElement>();
 
-  const size = (): readonly [number, number] => [child.innerWidth, child.innerHeight];
-  const pictureOf = (edit: MappingOverlayEdit): WindowPicture => windowPicture(edit.picture, size(), edit.lens);
+  const size = (): Size => (host === undefined ? [child.innerWidth, child.innerHeight] : [host.clientWidth, host.clientHeight]);
+  const pictureOf = (edit: MappingOverlayEdit): WindowPicture => edit.place(size());
+  /** A pointer in the layer's own pixels: the window's are already that (the body has no margin). */
+  const local = (event: MouseEvent): Point => {
+    if (host === undefined) return [event.clientX, event.clientY];
+    const box = host.getBoundingClientRect();
+    return [event.clientX - box.left, event.clientY - box.top];
+  };
   const at = (picture: WindowPicture, point: Point): string | null => {
     const shown = picture.toWindow(point);
     return shown === null ? null : `${String(shown[0])},${String(shown[1])}`;
@@ -287,7 +314,7 @@ export function createMappingOverlay({ window: child, store, lines, tokens }: Ma
       const edit = view.edit;
       event.preventDefault();
       if (edit?.grid === undefined) return;
-      openMenu(edit, edit.grid, key, event.clientX, event.clientY);
+      openMenu(edit, edit.grid, key, ...local(event));
     });
     return button;
   }
@@ -353,7 +380,7 @@ export function createMappingOverlay({ window: child, store, lines, tokens }: Ma
   const locate = (event: PointerEvent): { gu: number; gv: number } | null => {
     const edit = view.edit;
     if (edit?.grid === undefined) return null;
-    const picture = pictureOf(edit).fromWindow([event.clientX, event.clientY]);
+    const picture = pictureOf(edit).fromWindow(local(event));
     return picture === null ? null : gridWarpInverse(edit.grid, picture);
   };
   surface.addEventListener("pointermove", (event) => {
@@ -406,6 +433,10 @@ export function createMappingOverlay({ window: child, store, lines, tokens }: Ma
   child.addEventListener("blur", onBlur);
   child.addEventListener("resize", render);
   doc.addEventListener("pointerdown", onPress, true);
+  // A host is resized by its pane, not only by its window (a dock drag, a split).
+  const hostWindow = host === undefined ? null : doc.defaultView;
+  const observer = hostWindow !== null && typeof hostWindow.ResizeObserver === "function" ? new hostWindow.ResizeObserver(render) : null;
+  if (host !== undefined) observer?.observe(host);
 
   return {
     element: root,
@@ -420,10 +451,70 @@ export function createMappingOverlay({ window: child, store, lines, tokens }: Ma
       child.removeEventListener("blur", onBlur);
       child.removeEventListener("resize", render);
       doc.removeEventListener("pointerdown", onPress, true);
+      observer?.disconnect();
       // A gesture cut short by leaving the mode still closes its undo group.
       if (drag !== null && view.edit !== undefined) store.end(view.edit.nodeId, drag.key);
       drag = null;
       root.remove();
     },
+  };
+}
+
+/** What a surface knows when it asks `mappingOverlayView` what to draw. */
+export interface MappingViewInput {
+  /** The authored document the target and its handles are read from. */
+  readonly graph: GraphDocument;
+  readonly registry: NodeRegistryView;
+  /** The target to edit; undefined when nothing on the chain is a Corner Pin / Grid Warp. */
+  readonly target: MappingTarget | undefined;
+  /** The note when there is no target. */
+  readonly absent: string;
+  /** The surface, as a refusal names it: "this window", "the viewer". */
+  readonly where: string;
+  /** A crossed Corner Pin's values, resolved as the surface shows them (§T1538b). */
+  readonly valuesOf: (nodeId: string) => Readonly<Record<string, ParameterValue>> | undefined;
+  /**
+   * The surface's frame for `lens`: the size of the picture the handles live in (the tile
+   * derivation's `size`) and the map into the layer; or a note when it is not known yet.
+   */
+  readonly frame: (lens: PictureLens) => { readonly size: Size; readonly place: (size: Size) => WindowPicture } | string;
+  /** A refused line insert/delete, appended to the note until the next one succeeds. */
+  readonly message: string | null;
+}
+
+/**
+ * §T1536b — what a surface in edit-mapping mode shows: the target's handles through the
+ * surface's frame, or the one note saying why there are none. The handles are the tile's
+ * own derivation (T935, §T1491b: `gizmoTilesFor`, so the same handles and the same locked
+ * refusals); a handle past a crossed Corner Pin's horizon refuses the whole target by name.
+ */
+export function mappingOverlayView(input: MappingViewInput): MappingOverlayView {
+  const { graph, registry, target, where } = input;
+  if (target === undefined) return { note: input.absent };
+  if (target.refusal !== null) return { note: target.refusal };
+  const lens = pictureLensFor(target, input.valuesOf, where);
+  if (typeof lens === "string") return { note: lens };
+  const frame = input.frame(lens);
+  if (typeof frame === "string") return { note: frame };
+  const port = registry.get(graph.nodes[target.nodeId]?.type ?? "")?.outputs[0]?.id;
+  const tile =
+    port === undefined
+      ? undefined
+      : gizmoTilesFor([{ nodeId: target.nodeId, portId: port, size: frame.size }], graph.nodes, registry).get(target.nodeId as NodeId);
+  const handles = (tile?.handles ?? []).filter((handle): handle is PictureGizmoHandle => handle.space === "picture");
+  for (const handle of handles) {
+    const horizon = lensHorizon(lens, handle.value);
+    if (horizon !== null)
+      return { note: `${target.title} "${target.name}"'s ${handle.label} lies past ${horizon}'s horizon, so it has no place on ${where}.` };
+  }
+  const how =
+    target.kind === "gridWarp"
+      ? "drag a point, Option-click to add a column (with Shift a row), right-click a point to delete one"
+      : "drag a pin";
+  const via = lens.length === 0 ? "" : ` through ${lens.map((step) => step.named).join(", ")}`;
+  const note = `Editing ${target.title} "${target.name}"${via}: ${how}. M or Esc to stop.`;
+  return {
+    note: input.message === null ? note : `${note} ${input.message}`,
+    edit: { nodeId: target.nodeId as NodeId, handles, grid: tile?.grid, place: frame.place },
   };
 }

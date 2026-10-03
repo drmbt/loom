@@ -6,13 +6,12 @@ import type { ChannelResolver, ParameterMorphs, ResolvedParameters } from "@doma
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
-import type { NodeId } from "@domain/types/ids.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import type { ParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import type { WindowMappingView, WindowSectionSurface } from "@editor/inspector/window-section.tsx";
-import { createVec3GizmoStore, gizmoTilesFor } from "@editor/viewer/index.ts";
-import type { GridLineActions, PictureGizmoHandle } from "@editor/viewer/index.ts";
+import { createVec3GizmoStore } from "@editor/viewer/index.ts";
+import type { GridLineActions } from "@editor/viewer/index.ts";
 import { WINDOW_OUT_TYPE } from "@nodes/definitions/window-out.ts";
 import type { LoomBackend } from "@runtime/backend/backend-types.ts";
 import type { PassDescriptor, ResourceDescriptor } from "@runtime/backend/plan.ts";
@@ -23,9 +22,9 @@ import { createScreenSource, performWindowName, physicalSize, placementFeatures,
 import type { ScreenSource } from "./perform-screens.ts";
 import { browserPerformOpener, openPerformWindow } from "./perform-window.ts";
 import type { PerformWindowHandle } from "./perform-window.ts";
-import { MAPPING_OVERLAY_TOKENS, createMappingOverlay } from "./perform-mapping-overlay.ts";
+import { MAPPING_OVERLAY_TOKENS, createMappingOverlay, mappingOverlayView } from "./perform-mapping-overlay.ts";
 import type { MappingOverlay, MappingOverlayView } from "./perform-mapping-overlay.ts";
-import { lensHorizon, mappingAbsentNote, mappingTargetsOf, pictureLensFor } from "./perform-mapping.ts";
+import { mappingAbsentNote, mappingTargetsOf, windowPicture } from "./perform-mapping.ts";
 import type { MappingTarget, Size, WindowFit } from "./perform-mapping.ts";
 
 /**
@@ -238,40 +237,23 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
       targets.find((target) => target.nodeId === choices.current.get(windowId)) ?? targets[0];
     const viewOf = (windowId: string, session: MappingSession): MappingOverlayView => {
       const graph = authored();
-      const { registry } = readsRef.current;
-      const target = chosenOf(windowId, targetsOf(windowId, graph));
-      if (target === undefined) return { note: mappingAbsentNote() };
-      if (target.refusal !== null) return { note: target.refusal };
-      // §T1538b: the Corner Pins crossed, from their values RESOLVED as the window shows them.
-      const lens = pictureLensFor(target, (nodeId) => {
-        const node = graph.nodes[nodeId];
-        return node === undefined ? undefined : parametersOf(node, graph).values;
+      return mappingOverlayView({
+        graph,
+        registry: readsRef.current.registry,
+        target: chosenOf(windowId, targetsOf(windowId, graph)),
+        absent: mappingAbsentNote(),
+        where: "this window",
+        // §T1538b: the Corner Pins crossed, from their values RESOLVED as the window shows them.
+        valuesOf: (nodeId) => {
+          const node = graph.nodes[nodeId];
+          return node === undefined ? undefined : parametersOf(node, graph).values;
+        },
+        frame: (lens) => {
+          const facts = pictureFacts(windowId, graph);
+          return facts === null ? WAITING_NOTE : { size: facts.inputSize, place: (size) => windowPicture(facts, size, lens) };
+        },
+        message: session.message,
       });
-      if (typeof lens === "string") return { note: lens };
-      const facts = pictureFacts(windowId, graph);
-      if (facts === null) return { note: WAITING_NOTE };
-      const port = registry.get(graph.nodes[target.nodeId]?.type ?? "")?.outputs[0]?.id;
-      // The tile's own derivation (T935, §T1491b): the same handles, the same refusals.
-      const tile =
-        port === undefined
-          ? undefined
-          : gizmoTilesFor([{ nodeId: target.nodeId, portId: port, size: facts.inputSize }], graph.nodes, registry).get(target.nodeId as NodeId);
-      const handles = (tile?.handles ?? []).filter((handle): handle is PictureGizmoHandle => handle.space === "picture");
-      for (const handle of handles) {
-        const horizon = lensHorizon(lens, handle.value);
-        if (horizon !== null)
-          return { note: `${target.title} "${target.name}"'s ${handle.label} lies past ${horizon}'s horizon, so it has no place on this window.` };
-      }
-      const how =
-        target.kind === "gridWarp"
-          ? "drag a point, Option-click to add a column (with Shift a row), right-click a point to delete one"
-          : "drag a pin";
-      const via = lens.length === 0 ? "" : ` through ${lens.map((step) => step.named).join(", ")}`;
-      const note = `Editing ${target.title} "${target.name}"${via}: ${how}. M or Esc to stop.`;
-      return {
-        note: session.message === null ? note : `${note} ${session.message}`,
-        edit: { nodeId: target.nodeId as NodeId, handles, grid: tile?.grid, picture: facts, lens },
-      };
     };
     const refresh = (windowId: string): void => {
       const session = mapping.current.get(windowId);

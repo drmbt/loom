@@ -277,6 +277,8 @@
   (§V118), which is the surface this one was diverging from.
 */
 .surface {
+  /* §T1536b: the containing block of the Edit mapping host below. */
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -311,6 +313,17 @@
   position: relative;
   width: 100%;
   height: 100%;
+}
+
+/*
+  §T1536b (viewer slice) — where the Edit mapping layer mounts: the frame's whole padding box,
+  the same box `fitInsideRegion` letterboxes `.picture` in, so the layer's pixels are the
+  frame's. Inert itself; only the layer's handles and menu take the pointer.
+*/
+.mappingHost {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .canvas {
