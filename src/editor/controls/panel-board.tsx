@@ -11,6 +11,7 @@ import {
   BOARD_NAMED_TYPES,
   CONTROL_WIDGET_TYPES,
   controlNameOf,
+  panelLacks,
   type BoardRect,
   type PanelBoard,
   type PanelBoardItem,
@@ -30,6 +31,7 @@ import {
   boardWithout,
   removeFromPanelOperations,
 } from "./panel-board-edit.ts";
+import { joinPanelOperations } from "./panel-join.ts";
 import styles from "./panel-board.module.css";
 
 /**
@@ -57,6 +59,15 @@ import styles from "./panel-board.module.css";
  * switch and fader) and a Cue List (GO / BACK), drawn by `board-members.tsx` at their
  * rects like any widget, in both places and in edit mode. They press bus commands, so a
  * board is handed the bus and the invocation it writes under.
+ *
+ * T1527b — EDIT mode's "+ Add…" puts any node this Panel still lacks on it (`panelLacks`,
+ * `joinPanelOperations`: a widget wired in, a bank, layer or cue list named on the board),
+ * one patch. It is the Panel-side door, and with two or more Panels the only one besides
+ * the drop: a node's own "+ panel" offers only when there is exactly one Panel (one
+ * answer, and the room node-box models for it), and the node menu is at its eleven-row
+ * cap — a Panel-titled submenu there would have to displace a row on every node for a
+ * gesture that belongs to four node families. Removing is here too, so both directions of
+ * membership live in the one place a board is arranged.
  */
 
 /** The pencil: edit mode's switch — in the Controls tab's header and on the Panel node's (T1518b). */
@@ -267,6 +278,14 @@ export function PanelBoardEditor({ graph, panelId, board, write, bus, invocation
   const slots: BoardRect[] = [];
   for (let y = 0; y < rows; y += 1) for (let x = 0; x < board.columns; x += 1) slots.push({ x, y, w: 1, h: 1 });
   const chosen = board.items.find((item) => item.key === selected);
+  // T1527b: every node this Panel still lacks, by the predicate the join itself reads (`panelLacks`).
+  const panel = graph.nodes[panelId];
+  const joinable =
+    panel === undefined
+      ? []
+      : Object.values(graph.nodes)
+          .filter((node) => panelLacks(graph, panel, node))
+          .sort((a, b) => controlNameOf(a).localeCompare(controlNameOf(b)));
 
   return (
     <div className={styles.editor} data-board-editing>
@@ -294,6 +313,27 @@ export function PanelBoardEditor({ graph, panelId, board, write, bus, invocation
         >
           + Label
         </button>
+        {/* T1527b: what can still join THIS Panel — the one way in with several Panels besides the drop. */}
+        <select
+          className={styles.tool}
+          aria-label="Add to panel"
+          title="Put a node on this Panel"
+          value=""
+          disabled={joinable.length === 0}
+          onChange={(event) => {
+            const node = joinable.find((each) => each.id === event.target.value);
+            if (node === undefined) return;
+            apply(joinPanelOperations(graph, node.id, panelId), "Add to panel");
+            setSelected(`member:${controlNameOf(node)}`);
+          }}
+        >
+          <option value="">{joinable.length === 0 ? "Nothing to add" : "+ Add…"}</option>
+          {joinable.map((node) => (
+            <option key={node.id} value={node.id}>
+              {controlNameOf(node)}
+            </option>
+          ))}
+        </select>
       </div>
       <div className={styles.workspace} ref={workspace} data-board-workspace>
         <div

@@ -548,6 +548,53 @@ describe("T1501b — joining and leaving a Panel", () => {
     expect(boardOf(runtime, ids["$panel"]!)).toEqual([]);
   });
 
+  it("T1527b: with two Panels, edit mode's “+ Add…” puts a cue list on THIS Panel as one patch — the node's own “+ panel” has no one answer", async () => {
+    const { runtime, ids } = await desk({ board: [{ member: "looks", rect: { x: 0, y: 0, w: 4, h: 1 } }] });
+    let stage = "" as NodeId;
+    await act(async () => {
+      const added = await runtime.bus.execute(
+        "graph.applyPatch",
+        {
+          baseRevision: runtime.bus.store.getRevision(),
+          operations: [{ op: "addNode", ref: "$stage", type: "panel", position: { x: 400, y: 0 }, label: "panel2", parameters: { title: "Stage" } }],
+        },
+        runtime.invocation,
+      );
+      stage = (added.output.createdIds as Record<string, NodeId>)["$stage"]!;
+    });
+    // Two Panels: the cue list’s own button offers nothing, so this door is the one that is left.
+    const own = render(<OnCanvas runtime={runtime} nodeId={ids["$set"]!} />);
+    expect(within(own.container).queryByRole("button", { name: "Add to panel" })).toBeNull();
+    own.unmount();
+
+    render(<Tab runtime={runtime} />);
+    await act(async () => {
+      fireEvent.change(screen.getByRole("combobox", { name: "Panel" }), { target: { value: stage } });
+      await settle();
+    });
+    await click(screen.getByRole("button", { name: "Edit board" }));
+    const picker = () => screen.getByRole("combobox", { name: "Add to panel" }) as HTMLSelectElement;
+    // What Stage lacks, by name: the three named kinds, and nothing that cannot join a Panel (blur1).
+    expect([...picker().options].map((option) => option.textContent)).toEqual(["+ Add…", "fx", "looks", "set"]);
+    const before = undoDepth(runtime);
+
+    await act(async () => {
+      fireEvent.change(picker(), { target: { value: ids["$set"]! } });
+      await settle();
+    });
+
+    expect(boardOf(runtime, stage)).toEqual([{ member: "set", rect: { x: 0, y: 0, w: 4, h: 2 } }]);
+    // The other Panel is untouched, and the cue list joined by name: no wire.
+    expect(boardOf(runtime, ids["$panel"]!)).toEqual([{ member: "looks", rect: { x: 0, y: 0, w: 4, h: 1 } }]);
+    expect(Object.keys(runtime.bus.store.getGraph().edges)).toEqual([]);
+    expect(undoDepth(runtime)).toBe(before + 1);
+    expect([...picker().options].map((option) => option.textContent)).toEqual(["+ Add…", "fx", "looks"]);
+    expect(document.querySelector('[data-controls-pane] [data-board-item="member:set"]')).not.toBeNull();
+
+    await undo(runtime);
+    expect(boardOf(runtime, stage)).toEqual([]);
+  });
+
   it("edit mode offers Remove from panel for a member — and no Drives list — and removing it is one undoable patch", async () => {
     const { runtime, ids } = await desk();
     render(<Tab runtime={runtime} />);
