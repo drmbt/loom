@@ -154,6 +154,15 @@ export interface InferenceSources {
   /** Replaces the tracked set — called after each successful compile. */
   track(entries: ReadonlyArray<InferenceEntry>): void;
   /**
+   * T1530b — ONE tracked node's freshness policy, replaced in place. The rate limit and
+   * `hold` are parameter reads, and a parameter read happens at a frame: the caller resolves
+   * them at the frame it is deciding and hands them here, every frame. NOT a `track`: that
+   * clears every node's prepared input, and a fading rate limit would drop the frame's
+   * encoded inputs sixty times a second. Nothing but the two fields changes; an untracked
+   * node is ignored.
+   */
+  retune(nodeId: NodeId, policy: Pick<InferenceEntry, "minIntervalSeconds" | "hold">): void;
+  /**
    * LIVE fill policy. Fire-and-forget: issues a run for any entry not already in flight
    * and returns immediately. Never awaited from inside a frame (§V184 — a stall is
    * invisible in a test and fatal in a 60Hz loop).
@@ -631,6 +640,13 @@ export function createInferenceSources(options: {
       for (const nodeId of known) {
         if (!live.has(nodeId)) forget(nodeId);
       }
+    },
+
+    retune(nodeId, { minIntervalSeconds = 0, hold = false }) {
+      const entry = tracked.find((candidate) => candidate.nodeId === nodeId);
+      if (entry === undefined) return;
+      if ((entry.minIntervalSeconds ?? 0) === minIntervalSeconds && (entry.hold ?? false) === hold) return;
+      tracked = tracked.map((candidate) => (candidate === entry ? { ...entry, minIntervalSeconds, hold } : candidate));
     },
 
     sample(frameIndex, absSeconds) {

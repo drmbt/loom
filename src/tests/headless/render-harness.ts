@@ -13,11 +13,12 @@ import { meshSourceIdsFor, prepareMesh, type PreparedMesh } from "../../points/m
 import { createVgpuBackend } from "../../runtime/backend/vgpu/vgpu-backend.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { buildMorphIndex } from "../../domain/presets/morph-index.ts";
+import type { ChannelResolver } from "../../domain/parameters/resolve.ts";
 import { createUniformAnimator } from "../../app/animate-parameters.ts";
 import type { AudioFeatures } from "../../domain/types/frame.ts";
 import type { FeatureTrackRecorder } from "../../domain/audio/feature-track.ts";
 import type { GpuHost } from "../../runtime/backend/vgpu/gpu-host.ts";
-import { analyzeChannelEntries, createAnalyzeChannels } from "../../runtime/execution/analyze-channels.ts";
+import { analyzeChannelEntries, analyzeOperationOf, createAnalyzeChannels } from "../../runtime/execution/analyze-channels.ts";
 import { createFrameDriver } from "../../runtime/execution/frame-driver.ts";
 import { inferenceSourceIdFor } from "../../runtime/execution/inference-sources.ts";
 import { offlineTransport } from "../../runtime/execution/offline-transport.ts";
@@ -912,6 +913,13 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
             readBuffer: (resourceId) => backend.readBuffer(resourceId),
           });
     analyze?.track(analyzeEntries);
+    /*
+     * T1530b — which reduction each entry publishes is a parameter read, made at a frame.
+     * The entries above resolve Operation at no frame (the set is structural); each rendered
+     * frame re-resolves it below, with that frame's channels and the morphs, and re-tracks
+     * only when one changed — `useAnalyzeChannels`' `refreshOperations`, offline.
+     */
+    let analyzeTracked = analyzeEntries;
 
     const valueSession = request.animate === true ? createValueGraphSession(registry(request.nodes)) : null;
     const animator = request.animate === true ? createUniformAnimator() : null;
@@ -976,6 +984,28 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
                       },
                     }),
               });
+              // Analyze FIRST, exactly as the app merges its resolvers: a measured
+              // channel outranks a value-graph channel of the same name.
+              const channels: ChannelResolver =
+                analyze === null
+                  ? evaluated.resolver
+                  : (name, context) => analyze.resolver(name, context) ?? evaluated.resolver(name, context);
+              if (analyze !== null) {
+                // T1530b: Operation AT THIS FRAME, before the sample that reads its reduction.
+                let changed = false;
+                const read = { frame: inputs.frame, channels, morphs };
+                const nextEntries = analyzeTracked.map((entry) => {
+                  const node = logicalGraph.nodes[entry.nodeId as keyof typeof logicalGraph.nodes];
+                  const operation = node === undefined ? entry.operation : analyzeOperationOf(node, logicalGraph, registry(request.nodes), read);
+                  if (operation === entry.operation) return entry;
+                  changed = true;
+                  return { ...entry, operation };
+                });
+                if (changed) {
+                  analyzeTracked = nextEntries;
+                  analyze.track(nextEntries);
+                }
+              }
               const next = compileGraph({
                 graph: request.graph,
                 settings,
@@ -984,12 +1014,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
                 ...(flattened === undefined ? {} : { flattened }),
                 resolution: {
                   frame: inputs.frame,
-                  // Analyze FIRST, exactly as the app merges its resolvers: a measured
-                  // channel outranks a value-graph channel of the same name.
-                  channels:
-                    analyze === null
-                      ? evaluated.resolver
-                      : (name, context) => analyze.resolver(name, context) ?? evaluated.resolver(name, context),
+                  channels,
                 },
               });
               /*

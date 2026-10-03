@@ -141,7 +141,9 @@ export function openPerformWindow(deps: PerformWindowDeps, request: PerformWindo
       }
     },
     setHideCursor(hidden) {
-      body.cursor = hidden ? "none" : "default";
+      // T1530b: called every frame while open — write only when the answer changed.
+      const cursor = hidden ? "none" : "default";
+      if (body.cursor !== cursor) body.cursor = cursor;
     },
     close() {
       teardown();

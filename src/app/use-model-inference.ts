@@ -897,7 +897,8 @@ export function useModelInference(
         }
         // The node's OWN parameters, through the resolver at no frame — the read a structural
         // compile makes, so the model and Input Size agree with the plan (T1525b); the node
-        // definition still applies its own defaults (§T965). Per-run keys re-read in `describe`.
+        // definition still applies its own defaults (§T965). Per-run keys re-read in `describe`,
+        // the freshness policy at each frame in the dispatch gate (T1530b).
         const settings = kind.settings(inferenceParametersAt(node, graph, parametersRef.current, undefined));
         targets.push({
           nodeId,
@@ -963,6 +964,16 @@ export function useModelInference(
               sources.cancelPreparation(target.nodeId);
               return false;
             }
+            // T1530b: Rate Limit and Refresh AT THIS FRAME — the one being decided — so a
+            // fade or a time-varying expression on them is followed frame by frame, as
+            // `describe` re-reads Detail Ratio and Smoothing per run. In place, never a
+            // re-track (`retune`). Absent reads, the stored bag: what `track` already holds.
+            const graph = trackedGraphRef.current;
+            const node = graph?.nodes[current.nodeId];
+            if (parametersRef.current !== undefined && graph !== null && node !== undefined) {
+              const policy = current.kind.settings(inferenceParametersAt(node, graph, parametersRef.current, frame));
+              sources.retune(current.nodeId, { minIntervalSeconds: policy.minIntervalSeconds, hold: policy.hold });
+            }
             return sources.prepare(target.nodeId, frame,
               offlineLeasesRef.current > 0 || frame.mode !== "realtime", timing.source);
           });
@@ -979,7 +990,8 @@ export function useModelInference(
         sourceId: inferenceSourceIdFor(target.nodeId),
         fallback: target.kind.fallback(target.size),
         // §T384's freshness policy, carried per node rather than assumed: how often this
-        // one is allowed to start, and whether it stops after its first result.
+        // one is allowed to start, and whether it stops after its first result. At no frame
+        // here; the dispatch gate retunes both at each frame it decides (T1530b).
         minIntervalSeconds: target.settings.minIntervalSeconds,
         hold: target.settings.hold,
         ...(target.channel === undefined ? {} : { channel: target.channel }),

@@ -863,12 +863,16 @@ export function App({
    * seam rather than two parameters, so a third rider is a line here and not another
    * argument on the frame loop.
    */
+  // T1530b: the perform windows' observer, through a ref — that hook is built below, from
+  // the frame loop this observer is handed to.
+  const performObserveRef = useRef<(frame: FrameEvaluationInput) => void>(() => {});
   const observeFrame = useCallback(
     (frame: FrameEvaluationInput) => {
       pulses.observe(frame);
       analyze.observe(frame);
       depth.observe(frame);
       vision.observe(frame);
+      performObserveRef.current(frame);
       // T619: the hub's frame counters. `noteFrame` existed since T41 with ZERO product
       // callers (§V220's shape again) — so `get_runtime_metrics` told every agent
       // framesRendered: 0 while the header showed 30fps, and the per-node "frames"
@@ -1401,6 +1405,7 @@ export function App({
     // T1525b: opening a window is a moment; its parameters are read at the frame last rendered.
     frame: () => frameLoop.latestFrame()?.frame,
   });
+  performObserveRef.current = perform.observe;
   const muteInputMonitorForRender = audioInput.muteMonitorForRender;
   const muteMovieMonitorForRender = media.muteMonitorForRender;
   const muteAudioMonitor = useCallback(() => {

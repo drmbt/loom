@@ -62,6 +62,13 @@ export interface PerformWindowsResult {
   readonly surface: WindowSectionSurface;
   /** The open windows, for their keymap targets (so the perform key works inside them). */
   readonly windows: readonly Window[];
+  /**
+   * T1530b: the frame observer — Hide cursor on each OPEN window, resolved at the frame just
+   * rendered, so a fade or a time-varying expression on it is followed while the window is
+   * up. Stable, touches no React state (§V16): a style write on the window, only when the
+   * answer changed. Nothing open, nothing done.
+   */
+  readonly observe: (frame: FrameEvaluationInput) => void;
 }
 
 // T1525b: off the RESOLVED parameters, never the stored slot — an expression on Fullscreen
@@ -96,12 +103,12 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
    * document the caller already read the node from — the same authored one (see above).
    */
   const parametersOf = useCallback(
-    (node: GraphNode, graph: GraphDocument): ResolvedParameters => {
+    (node: GraphNode, graph: GraphDocument, at?: FrameEvaluationInput): ResolvedParameters => {
       const { registry, channels, morphs, frame } = readsRef.current;
       const options = createParameterReadOptions({
         graph,
         registry,
-        frame: frame(),
+        frame: at ?? frame(),
         channels: channels(),
         morphs: morphs(),
       });
@@ -112,6 +119,12 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
   const openRef = useRef(openWindow);
   openRef.current = openWindow;
   const handles = useRef(new Map<string, PerformWindowHandle>());
+  /*
+   * T1530b: the authored document as last read on an open or a document change — what the
+   * frame observer resolves Hide cursor against, so the per-frame path reads no document
+   * (frame-path-flattening's ledger: this file's reads are NOT per frame).
+   */
+  const authoredRef = useRef<GraphDocument | null>(null);
   const [open, setOpen] = useState<readonly Window[]>([]);
   const listeners = useRef(new Set<() => void>());
   const planRef = useRef(plan);
@@ -151,6 +164,7 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
         const active = backendRef.current;
         if (active === undefined || active === null || typeof window === "undefined") return [...nodeIds];
         const blocked: string[] = [];
+        authoredRef.current = graph();
         for (const nodeId of nodeIds) {
           const node = graph().nodes[nodeId];
           if (node === undefined || handles.current.has(nodeId)) continue;
@@ -215,6 +229,7 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
     () =>
       bus.store.subscribe(() => {
         const authored = bus.store.getGraph();
+        authoredRef.current = authored;
         const nodes = authored.nodes;
         const gone: string[] = [];
         for (const [nodeId, handle] of handles.current) {
@@ -281,5 +296,18 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
     [bus, screens, parametersOf],
   );
 
-  return { surface, windows: open };
+  const observe = useCallback(
+    (frame: FrameEvaluationInput) => {
+      const authored = authoredRef.current;
+      if (handles.current.size === 0 || authored === null) return;
+      for (const [nodeId, handle] of handles.current) {
+        const node = authored.nodes[nodeId];
+        if (node === undefined || node.type !== WINDOW_OUT_TYPE) continue;
+        handle.setHideCursor(booleanParameter(parametersOf(node, authored, frame), "hideCursor", true));
+      }
+    },
+    [parametersOf],
+  );
+
+  return { surface, windows: open, observe };
 }

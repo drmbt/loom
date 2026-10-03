@@ -93,12 +93,17 @@ async function fading(): Promise<GraphDocument> {
   return session.graph();
 }
 
-/** What each `run` the worker is posted says about ratio and smoothing, frame by frame. */
-async function runsAcross(
+/**
+ * Drive the real hook through its dispatch gate frame by frame: what the gate decided for
+ * each frame (T1530b's half) and what each `run` the worker was posted says about ratio
+ * and smoothing (T1525b's half).
+ */
+async function driveAcross(
   graph: GraphDocument,
+  nodeId: string,
   reads: Parameters<typeof useModelInference>[4],
   frames: readonly number[],
-): Promise<Array<{ ratio: number; smoothing: number }>> {
+): Promise<{ decisions: boolean[]; runs: Array<{ ratio: number; smoothing: number }> }> {
   const createAcquisition = acquisitionModule.createModelAcquisition;
   vi.spyOn(acquisitionModule, "createModelAcquisition").mockImplementation((options) => ({
     ...createAcquisition(options),
@@ -143,8 +148,8 @@ async function runsAcross(
   } as unknown as LoomBackend;
   const plan = compileGraph({ graph, settings: DEFAULT_PROJECT_SETTINGS, registry, capabilities: TIER_B_CAPABILITIES });
   expect(plan.ok).toBe(true);
-  const preprocess = plan.passes.find((pass) => pass.kind === "dispatch" && pass.nodeId === "cut");
-  if (preprocess === undefined) throw new Error("Matte has no compiled preprocess pass");
+  const preprocess = plan.passes.find((pass) => pass.kind === "dispatch" && pass.nodeId === nodeId);
+  if (preprocess === undefined) throw new Error(`${nodeId} has no compiled preprocess pass`);
   const view = renderHook(() => useModelInference(backend, undefined, undefined, undefined, reads));
   act(() => view.result.current.track(graph, plan));
   const settle = async () =>
@@ -154,7 +159,8 @@ async function runsAcross(
   await settle();
   expect(registerDispatchGate).toHaveBeenCalledOnce();
   const gate = gates.get(preprocess.id);
-  if (gate === undefined) throw new Error("Compiled matte preprocess has no registered gate");
+  if (gate === undefined) throw new Error("Compiled preprocess has no registered gate");
+  const decisions: boolean[] = [];
   for (const frameIndex of frames) {
     const frame = liveFrame(frameIndex);
     // Model the direct render path: its upstream input has submitted current-frame
@@ -162,19 +168,32 @@ async function runsAcross(
     // the observer consumes the prepared buffer. Frame labels can skip; submits cannot.
     const renderIndex = status.framesSubmitted + 1;
     act(() => {
-      expect(gate(frame, { renderIndex, source: {
+      decisions.push(gate(frame, { renderIndex, source: {
         renderIndex, frameIndex, timeSeconds: frame.absTimeSeconds!,
-      } })).toBe(true);
+      } }));
       status.framesSubmitted = renderIndex;
       view.result.current.observe(frame);
     });
     await settle();
   }
-  expect(readBuffer).toHaveBeenCalledTimes(frames.length);
-  expect(runs).toHaveLength(frames.length);
+  // Every frame the gate let through was read back and run, and no other.
+  const allowed = decisions.filter(Boolean).length;
+  expect(readBuffer).toHaveBeenCalledTimes(allowed);
+  expect(runs).toHaveLength(allowed);
   expect(status.framesSubmitted).toBe(frames.length);
   view.unmount();
   expect(gates.size).toBe(0);
+  return { decisions, runs };
+}
+
+/** The matte's half: every frame runs, and what matters is what each run carries. */
+async function runsAcross(
+  graph: GraphDocument,
+  reads: Parameters<typeof useModelInference>[4],
+  frames: readonly number[],
+): Promise<Array<{ ratio: number; smoothing: number }>> {
+  const { decisions, runs } = await driveAcross(graph, "cut", reads, frames);
+  expect(decisions).toEqual(frames.map(() => true));
   return runs;
 }
 
@@ -197,5 +216,81 @@ describe("T1525b — the matte's ratio and smoothing reach the worker at the fra
     const graph = await fading();
     const runs = await runsAcross(graph, { registry, channels: () => undefined, morphs: () => undefined }, [30]);
     expect(runs).toEqual([{ ratio: 0.5, smoothing: 1 }]);
+  });
+});
+
+/**
+ * T1530b — DEPTH'S FRESHNESS POLICY FOLLOWS THE FRAME.
+ *
+ * Rate Limit and Refresh were resolved once, when the set was tracked, at no frame: an
+ * expression worked, but a fade or a time-varying expression was read at its destination
+ * (or at the zero frame) for as long as the plan stood. What is asserted is the gate's own
+ * answer each frame — whether this frame's input is read back and run.
+ */
+function depthDocument(parameters: Record<string, unknown>, extra: Record<string, unknown> = {}): GraphDocument {
+  return {
+    revision: 1,
+    groups: {},
+    nodes: {
+      src: { id: "src", type: "noise", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} },
+      deep: { id: "deep", type: "depth", label: "depth1", definitionVersion: 1, position: { x: 200, y: 0 }, parameters },
+      out: { id: "out", type: "output", definitionVersion: 1, position: { x: 400, y: 0 }, parameters: {} },
+      ...extra,
+    },
+    edges: {
+      e1: { id: "e1", source: { nodeId: "src", portId: "out" }, target: { nodeId: "deep", portId: "input" } },
+      e2: { id: "e2", source: { nodeId: "deep", portId: "out" }, target: { nodeId: "out", portId: "input" } },
+    },
+  } as unknown as GraphDocument;
+}
+
+/**
+ * Rate Limit at 0.25 Hz, a bank recalled on frame 0 taking it to 1.25 Hz over 1 s linear:
+ * at t the rate is 0.25 + t, so the gap after the frame-0 run is 1 / (0.25 + t), and a
+ * frame may run once t ≥ that gap — t ≥ 0.883. Frame 51 (t 0.85, gap 0.909) must wait;
+ * frame 54 (t 0.9, gap 0.870) may run. Read at the destination (gap 0.8) it is the other
+ * way round: 51 runs, and 54 is then only 0.05 s after it.
+ */
+async function fadingRate(): Promise<GraphDocument> {
+  const session = presetSession(
+    depthDocument({ rateLimit: 0.25 }, {
+      pace: presetBankNode("pace", "pace1", "depth1", [{ name: "go", values: { depth1: { rateLimit: 1.25 } } }]),
+    }),
+    registry,
+  );
+  session.at({ epoch: EPOCH, absTimeSeconds: 0 });
+  await session.recall("pace", "go", { seconds: 1, curve: "linear" });
+  return session.graph();
+}
+
+describe("T1530b — depth's Rate Limit and Refresh are read at each frame the gate decides", () => {
+  it("a Rate Limit fading 0.25 → 1.25 Hz refuses frame 51 and lets frame 54 through", async () => {
+    const graph = await fadingRate();
+    expect(graph.nodes["deep"]?.parameters["rateLimit"]).toBe(1.25);
+    const morphs = buildMorphIndex({ document: graph, registry });
+    const { decisions } = await driveAcross(graph, "deep", { registry, channels: () => undefined, morphs: () => morphs }, [0, 51, 54]);
+    expect(decisions).toEqual([true, false, true]);
+  });
+
+  it("cut the wire: without the morph index the destination's 0.8 s gap runs 51 and refuses 54", async () => {
+    const graph = await fadingRate();
+    const { decisions } = await driveAcross(graph, "deep", { registry, channels: () => undefined, morphs: () => undefined }, [0, 51, 54]);
+    expect(decisions).toEqual([true, true, false]);
+  });
+
+  it("Refresh `time * 2` keeps up until t = 0.5, then holds the result it has", async () => {
+    // A menu INDEX (§V107): 0 is Keep up, 1 is Hold. At no frame `time` is 0, so a
+    // track-time read would keep up forever and every frame would run.
+    const graph = depthDocument({
+      refresh: {
+        mode: "expression",
+        bindings: {
+          static: { kind: "static", value: "continuous" },
+          expression: { kind: "expression", source: "time * 2" },
+        },
+      },
+    });
+    const { decisions } = await driveAcross(graph, "deep", { registry, channels: () => undefined, morphs: () => undefined }, [0, 15, 45, 50]);
+    expect(decisions).toEqual([true, true, false, false]);
   });
 });

@@ -40,6 +40,33 @@ describe("only encoded inference input is consumed", () => {
     await sources.drain();
   });
 
+  it("T1530b: a retuned rate limit binds the next decision and keeps every node's prepared input", async () => {
+    // Why `retune` and not `track`: the policy is re-read each frame, and a re-track clears
+    // every node's prepared input — an encoded frame another gate already reserved.
+    const readBuffer = vi.fn(async () => new Uint8Array([5]).buffer);
+    const run = vi.fn(async (_nodeId: string, input: ArrayBuffer) => new Uint8Array(input));
+    const sources = createInferenceSources({ readBuffer, run });
+    const other: InferenceEntry = { ...entry, nodeId: "other", inputResourceId: "other-input", sourceId: "infer:other" };
+    sources.track([entry, other]);
+    const first = frame(0);
+    expect(sources.prepare("other", first)).toBe(true);
+    expect(sources.prepare("model", first)).toBe(true);
+    sources.retune("model", { minIntervalSeconds: 1, hold: false });
+    sources.samplePrepared(first);
+    await flush();
+    expect(run.mock.calls.map(([nodeId]) => nodeId).sort()).toEqual(["model", "other"]);
+    // 0.6 s after the run: inside a 1 s gap, outside a 0.5 s one.
+    expect(sources.prepare("model", frame(36))).toBe(false);
+    sources.retune("model", { minIntervalSeconds: 0.5, hold: false });
+    expect(sources.prepare("model", frame(37))).toBe(true);
+    // Hold binds as soon as it is retuned on: the node has its result.
+    sources.retune("model", { minIntervalSeconds: 0, hold: true });
+    expect(sources.prepare("model", frame(38))).toBe(false);
+    // An untracked node is ignored, not added.
+    sources.retune("ghost", { minIntervalSeconds: 0, hold: false });
+    expect(sources.prepare("ghost", frame(39))).toBe(false);
+  });
+
   it("a completion after a skipped encode cannot authorize a stale readback", async () => {
     const waiting = deferred();
     let inputByte = 7;

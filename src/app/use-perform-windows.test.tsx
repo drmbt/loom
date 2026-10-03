@@ -263,3 +263,63 @@ describe("T1525b — an expression on Fullscreen, reading a fading knob, is read
     expect(opened.at(-1)?.features).toBe(`${WINDOWED},fullscreen`);
   });
 });
+
+/**
+ * T1530b — HIDE CURSOR ON AN OPEN WINDOW FOLLOWS THE FRAME.
+ *
+ * It was re-read on a document change only, so `time > 0.5` (or a fade reaching it) left the
+ * cursor as the window opened with for as long as nobody edited anything. The frame observer
+ * re-resolves it at each frame rendered. What is asserted is the open window's own cursor —
+ * and that the hook does not re-render to get there (§V16: per-frame work stays out of React).
+ */
+describe("T1530b — Hide cursor on an open window is read at each frame", () => {
+  const liveFrame = (frameIndex: number): FrameEvaluationInput => ({
+    timeSeconds: frameIndex / 60,
+    deltaSeconds: 1 / 60,
+    frameIndex,
+    mode: "realtime",
+    randomSeed: 1,
+  });
+
+  it("`time > 0.5` shows the cursor at frame 15 and hides it at frame 45, with no edit and no render", async () => {
+    const { bus, ids, hook, toggle } = await setup(["window"]);
+    await act(async () => {
+      const patched = await bus.execute(
+        "graph.applyPatch",
+        {
+          baseRevision: bus.store.getRevision(),
+          operations: [{
+            op: "setParameters",
+            nodeId: ids[0]!,
+            parameters: {
+              hideCursor: {
+                mode: "expression",
+                bindings: {
+                  static: { kind: "static", value: true },
+                  expression: { kind: "expression", source: "time > 0.5" },
+                },
+              },
+            },
+          }],
+        },
+        context,
+      );
+      expect(patched.status, JSON.stringify(patched.diagnostics)).toBe("applied");
+    });
+    await toggle([ids[0]!]);
+    const opened = hook.result.current.windows[0];
+    if (opened === undefined) throw new Error("no perform window opened");
+    const cursor = () => opened.document.body.style.cursor;
+    // Opened with no frame rendered yet: the zero frame, `time` 0, the cursor shown.
+    expect(cursor()).toBe("default");
+    // The hook's result is a fresh object on every render, so the same one means none.
+    const before = hook.result.current;
+    hook.result.current.observe(liveFrame(15));
+    expect(cursor()).toBe("default");
+    hook.result.current.observe(liveFrame(45));
+    expect(cursor()).toBe("none");
+    hook.result.current.observe(liveFrame(20));
+    expect(cursor()).toBe("default");
+    expect(hook.result.current).toBe(before);
+  });
+});

@@ -8,6 +8,7 @@ import { SHOW_NODE_INFO_COMMAND } from "@editor/inspect/index.ts";
 import { TOGGLE_REFERENCE_LINES_COMMAND } from "@editor/edges/index.ts";
 import { menuSchemaFor } from "@editor/menus/index.ts";
 import { serializeProjectDocument } from "@domain/project/index.ts";
+import { serializePresetBank } from "@domain/presets/bank.ts";
 import type { SnapshotMeta, SnapshotRecord, SnapshotStore } from "@domain/project/index.ts";
 import type { BackendCapabilities } from "@domain/types/backend.ts";
 import type { ProjectDocument } from "@domain/types/graph.ts";
@@ -1911,4 +1912,99 @@ describe("T597/§V39 — the page surface is complete: every tool available", ()
       ).toBe(false);
     }
   });
+});
+
+// ---------------------------------------------------------------------------------
+// 9. The CPU readers' parameter reads (T1525b's `liveReads`, T1530b)
+// ---------------------------------------------------------------------------------
+
+/**
+ * T1530b — `liveReads` IN `app.tsx`, OBSERVED IN THE MOUNTED APP.
+ *
+ * Each reader's own test hands it the morph index by hand, so a composition root that
+ * stopped passing `runtime.flattened`'s morphs — or stopped calling the perform windows'
+ * frame observer — left every one of them green. Here a Window Out's Hide cursor is
+ * `op('knob1').par.value > 0.5` and a bank fades the knob 0 → 1 over 1.5 s on the app's
+ * own clock. Opened right after the recall, the window shows the cursor (the knob is near
+ * 0; read without the morphs it is already 1 and hidden). With no edit after that, the
+ * cursor hides once the fade passes half-way — only the per-frame observer can do that.
+ */
+describe("T1530b — the composition root hands the CPU readers the morphs and the frame", () => {
+  it("an open Window Out's cursor follows a fading knob, through the app's own frame loop", async () => {
+    const runtime = newRuntime();
+    const seeded = await seed(runtime, [
+      { op: "addNode", ref: "$knob", type: "constant", position: { x: 0, y: 200 }, parameters: { value: 0 } },
+      { op: "addNode", ref: "$window", type: "window", position: { x: 240, y: 0 } },
+    ]);
+    expect(seeded.status, JSON.stringify(seeded.diagnostics)).toBe("applied");
+    const knobId = seeded.output.createdIds["$knob"] ?? "";
+    const windowId = seeded.output.createdIds["$window"] ?? "";
+    const knob = runtime.bus.store.getGraph().nodes[knobId]?.label ?? "";
+    expect(knob).not.toBe("");
+    const wired = await seed(runtime, [
+      {
+        op: "setParameters",
+        nodeId: windowId,
+        parameters: {
+          hideCursor: {
+            mode: "expression",
+            bindings: {
+              static: { kind: "static", value: true },
+              expression: { kind: "expression", source: `op('${knob}').par.value > 0.5` },
+            },
+          },
+        },
+      },
+      {
+        op: "addNode",
+        ref: "$bank",
+        type: "presets",
+        position: { x: 0, y: 400 },
+        parameters: {
+          targets: knob,
+          presets: serializePresetBank({ version: 1, presets: [{ name: "up", values: { [knob]: { value: 1 } } }] }),
+        },
+      },
+    ]);
+    expect(wired.status, JSON.stringify(wired.diagnostics)).toBe("applied");
+    const bankId = wired.output.createdIds["$bank"] ?? "";
+
+    const opened: Window[] = [];
+    vi.spyOn(window, "open").mockImplementation(() => {
+      const frame = document.createElement("iframe");
+      document.body.appendChild(frame);
+      const child = frame.contentWindow;
+      if (child !== null) opened.push(child);
+      return child;
+    });
+    try {
+      await mountApp({ status: READY, runtime });
+      // The app's loop ticks on its own; a morph needs a frame clock, which is a rendered frame.
+      await waitFor(() => {
+        expect(runtime.telemetry.snapshot().framesRendered).toBeGreaterThan(1);
+      });
+      await act(async () => {
+        const recalled = await runtime.bus.execute(
+          "preset.recall",
+          { nodeId: bankId, name: "up", morph: { seconds: 1.5, curve: "linear" } },
+          runtime.invocation,
+        );
+        expect(recalled.status, JSON.stringify(recalled.diagnostics)).toBe("applied");
+        const toggled = await runtime.bus.execute("perform.toggle", { nodeIds: [windowId] }, runtime.invocation);
+        expect(toggled.status, JSON.stringify(toggled.diagnostics)).toBe("applied");
+      });
+      expect(opened).toHaveLength(1);
+      const cursor = () => opened[0]!.document.body.style.cursor;
+      expect(cursor(), "read at the destination: no fade, or the morphs did not reach the perform windows").toBe("default");
+      await waitFor(
+        () => {
+          expect(cursor(), "the frame observer never re-read Hide cursor").toBe("none");
+        },
+        { timeout: 6000, interval: 50 },
+      );
+    } finally {
+      vi.restoreAllMocks();
+      runtime.dispose();
+    }
+  }, 15_000);
 });
