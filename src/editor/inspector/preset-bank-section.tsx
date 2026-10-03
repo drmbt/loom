@@ -11,6 +11,9 @@ import {
   nextPresetName,
   parsePresetBank,
   parsePresetTargets,
+  serializePresetBank,
+  type MorphCurve,
+  type Preset,
 } from "@domain/presets/index.ts";
 import { Button } from "@ui/primitives/button.tsx";
 import { ControlRow } from "@ui/controls/control-row.tsx";
@@ -18,6 +21,7 @@ import { EnumField } from "@ui/controls/enum-field.tsx";
 import { TextField } from "@ui/controls/text-field.tsx";
 import { refusalMessage, type CommandAnswer } from "./command-refusal.ts";
 import type { ParameterEditor } from "./parameter-editor.ts";
+import { MorphCurveField, MorphSeconds } from "./morph-fields.tsx";
 import styles from "./inspector.module.css";
 import rows from "./preset-sections.module.css";
 
@@ -35,6 +39,9 @@ import rows from "./preset-sections.module.css";
  * Targets is the one parameter this section PRESENTS (its claim, T994): the same text
  * field, plus a picker that appends a node by name — the list of what Store captures is
  * built by choosing nodes, not by remembering how they are spelled.
+ *
+ * T1527b: each preset row also moves it earlier or later on the strip and carries its own
+ * morph (seconds and curve; blank seconds = the bank's Morph / Curve, the design doc §5.1).
  */
 
 /** T994's claim: the section presents Targets; every other parameter keeps its row. */
@@ -58,9 +65,13 @@ export interface PresetBankSectionProps {
 
 const NO_PICK = "";
 
+/** A preset's own morph time as its field shows it; blank when it carries none (the bank's applies). */
+const morphText = (preset: Preset): string => (preset.morph === undefined ? "" : String(preset.morph.seconds));
+
 export function PresetBankSection({ nodeId, targets, presets, current, graph, bus, context, editor }: PresetBankSectionProps) {
   const parsed = parsePresetBank(presets);
-  const names = parsed.ok ? parsed.bank.presets.map((preset) => preset.name) : [];
+  const list = parsed.ok ? parsed.bank.presets : [];
+  const names = list.map((preset) => preset.name);
   // `null`: the field shows the next free name; typing replaces it until the next Store.
   const [typed, setTyped] = useState<string | null>(null);
   const [said, setSaid] = useState<{ readonly text: string; readonly error: boolean } | null>(null);
@@ -90,6 +101,27 @@ export function PresetBankSection({ nodeId, targets, presets, current, graph, bu
       const warnings = result.diagnostics.filter((entry) => entry.severity === "warning").map((entry) => entry.message);
       if (warnings.length > 0) setSaid({ text: warnings.join(" "), error: false });
     });
+  };
+
+  /**
+   * T1527b — the bank's own edits that are not commands: the order of its presets (the
+   * strip's button order) and a preset's own morph. Each rewrites the `presets` parameter
+   * as ONE `setParameters` through the parameter editor, so it is one undo step and an
+   * ordinary audited patch, the cue table's rule; a morph time commits on Enter or blur.
+   */
+  const writeBank = (next: readonly Preset[]): void => {
+    setSaid(null);
+    editor.setStored(nodeId, { presets: serializePresetBank({ version: 1, presets: next }) }, "commit");
+  };
+  const move = (index: number, by: -1 | 1): void => {
+    const entry = list[index];
+    const other = list[index + by];
+    if (entry === undefined || other === undefined) return;
+    writeBank(list.map((each, at) => (at === index ? other : at === index + by ? entry : each)));
+  };
+  const setMorph = (index: number, entry: Preset, seconds: number | undefined, curve: MorphCurve = entry.morph?.curve ?? "smooth"): void => {
+    const { morph: _dropped, ...bare } = entry;
+    writeBank(list.map((each, at) => (at === index ? (seconds === undefined ? bare : { ...bare, morph: { seconds, curve } }) : each)));
   };
 
   const listed = new Set(parsePresetTargets(targets).filter((target) => target.key === undefined).map((target) => target.node));
@@ -129,18 +161,52 @@ export function PresetBankSection({ nodeId, targets, presets, current, graph, bu
 
       <div className={rows.rows}>
         {parsed.ok && names.length === 0 ? <span className={styles.emptyPage}>No presets stored yet.</span> : null}
-        {names.map((preset) => (
-          <div className={rows.preset} key={preset} data-preset-row={preset}>
-            <span className={rows.name}>{preset}</span>
-            <span className={rows.live}>{current === preset ? "live" : ""}</span>
-            <Button variant="outline" aria-label={`Recall ${preset}`} onClick={() => void bus.execute(PRESET_RECALL_COMMAND, { nodeId, name: preset }, context).then(refused)}>
-              Recall
-            </Button>
-            <Button aria-label={`Delete ${preset}`} onClick={() => remove(preset)}>
-              Delete
-            </Button>
-          </div>
-        ))}
+        {list.map((entry, index) => {
+          const preset = entry.name;
+          return (
+            <div className={rows.preset} key={preset} data-preset-row={preset}>
+              <div className={rows.presetHead}>
+                <span className={rows.name}>{preset}</span>
+                <span className={rows.live}>{current === preset ? "live" : ""}</span>
+                <Button aria-label={`Move ${preset} earlier`} title="Earlier on the strip" disabled={index === 0} onClick={() => move(index, -1)}>
+                  ↑
+                </Button>
+                <Button aria-label={`Move ${preset} later`} title="Later on the strip" disabled={index === list.length - 1} onClick={() => move(index, 1)}>
+                  ↓
+                </Button>
+                <Button variant="outline" aria-label={`Recall ${preset}`} onClick={() => void bus.execute(PRESET_RECALL_COMMAND, { nodeId, name: preset }, context).then(refused)}>
+                  Recall
+                </Button>
+                <Button aria-label={`Delete ${preset}`} onClick={() => remove(preset)}>
+                  Delete
+                </Button>
+              </div>
+              <div className={rows.cueDetail}>
+                <label className={rows.field}>
+                  <span className={rows.fieldLabel}>Morph (s)</span>
+                  <MorphSeconds
+                    key={morphText(entry)}
+                    label={`Morph seconds for ${preset}`}
+                    stored={morphText(entry)}
+                    placeholder="bank's"
+                    onCommit={(seconds) => setMorph(index, entry, seconds)}
+                  />
+                </label>
+                <div className={rows.field}>
+                  <span className={rows.fieldLabel}>Curve</span>
+                  <MorphCurveField
+                    label={`Curve for ${preset}`}
+                    value={entry.morph?.curve ?? "smooth"}
+                    disabled={entry.morph === undefined}
+                    onChange={(curve) => {
+                      if (entry.morph !== undefined) setMorph(index, entry, entry.morph.seconds, curve);
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div className={rows.action}>

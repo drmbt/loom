@@ -141,6 +141,61 @@ describe("T1501b — the bank's section: Store, Recall, Delete", () => {
     expect(within(section()).queryByRole("alert")).toBeNull();
   });
 
+  it("T1527b: a preset moves earlier or later on the strip, and its own morph is set and cleared — each one undo step, and a recall fades by it", async () => {
+    const bankJson = serializePresetBank({
+      version: 1,
+      presets: [
+        { name: "soft", values: { blur1: { size: 4 } } },
+        { name: "hard", values: { blur1: { size: 20 } } },
+      ],
+    });
+    const { runtime, ids } = await documentWith([add("blur", "blur", "blur1", { size: 9 }), add("looks", "presets", "looks", { targets: "blur1", presets: bankJson, morph: 0 })]);
+    const bank = ids["$looks"]!;
+    runtime.bus.attachFrameClock(() => ({ epoch: "e1", absTimeSeconds: 10 }));
+    mount(runtime, bank);
+    const section = () => screen.getByRole("region", { name: "Presets bank" });
+    const presetsOf = () => {
+      const parsed = parsePresetBank(nodeOf(runtime, bank).parameters["presets"]);
+      if (!parsed.ok) throw new Error(parsed.reason);
+      return parsed.bank.presets;
+    };
+    const recallHard = async () => (await runtime.bus.execute("preset.recall", { nodeId: bank, name: "hard" }, runtime.invocation)).output.morph;
+
+    // Order: the strip's button order is the bank's, so moving a row moves the button.
+    expect((within(section()).getByRole("button", { name: "Move soft earlier" }) as HTMLButtonElement).disabled).toBe(true);
+    let before = undoDepth(runtime);
+    await press(within(section()).getByRole("button", { name: "Move hard earlier" }));
+    expect(presetNames(runtime, bank)).toEqual(["hard", "soft"]);
+    expect([...section().querySelectorAll("[data-preset-row]")].map((row) => row.getAttribute("data-preset-row"))).toEqual(["hard", "soft"]);
+    expect(undoDepth(runtime)).toBe(before + 1);
+    await undo(runtime);
+    expect(presetNames(runtime, bank)).toEqual(["soft", "hard"]);
+
+    // Its own morph: the bank cuts (Morph 0), hard fades over 2 s on its own curve.
+    expect(await recallHard()).toBeNull();
+    before = undoDepth(runtime);
+    await type(within(section()).getByRole("spinbutton", { name: "Morph seconds for hard" }), "2");
+    expect(presetsOf()[1]?.morph).toEqual({ seconds: 2, curve: "smooth" });
+    expect(undoDepth(runtime)).toBe(before + 1);
+    await choose(within(section()).getByRole("combobox", { name: "Curve for hard" }), "linear");
+    expect(presetsOf()[1]?.morph).toEqual({ seconds: 2, curve: "linear" });
+    // The values and the neighbour are untouched by a morph edit.
+    expect(presetsOf()[0]).toEqual({ name: "soft", values: { blur1: { size: 4 } } });
+    expect(presetsOf()[1]?.values).toEqual({ blur1: { size: 20 } });
+    await act(async () => {
+      await runtime.bus.execute("preset.recall", { nodeId: bank, name: "soft" }, runtime.invocation);
+    });
+    expect(await recallHard()).toEqual({ seconds: 2, curve: "linear" });
+
+    // Blank is "the bank's": the preset's own morph is gone and a recall cuts again.
+    await type(within(section()).getByRole("spinbutton", { name: "Morph seconds for hard" }), "");
+    expect(presetsOf()[1]).toEqual({ name: "hard", values: { blur1: { size: 20 } } });
+    await act(async () => {
+      await runtime.bus.execute("preset.recall", { nodeId: bank, name: "soft" }, runtime.invocation);
+    });
+    expect(await recallHard()).toBeNull();
+  });
+
   it("T1527b: Delete of a preset a cue still names deletes it and says which cue now points at nothing", async () => {
     const cues = JSON.stringify({ version: 1, cues: [{ name: "7", bank: "looks", preset: "soft" }] });
     const { runtime, ids } = await documentWith([

@@ -7,7 +7,6 @@ import {
   CUE_BACK_COMMAND,
   CUE_GO_COMMAND,
   CUE_SET_STANDBY_COMMAND,
-  MORPH_CURVES,
   PRESETS_NODE_TYPE,
   nextCueName,
   parseCueList,
@@ -22,6 +21,7 @@ import { EnumField } from "@ui/controls/enum-field.tsx";
 import type { EnumOption } from "@ui/controls/enum-field.tsx";
 import { TextField } from "@ui/controls/text-field.tsx";
 import { refusalMessage, type CommandAnswer } from "./command-refusal.ts";
+import { MorphCurveField, MorphSeconds } from "./morph-fields.tsx";
 import type { ParameterEditor } from "./parameter-editor.ts";
 import styles from "./inspector.module.css";
 import rows from "./preset-sections.module.css";
@@ -78,13 +78,6 @@ export interface CueListSectionProps {
 const IN_ORDER = "";
 const NO_CUE = "—";
 
-const CURVE_OPTIONS: readonly EnumOption[] = [
-  { value: "linear", label: "Linear" },
-  { value: "smooth", label: "Smooth" },
-  { value: "in", label: "Ease in" },
-  { value: "out", label: "Ease out" },
-];
-
 /** The first whole number no cue is named: `1`, `2`, … — a cue's name is its number until it is given one. */
 function nextCueNumber(cues: readonly Cue[]): string {
   for (let index = cues.length + 1; ; index += 1) {
@@ -100,40 +93,6 @@ function withStored(choices: readonly string[], stored: string): EnumOption[] {
 
 /** A cue's own morph time as its field shows it; blank when the cue carries none. */
 const morphText = (cue: Cue): string => (cue.morph === undefined ? "" : String(cue.morph.seconds));
-
-/**
- * A cue's morph time: blank means the cue carries none (the preset's or the bank's applies).
- * A draft, committed on Enter or when the field is left — one patch, not one per key.
- * Mounted under a key of the stored value, so an undo or an agent's edit replaces the draft.
- */
-function MorphSeconds({ label, stored, onCommit }: { readonly label: string; readonly stored: string; readonly onCommit: (seconds: number | undefined) => void }) {
-  const [draft, setDraft] = useState(stored);
-  const commit = (): void => {
-    const trimmed = draft.trim();
-    const parsed = Number(trimmed);
-    if (trimmed === stored) return;
-    if (trimmed === "") onCommit(undefined);
-    else if (Number.isFinite(parsed) && parsed >= 0) onCommit(parsed);
-    else setDraft(stored);
-  };
-  return (
-    <input
-      className={rows.number}
-      type="number"
-      min={0}
-      step="0.1"
-      placeholder="preset's"
-      value={draft}
-      aria-label={label}
-      onChange={(event) => setDraft(event.currentTarget.value)}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        event.stopPropagation();
-        if (event.key === "Enter") commit();
-      }}
-    />
-  );
-}
 
 export function CueListSection({ nodeId, cues, current, standby, wrap, graph, bus, context, editor }: CueListSectionProps) {
   const parsed = parseCueList(cues);
@@ -274,18 +233,18 @@ export function CueListSection({ nodeId, cues, current, standby, wrap, graph, bu
                   key={morphText(cue)}
                   label={`Morph seconds for cue ${cue.name}`}
                   stored={morphText(cue)}
+                  placeholder="preset's"
                   onCommit={(seconds) => setMorph(index, cue, seconds)}
                 />
               </label>
               <div className={rows.field}>
                 <span className={rows.fieldLabel}>Curve</span>
-                <EnumField
+                <MorphCurveField
                   label={`Curve for cue ${cue.name}`}
                   value={cue.morph?.curve ?? "smooth"}
-                  options={CURVE_OPTIONS}
                   disabled={cue.morph === undefined}
                   onChange={(curve) => {
-                    if (cue.morph !== undefined && MORPH_CURVES.includes(curve as MorphCurve)) setMorph(index, cue, cue.morph.seconds, curve as MorphCurve);
+                    if (cue.morph !== undefined) setMorph(index, cue, cue.morph.seconds, curve);
                   }}
                 />
               </div>
