@@ -245,6 +245,7 @@ export interface ComponentCommandOptions {
    * §T1545b: a command re-registered the host definition as part of the graph step
    * `undoGroupId` (an in-session detach moving the outer page onto the copies). The session
    * records the definition with that step, so undo and redo restore it with the graph.
+   * §T1546b: also called for a definition-only edit, whose step is `context.applyStep`.
    */
   onDefinitionStep?: (undoGroupId: string) => void;
   /**
@@ -274,11 +275,13 @@ function editOutcome(
   ok: boolean,
   host: ComponentHost | null,
   diagnostics: RuntimeDiagnostic[],
+  undoGroupId?: string,
 ): CommandOutcome<ComponentEditOutput> {
   return {
     status: ok ? "applied" : "rejected",
     revision,
     diagnostics,
+    ...(undoGroupId === undefined ? {} : { undoGroupId }),
     output: {
       ok,
       componentId: host?.componentId ?? null,
@@ -628,6 +631,15 @@ function danglingInstancePaths(input: {
   return said;
 }
 
+/** §T1546b: the two definitions agree on everything beside the graph. */
+function sameDefinitionShell(a: GraphComponentDefinition, b: GraphComponentDefinition): boolean {
+  const { graph: _a, ...left } = a;
+  const { graph: _b, ...right } = b;
+  void _a;
+  void _b;
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 export function registerComponentCommands(bus: LoomBus, options: ComponentCommandOptions): void {
   const components = options.components;
   const host = options.host ?? null;
@@ -653,6 +665,34 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
       if (undoGroupId !== undefined) options.onDefinitionStep?.(undoGroupId);
     }
     return true;
+  };
+
+  /**
+   * §T1546b: a DEFINITION-ONLY edit (publish, unpublish, expose, unexpose, reorder) as an
+   * undo step of its own. It changes no graph, so `context.applyStep` records the step — the
+   * revision, the audit entry, the slot in the actor's history — and the definition is
+   * registered INSIDE it, so `onDefinitionStep` pairs the before/after with that step exactly
+   * as for detach. The step comes first so that a coalesced step keeps the definition from
+   * where it began. The session leaves the definition's graph alone on a step with no graph
+   * entity in it, so `next` registers as built. An edit that changes nothing makes no step.
+   */
+  const commitDefinitionStep = (
+    context: CommandContext,
+    label: string,
+    next: GraphComponentDefinition,
+    diagnostics: RuntimeDiagnostic[],
+  ): CommandOutcome<ComponentEditOutput> => {
+    const problems = components.validate(next);
+    diagnostics.push(...problems);
+    const failed = problems.some((diagnostic) => diagnostic.severity === "error");
+    const current = requireHostDefinition();
+    if (failed || context.dryRun || host === null || current === undefined || sameDefinitionShell(current, next)) {
+      return editOutcome(context.store.getRevision(), !failed, host, diagnostics);
+    }
+    const applied = context.applyStep({ label });
+    components.register(next);
+    if (applied.undoGroupId !== undefined) options.onDefinitionStep?.(applied.undoGroupId);
+    return editOutcome(applied.revision, true, host, diagnostics, applied.undoGroupId);
   };
 
   bus.registerCommand({
@@ -1146,8 +1186,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         portId: input.portId,
       };
       const next = withExposedPort(definition, input.direction, exposed);
-      const ok = commitDefinition(context, next, diagnostics);
-      return editOutcome(revision, ok, host, diagnostics);
+      return commitDefinitionStep(context, `Expose ${exposed.label}`, next, diagnostics);
     },
   });
 
@@ -1163,8 +1202,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         return editOutcome(revision, false, host, diagnostics);
       }
       const next = withoutExposedPort(definition, input.direction, input.externalId);
-      const ok = commitDefinition(context, next, diagnostics);
-      return editOutcome(revision, ok, host, diagnostics);
+      return commitDefinitionStep(context, `Unexpose ${input.externalId}`, next, diagnostics);
     },
   });
 
@@ -1210,8 +1248,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         definition: input.definition,
         targets: input.targets.map((target) => ({ ...target })),
       });
-      const ok = commitDefinition(context, next, diagnostics);
-      return editOutcome(revision, ok, host, diagnostics);
+      return commitDefinitionStep(context, `Publish ${input.definition.label}`, next, diagnostics);
     },
   });
 
@@ -1226,8 +1263,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         diagnostics.push(NOT_INSIDE);
         return editOutcome(revision, false, host, diagnostics);
       }
-      const ok = commitDefinition(context, withoutPublishedParameter(definition, input.key), diagnostics);
-      return editOutcome(revision, ok, host, diagnostics);
+      return commitDefinitionStep(context, `Unpublish ${input.key}`, withoutPublishedParameter(definition, input.key), diagnostics);
     },
   });
 
@@ -1254,8 +1290,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         return editOutcome(revision, false, host, diagnostics);
       }
       const next = reorderPublishedParameter(definition, input.key, input.toIndex);
-      const ok = commitDefinition(context, next, diagnostics);
-      return editOutcome(revision, ok, host, diagnostics);
+      return commitDefinitionStep(context, `Reorder ${input.key}`, next, diagnostics);
     },
   });
 

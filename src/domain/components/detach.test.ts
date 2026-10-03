@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { flattenComponents } from "../../compiler/flatten.ts";
-import { alice, contextFor } from "../commands/test-support.ts";
+import { agent, alice, contextFor } from "../commands/test-support.ts";
 import type { GraphComponentDefinition } from "../types/components.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
@@ -639,13 +639,16 @@ describe("T1545b — undo and redo inside a component session restore the defini
     session.dispose();
   });
 
-  it("a publish made after the step (which has no undo step of its own) survives the step's undo", async () => {
+  // §T1546b made a publish an undo step of its own, so alice's Undo now takes back her own
+  // publish first (`session-undo.test.ts`). What can still change the definition after a
+  // step without being undone first is ANOTHER actor's edit (§V41): that publish survives.
+  it("a publish another actor made after the step survives the step's undo", async () => {
     const { harness, session } = opened(outerWithKnobs());
     expect((await session.bus.execute("component.detach", { nodeId: "inner" }, ctx)).status).toBe("applied");
     const published = await session.bus.execute(
       "component.publishParameter",
       { key: "extra", definition: { type: "number", label: "Extra", default: 1, min: 0, max: 8 }, targets: [{ nodeId: "grade", key: "radius" }] },
-      ctx,
+      contextFor(agent),
     );
     expect(published.status).toBe("applied");
     expect((await session.bus.execute("graph.undo", {}, ctx)).status).toBe("applied");

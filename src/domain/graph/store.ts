@@ -135,6 +135,24 @@ export interface ApplySettingsInput {
   patch: Partial<ProjectSettings>;
 }
 
+/**
+ * §T1546b: an undo step that changes no graph entity — the input to `applyStep`.
+ *
+ * A component session's definition-only edits (publish, unpublish, expose, unexpose,
+ * reorder) change what lives beside the graph, not the graph, and the store keeps no copy of
+ * that. The step is the slot in this actor's history, the revision and the audit entry; the
+ * caller keeps what the step changed, keyed by the returned `undoGroupId`, and puts it back
+ * when that group is undone or redone (`session.ts`, "Undo restores the definition too").
+ */
+export interface ApplyStepInput {
+  actor: Actor;
+  command: string;
+  label?: string;
+  transactionId?: string | undefined;
+  splitUndo?: boolean;
+  dryRun?: boolean;
+}
+
 export interface ApplyResult {
   committed: boolean;
   changed: boolean;
@@ -167,6 +185,8 @@ export interface GraphStoreInternals {
   apply: (input: ApplyInput) => ApplyResult;
   /** The settings mutation path (§V177, T272). Held only by the command bus (§V29). */
   applySettings: (input: ApplySettingsInput) => ApplyResult;
+  /** §T1546b: a step with no graph change (`ApplyStepInput`). Held only by the command bus (§V29). */
+  applyStep: (input: ApplyStepInput) => ApplyResult;
   undo: (actor: Actor, command?: string) => HistoryOutcome;
   redo: (actor: Actor, command?: string) => HistoryOutcome;
   /** Records a mutation that did not happen: rejected or conflicting (§V31). */
@@ -505,6 +525,31 @@ export function createGraphStore(options: GraphStoreOptions = {}): GraphStore {
     );
   }
 
+  /**
+   * §T1546b: one revision, one audit entry, one undo group — and no entity in it. Shares
+   * `commit` with `apply`, so it coalesces into an open transaction and clears the redo
+   * branch like any edit. Undoing or redoing it moves the group between the stacks and
+   * bumps the revision, with nothing to restore here (`restore` with zero entities): the
+   * caller reads which group moved off the audit entry and the stacks.
+   */
+  function applyStep(input: ApplyStepInput): ApplyResult {
+    if (input.actor.id.trim() === "") {
+      throw new Error("InvocationContext.actor.id is required for every mutation (§V30)");
+    }
+    const state = store.getState();
+    if (input.dryRun === true) {
+      return { committed: false, changed: true, revision: state.graph.revision, undoGroupId: undefined };
+    }
+    return commit(state.graph, { nodes: {}, edges: {}, groups: {} }, undefined, {
+      actor: input.actor,
+      command: input.command,
+      label: input.label ?? input.command,
+      transactionId: input.transactionId,
+      splitUndo: input.splitUndo === true,
+      historyMode: "push",
+    });
+  }
+
   function restore(
     group: UndoGroup,
     direction: "undo" | "redo",
@@ -728,7 +773,7 @@ export function createGraphStore(options: GraphStoreOptions = {}): GraphStore {
 
   return {
     view,
-    internals: { apply, applySettings, undo, redo, recordAudit, ids },
+    internals: { apply, applySettings, applyStep, undo, redo, recordAudit, ids },
     raw: store,
   };
 }

@@ -72,6 +72,12 @@ export interface ApplySettingsRequest {
   splitUndo?: boolean;
 }
 
+/** §T1546b: an undo step that changes no graph entity (`GraphStoreInternals.applyStep`). */
+export interface ApplyStepRequest {
+  label: string;
+  splitUndo?: boolean;
+}
+
 export interface AppliedInfo {
   committed: boolean;
   changed: boolean;
@@ -159,6 +165,13 @@ export interface CommandContext {
    * Both land in the same `commit`: one revision, one audit entry, one undo group.
    */
   applySettings: (request: ApplySettingsRequest) => AppliedInfo;
+  /**
+   * §T1546b: an undo step with no graph change — a revision, an audit entry and a slot in
+   * the actor's history, coalescing like `apply`. For an edit whose state lives OUTSIDE the
+   * document and that its owner restores when the step is undone or redone: a component
+   * session's publish, expose, reorder (`session.ts`). Unlike `audit`, Undo can reach it.
+   */
+  applyStep: (request: ApplyStepRequest) => AppliedInfo;
   /**
    * Records an APPLIED audit entry for a mutation that never touches the document
    * (T214, §V31, §V124).
@@ -523,6 +536,15 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
             splitUndo: request.splitUndo === true,
             dryRun,
             patch: request.patch,
+          }),
+        applyStep: (request: ApplyStepRequest): AppliedInfo =>
+          store.internals.applyStep({
+            actor: context.actor,
+            command: name,
+            label: request.label,
+            transactionId: context.transactionId,
+            splitUndo: request.splitUndo === true,
+            dryRun,
           }),
         apply: (request: ApplyRequest): AppliedInfo =>
           store.internals.apply({

@@ -63,10 +63,12 @@ import type { ComponentRegistry } from "./registry.ts";
  * (`onDefinitionStep`) — and an undo or redo of that step puts the recorded side back,
  * field by field, for every field that still holds what the step left.
  *
- * What it does NOT cover: a definition-only command (publish, unpublish, expose, unexpose,
- * reorder) changes no graph, so the store makes no undo step for it at all and there is
- * nothing to pair it with — undo skips it, before and after this. Making those undoable
- * needs the store to record a step that is not a graph change.
+ * A definition-only command (publish, unpublish, expose, unexpose, reorder) changes no
+ * graph, so it makes its step with `context.applyStep` (§T1546b) — a revision, an audit
+ * entry and a slot in the actor's history with no entity in it — and registers the edited
+ * definition inside that step, which pairs before/after with it through `onDefinitionStep`
+ * the same way. Undo and redo of that step move no graph entity; the revision bump is the
+ * commit this listener reads, and the recorded side is put back like any other.
  */
 
 export interface ComponentSession {
@@ -133,6 +135,10 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
     else steps.set(id, { before, after });
   };
 
+  // A coalesced push (a drag) keeps the definition from where the step began.
+  const startOf = (id: string, coalesced: boolean, shell: DefinitionShell): DefinitionShell =>
+    coalesced ? (steps.get(id)?.before ?? (lastPush?.id === id ? lastPush.before : shell)) : shell;
+
   registerComponentCommands(bus, {
     components: options.components,
     host: { componentId: options.componentId, version: options.version },
@@ -183,6 +189,16 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
     // T1545b: which step this commit is, and the definition around it.
     const step = historyStep(state, previous);
     const shell = shellOf(current);
+    // §T1546b: a step with no graph entity in it (a definition-only edit, its undo or redo)
+    // moves only the store's revision. The definition keeps its graph object, so nothing
+    // keyed on it sees a change and a saved component's graph does not churn its revision.
+    const graphMoved = state.graph.nodes !== previous.graph.nodes || state.graph.edges !== previous.graph.edges || state.graph.groups !== previous.graph.groups;
+    if (!graphMoved && step.direction === "push") {
+      // Nothing to write back: the command registers the edit itself, inside this step.
+      if (step.id !== undefined) lastPush = { id: step.id, before: startOf(step.id, step.coalesced, shell) };
+      if (steps.size > MAX_STEPS) forgetEvicted(steps, state);
+      return;
+    }
     let restored: DefinitionShell = shell;
     if (step.direction !== "push") {
       const recorded = step.id === undefined ? undefined : steps.get(step.id);
@@ -190,7 +206,7 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
         restored = step.direction === "undo" ? rewind(shell, recorded.after, recorded.before) : rewind(shell, recorded.before, recorded.after);
       }
     }
-    const next = pruneComponentDefinition({ ...current, ...restored, graph: state.graph }, options.nodes, options.components);
+    const next = pruneComponentDefinition({ ...current, ...restored, graph: graphMoved ? state.graph : current.graph }, options.nodes, options.components);
     const problems = options.components.validate(next);
     if (problems.some((diagnostic) => diagnostic.severity === "error")) {
       options.onInvalid?.(problems);
@@ -198,7 +214,7 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
     }
     // Before `register`, whose notification re-enters the catalogue listener above.
     const before = synced;
-    synced = state.graph;
+    synced = next.graph;
     try {
       options.components.register(next);
     } catch (error) {
@@ -206,8 +222,7 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
       throw error;
     }
     if (step.direction === "push" && step.id !== undefined) {
-      // A coalesced push (a drag) keeps the definition from where the step began.
-      const from = step.coalesced ? (steps.get(step.id)?.before ?? (lastPush?.id === step.id ? lastPush.before : shell)) : shell;
+      const from = startOf(step.id, step.coalesced, shell);
       lastPush = { id: step.id, before: from };
       record(step.id, from);
       if (steps.size > MAX_STEPS) forgetEvicted(steps, state);
