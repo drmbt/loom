@@ -24,6 +24,7 @@ describe("lensMarker", () => {
   it("says nothing when the preview is the plain picture", () => {
     expect(lensMarker(undefined)).toBeNull();
     expect(lensMarker(DEFAULT_PREVIEW_LENS)).toBeNull();
+    expect(lensMarker({ ...DEFAULT_PREVIEW_LENS, lens: "rgb" })).toBe("RGB");
   });
 
   it("names the isolated channel", () => {

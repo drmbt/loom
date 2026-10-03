@@ -21,6 +21,7 @@ import { ComponentPage, InspectorSubjects } from "@editor/component/index.ts";
 import type { GraphComponentDefinition } from "@domain/types/components.ts";
 import type { ComponentRegistryView } from "@domain/components/registry.ts";
 import { Inspector } from "@editor/inspector/index.ts";
+import type { InstanceParameters } from "@editor/inspector/instance-parameters.ts";
 import type { InputResolution, MidiSectionSurface, PlannedOutput } from "@editor/inspector/index.ts";
 import { useKeymapPane } from "@editor/keymap/index.ts";
 import { ContextMenuHost } from "@editor/menus/index.ts";
@@ -42,6 +43,7 @@ import { useAppRuntime } from "./app-context.ts";
 import { useFullscreenSurface } from "./fullscreen-commands.ts";
 import { registerViewerCommands } from "./viewer-commands.ts";
 import { useOutputPresentation } from "./use-output-presentation.ts";
+import type { ScreenCaptureWiring } from "./use-screen-sources.ts";
 import { useViewerSynthesis } from "./use-viewer-synthesis.ts";
 import { useNativeOutput } from "./use-native-output.ts";
 import { useViewCameraOverride } from "./use-view-camera.ts";
@@ -141,6 +143,7 @@ export interface InspectorPaneProps {
    * invisible from outside a component for six months.
    */
   componentPath?: readonly NodeId[];
+  instanceParameters?: InstanceParameters;
   diagnostics: readonly RuntimeDiagnostic[];
   /**
    * The compile's own channel resolver (B46, §V61) — see `Inspector`'s prop. Passed
@@ -169,6 +172,7 @@ export interface InspectorPaneProps {
    * the Inspector's Camera section. Passed straight through; this pane measures nothing.
    */
   cameraStatus?: (nodeId: NodeId) => import("@/app/camera-request.ts").CameraStatus | null;
+  screenCapture?: ScreenCaptureWiring;
   /** T1397b: the names phones are sending cameras under now, for the Webcam's device picker. */
   phoneCameras?: readonly string[];
   /**
@@ -269,6 +273,7 @@ export function InspectorPane({
   graph,
   compiled,
   componentPath,
+  instanceParameters,
   diagnostics,
   channels,
   latestFrame,
@@ -277,6 +282,7 @@ export function InspectorPane({
   unknownParameters = [],
   audioStatus,
   cameraStatus,
+  screenCapture,
   phoneCameras,
   midi,
   laser,
@@ -350,11 +356,13 @@ export function InspectorPane({
       inputResolutions={inputResolutions}
       planned={planned ?? null}
       {...(planNodeId === null ? {} : { planNodeId })}
+      {...(instanceParameters === undefined ? {} : { instanceParameters })}
       {...(channels === undefined ? {} : { channels })}
       {...(latestFrame === undefined ? {} : { latestFrame })}
       {...(channelNames === undefined ? {} : { channelNames })}
       {...(audioStatus === undefined ? {} : { audioStatus })}
       {...(cameraStatus === undefined ? {} : { cameraStatus })}
+      {...(screenCapture === undefined ? {} : { screenCapture })}
       {...(phoneCameras === undefined ? {} : { phoneCameras })}
       {...(midi === undefined ? {} : { midi })}
       {...(laser === undefined ? {} : { laser })}
@@ -708,9 +716,11 @@ export function ViewerPane({
    * texture output, so the second path costs nothing when it is not needed.
    */
   const synthesisRow = selected?.synthesis === undefined ? null : selected;
+  const [alphaDisplay, setAlphaDisplay] = useState<"rgba" | "rgb">("rgba");
   const { canvasRef, canvasKey } = useOutputPresentation(
     backend,
     synthesisRow === null ? (selected?.resourceId ?? null) : null,
+    alphaDisplay,
   );
   const synthesisCanvasRef = useRef<HTMLCanvasElement | null>(null);
   useViewerSynthesis({
@@ -721,6 +731,7 @@ export function ViewerPane({
     output: synthesisRow,
     previewFps,
     previewLongEdge,
+    alphaDisplay,
     documentIdentity,
     ...(orbits === undefined ? {} : { orbits }),
   });
@@ -1291,6 +1302,13 @@ export function ViewerPane({
               {sink !== null && outputKey(sink) === outputKey(output) ? " (output)" : ""}
             </option>
           ))}
+        </select>
+        <label className={styles.barLabel} htmlFor="viewer-alpha-display">display</label>
+        <select id="viewer-alpha-display" className={styles.select} value={alphaDisplay}
+          title="RGBA: alpha over checkerboard; RGB: raw colour"
+          onChange={(event) => setAlphaDisplay(event.target.value === "rgb" ? "rgb" : "rgba")}>
+          <option value="rgba">RGBA</option>
+          <option value="rgb">RGB</option>
         </select>
         {/* §V90: the hint is carried by the label, on hover and on focus — no permanent
             caption in the bar. */}

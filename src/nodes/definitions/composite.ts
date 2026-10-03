@@ -357,7 +357,7 @@ export const maskNode: NodeDefinition = {
   description:
     "Multiplies the source by a channel of the mask input — its alpha alone by default, or its colour too (see Apply To).",
   inputs: [
-    { id: "input", label: "Input", type: RGBA_TEXTURE, description: "The image being masked." },
+    { id: "input", label: "Picture", type: RGBA_TEXTURE, description: "The image being masked." },
     {
       id: "mask",
       label: "Mask",
@@ -365,7 +365,7 @@ export const maskNode: NodeDefinition = {
       description: "DATA, not colour: coverage. Never colour-convert this (§V56).",
     },
   ],
-  outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],
+  outputs: [{ id: "out", label: "Cutout", type: RGBA_TEXTURE }],
   parameters: {
     channel: {
       type: "enum",
@@ -384,7 +384,7 @@ export const maskNode: NodeDefinition = {
       // app has rendered, because the shader text is unchanged rather than equivalent.
       compileTime: true,
       description:
-        "Alpha only keeps the colour valid where coverage is partial — the straight-alpha reading, and what a Porter-Duff composite downstream expects. It is also INVISIBLE in any colour view: the rgb it outputs is identical to the rgb it was given. Choose Colour and alpha when what reads this is looking at rgb — a preview, a point kernel, a shader sampling the texture (B189).",
+        "Alpha only keeps the colour valid where coverage is partial — the straight-alpha reading, and what a Porter-Duff composite downstream expects. RGBA views display its transparency. Choose Colour and alpha only when the consumer reads RGB alone, such as a point kernel. Multiplying colour here and again in a straight-alpha composite darkens soft edges.",
     },
   },
   resolutionPolicy: { kind: "inherit", input: "input" },

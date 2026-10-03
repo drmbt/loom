@@ -1,5 +1,8 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import type { NodeFormatOverride, NodeResolutionOverride } from "@domain/types/graph.ts";
+import type { ChannelMask } from "@domain/types/graph.ts";
+import { DEFAULT_CHANNEL_MASK } from "@domain/types/graph.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { NodeId, PortId } from "@domain/types/ids.ts";
 import { ControlRow } from "@ui/controls/control-row.tsx";
@@ -71,6 +74,8 @@ export interface CommonSectionProps {
     readonly current: string;
     readonly choices: readonly ComponentPreviewChoice[];
   };
+  /** Node-defined Common controls, through the inspector's existing parameter editor. */
+  children?: ReactNode;
   resolution: NodeResolutionOverride | undefined;
   /**
    * §T1391b: the node sizes itself from its OWN parameters (T151's parameter policy — a
@@ -80,6 +85,9 @@ export interface CommonSectionProps {
    */
   sizedByParameters?: boolean;
   format: NodeFormatOverride | undefined;
+  /** Real processing channels; disabled channels pass through from the first picture input. */
+  channelMask?: ChannelMask;
+  supportsChannelMask?: boolean;
   resolutionContext: ResolutionContext;
   formatContext: FormatContext;
   /**
@@ -99,9 +107,12 @@ export function CommonSection({
   nodeId,
   planNodeId,
   componentPreview,
+  children,
   resolution,
   sizedByParameters = false,
   format,
+  channelMask,
+  supportsChannelMask = false,
   resolutionContext,
   formatContext,
   resolved,
@@ -215,6 +226,23 @@ export function CommonSection({
           />
         </ControlRow>
       )}
+      {supportsChannelMask ? (
+        <ControlRow label="Channels" variant={variant}>
+          <div className={styles.channelMask} role="group" aria-label="Processing channels">
+            {(["r", "g", "b", "a"] as const).map(channel => {
+              const mask = channelMask ?? DEFAULT_CHANNEL_MASK;
+              return (
+                <button key={channel} type="button" aria-label={`Process ${channel.toUpperCase()}`}
+                  aria-pressed={mask[channel]} className={styles.channelToggle}
+                  title="Enabled channels are processed. Disabled channels keep the input value."
+                  onClick={() => { void editor.setChannelMask(nodeId, { ...mask, [channel]: !mask[channel] }); }}>
+                  {channel.toUpperCase()}
+                </button>
+              );
+            })}
+          </div>
+        </ControlRow>
+      ) : null}
       {sizedByParameters && resolution === undefined ? null : (
         <ControlRow label="Resolution" variant={variant}>
           <EnumField
@@ -269,6 +297,8 @@ export function CommonSection({
           </div>
         </ControlRow>
       ) : null}
+
+      {children}
 
       <ControlRow label="Format" variant={variant}>
         <EnumField

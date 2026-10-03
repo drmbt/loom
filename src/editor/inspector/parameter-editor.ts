@@ -1,7 +1,7 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { NodeFormatOverride, NodeResolutionOverride } from "@domain/types/graph.ts";
+import type { ChannelMask, NodeFormatOverride, NodeResolutionOverride } from "@domain/types/graph.ts";
 import type { EdgeId, NodeId, PortId } from "@domain/types/ids.ts";
 import type { ParameterValue, StoredParameter } from "@domain/types/parameters.ts";
 import type { GraphPatchOperation, GraphPatchResult } from "@domain/types/patch.ts";
@@ -42,6 +42,21 @@ export interface ParameterEditorOptions {
   newTransactionId?: () => string;
   /** Called with the diagnostics of any patch the bus did not apply. */
   onDiagnostics?: (diagnostics: readonly RuntimeDiagnostic[]) => void;
+  /** Published child controls write the owning instance's parameter, on its bus. */
+  parameterTarget?: (nodeId: NodeId, key: string) => ParameterWriteTarget | undefined;
+  channelTarget?: (nodeId: NodeId) => ChannelWriteTarget;
+}
+
+export interface ChannelWriteTarget {
+  readonly bus: LoomBus;
+  readonly nodeId: NodeId;
+  readonly internalNodeId?: string;
+}
+
+export interface ParameterWriteTarget {
+  readonly bus: LoomBus;
+  readonly nodeId: NodeId;
+  readonly key: string;
 }
 
 export interface ParameterEditor {
@@ -104,6 +119,7 @@ export interface ParameterEditor {
     label: string,
   ) => Promise<GraphPatchResult>;
   setFormat: (nodeId: NodeId, format: NodeFormatOverride | null) => Promise<GraphPatchResult>;
+  setChannelMask: (nodeId: NodeId, channelMask: ChannelMask | null) => Promise<GraphPatchResult>;
   /**
    * Fires a momentary pulse (T214, §V124).
    *
@@ -188,20 +204,35 @@ export function createParameterEditor(options: ParameterEditorOptions): Paramete
     transactionId: string | undefined,
   ): Promise<GraphPatchResult> =>
     enqueue(async () => {
-      const result = await bus.execute(
+      let destination: LoomBus | undefined;
+      const byNode = new Map<NodeId, Record<string, StoredParameter>>();
+      for (const [key, value] of Object.entries(parameters)) {
+        const target = options.parameterTarget?.(nodeId, key) ?? { bus, nodeId, key };
+        if (destination !== undefined && destination !== target.bus) {
+          return report({ status: "rejected", revision: bus.store.getRevision(), appliedOperations: 0,
+            createdIds: {}, diagnostics: [{ severity: "warning", code: "parameter.multipleOwners", nodeId,
+              message: "This edit spans instance and definition parameters; edit them separately." }] });
+        }
+        destination = target.bus;
+        const entries = byNode.get(target.nodeId) ?? {};
+        entries[target.key] = value;
+        byNode.set(target.nodeId, entries);
+      }
+      const writeBus = destination ?? bus;
+      const result = await writeBus.execute(
         "graph.applyPatch",
         {
           // Read at send time: the queue guarantees no other patch of ours is in flight.
-          baseRevision: bus.store.getRevision(),
+          baseRevision: writeBus.store.getRevision(),
           label,
           // `GraphPatchOperation` still types this field as `ParameterValue`, while
           // `GraphNode.parameters`, the zod boundary and `applyGraphPatch` all speak
           // `StoredParameter` — a slot is accepted end to end at runtime. The cast is
           // the same one `apply-patch.ts` already makes; widening the operation type is
           // a change in `src/domain/types/patch.ts`, which this track does not own.
-          operations: [
-            { op: "setParameters", nodeId, parameters: parameters as Record<string, ParameterValue> },
-          ],
+          operations: [...byNode].map(([targetId, entries]) => ({
+            op: "setParameters" as const, nodeId: targetId, parameters: entries as Record<string, ParameterValue>,
+          })),
         },
         {
           ...context,
@@ -251,6 +282,16 @@ export function createParameterEditor(options: ParameterEditorOptions): Paramete
   };
 
   return {
+    setChannelMask(nodeId, channelMask) {
+      return enqueue(async () => {
+        const destination = options.channelTarget?.(nodeId) ?? { bus, nodeId };
+        const result = await destination.bus.execute("node.setChannelMask", {
+          nodeId: destination.nodeId, channelMask,
+          ...(destination.internalNodeId === undefined ? {} : { internalNodeId: destination.internalNodeId }),
+        }, context);
+        return report(result.output);
+      });
+    },
     setParameter(nodeId, key, value, phase) {
       write(nodeId, { [key]: value }, phase);
     },

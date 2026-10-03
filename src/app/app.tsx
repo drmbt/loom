@@ -98,6 +98,7 @@ import { helperFactFrom, useRequirementDiagnostics } from "./use-requirement-dia
 import { pageHostFacts } from "@devices/host-shell.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { useMediaSources } from "./use-media-sources.ts";
+import { useScreenSources } from "./use-screen-sources.ts";
 import { useMeshSources } from "./use-mesh-sources.ts";
 import { useNativeInputs } from "./use-native-inputs.ts";
 import { usePhoneCameras } from "./use-phone-cameras.ts";
@@ -842,6 +843,7 @@ export function App({
     phoneCameras.opener,
   );
   const nativeInputs = useNativeInputs(runtime, backend ?? null, compile.flatGraph, compile.compiled);
+  const screenCapture = useScreenSources(runtime, backend ?? null, compile.flatGraph);
   // T1353b: Mesh File In — reads the file, feeds its buffers, writes its measured size.
   const meshes = useMeshSources(runtime, backend ?? null, compile.flatGraph);
 
@@ -1399,12 +1401,25 @@ export function App({
     // T1525b: opening a window is a moment; its parameters are read at the frame last rendered.
     frame: () => frameLoop.latestFrame()?.frame,
   });
+  const muteInputMonitorForRender = audioInput.muteMonitorForRender;
+  const muteMovieMonitorForRender = media.muteMonitorForRender;
+  const muteAudioMonitor = useCallback(() => {
+    const releaseInput = muteInputMonitorForRender();
+    const releaseMovies = muteMovieMonitorForRender();
+    return () => {
+      releaseMovies();
+      releaseInput();
+    };
+  }, [muteInputMonitorForRender, muteMovieMonitorForRender]);
   const renderRange = useRenderRange({
     createCapture: output => {
       if (backend === undefined || backend === null) throw new Error("No GPU device for video capture.");
       return createRenderCanvasCapture(backend, output);
     },
-    beforeRender: async () => { await Promise.all([nativeOutputs.suspend(), drainNativeViewerOutputs(backend ?? null), vision.prepareForRender()]); },
+    beforeRender: async () => {
+      await Promise.all([nativeOutputs.suspend(), drainNativeViewerOutputs(backend ?? null), vision.prepareForRender()]);
+      return depth.prepareForRender();
+    },
     bus: runtime.bus,
     exports: agentPorts.exports,
     compiled: compile.compiled,
@@ -1414,7 +1429,7 @@ export function App({
     renderSettings: renderJobSettings,
     onRenderSettingsChange: setRenderJobSettings,
     prepareAudio: audioInput.prepareRenderAudio,
-    muteAudioMonitor: audioInput.muteMonitorForRender,
+    muteAudioMonitor,
     audioRequirement: audioInput.renderAudioRequirement,
     latestFrame: frameLoop.latestFrame,
     name: () => project.fileName ?? runtime.project.name,
@@ -1451,6 +1466,7 @@ export function App({
       ...compile.diagnostics,
       ...valueGraph.diagnostics,
       ...media.diagnostics,
+      ...screenCapture.diagnostics,
       ...meshes.diagnostics,
       ...nativeInputs.diagnostics,
       ...phoneCameras.diagnostics,
@@ -1486,6 +1502,7 @@ export function App({
     frameLoop.diagnostics,
     valueGraph.diagnostics,
     media.diagnostics,
+    screenCapture.diagnostics,
     meshes.diagnostics,
     nativeInputs.diagnostics,
     phoneCameras.diagnostics,
@@ -2194,6 +2211,7 @@ export function App({
                  */
                 compiled={compile.compiled}
                 componentPath={editing.path}
+                {...(editing.instanceParameters === undefined ? {} : { instanceParameters: editing.instanceParameters })}
                 diagnostics={compile.diagnostics}
                 // B46/§V61: the panel resolves through the resolver the COMPILE used.
                 channels={compile.channels}
@@ -2212,6 +2230,7 @@ export function App({
                 /* T1043: the camera's REQUEST beside its GRANT, read live per render
                    (§V986) — the media hook is the only thing holding the open track. */
                 cameraStatus={media.cameraStatus}
+                screenCapture={screenCapture}
                 /* T1397b: phones sending now, offered as Webcam devices. */
                 phoneCameras={phoneCameras.sending}
                 midi={midi}

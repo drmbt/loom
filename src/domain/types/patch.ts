@@ -1,6 +1,6 @@
 import type { EdgeId, GroupId, NodeId, PortId, Revision } from "./ids.ts";
 import type { StoredParameter } from "./parameters.ts";
-import type { NodeFormatOverride, NodeResolutionOverride, ViewportState } from "./graph.ts";
+import type { ChannelMask, NodeFormatOverride, NodeResolutionOverride, ViewportState } from "./graph.ts";
 import type { RuntimeDiagnostic } from "./diagnostics.ts";
 
 /**
@@ -71,6 +71,7 @@ export type GraphPatchOperation =
   | { op: "setNodeLabel"; nodeId: NodeRef; label: string | null }
   | { op: "setNodeResolution"; nodeId: NodeRef; resolution: NodeResolutionOverride | null }
   | { op: "setNodeFormat"; nodeId: NodeRef; format: NodeFormatOverride | null }
+  | { op: "setNodeChannelMask"; nodeId: NodeRef; channelMask: ChannelMask | null; internalNodeId?: string }
   /**
    * Groups and viewport (T104, §V29).
    *

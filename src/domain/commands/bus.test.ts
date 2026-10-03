@@ -94,6 +94,7 @@ describe("command bus — registration surface (§V39)", () => {
       // T1102: stacking order among overlapping nodes, persisted in `ui.z`.
       "node.bringToFront",
       "node.rename",
+      "node.setChannelMask",
       "node.setFormat",
       "node.setResolution",
       // Bar or curve in a value node's body, persisted in `ui.valuePlotMode`.

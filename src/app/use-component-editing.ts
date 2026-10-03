@@ -8,6 +8,8 @@ import type { ComponentSession } from "@domain/components/session.ts";
 import type { Breadcrumb, ResolvedComponentPath } from "@domain/components/navigation.ts";
 import { resolveComponentNavigation } from "@editor/component/index.ts";
 import type { AppRuntime } from "./app-runtime.ts";
+import type { InstanceParameters } from "@editor/inspector/instance-parameters.ts";
+import { flattenedNodeId } from "@compiler/flatten.ts";
 import {
   createComponentNavigationStore,
   navigationHolderFor,
@@ -61,6 +63,8 @@ export interface ComponentEditing {
   /** The component being edited, or null at the root. */
   definition: GraphComponentDefinition | null;
   insideComponent: boolean;
+  /** The active instance's effective child parameters and their published owners. */
+  instanceParameters: InstanceParameters | undefined;
   /** Path resolution problems — a stale instance, an uninstalled component (§V82). */
   diagnostics: readonly RuntimeDiagnostic[];
   navigate: (path: ComponentPath) => void;
@@ -178,6 +182,22 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
   const live = session !== null && session.componentId === componentId && session.version === version;
   const editBus = live && session !== null ? session.bus : runtime.bus;
 
+  // Private published values belong to the instance one level out. Keep that author's
+  // ordinary command session alive so a child edit has the same undo history as its owner.
+  const ancestorIdentity = JSON.stringify(resolved.frames.slice(0, -1).map(frame => [frame.componentId, frame.version]));
+  const [ancestorSessions, setAncestorSessions] = useState<ReadonlyMap<string, ComponentSession>>(new Map());
+  useEffect(() => {
+    const opened = new Map<string, ComponentSession>();
+    for (const frame of resolvedRef.current.frames.slice(0, -1)) {
+      const key = JSON.stringify([frame.componentId, frame.version]);
+      if (opened.has(key)) continue;
+      opened.set(key, openComponentSession({ components: runtime.components, nodes: runtime.registry,
+        componentId: frame.componentId, version: frame.version }));
+    }
+    setAncestorSessions(current => current.size === 0 && opened.size === 0 ? current : opened);
+    return () => { for (const owner of opened.values()) owner.dispose(); };
+  }, [ancestorIdentity, runtime.components, runtime.registry]);
+
   const graph = useSyncExternalStore<GraphDocument>(
     editBus.store.subscribe,
     editBus.store.getGraph,
@@ -192,6 +212,56 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
   const navigate = useCallback((next: ComponentPath) => store.setPath(next), [store]);
   const exit = useCallback(() => store.setPath(path.slice(0, -1)), [path, store]);
 
+  const instanceParameters = useMemo<InstanceParameters | undefined>(() => {
+    if (path.length === 0) return undefined;
+    const prefix = path.join("/");
+    return {
+      bus: runtime.bus,
+      channelTarget(nodeId) {
+        return { bus: runtime.bus, nodeId: path[0]!, internalNodeId: [...path.slice(1), nodeId].join("/") };
+      },
+      read(nodeId) {
+        const flattened = runtime.flattened.current();
+        const flatId = flattenedNodeId(prefix, nodeId);
+        const node = flattened.graph.nodes[flatId] ?? flattened.instanceNodes.get(flatId);
+        return node === undefined ? undefined : { graph: flattened.graph, node };
+      },
+      target(nodeId, key) {
+        const origins = runtime.flattened.current().publishedOrigins.get(flattenedNodeId(prefix, nodeId));
+        const publishedKey = Object.keys(origins ?? {}).filter(candidate => key === candidate || key.startsWith(`${candidate}.`))
+          .sort((a, b) => b.length - a.length)[0];
+        const origin = publishedKey === undefined ? undefined : origins?.[publishedKey];
+        if (origin !== undefined && publishedKey !== undefined) {
+          return { bus: runtime.bus, nodeId: origin.nodeId, key: `${origin.key}${key.slice(publishedKey.length)}` };
+        }
+        // The compiler's root-origin map deliberately omits PRIVATE nested pages.
+        // Follow the same published target chain until its nearest stored owner.
+        const frames = resolveComponentNavigation({ root: runtime.bus.store.getGraph(), path,
+          components: componentsView, nodes: runtime.registry }).frames;
+        let targetId = nodeId;
+        let targetKey = key;
+        let ownerDepth: number | undefined;
+        for (let index = frames.length - 1; index >= 0; index -= 1) {
+          const frame = frames[index]!;
+          const published = frame.definition.parameters.findLast(parameter => parameter.targets.some(target =>
+            target.nodeId === targetId && (targetKey === target.key || targetKey.startsWith(`${target.key}.`))));
+          if (published === undefined) break;
+          const matched = published.targets.find(target => target.nodeId === targetId &&
+            (targetKey === target.key || targetKey.startsWith(`${target.key}.`)))!;
+          targetKey = `${published.key}${targetKey.slice(matched.key.length)}`;
+          targetId = frame.instanceNodeId;
+          ownerDepth = index - 1;
+        }
+        if (ownerDepth === undefined) return undefined;
+        if (ownerDepth < 0) return { bus: runtime.bus, nodeId: targetId, key: targetKey };
+        const owner = frames[ownerDepth]!;
+        const ownerSession = ancestorSessions.get(JSON.stringify([owner.componentId, owner.version]));
+        if (ownerSession === undefined) throw new Error("The published parameter's authoring session is not ready.");
+        return { bus: ownerSession.bus, nodeId: targetId, key: targetKey };
+      },
+    };
+  }, [ancestorSessions, componentsView, path, runtime]);
+
   return {
     path,
     breadcrumbs: resolved.breadcrumbs,
@@ -200,6 +270,7 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
     runtime: scopedRuntime,
     definition: live ? (innermost?.definition ?? null) : null,
     insideComponent: componentId !== null,
+    instanceParameters,
     diagnostics: resolved.diagnostics,
     navigate,
     exit,

@@ -74,6 +74,7 @@ export function operationClass(operation: GraphPatchOperation): PatchOperationCl
     case "setNodeLabel":
     case "setNodeResolution":
     case "setNodeFormat":
+    case "setNodeChannelMask":
     case "setNodeSize":
     case "setGroup":
     case "setViewport":
@@ -182,6 +183,7 @@ export function touchedEntities(
     case "setNodeLabel":
     case "setNodeResolution":
     case "setNodeFormat":
+    case "setNodeChannelMask":
     case "setNodeSize": {
       node(operation.nodeId);
       return into;

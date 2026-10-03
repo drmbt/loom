@@ -37,6 +37,7 @@ export interface NodeInfoPopupProps {
 }
 
 const LENS_LABEL: Readonly<Record<PreviewLensKind, string>> = {
+  rgba: "RGBA",
   rgb: "RGB",
   r: "R",
   g: "G",
@@ -46,7 +47,8 @@ const LENS_LABEL: Readonly<Record<PreviewLensKind, string>> = {
 };
 
 const LENS_TITLE: Readonly<Record<PreviewLensKind, string>> = {
-  rgb: "Colour — the picture as this node renders it",
+  rgba: "Colour and alpha coverage; arithmetic alpha shows RGB",
+  rgb: "Raw colour — ignore alpha coverage",
   r: "Isolate red, as grayscale",
   g: "Isolate green, as grayscale",
   b: "Isolate blue, as grayscale",

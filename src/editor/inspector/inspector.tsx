@@ -31,6 +31,8 @@ import { BoundControlChips } from "@editor/controls/bound-control-chips.tsx";
 import { boundControls } from "@editor/controls/parameter-controls.ts";
 import { WebcamSection, webcamSectionParameters } from "./webcam-section.tsx";
 import type { CameraStatus } from "@/app/camera-request.ts";
+import type { ScreenCaptureWiring } from "@/app/use-screen-sources.ts";
+import { ScreenSection } from "./screen-section.tsx";
 import { NativeInputSection, nativeInputSectionParameters } from "./syphon-section.tsx";
 import { NATIVE_INPUT_TRANSPORTS } from "@devices/native-video.ts";
 import { MidiSection, midiSectionParameters } from "./midi-section.tsx";
@@ -42,11 +44,13 @@ import { PresetBankSection, presetBankSectionParameters } from "./preset-bank-se
 import { CueListSection, cueListSectionParameters } from "./cue-list-section.tsx";
 import { CUE_LIST_NODE_TYPE, PRESETS_NODE_TYPE } from "@domain/presets/index.ts";
 import { isComponentNodeType } from "@domain/components/component-type.ts";
+import { supportsChannelMask } from "@domain/graph/channel-mask.ts";
 import { LASER_OUT_TYPE } from "@nodes/definitions/laser-out.ts";
 import { WINDOW_OUT_TYPE } from "@nodes/definitions/window-out.ts";
 import type { MidiSectionSurface } from "./midi-section.tsx";
 import { ADVANCED_GROUP, DEFAULT_GROUP, groupParameters } from "./parameter-groups.ts";
 import { createParameterEditor } from "./parameter-editor.ts";
+import type { InstanceParameters } from "./instance-parameters.ts";
 import type { ParameterEditor } from "./parameter-editor.ts";
 import { parseComponentNodeType } from "@domain/components/component-type.ts";
 import type { ComponentRegistryView } from "@domain/components/index.ts";
@@ -158,6 +162,8 @@ export interface InspectorProps {
   inputResolutions?: readonly InputResolution[];
   /** Injectable for tests; otherwise the pane owns its editor. */
   editor?: ParameterEditor;
+  /** Effective values and published edit ownership while inspecting a drilled instance. */
+  instanceParameters?: InstanceParameters;
   /** T601: the component catalogue, so an instance's Common page offers its preview source. */
   components?: ComponentRegistryView;
   /**
@@ -188,6 +194,8 @@ export interface InspectorProps {
    * §V986 answer to "we cannot see" rather than a fabricated stand-in.
    */
   cameraStatus?: (nodeId: NodeId) => CameraStatus | null;
+  /** Live screen capture, keyed by flattened plan ids rather than component-local ids. */
+  screenCapture?: ScreenCaptureWiring;
   /** T1397b: the names phones are sending cameras under now, offered as Webcam devices. */
   phoneCameras?: readonly string[];
   /**
@@ -261,6 +269,8 @@ export interface InspectorProps {
 
 /** §V16: <= 10 Hz. Shared with `TimelineReadout`'s cap, for the same reason. */
 export const LIVE_VALUE_INTERVAL_MS = 100;
+const noInstanceSubscription = (): (() => void) => () => {};
+const noInstanceGraph = (): GraphDocument | null => null;
 
 /**
  * T492's injected code editor, hoisted to module scope (T1177). It closes over nothing, so
@@ -333,17 +343,26 @@ export function Inspector({
   channelNames,
   audioStatus,
   cameraStatus,
+  screenCapture,
   phoneCameras,
   midi,
   laser,
   performWindows,
   components,
+  instanceParameters,
 }: InspectorProps) {
   const graph = useSyncExternalStore<GraphDocument>(
     bus.store.subscribe,
     bus.store.getGraph,
     bus.store.getGraph,
   );
+  // Parent edits do not notify the shared definition's authoring store.
+  const instanceGraph = useSyncExternalStore(
+    instanceParameters?.bus.store.subscribe ?? noInstanceSubscription,
+    instanceParameters?.bus.store.getGraph ?? noInstanceGraph,
+    instanceParameters?.bus.store.getGraph ?? noInstanceGraph,
+  );
+  void instanceGraph;
 
   /**
    * T990 — THE PRODUCT CALL SITE for `op('…')` completion.
@@ -459,6 +478,8 @@ export function Inspector({
       bus,
       context,
       onDiagnostics: reportEditorDiagnostics.many,
+      ...(instanceParameters === undefined ? {} : { parameterTarget: instanceParameters.target }),
+      ...(instanceParameters?.channelTarget === undefined ? {} : { channelTarget: instanceParameters.channelTarget }),
     });
   }
 
@@ -469,6 +490,8 @@ export function Inspector({
         bus,
         context,
         onDiagnostics: reportEditorDiagnostics.many,
+        ...(instanceParameters === undefined ? {} : { parameterTarget: instanceParameters.target }),
+        ...(instanceParameters?.channelTarget === undefined ? {} : { channelTarget: instanceParameters.channelTarget }),
       });
       revive((generation) => generation + 1);
     }
@@ -476,11 +499,13 @@ export function Inspector({
       ownedRef.current?.dispose();
       ownedRef.current = null;
     };
-  }, [bus, context, providedEditor, reportEditorDiagnostics]);
+  }, [bus, context, providedEditor, reportEditorDiagnostics, instanceParameters]);
 
   const editor = providedEditor ?? ownedRef.current;
 
   const node = nodeId === null ? undefined : graph.nodes[nodeId];
+  const instanceRead = nodeId === null ? undefined : instanceParameters?.read(nodeId);
+  const parameterNode = instanceRead?.node ?? node;
   const definition = node === undefined ? undefined : bus.registry.get(node.type);
 
   /*
@@ -489,7 +514,7 @@ export function Inspector({
    * slot hands `useLiveFrame` no reader, and it installs nothing.
    */
   const liveFrame = useLiveFrame(
-    latestFrame !== undefined && node !== undefined && nodeHasAnimatedParameters(node)
+    latestFrame !== undefined && parameterNode !== undefined && nodeHasAnimatedParameters(parameterNode)
       ? latestFrame
       : undefined,
     LIVE_VALUE_INTERVAL_MS,
@@ -587,7 +612,7 @@ export function Inspector({
    * here is the panel's own question — which graph, which moment.
    */
   const readOptionsAt = (frame?: FrameEvaluationInput) =>
-    createParameterReadOptions({ graph, registry: bus.registry, channels, frame });
+    createParameterReadOptions({ graph: instanceRead?.graph ?? graph, registry: bus.registry, channels, frame });
   const readOptions = readOptionsAt();
 
   /**
@@ -600,7 +625,7 @@ export function Inspector({
    * never land in that seat. The panel shows the resolved value at t=0 and, crucially,
    * stops claiming the channel is unattached when it is.
    */
-  const resolved = resolveParameters(node, definition, readOptions);
+  const resolved = resolveParameters(parameterNode ?? node, definition, readOptions);
 
   /**
    * T893 — the LIVE read, the same call with the last rendered frame, for DISPLAY only.
@@ -620,7 +645,7 @@ export function Inspector({
    * the per-frame compile already relate to each other. A second resolver here is the bug
    * B8 recorded, and this is deliberately not one.
    */
-  const live = liveFrame === null ? null : resolveParameters(node, definition, readOptionsAt(liveFrame));
+  const live = liveFrame === null ? null : resolveParameters(parameterNode ?? node, definition, readOptionsAt(liveFrame));
 
   /*
    * T994 — the device sections and the generic groups were TWO CONTROLS ON ONE
@@ -651,7 +676,11 @@ export function Inspector({
   // commands and read the document — so they show on every such node, keyed on the TYPE.
   const showsPresetBankSection = node.type === PRESETS_NODE_TYPE;
   const showsCueListSection = node.type === CUE_LIST_NODE_TYPE;
+  const imageFit = resolved.entries.find(
+    (entry) => entry.key === "imageFit" && entry.definition.group === "Common",
+  );
   const presentedBySections = new Set<string>([
+    ...(imageFit === undefined ? [] : [imageFit.key]),
     ...(showsAudioSection ? audioSectionParameters(node.type as "audioIn" | "audioFileIn") : []),
     ...(showsWebcamSection ? webcamSectionParameters() : []),
     ...(showsSyphonSection ? nativeInputSectionParameters() : []),
@@ -810,13 +839,33 @@ export function Inspector({
       // §T1391b: a node sized by its own parameters (Window Out) is not offered the override.
       sizedByParameters={(definition?.resolutionPolicy as { kind?: string } | undefined)?.kind === "parameter"}
       format={node.format}
+      {...((instanceRead?.node ?? node).channelMask === undefined ? {} : { channelMask: (instanceRead?.node ?? node).channelMask! })}
+      supportsChannelMask={definition !== undefined && supportsChannelMask(definition)}
       resolutionContext={resolutionContext}
       formatContext={formatContext}
       resolved={resolvedCommon}
       {...(diagnostics === undefined ? {} : { diagnostics })}
       editor={editor}
       variant={variant}
-    />
+    >
+      {imageFit === undefined ? null : (
+        <div data-parameter-key={imageFit.key}>
+          <ParameterControl
+            parameterKey={imageFit.key}
+            definition={imageFit.definition}
+            value={imageFit.value}
+            {...(live === null ? {} : { liveValue: live.get(imageFit.key)?.value })}
+            variant={variant}
+            driven={imageFit.driven}
+            slot={imageFit.slot}
+            references={references}
+            diagnostic={imageFit.diagnostic}
+            onStoredChange={rowWriters.stored}
+            onChange={rowWriters.changeFor(imageFit.key)}
+          />
+        </div>
+      )}
+    </CommonSection>
   );
 
   /*
@@ -871,6 +920,9 @@ export function Inspector({
         editor={editor}
       />
     ) : null;
+  const screenSection = node.type === "screenIn" && screenCapture !== undefined ? (
+    <ScreenSection nodeId={nodeIdInPlan} capture={screenCapture} />
+  ) : null;
   /* T1340b: the node's OWN requirement declaration, resolved for this instance, so the
      section's tags cannot disagree with the library's or with the node's warning. */
   const syphonSection = nativeInputTransport ? <NativeInputSection nodeId={node.id} transport={nativeInputTransport}
@@ -1144,6 +1196,7 @@ export function Inspector({
             backwards. */}
         {audioSection}
         {webcamSection}
+        {screenSection}
         {syphonSection}
         {midiSection}
         {laserSection}
@@ -1171,6 +1224,7 @@ export function Inspector({
           {/* Controls above the result they write — see the node variant above. */}
           {audioSection}
           {webcamSection}
+          {screenSection}
           {syphonSection}
           {midiSection}
           {laserSection}

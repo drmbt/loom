@@ -314,3 +314,69 @@ test("a genuinely black frame still reads presenting-black (§V897's legitimate 
     )
     .toBe("presenting-black:alpha=1");
 });
+
+
+test("Mask cutout is visible in default viewer and node preview, while RGB retains the payload", async ({ page }) => {
+  const store = createGraphStore();
+  const { bus } = createDomainBus({ store, registry: createNodeRegistry(allNodeDefinitions).view() });
+  const result = await bus.execute("graph.applyPatch", { baseRevision: store.view.getRevision(), label: "Alpha display fixture", operations: [
+    { op: "addNode", ref: "$red", type: "solid", position: { x: 0, y: 0 }, parameters: { color: [1, 0, 0, 1] } },
+    { op: "addNode", ref: "$white", type: "solid", position: { x: 0, y: 200 }, parameters: { color: [1, 1, 1, 1] } },
+    { op: "addNode", ref: "$coverage", type: "customWgsl", position: { x: 300, y: 200 }, parameters: {
+      source: `struct Params { strength: f32 }; @group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var inputSampler: sampler; @group(0) @binding(2) var inputTexture: texture_2d<f32>;
+@fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0) * select(0.0, params.strength, uv.x >= 0.5);
+}`, strength: 1,
+    } },
+    { op: "addNode", ref: "$cutout", type: "mask", position: { x: 600, y: 0 }, parameters: { channel: "red", apply: "alpha" } },
+    { op: "addNode", ref: "$out", type: "output", position: { x: 900, y: 0 } },
+    { op: "connect", source: { nodeId: "$white", portId: "out" }, target: { nodeId: "$coverage", portId: "input" } },
+    { op: "connect", source: { nodeId: "$red", portId: "out" }, target: { nodeId: "$cutout", portId: "input" } },
+    { op: "connect", source: { nodeId: "$coverage", portId: "out" }, target: { nodeId: "$cutout", portId: "mask" } },
+    { op: "connect", source: { nodeId: "$cutout", portId: "out" }, target: { nodeId: "$out", portId: "input" } },
+  ] }, { actor: { kind: "system", id: "alpha-test" }, projectId: "alpha-test", capabilities: [] });
+  expect(result.status).toBe("applied");
+  const cutoutId = result.output.createdIds["$cutout"];
+  if (cutoutId === undefined) throw new Error("Mask fixture was not created");
+  const project = exampleDocument("alpha-test", "Alpha display fixture",
+    exampleSettings({ workingFormat: "rgba16float", outputResolution: { width: 64, height: 64 }, previewLongEdge: 64 }), store.view.getGraph());
+  const file = buildProjectFile({ document: project, now: () => project.updatedAt });
+  await openApp(page);
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByTestId("project-open").click();
+  await (await chooser).setFiles({ name: "alpha-test.loom.json", mimeType: "application/json", buffer: Buffer.from(file.text) });
+  await fitAll(page);
+  const read = async (locator: ReturnType<typeof page.getByTestId>) => {
+    const shot = await locator.screenshot();
+    return page.evaluate(async base64 => {
+      const image = new Image(); image.src = `data:image/png;base64,${base64}`; await image.decode();
+      const canvas = document.createElement("canvas"); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (context === null) throw new Error("Screenshot decode requires 2D context");
+      context.drawImage(image, 0, 0);
+      const at = (x: number, y: number) => [...context.getImageData(x, y, 1, 1).data];
+      const y = Math.floor(canvas.height / 2);
+      const x = Math.floor(canvas.width / 4);
+      return { left: at(x, y), adjacent: at(x + 8, y), right: at(Math.floor(canvas.width * 3 / 4), y) };
+    }, shot.toString("base64"));
+  };
+  const isChecker = (pixel: number[]) => pixel[0] === pixel[1] && pixel[1] === pixel[2] && pixel[0]! > 0 && pixel[0]! < 255 && pixel[3] === 255;
+  const viewer = page.getByTestId("viewer-canvas");
+  await expect(page.getByLabel("display", { exact: true })).toHaveValue("rgba");
+  await expect.poll(async () => {
+    const pixels = await read(viewer);
+    return isChecker(pixels.left) && isChecker(pixels.adjacent) && pixels.left[0] !== pixels.adjacent[0] && pixels.right.join() === "255,0,0,255";
+  }).toBe(true);
+  const preview = page.getByTestId(`preview-slot-${cutoutId}:out`);
+  await expect(preview).toBeVisible();
+  await expect.poll(async () => {
+    const pixels = await read(preview);
+    return isChecker(pixels.left) && pixels.right.join() === "255,0,0,255";
+  }).toBe(true);
+  await page.getByLabel("display", { exact: true }).selectOption("rgb");
+  await expect.poll(async () => {
+    const pixels = await read(viewer);
+    return [pixels.left, pixels.adjacent, pixels.right];
+  }).toEqual([[255, 0, 0, 255], [255, 0, 0, 255], [255, 0, 0, 255]]);
+});

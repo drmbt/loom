@@ -213,7 +213,7 @@ function GraphPaneInner({
   // T519: `documentIdentity` — which DOCUMENT the previews below are showing. Taken
   // from the runtime rather than threaded as a prop, because the runtime IS the loaded
   // document: `adoptDocument` builds a new one per open (`app.tsx`, `app-runtime.ts`).
-  const { bus, components, documentIdentity, invocation, nodeRuntime, registry, settings } = useAppRuntime();
+  const { bus, components, documentIdentity, invocation, nodeRuntime, registry, settings, flattened } = useAppRuntime();
   // T969(b): the same object as `bus` unless the caller is showing a component's internals.
   const rootBus = rootBusProp ?? bus;
   const isExporting = useCallback(() => renderRangeHolderFor(rootBus).current?.busy() === true, [rootBus]);
@@ -350,6 +350,7 @@ function GraphPaneInner({
     orbits: previewOrbits,
     ...(interest === undefined ? {} : { interest }),
     components: componentsView,
+    componentOutputs: flattened.current().instanceOutputs,
     getViewport,
     getNodePosition,
     // T1102: the DOM's stacking order, so a tile does not paint over the node in front.

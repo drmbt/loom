@@ -80,6 +80,8 @@ export interface ConnectDropRequest {
    * the very edge being moved twice and count the sockets wrong.
    */
   readonly moving?: EdgeId;
+  /** Common-page moves swap occupied sockets; canvas drops still replace. */
+  readonly occupied?: "replace" | "swap";
 }
 
 function refusal(code: string, message: string, nodeId: NodeId, suggestion?: string): ConnectDrop {
@@ -126,6 +128,37 @@ export function connectDropOperations(request: ConnectDropRequest): ConnectDrop 
       target.nodeId,
       "Insert a node that converts between them (§V13).",
     );
+  }
+
+  const movingEdge = moving === undefined ? undefined : graph.edges[moving];
+  if (request.occupied === "swap" && movingEdge !== undefined &&
+      (movingEdge.target.nodeId !== target.nodeId || movingEdge.target.portId !== target.portId)) {
+    const arriving = incomingEdgesInOrder(graph, target.nodeId, target.portId);
+    const occupant = targetPort.variadic === true
+      ? (target.slot === undefined ? undefined : arriving[target.slot])
+      : arriving[0];
+    if (occupant !== undefined) {
+      const originNode = graph.nodes[movingEdge.target.nodeId];
+      const originPort = originNode === undefined ? undefined
+        : registry.port(originNode.type, movingEdge.target.portId, "input");
+      const otherNode = graph.nodes[occupant.source.nodeId];
+      const otherPort = otherNode === undefined ? undefined
+        : registry.port(otherNode.type, occupant.source.portId, "output");
+      if (originPort === undefined || otherPort === undefined || !arePortsCompatible(otherPort.type, originPort.type)) {
+        return refusal("connect.incompatibleSwap", "The other wire cannot connect to the socket this wire leaves.", target.nodeId);
+      }
+      const originOrder = incomingEdgesInOrder(graph, movingEdge.target.nodeId, movingEdge.target.portId)
+        .findIndex(edge => edge.id === moving);
+      return {
+        kind: "connect", label: "Swap connections", operations: [
+          { op: "disconnect", edgeIds: [movingEdge.id, occupant.id] },
+          { op: "connect", source: occupant.source, target: movingEdge.target,
+            ...(originPort.variadic === true ? { order: originOrder } : {}) },
+          { op: "connect", source, target: { nodeId: target.nodeId, portId: target.portId },
+            ...(targetPort.variadic === true && target.slot !== undefined ? { order: target.slot } : {}) },
+        ],
+      };
+    }
   }
 
   const operations: GraphPatchOperation[] = [];

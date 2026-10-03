@@ -1,4 +1,5 @@
 import type { GraphDocument, GraphNode, ValuePlotMode } from "../types/graph.ts";
+import { internalChannelMasks } from "../components/internal-channel-masks.ts";
 import type { NodeId, Revision } from "../types/ids.ts";
 import type { StoredParameter } from "../types/parameters.ts";
 import type { GraphPatchOperation, GraphPatchResult } from "../types/patch.ts";
@@ -104,6 +105,8 @@ interface ClipboardNode {
   readonly ui: GraphNode["ui"] | undefined;
   readonly resolution: GraphNode["resolution"] | undefined;
   readonly format: GraphNode["format"] | undefined;
+  readonly channelMask: GraphNode["channelMask"] | undefined;
+  readonly internalChannelMasks: ReturnType<typeof internalChannelMasks> | undefined;
 }
 
 interface ClipboardEdge {
@@ -176,6 +179,8 @@ function snapshot(graph: GraphDocument, nodeIds: readonly NodeId[]): Clipboard {
     ui: node.ui === undefined ? undefined : { ...node.ui },
     resolution: node.resolution,
     format: node.format,
+    channelMask: node.channelMask,
+    internalChannelMasks: Object.keys(internalChannelMasks(node)).length === 0 ? undefined : internalChannelMasks(node),
   }));
   return { nodes, edges: internalEdges(graph, nodes.map((node) => node.sourceId)) };
 }
@@ -280,6 +285,12 @@ function recreateOperations(
     }
     if (node.format !== undefined) {
       operations.push({ op: "setNodeFormat", nodeId: ref(node.sourceId), format: node.format });
+    }
+    if (node.channelMask !== undefined) {
+      operations.push({ op: "setNodeChannelMask", nodeId: ref(node.sourceId), channelMask: node.channelMask });
+    }
+    for (const [internalNodeId, channelMask] of Object.entries(node.internalChannelMasks ?? {})) {
+      operations.push({ op: "setNodeChannelMask", nodeId: ref(node.sourceId), internalNodeId, channelMask });
     }
   }
 
@@ -395,6 +406,8 @@ function foreignClipboard(
       ui: node.ui,
       resolution: node.resolution,
       format: node.format,
+      channelMask: node.channelMask,
+      internalChannelMasks: node.internalChannelMasks,
     });
   }
   const edges = payload.edges.filter((raw): raw is ClipboardEdge => {

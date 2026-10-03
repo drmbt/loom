@@ -83,6 +83,10 @@ export function describeOperation(operation: GraphPatchOperation): OperationRow 
         targets: [operation.nodeId],
         detail: operation.format === null ? "cleared" : operation.format.mode,
       };
+    case "setNodeChannelMask":
+      return { kind: operation.op, targets: [operation.internalNodeId === undefined ? operation.nodeId : `${operation.nodeId}/${operation.internalNodeId}`],
+        detail: operation.channelMask === null ? "RGBA" :
+          (["r", "g", "b", "a"] as const).filter(channel => operation.channelMask![channel]).join("").toUpperCase() || "None" };
     // T104: groups and the viewport. `label` is document data like every other target
     // string here, so it travels in `detail` and is rendered as a text node (§V37).
     case "addGroup":

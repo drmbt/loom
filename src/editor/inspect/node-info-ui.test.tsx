@@ -813,6 +813,7 @@ describe("the preview lens (T336)", () => {
     );
     const group = screen.getByRole("group", { name: "Channel" });
     expect([...group.querySelectorAll("button")].map((button) => button.textContent)).toEqual([
+      "RGBA",
       "RGB",
       "R",
       "G",
@@ -868,7 +869,7 @@ describe("the preview lens (T336)", () => {
     const { unmount } = render(
       <NodeInfoPopup
         info={lensInfo()}
-        lens={{ lens: "rgb", exposureStops: 0, tonemap: false }}
+        lens={{ lens: "rgba", exposureStops: 0, tonemap: false }}
         onLens={() => {}}
         onLensReset={() => {}}
       />,

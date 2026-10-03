@@ -192,6 +192,22 @@ describe("the contract, read off a shader's declared fields", () => {
 });
 
 describe("a shader that opts in gets a viewport", () => {
+  it("keeps channel processing on the authored output and its inspection viewport", () => {
+    const graph = graphWith(MARCHER_WGSL);
+    graph.nodes.shade!.channelMask = { r: true, g: true, b: true, a: false };
+    const compiled = compileWithSinks(graph, [{ nodeId: "shade", portId: "out" }]);
+    expect(compiled.ok, JSON.stringify(compiled.diagnostics)).toBe(true);
+    const row = rowFor(compiled.outputs, "shade", viewportPortId("out"));
+    expect(row?.viewCamera).toBeDefined();
+    const viewport = passFor(compiled, VIEW_PASS);
+    const publicTarget = viewportResourceId("shade", "out");
+    expect(viewport?.["target"]).toBe(`${publicTarget}:channel-process`);
+    const mask = passFor(compiled, "shade#viewport-channels:out");
+    expect(mask?.["target"]).toBe(publicTarget);
+    expect(mask?.["textures"]).toEqual(expect.arrayContaining([
+      expect.objectContaining({ binding: "processedTexture", resourceId: `${publicTarget}:channel-process` }),
+    ]));
+  });
   it("publishes a row whose home framing is the AUTHOR's stored numbers, not an invented rig", () => {
     const compiled = compileWithSinks(graphWith(MARCHER_WGSL), WATCHED) as never as {
       outputs: ReadonlyArray<ResolvedOutput>; passes: ReadonlyArray<unknown>; resources: ReadonlyArray<Record<string, unknown>>;

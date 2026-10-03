@@ -121,6 +121,7 @@ const NODE_FIELDS: Record<keyof GraphNode, FieldClass> = {
   label: "structural",
   resolution: "resolution",
   format: "format",
+  channelMask: "structural",
   state: "structural",
   ui: "ui",
 };

@@ -48,6 +48,7 @@ export interface PreviewRect {
  */
 export const PREVIEW_MODES = [
   "color",
+  "rgb",
   "channel",
   "luminance",
   "alpha",
@@ -82,7 +83,7 @@ export interface PreviewView {
   readonly exposureStops: number;
   /** Filmic tonemap after exposure. Off means "show me the clipping". */
   readonly tonemap: boolean;
-  /** Checkerboard square size in tile pixels, for `mode: "alpha"`. */
+  /** Checkerboard square size in tile pixels, for colour coverage and alpha inspection. */
   readonly checkerSize: number;
   /** Value mapped to full intensity by `mode: "signed"`. */
   readonly signedScale: number;
@@ -126,12 +127,12 @@ export const DEFAULT_PREVIEW_VIEW: PreviewView = Object.freeze({
  * `viewForLens` is the one place the small vocabulary widens into the full view, so the two
  * cannot drift.
  */
-export const PREVIEW_LENSES = ["rgb", "r", "g", "b", "a", "luminance"] as const;
+export const PREVIEW_LENSES = ["rgba", "rgb", "r", "g", "b", "a", "luminance"] as const;
 
 export type PreviewLensKind = (typeof PREVIEW_LENSES)[number];
 
 export interface PreviewLens {
-  /** Which channel reaches the eye. `rgb` is "no isolation", the ordinary picture. */
+  /** RGBA displays coverage; RGB inspects colour without alpha compositing. */
   readonly lens: PreviewLensKind;
   /** Exposure in stops, applied before the optional tonemap. 0 = unchanged. */
   readonly exposureStops: number;
@@ -140,7 +141,7 @@ export interface PreviewLens {
 }
 
 export const DEFAULT_PREVIEW_LENS: PreviewLens = Object.freeze({
-  lens: "rgb",
+  lens: "rgba",
   exposureStops: 0,
   tonemap: false,
 });

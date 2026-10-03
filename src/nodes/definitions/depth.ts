@@ -579,8 +579,8 @@ export const depthNode: NodeDefinition = {
   description:
     "Estimates a depth map from an image — near is bright, far is dark — using Depth Anything V2 running in the browser. The model is downloaded once per machine on first use, with your consent and a progress readout, and is never bundled. Until it is available the node publishes flat mid-grey, which Displace reads as no displacement, so a document using Depth opens and renders on a machine that cannot run it. Results arrive at the model's own rate rather than once per frame: live playback shows the most recent one and reports its age, while an offline render waits for each frame so a take reproduces.",
   tags: ["depth", "ml", "inference", "3d", "displace"],
-  inputs: [{ id: "input", label: "Input", type: RGBA_TEXTURE }],
-  outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],
+  inputs: [{ id: "input", label: "Picture", type: RGBA_TEXTURE }],
+  outputs: [{ id: "out", label: "Depth", type: RGBA_TEXTURE }],
   /**
    * The STATIC fallback (§T880's rule): what the palette, a help page and a fresh drop
    * see. Built from the DEFAULT model by the very function `parametersFor` uses, so the

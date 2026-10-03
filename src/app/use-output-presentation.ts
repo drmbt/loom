@@ -53,6 +53,7 @@ export interface OutputPresentation {
 export function useOutputPresentation(
   backend: LoomBackend | null,
   outputId: string | null,
+  alphaDisplay: "rgba" | "rgb" = "rgba",
 ): OutputPresentation {
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const canvasRef = useCallback((canvas: HTMLCanvasElement | null) => setCanvasEl(canvas), []);
@@ -126,7 +127,7 @@ export function useOutputPresentation(
 
     let handle: PresentationHandle;
     try {
-      handle = backend.present(canvas, { outputId: current, label: "viewer" });
+      handle = backend.present(canvas, { outputId: current, label: "viewer", alphaDisplay });
     } catch (error) {
       // A backend that is disposed, uninitialised or mid-frame refuses the attach. The
       // viewer is a window onto the render, never a reason to take the app down — but
@@ -140,7 +141,7 @@ export function useOutputPresentation(
       handleRef.current = null;
       handle.dispose();
     };
-  }, [backend, hasOutput, canvasEl]);
+  }, [backend, hasOutput, canvasEl, alphaDisplay]);
 
   // Repoint rather than re-attach: `setOutput` exists so that pinning a different output
   // does not tear down and rebuild the canvas's GPU context (§V70).

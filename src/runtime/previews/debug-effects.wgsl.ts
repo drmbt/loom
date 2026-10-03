@@ -3,6 +3,7 @@ import type { ColorSpace } from "../../domain/types/ports.ts";
 import type { PreviewModeKind } from "./types.ts";
 import { wgsl } from "../backend/wgsl.ts";
 import type { EmittedWgsl } from "../backend/wgsl.ts";
+import { ALPHA_DISPLAY_WGSL } from "../backend/alpha-display.wgsl.ts";
 
 /**
  * Debug preview effects (T35, doc §12.4).
@@ -73,6 +74,7 @@ fn maybeTonemap(c: vec3f) -> vec3f {
 }
 
 ${SRGB_TRANSFER_WGSL}
+${ALPHA_DISPLAY_WGSL}
 
 /** Index order r,g,b,a — fixed by PREVIEW_CHANNELS in types.ts; the two must agree. */
 fn pickChannel(c: vec4f, which: f32) -> f32 {
@@ -104,8 +106,20 @@ function prelude(space: ColorSpace): EmittedWgsl {
 ${previewCommonWgsl(space)}`;
 }
 
-/** Normal colour. Channel mask, exposure, optional tonemap, display encode. */
+/** Normal colour: grade linear RGB, composite bounded coverage, then display encode. */
 const colorShader = (prefix: string): EmittedWgsl => wgsl`${prefix}
+
+@fragment
+fn fs(@builtin(position) fragment: vec4f, @location(0) uv: vec2f) -> @location(0) vec4f {
+  let source = sourceTexel(uv) * params.mask;
+  let colour = maybeTonemap(exposed(source.rgb));
+  let coverage = select(1.0, source.a, params.mask.a > 0.5);
+  let over = compositeCoverageLinear(colour, coverage, fragment.xy, params.checkerSize);
+  return vec4f(encodeDisplay(over), 1.0);
+}`;
+
+/** Raw colour diagnostic: the same grade and encoding, without coverage compositing. */
+const rgbShader = (prefix: string): EmittedWgsl => wgsl`${prefix}
 
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
@@ -251,6 +265,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
  */
 const BODIES: Readonly<Record<PreviewModeKind, (prefix: string) => EmittedWgsl>> = {
   color: colorShader,
+  rgb: rgbShader,
   channel: channelShader,
   luminance: luminanceShader,
   alpha: alphaShader,

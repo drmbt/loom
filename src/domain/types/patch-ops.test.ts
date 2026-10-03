@@ -40,6 +40,7 @@ const OPERATIONS: Record<GraphPatchOperation["op"], true> = {
   setNodeLabel: true,
   setNodeResolution: true,
   setNodeFormat: true,
+  setNodeChannelMask: true,
   addGroup: true,
   removeGroups: true,
   setGroup: true,

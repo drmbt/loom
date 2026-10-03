@@ -69,6 +69,8 @@ function greyPixel(): ReadbackImage {
 function fixture() {
   const reads: Array<{ ref: PreviewOutputRef; window: PixelWindow }> = [];
   const presented: string[] = [];
+  const displayModes: Array<"rgba" | "rgb" | undefined> = [];
+  let detached = 0;
   const backend = {
     status: {
       initialized: true, disposed: false, halted: false, deviceGeneration: 1,
@@ -87,12 +89,13 @@ function fixture() {
     loop: () => ({ stop() {} }),
     updateUniforms() {}, resetTemporalHistory() {},
     recover: () => Promise.resolve(),
-    present: (_canvas: unknown, options: { outputId: string }) => {
+    present: (_canvas: unknown, options: { outputId: string; alphaDisplay?: "rgba" | "rgb" }) => {
       presented.push(options.outputId);
+      displayModes.push(options.alphaDisplay);
       return {
         id: "p", outputId: options.outputId,
         setOutput(next: string) { presented.push(`setOutput:${next}`); },
-        dispose() {},
+        dispose() { detached += 1; },
       };
     },
     previewHost: () => ({ setPreviewProgram() {}, presentPreviews() {}, dispose() {} }),
@@ -103,7 +106,7 @@ function fixture() {
     registerMediaSource: () => () => {},
     setCookPolicy() {},
   } as unknown as LoomBackend;
-  return { backend, reads, presented };
+  return { backend, reads, presented, displayModes, detached: () => detached };
 }
 
 async function mountViewer(runtime: AppRuntime, backend: LoomBackend) {
@@ -148,6 +151,20 @@ async function seedTwoOutputs(runtime: AppRuntime): Promise<void> {
  * coordinate; after one it carries both, on the one element.
  */
 describe("T1346b — the viewer readout is one line, and the probe joins it only when probed", () => {
+  it("defaults to RGBA coverage and reattaches only the display when raw RGB is chosen", async () => {
+    const runtime = newRuntime();
+    await seedTwoOutputs(runtime);
+    const gpu = fixture();
+    await mountViewer(runtime, gpu.backend);
+    expect(gpu.displayModes).toEqual(["rgba"]);
+    const revision = runtime.bus.store.getRevision();
+    await act(async () => { fireEvent.change(screen.getByLabelText("display"), { target: { value: "rgb" } }); });
+    expect(gpu.displayModes).toEqual(["rgba", "rgb"]);
+    expect(gpu.presented[1]).toBe(gpu.presented[0]);
+    expect(gpu.detached()).toBe(1);
+    expect(runtime.bus.store.getRevision()).toBe(revision);
+    runtime.dispose();
+  });
   it("shows the resolution alone until something has been sampled", async () => {
     const runtime = newRuntime();
     await seedTwoOutputs(runtime);

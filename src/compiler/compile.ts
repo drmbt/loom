@@ -3,6 +3,10 @@ import type { GraphDocument, GraphNode } from "../domain/types/graph.ts";
 import { instanceShapeIndex } from "../nodes/definitions/render-instances.ts";
 import { attributeBinding } from "../nodes/definitions/point-storage.ts";
 import { bypassPassthroughPorts } from "../domain/graph/bypass.ts";
+import { supportsChannelMask } from "../domain/graph/channel-mask.ts";
+import { isDefaultChannelMask } from "../domain/types/graph.ts";
+import { prepareChannelMask } from "./channel-mask.ts";
+import { withChannelMaskBoundaries } from "./channel-mask-boundary.ts";
 import { compareEdgeOrder } from "../domain/graph/edge-order.ts";
 import type { ScenePayload } from "../domain/types/scene.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
@@ -867,7 +871,8 @@ export function compileGraph(request: CompileRequest): CompiledGraph {
  * they cannot describe a different compile from the one whose plan they accompany.
  */
 export function compileGraphRetaining(request: CompileRequest): CompileGraphResult {
-  const { registry, settings } = request;
+  const { settings } = request;
+  let registry = request.registry;
   const diagnostics: RuntimeDiagnostic[] = [];
 
   // 0. flatten component instances (T134, §V82). Everything after this point sees one
@@ -885,6 +890,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       ? undefined
       : flattenComponents({ graph: request.graph, registry, components: request.components }));
   const sources = flattened?.sources ?? new Map<NodeId, ComponentSource>();
+  registry = withChannelMaskBoundaries(registry, flattened?.compilerDefinitions);
   const sourceRows = [...sources.values()].sort((a, b) => a.nodeId.localeCompare(b.nodeId));
   const stamp = (collected: ReadonlyArray<RuntimeDiagnostic>): RuntimeDiagnostic[] =>
     collected.map((diagnostic) => withSourcePath(diagnostic, sources));
@@ -1232,7 +1238,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       }
     }
 
-    const context: CompilerNodeContext = {
+    let context: CompilerNodeContext = {
       nodeId,
       nodeType: node.type,
       // T1432b: pixel-sized parameters at the project's reference width (identity without one).
@@ -1253,6 +1259,17 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       // T1421b: the node's parameters along its own path (the Camera's derivative).
       ...withTimeProbe(timeProbeFor(node, definition, graph, registry, reading, settings)),
     };
+    if (!isDefaultChannelMask(node.channelMask) && !supportsChannelMask(definition)) {
+      diagnostics.push({ severity: "error", code: "node.channelMask.unsupported", nodeId,
+        message: `Node "${nodeId}" does not produce a texture that supports channel processing.` });
+      continue;
+    }
+    const channelProcessing = prepareChannelMask(context, definition, node.channelMask,
+      outputSlots(definition).flatMap(slot => {
+        const output = propagated.outputs.get(outputKey(nodeId, slot.portId));
+        return output === undefined ? [] : [output];
+      }));
+    context = channelProcessing.context;
 
     let description: CompiledNodeDescription;
     try {
@@ -1554,7 +1571,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
     let emitted = 0;
     const emittedPassIds: string[] = [];
     description.passes.forEach((raw, index) => {
-      const pass = normalizePass(nodeId, target, index, raw, diagnostics);
+      const pass = normalizePass(nodeId, context.target, index, raw, diagnostics);
       if (pass === undefined) return;
       passes.push(pass);
       emittedPassIds.push(pass["id"] as string);
@@ -1567,6 +1584,16 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       passIds: emittedPassIds,
       structureKey: descriptionStructureKey(description),
     });
+    for (const entry of channelProcessing.outputs) {
+      if (!passes.some(pass => pass["nodeId"] === nodeId && pass["target"] === entry.processed)) {
+        diagnostics.push({ severity: "error", code: "node.channelMask.unwritten", nodeId,
+          message: `Node "${nodeId}" emitted no render pass for processed output "${entry.output.portId}".` });
+        continue;
+      }
+      resources.push({ ...describeResource(entry.output), kind: "target", id: entry.processed,
+        label: `${nodeId}.${entry.output.portId} processed channels` });
+      passes.push({ ...entry.pass });
+    }
 
     if (emitted === 0 && target !== undefined) {
       diagnostics.push(
@@ -1618,13 +1645,15 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       if (!previewSinkKeys.has(key)) continue;
       const resolved = propagated.outputs.get(key);
       if (resolved === undefined) continue;
+      const maskedOutput = channelProcessing.outputs.find(entry => entry.output.resourceId === resolved.resourceId);
+      const authoredTarget = maskedOutput?.processed ?? resolved.resourceId;
       const emittedIds = new Set(emittedPassIds);
       // Keyed on the PASS'S OWN UNIFORMS, never on a list of node types (§V316, §V319):
       // any node that compiles a pass carrying the four contract names gets a viewport,
       // the day it compiles, and one that does not is untouched by construction.
       const authored = passes.find((pass) => {
         if (!emittedIds.has(pass["id"] as string)) return false;
-        if (pass["target"] !== resolved.resourceId) return false;
+        if (pass["target"] !== authoredTarget) return false;
         return viewCameraHome(pass["uniforms"] as Parameters<typeof viewCameraHome>[0]) !== undefined;
       });
       if (authored === undefined) continue;
@@ -1637,6 +1666,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
         Math.max(1, Math.round(resolved.size[1] * scale)),
       ];
       const viewportId = viewportResourceId(nodeId, slot.portId);
+      const viewportDrawTarget = maskedOutput === undefined ? viewportId : `${viewportId}:channel-process`;
       const viewportPass = `${nodeId}#viewport:${slot.portId}`;
       resources.push({
         kind: "target",
@@ -1645,12 +1675,21 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
         format: resolved.format,
         label: `${nodeId} viewport ${slot.portId}`,
       });
+      if (maskedOutput !== undefined) resources.push({
+        kind: "target", id: viewportDrawTarget, size: viewportSize, format: resolved.format,
+        label: `${nodeId} viewport processed channels ${slot.portId}`,
+      });
       passes.push({
         ...authored,
         id: viewportPass,
-        target: viewportId,
+        target: viewportDrawTarget,
         uniforms: { ...(authored["uniforms"] as Record<string, unknown>), ...viewCameraPassUniforms(home) },
         label: `${authored["label"] as string} viewport`,
+      });
+      if (maskedOutput !== undefined) passes.push({
+        ...maskedOutput.pass, id: `${nodeId}#viewport-channels:${slot.portId}`, target: viewportId,
+        textures: maskedOutput.pass.textures?.map(binding => binding.resourceId === maskedOutput.processed
+          ? { ...binding, resourceId: viewportDrawTarget } : binding),
       });
       viewportOutputs.set(outputKey(nodeId, viewportPortId(slot.portId)), {
         nodeId,

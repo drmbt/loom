@@ -106,8 +106,8 @@ const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
   },
   {
     file: "app/use-component-editing.ts",
-    reads: 5,
-    why: "Component AUTHORING: two `useSyncExternalStore` pairs (the host document and the component's own edit buffer) plus the root read that saves a selection into a definition. This is the surface that writes components; flattening is the surface that consumes them (§V79).",
+    reads: 6,
+    why: "Component AUTHORING: two `useSyncExternalStore` pairs (the host document and the component's own edit buffer) plus the root read that saves a selection into a definition and the user-edit read that resolves the nearest published parameter owner. This is the surface that writes components; flattening is the surface that consumes them (§V79).",
   },
   {
     file: "app/app.tsx",

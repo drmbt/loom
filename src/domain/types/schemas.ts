@@ -149,6 +149,10 @@ export const nodeFormatOverrideSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("fixed"), format: z.enum(SELECTABLE_COLOR_FORMATS) }),
 ]);
 
+export const channelMaskSchema = z.object({
+  r: z.boolean(), g: z.boolean(), b: z.boolean(), a: z.boolean(),
+}).strict();
+
 export const graphNodeSchema = z.object({
   id: z.string().min(1),
   type: z.string().min(1),
@@ -159,9 +163,13 @@ export const graphNodeSchema = z.object({
   label: z.string().min(1).max(120).optional(),
   resolution: nodeResolutionOverrideSchema.optional(),
   format: nodeFormatOverrideSchema.optional(),
+  channelMask: channelMaskSchema.optional(),
   state: z.object({
     componentResolutionOverrides: z.record(
       z.string().regex(/^[^/]+(?:\/[^/]+)*$/), nodeResolutionOverrideSchema,
+    ).optional(),
+    componentChannelMaskOverrides: z.record(
+      z.string().regex(/^[^/]+(?:\/[^/]+)*$/), channelMaskSchema,
     ).optional(),
   }).catchall(z.unknown()).optional(),
   ui: z
@@ -373,6 +381,9 @@ export const graphPatchOperationSchema = z.discriminatedUnion("op", [
     .strict(),
   z.object({ op: z.literal("setNodeUi"), nodeId: refString, ui: z.record(z.unknown()) }).strict(),
   z.object({ op: z.literal("setNodeLabel"), nodeId: refString, label: z.string().nullable() }).strict(),
+  z.object({ op: z.literal("setNodeChannelMask"), nodeId: refString, channelMask: channelMaskSchema.nullable(),
+    internalNodeId: z.string().regex(/^[^/]+(?:\/[^/]+)*$/).optional(),
+  }).strict(),
   z
     .object({
       op: z.literal("setNodeResolution"),

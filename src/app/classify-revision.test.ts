@@ -85,6 +85,12 @@ const classify = (previous: GraphDocument, next: GraphDocument) =>
   );
 
 describe("classifying a revision (T308, §V5)", () => {
+  it("rebuilds output processing when Common channels change", async () => {
+    const { previous, next } = await afterEdit(id => [
+      { op: "setNodeChannelMask", nodeId: id.b, channelMask: { r: true, g: true, b: true, a: false } },
+    ]);
+    expect(isValuesOnly(classify(previous, next))).toBe(false);
+  });
   it("calls an ordinary parameter edit values-only", async () => {
     const { previous, next, ids } = await afterEdit((id) => [
       { op: "setParameters", nodeId: id.b, parameters: { radius: 8 } },

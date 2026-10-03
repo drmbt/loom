@@ -360,3 +360,30 @@ details[open] > summary.sectionHeader::before {
 .parameterNote {
   padding: 0 0 var(--space-2);
 }
+
+.channelMask {
+  display: flex;
+  gap: var(--hairline);
+}
+
+.channelToggle {
+  min-width: var(--control-h);
+  height: var(--control-h);
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.channelToggle[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--bg-active);
+  border-color: var(--line-hot);
+}
+
+.channelToggle:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}

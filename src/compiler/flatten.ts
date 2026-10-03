@@ -21,6 +21,11 @@ import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import { isParameterSlot, storedStaticValue } from "../domain/parameters/slots.ts";
 import { storedValues } from "../domain/parameters/stored-values.ts";
 import type { NodeRegistryView } from "../nodes/registry/registry.ts";
+import type { NodeDefinition } from "../domain/types/node-definition.ts";
+import type { PortType } from "../domain/types/ports.ts";
+import type { ChannelMask } from "../domain/types/graph.ts";
+import { compareEdgeOrder } from "../domain/graph/edge-order.ts";
+import { channelMaskBoundaryDefinition } from "./channel-mask-boundary.ts";
 import {
   PARENT_BINDINGS_STATE_KEY,
   buildParentScope,
@@ -43,6 +48,8 @@ import { CompilerDiagnosticCode, compilerDiagnostic } from "./diagnostics.ts";
 import { resolveNodeParameters } from "./validate.ts";
 import type { ActiveSink } from "./types.ts";
 import { COMPONENT_ID_SEPARATOR, flattenedNodeId, internalResolutions } from "../domain/components/internal-resolutions.ts";
+import { internalChannelMasks, projectInternalChannelMasks } from "../domain/components/internal-channel-masks.ts";
+import { isDefaultChannelMask } from "../domain/types/graph.ts";
 export { COMPONENT_ID_SEPARATOR, flattenedNodeId } from "../domain/components/internal-resolutions.ts";
 
 /**
@@ -124,6 +131,8 @@ export interface FlattenRequest {
 }
 
 export interface FlattenedGraph {
+  /** Effective component-instance nodes before inlining, for inspecting their published page. */
+  readonly instanceNodes: ReadonlyMap<NodeId, GraphNode>;
   /** The parent logical graph with every instance inlined. No component types remain —
    *  except a MUTED or BYPASSED instance, kept whole so the compiler's splice can see
    *  its flags (T1032); the splice removes it before any node compiles. */
@@ -140,6 +149,8 @@ export interface FlattenedGraph {
   /** Non-null when the graph recurses; the graph is returned untouched (§V83). */
   readonly recursion: ComponentRecursionError | null;
   readonly diagnostics: ReadonlyArray<RuntimeDiagnostic>;
+  /** Nonpersisted definitions for explicit component output processing boundaries. */
+  readonly compilerDefinitions?: ReadonlyMap<string, NodeDefinition>;
   /** True when at least one instance was inlined. */
   readonly changed: boolean;
   /**
@@ -503,6 +514,7 @@ function identityFlattening(graph: GraphDocument): FlattenedGraph {
     diagnostics: [],
     changed: false,
     publishedOrigins: new Map(),
+    instanceNodes: new Map(),
     morphs: NO_MORPHS,
   };
 }
@@ -549,14 +561,19 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       diagnostics,
       changed: false,
       publishedOrigins: new Map(),
+      instanceNodes: new Map(),
       morphs: NO_MORPHS,
     };
   }
 
   const nodes: Record<NodeId, GraphNode> = {};
+  const instanceNodes = new Map<NodeId, GraphNode>();
   const edges: Record<string, GraphEdge> = {};
   const sources = new Map<NodeId, ComponentSource>();
   const instanceOutputs = new Map<NodeId, ReadonlyMap<PortId, FlatEndpoint>>();
+  const compilerDefinitions = new Map<string, NodeDefinition>();
+  const channelBoundaries: Array<{ id: string; type: string; outputType: PortType; mask: ChannelMask;
+    inputs: Array<{ endpoint: FlatEndpoint; type: PortType }> }> = [];
   const publishedOrigins = new Map<NodeId, Readonly<Record<string, PublishedOrigin>>>();
   /**
    * T1524b: each ROOT instance's published page as a schema, for the morph index — which
@@ -749,6 +766,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     /** Raw instance id -> the boundary of the subgraph it expanded into. */
     const childInputs = new Map<NodeId, ReadonlyMap<PortId, FlatEndpoint>>();
     const childOutputs = new Map<NodeId, ReadonlyMap<PortId, FlatEndpoint>>();
+    const maskedInstances: Array<{ node: GraphNode; definition: GraphComponentDefinition; flatId: string }> = [];
 
     const names = instanceDisplayNames(
       levelGraph,
@@ -775,6 +793,11 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       const publishedFrom: Record<string, PublishedOrigin> = { ...origins.get(nodeId) };
       const parameters = effectiveParameters(node, schema, grouped.get(nodeId) ?? {}, scope, flatId, input.scopeOrigins, publishedFrom);
       const resolved: GraphNode = { ...node, id: flatId, parameters };
+
+      if (instance !== null) {
+        instanceNodes.set(flatId, resolved);
+        if (Object.keys(publishedFrom).length > 0) publishedOrigins.set(flatId, publishedFrom);
+      }
 
       if (instance === null) {
         addNode(resolved, flatId);
@@ -825,6 +848,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       if (input.definition === null) instanceSchemas.set(node.id, publishedSchema(componentDefinition));
       const label = node.label ?? names[nodeId] ?? componentDefinition.name;
       instanceNames[flatId] = label;
+      if (!isDefaultChannelMask(node.channelMask)) maskedInstances.push({ node, definition: componentDefinition, flatId });
       recordSource(flatId, input.path, node, label);
 
       // The instance's published page, validated against its re-authored definitions.
@@ -853,8 +877,11 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       const published = page.values;
       const childOverrides = effectiveInternalOverrides(componentDefinition, resolved, page.stored);
 
+      const channelProjection = projectInternalChannelMasks(componentDefinition.graph, internalChannelMasks(resolved));
+      for (const path of channelProjection.missing) diagnostics.push({ severity: "error", code: "component.channelMaskTargetMissing", nodeId: flatId,
+        message: `Component channel mask override names missing internal node "${path}".` });
       const child = flattenLevel({
-        graph: componentDefinition.graph,
+        graph: channelProjection.graph,
         definition: componentDefinition,
         prefix: flatId,
         path: [...input.path, flatId],
@@ -924,6 +951,44 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       return boundary.get(portId);
     };
 
+    const definitionOf = (nodeId: string): NodeDefinition | undefined => {
+      const type = nodes[nodeId]?.type;
+      return type === undefined ? undefined : compilerDefinitions.get(type) ?? request.registry.get(type);
+    };
+    for (const instance of maskedInstances) {
+      const preservedInputs: Array<{ endpoint: FlatEndpoint; type: PortType }> = [];
+      for (const exposed of instance.definition.inputs) {
+        const endpoint = childInputs.get(instance.node.id)?.get(exposed.externalId);
+        const port = endpoint === undefined ? undefined : definitionOf(endpoint.nodeId)?.inputs.find(entry => entry.id === endpoint.portId);
+        if (endpoint !== undefined && port?.type.kind === "texture2d" && port.type.sample !== "depth") {
+          preservedInputs.push({ endpoint, type: port.type });
+        }
+      }
+      const outputs = new Map(childOutputs.get(instance.node.id));
+      let textures = 0;
+      for (const [portId, processed] of outputs) {
+        const port = definitionOf(processed.nodeId)?.outputs.find(entry => entry.id === processed.portId);
+        if (port?.type.kind !== "texture2d" || port.type.sample === "depth") continue;
+        const id = `${instance.flatId}/$channels:${portId}`;
+        const type = `compiler:channel-mask:${id}`;
+        compilerDefinitions.set(type, channelMaskBoundaryDefinition(type, port.type, instance.node.channelMask!));
+        addNode({ id, type, definitionVersion: 1, parameters: {}, position: instance.node.position }, id);
+        recordSource(id, input.path, instance.node, `${instance.node.label ?? instance.definition.name} channels ${portId}`);
+        edges[`${id}:processed`] = { id: `${id}:processed`, source: processed, target: { nodeId: id, portId: "processed" } };
+        channelBoundaries.push({ id, type, outputType: port.type, mask: instance.node.channelMask!, inputs: preservedInputs });
+        const endpoint = { nodeId: id, portId: "out" };
+        outputs.set(portId, endpoint);
+        for (let i = 0; i < sinks.length; i += 1) {
+          const sink = sinks[i]!;
+          if (sink.nodeId === processed.nodeId && sink.portId === processed.portId) sinks[i] = { ...sink, ...endpoint };
+        }
+        textures += 1;
+      }
+      if (textures === 0) diagnostics.push({ severity: "error", code: "node.channelMask.unsupported", nodeId: instance.flatId,
+        message: "Component channel processing requires an exposed texture output." });
+      childOutputs.set(instance.node.id, outputs);
+      instanceOutputs.set(instance.flatId, outputs);
+    }
     for (const edgeId of Object.keys(levelGraph.edges).sort()) {
       const edge = levelGraph.edges[edgeId];
       if (edge === undefined) continue;
@@ -1001,6 +1066,20 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     scopeOrigins: [],
   });
 
+  // Parent-level wires are known only after every level has expanded. Resolve the first
+  // connected exposed texture input now, so nested components preserve their external input.
+  const authoredEdges = Object.values(edges).sort(compareEdgeOrder);
+  for (const boundary of channelBoundaries) {
+    let preserved: { source: FlatEndpoint; type: PortType } | undefined;
+    for (const candidate of boundary.inputs) {
+      const edge = authoredEdges.find(entry => entry.target.nodeId === candidate.endpoint.nodeId && entry.target.portId === candidate.endpoint.portId);
+      if (edge !== undefined) { preserved = { source: edge.source, type: candidate.type }; break; }
+    }
+    compilerDefinitions.set(boundary.type, channelMaskBoundaryDefinition(boundary.type, boundary.outputType, boundary.mask, preserved?.type));
+    if (preserved !== undefined) edges[`${boundary.id}:preserved`] = { id: `${boundary.id}:preserved`, source: preserved.source,
+      target: { nodeId: boundary.id, portId: "preserved" } };
+  }
+
   const graph: GraphDocument = {
     revision: request.graph.revision,
     nodes,
@@ -1015,7 +1094,9 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     sinks,
     recursion: null,
     diagnostics,
+    ...(compilerDefinitions.size === 0 ? {} : { compilerDefinitions }),
     changed,
+    instanceNodes,
     publishedOrigins,
     // T1497b: against the ROOT document (the banks and the nodes they name live there)
     // and this flattening (what actually resolves).

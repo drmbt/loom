@@ -8,7 +8,8 @@ import { isDefaultLens } from "@runtime/previews/index.ts";
  */
 
 const LENS_LABEL: Readonly<Record<PreviewLens["lens"], string>> = {
-  rgb: "",
+  rgba: "",
+  rgb: "RGB",
   r: "R",
   g: "G",
   b: "B",

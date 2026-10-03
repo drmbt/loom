@@ -56,6 +56,43 @@ async function setup() {
 const radiusOf = (harness: Awaited<ReturnType<typeof setup>>): unknown =>
   harness.bus.store.getGraph().nodes[harness.nodeId]?.parameters["radius"];
 
+describe("published parameter ownership", () => {
+  it("routes a coalesced child gesture to the parent with one undo group", async () => {
+    const child = await setup();
+    const parent = await setup();
+    const scheduler = manualScheduler();
+    const editor = createParameterEditor({ bus: child.bus, context: child.context, schedule: scheduler.schedule,
+      parameterTarget: (_nodeId, key) => ({ bus: parent.bus, nodeId: parent.nodeId, key }) });
+    for (const value of [8, 12]) {
+      editor.setParameter(child.nodeId, "radius", value, "live");
+      scheduler.frame();
+      await editor.settled();
+    }
+    editor.setParameter(child.nodeId, "radius", 20, "commit");
+    await editor.settled();
+    expect(radiusOf(child)).toBe(4);
+    expect(radiusOf(parent)).toBe(20);
+    expect(parent.store.view.getHistory(alice).undo).toHaveLength(2);
+    await parent.bus.execute("graph.undo", {}, parent.context);
+    expect(radiusOf(parent)).toBe(4);
+    editor.dispose();
+  });
+
+  it("refuses a compound edit spanning instance and definition before writing either", async () => {
+    const child = await setup();
+    const parent = await setup();
+    const diagnostics = vi.fn();
+    const editor = createParameterEditor({ bus: child.bus, context: child.context, onDiagnostics: diagnostics,
+      parameterTarget: (_nodeId, key) => key === "radius" ? { bus: parent.bus, nodeId: parent.nodeId, key } : undefined });
+    editor.setStored(child.nodeId, { radius: 20, other: 7 }, "commit");
+    await editor.settled();
+    expect(radiusOf(child)).toBe(4);
+    expect(radiusOf(parent)).toBe(4);
+    expect(diagnostics).toHaveBeenCalledWith([expect.objectContaining({ code: "parameter.multipleOwners" })]);
+    editor.dispose();
+  });
+});
+
 describe("§V15 — a continuous drag is one undo entry", () => {
   it("applies every live value but records a single undo group", async () => {
     const harness = await setup();

@@ -1,9 +1,12 @@
 import { SELECTABLE_COLOR_FORMATS } from "../types/node-definition.ts";
-import { graphPatchSchema, nodeFormatOverrideSchema, nodeResolutionOverrideSchema } from "../types/schemas.ts";
+import { channelMaskSchema, graphPatchSchema, nodeFormatOverrideSchema, nodeResolutionOverrideSchema } from "../types/schemas.ts";
 import type { CapabilityClass } from "../types/commands.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { EdgeId, GroupId, NodeId, PortId } from "../types/ids.ts";
-import { MIN_NODE_SIZE } from "../types/graph.ts";
+import { isDefaultChannelMask, MIN_NODE_SIZE } from "../types/graph.ts";
+import { supportsChannelMask } from "../graph/channel-mask.ts";
+import { isComponentInstance } from "../components/instance.ts";
+import { INTERNAL_CHANNEL_MASKS_KEY, internalChannelMasks } from "../components/internal-channel-masks.ts";
 import type { GraphDocument, GraphEdge, GraphNode } from "../types/graph.ts";
 import type { StoredParameter } from "../types/parameters.ts";
 import type {
@@ -925,6 +928,29 @@ function executeOperation(
       // was called `foo` — and taking the name makes them resolve, which is how a rename
       // closes a loop nobody typed as one.
       refuseReferenceCycle(node.id);
+      return;
+    }
+
+    case "setNodeChannelMask": {
+      const node = requireNode(operation.nodeId);
+      const mask = operation.channelMask === null ? undefined : channelMaskSchema.parse(operation.channelMask);
+      if (operation.internalNodeId !== undefined) {
+        if (!isComponentInstance(node)) fail("node.channelMask.notComponent", "Internal channel masks require a component instance.", { nodeId: node.id });
+        const masks = { ...internalChannelMasks(node) };
+        if (isDefaultChannelMask(mask)) delete masks[operation.internalNodeId];
+        else masks[operation.internalNodeId] = mask!;
+        node.state = { ...node.state, [INTERNAL_CHANNEL_MASKS_KEY]: masks };
+        return;
+      }
+      if (isDefaultChannelMask(mask)) {
+        delete node.channelMask;
+        return;
+      }
+      const definition = registry.get(node.type);
+      if (definition === undefined || !supportsChannelMask(definition)) {
+        fail("node.channelMask.unsupported", "Channel processing requires a texture-producing node.", { nodeId: node.id });
+      }
+      node.channelMask = mask!;
       return;
     }
 

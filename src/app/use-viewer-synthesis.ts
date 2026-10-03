@@ -58,6 +58,7 @@ export interface ViewerSynthesisInputs {
   readonly output: ResolvedOutput | null;
   readonly previewFps: number;
   readonly previewLongEdge: number;
+  readonly alphaDisplay?: "rgba" | "rgb";
   /** Reset on a document boundary, exactly as the other preview consumers do (B143). */
   readonly documentIdentity: string;
   /** The same store the tiles orbit with, so the viewer's gesture reaches this surface. */
@@ -146,7 +147,7 @@ export function useViewerSynthesis(inputs: ViewerSynthesisInputs): void {
         pinned: true,
         collapsed: false,
         occluded: false,
-        view: DEFAULT_PREVIEW_VIEW,
+        view: current.alphaDisplay === "rgb" ? { ...DEFAULT_PREVIEW_VIEW, mode: "rgb" } : DEFAULT_PREVIEW_VIEW,
         fps: current.previewFps,
         ...(orbitOf(current, output.nodeId)),
         ...(output.synthesis === undefined ? {} : { synthesis: output.synthesis }),
@@ -176,6 +177,5 @@ export function useViewerSynthesis(inputs: ViewerSynthesisInputs): void {
       host.dispose();
     };
     // `inputs` is read through `inputsRef` inside the loop; only these change the SYSTEM.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, key, inputs.backend, inputs.canvasRef]);
 }

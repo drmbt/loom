@@ -117,7 +117,42 @@ async function render(apply: string, step = false) {
 const columns = Array.from({ length: SIZE.width }, (_, x) => x);
 
 describe("Mask — the apply mode, on pixels (B189)", () => {
-  it("carves alpha only by default, so a colour view sees an untouched picture", async () => {
+  it("keeps soft cutout edges correct when composited again", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn unavailable: ${dawnError}`);
+    async function constantMask(coverage: number, composite: boolean, apply = "alpha") {
+      const fixture = graph(apply, false);
+      fixture.nodes["src"]!.parameters = { color: [1, 0, 0, 1] };
+      fixture.nodes["ramp"] = { id: "ramp", type: "solid", definitionVersion: 1,
+        position: { x: 0, y: 200 }, parameters: { color: [1, 1, 1, coverage] } };
+      fixture.nodes["cut"]!.parameters["channel"] = "alpha";
+      if (composite) {
+        fixture.nodes["blue"] = { id: "blue", type: "solid", definitionVersion: 1,
+          position: { x: 200, y: 200 }, parameters: { color: [0, 0, 1, 1] } };
+        fixture.nodes["over"] = { id: "over", type: "over", definitionVersion: 1,
+          position: { x: 500, y: 0 }, parameters: {} };
+        fixture.edges["e3"]!.target = { nodeId: "over", portId: "in1" };
+        fixture.edges["blue-over"] = { id: "blue-over", source: { nodeId: "blue", portId: "out" },
+          target: { nodeId: "over", portId: "in2" } };
+        fixture.edges["over-out"] = { id: "over-out", source: { nodeId: "over", portId: "out" },
+          target: { nodeId: "out", portId: "input" } };
+      }
+      const result = await renderHeadless({ host: nodeGpuHost(), graph: fixture,
+        settings: { ...settings, outputResolution: { width: 8, height: 8 } }, frames: 1, capture: [0] });
+      expect(result.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+      const frame = result.frames[0]!;
+      const pixels = decodeComponents(frame.bytes, frame.format);
+      return Array.from(pixels.slice(0, 4));
+    }
+    for (const coverage of [0, 0.5, 1]) {
+      expect(await constantMask(coverage, false)).toEqual([1, 0, 0, coverage]);
+      expect(await constantMask(coverage, true)).toEqual([coverage, 0, 1 - coverage, 1]);
+    }
+    // Positive control: multiplying RGB here and again in Over darkens partial edges.
+    expect(await constantMask(0.5, true, "colour")).toEqual([0.25, 0, 0.5, 1]);
+  }, 60_000);
+
+
+  it("carves alpha only by default, so raw RGB inspection sees an untouched picture", async () => {
     if (dawnError !== undefined) throw new Error(`Dawn unavailable: ${dawnError}`);
     const pixels = await render("alpha");
     // ONE distinct rgb value across the whole gradient: the pass-through the owner saw.

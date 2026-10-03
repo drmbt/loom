@@ -55,6 +55,9 @@ describe("T35 — each debug effect emits the WGSL its mode means", () => {
     expect(shader).toContain("* params.mask");
     expect(shader).toContain("exposed(source.rgb)");
     expect(shader).toContain("encodeDisplay(");
+    expect(shader).toContain("compositeCoverageLinear(colour, coverage, fragment.xy, params.checkerSize)");
+    expect(viewForLens({ ...DEFAULT_PREVIEW_LENS, lens: "rgb" }).mode).toBe("rgb");
+    expect(previewShader("rgb", "linear")).not.toContain("let over = compositeCoverageLinear");
   });
 
   it("single-channel isolates one channel as grayscale", () => {

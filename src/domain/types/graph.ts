@@ -76,6 +76,20 @@ export const RESOLUTION_SCALE_PRESETS = [
  */
 export type ValuePlotMode = "bar" | "trail";
 
+/** Channels an image operator processes. Disabled channels preserve its first texture input. */
+export interface ChannelMask {
+  readonly r: boolean;
+  readonly g: boolean;
+  readonly b: boolean;
+  readonly a: boolean;
+}
+
+export const DEFAULT_CHANNEL_MASK: ChannelMask = Object.freeze({ r: true, g: true, b: true, a: true });
+
+export function isDefaultChannelMask(mask: ChannelMask | undefined): boolean {
+  return mask === undefined || (mask.r && mask.g && mask.b && mask.a);
+}
+
 export interface GraphNode {
   id: NodeId;
   type: string;
@@ -99,6 +113,8 @@ export interface GraphNode {
   resolution?: NodeResolutionOverride;
   /** Optional per-instance output pixel format. Absent = the definition's policy (§V51). */
   format?: NodeFormatOverride;
+  /** Common processing channels. Absent means RGBA; generators preserve neutral (0,0,0,1). */
+  channelMask?: ChannelMask;
   state?: Record<string, unknown>;
   ui?: {
     collapsed?: boolean;

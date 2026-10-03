@@ -96,10 +96,9 @@ export function viewForChannelMask(
  * gets the checkerboard, a single colour channel goes grayscale — and adds only what the mask
  * cannot express: luminance, which is a mode rather than a mask.
  *
- * Note what this does NOT touch: nothing here reaches the present blit. §V70a keeps that a raw
- * copy, and §V255 is the ruling that these belong to the preview path alone — a display
- * transform on the presented canvas hides which node is wrong and double-encodes once the
- * Output node does its job.
+ * These lenses are session-only inspection (§V255). RGBA composites bounded straight
+ * coverage in linear light; RGB keeps colour visible independently of alpha. Neither lens
+ * changes graph textures, exports, nor the viewer's independent display selection.
  */
 export function viewForLens(
   lens: PreviewLens,
@@ -111,8 +110,10 @@ export function viewForLens(
     tonemap: lens.tonemap,
   };
   switch (lens.lens) {
-    case "rgb":
+    case "rgba":
       return { ...graded, mode: "color", channels: ALL_CHANNELS };
+    case "rgb":
+      return { ...graded, mode: "rgb", channels: ALL_CHANNELS };
     case "luminance":
       return { ...graded, mode: "luminance", channels: ALL_CHANNELS };
     default:

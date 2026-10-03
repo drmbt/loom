@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { DragEvent, KeyboardEvent } from "react";
-import { parseHandleId, variadicHandleId } from "@domain/graph/edge-order.ts";
+import { incomingEdgesInOrder, parseHandleId, variadicHandleId } from "@domain/graph/edge-order.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { EdgeId, NodeId, PortId } from "@domain/types/ids.ts";
@@ -37,9 +37,9 @@ import rows from "./connections.module.css";
  * preserves edge identity, and the order it edits is the operation for Over and Composite
  * — so it happens LIVE, per position crossed, and you watch the picture restack.
  *
- * RE-TARGET moves a wire to a different port. It replaces whatever was in that socket
- * (T695's drop-replace, the canvas's rule), so it is destructive and it lands on DROP
- * only — dragging across four rows must not delete four connections on the way past.
+ * RE-TARGET moves a wire to a different port. It swaps the wires in occupied sockets
+ * by default; Alt-drop explicitly replaces the destination. It lands on DROP only —
+ * dragging across four rows must not reassign four connections on the way past.
  *
  * ## Both gestures are keyboard-reachable (§V19)
  *
@@ -218,6 +218,8 @@ function InputSide({
    */
   const [held, setHeld] = useState<Held | null>(null);
   const heldRef = useRef<Held | null>(null);
+  // Keep HTML5 drag targets in place while the live document order changes.
+  const [dragSockets, setDragSockets] = useState<readonly InputSocket[] | null>(null);
   const [over, setOver] = useState<string | null>(null);
   /**
    * The row the keyboard is holding, and the reason this keeps element refs.
@@ -250,14 +252,17 @@ function InputSide({
   });
 
   /** Reorder within one port: the non-destructive, live half. */
-  const reorderWithin = (portId: PortId, siblings: readonly ConnectionRow[], from: number, to: number): void => {
-    if (inFlight.current) return;
+  const reorderWithin = (portId: PortId, siblings: readonly ConnectionRow[], from: number, to: number, final = false): void => {
+    if (inFlight.current && !final) return;
+    const original = siblings.map(row => row.edgeId);
     const next = movedOrder(
-      siblings.map((row) => row.edgeId),
+      original,
       from,
       to,
-    );
+    ) ?? (heldRef.current === null ? null : original);
     if (next === null) return;
+    const current = incomingEdgesInOrder(graph, nodeId, portId);
+    if (!inFlight.current && current.every((edge, index) => edge.id === next[index])) return;
     inFlight.current = true;
     void editor.reorderPortEdges(nodeId, portId, next).finally(() => {
       inFlight.current = false;
@@ -272,7 +277,7 @@ function InputSide({
    * which is the canvas's own. This function contributes the SOURCE of the wire being
    * moved and nothing else.
    */
-  const retarget = (edgeId: EdgeId, portId: PortId, slot: number | undefined): void => {
+  const retarget = (edgeId: EdgeId, portId: PortId, slot: number | undefined, occupied: "swap" | "replace" = "swap"): void => {
     const edge = graph.edges[edgeId];
     if (edge === undefined) return;
     const drop = connectDropOperations({
@@ -281,6 +286,7 @@ function InputSide({
       source: { nodeId: edge.source.nodeId, portId: edge.source.portId },
       target: { nodeId, portId, ...(slot === undefined ? {} : { slot }) },
       moving: edgeId,
+      occupied,
     });
     if (drop.kind === "refused") {
       onRefused?.(drop.diagnostic);
@@ -298,6 +304,7 @@ function InputSide({
     heldRef.current = null;
     holding.current = null;
     setHeld(null);
+    setDragSockets(null);
     setOver(null);
     if (carried !== null) editor.endReorderGesture(nodeId, carried.portId);
   };
@@ -323,15 +330,24 @@ function InputSide({
   const onDrop = (event: DragEvent<HTMLLIElement>, socket: InputSocket): void => {
     event.preventDefault();
     const carried = heldRef.current;
-    if (carried !== null && carried.portId !== socket.portId) {
-      retarget(carried.edgeId, socket.portId, socket.slot);
+    if (carried !== null) {
+      if (carried.portId !== socket.portId) {
+        retarget(carried.edgeId, socket.portId, socket.slot, event.altKey ? "replace" : "swap");
+      } else {
+        // The frozen drag rows define the destination. Current positions have already
+        // moved during hover and would move the wire back on repeated events or drop.
+        const from = socket.siblings.findIndex(row => row.edgeId === carried.edgeId);
+        const to = socket.row === null ? socket.siblings.length - 1
+          : socket.siblings.findIndex(row => row.edgeId === socket.row?.edgeId);
+        if (from >= 0 && to >= 0) reorderWithin(socket.portId, socket.siblings, from, to, true);
+      }
     }
     endGesture();
   };
 
   return (
     <ul className={rows.list}>
-      {sockets.map((socket) => {
+      {(dragSockets ?? sockets).map((socket) => {
         // An empty socket is a destination, not a fact about the graph: it is chrome at
         // rest, so it only exists while there is something to drop on it.
         if (socket.row === null && held === null) return null;
@@ -364,6 +380,7 @@ function InputSide({
                 onDragStart={(event) => {
                   const carried = { edgeId: row.edgeId, portId: socket.portId };
                   heldRef.current = carried;
+                  setDragSockets(sockets);
                   setHeld(carried);
                   event.dataTransfer.effectAllowed = "move";
                   event.dataTransfer.setData("text/plain", socket.label);
@@ -396,7 +413,7 @@ function InputSide({
                  * always arrives: a key-up, or a drag-end.
                  */
                 aria-label={`Move ${socket.label}`}
-                title={socket.orderable ? "Drag or arrow keys to reorder" : "Drag onto another socket"}
+                title={socket.orderable ? "Drag or arrow keys to reorder. Drop onto another socket to swap; Alt-drop replaces." : "Drop onto another socket to swap wires; Alt-drop replaces."}
               >
                 ⠿
               </button>

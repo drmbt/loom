@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { StrictMode } from "react";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createDomainBus } from "@domain/commands/index.ts";
 import { alice, contextFor } from "@domain/commands/test-support.ts";
@@ -474,7 +474,7 @@ describe("T1049 — REASSIGNING a wire to another socket, from the list", () => 
    * means out there.
    */
 
-  it("moves the wire to the socket it was dropped on, and replaces what was there", async () => {
+  it("swaps occupied sockets without dropping either source", async () => {
     // Blue, dragged from the third layer onto `Front`. Two things must both be true, and a
     // patch that got either alone would look plausible: blue now feeds Front, and the wire
     // that WAS on Front is gone rather than sitting alongside it on a one-wire port.
@@ -491,9 +491,50 @@ describe("T1049 — REASSIGNING a wire to another socket, from the list", () => 
     expect(graph.edges[harness.frontEdge]).toBeUndefined();
     expect(graph.edges[blue]).toBeUndefined();
     expect(harness.wiredTo("in1")).toEqual(["blue1"]);
-    // The layers it left behind closed up, so the sockets still count 1, 2 (T225).
-    expect(harness.order()).toEqual([red, green]);
-    expect(harness.order().map((id) => graph.edges[id]?.order)).toEqual([0, 1]);
+    expect(harness.wiredTo("in2")).toEqual(["red1", "green1", "front1"]);
+    expect(harness.order().slice(0, 2)).toEqual([red, green]);
+    expect(harness.order().map((id) => graph.edges[id]?.order)).toEqual([0, 1, 2]);
+    await act(async () => { await harness.bus.execute("graph.undo", {}, context); });
+    expect(harness.wiredTo("in1")).toEqual(["front1"]);
+    expect(harness.order()).toEqual([red, green, blue]);
+  });
+
+  it("can explicitly replace an occupied socket with Alt-drop", async () => {
+    const harness = await setup();
+    const [, , blue] = harness.layers;
+    const transfer = dataTransfer();
+    fireEvent.dragStart(gripIn(blue), { dataTransfer: transfer });
+    const drop = createEvent.drop(rowFor(harness.frontEdge), { dataTransfer: transfer });
+    Object.defineProperty(drop, "altKey", { value: true });
+    fireEvent(rowFor(harness.frontEdge), drop);
+    await settle();
+    expect(harness.wiredTo("in1")).toEqual(["blue1"]);
+    expect(harness.wiredTo("in2")).toEqual(["red1", "green1"]);
+  });
+
+  it("restores the starting slot after hovering away and dropping back", async () => {
+    const harness = await setup();
+    const [red, , blue] = harness.layers;
+    const transfer = dataTransfer();
+    fireEvent.dragStart(gripIn(red), { dataTransfer: transfer });
+    fireEvent.dragOver(rowFor(blue), { dataTransfer: transfer });
+    await settle();
+    expect(harness.names()).toEqual(["green1", "blue1", "red1"]);
+    fireEvent.drop(rowFor(red), { dataTransfer: transfer });
+    await settle();
+    expect(harness.names()).toEqual(["red1", "green1", "blue1"]);
+  });
+
+  it("drops on the spare socket at the end without needing a hover event", async () => {
+    const harness = await setup();
+    const [red] = harness.layers;
+    const transfer = dataTransfer();
+    fireEvent.dragStart(gripIn(red), { dataTransfer: transfer });
+    const spare = connections().querySelector('[data-socket="in2#spare"]');
+    if (spare === null) throw new Error("Missing spare input socket.");
+    fireEvent.drop(spare, { dataTransfer: transfer });
+    await settle();
+    expect(harness.names()).toEqual(["green1", "blue1", "red1"]);
   });
 
   it("does NOT rewire on the way past — only the socket actually dropped on (§V32)", async () => {
