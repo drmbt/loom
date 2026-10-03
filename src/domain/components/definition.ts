@@ -6,8 +6,11 @@ import type { ParameterDefinition } from "../types/parameters.ts";
 import type { PortDefinition } from "../types/ports.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { effectiveParameterSchema } from "../parameters/resolve.ts";
-import { componentAddressedDefinition } from "../parameters/slots.ts";
+import { componentAddressedDefinition, isParameterSlot } from "../parameters/slots.ts";
 import { componentNodeType, isValidComponentId } from "./component-type.ts";
+import { componentInstances, readParentBindings } from "./instance.ts";
+import { parseParentReference } from "./parent-scope.ts";
+import type { ComponentGraphSource } from "./recursion.ts";
 import { PAGE_TARGET, PRESET_STATE_KEYS, PRESET_STATE_PARAMETERS, pageBanksOf } from "../presets/bank-view.ts";
 
 /**
@@ -129,17 +132,62 @@ export function componentNodeDefinition(
 }
 
 /**
+ * B240: whether anything inside `graph` reads the published `key` through §V81's lexical
+ * scope — a `parent.<key>` bind slot (on any node, a nested instance's page included) or a
+ * legacy `state.parentBindings` entry, and, through each nested instance, a
+ * `parent.parent.<key>` (one more `parent.` per level) inside its definition, at any depth.
+ *
+ * A slot counts whatever its active mode: a bind kept behind a static is one click from
+ * reading the knob again, and unpublishing the knob under it would make that click find
+ * nothing. Nested definitions come from `source`; a component already on the walk is not
+ * entered again, so a recursive edit the catalogue is about to refuse cannot loop here.
+ */
+export function readsParentKey(graph: GraphDocument, key: string, source: ComponentGraphSource): boolean {
+  const reads = (inner: GraphDocument, hops: number, walking: ReadonlySet<string>): boolean => {
+    for (const node of Object.values(inner.nodes)) {
+      const refs = Object.values(readParentBindings(node));
+      for (const stored of Object.values(node.parameters)) {
+        if (!isParameterSlot(stored)) continue;
+        const binding = stored.bindings.bind;
+        if (binding?.kind === "bind") refs.push(binding.ref);
+      }
+      for (const ref of refs) {
+        const reference = parseParentReference(ref);
+        if (reference !== null && reference.hops === hops && reference.key === key) return true;
+      }
+    }
+    for (const { state } of componentInstances(inner)) {
+      if (walking.has(state.componentId)) continue;
+      const nested = source.graphOf(state.componentId, state.version);
+      if (nested !== undefined && reads(nested, hops + 1, new Set([...walking, state.componentId]))) return true;
+    }
+    return false;
+  };
+  return reads(graph, 1, new Set());
+}
+
+/**
  * Drops exposures and published targets whose internal node or port no longer exists.
  *
  * Deleting an internal node that happened to be exposed must not make the whole component
  * un-saveable — the user deleted a node, they did not ask to break their file. The
  * exposure goes with it, and `validateComponentDefinition` then has nothing to complain
- * about. A published parameter that loses its last target is unpublished: a knob wired to
- * nothing is worse than no knob.
+ * about. A published parameter that LOSES its last target to the edit is unpublished: a
+ * knob wired to nothing is worse than no knob.
+ *
+ * B240: that is the whole of the rule, and it is narrower than it used to be. A knob is
+ * unpublished only when it had targets, none of them still resolves, AND nothing inside
+ * reads it as `parent.<key>` (`readsParentKey`) — such a knob still drives what reads it,
+ * which §V81 allows and `validateComponentDefinition` only warns about. A knob that came in
+ * with NO targets lost nothing to this edit: it was published that way on purpose, as pure
+ * lexical scope, and it stays whether or not anything reads it yet — otherwise any
+ * unrelated edit in the session (a move, a rename) would take it, and the very next step
+ * of publishing a knob and then binding a reader to it would find it gone.
  */
 export function pruneComponentDefinition(
   definition: GraphComponentDefinition,
   nodes: NodeRegistryView,
+  source: ComponentGraphSource,
 ): GraphComponentDefinition {
   const keepPort = (direction: "input" | "output") => (port: ExposedPort) =>
     internalPortOf(definition.graph, port, direction, nodes) !== undefined;
@@ -149,7 +197,9 @@ export function pruneComponentDefinition(
     const targets = published.targets.filter(
       (target) => internalParameterOf(definition.graph, target, nodes) !== undefined,
     );
-    if (targets.length > 0) parameters.push({ ...published, targets });
+    const lostAll = published.targets.length > 0 && targets.length === 0;
+    if (lostAll && !readsParentKey(definition.graph, published.key, source)) continue;
+    parameters.push({ ...published, targets });
   }
 
   return {

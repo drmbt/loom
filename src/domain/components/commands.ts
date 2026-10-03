@@ -942,44 +942,41 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         const parameters = hostDefinition.parameters.map((published) => {
           const targets = new Map<string, { nodeId: NodeId; key: string }>();
           for (const target of published.targets) {
-            const next =
-              target.nodeId !== input.nodeId
-                ? [target]
-                : moved
-                    .filter((move) => move.outerKey === published.key && move.pageKey === target.key)
-                    .map((move) => ({ nodeId: move.nodeId, key: move.key }));
+            const onCopies = moved
+              .filter((move) => move.outerKey === published.key && move.pageKey === target.key)
+              .map((move) => ({ nodeId: move.nodeId, key: move.key }));
+            // B240: a target that reaches no copy is left naming the instance, which the
+            // prune below drops — so the knob goes only if that was its last target and
+            // nothing reads parent.<key> (a page key with no targets of its own hands its
+            // parent.<pageKey> readers to this knob, and they keep it).
+            const next = target.nodeId !== input.nodeId || onCopies.length === 0 ? [target] : onCopies;
             for (const each of next) targets.set(`${each.nodeId}\u0000${each.key}`, each);
           }
           return { ...published, targets: [...targets.values()] };
         });
-        for (const published of parameters) {
-          const drove = hostDefinition.parameters
-            .find((each) => each.key === published.key)
-            ?.targets.some((target) => target.nodeId === input.nodeId) === true;
-          if (published.targets.length > 0 || !drove) continue;
+        const current = components.get(host.componentId, host.version) ?? hostDefinition;
+        const pruned = pruneComponentDefinition(
+          {
+            ...current,
+            graph: context.store.getGraph(),
+            inputs: reexpose(hostDefinition.inputs, definition.inputs),
+            outputs: reexpose(hostDefinition.outputs, definition.outputs),
+            parameters,
+          },
+          context.registry,
+          components,
+        );
+        for (const published of hostDefinition.parameters) {
+          if (!published.targets.some(names) || pruned.parameters.some((each) => each.key === published.key)) continue;
           diagnostics.push({
             severity: "warning",
             code: "component.detach.outerTarget",
-            message: `"${hostDefinition.name}"'s published ${published.key} drove only "${look}"'s page, and the key it drove reaches no copy; ${published.key} is unpublished, and anything reading parent.${published.key} falls back to its own value.`,
+            message: `"${hostDefinition.name}"'s published ${published.key} drove only "${look}"'s page, the key it drove reaches no copy, and nothing reads parent.${published.key}; ${published.key} is unpublished.`,
             nodeId: input.nodeId,
             suggestion: "Republish it onto the copies, or undo the detach.",
           });
         }
-        const current = components.get(host.componentId, host.version) ?? hostDefinition;
-        commitDefinition(
-          context,
-          pruneComponentDefinition(
-            {
-              ...current,
-              graph: context.store.getGraph(),
-              inputs: reexpose(hostDefinition.inputs, definition.inputs),
-              outputs: reexpose(hostDefinition.outputs, definition.outputs),
-              parameters,
-            },
-            context.registry,
-          ),
-          diagnostics,
-        );
+        commitDefinition(context, pruned, diagnostics);
       }
 
       return {

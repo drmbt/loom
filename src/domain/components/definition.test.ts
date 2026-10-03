@@ -7,6 +7,7 @@ import { customWgslNode } from "../../nodes/definitions/custom-wgsl.ts";
 import { buildComponentFromSelection } from "./save-selection.ts";
 import { componentSourcePath, effectiveInternalOverrides, internalParameterValues } from "./flatten.ts";
 import {
+  PARENT_BINDINGS_STATE_KEY,
   componentInstances,
   internalParameterPath,
   parseInternalParameterPath,
@@ -14,8 +15,13 @@ import {
 } from "./instance.ts";
 import { migrationChain, planComponentUpgrade } from "./upgrade.ts";
 import { blurKnob, bloomComponent, graphOf, instanceNode, node } from "./test-support.ts";
+import type { ComponentGraphSource } from "./recursion.ts";
+import type { GraphDocument, GraphNode } from "../types/graph.ts";
+import type { ParameterSlot } from "../types/parameters.ts";
 
 const nodes = createTestRegistry().view();
+/** A catalogue with nothing in it: the definition under test holds no nested instances. */
+const noNested: ComponentGraphSource = { graphOf: () => undefined };
 
 describe("synthesized manifest", () => {
   it("refuses to compile as a node — a component is FLATTENED, not compiled (§V82)", () => {
@@ -77,6 +83,7 @@ describe("pruneComponentDefinition", () => {
     const pruned = pruneComponentDefinition(
       { ...definition, graph: { ...definition.graph, nodes: remaining } },
       nodes,
+      noNested,
     );
     expect(pruned.inputs).toEqual([]);
     expect(pruned.outputs).toEqual([]);
@@ -90,8 +97,66 @@ describe("pruneComponentDefinition", () => {
     const pruned = pruneComponentDefinition(
       { ...definition, graph: { ...definition.graph, nodes: remaining } },
       nodes,
+      noNested,
     );
     expect(pruned.parameters[0]?.targets.map((target) => target.nodeId)).toEqual(["blurA", "blurB"]);
+  });
+
+  /*
+   * B240 — the prune unpublished EVERY knob with zero targets on every session edit, so a
+   * knob published as pure lexical scope (§V81: read inside only as `parent.<key>`) was gone
+   * after the next unrelated edit. The rule now: a knob goes only when the edit took its
+   * LAST target and nothing inside reads it; a knob that came in with no targets stays.
+   */
+  const bindSlot = (ref: string, mode: ParameterSlot["mode"] = "bind"): ParameterSlot => ({
+    mode,
+    bindings: { bind: { kind: "bind", ref }, static: { kind: "static", value: 1 } },
+  });
+  /** The bloom with every target of `blur` deleted, and `extra` beside what is left. */
+  const lostEveryTarget = (extra: GraphNode[]) => {
+    const definition = bloomComponent("bloom", 1, [blurKnob]);
+    return { ...definition, graph: graphOf(extra) };
+  };
+  const reader = (parameters: GraphNode["parameters"], extra: Partial<GraphNode> = {}): GraphNode =>
+    node("reader", "test.blur", {}, { parameters, ...extra });
+  const nested = (graph: GraphDocument): ComponentGraphSource => ({
+    graphOf: (componentId) => (componentId === "inner" ? graph : undefined),
+  });
+  const nestedInstance = (page: GraphNode["parameters"] = {}): GraphNode => ({ ...instanceNode("nest", "inner", 1), parameters: page });
+
+  it("keeps a knob published with NO targets, whether or not anything reads it yet", () => {
+    const scope = { key: "scope", definition: { type: "number" as const, label: "Scope", default: 1 }, targets: [] };
+    const pruned = pruneComponentDefinition(bloomComponent("bloom", 1, [scope]), nodes, noNested);
+    expect(pruned.parameters).toEqual([scope]);
+  });
+
+  it.each([
+    ["a parent.<key> bind slot", [reader({ radius: bindSlot("parent.blur") })], noNested],
+    ["a parent.<key> bind kept behind a static, one click from reading again", [reader({ radius: bindSlot("parent.blur", "static") })], noNested],
+    ["a legacy state.parentBindings entry", [reader({ radius: 4 }, { state: { [PARENT_BINDINGS_STATE_KEY]: { radius: "parent.blur" } } })], noNested],
+    ["a nested instance's page bound to parent.<key>", [nestedInstance({ size: bindSlot("parent.blur") })], noNested],
+    [
+      "parent.parent.<key> inside a nested instance's definition",
+      [nestedInstance()],
+      nested(graphOf([node("deep", "test.blur", {}, { parameters: { radius: bindSlot("parent.parent.blur") } })])),
+    ],
+  ] as const)("keeps a knob that lost its last target while %s reads it", (_, extra, source) => {
+    const pruned = pruneComponentDefinition(lostEveryTarget([...extra]), nodes, source);
+    expect(pruned.parameters.map((published) => [published.key, published.targets])).toEqual([["blur", []]]);
+  });
+
+  it.each([
+    ["nothing reads it", [reader({ radius: 4 })], noNested],
+    ["a read two hops out (parent.parent.blur) names a different component", [reader({ radius: bindSlot("parent.parent.blur") })], noNested],
+    ["a sibling bind named like the key is not a parent read", [reader({ radius: bindSlot("blur") })], noNested],
+    [
+      "a nested definition's parent.blur reads ITS OWN page, and a self-nesting definition is walked once",
+      [nestedInstance()],
+      nested(graphOf([node("deep", "test.blur", {}, { parameters: { radius: bindSlot("parent.blur") } }), nestedInstance()])),
+    ],
+  ] as const)("still unpublishes a knob that lost its last target when %s", (_, extra, source) => {
+    const pruned = pruneComponentDefinition(lostEveryTarget([...extra]), nodes, source);
+    expect(pruned.parameters).toEqual([]);
   });
 });
 
@@ -275,7 +340,7 @@ describe("publishing a compound component (T1008/§T1019b)", () => {
     const codes = validateComponentDefinition(definition, nodes).map((d) => d.code);
     expect(codes).not.toContain("component.parameter.missingTarget");
     // And the prune keeps it: the pre-fix behaviour silently UNPUBLISHED the knob.
-    const pruned = pruneComponentDefinition(definition, nodes);
+    const pruned = pruneComponentDefinition(definition, nodes, noNested);
     expect(pruned.parameters.map((p) => p.key)).toEqual(["green"]);
   });
 

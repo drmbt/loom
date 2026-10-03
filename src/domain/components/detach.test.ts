@@ -230,6 +230,15 @@ function outer(
   };
 }
 
+/**
+ * B240: OUTER's Size with NO targets — read only as parent.size, pure lexical scope (§V81).
+ * A session's write-back prune used to unpublish it on the detach's own edit; the B239
+ * session cases gave it a target on `grade` to survive that, and no longer need one.
+ */
+const scopeSize: GraphComponentDefinition["parameters"] = [
+  { key: "size", definition: { type: "number", label: "Size", default: 4, min: 0, max: 64 }, targets: [] },
+];
+
 describe("B238 — nested instances stay instances, and their pages keep working", () => {
 
   it("the nested copy's page holds what the outer page gave it, and every flattened internal is unchanged", async () => {
@@ -387,7 +396,7 @@ describe("B239 — detach inside a component edit session", () => {
 
   it("the instance's own legacy state.parentBindings are CARRIED, not baked: Blur and Soft keep reading OUTER's Size 11", async () => {
     const inside = await detachInside(
-      outer({ ...PAGE }, { state: { [PARENT_BINDINGS_STATE_KEY]: { blur: "parent.size", soft: "parent.size" } } }),
+      outer({ ...PAGE }, { state: { [PARENT_BINDINGS_STATE_KEY]: { blur: "parent.size", soft: "parent.size" } } }, scopeSize),
       { size: 11 },
     );
     // Fan-out target: the page value stays as the fallback, the binding reads OUTER's page.
@@ -401,7 +410,7 @@ describe("B239 — detach inside a component edit session", () => {
   });
 
   it("a sibling bind chaining to a parent. bind resolves like flattening: Blur → Soft → parent.size reads 11, not Soft's retained 7", async () => {
-    const inside = await detachInside(outer({ ...PAGE, blur: bindSlot("soft", 1), soft: bindSlot("parent.size", 7) }), { size: 11 });
+    const inside = await detachInside(outer({ ...PAGE, blur: bindSlot("soft", 1), soft: bindSlot("parent.size", 7) }, {}, scopeSize), { size: 11 });
     expect(inside.copies["blurA"]?.parameters["radius"]).toEqual(bindSlot("parent.size", 7));
     for (const [internalId, before, after] of inside.pairs) expect(after, internalId).toEqual(before);
     expect(inside.after[`inst/${inside.copies["blurA"]!.id}`]?.parameters["radius"]).toBe(11);
@@ -426,15 +435,33 @@ describe("B239 — detach inside a component edit session", () => {
     expect(inside.after[`inst/${inside.copies["solid"]!.id}`]?.parameters["amount"]).toBe(0.75);
   });
 
-  it("an outer knob whose only target was a key that reaches no copy is unpublished, and said by name", async () => {
+  it("an outer knob whose only target was a page key with no targets of its own takes that key's parent. readers, and they keep it published", async () => {
+    // B240: Ghost drove Soft, which drives nothing and exists for parent.soft. Those reads
+    // become parent.ghost on the copies, so Ghost loses its last target yet is still read;
+    // unpublishing it left blurB and blurC on their retained statics.
     const inside = await detachInside(
       outer({ ...PAGE }, {}, [
-        { key: "size", definition: { type: "number", label: "Size", default: 4, min: 0, max: 64 }, targets: [{ nodeId: "grade", key: "radius" }] },
+        ...scopeSize,
         { key: "ghost", definition: { type: "number", label: "Ghost", default: 4, min: 0, max: 64 }, targets: [{ nodeId: "inner", key: "soft" }] },
       ]),
       { size: 11, ghost: 9 },
     );
-    expect(inside.codes).toContain("component.detach.outerTarget");
+    expect(inside.codes).not.toContain("component.detach.outerTarget");
+    expect(inside.outerAfter.parameters.map((published) => [published.key, published.targets])).toEqual([["size", []], ["ghost", []]]);
+    expect(inside.copies["blurB"]?.parameters["radius"]).toEqual(bindSlot("parent.ghost", 1));
+    for (const [internalId, before, after] of inside.pairs) expect(after, internalId).toEqual(before);
+    expect(inside.after[`inst/${inside.copies["blurB"]!.id}`]?.parameters["radius"]).toBe(9);
+  });
+
+  it("an outer knob whose only target cannot move (one channel of Tint) and that nothing reads is unpublished, and said by name", async () => {
+    const inside = await detachInside(
+      outer({ ...PAGE }, {}, [
+        ...scopeSize,
+        { key: "red", definition: { type: "number", label: "Red", default: 0.5, min: 0, max: 1 }, targets: [{ nodeId: "inner", key: "tint.r" }] },
+      ]),
+      { size: 11, red: 0.75 },
+    );
+    expect(inside.codes.filter((code) => code === "component.detach.outerTarget")).toHaveLength(2);
     expect(inside.outerAfter.parameters.map((published) => published.key)).toEqual(["size"]);
   });
 });

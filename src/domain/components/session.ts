@@ -136,7 +136,7 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
       ]);
       return;
     }
-    const next = pruneComponentDefinition({ ...current, graph: state.graph }, options.nodes);
+    const next = pruneComponentDefinition({ ...current, graph: state.graph }, options.nodes, options.components);
     const problems = options.components.validate(next);
     if (problems.some((diagnostic) => diagnostic.severity === "error")) {
       options.onInvalid?.(problems);

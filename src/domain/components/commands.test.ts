@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { flattenComponents } from "../../compiler/flatten.ts";
 import { alice, contextFor } from "../commands/test-support.ts";
 import type { GraphDocument } from "../types/graph.ts";
 import { componentNodeType } from "./component-type.ts";
@@ -161,6 +162,76 @@ describe("component.publishParameter (T132)", () => {
     expect(result.status).toBe("rejected");
     expect(result.diagnostics.map((d) => d.code)).toContain("component.parameter.typeMismatch");
     expect(harness.components.get("bloom", 1)?.parameters).toEqual([]);
+    session.dispose();
+  });
+});
+
+/**
+ * B240 — a knob published with no targets, read inside only as `parent.<key>` (§V81 allows
+ * exactly that), was unpublished by the session's write-back prune on the very next graph
+ * edit, however unrelated: the reader kept its retained static and the instance's page
+ * reached nothing. Each case drives the real session and reads the outcome back from the
+ * catalogue and from a flattened root instance — what the compiler hands the GPU.
+ */
+describe("B240 — a session edit keeps a knob published with no targets", () => {
+  const number = (label: string) => ({ type: "number" as const, label, default: 4, min: 0, max: 64 });
+  const parentBind = (key: string) => ({
+    mode: "bind",
+    bindings: { bind: { kind: "bind", ref: `parent.${key}` }, static: { kind: "static", value: 1 } },
+  });
+
+  async function sessionWithScopeKnobs() {
+    const harness = createComponentHarness("t", graphOf([instanceNode("inst", "bloom", 1, { spread: 9, spare: 5 })]));
+    harness.components.register(bloomComponent());
+    const session = openComponentSession({ components: harness.components, nodes: harness.nodes, componentId: "bloom", version: 1 });
+    const apply = async (label: string, operations: unknown[]) => {
+      const result = await session.bus.execute(
+        "graph.applyPatch",
+        { baseRevision: session.store.view.getRevision(), label, operations } as never,
+        ctx,
+      );
+      expect(result.status, result.diagnostics.map((each) => each.message).join("; ")).toBe("applied");
+    };
+    const publish = async (key: string, targets: Array<{ nodeId: string; key: string }>) => {
+      const published = await session.bus.execute("component.publishParameter", { key, definition: number(key), targets }, ctx);
+      expect(published.status).toBe("applied");
+    };
+    await publish("spread", []);
+    await publish("spare", []);
+    // blurB reads Spread through a bind slot — itself a graph edit the old prune ran on.
+    await apply("bind", [{ op: "setParameters", nodeId: "blurB", parameters: { radius: parentBind("spread") } }]);
+    const flattenedRadius = (id: string) =>
+      flattenComponents({ graph: harness.store.view.getGraph(), registry: harness.nodes, components: harness.components }).graph.nodes[`inst/${id}`]
+        ?.parameters["radius"];
+    const page = () => harness.components.get("bloom", 1)!.parameters.map((published) => [published.key, published.targets]);
+    return { session, apply, publish, flattenedRadius, page };
+  }
+
+  it("an unrelated edit (a move) keeps Spread, read by parent.spread, and the instance's 9 still reaches blurB", async () => {
+    const { session, apply, flattenedRadius, page } = await sessionWithScopeKnobs();
+    await apply("move", [{ op: "moveNodes", positions: { blurA: { x: 40, y: 40 } } }]);
+    expect(page()).toEqual([["spread", []], ["spare", []]]);
+    expect(flattenedRadius("blurB")).toBe(9);
+    session.dispose();
+  });
+
+  it("Spare, published with no targets and read by nothing yet, survives too: it lost nothing to the edit", async () => {
+    const { session, apply, page } = await sessionWithScopeKnobs();
+    await apply("move", [{ op: "moveNodes", positions: { blurC: { x: 7, y: 7 } } }]);
+    expect(page().map(([key]) => key)).toEqual(["spread", "spare"]);
+    session.dispose();
+  });
+
+  it("a knob whose LAST target is deleted is still unpublished when nothing reads it (prune's purpose), and kept when parent.<key> does", async () => {
+    const { session, apply, publish, flattenedRadius, page } = await sessionWithScopeKnobs();
+    await publish("gone", [{ nodeId: "blurA", key: "radius" }]);
+    await publish("read", [{ nodeId: "blurC", key: "radius" }]);
+    // blurB now reads Read instead of Spread; then both targets' nodes go.
+    await apply("rebind", [{ op: "setParameters", nodeId: "blurB", parameters: { radius: parentBind("read") } }]);
+    await apply("delete", [{ op: "removeNodes", nodeIds: ["blurA", "blurC"] }]);
+    expect(page()).toEqual([["spread", []], ["spare", []], ["read", []]]);
+    // The root instance never set Read, so blurB reads its published default.
+    expect(flattenedRadius("blurB")).toBe(4);
     session.dispose();
   });
 });

@@ -268,12 +268,12 @@ describe("B239 on Dawn — a detached instantiate draws what a fresh linked inst
 
 describe("B239 on Dawn — detach inside a component edit session draws what the instance drew", () => {
   /**
-   * FRAME holds `inner`, an instance of THE LOOK, exposed as FRAME's output, and `spare`, a
-   * Level nothing draws — a target that keeps a knob read only through `parent.` published
-   * across the session's write-back. The root draws an instance of FRAME. The session
-   * detaches `inner` inside FRAME; the root document never changes, only the catalogue.
-   * FRAME's output exposure names `inner`, so it must move onto the copy too, or the root
-   * would draw nothing at all.
+   * FRAME holds `inner`, an instance of THE LOOK, exposed as FRAME's output. Its `glow` is
+   * read inside only through `parent.glow` and published with no target there (B240: the
+   * session's write-back keeps it, and these cases need no stand-in target to survive).
+   * The root draws an instance of FRAME. The session detaches `inner` inside FRAME; the
+   * root document never changes, only the catalogue. FRAME's output exposure names
+   * `inner`, so it must move onto the copy too, or the root would draw nothing at all.
    */
   function frame(inner: Partial<GraphNode>, parameters: readonly unknown[]): GraphComponentDefinition {
     return {
@@ -283,7 +283,6 @@ describe("B239 on Dawn — detach inside a component edit session draws what the
       graph: graphOf(
         {
           inner: { ...node("inner", componentNodeType("look", 1), "inner", { bright: 1, gain: 1 }), ...inner } as GraphNode,
-          spare: node("spare", "level", "spare", { brightness: 1 }),
         },
         {},
       ),
@@ -317,7 +316,7 @@ describe("B239 on Dawn — detach inside a component edit session draws what the
   it("the instance's legacy parentBindings (bright ← parent.glow 0.5) are carried: 0.5 × 0.8, byte-identical", async () => {
     requireDawn();
     const { before, after } = await beforeAndAfter(
-      frame({ parameters: { bright: 1, gain: 0.8 }, state: { parentBindings: { bright: "parent.glow" } } }, [knob("glow", [{ nodeId: "spare", key: "brightness" }])]),
+      frame({ parameters: { bright: 1, gain: 0.8 }, state: { parentBindings: { bright: "parent.glow" } } }, [knob("glow", [])]),
       { glow: 0.5 },
     );
     expect(Buffer.compare(after.bytes, before.bytes)).toBe(0);
@@ -328,7 +327,7 @@ describe("B239 on Dawn — detach inside a component edit session draws what the
     requireDawn();
     const bind = (ref: string) => ({ mode: "bind", bindings: { bind: { kind: "bind", ref }, static: { kind: "static", value: 1 } } }) as const;
     const { before, after } = await beforeAndAfter(
-      frame({ parameters: { bright: bind("gain"), gain: bind("parent.glow") } }, [knob("glow", [{ nodeId: "spare", key: "brightness" }])]),
+      frame({ parameters: { bright: bind("gain"), gain: bind("parent.glow") } }, [knob("glow", [])]),
       { glow: 0.5 },
     );
     expect(Buffer.compare(after.bytes, before.bytes)).toBe(0);
@@ -338,10 +337,43 @@ describe("B239 on Dawn — detach inside a component edit session draws what the
   it("FRAME's knobs on the instance's keys move onto the copies (level → bright 0.5, glow → gain 0.25, read by parent.gain): byte-identical", async () => {
     requireDawn();
     const { before, after } = await beforeAndAfter(
-      frame({}, [knob("level", [{ nodeId: "inner", key: "bright" }]), knob("glow", [{ nodeId: "inner", key: "gain" }, { nodeId: "spare", key: "brightness" }])]),
+      frame({}, [knob("level", [{ nodeId: "inner", key: "bright" }]), knob("glow", [{ nodeId: "inner", key: "gain" }])]),
       { level: 0.5, glow: 0.25 },
     );
     expect(Buffer.compare(after.bytes, before.bytes)).toBe(0);
     expect(before.pixel).toEqual([0.125, 0.125, 0.125, 1]);
+  }, 120_000);
+});
+
+/**
+ * B240 ON DAWN — A SESSION EDIT KEEPS A KNOB READ ONLY AS `parent.<key>`.
+ *
+ * THE LOOK's `gain` is published with no targets and read inside only by `trim`'s
+ * `parent.gain` bind (§V81). The session's write-back prune used to unpublish every knob
+ * with zero targets on every graph edit, so an unrelated move inside THE LOOK took `gain`
+ * off the page and `trim` fell back to its retained 1: the instance at gain 0.8 drew 0.5,
+ * not 0.4. Here the move is the real `graph.applyPatch` on a real session; the picture is
+ * rendered after it, and pinned to 0.5 × 0.8.
+ */
+describe("B240 on Dawn — an unrelated session edit keeps a parent.<key>-only knob on the picture", () => {
+  it("a move inside THE LOOK leaves gain published, and bright 0.5 × gain 0.8 still draws 0.4", async () => {
+    requireDawn();
+    const system = catalogue([lookDefinition]);
+    const instance = lookGraph({ bright: 0.5, gain: 0.8 });
+    const before = await renderWith(system, instance);
+    const session = openComponentSession({ components: system.components, nodes: system.nodes, componentId: "look", version: 1 });
+    const moved = await session.bus.execute(
+      "graph.applyPatch",
+      { baseRevision: session.store.view.getRevision(), label: "move", operations: [{ op: "moveNodes", positions: { src: { x: 40, y: 40 } } }] },
+      contextFor(alice),
+    );
+    session.dispose();
+    expect(moved.status, moved.diagnostics.map((each) => each.message).join("; ")).toBe("applied");
+    const written = system.components.get("look", 1)!;
+    expect(written.graph.nodes["src"]?.position).toEqual({ x: 40, y: 40 });
+    const after = await renderWith(system, instance);
+    expect(after.pixel).toEqual([0.39990234375, 0.39990234375, 0.39990234375, 1]);
+    expect(Buffer.compare(after.bytes, before.bytes)).toBe(0);
+    expect(written.parameters.map((published) => [published.key, published.targets.length])).toEqual([["bright", 1], ["gain", 0]]);
   }, 120_000);
 });
