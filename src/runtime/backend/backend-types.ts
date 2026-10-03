@@ -1,4 +1,4 @@
-import type { RenderBackend } from "../../domain/types/backend.ts";
+import type { LogicalExecutionPlan, RenderBackend } from "../../domain/types/backend.ts";
 import type { RuntimeDiagnostic } from "../../domain/types/diagnostics.ts";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { PreviewFrameCommand, PreviewProgram, PreviewRuntimeHost } from "../previews/types.ts";
@@ -147,6 +147,12 @@ export interface BuildStats {
   resourcesReused: number;
   effectsBuilt: number;
   effectsReused: number;
+  /**
+   * §T1507b: effects this compile ADOPTED from the ones built ahead for a bypassed Layer's
+   * passes (`warmPasses`) — new to the program, built before it. Not in `effectsBuilt`.
+   * Optional: a build with nothing warm never sets it.
+   */
+  effectsWarmed?: number;
 }
 
 export interface BackendStatus {
@@ -252,6 +258,17 @@ export interface LoomBackend extends RenderBackend {
    * GPU throughout (§V7). Survives recompiles and device loss like present() does.
    */
   previewHost(canvas: PresentableCanvas): PreviewHostHandle;
+
+  /**
+   * §T1507b — builds AHEAD what `plan` has and the installed program does not, so a later
+   * structural compile that brings those passes in adopts them instead of building them.
+   * `plan` is the plan the graph would have with every bypassed Layer on; the switch-on
+   * compile then reflects no WGSL and creates no pipeline for them. Nothing is allocated,
+   * rendered or read back for what is held, and `null` drops all of it. Resolves with the
+   * pass ids held once this call has built what it will. Optional: only a backend with a
+   * device has anything to build ahead.
+   */
+  warmPasses?(plan: LogicalExecutionPlan | null): Promise<readonly string[]>;
 
   /**
    * Validates WGSL standalone (T195, §V27) — no plan, no target, no render. Safe to

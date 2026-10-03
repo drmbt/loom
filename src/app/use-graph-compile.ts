@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { compileGraphRetaining, prepareFrameCompiler } from "@compiler/index.ts";
+import { compileGraphRetaining, compileLayerWarmPlan, prepareFrameCompiler } from "@compiler/index.ts";
 import { humanizeDiagnostics } from "@domain/graph/index.ts";
 import { classifyGraphChange, isValuesOnly } from "./classify-revision.ts";
 import type {
@@ -140,6 +140,14 @@ export interface GraphCompileResult {
   readonly resetFeedback: boolean;
   /** T552: a different document is open — zero point storage and land on frame 0. */
   readonly documentBoundary: boolean;
+  /**
+   * §T1507b — the plan this revision would have with every bypassed Layer on, compiled
+   * only when asked (`compileLayerWarmPlan`). The frame loop asks once this revision's plan
+   * is installed, off the frame, and hands it to `backend.warmPasses`, so switching a layer
+   * on later builds nothing. Present on a structural compile only; null from it means
+   * there is nothing to build ahead.
+   */
+  readonly warmPlan?: (() => CompiledGraph | null) | undefined;
 }
 
 /**
@@ -827,6 +835,7 @@ export function useGraphCompile(
       // into nothing.
       resetFeedback: change?.resetFeedback === true,
       documentBoundary: change?.documentBoundary === true,
+      warmPlan: () => compileLayerWarmPlan(request),
     });
   }, [animate, request, channels, flatGraph, flattened, graph, runtime, capabilities, previewSinks, scheduledPreviews, catalogueRevision, settings]);
 

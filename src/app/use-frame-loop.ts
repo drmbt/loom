@@ -217,6 +217,12 @@ export interface FrameLoopOptions {
   readonly resetFeedback?: boolean | undefined;
   /** T552: a different document is open — the full rite: zero buffers, land on frame 0. */
   readonly documentBoundary?: boolean | undefined;
+  /**
+   * §T1507b — the plan `compiled` would be with every bypassed Layer on, from
+   * `useGraphCompile`. Asked for once `compiled` is installed, in a task of its own, and
+   * handed to `backend.warmPasses`: switching a layer on then builds nothing.
+   */
+  readonly warmPlan?: (() => CompiledGraph | null) | null | undefined;
 }
 
 /**
@@ -304,6 +310,9 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
   // driver's frame callback, which must never be re-created to pick up a new closure.
   const animateRef = useRef<AnimateFrame | null>(animate);
   animateRef.current = animate;
+  /** §T1507b: read when a structural compile is scheduled, beside the plan it belongs to. */
+  const warmPlanRef = useRef(options.warmPlan ?? null);
+  warmPlanRef.current = options.warmPlan ?? null;
   const observeRef = useRef<((frame: FrameEvaluationInput) => void) | null>(observe);
   observeRef.current = observe;
   const advanceChannelsRef = useRef<((inputs: FrameInputs) => void) | null>(advanceChannels);
@@ -824,6 +833,7 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
     }
 
     const generation = (generationRef.current += 1);
+    const warmPlan = warmPlanRef.current;
     // §B235: queued behind the compile already in flight, never beside it — two compiles
     // carrying from one retained program destroy each other's objects. A request a newer
     // one overtook while it waited is never sent (`null`).
@@ -882,6 +892,26 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
         } else if (feedbackResetOwedRef.current) {
           feedbackResetOwedRef.current = false;
           backend.resetTemporalHistory(undefined, { silent: true });
+        }
+        /*
+         * §T1507b — what a bypassed Layer would bring back, built AHEAD, so switching it on
+         * builds nothing. In a task of its own: neither the warm plan's compile nor the
+         * backend's builds land in the frame that follows this install, and a newer install
+         * before it runs supersedes it. Advisory — a warm plan that cannot be had is no
+         * warm-up, and the switch's own compile reports whatever is wrong with it.
+         */
+        if (warmPlan !== null && backend.warmPasses !== undefined) {
+          const warmPasses = backend.warmPasses.bind(backend);
+          setTimeout(() => {
+            if (generation !== generationRef.current) return;
+            let ahead: CompiledGraph | null;
+            try {
+              ahead = warmPlan();
+            } catch {
+              ahead = null;
+            }
+            void warmPasses(ahead).catch(() => undefined);
+          }, 0);
         }
       })
       .catch((error: unknown) => {

@@ -76,6 +76,7 @@ import {
   type PassBuildVerdict,
   type ResourceSet,
 } from "./resources.ts";
+import { createWarmEffects, type WarmEffects } from "./warm-effects.ts";
 
 /**
  * The vgpu adapter: the only implementation of `RenderBackend`, and the only place in the
@@ -330,6 +331,12 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
   let unsubscribeErrorNet: (() => void) | undefined;
   /** True while compile()'s own listener owns pipeline-compile errors (B9's veto). */
   let compileErrorWindow = false;
+  /**
+   * §T1507b: Effects built ahead for passes the installed program does not have — a
+   * bypassed Layer's — handed to the next structural compile that brings them in. Belongs
+   * to one device: a compile on another (after a loss) takes nothing from it.
+   */
+  let warmEffects: WarmEffects | undefined;
   /**
    * T1523b: pass ids whose pipeline failures a pending `reportBuildVerdicts` is collecting —
    * a preview's or a device rebuild's. Counted, because two builds can name one pass.
@@ -2372,6 +2379,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           noExternalResources,
           undefined,
           verdicts,
+          warmEffects?.gpu === active.gpu ? warmEffects : undefined,
         );
         // Twice, deliberately: the first settle drains the tracked error-scope pops, whose
         // handlers only THEN enqueue the listener delivery; the second drains those.
@@ -3180,6 +3188,43 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       return buffer.read();
     },
 
+    async warmPasses(plan) {
+      // Nothing to build ahead of on no device, and nothing to diff against before the
+      // first install: the plan would be held whole.
+      if (plan === null || disposed || halted || !session || !program) {
+        warmEffects?.clear();
+        return [];
+      }
+      const active = session;
+      const read = readExecutionPlan(plan);
+      // Advisory: a warm plan that does not read is not built ahead. Its compile, if the
+      // switch ever happens, is where its problems are reported.
+      if (!read.ok) return warmEffects?.passIds() ?? [];
+      if (warmEffects?.gpu !== active.gpu) warmEffects = createWarmEffects(active.gpu);
+      const pool = warmEffects;
+      const raw = (active.gpu.device as { gpu?: GPUDevice }).gpu;
+      // What the switch would CARRY needs nothing built: the carry rule itself decides
+      // (§V22, T143), against whichever program is installed when a build is about to run.
+      // Not "the program has this pass": a consumer below the layer (E82's `dim`) keeps its
+      // id and bytes but binds a different texture once the layer is on, so the switch
+      // rebuilds it — and so it is held too.
+      let carriedFor: Program | undefined;
+      let carried: ReadonlyMap<string, unknown> = new Map();
+      await pool.warm(read.passes, read.resources, {
+        live: (passId) => {
+          if (program !== carriedFor) {
+            carriedFor = program;
+            carried =
+              program === undefined ? new Map() : computeCarryOver(program, read.resources, read.passes).effects;
+          }
+          return carried.has(passId);
+        },
+        blocked: () => disposed || halted || session !== active || guard.encoding,
+        onBuildError: (shader, message) => rememberReason(raw, shader, message),
+      });
+      return pool.passIds();
+    },
+
     async compileShader(source: string, options: { label?: string } = {}) {
       const active = requireSession("compileShader()");
       const label = options.label ?? "editor.wgsl";
@@ -3322,6 +3367,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         }
       }
       previewHosts.clear();
+      warmEffects?.clear();
+      warmEffects = undefined;
       program = undefined;
       try {
         session?.dispose();

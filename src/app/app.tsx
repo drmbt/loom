@@ -981,6 +981,8 @@ export function App({
     // RESOURCE ID and two documents share those ids as soon as they share node names.
     resetFeedback: compile.resetFeedback,
     documentBoundary: compile.documentBoundary,
+    // §T1507b: a bypassed Layer's passes, built ahead of its switch-on.
+    warmPlan: compile.warmPlan,
   });
 
   /**

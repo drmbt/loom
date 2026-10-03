@@ -9,6 +9,7 @@ export { compileGraph, compileGraphRetaining } from "./compile.ts";
 export type { CompileGraphResult } from "./compile.ts";
 export { prepareFrameCompiler } from "./frame-compile.ts";
 export type { FrameCompiler } from "./frame-compile.ts";
+export { MAX_WARM_LAYERS, compileLayerWarmPlan, layerWarmRequest } from "./layer-warm.ts";
 export { synthesizeSourceReferenceEdges } from "./source-reference-edges.ts";
 export type { SourceReferenceEdges } from "./source-reference-edges.ts";
 export { CompilerDiagnosticCode, compilerDiagnostic, hasError } from "./diagnostics.ts";

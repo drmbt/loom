@@ -4,6 +4,7 @@ import type { RuntimeDiagnostic } from "../../../domain/types/diagnostics.ts";
 import { BackendDiagnosticCode, backendDiagnostic, describeError } from "../diagnostics.ts";
 import type { BuildStats } from "../backend-types.ts";
 import type { FrameGuard } from "../frame-guard.ts";
+import type { WarmEffectSource } from "./warm-effects.ts";
 import type {
   BufferBindingDescriptor,
   EffectPassDescriptor,
@@ -421,6 +422,12 @@ export function buildResources(
    * uncaptured path, where the net is.
    */
   verdicts?: PassBuildVerdict[],
+  /**
+   * §T1507b: Effects built ahead for passes this plan may bring back (a bypassed Layer's).
+   * A new effect pass whose id and bytes match takes the held one and binds its bag, so the
+   * switch neither reflects its WGSL again nor builds its pipeline — see `warm-effects.ts`.
+   */
+  warmed?: WarmEffectSource,
 ): ResourceSet {
   guard.assertOutsideFrame("plan resources");
 
@@ -445,7 +452,7 @@ export function buildResources(
   const shared = carry.shared ?? uniforms<SharedUniformValues>(gpu, initialSharedUniforms());
 
   const note = (field: keyof BuildStats): void => {
-    if (stats) stats[field] += 1;
+    if (stats) stats[field] = (stats[field] ?? 0) + 1;
   };
 
   for (const resource of resources) {
@@ -922,8 +929,13 @@ export function buildResources(
     if (!setBag) continue;
 
     try {
+      let adopted = false;
       underScope(pass.id, () => {
-        const created = effect(gpu, pass.shader, {
+        // §T1507b: built ahead under the same id and bytes; `set` binds the bag exactly as
+        // the constructor's `opts.set` does.
+        const held = warmed?.take(pass.id, pass.shader);
+        adopted = held !== undefined;
+        const created = held !== undefined ? held.set(setBag) : effect(gpu, pass.shader, {
           set: setBag,
           // B229: the pass id, never `pass.label`. vgpu reports an async pipeline failure as
           // `<label>.compileSync`, and a human label is shared by every pass of a node type
@@ -935,7 +947,7 @@ export function buildResources(
         effects.set(pass.id, created);
       });
       renderTargets.set(pass.id, resolveTarget);
-      note("effectsBuilt");
+      note(adopted ? "effectsWarmed" : "effectsBuilt");
 
       const dynamic = (pass.textures ?? []).filter(
         (binding) =>
