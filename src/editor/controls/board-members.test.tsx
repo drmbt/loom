@@ -304,6 +304,49 @@ describe("T1501b — a layer's switch and fader", () => {
     expect(nodeOf(runtime, ids["$fx"]!).parameters["opacity"]).toBe(1);
   });
 
+  it("T1527b: the switch names the picture — by name, and “wired” while a wire feeds it, since the wire wins (B233)", async () => {
+    const { runtime, ids } = await desk({ board: [{ member: "fx", rect: { x: 0, y: 0, w: 4, h: 2 } }], layer: { picture: "city" } });
+    let street = "" as NodeId;
+    await act(async () => {
+      const added = await runtime.bus.execute(
+        "graph.applyPatch",
+        { baseRevision: runtime.bus.store.getRevision(), operations: [{ op: "addNode", ref: "$street", type: "solid", position: { x: 0, y: 0 }, label: "street" }] },
+        runtime.invocation,
+      );
+      street = (added.output.createdIds as Record<string, NodeId>)["$street"]!;
+    });
+    render(<Tab runtime={runtime} />);
+    const toggle = () => within(tabItem("member:fx")).getByRole("switch", { name: /^fx/ });
+    expect(toggle().textContent).toContain("fx · city");
+
+    // A wire into Picture: the name is dormant, so the item must not claim the layer shows "city".
+    await act(async () => {
+      await runtime.bus.execute(
+        "graph.applyPatch",
+        {
+          baseRevision: runtime.bus.store.getRevision(),
+          operations: [{ op: "connect", source: { nodeId: street, portId: "out" }, target: { nodeId: ids["$fx"]!, portId: "picture" } }],
+        },
+        runtime.invocation,
+      );
+      await settle();
+    });
+    expect(toggle().textContent).toContain("fx · wired");
+    expect(toggle().textContent).not.toContain("city");
+
+    // Disconnecting returns the layer to its name, and the item with it.
+    await undo(runtime);
+    expect(toggle().textContent).toContain("fx · city");
+  });
+
+  it("T1527b: at the bare 2×1 switch the picture is only on hover — the phone's rule", async () => {
+    const { runtime } = await desk({ layer: { picture: "city" } });
+    render(<Tab runtime={runtime} />);
+    const toggle = within(tabItem("member:fx")).getByRole("switch", { name: /^fx/ });
+    expect(toggle.textContent).not.toContain("city");
+    expect(tabItem("member:fx").querySelector("[data-layer-picture]")?.getAttribute("title")).toBe("fx shows city");
+  });
+
   it("a driven Opacity is shown and refuses the drag", async () => {
     const driven = { mode: "expression", bindings: { static: { kind: "static", value: 0.5 }, expression: { kind: "expression", source: "0.25 + 0.5" } } };
     const { runtime, ids } = await desk({ board: [{ member: "fx", rect: { x: 0, y: 0, w: 4, h: 2 } }], layer: { opacity: driven } });

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useStore } from "zustand";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
-import type { GraphNode } from "@domain/types/graph.ts";
+import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import type { NodeId } from "@domain/types/ids.ts";
+import { overridingWire, sourceReferencesOf } from "@domain/graph/source-references.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
 import { isParameterSlot, staticBindingValue } from "@domain/parameters/slots.ts";
 import {
@@ -46,7 +49,8 @@ import styles from "./board-members.module.css";
  *   the layer's own docblock names), never a flip, and nothing at all when the layer is
  *   already so: two presses of "off" leave it off, in one undo step. The fader writes
  *   `opacity` through the parameter editor like any slider — one undo group per drag —
- *   and a driven opacity is shown and refuses the drag.
+ *   and a driven opacity is shown and refuses the drag. T1527b: the switch names the
+ *   picture the layer shows — its Picture name, or "wired" when a wire feeds it (§B233).
  * - a CUE LIST is BACK and a large GO, with the current cue and the one standing by. A
  *   press is `cue.back` / `cue.go`, on THIS list. T1527b: three rows or taller, the cues
  *   themselves are listed between the two, a tap standing one by (`cue.setStandby`) —
@@ -225,6 +229,23 @@ const declared = (definition: unknown, key: "default" | "min" | "max", fallback:
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 };
 
+/** What a wired picture is called on the item: the wire wins over the name (§B233). */
+const WIRED = "wired";
+
+/**
+ * T1527b — WHAT A LAYER SHOWS, for its board item: the name in its Picture parameter, or
+ * "wired" when a wire feeds the picture — by B233's rule, read through the same function
+ * the compiler reads (`overridingWire`), so the item never names a picture the wire has
+ * made dormant. Empty when it shows nothing.
+ */
+function layerPicture(graph: Pick<GraphDocument, "nodes" | "edges">, nodeId: NodeId): string {
+  const node = graph.nodes[nodeId];
+  const spec = sourceReferencesOf(LAYER_NODE_TYPE).find((each) => each.parameter === "picture");
+  if (node === undefined || spec === undefined) return "";
+  if (overridingWire(spec, nodeId, graph.edges) !== undefined) return WIRED;
+  return text(node.parameters["picture"]);
+}
+
 function LayerStrip({ node, rect, cells, bus, invocation, write }: BoardMemberProps) {
   const name = controlNameOf(node);
   const on = node.ui?.bypassed !== true;
@@ -258,15 +279,19 @@ function LayerStrip({ node, rect, cells, bus, invocation, write }: BoardMemberPr
   const opacity = stored === undefined ? declared(definition, "default", 1) : isParameterSlot(stored) && stored.mode === "static" ? staticBindingValue(stored) : stored;
   const fader = { caption: "Opacity", value: opacity, min: declared(definition, "min", 0), max: declared(definition, "max", 1), step: 0 };
 
-  const switchFit = boardFit({ kind: "toggle", caption: name, valueEm: boardValueEm("toggle", {}), widthPx: partPx, cellPx: cells.cellPx });
+  // T1527b: what the layer shows, beside its name when the rect has room — the phone's rule
+  // (its switch names its picture except at the bare 2×1 switch, §T1526b); always on hover.
+  const picture = useStore(bus.store, (state) => layerPicture(state.graph, node.id));
+  const caption = layout === "switch" || picture === "" ? name : `${name} · ${picture}`;
+  const switchFit = boardFit({ kind: "toggle", caption, valueEm: boardValueEm("toggle", {}), widthPx: partPx, cellPx: cells.cellPx });
   const faderFit = boardFit({ kind: "slider", caption: fader.caption, valueEm: boardValueEm("slider", fader), widthPx: partPx, cellPx: cells.cellPx });
   return (
     <div className={`${styles.member} ${styles.parts} ${styles[layout] ?? ""}`} data-board-member={LAYER_NODE_TYPE} data-layout={layout}>
-      <div className={styles.part} style={{ fontSize: px(switchFit.fontPx) }}>
+      <div className={styles.part} style={{ fontSize: px(switchFit.fontPx) }} title={picture === "" ? undefined : `${name} shows ${picture}`} data-layer-picture={picture}>
         <ControlWidget
           nodeId={node.id}
           type="toggle"
-          parameters={{ caption: name, on }}
+          parameters={{ caption, on }}
           write={(_nodeId, entries) => setOn(entries["on"] === true)}
           size="board"
           showValue={switchFit.value}
