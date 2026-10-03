@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphNode } from "@domain/types/graph.ts";
@@ -8,6 +8,7 @@ import {
   CUE_BACK_COMMAND,
   CUE_GO_COMMAND,
   CUE_LIST_NODE_TYPE,
+  CUE_SET_STANDBY_COMMAND,
   PRESETS_NODE_TYPE,
   PRESET_RECALL_COMMAND,
   PRESET_STORE_COMMAND,
@@ -21,7 +22,7 @@ import {
 } from "@domain/presets/index.ts";
 import { LAYER_NODE_TYPE, controlNameOf, type BoardRect } from "@nodes/definitions/controls.ts";
 import { refusalMessage, type CommandAnswer } from "@editor/inspector/command-refusal.ts";
-import { boardFit, boardValueEm, cueListBoardLayout, layerBoardLayout, presetStripGrid, type BoardCells } from "./board-fit.ts";
+import { boardFit, boardValueEm, cueListBoardLayout, cueListShowsCues, layerBoardLayout, presetStripGrid, type BoardCells } from "./board-fit.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
 import styles from "./board-members.module.css";
 
@@ -47,7 +48,9 @@ import styles from "./board-members.module.css";
  *   `opacity` through the parameter editor like any slider — one undo group per drag —
  *   and a driven opacity is shown and refuses the drag.
  * - a CUE LIST is BACK and a large GO, with the current cue and the one standing by. A
- *   press is `cue.back` / `cue.go`, on THIS list.
+ *   press is `cue.back` / `cue.go`, on THIS list. T1527b: three rows or taller, the cues
+ *   themselves are listed between the two, a tap standing one by (`cue.setStandby`) —
+ *   the phone's list (§T1503b) on the desk, by the same rule (`cueListShowsCues`).
  *
  * Everything goes through the bus, so each press is one audited patch and one undo. A
  * press the bus REFUSES (GO past the last cue, a preset with nothing left to apply) says
@@ -288,6 +291,24 @@ function LayerStrip({ node, rect, cells, bus, invocation, write }: BoardMemberPr
   );
 }
 
+/**
+ * T1527b — the cue list keeps its standby in view, as the phone's does (§T1526b): it
+ * scrolls ITSELF, never the pane, and only when the standby MOVED — a list the performer
+ * scrolled stays where they left it until the next GO or tap moves the standby.
+ */
+function useStandbyInView(next: string | null): RefObject<HTMLDivElement | null> {
+  const list = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const element = list.current;
+    if (element === null || next === null) return;
+    const row = [...element.querySelectorAll<HTMLElement>("[data-cue]")].find((each) => each.dataset["cue"] === next);
+    if (row === undefined) return;
+    if (row.offsetTop < element.scrollTop) element.scrollTop = row.offsetTop;
+    else if (row.offsetTop + row.offsetHeight > element.scrollTop + element.clientHeight) element.scrollTop = row.offsetTop + row.offsetHeight - element.clientHeight;
+  }, [next]);
+  return list;
+}
+
 function CueListPad({ node, rect, cells, bus, invocation }: BoardMemberProps) {
   const parsed = parseCueList(node.parameters["cues"]);
   const current = text(node.parameters["current"]);
@@ -303,13 +324,40 @@ function CueListPad({ node, rect, cells, bus, invocation }: BoardMemberProps) {
   const names = `${current === "" ? NO_CUE : current} ▸ ${next ?? NO_CUE}`;
   const namesFit = boardFit({ kind: "cues", caption: names, valueEm: 0, widthPx: buttonsPx, cellPx: cells.cellPx });
   const step = (command: typeof CUE_GO_COMMAND | typeof CUE_BACK_COMMAND) => () => press(() => bus.execute(command, { nodeId: node.id }, invocation));
+  // T1527b: three rows or more, the cues themselves between the names and the buttons.
+  const cues = cueListShowsCues(rect) && parsed.ok ? parsed.list.cues : null;
+  const list = useStandbyInView(next);
   return (
-    <div className={`${styles.member} ${styles.parts} ${styles[layout] ?? ""}`} data-board-member={CUE_LIST_NODE_TYPE} data-layout={layout} data-control-node={node.id}>
+    <div
+      className={`${styles.member} ${styles.parts} ${styles[layout] ?? ""}`}
+      style={cues === null ? undefined : { gridTemplateRows: `minmax(0, 1fr) minmax(0, ${String(rect.h - 2)}fr) minmax(0, 1fr)` }}
+      data-board-member={CUE_LIST_NODE_TYPE}
+      data-layout={layout}
+      data-control-node={node.id}
+    >
       {layout === "buttons" ? null : (
         <div className={styles.cueNames} style={{ fontSize: px(namesFit.fontPx) }} title={parsed.ok ? "The current cue ▸ the cue GO fires next" : parsed.reason}>
           <span className={styles.cueNow} data-cue-current>{current === "" ? NO_CUE : current}</span>
           <span className={styles.cueArrow} aria-hidden="true">▸</span>
           <span className={styles.cueNext} data-cue-standby>{next ?? NO_CUE}</span>
+        </div>
+      )}
+      {cues === null ? null : (
+        <div className={styles.cueList} style={{ fontSize: px(namesFit.fontPx) }} ref={list} role="group" aria-label={`Cues of ${controlNameOf(node)}`} data-cue-list>
+          {cues.map((cue) => (
+            <button
+              key={cue.name}
+              type="button"
+              className={`${styles.press} ${styles.cue} ${cue.name === current ? styles.cueFired : ""} ${cue.name === next ? styles.cueStandby : ""}`}
+              aria-pressed={cue.name === next}
+              title={`Stand by ${cue.name} — GO fires it next`}
+              data-cue={cue.name}
+              onClick={() => press(() => bus.execute(CUE_SET_STANDBY_COMMAND, { nodeId: node.id, cue: cue.name }, invocation))}
+            >
+              <span className={styles.name}>{cue.name}</span>
+              {cue.note === undefined || cue.note === "" ? null : <span className={styles.cueNote}>{cue.note}</span>}
+            </button>
+          ))}
         </div>
       )}
       <div className={styles.cueButtons}>

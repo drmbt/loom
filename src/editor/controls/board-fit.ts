@@ -220,3 +220,15 @@ export function cueListBoardLayout(size: Cells): CueBoardLayout {
   if (size.h >= 2) return "stacked";
   return size.w >= CUE_NAMES_BESIDE_COLUMNS ? "beside" : "buttons";
 }
+
+/** Rows a board cue list needs before it shows the cues themselves, to tap a standby from. */
+const CUE_LIST_ROWS = 3;
+
+/**
+ * T1527b — the desk's tap-a-cue list, by the phone page's rule (§T1503b, `buildCueList`
+ * in `phone-page.ts`): a STACKED list three rows or taller lists its cues between the
+ * names and the buttons, the list taking every row the two do not.
+ */
+export function cueListShowsCues(size: Cells): boolean {
+  return cueListBoardLayout(size) === "stacked" && size.h >= CUE_LIST_ROWS;
+}

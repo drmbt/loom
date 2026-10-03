@@ -358,6 +358,60 @@ describe("T1501b — a cue list's GO and BACK", () => {
     expect(size()).toBe(20);
     expect(where()).toEqual(["2", "—"]);
   });
+
+  it("T1527b: three rows tall it lists the cues; a tap stands one by, and GO then fires THAT cue", async () => {
+    const small = await desk();
+    const first = render(<Tab runtime={small.runtime} />);
+    // The 4×2 a list lands at has no room for the cues: GO and BACK with the names, as before.
+    expect(tabItem("member:set").querySelector("[data-cue-list]")).toBeNull();
+    first.unmount();
+
+    const SHOW = serializeCueList({
+      version: 1,
+      cues: [
+        { name: "1", bank: "looks", preset: "soft" },
+        { name: "2", bank: "looks", preset: "hard", note: "the drop" },
+        { name: "3", bank: "looks", preset: "soft" },
+      ],
+    });
+    const { runtime, ids } = await desk({ board: [{ member: "set", rect: { x: 0, y: 0, w: 4, h: 3 } }] });
+    await act(async () => {
+      await runtime.bus.execute(
+        "graph.applyPatch",
+        { baseRevision: runtime.bus.store.getRevision(), operations: [{ op: "setParameters", nodeId: ids["$set"]!, parameters: { cues: SHOW } }] },
+        runtime.invocation,
+      );
+    });
+    render(<Tab runtime={runtime} />);
+    const pad = () => tabItem("member:set");
+    const rows = () => [...pad().querySelectorAll("[data-cue]")].map((row) => [row.getAttribute("data-cue"), row.getAttribute("aria-pressed")]);
+    // Every cue, in order; the one GO fires next is marked — before any GO, the first.
+    expect(rows()).toEqual([
+      ["1", "true"],
+      ["2", "false"],
+      ["3", "false"],
+    ]);
+    expect(within(pad()).getByRole("button", { name: /^2/ }).textContent).toBe("2the drop");
+    const before = undoDepth(runtime);
+
+    await click(within(pad()).getByRole("button", { name: /^3/ }));
+
+    expect(nodeOf(runtime, ids["$set"]!).parameters["standby"]).toBe("3");
+    expect(pad().querySelector("[data-cue-standby]")?.textContent).toBe("3");
+    expect(rows()).toEqual([
+      ["1", "false"],
+      ["2", "false"],
+      ["3", "true"],
+    ]);
+    // Standing a cue by fires nothing: the look is where it was.
+    expect(nodeOf(runtime, ids["$blur"]!).parameters["size"]).toBe(9);
+    expect(undoDepth(runtime)).toBe(before + 1);
+
+    // GO fires the cue that was tapped, not the first.
+    await click(within(pad()).getByRole("button", { name: "GO" }));
+    expect(nodeOf(runtime, ids["$set"]!).parameters["current"]).toBe("3");
+    expect(nodeOf(runtime, ids["$blur"]!).parameters["size"]).toBe(4);
+  });
 });
 
 /** What a surface shows of the three kinds: which items, where, and the state each one draws. */

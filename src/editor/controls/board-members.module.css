@@ -130,6 +130,40 @@
   flex: 0 0 auto;
   color: var(--text-dim);
 }
+/*
+ * T1527b: the cues, a row each, to tap a standby from. The list scrolls itself (never the
+ * pane); `position` because the rows' offsets are measured from it to keep the standby in view.
+ */
+.cueList {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.cue {
+  flex: 0 0 1.9em;
+  justify-content: flex-start;
+  gap: 0.5em;
+}
+.cueNote {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+/* The cue that fired last, in the names' colour for it. */
+.cueFired {
+  color: var(--signal);
+}
+/* The cue GO fires next. */
+.cueStandby {
+  border-color: var(--signal);
+  box-shadow: var(--shadow-inset);
+}
 /* BACK takes a third, GO the rest. */
 .cueButtons {
   display: grid;
