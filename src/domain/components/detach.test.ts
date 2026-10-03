@@ -7,6 +7,7 @@ import type { NodeId } from "../types/ids.ts";
 import type { ParameterSlot, StoredParameter } from "../types/parameters.ts";
 import { componentNodeType } from "./component-type.ts";
 import { COMPONENT_OVERRIDES_STATE_KEY, PARENT_BINDINGS_STATE_KEY } from "./instance.ts";
+import { openComponentSession } from "./session.ts";
 import { createComponentHarness, graphOf, node, type ComponentHarness } from "./test-support.ts";
 
 /**
@@ -204,24 +205,32 @@ describe("B238 — a detached copy holds the instance's page, by flattening's ru
   });
 });
 
+/**
+ * OUTER holds an instance of LOOK (`inner`) whose page `lookPage` may read parent.size —
+ * OUTER's own page. B239 adds the inner instance's other fields and OUTER's whole page.
+ */
+function outer(
+  lookPage: Record<string, StoredParameter>,
+  innerExtra: Partial<GraphNode> = {},
+  parameters: GraphComponentDefinition["parameters"] = [
+    { key: "size", definition: { type: "number", label: "Size", default: 4, min: 0, max: 64 }, targets: [{ nodeId: "grade", key: "radius" }] },
+  ],
+): GraphComponentDefinition {
+  return {
+    componentId: "outer",
+    version: 1,
+    name: "Outer",
+    graph: graphOf([
+      { id: "inner", type: componentNodeType("look", 1), definitionVersion: 1, label: "inner", position: { x: 0, y: 0 }, parameters: lookPage, ...innerExtra },
+      node("grade", "test.blur", { radius: 4 }, { label: "grade", position: { x: 100, y: 0 } }),
+    ]),
+    inputs: [],
+    outputs: [{ externalId: "out", label: "Out", nodeId: "grade", portId: "out" }],
+    parameters,
+  };
+}
+
 describe("B238 — nested instances stay instances, and their pages keep working", () => {
-  /** OUTER holds an instance of LOOK whose Blur reads parent.size — OUTER's own page. */
-  function outer(lookPage: Record<string, StoredParameter>): GraphComponentDefinition {
-    return {
-      componentId: "outer",
-      version: 1,
-      name: "Outer",
-      graph: graphOf([
-        { id: "inner", type: componentNodeType("look", 1), definitionVersion: 1, label: "inner", position: { x: 0, y: 0 }, parameters: lookPage },
-        node("grade", "test.blur", { radius: 4 }, { label: "grade", position: { x: 100, y: 0 } }),
-      ]),
-      inputs: [],
-      outputs: [{ externalId: "out", label: "Out", nodeId: "grade", portId: "out" }],
-      parameters: [
-        { key: "size", definition: { type: "number", label: "Size", default: 4, min: 0, max: 64 }, targets: [{ nodeId: "grade", key: "radius" }] },
-      ],
-    };
-  }
 
   it("the nested copy's page holds what the outer page gave it, and every flattened internal is unchanged", async () => {
     const detached = await detach(
@@ -250,5 +259,182 @@ describe("B238 — nested instances stay instances, and their pages keep working
     expect(detached.codes).toContain("component.detach.nestedParentReads");
     const quiet = await detach(instanceOf("look", { ...PAGE }));
     expect(quiet.codes).not.toContain("component.detach.nestedParentReads");
+  });
+});
+
+/** The flattened fields a render reads, for one node. */
+const rendered = (each: GraphNode | undefined) =>
+  each === undefined ? undefined : { parameters: each.parameters, resolution: each.resolution, channelMask: each.channelMask };
+
+describe("B239 — what flattening applies BESIDE the page reaches the copies too", () => {
+  it("the instance's internal resolution overrides and channel masks land on the copies — a nested path on the nested copy", async () => {
+    // Flattening applies both to the internals every compile; detach dropped both, so a
+    // look whose instance set one internal node to 2×2 detached at the definition's size.
+    const fixed = { mode: "fixed", width: 2, height: 2 } as const;
+    const half = { mode: "scale", factor: 0.5 } as const;
+    const red = { r: true, g: false, b: false, a: true };
+    const detached = await detach(
+      instanceOf("outer", { size: 11 }, {
+        state: {
+          componentResolutionOverrides: { grade: fixed, "inner/blurA": half },
+          componentChannelMaskOverrides: { grade: red, "inner/solid": red },
+        },
+      }),
+      [outer({ ...PAGE }), look()],
+    );
+    const grade = detached.copies["grade"]!;
+    const inner = detached.copies["inner"]!;
+    expect(grade.resolution).toEqual(fixed);
+    expect(grade.channelMask).toEqual(red);
+    // The nested path stays an override ON the nested copy, which still flattens it.
+    expect(inner.state?.["componentResolutionOverrides"]).toEqual({ blurA: half });
+    expect(inner.state?.["componentChannelMaskOverrides"]).toEqual({ solid: red });
+
+    const flatten = (graph: GraphDocument) =>
+      flattenComponents({ graph, registry: detached.harness.nodes, components: detached.harness.components }).graph.nodes;
+    const before = flatten(detached.before);
+    const after = flatten(detached.after);
+    const pairs: Array<[string, string]> = [
+      ["inst/grade", grade.id],
+      ...["blurA", "blurB", "blurC", "solid", "deep"].map((id): [string, string] => [`inst/inner/${id}`, `${inner.id}/${id}`]),
+    ];
+    for (const [was, now] of pairs) {
+      expect(before[was], was).toBeDefined();
+      expect(rendered(after[now]), now).toEqual(rendered(before[was]));
+    }
+    // And the overrides are on the picture, so the equality above is not two defaults.
+    expect(before["inst/grade"]?.resolution).toEqual(fixed);
+    expect(before["inst/inner/blurA"]?.resolution).toEqual(half);
+    expect(before["inst/inner/solid"]?.channelMask).toEqual(red);
+  });
+
+  it("an override naming no internal node is said by name, as flattening reports it", async () => {
+    const detached = await detach(instanceOf("look", { ...PAGE }, { state: { componentResolutionOverrides: { gone: { mode: "fixed", width: 2, height: 2 } } } }));
+    expect(detached.codes).toContain("component.detach.overrideMissing");
+  });
+});
+
+describe("B239 — component.instantiate in detached mode writes the published DEFAULTS onto the copies", () => {
+  it("Blur defaults to 8 and Soft to 6 while the definition holds 4: the copies render what a fresh linked instance renders", async () => {
+    // A published default is re-authored on the page and need not equal the internal value
+    // it drives; a fresh instance shows the DEFAULT, so a fresh copy must too.
+    const base = look();
+    const lookWithDefaults: GraphComponentDefinition = {
+      ...base,
+      parameters: base.parameters.map((published) =>
+        published.key === "blur" || published.key === "soft"
+          ? { ...published, definition: { ...published.definition, default: published.key === "blur" ? 8 : 6 } as typeof published.definition }
+          : published),
+    };
+    const harness = createComponentHarness("t");
+    harness.components.register(lookWithDefaults);
+    const linked = await harness.bus.execute("component.instantiate", { componentId: "look" }, ctx);
+    const copy = await harness.bus.execute("component.instantiate", { componentId: "look", mode: "detached", position: { x: 400, y: 0 } }, ctx);
+    expect(copy.status).toBe("applied");
+    const graph = harness.store.view.getGraph();
+    const copies = Object.fromEntries(copy.output.nodeIds.map((id) => [graph.nodes[id]!.label!, graph.nodes[id]!]));
+    expect(copies["blurA"]?.parameters["radius"]).toBe(8);
+    expect(copies["blurB"]?.parameters["radius"]).toBe(6);
+    expect(copies["blurC"]?.parameters["radius"]).toBe(6);
+    expect(copies["blurC"]?.state).toBeUndefined();
+    expect(copies["deep"]?.parameters["radius"]).toEqual(bindSlot("parent.gain", 3));
+    // The stale "those bindings no longer resolve" warning is gone: they resolved, to the defaults.
+    expect(copy.diagnostics.map((each) => each.code)).not.toContain("component.detach.parentBindings");
+
+    const flat = flattenComponents({ graph, registry: harness.nodes, components: harness.components }).graph.nodes;
+    for (const internalId of Object.keys(lookWithDefaults.graph.nodes)) {
+      const label = lookWithDefaults.graph.nodes[internalId]!.label!;
+      const under = flat[`${linked.output.nodeId}/${internalId}`];
+      expect(under, internalId).toBeDefined();
+      expect(flat[copies[label]!.id]?.parameters, internalId).toEqual(under?.parameters);
+    }
+  });
+});
+
+describe("B239 — detach inside a component edit session", () => {
+  /**
+   * ROOT holds `inst`, an instance of OUTER; inside OUTER sits `inner`, an instance of LOOK.
+   * The session edits OUTER and detaches `inner`, so the copies land in OUTER's graph — one
+   * level below the root, where OUTER's own page is in scope. The claim each time: the
+   * root document flattens to the same internals before and after.
+   */
+  async function detachInside(definition: GraphComponentDefinition, rootPage: Record<string, StoredParameter>) {
+    const harness = createComponentHarness("t", graphOf([instanceOf("outer", rootPage)]));
+    // LOOK first: OUTER's targets on `inner` validate against LOOK's page.
+    harness.components.register(look());
+    harness.components.register(definition);
+    const flatten = () =>
+      flattenComponents({ graph: harness.store.view.getGraph(), registry: harness.nodes, components: harness.components }).graph.nodes;
+    const before = flatten();
+    const session = openComponentSession({ components: harness.components, nodes: harness.nodes, componentId: "outer", version: 1 });
+    const result = await session.bus.execute("component.detach", { nodeId: "inner" }, ctx);
+    session.dispose();
+    expect(result.status, result.diagnostics.map((each) => each.message).join("; ")).toBe("applied");
+    const after = flatten();
+    const outerAfter = harness.components.get("outer", 1)!;
+    const copies: Record<string, GraphNode> = {};
+    for (const id of result.output.nodeIds) {
+      const copy = outerAfter.graph.nodes[id];
+      if (copy?.label !== undefined) copies[copy.label] = copy;
+    }
+    expect(Object.keys(copies).sort()).toEqual(["blurA", "blurB", "blurC", "deep", "solid"]);
+    const pairs = Object.entries(copies).map(([internalId, copy]): [string, unknown, unknown] => {
+      expect(before[`inst/inner/${internalId}`], internalId).toBeDefined();
+      return [internalId, rendered(before[`inst/inner/${internalId}`]), rendered(after[`inst/${copy.id}`])];
+    });
+    return { before, after, copies, pairs, outerAfter, codes: result.diagnostics.map((each) => each.code) };
+  }
+
+  it("the instance's own legacy state.parentBindings are CARRIED, not baked: Blur and Soft keep reading OUTER's Size 11", async () => {
+    const inside = await detachInside(
+      outer({ ...PAGE }, { state: { [PARENT_BINDINGS_STATE_KEY]: { blur: "parent.size", soft: "parent.size" } } }),
+      { size: 11 },
+    );
+    // Fan-out target: the page value stays as the fallback, the binding reads OUTER's page.
+    expect(inside.copies["blurA"]?.parameters["radius"]).toBe(2);
+    expect(inside.copies["blurA"]?.state?.[PARENT_BINDINGS_STATE_KEY]).toEqual({ radius: "parent.size" });
+    // One-hop reads of Soft — a bind slot and a legacy binding — follow it there too.
+    expect(inside.copies["blurB"]?.state?.[PARENT_BINDINGS_STATE_KEY]).toEqual({ radius: "parent.size" });
+    expect(inside.copies["blurC"]?.state?.[PARENT_BINDINGS_STATE_KEY]).toEqual({ radius: "parent.size" });
+    for (const [internalId, before, after] of inside.pairs) expect(after, internalId).toEqual(before);
+    expect(inside.after[`inst/${inside.copies["blurA"]!.id}`]?.parameters["radius"]).toBe(11);
+  });
+
+  it("a sibling bind chaining to a parent. bind resolves like flattening: Blur → Soft → parent.size reads 11, not Soft's retained 7", async () => {
+    const inside = await detachInside(outer({ ...PAGE, blur: bindSlot("soft", 1), soft: bindSlot("parent.size", 7) }), { size: 11 });
+    expect(inside.copies["blurA"]?.parameters["radius"]).toEqual(bindSlot("parent.size", 7));
+    for (const [internalId, before, after] of inside.pairs) expect(after, internalId).toEqual(before);
+    expect(inside.after[`inst/${inside.copies["blurA"]!.id}`]?.parameters["radius"]).toBe(11);
+  });
+
+  it("OUTER's published targets on the instance's keys move onto the copies; a read of a moved key reads OUTER's knob", async () => {
+    const size = { type: "number", label: "Size", default: 4, min: 0, max: 64 } as const;
+    const inside = await detachInside(
+      outer({ ...PAGE }, {}, [
+        { key: "size", definition: size, targets: [{ nodeId: "grade", key: "radius" }, { nodeId: "inner", key: "blur" }, { nodeId: "inner", key: "soft" }] },
+        { key: "mood", definition: { type: "number", label: "Mood", default: 0.5, min: 0, max: 1 }, targets: [{ nodeId: "inner", key: "amount" }] },
+      ]),
+      { size: 11, mood: 0.75 },
+    );
+    const page = Object.fromEntries(inside.outerAfter.parameters.map((published) => [published.key, published.targets]));
+    expect(page["size"]).toEqual([{ nodeId: "grade", key: "radius" }, { nodeId: inside.copies["blurA"]!.id, key: "radius" }]);
+    expect(page["mood"]).toEqual([{ nodeId: inside.copies["solid"]!.id, key: "amount" }]);
+    // Soft drives nothing; what read parent.soft now reads OUTER's Size directly.
+    expect(inside.copies["blurB"]?.parameters["radius"]).toEqual(bindSlot("parent.size", 1));
+    expect(inside.copies["blurC"]?.state?.[PARENT_BINDINGS_STATE_KEY]).toEqual({ radius: "parent.size" });
+    for (const [internalId, before, after] of inside.pairs) expect(after, internalId).toEqual(before);
+    expect(inside.after[`inst/${inside.copies["solid"]!.id}`]?.parameters["amount"]).toBe(0.75);
+  });
+
+  it("an outer knob whose only target was a key that reaches no copy is unpublished, and said by name", async () => {
+    const inside = await detachInside(
+      outer({ ...PAGE }, {}, [
+        { key: "size", definition: { type: "number", label: "Size", default: 4, min: 0, max: 64 }, targets: [{ nodeId: "grade", key: "radius" }] },
+        { key: "ghost", definition: { type: "number", label: "Ghost", default: 4, min: 0, max: 64 }, targets: [{ nodeId: "inner", key: "soft" }] },
+      ]),
+      { size: 11, ghost: 9 },
+    );
+    expect(inside.codes).toContain("component.detach.outerTarget");
+    expect(inside.outerAfter.parameters.map((published) => published.key)).toEqual(["size"]);
   });
 });

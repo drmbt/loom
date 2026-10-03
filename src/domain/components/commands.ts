@@ -36,8 +36,11 @@ import { registerComponentFileCommands, type ComponentFileReader, type Component
 import { pageBanksOf, presetCatalogueHolderFor } from "../presets/bank-view.ts";
 import { detachedPageBank } from "../presets/detach-page-bank.ts";
 import { effectiveParameterSchema } from "../parameters/resolve.ts";
-import { detachedValues, nestedParentReads } from "./detach-values.ts";
+import { detachedValues, nestedParentReads, type DetachedValues, type MovedOuterTarget } from "./detach-values.ts";
 import { publishedSchema } from "./published-page.ts";
+import { pruneComponentDefinition } from "./definition.ts";
+import { internalChannelMasks, projectInternalChannelMasks } from "./internal-channel-masks.ts";
+import { internalResolutions, projectInternalResolutions } from "./internal-resolutions.ts";
 
 /**
  * Component commands (T129–T132, T136), registered by declaration merging like every
@@ -442,16 +445,94 @@ function rewritePageBanks(
   return said;
 }
 
-/** Nodes carrying `parent.<key>` bindings, which cannot mean anything once detached. */
-function danglingParentBindings(internal: GraphDocument): NodeId[] {
-  const found: NodeId[] = [];
-  for (const nodeId of Object.keys(internal.nodes).sort()) {
-    const bindings = internal.nodes[nodeId]?.state?.[PARENT_BINDINGS_STATE_KEY];
-    if (typeof bindings === "object" && bindings !== null && Object.keys(bindings).length > 0) {
-      found.push(nodeId);
+/**
+ * B238/B239 — everything a detached copy needs decided BEFORE the patch: the values
+ * (`detachedValues`), and the definition graph with the instance's own internal channel
+ * masks and resolution overrides written onto it — the two per-instance edits flattening
+ * applies to the internals beside the page (`projectInternalChannelMasks` is flattening's
+ * own step; `projectInternalResolutions` is its post-expansion step, applied once). What
+ * cannot be carried exactly is said, by name.
+ */
+interface DetachPlan {
+  readonly values: DetachedValues;
+  readonly graph: GraphDocument;
+  readonly diagnostics: readonly RuntimeDiagnostic[];
+}
+
+function planDetach(input: {
+  readonly definition: GraphComponentDefinition;
+  readonly instance: GraphNode;
+  /** The id diagnostics name; absent for a detached instantiate, which has no instance. */
+  readonly nodeId?: NodeId;
+  readonly components: ComponentRegistry;
+  readonly registry: CommandContext["registry"];
+  readonly outerTargets?: ReadonlyMap<string, readonly string[]>;
+}): DetachPlan {
+  const { definition, instance, nodeId } = input;
+  const at = nodeId === undefined ? {} : { nodeId };
+  const definitionOf = (node: GraphNode): GraphComponentDefinition | undefined => {
+    const nested = readComponentInstance(node);
+    return nested === null ? undefined : input.components.get(nested.componentId, nested.version);
+  };
+  const values = detachedValues({
+    definition,
+    instance,
+    schemaOf: (node) => {
+      const nested = definitionOf(node);
+      return nested === undefined ? effectiveParameterSchema(input.registry.get(node.type), node.parameters) : publishedSchema(nested);
+    },
+    ...(input.outerTargets === undefined ? {} : { outerTargets: input.outerTargets }),
+  });
+  const look = instance.label ?? nodeId ?? definition.name;
+  const diagnostics: RuntimeDiagnostic[] = [];
+  for (const nestedId of nestedParentReads(definition.graph, definitionOf)) {
+    const nested = definition.graph.nodes[nestedId];
+    diagnostics.push({
+      severity: "warning",
+      code: "component.detach.nestedParentReads",
+      message: `"${nested?.label ?? nestedId}" inside "${look}" holds a component that reads past its own parent with parent.parent.<key>; with "${look}" detached, that read names one component further out.`,
+      ...at,
+      suggestion: "Undo the detach, or bind those parameters inside the nested component instead.",
+    });
+  }
+  for (const message of values.inexact) {
+    diagnostics.push({ severity: "warning", code: "component.detach.inexact", message: `${message}.`, ...at, suggestion: "Set it by hand on the copies, or undo the detach." });
+  }
+  const masked = projectInternalChannelMasks(definition.graph, internalChannelMasks(instance));
+  const sized = projectInternalResolutions(masked.graph, internalResolutions(instance));
+  for (const [what, missing] of [["channel mask", masked.missing], ["resolution", sized.missing]] as const) {
+    for (const path of missing) {
+      diagnostics.push({
+        severity: "warning",
+        code: "component.detach.overrideMissing",
+        message: `"${look}" carried a ${what} override for internal node "${path}", which "${definition.name}" does not have; the copies do not carry it.`,
+        ...at,
+      });
     }
   }
-  return found;
+  return { values, graph: sized.graph, diagnostics };
+}
+
+/** Writes a planned detach into `draft`: the copies, holding the plan's values. */
+function writeDetach(
+  draft: GraphDocument,
+  plan: DetachPlan,
+  position: { x: number; y: number },
+  ids: { node: () => string; edge: () => string },
+): { remap: Record<NodeId, NodeId>; baked: number; moved: MovedOuterTarget[] } {
+  const remap = copyInternalGraph(draft, plan.graph, position, ids);
+  let baked = 0;
+  const moved: MovedOuterTarget[] = [];
+  for (const internalId of Object.keys(remap).sort()) {
+    const copyId = remap[internalId] as NodeId;
+    const copied = draft.nodes[copyId];
+    if (copied === undefined) continue;
+    const written = plan.values.copy(internalId, copied);
+    draft.nodes[copyId] = written.node;
+    baked += written.baked;
+    moved.push(...written.moved);
+  }
+  return { remap, baked, moved };
 }
 
 export function registerComponentCommands(bus: LoomBus, options: ComponentCommandOptions): void {
@@ -639,20 +720,31 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
       let instanceNodeId: NodeId | null = null;
 
       if ((input.mode ?? "linked") === "detached") {
-        const dangling = danglingParentBindings(definition.graph);
-        if (dangling.length > 0) {
-          diagnostics.push({
-            severity: "warning",
-            code: "component.detach.parentBindings",
-            message: `${dangling.length} node(s) in the copy referenced parent.<key>; a detached copy has no parent, so those bindings no longer resolve.`,
-            suggestion: "Set the affected parameters explicitly on the copy.",
-          });
-        }
+        // B239: a detached copy is what detaching a fresh linked instance gives — the page
+        // at its published DEFAULTS, written onto the copies by detach's own rule — not the
+        // definition's internal values, which a published default need not equal.
+        const fresh: GraphNode = {
+          id: "",
+          type: componentNodeType(definition.componentId, definition.version),
+          definitionVersion: definition.version,
+          label: definition.name,
+          position,
+          parameters: defaultPublishedValues(definition),
+        };
+        const plan = planDetach({ definition, instance: fresh, components, registry: context.registry });
+        diagnostics.push(...plan.diagnostics);
         const applied = context.apply({
           label: `Copy "${definition.name}"`,
           recipe: (draft) => {
-            const remap = copyInternalGraph(draft, definition.graph, position, context.ids);
-            created.push(...Object.values(remap));
+            const written = writeDetach(draft, plan, position, context.ids);
+            created.push(...Object.values(written.remap));
+            if (written.baked > 0) {
+              diagnostics.push({
+                severity: "info",
+                code: "component.detach.parentValues",
+                message: `${written.baked} parameter(s) read "${definition.name}"'s page through parent.<key>; the copies hold its default values.`,
+              });
+            }
           },
         });
         return {
@@ -743,50 +835,56 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
 
       // B238: the copies hold what the instance's page put on screen — flattening's rule,
       // written once (`detachedValues`) — not the definition's own values.
-      const definitionOf = (node: GraphNode): GraphComponentDefinition | undefined => {
-        const nested = readComponentInstance(node);
-        return nested === null ? undefined : components.get(nested.componentId, nested.version);
-      };
-      const values = detachedValues({
+      // B239: inside a component edit session, the component being edited may publish
+      // knobs ONTO this instance's page; those move onto the copies the page key drove.
+      const hostDefinition = requireHostDefinition();
+      const look = instance.label ?? input.nodeId;
+      const outerTargets = new Map<string, string[]>();
+      const pageSchema = publishedSchema(definition);
+      for (const published of hostDefinition?.parameters ?? []) {
+        for (const target of published.targets) {
+          if (target.nodeId !== input.nodeId) continue;
+          if (!Object.hasOwn(pageSchema, target.key)) {
+            diagnostics.push({
+              severity: "warning",
+              code: "component.detach.outerTarget",
+              message: `"${hostDefinition?.name}"'s published ${published.key} drove ${target.key}, one channel of "${look}"'s ${target.key.split(".")[0]}; it cannot be moved onto the copies exactly and no longer drives it.`,
+              nodeId: input.nodeId,
+              suggestion: "Republish the channel on the copies, or undo the detach.",
+            });
+            continue;
+          }
+          const keys = outerTargets.get(target.key) ?? [];
+          outerTargets.set(target.key, keys);
+          keys.push(published.key);
+        }
+      }
+      const plan = planDetach({
         definition,
         instance,
-        schemaOf: (node) => {
-          const nested = definitionOf(node);
-          return nested === undefined ? effectiveParameterSchema(context.registry.get(node.type), node.parameters) : publishedSchema(nested);
-        },
+        nodeId: input.nodeId,
+        components,
+        registry: context.registry,
+        ...(outerTargets.size === 0 ? {} : { outerTargets }),
       });
-      const look = instance.label ?? input.nodeId;
-      for (const nestedId of nestedParentReads(definition.graph, definitionOf)) {
-        const nested = definition.graph.nodes[nestedId];
-        diagnostics.push({
-          severity: "warning",
-          code: "component.detach.nestedParentReads",
-          message: `"${nested?.label ?? nestedId}" inside "${look}" holds a component that reads past its own parent with parent.parent.<key>; with "${look}" detached, that read names one component further out.`,
-          nodeId: input.nodeId,
-          suggestion: "Undo the detach, or bind those parameters inside the nested component instead.",
-        });
-      }
+      diagnostics.push(...plan.diagnostics);
 
       const created: NodeId[] = [];
+      let moved: MovedOuterTarget[] = [];
+      let copiedAs: Readonly<Record<NodeId, NodeId>> = {};
       const applied = context.apply({
         label: `Detach "${definition.name}"`,
         recipe: (draft) => {
-          const remap = copyInternalGraph(draft, definition.graph, instance.position, context.ids);
+          const written = writeDetach(draft, plan, instance.position, context.ids);
+          const remap = written.remap;
           created.push(...Object.values(remap));
-          let baked = 0;
-          for (const internalId of Object.keys(remap).sort()) {
-            const copyId = remap[internalId] as NodeId;
-            const copied = draft.nodes[copyId];
-            if (copied === undefined) continue;
-            const written = values.copy(internalId, copied);
-            draft.nodes[copyId] = written.node;
-            baked += written.baked;
-          }
-          if (baked > 0) {
+          moved = written.moved;
+          copiedAs = remap;
+          if (written.baked > 0) {
             diagnostics.push({
               severity: "info",
               code: "component.detach.parentValues",
-              message: `${baked} parameter(s) read "${look}"'s page through parent.<key>; the copies hold the values they read.`,
+              message: `${written.baked} parameter(s) read "${look}"'s page through parent.<key>; the copies hold the values they read.`,
               nodeId: input.nodeId,
             });
           }
@@ -821,6 +919,68 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
           delete draft.nodes[input.nodeId];
         },
       });
+
+      // B239: the outer page's targets on the instance, moved onto the copies the page key
+      // drove (the session has just written the new graph back, pruning the instance's
+      // targets; this re-registers the page with the moves). Built from the page as it was
+      // before the detach, so a knob whose only target was the instance is not lost before
+      // its move lands. The outer component's exposed ports on the instance move the same
+      // way, through the detached definition's own exposures — as the outside edges do.
+      const names = (each: { nodeId: NodeId }): boolean => each.nodeId === input.nodeId;
+      const referenced =
+        hostDefinition !== undefined &&
+        (hostDefinition.inputs.some(names) || hostDefinition.outputs.some(names) || hostDefinition.parameters.some((published) => published.targets.some(names)));
+      if (host !== null && hostDefinition !== undefined && referenced && !context.dryRun) {
+        const reexpose = (ports: readonly ExposedPort[], inner: readonly ExposedPort[]): ExposedPort[] =>
+          ports.map((port) => {
+            if (!names(port)) return port;
+            const exposed = inner.find((each) => each.externalId === port.portId);
+            const copyId = exposed === undefined ? undefined : copiedAs[exposed.nodeId];
+            // Unmappable: left naming the instance, which the prune below drops.
+            return exposed === undefined || copyId === undefined ? port : { ...port, nodeId: copyId, portId: exposed.portId };
+          });
+        const parameters = hostDefinition.parameters.map((published) => {
+          const targets = new Map<string, { nodeId: NodeId; key: string }>();
+          for (const target of published.targets) {
+            const next =
+              target.nodeId !== input.nodeId
+                ? [target]
+                : moved
+                    .filter((move) => move.outerKey === published.key && move.pageKey === target.key)
+                    .map((move) => ({ nodeId: move.nodeId, key: move.key }));
+            for (const each of next) targets.set(`${each.nodeId}\u0000${each.key}`, each);
+          }
+          return { ...published, targets: [...targets.values()] };
+        });
+        for (const published of parameters) {
+          const drove = hostDefinition.parameters
+            .find((each) => each.key === published.key)
+            ?.targets.some((target) => target.nodeId === input.nodeId) === true;
+          if (published.targets.length > 0 || !drove) continue;
+          diagnostics.push({
+            severity: "warning",
+            code: "component.detach.outerTarget",
+            message: `"${hostDefinition.name}"'s published ${published.key} drove only "${look}"'s page, and the key it drove reaches no copy; ${published.key} is unpublished, and anything reading parent.${published.key} falls back to its own value.`,
+            nodeId: input.nodeId,
+            suggestion: "Republish it onto the copies, or undo the detach.",
+          });
+        }
+        const current = components.get(host.componentId, host.version) ?? hostDefinition;
+        commitDefinition(
+          context,
+          pruneComponentDefinition(
+            {
+              ...current,
+              graph: context.store.getGraph(),
+              inputs: reexpose(hostDefinition.inputs, definition.inputs),
+              outputs: reexpose(hostDefinition.outputs, definition.outputs),
+              parameters,
+            },
+            context.registry,
+          ),
+          diagnostics,
+        );
+      }
 
       return {
         status: "applied",
