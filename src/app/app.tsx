@@ -12,6 +12,7 @@ import type { LoadProjectSuccess, SnapshotStore } from "@domain/project/index.ts
 import { HelpHost, OPEN_HELP_COMMAND } from "@editor/help/index.ts";
 import { NodeInfoHost } from "@editor/inspect/index.ts";
 import { SELECT_NODES_COMMAND } from "@editor/selection/select-created.ts";
+import { primaryOf } from "@editor/selection/selection-order.ts";
 import { KeymapProvider, KeymapWindowTarget } from "@editor/keymap/index.ts";
 import type { KeymapDispatch } from "@editor/keymap/index.ts";
 import type { KeymapEnvironment } from "@editor/keymap/index.ts";
@@ -1366,7 +1367,8 @@ export function App({
     frameLoop.clearDiagnostics();
   }, [autosave, frameLoop, media, project, recovery]);
 
-  const selectedNodeId = selection[0] ?? null;
+  // T1531b: the LAST-CLICKED node of a multi-selection — the canvas reports in append order.
+  const selectedNodeId = primaryOf(selection);
 
   /**
    * The agent tool surface (B12/T220), constructed HERE because there is nowhere else it
@@ -2159,6 +2161,7 @@ export function App({
               <AppRuntimeContext.Provider value={editing.runtime}>
               <InspectorPane
                 nodeId={selectedNodeId}
+                selection={selection}
                 components={componentsView}
                 {...(editing.definition === null
                   ? {}

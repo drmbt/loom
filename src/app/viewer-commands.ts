@@ -28,8 +28,10 @@ import type { FlyAxis } from "@editor/viewer/orbit-gestures.ts";
 declare module "@domain/types/commands.ts" {
   interface CommandMap {
     /**
-     * Show the first output belonging to one of `nodeIds`. Reports what it pinned, so a
-     * caller (and an agent) can tell which node actually reached the screen.
+     * Show the output of the LAST of `nodeIds` — the selection's primary, the node the
+     * inspector shows (T1531b: the keymap hands the selection over in the order it was
+     * made, primary last). Reports what it pinned, so a caller (and an agent) can tell
+     * which node actually reached the screen.
      */
     "node.openViewer": {
       input: { nodeIds: readonly string[] };
@@ -122,7 +124,7 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
         };
       }
 
-      const [nodeId] = input.nodeIds;
+      const nodeId = input.nodeIds.at(-1);
       if (nodeId === undefined) {
         return {
           status: "rejected",

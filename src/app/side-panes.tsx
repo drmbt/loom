@@ -104,6 +104,8 @@ export function LibraryPane({ portDrag, onClearPortDrag, actions }: LibraryPaneP
 
 export interface InspectorPaneProps {
   nodeId: NodeId | null;
+  /** T1531b: the whole canvas selection, primary last — the bank section adds the rest as targets. */
+  selection?: readonly NodeId[];
   /**
    * Set while the editor is INSIDE a component (T423): the definition being edited, and
    * the catalogue to watch for changes to it.
@@ -261,6 +263,7 @@ function plannedOutputFor(
 
 export function InspectorPane({
   nodeId,
+  selection,
   components,
   componentPage,
   graph,
@@ -356,6 +359,7 @@ export function InspectorPane({
       {...(midi === undefined ? {} : { midi })}
       {...(laser === undefined ? {} : { laser })}
       {...(performWindows === undefined ? {} : { performWindows })}
+      {...(selection === undefined ? {} : { selection })}
     />
   );
 

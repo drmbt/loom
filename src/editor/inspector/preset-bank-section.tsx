@@ -19,6 +19,7 @@ import { Button } from "@ui/primitives/button.tsx";
 import { ControlRow } from "@ui/controls/control-row.tsx";
 import { EnumField } from "@ui/controls/enum-field.tsx";
 import { TextField } from "@ui/controls/text-field.tsx";
+import { bankTargetsToAdd, targetsWith } from "@editor/controls/bank-join.ts";
 import { refusalMessage, type CommandAnswer } from "./command-refusal.ts";
 import type { ParameterEditor } from "./parameter-editor.ts";
 import { MorphCurveField, MorphSeconds } from "./morph-fields.tsx";
@@ -42,6 +43,10 @@ import rows from "./preset-sections.module.css";
  *
  * T1527b: each preset row also moves it earlier or later on the strip and carries its own
  * morph (seconds and curve; blank seconds = the bank's Morph / Curve, the design doc §5.1).
+ *
+ * T1531b: with other nodes selected beside the bank (the bank clicked last, so it is the one
+ * shown), "Add N selected as targets" appends their names in ONE write — banks, Panels, cue
+ * lists and nodes already targeted left out (`bankTargetsToAdd`, the canvas drop's rule).
  */
 
 /** T994's claim: the section presents Targets; every other parameter keeps its row. */
@@ -58,6 +63,8 @@ export interface PresetBankSectionProps {
   readonly current: string;
   /** For the target picker: the nodes there are to name. */
   readonly graph: Pick<GraphDocument, "nodes">;
+  /** T1531b: the canvas selection, which may hold the bank's would-be targets. */
+  readonly selection?: readonly NodeId[];
   readonly bus: LoomBus;
   readonly context: InvocationContext;
   readonly editor: ParameterEditor;
@@ -68,7 +75,7 @@ const NO_PICK = "";
 /** A preset's own morph time as its field shows it; blank when it carries none (the bank's applies). */
 const morphText = (preset: Preset): string => (preset.morph === undefined ? "" : String(preset.morph.seconds));
 
-export function PresetBankSection({ nodeId, targets, presets, current, graph, bus, context, editor }: PresetBankSectionProps) {
+export function PresetBankSection({ nodeId, targets, presets, current, graph, selection = [], bus, context, editor }: PresetBankSectionProps) {
   const parsed = parsePresetBank(presets);
   const list = parsed.ok ? parsed.bank.presets : [];
   const names = list.map((preset) => preset.name);
@@ -130,6 +137,7 @@ export function PresetBankSection({ nodeId, targets, presets, current, graph, bu
     .map((node) => node.label ?? node.id)
     .filter((candidate) => !listed.has(candidate))
     .sort((a, b) => a.localeCompare(b));
+  const fromSelection = bankTargetsToAdd(graph, nodeId, selection);
 
   return (
     <section className={styles.section} aria-label="Presets bank">
@@ -152,6 +160,13 @@ export function PresetBankSection({ nodeId, targets, presets, current, graph, bu
           }}
         />
       </ControlRow>
+      {fromSelection.length === 0 ? null : (
+        <ControlRow label="From selection">
+          <Button variant="outline" title={fromSelection.join(", ")} onClick={() => editor.setParameter(nodeId, "targets", targetsWith(targets, fromSelection), "commit")}>
+            {`Add ${fromSelection.length} selected as targets`}
+          </Button>
+        </ControlRow>
+      )}
 
       {parsed.ok ? null : (
         <p className={rows.problem} role="alert">

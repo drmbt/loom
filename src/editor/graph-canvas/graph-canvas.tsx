@@ -82,6 +82,7 @@ import { createNodeRuntimeStore } from "./node-runtime.ts";
 import type { NodeRuntimeSource } from "./node-runtime.ts";
 import { joinPanelOperations, panelUnderDrop } from "@editor/controls/panel-join.ts";
 import { addBankTargetsOperations, bankUnderDrop, topmostDropTarget } from "@editor/controls/bank-join.ts";
+import { orderSelection, promoteInSelection } from "@editor/selection/selection-order.ts";
 import styles from "./graph-canvas.module.css";
 
 /**
@@ -692,9 +693,21 @@ export function GraphCanvas({
   const selectedRef = useRef<readonly NodeId[]>(EMPTY_SELECTION);
   const getSelection = useCallback(() => selectedRef.current, []);
 
+  // T1531b: React Flow reports in its own node order; the selection leaves in the order it
+  // was MADE in, primary last (`selection-order.ts`).
   const reportSelection = useCallback(
     ({ nodes }: { nodes: LoomNode[] }) => {
-      const ids = nodes.map((node) => node.id);
+      const ids = orderSelection(selectedRef.current, nodes.map((node) => node.id));
+      selectedRef.current = ids;
+      onSelectionChange?.(ids);
+    },
+    [onSelectionChange],
+  );
+  // T1531b: a click on a node that is already selected makes it the primary.
+  const promoteClicked = useCallback(
+    (_event: unknown, node: LoomNode) => {
+      const ids = promoteInSelection(selectedRef.current, node.id);
+      if (ids === selectedRef.current) return;
       selectedRef.current = ids;
       onSelectionChange?.(ids);
     },
@@ -930,6 +943,7 @@ export function GraphCanvas({
           onInit={onInit}
           isValidConnection={isValidConnection}
           onSelectionChange={reportSelection}
+          onNodeClick={promoteClicked}
           onNodeMouseEnter={reportEnter}
           onNodeMouseLeave={reportLeave}
           // Deletion is a keymap binding, not a hidden built-in: §V52 wants every

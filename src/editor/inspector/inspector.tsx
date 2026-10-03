@@ -112,6 +112,8 @@ export interface InspectorProps {
   /** Actor/project/capabilities for every command the pane sends (§V30). Memoise it. */
   context: InvocationContext;
   nodeId: NodeId | null;
+  /** T1531b: the whole canvas selection, primary last — the bank section adds the rest as targets. */
+  selection?: readonly NodeId[];
   settings: InspectorProjectSettings;
   /** Compiler diagnostics; the Common section surfaces the format ones (§V51). */
   diagnostics?: readonly RuntimeDiagnostic[];
@@ -317,6 +319,7 @@ export function Inspector({
   bus,
   context,
   nodeId,
+  selection,
   settings,
   diagnostics,
   capabilities,
@@ -915,6 +918,7 @@ export function Inspector({
       presets={text("presets")}
       current={text("current")}
       graph={graph}
+      {...(selection === undefined ? {} : { selection })}
       bus={bus}
       context={context}
       editor={editor}
