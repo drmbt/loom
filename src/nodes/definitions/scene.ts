@@ -1,6 +1,7 @@
 import type { CompiledNodeDescription, NodeDefinition } from "../../domain/types/node-definition.ts";
 import { instanceShapeIndex, parseInstanceShape } from "./render-instances.ts";
 import type { DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
+import { relocated, type WgslSourceMap } from "../../runtime/backend/wgsl-source-map.ts";
 import type { CameraMotion, CameraPose } from "../../domain/types/scene.ts";
 import type { CameraPayload, GeometryPayload, LightPayload, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
 import { resolveGroupPredicate } from "./points.ts";
@@ -26,7 +27,9 @@ import {
   glassMeshWgsl,
   glassSurfaceWgsl,
   sceneInstancesWgsl,
-  sceneSurfaceWgsl,
+  sceneSurfaceModule,
+  type SceneShadingOptions,
+  type SceneSurfaceModule,
   shadowInstancesWgsl,
   shadowSurfaceWgsl,
   shadowMeshWgsl,
@@ -1052,6 +1055,21 @@ function textureLedger(
     suggestion:
       "Each projector costs two (cookie + occlusion): turn Occlusion off on projectors nothing needs to shadow, or merge projectors that sit together into one wider throw. Each casting light costs one shadow map; Env Filter: Prefiltered costs one more than Taps.",
   };
+}
+
+/**
+ * T1535b — a Material · WGSL's source map (counted from the first character of its `code`
+ * and of its `paramsDeclaration`) moved to where the surface generator put those two texts.
+ * The spans keep naming the material node; the pass stays the Render's.
+ */
+function customSurfaceSourceMap(
+  map: NonNullable<NonNullable<MaterialPayload["custom"]>["sourceMap"]>,
+  placed: SceneSurfaceModule["placed"],
+): WgslSourceMap {
+  return [
+    ...(placed.code === undefined ? [] : relocated(map.code, placed.code)),
+    ...(placed.params === undefined ? [] : relocated(map.params, placed.params)),
+  ];
 }
 
 /**
@@ -2529,12 +2547,20 @@ export const renderNode: NodeDefinition = {
       /* T1411b: an additive surface sums onto what is drawn and stops writing depth (it
          still tests — a wall in front still hides it). */
       const additive = additiveSurface(payload);
+      /* T1535b: a Material · WGSL's code is compiled in THIS node's pass; its source map,
+         moved to where the generator put the texts, sends a device error in it back to the
+         material node and the author's line. Every surface variant below carries its own. */
+      const surface = (options: SceneShadingOptions): Pick<DrawPassDescriptor, "shader" | "sourceMap"> => {
+        const module = sceneSurfaceModule(options);
+        const map = material.custom?.sourceMap;
+        return { shader: module.wgsl, ...(map === undefined ? {} : { sourceMap: customSurfaceSourceMap(map, module.placed) }) };
+      };
       const litPass: DrawPassDescriptor = {
         kind: "draw",
         id: `${nodeId}:scene:${index}`,
         nodeId,
         ...(additive ? { blend: "additive" as const, depthWrite: false } : {}),
-        shader: sceneSurfaceWgsl({
+        ...surface({
           model,
           lightCount: lights.length,
           ...(additive ? { additive: true } : {}),
@@ -2647,7 +2673,7 @@ export const renderNode: NodeDefinition = {
           passes.push({
             ...litPass,
             id: `${nodeId}:gbuffer:shadow:${index}`,
-            shader: sceneSurfaceWgsl({
+            ...surface({
               ...surfaceMaterialOptions,
               lightCount: lights.length,
               gbuffer: "shadow",
@@ -2667,7 +2693,7 @@ export const renderNode: NodeDefinition = {
         passes.push({
           ...litPass,
           id: layer === "normal" ? `${nodeId}:gbuffer:${index}` : `${nodeId}:gbuffer:${layer}:${index}`,
-          shader: sceneSurfaceWgsl({ ...surfaceMaterialOptions, lightCount: 0, gbuffer: layer }),
+          ...surface({ ...surfaceMaterialOptions, lightCount: 0, gbuffer: layer }),
           target,
           ...(material.maps.albedo === undefined && material.maps.roughness === undefined
             ? { textures: [] }

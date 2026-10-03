@@ -1,5 +1,5 @@
 import type { CompiledNodeDescription, NodeDefinition } from "../../domain/types/node-definition.ts";
-import type { MaterialPayload } from "../../domain/types/scene.ts";
+import type { MaterialPayload, MaterialSourceSpan } from "../../domain/types/scene.ts";
 import type { ParameterSchema } from "../../domain/types/parameters.ts";
 import { SHADER_SOURCE_PARAMETER } from "../../domain/commands/apply-patch.ts";
 import { codeParametersLast } from "../../domain/parameters/code.ts";
@@ -15,6 +15,7 @@ import {
 } from "./params-reflection.ts";
 import { readCompileInputs } from "./compile-context.ts";
 import { readColor, readNumber } from "./parameter-readers.ts";
+import { endOf, placed, placedAroundCut } from "../../runtime/backend/wgsl-source-map.ts";
 
 /**
  * T1355b — MATERIAL · WGSL: a material whose SURFACE is code. TouchDesigner's GLSL MAT.
@@ -82,6 +83,46 @@ function reflectedSchema(source: string): ParameterSchema {
   );
 }
 
+/**
+ * T1535b — WHERE THE AUTHOR'S `source` SITS IN WHAT THIS NODE HANDS THE SCENE.
+ *
+ * `code` is the `// @use` prelude, then the source with its `struct Params` cut out;
+ * `paramsDeclaration` is that struct alone. Each map is counted from its own text's first
+ * character — only the Scene's generator knows where it puts the two — and every span names
+ * this node, because the pass that compiles them belongs to the Scene node.
+ *
+ * Memoised by the source (§T259 compiles every frame), the inputs kept beside it so another
+ * node or prelude over the same text is never handed a stale map.
+ */
+function materialSourceMap(
+  nodeId: string,
+  source: string,
+  prelude: string,
+  declaration: string,
+  start: number,
+): NonNullable<NonNullable<MaterialPayload["custom"]>["sourceMap"]> {
+  const hit = sourceMapsBySource.get(source);
+  if (hit !== undefined && hit.nodeId === nodeId && hit.prelude === prelude) return hit.map;
+  const own = (span: Omit<MaterialSourceSpan, "nodeId">): MaterialSourceSpan => ({ ...span, nodeId });
+  const map = {
+    code: placedAroundCut(SHADER_SOURCE_PARAMETER, source, start, start + declaration.length, endOf(prelude)).map(own),
+    params:
+      declaration === ""
+        ? []
+        : [own(placed(SHADER_SOURCE_PARAMETER, declaration, { line: 1, column: 1 }, endOf(source.slice(0, start))))],
+  };
+  return remember(sourceMapsBySource, source, { nodeId, prelude, map }).map;
+}
+
+const sourceMapsBySource = new Map<
+  string,
+  {
+    readonly nodeId: string;
+    readonly prelude: string;
+    readonly map: NonNullable<NonNullable<MaterialPayload["custom"]>["sourceMap"]>;
+  }
+>();
+
 export const materialWgslNode: NodeDefinition = {
   type: "materialWgsl",
   version: 1,
@@ -144,7 +185,7 @@ export const materialWgslNode: NodeDefinition = {
         })),
       };
     }
-    const { declaration, rest } = extractParamsStruct(source);
+    const { declaration, rest, start } = extractParamsStruct(source);
     const code = `${shared.prelude}${rest}`;
     const own = declaredNames(code);
     if (!own.includes("surface")) {
@@ -191,6 +232,7 @@ export const materialWgslNode: NodeDefinition = {
         paramsDeclaration: declaration,
         fields: fields.map((field) => ({ name: field.name, wgsl: field.wgsl })),
         uniforms: reflectedUniforms(fields, parameters),
+        sourceMap: materialSourceMap(nodeId, source, shared.prelude, declaration, start),
       },
     };
     return { passes: [], scene: { out: payload } } as CompiledNodeDescription;

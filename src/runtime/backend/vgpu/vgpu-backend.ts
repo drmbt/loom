@@ -59,7 +59,7 @@ import {
   type UniformValues,
 } from "../plan.ts";
 import { dispatchFrameUniforms, sharedUniformsFromFrame } from "../shared-uniforms.ts";
-import { authoredPosition, type WgslSourceMap } from "../wgsl-source-map.ts";
+import { authoredPosition, type AuthoredPosition, type WgslSourceMap } from "../wgsl-source-map.ts";
 import { describeCapabilities, meetsBaseline } from "./capabilities.ts";
 import { browserGpuHost, type GpuHost, type GpuSession } from "./gpu-host.ts";
 import { BLIT_WGSL, RGBA_BLIT_WGSL } from "./presentation-shaders.ts";
@@ -3834,6 +3834,7 @@ async function deviceVerdictDiagnostics(
     failures.push(
       deviceFailureDiagnostic(label, reason ?? cause, passes, {
         ...(described?.source === undefined ? {} : { source: described.source }),
+        ...(described?.nodeId === undefined ? {} : { nodeId: described.nodeId }),
         ...(suggestion === undefined ? {} : { suggestion }),
       }),
     );
@@ -3869,11 +3870,17 @@ function deviceFailureDiagnostic(
   label: string,
   reason: string,
   passes: readonly PassDescriptor[],
-  options: { readonly source?: RuntimeDiagnostic["source"]; readonly suggestion?: string } = {},
+  options: {
+    readonly source?: RuntimeDiagnostic["source"];
+    readonly suggestion?: string;
+    /** T1535b: the node whose text the error is in, when not the pass's own (a material's). */
+    readonly nodeId?: string;
+  } = {},
 ): ReturnType<typeof backendDiagnostic> {
   const pass = passes.find((candidate) => candidate.id === label);
   const nodeId =
-    pass !== undefined && pass.kind !== "swap" && pass.kind !== "counter" ? pass.nodeId : undefined;
+    options.nodeId ??
+    (pass !== undefined && pass.kind !== "swap" && pass.kind !== "counter" ? pass.nodeId : undefined);
   return backendDiagnostic(
     "error",
     BackendDiagnosticCode.compileFailed,
@@ -3899,25 +3906,33 @@ function deviceFailureDiagnostic(
  * `source` is the first message's authored position, which is what the shader editor marks:
  * `file` names the code parameter, so a node with several (kernel, group, spawn) marks the
  * right one.
+ *
+ * T1535b: `nodeId` is that same position's node when its span names one — a Material · WGSL's
+ * code drawn inside the Scene node's pass — so the badge and the marker land on the node the
+ * author typed into (§V27). An error only in generated code stays on the pass's node.
  */
 function describeWgslErrors(
   errors: readonly WgslError[],
   map: WgslSourceMap | undefined,
-): { reason: string; source?: NonNullable<RuntimeDiagnostic["source"]> } | undefined {
+): { reason: string; source?: NonNullable<RuntimeDiagnostic["source"]>; nodeId?: string } | undefined {
   if (errors.length === 0) return undefined;
   if (map === undefined) {
     return { reason: errors.map((entry) => `${entry.line}:${entry.column} ${entry.message}`).join("\n") };
   }
-  let source: NonNullable<RuntimeDiagnostic["source"]> | undefined;
+  let first: AuthoredPosition | undefined;
   const lines = errors.map((entry) => {
     const authored = entry.line >= 1 ? authoredPosition(map, entry) : undefined;
     if (authored === undefined) {
       return `${entry.line}:${entry.column} of the generated module (not your code) ${entry.message}`;
     }
-    source ??= { file: authored.parameter, line: authored.line, column: authored.column };
+    first ??= authored;
     return `${authored.parameter} ${authored.line}:${authored.column} ${entry.message}`;
   });
-  return { reason: lines.join("\n"), ...(source === undefined ? {} : { source }) };
+  return {
+    reason: lines.join("\n"),
+    ...(first === undefined ? {} : { source: { file: first.parameter, line: first.line, column: first.column } }),
+    ...(first?.nodeId === undefined ? {} : { nodeId: first.nodeId }),
+  };
 }
 
 /** T1523b(c): per device, the last reason the device gave for a source vgpu now holds invalid. */

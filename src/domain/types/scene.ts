@@ -286,7 +286,30 @@ export interface MaterialPayload {
     readonly paramsDeclaration: string;
     readonly fields: ReadonlyArray<{ readonly name: string; readonly wgsl: string }>;
     readonly uniforms: Readonly<Record<string, number | readonly number[]>>;
+    /**
+     * T1535b: where the author's `source` sits in `code` and in `paramsDeclaration`, each
+     * counted from that text's own first character, every span naming the material node.
+     * The Scene node places both texts into its draw pass and moves these spans there, so a
+     * device error in the material's code is said on the material, on the author's line.
+     * Plain data; derived from the same text `code` carries, never structural.
+     */
+    readonly sourceMap?: {
+      readonly code: readonly MaterialSourceSpan[];
+      readonly params: readonly MaterialSourceSpan[];
+    };
   };
+}
+
+/**
+ * T1535b: one run of a Material · WGSL's `source` copied verbatim — the shape of
+ * `runtime/backend/wgsl-source-map.ts`'s `AuthoredSpan` (the domain imports no runtime).
+ */
+export interface MaterialSourceSpan {
+  readonly parameter: string;
+  readonly at: { readonly line: number; readonly column: number };
+  readonly from: { readonly line: number; readonly column: number };
+  readonly lines: number;
+  readonly nodeId: string;
 }
 
 /**

@@ -37,6 +37,12 @@ export interface AuthoredSpan {
   readonly from: WgslPosition;
   /** How many lines the run covers (at least 1). */
   readonly lines: number;
+  /**
+   * T1535b: the node whose parameter it is, when that is not the pass's own node — a
+   * Material · WGSL's code is drawn inside the Scene node's pass, and its error belongs on
+   * the material. Absent: the pass's node.
+   */
+  readonly nodeId?: string;
 }
 
 export type WgslSourceMap = readonly AuthoredSpan[];
@@ -44,6 +50,8 @@ export type WgslSourceMap = readonly AuthoredSpan[];
 /** A device position translated into the author's text. */
 export interface AuthoredPosition extends WgslPosition {
   readonly parameter: string;
+  /** T1535b: the span's node, when it names one other than the pass's. */
+  readonly nodeId?: string;
 }
 
 /** Bounded like every per-text memo in the emitters: a typed-per-keystroke source must not leak. */
@@ -137,6 +145,22 @@ export function placedAroundCut(
 }
 
 /**
+ * T1535b — a map counted in one text, once that text is written into a bigger one starting
+ * at `at`: a Material · WGSL says where its author's bytes sit in its own `code`, and only
+ * the Scene's generator knows where `code` lands in the draw pass. A span on the text's
+ * first line moves sideways with it; every other line keeps its column.
+ */
+export function relocated(map: WgslSourceMap, at: WgslPosition): AuthoredSpan[] {
+  return map.map((span) => ({
+    ...span,
+    at:
+      span.at.line === 1
+        ? { line: at.line, column: at.column + span.at.column - 1 }
+        : { line: at.line + span.at.line - 1, column: span.at.column },
+  }));
+}
+
+/**
  * The author's position for a device position, or undefined when it falls in generated
  * code. On a span's first line a column left of where the author's text begins is the
  * generator's, not the author's.
@@ -145,12 +169,14 @@ export function authoredPosition(map: WgslSourceMap, position: WgslPosition): Au
   for (const span of map) {
     const offset = position.line - span.at.line;
     if (offset < 0 || offset >= span.lines) continue;
-    if (offset > 0) return { parameter: span.parameter, line: span.from.line + offset, column: position.column };
+    const node = span.nodeId === undefined ? {} : { nodeId: span.nodeId };
+    if (offset > 0) return { parameter: span.parameter, line: span.from.line + offset, column: position.column, ...node };
     if (position.column < span.at.column) continue;
     return {
       parameter: span.parameter,
       line: span.from.line,
       column: span.from.column + (position.column - span.at.column),
+      ...node,
     };
   }
   return undefined;
@@ -170,11 +196,12 @@ export function readSourceMap(value: unknown): WgslSourceMap | undefined | null 
   const spans: AuthoredSpan[] = [];
   for (const entry of value as unknown[]) {
     if (typeof entry !== "object" || entry === null) return null;
-    const { parameter, at, from, lines } = entry as Record<string, unknown>;
+    const { parameter, at, from, lines, nodeId } = entry as Record<string, unknown>;
     if (typeof parameter !== "string" || parameter.length === 0) return null;
     if (!isPosition(at) || !isPosition(from)) return null;
     if (!Number.isInteger(lines) || (lines as number) < 1) return null;
-    spans.push({ parameter, at, from, lines: lines as number });
+    if (nodeId !== undefined && (typeof nodeId !== "string" || nodeId.length === 0)) return null;
+    spans.push({ parameter, at, from, lines: lines as number, ...(nodeId === undefined ? {} : { nodeId }) });
   }
   return spans;
 }

@@ -2,6 +2,8 @@ import { wgsl } from "../../runtime/backend/wgsl.ts";
 import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 import { declaredNames } from "./shared-modules.ts";
+import type { WgslPosition } from "../../runtime/backend/wgsl-source-map.ts";
+import { advance, endOf } from "../../runtime/backend/wgsl-source-map.ts";
 /**
  * The scene Render shader (T377/T428): the surface mesh machinery of T301 with the
  * SHADING GENERATED per material model — the V349 fix. The legacy renderers keep their
@@ -172,6 +174,9 @@ fn surfaceDefaults(s: SurfaceIn) -> SurfaceOut {
   return SurfaceOut(s.albedo, s.roughness, s.metallic, s.normal, s.emissive);
 }
 `;
+
+/** T1535b: everything a custom surface's text puts in front of the author's `struct Params`. */
+const CUSTOM_SURFACE_HEAD = `${SHARED_UNIFORMS_WGSL}\n@group(0) @binding(120) var<uniform> ${CUSTOM_SURFACE_FRAME_BINDING}: SharedFrame;\n\n${CUSTOM_SURFACE_PRELUDE}\n`;
 
 /** T1353b: which per-vertex attributes an indexed surface binds. */
 export interface SceneMeshOption {
@@ -1081,6 +1086,21 @@ ${bias}        var slit = 0.0;
 }
 
 export function sceneSurfaceWgsl(options: SceneShadingOptions): EmittedWgsl {
+  return sceneSurfaceModule(options).wgsl;
+}
+
+/**
+ * T1535b: the surface module, and where a custom material's two texts start in it — its
+ * `struct Params` declaration (absent when the author wrote none: the stand-in is the
+ * generator's) and its `code`. Only this generator knows; the Scene node moves the
+ * material's own source map there.
+ */
+export interface SceneSurfaceModule {
+  readonly wgsl: EmittedWgsl;
+  readonly placed: { readonly params?: WgslPosition; readonly code?: WgslPosition };
+}
+
+export function sceneSurfaceModule(options: SceneShadingOptions): SceneSurfaceModule {
   const lightCount = Math.max(0, Math.floor(options.lightCount));
   const pointColor = options.pointColor === true;
   const albedoMap = options.maps?.albedo === true;
@@ -1257,12 +1277,10 @@ ${Array.from({ length: lightCount }, (_, index) => perVertex(lightBlock(index)))
     custom === undefined
       ? ""
       : custom.fields.map((field) => `  ${materialParamUniformKey(field.name)}: ${field.wgsl},\n`).join("");
+  const customParamsDeclaration =
+    custom === undefined ? "" : custom.paramsDeclaration === "" ? "struct Params {\n  unused: f32,\n};" : custom.paramsDeclaration;
   const customDeclarations =
-    custom === undefined
-      ? ""
-      : `${SHARED_UNIFORMS_WGSL}\n@group(0) @binding(120) var<uniform> ${CUSTOM_SURFACE_FRAME_BINDING}: SharedFrame;\n\n${CUSTOM_SURFACE_PRELUDE}\n${
-          custom.paramsDeclaration === "" ? "struct Params {\n  unused: f32,\n};" : custom.paramsDeclaration
-        }\n\n${custom.code}\n`;
+    custom === undefined ? "" : `${CUSTOM_SURFACE_HEAD}${customParamsDeclaration}\n\n${custom.code}\n`;
   const customParams =
     custom === undefined || custom.fields.length === 0
       ? "Params(0.0)"
@@ -1346,7 +1364,10 @@ ${shadowFactor(index)}    matte.${"xyz"[channel]} = 1.0 - shadow;
           ? shadowMatteWrite()
           : undefined;
 
-  return wgsl`struct SceneParams {
+  /* T1535b: split where the custom texts are pasted, byte-identical to the one template it
+     was, so their start is read off the text in front of them (each piece is the `wgsl`
+     tag's cached string, so the position memo hits frame after frame). */
+  const top = wgsl`struct SceneParams {
   viewProjection: mat4x4f,
   eye: vec4f,
   ambientColor: vec4f,      // rgb colour, a = intensity
@@ -1358,13 +1379,23 @@ ${lightField}${shadowFields}${envField}${projectors.fields}${customFields}};
 
 @group(0) @binding(0) var<uniform> params: SceneParams;
 @group(0) @binding(1) var<storage, read> positions: array<vec3f>;
-${pointColor ? "@group(0) @binding(2) var<storage, read> pointColors: array<vec4f>;\n" : ""}${mapBindings}${shadowBindings}${envDeclarations}${aoDeclarations}${projectors.bindings}${options.mesh === undefined ? "" : meshBindingsWgsl(options.mesh)}${customDeclarations}
+${pointColor ? "@group(0) @binding(2) var<storage, read> pointColors: array<vec4f>;\n" : ""}${mapBindings}${shadowBindings}${envDeclarations}${aoDeclarations}${projectors.bindings}${options.mesh === undefined ? "" : meshBindingsWgsl(options.mesh)}`;
+  const text = wgsl`${top}${customDeclarations}
 ${options.mesh === undefined ? surfaceMeshWgsl(pointColor) : meshVertexWgsl(pointColor, options.mesh)}
 
 @fragment
 fn fs(input: VertexOut) -> @location(0) vec4f {
 ${fragmentHead}${gbufferWrite ?? `${surfaceLocals}${shading}`}
 }`;
+  if (custom === undefined) return { wgsl: text, placed: {} };
+  const params = advance(endOf(top), CUSTOM_SURFACE_HEAD);
+  return {
+    wgsl: text,
+    placed: {
+      ...(custom.paramsDeclaration === "" ? {} : { params }),
+      code: advance(advance(params, customParamsDeclaration), "\n\n"),
+    },
+  };
 }
 
 /**
