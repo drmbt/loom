@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { NodeId } from "@domain/types/ids.ts";
+import { componentNodeType } from "@domain/components/component-type.ts";
 import { readComponentInstance } from "@domain/components/instance.ts";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { createAppRuntime } from "./app-runtime.ts";
@@ -402,5 +403,61 @@ describe("save selection as a component, from the canvas (§V307)", () => {
     expect(result.status).toBe("rejected");
     expect(result.diagnostics.map((d) => d.code)).toContain("component.create.noSelection");
     expect(screen.queryByPlaceholderText("Component name")).toBeNull();
+  });
+});
+
+/**
+ * T1545b — THE SESSION THE EDITOR OPENS CAN READ THE PROJECT. Detaching a nested instance
+ * inside a component leaves the root instance's paths into it (`inner/...`) naming nothing;
+ * the session cannot rewrite them (another store, another undo history), so it names them —
+ * which it can only do for the project if `useComponentEditing` hands it the root document.
+ * Sensitivity: dropping `root` from the session `useComponentEditing` opens reddens this.
+ */
+describe("an in-session detach names the project's paths into the detached instance (T1545b)", () => {
+  it("names the root instance whose channel-mask path names the detached instance", async () => {
+    const { runtime, handle } = await mount();
+    const bloom = runtime.components.get("bloom", 1)!;
+    const bloomNodeId = Object.keys(bloom.graph.nodes).sort()[0] as NodeId;
+    runtime.components.register({
+      componentId: "frame",
+      version: 1,
+      name: "Frame",
+      graph: {
+        revision: 0,
+        nodes: { inner: { id: "inner", type: componentNodeType("bloom", 1), definitionVersion: 1, label: "inner", position: { x: 0, y: 0 }, parameters: {} } },
+        edges: {},
+        groups: {},
+      },
+      inputs: [],
+      outputs: [],
+      parameters: [],
+    });
+    const placed = await runtime.bus.execute("component.instantiate", { componentId: "frame" }, runtime.invocation);
+    const scene = placed.output.nodeId as NodeId;
+    const masked = await runtime.bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: runtime.bus.store.getRevision(),
+        label: "mask inside",
+        operations: [
+          { op: "setNodeLabel", nodeId: scene, label: "scene" },
+          { op: "setNodeChannelMask", nodeId: scene, channelMask: { r: true, g: false, b: false, a: true }, internalNodeId: `inner/${bloomNodeId}` },
+        ],
+      },
+      runtime.invocation,
+    );
+    expect(masked.status, masked.diagnostics.map((d) => d.message).join("; ")).toBe("applied");
+
+    await act(async () => {
+      await runtime.bus.execute("graph.diveIn", { nodeId: scene }, runtime.invocation);
+    });
+    expect(handle.editing.definition?.componentId).toBe("frame");
+    let said: string[] = [];
+    await act(async () => {
+      const result = await handle.editing.bus.execute("component.detach", { nodeId: "inner" }, runtime.invocation);
+      expect(result.status).toBe("applied");
+      said = result.diagnostics.filter((d) => d.code === "component.detach.instancePaths").map((d) => d.message);
+    });
+    expect(said).toEqual([`"scene" in the project sets channel mask inner/${bloomNodeId} inside "inner"; with "inner" detached, those paths name nothing.`]);
   });
 });

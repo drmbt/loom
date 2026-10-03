@@ -214,6 +214,10 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
     [ejected, rebased],
   );
 
+  // T1545b: the project document, READ-ONLY, for the sessions below — so an in-session
+  // detach can name the root paths it leaves dangling. They never write it.
+  const readRoot = useCallback(() => runtime.bus.store.getGraph(), [runtime.bus]);
+
   const [session, setSession] = useState<ComponentSession | null>(null);
   useEffect(() => {
     if (componentId === null || version === null) {
@@ -231,13 +235,14 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
       componentId,
       version,
       onStale,
+      root: readRoot,
     });
     setSession(opened);
     return () => {
       opened.dispose();
       setSession(null);
     };
-  }, [componentId, onStale, reopened, runtime.components, runtime.registry, version]);
+  }, [componentId, onStale, readRoot, reopened, runtime.components, runtime.registry, version]);
 
   const live = session !== null && session.componentId === componentId && session.version === version;
   const editBus = live && session !== null ? session.bus : runtime.bus;
@@ -252,12 +257,12 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
       const key = JSON.stringify([frame.componentId, frame.version]);
       if (opened.has(key)) continue;
       opened.set(key, openComponentSession({ components: runtime.components, nodes: runtime.registry,
-        componentId: frame.componentId, version: frame.version, onStale }));
+        componentId: frame.componentId, version: frame.version, onStale, root: readRoot }));
     }
     setAncestorSessions(current => current.size === 0 && opened.size === 0 ? current : opened);
     return () => { for (const owner of opened.values()) owner.dispose(); };
     // `reopened`: an outside write to an ancestor's definition rebases its session too (§T1540b).
-  }, [ancestorIdentity, onStale, reopened, runtime.components, runtime.registry]);
+  }, [ancestorIdentity, onStale, readRoot, reopened, runtime.components, runtime.registry]);
 
   const graph = useSyncExternalStore<GraphDocument>(
     editBus.store.subscribe,

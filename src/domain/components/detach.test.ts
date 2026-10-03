@@ -656,3 +656,69 @@ describe("T1545b — undo and redo inside a component session restore the defini
     session.dispose();
   });
 });
+
+/**
+ * T1545b — PATHS INTO THE DETACHED INSTANCE, held outside the session. The root's instance
+ * of OUTER overrides inner's Blur, sizes inner's blurA and masks inner/solid; a SHELL
+ * component holds another OUTER instance sizing inner's blurA. Detaching `inner` inside
+ * OUTER leaves every one of those naming nothing, in stores the session's undo does not
+ * reach, so they are said per holder, with what each would name on the copies.
+ */
+describe("T1545b — an in-session detach names the root and catalogue paths it leaves dangling", () => {
+  const red = { r: true, g: false, b: false, a: true };
+  const shell = (): GraphComponentDefinition => ({
+    componentId: "shell",
+    version: 1,
+    name: "Shell",
+    graph: graphOf([
+      instanceOf("outer", { size: 3 }, { id: "held", label: "held", state: { componentResolutionOverrides: { "inner/blurA": { mode: "fixed", width: 2, height: 2 } } } }),
+    ]),
+    inputs: [],
+    outputs: [],
+    parameters: [],
+  });
+
+  async function detachInner(root: boolean) {
+    const rootInstance = instanceOf("outer", { size: 11 }, {
+      label: "scene",
+      state: {
+        [COMPONENT_OVERRIDES_STATE_KEY]: { "inner/blur": 5, "grade/radius": 2 },
+        componentResolutionOverrides: { "inner/blurA": { mode: "fixed", width: 2, height: 2 }, grade: { mode: "fixed", width: 4, height: 4 } },
+        componentChannelMaskOverrides: { "inner/solid": red },
+      },
+    });
+    const harness = createComponentHarness("t", graphOf([rootInstance]));
+    harness.components.register(look());
+    harness.components.register(outer({ ...PAGE }));
+    harness.components.register(shell());
+    const session = openComponentSession({
+      components: harness.components,
+      nodes: harness.nodes,
+      componentId: "outer",
+      version: 1,
+      ...(root ? { root: () => harness.store.view.getGraph() } : {}),
+    });
+    const result = await session.bus.execute("component.detach", { nodeId: "inner" }, ctx);
+    session.dispose();
+    expect(result.status).toBe("applied");
+    return result.diagnostics.filter((each) => each.code === "component.detach.instancePaths");
+  }
+
+  it("names the root instance's override, resolution and mask paths, and the catalogue holder's, with the copies they would name", async () => {
+    const said = await detachInner(true);
+    expect(said.map((each) => each.message)).toEqual([
+      '"scene" in the project sets override inner/blur, resolution inner/blurA, channel mask inner/solid inside "inner"; with "inner" detached, those paths name nothing.',
+      '"held" in component "Shell" sets resolution inner/blurA inside "inner"; with "inner" detached, those paths name nothing.',
+    ]);
+    expect(said[0]?.suggestion).toBe(
+      "Set them again on scene (resolution blurA, channel mask solid), or undo the detach. This editor cannot rewrite them: they live in the project, outside this component's undo history.",
+    );
+  });
+
+  it("paths that do not reach inner (grade) are not named; without the project document only the catalogue holder is", async () => {
+    const said = await detachInner(false);
+    expect(said.map((each) => each.message)).toEqual([
+      '"held" in component "Shell" sets resolution inner/blurA inside "inner"; with "inner" detached, those paths name nothing.',
+    ]);
+  });
+});

@@ -15,7 +15,7 @@ import { renumberedName, rewriteNodeNameReferences } from "../graph/names.ts";
 import { withBoundaryPorts } from "./boundary-ports.ts";
 import { componentClipboard } from "./component-clipboard.ts";
 import { componentNodeType } from "./component-type.ts";
-import { readComponentInstance, PARENT_BINDINGS_STATE_KEY } from "./instance.ts";
+import { parseInternalParameterPath, readComponentInstance, PARENT_BINDINGS_STATE_KEY } from "./instance.ts";
 import { parseParentReference } from "./parent-scope.ts";
 import {
   defaultPublishedValues,
@@ -247,6 +247,12 @@ export interface ComponentCommandOptions {
    * records the definition with that step, so undo and redo restore it with the graph.
    */
   onDefinitionStep?: (undoGroupId: string) => void;
+  /**
+   * §T1545b: the project document, READ-ONLY, for a session bus — so an in-session detach can
+   * name the root instances whose paths into the detached instance it leaves dangling
+   * (`danglingInstancePaths`). Absent: only the catalogue's holders are found.
+   */
+  rootGraph?: () => GraphDocument;
 }
 
 function info(code: string, message: string, suggestion?: string): RuntimeDiagnostic {
@@ -559,6 +565,67 @@ function writeDetach(
     moved.push(...written.moved);
   }
   return { remap, baked, moved };
+}
+
+/**
+ * §T1545b — PATHS INTO A DETACHED NESTED INSTANCE, held outside the session. An instance of
+ * the component being edited may address the nested instance `inner` by path from wherever
+ * it sits: `componentOverrides` (`inner/<key>`), `componentResolutionOverrides` and
+ * `componentChannelMaskOverrides` (`inner` or `inner/<descendant>`). Detaching `inner`
+ * inside the session leaves those paths naming nothing. They live in the project document
+ * and in other components' definitions — other stores, with undo histories of their own — so
+ * the session cannot rewrite them as part of its own undo step (a rewrite would survive the
+ * session's undo and dangle the other way). They are said, per holder, by name, with what
+ * each path would name on the copies.
+ */
+function danglingInstancePaths(input: {
+  readonly host: ComponentHost;
+  readonly detachedId: NodeId;
+  readonly look: string;
+  readonly copyName: (internalId: NodeId) => string | undefined;
+  readonly holders: ReadonlyArray<{ readonly where: string; readonly graph: GraphDocument }>;
+}): RuntimeDiagnostic[] {
+  const said: RuntimeDiagnostic[] = [];
+  const prefix = `${input.detachedId}/`;
+  const read = <T,>(reader: () => Readonly<Record<string, T>>): Readonly<Record<string, T>> => {
+    try {
+      return reader();
+    } catch {
+      return {};
+    }
+  };
+  for (const holder of input.holders) {
+    for (const node of Object.values(holder.graph.nodes)) {
+      const state = readComponentInstance(node);
+      if (state === null || state.componentId !== input.host.componentId || state.version !== input.host.version) continue;
+      const paths: string[] = [];
+      const onCopies: string[] = [];
+      for (const path of Object.keys(state.overrides ?? {}).sort()) {
+        if (parseInternalParameterPath(path)?.nodeId === input.detachedId) paths.push(`override ${path}`);
+      }
+      for (const [what, record] of [
+        ["resolution", read(() => internalResolutions(node))],
+        ["channel mask", read(() => internalChannelMasks(node))],
+      ] as const) {
+        for (const path of Object.keys(record).sort()) {
+          if (path !== input.detachedId && !path.startsWith(prefix)) continue;
+          paths.push(`${what} ${path}`);
+          const rest = path.slice(prefix.length).split("/");
+          const copy = path === input.detachedId ? undefined : input.copyName(rest[0] as NodeId);
+          if (copy !== undefined) onCopies.push(`${what} ${[copy, ...rest.slice(1)].join("/")}`);
+        }
+      }
+      if (paths.length === 0) continue;
+      said.push({
+        severity: "warning",
+        code: "component.detach.instancePaths",
+        message: `"${node.label ?? node.id}" in ${holder.where} sets ${paths.join(", ")} inside "${input.look}"; with "${input.look}" detached, those paths name nothing.`,
+        nodeId: input.detachedId,
+        suggestion: `Set them again on ${node.label ?? node.id}${onCopies.length === 0 ? "" : ` (${onCopies.join(", ")})`}, or undo the detach. This editor cannot rewrite them: they live in ${holder.where}, outside this component's undo history.`,
+      });
+    }
+  }
+  return said;
 }
 
 export function registerComponentCommands(bus: LoomBus, options: ComponentCommandOptions): void {
@@ -1015,6 +1082,26 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
           });
         }
         commitDefinition(context, pruned, diagnostics, applied.undoGroupId);
+      }
+      if (host !== null && !context.dryRun) {
+        diagnostics.push(
+          ...danglingInstancePaths({
+            host,
+            detachedId: input.nodeId,
+            look,
+            copyName: (internalId) => {
+              const copyId = copiedAs[internalId];
+              return copyId === undefined ? undefined : (context.store.getGraph().nodes[copyId]?.label ?? copyId);
+            },
+            holders: [
+              ...(options.rootGraph === undefined ? [] : [{ where: "the project", graph: options.rootGraph() }]),
+              ...components
+                .all()
+                .filter((each) => each.componentId !== host.componentId || each.version !== host.version)
+                .map((each) => ({ where: `component "${each.name}"`, graph: each.graph })),
+            ],
+          }),
+        );
       }
 
       return {

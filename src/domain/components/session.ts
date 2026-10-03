@@ -1,5 +1,6 @@
 import type { GraphComponentDefinition } from "../types/components.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
+import type { GraphDocument } from "../types/graph.ts";
 import type { ComponentId } from "../types/ids.ts";
 import type { IdFactory } from "../graph/ids.ts";
 import type { GraphStore, GraphStoreState } from "../graph/store.ts";
@@ -96,6 +97,12 @@ export interface ComponentSessionOptions {
    * reopen a session over the current definition.
    */
   onStale?: (diagnostic: RuntimeDiagnostic) => void;
+  /**
+   * §T1545b: the project document, read-only — so an in-session detach can name the root
+   * instances whose paths into the detached instance it leaves dangling. The session never
+   * writes it: it is another store, with its own undo history.
+   */
+  root?: () => GraphDocument;
 }
 
 export const COMPONENT_SESSION_STALE_CODE = "component.session.stale";
@@ -132,6 +139,7 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
     onDefinitionStep: (undoGroupId) => {
       if (lastPush?.id === undoGroupId) record(undoGroupId, lastPush.before);
     },
+    ...(options.root === undefined ? {} : { rootGraph: options.root }),
   });
 
   // The definition graph this session and the catalogue last agreed on. Identity is the
