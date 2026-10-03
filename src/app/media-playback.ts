@@ -28,9 +28,18 @@ import type { NodeRegistryView } from "@nodes/registry/registry.ts";
  *
  * Writing `currentTime` sixty times a second re-seeks the decoder sixty times a second and
  * the picture stutters and the sound clicks. So the element PLAYS — at `playbackRate` —
- * and ordinary continuous playback corrects drift with a bounded rate adjustment. A
+ * and a seek is kept for the deliberate discontinuities the transport runner marks. A
  * seek would restart audio buffering and can recreate the very lag it tries to correct.
- * The transport runner marks deliberate discontinuities, which still seek exactly.
+ *
+ * ## Who is the clock while it plays (§V1027, T1542b)
+ *
+ * In realtime FREE RUN the element is. Its sound runs on the audio hardware's clock and
+ * the frame loop is only a sampler of it, so the runner re-bases the playhead on
+ * `currentTime` every continuous frame and the element is left at exactly `speed`: a
+ * stall, a throttled rAF or a hidden tab is paid in dropped frames, never in samples
+ * (§T740's rule, which had reached the timeline and stopped short of this module — §B236).
+ * Under the TIMELINE LOCK the frame is the master by contract (§V436), so there the
+ * element still converges on the playhead with a bounded rate adjustment.
  *
  * A loop, scrub, cue, trim edit or speed change is a new target rather than clock drift.
  * Standalone callers without continuity information retain the tolerance-based policy.
@@ -79,8 +88,10 @@ export function isMediaPlayheadHeld(transport: MediaTransportValues, head: Media
 
 /**
  * Put the element where the playhead says, without restarting continuous audio.
- * `continuous: true` converges by rate; false seeks exactly. An omitted argument is the
- * standalone drift policy, for callers that do not own a transport history.
+ * `continuous: true` never seeks: in free run the element is the clock and plays at
+ * exactly `speed` (§V1027), under the timeline lock it converges by rate. False seeks
+ * exactly. An omitted argument is the standalone drift policy, for callers that do not
+ * own a transport history.
  *
  * Returns whether it seeked, so a caller can assert the "only corrects on drift" property
  * rather than trust it.
@@ -110,9 +121,12 @@ export function applyMediaPlayhead(
 
   const drift = head.position - element.currentTime;
   // Seeking restarts the audio decoder's buffering. Correcting ordinary startup lag
-  // with a seek can therefore recreate that lag forever. During a continuous run,
-  // gently converge on the target instead; discontinuities still seek exactly.
-  const correction = continuous === true
+  // with a seek can therefore recreate that lag forever. During a continuous run under
+  // the timeline lock, gently converge on the target instead; discontinuities still seek
+  // exactly. In free run there is nothing to converge on: the runner took this playhead
+  // FROM the element (§V1027), and a rate bent by the rounding of that round trip would
+  // be a rewrite every frame of a sound that is already where it should be.
+  const correction = continuous === true && transport.playMode !== "freeRun"
     ? Math.max(-MAX_RATE_CORRECTION, Math.min(MAX_RATE_CORRECTION, drift * DRIFT_RATE_GAIN)) : 0;
   const rate = Math.min(MAX_RATE, Math.max(MIN_RATE, speed * (1 + correction)));
   if (element.playbackRate !== rate) element.playbackRate = rate;
@@ -134,7 +148,7 @@ export function applyMediaPlayhead(
 export interface MediaSteppedTransport {
   readonly transport: MediaTransportValues;
   readonly head: MediaPlayhead;
-  /** Native playback can converge smoothly; false marks a cue, scrub, lap or edit. */
+  /** The element is left playing, never sought; false marks a cue, scrub, lap or edit. */
   readonly continuous: boolean;
   /**
    * Everything else the node resolved this frame — `volume`, and whatever a door adds
@@ -145,8 +159,15 @@ export interface MediaSteppedTransport {
 }
 
 export interface MediaTransportRunner {
-  /** Resolve the node's parameters for this frame and return where its media should be. */
-  step(frame: FrameEvaluationInput, duration: number): MediaSteppedTransport | null;
+  /**
+   * Resolve the node's parameters for this frame and return where its media is.
+   *
+   * `elementSeconds` is the element's own `currentTime`, read by the door this frame. In
+   * realtime free run a continuous frame takes the playhead from it (§V1027). REQUIRED,
+   * for `morphs`' reason: a door that forgot it would keep a playhead nothing corrects,
+   * and say nothing. `null` is the answer where there is no element to follow.
+   */
+  step(frame: FrameEvaluationInput, duration: number, elementSeconds: number | null): MediaSteppedTransport | null;
   /** A cue PULSE (free-run only): land on the cue point and carry on from there. */
   cue(): void;
   reset(): void;
@@ -220,22 +241,40 @@ export function createMediaTransportRunner(
   };
 
   return {
-    step(frame, duration) {
+    step(frame, duration, elementSeconds) {
       const read = readAll(frame);
       if (read === null) return null;
       const transport = mediaTransportFrom(read);
       lastDuration = duration;
-      const elapsed = clock.advance(transport, frame.deltaSeconds, frame.timeSeconds);
-      const head = mediaPlayhead(transport, elapsed, duration);
-      const continuous = frame.mode === "realtime" && previous !== null && previous.mode === frame.mode && !cuePending
-        && !isMediaPlayheadHeld(transport, head, duration) && !isMediaPlayheadHeld(previous.transport, previous.head, duration)
-        && transport.playMode === previous.transport.playMode
-        && transport.speed === previous.transport.speed
-        && transport.trimStart === previous.transport.trimStart && transport.trimEnd === previous.transport.trimEnd
-        && transport.extend === previous.transport.extend
-        && head.laps === previous.head.laps && head.position >= previous.head.position
+      const last = previous;
+      const pending = cuePending;
+      const follows = (candidate: MediaPlayhead): boolean =>
+        frame.mode === "realtime" && last !== null && last.mode === frame.mode && !pending
+        && !isMediaPlayheadHeld(transport, candidate, duration) && !isMediaPlayheadHeld(last.transport, last.head, duration)
+        && transport.playMode === last.transport.playMode
+        && transport.speed === last.transport.speed
+        && transport.trimStart === last.transport.trimStart && transport.trimEnd === last.transport.trimEnd
+        && transport.extend === last.transport.extend
+        && candidate.laps === last.head.laps && candidate.position >= last.head.position
         && (transport.playMode === "freeRun"
-          || Math.abs(frame.timeSeconds - previous.time - frame.deltaSeconds) < 1e-6);
+          || Math.abs(frame.timeSeconds - last.time - frame.deltaSeconds) < 1e-6);
+      let head = mediaPlayhead(transport, clock.advance(transport, frame.deltaSeconds, frame.timeSeconds), duration);
+      let continuous = follows(head);
+      /*
+       * §V1027, T1542b — THE ELEMENT IS THE CLOCK. The accumulator above is only a
+       * prediction of where a playing element got to; the element knows. So on a frame
+       * that would have left it playing, take its position, and judge continuity again
+       * from there: an element that ran past the out point while no frame was delivered
+       * is a lap, and a lap is still a seek.
+       *
+       * Realtime free run only. Under the lock the position is `f(frame)` (§V436), which
+       * the `playMode` check keeps out; in a take the frame is the master (§V662), and
+       * `follows` is false on every frame that is not realtime.
+       */
+      if (continuous && transport.playMode === "freeRun" && elementSeconds !== null && Number.isFinite(elementSeconds)) {
+        head = mediaPlayhead(transport, clock.adopt(transport, head, elementSeconds), duration);
+        continuous = follows(head);
+      }
       previous = { transport, head, time: frame.timeSeconds, mode: frame.mode };
       cuePending = false;
       return { transport, head, continuous, read };

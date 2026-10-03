@@ -3,8 +3,9 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
-import { captureConfigOf, hasUnboundAudioFile, useAudioInput } from "./use-audio-input.ts";
+import { captureConfigOf, hasUnboundAudioFile, useAudioInput, type AudioInputSource } from "./use-audio-input.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
+import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { AUDIO_DETECTOR_DEFAULTS } from "@nodes/definitions/audio.ts";
 
 /**
@@ -319,5 +320,50 @@ describe("T555 — an unconsumed but monitored node still plays, deliberately", 
     render(<Harness getGraph={() => graph.current} />);
     await tick();
     expect(elements[0]?.paused).toBe(false);
+  });
+});
+
+/**
+ * T1542b, §V1027 — THE REACH, on the audio door: the hook hands the runner its element's
+ * own clock.
+ *
+ * The rule is gated in `media-playback.test.ts`. What is gated here is that this hook
+ * passes `currentTime` at all — the movie door has the same case in
+ * `use-media-sources.test.tsx`, because one adapter serving two doors is only one answer
+ * if both doors ask it. The element plays three seconds per frame while each frame
+ * accounts for a quarter of one, which is `liveClock`'s clamp on a loop that cannot keep
+ * up. Followed, the element passes the 30 s out point on the eleventh frame and is lapped
+ * to the in point plus its overshoot. Unfollowed, the runner's own count stands at 2.75 s,
+ * sees no lap, and the element sits at 30.25.
+ */
+describe("T1542b — the audio door follows its element's clock", () => {
+  it("a file that outran the frames is lapped where IT is, and is never bent toward them", async () => {
+    const registry = createNodeRegistry(allNodeDefinitions);
+    const graph = graphOf([node("music", "audioFileIn", FILE)]);
+    let source: AudioInputSource | null = null;
+    function Wired(): null {
+      source = useAudioInput(() => graph, registry);
+      return null;
+    }
+    render(<Wired />);
+    await tick();
+    const element = elements[0];
+    expect(element?.paused, "the hook never opened an element, so nothing below proves anything").toBe(false);
+    if (element === undefined) return;
+
+    for (let index = 0; index <= 10; index += 1) {
+      if (index > 0 && !element.paused) element.currentTime += 3;
+      act(() =>
+        (source as unknown as AudioInputSource).sync({
+          timeSeconds: index * 0.25,
+          deltaSeconds: 0.25,
+          frameIndex: index * 15,
+          mode: "realtime",
+          randomSeed: 1,
+        }),
+      );
+      expect(element.playbackRate).toBe(1);
+    }
+    expect(element.currentTime).toBeCloseTo(0.25, 6);
   });
 });

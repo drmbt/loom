@@ -216,6 +216,61 @@ describe("T493 — the free-run clock is the only state, and only in free-run", 
   });
 });
 
+/**
+ * T1542b, §V1027 — the playhead follows a playing element, so the clock is re-based on the
+ * element's own position. What is asserted is the round trip the runner makes: adopt, then
+ * read the playhead back.
+ */
+describe("T1542b — adopting an element's position keeps the lap it is in", () => {
+  const freeRun: MediaTransportValues = { ...BASE, playMode: "freeRun" };
+
+  it("lands on the element's second, in the lap already reached, at any speed", () => {
+    const transport: MediaTransportValues = { ...freeRun, speed: 2, trimStart: 3, trimEnd: 8 };
+    const clock = createMediaClock();
+    // 6.5 s at speed 2 into a 5 s window: two laps done, 3 s into the third.
+    const head = mediaPlayhead(transport, clock.advance(transport, 6.5, 0), 10);
+    expect([head.laps, head.position]).toEqual([2, 6]);
+    const adopted = mediaPlayhead(transport, clock.adopt(transport, head, 7.25), 10);
+    expect([adopted.laps, adopted.position]).toEqual([2, 7.25]);
+    // ...and carries on from there: half a second at speed 2 is the out point less nothing.
+    expect(mediaPlayhead(transport, clock.advance(transport, 0.25, 0), 10).position).toBe(7.75);
+  });
+
+  it("an element past the out point is the NEXT lap, by how far it overran", () => {
+    const transport: MediaTransportValues = { ...freeRun, trimEnd: 8 };
+    const clock = createMediaClock();
+    const head = mediaPlayhead(transport, clock.advance(transport, 7, 0), 10);
+    const adopted = mediaPlayhead(transport, clock.adopt(transport, head, 9.5), 10);
+    expect([adopted.laps, adopted.position]).toEqual([1, 1.5]);
+  });
+
+  /**
+   * THE EDGE. An element waiting on its decoder sits EXACTLY on the in point — every
+   * start and every lap begins there. `laps × window / speed × speed / window` comes back
+   * one rounding error short of `laps` for about one combination in eleven below, which
+   * reads as the END of the lap before: a lap that never happened and a seek to the out
+   * point. Red-verified with the edge margin at 0: 561 of these 6030 fail.
+   */
+  it("an element sitting ON the in point is in this lap, never at the end of the last one", () => {
+    const wrong: string[] = [];
+    for (const speed of [0.3, 0.7, 1, 1.7, 3]) {
+      for (const window of [0.1, 1 / 3, 4.7, 10, 29.97, 184.32]) {
+        const transport: MediaTransportValues = { ...freeRun, speed, trimEnd: window };
+        for (let laps = 0; laps <= 200; laps += 1) {
+          const clock = createMediaClock();
+          const head = { ...mediaPlayhead(transport, 0, 1000), laps };
+          const adopted = mediaPlayhead(transport, clock.adopt(transport, head, head.start), 1000);
+          // A microsecond is the precision an element's own clock reports at.
+          if (adopted.laps !== laps || Math.abs(adopted.position - head.start) > 1e-6) {
+            wrong.push(`speed ${String(speed)} window ${String(window)} lap ${String(laps)}: lap ${String(adopted.laps)} @ ${String(adopted.position)}`);
+          }
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+});
+
 describe("T493 — one vocabulary, read tolerantly (§V61, §V10)", () => {
   it("a document with none of the keys reads the SCHEMA defaults, and the reader cannot drift from them", () => {
     const transport = mediaTransportFrom(() => undefined);

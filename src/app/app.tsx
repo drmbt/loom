@@ -98,6 +98,7 @@ import { helperFactFrom, useRequirementDiagnostics } from "./use-requirement-dia
 import { pageHostFacts } from "@devices/host-shell.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { useMediaSources } from "./use-media-sources.ts";
+import { useFileReferences } from "./use-file-references.ts";
 import { useScreenSources } from "./use-screen-sources.ts";
 import { useMeshSources } from "./use-mesh-sources.ts";
 import { useNativeInputs } from "./use-native-inputs.ts";
@@ -824,6 +825,9 @@ export function App({
    */
   const mediaControls = useMemo(() => createMediaControlRegistry(), []);
   useMediaCommands(runtime.bus, mediaControls);
+  const fileReferences = useFileReferences(compile.flatGraph);
+  const fileGraphRef = useRef(fileReferences.graph);
+  fileGraphRef.current = fileReferences.graph;
   // T1397b: phones sending their cameras over the phone door — a Webcam whose device is
   // `phone:<name>` opens through this rather than getUserMedia.
   const phoneCameras = usePhoneCameras({ deviceClient: osc.deviceClient, door: phoneDoor.state });
@@ -836,7 +840,7 @@ export function App({
     // text node inside a component was never opened, because nothing ever saw it; and
     // the plan's external-texture source id is the FLAT node id, which is the id the
     // element has to be registered under for the upload to land.
-    compile.flatGraph,
+    fileReferences.graph,
     compile.compiled,
     undefined,
     mediaControls,
@@ -845,7 +849,7 @@ export function App({
   const nativeInputs = useNativeInputs(runtime, backend ?? null, compile.flatGraph, compile.compiled);
   const screenCapture = useScreenSources(runtime, backend ?? null, compile.flatGraph);
   // T1353b: Mesh File In — reads the file, feeds its buffers, writes its measured size.
-  const meshes = useMeshSources(runtime, backend ?? null, compile.flatGraph);
+  const meshes = useMeshSources(runtime, backend ?? null, fileReferences.graph);
 
   // T214/§V125: an expression on a pulse parameter fires it on its rising edge. The
   // watcher needs a frame, so it rides the frame loop's observer seam.
@@ -886,7 +890,7 @@ export function App({
   const audioInput = useAudioInput(
     // T615: the FLAT document, for the same reason — an `audioIn` inside a component
     // declared a capture nothing opened.
-    () => runtime.flattened.current().graph,
+    () => fileGraphRef.current,
     runtime.registry,
     mediaControls,
     // T1229: the grid a bound file is pre-analysed on — the same rate the track below records at.
@@ -1481,6 +1485,7 @@ export function App({
       ...compile.diagnostics,
       ...valueGraph.diagnostics,
       ...media.diagnostics,
+      ...fileReferences.diagnostics,
       ...screenCapture.diagnostics,
       ...meshes.diagnostics,
       ...nativeInputs.diagnostics,
@@ -1520,6 +1525,7 @@ export function App({
     frameLoop.diagnostics,
     valueGraph.diagnostics,
     media.diagnostics,
+    fileReferences.diagnostics,
     screenCapture.diagnostics,
     meshes.diagnostics,
     nativeInputs.diagnostics,

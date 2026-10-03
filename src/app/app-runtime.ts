@@ -24,6 +24,7 @@ import { defaultLayoutStorage } from "./layout-storage.ts";
 import { registerProjectCommands } from "./project-commands.ts";
 import { registerControlCommands } from "@editor/controls/control-commands.ts";
 import { readProjectFile, writeProjectFile } from "./project-io.ts";
+import { retainedProjectAssets } from "@domain/media/file-reference.ts";
 
 /**
  * Everything the app is made of, built once (T51).
@@ -321,6 +322,12 @@ export function createAppRuntime(options: AppRuntimeOptions = {}): AppRuntime {
   // T615: the ONE flattening. Built beside the bus so a frame path has somewhere to read
   // the flattened document FROM, and the raw one has no reason to be read at all.
   const flattened = createFlattenedGraphSource({ store: bus.store, registry, components });
+  const openedAssets = project.assets;
+  // A file binding already mutates through the parameter command. Its external asset
+  // record is a pure projection, shared by snapshots, manual save and project queries.
+  Object.defineProperty(project, "assets", { enumerable: true, get: () => retainedProjectAssets(
+    openedAssets, [bus.store.getGraph(), ...components.all().map(component => component.graph)],
+  ) });
 
   return {
     bus,

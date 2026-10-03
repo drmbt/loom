@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "loom": {
+      "command": "node",
+      "args": [
+        "--import",
+        "/Users/flo/work/code/shaderloom/src/tooling/alias-hooks.ts",
+        "/Users/flo/work/code/shaderloom/src/mcp/serve.ts"
+      ]
+    }
+  }
+}

@@ -689,9 +689,9 @@ function ParameterControlImpl({
           label={label}
           value={typeof shown === "string" ? shown : null}
           kind={definition.kind}
-          // T434: the picked object URL is the stored value — one commit, one undo step,
-          // like every other control (§V114). Session-scoped; the field says so.
-          onPick={(url) => emit(url, "commit")}
+          // One file binding, one command, one undo step (§V114). Retained handles
+          // live outside the document; only their durable reference is authored here.
+          onPick={(reference) => emit(reference, "commit")}
         />,
         { hint: definition.kind },
       );

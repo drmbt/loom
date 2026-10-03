@@ -2,6 +2,7 @@ import type { GraphComponentDefinition } from "../types/components.ts";
 import type { ProjectDocument } from "../types/graph.ts";
 import { serializeComponentLibrary } from "../components/schemas.ts";
 import { serializeProjectDocument } from "./serialize.ts";
+import { retainedProjectAssets } from "../media/file-reference.ts";
 
 /**
  * The `.loom.json` file itself (T43, §C "save").
@@ -56,8 +57,9 @@ export interface ProjectFile {
  */
 export function buildProjectFile(input: BuildProjectFileInput): ProjectFile {
   const now = input.now ?? (() => new Date().toISOString());
-  const document: ProjectDocument = { ...input.document, updatedAt: now() };
   const components = input.components ?? [];
+  const assets = retainedProjectAssets(input.document.assets, [input.document.graph, ...components.map(component => component.graph)]);
+  const document: ProjectDocument = { ...input.document, assets, updatedAt: now() };
   const root =
     components.length === 0
       ? document

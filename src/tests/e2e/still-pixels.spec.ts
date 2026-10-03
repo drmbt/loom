@@ -421,8 +421,13 @@ test("a movie plays its embedded audio on the same native video transport", asyn
       }));
       expect(new Set(clockProof.samples.map(sample => sample.time)).size).toBeGreaterThan(5);
       for (const sample of clockProof.samples) {
-        expect(sample.rate).toBeGreaterThanOrEqual(0.95);
-        expect(sample.rate).toBeLessThanOrEqual(1.05);
+        // §V1027, T1542b: in free run the element is the clock and is left at exactly its
+        // speed. Under the timeline lock the frame is the master and the element converges.
+        if (mode === "freeRun") expect(sample.rate).toBe(1);
+        else {
+          expect(sample.rate).toBeGreaterThanOrEqual(0.95);
+          expect(sample.rate).toBeLessThanOrEqual(1.05);
+        }
       }
     }
   }
@@ -475,22 +480,41 @@ test("a movie plays its embedded audio on the same native video transport", asyn
     }).movieAudioEvents;
     const eventStart = events.length;
     const start = performance.now();
+    // Until the element has been lapped twice. Bounded, because the lap is now taken
+    // where the ELEMENT is (§V1027), so a loop lasts its window plus the decoder's seek
+    // latency rather than a fixed 0.5 s of frame time.
+    const lapped = () => events.slice(eventStart).filter(event => event.kind === "set" && event.time >= 0.7).length;
     await new Promise<void>(resolve => {
-      const tick = () => { if (performance.now() - start >= 1200) resolve(); else requestAnimationFrame(tick); };
+      const tick = () => {
+        if (lapped() >= 2 || performance.now() - start >= 6000) resolve();
+        else requestAnimationFrame(tick);
+      };
       requestAnimationFrame(tick);
     });
     return events.slice(eventStart);
   });
   const loopSeeks = loopProof.filter(event => event.kind === "set");
-  expect(loopSeeks.length).toBeGreaterThanOrEqual(2);
-  for (const seek of loopSeeks) {
-    expect(seek.target).toBeGreaterThanOrEqual(0.25);
-    expect(seek.target).toBeLessThan(0.35);
+  /*
+   * §V1027, T1542b: a lap is a seek, and it is taken once the element has PLAYED the
+   * window — within three frames of the 0.75 out point — landing on the in point plus the
+   * overshoot. The frame-led clock lapped on its own count, a decoder's seek latency
+   * before the element got there, and cut that much off the end of every lap.
+   */
+  const laps = loopSeeks.filter(seek => seek.time >= 0.7);
+  expect(laps.length).toBeGreaterThanOrEqual(2);
+  for (const lap of laps) {
+    expect(lap.target).toBeGreaterThanOrEqual(0.25);
+    expect(lap.target).toBeLessThan(0.35);
   }
+  // Once it loops, nothing but a lap moves the element.
+  expect(loopSeeks.slice(loopSeeks.indexOf(laps[0]!))).toEqual(laps);
   const loopPath = testInfo.outputPath("movie-trim-loop.json");
   await writeFile(loopPath, JSON.stringify({ heldProof, loopProof }, null, 2));
   await testInfo.attach("movie-trim-loop", { path: loopPath, contentType: "application/json" });
-  console.log("Movie cue/trim", JSON.stringify({ cue: 0.5, heldWrites: 0, loopTargets: loopSeeks.map(seek => seek.target) }));
+  console.log("Movie cue/trim", JSON.stringify({
+    cue: 0.5, heldWrites: 0, loopTargets: loopSeeks.map(seek => seek.target),
+    lappedAt: laps.map(lap => lap.time), lapWallMs: laps.map(lap => Math.round(lap.wall)),
+  }));
 
   const play = page.getByRole("switch", { name: "Play", exact: true });
   await play.scrollIntoViewIfNeeded();
@@ -519,6 +543,13 @@ test("a movie plays its embedded audio on the same native video transport", asyn
     if (first !== undefined && last !== undefined) {
       expect(last.time - first.time,
         `${proof.mode} at ${proof.fps} FPS must advance its native media clock at playback speed`).toBeGreaterThan(2.5);
+      // §V1027: "zero seeks" was green while free run played 3.137 s in 3 s of wall, so
+      // the seconds HEARD are asserted too. 0.05 s is three frames at 60 fps of sampling
+      // slack; the rate-bent element was 0.137 s out.
+      if (proof.mode === "freeRun") {
+        expect(Math.abs((last.time - first.time) - (last.wall - first.wall) / 1000),
+          `freeRun at ${proof.fps} FPS must play exactly the seconds that passed`).toBeLessThan(0.05);
+      }
     }
   }
   expect(browserErrors).toEqual([]);

@@ -1,0 +1,49 @@
+// @vitest-environment jsdom
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cubePrimitive, encodeFixtureGlb } from "@domain/mesh/glb.fixture.ts";
+import { createFileReference } from "@domain/media/file-reference.ts";
+import { slotFromValue } from "@domain/parameters/slots.ts";
+import { meshSourceIdsFor, prepareMesh } from "@/points/mesh.ts";
+import type { LoomBackend } from "@runtime/backend/index.ts";
+import { createAppRuntime } from "./app-runtime.ts";
+import { useMeshSources } from "./use-mesh-sources.ts";
+
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+describe("mesh file source bindings", () => {
+  it.each([false, true])("reads a resolved file, registers decoded buffers, and releases them (slot=%s)", async slot => {
+    const bytes = encodeFixtureGlb({ nodes: [{ name: "cube", mesh: [cubePrimitive()] }] });
+    const prepared = prepareMesh(bytes, "");
+    if (prepared === null) throw new Error("Cube fixture must contain a mesh");
+    const fetchFile = vi.fn(async () => new Response(new Uint8Array(bytes)));
+    vi.stubGlobal("fetch", fetchFile);
+    const unregister = vi.fn();
+    const registerMediaSource = vi.fn<LoomBackend["registerMediaSource"]>(() => unregister);
+    const backend = { registerMediaSource } as unknown as LoomBackend;
+    const runtime = createAppRuntime({ identityStorage: null });
+    try {
+      const reference = createFileReference("cube-file", "gltf", "cube.glb");
+      const added = await runtime.bus.execute("graph.applyPatch", { baseRevision: 0, operations: [
+        { op: "addNode", ref: "$mesh", type: "meshFileIn", position: { x: 0, y: 0 },
+          parameters: { file: reference, ...prepared.facts } },
+      ] }, runtime.invocation);
+      expect(added.status).toBe("applied");
+      const id = added.output.createdIds["$mesh"]!;
+      const graph = runtime.flattened.current().graph;
+      const url = "blob:reopened#cube.glb";
+      const view = { ...graph, nodes: { ...graph.nodes, [id]: { ...graph.nodes[id]!,
+        parameters: { ...graph.nodes[id]!.parameters, file: slot ? slotFromValue(url) : url },
+      } } };
+      const hook = renderHook(() => useMeshSources(runtime, backend, view));
+      await waitFor(() => expect(registerMediaSource).toHaveBeenCalledTimes(2));
+      expect(fetchFile).toHaveBeenCalledWith(url);
+      const ids = meshSourceIdsFor(id);
+      expect(registerMediaSource.mock.calls.map(call => call[0])).toEqual([ids.points, ids.indices]);
+      expect(hook.result.current.diagnostics).toEqual([]);
+      expect(runtime.bus.store.getGraph().nodes[id]!.parameters.file).toBe(reference);
+      hook.unmount();
+      expect(unregister).toHaveBeenCalledTimes(2);
+    } finally { runtime.dispose(); }
+  });
+});

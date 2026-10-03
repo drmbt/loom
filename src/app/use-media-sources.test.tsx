@@ -3,6 +3,7 @@ import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
+import { slotFromValue } from "@domain/parameters/slots.ts";
 import { serializePresetBank } from "@domain/presets/bank.ts";
 import type { MediaSource, LoomBackend } from "@runtime/backend/index.ts";
 import { mediaSourceIdFor } from "@nodes/definitions/index.ts";
@@ -314,6 +315,39 @@ describe("movie sound and output extent share the existing media session", () =>
 });
 
 describe("media sources reach the backend (T264)", () => {
+  it.each([["video", "clip.mp4"], ["still", "photo.png"]] as const)(
+    "opens a resolved retained static slot through the %s source path",
+    async (kind, name) => {
+      const runtime = newRuntime();
+      const { backend, registered } = fakeBackend();
+      const element = fakeElement();
+      const image = { width: 320, height: 180 };
+      const opened: string[] = [];
+      const environment: MediaEnvironment = {
+        openFile: async (url) => { opened.push(`video:${url}`); return element; },
+        openStill: async (url) => { opened.push(`still:${url}`); return image; },
+        openCamera: () => Promise.reject(new Error("Not a camera request")),
+      };
+      const draw = (file: string) => <Harness runtime={runtime} backend={backend}
+        graph={graphWith({ movie: { type: "movieFileIn", parameters: { file: slotFromValue(file) } } })}
+        environment={environment} />;
+      const view = render(draw(""));
+      // Permission/pending projections carry an empty retained static value, so neither
+      // decoder opens until the broker has supplied a real session URL.
+      expect(opened).toEqual([]);
+      expect(registered.size).toBe(0);
+      const url = `blob:retained#${name}`;
+      view.rerender(draw(url));
+      await waitFor(() => expect(registered.has(mediaSourceIdFor("movie"))).toBe(true));
+      expect(opened).toEqual([`${kind}:${url}`]);
+      if (kind === "video") element.emit("timeupdate");
+      expect(registered.get(mediaSourceIdFor("movie"))?.currentFrame()?.image)
+        .toBe(kind === "video" ? element : image);
+      view.unmount();
+      runtime.dispose();
+    },
+  );
+
   it("registers a webcam under the key the compiler emits", async () => {
     const runtime = newRuntime();
     const { backend, registered } = fakeBackend();
@@ -1135,6 +1169,60 @@ describe("media sources reach the backend (T264)", () => {
     expect(element.currentTime).toBeCloseTo(1, 6);
     expect(element.currentTime).not.toBeCloseTo(3, 6);
     expect(element.paused).toBe(false);
+  });
+
+  /**
+   * T1542b, §V1027 — THE REACH: the movie door hands the runner its element's own clock.
+   *
+   * The rule is gated in `media-playback.test.ts`; what is gated here is that this hook
+   * passes `currentTime` at all. The element plays a full second per frame while each
+   * frame accounts for a quarter of one — `liveClock`'s clamp, which is what a frame loop
+   * that cannot keep up delivers. Followed, the element reaches the 12 s out point on the
+   * thirteenth frame and is lapped to the in point plus its overshoot. Unfollowed, the
+   * runner's own count stands at 3.25 s, sees no lap, and the element sits at 12.25.
+   */
+  it("follows its element's clock: a clip that outran the frames is lapped where IT is (T1542b)", async () => {
+    const runtime = newRuntime();
+    const { backend, registered } = fakeBackend();
+    const element = fakeElement();
+    let wiring: MediaWiring | null = null;
+    const environment: MediaEnvironment = {
+      openStill: () => Promise.reject(new Error("no still in this test")),
+      openFile: () => Promise.resolve(element as unknown as MediaElement),
+      openCamera: () => Promise.reject(new Error("not used")),
+    };
+
+    await act(async () => {
+      render(
+        <Harness
+          runtime={runtime}
+          backend={backend}
+          graph={graphWith({ movie: { type: "movieFileIn", parameters: { file: "blob:clip" } } })}
+          environment={environment}
+          onWiring={(value) => {
+            wiring = value;
+          }}
+        />,
+      );
+    });
+    await waitFor(() => expect(registered.has(mediaSourceIdFor("movie"))).toBe(true));
+
+    for (let index = 0; index <= 12; index += 1) {
+      if (index > 0 && !element.paused) element.currentTime += 1;
+      act(() =>
+        (wiring as unknown as MediaWiring).sync({
+          timeSeconds: index * 0.25,
+          deltaSeconds: 0.25,
+          frameIndex: index * 15,
+          mode: "realtime",
+          randomSeed: 1,
+        }),
+      );
+      // Never bent toward the frame loop, on any frame.
+      expect(element.playbackRate).toBe(1);
+    }
+    expect(element.currentTime).toBeCloseTo(0.25, 6);
+    runtime.dispose();
   });
 
   it("unregisters when the node goes away", async () => {

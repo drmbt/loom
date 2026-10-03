@@ -7,6 +7,7 @@ import type { ParameterValue } from "@domain/types/parameters.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
 import { resolveParameters } from "@domain/parameters/index.ts";
+import { storedStaticValue } from "@domain/parameters/slots.ts";
 import { mediaNodeDefinitions, mediaSourceIdFor, phoneCameraName } from "@nodes/definitions/index.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
@@ -192,7 +193,7 @@ function mediaRequests(graph: GraphDocument): MediaRequest[] {
       // T1223: one reader for what a `file` parameter holds, shared with the classifier
       // and the transport's `inactiveWhen` — three surfaces that must agree about which
       // file a node names, or the picker, the loader and the dimming disagree.
-      url: pictureFileUrl(node.parameters["file"]),
+      url: pictureFileUrl(storedStaticValue(node.parameters["file"])),
       // T810/T1043: raw read, like `url` above — the picker writes a plain string commit,
       // and driving a camera choice or a capture format from an expression is not a thing
       // this hook supports (see `cameraRequestOf`).
@@ -881,7 +882,7 @@ export function useMediaSources(
     channelsRef.current = channels;
     runningRef.current = true;
     for (const { element, runner, audio } of playersRef.current.values()) {
-      const stepped = runner.step(frame, durationOf(element));
+      const stepped = runner.step(frame, durationOf(element), element.currentTime);
       if (stepped === null) continue;
       audio.sync(stepped, frame.mode);
     }

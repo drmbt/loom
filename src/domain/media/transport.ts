@@ -620,8 +620,23 @@ export interface MediaClock {
   advance(transport: MediaTransportValues, deltaSeconds: number, timelineSeconds: number): number;
   /** A cue pulse: put the playhead at `head.start + offset` and carry on from there. */
   cueTo(transport: MediaTransportValues, head: MediaPlayhead, position: number): void;
+  /**
+   * §V1027: re-base on where a playing element actually is, and return the new elapsed.
+   * `head` is the playhead `advance` just produced, running forward in the lap the
+   * element is in; `position` is the element's own.
+   */
+  adopt(transport: MediaTransportValues, head: MediaPlayhead, position: number): number;
   reset(): void;
 }
+
+/**
+ * How far inside its lap an adopted position is kept. An element waiting on its decoder
+ * sits EXACTLY on the in point, and an offset on that edge that comes back one rounding
+ * error short reads as the END of the lap before: a lap that never happened, and a seek to
+ * the out point. A nanosecond is far above that error at any length a session reaches and
+ * far below any position an element can be told to take.
+ */
+const LAP_EDGE_SECONDS = 1e-9;
 
 export function createMediaClock(): MediaClock {
   let elapsed = 0;
@@ -648,6 +663,15 @@ export function createMediaClock(): MediaClock {
       const speed = finite(transport.speed, 1);
       if (speed === 0) return;
       elapsed = (position - head.start) / speed;
+    },
+    adopt(transport, head, position) {
+      // `cueTo`'s inverse with the laps already played kept. An element past the out
+      // point therefore lands in the next lap, and `mediaPlayhead` reports that as one.
+      const speed = finite(transport.speed, 1);
+      if (speed === 0) return elapsed;
+      const into = Math.max(position - head.start, LAP_EDGE_SECONDS);
+      elapsed = (head.laps * (head.end - head.start) + into) / speed;
+      return elapsed;
     },
     reset() {
       elapsed = 0;

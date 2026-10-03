@@ -3,6 +3,7 @@ import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { GlbDecodeError } from "@domain/mesh/glb.ts";
+import { storedStaticValue } from "@domain/parameters/slots.ts";
 import { meshSourceIdsFor, prepareMesh, type PreparedMesh } from "@/points/mesh.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import type { AppRuntime } from "./app-runtime.ts";
@@ -51,7 +52,7 @@ function meshRequests(graph: GraphDocument): MeshRequest[] {
   const requests: MeshRequest[] = [];
   for (const node of Object.values(graph.nodes)) {
     if (node.type !== "meshFileIn") continue;
-    const file = node.parameters["file"];
+    const file = storedStaticValue(node.parameters["file"]);
     if (typeof file !== "string" || file === "") continue;
     const select = node.parameters["select"];
     const clip = node.parameters["clip"];

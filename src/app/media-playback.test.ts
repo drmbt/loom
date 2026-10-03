@@ -11,6 +11,7 @@ import {
 import { createMediaControlRegistry } from "./media-commands.ts";
 import { MEDIA_OPEN_TIMEOUT_MS, awaitMediaReady } from "./media-sources.ts";
 import { mediaPlayhead, type MediaTransportValues } from "@domain/media/transport.ts";
+import { liveClock } from "@domain/transport/live-clock.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import { buildMorphIndex } from "@domain/presets/morph-index.ts";
@@ -266,29 +267,29 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
   it("marks ordinary playback continuous and cue pulses, trims, scrubs and laps as discontinuities", () => {
     const graph = graphWith({ playMode: "timeline" });
     const runner = runnerFor(graph);
-    expect(runner.step(frame(0), 10)?.continuous).toBe(false);
-    expect(runner.step(frame(1 / 60), 10)?.continuous).toBe(true);
-    expect(runner.step(frame(3), 10)?.continuous).toBe(false);
-    expect(runner.step(frame(3 + 1 / 60), 10)?.continuous).toBe(true);
+    expect(runner.step(frame(0), 10, null)?.continuous).toBe(false);
+    expect(runner.step(frame(1 / 60), 10, null)?.continuous).toBe(true);
+    expect(runner.step(frame(3), 10, null)?.continuous).toBe(false);
+    expect(runner.step(frame(3 + 1 / 60), 10, null)?.continuous).toBe(true);
     graph.nodes["m"]!.parameters["trimStart"] = 1;
-    expect(runner.step(frame(3 + 2 / 60), 10)?.continuous).toBe(false);
+    expect(runner.step(frame(3 + 2 / 60), 10, null)?.continuous).toBe(false);
     runner.reset();
-    expect(runner.step(frame(8.99), 10)?.continuous).toBe(false);
-    expect(runner.step({ ...frame(9.01), deltaSeconds: 0.02 }, 10)?.continuous).toBe(false);
+    expect(runner.step(frame(8.99), 10, null)?.continuous).toBe(false);
+    expect(runner.step({ ...frame(9.01), deltaSeconds: 0.02 }, 10, null)?.continuous).toBe(false);
     graph.nodes["m"]!.parameters["playMode"] = "freeRun";
     graph.nodes["m"]!.parameters["cuePoint"] = 2;
     runner.reset();
-    runner.step(frame(0), 10);
-    expect(runner.step(frame(1 / 60), 10)?.continuous).toBe(true);
+    runner.step(frame(0), 10, null);
+    expect(runner.step(frame(1 / 60), 10, null)?.continuous).toBe(true);
     runner.cue();
-    expect(runner.step(frame(2 / 60), 10)?.continuous).toBe(false);
-    expect(runner.step(frame(3 / 60), 10)?.continuous).toBe(true);
-    runner.step({ ...frame(4 / 60), mode: "offline" }, 10);
-    expect(runner.step(frame(5 / 60), 10)?.continuous).toBe(false);
+    expect(runner.step(frame(2 / 60), 10, null)?.continuous).toBe(false);
+    expect(runner.step(frame(3 / 60), 10, null)?.continuous).toBe(true);
+    runner.step({ ...frame(4 / 60), mode: "offline" }, 10, null);
+    expect(runner.step(frame(5 / 60), 10, null)?.continuous).toBe(false);
   });
 
   it("a node with NO transport parameters stored reads the manifest default, which T586 moved to free run", () => {
-    const stepped = runnerFor(graphWith({})).step(frame(2), 10);
+    const stepped = runnerFor(graphWith({})).step(frame(2), 10, null);
     expect(stepped?.transport.playMode).toBe("freeRun");
   });
 
@@ -306,7 +307,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
     const runner = runnerFor(graphWith({}));
     // Same `timeSeconds` every frame: the timeline is not moving. Only the delta is real.
     const stopped = (): FrameEvaluationInput => ({ ...frame(0), deltaSeconds: 1 / 60 });
-    const positions = [1, 2, 3, 4].map(() => runner.step(stopped(), 10)?.head.position ?? -1);
+    const positions = [1, 2, 3, 4].map(() => runner.step(stopped(), 10, null)?.head.position ?? -1);
     for (let index = 1; index < positions.length; index += 1) {
       expect(positions[index]).toBeGreaterThan(positions[index - 1] as number);
     }
@@ -318,7 +319,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
     // clock: identical frames, `playMode` opted back to the lock, and nothing moves.
     const runner = runnerFor(graphWith({ playMode: "timeline" }));
     const stopped = (): FrameEvaluationInput => ({ ...frame(0), deltaSeconds: 1 / 60 });
-    const positions = [1, 2, 3, 4].map(() => runner.step(stopped(), 10)?.head.position ?? -1);
+    const positions = [1, 2, 3, 4].map(() => runner.step(stopped(), 10, null)?.head.position ?? -1);
     expect(positions).toEqual([0, 0, 0, 0]);
   });
 
@@ -331,7 +332,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
    */
 
   it("a STATIC speed reaches the playhead", () => {
-    const stepped = runnerFor(graphWith({ speed: 3, playMode: "timeline" })).step(frame(2), 10);
+    const stepped = runnerFor(graphWith({ speed: 3, playMode: "timeline" })).step(frame(2), 10, null);
     expect(stepped?.head.position).toBe(6);
   });
 
@@ -346,7 +347,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
           bindings: { expression: { kind: "expression", source: "1 + 2" } },
         },
       }),
-    ).step(frame(0.5), 10);
+    ).step(frame(0.5), 10, null);
     expect(stepped?.head.start).toBe(3);
     expect(stepped?.head.position).toBe(3.5);
   });
@@ -362,7 +363,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
       channels: () => (channel) => (channel === "rate" ? 4 : undefined),
       morphs: () => undefined,
     });
-    expect(runner.step(frame(2), 10)?.head.position).toBe(8);
+    expect(runner.step(frame(2), 10, null)?.head.position).toBe(8);
   });
 
   it("a node that has been DELETED steps to null rather than throwing into the frame loop", () => {
@@ -372,7 +373,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
       channels: () => undefined,
       morphs: () => undefined,
     });
-    expect(runner.step(frame(1), 10)).toBeNull();
+    expect(runner.step(frame(1), 10, null)).toBeNull();
   });
 });
 
@@ -577,6 +578,7 @@ describe("T1155 — a DRIVEN transport parameter reaches the playhead", () => {
       const stepped = runner.step(
         { timeSeconds: index / 60, deltaSeconds: 1 / 60, frameIndex: index, mode: "realtime", randomSeed: 1 },
         10,
+        null,
       );
       expect(stepped).not.toBeNull();
       expect(stepped!.head.cued).toBe(true);
@@ -648,11 +650,11 @@ describe("T1524b — a morphing transport parameter reaches the runner at its ha
     const morphs = buildMorphIndex({ document: graph, registry });
     const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, morphs: () => morphs });
 
-    const start = runner.step(frameAt(0), 10);
+    const start = runner.step(frameAt(0), 10, null);
     expect(start?.transport.speed).toBe(1);
     expect(start?.transport.trimStart).toBe(0);
 
-    const half = runner.step(frameAt(30), 10);
+    const half = runner.step(frameAt(30), 10, null);
     expect(half?.transport.speed).toBe(2);
     expect(half?.transport.trimStart).toBe(1);
     // The same resolve the audio door reads `volume` from (§B8's shape) carries the fade too.
@@ -661,17 +663,270 @@ describe("T1524b — a morphing transport parameter reaches the runner at its ha
     expect(half?.head.start).toBe(1);
     expect(half?.head.position).toBe(2);
 
-    const landed = runner.step(frameAt(60), 10);
+    const landed = runner.step(frameAt(60), 10, null);
     expect(landed?.transport.speed).toBe(3);
     expect(landed?.transport.trimStart).toBe(2);
-    expect(runner.step(frameAt(600), 10)?.transport.speed).toBe(3);
+    expect(runner.step(frameAt(600), 10, null)?.transport.speed).toBe(3);
     // Another epoch — a take — reads the destination on every frame.
-    expect(runner.step(frameAt(30, "take-1"), 10)?.transport.speed).toBe(3);
+    expect(runner.step(frameAt(30, "take-1"), 10, null)?.transport.speed).toBe(3);
   });
 
   it("cut the wire: a runner handed no index hands over the end value at half-time", async () => {
     const graph = await fading();
     const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, morphs: () => undefined });
-    expect(runner.step(frameAt(30), 10)?.transport.speed).toBe(3);
+    expect(runner.step(frameAt(30), 10, null)?.transport.speed).toBe(3);
   });
+});
+
+/**
+ * T1542b, §V1027 — IN REALTIME FREE RUN THE PLAYING ELEMENT IS THE CLOCK.
+ *
+ * The owner: "music seems to tend to stutter when we cant really catch up" (§B236). The
+ * runner used to keep its own accumulator and bend the element toward it, so every frame
+ * the render clock and the sound hardware disagreed was paid in samples: `playbackRate`
+ * rewritten around the speed on an ordinary frame, and 0.95× for twenty seconds per second
+ * of timeline a stall dropped. §T740's rule is DROP A FRAME, NEVER A SAMPLE, and this is
+ * that rule reaching the media layer: the playhead follows the element.
+ *
+ * ## What is asserted is what the listener gets
+ *
+ * `6219123f` gated "zero seeks" and a 0.95–1.05 rate band, and was green while the audio
+ * ran up to 4.5% off. So every case here reads the RATE the element was left at and the
+ * SECONDS it played, on an element that advances on its OWN clock — a double advanced by
+ * the frame's delta could not disagree with the frame loop and would prove nothing.
+ *
+ * Red-verified against that commit: 45 and 24 Hz delivered leave the rate off the speed on
+ * the frame-grid jitter alone, and every stall below leaves it at 0.95.
+ */
+describe("T1542b, §V1027 — in realtime free run the element is the clock", () => {
+  const registry = createNodeRegistry(allNodeDefinitions);
+
+  /** A `<video>` on its own clock, with every write a listener could hear counted. */
+  function ownClockElement(duration: number) {
+    let paused = true;
+    let currentTime = 0;
+    let playbackRate = 1;
+    /** Seconds of real time before a `play()` produces sound: decoder start-up. */
+    let buffering = 0;
+    const seeks: number[] = [];
+    const rates: number[] = [];
+    let pauses = 0;
+    const element: PlayableMedia & {
+      readonly seeks: readonly number[];
+      readonly rates: readonly number[];
+      readonly pauses: number;
+      advanceReal(seconds: number): void;
+      buffer(seconds: number): void;
+    } = {
+      get currentTime() {
+        return currentTime;
+      },
+      set currentTime(value: number) {
+        currentTime = value;
+        seeks.push(value);
+      },
+      get playbackRate() {
+        return playbackRate;
+      },
+      set playbackRate(value: number) {
+        playbackRate = value;
+        rates.push(value);
+      },
+      get duration() {
+        return duration;
+      },
+      get paused() {
+        return paused;
+      },
+      play() {
+        paused = false;
+      },
+      pause() {
+        paused = true;
+        pauses += 1;
+      },
+      get pauses() {
+        return pauses;
+      },
+      seeks,
+      rates,
+      advanceReal(seconds: number) {
+        if (paused) return;
+        const silent = Math.min(buffering, seconds);
+        buffering -= silent;
+        currentTime += (seconds - silent) * playbackRate;
+      },
+      buffer(seconds: number) {
+        buffering = seconds;
+      },
+    };
+    return element;
+  }
+
+  /**
+   * The real chain — `liveClock` → runner → `applyMediaPlayhead` — against that element.
+   * `wall` moves real time for the element and the page alike; `frame` is one delivered
+   * frame. A stall, a throttled rAF and a hidden tab are all "wall without frame".
+   */
+  function session(parameters: Record<string, unknown> = {}, duration = 3600) {
+    let nowMs = 0;
+    const clock = liveClock({ fps: 60, presenting: () => true, now: () => nowMs });
+    const element = ownClockElement(duration);
+    const graph = {
+      revision: 1,
+      nodes: {
+        m: { id: "m", type: "movieFileIn", definitionVersion: 1, position: { x: 0, y: 0 }, parameters },
+      },
+      edges: {},
+    } as unknown as GraphDocument;
+    const runner = createMediaTransportRunner("m", {
+      graph: () => graph,
+      registry,
+      channels: () => undefined,
+      morphs: () => undefined,
+    });
+    const wall = (seconds: number): void => {
+      nowMs += seconds * 1000;
+      element.advanceReal(seconds);
+    };
+    const frame = () => {
+      const stepped = runner.step(clock.next(), durationOf(element), element.currentTime);
+      if (stepped === null) throw new Error("the node is in the graph, so the runner must step");
+      applyMediaPlayhead(element, stepped.transport, stepped.head, stepped.continuous);
+      return stepped;
+    };
+    /** `seconds` of playback with the browser delivering `hz` frames a second. */
+    const play = (seconds: number, hz = 60, each?: () => void): void => {
+      for (let tick = 0; tick < Math.round(seconds * hz); tick += 1) {
+        wall(1 / hz);
+        frame();
+        each?.();
+      }
+    };
+    frame();
+    return { element, wall, frame, play, cue: () => runner.cue(), wallSeconds: () => nowMs / 1000 };
+  }
+
+  for (const hz of [60, 50, 45, 30, 24]) {
+    it(`60 fps target, ${String(hz)} Hz delivered: the rate is the speed on every frame and nothing is sought`, () => {
+      const { element, play, wallSeconds } = session();
+      play(10, hz, () => expect(element.playbackRate).toBe(1));
+      // Not one write of either kind: a rate that was set to 1 sixty times is still a
+      // write the decoder may answer, and the claim is that the element is left alone.
+      expect(element.rates).toEqual([]);
+      expect(element.seeks).toEqual([]);
+      expect(element.currentTime).toBeCloseTo(wallSeconds(), 9);
+    });
+  }
+
+  it("a static speed is written once and the element plays wall × speed", () => {
+    const { element, play, wallSeconds } = session({ speed: 2 });
+    play(10, 45, () => expect(element.playbackRate).toBe(2));
+    expect(element.rates).toEqual([2]);
+    expect(element.seeks).toEqual([]);
+    expect(element.currentTime).toBeCloseTo(wallSeconds() * 2, 9);
+  });
+
+  /**
+   * `liveClock` clamps a tick to 0.25 s, so a longer stall DROPS timeline time. That loss
+   * used to become the element's debt. The hidden tab is the same event at another scale,
+   * and the owner's ruling on it is that the sound plays on: no pause, no seek on return.
+   */
+  for (const [what, stall] of [
+    ["a 0.3 s stall", 0.3],
+    ["a 1 s stall", 1],
+    ["a 10 s stall", 10],
+    ["a tab hidden for 60 s", 60],
+  ] as const) {
+    it(`${what}: the sound runs on and the playhead steps to it on the first frame back`, () => {
+      const { element, wall, frame, play, wallSeconds } = session();
+      play(2);
+      wall(stall);
+      const back = frame();
+      expect(Math.abs(back.head.position - element.currentTime)).toBeLessThanOrEqual(1 / 60);
+      expect(back.continuous).toBe(true);
+      play(2, 60, () => expect(element.playbackRate).toBe(1));
+      expect(element.rates).toEqual([]);
+      expect(element.seeks).toEqual([]);
+      expect(element.pauses).toBe(0);
+      // The seconds heard are the seconds that passed, stall included.
+      expect(element.currentTime).toBeCloseTo(wallSeconds(), 9);
+    });
+  }
+
+  it("start-up lag is not a debt: a slow decoder is followed, not chased", () => {
+    const { element, play, frame, wallSeconds } = session();
+    element.buffer(0.3);
+    play(5, 60, () => expect(element.playbackRate).toBe(1));
+    expect(element.seeks).toEqual([]);
+    expect(element.currentTime).toBeCloseTo(wallSeconds() - 0.3, 9);
+    expect(frame().head.position).toBeCloseTo(element.currentTime, 9);
+  });
+
+  /**
+   * The legitimate write the rule must not swallow. A lap is a frame-driven seek (the
+   * element does not loop itself, §T493), so an element that ran past the out point while
+   * no frame was delivered is put back — once, at the in point plus how far it overran.
+   */
+  it("an element that ran past the out point during a stall is lapped once, overshoot kept", () => {
+    const { element, wall, frame, play } = session({ trimEnd: 10 }, 60);
+    play(9.5);
+    wall(2);
+    const back = frame();
+    expect(back.head.laps).toBe(1);
+    expect(back.continuous).toBe(false);
+    expect(element.seeks.length).toBe(1);
+    expect(element.seeks[0]).toBeCloseTo(1.5, 9);
+    play(1, 60, () => expect(element.playbackRate).toBe(1));
+    expect(element.seeks.length).toBe(1);
+  });
+
+  it("a cue pulse is still an exact seek, and playback follows the element from there", () => {
+    const { element, wall, frame, play, cue } = session({ cuePoint: 30 });
+    play(1);
+    cue();
+    wall(1 / 60);
+    expect(frame().continuous).toBe(false);
+    expect(element.seeks.length).toBe(1);
+    const landed = element.seeks[0] as number;
+    expect(landed).toBeGreaterThanOrEqual(30);
+    expect(landed).toBeLessThan(30 + 2 / 60);
+    play(2, 45, () => expect(element.playbackRate).toBe(1));
+    expect(element.seeks.length).toBe(1);
+    expect(element.currentTime).toBeCloseTo(landed + 2, 9);
+  });
+
+  /**
+   * §V436 and T1542b (4): the timeline lock is NOT covered. Its position is `f(frame)` —
+   * that is what a scrub and an offline render stand on — so the element cannot lead it,
+   * and who is master there is the owner's open call. Until it is made the lock keeps the
+   * bounded rate convergence, and this pins that the new rule did not leak into it.
+   */
+  it("under the timeline lock the frame stays master and the element still converges", () => {
+    const { element, wall, frame, play } = session({ playMode: "timeline" });
+    play(2);
+    wall(1);
+    const back = frame();
+    // The lock's playhead is the timeline's second, which the clamp left a stall behind.
+    expect(element.currentTime - back.head.position).toBeGreaterThan(0.7);
+    expect(element.playbackRate).toBe(0.95);
+    expect(element.seeks).toEqual([]);
+  });
+
+  /** §V662: a take is silent and the frame is its master — an element's clock has no say. */
+  for (const mode of ["offline", "fixed-step"] as const) {
+    it(`a ${mode} frame keeps the accumulator: the element's clock is not read`, () => {
+      const graph = {
+        revision: 1,
+        nodes: { m: { id: "m", type: "movieFileIn", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} } },
+        edges: {},
+      } as unknown as GraphDocument;
+      const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, morphs: () => undefined });
+      const at = (index: number): FrameEvaluationInput =>
+        ({ timeSeconds: index / 60, deltaSeconds: 1 / 60, frameIndex: index, mode, randomSeed: 1 });
+      runner.step(at(0), 3600, 0);
+      expect(runner.step(at(1), 3600, 40)?.head.position).toBeCloseTo(2 / 60, 12);
+      expect(runner.step(at(2), 3600, 80)?.head.position).toBeCloseTo(3 / 60, 12);
+    });
+  }
 });

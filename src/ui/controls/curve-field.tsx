@@ -1,5 +1,8 @@
-import { useRef } from "react";
-import { PICTURE_FILE_ACCEPT, PICTURE_FILE_TAKES } from "@domain/media/picture-file.ts";
+import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { PICTURE_FILE_ACCEPT, PICTURE_FILE_TAKES, pictureFileKind } from "@domain/media/picture-file.ts";
+import { parseFileReference } from "@domain/media/file-reference.ts";
+import type { AssetReference } from "@domain/types/graph.ts";
+import { retainedFiles, type RetainedFileHandle } from "../files/retained-files.ts";
 import { cx } from "../cx.ts";
 import { curvePolyline } from "./curve-polyline.ts";
 import type { CurvePoint } from "./curve-polyline.ts";
@@ -8,13 +11,8 @@ import styles from "./controls.module.css";
 /**
  * Curve and asset parameters (T37).
  *
- * Both are read-only in v1, deliberately and visibly:
- *  - curve editing belongs with keyframes and expressions, which §C defers (doc §8.2);
- *  - the asset registry and loader nodes are Phase 2 (§C scope, doc §33).
- *
- * They still render, because the inspector is manifest-driven: a definition may declare
- * either type today, and a control set that silently skipped an unknown parameter would
- * hide part of the node from the user.
+ * Curves display read-only; asset fields bind local media through the retained-file
+ * adapter. Both follow the node's parameter manifest.
  */
 
 export interface CurveFieldProps {
@@ -78,7 +76,7 @@ const ASSET_TAKES: Readonly<Record<string, string>> = {
   picture: PICTURE_FILE_TAKES,
 };
 
-/** A bound object URL's display name: the picked file's name survives in the fragment. */
+/** Retained references and legacy object URLs carry the display name in the fragment. */
 function assetDisplayName(value: string): string {
   const hash = value.indexOf("#");
   if (hash >= 0 && hash < value.length - 1) return decodeURIComponent(value.slice(hash + 1));
@@ -88,14 +86,55 @@ function assetDisplayName(value: string): string {
 /**
  * T434: a REAL file picker — `movieFileIn` and `audioFileIn` share it.
  *
- * The picked file becomes an object URL, session-scoped: it plays now and dies with the
- * page, and the meta line SAYS so instead of letting a reloaded project fail mysteriously
- * (§V288). Durable assets are still their own phase; the picker existing does not
- * pretend otherwise. The file's name rides the URL fragment so the field can display
- * something a human recognises.
+ * Chromium's picker retains a handle in the local profile. Only its durable identity
+ * enters the document; decoding owns fresh session URLs. The existing input picker
+ * remains session-only on hosts without File System Access.
  */
 export function AssetField({ label, value, kind, onPick }: AssetFieldProps) {
   const input = useRef<HTMLInputElement | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const files = retainedFiles();
+  useSyncExternalStore(files.subscribe, files.revision, files.revision);
+  const parsed = useMemo(() => {
+    try { return { reference: parseFileReference(value), error: null }; }
+    catch (cause: unknown) {
+      return { reference: null, error: cause instanceof Error ? cause.message : String(cause) };
+    }
+  }, [value]);
+  const reference = parsed.reference;
+  const displayedName = parsed.error === null && value !== null ? assetDisplayName(value) : "invalid file reference";
+  const status = reference === null || value === null ? null : files.snapshot(value);
+  const picker = (window as unknown as {
+    showOpenFilePicker?: (options: { multiple: boolean; types?: readonly {
+      description: string; accept: Record<string, string[]>;
+    }[] }) => Promise<RetainedFileHandle[]>;
+  }).showOpenFilePicker;
+  const pick = (): void => {
+    if (onPick === undefined) return;
+    setError(null);
+    if (picker === undefined) { input.current?.click(); return; }
+    const accept: Record<string, string[]> | undefined = kind === "picture"
+      ? { "video/*": [".mp4", ".m4v", ".mov", ".webm", ".ogv", ".mkv"],
+        "image/*": [".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".bmp"] }
+      : kind === "audio" ? { "audio/*": [".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac"] }
+      : kind === "video" ? { "video/*": [".mp4", ".m4v", ".mov", ".webm", ".ogv", ".mkv"] }
+      : kind === "image" ? { "image/*": [".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".bmp"] }
+      : kind === "gltf" ? { "model/gltf-binary": [".glb"] } : undefined;
+    // Invoke the picker synchronously inside the click's user activation.
+    void picker.call(window, { multiple: false, ...(accept === undefined ? {} : { types: [{ description: label, accept }] }) })
+      .then(async handles => {
+        const handle = handles[0];
+        if (handle === undefined) return;
+        const fileKind = kind === "picture" ? (pictureFileKind(handle.name) === "video" ? "video" : "image") : kind;
+        if (!["image", "video", "audio", "gltf", "binary"].includes(fileKind)) throw new Error(`Unsupported file kind: ${kind}`);
+        const relink = reference !== null && (status?.kind === "missing" || status?.kind === "error") ? value! : undefined;
+        const stored = await files.remember(handle, fileKind as AssetReference["kind"], relink);
+        onPick(stored, handle.name);
+      }).catch((cause: unknown) => {
+        if (cause instanceof DOMException && cause.name === "AbortError") return;
+        setError(cause instanceof Error ? cause.message : String(cause));
+      });
+  };
   const takes = ASSET_TAKES[kind];
   return (
     <div
@@ -111,12 +150,12 @@ export function AssetField({ label, value, kind, onPick }: AssetFieldProps) {
       */
       title={
         value === null || value === ""
-          ? `No ${kind} bound. A picked file lasts for this session only.${takes === undefined ? "" : ` ${takes}`}`
-          : `${assetDisplayName(value)} — this session only`
+          ? `No ${kind} bound. ${picker === undefined ? "A picked file lasts for this session only." : "Picked file references are retained in this local profile."}${takes === undefined ? "" : ` ${takes}`}`
+          : parsed.error ?? `${displayedName} — ${reference === null ? "this session only" : "retained in this local profile"}`
       }
     >
       <span className={styles.assetName}>
-        {value === null || value === "" ? `no ${kind} bound` : assetDisplayName(value)}
+        {value === null || value === "" ? `no ${kind} bound` : displayedName}
       </span>
       {onPick === undefined ? (
         <span className={styles.meta}>· read-only</span>
@@ -125,10 +164,16 @@ export function AssetField({ label, value, kind, onPick }: AssetFieldProps) {
           <button
             type="button"
             className={styles.assetPick}
-            onClick={() => input.current?.click()}
+            onClick={pick}
           >
-            choose…
+            {status?.kind === "missing" || status?.kind === "error" ? "relink…" : "choose…"}
           </button>
+          {status?.kind === "permission" ? <button type="button" className={styles.assetPick}
+            onClick={() => { setError(null); void files.allow(value!).catch((cause: unknown) => {
+              setError(cause instanceof Error ? cause.message : String(cause));
+            }); }}>
+            Allow access
+          </button> : null}
           <input
             ref={input}
             type="file"
@@ -144,6 +189,7 @@ export function AssetField({ label, value, kind, onPick }: AssetFieldProps) {
           />
         </>
       )}
+      {error === null && parsed.error === null ? null : <span role="alert">{error ?? parsed.error}</span>}
     </div>
   );
 }

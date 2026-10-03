@@ -783,7 +783,7 @@ export function useAudioInput(
     const capture = captureRef.current;
     const runner = runnerRef.current;
     if (capture?.element === undefined || runner === null) return;
-    const stepped = runner.step(frame, durationOf(capture.element));
+    const stepped = runner.step(frame, durationOf(capture.element), capture.element.currentTime);
     if (stepped === null) return;
     transportRef.current = stepped.transport;
     /*

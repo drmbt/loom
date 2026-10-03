@@ -82,6 +82,20 @@ const ENTRY_POINTS = [
  * stops being true fails just as loudly as a missing one.
  */
 const NOT_CONSTRUCTED: ReadonlyArray<{ name: string; reason: string }> = [
+  {
+    name: "createRetainedFiles",
+    reason:
+      "Composed by retainedFiles() in the SAME module. AssetField and useFileReferences share " +
+      "that profile-local broker. retained-files.spec.ts proves the real broker reopens " +
+      "persisted handles after browser reload and full Electron restart.",
+  },
+  {
+    name: "createIndexedDbFileHandleStore",
+    reason:
+      "Composed by retainedFiles() in the SAME module, supplying the persistent handle store " +
+      "to createRetainedFiles. retained-files.spec.ts exercises real IndexedDB handle cloning " +
+      "and reopening; unit tests inject a store to exercise permission and lifetime failures.",
+  },
   /* T950's createEtherDreamClient / createLaserService entries left this list the day
      serve.ts wired the laser door (the owner's go): the dead-man they were sequenced
      behind now runs in that same wiring, so the excuses stopped being true and this
