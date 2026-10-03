@@ -11,7 +11,7 @@ import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import type { FrameClock } from "../../domain/types/frame.ts";
 import { serializeCueList, serializePresetBank } from "../../domain/presets/index.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
-import { PHONE_COMMANDS, buildPhoneSnapshot, publishedMorphs, vetPhoneSet } from "./phone-snapshot.ts";
+import { PHONE_COMMANDS, buildPhoneSnapshot, publishedMorphs, publishedTimelinePositions, vetPhoneSet } from "./phone-snapshot.ts";
 import { PHONE_WRITABLE_KEYS, type PhoneBoardItem, type PhoneSet, type PhoneWidget } from "./phone-protocol.ts";
 
 /**
@@ -311,7 +311,7 @@ describe("T1503b — banks, layers and cue lists on the phone", () => {
           kind: "widget",
           rect: { x: 0, y: 1, w: 4, h: 2 },
           // Nothing fired yet: GO would fire the first cue, and there is nothing to go BACK to.
-          widget: { kind: "cueList", handle: ids["$set"], caption: "set", cues: ["1", "2"], notes: ["", ""], current: null, next: "1", canGo: true, canBack: false },
+          widget: { kind: "cueList", handle: ids["$set"], caption: "set", cues: ["1", "2"], notes: ["", ""], current: null, next: "1", canGo: true, canBack: false, following: false },
         },
       ],
     });
@@ -412,6 +412,33 @@ describe("T1503b — banks, layers and cue lists on the phone", () => {
     // The last cue with Wrap off: GO has nowhere to go and the phone is told so.
     expect(widgetOf(bus.store.getGraph(), "cueList")).toMatchObject({ current: "2", next: null, canGo: false, canBack: true });
     expect(widgetOf(bus.store.getGraph(), "preset").current).toBe("hard");
+  });
+
+  it("T1508b: a list that follows the timeline is shown read-only — the playhead's cue, nothing to press, and a press refused with the reason", async () => {
+    const timed = serializeCueList({
+      version: 1,
+      cues: [
+        { name: "1", bank: "looks", preset: "soft", at: 1 },
+        { name: "2", bank: "looks", preset: "hard", at: 2 },
+      ],
+    });
+    const { bus, ids } = await documentWith(show());
+    await patch(bus, [{ op: "setParameters", nodeId: ids["$set"] as never, parameters: { cues: timed, follow: "timeline" } }]);
+    const graph = bus.store.getGraph();
+    const at = (seconds: number): FrameClock => ({ epoch: "e", absTimeSeconds: 50, timeSeconds: seconds, timelineRate: 30 });
+    expect(widgetOf(graph, "cueList", at(1.5))).toMatchObject({ following: true, current: "1", next: "2", canGo: false, canBack: false });
+    expect(widgetOf(graph, "cueList", at(2))).toMatchObject({ following: true, current: "2", next: null });
+    // A crossing changes the published positions; a frame between cues does not.
+    expect(publishedTimelinePositions(graph, at(1.5))).toBe(publishedTimelinePositions(graph, at(1.9)));
+    expect(publishedTimelinePositions(graph, at(1.9))).not.toBe(publishedTimelinePositions(graph, at(2)));
+    for (const write of [{ go: true }, { back: true }, { standby: "2" }]) {
+      expect(refusal(graph, set(ids["$set"]!, write))).toContain("follows the timeline; move the playhead");
+    }
+    // The legitimate case: the same list on live is driven as before.
+    await patch(bus, [{ op: "setParameters", nodeId: ids["$set"] as never, parameters: { follow: "live" } }]);
+    expect(widgetOf(bus.store.getGraph(), "cueList", at(1.5))).toMatchObject({ following: false, current: null, next: "1", canGo: true });
+    expect(publishedTimelinePositions(bus.store.getGraph(), at(1.5))).toBe("");
+    expect(vetPhoneSet(bus.store.getGraph(), set(ids["$set"]!, { go: true })).ok).toBe(true);
   });
 
   it("turns each press into the one bus command it means, with an input the page built", async () => {

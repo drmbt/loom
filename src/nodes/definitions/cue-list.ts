@@ -1,5 +1,12 @@
 import type { CompiledNodeDescription, NodeDefinition } from "../../domain/types/node-definition.ts";
-import { CUE_BACK_COMMAND, CUE_GO_COMMAND, CUE_LIST_NODE_TYPE, EMPTY_CUE_LIST_JSON } from "../../domain/presets/cue-list.ts";
+import {
+  CUE_BACK_COMMAND,
+  CUE_FOLLOW_LIVE,
+  CUE_FOLLOW_TIMELINE,
+  CUE_GO_COMMAND,
+  CUE_LIST_NODE_TYPE,
+  EMPTY_CUE_LIST_JSON,
+} from "../../domain/presets/cue-list.ts";
 
 /**
  * T1500b (§T1398b S5, ruling 15) — Cue List: an ORDERED list of preset recalls, as a node.
@@ -73,6 +80,22 @@ export const cueListNode: NodeDefinition = {
       description: "This list answers the GO and BACK keys. With two lists in a project, leave it on for the one you are running: the keys refuse to guess between them.",
     },
     /*
+     * T1508b — the list as a pure function of the playhead (`timeline-cues.ts`). Read from
+     * the STORED value, per revision, like the cues themselves: what the picture follows is
+     * document state, never a per-frame expression.
+     */
+    follow: {
+      type: "enum",
+      label: "Follow",
+      default: CUE_FOLLOW_LIVE,
+      options: [
+        { value: CUE_FOLLOW_LIVE, label: "Live (GO)" },
+        { value: CUE_FOLLOW_TIMELINE, label: "Timeline" },
+      ],
+      description:
+        "Live: GO and BACK fire the cues. Timeline: each cue applies at its At time as the playhead passes it, so playback and an export show the same thing; while it follows the timeline the list wins on every value its cues set, and GO and BACK are refused. Layer on/off and picture swaps in its cues are skipped, with a warning.",
+    },
+    /*
      * THE LIST IS DOCUMENT STATE, and `code`/`json` for the bank's reasons (`presets.ts`):
      * an edit is an ordinary parameter edit (undo, autosave, the diff and the agent surface
      * for free), and §V458's declared code kind gets it the JSON editor with no UI file
@@ -85,7 +108,7 @@ export const cueListNode: NodeDefinition = {
       label: "Cues",
       default: EMPTY_CUE_LIST_JSON,
       description:
-        "The list, in order: { version: 1, cues: [{ name, bank, preset, morph?: { seconds, curve }, note? }] }. name is the cue's number or label and must be unique; bank is a Presets node's name; morph overrides the preset's and the bank's for this cue.",
+        "The list, in order: { version: 1, cues: [{ name, bank, preset, morph?: { seconds, curve }, note?, at? }] }. name is the cue's number or label and must be unique; bank is a Presets node's name; morph overrides the preset's and the bank's for this cue; at is the cue's time on the timeline in seconds, read when Follow is Timeline.",
     },
   },
   compile: (): CompiledNodeDescription => ({ passes: [] }),

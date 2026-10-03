@@ -118,6 +118,14 @@ export interface FrameEvaluationInput {
 export interface FrameClock {
   readonly epoch: string;
   readonly absTimeSeconds: number;
+  /**
+   * T1508b — the TIMELINE clock of that same frame, so a surface or an agent reads where a
+   * cue list that follows the timeline is from the one clock the picture used: the playhead
+   * in seconds and the timeline's frames per second (fps × sub-frames). Optional (§V68): a
+   * clock attached without them reports no timeline position.
+   */
+  readonly timeSeconds?: number;
+  readonly timelineRate?: number;
 }
 
 /**

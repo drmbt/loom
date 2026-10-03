@@ -3,8 +3,13 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
+import { DEFAULT_PROJECT_FPS } from "@domain/types/graph.ts";
 import {
+  timelineCuePosition,
+  timelineCueWarnings,
   CUE_BACK_COMMAND,
+  CUE_FOLLOW_LIVE,
+  CUE_FOLLOW_TIMELINE,
   CUE_GO_COMMAND,
   CUE_SET_STANDBY_COMMAND,
   PRESETS_NODE_TYPE,
@@ -16,6 +21,7 @@ import {
   type MorphCurve,
 } from "@domain/presets/index.ts";
 import { Button } from "@ui/primitives/button.tsx";
+import { BooleanField } from "@ui/controls/boolean-field.tsx";
 import { ControlRow } from "@ui/controls/control-row.tsx";
 import { EnumField } from "@ui/controls/enum-field.tsx";
 import type { EnumOption } from "@ui/controls/enum-field.tsx";
@@ -52,12 +58,21 @@ import rows from "./preset-sections.module.css";
  *
  * `cue.go` / `cue.back` on THIS list and `cue.setStandby` — the commands the keys, the
  * Panel's pad and an agent run. A refusal is the command's own sentence.
+ *
+ * ## Following the timeline (T1508b)
+ *
+ * "Follow timeline" writes the list's `follow`; each row's "At" is the cue's time in
+ * seconds (with its `m:ss.ff` beside the label), and "← playhead" writes the last frame's
+ * `timeSeconds` (the bus's frame clock — the inspector is UI, so it may read the frame).
+ * While the list follows, GO and BACK are off with the `cue.timeline` reason on them, the
+ * position shows where the playhead was when the panel last drew, and every cue the
+ * timeline skips is said under the controls (`timelineCueWarnings`).
  */
 
-/** T994's claim: the section presents Standby; every other parameter keeps its row. */
+/** T994's claim: the section presents Standby and (T1508b) Follow; every other parameter keeps its row. */
 // eslint-disable-next-line react-refresh/only-export-components -- T994: the claim lives WITH the section it mirrors.
 export function cueListSectionParameters(): readonly string[] {
-  return ["standby"];
+  return ["standby", "follow"];
 }
 
 export interface CueListSectionProps {
@@ -67,8 +82,10 @@ export interface CueListSectionProps {
   readonly current: string;
   readonly standby: string;
   readonly wrap: boolean;
-  /** For the bank and preset pickers. */
-  readonly graph: Pick<GraphDocument, "nodes">;
+  /** T1508b: the stored `follow` is `timeline`. */
+  readonly follow: boolean;
+  /** For the bank and preset pickers, and (T1508b) what the timeline skips. */
+  readonly graph: GraphDocument;
   readonly bus: LoomBus;
   readonly context: InvocationContext;
   readonly editor: ParameterEditor;
@@ -94,11 +111,31 @@ function withStored(choices: readonly string[], stored: string): EnumOption[] {
 /** A cue's own morph time as its field shows it; blank when the cue carries none. */
 const morphText = (cue: Cue): string => (cue.morph === undefined ? "" : String(cue.morph.seconds));
 
-export function CueListSection({ nodeId, cues, current, standby, wrap, graph, bus, context, editor }: CueListSectionProps) {
+/** T1508b: a cue's time as its field shows it, in seconds; blank when it has none. */
+const atText = (cue: Cue): string => (cue.at === undefined ? "" : String(cue.at));
+
+/** T1508b: a timeline position as `m:ss.ff`, the frames at the timeline's rate. */
+function timecode(seconds: number, rate: number): string {
+  const whole = Math.floor(seconds + 1e-9);
+  const frame = Math.max(0, Math.min(Math.round((seconds - whole) * rate), Math.ceil(rate) - 1));
+  return `${String(Math.floor(whole / 60))}:${String(whole % 60).padStart(2, "0")}.${String(frame).padStart(2, "0")}`;
+}
+
+/** Why GO and BACK are off while the list follows the timeline — `cue.timeline`'s own sentence, shortened. */
+const FOLLOWING = "This list follows the timeline; move the playhead. Switch Follow timeline off to fire cues by hand.";
+
+export function CueListSection({ nodeId, cues, current, standby, wrap, follow, graph, bus, context, editor }: CueListSectionProps) {
   const parsed = parseCueList(cues);
   const list = parsed.ok ? parsed.list.cues : [];
   const [problem, setProblem] = useState<string | null>(null);
-  const next = parsed.ok ? nextCueName(parsed.list, { current, standby, wrap }) : null;
+  // T1508b: a timed list writes no position; where it is comes from the last frame's playhead.
+  const clock = bus.frameClock();
+  const rate = clock?.timelineRate ?? DEFAULT_PROJECT_FPS;
+  const timeline =
+    follow && parsed.ok && clock?.timeSeconds !== undefined ? timelineCuePosition(parsed.list, clock.timeSeconds, rate) : null;
+  const next = follow ? (timeline?.next ?? null) : parsed.ok ? nextCueName(parsed.list, { current, standby, wrap }) : null;
+  const shownCurrent = follow ? (timeline?.current ?? "") : current;
+  const warnings = follow ? timelineCueWarnings(graph, bus.registry, nodeId) : [];
 
   /** bank node name → its preset names, for every Presets node the document holds. */
   const banks = new Map<string, readonly string[]>();
@@ -151,6 +188,12 @@ export function CueListSection({ nodeId, cues, current, standby, wrap, graph, bu
     replace(index, seconds === undefined ? bare : { ...bare, morph: { seconds, curve } });
   };
 
+  /** T1508b: a cue's time, or none — one patch, like every other row edit. */
+  const setAt = (index: number, cue: Cue, seconds: number | undefined): void => {
+    const { at: _dropped, ...bare } = cue;
+    replace(index, seconds === undefined ? bare : { ...bare, at: seconds });
+  };
+
   const addCue = (): void => {
     const last = list[list.length - 1];
     const bank = last !== undefined && banks.has(last.bank) ? last.bank : firstUsable;
@@ -167,21 +210,44 @@ export function CueListSection({ nodeId, cues, current, standby, wrap, graph, bu
       </div>
 
       <div className={rows.transport}>
-        <Button variant="outline" title="Fires the cue before the current one" onClick={() => void bus.execute(CUE_BACK_COMMAND, { nodeId }, context).then(said)}>
+        <Button
+          variant="outline"
+          title={follow ? FOLLOWING : "Fires the cue before the current one"}
+          disabled={follow}
+          onClick={() => void bus.execute(CUE_BACK_COMMAND, { nodeId }, context).then(said)}
+        >
           BACK
         </Button>
-        <Button variant="outline" title="Fires the standby cue" onClick={() => void bus.execute(CUE_GO_COMMAND, { nodeId }, context).then(said)}>
+        <Button
+          variant="outline"
+          title={follow ? FOLLOWING : "Fires the standby cue"}
+          disabled={follow}
+          onClick={() => void bus.execute(CUE_GO_COMMAND, { nodeId }, context).then(said)}
+        >
           GO
         </Button>
         <span className={rows.position} role="status" data-cue-position>
-          {current === "" ? NO_CUE : current} ▸ {next ?? NO_CUE}
+          {follow ? "⏱ " : ""}
+          {shownCurrent === "" ? NO_CUE : shownCurrent} ▸ {next ?? NO_CUE}
         </span>
       </div>
+
+      <ControlRow
+        label="Follow timeline"
+        description="Each cue applies at its At time as the playhead passes it, and an export shows the same. While on, the list wins on every value its cues set, and GO and BACK are off."
+      >
+        <BooleanField
+          label="Follow timeline"
+          value={follow}
+          onChange={(on) => editor.setParameter(nodeId, "follow", on ? CUE_FOLLOW_TIMELINE : CUE_FOLLOW_LIVE, "commit")}
+        />
+      </ControlRow>
 
       <ControlRow label="Standby" description="The cue GO fires next.">
         <EnumField
           label="Standby"
           value={standby}
+          disabled={follow}
           options={[{ value: IN_ORDER, label: "Next in order" }, ...withStored(list.map((cue) => cue.name), standby).filter((option) => option.value !== IN_ORDER)]}
           onChange={(cue) => {
             // "Next in order" is the EMPTY standby, which no cue is named — a plain write, one patch.
@@ -195,6 +261,14 @@ export function CueListSection({ nodeId, cues, current, standby, wrap, graph, bu
         <p className={rows.problem} role="alert">
           {parsed.reason}
         </p>
+      )}
+      {/* T1508b: what the timeline skips, each sentence naming its cue — never silent. */}
+      {warnings.length === 0 ? null : (
+        <ul className={rows.problem} aria-label="Timeline warnings" data-timeline-warnings>
+          {warnings.map((warning, index) => (
+            <li key={index}>{warning.diagnostic.message}</li>
+          ))}
+        </ul>
       )}
 
       <div className={rows.rows}>
@@ -248,6 +322,21 @@ export function CueListSection({ nodeId, cues, current, standby, wrap, graph, bu
                   }}
                 />
               </div>
+              {/* T1508b: where the timeline reaches this cue — seconds, read while Follow timeline is on. */}
+              <label className={rows.field}>
+                <span className={rows.fieldLabel}>At (s){cue.at === undefined ? "" : ` ${timecode(cue.at, rate)}`}</span>
+                <MorphSeconds key={atText(cue)} label={`At for cue ${cue.name}`} stored={atText(cue)} placeholder="untimed" onCommit={(seconds) => setAt(index, cue, seconds)} />
+              </label>
+              <Button
+                aria-label={`Set cue ${cue.name} to the playhead`}
+                title={clock?.timeSeconds === undefined ? "No frame has been drawn yet, so there is no playhead to read." : "Sets At to where the playhead is now"}
+                disabled={clock?.timeSeconds === undefined}
+                onClick={() => {
+                  if (clock?.timeSeconds !== undefined) setAt(index, cue, clock.timeSeconds);
+                }}
+              >
+                ← playhead
+              </Button>
             </div>
           </div>
         ))}

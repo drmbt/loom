@@ -319,7 +319,7 @@ export const listCues: AgentTool<ListCuesInput, CueListQueryOutput> = {
   name: "list_cues",
   title: "List cues",
   description:
-    "Every Cue List: its cues in order (each a bank, a preset, an optional morph and note), the cue fired last (current), the standby, and next: the cue cue_go would fire now, or null when GO would be refused. morphs lists the fades its banks are running with their progress; it is always empty on a surface with no transport (the headless server).",
+    "Every Cue List: its cues in order (each a bank, a preset, an optional morph, note and at — the cue's time on the timeline in seconds), the cue fired last (current), the standby, and next: the cue cue_go would fire now, or null when GO would be refused. follow is live or timeline; a timeline list applies each cue at its at as the playhead passes (an export reproduces it), refuses cue_go / cue_back / cue_fire, and reports timelineCurrent / timelineNext at the page's clock and warnings for what it skips. Time cues by editing the cues JSON with set_parameters. morphs lists the fades its banks are running with their progress; it, timelineCurrent and timelineNext are always empty on a surface with no transport (the headless server).",
   kind: "read",
   inputSchema: listCuesInput,
   requires: { queries: ["cue.list", "graph.get"] },

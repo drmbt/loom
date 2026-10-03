@@ -372,6 +372,30 @@ export interface PresetRecallPlan {
    * names why — so a caller that refuses on "nothing applied" already refuses this.
    */
   readonly refused: boolean;
+  /**
+   * T1508b: node NAME → key → the stored form this recall writes, for every value in
+   * `applied` — the recall's END, which a timeline cue applies as a driver without writing
+   * it (`presetRecallEnd`). Layer switches are not in it: they are `setNodeUi` operations.
+   */
+  readonly after: Readonly<Record<string, Readonly<Record<string, StoredParameter>>>>;
+}
+
+/**
+ * T1508b — WHAT A RECALL WOULD LEAVE ON SCREEN, without doing it: the planner's `after` map
+ * (shots expanded, ruling 4's skips applied — the same planner a pad and a GO run, so a
+ * timed cue cannot disagree with a fired one about a preset), the layers it would switch
+ * (which a timed cue skips: on/off is structural, §T1537b), and the planner's own warnings.
+ * A cut with no clock, so no morph record is planned and nothing reads a clock (§V44).
+ */
+export function presetRecallEnd(
+  graph: GraphDocument,
+  registry: NodeRegistryView,
+  bankNode: GraphNode,
+  preset: Preset,
+): Pick<PresetRecallPlan, "after" | "skipped" | "diagnostics" | "refused"> & { readonly layers: readonly NodeId[] } {
+  const plan = planPresetRecall(graph, registry, bankNode, preset);
+  const layers = plan.operations.flatMap((operation) => (operation.op === "setNodeUi" ? [operation.nodeId] : []));
+  return { after: plan.after, skipped: plan.skipped, diagnostics: plan.diagnostics, refused: plan.refused, layers };
 }
 
 export interface PresetRecallPlanOptions {
@@ -533,7 +557,7 @@ export function planPresetRecall(
 
   const expansion = expandRecalls(graph, { bank: bankNode, preset, depth: 0 }, skip);
   if (!expansion.ok) {
-    return { operations: [], applied: [], skipped, diagnostics: [...diagnostics, expansion.diagnostic], morph: null, refused: true };
+    return { operations: [], applied: [], skipped, diagnostics: [...diagnostics, expansion.diagnostic], morph: null, refused: true, after: {} };
   }
 
   /*
@@ -746,7 +770,7 @@ export function planPresetRecall(
       operations.push({ op: "setParameters", nodeId: bankId, parameters: elsewhere.get(bankId) ?? {} });
     }
   }
-  return { operations, applied, skipped, diagnostics, morph, refused: false };
+  return { operations, applied, skipped, diagnostics, morph, refused: false, after };
 }
 
 /** The bank's own parameters, through the one read path (§V61). */

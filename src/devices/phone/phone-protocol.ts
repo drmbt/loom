@@ -120,6 +120,12 @@ export type PhoneWidget =
       readonly next: string | null;
       readonly canGo: boolean;
       readonly canBack: boolean;
+      /**
+       * T1508b: the list follows the timeline. `current` / `next` are then where the
+       * playhead is, GO / BACK / standby are refused (`cue.timeline`), and the phone shows
+       * the list read-only.
+       */
+      readonly following: boolean;
     };
 
 /** A Panel's row, with widget names already resolved to what the phone may draw. */

@@ -1048,8 +1048,12 @@ const CLIENT = String.raw`
       var names = Array.isArray(c.cues) ? c.cues : [];
       var notes = Array.isArray(c.notes) ? c.notes : [];
       function noteOf(index) { return index >= 0 && typeof notes[index] === "string" ? notes[index] : ""; }
+      // T1508b: a list that follows the timeline is shown, not driven: where the playhead
+      // has it, with every press off and the reason on them.
+      var following = c.following === true;
+      root.setAttribute("data-following", following ? "true" : "false");
       if (now !== null) {
-        now.textContent = c.current || "—";
+        now.textContent = (following ? "⏱ " : "") + (c.current || "—");
         next.textContent = c.next || "—";
         nextNote.textContent = noteOf(names.indexOf(c.next));
       }
@@ -1057,7 +1061,12 @@ const CLIENT = String.raw`
       // What Loom would refuse is not offered: GO past the end, BACK before the first cue.
       go.disabled = c.canGo !== true;
       back.disabled = c.canBack !== true;
+      var reason = following ? "Follows the timeline: move the playhead in Loom." : "";
+      go.title = reason;
+      back.title = reason;
       cueButtons.forEach(function (b) {
+        b.disabled = following;
+        b.title = reason;
         var name = b.getAttribute("data-cue");
         b.classList.toggle("on", name === c.current);
         b.classList.toggle("standby", name === c.next);

@@ -35,6 +35,27 @@ export const CUE_LIST_NODE_TYPE = "cueList";
 export const CUE_GO_COMMAND = "cue.go";
 export const CUE_BACK_COMMAND = "cue.back";
 
+/**
+ * T1508b — WHAT DRIVES A LIST, its `follow` parameter: `live` (GO, BACK and fire; the
+ * default) or `timeline` (the list is a pure function of the playhead: each cue applies at
+ * its `at`, as a driver through the resolver, and an export reproduces it frame for frame —
+ * `timeline-cues.ts`). One parameter, so switching back to live is one undoable edit.
+ */
+export const CUE_FOLLOW_LIVE = "live";
+export const CUE_FOLLOW_TIMELINE = "timeline";
+export type CueFollow = typeof CUE_FOLLOW_LIVE | typeof CUE_FOLLOW_TIMELINE;
+
+/**
+ * T1508b — THE FRAME A TIMED CUE IS REACHED ON, at `rate` frames per timeline second: the
+ * first frame whose time is not before `at`. Decided as a frame INDEX, never by comparing
+ * `n / fps >= at` as floats, which can disagree by an ulp on the very frame a cue sits on.
+ * The `1e-9` absorbs `at * rate` landing an ulp above a whole frame (0.28 s × 25 is
+ * 7.000000000000001, which a bare ceil would make frame 8).
+ */
+export function cueReachFrame(at: number, rate: number): number {
+  return Math.ceil(at * rate - 1e-9);
+}
+
 export interface CueList {
   readonly version: 1;
   readonly cues: readonly Cue[];
@@ -50,6 +71,12 @@ export interface Cue {
   readonly morph?: MorphSpec;
   /** Operator's note, shown on the Panel and the phone. */
   readonly note?: string;
+  /**
+   * T1508b: where a list that FOLLOWS THE TIMELINE reaches this cue, in timeline seconds
+   * (`time` — absolute, not relative to the in point). Read only while the list's `follow`
+   * is `timeline`; a live list ignores it, so a show can be timed before it is switched over.
+   */
+  readonly at?: number;
 }
 
 /** The list as the `cues` parameter stores it. Two-space indent: it is hand-editable. */
@@ -128,6 +155,11 @@ function parseCue(entry: unknown, index: number): { ok: true; cue: Cue } | { ok:
   if (note !== undefined) {
     if (typeof note !== "string") return { ok: false, reason: `${where}: note must be text` };
     cue = { ...cue, note };
+  }
+  const at = entry["at"];
+  if (at !== undefined) {
+    if (typeof at !== "number" || !Number.isFinite(at) || at < 0) return { ok: false, reason: `${where}: at must be a time in seconds, 0 or more` };
+    cue = { ...cue, at };
   }
   return { ok: true, cue };
 }

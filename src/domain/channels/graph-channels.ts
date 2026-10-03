@@ -6,6 +6,7 @@ import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { effectiveParameterSchema, resolveParameterSchema, type ChannelResolver, type ParameterMorphs } from "../parameters/resolve.ts";
 import { nodeNames } from "../graph/names.ts";
 import { hasMorphRecords } from "../presets/morph-index.ts";
+import { hasTimelineCueLists } from "../presets/timeline-cues.ts";
 import { storedStaticValue } from "../parameters/slots.ts";
 import { defaultParameterValue } from "../parameters/validate.ts";
 
@@ -139,9 +140,12 @@ const ZERO_FRAME: FrameEvaluationInput = {
  * This is the per-REVISION half of the question; whether a record still has a fade to do
  * is a question about a frame (`ParameterMorphs.activeAt`), and the frame loop asks that
  * one too, so a finished fade stops costing a per-frame resolve.
+ *
+ * T1508b: or a cue list FOLLOWS THE TIMELINE — its cues drive their keys from the playhead
+ * and store nothing, so, like a morph, no slot mode gives them away.
  */
 export function hasAnimatedParameters(graph: GraphDocument): boolean {
-  return Object.values(graph.nodes).some(nodeHasAnimatedParameters) || hasMorphRecords(graph);
+  return Object.values(graph.nodes).some(nodeHasAnimatedParameters) || hasMorphRecords(graph) || hasTimelineCueLists(graph);
 }
 
 /**

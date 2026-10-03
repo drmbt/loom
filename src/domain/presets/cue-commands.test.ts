@@ -617,6 +617,11 @@ describe("the cue.list query reports cues, current, standby, the derived next an
         wrap: false,
         keys: true,
         morphs: [{ bank: "fx", preset: "dirty", start: 5, seconds: 2, curve: "linear", progress: 0.25 }],
+        // T1508b: a live list — no timeline position, nothing skipped.
+        follow: "live",
+        timelineCurrent: null,
+        timelineNext: null,
+        warnings: [],
       },
     ]);
 
@@ -732,5 +737,55 @@ describe("renaming a bank carries the cues that name it (§V128, T1500b)", () =>
     // The originals are untouched: neither the first blur nor the first bank's `current`.
     expect(value(store, "blur", "radius")).toBe(4);
     expect(value(store, "looks", "current") ?? "").toBe("");
+  });
+});
+
+describe("T1508b — a list that follows the timeline is all-timed: GO, BACK and fire are refused by name", () => {
+  const TIMED: readonly Cue[] = [
+    { name: "1", bank: "looks", preset: "a", at: 1 },
+    { name: "2", bank: "fx", preset: "dirty", morph: CUE_MORPH, at: 2 },
+    { name: "3", bank: "looks", preset: "b" },
+  ];
+  const timed = (): Session => session(stage([], cueList("list", "set", TIMED, { follow: "timeline" })));
+
+  it("GO (named, and from the keys), BACK and fire are refused with cue.timeline, and the document is untouched", async () => {
+    const { bus, store } = timed();
+    const before = snapshot(store);
+    const attempts = [
+      await go(bus),
+      await go(bus, BARE),
+      await back(bus),
+      await bus.execute("cue.fire", { nodeId: "list", cue: "2" }, contextFor(alice)),
+    ];
+    for (const result of attempts) {
+      expect(result.status).toBe("rejected");
+      expect(codes(result)).toEqual(["cue.timeline"]);
+      expect(result.diagnostics[0]?.message).toContain("follows the timeline; move the playhead");
+      expect(result.output.ok).toBe(false);
+    }
+    expect(snapshot(store)).toEqual(before);
+    expect(value(store, "blur", "radius")).toBe(4);
+  });
+
+  it("the legitimate case: the SAME list switched back to live fires on GO", async () => {
+    const { bus, store } = timed();
+    await set(bus, store, "list", { follow: "live" });
+    const result = await go(bus);
+    expect(result.status).toBe("applied");
+    expect(value(store, "blur", "radius")).toBe(10);
+  });
+
+  it("cue.list reports follow, where the playhead has the list at the app's clock, and what the timeline skips", async () => {
+    const { bus, at } = timed();
+    const report = async () => (await bus.query("cue.list", { nodeId: "list" }, contextFor(alice))).lists[0];
+    // No clock attached (headless): no timeline position to report, and GO would fire nothing.
+    expect(await report()).toMatchObject({ follow: "timeline", timelineCurrent: null, timelineNext: null, next: null });
+    at({ epoch: "show", absTimeSeconds: 99, timeSeconds: 1.5, timelineRate: 30 });
+    expect(await report()).toMatchObject({ follow: "timeline", timelineCurrent: "1", timelineNext: "2", current: "", standby: "" });
+    at({ epoch: "show", absTimeSeconds: 99, timeSeconds: 59 / 30, timelineRate: 30 });
+    expect(await report()).toMatchObject({ timelineCurrent: "1", timelineNext: "2" });
+    at({ epoch: "show", absTimeSeconds: 99, timeSeconds: 60 / 30, timelineRate: 30 });
+    expect(await report()).toMatchObject({ timelineCurrent: "2", timelineNext: null });
+    expect((await report())?.warnings).toEqual(['Cue "3" (set) has no At time, so the timeline skips it.']);
   });
 });

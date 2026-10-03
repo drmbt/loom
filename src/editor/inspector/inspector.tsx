@@ -42,7 +42,7 @@ import type { WindowSectionSurface } from "./window-section.tsx";
 import { ComponentSection, componentSectionParameters } from "./component-section.tsx";
 import { PresetBankSection, presetBankSectionParameters } from "./preset-bank-section.tsx";
 import { CueListSection, cueListSectionParameters } from "./cue-list-section.tsx";
-import { CUE_LIST_NODE_TYPE, PRESETS_NODE_TYPE } from "@domain/presets/index.ts";
+import { CUE_LIST_NODE_TYPE, PRESETS_NODE_TYPE, followsTimeline } from "@domain/presets/index.ts";
 import { isComponentNodeType } from "@domain/components/component-type.ts";
 import { supportsChannelMask } from "@domain/graph/channel-mask.ts";
 import { LASER_OUT_TYPE } from "@nodes/definitions/laser-out.ts";
@@ -983,6 +983,7 @@ export function Inspector({
       current={text("current").trim()}
       standby={text("standby").trim()}
       wrap={resolved.values["wrap"] === true}
+      follow={followsTimeline(node)}
       graph={graph}
       bus={bus}
       context={context}

@@ -136,6 +136,12 @@ export interface ParameterMorphStep {
   readonly to: StoredParameter;
   /** Progress at the frame, 0..1, with the record's curve already applied. */
   readonly progress: number;
+  /**
+   * T1508b: a TIMELINE CUE's step. Its `to` is the cue's end, which the document does NOT
+   * store (a timed cue applies as a driver and writes nothing), so the fold resolves it
+   * rather than taking the settled value for the newest step.
+   */
+  readonly timed?: true;
 }
 
 /**
@@ -905,8 +911,12 @@ function resolveStoredAt(
   let value: ParameterValue | undefined = resolveStored(ends, key, definition, (steps[0] as ParameterMorphStep).from).value;
   for (let index = 0; index < steps.length; index += 1) {
     const step = steps[index] as ParameterMorphStep;
-    const target = index === steps.length - 1 ? settled.value : resolveStored(ends, key, definition, step.to).value;
-    value = blendValues(definition, value, target, step.progress);
+    // T1508b: a timed step's end is the CUE's, never the stored slot, so it is resolved; and
+    // a timed step that has arrived IS its end — exactly, with no `mix(a, b, 1)` rounding —
+    // which is also how a type with no in-between (an enum, a string) cuts at its cue.
+    const target =
+      index === steps.length - 1 && step.timed !== true ? settled.value : resolveStored(ends, key, definition, step.to).value;
+    value = step.timed === true && step.progress >= 1 ? target : blendValues(definition, value, target, step.progress);
     if (value === undefined) return settled;
   }
   if (validateParameterValue(key, definition, value, context.node.id) !== null) return settled;

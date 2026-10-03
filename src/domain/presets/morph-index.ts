@@ -9,6 +9,7 @@ import { effectiveParameterSchema, resolveParameter, type ParameterMorphStep, ty
 import { componentAddressedDefinition, componentNamesFor, isParameterSlot, parseComponentKey } from "../parameters/slots.ts";
 import { PRESETS_NODE_TYPE } from "./bank.ts";
 import { easeMorph, morphProgress, parseMorphRecords, sameStored, type MorphRecord } from "./morph.ts";
+import { buildTimelineCueIndex, withTimelineCues } from "./timeline-cues.ts";
 
 /**
  * T1497b (§T1398b S2) — THE MORPH INDEX: every bank's records, turned once per document
@@ -189,7 +190,88 @@ export interface MorphIndexInput {
     | undefined;
 }
 
+/**
+ * THE MORPH INDEX the resolver reads: the recall morphs below, and — T1508b — the cue lists
+ * that follow the timeline (`timeline-cues.ts`), which outrank a recall's fade on the keys
+ * they cover. One index, so the three builders (compile, flatten, the Dawn harness) get both
+ * by construction and `keysOf` / `activeAt` cover both (the design doc §2.2 Q2, §2.4).
+ */
 export function buildMorphIndex(input: MorphIndexInput): ParameterMorphs {
+  return withTimelineCues(buildRecallMorphIndex(input), buildTimelineCueIndex(input));
+}
+
+/**
+ * T1508b — the internal parameters a ROOT key reaches through flattening, for the timeline
+ * cues: the same rule `buildRecallMorphIndex` applies inline to a recall's chain (the
+ * module note's "Inside a component" and "An end travels as what flattening WROTE"), with
+ * `accepts` in place of `morphableKey` — a timed cue also CUTS keys that cannot fade.
+ * Each target's `end` turns a root end into the one flattening would have written there.
+ * Kept beside, not merged into, the inline copy while §T1505b reworks that loop; the two
+ * are one rule and should become one function.
+ */
+export function publishedTargets(
+  input: MorphIndexInput,
+  rootNode: GraphNode,
+  key: string,
+  accepts: (definition: NodeDefinition | undefined, node: GraphNode, key: string) => boolean,
+): Array<{ readonly nodeId: NodeId; readonly key: string; readonly node: GraphNode; readonly definition: NodeDefinition | undefined; end(stored: StoredParameter): StoredParameter | undefined }> {
+  const { registry } = input;
+  const graph = input.flattened?.graph ?? input.document;
+  const fanOut = (address: string): Array<{ nodeId: NodeId; key: string; baked: boolean }> | undefined => {
+    let found: Array<{ nodeId: NodeId; key: string; baked: boolean }> | undefined;
+    for (const [flatId, keys] of input.flattened?.publishedOrigins ?? []) {
+      for (const [flatKey, origin] of Object.entries(keys)) {
+        if (`${origin.nodeId}\u0000${origin.key}` !== address) continue;
+        (found ??= []).push({ nodeId: flatId, key: flatKey, baked: origin.baked === true });
+      }
+    }
+    return found;
+  };
+  const direct = fanOut(`${rootNode.id}\u0000${key}`);
+  const channel = direct === undefined ? parseComponentKey(key) : null;
+  const published = channel === null ? key : channel.base;
+  const targets = direct ?? (channel === null ? undefined : fanOut(`${rootNode.id}\u0000${published}`));
+  if (targets === undefined) return [];
+  const schema =
+    input.flattened?.instanceSchemas?.get(rootNode.id) ?? effectiveParameterSchema(registry.get(rootNode.type), rootNode.parameters);
+  const publishedDefinition = schema[published];
+  const position =
+    channel === null || publishedDefinition === undefined ? -1 : (componentNamesFor(publishedDefinition)?.indexOf(channel.component) ?? -1);
+  if (channel !== null && position < 0) return [];
+  const slotInside = travelsAsSlot(rootNode.parameters[published]);
+  const baked = new Map<StoredParameter, StoredParameter | undefined>();
+  const bake = (stored: StoredParameter): StoredParameter | undefined => {
+    if (!baked.has(stored)) baked.set(stored, bakedEnd(rootNode, schema, key, stored));
+    return baked.get(stored);
+  };
+  const found: ReturnType<typeof publishedTargets> = [];
+  for (const target of targets) {
+    const internal = graph.nodes[target.nodeId];
+    if (internal === undefined) continue;
+    const definition = registry.get(internal.type);
+    let targetKey = target.key;
+    if (channel !== null) {
+      if (slotInside && !target.baked) continue;
+      const targetDefinition = effectiveParameterSchema(definition, internal.parameters)[target.key];
+      const name = targetDefinition === undefined ? undefined : componentNamesFor(targetDefinition)?.[position];
+      if (name === undefined) continue;
+      targetKey = `${target.key}.${name}`;
+      if (internal.parameters[targetKey] !== undefined) continue;
+    }
+    if (!accepts(definition, internal, targetKey)) continue;
+    found.push({
+      nodeId: target.nodeId,
+      key: targetKey,
+      node: internal,
+      definition,
+      end: (stored) => (channel === null && !target.baked && travelsAsSlot(stored) ? stored : bake(stored)),
+    });
+  }
+  return found;
+}
+
+/** T1497b's index of the recall morphs in the banks' `morphs` records (the module note). */
+function buildRecallMorphIndex(input: MorphIndexInput): ParameterMorphs {
   const { document, registry } = input;
   const banks = bankMorphRecords(document);
   if (banks.length === 0) return NO_MORPHS;

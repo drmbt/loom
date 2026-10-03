@@ -5,6 +5,7 @@ import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import { projectFps, projectRange } from "@domain/types/graph.ts";
+import { timelineRate } from "@domain/presets/timeline-cues.ts";
 import type { FrameRange, ProjectSettings } from "@domain/types/graph.ts";
 import type { FrameInputs } from "@domain/types/backend.ts";
 import type { AudioFeatures } from "@domain/types/frame.ts";
@@ -557,7 +558,8 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
     bus.attachFrameClock(() => {
       const frame = latestFrameRef.current?.frame;
       if (frame?.absEpoch === undefined || frame.absTimeSeconds === undefined) return undefined;
-      return { epoch: frame.absEpoch, absTimeSeconds: frame.absTimeSeconds };
+      // T1508b: the timeline reading of the same frame — where a timed cue list is.
+      return { epoch: frame.absEpoch, absTimeSeconds: frame.absTimeSeconds, timeSeconds: frame.timeSeconds, timelineRate: timelineRate(frame) };
     });
   }, [bus]);
 

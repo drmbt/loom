@@ -1210,7 +1210,7 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
   const LOOKS = { kind: "preset", handle: "h-looks", caption: "looks", presets: ["soft", "hard", "strobe"], current: "soft", morphing: false } as const;
   const FX = { kind: "layer", handle: "h-fx", caption: "fx", on: true, opacity: 0.5, opacityWritable: true, picture: "" } as const;
   const KEY = { kind: "layer", handle: "h-key", caption: "key", on: false, opacity: 1, opacityWritable: true, picture: "" } as const;
-  const SET = { kind: "cueList", handle: "h-set", caption: "set", cues: ["1", "2", "3"], notes: ["", "", ""], current: "1", next: "2", canGo: true, canBack: false } as const;
+  const SET = { kind: "cueList", handle: "h-set", caption: "set", cues: ["1", "2", "3"], notes: ["", "", ""], current: "1", next: "2", canGo: true, canBack: false, following: false } as const;
 
   /** A board holding all three kinds; `over` replaces fields of a widget by handle. */
   function show(seq: number, over: Record<string, Record<string, unknown>> = {}): PhoneSnapshot {
@@ -1421,6 +1421,28 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
     page.snapshot(show(4, { "h-set": { current: "3", next: null, canGo: false, canBack: true } }));
     expect(cueLine(page)).toBe("3▸—");
     expect(go.disabled).toBe(true);
+  });
+
+  it("T1508b: a list that follows the timeline is shown, not driven — every press off, the reason on it, and nothing on the wire", async () => {
+    const page = openPage();
+    page.snapshot(show(1, { "h-set": { following: true, current: "2", next: "3", canGo: false, canBack: false } }));
+    const go = part(page, ".w.cueList .go") as HTMLButtonElement;
+    const back = part(page, ".w.cueList .back") as HTMLButtonElement;
+    const cue = part(page, '.w.cueList [data-cue="1"]') as HTMLButtonElement;
+    expect(cueLine(page)).toBe("⏱ 2▸3");
+    for (const button of [go, back, cue]) {
+      expect(button.disabled).toBe(true);
+      expect(button.title).toContain("Follows the timeline");
+    }
+    go.click();
+    back.click();
+    cue.click();
+    await page.drain();
+    expect(sets(page)).toEqual([]);
+    // Back to live at the desk: the list is pressable again.
+    page.snapshot(show(2, { "h-set": { following: false, current: "2", next: "3", canGo: true, canBack: true } }));
+    expect([go.disabled, back.disabled, cue.disabled]).toEqual([false, false, false]);
+    expect(cueLine(page)).toBe("2▸3");
   });
 
   it("lays each out by the desk's own rule for the rect, so the phone shows the owner's arrangement", () => {

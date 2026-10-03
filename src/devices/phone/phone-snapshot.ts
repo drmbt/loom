@@ -19,6 +19,7 @@ import {
   type CuePosition,
 } from "../../domain/presets/cue-list.ts";
 import { morphRunning, parseMorphRecords, type MorphRecord } from "../../domain/presets/morph.ts";
+import { followsTimeline, timelineCuePosition } from "../../domain/presets/timeline-cues.ts";
 import { layerNode } from "../../nodes/definitions/layer.ts";
 import {
   CONTROL_WIDGET_TYPES,
@@ -324,6 +325,28 @@ function cueState(node: GraphNode): { readonly list: CueList | null; readonly po
   };
 }
 
+/** T1508b: where a following list is at the clock's playhead; nowhere with no clock (no frame loop). */
+function timelinePosition(list: CueList | null, clock: FrameClock | undefined): { current: string | null; next: string | null } {
+  if (list === null || clock?.timeSeconds === undefined || clock.timelineRate === undefined) return { current: null, next: null };
+  return timelineCuePosition(list, clock.timeSeconds, clock.timelineRate);
+}
+
+/**
+ * T1508b — the timeline positions behind the following lists in the snapshot built at
+ * `clock`, as one string. A crossing changes nothing in the document, so the door compares
+ * this once a frame and republishes exactly when a cue is crossed (the `morphing` rule).
+ * Empty when no published list follows the timeline.
+ */
+export function publishedTimelinePositions(graph: GraphDocument, clock: FrameClock | undefined): string {
+  const positions: string[] = [];
+  for (const node of publishedMembers(graph).values()) {
+    if (memberKind(node) !== "cueList" || !followsTimeline(node)) continue;
+    const at = timelinePosition(cueState(node).list, clock);
+    positions.push(`${node.id}\u0000${at.current ?? ""}\u0000${at.next ?? ""}`);
+  }
+  return positions.join("\u0001");
+}
+
 function memberWidget(graph: GraphDocument, node: GraphNode, kind: MemberKind, clock: FrameClock | undefined): PhoneWidget {
   const handle = node.id;
   const caption = controlNameOf(node);
@@ -353,17 +376,26 @@ function memberWidget(graph: GraphDocument, node: GraphNode, kind: MemberKind, c
     }
     case "cueList": {
       const { list, position } = cueState(node);
+      const cues = list === null ? [] : list.cues.map((cue) => cue.name);
+      const notes = list === null ? [] : list.cues.map((cue) => cue.note?.trim() ?? "");
+      // T1508b: a list that follows the timeline is read-only here — where the playhead
+      // has it, on the page's frame clock, and nothing a phone may press.
+      if (followsTimeline(node)) {
+        const at = timelinePosition(list, clock);
+        return { kind, handle, caption, cues, notes, current: at.current, next: at.next, canGo: false, canBack: false, following: true };
+      }
       const next = list === null ? null : nextCueName(list, position);
       return {
         kind,
         handle,
         caption,
-        cues: list === null ? [] : list.cues.map((cue) => cue.name),
-        notes: list === null ? [] : list.cues.map((cue) => cue.note?.trim() ?? ""),
+        cues,
+        notes,
         current: position.current || null,
         next,
         canGo: next !== null,
         canBack: list !== null && previousCue(list, position).ok,
+        following: false,
       };
     }
   }
@@ -589,6 +621,8 @@ function vetMember(node: GraphNode, kind: MemberKind, set: PhoneSet): PhoneVet {
     case "cueList": {
       const live = pressOnly(key === "standby" ? "a standby" : key === "go" ? "a GO" : "a BACK");
       if (live !== null) return live;
+      // T1508b: `cue.timeline`'s reason, said before anything is asked of the bus.
+      if (followsTimeline(node)) return no(`“${caption}” follows the timeline; move the playhead. A phone cannot fire its cues.`);
       if (key === "standby") {
         const { list } = cueState(node);
         if (typeof value !== "string" || list === null || !list.cues.some((cue) => cue.name === value)) {

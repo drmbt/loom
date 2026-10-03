@@ -237,6 +237,12 @@ export interface HarnessControl {
    * or re-point a resource through here.
    */
   updateUniforms(passId: string, values: Record<string, number | number[]>): void;
+  /**
+   * T1508b — a LAP: the timeline wraps to `frameIndex` and keeps running, exactly the
+   * transport's own `wrapTo` (T464) — the clock changes, nothing is cleared, and the
+   * absolute clock keeps counting. What lets a gate render "frame 45 on the second lap".
+   */
+  wrapTo(frameIndex: number): void;
   readonly outputResourceId: string;
   readonly plan: CompiledGraph;
 }
@@ -862,9 +868,16 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
       (nodeId) => logicalGraph.nodes[nodeId as keyof typeof logicalGraph.nodes]?.type,
     );
 
+    // §V45: the seed is the project's, not the transport's own invention. Hoisted so the
+    // control below can wrap it (T1508b).
+    const transport = offlineTransport({ fps, seed: settings.randomSeed, mode: "fixed-step", ...(request.subframes === undefined ? {} : { subframes: request.subframes }), ...(request.startFrame === undefined ? {} : { startFrame: request.startFrame }), ...(request.absEpoch === undefined ? {} : { epoch: request.absEpoch }) });
     const control: HarnessControl = {
       resize: (outputId, size) => {
         backend.resize(outputId, size);
+      },
+      wrapTo: (frameIndex) => {
+        if (transport.wrapTo === undefined) throw new Error("The offline transport has no wrapTo; a lap cannot be rendered.");
+        transport.wrapTo(frameIndex);
       },
       // B186: byte for byte the call `use-frame-loop` makes at a document boundary.
       resetTemporalHistory: () => {
@@ -949,8 +962,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
     const driver = createFrameDriver({
       backend,
       ...(audioSeam === undefined ? {} : { audio: audioSeam }),
-      // §V45: the seed is the project's, not the transport's own invention.
-      transport: offlineTransport({ fps, seed: settings.randomSeed, mode: "fixed-step", ...(request.subframes === undefined ? {} : { subframes: request.subframes }), ...(request.startFrame === undefined ? {} : { startFrame: request.startFrame }), ...(request.absEpoch === undefined ? {} : { epoch: request.absEpoch }) }),
+      transport,
       pointer: pointerSource,
       resolution: () => [settings.outputResolution.width, settings.outputResolution.height],
       ...(valueSession === null || animator === null

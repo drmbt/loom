@@ -11,6 +11,8 @@ import { PRESETS_NODE_TYPE, parsePresetBank, type MorphCurve, type MorphSpec, ty
 import { planPresetRecall, presetMorph } from "./commands.ts";
 import {
   CUE_BACK_COMMAND,
+  CUE_FOLLOW_LIVE,
+  CUE_FOLLOW_TIMELINE,
   CUE_GO_COMMAND,
   CUE_LIST_NODE_TYPE,
   cueAfter,
@@ -20,11 +22,13 @@ import {
   previousCue,
   standbyCue,
   type Cue,
+  type CueFollow,
   type CueList,
   type CuePick,
   type CuePosition,
 } from "./cue-list.ts";
 import { morphProgress, morphRunning, parseMorphRecords } from "./morph.ts";
+import { followsTimeline, timelineCuePosition, timelineCueWarnings } from "./timeline-cues.ts";
 
 /**
  * T1500b (§T1398b S5, ruling 15) — `cue.go`, `cue.back`, `cue.fire`, `cue.setStandby` and
@@ -69,9 +73,10 @@ import { morphProgress, morphRunning, parseMorphRecords } from "./morph.ts";
  * naming the lists, rather than guessing which show the operator is running.
  *
  * The handlers read NO clock (§V44): the morph is stamped from `context.frameClock`, which
- * the planner takes as given. Timeline-placed cues, which an export would reproduce, are
- * §T1508b; a live GO is not re-performed by a render, and the list's `go` / `back` pulses
- * are among the commands a take does not fire (`RENDER_BLOCKED_PULSE_COMMANDS`).
+ * the planner takes as given. A live GO is not re-performed by a render, and the list's
+ * `go` / `back` pulses are among the commands a take does not fire
+ * (`RENDER_BLOCKED_PULSE_COMMANDS`). What an export DOES reproduce is a list that follows
+ * the timeline (§T1508b, `timeline-cues.ts`): GO, BACK and fire refuse it (`cue.timeline`).
  */
 
 declare module "../types/commands.ts" {
@@ -166,6 +171,18 @@ export interface CueListReport {
   readonly keys: boolean;
   /** Empty with no frame clock attached (headless): there is no transport to fade on. */
   readonly morphs: readonly CueMorphReport[];
+  /** T1508b: `live` (GO / BACK) or `timeline` (the cues follow the playhead by their `at`). */
+  readonly follow: CueFollow;
+  /**
+   * T1508b: while it follows the timeline, the newest timed cue the playhead has reached at
+   * the app's frame clock, and the next one. `null` when none, when the list is live, or
+   * with no frame clock attached (headless): `current` / `standby` are not written by a
+   * timed list.
+   */
+  readonly timelineCurrent: string | null;
+  readonly timelineNext: string | null;
+  /** T1508b: what the timeline skips on this list and why — untimed cues, structural keys, overlaps. */
+  readonly warnings: readonly string[];
 }
 
 export interface CueListQueryOutput {
@@ -381,6 +398,23 @@ function fireCue(
   const found = requireList(context, nodeId, keyed);
   if (!found.ok) return fireRefusal(revision, [found.diagnostic]);
   const { node, list, position } = found;
+  // T1508b (owner ruling 3): a list that follows the timeline is all-timed. GO cannot move
+  // the playhead, and firing would write values the timeline outranks on screen anyway.
+  if (followsTimeline(node)) {
+    return fireRefusal(
+      revision,
+      [
+        diagnostic(
+          "error",
+          "cue.timeline",
+          `Cue list "${nameOf(node)}" follows the timeline; move the playhead. Nothing was fired.`,
+          node.id,
+          "Switch its Follow to Live to fire cues by hand, or run manual cues from a second, live list.",
+        ),
+      ],
+      position,
+    );
+  }
 
   const picked = pick(list, position);
   if (!picked.ok) {
@@ -495,6 +529,11 @@ function reportList(bus: LoomBus, graph: GraphDocument, node: GraphNode): CueLis
       }
     }
   }
+  const following = followsTimeline(node);
+  const timeline =
+    following && clock?.timeSeconds !== undefined && clock.timelineRate !== undefined
+      ? timelineCuePosition(list, clock.timeSeconds, clock.timelineRate)
+      : { current: null, next: null };
   return {
     nodeId: node.id,
     name: nameOf(node),
@@ -502,10 +541,15 @@ function reportList(bus: LoomBus, graph: GraphDocument, node: GraphNode): CueLis
     cues: list.cues,
     current: position.current,
     standby: position.standby,
-    next: parsed.ok ? nextCueName(list, position) : null,
+    // A timed list refuses GO, so there is no cue GO "would fire".
+    next: parsed.ok && !following ? nextCueName(list, position) : null,
     wrap: position.wrap,
     keys: values["keys"] === true,
     morphs,
+    follow: following ? CUE_FOLLOW_TIMELINE : CUE_FOLLOW_LIVE,
+    timelineCurrent: timeline.current,
+    timelineNext: timeline.next,
+    warnings: timelineCueWarnings(graph, bus.registry, node.id).map((warning) => warning.diagnostic.message),
   };
 }
 

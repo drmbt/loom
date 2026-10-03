@@ -340,4 +340,46 @@ describe("T1501b — the cue list's section: the table, the standby, GO and BACK
     expect(nodeOf(runtime, list).parameters["current"]).toBe("opener");
     expect(position()).toBe("opener ▸ 2");
   });
+
+  it("T1508b: times a cue (typed and from the playhead), follows the timeline, and then GO is off with the reason — each edit one undo step", async () => {
+    const { runtime, ids } = await show();
+    const list = ids["$set"]!;
+    // The page's frame clock: the last frame drew the playhead at 2.5 s.
+    runtime.bus.attachFrameClock(() => ({ epoch: "e", absTimeSeconds: 9, timeSeconds: 2.5, timelineRate: 30 }));
+    await press(within(section()).getByRole("button", { name: "Add cue" }));
+    await press(within(section()).getByRole("button", { name: "Add cue" }));
+    let depth = undoDepth(runtime);
+
+    await type(within(section()).getByRole("spinbutton", { name: "At for cue 1" }), "1.5");
+    expect(undoDepth(runtime)).toBe(depth + 1);
+    depth += 1;
+    expect(cuesOf(runtime, list)[0]?.at).toBe(1.5);
+
+    await press(within(section()).getByRole("button", { name: "Set cue 2 to the playhead" }));
+    expect(undoDepth(runtime)).toBe(depth + 1);
+    depth += 1;
+    expect(cuesOf(runtime, list)[1]?.at).toBe(2.5);
+
+    const go = within(section()).getByRole("button", { name: "GO" }) as HTMLButtonElement;
+    expect(go.disabled).toBe(false);
+    await press(within(section()).getByRole("switch", { name: "Follow timeline" }));
+    expect(undoDepth(runtime)).toBe(depth + 1);
+    expect(nodeOf(runtime, list).parameters["follow"]).toBe("timeline");
+    // GO and BACK are off and say why; the position is the playhead's (2.5 s: past both cues).
+    const goNow = within(section()).getByRole("button", { name: "GO" }) as HTMLButtonElement;
+    expect(goNow.disabled).toBe(true);
+    expect(goNow.title).toContain("follows the timeline");
+    expect(section().querySelector("[data-cue-position]")?.textContent).toBe("⏱ 2 ▸ —");
+    expect(section().querySelector("[data-timeline-warnings]")).toBeNull();
+
+    // A cue with no time is said, by name, under the controls.
+    await type(within(section()).getByRole("spinbutton", { name: "At for cue 1" }), "");
+    expect(section().querySelector("[data-timeline-warnings]")?.textContent).toContain('Cue "1" (set) has no At time');
+
+    // Back to live: one undo step, and GO is a button again.
+    await undo(runtime);
+    await undo(runtime);
+    expect(nodeOf(runtime, list).parameters["follow"] ?? "live").toBe("live");
+    expect((within(section()).getByRole("button", { name: "GO" }) as HTMLButtonElement).disabled).toBe(false);
+  });
 });

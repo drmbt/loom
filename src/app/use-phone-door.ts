@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
+import type { GraphDocument } from "@domain/types/graph.ts";
 import { rafScheduler, type FrameScheduler } from "@ui/controls/coalesce.ts";
 import type { DeviceClient } from "@devices/device-client.ts";
 import { DEVICE_HELPER_START } from "@devices/helper.ts";
 import type { PhoneDoorState } from "@devices/phone/phone-protocol.ts";
 import { morphRunning, type MorphRecord } from "@domain/presets/index.ts";
-import { buildPhoneSnapshot, publishedMorphs } from "@devices/phone/phone-snapshot.ts";
+import { buildPhoneSnapshot, publishedMorphs, publishedTimelinePositions } from "@devices/phone/phone-snapshot.ts";
 import type { PhoneDoorView, PhoneRefusal } from "@editor/controls/phone-door-copy.ts";
 import { createPhoneWrites } from "./phone-writes.ts";
 import type { Notice } from "./notices.tsx";
@@ -39,6 +40,10 @@ import type { Notice } from "./notices.tsx";
  * comparisons, not a rebuilt snapshot — and rebuilds exactly when one stops running (the
  * clock crossed its end, or a render zeroed the clock). Two publishes per fade, and no
  * frame callback at all while nothing fades.
+ *
+ * T1508b: a cue list that FOLLOWS THE TIMELINE moves without a document change too — the
+ * playhead crosses its cues. While one is published, the same watch compares where the
+ * playhead has each such list (`publishedTimelinePositions`) and republishes on a crossing.
  *
  * ## What it writes
  *
@@ -167,13 +172,23 @@ export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
     let cancel: (() => void) | null = null;
     /** T1503b: the fades behind the last snapshot's `morphing` flags, and the frame watch on them. */
     let fading: readonly MorphRecord[] = [];
+    /**
+     * T1508b: where the published timeline lists were at the last publish ("" when none
+     * follows), and the document that publish read — a crossing is asked of THAT document,
+     * because any edit since has a publish of its own queued.
+     */
+    let positions = "";
+    let published: GraphDocument | null = null;
     let cancelWatch: (() => void) | null = null;
     const watch = (): void => {
       cancelWatch = null;
-      // Nothing fading any more (an undo took the record away): the watch ends here.
-      if (fading.length === 0) return;
+      // Nothing fading any more (an undo took the record away) and no list following the
+      // timeline: the watch ends here.
+      if (fading.length === 0 && positions === "") return;
       const clock = bus.frameClock();
-      if (clock !== undefined && fading.every((record) => morphRunning(record, clock))) {
+      const crossed = positions !== "" && published !== null && publishedTimelinePositions(published, clock) !== positions;
+      const ended = fading.length > 0 && (clock === undefined || !fading.every((record) => morphRunning(record, clock)));
+      if (!crossed && !ended) {
         cancelWatch = schedule(watch);
         return;
       }
@@ -187,7 +202,9 @@ export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
       const clock = bus.frameClock();
       const snapshot = buildPhoneSnapshot(graph, 0, clock);
       fading = publishedMorphs(graph, clock);
-      if (fading.length > 0) cancelWatch ??= schedule(watch);
+      positions = publishedTimelinePositions(graph, clock);
+      published = graph;
+      if (fading.length > 0 || positions !== "") cancelWatch ??= schedule(watch);
       const body = JSON.stringify(snapshot.panels);
       setPublishedPanels(snapshot.panels.length);
       if (body === lastSent.current) return;
