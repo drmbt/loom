@@ -530,18 +530,23 @@ export interface PresetRecallPlan {
 /**
  * T1508b — WHAT A RECALL WOULD LEAVE ON SCREEN, without doing it: the planner's `after` map
  * (shots expanded, ruling 4's skips applied — the same planner a pad and a GO run, so a
- * timed cue cannot disagree with a fired one about a preset), the layers it would switch
- * (which a timed cue skips: on/off is structural, §T1537b), and the planner's own warnings.
- * A cut with no clock, so no morph record is planned and nothing reads a clock (§V44).
+ * timed cue cannot disagree with a fired one about a preset), the layers it would switch and
+ * which way (§T1537b: a timed cue switches them at its time, through a recompile), and the
+ * planner's own warnings. A cut with no clock, so no morph record is planned and nothing
+ * reads a clock (§V44).
  */
 export function presetRecallEnd(
   graph: GraphDocument,
   registry: NodeRegistryView,
   bankNode: GraphNode,
   preset: Preset,
-): Pick<PresetRecallPlan, "after" | "skipped" | "diagnostics" | "refused"> & { readonly layers: readonly NodeId[] } {
+): Pick<PresetRecallPlan, "after" | "skipped" | "diagnostics" | "refused"> & {
+  readonly layers: ReadonlyArray<{ readonly nodeId: NodeId; readonly bypassed: boolean }>;
+} {
   const plan = planPresetRecall(graph, registry, bankNode, preset);
-  const layers = plan.operations.flatMap((operation) => (operation.op === "setNodeUi" ? [operation.nodeId] : []));
+  const layers = plan.operations.flatMap((operation) =>
+    operation.op === "setNodeUi" && typeof operation.ui["bypassed"] === "boolean" ? [{ nodeId: operation.nodeId, bypassed: operation.ui["bypassed"] }] : [],
+  );
   return { after: plan.after, skipped: plan.skipped, diagnostics: plan.diagnostics, refused: plan.refused, layers };
 }
 

@@ -382,6 +382,36 @@ describe("T1501b — the cue list's section: the table, the standby, GO and BACK
     expect(nodeOf(runtime, list).parameters["follow"] ?? "live").toBe("live");
     expect((within(section()).getByRole("button", { name: "GO" }) as HTMLButtonElement).disabled).toBe(false);
   });
+
+  it("§T1537b: a following list that switches a layer and its picture SAYS so, and nothing it switches is written", async () => {
+    const STAGE = serializePresetBank({
+      version: 1,
+      presets: [{ name: "in", values: { layer1: { picture: "blur1" } }, on: { layer1: true } }],
+    });
+    const made = await documentWith([
+      add("blur", "blur", "blur1", { size: 9 }),
+      add("layer", "layer", "layer1", { picture: "" }),
+      add("stage", "presets", "stage", { targets: "layer1.picture", presets: STAGE }),
+      add("set", "cueList", "set", { cues: JSON.stringify({ version: 1, cues: [{ name: "drop", bank: "stage", preset: "in", at: 1 }] }) }),
+    ]);
+    const { runtime, ids } = made;
+    const layer = ids["$layer"]!;
+    await act(async () => {
+      await runtime.bus.execute("node.toggleBypass", { nodeIds: [layer] }, runtime.invocation);
+      await settle();
+    });
+    mount(runtime, ids["$set"]!);
+    // Live: nothing is said — the legitimate case the note must not swallow.
+    expect(section().querySelector("[data-timeline-structure]")).toBeNull();
+    await press(within(section()).getByRole("switch", { name: "Follow timeline" }));
+    const note = section().querySelector("[data-timeline-structure]")?.textContent ?? "";
+    expect(note).toContain("layer1.on, layer1.picture");
+    // Not a timeline WARNING any more: the structure switches, it is not skipped.
+    expect(section().querySelector("[data-timeline-warnings]")).toBeNull();
+    // The document still holds the stored structure: the layer off, no picture named.
+    expect(nodeOf(runtime, layer).ui?.bypassed).toBe(true);
+    expect(nodeOf(runtime, layer).parameters["picture"]).toBe("");
+  });
 });
 
 /**

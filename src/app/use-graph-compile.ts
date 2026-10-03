@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { compileGraphRetaining, compileLayerWarmPlan, prepareFrameCompiler } from "@compiler/index.ts";
+import { compileGraphRetaining, compileLayerWarmPlan, prepareFrameCompiler, timelineStructureRequest } from "@compiler/index.ts";
 import { humanizeDiagnostics } from "@domain/graph/index.ts";
 import { classifyGraphChange, isValuesOnly } from "./classify-revision.ts";
 import type {
@@ -16,6 +16,14 @@ import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import { analyzeReadbacks, nodeCategories, telemetryPlan } from "@runtime/telemetry/index.ts";
 import { structuralSettingsKey } from "@domain/project/settings-change.ts";
+import {
+  buildTimelineStructure,
+  DOCUMENT_STRUCTURE,
+  playheadFrame,
+  timelineRate,
+  type TimelineStructureState,
+} from "@domain/presets/timeline-cues.ts";
+import { projectFps } from "@domain/types/graph.ts";
 import type { BackendCapabilities } from "@domain/types/backend.ts";
 import type { PreviewSinkStore } from "./preview-sinks.ts";
 
@@ -148,6 +156,56 @@ export interface GraphCompileResult {
    * there is nothing to build ahead.
    */
   readonly warmPlan?: (() => CompiledGraph | null) | undefined;
+  /**
+   * §T1537b — the timeline's structure, for the frame loop: null when no following cue list
+   * cuts a structural setting, and then `compiled` is the document's plan as it always was.
+   * Otherwise `compiled` is the plan of ONE SEGMENT — the document with the timeline's
+   * structural overrides at the playhead the frame loop last asked for — and this says which.
+   */
+  readonly timeline?: TimelineStructureLink | null | undefined;
+}
+
+/** The frame reading a structure is decided on: its playhead, at its rate. */
+export type StructureFrame = Pick<FrameEvaluationInput, "timeSeconds" | "fps" | "subframes">;
+
+/**
+ * §T1537b — what the frame loop needs to switch structure at the cue frames: which segment
+ * a frame is in, which segment `compiled` is, and a way to ask for another. Asking re-keys
+ * this hook ONLY when the segment changes, so playback re-renders nothing between crossings.
+ */
+export interface TimelineStructureLink {
+  /** The segment `compiled` was built for (`""`: the document's own structure). */
+  readonly compiledKey: string;
+  /** The segment a frame's playhead is in. */
+  keyAt(frame: StructureFrame): string;
+  /** Compile the segment `frame` is in — a no-op while it is the one already asked for. */
+  request(frame: StructureFrame): void;
+}
+
+/**
+ * §T1537b: the playhead the frame loop last asked a structure for. Notifies only when the
+ * SEGMENT changes, so the hook is not re-rendered per frame (§V16).
+ */
+interface SegmentStore {
+  get(): StructureFrame | null;
+  set(frame: StructureFrame, changed: boolean): void;
+  subscribe(onChange: () => void): () => void;
+}
+
+function createSegmentStore(): SegmentStore {
+  let current: StructureFrame | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => current,
+    set(frame, changed) {
+      current = frame;
+      if (changed) for (const listener of [...listeners]) listener();
+    },
+    subscribe(onChange) {
+      listeners.add(onChange);
+      return () => listeners.delete(onChange);
+    },
+  };
 }
 
 /**
@@ -412,6 +470,52 @@ export function useGraphCompile(
   );
   const flatGraph = flattened.graph;
 
+  /**
+   * §T1537b — THE TIMELINE'S STRUCTURE, per revision, and the SEGMENT this render compiles.
+   *
+   * The frame loop asks for a playhead's segment (`TimelineStructureLink.request`) ahead of
+   * the frame that reaches a structural cue; the store notifies only when the segment
+   * changes, so between crossings nothing here re-renders. With no frame asked yet the
+   * segment is frame 0's, where the transport starts.
+   */
+  const segmentStore = useMemo(createSegmentStore, []);
+  const askedFrame = useSyncExternalStore(segmentStore.subscribe, segmentStore.get, segmentStore.get);
+  const structure = useMemo(
+    () => buildTimelineStructure({ document: graph, registry: runtime.registry, flattened }),
+    [graph, flattened, runtime],
+  );
+  const segment: TimelineStructureState =
+    structure === null
+      ? DOCUMENT_STRUCTURE
+      : askedFrame === null
+        ? structure.atFrame(0, projectFps(settings))
+        : structure.at(askedFrame);
+  const structureRef = useRef(structure);
+  structureRef.current = structure;
+  /**
+   * One request per (base request, segment), so the structural memo, the frame compiler and
+   * a precompile made by the warm-up all hold THE SAME object for a segment — the identity
+   * `prepareFrameCompiler` proves its base by (T1254) — and a precompiled segment's result
+   * is the one the crossing installs.
+   */
+  const segmentCache = useRef<{
+    base: CompileRequest | null;
+    requests: Map<string, CompileRequest>;
+    results: Map<string, CompileGraphResult>;
+  }>({ base: null, requests: new Map(), results: new Map() });
+  const segmentRequestFor = (base: CompileRequest, state: TimelineStructureState): CompileRequest => {
+    if (state.key === "") return base;
+    const cache = segmentCache.current;
+    if (cache.base !== base) segmentCache.current = { base, requests: new Map(), results: new Map() };
+    const requests = segmentCache.current.requests;
+    let held = requests.get(state.key);
+    if (held === undefined) {
+      held = timelineStructureRequest(base, state);
+      requests.set(state.key, held);
+    }
+    return held;
+  };
+
   // Cache for `project.compile`, keyed by the revision it was produced from. Only a
   // compile that actually ran is cached: "no device report" must stay a live answer, not
   // a remembered empty one.
@@ -529,6 +633,31 @@ export function useGraphCompile(
           ),
     [capabilities, channels, flattened, graph, runtime, settings, previewSinks, scheduledPreviews],
   );
+  /**
+   * §T1537b — THE REQUEST THIS RENDER COMPILES: `request` with the segment's structure
+   * applied (the request itself while the structure is the document's). Both compiles below
+   * read this one, so the frame compiler's base and the structural plan stay one request.
+   */
+  const segmentRequest = useMemo(
+    () => (request === null ? null : segmentRequestFor(request, segment)),
+    [request, segment],
+  );
+
+  /** §T1537b: the frame loop's handle on the structure; null when the timeline cuts none. */
+  const timeline = useMemo<TimelineStructureLink | null>(() => {
+    if (structure === null) return null;
+    const keyOf = (frame: StructureFrame): string => structure.at(frame).key;
+    return {
+      compiledKey: segment.key,
+      keyAt: keyOf,
+      request(frame) {
+        const asked = segmentStore.get();
+        const latest = structureRef.current;
+        const changed = latest === null || asked === null || latest.at(asked).key !== latest.at(frame).key;
+        segmentStore.set(frame, changed);
+      },
+    };
+  }, [structure, segment, segmentStore]);
 
   /**
    * The structural memo's retained compile, for the frame compiler (T1254). Written
@@ -547,7 +676,8 @@ export function useGraphCompile(
     // per-frame compile at all — which killed the component's internal EXPRESSIONS too,
     // even though flattening preserves those perfectly. Nothing was broken about the
     // expression; nothing was ever asked to evaluate it.
-    if (request === null || !hasAnimatedParameters(flatGraph)) return null;
+    if (segmentRequest === null || !hasAnimatedParameters(flatGraph)) return null;
+    const request = segmentRequest;
     /**
      * T1497b — A FADE ENDS, AND THEN THE DOCUMENT IS STILL AGAIN (the design doc §5.3).
      *
@@ -621,7 +751,7 @@ export function useGraphCompile(
       }
       return compileSafely({ ...request, resolution: { frame, channels } }).compiled;
     };
-  }, [request, channels, flatGraph, flattened, runtime]);
+  }, [segmentRequest, channels, flatGraph, flattened, runtime]);
 
   // Nothing animates: no frame compiler, no reason to show (T1254).
   useEffect(() => {
@@ -672,6 +802,13 @@ export function useGraphCompile(
     /** The STRUCTURAL projection, not the object: §V178's gate (T272). */
     settingsKey: string;
     catalogue: number;
+    /**
+     * (f) §T1537b — the timeline's SEGMENT: a structural cue reached by the playhead changes
+     * the graph that compiles with NO document edit, so a revision-keyed gate would answer
+     * "nothing changed" and keep the previous segment's plan. By key, not identity: the
+     * states are rebuilt per revision, and an unrelated edit must still reuse.
+     */
+    segment: string;
     view: CompileResultView;
   } | null>(null);
 
@@ -715,7 +852,8 @@ export function useGraphCompile(
   const result = useMemo<GraphCompileResult>(() => {
     const deps: readonly unknown[] = [
       animate,
-      request,
+      segmentRequest,
+      timeline,
       channels,
       flatGraph,
       flattened,
@@ -741,7 +879,7 @@ export function useGraphCompile(
       return answer;
     };
 
-    if (request === null) {
+    if (segmentRequest === null) {
       // No device, no plan (§V12) — but the panel still resolves, so the resolver still
       // travels. Dropping it here would make "the inspector says lfo1 is not attached"
       // true again on exactly the machines that cannot compile.
@@ -756,6 +894,7 @@ export function useGraphCompile(
         valuesOnly: false,
         resetFeedback: false,
         documentBoundary: false,
+        timeline: null,
       });
     }
     const previous = lastCompile.current;
@@ -770,7 +909,8 @@ export function useGraphCompile(
       previous.sinks === scheduledPreviews &&
       previous.capabilities === capabilities &&
       previous.settingsKey === settingsKey &&
-      previous.catalogue === catalogueRevision;
+      previous.catalogue === catalogueRevision &&
+      previous.segment === segment.key;
     const change =
       previous === null
         ? null
@@ -800,12 +940,19 @@ export function useGraphCompile(
         // The plan is the one already installed, so there is nothing new to land on.
         resetFeedback: false,
         documentBoundary: false,
+        timeline,
       });
     }
 
-    const { result: retained, compiled, diagnostics: rawDiagnostics } = compileSafely(request);
+    // §T1537b: a segment the warm-up already compiled for this very request is not compiled again.
+    const precompiled =
+      segmentCache.current.base === request ? segmentCache.current.results.get(segment.key) : undefined;
+    const { result: retained, compiled, diagnostics: rawDiagnostics } =
+      precompiled === undefined
+        ? compileSafely(segmentRequest)
+        : { result: precompiled, compiled: precompiled.compiled, diagnostics: [...precompiled.compiled.diagnostics] };
     // T1254: the base the frame compiler splices over — this compile, not a second one.
-    if (retained !== null) baseRef.current = { request, result: retained };
+    if (retained !== null) baseRef.current = { request: segmentRequest, result: retained };
     // T599: the message boundary. Every UI surface reads THIS array (problems pane,
     // inspector, shader pane, node badges), so quoted node ids resolve to display
     // labels here, once — never in the 90-odd sites that mint the messages. The
@@ -819,6 +966,7 @@ export function useGraphCompile(
       capabilities,
       settingsKey,
       catalogue: catalogueRevision,
+      segment: segment.key,
       view: { compiled, diagnostics },
     };
     return remember({
@@ -835,9 +983,32 @@ export function useGraphCompile(
       // into nothing.
       resetFeedback: change?.resetFeedback === true,
       documentBoundary: change?.documentBoundary === true,
-      warmPlan: () => compileLayerWarmPlan(request),
+      warmPlan: () => {
+        /*
+         * §T1537b — with a structural timeline, what to build ahead is the NEXT SEGMENT: its
+         * plan is compiled here, off the frame, and kept for the crossing (`precompiled`
+         * above), and its passes go to `backend.warmPasses`, so the crossing's install
+         * builds nothing. Without one — or past the last crossing — §T1507b's layers.
+         */
+        if (structure !== null) {
+          const asked = segmentStore.get();
+          const rate = asked === null ? projectFps(settings) : timelineRate(asked);
+          const playhead = asked === null ? 0 : playheadFrame(asked.timeSeconds, rate);
+          const next = structure.nextAfter(playhead, rate);
+          if (next !== null && request !== null) {
+            const nextRequest = segmentRequestFor(request, next.state);
+            const ahead = compileSafely(nextRequest).result;
+            if (ahead === null) return null;
+            if (segmentCache.current.base === request) segmentCache.current.results.set(next.state.key, ahead);
+            return ahead.compiled.ok ? ahead.compiled : null;
+          }
+        }
+        return compileLayerWarmPlan(segmentRequest);
+      },
+      timeline,
     });
-  }, [animate, request, channels, flatGraph, flattened, graph, runtime, capabilities, previewSinks, scheduledPreviews, catalogueRevision, settings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `request` is `segmentRequest`'s base; the segment cache and store are refs.
+  }, [animate, segmentRequest, timeline, channels, flatGraph, flattened, graph, runtime, capabilities, previewSinks, scheduledPreviews, catalogueRevision, settings]);
 
   const capabilitiesRef = useRef(capabilities);
   capabilitiesRef.current = capabilities;

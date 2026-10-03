@@ -4,6 +4,7 @@
  * (`morph-index.ts`). T1499b: shots — a preset's `recalls` and `on`, in the same planner.
  * T1500b: the cue list (`cue-list.ts`) and its GO / BACK / fire / standby (`cue-commands.ts`).
  * T1508b: a cue list that follows the timeline (`timeline-cues.ts`), folded into the index.
+ * §T1537b: its structural settings, as the structure the compiled graph takes at a playhead.
  */
 export {
   EMPTY_PRESET_BANK_JSON,
@@ -68,6 +69,9 @@ export {
 } from "./cue-list.ts";
 export type { Cue, CueFollow, CueList, CueListParse, CuePick, CuePosition } from "./cue-list.ts";
 export {
+  applyTimelineStructure,
+  buildTimelineStructure,
+  DOCUMENT_STRUCTURE,
   followsTimeline,
   hasTimelineCueLists,
   planTimelineCues,
@@ -75,8 +79,15 @@ export {
   timelineCuePosition,
   timelineCueWarnings,
   timelineRate,
+  timelineStructuralSettings,
 } from "./timeline-cues.ts";
-export type { TimelineCuePlan, TimelineCueWarning } from "./timeline-cues.ts";
+export type {
+  TimelineCuePlan,
+  TimelineCueWarning,
+  TimelineStructure,
+  TimelineStructureCrossing,
+  TimelineStructureState,
+} from "./timeline-cues.ts";
 export { CUE_FIRE_COMMAND, CUE_LIST_QUERY, CUE_SET_STANDBY_COMMAND, registerCueCommands } from "./cue-commands.ts";
 export type {
   CueFireInput,

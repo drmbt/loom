@@ -14,6 +14,7 @@ import type { FrameDriver, PointerSource } from "@runtime/execution/index.ts";
 import { planStructureSignature } from "@runtime/backend/index.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { createUniformAnimator } from "./animate-parameters.ts";
+import type { StructureFrame, TimelineStructureLink } from "./use-graph-compile.ts";
 import { compileLatest } from "./compile-latest.ts";
 import { MAX_RETAINED_DIAGNOSTICS, retainDiagnostic } from "./diagnostic-buffer.ts";
 import { registerTransportCommands, transportHolderFor } from "./transport-commands.ts";
@@ -224,6 +225,21 @@ export interface FrameLoopOptions {
    * handed to `backend.warmPasses`: switching a layer on then builds nothing.
    */
   readonly warmPlan?: (() => CompiledGraph | null) | null | undefined;
+  /**
+   * §T1537b — the timeline's structure, from `useGraphCompile`: which segment `compiled` is
+   * and which segment a frame needs. Null or absent: every frame takes the installed plan.
+   *
+   * With it, playback switches structure ON the frame that reaches a structural cue:
+   *  - each rendered frame asks for the NEXT frame's segment, so a crossing's plan is
+   *    compiled and installed in the gap before the frame that needs it (and its passes
+   *    were warmed after the previous install, §T1507b);
+   *  - the scheduled loop HOLDS a frame whose segment is not installed yet (`ready`): the
+   *    picture stays on the last frame until it is, and that frame is then rendered in its
+   *    own structure — late, never wrong;
+   *  - an export awaits the segment before stepping each frame (`prepareFrame`), so it is
+   *    exact and deterministic whatever the machine.
+   */
+  readonly timeline?: TimelineStructureLink | null | undefined;
 }
 
 /**
@@ -314,6 +330,30 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
   /** §T1507b: read when a structural compile is scheduled, beside the plan it belongs to. */
   const warmPlanRef = useRef(options.warmPlan ?? null);
   warmPlanRef.current = options.warmPlan ?? null;
+  /** §T1537b: the newest structure link, read per frame. */
+  const timelineRef = useRef<TimelineStructureLink | null>(options.timeline ?? null);
+  timelineRef.current = options.timeline ?? null;
+  /**
+   * §T1537b: the segment of the plan the BACKEND holds (moved where `planRef` moves), and the
+   * newest segment whose plan could not be installed (§V9: its frames render on the plan
+   * that is there, rather than wait for ever). `null`: nothing installed yet.
+   */
+  const installedSegmentRef = useRef<string | null>(null);
+  const failedSegmentRef = useRef<string | null>(null);
+  /** §T1537b: woken by every install or refusal, so `prepareFrame` can look again. */
+  const installWaitersRef = useRef<Array<() => void>>([]);
+  const wakeInstallWaiters = (): void => {
+    const waiting = installWaitersRef.current;
+    installWaitersRef.current = [];
+    for (const wake of waiting) wake();
+  };
+  /** Is the segment `frame` needs the one installed (or one that cannot be)? */
+  const structureReady = (frame: StructureFrame): boolean => {
+    const link = timelineRef.current;
+    if (link === null) return true;
+    const key = link.keyAt(frame);
+    return key === installedSegmentRef.current || key === failedSegmentRef.current;
+  };
   const observeRef = useRef<((frame: FrameEvaluationInput) => void) | null>(observe);
   observeRef.current = observe;
   const advanceChannelsRef = useRef<((inputs: FrameInputs) => void) | null>(advanceChannels);
@@ -621,16 +661,32 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
      * stopped and restarted the very loop it was called from; wrapping the clock touches
      * no scheduler, so there is nothing to be re-entrant about.
      */
-    const maybeLap = (frameIndex: number): void => {
-      if (!loopingRef.current) return;
+    const maybeLap = (frameIndex: number): boolean => {
+      if (!loopingRef.current) return false;
       // Only during PLAYBACK. A manual step or a typed seek addresses a specific frame
       // deliberately, and taking the user somewhere else instead is the silent kind of
       // wrong. `seek` stops the driver before replaying, so its own frames arrive here
       // with `running === false` and cannot start a lap inside a seek.
-      if (driverRef.current?.running !== true) return;
+      if (driverRef.current?.running !== true) return false;
       const { start, end } = rangeRef.current;
-      if (frameIndex < end) return;
-      transport.wrapTo?.(start);
+      if (frameIndex < end || transport.wrapTo === undefined) return false;
+      transport.wrapTo(start);
+      return true;
+    };
+
+    /**
+     * §T1537b — ask for the segment of the frame that comes NEXT, the moment this one has
+     * rendered: a crossing's plan then compiles and installs in the gap before the frame
+     * that reaches the cue, which renders in its new structure without waiting. One step
+     * on — or the range's start after a lap. Asking for the segment already asked for is
+     * free, so between crossings this costs a cached lookup.
+     */
+    const askAhead = (frame: FrameEvaluationInput, lapped: boolean): void => {
+      const link = timelineRef.current;
+      if (link === null) return;
+      const fps = frame.fps ?? fpsRef.current;
+      const next = lapped ? rangeRef.current.start / fps : frame.timeSeconds + 1 / fps;
+      link.request({ timeSeconds: next, fps, ...(frame.subframes === undefined ? {} : { subframes: frame.subframes }) });
     };
 
     const driver = createFrameDriver({
@@ -664,7 +720,13 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       onFrame: (inputs) => {
         latestFrameRef.current = inputs;
         observeRef.current?.(inputs.frame);
-        maybeLap(inputs.frame.frameIndex);
+        askAhead(inputs.frame, maybeLap(inputs.frame.frameIndex));
+      },
+      // §T1537b: playback holds a frame whose structure is still installing — and asks for it.
+      ready: (frame) => {
+        if (structureReady(frame)) return true;
+        timelineRef.current?.request(frame);
+        return false;
       },
     });
     driverRef.current = driver;
@@ -722,6 +784,20 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
         setPlaying(live.running);
         return last?.frame.frameIndex ?? -1;
       },
+      /*
+       * §T1537b — the export's half: resolves once the plan for timeline frame `frameIndex`
+       * (counted from a seek to 0, as a take steps) is the one installed, so the take steps
+       * every frame in its own structure. Immediate when there is no structural timeline.
+       */
+      prepareFrame: async (frameIndex) => {
+        const fps = fpsRef.current;
+        const frame: StructureFrame = { timeSeconds: frameIndex / fps, fps, subframes: 1 };
+        while (!structureReady(frame)) {
+          const waited = new Promise<void>((resolve) => installWaitersRef.current.push(resolve));
+          timelineRef.current?.request(frame);
+          await waited;
+        }
+      },
       // T467: the RENDER path's verb. The live paths never call this — a seek or a lap
       // leaves the absolute clock growing (T461); only a take starts its clock at zero.
       // T1497b: zeroing the count starts a new EPOCH, in the same breath — every morph
@@ -766,7 +842,15 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
   useEffect(() => {
     const driver = driverRef.current;
     if (backend === null || backend === undefined || driver === null) return;
-    if (compiled === null || !compiled.ok) return;
+    if (compiled === null || !compiled.ok) {
+      // §T1537b: a segment that does not compile is not waited for — its frames render on
+      // the plan that is installed (§V9), and its problems are in the problems pane.
+      if (compiled !== null) {
+        failedSegmentRef.current = timelineRef.current?.compiledKey ?? "";
+        wakeInstallWaiters();
+      }
+      return;
+    }
 
     /**
      * §V5, made real (T308, B26).
@@ -790,6 +874,8 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
      * had just forgotten what was already on the GPU. Restoring it here would restore
      * that.
      */
+    /** §T1537b: the segment this plan was compiled for, read beside it. */
+    const segment = timelineRef.current?.compiledKey ?? "";
     const built = planRef.current;
     if (valuesOnlyRef.current && built !== null) {
       const written = animatorRef.current.push(backend, built, compiled);
@@ -798,6 +884,8 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
         // positions writes each block once, not ten times against a stale base.
         planRef.current = compiled;
         installedAnimateRef.current = animate;
+        installedSegmentRef.current = segment;
+        wakeInstallWaiters();
         /*
          * T1163: deliberately NOT announced. This branch runs only for a plan `push` has
          * verified to be a values-only variation of the installed one (§V5), so it carries
@@ -847,6 +935,9 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
         // The structural plan the per-frame push diffs against. Reset together, so a
         // recompile never leaves the animator comparing against a plan that is gone.
         planRef.current = compiled;
+        // §T1537b: and the segment it is — what the next frame's `ready` compares against.
+        installedSegmentRef.current = segment;
+        if (failedSegmentRef.current === segment) failedSegmentRef.current = null;
         // B234: and its `animate` with it. The newest one if a render has re-keyed it for
         // this same plan while the compile was in flight; otherwise the one it came with.
         installedAnimateRef.current = compiledRef.current === compiled ? animateRef.current : animate;
@@ -902,6 +993,7 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
          * before it runs supersedes it. Advisory — a warm plan that cannot be had is no
          * warm-up, and the switch's own compile reports whatever is wrong with it.
          */
+        wakeInstallWaiters();
         if (warmPlan !== null && backend.warmPasses !== undefined) {
           const warmPasses = backend.warmPasses.bind(backend);
           setTimeout(() => {
@@ -918,6 +1010,9 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       })
       .catch((error: unknown) => {
         if (generation !== generationRef.current) return;
+        // §T1537b: the backend refused this segment's plan; its frames take the installed one.
+        failedSegmentRef.current = segment;
+        wakeInstallWaiters();
         setDiagnostics((current) =>
           retainDiagnostic(
             current,

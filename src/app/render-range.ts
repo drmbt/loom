@@ -112,6 +112,8 @@ export interface RangeTransport {
   latestFrame(): ReturnType<TransportHandlers["stepOnce"]>;
   /** T467: a take is a fresh performance — the absolute clock starts at zero. */
   resetAbsoluteClock(): void;
+  /** §T1537b: awaited before each frame is stepped — its structure is installed first. */
+  prepareFrame?(frameIndex: number): Promise<void>;
 }
 
 export interface RenderFrameRangeInputs {
@@ -211,6 +213,15 @@ export async function renderFrameRange(inputs: RenderFrameRangeInputs): Promise<
      * The LIVE clock is untouched: only a render resets it (T461's rule kept whole).
      */
     transport.resetAbsoluteClock();
+    /*
+     * §T1537b — every step below is preceded by `prepareFrame` for the frame it is about to
+     * render, so a structural cue switches ON its frame in the take, deterministically: the
+     * plan swap is awaited, never raced, exactly as the offline harness swaps it.
+     */
+    const prepare = async (frameIndex: number): Promise<void> => {
+      await transport.prepareFrame?.(frameIndex);
+    };
+    await prepare(0);
     // §V170 — build the in point's true temporal state from frame zero. `seek(start)` did
     // the same replay in one synchronous loop, which froze the page and made later ranges
     // look hung. Reset through the canonical seek, then expose each required replay step
@@ -226,6 +237,7 @@ export async function renderFrameRange(inputs: RenderFrameRangeInputs): Promise<
     }
     while (frame !== null && sourceFrameIndex < sourceRange.start) {
       stopIfCancelled();
+      await prepare(sourceFrameIndex + 1);
       frame = transport.stepOnce();
       sourceFrameIndex += 1;
       if (frame === null) break;
@@ -255,6 +267,7 @@ export async function renderFrameRange(inputs: RenderFrameRangeInputs): Promise<
         Math.floor((outputFrameIndex * timelineFps) / outputFps),
       );
       while (sourceFrameIndex < targetSourceFrame) {
+        await prepare(sourceFrameIndex + 1);
         frame = transport.stepOnce();
         sourceFrameIndex += 1;
         if (frame === null) break;
@@ -305,6 +318,7 @@ export async function renderFrameRange(inputs: RenderFrameRangeInputs): Promise<
     // rate may not photograph the tail project frames, but the soundtrack still spans the
     // full selected timeline range and must observe them before its lazy PCM source opens.
     while (frame !== null && sourceFrameIndex < sourceRange.end) {
+      await prepare(sourceFrameIndex + 1);
       frame = transport.stepOnce();
       sourceFrameIndex += 1;
       if (frame !== null) {

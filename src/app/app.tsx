@@ -983,6 +983,8 @@ export function App({
     documentBoundary: compile.documentBoundary,
     // §T1507b: a bypassed Layer's passes, built ahead of its switch-on.
     warmPlan: compile.warmPlan,
+    // §T1537b: a timed cue list's structural settings switch on their cue frames.
+    timeline: compile.timeline,
   });
 
   /**

@@ -1,4 +1,5 @@
-import { compileGraph, flattenComponents } from "../../compiler/index.ts";
+import { compileGraph, flattenComponents, timelineStructureRequest } from "../../compiler/index.ts";
+import type { CompileRequest } from "../../compiler/types.ts";
 import type { ComponentRegistryView } from "../../domain/components/index.ts";
 import type { CompiledGraph } from "../../compiler/types.ts";
 import type { BackendCapabilities, LogicalExecutionPlan } from "../../domain/types/backend.ts";
@@ -13,6 +14,7 @@ import { meshSourceIdsFor, prepareMesh, type PreparedMesh } from "../../points/m
 import { createVgpuBackend } from "../../runtime/backend/vgpu/vgpu-backend.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { buildMorphIndex } from "../../domain/presets/morph-index.ts";
+import { buildTimelineStructure, type TimelineStructureState } from "../../domain/presets/timeline-cues.ts";
 import type { ChannelResolver } from "../../domain/parameters/resolve.ts";
 import { createUniformAnimator } from "../../app/animate-parameters.ts";
 import type { AudioFeatures } from "../../domain/types/frame.ts";
@@ -797,7 +799,8 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
     /** T1497b: the preset morphs in flight — the flattening's, or the document's own. */
     const morphs = flattened?.morphs ?? buildMorphIndex({ document: request.graph, registry: registry(request.nodes) });
 
-    const plan = compileGraph({
+    /** The request every compile below starts from: the document's own structure, no frame. */
+    const baseRequest: CompileRequest = {
       graph: request.graph,
       settings,
       registry: registry(request.nodes),
@@ -813,23 +816,58 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
               ...(request.displaySinks ?? []).map((nodeId) => ({ nodeId, kind: "output" as const })),
             ],
           }),
-    });
-    const errors = plan.diagnostics.filter((d) => d.severity === "error");
-    if (errors.length > 0) {
-      throw new Error(`Parity graph failed to compile: ${errors.map((d) => d.message).join("; ")}`);
-    }
+    };
+    /**
+     * §T1537b — THE TIMELINE'S STRUCTURE, a function of the playhead. A frame compiles the
+     * document with the structural overrides at ITS playhead applied: the plan is swapped
+     * before the frame that reaches a structural cue is stepped, never after it, so the
+     * crossing frame is the first one in the new structure — and a seek, a lap or a second
+     * export lands on the same plan for the same playhead.
+     */
+    const structure = buildTimelineStructure({ document: request.graph, registry: registry(request.nodes), flattened });
+    const subframeCount = request.subframes ?? 1;
+    const firstState =
+      structure === null
+        ? null
+        : structure.at({ timeSeconds: (request.startFrame ?? 0) / fps, fps: fps / subframeCount, subframes: subframeCount });
+    const compileSegment = (state: TimelineStructureState | null): { request: CompileRequest; plan: CompiledGraph } => {
+      const segmentRequest = state === null ? baseRequest : timelineStructureRequest(baseRequest, state);
+      const segmentPlan = compileGraph(segmentRequest);
+      const errors = segmentPlan.diagnostics.filter((d) => d.severity === "error");
+      if (errors.length > 0) {
+        throw new Error(`Parity graph failed to compile: ${errors.map((d) => d.message).join("; ")}`);
+      }
+      return { request: segmentRequest, plan: segmentPlan };
+    };
+    const first = compileSegment(firstState);
+    const plan = first.plan;
+    /** §T1537b: the segment the backend holds, its request and plan — moved by every crossing. */
+    let installedState = firstState;
+    let liveRequest = first.request;
+    let livePlan = plan;
 
     const outputResourceId = outputResourceIdOf(plan, outputNodeId, request.outputPortId);
+    let liveOutputResourceId = outputResourceId;
     const compiled = await backend.compile(plan);
 
+    /** §T1537b: each media source is registered once, so a later segment's plan adds only its new ones. */
+    const registeredSources = new Set<string>();
+    const sourcesOnce: Parameters<typeof registerSyntheticMediaSources>[0] = {
+      registerMediaSource: (sourceId, source) => {
+        if (registeredSources.has(sourceId)) return () => undefined;
+        registeredSources.add(sourceId);
+        return backend.registerMediaSource(sourceId, source);
+      },
+    };
     // T650: media draws SOMETHING attributable in headless, or nothing by stated design.
-    registerSyntheticMediaSources(backend, plan, logicalGraph, () => steppingFrame);
+    registerSyntheticMediaSources(sourcesOnce, plan, logicalGraph, () => steppingFrame);
     // T1407b: a real picture replaces the card for the nodes the caller names.
     for (const [nodeId, bytesFor] of Object.entries(request.pictures ?? {})) {
       const resource = plan.resources.find((entry) => (entry as { sourceId?: string }).sourceId === `media:${nodeId}`) as { size?: readonly [number, number] } | undefined;
       if (resource?.size === undefined) throw new Error(`pictures: "${nodeId}" has no media texture in the plan (is it a Movie File In?).`);
       const bytes = bytesFor(resource.size);
       if (bytes.length !== resource.size[0] * resource.size[1] * 4) throw new Error(`pictures: "${nodeId}" returned ${bytes.length} bytes for a ${resource.size[0]}×${resource.size[1]} RGBA8 texture.`);
+      registeredSources.add(`media:${nodeId}`);
       backend.registerMediaSource(`media:${nodeId}`, { currentFrame: () => ({ frameId: 1, bytes }) });
     }
     // T1353b: the mesh feed — one static frame per source, prepared the loader's way.
@@ -860,17 +898,33 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
       if (pose !== undefined) backend.registerMediaSource(ids.pose, { currentFrame: () => ({ frameId: 1, bytes: pose }) });
     }
     // T715: the inference feed, beside the media one and claiming a different prefix.
-    registerInferenceSources(
-      backend,
-      plan,
-      () => steppingFrame,
-      request.inference,
-      (nodeId) => logicalGraph.nodes[nodeId as keyof typeof logicalGraph.nodes]?.type,
-    );
+    const registerInference = (segmentPlan: CompiledGraph): void =>
+      registerInferenceSources(
+        sourcesOnce,
+        segmentPlan,
+        () => steppingFrame,
+        request.inference,
+        (nodeId) => logicalGraph.nodes[nodeId as keyof typeof logicalGraph.nodes]?.type,
+      );
+    registerInference(plan);
 
     // §V45: the seed is the project's, not the transport's own invention. Hoisted so the
     // control below can wrap it (T1508b).
-    const transport = offlineTransport({ fps, seed: settings.randomSeed, mode: "fixed-step", ...(request.subframes === undefined ? {} : { subframes: request.subframes }), ...(request.startFrame === undefined ? {} : { startFrame: request.startFrame }), ...(request.absEpoch === undefined ? {} : { epoch: request.absEpoch }) });
+    const clock = offlineTransport({ fps, seed: settings.randomSeed, mode: "fixed-step", ...(request.subframes === undefined ? {} : { subframes: request.subframes }), ...(request.startFrame === undefined ? {} : { startFrame: request.startFrame }), ...(request.absEpoch === undefined ? {} : { epoch: request.absEpoch }) });
+    /**
+     * §T1537b: the loop below PULLS each frame before stepping it, so the plan for that
+     * frame's playhead is installed first; the driver then steps the pulled frame. With no
+     * structural timeline nothing is pulled early and this is the clock unchanged.
+     */
+    let pulled: ReturnType<typeof clock.next> | null = null;
+    const transport: typeof clock = {
+      ...clock,
+      next: () => {
+        const frame = pulled ?? clock.next();
+        pulled = null;
+        return frame;
+      },
+    };
     const control: HarnessControl = {
       resize: (outputId, size) => {
         backend.resize(outputId, size);
@@ -1018,12 +1072,9 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
                   analyze.track(nextEntries);
                 }
               }
+              // §T1537b: the installed segment's request — the structure this frame compiles in.
               const next = compileGraph({
-                graph: request.graph,
-                settings,
-                registry: registry(request.nodes),
-                capabilities,
-                ...(flattened === undefined ? {} : { flattened }),
+                ...liveRequest,
                 resolution: {
                   frame: inputs.frame,
                   channels,
@@ -1049,7 +1100,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
                   perFrameErrors.set(key, { frameIndex: inputs.frame.frameIndex, diagnostic });
                 }
               }
-              animator.push(backend, plan, next);
+              animator.push(backend, livePlan, next);
             },
           }),
     });
@@ -1069,6 +1120,23 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
         const next = request.pointer(index);
         if (next !== null) pointerSource.set(next);
       }
+      if (structure !== null) {
+        // §T1537b: the frame's playhead decides its structure; a crossing installs the
+        // segment's plan BEFORE the frame is stepped.
+        pulled = clock.next();
+        const state = structure.at(pulled);
+        if (state !== installedState) {
+          const segment = compileSegment(state);
+          driver.setPlan(await backend.compile(segment.plan));
+          installedState = state;
+          liveRequest = segment.request;
+          livePlan = segment.plan;
+          liveOutputResourceId = outputResourceIdOf(segment.plan, outputNodeId, request.outputPortId);
+          animator?.reset();
+          registerSyntheticMediaSources(sourcesOnce, segment.plan, logicalGraph, () => steppingFrame);
+          registerInference(segment.plan);
+        }
+      }
       driver.step();
       request.recordPointer?.(index, pointerSource.state);
       if (analyze !== null) {
@@ -1084,7 +1152,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
         // `step()` exists as a separate entry point at all.
         // T173: readOutput returns the full descriptor now — width/format/stride come
         // from the thing that did the copy, not from a lookup beside it (§V60).
-        const image = await backend.readOutput(outputResourceId);
+        const image = await backend.readOutput(liveOutputResourceId);
         const frame: RenderedFrame = {
           frameIndex: index,
           width: image.width,

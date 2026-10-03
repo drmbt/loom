@@ -7,6 +7,7 @@ import { DEFAULT_PROJECT_FPS } from "@domain/types/graph.ts";
 import {
   timelineCuePosition,
   timelineCueWarnings,
+  timelineStructuralSettings,
   CUE_BACK_COMMAND,
   CUE_FOLLOW_LIVE,
   CUE_FOLLOW_TIMELINE,
@@ -137,6 +138,7 @@ export function CueListSection({ nodeId, cues, current, standby, wrap, follow, g
   const next = follow ? (timeline?.next ?? null) : parsed.ok ? nextCueName(parsed.list, { current, standby, wrap }) : null;
   const shownCurrent = follow ? (timeline?.current ?? "") : current;
   const warnings = follow ? timelineCueWarnings(graph, bus.registry, nodeId) : [];
+  const structural = follow ? timelineStructuralSettings(graph, bus.registry, nodeId) : [];
 
   /**
    * bank node name → its preset names, for every bank the document holds: each Presets node,
@@ -275,6 +277,12 @@ export function CueListSection({ nodeId, cues, current, standby, wrap, follow, g
             <li key={index}>{warning.diagnostic.message}</li>
           ))}
         </ul>
+      )}
+      {/* §T1537b: the structure the list switches — compiled at its cue times, never written, so the inspector still shows what is stored. */}
+      {structural.length === 0 ? null : (
+        <p className={rows.structure} role="note" aria-label="Timeline structure" data-timeline-structure>
+          ⏱ Switches structure at its cue times: {structural.join(", ")}. Each shows its stored setting here; the timeline overrides it while following.
+        </p>
       )}
 
       <div className={rows.rows}>

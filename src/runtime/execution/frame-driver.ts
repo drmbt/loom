@@ -62,6 +62,15 @@ export interface FrameDriverOptions {
   readonly onBeforeFrame?: (inputs: FrameInputs) => void;
   /** Called with the inputs of every frame actually rendered (metrics, §V16). */
   readonly onFrame?: (inputs: FrameInputs) => void;
+  /**
+   * §T1537b — MAY THIS FRAME RENDER ON THIS TICK? Asked by the SCHEDULED loop only, after
+   * the transport has produced the frame and before anything reads it. False HOLDS the
+   * frame: nothing renders this tick, no rider runs, and the next tick offers the SAME frame
+   * again instead of advancing the transport — so a frame that needs a plan which is still
+   * installing is shown late rather than wrong. `step()` never asks: the offline and manual
+   * paths are synchronous and own their own sequencing.
+   */
+  readonly ready?: (frame: FrameEvaluationInput) => boolean;
 }
 
 export interface FrameDriver {
@@ -81,10 +90,19 @@ export function createFrameDriver(options: FrameDriverOptions): FrameDriver {
   let plan: CompiledExecutionPlan | null = null;
   let control: FrameLoopControl | undefined;
   let framesRendered = 0;
+  /** §T1537b: a frame the scheduled loop held (`ready` said no), offered again next tick. */
+  let held: FrameEvaluationInput | null = null;
 
-  function tick(): FrameInputs | null {
+  function tick(scheduled: boolean): FrameInputs | null {
     if (!plan) return null;
-    const frame = transport.next();
+    // A held frame belongs to the scheduled loop; a step (a seek's replay, an export) always
+    // takes the transport's next frame, and drops a held one with it.
+    const frame = (scheduled ? held : null) ?? transport.next();
+    held = null;
+    if (scheduled && options.ready !== undefined && !options.ready(frame)) {
+      held = frame;
+      return null;
+    }
     const features = options.audio?.(frame) ?? null;
     const inputs: FrameInputs = {
       frame,
@@ -120,7 +138,7 @@ export function createFrameDriver(options: FrameDriverOptions): FrameDriver {
       const fps = typeof options.fps === "function" ? options.fps() : options.fps;
       control = backend.loop(
         () => {
-          tick();
+          tick(true);
         },
         fps === undefined ? {} : { fps },
       );
@@ -128,9 +146,10 @@ export function createFrameDriver(options: FrameDriverOptions): FrameDriver {
     stop() {
       control?.stop();
       control = undefined;
+      held = null;
     },
     step() {
-      return tick();
+      return tick(false);
     },
   };
 }

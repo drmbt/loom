@@ -440,3 +440,50 @@ describe("T747 — a take waits for each frame's inference", () => {
     expect(encoder.encoded).toEqual([0, 1, 2]);
   });
 });
+
+describe("§T1537b — a take installs each frame's structure before stepping it", () => {
+  it("awaits prepareFrame(n) before the step that renders n — the seek's frame 0 included, pre-roll and tail too", async () => {
+    // A structural cue reached on frame n has to be the installed plan when n is stepped, or
+    // the take renders n in the old structure. Ordering is the claim: prepare n, then step.
+    const transport = fakeTransport();
+    const order: string[] = [];
+    let pending = 0;
+    await renderFrameRange({
+      api: fakeExports(),
+      ref: { nodeId: "out", portId: "out" },
+      // A 30 fps take of a 60 fps timeline from output frame 1: a pre-roll (0, 1), and a tail.
+      range: { start: 1, end: 2 },
+      timelineFps: 60,
+      outputFps: 30,
+      transport: {
+        ...transport,
+        seek: (frameIndex) => {
+          order.push(`seek${frameIndex}`);
+          return transport.seek(frameIndex);
+        },
+        stepOnce: () => {
+          // Never while a prepare is still outstanding.
+          expect(pending).toBe(0);
+          const inputs = transport.stepOnce();
+          order.push(`step${inputs?.frame.frameIndex ?? -1}`);
+          return inputs;
+        },
+        prepareFrame: async (frameIndex) => {
+          pending += 1;
+          order.push(`prepare${frameIndex}`);
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          pending -= 1;
+        },
+      },
+      encoder: fakeEncoder(),
+    });
+    const steps = order.filter((entry) => entry.startsWith("step"));
+    expect(steps).toEqual(["step1", "step2", "step3", "step4", "step5"]);
+    // Every step is immediately preceded by the prepare for the frame it renders.
+    for (const step of steps) {
+      const frame = step.slice("step".length);
+      expect(order[order.indexOf(step) - 1]).toBe(`prepare${frame}`);
+    }
+    expect(order.slice(0, 2)).toEqual(["prepare0", "seek0"]);
+  });
+});

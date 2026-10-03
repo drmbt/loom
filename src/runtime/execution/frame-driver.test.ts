@@ -252,6 +252,69 @@ describe("frame driver", () => {
   });
 });
 
+describe("frame driver — §T1537b: a scheduled frame can wait for its plan", () => {
+  /** A driver whose `ready` answers from `allowed`, recording what it was asked. */
+  function gated(allowed: (frameIndex: number) => boolean) {
+    const backend = recordingBackend();
+    const asked: number[] = [];
+    const driver = createFrameDriver({
+      backend,
+      transport: offlineTransport({ fps: 30 }),
+      pointer: createPointerSource(),
+      resolution: () => [8, 8],
+      ready: (frame) => {
+        asked.push(frame.frameIndex);
+        return allowed(frame.frameIndex);
+      },
+    });
+    driver.setPlan(plan);
+    return { backend, asked, driver };
+  }
+
+  it("a held frame renders nothing, and the next tick offers the SAME frame — the timeline does not move past it", () => {
+    let installed = false;
+    const { backend, asked, driver } = gated((frameIndex) => frameIndex < 2 || installed);
+    driver.start();
+    for (let tick = 0; tick < 5; tick += 1) backend.tick();
+    // 0 and 1 render; 2 waits for three ticks.
+    expect(backend.calls.map((call) => call.frame.frameIndex)).toEqual([0, 1]);
+    expect(asked).toEqual([0, 1, 2, 2, 2]);
+    installed = true;
+    backend.tick();
+    backend.tick();
+    // Frame 2 is rendered — exactly once, then 3: nothing was skipped while it waited.
+    expect(backend.calls.map((call) => call.frame.frameIndex)).toEqual([0, 1, 2, 3]);
+    expect(driver.framesRendered).toBe(4);
+  });
+
+  it("a step never asks — the offline and manual paths own their sequencing — and drops a held frame", () => {
+    const { backend, asked, driver } = gated(() => false);
+    driver.start();
+    backend.tick();
+    expect(backend.calls).toEqual([]);
+    expect(asked).toEqual([0]);
+    // The step takes the transport's NEXT frame; the held 0 is not replayed by a later tick.
+    driver.step();
+    expect(backend.calls.map((call) => call.frame.frameIndex)).toEqual([1]);
+    expect(asked).toEqual([0]);
+    backend.tick();
+    expect(asked).toEqual([0, 2]);
+  });
+
+  it("stopping the loop drops a held frame", () => {
+    let open = false;
+    const { backend, asked, driver } = gated(() => open);
+    driver.start();
+    backend.tick();
+    driver.stop();
+    open = true;
+    driver.start();
+    backend.tick();
+    expect(asked).toEqual([0, 1]);
+    expect(backend.calls.map((call) => call.frame.frameIndex)).toEqual([1]);
+  });
+});
+
 describe("offline transport", () => {
   it("emits exact frame times with a zero first delta", () => {
     const transport: TransportSource = offlineTransport({ fps: 24, startFrame: 10, mode: "fixed-step" });

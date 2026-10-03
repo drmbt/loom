@@ -5,6 +5,7 @@ import type { NodeId } from "../types/ids.ts";
 import type { NodeDefinition } from "../types/node-definition.ts";
 import type { ParameterSchema, StoredParameter } from "../types/parameters.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
+import { isComponentNodeType } from "../components/component-type.ts";
 import { nodeByName } from "../graph/names.ts";
 import { effectiveParameterSchema, resolveParameters, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
 import { componentAddressedDefinition, parseComponentKey, storedStaticValue } from "../parameters/slots.ts";
@@ -48,12 +49,20 @@ import { morphableKey, publishedTargets, type MorphIndexInput } from "./morph-in
  * Whether a cue is REACHED is a frame index against a per-revision integer (`cueReachFrame`),
  * never `n / fps >= at` as floats. Progress is still `(timeSeconds − at) / seconds`.
  *
- * ## What a timed cue cannot do in v1 (owner ruling 2)
+ * ## Structural settings switch at the crossings (§T1537b; owner ruling 2's follow-up)
  *
- * Structural settings — a Layer's on/off, a key the compiler reads as structure
- * (`compileTime`, a resolution-policy input, a source reference such as a Layer's
- * `picture`) — are SKIPPED, each with a named warning on the list that names the cue. Making
- * them switch at cue times needs recompiles at the crossings: §T1537b.
+ * A Layer's on/off and a key the compiler reads as structure (`compileTime`, a
+ * resolution-policy input, a source reference such as a Layer's `picture`) cannot be a
+ * driver: the plan itself differs. So a timed cue CUTS them at its frame, and what changes is
+ * the GRAPH THAT IS COMPILED — the document with the timeline's structural overrides at the
+ * playhead applied (`buildTimelineStructure` → `applyTimelineStructure`), never a write. The
+ * overrides are piecewise constant between crossings, so each segment is one plan: the live
+ * loop recompiles at a crossing (ahead of it, warmed, §T1507b), an export swaps plans on the
+ * crossing frame, and both read the same function of the playhead.
+ *
+ * Still SKIPPED with a named warning (`cue.timeline.structural`): a structural key on a
+ * component INSTANCE — it reaches the compile only through the instance's published fan-out,
+ * which this override does not follow yet.
  *
  * ## A timed list is all-timed (owner ruling 3)
  *
@@ -89,9 +98,10 @@ export function playheadFrame(timeSeconds: number, rate: number): number {
 }
 
 /**
- * Is this key STRUCTURAL — something a timed cue cannot change in v1? `compileTime`, a
- * resolution-policy input, or a source reference (a Layer's `picture`, which decides which
- * chain is compiled). The first two are `morphableKey`'s structural half.
+ * Is this key STRUCTURAL — something a timed cue cannot drive, only cut through a recompile
+ * (§T1537b)? `compileTime`, a resolution-policy input, or a source reference (a Layer's
+ * `picture`, which decides which chain is compiled). The first two are `morphableKey`'s
+ * structural half.
  */
 export function structuralCueKey(definition: NodeDefinition | undefined, node: GraphNode, key: string): boolean {
   if (definition === undefined) return false;
@@ -103,6 +113,23 @@ export function structuralCueKey(definition: NodeDefinition | undefined, node: G
   if (policy?.kind === "parameter" && (policy.width === root || policy.height === root)) return true;
   return (definition.sourceReferences ?? []).some((reference) => reference.parameter === root);
 }
+
+/**
+ * §T1537b — one timed cue's STRUCTURAL setting on one target: a Layer's on/off
+ * (`bypassed`), or a structural key's stored form (`parameter`). Always a cut at `at`.
+ */
+interface StructuralLink {
+  readonly at: number;
+  readonly listName: string;
+  /** The list it is a cue of, and what it sets, as the inspector names it (`layer1.on`). */
+  readonly list: NodeId;
+  readonly address: string;
+  readonly position: number;
+  readonly to: { readonly bypassed: boolean } | { readonly key: string; readonly parameter: StoredParameter };
+}
+
+/** The target a structural link sets: `on` for a Layer's switch, otherwise the key. */
+const LAYER_SWITCH_TARGET = "\u0000on";
 
 /** A warning about a following list, and the cue it is about (`null`: the list itself). */
 export interface TimelineCueWarning {
@@ -124,6 +151,11 @@ interface TimedLink {
 export interface TimelineCuePlan {
   /** Root node id → key → the timed cues covering it, in `at` order (ties: list name, position). */
   readonly chains: ReadonlyMap<NodeId, ReadonlyMap<string, readonly TimedLink[]>>;
+  /**
+   * §T1537b: root node id → target (a structural key, or the Layer's switch) → the timed
+   * cues setting it, in the same order. What `buildTimelineStructure` folds.
+   */
+  readonly structure: ReadonlyMap<NodeId, ReadonlyMap<string, readonly StructuralLink[]>>;
   readonly warnings: readonly TimelineCueWarning[];
 }
 
@@ -132,12 +164,15 @@ const nameOf = (node: GraphNode): string => node.label ?? node.id;
 /**
  * Every following list, planned: the end each timed cue applies, per root key, and every
  * warning — an untimed cue, a bank or preset that is not there, the planner's own skips, a
- * structural key or layer switch skipped, two lists on one key. Pure; per revision.
+ * structural key on a component instance skipped, two lists on one key — and (§T1537b) the
+ * structural settings each timed cue cuts. Pure; per revision.
  */
 export function planTimelineCues(document: GraphDocument, registry: NodeRegistryView): TimelineCuePlan {
   const warnings: TimelineCueWarning[] = [];
   /** Root node id → key → links, and which lists cover it. */
   const chains = new Map<NodeId, Map<string, TimedLink[]>>();
+  /** §T1537b: root node id → target → structural links. */
+  const structure = new Map<NodeId, Map<string, StructuralLink[]>>();
   /** `node.key` → the following lists that set it, name → id. */
   const coveredBy = new Map<string, Map<string, NodeId>>();
 
@@ -163,6 +198,7 @@ export function planTimelineCues(document: GraphDocument, registry: NodeRegistry
         warn(cue.name, "cue.timeline.untimed", `${where} has no At time, so the timeline skips it.`, "Give it a time, or run it from a second list that stays Live.");
         continue;
       }
+      const at = cue.at;
       const bankId = nodeByName(document, cue.bank);
       const bankNode = bankId === undefined ? undefined : document.nodes[bankId];
       // T1505b: a look's instance named by a timed cue is skipped: this index has no component catalogue to read its presets from.
@@ -182,14 +218,21 @@ export function planTimelineCues(document: GraphDocument, registry: NodeRegistry
         warnings.push({ list: listNode.id, cue: cue.name, diagnostic: { ...said, message: `${where}: ${said.message}`, nodeId: listNode.id } });
       }
       if (end.refused) continue;
-      for (const layerId of end.layers) {
+      /** Files a structural link (§T1537b) and notes which list covers its address. */
+      const fileStructural = (node: GraphNode, target: string, address: string, to: StructuralLink["to"]): void => {
+        const byTarget = structure.get(node.id) ?? new Map<string, StructuralLink[]>();
+        structure.set(node.id, byTarget);
+        const links = byTarget.get(target) ?? [];
+        byTarget.set(target, links);
+        links.push({ at, listName, list: listNode.id, address, position, to });
+        const lists = coveredBy.get(address) ?? new Map<string, NodeId>();
+        coveredBy.set(address, lists);
+        lists.set(listName, listNode.id);
+      };
+      for (const { nodeId: layerId, bypassed } of end.layers) {
         const layer = document.nodes[layerId];
-        warn(
-          cue.name,
-          "cue.timeline.structural",
-          `${where} switches layer "${layer === undefined ? layerId : nameOf(layer)}" on or off, which a timed cue cannot do yet; that switch is skipped.`,
-          "Fade the layer's Opacity instead, or switch it from a live list.",
-        );
+        if (layer === undefined) continue;
+        fileStructural(layer, LAYER_SWITCH_TARGET, `${nameOf(layer)}.on`, { bypassed });
       }
       for (const [nodeName, keys] of Object.entries(end.after)) {
         const nodeId = nodeByName(document, nodeName);
@@ -198,12 +241,16 @@ export function planTimelineCues(document: GraphDocument, registry: NodeRegistry
         const definition = registry.get(node.type);
         for (const [key, to] of Object.entries(keys)) {
           if (structuralCueKey(definition, node, key)) {
-            warn(
-              cue.name,
-              "cue.timeline.structural",
-              `${where} sets "${nodeName}.${key}", which changes what is compiled; a timed cue cannot change it yet, so it is skipped.`,
-              "Set it in the document, or change it from a live list.",
-            );
+            if (isComponentNodeType(node.type)) {
+              warn(
+                cue.name,
+                "cue.timeline.structural",
+                `${where} sets "${nodeName}.${key}", which changes what is compiled inside a component; a timed cue cannot change that yet, so it is skipped.`,
+                "Set it in the document, or change it from a live list.",
+              );
+              continue;
+            }
+            fileStructural(node, key, `${nodeName}.${key}`, { key, parameter: to });
             continue;
           }
           const byKey = chains.get(node.id) ?? new Map<string, TimedLink[]>();
@@ -220,10 +267,10 @@ export function planTimelineCues(document: GraphDocument, registry: NodeRegistry
     }
   }
 
-  for (const byKey of chains.values()) {
-    for (const links of byKey.values()) {
-      links.sort((a, b) => a.at - b.at || (a.listName < b.listName ? -1 : a.listName > b.listName ? 1 : 0) || a.position - b.position);
-    }
+  const order = (a: { at: number; listName: string; position: number }, b: { at: number; listName: string; position: number }): number =>
+    a.at - b.at || (a.listName < b.listName ? -1 : a.listName > b.listName ? 1 : 0) || a.position - b.position;
+  for (const byKey of [...chains.values(), ...structure.values()]) {
+    for (const links of byKey.values()) links.sort(order);
   }
   // Two following lists on one key are ONE chain in time order — said on each of them.
   for (const [address, lists] of coveredBy) {
@@ -244,7 +291,21 @@ export function planTimelineCues(document: GraphDocument, registry: NodeRegistry
       });
     }
   }
-  return { chains, warnings };
+  return { chains, structure, warnings };
+}
+
+/**
+ * §T1537b — what ONE following list switches in the compiled structure, as `node.key` (a
+ * Layer's switch as `node.on`), sorted: the inspector's "switches structure" line.
+ */
+export function timelineStructuralSettings(document: GraphDocument, registry: NodeRegistryView, listId: NodeId): readonly string[] {
+  const node = document.nodes[listId];
+  if (node === undefined || !followsTimeline(node)) return [];
+  const said = new Set<string>();
+  for (const byTarget of planTimelineCues(document, registry).structure.values()) {
+    for (const links of byTarget.values()) for (const link of links) if (link.list === listId) said.add(link.address);
+  }
+  return [...said].sort();
 }
 
 /** The warnings about ONE list, as its surfaces (the inspector, `cue.list`) show them. */
@@ -440,4 +501,197 @@ export function withTimelineCues(recall: ParameterMorphs, timeline: TimelineMorp
     stepsAt: (nodeId, key, frame) => timeline.stepsAt(nodeId, key, frame) ?? recall.stepsAt(nodeId, key, frame),
     activeAt: () => true,
   };
+}
+
+/**
+ * §T1537b — THE TIMELINE'S STRUCTURE AT ONE PLAYHEAD: what the compiled graph differs from
+ * the document by. Identity-stable — one object per distinct structure of a revision — so a
+ * caller keys its compile on it, and `key` is the same string for the same structure.
+ */
+export interface TimelineStructureState {
+  /** `""` when the structure is the document's own (nothing differs from what is stored). */
+  readonly key: string;
+  /** Layer node id → the `bypassed` flag the timeline holds it at. Only where it differs. */
+  readonly bypassed: ReadonlyMap<NodeId, boolean>;
+  /** Node id → structural key → the stored form the timeline holds. Only where it differs. */
+  readonly parameters: ReadonlyMap<NodeId, Readonly<Record<string, StoredParameter>>>;
+}
+
+/** The document's own structure: nothing overridden. */
+export const DOCUMENT_STRUCTURE: TimelineStructureState = Object.freeze({
+  key: "",
+  bypassed: new Map<NodeId, boolean>(),
+  parameters: new Map<NodeId, Readonly<Record<string, StoredParameter>>>(),
+});
+
+/** Where the timeline's structure next CHANGES after a playhead: the frame, and what it changes to. */
+export interface TimelineStructureCrossing {
+  readonly frameIndex: number;
+  readonly state: TimelineStructureState;
+}
+
+/**
+ * §T1537b — the timeline's structural overrides as a PURE FUNCTION OF THE PLAYHEAD,
+ * piecewise constant between crossings. Built once per revision; every answer is cached.
+ */
+export interface TimelineStructure {
+  /** The structure at a frame (its playhead, at its rate — the same reading the value fold makes). */
+  at(frame: Pick<FrameEvaluationInput, "timeSeconds" | "fps" | "subframes">): TimelineStructureState;
+  /** The structure at playhead frame `playhead` on a timeline of `rate` frames per second. */
+  atFrame(playhead: number, rate: number): TimelineStructureState;
+  /** The first crossing after `playhead` where the structure becomes different; null when none. */
+  nextAfter(playhead: number, rate: number): TimelineStructureCrossing | null;
+  /** Every frame a structural cue is reached on, ascending, deduped. */
+  crossings(rate: number): readonly number[];
+}
+
+/** One overridable target, with what it holds when the timeline does not hold it. */
+interface StructuralTarget {
+  readonly nodeId: NodeId;
+  readonly stored: StoredParameter | boolean | undefined;
+  readonly links: readonly StructuralLink[];
+}
+
+const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * §T1537b — the timeline's structure, or null when no following list cuts a structural
+ * setting (then the compiled graph is always the document). Same planner, same registry
+ * rule and same cue order as the value fold (`buildTimelineCueIndex`), so a cue that a
+ * value reading reaches on frame n is the cue whose structure frame n compiles.
+ */
+export function buildTimelineStructure(input: MorphIndexInput): TimelineStructure | null {
+  if (!hasTimelineCueLists(input.document)) return null;
+  const registry = plannerRegistry(input);
+  const plan = planTimelineCues(input.document, registry);
+  if (plan.structure.size === 0) return null;
+
+  const targets: StructuralTarget[] = [];
+  for (const nodeId of [...plan.structure.keys()].sort()) {
+    const node = input.document.nodes[nodeId];
+    const byTarget = plan.structure.get(nodeId);
+    if (node === undefined || byTarget === undefined) continue;
+    for (const target of [...byTarget.keys()].sort()) {
+      const links = byTarget.get(target) ?? [];
+      const stored =
+        target === LAYER_SWITCH_TARGET ? node.ui?.bypassed === true : (node.parameters[target] ?? unstored(registry.get(node.type), node, target));
+      targets.push({ nodeId, stored, links });
+    }
+  }
+
+  /** One state per distinct structure, so equal structures are one object (and one plan). */
+  const byKey = new Map<string, TimelineStructureState>([["", DOCUMENT_STRUCTURE]]);
+  interface RateEntry {
+    readonly crossings: readonly number[];
+    readonly segments: Array<TimelineStructureState | undefined>;
+  }
+  /** Per rate: the crossings, and the state of each segment (index = crossings reached). */
+  const perRate = new Map<number, RateEntry>();
+
+  const segmentsAt = (rate: number): RateEntry => {
+    let entry = perRate.get(rate);
+    if (entry === undefined) {
+      const frames = new Set<number>();
+      for (const target of targets) for (const link of target.links) frames.add(cueReachFrame(link.at, rate));
+      const crossings = [...frames].sort((a, b) => a - b);
+      entry = { crossings, segments: new Array<TimelineStructureState | undefined>(crossings.length + 1) };
+      perRate.set(rate, entry);
+    }
+    return entry;
+  };
+
+  /** The structure once every link reached by `playhead` has cut. */
+  const fold = (playhead: number, rate: number): TimelineStructureState => {
+    const bypassed = new Map<NodeId, boolean>();
+    const parameters = new Map<NodeId, Record<string, StoredParameter>>();
+    const keyParts: unknown[] = [];
+    for (const target of targets) {
+      // In cue order, so the reached links are a prefix and the last one reached holds.
+      let held: StructuralLink | undefined;
+      for (const link of target.links) {
+        if (cueReachFrame(link.at, rate) > playhead) break;
+        held = link;
+      }
+      if (held === undefined) continue;
+      if ("bypassed" in held.to) {
+        if (held.to.bypassed === target.stored) continue;
+        bypassed.set(target.nodeId, held.to.bypassed);
+        keyParts.push([target.nodeId, "on", !held.to.bypassed]);
+      } else {
+        if (sameJson(held.to.parameter, target.stored)) continue;
+        const record = parameters.get(target.nodeId) ?? {};
+        parameters.set(target.nodeId, record);
+        record[held.to.key] = held.to.parameter;
+        keyParts.push([target.nodeId, held.to.key, held.to.parameter]);
+      }
+    }
+    const key = keyParts.length === 0 ? "" : JSON.stringify(keyParts);
+    const known = byKey.get(key);
+    if (known !== undefined) return known;
+    const state: TimelineStructureState = { key, bypassed, parameters };
+    byKey.set(key, state);
+    return state;
+  };
+
+  /** Segment `index` (crossings reached) of `rate`, folded once. */
+  const segment = (index: number, rate: number): TimelineStructureState => {
+    const entry = segmentsAt(rate);
+    const known = entry.segments[index];
+    if (known !== undefined) return known;
+    const state = index === 0 ? DOCUMENT_STRUCTURE : fold(entry.crossings[index - 1] as number, rate);
+    entry.segments[index] = state;
+    return state;
+  };
+
+  /** How many crossings `playhead` has reached. */
+  const reached = (crossings: readonly number[], playhead: number): number => {
+    let low = 0;
+    let high = crossings.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if ((crossings[middle] as number) <= playhead) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  };
+
+  const atFrame = (playhead: number, rate: number): TimelineStructureState => segment(reached(segmentsAt(rate).crossings, playhead), rate);
+
+  return {
+    at: (frame) => {
+      const rate = timelineRate(frame);
+      return atFrame(playheadFrame(frame.timeSeconds, rate), rate);
+    },
+    atFrame,
+    nextAfter(playhead, rate) {
+      const { crossings } = segmentsAt(rate);
+      const from = reached(crossings, playhead);
+      const now = segment(from, rate);
+      for (let index = from + 1; index <= crossings.length; index += 1) {
+        const state = segment(index, rate);
+        if (state !== now) return { frameIndex: crossings[index - 1] as number, state };
+      }
+      return null;
+    },
+    crossings: (rate) => segmentsAt(rate).crossings,
+  };
+}
+
+/**
+ * §T1537b — the document with a structure applied: the graph that is COMPILED for a frame
+ * whose playhead is in that structure's segment. Pure; the input is untouched, and a node
+ * the graph does not hold is ignored. The document's own structure is the graph itself.
+ */
+export function applyTimelineStructure(graph: GraphDocument, state: TimelineStructureState): GraphDocument {
+  if (state.key === "") return graph;
+  const nodes: Record<NodeId, GraphNode> = { ...graph.nodes };
+  for (const [nodeId, bypassed] of state.bypassed) {
+    const node = nodes[nodeId];
+    if (node !== undefined) nodes[nodeId] = { ...node, ui: { ...node.ui, bypassed } };
+  }
+  for (const [nodeId, parameters] of state.parameters) {
+    const node = nodes[nodeId];
+    if (node !== undefined) nodes[nodeId] = { ...node, parameters: { ...node.parameters, ...parameters } };
+  }
+  return { ...graph, nodes };
 }

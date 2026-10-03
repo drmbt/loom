@@ -15,7 +15,13 @@ import { serializeCueList, type Cue } from "./cue-list.ts";
 import { easeMorph } from "./morph.ts";
 import { buildMorphIndex } from "./morph-index.ts";
 import { presetBankNode, presetSession } from "./test-support.ts";
-import { planTimelineCues, timelineCuePosition } from "./timeline-cues.ts";
+import {
+  applyTimelineStructure,
+  buildTimelineStructure,
+  DOCUMENT_STRUCTURE,
+  planTimelineCues,
+  timelineCuePosition,
+} from "./timeline-cues.ts";
 
 /**
  * T1508b — A CUE LIST THAT FOLLOWS THE TIMELINE, as the resolver reads it: values that are
@@ -232,7 +238,7 @@ describe("T1508b — what covers a key, and what does not", () => {
     }
   });
 
-  it("structural settings in a timed cue are SKIPPED by name — layer on/off, a picture swap, a compile-time blend — and the rest applies", () => {
+  it("§T1537b: structural settings in a timed cue are no longer skipped — layer on/off, a picture swap, a compile-time blend are filed as structure, and the values still drive", () => {
     const graph = doc([
       node("layer", "layer", "layer1", { opacity: 0, picture: "", blend: "over" }),
       presetBankNode("stage", "stage", "layer1", [
@@ -240,18 +246,48 @@ describe("T1508b — what covers a key, and what does not", () => {
       ]),
       list("show", "show", [{ name: "drop", bank: "stage", preset: "in", morph: CUT, at: 1 }]),
     ]);
-    const warnings = planTimelineCues(graph, registry).warnings.filter((warning) => warning.diagnostic.code === "cue.timeline.structural");
-    const said = warnings.map((warning) => warning.diagnostic.message).join("\n");
-    expect(warnings.every((warning) => warning.cue === "drop" && warning.list === "show")).toBe(true);
-    expect(said).toContain('"layer1.picture"');
-    expect(said).toContain('"layer1.blend"');
-    expect(said).toContain('layer "layer1" on or off');
-    expect(warnings).toHaveLength(3);
-    // Opacity is a value: it applies. The skipped keys stay as stored.
+    const plan = planTimelineCues(graph, registry);
+    expect(plan.warnings.filter((warning) => warning.diagnostic.code === "cue.timeline.structural")).toEqual([]);
+    expect([...(plan.structure.get("layer")?.keys() ?? [])].sort()).toEqual(["\u0000on", "blend", "picture"]);
+    // Opacity is a value: it applies as a driver. The structural keys are NOT drivers — the
+    // resolver (and so the inspector) still reads what is stored; the compile reads the structure.
     expect(valueAt(graph, "layer", "opacity", 30)).toBe(1);
     expect(valueAt(graph, "layer", "picture", 30)).toBe("");
     expect(valueAt(graph, "layer", "blend", 30)).toBe("over");
     expect(buildMorphIndex({ document: graph, registry }).keysOf("layer")).toEqual(new Set(["opacity"]));
+  });
+
+  it("§T1537b: a structural key on a component INSTANCE is still skipped, by name — its fan-out is not followed", () => {
+    // A look instance whose published "mode" is compile-time (it is a Layer's blend within).
+    // The component-AWARE registry answers for its type, as the app's does.
+    const instanceType = componentNodeType("stack" as Parameters<typeof componentNodeType>[0], 1);
+    const blend = {
+      type: "enum",
+      label: "Mode",
+      default: "over",
+      options: [
+        { value: "over", label: "Over" },
+        { value: "add", label: "Add" },
+      ],
+      compileTime: true,
+    };
+    const graph = doc([
+      node("inst", instanceType, "stack1", { mode: "over" }),
+      presetBankNode("stage", "stage", "stack1", [{ name: "add", values: { stack1: { mode: "add" } } }]),
+      list("show", "show", [{ name: "swap", bank: "stage", preset: "add", morph: CUT, at: 1 }]),
+    ]);
+    const componentAware = {
+      ...registry,
+      has: (type: string) => registry.has(type) || type === instanceType,
+      get: (type: string) => registry.get(type) ?? (type === instanceType ? ({ type, parameters: { mode: blend } } as never) : undefined),
+    } as typeof registry;
+    const plan = planTimelineCues(graph, componentAware);
+    const said = plan.warnings.filter((warning) => warning.diagnostic.code === "cue.timeline.structural");
+    expect(said).toHaveLength(1);
+    expect(said[0]?.cue).toBe("swap");
+    expect(said[0]?.diagnostic.message).toContain('"stack1.mode"');
+    expect(said[0]?.diagnostic.message).toContain("inside a component");
+    expect(plan.structure.size).toBe(0);
   });
 
   it("a cue with no At is skipped with a warning naming it; the timed ones still play", () => {
@@ -329,5 +365,93 @@ describe("T1508b — inside a component: a timed cue on a look's published knob 
     expect(at(15)).toBe(0.2);
     expect(at(45)).toBe(0.5);
     expect(at(60)).toBe(0.8);
+  });
+});
+
+describe("§T1537b — the timeline's STRUCTURE: piecewise constant, a pure function of the playhead", () => {
+  /** A Layer stored OFF, showing "a"; a timed list turns it on at 1.0 s and swaps its picture to "b" at 2.0 s. */
+  const STAGE: readonly Preset[] = [
+    { name: "on", values: {}, on: { layer1: true } },
+    { name: "swap", values: { layer1: { picture: "b" } } },
+    { name: "off", values: {}, on: { layer1: false } },
+  ];
+  const stage = (cues: readonly Cue[], follow: "live" | "timeline" = "timeline", bypassed = true): GraphDocument => {
+    const layer = node("layer", "layer", "layer1", { picture: "a", opacity: 1 });
+    return doc([
+      { ...layer, ui: { bypassed } } as GraphNode,
+      presetBankNode("stage", "stage", "layer1", STAGE),
+      list("show", "show", cues, follow),
+    ]);
+  };
+  const CUES: readonly Cue[] = [
+    { name: "in", bank: "stage", preset: "on", morph: CUT, at: 1 },
+    { name: "b", bank: "stage", preset: "swap", morph: CUT, at: 2 },
+  ];
+
+  it("crossings are the cue frames; the structure is the document's before the first and constant between", () => {
+    const structure = buildTimelineStructure({ document: stage(CUES), registry });
+    if (structure === null) throw new Error("expected a structure");
+    expect(structure.crossings(FPS)).toEqual([30, 60]);
+    const before = structure.at(frame(29));
+    expect(before).toBe(DOCUMENT_STRUCTURE);
+    const on = structure.at(frame(30));
+    expect(on.bypassed).toEqual(new Map([["layer", false]]));
+    expect(on.parameters.size).toBe(0);
+    // Piecewise constant: every frame of the segment is the SAME object, so a caller keyed on it compiles once.
+    for (const n of [31, 45, 59]) expect(structure.at(frame(n))).toBe(on);
+    const swapped = structure.at(frame(60));
+    expect(swapped.bypassed).toEqual(new Map([["layer", false]]));
+    expect(swapped.parameters.get("layer")).toEqual({ picture: "b" });
+    expect(structure.at(frame(900))).toBe(swapped);
+    expect(new Set([before.key, on.key, swapped.key]).size).toBe(3);
+    // What comes next, and from which frame — what the live loop compiles and warms ahead.
+    expect(structure.nextAfter(0, FPS)).toEqual({ frameIndex: 30, state: on });
+    expect(structure.nextAfter(30, FPS)).toEqual({ frameIndex: 60, state: swapped });
+    expect(structure.nextAfter(60, FPS)).toBeNull();
+  });
+
+  it("applying a structure writes nothing: the document stays as stored, the copy carries the overrides", () => {
+    const graph = stage(CUES);
+    const before = JSON.stringify(graph);
+    const structure = buildTimelineStructure({ document: graph, registry });
+    const compiled = applyTimelineStructure(graph, structure?.at(frame(60)) ?? DOCUMENT_STRUCTURE);
+    expect(compiled.nodes["layer"]?.ui?.bypassed).toBe(false);
+    expect(compiled.nodes["layer"]?.parameters["picture"]).toBe("b");
+    expect(JSON.stringify(graph)).toBe(before);
+    expect(applyTimelineStructure(graph, DOCUMENT_STRUCTURE)).toBe(graph);
+  });
+
+  it("a cue that sets what is already stored changes no structure — no crossing worth a compile", () => {
+    // Stored ON; the cue turns it on: the segment after 1.0 s IS the document's structure.
+    const structure = buildTimelineStructure({ document: stage(CUES.slice(0, 1), "timeline", false), registry });
+    expect(structure?.at(frame(45))).toBe(DOCUMENT_STRUCTURE);
+    expect(structure?.nextAfter(0, FPS)).toBeNull();
+  });
+
+  it("on and back off returns to the document's own structure object (one plan for both)", () => {
+    const structure = buildTimelineStructure({
+      document: stage([CUES[0] as Cue, { name: "out", bank: "stage", preset: "off", morph: CUT, at: 3 }]),
+      registry,
+    });
+    expect(structure?.at(frame(45)).key).not.toBe("");
+    expect(structure?.at(frame(90))).toBe(DOCUMENT_STRUCTURE);
+  });
+
+  it("reached by the value fold's frame rule (0.1 s at 30 fps is frame 3, 7/30 s is frame 7), and per rate", () => {
+    const structure = buildTimelineStructure({
+      document: stage([
+        { name: "in", bank: "stage", preset: "on", morph: CUT, at: 0.1 },
+        { name: "b", bank: "stage", preset: "swap", morph: CUT, at: 7 / 30 },
+      ]),
+      registry,
+    });
+    expect(structure?.crossings(30)).toEqual([3, 7]);
+    expect(structure?.at(frame(2)).key).toBe("");
+    expect(structure?.at(frame(3)).key).not.toBe("");
+    expect(structure?.crossings(25)).toEqual([3, 6]);
+  });
+
+  it("a list switched back to live has no structure — the document's structure, at once", () => {
+    expect(buildTimelineStructure({ document: stage(CUES, "live"), registry })).toBeNull();
   });
 });

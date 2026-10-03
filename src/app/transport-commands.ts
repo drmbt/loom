@@ -78,6 +78,12 @@ export interface TransportHandlers {
   /** Replays from frame 0 to `frameIndex`, clearing temporal state first (§V170). */
   seek(frameIndex: number): number;
   /**
+   * §T1537b: resolves once the plan timeline frame `frameIndex` compiles in is the installed
+   * one — a structural cue reached on that frame has switched — so a take awaits it before
+   * stepping the frame. Immediate when no timeline switches structure.
+   */
+  prepareFrame?(frameIndex: number): Promise<void>;
+  /**
    * T467: zero the ABSOLUTE clock — the render path's verb, never a live control's.
    * A take is a fresh performance; abstime inside a render counts from the take.
    */

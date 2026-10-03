@@ -519,6 +519,7 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
               stepOnce: transport.stepOnce,
               latestFrame: live.latestFrame,
               resetAbsoluteClock: transport.resetAbsoluteClock,
+              ...(transport.prepareFrame === undefined ? {} : { prepareFrame: transport.prepareFrame }),
             },
           });
           disposeRendered = rendered.dispose ?? null;
