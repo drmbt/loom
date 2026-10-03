@@ -266,6 +266,58 @@ describe("B239 on Dawn — a detached instantiate draws what a fresh linked inst
   }, 120_000);
 });
 
+/**
+ * T1545b ON DAWN — A DETACHED INSTANTIATE'S PAGE BANK RECALLS ONTO THE COPIES.
+ *
+ * THE LOOK with a page bank `looks` (Targets `parent.bright`, preset `dim` = bright 0.5). A
+ * linked instance recalls `dim` on itself; a detached copy recalls `dim` on its copied bank.
+ * The copied bank used to keep targeting `parent`, which names nothing at the root, so the
+ * recall reached nothing and the copies stayed white.
+ */
+describe("T1545b on Dawn — a detached instantiate's page bank recalls what the linked instance's does", () => {
+  it("recall dim: the linked instance and the detached copies both draw bright 0.5, byte for byte", async () => {
+    requireDawn();
+    const withBank = {
+      ...lookDefinition,
+      graph: {
+        ...lookDefinition.graph,
+        nodes: {
+          ...lookDefinition.graph.nodes,
+          looks: node("looks", "presets", "looks", {
+            targets: "parent.bright",
+            presets: JSON.stringify({ version: 1, presets: [{ name: "dim", values: { parent: { bright: 0.5 } } }] }),
+          }),
+        },
+      },
+    } as GraphComponentDefinition;
+    const system = catalogue([withBank]);
+    const placed = async (mode: "linked" | "detached"): Promise<GraphDocument> => {
+      const session = presetSession(graphOf({ out: node("out", "output", "out1", {}) }, {}), system.nodes, system.components);
+      const made = await session.bus.execute("component.instantiate", { componentId: "look", mode }, contextFor(alice));
+      expect(made.status, made.diagnostics.map((each) => each.message).join("; ")).toBe("applied");
+      const graph = session.graph();
+      const labelled = (label: string): string => made.output.nodeIds.find((id) => graph.nodes[id]?.label === label)!;
+      const source = mode === "linked" ? made.output.nodeId! : labelled("trim");
+      const wired = await session.bus.execute(
+        "graph.applyPatch",
+        { baseRevision: session.store.view.getRevision(), label: "wire", operations: [
+          { op: "connect", source: { nodeId: source, portId: "out" }, target: { nodeId: "out", portId: "input" } },
+          // A look's presets reach its page by the instance's name.
+          ...(mode === "linked" ? [{ op: "setNodeLabel" as const, nodeId: source, label: "city" }] : []),
+        ] },
+        contextFor(alice),
+      );
+      expect(wired.status, wired.diagnostics.map((each) => each.message).join("; ")).toBe("applied");
+      await session.recall(mode === "linked" ? made.output.nodeId! : labelled("looks"), "dim");
+      return session.graph();
+    };
+    const linked = await renderWith(system, await placed("linked"));
+    const detached = await renderWith(system, await placed("detached"));
+    expect(linked.pixel).toEqual([0.5, 0.5, 0.5, 1]);
+    expect(Buffer.compare(detached.bytes, linked.bytes)).toBe(0);
+  }, 120_000);
+});
+
 describe("B239 on Dawn — detach inside a component edit session draws what the instance drew", () => {
   /**
    * FRAME holds `inner`, an instance of THE LOOK, exposed as FRAME's output. Its `glow` is

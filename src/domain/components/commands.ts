@@ -397,7 +397,8 @@ function copyInternalGraph(
 
 /**
  * T1541b — a detached LOOK's page bank (targets `parent`) would land as a root bank whose
- * `parent` names nothing. The one its instances use is rewritten onto the copies
+ * `parent` names nothing. Detach and (T1545b) detached instantiate both come through here.
+ * The one its instances use is rewritten onto the copies
  * (`detachedPageBank`: Targets and presets through the published mapping, the instance's
  * current preset and running fades with them) and said as an info; when that cannot be
  * exact — or for a second page bank, which no instance used — it is left as it was and a
@@ -745,6 +746,9 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
                 message: `${written.baked} parameter(s) read "${definition.name}"'s page through parent.<key>; the copies hold its default values.`,
               });
             }
+            // T1545b: a look's page bank targets `parent`, which names nothing once copied —
+            // rewritten onto the copies exactly as detach rewrites it (`rewritePageBanks`).
+            diagnostics.push(...rewritePageBanks(draft, definition, fresh, written.remap));
           },
         });
         return {

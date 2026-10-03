@@ -700,6 +700,31 @@ describe("T1541b — detaching a look's instance rewrites its page bank", () => 
     expect(index.stepsAt(solidCopy!.id, "amount", half)?.map((step) => [step.from, step.to, step.progress])).toEqual([[0.9, 0.25, 0.5]]);
   });
 
+  /**
+   * T1545b — a DETACHED INSTANTIATE is a detach of a fresh instance, so its page bank is
+   * rewritten the same way. It used to land targeting `parent`, which names nothing at the
+   * root: a recall on it did nothing. A fresh instance has no current preset or fade.
+   */
+  it("T1545b: a detached instantiate rewrites the page bank too — targets the copies, and a recall on it sets them", async () => {
+    const doc = documentWith([]);
+    const made = await doc.bus.execute("component.instantiate", { componentId: "city", mode: "detached" }, ctx);
+    expect(made.status).toBe("applied");
+    expect(codes(made)).toContain("component.detach.pageBank");
+    const bank = byLabel(doc, "looks");
+    expect(bank?.parameters["targets"]).toBe("blurA.radius solid.amount");
+    expect(parsePresetBank(bank?.parameters["presets"])).toEqual({
+      ok: true,
+      bank: { version: 1, presets: [{ name: "calm", values: { blurA: { radius: 2 }, solid: { amount: 0.25 } } }] },
+    });
+    expect(bank?.parameters["current"]).toBe("");
+    expect(parseMorphRecords(bank?.parameters["morphs"])).toEqual([]);
+    // The copies hold the published defaults (B239); a recall moves them.
+    expect(byLabel(doc, "blurA")?.parameters["radius"]).toBe(4);
+    expect((await doc.bus.execute("preset.recall", { nodeId: bank!.id, name: "calm" }, ctx)).status).toBe("applied");
+    expect(byLabel(doc, "blurA")?.parameters["radius"]).toBe(2);
+    expect(byLabel(doc, "solid")?.parameters["amount"]).toBe(0.25);
+  });
+
   it("cannot be exact when a preset holds a key the page does not publish: left as it was, and named as inert", async () => {
     const odd: Preset = { name: "odd", values: { parent: { blur: 3, glow: 1 } } };
     const doc = documentWith(twoLooks(), { definitions: [city([CALM, odd])] });
