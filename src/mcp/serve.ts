@@ -9,7 +9,9 @@ import { createAgentToolSurface } from "../agent/surface.ts";
 import { attachStateSources } from "../domain/commands/index.ts";
 import { registerCompileCommand } from "../app/compile-command.ts";
 import { registerResetFeedbackCommand } from "../app/runtime-commands.ts";
-import { compileGraph } from "../compiler/index.ts";
+import { compileGraph, timelineStructureRequest, type CompileRequest } from "../compiler/index.ts";
+import { buildTimelineStructure } from "../domain/presets/timeline-cues.ts";
+import type { BackendCapabilities } from "../domain/types/backend.ts";
 import type { ProjectSettings } from "../domain/types/graph.ts";
 import { createVgpuBackend } from "../runtime/backend/vgpu/vgpu-backend.ts";
 import { nodeGpuHost, probeDawn } from "../runtime/backend/vgpu/node-gpu-host.ts";
@@ -93,6 +95,9 @@ const HEADLESS_SETTINGS: ProjectSettings = {
     memoryBudgetBytes: 1_073_741_824,
   },
 };
+
+/** The rate this server steps its offline frames at: frame n is n / 60 s (§T1544b reads the timeline at it). */
+const HEADLESS_FPS = 60;
 
 export interface HeadlessMcpServer {
   receive(message: unknown): Promise<void>;
@@ -187,6 +192,20 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
   let compiled: ReturnType<typeof compileGraph> | null = null;
   let frameIndex = 0;
   let disposed = false;
+  /**
+   * §T1544b — the compile request for the frame `at`: the document with the timeline's
+   * structural overrides at that playhead applied (`timelineStructureRequest`), so a timed
+   * cue that switches a Layer, a picture or a compile-time key renders switched here too.
+   * This server steps one offline frame per change at `HEADLESS_FPS`.
+   */
+  const requestAt = (at: number, capabilities: BackendCapabilities): CompileRequest => {
+    const graph = store.view.getGraph();
+    const request: CompileRequest = { graph, settings: HEADLESS_SETTINGS, registry, capabilities };
+    const structure = buildTimelineStructure({ document: graph, registry });
+    return structure === null
+      ? request
+      : timelineStructureRequest(request, structure.at({ timeSeconds: at / HEADLESS_FPS, fps: HEADLESS_FPS, subframes: 1 }));
+  };
 
   // MUTABLE on purpose: the surface reads `ports[name]` at list/call time, so
   // assigning the pixel ports once the GPU is up flips availability live — and
@@ -370,12 +389,8 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
     if (live === undefined || disposed) return;
     const capabilities = live.capabilities;
     if (capabilities === null || capabilities === undefined) return;
-    const plan = compileGraph({
-      graph: store.view.getGraph(),
-      settings: HEADLESS_SETTINGS,
-      registry,
-      capabilities,
-    });
+    // §T1544b: in the timeline's structure at the frame this renders.
+    const plan = compileGraph(requestAt(frameIndex, capabilities));
     if (!plan.ok) {
       compiled = plan;
       return;
@@ -384,8 +399,8 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
     compiled = plan;
     live.render(built, {
       frame: {
-        timeSeconds: frameIndex / 60,
-        deltaSeconds: 1 / 60,
+        timeSeconds: frameIndex / HEADLESS_FPS,
+        deltaSeconds: 1 / HEADLESS_FPS,
         frameIndex,
         mode: "offline",
         randomSeed: HEADLESS_SETTINGS.randomSeed,
@@ -445,12 +460,9 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
         if (capabilities === null || capabilities === undefined) {
           return { compiled: null, diagnostics: [] };
         }
-        const plan = compileGraph({
-          graph: store.view.getGraph(),
-          settings: HEADLESS_SETTINGS,
-          registry,
-          capabilities,
-        });
+        // §T1544b: in the timeline's structure at the frame last rendered — the plan the
+        // backend holds — so the report and the pixels describe one structure.
+        const plan = compileGraph(requestAt(Math.max(0, frameIndex - 1), capabilities));
         compiled = plan;
         return { compiled: plan, diagnostics: [...plan.diagnostics] };
       },

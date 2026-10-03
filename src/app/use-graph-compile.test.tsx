@@ -538,3 +538,61 @@ describe("useGraphCompile — the frame compiler splices over the memo's own com
     runtime.dispose();
   });
 });
+
+/**
+ * §T1544b — `project.compile` (the agent's `compile_project`) answers in the timeline's
+ * structure AT THE FRAME ON SCREEN. A blue Solid under a Layer stored OFF; a following cue
+ * list turns the Layer on at 1.0 s. The bus's frame clock says where the playhead is: before
+ * the cue the report is the document's plan, past it the plan with the Layer's pass — the
+ * same plan as a document with the Layer stored ON. Same revision throughout: the answer
+ * moves with the playhead alone, so a revision-keyed cache would have served the old one.
+ */
+describe("§T1544b — project.compile applies the timeline's structure at the frame on screen", () => {
+  it("before the cue: the stored structure; past it: the switched one, equal to a document storing it", async () => {
+    const runtime = newRuntime();
+    const presets = JSON.stringify({ version: 1, presets: [{ name: "on", values: {}, on: { layer1: true } }] });
+    const cues = JSON.stringify({ version: 1, cues: [{ name: "in", bank: "stage", preset: "on", at: 1 }] });
+    let created: Record<string, string> = {};
+    await act(async () => {
+      const seeded = await seed(runtime, [
+        { op: "addNode", ref: "$blue", type: "solid", position: { x: 0, y: 0 }, label: "blue", parameters: { color: [0, 0, 1, 1] } },
+        { op: "addNode", ref: "$red", type: "solid", position: { x: 0, y: 100 }, label: "red", parameters: { color: [1, 0, 0, 1] } },
+        { op: "addNode", ref: "$layer", type: "layer", position: { x: 200, y: 0 }, label: "layer1", parameters: { picture: "red", blend: "replace" } },
+        { op: "addNode", ref: "$out", type: "output", position: { x: 400, y: 0 }, label: "out1" },
+        { op: "addNode", ref: "$stage", type: "presets", position: { x: 0, y: 200 }, label: "stage", parameters: { targets: "layer1", presets } },
+        { op: "addNode", ref: "$show", type: "cueList", position: { x: 0, y: 300 }, label: "show", parameters: { cues, follow: "timeline" } },
+        { op: "connect", source: { nodeId: "$blue", portId: "out" }, target: { nodeId: "$layer", portId: "below" } },
+        { op: "connect", source: { nodeId: "$layer", portId: "out" }, target: { nodeId: "$out", portId: "input" } },
+      ] as GraphPatchOperation[]);
+      created = (seeded.output as { createdIds: Record<string, string> }).createdIds;
+      expect((await seed(runtime, [{ op: "setNodeUi", nodeId: created["$layer"]!, ui: { bypassed: true } }])).status).toBe("applied");
+    });
+    let clock: { epoch: string; absTimeSeconds: number; timeSeconds: number; timelineRate: number } | undefined;
+    runtime.bus.attachFrameClock(() => clock);
+    renderHook(() => useGraphCompile(runtime, CAPABILITIES));
+    const report = async () =>
+      (await runtime.bus.execute("project.compile", {}, runtime.invocation)).output as { ok: boolean; passCount: number };
+    const at = (seconds: number) => ({ epoch: "e", absTimeSeconds: seconds, timeSeconds: seconds, timelineRate: 60 });
+
+    clock = at(0.5);
+    const before = await report();
+    clock = at(1.5);
+    const after = await report();
+    expect(before.ok && after.ok).toBe(true);
+    // The Layer's own pass is in the plan past the cue, and not before it.
+    expect(after.passCount).toBe(before.passCount + 1);
+    // And back before the cue: the cache does not keep the switched answer.
+    clock = at(0.9);
+    expect((await report()).passCount).toBe(before.passCount);
+
+    // The twin: the Layer stored ON, the list live — the plan past the cue, exactly.
+    await act(async () => {
+      expect((await seed(runtime, [
+        { op: "setNodeUi", nodeId: created["$layer"]!, ui: { bypassed: false } },
+        { op: "setParameters", nodeId: created["$show"]!, parameters: { follow: "live" } },
+      ])).status).toBe("applied");
+    });
+    expect((await report()).passCount).toBe(after.passCount);
+    runtime.dispose();
+  });
+});

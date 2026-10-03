@@ -493,6 +493,9 @@ export function useGraphCompile(
         : structure.at(askedFrame);
   const structureRef = useRef(structure);
   structureRef.current = structure;
+  /** §T1544b: the document `structureRef` was built from, so `project.compile` can reuse it. */
+  const structureGraphRef = useRef(graph);
+  structureGraphRef.current = graph;
   /**
    * One request per (base request, segment), so the structural memo, the frame compiler and
    * a precompile made by the warm-up all hold THE SAME object for a segment — the identity
@@ -524,7 +527,10 @@ export function useGraphCompile(
      so a revision-only key was structurally blind across any pair of loads and
      `project.compile` could answer with the previous document's plan (the owner's
      stale-listings symptom from a third seam). Same correction as T726's pin. */
-  const cacheRef = useRef<{ documentIdentity: string; revision: number; view: CompileResultView } | null>(null);
+  /* §T1544b: and by the timeline SEGMENT the view was compiled in — a structural cue reached
+     by the playhead changes the plan with no revision, so `project.compile` past a crossing
+     must not answer with the segment before it. */
+  const cacheRef = useRef<{ documentIdentity: string; revision: number; segment: string; view: CompileResultView } | null>(null);
 
   /**
    * The channel resolver, for BOTH compiles (T238, T259).
@@ -927,7 +933,7 @@ export function useGraphCompile(
     // content is exactly what it was, so there is nothing to compile. Reusing the previous
     // plan is what makes "an fps edit does not recompile" true rather than intended.
     if (sameInputs && previous !== null && change !== null && change.work === "editor-only") {
-      cacheRef.current = { documentIdentity: runtime.documentIdentity, revision: graph.revision, view: previous.view };
+      cacheRef.current = { documentIdentity: runtime.documentIdentity, revision: graph.revision, segment: previous.segment, view: previous.view };
       lastCompile.current = { ...previous, graph };
       return remember({
         graph,
@@ -959,7 +965,7 @@ export function useGraphCompile(
     // labels here, once — never in the 90-odd sites that mint the messages. The
     // compiled plan's own diagnostics stay raw: agents address nodes by id.
     const diagnostics = [...humanizeDiagnostics(rawDiagnostics, graph)];
-    cacheRef.current = { documentIdentity: runtime.documentIdentity, revision: graph.revision, view: { compiled, diagnostics } };
+    cacheRef.current = { documentIdentity: runtime.documentIdentity, revision: graph.revision, segment: segment.key, view: { compiled, diagnostics } };
     lastCompile.current = {
       graph,
       documentIdentity: runtime.documentIdentity,
@@ -1025,11 +1031,30 @@ export function useGraphCompile(
    */
   const compileNow = useCallback((): CompileResultView => {
     const current = runtime.bus.store.getGraph();
+    const flattenedNow = runtime.flattened.current();
+    /*
+     * §T1544b — the timeline's structure AT THE FRAME ON SCREEN (the bus's frame clock — the
+     * last frame the loop rendered; frame 0 with no loop), so an agent compiling past a
+     * structural cue is told about the plan that frame renders. The rendered memo's own
+     * structure when it is this revision's, otherwise built for the store's revision.
+     */
+    const structureNow =
+      structureGraphRef.current === current
+        ? structureRef.current
+        : buildTimelineStructure({ document: current, registry: runtime.registry, components: runtime.components, flattened: flattenedNow });
+    const clock = runtime.bus.frameClock();
+    const segmentNow =
+      structureNow === null
+        ? DOCUMENT_STRUCTURE
+        : clock?.timeSeconds !== undefined && clock.timelineRate !== undefined
+          ? structureNow.atFrame(playheadFrame(clock.timeSeconds, clock.timelineRate), clock.timelineRate)
+          : structureNow.atFrame(0, projectFps(runtime.settings));
     const cached = cacheRef.current;
     if (
       cached !== null &&
       cached.documentIdentity === runtime.documentIdentity &&
-      cached.revision === current.revision
+      cached.revision === current.revision &&
+      cached.segment === segmentNow.key
     ) {
       return cached.view;
     }
@@ -1041,10 +1066,10 @@ export function useGraphCompile(
     // document `current` was just read from — so this compile and the rendered one are
     // built from one flattening even when React has not caught up yet.
     const { compiled, diagnostics } = compileSafely(
-      compileRequest(current, runtime.flattened.current(), runtime, runtime.settings, capability, {}),
+      timelineStructureRequest(compileRequest(current, flattenedNow, runtime, runtime.settings, capability, {}), segmentNow),
     );
     const view: CompileResultView = { compiled, diagnostics };
-    cacheRef.current = { documentIdentity: runtime.documentIdentity, revision: current.revision, view };
+    cacheRef.current = { documentIdentity: runtime.documentIdentity, revision: current.revision, segment: segmentNow.key, view };
     return view;
   }, [runtime]);
 
