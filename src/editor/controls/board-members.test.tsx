@@ -720,4 +720,39 @@ describe("T1541b — a look's instance joins a Panel", () => {
     expect(undoDepth(runtime)).toBe(before + 1);
     expect([...picker().options].map((option) => option.textContent)).toEqual(["Nothing to add"]);
   });
+
+  /**
+   * T1541b — the desk strip re-reads on a CATALOGUE change. A Store or Delete on a look's
+   * instance writes its component and leaves the document — and its revision — alone, so a
+   * strip that re-rendered only on the document kept the presets it drew before.
+   */
+  it("the desk strip shows a preset stored into the look, and drops one deleted from it, with the document untouched", async () => {
+    const { runtime, ids } = await looks(1);
+    const board: StoredBoardItem[] = [{ member: "city", rect: { x: 0, y: 0, w: 8, h: 2 } }];
+    await runtime.bus.execute(
+      "graph.applyPatch",
+      { baseRevision: runtime.bus.store.getRevision(), label: "board", operations: [{ op: "setParameters", nodeId: ids["$panel1"]!, parameters: { board: serializePanelBoard({ columns: 8, items: board }) } }] },
+      runtime.invocation,
+    );
+    const tab = render(<Tab runtime={runtime} />);
+    const strip = () => [...tab.container.querySelectorAll('[data-board-item="member:city"] [data-preset]')].map((button) => button.getAttribute("data-preset"));
+    expect(strip()).toEqual(["calm", "wide", "dark", "warm", "cold"]);
+    const revision = runtime.bus.store.getRevision();
+
+    await act(async () => {
+      const stored = await runtime.bus.execute("preset.store", { nodeId: ids["$city"]!, name: "bright" }, runtime.invocation);
+      expect(stored.status).toBe("applied");
+      await settle();
+    });
+    expect(runtime.bus.store.getRevision()).toBe(revision);
+    expect(strip()).toEqual(["calm", "wide", "dark", "warm", "cold", "bright"]);
+
+    await act(async () => {
+      const deleted = await runtime.bus.execute("preset.delete", { nodeId: ids["$city"]!, name: "calm" }, runtime.invocation);
+      expect(deleted.status).toBe("applied");
+      await settle();
+    });
+    expect(runtime.bus.store.getRevision()).toBe(revision);
+    expect(strip()).toEqual(["wide", "dark", "warm", "cold", "bright"]);
+  });
 });

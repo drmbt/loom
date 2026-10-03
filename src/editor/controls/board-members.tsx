@@ -12,7 +12,6 @@ import {
   PRESET_RECALL_COMMAND,
   PRESET_STORE_COMMAND,
   bankViewOf,
-  presetCatalogueHolderFor,
   type BankView,
   morphProgress,
   morphRunning,
@@ -27,6 +26,7 @@ import { refusalMessage, type CommandAnswer } from "@editor/inspector/command-re
 import { boardFit, boardValueEm, cueListBoardLayout, cueListShowsCues, layerBoardLayout, presetStripGrid, type BoardCells } from "./board-fit.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
 import { layerOpacityFader, setLayerOn } from "./layer-controls.ts";
+import { usePresetCatalogue } from "./use-preset-catalogue.ts";
 import styles from "./board-members.module.css";
 
 /**
@@ -369,9 +369,12 @@ const MEMBERS: Readonly<Record<string, (props: BoardMemberProps) => ReturnType<t
 
 /** The board item for a bank, a layer or a cue list; `null` for any other node type. */
 export function BoardMember(props: BoardMemberProps) {
+  // T1541b: a look's presets are its COMPONENT's, and a Store or Delete on the instance
+  // changes the catalogue, not the document — so the strip re-reads on the catalogue too.
+  const catalogue = usePresetCatalogue(props.bus);
   const Member = MEMBERS[props.node.type];
   if (Member !== undefined) return <Member {...props} />;
   // T1505b: a look's instance on the board by name is its bank — the strip, from its component.
-  const view = bankViewOf(props.node, presetCatalogueHolderFor(props.bus).current?.components);
+  const view = bankViewOf(props.node, catalogue);
   return view?.kind === "instance" ? <PresetStrip {...props} view={view} /> : null;
 }
