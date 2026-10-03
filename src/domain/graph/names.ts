@@ -2,7 +2,9 @@ import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import { isParameterSlot } from "../parameters/slots.ts";
 import { sourceReferenceTokens, sourceReferencesOf } from "./source-references.ts";
-import { PRESETS_NODE_TYPE, parsePresetBank, serializePresetBank, type Preset, type PresetValues } from "../presets/bank.ts";
+import { parsePresetBank, serializePresetBank, type Preset, type PresetValues } from "../presets/bank.ts";
+import { PAGE_TARGET, PRESET_MORPHS_KEY, isPresetsNode } from "../presets/bank-view.ts";
+import { isComponentNodeType } from "../components/component-type.ts";
 import { parseMorphRecords, serializeMorphRecords, type MorphRecord } from "../presets/morph.ts";
 import { CUE_LIST_NODE_TYPE, parseCueList, serializeCueList } from "../presets/cue-list.ts";
 import type { StoredParameter } from "../types/parameters.ts";
@@ -233,9 +235,15 @@ function renamedKey<T>(record: Readonly<Record<string, T>>, name: string, rename
  * keyed by node name and hold stored slots — so they move with the rename too. Left
  * behind, a fade in flight would lose its node the moment it was renamed (the name
  * resolves to nothing, so the key simply cuts), and a pasted bank would fade the ORIGINALS.
+ *
+ * T1505b: a look's INSTANCE holds its own records (`presetMorphs`), keyed by `parent` — not
+ * a node name, so the key never moves — but their slots are stored references like any
+ * other, and an expression in one names root nodes. Kinds 1 and 2 run over them.
  */
 const presetBankClause: ReferenceClause = (node, name, rename) => {
-  if (node.type !== PRESETS_NODE_TYPE) return 0;
+  const instance = isComponentNodeType(node.type);
+  // `parent` on an instance's records is the reserved word, never a root node's name.
+  if ((!isPresetsNode(node) && !instance) || (instance && name === PAGE_TARGET)) return 0;
   let touched = 0;
 
   /** One name-keyed record of stored slots: kinds 1 and 2 over each slot, then the key itself. */
@@ -251,7 +259,8 @@ const presetBankClause: ReferenceClause = (node, name, rename) => {
     return { values: rename === null ? walked : renamedKey(walked, name, rename), hits };
   };
 
-  const records = parseMorphRecords(node.parameters["morphs"]);
+  const morphsKey = instance ? PRESET_MORPHS_KEY : "morphs";
+  const records = parseMorphRecords(node.parameters[morphsKey]);
   if (records.length > 0) {
     let recordHits = 0;
     const renamed = records.map((record): MorphRecord => {
@@ -261,10 +270,11 @@ const presetBankClause: ReferenceClause = (node, name, rename) => {
       return { ...record, from: from.values, to: to.values };
     });
     if (recordHits > 0) {
-      if (rename !== null) node.parameters["morphs"] = serializeMorphRecords(renamed);
+      if (rename !== null) node.parameters[morphsKey] = serializeMorphRecords(renamed);
       touched += 1;
     }
   }
+  if (instance) return touched;
 
   const targets = node.parameters["targets"];
   if (typeof targets === "string") {

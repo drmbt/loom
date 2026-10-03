@@ -11,6 +11,9 @@ import {
   PRESETS_NODE_TYPE,
   PRESET_RECALL_COMMAND,
   PRESET_STORE_COMMAND,
+  bankViewOf,
+  presetCatalogueHolderFor,
+  type BankView,
   morphProgress,
   morphRunning,
   nextCueName,
@@ -153,11 +156,18 @@ function useMorphFade(bus: LoomBus, morphs: unknown): { readonly preset: string;
   return newest === undefined || progress === null ? null : { preset: newest.preset, progress };
 }
 
-function PresetStrip({ node, rect, cells, bus, invocation }: BoardMemberProps) {
-  const parsed = parsePresetBank(node.parameters["presets"]);
+/**
+ * T1505b: `view` is set for a look's INSTANCE on the board — its presets are its
+ * component's, its `current` and fades its own. No Store on that strip: a Store there
+ * writes the component for every instance with no undo, which is the inspector's to do
+ * deliberately, not a stray press mid-show.
+ */
+function PresetStrip({ node, rect, cells, bus, invocation, view }: BoardMemberProps & { readonly view?: BankView }) {
+  const parsed = parsePresetBank((view?.bank ?? node).parameters["presets"]);
   const presets = parsed.ok ? parsed.bank.presets : [];
-  const current = text(node.parameters["current"]);
-  const fade = useMorphFade(bus, node.parameters["morphs"]);
+  const current = text(node.parameters[view?.currentKey ?? "current"]);
+  const fade = useMorphFade(bus, node.parameters[view?.morphsKey ?? "morphs"]);
+  const storable = view?.kind !== "instance";
   const { refusal, press } = usePress(bus);
   if (!parsed.ok) {
     return (
@@ -170,7 +180,7 @@ function PresetStrip({ node, rect, cells, bus, invocation }: BoardMemberProps) {
   }
   // T1527b: Store sits after the presets — its own cell, the strip's last.
   const storeAs = nextPresetName(presets.map((preset) => preset.name));
-  const grid = presetStripGrid(presets.length + 1, rect.h);
+  const grid = presetStripGrid(presets.length + (storable ? 1 : 0), rect.h);
   const buttonPx = (cells.widthOf(rect.w) - (grid.perRow - 1) * PART_GAP_PX) / grid.perRow;
   const longest = presets.reduce((widest, preset) => (preset.name.length > widest.length ? preset.name : widest), STORE_CAPTION);
   const fit = boardFit({ kind: "button", caption: longest, valueEm: 0, widthPx: buttonPx, cellPx: cells.cellPx });
@@ -205,15 +215,17 @@ function PresetStrip({ node, rect, cells, bus, invocation }: BoardMemberProps) {
             </button>
           );
         })}
-        <button
-          type="button"
-          className={`${styles.press} ${styles.store}`}
-          title={`Store the targets as a new preset, ${storeAs}`}
-          data-preset-store={storeAs}
-          onClick={() => press(() => bus.execute(PRESET_STORE_COMMAND, { nodeId: node.id, name: storeAs }, invocation))}
-        >
-          <span className={styles.name}>{STORE_CAPTION}</span>
-        </button>
+        {storable ? (
+          <button
+            type="button"
+            className={`${styles.press} ${styles.store}`}
+            title={`Store the targets as a new preset, ${storeAs}`}
+            data-preset-store={storeAs}
+            onClick={() => press(() => bus.execute(PRESET_STORE_COMMAND, { nodeId: node.id, name: storeAs }, invocation))}
+          >
+            <span className={styles.name}>{STORE_CAPTION}</span>
+          </button>
+        ) : null}
       </div>
       <Refusal message={refusal} />
     </div>
@@ -358,5 +370,8 @@ const MEMBERS: Readonly<Record<string, (props: BoardMemberProps) => ReturnType<t
 /** The board item for a bank, a layer or a cue list; `null` for any other node type. */
 export function BoardMember(props: BoardMemberProps) {
   const Member = MEMBERS[props.node.type];
-  return Member === undefined ? null : <Member {...props} />;
+  if (Member !== undefined) return <Member {...props} />;
+  // T1505b: a look's instance on the board by name is its bank — the strip, from its component.
+  const view = bankViewOf(props.node, presetCatalogueHolderFor(props.bus).current?.components);
+  return view?.kind === "instance" ? <PresetStrip {...props} view={view} /> : null;
 }

@@ -12,6 +12,10 @@ import type { FrameClock } from "../../domain/types/frame.ts";
 import { serializeCueList, serializePresetBank } from "../../domain/presets/index.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { PHONE_COMMANDS, buildPhoneSnapshot, publishedMorphs, publishedTimelinePositions, vetPhoneSet } from "./phone-snapshot.ts";
+import type { GraphComponentDefinition } from "../../domain/types/components.ts";
+import { registerComponentCommands } from "../../domain/components/commands.ts";
+import { componentNodeType } from "../../domain/components/component-type.ts";
+import { createComponentSystem, type ComponentRegistry } from "../../domain/components/registry.ts";
 import { PHONE_WRITABLE_KEYS, type PhoneBoardItem, type PhoneSet, type PhoneWidget } from "./phone-protocol.ts";
 
 /**
@@ -651,5 +655,91 @@ describe("T1503b — banks, layers and cue lists on the phone", () => {
       "cue.setStandby": ["cue", "nodeId"],
     });
     expect([...PHONE_COMMANDS].sort()).toEqual(["cue.back", "cue.go", "cue.setStandby", "preset.recall"]);
+  });
+});
+
+/**
+ * T1505b — A LOOK'S INSTANCE ON A REMOTE PANEL BEHAVES LIKE A BANK: the phone draws it as a
+ * preset strip from its COMPONENT'S presets, with the instance's own `current`, and a press
+ * is the recall the desk runs, on the instance. Never a Store: the vet has no key for one.
+ * Seeing inside a component needs the catalogue; without it the instance is not published,
+ * so what the phone is shown and what it may write still agree.
+ */
+describe("T1505b — a look's instance bank on the phone", () => {
+  const PAGE_PRESETS = serializePresetBank({
+    version: 1,
+    presets: [
+      { name: "soft", values: { parent: { glow: 4 } } },
+      { name: "hard", values: { parent: { glow: 20 } } },
+    ],
+  });
+  const look = {
+    componentId: "look",
+    version: 1,
+    name: "Look",
+    graph: {
+      revision: 0,
+      nodes: {
+        blur: { id: "blur", type: "blur", label: "blur", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { size: 9 } },
+        looks: { id: "looks", type: "presets", label: "looks", definitionVersion: 1, position: { x: 0, y: 200 }, parameters: { targets: "parent", presets: PAGE_PRESETS } },
+      },
+      edges: {},
+      groups: {},
+    },
+    inputs: [],
+    outputs: [{ externalId: "out", label: "Out", nodeId: "blur", portId: "out" }],
+    parameters: [{ key: "glow", definition: { type: "number", label: "Glow", default: 9, min: 0, max: 64 }, targets: [{ nodeId: "blur", key: "size" }] }],
+  } as unknown as GraphComponentDefinition;
+
+  async function stage(): Promise<{ bus: LoomBus; components: ComponentRegistry; city: string }> {
+    const store = createGraphStore({ ids: createSequentialIdFactory("p"), now: () => "2026-10-03T00:00:00.000Z" });
+    const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view(), [look]);
+    const { bus } = createDomainBus({ store, registry: system.nodes });
+    registerComponentCommands(bus, { components: system.components });
+    const board = serializePanelBoard({ columns: 8, items: [{ member: "city", rect: { x: 0, y: 0, w: 4, h: 1 } }] });
+    const result = await bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: bus.store.getRevision(),
+        label: "setup",
+        operations: [add("city", componentNodeType("look", 1), "city", { glow: 9 }), add("stage", "panel", "panel1", { title: "Show", remote: true, board })],
+      },
+      contextFor(alice),
+    );
+    expect(result.output.status).toBe("applied");
+    return { bus, components: system.components, city: (result.output.createdIds as Record<string, string>)["$city"] as string };
+  }
+
+  it("draws the instance as a preset strip from its component, with its own current — and refuses a Store, recalls by the bus", async () => {
+    const { bus, components, city } = await stage();
+    const items = (): readonly PhoneBoardItem[] => buildPhoneSnapshot(bus.store.getGraph(), 1, undefined, components).panels[0]?.board?.items ?? [];
+    expect(items()).toEqual([
+      { kind: "widget", rect: { x: 0, y: 0, w: 4, h: 1 }, widget: { kind: "preset", handle: city, caption: "city", presets: ["soft", "hard"], current: null, morphing: false } },
+    ]);
+
+    // A press is the desk's recall, on the instance.
+    const vet = vetPhoneSet(bus.store.getGraph(), set(city, { recall: "hard" }), components);
+    expect(vet).toEqual({ ok: true, action: "command", command: "preset.recall", input: { nodeId: city, name: "hard" } });
+    if (vet.ok && vet.action === "command") {
+      const ran = await bus.execute(vet.command, vet.input, contextFor(alice));
+      expect(ran.status).toBe("applied");
+    }
+    expect(bus.store.getGraph().nodes[city]?.parameters["glow"]).toBe(20);
+    expect(items()[0]).toMatchObject({ widget: { current: "hard" } });
+
+    // No Store from the phone: there is no key a phone can send that the vet turns into one.
+    const store = vetPhoneSet(bus.store.getGraph(), set(city, { store: "mine" }), components);
+    expect(store.ok).toBe(false);
+    // A name the component does not hold is refused, as on a bank.
+    expect(vetPhoneSet(bus.store.getGraph(), set(city, { recall: "nope" }), components).ok).toBe(false);
+  });
+
+  it("with no catalogue the instance is not published — the snapshot shows nothing and the vet refuses", async () => {
+    const { bus, city } = await stage();
+    expect(buildPhoneSnapshot(bus.store.getGraph(), 1).panels[0]?.board?.items).toEqual([]);
+    expect(vetPhoneSet(bus.store.getGraph(), set(city, { recall: "soft" }))).toEqual({
+      ok: false,
+      reason: "A phone tried to move a control that is not published to the phone door.",
+    });
   });
 });

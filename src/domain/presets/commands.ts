@@ -20,7 +20,6 @@ import {
 import { defaultParameterValue, validateParameters } from "../parameters/validate.ts";
 import {
   MORPH_CURVES,
-  PRESETS_NODE_TYPE,
   isPresetName,
   parsePresetBank,
   parsePresetTargets,
@@ -36,12 +35,27 @@ import {
   MAX_MORPH_RECORDS,
   morphRunning,
   nextMorphRecords,
-  parseMorphRecords,
+  renameRecordsNode,
   sameStored,
   serializeMorphRecords,
   type MorphRecord,
 } from "./morph.ts";
 import { bankMorphRecords } from "./morph-index.ts";
+import {
+  PAGE_TARGET,
+  PRESET_CURRENT_KEY,
+  PRESET_MORPHS_KEY,
+  PRESET_STATE_KEYS,
+  bankOf,
+  heldMorphRecords,
+  isPageBank,
+  presetCatalogueHolderFor,
+  withPageBankPresets,
+  type BankLookup,
+  type BankView,
+  type PresetCatalogue,
+} from "./bank-view.ts";
+import { isComponentNodeType } from "../components/component-type.ts";
 import { CUE_BACK_COMMAND, CUE_GO_COMMAND } from "./cue-list.ts";
 
 /**
@@ -217,25 +231,96 @@ function bankName(node: GraphNode): string {
   return node.label ?? node.id;
 }
 
-/** The bank node, or the refusal that says why `nodeId` is not one. */
-function requireBank(
+/**
+ * T1505b — why a node that is not a bank this bus can use is not one, in words. Shared by
+ * `requireBank`, the cue list's target and Delete, so the three say the same sentence.
+ * `where` opens the sentence (`"city"`, or `Cue "c1" (set): "city"`).
+ */
+export function bankLookupRefusal(
+  lookup: Exclude<BankLookup, { ok: true }>,
+  node: GraphNode,
+  where: string,
+  code: (why: string) => string = (why) => `preset.bank.${why}`,
+): RuntimeDiagnostic {
+  const said = `${where} ${notABank(lookup.why, node)}`;
+  switch (lookup.why) {
+    case "notBank":
+      return diagnostic("error", code("type"), `${said}.`, node.id);
+    case "noCatalogue":
+      return diagnostic("error", code("noCatalogue"), `${said}; nothing was changed.`, node.id, "A look's presets live in its component; recall them where the component is installed (the app).");
+    case "notInstalled":
+      return diagnostic("error", code("notInstalled"), `${said}; nothing was changed.`, node.id);
+    case "noPageBank":
+      return diagnostic("error", code("noPageBank"), `${said}; nothing was changed.`, node.id, `Inside the component, add a Presets node whose Targets is "${PAGE_TARGET}".`);
+  }
+}
+
+/** Why a node is not a bank here, as the end of a sentence that names it. */
+function notABank(why: Exclude<BankLookup, { ok: true }>["why"], node: GraphNode): string {
+  switch (why) {
+    case "notBank":
+      return `is a ${node.type} node, not a Presets bank`;
+    case "noCatalogue":
+      return "is a component instance, and this surface has no component catalogue to read its presets from";
+    case "notInstalled":
+      return "is an instance of a component that is not installed";
+    case "noPageBank":
+      return `is a component instance whose component holds no preset bank targeting ${PAGE_TARGET}`;
+  }
+}
+
+/** The catalogue a bus's preset commands read, when one is attached (`bank-view.ts`). */
+export function presetCatalogueOf(bus: object): PresetCatalogue | undefined {
+  return presetCatalogueHolderFor(bus).current ?? undefined;
+}
+
+/** A node as a bank with no catalogue: what a caller holding a bare Presets node means. */
+function asView(bank: GraphNode | BankView): BankView {
+  return "holder" in bank ? bank : { kind: "node", holder: bank, bank, currentKey: "current", morphsKey: "morphs" };
+}
+
+/**
+ * The bank a command names — a Presets node, or (T1505b) a component instance whose
+ * definition holds a page bank — or the refusal that says why `nodeId` is not one.
+ */
+export function requireBank(
   graph: GraphDocument,
   nodeId: unknown,
-): { ok: true; node: GraphNode; bank: PresetBank } | { ok: false; diagnostic: RuntimeDiagnostic } {
+  catalogue: PresetCatalogue | undefined,
+): { ok: true; view: BankView; bank: PresetBank } | { ok: false; diagnostic: RuntimeDiagnostic } {
   if (typeof nodeId !== "string") {
     return { ok: false, diagnostic: diagnostic("error", "preset.bank.missing", "No bank node was named.") };
   }
   const node = graph.nodes[nodeId];
   if (node === undefined) {
+    // T1505b: a flattened id (`outer/city`) is inside an instance. v1 stores and recalls a
+    // look's presets on an instance in the ROOT graph only — nothing at the root writes a
+    // nested instance's page.
+    const head = nodeId.includes("/") ? graph.nodes[nodeId.slice(0, nodeId.indexOf("/"))] : undefined;
+    if (head !== undefined && isComponentNodeType(head.type)) {
+      return {
+        ok: false,
+        diagnostic: diagnostic(
+          "error",
+          "preset.bank.nested",
+          `"${nodeId}" is inside component instance "${bankName(head)}"; a look's presets are stored and recalled on an instance in the root graph, not from inside another component. Nothing was changed.`,
+          head.id,
+          "Recall a preset of the outer instance instead, or detach it.",
+        ),
+      };
+    }
     return { ok: false, diagnostic: diagnostic("error", "preset.bank.missing", `No node "${nodeId}".`) };
   }
-  if (node.type !== PRESETS_NODE_TYPE) {
+  const lookup = bankOf(node, catalogue?.components);
+  if (!lookup.ok) return { ok: false, diagnostic: bankLookupRefusal(lookup, node, `"${bankName(node)}"`) };
+  const { view } = lookup;
+  if (view.kind === "instance" && node.label === undefined) {
     return {
       ok: false,
-      diagnostic: diagnostic("error", "preset.bank.type", `"${bankName(node)}" is a ${node.type} node, not a Presets bank.`, node.id),
+      diagnostic: diagnostic("error", "preset.bank.unnamed", `Instance "${node.id}" has no name, and a look's presets reach its page by name.`, node.id, "Name the instance."),
     };
   }
-  const parsed = parsePresetBank(node.parameters["presets"]);
+  const parsed = parsePresetBank(view.bank.parameters["presets"]);
   if (!parsed.ok) {
     return {
       ok: false,
@@ -244,11 +329,72 @@ function requireBank(
         "preset.bank.malformed",
         `Bank "${bankName(node)}": ${parsed.reason}.`,
         node.id,
-        "Fix the Presets field in the inspector; nothing was changed.",
+        view.kind === "instance"
+          ? "Fix the Presets field of the bank inside the component; nothing was changed."
+          : "Fix the Presets field in the inspector; nothing was changed.",
       ),
     };
   }
-  return { ok: true, node, bank: parsed.bank };
+  return { ok: true, view, bank: parsed.bank };
+}
+
+/**
+ * T1505b §1.2 Q5 — Store and Recall on a PAGE bank inside a definition session are refused:
+ * there is no instance whose page could be captured or written, and a recall there would
+ * rewrite the definition for every instance. A bank that targets internal nodes is not a
+ * page bank and keeps working with the session's own undo.
+ */
+function inDefinitionRefusal(view: BankView, catalogue: PresetCatalogue | undefined, verb: "Store" | "Recall"): RuntimeDiagnostic | null {
+  if (catalogue === undefined || catalogue.host === null || view.kind !== "node" || !isPageBank(view.bank)) return null;
+  return diagnostic(
+    "error",
+    "preset.bank.inDefinition",
+    `${verb} on bank "${bankName(view.holder)}" is refused inside the component: it targets ${PAGE_TARGET}, the page of an instance, and there is no instance here. Store and recall from an instance.`,
+    view.holder.id,
+    "Leave the component and use the instance's Presets section.",
+  );
+}
+
+type Skip = (name: string, code: string, message: string, nodeId?: NodeId) => void;
+
+/**
+ * T1505b — a page bank's preset, spelled for the ROOT graph the planner resolves names in:
+ * its `parent` values keyed by the instance's name. A page bank reaches only its
+ * instance's published page, so values for any other name, and `on` / `recalls` (which
+ * would name nodes inside the component), are skipped, each said by name.
+ */
+function rootPreset(view: BankView, preset: Preset, skip: Skip): Preset {
+  if (view.kind === "node") return preset;
+  const instance = bankName(view.holder);
+  const values: Record<string, Readonly<Record<string, StoredParameter>>> = {};
+  const who = `Preset "${preset.name}" (${instance})`;
+  for (const [name, record] of Object.entries(preset.values)) {
+    if (name === PAGE_TARGET) values[instance] = record;
+    else skip(name, "preset.page.notParent", `${who} holds values for "${name}", and a look's preset reaches only its own page (${PAGE_TARGET}); skipped.`, view.holder.id);
+  }
+  for (const layer of Object.keys(preset.on ?? {})) {
+    skip(`${layer}.on`, "preset.page.on", `${who} switches "${layer}", which is inside the component; a look's preset reaches only its page, so it was skipped.`, view.holder.id);
+  }
+  for (const recall of preset.recalls ?? []) {
+    skip(`${recall.bank}.${recall.preset}`, "preset.page.recalls", `${who} recalls "${recall.preset}" from "${recall.bank}", which is inside the component; skipped.`, view.holder.id);
+  }
+  return { name: preset.name, values, ...(preset.morph === undefined ? {} : { morph: preset.morph }) };
+}
+
+/** Records as a holder stores them: an instance keeps them under `parent`, so a rename never touches them. */
+function storedRecords(view: BankView, records: readonly MorphRecord[]): string {
+  return serializeMorphRecords(view.kind === "instance" ? renameRecordsNode(records, bankName(view.holder), PAGE_TARGET) : records);
+}
+
+/** The holder kind of a bank the planner only knows by id (one whose records lost keys). */
+function holderView(graph: GraphDocument, nodeId: NodeId, catalogue: PresetCatalogue | undefined): BankView | undefined {
+  const lookup = bankOf(graph.nodes[nodeId], catalogue?.components);
+  if (lookup.ok) return lookup.view;
+  // No catalogue to confirm it, but an instance holding records holds them under `presetMorphs`.
+  const node = graph.nodes[nodeId];
+  return node !== undefined && isComponentNodeType(node.type)
+    ? { kind: "instance", holder: node, bank: node, currentKey: PRESET_CURRENT_KEY, morphsKey: PRESET_MORPHS_KEY }
+    : undefined;
 }
 
 /** A parameter's definition by key, component keys (`color.r`, §V113) included. */
@@ -325,7 +471,7 @@ export function capturePresetValues(
     const record = (values[target.node] ??= {});
     if (target.key !== undefined) {
       const keyDefinition = definitionFor(schema, target.key);
-      if (keyDefinition === undefined || keyDefinition.type === "pulse") {
+      if (keyDefinition === undefined || keyDefinition.type === "pulse" || PRESET_STATE_KEYS.has(target.key)) {
         skip(target.token, "preset.target.key", `Target "${target.token}": "${target.node}" has no storable parameter "${target.key}".`, node.id);
         continue;
       }
@@ -334,7 +480,8 @@ export function capturePresetValues(
       continue;
     }
     for (const [key, keyDefinition] of Object.entries(schema)) {
-      if (keyDefinition.type === "pulse") continue;
+      // T1505b: an instance's own preset state is not part of the look it captures.
+      if (keyDefinition.type === "pulse" || PRESET_STATE_KEYS.has(key)) continue;
       const stored = node.parameters[key];
       record[key] = stored === undefined ? defaultParameterValue(keyDefinition) : copied(stored);
     }
@@ -406,6 +553,11 @@ export interface PresetRecallPlanOptions {
   readonly morph?: MorphSpec | undefined;
   /** The app's frame clock (`CommandContext.frameClock`). Absent = no app; a morph cuts. */
   readonly clock?: FrameClock | undefined;
+  /**
+   * T1505b: the component catalogue, so a shot can recall a look by naming its instance.
+   * Absent (a bus with none), such a recall is skipped with a warning that names it.
+   */
+  readonly catalogue?: PresetCatalogue | undefined;
 }
 
 /**
@@ -430,7 +582,10 @@ const LAYER_NODE_TYPE = "layer";
 
 /** One preset on a recall's expansion, and how many `recalls` hops it sits from the recalled one. */
 interface RecallStep {
+  /** The holder: the bank node, or (T1505b) the instance that is the bank from outside. */
   readonly bank: GraphNode;
+  readonly view: BankView;
+  /** Spelled for the root graph (`rootPreset`): an instance bank's `parent` is its name here. */
   readonly preset: Preset;
   readonly depth: number;
 }
@@ -461,7 +616,8 @@ const quotedList = (names: readonly string[]): string =>
 function expandRecalls(
   graph: GraphDocument,
   top: RecallStep,
-  skip: (name: string, code: string, message: string, nodeId?: NodeId) => void,
+  skip: Skip,
+  catalogue: PresetCatalogue | undefined,
 ): { ok: true; steps: readonly RecallStep[] } | { ok: false; diagnostic: RuntimeDiagnostic } {
   const steps: RecallStep[] = [];
   const path: RecallStep[] = [];
@@ -479,21 +635,25 @@ function expandRecalls(
         skip(entry, "preset.recalls.missing", `${asks}, and no node is named "${recall.bank}"; skipped.`, step.bank.id);
         continue;
       }
-      if (bank.type !== PRESETS_NODE_TYPE) {
-        skip(entry, "preset.recalls.type", `${asks}, and "${recall.bank}" is a ${bank.type} node, not a Presets bank; skipped.`, bank.id);
+      // T1505b: a shot may recall a look's preset by naming its instance.
+      const lookup = bankOf(bank, catalogue?.components);
+      if (!lookup.ok) {
+        const code = lookup.why === "notBank" ? "preset.recalls.type" : `preset.recalls.${lookup.why}`;
+        skip(entry, code, `${asks}, and "${recall.bank}" ${notABank(lookup.why, bank)}; skipped.`, bank.id);
         continue;
       }
-      const parsed = parsePresetBank(bank.parameters["presets"]);
+      const parsed = parsePresetBank(lookup.view.bank.parameters["presets"]);
       if (!parsed.ok) {
         skip(entry, "preset.recalls.malformed", `${asks}, and bank "${recall.bank}" cannot be read (${parsed.reason}); skipped.`, bank.id);
         continue;
       }
-      const preset = parsed.bank.presets.find((candidate) => candidate.name === recall.preset);
-      if (preset === undefined) {
+      const found = parsed.bank.presets.find((candidate) => candidate.name === recall.preset);
+      if (found === undefined) {
         skip(entry, "preset.recalls.unknown", `${asks}, and bank "${recall.bank}" has no preset "${recall.preset}"; skipped.`, bank.id);
         continue;
       }
-      const next: RecallStep = { bank, preset, depth: step.depth + 1 };
+      const preset = rootPreset(lookup.view, found, skip);
+      const next: RecallStep = { bank, view: lookup.view, preset, depth: step.depth + 1 };
       const loop = path.findIndex((on) => on.bank.id === bank.id && on.preset.name === preset.name);
       if (loop >= 0) {
         const cycle = [...path.slice(loop), next];
@@ -539,8 +699,8 @@ function expandRecalls(
 export function planPresetRecall(
   graph: GraphDocument,
   registry: NodeRegistryView,
-  bankNode: GraphNode,
-  preset: Preset,
+  bank: GraphNode | BankView,
+  recalled: Preset,
   options: PresetRecallPlanOptions = {},
 ): PresetRecallPlan {
   const operations: GraphPatchOperation[] = [];
@@ -555,7 +715,12 @@ export function planPresetRecall(
     diagnostics.push(diagnostic("warning", code, message, nodeId));
   };
 
-  const expansion = expandRecalls(graph, { bank: bankNode, preset, depth: 0 }, skip);
+  // T1505b: the bank may be an instance, whose preset reads `parent` for its own page.
+  const view = asView(bank);
+  const bankNode = view.holder;
+  const preset = rootPreset(view, recalled, skip);
+  const { catalogue } = options;
+  const expansion = expandRecalls(graph, { bank: bankNode, view, preset, depth: 0 }, skip, catalogue);
   if (!expansion.ok) {
     return { operations: [], applied: [], skipped, diagnostics: [...diagnostics, expansion.diagnostic], morph: null, refused: true, after: {} };
   }
@@ -570,7 +735,8 @@ export function planPresetRecall(
   const layers = new Map<string, Laid<boolean>>();
   for (const step of expansion.steps) {
     for (const [nodeName, record] of Object.entries(step.preset.values)) {
-      if (nodeByName(graph, nodeName) === step.bank.id) {
+      // An instance bank IS its own target (T1505b): the skip is for a Presets node only.
+      if (step.view.kind === "node" && nodeByName(graph, nodeName) === step.bank.id) {
         skip(nodeName, "preset.target.self", `${said(step)} holds values for the bank itself; they were skipped.`, step.bank.id);
         continue;
       }
@@ -620,7 +786,8 @@ export function planPresetRecall(
       const who = said(laid.from);
       const name = `${nodeName}.${key}`;
       const keyDefinition = definitionFor(schema, key);
-      if (keyDefinition === undefined) {
+      // T1505b: an instance's own preset state is written below, never from a preset's values.
+      if (keyDefinition === undefined || PRESET_STATE_KEYS.has(key)) {
         skip(name, "preset.target.key", `${who}: "${nodeName}" has no parameter "${key}"; skipped.`, node.id);
         continue;
       }
@@ -687,7 +854,7 @@ export function planPresetRecall(
    */
   const elsewhere = new Map<NodeId, Record<string, StoredParameter>>();
   for (const step of expansion.steps) {
-    if (step.bank.id !== bankNode.id && wrote.has(step)) elsewhere.set(step.bank.id, { current: step.preset.name });
+    if (step.bank.id !== bankNode.id && wrote.has(step)) elsewhere.set(step.bank.id, { [step.view.currentKey]: step.preset.name });
   }
 
   let morph: MorphSpec | null = null;
@@ -707,7 +874,9 @@ export function planPresetRecall(
       );
     }
 
-    const own = parseMorphRecords(bankNode.parameters["morphs"]);
+    // T1505b: an instance's records are read under its name, like every other bank's
+    // (`bankMorphRecords`), so a shot's record and the look's own chain on one key.
+    const own = heldMorphRecords(view);
     const others = new Map(
       bankMorphRecords(graph)
         .filter((bank) => bank.bankId !== bankNode.id)
@@ -755,16 +924,18 @@ export function planPresetRecall(
         ),
       );
     }
-    const morphs = serializeMorphRecords(book.own);
+    const morphs = storedRecords(view, book.own);
     operations.push({
       op: "setParameters",
       nodeId: bankNode.id,
       // Written only when the list actually changes, so a cut on a bank with nothing
       // fading is the same one-key write it was before morphs existed.
-      parameters: { current: preset.name, ...(morphs === serializeMorphRecords(own) ? {} : { morphs }) },
+      parameters: { [view.currentKey]: preset.name, ...(morphs === storedRecords(view, own) ? {} : { [view.morphsKey]: morphs }) },
     });
     for (const [bankId, records] of book.others) {
-      elsewhere.set(bankId, { ...elsewhere.get(bankId), morphs: serializeMorphRecords(records) });
+      const holder = holderView(graph, bankId, catalogue);
+      if (holder === undefined) continue;
+      elsewhere.set(bankId, { ...elsewhere.get(bankId), [holder.morphsKey]: storedRecords(holder, records) });
     }
     for (const bankId of [...elsewhere.keys()].sort()) {
       operations.push({ op: "setParameters", nodeId: bankId, parameters: elsewhere.get(bankId) ?? {} });
@@ -824,30 +995,85 @@ function recallRefusal(
   return { status: "rejected", revision, diagnostics, output: { ok: false, preset, applied: [], skipped, morph: null } };
 }
 
+/**
+ * T1505b — Store's capture for a bank: its targets as written, or for an instance bank the
+ * page bank's `parent` / `parent.<key>` targets captured on the INSTANCE and keyed back to
+ * `parent`, so the preset is the definition's and means every instance's own page.
+ */
+function captureFor(context: CommandContext, view: BankView, targets: readonly PresetTarget[]): PresetCapture {
+  if (view.kind === "node") return capturePresetValues(context.graph, context.registry, view.holder.id, targets);
+  const instance = bankName(view.holder);
+  const onInstance = targets.map((target): PresetTarget => ({ ...target, node: instance }));
+  // No bank id to skip as "itself": the instance IS the one target.
+  const capture = capturePresetValues(context.graph, context.registry, "", onInstance);
+  const values = Object.fromEntries(Object.entries(capture.values).map(([name, keys]) => [name === instance ? PAGE_TARGET : name, keys]));
+  return { ...capture, values };
+}
+
+/**
+ * T1505b §1.2 Q5 (owner's ruling) — Store and Delete on an instance bank WRITE THE
+ * COMPONENT: the page bank's `presets` in the definition, through the catalogue, exactly as
+ * publishing a parameter does (`commitDefinition`, `components/commands.ts`). Every
+ * instance gets the change and it travels with the file. Like every definition edit it has
+ * no root undo — the document's revision does not move — and the result says so.
+ */
+export function commitPageBank(
+  context: CommandContext,
+  catalogue: PresetCatalogue,
+  view: BankView,
+  presets: readonly Preset[],
+): { ok: true; status: "applied" | "validated"; diagnostics: RuntimeDiagnostic[] } | { ok: false; diagnostics: RuntimeDiagnostic[] } {
+  const definition = view.definition;
+  if (definition === undefined) return { ok: false, diagnostics: [diagnostic("error", "preset.bank.notInstalled", "The component is not installed.", view.holder.id)] };
+  const next = withPageBankPresets(definition, view.bank, serializePresetBank({ version: 1, presets }));
+  const problems = catalogue.components.validate(next);
+  if (problems.some((each) => each.severity === "error")) return { ok: false, diagnostics: problems };
+  if (!context.dryRun) catalogue.components.register(next);
+  return { ok: true, status: context.dryRun ? "validated" : "applied", diagnostics: problems };
+}
+
+/** What a write into the component tells the caller (§1.2 Q5, Q6): who has it, no undo, and the file identity. */
+export function componentWriteNote(view: BankView, what: string): RuntimeDiagnostic {
+  const component = view.definition?.name ?? bankName(view.holder);
+  return diagnostic(
+    "info",
+    "preset.component.written",
+    `${what} component "${component}": every instance of it has the change, and it travels with the component. A component edit has no undo; ${
+      what.startsWith("Deleted") ? "Store it again to bring it back" : "Delete is the reverse"
+    }. Exported again, the file is a different "${component}" from copies exported before, so a project that holds an older copy takes this one in beside it.`,
+    view.holder.id,
+  );
+}
+
 export function registerPresetCommands(bus: LoomBus): void {
   if (bus.hasCommand(PRESET_STORE_COMMAND)) return;
 
   bus.registerCommand({
     name: PRESET_STORE_COMMAND,
-    description: "Store a bank's targets, as their whole stored slots, under a preset name (§T1496b).",
+    description:
+      "Store a bank's targets, as their whole stored slots, under a preset name (§T1496b). On a component instance whose component holds a preset bank, the preset is written into the component, for every instance (§T1505b).",
     handler: (input, context) => {
       const revision = context.store.getRevision();
-      const found = requireBank(context.graph, input?.nodeId);
+      const catalogue = presetCatalogueOf(bus);
+      const found = requireBank(context.graph, input?.nodeId, catalogue);
       if (!found.ok) return storeRefusal(revision, [found.diagnostic]);
-      const { node, bank } = found;
+      const { view, bank } = found;
+      const node = view.holder;
+      const inside = inDefinitionRefusal(view, catalogue, "Store");
+      if (inside !== null) return storeRefusal(revision, [inside]);
       const name = typeof input.name === "string" ? input.name.trim() : "";
       if (!isPresetName(name)) {
         return storeRefusal(revision, [
           diagnostic("error", "preset.name", "A preset name must be an identifier: letters, digits and _, not starting with a digit.", node.id),
         ]);
       }
-      const targets = parsePresetTargets(node.parameters["targets"]);
+      const targets = parsePresetTargets(view.bank.parameters["targets"]);
       if (targets.length === 0) {
         return storeRefusal(revision, [
           diagnostic("error", "preset.store.noTargets", `Bank "${bankName(node)}" declares no targets.`, node.id, "Name nodes (or node.key) in its Targets field."),
         ]);
       }
-      const capture = capturePresetValues(context.graph, context.registry, node.id, targets);
+      const capture = captureFor(context, view, targets);
       if (capture.captured === 0) {
         return storeRefusal(
           revision,
@@ -863,6 +1089,16 @@ export function registerPresetCommands(bus: LoomBus): void {
         index < 0
           ? [...bank.presets, { name, values: capture.values }]
           : bank.presets.map((preset, at) => (at === index ? { ...preset, values: capture.values } : preset));
+      if (view.kind === "instance" && catalogue !== undefined) {
+        const written = commitPageBank(context, catalogue, view, presets);
+        if (!written.ok) return storeRefusal(revision, [...capture.diagnostics, ...written.diagnostics], capture.missing);
+        return {
+          status: written.status,
+          revision,
+          diagnostics: [...capture.diagnostics, ...written.diagnostics, componentWriteNote(view, `Stored "${name}" into`)],
+          output: { ok: true, preset: name, captured: capture.captured, missing: capture.missing },
+        };
+      }
       const outcome = applyGraphPatch(
         {
           baseRevision: context.graph.revision,
@@ -890,10 +1126,15 @@ export function registerPresetCommands(bus: LoomBus): void {
       "Recall a bank's preset: every target it holds written back as one patch, one undo step (§T1496b); with a morph, the end state commits at once and the screen fades to it (§T1497b). A preset's recalls (other banks' presets) and its layer on/off ride in the same patch (§T1499b).",
     handler: (input, context) => {
       const revision = context.store.getRevision();
-      const found = requireBank(context.graph, input?.nodeId);
+      const catalogue = presetCatalogueOf(bus);
+      const found = requireBank(context.graph, input?.nodeId, catalogue);
       if (!found.ok) return recallRefusal(revision, [found.diagnostic]);
-      const { node, bank } = found;
-      const settings = resolvedBank(node, context);
+      const { view, bank } = found;
+      const node = view.holder;
+      const inside = inDefinitionRefusal(view, catalogue, "Recall");
+      if (inside !== null) return recallRefusal(revision, [inside]);
+      // Select, Morph and Curve are the bank's — for an instance, its component's page bank's.
+      const settings = resolvedBank(view.bank, context);
       const name = typeof input.name === "string" ? input.name.trim() : resolvedSelect(settings);
       if (name === "") {
         return recallRefusal(revision, [
@@ -928,9 +1169,10 @@ export function registerPresetCommands(bus: LoomBus): void {
           name,
         );
       }
-      const plan = planPresetRecall(context.graph, context.registry, node, preset, {
+      const plan = planPresetRecall(context.graph, context.registry, view, preset, {
         morph: presetMorph(own, preset, settings),
         clock: context.frameClock,
+        catalogue,
       });
       // T1499b: a cycle or too deep a nesting is refused by the planner, which names it.
       if (plan.refused) return recallRefusal(revision, [...plan.diagnostics], name, plan.skipped);

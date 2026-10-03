@@ -4,7 +4,9 @@ import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { PRESET_DELETE_COMMAND } from "@domain/presets/delete-command.ts";
+import { isComponentNodeType } from "@domain/components/component-type.ts";
 import {
+  PRESET_MOVE_INTO_COMPONENT_COMMAND,
   PRESET_RECALL_COMMAND,
   PRESET_STORE_COMMAND,
   isPresetName,
@@ -47,6 +49,13 @@ import rows from "./preset-sections.module.css";
  * T1531b: with other nodes selected beside the bank (the bank clicked last, so it is the one
  * shown), "Add N selected as targets" appends their names in ONE write — banks, Panels, cue
  * lists and nodes already targeted left out (`bankTargetsToAdd`, the canvas drop's rule).
+ *
+ * T1505b: the same section on a look's INSTANCE whose component holds a page bank
+ * (`component` set). Recall, Store and Delete run the same commands on the instance; its
+ * presets are the component's, so Store and Delete write the component for every instance
+ * with no undo, which the section says. Targets, the order and each preset's own morph are
+ * the component's text, edited inside it — not here. On a bank beside ONE instance, "Move
+ * into component" runs `preset.moveIntoComponent` (explicit, never automatic).
  */
 
 /** T994's claim: the section presents Targets; every other parameter keeps its row. */
@@ -61,6 +70,8 @@ export interface PresetBankSectionProps {
   readonly targets: string;
   readonly presets: string;
   readonly current: string;
+  /** T1505b: the component whose presets these are, when the node is a look's instance. */
+  readonly component?: string;
   /** For the target picker: the nodes there are to name. */
   readonly graph: Pick<GraphDocument, "nodes">;
   /** T1531b: the canvas selection, which may hold the bank's would-be targets. */
@@ -75,7 +86,7 @@ const NO_PICK = "";
 /** A preset's own morph time as its field shows it; blank when it carries none (the bank's applies). */
 const morphText = (preset: Preset): string => (preset.morph === undefined ? "" : String(preset.morph.seconds));
 
-export function PresetBankSection({ nodeId, targets, presets, current, graph, selection = [], bus, context, editor }: PresetBankSectionProps) {
+export function PresetBankSection({ nodeId, targets, presets, current, component, graph, selection = [], bus, context, editor }: PresetBankSectionProps) {
   const parsed = parsePresetBank(presets);
   const list = parsed.ok ? parsed.bank.presets : [];
   const names = list.map((preset) => preset.name);
@@ -138,6 +149,18 @@ export function PresetBankSection({ nodeId, targets, presets, current, graph, se
     .filter((candidate) => !listed.has(candidate))
     .sort((a, b) => a.localeCompare(b));
   const fromSelection = bankTargetsToAdd(graph, nodeId, selection);
+  // T1505b: a bank whose every target is ONE look's instance can move into that look.
+  const heads = [...new Set(parsePresetTargets(targets).map((target) => target.node))];
+  const soleLook =
+    component === undefined && heads.length === 1
+      ? Object.values(graph.nodes).find((each) => (each.label ?? each.id) === heads[0] && isComponentNodeType(each.type))
+      : undefined;
+  const moveIn = (): void => {
+    void bus.execute(PRESET_MOVE_INTO_COMPONENT_COMMAND, { nodeId }, context).then((result) => {
+      if (refused(result)) return;
+      setSaid({ text: `Moved into ${heads[0] ?? "the component"}: its cues and Panels now name it.`, error: false });
+    });
+  };
 
   return (
     <section className={styles.section} aria-label="Presets bank">
@@ -146,26 +169,42 @@ export function PresetBankSection({ nodeId, targets, presets, current, graph, se
         <span className={styles.sectionRule} aria-hidden />
       </div>
 
-      <ControlRow label="Targets" description="What Store captures: node names, or node.key for one parameter.">
-        <TextField label="Targets" value={targets} onChange={(value, phase) => editor.setParameter(nodeId, "targets", value, phase)} />
-      </ControlRow>
-      <ControlRow label="Add target">
-        <EnumField
-          label="Add target"
-          value={NO_PICK}
-          options={[{ value: NO_PICK, label: candidates.length === 0 ? "No other node" : "Pick a node…" }, ...candidates.map((candidate) => ({ value: candidate, label: candidate }))]}
-          disabled={candidates.length === 0}
-          onChange={(picked) => {
-            if (picked !== NO_PICK) editor.setParameter(nodeId, "targets", targets.trim() === "" ? picked : `${targets.trim()} ${picked}`, "commit");
-          }}
-        />
-      </ControlRow>
-      {fromSelection.length === 0 ? null : (
-        <ControlRow label="From selection">
-          <Button variant="outline" title={fromSelection.join(", ")} onClick={() => editor.setParameter(nodeId, "targets", targetsWith(targets, fromSelection), "commit")}>
-            {`Add ${fromSelection.length} selected as targets`}
-          </Button>
-        </ControlRow>
+      {component === undefined ? null : (
+        <span className={styles.statusHint} data-preset-component={component}>
+          {`These presets live in component "${component}": Store and Delete change it for every instance, and have no undo (Delete is the reverse of Store). Edit their order and morphs inside the component.`}
+        </span>
+      )}
+      {component !== undefined ? null : (
+        <>
+          <ControlRow label="Targets" description="What Store captures: node names, or node.key for one parameter.">
+            <TextField label="Targets" value={targets} onChange={(value, phase) => editor.setParameter(nodeId, "targets", value, phase)} />
+          </ControlRow>
+          <ControlRow label="Add target">
+            <EnumField
+              label="Add target"
+              value={NO_PICK}
+              options={[{ value: NO_PICK, label: candidates.length === 0 ? "No other node" : "Pick a node…" }, ...candidates.map((candidate) => ({ value: candidate, label: candidate }))]}
+              disabled={candidates.length === 0}
+              onChange={(picked) => {
+                if (picked !== NO_PICK) editor.setParameter(nodeId, "targets", targets.trim() === "" ? picked : `${targets.trim()} ${picked}`, "commit");
+              }}
+            />
+          </ControlRow>
+          {fromSelection.length === 0 ? null : (
+            <ControlRow label="From selection">
+              <Button variant="outline" title={fromSelection.join(", ")} onClick={() => editor.setParameter(nodeId, "targets", targetsWith(targets, fromSelection), "commit")}>
+                {`Add ${fromSelection.length} selected as targets`}
+              </Button>
+            </ControlRow>
+          )}
+          {soleLook === undefined ? null : (
+            <ControlRow label="Into the look" description="Moves these presets into the component, for every instance; this bank goes and its cues and Panels name the instance. One undo brings the bank back.">
+              <Button variant="outline" onClick={moveIn}>
+                {`Move into ${heads[0] ?? ""}`}
+              </Button>
+            </ControlRow>
+          )}
+        </>
       )}
 
       {parsed.ok ? null : (
@@ -183,12 +222,16 @@ export function PresetBankSection({ nodeId, targets, presets, current, graph, se
               <div className={rows.presetHead}>
                 <span className={rows.name}>{preset}</span>
                 <span className={rows.live}>{current === preset ? "live" : ""}</span>
-                <Button aria-label={`Move ${preset} earlier`} title="Earlier on the strip" disabled={index === 0} onClick={() => move(index, -1)}>
-                  ↑
-                </Button>
-                <Button aria-label={`Move ${preset} later`} title="Later on the strip" disabled={index === list.length - 1} onClick={() => move(index, 1)}>
-                  ↓
-                </Button>
+                {component !== undefined ? null : (
+                  <>
+                    <Button aria-label={`Move ${preset} earlier`} title="Earlier on the strip" disabled={index === 0} onClick={() => move(index, -1)}>
+                      ↑
+                    </Button>
+                    <Button aria-label={`Move ${preset} later`} title="Later on the strip" disabled={index === list.length - 1} onClick={() => move(index, 1)}>
+                      ↓
+                    </Button>
+                  </>
+                )}
                 <Button variant="outline" aria-label={`Recall ${preset}`} onClick={() => void bus.execute(PRESET_RECALL_COMMAND, { nodeId, name: preset }, context).then(refused)}>
                   Recall
                 </Button>
@@ -196,29 +239,31 @@ export function PresetBankSection({ nodeId, targets, presets, current, graph, se
                   Delete
                 </Button>
               </div>
-              <div className={rows.cueDetail}>
-                <label className={rows.field}>
-                  <span className={rows.fieldLabel}>Morph (s)</span>
-                  <MorphSeconds
-                    key={morphText(entry)}
-                    label={`Morph seconds for ${preset}`}
-                    stored={morphText(entry)}
-                    placeholder="bank's"
-                    onCommit={(seconds) => setMorph(index, entry, seconds)}
-                  />
-                </label>
-                <div className={rows.field}>
-                  <span className={rows.fieldLabel}>Curve</span>
-                  <MorphCurveField
-                    label={`Curve for ${preset}`}
-                    value={entry.morph?.curve ?? "smooth"}
-                    disabled={entry.morph === undefined}
-                    onChange={(curve) => {
-                      if (entry.morph !== undefined) setMorph(index, entry, entry.morph.seconds, curve);
-                    }}
-                  />
+              {component !== undefined ? null : (
+                <div className={rows.cueDetail}>
+                  <label className={rows.field}>
+                    <span className={rows.fieldLabel}>Morph (s)</span>
+                    <MorphSeconds
+                      key={morphText(entry)}
+                      label={`Morph seconds for ${preset}`}
+                      stored={morphText(entry)}
+                      placeholder="bank's"
+                      onCommit={(seconds) => setMorph(index, entry, seconds)}
+                    />
+                  </label>
+                  <div className={rows.field}>
+                    <span className={rows.fieldLabel}>Curve</span>
+                    <MorphCurveField
+                      label={`Curve for ${preset}`}
+                      value={entry.morph?.curve ?? "smooth"}
+                      disabled={entry.morph === undefined}
+                      onChange={(curve) => {
+                        if (entry.morph !== undefined) setMorph(index, entry, entry.morph.seconds, curve);
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           );
         })}

@@ -8,6 +8,8 @@ import { createSequentialIdFactory } from "../graph/ids.ts";
 import { createDomainBus } from "../commands/index.ts";
 import type { LoomBus } from "../commands/bus.ts";
 import { alice, contextFor } from "../commands/test-support.ts";
+import { registerComponentCommands } from "../components/commands.ts";
+import type { ComponentRegistry } from "../components/registry.ts";
 import { serializePresetBank, type MorphSpec, type Preset } from "./bank.ts";
 
 /**
@@ -45,10 +47,15 @@ export interface PresetSession {
   graph(): GraphDocument;
 }
 
-/** A bus over `graph` with a settable frame clock — the app's attachment, by hand. */
-export function presetSession(graph: GraphDocument, registry: NodeRegistryView): PresetSession {
+/**
+ * A bus over `graph` with a settable frame clock — the app's attachment, by hand. T1505b:
+ * with `components`, the catalogue is attached as the app attaches it, so a look's instance
+ * is a bank on this bus too.
+ */
+export function presetSession(graph: GraphDocument, registry: NodeRegistryView, components?: ComponentRegistry): PresetSession {
   const store = createGraphStore({ ids: createSequentialIdFactory("t"), now: () => "2026-10-02T00:00:00.000Z", initialGraph: graph });
   const { bus } = createDomainBus({ store, registry });
+  if (components !== undefined) registerComponentCommands(bus, { components });
   let clock: FrameClock | undefined;
   bus.attachFrameClock(() => clock);
   return {

@@ -376,3 +376,134 @@ describe("T1524b on Dawn — a fade on an instance's knob reaches the inside by 
     expect(half?.pixel[0]).toBeLessThan(end?.pixel[0] ?? -Infinity);
   }, 180_000);
 });
+
+/* ------------------------------------------------------------------------------------ */
+/* T1505b: a look's presets inside its component, on pixels                               */
+/* ------------------------------------------------------------------------------------ */
+
+/**
+ * A look whose PRESETS live in its definition: white Solid → Level, the Level's brightness
+ * published as `bright`, and a page bank `looks` (Targets `parent`) beside them. Two
+ * instances, `cityA` and `cityB`, sit at the root; the recall is the real command on a bus
+ * with the catalogue attached as the app attaches it. The instance is the bank: the record
+ * lives on `cityA` keyed `parent`, and the morph index reads it under `cityA`'s name.
+ */
+const pageLook = {
+  componentId: "page",
+  version: 1,
+  name: "Page",
+  graph: componentGraph(
+    {
+      src: node("src", "solid", "src", { color: [1, 1, 1, 1] }),
+      grade: node("grade", "level", "grade", { brightness: 1 }),
+      looks: presetBankNode("looks", "looks", "parent", [
+        { name: "up", values: { parent: { bright: 0.8 } } },
+        { name: "down", values: { parent: { bright: 0.2 } } },
+      ]),
+    },
+    { e0: { id: "e0", source: { nodeId: "src", portId: "out" }, target: { nodeId: "grade", portId: "input" } } },
+  ),
+  inputs: [],
+  outputs: [{ externalId: "out", label: "Out", nodeId: "grade", portId: "out" }],
+  parameters: [
+    { key: "bright", definition: { type: "number", label: "Bright", default: 1, min: 0, max: 8, range: "floor" }, targets: [{ nodeId: "grade", key: "brightness" }] },
+  ],
+} as unknown as GraphComponentDefinition;
+
+const pages = createComponentSystem(registry, [pageLook]);
+
+/** cityA and cityB (each holding `bright`), the Output showing `shown`, and any extra root nodes. */
+function pageGraph(a: number, b: number, shown: "a" | "b" = "a", extra: Record<string, GraphNode> = {}): GraphDocument {
+  return componentGraph(
+    {
+      a: node("a", componentNodeType("page", 1), "cityA", { bright: a }),
+      b: node("b", componentNodeType("page", 1), "cityB", { bright: b }),
+      out: node("out", "output", "out1", {}),
+      ...extra,
+    },
+    { e1: { id: "e1", source: { nodeId: shown, portId: "out" }, target: { nodeId: "out", portId: "input" } } },
+  );
+}
+
+/** The same document with the Output showing the other instance. Edges carry no preset state. */
+const showing = (graph: GraphDocument, shown: "a" | "b"): GraphDocument => ({
+  ...graph,
+  edges: { e1: { id: "e1", source: { nodeId: shown, portId: "out" }, target: { nodeId: "out", portId: "input" } } },
+});
+
+async function renderPage(graph: GraphDocument, capture: readonly number[], epoch?: string): Promise<Shot[]> {
+  const result = await renderHeadless({
+    host: nodeGpuHost(),
+    graph,
+    settings,
+    fps: FPS,
+    frames: Math.max(...capture) + 1,
+    capture: [...capture],
+    animate: true,
+    components: pages.components.view(),
+    ...(epoch === undefined ? {} : { absEpoch: epoch }),
+  });
+  expect(result.frames.map((frame) => frame.frameIndex)).toEqual([...capture]);
+  return result.frames.map((frame) => ({
+    bytes: Buffer.from(frame.bytes),
+    pixel: [...decodeComponents(frame.bytes, frame.format).slice(0, 4)],
+  }));
+}
+
+const pageShot = async (graph: GraphDocument, frame: number, epoch?: string): Promise<Shot> => {
+  const [only] = await renderPage(graph, [frame], epoch);
+  if (only === undefined) throw new Error("no frame captured");
+  return only;
+};
+
+describe("T1505b on Dawn — a look's own preset, recalled on ONE instance, fades that instance alone", () => {
+  it("cityA: 1 s linear 0.2 → 0.8 reads exactly 0.5 at frame 30; cityB, never recalled, reads its 0.2 twin", async () => {
+    requireDawn();
+    const session = presetSession(pageGraph(0.2, 0.2), pages.nodes, pages.components);
+    session.at({ epoch: EPOCH, absTimeSeconds: 0 });
+    await session.recall("a", "up", LINEAR_1S);
+    const graph = session.graph();
+    // The instance holds the destination, its own current, and the record keyed `parent`.
+    expect(graph.nodes["a"]?.parameters["bright"]).toBe(0.8);
+    expect(graph.nodes["a"]?.parameters["presetCurrent"]).toBe("up");
+    expect(parseMorphRecords(graph.nodes["a"]?.parameters["presetMorphs"]).map((record) => record.to)).toEqual([{ parent: { bright: 0.8 } }]);
+    expect(graph.nodes["b"]?.parameters["presetMorphs"]).toBeUndefined();
+
+    const [start, half, end] = await renderPage(graph, [0, 30, 60], EPOCH);
+    expect(half?.pixel).toEqual([0.5, 0.5, 0.5, 1]);
+    expect(Buffer.compare(start?.bytes ?? Buffer.alloc(0), (await pageShot(pageGraph(0.2, 0.2), 0)).bytes)).toBe(0);
+    expect(Buffer.compare(end?.bytes ?? Buffer.alloc(0), (await pageShot(pageGraph(0.8, 0.2), 60)).bytes)).toBe(0);
+    expect(Buffer.compare(half?.bytes ?? Buffer.alloc(0), end?.bytes ?? Buffer.alloc(0))).not.toBe(0);
+
+    // cityB on the same frame of the same document: exactly its own stored 0.2.
+    const other = await pageShot(showing(graph, "b"), 30, EPOCH);
+    expect(Buffer.compare(other.bytes, (await pageShot(pageGraph(0.2, 0.2, "b"), 30)).bytes)).toBe(0);
+    expect(Buffer.compare(other.bytes, half?.bytes ?? Buffer.alloc(0))).not.toBe(0);
+  }, 180_000);
+
+  it("a shot's record (root bank, keyed cityA) and the look's own record (keyed parent) chain: the second continues from the screen", async () => {
+    requireDawn();
+    const shots = presetBankNode("shots", "shots", "cityA", [{ name: "drop", values: { cityA: { bright: 0.8 } } }]);
+    const session = presetSession(pageGraph(0.2, 0.2, "a", { shots }), pages.nodes, pages.components);
+    session.at({ epoch: EPOCH, absTimeSeconds: 0 });
+    await session.recall("shots", "drop", LINEAR_1S);
+    const before = await pageShot(session.graph(), 30, EPOCH);
+    expect(before.pixel).toEqual([0.5, 0.5, 0.5, 1]);
+
+    // Frame 30 is on screen: the look's own preset is recalled on cityA from there.
+    session.at({ epoch: EPOCH, absTimeSeconds: 30 / FPS });
+    await session.recall("a", "down", LINEAR_1S);
+    const graph = session.graph();
+    expect(parseMorphRecords(graph.nodes["shots"]?.parameters["morphs"])).toHaveLength(1);
+    expect(parseMorphRecords(graph.nodes["a"]?.parameters["presetMorphs"])).toHaveLength(1);
+
+    const [same, later, landed] = await renderPage(graph, [30, 45, 90], EPOCH);
+    // No jump on the frame of the recall: byte-identical to what was on screen before it.
+    expect(Buffer.compare(same?.bytes ?? Buffer.alloc(0), before.bytes)).toBe(0);
+    // Frame 45: the shot's fade at 0.75, the look's a quarter in — one fold across both.
+    const folded = mix(mix(0.2, 0.8, 45 / FPS), 0.2, 45 / FPS - 30 / FPS);
+    expect(folded).toBeCloseTo(0.5375, 12);
+    expect(Buffer.compare(later?.bytes ?? Buffer.alloc(0), (await pageShot(pageGraph(folded, 0.2), 45)).bytes)).toBe(0);
+    expect(Buffer.compare(landed?.bytes ?? Buffer.alloc(0), (await pageShot(pageGraph(0.2, 0.2), 90)).bytes)).toBe(0);
+  }, 180_000);
+});

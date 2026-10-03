@@ -89,3 +89,19 @@ export type {
   CueSetStandbyOutput,
   CueStepInput,
 } from "./cue-commands.ts";
+/** T1505b: a bank as the outside sees one — a Presets node, or a look's instance whose component holds a page bank. */
+export {
+  PAGE_TARGET,
+  PRESET_CURRENT_KEY,
+  PRESET_MORPHS_KEY,
+  PRESET_STATE_KEYS,
+  bankOf,
+  bankViewOf,
+  isPageBank,
+  isPresetsNode,
+  pageBankOf,
+  presetCatalogueHolderFor,
+} from "./bank-view.ts";
+export type { BankLookup, BankView, PresetCatalogue } from "./bank-view.ts";
+export { PRESET_MOVE_INTO_COMPONENT_COMMAND } from "./move-command.ts";
+export type { PresetMoveInput, PresetMoveOutput } from "./move-command.ts";

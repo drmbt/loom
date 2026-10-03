@@ -8,6 +8,7 @@ import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { effectiveParameterSchema } from "../parameters/resolve.ts";
 import { componentAddressedDefinition } from "../parameters/slots.ts";
 import { componentNodeType, isValidComponentId } from "./component-type.ts";
+import { PAGE_TARGET, PRESET_STATE_KEYS, PRESET_STATE_PARAMETERS, pageBanksOf } from "../presets/bank-view.ts";
 
 /**
  * A component definition seen as a node manifest (§V79).
@@ -98,6 +99,10 @@ export function componentNodeDefinition(
   for (const published of definition.parameters) {
     parameters[published.key] = published.definition;
   }
+  // T1505b (§1.2 Q3): a definition with a page bank gives each instance its OWN `current`
+  // and fades, on its page, so a recall writes them in the same patch as the values — one
+  // revision, one undo, per instance — and paste and `get_node` carry them.
+  if (pageBanksOf(definition).length > 0) Object.assign(parameters, PRESET_STATE_PARAMETERS);
 
   return {
     type: componentNodeType(definition.componentId, definition.version),
@@ -291,7 +296,43 @@ export function validateComponentDefinition(
       );
     }
     keys.add(published.key);
+    // T1505b: the two keys an instance's preset state lives under are not the author's to publish.
+    if (PRESET_STATE_KEYS.has(published.key)) {
+      diagnostics.push(
+        error(
+          "component.parameter.reserved",
+          `"${published.key}" is reserved: it holds the preset state of each instance of "${definition.name}".`,
+          "Publish it under another key.",
+        ),
+      );
+    }
     checkPublishedParameter(definition, published, nodes, diagnostics);
+  }
+
+  // T1505b (§1.2 Q1, Q2): one page bank per definition in v1, and `parent` is a reserved word.
+  const pageBanks = pageBanksOf(definition);
+  if (pageBanks.length > 1) {
+    const named = pageBanks.map((bank) => `"${bank.label ?? bank.id}"`).join(", ");
+    diagnostics.push(
+      warning(
+        "component.presets.twoPageBanks",
+        `Component "${definition.name}" has more than one preset bank targeting parent (${named}); its instances use the first, "${pageBanks[0]?.label ?? pageBanks[0]?.id ?? ""}".`,
+        "Keep one bank targeting parent; target internal nodes from the others.",
+      ),
+    );
+  }
+  if (pageBanks.length > 0) {
+    for (const nodeId of Object.keys(definition.graph.nodes).sort()) {
+      const node = definition.graph.nodes[nodeId];
+      if (node?.label !== PAGE_TARGET) continue;
+      diagnostics.push(
+        warning(
+          "component.presets.parentNamed",
+          `A node inside "${definition.name}" is named "${PAGE_TARGET}", which a preset bank reads as the instance's page; it cannot be a preset target.`,
+          "Rename that node.",
+        ),
+      );
+    }
   }
 
   return diagnostics;

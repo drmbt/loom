@@ -83,6 +83,8 @@ const MODULES: readonly HolderEntry[] = [
   { label: "ui.beginRename", path: "src/editor/nodes/rename-session.ts", load: () => import("@editor/nodes/rename-session.ts"), accessor: "renameSessionStoreFor" },
   { label: "ui.setPreviewView#store", path: "src/editor/viewer/preview-view-store.ts", load: () => import("@editor/viewer/preview-view-store.ts"), accessor: "previewViewStoreFor" },
   { label: "graph.toggleReferenceLines", path: "src/editor/edges/reference-lines-command.ts", load: () => import("@editor/edges/reference-lines-command.ts"), accessor: "referenceLinesStoreFor" },
+  // T1505b: the component catalogue the preset commands read, attached by `registerComponentCommands`.
+  { label: "preset.recall#catalogue", path: "src/domain/presets/bank-view.ts", load: () => import("@domain/presets/bank-view.ts"), accessor: "presetCatalogueHolderFor" },
 ];
 
 type Accessor = (bus: LoomBus) => object;

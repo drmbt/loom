@@ -8,7 +8,7 @@ import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import {
   BOARD_MAX_COLUMNS,
-  BOARD_NAMED_TYPES,
+  boardNamesMember,
   CONTROL_WIDGET_TYPES,
   controlNameOf,
   panelLacks,
@@ -110,7 +110,7 @@ function fitOf(item: PanelBoardItem, cells: CellMetrics): BoardFit {
   const widthPx = cells.widthOf(item.rect.w);
   if (item.kind === "label") return boardFit({ kind: "label", caption: item.text, valueEm: 0, widthPx, cellPx: cells.cellPx });
   // T1501b: a bank, a layer and a cue list are several parts; each part fits itself (`board-members.tsx`).
-  if (BOARD_NAMED_TYPES.has(item.node.type)) return { fontPx: boardBaseFontPx(cells.cellPx), value: true, caption: "whole" };
+  if (boardNamesMember(item.node)) return { fontPx: boardBaseFontPx(cells.cellPx), value: true, caption: "whole" };
   const parameters = item.node.parameters as Record<string, unknown>;
   return boardFit({ kind: item.node.type, caption: controlCaption(parameters), valueEm: boardValueEm(item.node.type, parameters), widthPx, cellPx: cells.cellPx });
 }
@@ -123,7 +123,7 @@ const rectAttr = (rect: BoardRect): string => `${String(rect.x)},${String(rect.y
 /** What a board item is called in an accessible name. */
 function boardItemName(item: PanelBoardItem): string {
   if (item.kind === "label") return item.text === "" ? "label" : item.text;
-  if (BOARD_NAMED_TYPES.has(item.node.type)) return controlNameOf(item.node);
+  if (boardNamesMember(item.node)) return controlNameOf(item.node);
   return controlCaption(item.node.parameters as Record<string, unknown>);
 }
 
@@ -136,7 +136,7 @@ interface BoardPlay {
 
 function Item({ item, fit, cells, write, bus, invocation }: BoardPlay & { readonly item: PanelBoardItem; readonly fit: BoardFit; readonly cells: CellMetrics }) {
   if (item.kind === "label") return <div className={styles.label}>{item.text}</div>;
-  if (BOARD_NAMED_TYPES.has(item.node.type)) {
+  if (boardNamesMember(item.node)) {
     return <BoardMember node={item.node} rect={item.rect} cells={cells} bus={bus} invocation={invocation} write={write} />;
   }
   return (

@@ -6,6 +6,8 @@ import { incomingEdgesInOrder } from "../../domain/graph/edge-order.ts";
 import { overridingWire, sourceReferencesOf } from "../../domain/graph/source-references.ts";
 import { isParameterSlot, staticBindingValue } from "../../domain/parameters/slots.ts";
 import { PRESETS_NODE_TYPE, parsePresetBank } from "../../domain/presets/bank.ts";
+import { isPresetsNode } from "../../domain/presets/bank-view.ts";
+import { isComponentNodeType } from "../../domain/components/component-type.ts";
 import { CUE_LIST_NODE_TYPE } from "../../domain/presets/cue-list.ts";
 import { VALUE_PORT } from "./common-ports.ts";
 
@@ -258,6 +260,18 @@ export const LAYER_NODE_TYPE = "layer";
  */
 export const BOARD_NAMED_TYPES: ReadonlySet<string> = new Set([PRESETS_NODE_TYPE, LAYER_NODE_TYPE, CUE_LIST_NODE_TYPE]);
 
+/**
+ * T1505b — A BOARD ITEM THAT NAMES THIS NODE IS KEPT: one of `BOARD_NAMED_TYPES`, or a
+ * component instance — a look whose component holds a page bank IS a bank from outside, and
+ * `preset.moveIntoComponent` points the Panel items that named the bank beside it at the
+ * instance. Graph-only, so the board cannot know here whether the look holds presets: what
+ * is DRAWN at the item is the surface's business (the desk's strip, the phone's snapshot),
+ * each reading the bank through `bankOf`; an instance with none draws nothing there.
+ */
+export function boardNamesMember(node: GraphNode): boolean {
+  return BOARD_NAMED_TYPES.has(node.type) || isComponentNodeType(node.type);
+}
+
 /* ------------------------------------------------------------ membership */
 
 /** A stored parameter's plain value: a static-mode slot is its static binding, a driven one is nothing. */
@@ -445,7 +459,7 @@ export const PRESETS_PER_BOARD_ROW = 4;
  */
 export function boardMemberSize(node: GraphNode): CellSize {
   const size = boardDefaultSize(node.type);
-  if (node.type !== PRESETS_NODE_TYPE) return size;
+  if (!isPresetsNode(node)) return size;
   const parsed = parsePresetBank(plainValue(node.parameters["presets"]));
   const count = parsed.ok ? parsed.bank.presets.length : 0;
   return { w: size.w, h: Math.max(size.h, Math.ceil(count / PRESETS_PER_BOARD_ROW)) };
@@ -570,7 +584,7 @@ export function panelBoard(graph: Pick<GraphDocument, "nodes" | "edges">, panel:
   const namedMember = (name: string): GraphNode | undefined => {
     named ??= new Map(
       Object.values(graph.nodes)
-        .filter((node) => BOARD_NAMED_TYPES.has(node.type))
+        .filter(boardNamesMember)
         .map((node) => [controlNameOf(node), node]),
     );
     return named.get(name);

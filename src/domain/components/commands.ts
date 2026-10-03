@@ -33,6 +33,7 @@ import type { ComponentUpgradePlan } from "./upgrade.ts";
 import { describeRecursion, wouldRecurse } from "./recursion.ts";
 import type { ComponentRegistry } from "./registry.ts";
 import { registerComponentFileCommands, type ComponentFileReader, type ComponentFileWriter } from "./file-commands.ts";
+import { presetCatalogueHolderFor } from "../presets/bank-view.ts";
 
 /**
  * Component commands (T129–T132, T136), registered by declaration merging like every
@@ -1117,4 +1118,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
   // T1493b: and crossing it on the clipboard — a node copy carries the definitions its
   // instances need, and `graph.paste` installs them by the same identity rule.
   attachClipboardComponents(bus, componentClipboard({ components, host }));
+  // T1505b: and to the preset commands, so an instance whose component holds a page bank
+  // is a bank from outside (`bank-view.ts`); a bus with no catalogue refuses one by name.
+  presetCatalogueHolderFor(bus).current = { components, host };
 }

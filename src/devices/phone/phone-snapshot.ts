@@ -6,6 +6,8 @@ import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { isParameterSlot, staticBindingValue } from "../../domain/parameters/slots.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
 import { PRESETS_NODE_TYPE, parsePresetBank } from "../../domain/presets/bank.ts";
+import { bankViewOf, type BankView } from "../../domain/presets/bank-view.ts";
+import type { ComponentRegistryView } from "../../domain/components/registry.ts";
 import { PRESET_RECALL_COMMAND } from "../../domain/presets/commands.ts";
 import { CUE_SET_STANDBY_COMMAND } from "../../domain/presets/cue-commands.ts";
 import {
@@ -95,7 +97,16 @@ import {
  * A layer whose opacity the document drives IS published, unlike a driven widget: its
  * switch is still the phone's to press. The fader is marked not writable
  * (`opacityWritable`), and a write to it is refused.
+ *
+ * T1505b: a look's INSTANCE on a board by name, whose component holds a page bank, is a
+ * bank to the phone too — drawn as a `preset` strip from its component's presets, with its
+ * own `current` and fades, and a recall on it is the recall the desk runs. Seeing inside a
+ * component needs the catalogue (`components`); without one an instance is simply not
+ * published, so the snapshot and the vet still agree.
  */
+
+/** The component catalogue, for a look's instance on a board (T1505b). Absent: none is published. */
+type Catalogue = Pick<ComponentRegistryView, "get"> | undefined;
 
 /** The plain value behind a stored parameter, or `DRIVEN` when a non-static mode is in force. */
 const DRIVEN = Symbol("driven");
@@ -250,18 +261,22 @@ const MEMBER_KINDS: Readonly<Record<string, MemberKind>> = {
   [CUE_LIST_NODE_TYPE]: "cueList",
 };
 
-const memberKind = (node: GraphNode): MemberKind | null => MEMBER_KINDS[node.type] ?? null;
+/** T1505b: the bank a `preset` member reads — a Presets node, or a look's instance (its component's presets). */
+const presetBankOf = (node: GraphNode, components: Catalogue): BankView | undefined => bankViewOf(node, components);
+
+const memberKind = (node: GraphNode, components: Catalogue): MemberKind | null =>
+  MEMBER_KINDS[node.type] ?? (presetBankOf(node, components)?.kind === "instance" ? "preset" : null);
 
 /**
  * The other half of the one decision: bank / layer / cue-list node id → node, for every one
  * a phone may see and operate — those on the board of a Panel whose Phone switch is on.
  */
-export function publishedMembers(graph: GraphDocument): Map<NodeId, GraphNode> {
+export function publishedMembers(graph: GraphDocument, components?: Catalogue): Map<NodeId, GraphNode> {
   const out = new Map<NodeId, GraphNode>();
   for (const panel of Object.values(graph.nodes)) {
     if (!isRemotePanel(panel)) continue;
     for (const item of panelBoard(graph, panel)?.items ?? []) {
-      if (item.kind === "widget" && memberKind(item.node) !== null) out.set(item.node.id, item.node);
+      if (item.kind === "widget" && memberKind(item.node, components) !== null) out.set(item.node.id, item.node);
     }
   }
   return out;
@@ -273,16 +288,17 @@ const textOf = (stored: StoredParameter | undefined): string => {
   return typeof value === "string" ? value.trim() : "";
 };
 
-/** A bank's preset names, in bank order; an unreadable bank has none. */
-function presetNames(bank: GraphNode): string[] {
-  const parsed = parsePresetBank(plain(bank.parameters["presets"]));
+/** A bank's preset names, in bank order; an unreadable bank has none. A look's are its component's. */
+function presetNames(bank: GraphNode, components: Catalogue): string[] {
+  const parsed = parsePresetBank(plain((presetBankOf(bank, components)?.bank ?? bank).parameters["presets"]));
   return parsed.ok ? parsed.bank.presets.map((preset) => preset.name) : [];
 }
 
-/** The fades a bank still has to do on this clock. No clock (no frame loop): none. */
-function runningMorphs(bank: GraphNode, clock: FrameClock | undefined): MorphRecord[] {
+/** The fades a bank still has to do on this clock. No clock (no frame loop): none. A look holds its own. */
+function runningMorphs(bank: GraphNode, clock: FrameClock | undefined, components: Catalogue): MorphRecord[] {
   if (clock === undefined) return [];
-  return parseMorphRecords(plain(bank.parameters["morphs"])).filter((record) => morphRunning(record, clock));
+  const key = presetBankOf(bank, components)?.morphsKey ?? "morphs";
+  return parseMorphRecords(plain(bank.parameters[key])).filter((record) => morphRunning(record, clock));
 }
 
 /**
@@ -290,9 +306,11 @@ function runningMorphs(bank: GraphNode, clock: FrameClock | undefined): MorphRec
  * THESE records against its frame clock and rebuilds the snapshot when one stops running —
  * the end of a fade changes nothing in the document, so nothing else would say so.
  */
-export function publishedMorphs(graph: GraphDocument, clock: FrameClock | undefined): MorphRecord[] {
+export function publishedMorphs(graph: GraphDocument, clock: FrameClock | undefined, components?: Catalogue): MorphRecord[] {
   if (clock === undefined) return [];
-  return [...publishedMembers(graph).values()].flatMap((node) => (memberKind(node) === "preset" ? runningMorphs(node, clock) : []));
+  return [...publishedMembers(graph, components).values()].flatMap((node) =>
+    memberKind(node, components) === "preset" ? runningMorphs(node, clock, components) : [],
+  );
 }
 
 interface LayerOpacity {
@@ -340,14 +358,14 @@ function timelinePosition(list: CueList | null, clock: FrameClock | undefined): 
 export function publishedTimelinePositions(graph: GraphDocument, clock: FrameClock | undefined): string {
   const positions: string[] = [];
   for (const node of publishedMembers(graph).values()) {
-    if (memberKind(node) !== "cueList" || !followsTimeline(node)) continue;
+    if (memberKind(node, undefined) !== "cueList" || !followsTimeline(node)) continue;
     const at = timelinePosition(cueState(node).list, clock);
     positions.push(`${node.id}\u0000${at.current ?? ""}\u0000${at.next ?? ""}`);
   }
   return positions.join("\u0001");
 }
 
-function memberWidget(graph: GraphDocument, node: GraphNode, kind: MemberKind, clock: FrameClock | undefined): PhoneWidget {
+function memberWidget(graph: GraphDocument, node: GraphNode, kind: MemberKind, clock: FrameClock | undefined, components: Catalogue): PhoneWidget {
   const handle = node.id;
   const caption = controlNameOf(node);
   switch (kind) {
@@ -356,9 +374,9 @@ function memberWidget(graph: GraphDocument, node: GraphNode, kind: MemberKind, c
         kind,
         handle,
         caption,
-        presets: presetNames(node),
-        current: textOf(node.parameters["current"]) || null,
-        morphing: runningMorphs(node, clock).length > 0,
+        presets: presetNames(node, components),
+        current: textOf(node.parameters[presetBankOf(node, components)?.currentKey ?? "current"]) || null,
+        morphing: runningMorphs(node, clock, components).length > 0,
       };
     case "layer": {
       const opacity = layerOpacity(node);
@@ -408,15 +426,15 @@ function memberWidget(graph: GraphDocument, node: GraphNode, kind: MemberKind, c
  * the board is the owner's arrangement, not a flow. A Panel laid out by the legacy override
  * has no board; the phone draws its `rows`.
  */
-function phoneBoard(graph: GraphDocument, panel: GraphNode, clock: FrameClock | undefined): PhoneBoard | undefined {
+function phoneBoard(graph: GraphDocument, panel: GraphNode, clock: FrameClock | undefined, components: Catalogue): PhoneBoard | undefined {
   const board = panelBoard(graph, panel);
   if (board === null) return undefined;
   const items = board.items.flatMap((item): PhoneBoardItem[] => {
     if (item.kind === "label") return [{ kind: "label", rect: item.rect, text: item.text }];
     const node = item.node;
     // T1503b: a bank, a layer or a cue list — on the board by name, drawn at its rect.
-    const member = memberKind(node);
-    if (member !== null) return [{ kind: "widget", rect: item.rect, widget: memberWidget(graph, node, member, clock) }];
+    const member = memberKind(node, components);
+    if (member !== null) return [{ kind: "widget", rect: item.rect, widget: memberWidget(graph, node, member, clock, components) }];
     return isWidgetKind(node.type) && !isDriven(node, node.type) ? [{ kind: "widget", rect: item.rect, widget: phoneWidget(node as WidgetNode) }] : [];
   });
   return { columns: board.columns, rows: board.rows, items };
@@ -427,9 +445,9 @@ function phoneBoard(graph: GraphDocument, panel: GraphNode, clock: FrameClock | 
  * page's frame clock (`bus.frameClock()`), read only to say whether a bank is `morphing`;
  * without one nothing is.
  */
-export function buildPhoneSnapshot(graph: GraphDocument, seq: number, clock?: FrameClock): PhoneSnapshot {
+export function buildPhoneSnapshot(graph: GraphDocument, seq: number, clock?: FrameClock, components?: Catalogue): PhoneSnapshot {
   const panels: PhonePanel[] = remoteLayouts(graph).map(({ panel, rows }) => {
-    const board = phoneBoard(graph, panel, clock);
+    const board = phoneBoard(graph, panel, clock, components);
     return {
       title: panelTitle(panel),
       // Kept for a wired Panel too: a phone page from before the board still draws these.
@@ -494,14 +512,14 @@ const refuse = (reason: string, nodeId?: NodeId): PhoneVet => ({ ok: false, reas
  * published. Refusal sentences never quote what the phone sent — a key or a handle off
  * the LAN is data, not copy (§V37) — and do name the widget when there is one to name.
  */
-export function vetPhoneSet(graph: GraphDocument, set: PhoneSet): PhoneVet {
+export function vetPhoneSet(graph: GraphDocument, set: PhoneSet, components?: Catalogue): PhoneVet {
   if (set.phase !== "live" && set.phase !== "commit") return refuse("A phone sent a write with no gesture phase.");
   const handle = typeof set.handle === "string" ? (set.handle as NodeId) : null;
   const node = handle === null ? undefined : publishedWidgets(graph).get(handle);
   if (node === undefined) {
-    const member = handle === null ? undefined : publishedMembers(graph).get(handle);
-    const memberIs = member === undefined ? null : memberKind(member);
-    if (member !== undefined && memberIs !== null) return vetMember(member, memberIs, set);
+    const member = handle === null ? undefined : publishedMembers(graph, components).get(handle);
+    const memberIs = member === undefined ? null : memberKind(member, components);
+    if (member !== undefined && memberIs !== null) return vetMember(member, memberIs, set, components);
     // Also where a widget lands whose Panel was just switched off, and a driven widget
     // on a published Panel — told apart here only when the widget really is on one.
     const named = handle === null ? undefined : graph.nodes[handle];
@@ -578,7 +596,7 @@ export function vetPhoneSet(graph: GraphDocument, set: PhoneSet): PhoneVet {
  * only — a recall or a GO is a press, not a drag, and a `live` one is refused by name.
  * A NAME (`recall`, `standby`) is checked against the bank or the list as it is NOW.
  */
-function vetMember(node: GraphNode, kind: MemberKind, set: PhoneSet): PhoneVet {
+function vetMember(node: GraphNode, kind: MemberKind, set: PhoneSet, components: Catalogue): PhoneVet {
   const caption = controlNameOf(node);
   /** A refusal about THIS member: it is published, so the phone that pressed it can be shown the sentence on it (T1526b). */
   const no = (reason: string): PhoneVet => refuse(reason, node.id);
@@ -601,7 +619,7 @@ function vetMember(node: GraphNode, kind: MemberKind, set: PhoneSet): PhoneVet {
       const live = pressOnly("a recall");
       if (live !== null) return live;
       // Not quoted back: what a phone sent is data off the LAN, not copy.
-      if (typeof value !== "string" || !presetNames(node).includes(value)) {
+      if (typeof value !== "string" || !presetNames(node, components).includes(value)) {
         return no(`“${caption}” has no preset by the name a phone asked for; it was renamed or deleted since the phone drew it.`);
       }
       return call({ command: PRESET_RECALL_COMMAND, input: { nodeId: node.id, name: value } });

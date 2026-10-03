@@ -7,8 +7,9 @@ import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts
 import { applyGraphPatch } from "../commands/apply-patch.ts";
 import { nodeByName } from "../graph/names.ts";
 import { resolveParameters } from "../parameters/resolve.ts";
-import { PRESETS_NODE_TYPE, parsePresetBank, type MorphCurve, type MorphSpec, type Preset } from "./bank.ts";
-import { planPresetRecall, presetMorph } from "./commands.ts";
+import { parsePresetBank, type MorphCurve, type MorphSpec, type Preset } from "./bank.ts";
+import { bankLookupRefusal, planPresetRecall, presetCatalogueOf, presetMorph } from "./commands.ts";
+import { bankViewOf, bankOf, type BankView, type PresetCatalogue } from "./bank-view.ts";
 import {
   CUE_BACK_COMMAND,
   CUE_FOLLOW_LIVE,
@@ -309,7 +310,12 @@ function requireList(context: CommandContext, nodeId: unknown, keyed: boolean): 
 }
 
 /** The bank a cue names and the preset it recalls, or the refusal naming what is missing. */
-function requireCueTarget(context: CommandContext, listNode: GraphNode, cue: Cue): Found<{ bankNode: GraphNode; preset: Preset }> {
+function requireCueTarget(
+  context: CommandContext,
+  listNode: GraphNode,
+  cue: Cue,
+  catalogue: PresetCatalogue | undefined,
+): Found<{ bank: BankView; preset: Preset }> {
   const where = `Cue "${cue.name}" (${nameOf(listNode)})`;
   const bankId = nodeByName(context.graph, cue.bank);
   const bankNode = bankId === undefined ? undefined : context.graph.nodes[bankId];
@@ -319,13 +325,18 @@ function requireCueTarget(context: CommandContext, listNode: GraphNode, cue: Cue
       diagnostic: diagnostic("error", "cue.bank.missing", `${where}: no node is named "${cue.bank}"; nothing was fired.`, listNode.id, "Name a Presets node in the cue's bank field."),
     };
   }
-  if (bankNode.type !== PRESETS_NODE_TYPE) {
-    return {
-      ok: false,
-      diagnostic: diagnostic("error", "cue.bank.type", `${where}: "${cue.bank}" is a ${bankNode.type} node, not a Presets bank; nothing was fired.`, listNode.id),
-    };
+  // T1505b: a cue may name a look's instance — the instance IS the bank from outside.
+  const lookup = bankOf(bankNode, catalogue?.components);
+  if (!lookup.ok) {
+    if (lookup.why === "notBank") {
+      return {
+        ok: false,
+        diagnostic: diagnostic("error", "cue.bank.type", `${where}: "${cue.bank}" is a ${bankNode.type} node, not a Presets bank; nothing was fired.`, listNode.id),
+      };
+    }
+    return { ok: false, diagnostic: bankLookupRefusal(lookup, bankNode, `${where}: "${cue.bank}"`) };
   }
-  const parsed = parsePresetBank(bankNode.parameters["presets"]);
+  const parsed = parsePresetBank(lookup.view.bank.parameters["presets"]);
   if (!parsed.ok) {
     return {
       ok: false,
@@ -346,7 +357,7 @@ function requireCueTarget(context: CommandContext, listNode: GraphNode, cue: Cue
       ),
     };
   }
-  return { ok: true, bankNode, preset };
+  return { ok: true, bank: lookup.view, preset };
 }
 
 /** A context whose `apply` always opens a fresh undo group (§V34 "unless explicitly split"). */
@@ -393,6 +404,7 @@ function fireCue(
   keyed: boolean,
   verb: CueVerb,
   pick: (list: CueList, position: CuePosition) => CuePick,
+  catalogue: PresetCatalogue | undefined,
 ): CommandOutcome<CueFireOutput> {
   const revision = context.store.getRevision();
   const found = requireList(context, nodeId, keyed);
@@ -425,14 +437,15 @@ function fireCue(
     );
   }
   const { cue, index } = picked;
-  const target = requireCueTarget(context, node, cue);
+  const target = requireCueTarget(context, node, cue, catalogue);
   if (!target.ok) return fireRefusal(revision, [target.diagnostic], position, cue);
-  const { bankNode, preset } = target;
+  const { bank, preset } = target;
 
-  const plan = planPresetRecall(context.graph, context.registry, bankNode, preset, {
+  const plan = planPresetRecall(context.graph, context.registry, bank, preset, {
     // §5.1: the cue's morph sits where a recall's own would, above the preset's and the bank's.
-    morph: presetMorph(cue.morph, preset, resolvedValues(bankNode, context.registry, context.channels)),
+    morph: presetMorph(cue.morph, preset, resolvedValues(bank.bank, context.registry, context.channels)),
     clock: context.frameClock,
+    catalogue,
   });
   // T1499b: a shot whose `recalls` go round in a circle, or nest too deep, is refused by
   // the planner in its own words. Nothing is added: "nothing left to apply" is not why.
@@ -514,9 +527,10 @@ function reportList(bus: LoomBus, graph: GraphDocument, node: GraphNode): CueLis
   if (clock !== undefined) {
     for (const bank of [...new Set(list.cues.map((cue) => cue.bank))]) {
       const bankId = nodeByName(graph, bank);
-      const bankNode = bankId === undefined ? undefined : graph.nodes[bankId];
-      if (bankNode === undefined || bankNode.type !== PRESETS_NODE_TYPE) continue;
-      for (const record of parseMorphRecords(bankNode.parameters["morphs"])) {
+      // T1505b: a look's instance reports the fades it holds itself.
+      const view = bankViewOf(bankId === undefined ? undefined : graph.nodes[bankId], presetCatalogueOf(bus)?.components);
+      if (view === undefined) continue;
+      for (const record of parseMorphRecords(view.holder.parameters[view.morphsKey])) {
         if (!morphRunning(record, clock)) continue;
         morphs.push({
           bank,
@@ -560,7 +574,7 @@ export function registerCueCommands(bus: LoomBus): void {
     name: CUE_GO_COMMAND,
     description:
       "GO: fire a cue list's standby cue — its preset recalled and the list advanced as one patch, one undo step (§T1500b). Without a nodeId, the one cue list whose Keys switch is on.",
-    handler: (input, context) => fireCue(context, input?.nodeId, true, "GO", standbyCue),
+    handler: (input, context) => fireCue(context, input?.nodeId, true, "GO", standbyCue, presetCatalogueOf(bus)),
     rejectionOutput: emptyFireOutput,
   });
 
@@ -568,7 +582,7 @@ export function registerCueCommands(bus: LoomBus): void {
     name: CUE_BACK_COMMAND,
     description:
       "BACK: fire the cue before a cue list's current one, with that cue's own morph (§T1500b). Without a nodeId, the one cue list whose Keys switch is on.",
-    handler: (input, context) => fireCue(context, input?.nodeId, true, "BACK", previousCue),
+    handler: (input, context) => fireCue(context, input?.nodeId, true, "BACK", previousCue, presetCatalogueOf(bus)),
     rejectionOutput: emptyFireOutput,
   });
 
@@ -577,7 +591,7 @@ export function registerCueCommands(bus: LoomBus): void {
     description: "Fire a named cue of a cue list directly; the standby becomes the cue after it (§T1500b).",
     handler: (input, context) => {
       const name = typeof input?.cue === "string" ? input.cue.trim() : "";
-      return fireCue(context, input?.nodeId, false, "Fire", (list) => cueNamed(list, name));
+      return fireCue(context, input?.nodeId, false, "Fire", (list) => cueNamed(list, name), presetCatalogueOf(bus));
     },
     rejectionOutput: emptyFireOutput,
   });

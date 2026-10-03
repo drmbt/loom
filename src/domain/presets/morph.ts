@@ -290,3 +290,15 @@ export function nextMorphRecords(input: MorphBookkeepingInput): MorphBookkeeping
   }
   return { own: kept, others, dropped };
 }
+
+/**
+ * T1505b — records with one node NAME re-keyed, both ends. A look's own records live on its
+ * instance keyed by `parent` (the definition's spelling, so a rename never touches them),
+ * and everything that chains records — the morph index, the planner's bookkeeping — reads
+ * them under the instance's name. A record with no entry for `from` comes back as it was.
+ */
+export function renameRecordsNode(records: readonly MorphRecord[], from: string, to: string): MorphRecord[] {
+  const rekey = (values: PresetValues): PresetValues =>
+    Object.fromEntries(Object.entries(values).map(([name, keys]) => [name === from ? to : name, keys]));
+  return records.map((record) => ({ ...record, from: rekey(record.from), to: rekey(record.to) }));
+}

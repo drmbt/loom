@@ -4,8 +4,10 @@ import type { NodeId, Revision } from "../types/ids.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts";
 import { applyGraphPatch } from "../commands/apply-patch.ts";
 import { nodeByName } from "../graph/names.ts";
-import { PRESETS_NODE_TYPE, parsePresetBank, serializePresetBank, type Preset } from "./bank.ts";
+import { parsePresetBank, serializePresetBank, type Preset } from "./bank.ts";
 import { CUE_LIST_NODE_TYPE, parseCueList } from "./cue-list.ts";
+import { commitPageBank, componentWriteNote, presetCatalogueOf, requireBank } from "./commands.ts";
+import { isPresetsNode } from "./bank-view.ts";
 
 /**
  * T1502b (§T1398b S7) — `preset.delete`: one preset out of a bank, as one patch.
@@ -33,9 +35,14 @@ import { CUE_LIST_NODE_TYPE, parseCueList } from "./cue-list.ts";
  * with nothing removed would be a lie in the audit log (the recall's rule, §4.4).
  *
  * In its own file, registered by one line in `createDomainBus`, because `commands.ts` was
- * being edited for the inspector's Delete at the same time; the bank lookup below repeats
- * `requireBank`'s three refusals word for word and should become that function when the
- * two are reconciled.
+ * being edited for the inspector's Delete at the same time. T1505b reconciled the bank
+ * lookup: it is `requireBank`, so the refusals are Store's and Recall's word for word.
+ *
+ * ## On a look's instance (T1505b, owner's ruling)
+ *
+ * Delete on an instance bank is the reverse of its Store: the preset leaves the COMPONENT'S
+ * page bank, for every instance, with no root undo (a component edit has none). Cues and
+ * shots that name ANY instance of that component are warned about, since every one lost it.
  */
 
 declare module "../types/commands.ts" {
@@ -86,9 +93,18 @@ const quoted = (names: readonly string[]): string => names.map((name) => `"${nam
  * given exactly where a GO would be refused or a shot would skip it. `remaining` is the
  * bank's own presets after the delete: a shot in the same bank can recall it too.
  */
-function stillNamedBy(graph: GraphDocument, bank: GraphNode, preset: string, remaining: readonly Preset[]): RuntimeDiagnostic[] {
+function stillNamedBy(
+  graph: GraphDocument,
+  bank: GraphNode,
+  preset: string,
+  remaining: readonly Preset[],
+  holders: ReadonlySet<string> = new Set([bank.id]),
+): RuntimeDiagnostic[] {
   const bankName = bank.label ?? bank.id;
-  const isThisBank = (name: string): boolean => nodeByName(graph, name) === bank.id;
+  const isThisBank = (name: string): boolean => {
+    const nodeId = nodeByName(graph, name);
+    return nodeId !== undefined && holders.has(nodeId);
+  };
   const warnings: RuntimeDiagnostic[] = [];
   for (const nodeId of Object.keys(graph.nodes).sort()) {
     const node = graph.nodes[nodeId] as GraphNode;
@@ -107,7 +123,7 @@ function stillNamedBy(graph: GraphDocument, bank: GraphNode, preset: string, rem
           "warning",
         ),
       );
-    } else if (node.type === PRESETS_NODE_TYPE) {
+    } else if (isPresetsNode(node)) {
       const parsed = node.id === bank.id ? { ok: true as const, bank: { presets: remaining } } : parsePresetBank(node.parameters["presets"]);
       const shots = parsed.ok
         ? parsed.bank.presets
@@ -147,25 +163,13 @@ export function registerPresetDeleteCommand(bus: LoomBus): void {
     description: "Delete one preset from a bank, as one patch and one undo step (§T1502b).",
     handler: (input, context) => {
       const revision = context.store.getRevision();
-      const nodeId: unknown = input?.nodeId;
-      if (typeof nodeId !== "string") return refusal(revision, [diagnostic("preset.bank.missing", "No bank node was named.")]);
-      const node = context.graph.nodes[nodeId];
-      if (node === undefined) return refusal(revision, [diagnostic("preset.bank.missing", `No node "${nodeId}".`)]);
+      const catalogue = presetCatalogueOf(bus);
+      const found = requireBank(context.graph, input?.nodeId, catalogue);
+      if (!found.ok) return refusal(revision, [found.diagnostic]);
+      const { view } = found;
+      const node = view.holder;
       const bankName = node.label ?? node.id;
-      if (node.type !== PRESETS_NODE_TYPE) {
-        return refusal(revision, [diagnostic("preset.bank.type", `"${bankName}" is a ${node.type} node, not a Presets bank.`, node.id)]);
-      }
-      const parsed = parsePresetBank(node.parameters["presets"]);
-      if (!parsed.ok) {
-        return refusal(revision, [
-          diagnostic(
-            "preset.bank.malformed",
-            `Bank "${bankName}": ${parsed.reason}.`,
-            node.id,
-            "Fix the Presets field in the inspector; nothing was changed.",
-          ),
-        ]);
-      }
+      const parsed = { bank: found.bank };
       const names = parsed.bank.presets.map((preset) => preset.name);
       const name = typeof input.name === "string" ? input.name.trim() : "";
       if (!names.includes(name)) {
@@ -183,6 +187,22 @@ export function registerPresetDeleteCommand(bus: LoomBus): void {
         );
       }
       const presets = parsed.bank.presets.filter((preset) => preset.name !== name);
+      if (view.kind === "instance" && catalogue !== undefined) {
+        const written = commitPageBank(context, catalogue, view, presets);
+        if (!written.ok) return refusal(revision, written.diagnostics, names);
+        // Every instance of the component lost it: a cue naming any of them is warned about.
+        const holders = new Set(Object.values(context.graph.nodes).filter((each) => each.type === node.type).map((each) => each.id));
+        return {
+          status: written.status,
+          revision,
+          diagnostics: [
+            ...written.diagnostics,
+            componentWriteNote(view, `Deleted "${name}" from`),
+            ...stillNamedBy(context.graph, node, name, presets, holders),
+          ],
+          output: { ok: true, preset: name, remaining: presets.map((preset) => preset.name) },
+        };
+      }
       const outcome = applyGraphPatch(
         {
           baseRevision: context.graph.revision,

@@ -383,3 +383,88 @@ describe("T1501b — the cue list's section: the table, the standby, GO and BACK
     expect((within(section()).getByRole("button", { name: "GO" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
+
+/**
+ * T1505b — A LOOK'S INSTANCE IN THE INSPECTOR. The instance of a component whose definition
+ * holds a page bank shows the same Presets section — its component's presets, its own
+ * `current` — and its page does NOT grow the two JSON rows the instance's preset state is
+ * kept in. Recall is the instance's undoable patch; Store writes the component (no undo
+ * step), which the section says. A bank beside ONE look offers "Move into" that look.
+ */
+describe("T1505b — a look's instance shows its component's presets", () => {
+  function withLook(runtime: AppRuntime): void {
+    const presets = serializePresetBank({ version: 1, presets: [{ name: "calm", values: { parent: { glow: 2 } } }] });
+    runtime.components.register({
+      componentId: "look",
+      version: 1,
+      name: "Look",
+      graph: {
+        revision: 0,
+        nodes: {
+          blur: { id: "blur", type: "blur", label: "blur", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { size: 4 } },
+          looks: { id: "looks", type: "presets", label: "looks", definitionVersion: 1, position: { x: 0, y: 200 }, parameters: { targets: "parent", presets } },
+        },
+        edges: {},
+        groups: {},
+      },
+      inputs: [],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "blur", portId: "out" }],
+      parameters: [{ key: "glow", definition: { type: "number", label: "Glow", default: 4, min: 0, max: 64 }, targets: [{ nodeId: "blur", key: "size" }] }],
+    });
+  }
+
+  it("lists the component's presets, recalls on the instance as one undo step, and hides the instance's preset-state rows", async () => {
+    const runtime = createAppRuntime({ identityStorage: null, actor: { kind: "human", id: "tester", label: "Tester" } });
+    withLook(runtime);
+    const placed = await runtime.bus.execute(
+      "graph.applyPatch",
+      { baseRevision: runtime.bus.store.getRevision(), label: "setup", operations: [add("city", "component:look@1", "city", { glow: 30 })] },
+      runtime.invocation,
+    );
+    const city = (placed.output.createdIds as Record<string, NodeId>)["$city"]!;
+    mount(runtime, city);
+    const section = () => screen.getByRole("region", { name: "Presets bank" });
+    expect(section().querySelector('[data-preset-component="Look"]')).not.toBeNull();
+    expect(section().querySelector('[data-preset-row="calm"]')).not.toBeNull();
+    // Targets are the component's: no field for them on the instance.
+    expect(within(section()).queryByRole("textbox", { name: "Targets" })).toBeNull();
+    expect(screen.queryByText("Preset morphs")).toBeNull();
+
+    const beforeRecall = undoDepth(runtime);
+    await press(within(section()).getByRole("button", { name: "Recall calm" }));
+    expect(nodeOf(runtime, city).parameters["glow"]).toBe(2);
+    expect(nodeOf(runtime, city).parameters["presetCurrent"]).toBe("calm");
+    expect(undoDepth(runtime)).toBe(beforeRecall + 1);
+    expect(section().querySelector('[data-preset-row="calm"]')?.textContent).toContain("live");
+
+    // Store writes the COMPONENT: no undo step, and the new preset is the component's.
+    await type(within(section()).getByRole("textbox", { name: "Preset name" }), "wide");
+    const beforeStore = undoDepth(runtime);
+    await press(within(section()).getByRole("button", { name: "Store" }));
+    expect(undoDepth(runtime)).toBe(beforeStore);
+    const stored = parsePresetBank(runtime.components.get("look", 1)?.graph.nodes["looks"]?.parameters["presets"]);
+    expect(stored.ok ? stored.bank.presets.map((preset) => preset.name) : []).toEqual(["calm", "wide"]);
+    expect(section().querySelector('[data-preset-row="wide"]')).not.toBeNull();
+  });
+
+  it("a bank beside one look offers Move into it — the bank goes, the look holds the presets", async () => {
+    const runtime = createAppRuntime({ identityStorage: null, actor: { kind: "human", id: "tester", label: "Tester" } });
+    withLook(runtime);
+    const presets = serializePresetBank({ version: 1, presets: [{ name: "warm", values: { city: { glow: 9 } } }] });
+    const placed = await runtime.bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: runtime.bus.store.getRevision(),
+        label: "setup",
+        operations: [add("city", "component:look@1", "city", { glow: 30 }), add("beside", "presets", "beside", { targets: "city", presets })],
+      },
+      runtime.invocation,
+    );
+    const beside = (placed.output.createdIds as Record<string, NodeId>)["$beside"]!;
+    mount(runtime, beside);
+    await press(within(screen.getByRole("region", { name: "Presets bank" })).getByRole("button", { name: "Move into city" }));
+    expect(runtime.bus.store.getGraph().nodes[beside]).toBeUndefined();
+    const moved = parsePresetBank(runtime.components.get("look", 1)?.graph.nodes["looks"]?.parameters["presets"]);
+    expect(moved.ok ? moved.bank.presets.map((preset) => preset.name) : []).toEqual(["calm", "warm"]);
+  });
+});

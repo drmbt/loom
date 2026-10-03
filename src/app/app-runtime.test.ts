@@ -149,3 +149,46 @@ describe("T627 — the component library survives the open (§V79)", () => {
     expect(reopened.registry.get(componentNodeType("fan", 1))?.version).toBe(1);
   });
 });
+
+/**
+ * T1505b — THE APP'S BUS CAN RECALL A LOOK'S INSTANCE. The catalogue reaches the preset
+ * commands through `registerComponentCommands` (a seam `composition-seams` cannot see: a
+ * missing attachment is an option not passed, not a factory not reached), so this asks the
+ * composed runtime itself: an instance whose component holds a page bank is a bank here.
+ */
+describe("T1505b — the composed runtime's bus treats a look's instance as its bank", () => {
+  it("recalls the component's preset on the instance, writing its page and its own presetCurrent", async () => {
+    const runtime = createAppRuntime({ identityStorage: null, actor: ACTOR });
+    const look = fanDefinition();
+    const presets = JSON.stringify({ version: 1, presets: [{ name: "wide", values: { parent: { spread: 12 } } }] });
+    runtime.components.register({
+      ...look,
+      componentId: "look",
+      graph: {
+        ...look.graph,
+        nodes: {
+          ...look.graph.nodes,
+          bank: { id: "bank" as NodeId, type: "presets", label: "looks", definitionVersion: 1, position: { x: 0, y: 200 }, parameters: { targets: "parent", presets } },
+        },
+      },
+      parameters: [{ key: "spread", definition: { type: "number", label: "Spread", default: 4, min: 0, max: 64 }, targets: [] }],
+    });
+    const placed = await runtime.bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: runtime.bus.store.getRevision(),
+        label: "seed",
+        operations: [{ op: "addNode", ref: "$city", type: componentNodeType("look", 1), position: { x: 0, y: 0 }, label: "city" }],
+      },
+      runtime.invocation,
+    );
+    expect(placed.status).toBe("applied");
+    const cityId = Object.values(runtime.bus.store.getGraph().nodes).find((node) => node.label === "city")?.id as NodeId;
+
+    const recalled = await runtime.bus.execute("preset.recall", { nodeId: cityId, name: "wide" }, runtime.invocation);
+    expect(recalled.status, recalled.diagnostics.map((each) => each.message).join("; ")).toBe("applied");
+    const city = runtime.bus.store.getGraph().nodes[cityId];
+    expect(city?.parameters["spread"]).toBe(12);
+    expect(city?.parameters["presetCurrent"]).toBe("wide");
+  });
+});

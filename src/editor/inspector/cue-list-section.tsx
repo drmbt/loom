@@ -12,10 +12,11 @@ import {
   CUE_FOLLOW_TIMELINE,
   CUE_GO_COMMAND,
   CUE_SET_STANDBY_COMMAND,
-  PRESETS_NODE_TYPE,
+  bankViewOf,
   nextCueName,
   parseCueList,
   parsePresetBank,
+  presetCatalogueHolderFor,
   serializeCueList,
   type Cue,
   type MorphCurve,
@@ -137,11 +138,16 @@ export function CueListSection({ nodeId, cues, current, standby, wrap, follow, g
   const shownCurrent = follow ? (timeline?.current ?? "") : current;
   const warnings = follow ? timelineCueWarnings(graph, bus.registry, nodeId) : [];
 
-  /** bank node name → its preset names, for every Presets node the document holds. */
+  /**
+   * bank node name → its preset names, for every bank the document holds: each Presets node,
+   * and (T1505b) each look instance whose component holds a page bank — a cue names `city`.
+   */
   const banks = new Map<string, readonly string[]>();
+  const catalogue = presetCatalogueHolderFor(bus).current?.components;
   for (const node of Object.values(graph.nodes)) {
-    if (node.type !== PRESETS_NODE_TYPE) continue;
-    const bank = parsePresetBank(node.parameters["presets"]);
+    const view = bankViewOf(node, catalogue);
+    if (view === undefined) continue;
+    const bank = parsePresetBank(view.bank.parameters["presets"]);
     banks.set(node.label ?? node.id, bank.ok ? bank.bank.presets.map((preset) => preset.name) : []);
   }
   const bankNames = [...banks.keys()].sort((a, b) => a.localeCompare(b));

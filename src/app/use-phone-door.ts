@@ -6,7 +6,7 @@ import { rafScheduler, type FrameScheduler } from "@ui/controls/coalesce.ts";
 import type { DeviceClient } from "@devices/device-client.ts";
 import { DEVICE_HELPER_START } from "@devices/helper.ts";
 import type { PhoneDoorState } from "@devices/phone/phone-protocol.ts";
-import { morphRunning, type MorphRecord } from "@domain/presets/index.ts";
+import { morphRunning, presetCatalogueHolderFor, type MorphRecord } from "@domain/presets/index.ts";
 import { buildPhoneSnapshot, publishedMorphs, publishedTimelinePositions } from "@devices/phone/phone-snapshot.ts";
 import type { PhoneDoorView, PhoneRefusal } from "@editor/controls/phone-door-copy.ts";
 import { createPhoneWrites } from "./phone-writes.ts";
@@ -200,8 +200,10 @@ export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
       cancel = null;
       const graph = bus.store.getGraph();
       const clock = bus.frameClock();
-      const snapshot = buildPhoneSnapshot(graph, 0, clock);
-      fading = publishedMorphs(graph, clock);
+      // T1505b: a look's instance on a remote board reads its presets from its component.
+      const components = presetCatalogueHolderFor(bus).current?.components;
+      const snapshot = buildPhoneSnapshot(graph, 0, clock, components);
+      fading = publishedMorphs(graph, clock, components);
       positions = publishedTimelinePositions(graph, clock);
       published = graph;
       if (fading.length > 0 || positions !== "") cancelWatch ??= schedule(watch);
@@ -217,9 +219,16 @@ export function usePhoneDoor(options: PhoneDoorOptions): PhoneDoorBinding {
     const unsubscribe = bus.store.subscribe(() => {
       if (cancel === null) cancel = schedule(publish);
     });
+    // T1505b: a Store on a look writes its COMPONENT, not the document, and the phone's strip
+    // for that look gains the preset — so a catalogue change republishes too.
+    const unsubscribeCatalogue =
+      presetCatalogueHolderFor(bus).current?.components.subscribe(() => {
+        if (cancel === null) cancel = schedule(publish);
+      }) ?? (() => undefined);
     return () => {
       publishNow.current = null;
       unsubscribe();
+      unsubscribeCatalogue();
       cancel?.();
       cancelWatch?.();
     };

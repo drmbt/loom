@@ -123,6 +123,8 @@ describe("command bus — registration surface (§V39)", () => {
       // T1496b: a preset bank's Store and Recall are document edits, so every bus has them.
       // T1502b: and Delete beside them.
       "preset.delete",
+      // T1505b: a bank beside a look moved into its component (refused by name with no catalogue).
+      "preset.moveIntoComponent",
       "preset.recall",
       "preset.store",
       // T272: settings are document state, so they mutate through the domain bus like

@@ -42,7 +42,7 @@ import type { WindowSectionSurface } from "./window-section.tsx";
 import { ComponentSection, componentSectionParameters } from "./component-section.tsx";
 import { PresetBankSection, presetBankSectionParameters } from "./preset-bank-section.tsx";
 import { CueListSection, cueListSectionParameters } from "./cue-list-section.tsx";
-import { CUE_LIST_NODE_TYPE, PRESETS_NODE_TYPE, followsTimeline } from "@domain/presets/index.ts";
+import { CUE_LIST_NODE_TYPE, PRESET_STATE_KEYS, bankViewOf, followsTimeline, presetCatalogueHolderFor } from "@domain/presets/index.ts";
 import { isComponentNodeType } from "@domain/components/component-type.ts";
 import { supportsChannelMask } from "@domain/graph/channel-mask.ts";
 import { LASER_OUT_TYPE } from "@nodes/definitions/laser-out.ts";
@@ -363,6 +363,11 @@ export function Inspector({
     instanceParameters?.bus.store.getGraph ?? noInstanceGraph,
   );
   void instanceGraph;
+  // T1505b: a look's presets live in its COMPONENT, and a Store on the instance changes the
+  // catalogue rather than the document — so the Presets section re-reads on that too.
+  const presetCatalogue = presetCatalogueHolderFor(bus).current?.components;
+  const [, catalogueChanged] = useState(0);
+  useEffect(() => presetCatalogue?.subscribe(() => catalogueChanged((count) => count + 1)), [presetCatalogue]);
 
   /**
    * T990 — THE PRODUCT CALL SITE for `op('…')` completion.
@@ -674,7 +679,10 @@ export function Inspector({
   const showsComponentSection = components !== undefined && isComponentNodeType(node.type);
   // T1501b: the bank's and the cue list's sections need no session surface — they run bus
   // commands and read the document — so they show on every such node, keyed on the TYPE.
-  const showsPresetBankSection = node.type === PRESETS_NODE_TYPE;
+  // T1505b: and on a look's INSTANCE whose component holds a page bank — the instance is the
+  // bank from outside, so it gets the same section, reading the component's presets.
+  const bankView = bankViewOf(node, presetCatalogue);
+  const showsPresetBankSection = bankView !== undefined;
   const showsCueListSection = node.type === CUE_LIST_NODE_TYPE;
   const imageFit = resolved.entries.find(
     (entry) => entry.key === "imageFit" && entry.definition.group === "Common",
@@ -689,6 +697,8 @@ export function Inspector({
     ...(showsWindowSection ? windowSectionParameters() : []),
     ...(showsComponentSection ? componentSectionParameters() : []),
     ...(showsPresetBankSection ? presetBankSectionParameters() : []),
+    // T1505b: the instance's own preset state is the section's to show, never two JSON rows on the page.
+    ...(bankView?.kind === "instance" ? [...PRESET_STATE_KEYS] : []),
     ...(showsCueListSection ? cueListSectionParameters() : []),
   ]);
   const groups = groupParameters(
@@ -963,12 +973,17 @@ export function Inspector({
   /* T1501b: Store / Recall / Delete on the bank, and the cue table, standby and GO / BACK
      on the cue list — the controls, above the JSON they write. */
   const text = (key: string): string => (typeof resolved.values[key] === "string" ? (resolved.values[key] as string) : "");
-  const presetBankSection = showsPresetBankSection ? (
+  const bankText = (key: string): string => {
+    const stored = bankView?.bank.parameters[key];
+    return typeof stored === "string" ? stored : "";
+  };
+  const presetBankSection = bankView !== undefined ? (
     <PresetBankSection
       nodeId={node.id}
-      targets={text("targets")}
-      presets={text("presets")}
-      current={text("current")}
+      targets={bankView.kind === "instance" ? bankText("targets") : text("targets")}
+      presets={bankView.kind === "instance" ? bankText("presets") : text("presets")}
+      current={text(bankView.currentKey)}
+      {...(bankView.definition === undefined ? {} : { component: bankView.definition.name })}
       graph={graph}
       {...(selection === undefined ? {} : { selection })}
       bus={bus}

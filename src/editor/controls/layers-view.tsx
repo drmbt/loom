@@ -4,7 +4,7 @@ import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
 import { isParameterSlot, staticBindingValue } from "@domain/parameters/slots.ts";
-import { PRESETS_NODE_TYPE, morphRunning, parseMorphRecords } from "@domain/presets/index.ts";
+import { isPresetsNode, morphRunning, parseMorphRecords } from "@domain/presets/index.ts";
 import { controlNameOf, layerPicture } from "@nodes/definitions/controls.ts";
 import { SELECT_NODES_COMMAND } from "@editor/selection/select-created.ts";
 import { MORPH_POLL_MS } from "./board-members.tsx";
@@ -48,7 +48,8 @@ const NO_PICTURE = "—";
 function useMorphingNames(bus: LoomBus, nodes: GraphDocument["nodes"]): ReadonlySet<string> {
   // Keyed by the banks' `morphs` text, so an unrelated edit does not restart the poll.
   const source = Object.values(nodes)
-    .filter((node) => node.type === PRESETS_NODE_TYPE)
+    // Layers are named by root banks; a look instance's own records name only its page (T1505b).
+    .filter((node) => isPresetsNode(node))
     .map((node) => (typeof node.parameters["morphs"] === "string" ? node.parameters["morphs"] : ""))
     .join("\u0000");
   const records = useMemo(() => source.split("\u0000").flatMap((morphs) => parseMorphRecords(morphs)), [source]);

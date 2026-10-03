@@ -1,7 +1,7 @@
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
-import { CUE_LIST_NODE_TYPE, PRESETS_NODE_TYPE, parsePresetTargets } from "@domain/presets/index.ts";
+import { CUE_LIST_NODE_TYPE, PRESETS_NODE_TYPE, isPresetsNode, parsePresetTargets } from "@domain/presets/index.ts";
 import type { CanvasBox } from "./panel-join.ts";
 
 /**
@@ -46,7 +46,8 @@ function listedNames(targets: unknown): Set<string> {
  */
 export function bankTargetsToAdd(graph: Graph, bankId: NodeId, nodeIds: readonly NodeId[]): string[] {
   const bank = graph.nodes[bankId];
-  if (bank === undefined || bank.type !== PRESETS_NODE_TYPE) return [];
+  // A Presets node's Targets: a look's instance bank keeps its Targets in its component (T1505b).
+  if (bank === undefined || !isPresetsNode(bank)) return [];
   const listed = listedNames(bank.parameters["targets"]);
   const names: string[] = [];
   for (const nodeId of nodeIds) {
@@ -87,7 +88,7 @@ export function bankUnderDrop(
   if (dropped === undefined || NEVER_TARGETS.has(dropped.type)) return null;
   let hit: NodeId | null = null;
   for (const node of Object.values(graph.nodes)) {
-    if (node.type !== PRESETS_NODE_TYPE || node.id === nodeId) continue;
+    if (!isPresetsNode(node) || node.id === nodeId) continue;
     const box = boxOf(node.id);
     if (box === null) continue;
     if (centre.x >= box.x && centre.x <= box.x + box.width && centre.y >= box.y && centre.y <= box.y + box.height) hit = node.id;

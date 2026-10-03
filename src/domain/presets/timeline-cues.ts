@@ -9,7 +9,8 @@ import { nodeByName } from "../graph/names.ts";
 import { effectiveParameterSchema, resolveParameters, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
 import { componentAddressedDefinition, parseComponentKey, storedStaticValue } from "../parameters/slots.ts";
 import { defaultParameterValue } from "../parameters/validate.ts";
-import { PRESETS_NODE_TYPE, parsePresetBank, type MorphCurve } from "./bank.ts";
+import { parsePresetBank, type MorphCurve } from "./bank.ts";
+import { isPresetsNode } from "./bank-view.ts";
 import { presetMorph, presetRecallEnd } from "./commands.ts";
 import { CUE_FOLLOW_TIMELINE, CUE_LIST_NODE_TYPE, cueReachFrame, parseCueList, type CueList } from "./cue-list.ts";
 import { easeMorph } from "./morph.ts";
@@ -164,7 +165,8 @@ export function planTimelineCues(document: GraphDocument, registry: NodeRegistry
       }
       const bankId = nodeByName(document, cue.bank);
       const bankNode = bankId === undefined ? undefined : document.nodes[bankId];
-      if (bankNode === undefined || bankNode.type !== PRESETS_NODE_TYPE) {
+      // T1505b: a look's instance named by a timed cue is skipped: this index has no component catalogue to read its presets from.
+      if (bankNode === undefined || !isPresetsNode(bankNode)) {
         warn(cue.name, "cue.timeline.bank", `${where}: "${cue.bank}" is not a Presets bank in this document; the timeline skips it.`);
         continue;
       }

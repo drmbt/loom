@@ -4,7 +4,6 @@ import type { NodeId } from "@domain/types/ids.ts";
 import { nodeByName } from "@domain/graph/names.ts";
 import { resolveParameters } from "@domain/parameters/resolve.ts";
 import {
-  PRESETS_NODE_TYPE,
   parsePresetBank,
   parsePresetTargets,
   type MorphCurve,
@@ -14,7 +13,8 @@ import {
 import { presetMorph, type PresetRecallOutput, type PresetStoreOutput } from "@domain/presets/commands.ts";
 import type { CueFireOutput, CueListQueryOutput, CueSetStandbyOutput } from "@domain/presets/cue-commands.ts";
 import type { PresetDeleteOutput } from "@domain/presets/delete-command.ts";
-import { morphProgress, morphRunning, parseMorphRecords, type MorphRecord } from "@domain/presets/morph.ts";
+import { morphProgress, morphRunning, type MorphRecord } from "@domain/presets/morph.ts";
+import { PAGE_TARGET, bankViewOf, heldMorphRecords, presetCatalogueHolderFor, type BankView } from "@domain/presets/bank-view.ts";
 
 import {
   cueNamedInput,
@@ -107,6 +107,12 @@ export interface PresetView {
 export interface PresetBankView {
   readonly nodeId: NodeId;
   readonly name: string | null;
+  /**
+   * T1505b: the component whose presets these are, when the bank is a look's INSTANCE — its
+   * presets live in the component (a Store writes the component, for every instance), and
+   * its `current` and fades are this instance's own. `null` for a Presets node.
+   */
+  readonly component: string | null;
   /** The bank's Targets, as written: a node name, or `node.key`. */
   readonly targets: readonly string[];
   /** The preset recalled last. Empty before the first recall. */
@@ -192,7 +198,9 @@ async function fadeReport(
   const clock = runtime.bus.frameClock();
   // A dry run validated the morph and wrote no record to read back.
   if (dispatched.status !== "applied" || clock === undefined) return { transition: "morph", morphUnavailable: false, record: null };
-  const written = parseMorphRecords(bankOf(await graphOf(runtime))?.parameters["morphs"]).at(-1);
+  // T1505b: the bank may be a look's instance, holding its fades in `presetMorphs`.
+  const view = bankViewOf(bankOf(await graphOf(runtime)), catalogueOf(runtime));
+  const written = (view === undefined ? [] : heldMorphRecords(view)).at(-1);
   return {
     transition: "morph",
     morphUnavailable: false,
@@ -200,21 +208,33 @@ async function fadeReport(
   };
 }
 
-function bankView(node: GraphNode, runtime: ToolRuntime, clock: FrameClock | undefined): PresetBankView {
+/** The component catalogue the bus's preset commands read (T1505b), or none (the headless server). */
+const catalogueOf = (runtime: ToolRuntime) => presetCatalogueHolderFor(runtime.bus).current?.components;
+
+function bankView(view: BankView, runtime: ToolRuntime, clock: FrameClock | undefined): PresetBankView {
+  const node = view.holder;
   const channels = runtime.bus.channelResolver();
-  // The bank's own settings through the one read path (§V61), as the commands read them.
-  const settings = resolveParameters(node, runtime.bus.registry.get(node.type), channels === undefined ? {} : { channels }).values;
-  const parsed = parsePresetBank(node.parameters["presets"]);
+  // The bank's own settings through the one read path (§V61), as the commands read them —
+  // for a look's instance, its component's page bank's.
+  const settings = resolveParameters(view.bank, runtime.bus.registry.get(view.bank.type), channels === undefined ? {} : { channels }).values;
+  const parsed = parsePresetBank(view.bank.parameters["presets"]);
+  const instance = node.label ?? node.id;
+  // A look's preset holds `parent`; what a recall writes is the instance's own page.
+  const spelled = (name: string): string => (view.kind === "instance" && name === PAGE_TARGET ? instance : name);
+  const current = view.kind === "instance" ? node.parameters[view.currentKey] : settings["current"];
   return {
     nodeId: node.id,
     name: node.label ?? null,
-    targets: parsePresetTargets(node.parameters["targets"]).map((target) => target.token),
-    current: text(settings["current"]),
+    component: view.definition?.name ?? null,
+    targets: parsePresetTargets(view.bank.parameters["targets"]).map((target) =>
+      target.key === undefined ? spelled(target.node) : `${spelled(target.node)}.${target.key}`,
+    ),
+    current: text(current),
     select: text(settings["select"]),
     malformed: parsed.ok ? null : parsed.reason,
     presets: (parsed.ok ? parsed.bank.presets : []).map((preset) => ({
       name: preset.name,
-      keys: keysOf(preset.values),
+      keys: keysOf(Object.fromEntries(Object.entries(preset.values).map(([name, keys]) => [spelled(name), keys]))),
       on: { ...preset.on },
       recalls: [...(preset.recalls ?? [])],
       morph: presetMorph(undefined, preset, settings),
@@ -222,7 +242,7 @@ function bankView(node: GraphNode, runtime: ToolRuntime, clock: FrameClock | und
     morphs:
       clock === undefined
         ? []
-        : parseMorphRecords(node.parameters["morphs"])
+        : heldMorphRecords(view)
             .filter((record) => morphRunning(record, clock))
             .map((record) => morphView(record, clock)),
   };
@@ -232,7 +252,7 @@ export const listPresets: AgentTool<ListPresetsInput, PresetListing> = {
   name: "list_presets",
   title: "List presets",
   description:
-    "Every Presets bank: its targets, the preset recalled last (current), and each preset with the keys it holds, the layers it switches, the other banks' presets it recalls and the morph a plain recall of it uses. morphs lists the fades running right now with their progress (0 to 1) on this surface's transport clock. clockSeconds null means this surface has no transport (the headless server): nothing fades there and morphs is always empty. The stored values themselves are the bank's presets parameter; read them with get_node.",
+    "Every Presets bank: its targets, the preset recalled last (current), and each preset with the keys it holds, the layers it switches, the other banks' presets it recalls and the morph a plain recall of it uses. morphs lists the fades running right now with their progress (0 to 1) on this surface's transport clock. clockSeconds null means this surface has no transport (the headless server): nothing fades there and morphs is always empty. The stored values themselves are the bank's presets parameter; read them with get_node. A component instance whose component holds a preset bank targeting parent is a bank too (component names it): its presets live in the component, and store_preset on it writes the component for every instance; current and morphs are that instance's own.",
   kind: "read",
   inputSchema: listPresetsInput,
   requires: { queries: ["graph.get"] },
@@ -240,11 +260,13 @@ export const listPresets: AgentTool<ListPresetsInput, PresetListing> = {
   mutates: false,
   async run(input, runtime) {
     const graph = await graphOf(runtime);
+    const catalogue = catalogueOf(runtime);
+    // T1505b: every bank — a Presets node, or a look's instance whose component holds one.
     const banks = Object.keys(graph.nodes)
       .sort()
-      .map((nodeId) => graph.nodes[nodeId])
-      .filter((node): node is GraphNode => node !== undefined && node.type === PRESETS_NODE_TYPE)
-      .filter((node) => input.nodeId === undefined || node.id === input.nodeId);
+      .map((nodeId) => bankViewOf(graph.nodes[nodeId], catalogue))
+      .filter((view): view is BankView => view !== undefined)
+      .filter((view) => input.nodeId === undefined || view.holder.id === input.nodeId);
     if (input.nodeId !== undefined && banks.length === 0) {
       return failed<PresetListing>("list_presets", "preset.bank.unknown", `No Presets bank with id "${input.nodeId}".`, {
         revision: graph.revision,
@@ -254,7 +276,7 @@ export const listPresets: AgentTool<ListPresetsInput, PresetListing> = {
     const clock = runtime.bus.frameClock();
     return ok(
       "list_presets",
-      { banks: banks.map((node) => bankView(node, runtime, clock)), clockSeconds: clock?.absTimeSeconds ?? null },
+      { banks: banks.map((view) => bankView(view, runtime, clock)), clockSeconds: clock?.absTimeSeconds ?? null },
       { revision: graph.revision },
     );
   },

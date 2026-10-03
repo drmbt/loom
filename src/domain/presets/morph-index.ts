@@ -7,8 +7,9 @@ import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { nodeNames } from "../graph/names.ts";
 import { effectiveParameterSchema, resolveParameter, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
 import { componentAddressedDefinition, componentNamesFor, isParameterSlot, parseComponentKey } from "../parameters/slots.ts";
-import { PRESETS_NODE_TYPE } from "./bank.ts";
-import { easeMorph, morphProgress, parseMorphRecords, sameStored, type MorphRecord } from "./morph.ts";
+import { isComponentNodeType } from "../components/component-type.ts";
+import { PAGE_TARGET, PRESET_MORPHS_KEY, isPresetsNode } from "./bank-view.ts";
+import { easeMorph, morphProgress, parseMorphRecords, renameRecordsNode, sameStored, type MorphRecord } from "./morph.ts";
 import { buildTimelineCueIndex, withTimelineCues } from "./timeline-cues.ts";
 
 /**
@@ -98,13 +99,26 @@ export const NO_MORPHS: ParameterMorphs = {
   activeAt: () => false,
 };
 
-/** Every bank's records, in bank-id order. Banks with none are absent. */
+/**
+ * Every bank's records, in bank-id order. Banks with none are absent.
+ *
+ * T1505b: a component instance whose look holds a page bank keeps its own records in
+ * `presetMorphs`, keyed by `parent` (§1.2 Q3). They are read HERE under the instance's
+ * name, before anything chains them, so a shot's record on a root bank (keyed `city`) and
+ * the look's own record (keyed `parent` on `city`) on one key form one chain (§5.3) — and
+ * because this is `buildMorphIndex`'s one source, all three index builders agree (§B8).
+ * Graph-only: an instance holds `presetMorphs` only because a recall wrote them.
+ */
 export function bankMorphRecords(graph: GraphDocument): Array<{ bankId: NodeId; records: readonly MorphRecord[] }> {
   const banks: Array<{ bankId: NodeId; records: readonly MorphRecord[] }> = [];
   for (const nodeId of Object.keys(graph.nodes).sort()) {
     const node = graph.nodes[nodeId];
-    if (node === undefined || node.type !== PRESETS_NODE_TYPE) continue;
-    const records = parseMorphRecords(node.parameters["morphs"]);
+    if (node === undefined) continue;
+    let records: MorphRecord[] = [];
+    if (isPresetsNode(node)) records = parseMorphRecords(node.parameters["morphs"]);
+    else if (isComponentNodeType(node.type) && node.label !== undefined) {
+      records = renameRecordsNode(parseMorphRecords(node.parameters[PRESET_MORPHS_KEY]), PAGE_TARGET, node.label);
+    }
     if (records.length > 0) banks.push({ bankId: nodeId, records });
   }
   return banks;

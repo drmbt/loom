@@ -6,6 +6,7 @@ import { refusalMessage, type CommandAnswer } from "@editor/inspector/command-re
 import { createParameterEditor, type ParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { phoneActorId, type PhoneSet } from "@devices/phone/phone-protocol.ts";
 import { vetPhoneSet } from "@devices/phone/phone-snapshot.ts";
+import { presetCatalogueHolderFor } from "@domain/presets/bank-view.ts";
 
 /**
  * T1396b — A PHONE'S WRITES, THROUGH THE BUS, AS THAT PHONE.
@@ -135,7 +136,8 @@ export function createPhoneWrites(options: PhoneWritesOptions): PhoneWrites {
   };
 
   const apply = async (lane: Lane, phone: string, set: PhoneSet, report: boolean): Promise<void> => {
-    const vet = vetPhoneSet(options.bus.store.getGraph(), set);
+    // T1505b: the catalogue, so a look's instance on a remote board vets as the bank it is.
+    const vet = vetPhoneSet(options.bus.store.getGraph(), set, presetCatalogueHolderFor(options.bus).current?.components);
     if (!vet.ok) {
       if (report) options.onRefused(phone, vet.reason, vet.nodeId ?? "");
       return;
