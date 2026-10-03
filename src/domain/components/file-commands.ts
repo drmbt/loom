@@ -119,6 +119,8 @@ export interface ComponentFileCommandOptions {
   host: { componentId: ComponentId; version: number } | null;
   writeFile?: ComponentFileWriter;
   readFile?: ComponentFileReader;
+  /** T1519b: the picker keeps retained references here (see `ComponentCommandOptions`). */
+  retainsPickedFiles?: boolean;
 }
 
 function error(code: string, message: string, suggestion?: string): RuntimeDiagnostic {
@@ -403,6 +405,8 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
       }
       // T1492b: a file picked for this session is an object URL — bytes this page holds
       // under a name that is dead everywhere else. Refused by name, not exported broken.
+      // T1519b: and the refusal names the fix — on a File System Access host, picking the
+      // file again makes it a retained reference, which travels; elsewhere it cannot.
       const stranded = sessionOnlyAssets(collected.definitions, context.registry);
       if (stranded.length > 0) {
         return refuse(
@@ -410,7 +414,9 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
             error(
               "component.export.sessionAsset",
               `"${root.name}" was not exported: "${each.nodeName}" in "${each.componentName}" reads "${each.fileName}", a file picked for this session only, which no other document could open.`,
-              `Clear ${each.parameterLabel} on "${each.nodeName}" or point it at a URL, then export again.`,
+              options.retainsPickedFiles === true
+                ? `Enter "${each.componentName}" and choose "${each.fileName}" again with the file picker on ${each.parameterLabel} of "${each.nodeName}": it is then kept as a reference to the file on disk, which an export carries. Then export again.`
+                : `This browser has no File System Access, so a picked file is session-only here and cannot be exported. Clear ${each.parameterLabel} on "${each.nodeName}" or point it at a URL, or pick the file in Chromium or the desktop app, then export again.`,
             ),
           ),
         );

@@ -242,6 +242,12 @@ export interface ComponentCommandOptions {
   /** Where `component.import` asks for a file when it is given none (T1494b). Absent: it refuses. */
   readFile?: ComponentFileReader;
   /**
+   * T1519b: whether this host's file picker keeps a retained reference (File System
+   * Access), so `component.export`'s refusal of a session-only file can name the fix.
+   * Absent: false — the refusal says the file is session-only on this host.
+   */
+  retainsPickedFiles?: boolean;
+  /**
    * §T1545b: a command re-registered the host definition as part of the graph step
    * `undoGroupId` (an in-session detach moving the outer page onto the copies). The session
    * records the definition with that step, so undo and redo restore it with the graph.
@@ -1519,6 +1525,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
     host,
     ...(options.writeFile === undefined ? {} : { writeFile: options.writeFile }),
     ...(options.readFile === undefined ? {} : { readFile: options.readFile }),
+    ...(options.retainsPickedFiles === undefined ? {} : { retainsPickedFiles: options.retainsPickedFiles }),
   });
   // T1493b: and crossing it on the clipboard — a node copy carries the definitions its
   // instances need, and `graph.paste` installs them by the same identity rule.

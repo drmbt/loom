@@ -99,6 +99,7 @@ import { pageHostFacts } from "@devices/host-shell.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { useMediaSources } from "./use-media-sources.ts";
 import { useFileReferences } from "./use-file-references.ts";
+import { useArrivingFiles } from "./use-arriving-files.ts";
 import { useScreenSources } from "./use-screen-sources.ts";
 import { useMeshSources } from "./use-mesh-sources.ts";
 import { useNativeInputs } from "./use-native-inputs.ts";
@@ -826,6 +827,8 @@ export function App({
   const mediaControls = useMemo(() => createMediaControlRegistry(), []);
   useMediaCommands(runtime.bus, mediaControls);
   const fileReferences = useFileReferences(compile.flatGraph);
+  // T1519b: a file arriving (open, import, paste) that does not open in this browser.
+  const unopenedFiles = useArrivingFiles(runtime);
   const fileGraphRef = useRef(fileReferences.graph);
   fileGraphRef.current = fileReferences.graph;
   // T1397b: phones sending their cameras over the phone door — a Webcam whose device is
@@ -1797,9 +1800,11 @@ export function App({
     list.push(...depth.notices);
     // T1396b: a refused phone write is said, never swallowed.
     list.push(...phoneDoorNotices(phoneDoor));
+    if (unopenedFiles !== null) list.push(unopenedFiles);
 
     return list;
   }, [
+    unopenedFiles,
     autosave,
     depth.notices,
     phoneDoor,

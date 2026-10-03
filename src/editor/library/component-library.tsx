@@ -141,9 +141,10 @@ export function ComponentLibrary({
     );
   }, [components, graph, catalogueRevision]);
 
-  const report = (diagnostics: readonly { message: string }[]): void => {
+  const report = (diagnostics: readonly { message: string; suggestion?: string }[]): void => {
     const first = diagnostics[0];
-    setMessage(first === undefined ? null : first.message);
+    // T1519b: the fix a refusal names is part of what it says (an export's session-only file).
+    setMessage(first === undefined ? null : first.suggestion === undefined ? first.message : `${first.message} ${first.suggestion}`);
   };
 
   const instantiate = async (

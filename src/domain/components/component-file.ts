@@ -6,6 +6,7 @@ import type { ComponentId } from "../types/ids.ts";
 import { SCHEMA_VERSION } from "../types/schemas.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { pictureFileName } from "../media/picture-file.ts";
+import { parseFileReference } from "../media/file-reference.ts";
 import { effectiveParameterSchema } from "../parameters/resolve.ts";
 import { buildProjectFile, detachComponentLibrary, type ProjectFile } from "../project/project-file.ts";
 import { parseProjectDocument, sortKeysDeep } from "../project/serialize.ts";
@@ -136,10 +137,11 @@ export function collectComponentDependencies(
  * THE FILES A COMPONENT'S INTERNALS READ (T1492b) — measured before anything was built.
  *
  * A node's file is an `asset`-typed PARAMETER holding a URL string: `file` on Movie File
- * In, Audio File In and Mesh File In. There is no asset table behind it. `AssetReference`
- * and `ProjectDocument.assets` exist as a type and a schema, every writer writes `[]`, and
- * no node holds an `assetId`. So the reference lives INSIDE the definition's graph, which
- * has two consequences:
+ * In, Audio File In and Mesh File In. No node holds an `assetId`. `ProjectDocument.assets`
+ * is a PROJECTION, not a table: since the owner's `92d10bcc` every writer derives its
+ * records from the retained references the graphs hold (`retainedProjectAssets` in
+ * `domain/media/file-reference.ts`), so it never says anything the graphs do not. The
+ * reference lives INSIDE the definition's graph, which has two consequences:
  *
  *  - it already travels: an export carries it with the node, an import has nothing extra
  *    to install, and the loaders read the FLATTENED graph (T615), so it resolves in the
@@ -148,10 +150,17 @@ export function collectComponentDependencies(
  *    component's content, so the component rule above already decides it — same id and
  *    same file is the same component, same id and a different file is renamed.
  *
- * What cannot travel is an OBJECT URL (`blob:…`), which is what the file picker and the
- * agent's `attach_asset` write: it names bytes the page that made it is holding, and is
- * dead in every other session. Exported, it would open everywhere as a node that never
- * loads — so `component.export` refuses it by name instead.
+ * T1519b (owner ruling 2026-10-04): a component REFERENCES its media on the file system and
+ * never embeds bytes. On a File System Access host the picker writes a retained reference
+ * (`loom-file:<id>/<kind>#<name>`) whose handle stays in this browser profile; another
+ * profile, machine or origin has no handle, and the app warns when such a reference
+ * arrives (`src/app/use-arriving-files.ts`, reading `externalFiles` below).
+ *
+ * What cannot travel is an OBJECT URL (`blob:…`), which the picker writes on a host
+ * without File System Access and the agent's `attach_asset` writes everywhere: it names
+ * bytes the page that made it is holding, and is dead in every other session. Exported, it
+ * would open everywhere as a node that never loads — so `component.export` refuses it by
+ * name instead, and one arriving in a file written before that refusal is flagged.
  */
 export interface SessionOnlyAsset {
   /** The carried component whose graph holds the node — the root or one it nests. */
@@ -195,6 +204,71 @@ export function sessionOnlyAssets(
           fileName: pictureFileName(url),
         });
       }
+    }
+  }
+  return found;
+}
+
+/** A file a graph reads from outside the document (T1519b). */
+export interface ExternalFile {
+  /** The component whose graph holds the node; null for the document's own graph. */
+  readonly componentName: string | null;
+  readonly nodeName: string;
+  readonly fileName: string;
+  /** The stored reference, as the parameter holds it. */
+  readonly uri: string;
+  /** The retained handle this profile needs (`loom-file:`), or null for an object URL (`blob:`). */
+  readonly handleId: string | null;
+}
+
+/** The retained reference inside a stored value, whatever wraps it. Malformed ones are the node diagnostic's. */
+function retainedReferenceIn(value: unknown): { uri: string; handleId: string; name: string } | null {
+  if (typeof value === "string") {
+    try {
+      const reference = parseFileReference(value);
+      return reference === null || reference.source.kind !== "fileHandle"
+        ? null
+        : { uri: value, handleId: reference.source.handleId, name: reference.name };
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value !== "object" || value === null) return null;
+  for (const each of Object.values(value)) {
+    const found = retainedReferenceIn(each);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
+/**
+ * Every file `graph` reads from outside the document: retained references wherever they
+ * are stored, and — when `registry` is given, because only an `asset` parameter's
+ * `blob:` is a file rather than a word — object URLs. What is found says nothing about
+ * whether the file opens HERE; that is a lookup in this browser, which the app layer does.
+ */
+export function externalFiles(
+  graph: GraphDocument,
+  componentName: string | null,
+  registry?: NodeRegistryView,
+): ExternalFile[] {
+  const found: ExternalFile[] = [];
+  for (const nodeId of Object.keys(graph.nodes).sort()) {
+    const node = graph.nodes[nodeId];
+    if (node === undefined) continue;
+    const nodeName = node.label ?? nodeId;
+    for (const value of Object.values(node.parameters)) {
+      const retained = retainedReferenceIn(value);
+      if (retained !== null) {
+        found.push({ componentName, nodeName, fileName: retained.name, uri: retained.uri, handleId: retained.handleId });
+      }
+    }
+    if (registry === undefined) continue;
+    const schema = effectiveParameterSchema(registry.get(node.type), node.parameters);
+    for (const [key, parameter] of Object.entries(schema)) {
+      if (parameter.type !== "asset") continue;
+      const url = objectUrlIn(node.parameters[key]);
+      if (url !== null) found.push({ componentName, nodeName, fileName: pictureFileName(url), uri: url, handleId: null });
     }
   }
   return found;

@@ -120,6 +120,11 @@ const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
     why: "T1396b: NOT per frame — once per phone WRITE, to vet it against the AUTHORED document: a Panel names its widgets by their authored names (the controls pane's rule) and the write patches that authored node by id through the bus. A widget inside a component is not publishable (T1143). T1503b, the second: once per phone press of a LAYER's switch, after that phone's earlier writes have settled, to see whether the authored layer is already in the state asked for — so a double tap is one undo step and never a flip back.",
   },
   {
+    file: "app/use-arriving-files.ts",
+    reads: 1,
+    why: "T1519b: NOT per frame — on a document or catalogue change, to find file references that ARRIVED (open, import, paste). It reads the AUTHORED graph beside each definition in the catalogue, so it can name the component that holds a file; a flattening would name instances, not components, and miss a definition nothing instances yet. A graph already scanned answers from a cache keyed on its identity.",
+  },
+  {
     file: "app/use-phone-door.ts",
     reads: 1,
     why: "T1396b: NOT a frame path — only while the phone door is open, at most once per animation frame and only after a DOCUMENT change (or, T1503b, once when a published bank's fade ENDS — the per-frame watch for that end compares the fade's records with the frame clock and reads no document), to build what the phones see from the AUTHORED Panels (the same document the controls pane lays out and a phone write patches).",

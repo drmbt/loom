@@ -44,11 +44,19 @@ interface Doc {
   nodes: NodeRegistryView;
 }
 
-function documentWith(definitions: readonly GraphComponentDefinition[], writeFile?: ComponentFileWriter): Doc {
+function documentWith(
+  definitions: readonly GraphComponentDefinition[],
+  writeFile?: ComponentFileWriter,
+  retainsPickedFiles?: boolean,
+): Doc {
   const store = createGraphStore({ ids: createSequentialIdFactory("d"), now: () => "2026-10-02T00:00:00.000Z" });
   const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view(), definitions);
   const { bus } = createDomainBus({ store, registry: system.nodes });
-  registerComponentCommands(bus, { components: system.components, ...(writeFile === undefined ? {} : { writeFile }) });
+  registerComponentCommands(bus, {
+    components: system.components,
+    ...(writeFile === undefined ? {} : { writeFile }),
+    ...(retainsPickedFiles === undefined ? {} : { retainsPickedFiles }),
+  });
   return { store, bus, components: system.components, nodes: system.nodes };
 }
 
@@ -142,6 +150,27 @@ describe("component.export carries the files its internals read (T1492b)", () =>
     const dry = await source.bus.execute("component.export", { componentId: "reel" }, { ...ctx, dryRun: true });
     expect(dry.status).toBe("rejected");
     expect(writes).toBe(0);
+  });
+
+  it("T1519b: the refusal names the fix — pick the file again where the picker retains it, session-only where it cannot", async () => {
+    // A File System Access host: choosing the file again stores a reference to it on disk,
+    // which an export carries — the person is told exactly that, and where to do it.
+    const retaining = documentWith([clipReading(PICKED), reelOverClip()], undefined, true);
+    const there = await retaining.bus.execute("component.export", { componentId: "reel", destination: "text" }, ctx);
+    expect(there.status).toBe("rejected");
+    expect(there.diagnostics[0]?.suggestion).toBe(
+      'Enter "Clip" and choose "take3.mp4" again with the file picker on File of "clip1": it is then kept as a reference to the file on disk, which an export carries. Then export again.',
+    );
+
+    // A host without File System Access: picking again would mint another session URL, so
+    // the advice must not send the person round that loop — it says session-only here.
+    const sessionOnly = documentWith([clipReading(PICKED), reelOverClip()], undefined, false);
+    const here = await sessionOnly.bus.execute("component.export", { componentId: "reel", destination: "text" }, ctx);
+    expect(here.status).toBe("rejected");
+    expect(here.diagnostics[0]?.suggestion).toBe(
+      'This browser has no File System Access, so a picked file is session-only here and cannot be exported. Clear File on "clip1" or point it at a URL, or pick the file in Chromium or the desktop app, then export again.',
+    );
+    expect(here.diagnostics[0]?.suggestion).not.toContain("choose");
   });
 
   it("the file is the component's content: the same one is reused, a different one arrives as clip1", async () => {

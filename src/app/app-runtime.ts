@@ -270,6 +270,9 @@ export function createAppRuntime(options: AppRuntimeOptions = {}): AppRuntime {
     components,
     writeFile: (file) => writeProjectFile(file),
     readFile: () => readProjectFile(),
+    // T1519b: the asset picker keeps retained references exactly where this exists
+    // (`AssetField`), so an export refusing a session-only file can name the fix.
+    retainsPickedFiles: typeof (globalThis as { showOpenFilePicker?: unknown }).showOpenFilePicker === "function",
   });
   registerProjectCommands(bus);
   // T1514b: mapping starts from the parameter — the Inspector's right-click rows name these.

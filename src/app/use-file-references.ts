@@ -109,14 +109,19 @@ export function useFileReferences(graph: GraphDocument): FileReferenceWiring {
       const name = file.reference?.name ?? file.uri;
       const label = graph.nodes[file.nodeId]!.label ?? file.nodeId;
       const detail = file.invalid ?? (status !== null && "message" in status ? status.message : status?.kind);
+      // T1519b: a node inside a component instance (a flattened `<instance>/<node>` id)
+      // relinks from the INSTANCE's inspector, which lists its unopened files.
+      const field = file.nodeId.includes("/") && file.reference !== null
+        ? "this file under the component instance's Component section in the Inspector"
+        : "this field in the Inspector";
       diagnostics.push({
         severity: status?.kind === "pending" ? "info" : status?.kind === "error" || file.invalid !== undefined ? "error" : "warning",
         code: file.invalid !== undefined ? "asset.reference.invalid" : `asset.reference.${status!.kind}`,
         message: `File "${name}" on "${label}" (${file.nodeId}).${file.key}: ${detail}.`,
         nodeId: file.nodeId,
         suggestion: status?.kind === "pending" ? "Wait for the retained file to open."
-          : status?.kind === "permission" ? "Choose Allow access or Relink for this field in the Inspector."
-            : "Choose Relink for this field in the Inspector.",
+          : status?.kind === "permission" ? `Choose Allow access or Relink for ${field}.`
+            : `Choose Relink for ${field}.`,
       });
     }
     return { graph: { ...graph, nodes }, diagnostics };

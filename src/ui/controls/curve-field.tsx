@@ -44,8 +44,15 @@ export interface AssetFieldProps {
   label: string;
   value: string | null;
   kind: string;
-  /** Absent = read-only display (the pre-T434 stub behaviour). */
+  /** Absent = read-only display (the pre-T434 stub behaviour), unless `relinkOnly`. */
   onPick?: (url: string, fileName: string) => void;
+  /**
+   * T1519b: the field authors nothing. A pick stores the chosen file's handle under the
+   * value's existing identity (`RetainedFiles.remember` with that reference) and never
+   * calls `onPick` — a component instance's internals relink without the definition, or
+   * the document, changing.
+   */
+  relinkOnly?: boolean;
 }
 
 /**
@@ -90,7 +97,7 @@ function assetDisplayName(value: string): string {
  * enters the document; decoding owns fresh session URLs. The existing input picker
  * remains session-only on hosts without File System Access.
  */
-export function AssetField({ label, value, kind, onPick }: AssetFieldProps) {
+export function AssetField({ label, value, kind, onPick, relinkOnly = false }: AssetFieldProps) {
   const input = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const files = retainedFiles();
@@ -110,9 +117,16 @@ export function AssetField({ label, value, kind, onPick }: AssetFieldProps) {
     }[] }) => Promise<RetainedFileHandle[]>;
   }).showOpenFilePicker;
   const pick = (): void => {
-    if (onPick === undefined) return;
+    if (onPick === undefined && !relinkOnly) return;
     setError(null);
-    if (picker === undefined) { input.current?.click(); return; }
+    if (picker === undefined) {
+      if (relinkOnly) {
+        setError("This browser has no File System Access, so it cannot relink a retained file.");
+        return;
+      }
+      input.current?.click();
+      return;
+    }
     const accept: Record<string, string[]> | undefined = kind === "picture"
       ? { "video/*": [".mp4", ".m4v", ".mov", ".webm", ".ogv", ".mkv"],
         "image/*": [".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".bmp"] }
@@ -127,9 +141,9 @@ export function AssetField({ label, value, kind, onPick }: AssetFieldProps) {
         if (handle === undefined) return;
         const fileKind = kind === "picture" ? (pictureFileKind(handle.name) === "video" ? "video" : "image") : kind;
         if (!["image", "video", "audio", "gltf", "binary"].includes(fileKind)) throw new Error(`Unsupported file kind: ${kind}`);
-        const relink = reference !== null && (status?.kind === "missing" || status?.kind === "error") ? value! : undefined;
+        const relink = reference !== null && (relinkOnly || status?.kind === "missing" || status?.kind === "error") ? value! : undefined;
         const stored = await files.remember(handle, fileKind as AssetReference["kind"], relink);
-        onPick(stored, handle.name);
+        if (!relinkOnly) onPick?.(stored, handle.name);
       }).catch((cause: unknown) => {
         if (cause instanceof DOMException && cause.name === "AbortError") return;
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -157,7 +171,7 @@ export function AssetField({ label, value, kind, onPick }: AssetFieldProps) {
       <span className={styles.assetName}>
         {value === null || value === "" ? `no ${kind} bound` : displayedName}
       </span>
-      {onPick === undefined ? (
+      {onPick === undefined && !relinkOnly ? (
         <span className={styles.meta}>· read-only</span>
       ) : (
         <>
@@ -166,7 +180,7 @@ export function AssetField({ label, value, kind, onPick }: AssetFieldProps) {
             className={styles.assetPick}
             onClick={pick}
           >
-            {status?.kind === "missing" || status?.kind === "error" ? "relink…" : "choose…"}
+            {relinkOnly || status?.kind === "missing" || status?.kind === "error" ? "relink…" : "choose…"}
           </button>
           {status?.kind === "permission" ? <button type="button" className={styles.assetPick}
             onClick={() => { setError(null); void files.allow(value!).catch((cause: unknown) => {
@@ -183,7 +197,7 @@ export function AssetField({ label, value, kind, onPick }: AssetFieldProps) {
               const file = event.currentTarget.files?.[0];
               if (file === undefined) return;
               const url = `${URL.createObjectURL(file)}#${encodeURIComponent(file.name)}`;
-              onPick(url, file.name);
+              onPick?.(url, file.name);
               event.currentTarget.value = "";
             }}
           />

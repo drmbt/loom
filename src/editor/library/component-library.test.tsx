@@ -12,6 +12,13 @@ import {
   node,
 } from "@domain/components/test-support.ts";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
+import { createDomainBus } from "@domain/commands/index.ts";
+import { registerComponentCommands } from "@domain/components/commands.ts";
+import { createComponentSystem } from "@domain/components/registry.ts";
+import { createGraphStore } from "@domain/graph/store.ts";
+import { createSequentialIdFactory } from "@domain/graph/ids.ts";
+import { allNodeDefinitions } from "@nodes/definitions/index.ts";
+import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { ComponentLibrary } from "./component-library.tsx";
 
 /**
@@ -249,6 +256,38 @@ describe("ComponentLibrary (T188)", () => {
     const library = (JSON.parse(written[0]?.text ?? "{}") as { componentLibrary?: { components: Array<{ componentId: string }> } })
       .componentLibrary;
     expect(library?.components.map((each) => each.componentId)).toEqual(["bloom"]);
+  });
+
+  it("an export refused for a session-only file says the fix, not only the refusal (T1519b)", async () => {
+    // The shipped node set: Movie File In's `file` is the asset a picked file lands in.
+    const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view(), [{
+      componentId: "clip",
+      version: 1,
+      name: "Clip",
+      graph: graphOf([node("movie", "movieFileIn", { file: "blob:http://localhost:5173/3f2a#take3.mp4" }, { label: "clip1" })]),
+      inputs: [],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "movie", portId: "out" }],
+      parameters: [],
+    }]);
+    const store = createGraphStore({ ids: createSequentialIdFactory("c"), now: () => "2026-10-04T00:00:00.000Z" });
+    const { bus } = createDomainBus({ store, registry: system.nodes });
+    let writes = 0;
+    registerComponentCommands(bus, {
+      components: system.components,
+      writeFile: async (file) => { writes += 1; return { kind: "saved", fileName: file.fileName }; },
+      retainsPickedFiles: true,
+    });
+    render(<ComponentLibrary bus={bus} context={context} components={system.components.view()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Export Clip" }));
+
+    expect(
+      await screen.findByText(
+        '"Clip" was not exported: "clip1" in "Clip" reads "take3.mp4", a file picked for this session only, which no other document could open. '
+          + 'Enter "Clip" and choose "take3.mp4" again with the file picker on File of "clip1": it is then kept as a reference to the file on disk, which an export carries. Then export again.',
+      ),
+    ).toBeDefined();
+    expect(writes).toBe(0);
   });
 
   it("cannot save with nothing selected", () => {

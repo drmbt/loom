@@ -3,8 +3,14 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ComponentRegistryView } from "@domain/components/registry.ts";
+import type { GraphComponentDefinition } from "@domain/types/components.ts";
+import type { RetainedFileSnapshot } from "@ui/files/retained-files.ts";
 import { readComponentInstance } from "@domain/components/instance.ts";
 import { availableUpgrade } from "@domain/components/upgrade.ts";
+import { collectComponentDependencies, externalFiles, type ExternalFile } from "@domain/components/component-file.ts";
+import { retainedFiles } from "@ui/files/retained-files.ts";
+import { AssetField } from "@ui/controls/curve-field.tsx";
+import { parseFileReference } from "@domain/media/file-reference.ts";
 import { Button } from "@ui/primitives/button.tsx";
 import { ControlRow } from "@ui/controls/control-row.tsx";
 import styles from "./inspector.module.css";
@@ -29,7 +35,12 @@ import styles from "./inspector.module.css";
  *  - ENTER, the same `graph.diveIn` the double-click and `i` run (§V78: one command);
  *  - DETACH, the explicit opt-out of linked editing — labelled with what it does,
  *    because "detach" alone reads as removal, and it is the opposite: the instance
- *    becomes an editable copy and stops following the definition.
+ *    becomes an editable copy and stops following the definition;
+ *  - FILES (T1519b): every retained file inside the component (nested ones too) that
+ *    does not open in this browser, with RELINK — the handle is stored under the
+ *    reference's own identity, so the definition is not edited and the document's
+ *    revision does not move. Before this the one route to a relink was entering the
+ *    component, where the field's pick writes the definition.
  */
 
 export interface ComponentSectionProps {
@@ -54,11 +65,14 @@ export function ComponentSection({ bus, context, nodeId, components }: Component
   const [busy, setBusy] = useState(false);
 
   const graph = useSyncExternalStore(bus.store.subscribe, bus.store.getGraph, bus.store.getGraph);
+  const files = retainedFiles();
+  useSyncExternalStore(files.subscribe, files.revision, files.revision);
   const node = graph.nodes[nodeId];
   const state = node === undefined ? null : readComponentInstance(node);
   if (state === null) return null;
   const definition = components.get(state.componentId, state.version);
   const upgrade = node === undefined ? null : availableUpgrade(node, components);
+  const unopened = definition === undefined ? [] : unopenedFiles(definition, components, files.snapshot);
 
   const run = (command: "component.upgradeInstance" | "component.detach") => {
     setBusy(true);
@@ -123,6 +137,37 @@ export function ComponentSection({ bus, context, nodeId, components }: Component
           Detach — make an editable copy
         </Button>
       </ControlRow>
+
+      {unopened.map((file) => (
+        <ControlRow key={`${file.componentName ?? ""}/${file.nodeName}/${file.uri}`} label="File">
+          <AssetField
+            label={`"${file.fileName}" on "${file.nodeName}" in "${file.componentName ?? ""}"`}
+            value={file.uri}
+            kind={parseFileReference(file.uri)?.kind ?? "binary"}
+            relinkOnly
+          />
+        </ControlRow>
+      ))}
     </section>
   );
+}
+
+/**
+ * T1519b: the retained files inside `definition` and every component it nests that do not
+ * open here (missing, unreadable, or waiting for access). Read from the definitions, which
+ * is what an instance's internals are; the flattened graph's lease keeps each one resolved.
+ */
+function unopenedFiles(
+  definition: GraphComponentDefinition,
+  components: ComponentRegistryView,
+  snapshot: (reference: string) => RetainedFileSnapshot,
+): ExternalFile[] {
+  const collected = collectComponentDependencies(definition, components);
+  const carried = collected.ok ? collected.definitions : [definition];
+  return carried
+    .flatMap((each) => externalFiles(each.graph, each.name))
+    .filter((file) => {
+      const status = snapshot(file.uri).kind;
+      return status === "missing" || status === "error" || status === "permission";
+    });
 }
