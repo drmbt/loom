@@ -17,7 +17,7 @@ export type { SnapshotMeta } from "./snapshot-ring.ts";
 
 export interface SnapshotRecord extends SnapshotMeta {
   projectId: string;
-  /** Exactly what `serializeProjectDocument` returned — a save writes the same bytes. */
+  /** Exactly what `serialize` returned — a save writes the same bytes. */
   body: string;
 }
 
@@ -33,6 +33,12 @@ export interface AutosaveOptions {
   store: SnapshotStore;
   /** Returns the current document; called only when a debounced write actually fires. */
   getDocument: () => ProjectDocument;
+  /**
+   * The bytes of a snapshot. Defaults to `serializeProjectDocument`; the app passes the
+   * SAVE path's bytes (`buildProjectFile`, component library included — §T1540b), so a
+   * snapshot restores everything a save would have written, not just the graph.
+   */
+  serialize?: (document: ProjectDocument) => string;
   debounceMs?: number;
   retention?: RetentionOptions;
   now?: () => number;
@@ -56,6 +62,7 @@ export function createAutosave(options: AutosaveOptions): Autosave {
   const setTimer = options.setTimer ?? ((cb, ms) => setTimeout(cb, ms));
   const clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle as Parameters<typeof clearTimeout>[0]));
   const onError = options.onError ?? (() => undefined);
+  const serialize = options.serialize ?? serializeProjectDocument;
 
   let pending: unknown = null;
   let disposed = false;
@@ -71,7 +78,7 @@ export function createAutosave(options: AutosaveOptions): Autosave {
       revision,
       savedAt,
       pinned: false,
-      body: serializeProjectDocument(document),
+      body: serialize(document),
     };
 
     const existing = await options.store.list(document.projectId);
@@ -80,7 +87,14 @@ export function createAutosave(options: AutosaveOptions): Autosave {
       (best, meta) => (best === undefined || meta.savedAt > best.savedAt ? meta : best),
       undefined,
     );
-    if (newest !== undefined && newest.revision === revision) return;
+    // §T1540b: an equal revision is NOT "nothing changed". A component definition edit
+    // (an instance Store, an edit inside a component) changes the file and leaves the
+    // document's revision where it was — so an equal revision is only a hint, and the
+    // bytes decide.
+    if (newest !== undefined && newest.revision === revision) {
+      const stored = await options.store.get(document.projectId, newest.key);
+      if (stored?.body === record.body) return;
+    }
 
     const plan = planRetention(existing, record, options.retention);
     record.pinned = plan.pinIncoming;

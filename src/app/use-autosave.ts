@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  buildProjectFile,
   createAutosave,
   createIndexedDbSnapshotStore,
   findRestoreCandidate,
@@ -30,6 +31,17 @@ import type { AppRuntime } from "./app-runtime.ts";
  * Every commit calls `notifyChange`; the debounce inside the scheduler is what turns a
  * 60 Hz parameter drag into one write. Serializing on every commit would be the obvious
  * mistake and it is the scheduler's job to avoid, not this hook's.
+ *
+ * ## The project is the document AND the component catalogue (§T1540b)
+ *
+ * Component definitions live outside the document (§V79), and a definition edit — a Store
+ * on a look instance, any edit made inside a component, a publish, an import — commits to
+ * the catalogue without moving the document's revision. Listening to the store alone, that
+ * work reached a snapshot only with the next unrelated document edit, and the snapshot
+ * carried no component library at all, so a restore dropped it anyway. So the catalogue is
+ * a second change source, and a snapshot is the SAVE path's bytes (`buildProjectFile`),
+ * stamped with the document's own `updatedAt` so an unchanged project stays byte-equal and
+ * the scheduler's skip still works.
  */
 
 export const AUTOSAVE_UNAVAILABLE_CODE = "project.autosave.unavailable";
@@ -113,6 +125,8 @@ export function useAutosave(runtime: AppRuntime, options: UseAutosaveOptions = {
     const autosave = createAutosave({
       store,
       getDocument: () => runtime.projectDocument(),
+      serialize: (document) =>
+        buildProjectFile({ document, components: runtime.components.all(), now: () => document.updatedAt }).text,
       ...(debounceMs === undefined ? {} : { debounceMs }),
       onError: (error: unknown) => {
         setDiagnostics([
@@ -128,6 +142,7 @@ export function useAutosave(runtime: AppRuntime, options: UseAutosaveOptions = {
 
     flushRef.current = () => autosave.flush();
     const unsubscribe = runtime.bus.store.subscribe(() => autosave.notifyChange());
+    const unsubscribeCatalogue = runtime.components.subscribe(() => autosave.notifyChange());
 
     // Best effort by construction: `beforeunload` cannot await. Flushing here still
     // turns "the last two seconds of edits" into "the last frame of them".
@@ -161,6 +176,7 @@ export function useAutosave(runtime: AppRuntime, options: UseAutosaveOptions = {
       cancelled = true;
       if (typeof window !== "undefined") window.removeEventListener("beforeunload", onUnload);
       unsubscribe();
+      unsubscribeCatalogue();
       autosave.dispose();
       flushRef.current = noop;
     };

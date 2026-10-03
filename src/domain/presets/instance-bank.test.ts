@@ -16,7 +16,7 @@ import { alice, bob, contextFor, patch } from "../commands/test-support.ts";
 import { registerComponentCommands } from "../components/commands.ts";
 import { componentNodeType } from "../components/component-type.ts";
 import { createComponentSystem, type ComponentRegistry } from "../components/registry.ts";
-import { openComponentSession } from "../components/session.ts";
+import { COMPONENT_SESSION_STALE_CODE, openComponentSession } from "../components/session.ts";
 import { createNodeRegistry, type NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { testNodeDefinitions } from "../../nodes/registry/test-nodes.ts";
 import { cueListNode } from "../../nodes/definitions/cue-list.ts";
@@ -367,6 +367,61 @@ describe("refused by name", () => {
       expect(session.store.view.getGraph().nodes["blurA"]?.parameters["radius"]).toBe(33);
       // …and the session's commits reach the catalogue, as every definition edit does.
       expect(doc.components.get("city", 1)?.graph.nodes["blurA"]?.parameters["radius"]).toBe(33);
+    } finally {
+      session.dispose();
+    }
+  });
+
+  /*
+   * §T1540b (b) — the backstop under the editor's rebase. A session still open over `city`
+   * when a Store on an instance writes `city` holds the graph from before the Store; its
+   * next commit, however unrelated, would register that graph and drop the preset. It must
+   * say so once (`onStale`) and refuse to write back, by name — and must NOT go stale on
+   * what the session itself writes (an edit, a publish), the legitimate cases the guard
+   * could swallow.
+   */
+  it("an open definition session goes stale on an outside Store and refuses to write its old graph over it", async () => {
+    const doc = documentWith(twoLooks());
+    const stale: string[] = [];
+    const refused: string[] = [];
+    const session = openComponentSession({
+      components: doc.components,
+      nodes: doc.bus.registry,
+      componentId: "city",
+      version: 1,
+      onStale: (each) => stale.push(each.code),
+      onInvalid: (each) => refused.push(...each.map((diagnostic) => diagnostic.code)),
+    });
+    const presetNames = (): string[] => {
+      const parsed = parsePresetBank(doc.components.get("city", 1)?.graph.nodes["looks"]?.parameters["presets"]);
+      return parsed.ok ? parsed.bank.presets.map((preset) => preset.name) : [];
+    };
+    try {
+      // The session's own writes keep it current: an edit, and a host command.
+      await session.bus.execute("node.rename", { nodeId: "solid", label: "base" }, ctx);
+      const published = await session.bus.execute(
+        "component.publishParameter",
+        { key: "inner_radius", definition: { type: "number", label: "R", default: 4, min: 0, max: 64 }, targets: [{ nodeId: "blurA", key: "radius" }] },
+        ctx,
+      );
+      expect(published.status, codes(published).join()).toBe("applied");
+      await session.bus.execute("node.rename", { nodeId: "inner", label: "inner2" }, ctx);
+      expect(doc.components.get("city", 1)?.graph.nodes["inner"]?.label).toBe("inner2");
+      expect(stale).toEqual([]);
+
+      const stored = await doc.bus.execute("preset.store", { nodeId: "a", name: "riot" }, ctx);
+      expect(stored.status, codes(stored).join()).toBe("applied");
+      expect(stale).toEqual([COMPONENT_SESSION_STALE_CODE]);
+
+      // The stale session's next commit — nothing to do with the bank — is not written.
+      await session.bus.execute("node.rename", { nodeId: "blurA", label: "softened" }, ctx);
+      expect(refused).toEqual([COMPONENT_SESSION_STALE_CODE]);
+      expect(presetNames()).toEqual(["calm", "riot"]);
+      expect(doc.components.get("city", 1)?.graph.nodes["blurA"]?.label).toBe("blurA");
+      // Nor does an undo inside it reach back across the Store.
+      await session.bus.execute("graph.undo", {}, ctx);
+      expect(presetNames()).toEqual(["calm", "riot"]);
+      expect(stale).toEqual([COMPONENT_SESSION_STALE_CODE]);
     } finally {
       session.dispose();
     }

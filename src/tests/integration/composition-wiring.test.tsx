@@ -607,8 +607,12 @@ describe("autosave is subscribed to the store (T139, §V10)", () => {
     const snapshot = puts.at(-1);
     expect(snapshot?.projectId).toBe(runtime.invocation.projectId);
     expect(snapshot?.revision).toBe(runtime.bus.store.getRevision());
-    // One serializer: the snapshot body is the bytes a save would have written (T43).
-    expect(snapshot?.body).toBe(serializeProjectDocument(runtime.projectDocument()));
+    // One serializer: the snapshot body is the file the save wrote (T43) — component
+    // library included (§T1540b) — differing only in the save's fresh `updatedAt` stamp.
+    const saved = JSON.parse(written as unknown as string) as Record<string, unknown>;
+    const snapshotted = JSON.parse(snapshot?.body ?? "{}") as Record<string, unknown>;
+    expect(snapshotted["componentLibrary"]).toBeDefined();
+    expect({ ...snapshotted, updatedAt: saved["updatedAt"] }).toEqual(saved);
   });
 
   it("surfaces a diagnostic when IndexedDB is unavailable instead of silently not saving", async () => {

@@ -1249,7 +1249,7 @@ export function App({
 
   // T189/§V93: "is there unsaved work" is the one thing that makes OPEN ask first. The
   // example library asks it; `markSaved` after a successful write is the other half.
-  const dirty = useDocumentDirty(runtime.bus);
+  const dirty = useDocumentDirty(runtime.bus, runtime.components); // §T1540b: definition writes are unsaved work
   // Read through a ref: the command handler asks at the moment it runs, not at the
   // moment it was registered.
   const dirtyRef = useRef(dirty.dirty);

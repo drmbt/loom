@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { LoomBus } from "@domain/commands/bus.ts";
 
 /**
@@ -35,6 +35,12 @@ import type { LoomBus } from "@domain/commands/bus.ts";
  * claiming the new document is already dirty, and a confirmation dialog racing a document
  * swap is exactly the wrong thing to be approximate about. See the note on the ref below
  * for why it is a ref and not state adjusted during render — the difference is load-bearing.
+ *
+ * ## The component catalogue is project state too (§T1540b)
+ *
+ * A component definition edit — a Store on a look instance, an edit inside a component —
+ * changes the saved file without moving the document's revision. Given the catalogue, every
+ * write it announces counts as unsaved work until the next `markSaved`, beside the revision.
  */
 export interface DocumentDirty {
   readonly dirty: boolean;
@@ -42,12 +48,22 @@ export interface DocumentDirty {
   markSaved: () => void;
 }
 
-export function useDocumentDirty(bus: LoomBus): DocumentDirty {
+/** Just the catalogue's change signal (`ComponentRegistryView.subscribe`). */
+export interface CatalogueChanges {
+  subscribe(listener: () => void): () => void;
+}
+
+export function useDocumentDirty(bus: LoomBus, catalogue?: CatalogueChanges): DocumentDirty {
   const revision = useSyncExternalStore(
     bus.store.subscribe,
     bus.store.getRevision,
     bus.store.getRevision,
   );
+  // A count, not a flag: the baseline below records how many writes a save covered.
+  const [catalogueWrites, setCatalogueWrites] = useState(0);
+  useEffect(() => catalogue?.subscribe(() => setCatalogueWrites((count) => count + 1)), [catalogue]);
+  const writesRef = useRef(catalogueWrites);
+  writesRef.current = catalogueWrites;
   /**
    * The baseline, rebased on the bus. A REF, and that is not a style choice.
    *
@@ -63,16 +79,19 @@ export function useDocumentDirty(bus: LoomBus): DocumentDirty {
    * A ref assignment costs no extra pass, and it is idempotent: a render that runs twice
    * for any other reason computes the same baseline from the same bus.
    */
-  const baseline = useRef({ bus, revision });
-  if (baseline.current.bus !== bus) baseline.current = { bus, revision };
+  const baseline = useRef({ bus, revision, catalogueWrites });
+  if (baseline.current.bus !== bus) baseline.current = { bus, revision, catalogueWrites };
 
   // `markSaved` has to be visible, and a ref alone does not re-render. The counter is
   // only a nudge — `baseline` above is the value everything reads.
   const [, bump] = useState(0);
   const markSaved = useCallback(() => {
-    baseline.current = { bus, revision: bus.store.getRevision() };
+    baseline.current = { bus, revision: bus.store.getRevision(), catalogueWrites: writesRef.current };
     bump((count) => count + 1);
   }, [bus]);
 
-  return { dirty: revision > baseline.current.revision, markSaved };
+  return {
+    dirty: revision > baseline.current.revision || catalogueWrites > baseline.current.catalogueWrites,
+    markSaved,
+  };
 }

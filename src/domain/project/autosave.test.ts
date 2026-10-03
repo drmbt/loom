@@ -180,6 +180,33 @@ describe("autosave scheduler", () => {
     expect(store.records.size).toBe(1);
   });
 
+  // §T1540b: a component definition edit changes the file and not the document's revision.
+  it("writes a snapshot at the same revision when the bytes changed, through the injected serializer", async () => {
+    const store = memoryStore();
+    const timers = manualTimers();
+    let library = "calm";
+    let clock = 1000;
+    const autosave = createAutosave({
+      store,
+      getDocument: () => makeDocument(5),
+      serialize: (document) => `${serializeProjectDocument(document)}\n${library}`,
+      now: () => clock,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+    });
+
+    autosave.notifyChange();
+    timers.fireAll();
+    await autosave.flush();
+    library = "calm,bright";
+    clock = 2000;
+    autosave.notifyChange();
+    timers.fireAll();
+    await autosave.flush();
+    const bodies = [...store.records.values()].sort((a, b) => a.savedAt - b.savedAt).map((record) => record.body.split("\n").at(-1));
+    expect(bodies).toEqual(["calm", "calm,bright"]);
+  });
+
   it("routes storage failures to onError instead of throwing", async () => {
     const failing: SnapshotStore = {
       list: async () => [],

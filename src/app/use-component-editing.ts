@@ -157,27 +157,49 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
   const componentId = innermost?.componentId ?? null;
   const version = innermost?.version ?? null;
 
+  /**
+   * §T1540b — THE REBASE. A session whose definition was written from outside (a Store on
+   * a look instance, a move, an import) goes stale and refuses to write back
+   * (`session.ts`). Bumping `reopened` reopens every session over the definition as it is
+   * NOW, so the next edit builds on the outside write instead of being refused; `rebased`
+   * is the note that says the undo history inside restarted.
+   */
+  const [reopened, setReopened] = useState(0);
+  const [rebased, setRebased] = useState<RuntimeDiagnostic | null>(null);
+  const onStale = useCallback((diagnostic: RuntimeDiagnostic) => {
+    setRebased({
+      ...diagnostic,
+      severity: "info",
+      suggestion: "The editor reopened it over the current definition, so nothing was lost; undo inside it starts again here.",
+    });
+    setReopened((count) => count + 1);
+  }, []);
+  useEffect(() => setRebased(null), [componentId, version]);
+
   const [session, setSession] = useState<ComponentSession | null>(null);
   useEffect(() => {
     if (componentId === null || version === null) {
       setSession(null);
       return;
     }
-    // Keyed on the component and version ALONE. Re-keying on the definition object would
-    // reopen the session on every edit the session itself makes, throwing away the undo
-    // history the user is standing in the middle of.
+    // Keyed on the component and version ALONE (and on `reopened`, the outside-write
+    // rebase above). Re-keying on the definition object would reopen the session on every
+    // edit the session itself makes, throwing away the undo history the user is standing
+    // in the middle of.
+    void reopened;
     const opened = openComponentSession({
       components: runtime.components,
       nodes: runtime.registry,
       componentId,
       version,
+      onStale,
     });
     setSession(opened);
     return () => {
       opened.dispose();
       setSession(null);
     };
-  }, [componentId, runtime.components, runtime.registry, version]);
+  }, [componentId, onStale, reopened, runtime.components, runtime.registry, version]);
 
   const live = session !== null && session.componentId === componentId && session.version === version;
   const editBus = live && session !== null ? session.bus : runtime.bus;
@@ -192,11 +214,12 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
       const key = JSON.stringify([frame.componentId, frame.version]);
       if (opened.has(key)) continue;
       opened.set(key, openComponentSession({ components: runtime.components, nodes: runtime.registry,
-        componentId: frame.componentId, version: frame.version }));
+        componentId: frame.componentId, version: frame.version, onStale }));
     }
     setAncestorSessions(current => current.size === 0 && opened.size === 0 ? current : opened);
     return () => { for (const owner of opened.values()) owner.dispose(); };
-  }, [ancestorIdentity, runtime.components, runtime.registry]);
+    // `reopened`: an outside write to an ancestor's definition rebases its session too (§T1540b).
+  }, [ancestorIdentity, onStale, reopened, runtime.components, runtime.registry]);
 
   const graph = useSyncExternalStore<GraphDocument>(
     editBus.store.subscribe,
@@ -271,7 +294,7 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
     definition: live ? (innermost?.definition ?? null) : null,
     insideComponent: componentId !== null,
     instanceParameters,
-    diagnostics: resolved.diagnostics,
+    diagnostics: rebased === null ? resolved.diagnostics : [...resolved.diagnostics, rebased],
     navigate,
     exit,
   };
