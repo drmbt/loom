@@ -586,7 +586,10 @@ export function planPresetRecall(
       skipNode("preset.target.unknownType", (who) => `${who}: "${nodeName}" is a ${node.type} node this build does not know; skipped.`, node.id);
       continue;
     }
-    const schema = effectiveParameterSchema(definition, node.parameters);
+    // T1532b: the keys are checked against the node's schema AFTER this recall's writes — a
+    // preset holding a 4 × 4 Grid Warp brings the points a 3 × 3 node does not declare yet.
+    const recalled = Object.fromEntries([...record].map(([key, laid]) => [key, laid.value]));
+    const schema = effectiveParameterSchema(definition, { ...node.parameters, ...recalled });
     const writes: Record<string, StoredParameter> = {};
     for (const [key, laid] of [...record].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
       const stored = laid.value;

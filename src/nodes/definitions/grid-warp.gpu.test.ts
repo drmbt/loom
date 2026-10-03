@@ -9,9 +9,10 @@ import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { renderHeadless } from "../../tests/headless/render-harness.ts";
 import { TOLERANCE_CROSS_GPU_HDR, decodeComponents } from "../../tests/headless/pixel-compare.ts";
+import { gridWarpNode } from "./grid-warp.ts";
 
 /**
- * Grid Warp on a real device (T1509b, §V147).
+ * Grid Warp on a real device (T1509b, T1532b, §V147).
  *
  * The fixture writes its own uv into red and green (Corner Pin's fixture), so every output
  * pixel SAYS where in the input it was read from. The expected source of each pixel comes
@@ -122,11 +123,11 @@ function expectNear(actual: number, expected: number, label: string): void {
   expect(Math.abs(actual - expected), `${label}: ${actual} vs ${expected}`).toBeLessThanOrEqual(TOLERANCE_CROSS_GPU_HDR);
 }
 
-/** `p{c}{r}_{C}x{R}` for every point of a columns × rows grid, from a function of the point's identity position. */
+/** `p{c}{r}` for every point of a columns × rows grid, from a function of the point's identity position. */
 function gridParameters(columns: number, rows: number, place: (u: number, v: number) => P): Record<string, ParameterValue> {
   const parameters: Record<string, ParameterValue> = { columns, rows };
   for (let r = 0; r < rows; r += 1) {
-    for (let c = 0; c < columns; c += 1) parameters[`p${c}${r}_${columns}x${rows}`] = [...place(c / (columns - 1), r / (rows - 1))];
+    for (let c = 0; c < columns; c += 1) parameters[`p${c}${r}`] = [...place(c / (columns - 1), r / (rows - 1))];
   }
   return parameters;
 }
@@ -238,6 +239,39 @@ function expectMesh(rendered: Rendered, mesh: ReturnType<typeof referenceLattice
   return { inside, outside };
 }
 
+/** p = A·q + b with A = [[0.6, 0.2], [0.1, 0.7]], b = (0.15, 0.1): an affine grid's map. */
+const affineForward = (u: number, v: number): P => [0.6 * u + 0.2 * v + 0.15, 0.1 * u + 0.7 * v + 0.1];
+/** q = A⁻¹(p − b). */
+function affineInverse([px, py]: P): P {
+  const det = 0.6 * 0.7 - 0.2 * 0.1;
+  const [dx, dy] = [px - 0.15, py - 0.1];
+  return [(0.7 * dx - 0.2 * dy) / det, (-0.1 * dx + 0.6 * dy) / det];
+}
+
+/** Every pixel against the analytic inverse of `affineForward`; returns how many were claimed inside and outside. */
+function expectAffine({ at }: Rendered): { inside: number; outside: number } {
+  let inside = 0;
+  let outside = 0;
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      const [s, t] = affineInverse(outputPoint(x, y));
+      const distance = Math.min(s, 1 - s, t, 1 - t);
+      if (Math.abs(distance) < EDGE_MARGIN) continue;
+      if (distance < 0) {
+        expect(at(x, y), `outside ${x},${y}`).toEqual([0, 0, 0, 0]);
+        outside += 1;
+        continue;
+      }
+      const [u, v] = fixtureAt([s, t]);
+      expectNear(at(x, y)[0], u, `u at ${x},${y}`);
+      expectNear(at(x, y)[1], v, `v at ${x},${y}`);
+      expect(at(x, y)[3]).toBe(1);
+      inside += 1;
+    }
+  }
+  return { inside, outside };
+}
+
 /** The pixel centre (44, 18): (0.6953125, 0.6145833…), y up. */
 const TARGET_PIXEL = [44, 18] as const;
 const TARGET = outputPoint(...TARGET_PIXEL);
@@ -257,37 +291,50 @@ describe("Grid Warp on a real device (T1509b)", () => {
     "an AFFINE grid (a Corner Pin parallelogram) maps every pixel by the analytic inverse; outside is exactly transparent (%s)",
     async (interpolation) => {
       requireDawn();
-      // p = A·q + b with A = [[0.6, 0.2], [0.1, 0.7]], b = (0.15, 0.1): q = A⁻¹(p − b).
-      const forward = (u: number, v: number): P => [0.6 * u + 0.2 * v + 0.15, 0.1 * u + 0.7 * v + 0.1];
-      const det = 0.6 * 0.7 - 0.2 * 0.1;
-      const inverse = ([px, py]: P): P => {
-        const [dx, dy] = [px - 0.15, py - 0.1];
-        return [(0.7 * dx - 0.2 * dy) / det, (-0.1 * dx + 0.6 * dy) / det];
-      };
-      const { at, diagnostics } = await render({ ...gridParameters(4, 3, forward), interpolation });
-      expect(diagnostics.map((d) => d.code)).toEqual([]);
-      let inside = 0;
-      let outside = 0;
-      for (let y = 0; y < H; y += 1) {
-        for (let x = 0; x < W; x += 1) {
-          const [s, t] = inverse(outputPoint(x, y));
-          const distance = Math.min(s, 1 - s, t, 1 - t);
-          if (Math.abs(distance) < EDGE_MARGIN) continue;
-          if (distance < 0) {
-            expect(at(x, y), `outside ${x},${y}`).toEqual([0, 0, 0, 0]);
-            outside += 1;
-            continue;
-          }
-          const [u, v] = fixtureAt([s, t]);
-          expectNear(at(x, y)[0], u, `u at ${x},${y}`);
-          expectNear(at(x, y)[1], v, `v at ${x},${y}`);
-          expect(at(x, y)[3]).toBe(1);
-          inside += 1;
-        }
-      }
+      const rendered = await render({ ...gridParameters(4, 3, affineForward), interpolation });
+      expect(rendered.diagnostics.map((d) => d.code)).toEqual([]);
+      const { inside, outside } = expectAffine(rendered);
       // Both regions in bulk: an all-transparent or all-identity render cannot pass.
       expect(inside).toBeGreaterThan(W * H * 0.3);
       expect(outside).toBeGreaterThan(W * H * 0.2);
+    },
+    60_000,
+  );
+
+  /*
+   * NOT BYTE-IDENTICAL, and why (measured on Dawn/Metal): the 4 × 4 mesh is a different
+   * triangulation of the same surface, so the rasteriser interpolates each pixel's input
+   * coordinate from different vertices and lands a few f32 ulps away. The input is read
+   * with 8-bit sub-texel weights, and an ulp that crosses a weight step moves the read by
+   * 1/256 of a texel: 289 of the 3072 pixels differ, by at most one half-float step of the
+   * output once that is rounded, and none in alpha. So the claim is the analytic one — both renders ARE the one affine map, pixel by
+   * pixel — plus the outline: coverage identical everywhere.
+   */
+  it.each(["linear", "smooth"] as const)(
+    "RESAMPLING an affine 3 × 3 grid onto 4 × 4 draws the same affine map, with the same outline (T1532b, %s)",
+    async (interpolation) => {
+      requireDawn();
+      // Both interpolations reproduce an affine grid exactly, so the 4 × 4 grid resampled
+      // from this 3 × 3 one is the same map and must draw the same picture.
+      const before: Record<string, ParameterValue> = { ...gridParameters(3, 3, affineForward), interpolation };
+      // The size change as `graph.applyPatch` applies it: the coupled points under the edit's own entries.
+      const written = { columns: 4, rows: 4 };
+      const coupled = gridWarpNode.coupledParameters?.(before, written);
+      if (coupled === undefined || coupled === null) throw new Error("a size change coupled no points");
+      const after: Record<string, ParameterValue> = { ...before, ...(coupled.set as Record<string, ParameterValue>), ...written };
+      for (const key of coupled.remove) delete after[key];
+      // The new grid's interior points are points the 3 × 3 grid does not have: (1, 1) is
+      // the affine map at (1/3, 1/3), where the 3 × 3 grid's (1, 1) sits at (1/2, 1/2).
+      expect(after["p11"]).not.toEqual(before["p11"]);
+
+      const old = await render(before);
+      const resampled = await render(after);
+      expect(resampled.diagnostics.map((d) => d.code)).toEqual([]);
+      const claimed = expectAffine(resampled);
+      expect(claimed.inside).toBeGreaterThan(W * H * 0.3);
+      expect(claimed.outside).toBeGreaterThan(W * H * 0.2);
+      expectAffine(old);
+      for (let y = 0; y < H; y += 1) for (let x = 0; x < W; x += 1) expect(resampled.at(x, y)[3], `alpha at ${x},${y}`).toBe(old.at(x, y)[3]);
     },
     60_000,
   );
@@ -297,7 +344,7 @@ describe("Grid Warp on a real device (T1509b)", () => {
     async (interpolation) => {
       requireDawn();
       const before = await render({ interpolation });
-      const after = await render({ interpolation, p11_3x3: [...TARGET] });
+      const after = await render({ interpolation, p11: [...TARGET] });
       expect(after.diagnostics.map((d) => d.code)).toEqual([]);
 
       // The control point carries the picture's centre: the target pixel now reads (0.5, 0.5).
@@ -352,7 +399,7 @@ describe("Grid Warp on a real device (T1509b)", () => {
    */
   it("a folded grid renders transparent everywhere and names itself", async () => {
     requireDawn();
-    const { at, diagnostics } = await render({ p11_3x3: [1.2, 0.5] });
+    const { at, diagnostics } = await render({ p11: [1.2, 0.5] });
     expect(diagnostics.filter((d) => d.code === "gridWarp.folded").map((d) => d.nodeId)).toEqual(["warp"]);
     for (let y = 0; y < H; y += 1) for (let x = 0; x < W; x += 1) expect(at(x, y), `${x},${y}`).toEqual([0, 0, 0, 0]);
   }, 60_000);

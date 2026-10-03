@@ -11,7 +11,7 @@ import { compileContext, readNodePlan } from "./test-support.ts";
 /**
  * Grid Warp's arithmetic and plan (T1509b), against values derived BY HAND in the comments.
  * The pixels are the Dawn test's claim (`grid-warp.gpu.test.ts`, against an independently
- * written mesh); this file pins the forward map, the fold verdict and the per-size schema.
+ * written mesh); this file pins the forward map, the fold verdict, the schema and the resample (T1532b).
  */
 
 function identityGrid(columns: number, rows: number, smooth: boolean): WarpGrid {
@@ -25,7 +25,13 @@ const moved = (grid: WarpGrid, column: number, row: number, to: Point2): WarpGri
   points: grid.points.map((point, index) => (index === row * grid.columns + column ? to : point)),
 });
 
-function compile(parameters: Record<string, unknown>) {
+/** The plan for these stored values, handed over as the resolver hands them: every schema key, defaults filled in. */
+function compile(stored: Record<string, unknown>) {
+  return compileHanded({ ...defaultParameters(effectiveParameterSchema(gridWarpNode, stored)), ...stored });
+}
+
+/** The plan for exactly these resolved values (a driven size is one the schema did not see). */
+function compileHanded(parameters: Record<string, unknown>) {
   const options = { inputs: ["input"], parameters } as const;
   const compiled = gridWarpNode.compile(compileContext(options as never));
   const read = readNodePlan(compiled.passes, options as never);
@@ -127,7 +133,7 @@ describe("a grid that folds (T1509b)", () => {
   });
 });
 
-describe("the Grid Warp node's plan (T1509b)", () => {
+describe("the Grid Warp node's plan (T1509b, T1532b)", () => {
   it("registers cleanly, and a fresh node draws the 3 × 3 identity grid", () => {
     expect(validateNodeDefinition(gridWarpNode)).toEqual([]);
     const { pass, diagnostics } = compile({});
@@ -141,7 +147,7 @@ describe("the Grid Warp node's plan (T1509b)", () => {
   });
 
   it("carries a moved point to its lane, and the size and interpolation as uniforms", () => {
-    const { pass } = compile({ columns: 4, rows: 2, interpolation: "linear", [pointKey(3, 1, 4, 2)]: [0.9, 0.8] });
+    const { pass } = compile({ columns: 4, rows: 2, interpolation: "linear", [pointKey(3, 1)]: [0.9, 0.8] });
     expect(pass.uniforms).toMatchObject({ columns: 4, rows: 2, spline: 0, valid: 1 });
     // (3, 1) is k = 11: the second half of g5.
     expect((pass.uniforms?.["g5"] as number[]).slice(2)).toEqual([0.9, 0.8]);
@@ -150,46 +156,82 @@ describe("the Grid Warp node's plan (T1509b)", () => {
   });
 
   it("refuses a folded grid: transparent (valid 0), finite uniforms, a named diagnostic", () => {
-    const { pass, diagnostics } = compile({ [pointKey(1, 1, 3, 3)]: [1.2, 0.5] });
+    const { pass, diagnostics } = compile({ [pointKey(1, 1)]: [1.2, 0.5] });
     expect(pass.uniforms?.["valid"]).toBe(0);
     for (const value of Object.values(pass.uniforms ?? {})) for (const entry of [value].flat()) expect(Number.isFinite(entry)).toBe(true);
     expect(diagnostics.map((d) => [d.severity, d.code])).toEqual([["warning", "gridWarp.folded"]]);
     expect(diagnostics[0]?.message).toMatch(/right of column 2, above row 1/);
   });
+
+  it("a DRIVEN size the stored points were not made for samples their surface (T1532b)", () => {
+    // The document stores a 3 × 3 grid, centre raised by d = (0.2, 0.1); an expression drives
+    // Columns to 4. The new middle-row point (1, 1) sits at grid coordinate 2/3, where
+    // Catmull-Rom weighs the displacements −d (the continuation), 0, d, 0 by −1/27, 9/27,
+    // 21/27, −2/27: 22/27 of d on top of the identity (1/3, 1/2).
+    const stored = { ...defaultParameters(effectiveParameterSchema(gridWarpNode, {})), [pointKey(1, 1)]: [0.7, 0.6] };
+    const { pass } = compileHanded({ ...stored, columns: 4 });
+    expect(pass.uniforms).toMatchObject({ columns: 4, rows: 3, valid: 1 });
+    // (1, 1) is k = 9: the second half of g4.
+    const [x, y] = (pass.uniforms?.["g4"] as number[]).slice(2) as [number, number];
+    expect(x).toBeCloseTo(1 / 3 + (22 / 27) * 0.2, 14);
+    expect(y).toBeCloseTo(0.5 + (22 / 27) * 0.1, 14);
+    // The corners are shared by both grids and stay exactly where they were: (3, 2) is k = 19.
+    expect((pass.uniforms?.["g9"] as number[]).slice(2)).toEqual([1, 1]);
+  });
 });
 
-describe("one parameter per point, per grid size (T1509b)", () => {
+describe("one parameter per point of the CURRENT grid (T1532b)", () => {
   const handled = (stored: Record<string, unknown>) =>
     Object.entries(effectiveParameterSchema(gridWarpNode, stored))
-      .filter(([, definition]) => definition.type === "vector" && definition.handle === "picture" && definition.inactiveWhen?.({}) == null)
+      .filter(([, definition]) => definition.type === "vector" && definition.handle === "picture")
       .map(([key]) => key);
 
   it("a fresh node stores the 3 × 3 grid's nine points at the identity, each a picture handle", () => {
     const fresh = defaultParameters(effectiveParameterSchema(gridWarpNode, {}));
-    expect(handled(fresh)).toEqual(["p00_3x3", "p10_3x3", "p20_3x3", "p01_3x3", "p11_3x3", "p21_3x3", "p02_3x3", "p12_3x3", "p22_3x3"]);
-    expect(fresh["p11_3x3"]).toEqual([0.5, 0.5]);
+    expect(handled(fresh)).toEqual(["p00", "p10", "p20", "p01", "p11", "p21", "p02", "p12", "p22"]);
+    expect(fresh["p11"]).toEqual([0.5, 0.5]);
   });
 
-  it("a new size offers its own points, undistorted; the stored 3 × 3 ones stay, inactive, in Advanced", () => {
-    const stored = { ...defaultParameters(effectiveParameterSchema(gridWarpNode, {})), columns: 4, p11_3x3: [0.7, 0.6] };
-    const schema = effectiveParameterSchema(gridWarpNode, stored);
-    expect(handled(stored)).toHaveLength(12);
-    expect(handled(stored)).toContain("p31_4x3");
-    expect(schema["p11_4x3"]?.type === "vector" && schema["p11_4x3"].default).toEqual([1 / 3, 0.5]);
-    // The 3 × 3 point is still declared — the compile would warn about an undeclared stored
-    // key — but it applies to nothing and offers no handle.
-    expect(schema["p11_3x3"]?.inactiveWhen?.({})).toMatch(/3 × 3 grid/);
-    expect(schema["p11_3x3"]?.group).toBe("Advanced");
+  it("the schema declares exactly the stored size's points, and no other size's", () => {
+    const schema = effectiveParameterSchema(gridWarpNode, { columns: 4, rows: 2 });
+    expect(handled({ columns: 4, rows: 2 })).toEqual(["p00", "p10", "p20", "p30", "p01", "p11", "p21", "p31"]);
+    expect(schema["p11"]?.type === "vector" && schema["p11"].default).toEqual([1 / 3, 1]);
+    expect(schema["p02"]).toBeUndefined();
+    // T1509b's per-size spelling is gone: a document saved by fcd482c6 holds undeclared keys.
+    expect(effectiveParameterSchema(gridWarpNode, { p11_3x3: [0, 0] })["p11_3x3"]).toBeUndefined();
+  });
+});
+
+describe("a size change is coupled to the points (T1532b)", () => {
+  const fresh = defaultParameters(effectiveParameterSchema(gridWarpNode, {}));
+  const coupled = gridWarpNode.coupledParameters;
+  if (coupled === undefined) throw new Error("Grid Warp declares no coupled parameters");
+
+  it("an edit that leaves the size alone couples nothing", () => {
+    expect(coupled(fresh, { [pointKey(1, 1)]: [0.7, 0.6] })).toBeNull();
+    expect(coupled(fresh, { interpolation: "linear" })).toBeNull();
+    expect(coupled(fresh, { columns: 3 })).toBeNull();
   });
 
-  it("going back to a size brings its warp back: the compile reads that size's stored points", () => {
-    const stored = { columns: 3, rows: 3, p11_3x3: [0.7, 0.6], p11_4x3: [0.2, 0.2] };
-    expect(compile(stored).pass.uniforms?.["g4"]).toEqual([0, 0.5, 0.7, 0.6]);
+  it("LINEAR resamples bilinearly: the raised centre puts 2/3 of its lift on each new middle point", () => {
+    // Linear interpolation, and one point moved: bilinear in the cell, so the new middle-row
+    // points at grid coordinates 2/3 and 4/3 each carry 2/3 of d = (0.2, 0.1).
+    const stored = { ...fresh, interpolation: "linear", [pointKey(1, 1)]: [0.7, 0.6] };
+    const result = coupled(stored, { columns: 4 });
+    const at = (column: number, row: number) => result?.set[pointKey(column, row)] as [number, number];
+    for (const column of [1, 2]) {
+      expect(at(column, 1)[0]).toBeCloseTo(column / 3 + (2 / 3) * 0.2, 14);
+      expect(at(column, 1)[1]).toBeCloseTo(0.5 + (2 / 3) * 0.1, 14);
+    }
+    expect(result?.remove).toEqual([]);
   });
 
-  it("ignores keys that are not a point of any grid", () => {
-    const schema = effectiveParameterSchema(gridWarpNode, { p33_3x3: [0, 0], p11: [0, 0] });
-    expect(schema["p33_3x3"]).toBeUndefined();
-    expect(schema["p11"]).toBeUndefined();
+  it("shrinking deletes the points the smaller grid lacks, component slots included", () => {
+    const stored = { ...fresh, "p21.x": 0.9 };
+    const result = coupled(stored, { columns: 2 });
+    expect(Object.keys(result?.set ?? {}).sort()).toEqual(["p00", "p01", "p02", "p10", "p11", "p12"]);
+    expect([...(result?.remove ?? [])].sort()).toEqual(["p20", "p21", "p21.x", "p22"]);
+    // The identity 3 × 3 resampled onto 2 × 3 is the identity 2 × 3: (1, 1) lands on the right edge.
+    expect(result?.set[pointKey(1, 1)]).toEqual([1, 0.5]);
   });
 });

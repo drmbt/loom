@@ -1,6 +1,6 @@
 import type { PortId } from "./ids.ts";
 import type { PortDefinition } from "./ports.ts";
-import type { ParameterSchema, ParameterValue } from "./parameters.ts";
+import type { ParameterSchema, ParameterValue, StoredParameter } from "./parameters.ts";
 import type { AudioFeatures, FrameEvaluationInput } from "./frame.ts";
 import type { RuntimeDiagnostic } from "./diagnostics.ts";
 import type { RuntimeRequirementId } from "./requirements.ts";
@@ -336,6 +336,14 @@ export interface ValueEvaluateContext {
   readonly channels?: (name: string) => number | undefined;
 }
 
+/** T1532b: what `NodeDefinition.coupledParameters` adds to one `setParameters` edit. */
+export interface CoupledParameterWrites {
+  /** Written in the same operation; the edit's own entries win over these. */
+  readonly set: Readonly<Record<string, StoredParameter>>;
+  /** Stored keys deleted in the same operation (a key `set` or the edit writes is kept). */
+  readonly remove: readonly string[];
+}
+
 /**
  * Versioned manifest plus compile implementation. Must be executable headless —
  * never import React or @xyflow from a node definition (§V11).
@@ -361,6 +369,28 @@ export interface NodeDefinition {
    * already on disk keeps a home.
    */
   parametersFor?(stored: Readonly<Record<string, unknown>>): ParameterSchema;
+  /**
+   * T1532b: parameters that must change TOGETHER with an edit. Absent for almost every node.
+   * Grid Warp is the case that asked: its points are one parameter per point of the
+   * CURRENT grid, so changing Columns must rewrite every point (the warp resampled onto the
+   * new grid) and drop the ones that no longer exist — in the same patch, or the document
+   * holds a size and a set of points that disagree.
+   *
+   * `graph.applyPatch`'s `setParameters` calls this with the node's stored parameters
+   * BEFORE the operation and the operation's own entries, and applies what it returns in
+   * that one operation: `set` entries under the edit's own (an entry the edit names wins),
+   * `remove` keys deleted. The result is validated against the schema of the parameters
+   * AFTER the write, so the edit may introduce keys the old schema did not declare. Because
+   * it happens inside the operation, every write path (inspector, gizmo, agent tools,
+   * paste, preset recall) gets it and the patch's one undo step takes all of it back.
+   *
+   * Pure and headless (§V11, §V44): a function of its two arguments. `null` means nothing
+   * is coupled to this edit.
+   */
+  coupledParameters?(
+    stored: Readonly<Record<string, StoredParameter>>,
+    written: Readonly<Record<string, StoredParameter>>,
+  ): CoupledParameterWrites | null;
   /**
    * Known variant keys intentionally retained in stored documents while absent from the
    * effective schema. They are not resolved or offered as controls in that variant.

@@ -1,5 +1,5 @@
 import type { NodeDefinition, CompiledNodeDescription } from "../../domain/types/node-definition.ts";
-import type { ParameterSchema, VectorParameter } from "../../domain/types/parameters.ts";
+import type { ParameterSchema, StoredParameter, VectorParameter } from "../../domain/types/parameters.ts";
 import type { DrawPassDescriptor } from "../../runtime/backend/plan.ts";
 import { storedStaticValue } from "../../domain/parameters/slots.ts";
 import { RGBA_TEXTURE } from "./common-ports.ts";
@@ -29,25 +29,38 @@ import {
  * or bilinear, and the grid stops at 8 × 8. Product names stay out of `description` (the
  * copy guard, T424), so the comparison lives here.
  *
- * ## Storage: one `vector`/2 parameter per point, per grid size: `p{c}{r}_{C}x{R}`
+ * ## Storage: one `vector`/2 parameter per point of the CURRENT grid: `p{c}{r}`
  *
  * Every point is an ordinary parameter, declared `handle: "picture"`, so the T935 gizmo
  * drags it on the node's preview tile exactly as it drags Corner Pin's pins: one key per
  * drag, one `setParameters` patch, one undo group, autosaved, diffable, and writable by an
- * agent (`p11_3x3 = [0.4, 0.6]` moves the 3 × 3 grid's centre). A JSON blob in a `code`
+ * agent (`p11 = [0.4, 0.6]` moves a 3 × 3 grid's centre). A JSON blob in a `code`
  * parameter (the MIDI map's and the preset bank's storage) would have needed a second
  * gizmo kind that edits INTO a value — the existing one writes a whole parameter per key.
+ * The set of points follows Columns × Rows through `parametersFor` (§T880's per-instance
+ * schema), so the inspector shows, and the tile offers handles for, exactly the current grid.
  *
- * The key carries the GRID SIZE because a fresh node stores every default (apply-patch's
- * `defaultParameters`): with plain `p{c}{r}` keys, going from 3 to 4 columns would read the
- * stored 3-column positions as 4-column ones — two points on the right edge, a zero-width
- * cell, a refused grid. With the size in the key, each size is its own grid: a new size
- * starts undistorted, and going back to a size brings its warp back. The set of points
- * follows Columns × Rows through `parametersFor` (§T880's per-instance schema), so the
- * inspector shows, and the tile offers handles for, exactly the current grid. Points of
- * other sizes the node stores (the default 3 × 3 ones always) stay in the schema INACTIVE
- * (§V146) — no handle, no effect — in the collapsed Advanced group, so their values keep a
- * home and validate.
+ * ## Changing Columns or Rows RESAMPLES the warp (T1532b)
+ *
+ * The mapping workflow is: fit the corners at 2 × 2, then go to 3 × 3 or 4 × 4 to bend the
+ * middle. So a size change keeps the picture where it is: the new grid's points are the
+ * CURRENT surface (`gridWarpPoint`, with the current Interpolation) evaluated at the new
+ * grid's identity points, and points the new grid does not have are deleted — nothing of
+ * another size stays stored (T1509b kept each size's points; no mapping tool does, and the
+ * owner ruled them out). A point both grids share keeps its value exactly; an affine grid
+ * resamples to the same affine grid, so the picture does not move at all.
+ *
+ * That is a write to many keys from one edit of Columns, so it is `coupledParameters`, the
+ * hook `graph.applyPatch` applies inside the `setParameters` operation: the inspector, the
+ * agent's `set_parameters`, a preset recall and a paste onto the node all get it, and one
+ * undo restores the old size and its points together. An edit that names points too (a
+ * preset holding a 4 × 4 grid) has its own points win over the resampled ones.
+ *
+ * A DRIVEN size (an expression on Columns) cannot rewrite the document every frame, so the
+ * compile does the same resample: the stored points are the grid the schema declares (the
+ * static size), and a resolved size that differs samples that surface at its own identity
+ * points. The compile sees resolved values only, so it reads the stored grid's size off
+ * the point keys it was handed — every key of the static grid, the resolver's contract.
  *
  * ## The cap is 8 × 8
  *
@@ -83,11 +96,9 @@ import {
  *
  * - No Outside menu. Corner Pin's Hold / Repeat / Mirror continue the pinned PLANE past
  *   its quad; a mesh has no continuation past its outline, so outside is transparent.
- * - Changing Columns or Rows does NOT carry the warp's shape to the new size: the new
- *   size's grid starts undistorted. Resampling needs the size edit and the new size's
- *   points in ONE patch, and no write path makes that from a single parameter edit today
- *   (T1509b's report names the missing seam). `gridWarpPoint` is the evaluation such a
- *   resample would sample at the new size's identity points.
+ * - No perspective of its own. A grid is not a projective map; for the outer perspective
+ *   layer chain Grid Warp → Corner Pin, and moving the corners carries the warp.
+ * - No inserting or deleting one row or column at a clicked point (§T1534b).
  */
 
 export type Point2 = readonly [number, number];
@@ -95,10 +106,9 @@ export type Point2 = readonly [number, number];
 export const GRID_WARP_MIN = 2;
 export const GRID_WARP_DEFAULT = 3;
 
-/** One parameter key per point of one grid size: column, row, then the size (the cap keeps each a digit). */
-export const pointKey = (column: number, row: number, columns: number, rows: number): string =>
-  `p${String(column)}${String(row)}_${String(columns)}x${String(rows)}`;
-const POINT_KEY = /^p([0-7])([0-7])_([2-8])x([2-8])$/;
+/** One parameter key per point of the current grid: column, then row (the cap keeps each a digit). */
+export const pointKey = (column: number, row: number): string => `p${String(column)}${String(row)}`;
+const POINT_KEY = /^p([0-7])([0-7])$/;
 
 /** Where point (column, row) sits on an undistorted grid: the identity. y up, (0, 0) bottom left. */
 export const identityPoint = (column: number, row: number, columns: number, rows: number): Point2 => [
@@ -175,6 +185,23 @@ export function gridWarpPoint(grid: WarpGrid, gu: number, gv: number): Point2 {
     }
   }
   return [x, y];
+}
+
+/**
+ * T1532b: `grid` RESAMPLED onto a columns × rows grid — each new point is the current
+ * surface at that point's identity position, so the picture does not move. The grid
+ * coordinate is computed as (c · (old − 1)) / (new − 1), exact wherever the two grids share
+ * a point, and the forward map's weights there are exactly 0 and 1: shared points keep
+ * their values bit for bit.
+ */
+export function resampleGrid(grid: WarpGrid, columns: number, rows: number): WarpGrid {
+  const points: Point2[] = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      points.push(gridWarpPoint(grid, (column * (grid.columns - 1)) / (columns - 1), (row * (grid.rows - 1)) / (rows - 1)));
+    }
+  }
+  return { columns, rows, points, smooth: grid.smooth };
 }
 
 /** Below this a sub-triangle's turn counts as none: a guard against an exact zero, as in Corner Pin. */
@@ -297,28 +324,22 @@ const gridSizeParameter = (label: string, what: string): ParameterSchema[string]
   range: "bounded",
   step: 1,
   group: "Grid",
-  description: `How many control points ${what}, ${String(GRID_WARP_MIN)} to ${String(GRID_WARP_MAX)}. Each grid size keeps its own points: a new size starts undistorted, and going back to a size brings its warp back.`,
+  description: `How many control points ${what}, ${String(GRID_WARP_MIN)} to ${String(GRID_WARP_MAX)}. Changing it keeps the warp: the new grid's points are placed on the current surface, so the picture stays where it is.`,
 });
 
-function pointParameter(column: number, row: number, columns: number, rows: number, current: boolean): VectorParameter {
-  const size = `${String(columns)} × ${String(rows)}`;
-  const name = `Point ${String(column + 1)},${String(row + 1)}`;
+function pointParameter(column: number, row: number, columns: number, rows: number): VectorParameter {
   return {
     type: "vector",
     size: 2,
-    label: current ? name : `${name} (${size})`,
+    label: `Point ${String(column + 1)},${String(row + 1)}`,
     default: identityPoint(column, row, columns, rows),
     // Soft past both ends, as Corner Pin's pins: a point beyond the frame is overscan.
     min: -1,
     max: 2,
     range: "soft",
-    // T1512b's collapsed group: another size's points are kept, not shown first.
-    group: current ? "Points" : "Advanced",
-    description: `Where the ${size} grid's point in column ${String(column + 1)} (from the left), row ${String(row + 1)} (from the bottom) lands, 0..1 with (0, 0) at the bottom left.`,
+    group: "Points",
+    description: `Where the grid's point in column ${String(column + 1)} (from the left), row ${String(row + 1)} (from the bottom) lands, 0..1 with (0, 0) at the bottom left.`,
     handle: "picture",
-    ...(current
-      ? {}
-      : { inactiveWhen: () => `A point of the ${size} grid: it applies when Columns × Rows is ${size}.` }),
   };
 }
 
@@ -346,30 +367,57 @@ const STATIC_PARAMETERS: ParameterSchema = {
   },
 };
 
-/** The current grid's point parameters, plus any other size's point `keys`, kept inactive (no handle). */
-function pointParameters(columns: number, rows: number, keys: Iterable<string>): Record<string, VectorParameter> {
+/** One point parameter per point of a columns × rows grid, defaulting to the identity. */
+function pointParameters(columns: number, rows: number): Record<string, VectorParameter> {
   const schema: Record<string, VectorParameter> = {};
   for (let row = 0; row < rows; row += 1) {
-    for (let column = 0; column < columns; column += 1) {
-      schema[pointKey(column, row, columns, rows)] = pointParameter(column, row, columns, rows, true);
-    }
-  }
-  for (const key of keys) {
-    const match = POINT_KEY.exec(key);
-    if (match === null || key in schema) continue;
-    const [column, row, ofColumns, ofRows] = match.slice(1).map(Number) as [number, number, number, number];
-    if (column >= ofColumns || row >= ofRows) continue;
-    schema[key] = pointParameter(column, row, ofColumns, ofRows, false);
+    for (let column = 0; column < columns; column += 1) schema[pointKey(column, row)] = pointParameter(column, row, columns, rows);
   }
   return schema;
 }
-
-const DEFAULT_POINT_KEYS = Object.keys(pointParameters(GRID_WARP_DEFAULT, GRID_WARP_DEFAULT, []));
 
 /** A stored grid size: the document's static value (a driven one has no answer at schema time). */
 function storedGridSize(stored: Readonly<Record<string, unknown>>, key: string): number {
   const value = storedStaticValue(stored[key] as Parameters<typeof storedStaticValue>[0]);
   return clampGridSize(typeof value === "number" ? value : GRID_WARP_DEFAULT);
+}
+
+/** A point's value, or the identity when it is missing or not two finite numbers. */
+function pointValue(value: unknown, column: number, row: number, columns: number, rows: number): Point2 {
+  if (Array.isArray(value) && value.length === 2 && value.every((entry) => typeof entry === "number" && Number.isFinite(entry))) {
+    return [value[0] as number, value[1] as number];
+  }
+  return identityPoint(column, row, columns, rows);
+}
+
+/** The grid the document stores: its static size, interpolation and points (T1532b). */
+function storedGrid(stored: Readonly<Record<string, StoredParameter>>): WarpGrid {
+  const columns = storedGridSize(stored, "columns");
+  const rows = storedGridSize(stored, "rows");
+  const points: Point2[] = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      points.push(pointValue(storedStaticValue(stored[pointKey(column, row)]), column, row, columns, rows));
+    }
+  }
+  return { columns, rows, points, smooth: storedStaticValue(stored["interpolation"]) !== "linear" };
+}
+
+/**
+ * The size of the grid whose points the compile was handed: one past the highest column and
+ * row among the point keys (the resolver hands over every key of the static grid), or null
+ * when there are none.
+ */
+function handedGridSize(parameters: Readonly<Record<string, unknown>>): { readonly columns: number; readonly rows: number } | null {
+  let columns = 0;
+  let rows = 0;
+  for (const key of Object.keys(parameters)) {
+    const match = POINT_KEY.exec(key);
+    if (match === null) continue;
+    columns = Math.max(columns, Number(match[1]) + 1);
+    rows = Math.max(rows, Number(match[2]) + 1);
+  }
+  return columns >= GRID_WARP_MIN && rows >= GRID_WARP_MIN ? { columns, rows } : null;
 }
 
 /** Two points per `vec4f`, point k = row × 8 + column (the shader's `stored()`). */
@@ -394,19 +442,40 @@ export const gridWarpNode: NodeDefinition = {
   title: "Grid Warp",
   category: "filter",
   description:
-    "Warps the image through a grid of control points, to map it onto a curved or irregular surface: drag each point to where that part of the picture must land, and the picture follows a smooth (or bilinear) surface between them. Up to 8 × 8 points, each grid size keeping its own; outside the grid is transparent, and a folded grid renders nothing and says where. Drag the points on the node's own preview.",
+    "Warps the image through a grid of control points, to map it onto a curved or irregular surface: drag each point to where that part of the picture must land, and the picture follows a smooth (or bilinear) surface between them. Up to 8 × 8 points; changing the grid size keeps the warp, placing the new points on the current surface. Outside the grid is transparent, and a folded grid renders nothing and says where. Drag the points on the node's own preview. For a surface also seen in perspective, follow it with a Corner Pin: moving the corners there carries the whole warp.",
   tags: ["mapping", "projection", "warp", "mesh warp", "grid warp", "curved surface"],
   inputs: [{ id: "input", label: "Input", type: RGBA_TEXTURE }],
   outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],
-  parameters: { ...STATIC_PARAMETERS, ...pointParameters(GRID_WARP_DEFAULT, GRID_WARP_DEFAULT, []) },
+  parameters: { ...STATIC_PARAMETERS, ...pointParameters(GRID_WARP_DEFAULT, GRID_WARP_DEFAULT) },
   /**
-   * PER-INSTANCE schema (§T880): one point parameter per grid point. Composed from the
-   * hoisted static block, never from `gridWarpNode.parameters` (osc.ts's shape).
+   * PER-INSTANCE schema (§T880): one point parameter per point of the stored grid. Composed
+   * from the hoisted static block, never from `gridWarpNode.parameters` (osc.ts's shape).
    */
   parametersFor(stored) {
-    const columns = storedGridSize(stored, "columns");
-    const rows = storedGridSize(stored, "rows");
-    return { ...STATIC_PARAMETERS, ...pointParameters(columns, rows, [...DEFAULT_POINT_KEYS, ...Object.keys(stored)]) };
+    return { ...STATIC_PARAMETERS, ...pointParameters(storedGridSize(stored, "columns"), storedGridSize(stored, "rows")) };
+  },
+  /**
+   * T1532b: a size change resamples the current warp onto the new grid, in the same
+   * operation: every point of the new grid is the current surface at its identity position,
+   * and points the new grid lacks (and any component slot of theirs) are deleted.
+   */
+  coupledParameters(stored, written) {
+    if (!("columns" in written) && !("rows" in written)) return null;
+    const from = storedGrid(stored);
+    const after = { ...stored, ...written };
+    const columns = storedGridSize(after, "columns");
+    const rows = storedGridSize(after, "rows");
+    if (columns === from.columns && rows === from.rows) return null;
+    const to = resampleGrid(from, columns, rows);
+    const set: Record<string, StoredParameter> = {};
+    to.points.forEach((point, index) => {
+      set[pointKey(index % columns, Math.floor(index / columns))] = [point[0], point[1]];
+    });
+    const remove = Object.keys(stored).filter((key) => {
+      const match = POINT_KEY.exec(key.split(".")[0] ?? "");
+      return match !== null && (Number(match[1]) >= columns || Number(match[2]) >= rows);
+    });
+    return { set, remove };
   },
   resolutionPolicy: { kind: "inherit", input: "input" },
   formatPolicy: { kind: "inherit", input: "input" },
@@ -420,15 +489,18 @@ export const gridWarpNode: NodeDefinition = {
     }
     const columns = clampGridSize(readNumber(parameters, "columns", GRID_WARP_DEFAULT));
     const rows = clampGridSize(readNumber(parameters, "rows", GRID_WARP_DEFAULT));
+    const smooth = readEnumIndex(parameters, "interpolation", INTERPOLATION_OPTIONS, "smooth") === 1;
+    // The points are the STORED grid's; a driven size that differs samples its surface (T1532b).
+    const handed = handedGridSize(parameters) ?? { columns, rows };
     const points: Point2[] = [];
-    for (let row = 0; row < rows; row += 1) {
-      for (let column = 0; column < columns; column += 1) {
-        const fallback = identityPoint(column, row, columns, rows);
-        points.push(readVector(parameters, pointKey(column, row, columns, rows), fallback) as unknown as Point2);
+    for (let row = 0; row < handed.rows; row += 1) {
+      for (let column = 0; column < handed.columns; column += 1) {
+        const fallback = identityPoint(column, row, handed.columns, handed.rows);
+        points.push(readVector(parameters, pointKey(column, row), fallback) as unknown as Point2);
       }
     }
-    const smooth = readEnumIndex(parameters, "interpolation", INTERPOLATION_OPTIONS, "smooth") === 1;
-    const grid: WarpGrid = { columns, rows, points, smooth };
+    const stored: WarpGrid = { columns: handed.columns, rows: handed.rows, points, smooth };
+    const grid = handed.columns === columns && handed.rows === rows ? stored : resampleGrid(stored, columns, rows);
     const fold = cachedGridFold(grid);
     const where = fold?.cell === undefined ? "" : ` at the cell right of column ${String(fold.cell[0] + 1)}, above row ${String(fold.cell[1] + 1)}`;
     const diagnostics =

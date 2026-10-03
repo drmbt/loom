@@ -694,13 +694,26 @@ function executeOperation(
       // T880: validate a value edit against the node's EFFECTIVE schema — a customWgsl's
       // reflected controls (orbitSpeed, lightColor) are real parameters, so an edit to one
       // must not be refused as "unknown" and the patch aborted (the owner's fixed sliders).
-      const schema = effectiveParameterSchema(definition, node.parameters);
-      const invalid = validateParameters(schema, operation.parameters, node.id);
+      // T1532b: parameters coupled to this edit (Grid Warp's points when its size changes)
+      // join it HERE, so every write path gets them and this one operation's undo step takes
+      // them back. The edit's own entries win, and the whole write is validated against the
+      // schema AFTER it, because a coupled edit may bring keys the old schema lacks.
+      const coupled = definition.coupledParameters?.(node.parameters, operation.parameters) ?? null;
+      const writes = coupled === null ? operation.parameters : { ...coupled.set, ...operation.parameters };
+      const removed = (coupled?.remove ?? []).filter((key) => !(key in writes));
+      const schema = effectiveParameterSchema(
+        definition,
+        coupled === null
+          ? node.parameters
+          : { ...Object.fromEntries(Object.entries(node.parameters).filter(([key]) => !removed.includes(key))), ...writes },
+      );
+      const invalid = validateParameters(schema, writes, node.id);
       if (invalid.length > 0) {
         run.diagnostics.push(...invalid);
         throw new PatchAbort();
       }
-      for (const [key, value] of Object.entries(operation.parameters)) {
+      for (const key of removed) delete node.parameters[key];
+      for (const [key, value] of Object.entries(writes)) {
         const existing = node.parameters[key];
         // §V108/§B166: a BARE value written over a SLOT is a value edit — the slider in
         // Constant mode, a typed number — and it must update the retained STATIC binding
