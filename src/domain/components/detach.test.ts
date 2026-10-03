@@ -82,10 +82,16 @@ interface Detached {
   /** The copy of each internal node, by its id in the definition. */
   readonly copies: Record<NodeId, GraphNode>;
   readonly codes: readonly string[];
+  readonly messages: ReadonlyArray<{ readonly code: string; readonly message: string }>;
 }
 
-async function detach(instance: GraphNode, definitions: readonly GraphComponentDefinition[] = [look()], extra: GraphNode[] = []): Promise<Detached> {
-  const harness = createComponentHarness("t", graphOf([instance, ...extra]));
+async function detach(
+  instance: GraphNode,
+  definitions: readonly GraphComponentDefinition[] = [look()],
+  extra: GraphNode[] = [],
+  edges: GraphDocument["edges"] = {},
+): Promise<Detached> {
+  const harness = createComponentHarness("t", graphOf([instance, ...extra], edges));
   for (const definition of definitions) harness.components.register(definition);
   const before = harness.store.view.getGraph();
   const result = await harness.bus.execute("component.detach", { nodeId: instance.id }, ctx);
@@ -101,7 +107,7 @@ async function detach(instance: GraphNode, definitions: readonly GraphComponentD
       .find((each) => each.type === internal.type && each.label === internal.label);
     if (copy !== undefined) copies[internalId] = copy;
   }
-  return { harness, before, after, copies, codes: result.diagnostics.map((each) => each.code) };
+  return { harness, before, after, copies, codes: result.diagnostics.map((each) => each.code), messages: result.diagnostics };
 }
 
 /** Flattened parameters of every internal node, before (under the instance) and after (the copy). */
@@ -315,6 +321,61 @@ describe("B239 — what flattening applies BESIDE the page reaches the copies to
     expect(before["inst/grade"]?.resolution).toEqual(fixed);
     expect(before["inst/inner/blurA"]?.resolution).toEqual(half);
     expect(before["inst/inner/solid"]?.channelMask).toEqual(red);
+  });
+
+  /**
+   * T1545b — THE INSTANCE'S OWN Processing Channels. Flattening masks each exposed picture
+   * output, keeping the other channels of the instance's first connected input. A plain
+   * node's own mask is the same pass keeping its own first input's, so the mask lands on the
+   * node behind the output only where that is the same picture; elsewhere it is said by name.
+   */
+  const red = { r: true, g: false, b: false, a: true };
+  const chain = (feedsInside: boolean): GraphComponentDefinition => ({
+    componentId: "chain",
+    version: 1,
+    name: "Chain",
+    graph: graphOf(
+      [
+        node("first", "test.blur", { radius: 1 }, { label: "first" }),
+        node("last", "test.blur", { radius: 2 }, { label: "last" }),
+        ...(feedsInside ? [node("tap", "test.blur", { radius: 3 }, { label: "tap" })] : []),
+      ],
+      {
+        e1: { id: "e1", source: { nodeId: "first", portId: "out" }, target: { nodeId: "last", portId: "source" } },
+        ...(feedsInside ? { e2: { id: "e2", source: { nodeId: "last", portId: "out" }, target: { nodeId: "tap", portId: "source" } } } : {}),
+      },
+    ),
+    inputs: [{ externalId: "source", label: "Source", nodeId: "first", portId: "source" }],
+    outputs: [
+      { externalId: "out", label: "Out", nodeId: "last", portId: "out" },
+      { externalId: "front", label: "Front", nodeId: "first", portId: "out" },
+    ],
+    parameters: [],
+  });
+  const feed = node("feed", "test.blur", {}, { label: "feed" });
+  const fedEdge = { e9: { id: "e9", source: { nodeId: "feed", portId: "out" }, target: { nodeId: "inst", portId: "source" } } };
+
+  it("T1545b: the instance's own channelMask lands on the node behind its output when that keeps the same input's other channels", async () => {
+    // LOOK exposes blurA as both input and output: blurA's first input IS the instance's.
+    const harnessed = await detach(instanceOf("look", { ...PAGE }, { channelMask: red }), [look()], [feed], fedEdge);
+    expect(harnessed.codes).not.toContain("component.detach.channelMask");
+    expect(harnessed.copies["blurA"]?.channelMask).toEqual(red);
+    expect(harnessed.copies["solid"]?.channelMask).toBeUndefined();
+  });
+
+  it("T1545b: where the node behind the output keeps a different input's channels, or feeds something inside, it is said by name and not carried", async () => {
+    const throughChain = await detach(instanceOf("chain", {}, { channelMask: red }), [chain(false)], [feed], fedEdge);
+    const said = throughChain.messages.find((each) => each.code === "component.detach.channelMask");
+    expect(said?.message).toBe(
+      '"look1"\'s Processing Channels (R A) cannot be carried onto the copies exactly: "first"\'s picture also feeds "last" inside. The copies draw every channel.',
+    );
+    expect(Object.values(throughChain.copies).map((each) => each.channelMask)).toEqual([undefined, undefined]);
+    const tapped = await detach(instanceOf("chain", {}, { channelMask: red }), [{ ...chain(true), outputs: [chain(true).outputs[0]!] }], [feed], fedEdge);
+    expect(tapped.messages.find((each) => each.code === "component.detach.channelMask")?.message).toContain('"last"\'s picture also feeds "tap" inside');
+    const onlyLast = await detach(instanceOf("chain", {}, { channelMask: red }), [{ ...chain(false), outputs: [chain(false).outputs[0]!] }], [feed], fedEdge);
+    expect(onlyLast.messages.find((each) => each.code === "component.detach.channelMask")?.message).toContain(
+      '"last" would keep the other channels of its input "source", where "look1" kept those of its own first input',
+    );
   });
 
   it("an override naming no internal node is said by name, as flattening reports it", async () => {

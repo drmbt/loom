@@ -233,6 +233,84 @@ describe("B239 on Dawn — internal resolution overrides and channel masks survi
   }, 120_000);
 });
 
+/**
+ * T1545b ON DAWN — THE INSTANCE'S OWN Processing Channels survive detach where they can.
+ *
+ * Flattening masks an instance's exposed picture output with a compiler-only boundary that
+ * keeps the other channels of the instance's first connected input; detach moves the mask
+ * onto the node behind the output, whose own mask is the same pass keeping ITS first
+ * input's. Two shapes where that is the same picture: a filter fed from outside (Ramp →
+ * [Level grade, brightness 0.5]) and a generator with no input ([Ramp src], the rest
+ * opaque black). Each masked to R+A, each byte-identical before and after, and each a
+ * different picture from the unmasked instance.
+ */
+describe("T1545b on Dawn — the instance's own channelMask survives detach", () => {
+  const red = { r: true, g: false, b: false, a: true };
+  const ramp = (id: string): GraphNode => ({ ...node(id, "ramp", id, {}), definitionVersion: 2 }) as GraphNode;
+  const gradeLook = {
+    componentId: "gradelook",
+    version: 1,
+    name: "Grade look",
+    graph: graphOf({ grade: node("grade", "level", "grade", { brightness: 0.5 }) }, {}),
+    inputs: [{ externalId: "in", label: "In", nodeId: "grade", portId: "input" }],
+    outputs: [{ externalId: "out", label: "Out", nodeId: "grade", portId: "out" }],
+    parameters: [],
+  } as unknown as GraphComponentDefinition;
+  const rampOnly = {
+    componentId: "ramponly",
+    version: 1,
+    name: "Ramp only",
+    graph: graphOf({ src: ramp("src") }, {}),
+    inputs: [],
+    outputs: [{ externalId: "out", label: "Out", nodeId: "src", portId: "out" }],
+    parameters: [],
+  } as unknown as GraphComponentDefinition;
+
+  async function maskedBeforeAndAfter(componentId: string, fed: boolean) {
+    const system = catalogue([gradeLook, rampOnly]);
+    const graphWith = (mask: typeof red | undefined): GraphDocument =>
+      graphOf(
+        {
+          ...(fed ? { feed: ramp("feed") } : {}),
+          city: { ...node("city", componentNodeType(componentId, 1), "city", {}), ...(mask === undefined ? {} : { channelMask: mask }) } as GraphNode,
+          out: node("out", "output", "out1", {}),
+        },
+        {
+          ...(fed ? { e8: { id: "e8", source: { nodeId: "feed", portId: "out" }, target: { nodeId: "city", portId: "in" } } } : {}),
+          e9: { id: "e9", source: { nodeId: "city", portId: "out" }, target: { nodeId: "out", portId: "input" } },
+        },
+      );
+    const masked = graphWith(red);
+    const session = presetSession(masked, system.nodes, system.components);
+    const result = await session.bus.execute("component.detach", { nodeId: "city" }, contextFor(alice));
+    expect(result.status, result.diagnostics.map((each) => each.message).join("; ")).toBe("applied");
+    expect(result.diagnostics.map((each) => each.code)).not.toContain("component.detach.channelMask");
+    const carried = Object.values(session.graph().nodes).filter((each) => each.channelMask !== undefined);
+    expect(carried.map((each) => [each.label, each.channelMask])).toEqual([[componentId === "gradelook" ? "grade" : "src", red]]);
+    const before = await renderWith(system, masked);
+    const after = await renderWith(system, session.graph());
+    const unmasked = await renderWith(system, graphWith(undefined));
+    return { before, after, unmasked };
+  }
+
+  it("a filter fed from outside (Ramp → grade 0.5), masked R+A: byte-identical, and not the unmasked picture", async () => {
+    requireDawn();
+    const { before, after, unmasked } = await maskedBeforeAndAfter("gradelook", true);
+    expect(Buffer.compare(after.bytes, before.bytes)).toBe(0);
+    expect(Buffer.compare(before.bytes, unmasked.bytes)).not.toBe(0);
+  }, 120_000);
+
+  it("a generator with no input (Ramp src), masked R+A — the rest opaque black: byte-identical, and not the unmasked picture", async () => {
+    requireDawn();
+    const { before, after, unmasked } = await maskedBeforeAndAfter("ramponly", false);
+    expect(Buffer.compare(after.bytes, before.bytes)).toBe(0);
+    expect(Buffer.compare(before.bytes, unmasked.bytes)).not.toBe(0);
+    // The first pixel's green and blue are the boundary's opaque black, not the ramp's.
+    expect(before.pixel[1]).toBe(0);
+    expect(before.pixel[2]).toBe(0);
+  }, 120_000);
+});
+
 describe("B239 on Dawn — a detached instantiate draws what a fresh linked instance draws", () => {
   it("Bright defaults to 0.5 and Gain to 0.8 while the definition holds 1 and 1: the copies draw 0.4, byte for byte the linked instance", async () => {
     requireDawn();

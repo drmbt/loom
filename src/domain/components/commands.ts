@@ -39,7 +39,7 @@ import { effectiveParameterSchema } from "../parameters/resolve.ts";
 import { detachedValues, nestedParentReads, type DetachedValues, type MovedOuterTarget } from "./detach-values.ts";
 import { publishedSchema } from "./published-page.ts";
 import { pruneComponentDefinition } from "./definition.ts";
-import { internalChannelMasks, projectInternalChannelMasks } from "./internal-channel-masks.ts";
+import { carryInstanceChannelMask, internalChannelMasks, projectInternalChannelMasks } from "./internal-channel-masks.ts";
 import { internalResolutions, projectInternalResolutions } from "./internal-resolutions.ts";
 
 /**
@@ -470,6 +470,8 @@ function planDetach(input: {
   readonly outerTargets?: ReadonlyMap<string, readonly string[]>;
   /** T1545b: the session host's published page, for the carried-range check. */
   readonly outerSchema?: ParameterSchema;
+  /** T1545b: the document holding the instance, for its own Processing Channels. */
+  readonly outer?: GraphDocument;
 }): DetachPlan {
   const { definition, instance, nodeId } = input;
   const at = nodeId === undefined ? {} : { nodeId };
@@ -514,7 +516,21 @@ function planDetach(input: {
       });
     }
   }
-  return { values, graph: sized.graph, diagnostics };
+  // T1545b: the instance's own Processing Channels, onto the node behind each output when
+  // that draws the same picture (`carryInstanceChannelMask`); otherwise said by name.
+  const channels = input.outer === undefined ? { graph: sized.graph } : carryInstanceChannelMask({ graph: sized.graph, definition, instance, outer: input.outer, registry: input.registry });
+  if (channels.reason !== undefined) {
+    const mask = instance.channelMask;
+    const kept = mask === undefined ? "" : (["r", "g", "b", "a"] as const).filter((channel) => mask[channel]).map((channel) => channel.toUpperCase()).join(" ");
+    diagnostics.push({
+      severity: "warning",
+      code: "component.detach.channelMask",
+      message: `"${look}"'s Processing Channels (${kept === "" ? "none" : kept}) cannot be carried onto the copies exactly: ${channels.reason}. The copies draw every channel.`,
+      ...at,
+      suggestion: "Set Processing Channels on the copies by hand, or undo the detach.",
+    });
+  }
+  return { values, graph: channels.graph, diagnostics };
 }
 
 /** Writes a planned detach into `draft`: the copies, holding the plan's values. */
@@ -874,6 +890,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         registry: context.registry,
         ...(outerTargets.size === 0 ? {} : { outerTargets }),
         ...(hostDefinition === undefined ? {} : { outerSchema: publishedSchema(hostDefinition) }),
+        outer: context.graph,
       });
       diagnostics.push(...plan.diagnostics);
 
