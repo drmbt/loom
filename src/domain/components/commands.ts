@@ -241,6 +241,12 @@ export interface ComponentCommandOptions {
   writeFile?: ComponentFileWriter;
   /** Where `component.import` asks for a file when it is given none (T1494b). Absent: it refuses. */
   readFile?: ComponentFileReader;
+  /**
+   * §T1545b: a command re-registered the host definition as part of the graph step
+   * `undoGroupId` (an in-session detach moving the outer page onto the copies). The session
+   * records the definition with that step, so undo and redo restore it with the graph.
+   */
+  onDefinitionStep?: (undoGroupId: string) => void;
 }
 
 function info(code: string, message: string, suggestion?: string): RuntimeDiagnostic {
@@ -562,16 +568,23 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
   const requireHostDefinition = (): GraphComponentDefinition | undefined =>
     host === null ? undefined : components.get(host.componentId, host.version);
 
-  /** Registers a re-authored definition unless this was a dry run (§V36). */
+  /**
+   * Registers a re-authored definition unless this was a dry run (§V36). `undoGroupId`: the
+   * graph step this re-registration belongs to, so undo restores it too (§T1545b).
+   */
   const commitDefinition = (
     context: CommandContext,
     next: GraphComponentDefinition,
     diagnostics: RuntimeDiagnostic[],
+    undoGroupId?: string,
   ): boolean => {
     const problems = components.validate(next);
     diagnostics.push(...problems);
     if (problems.some((diagnostic) => diagnostic.severity === "error")) return false;
-    if (!context.dryRun) components.register(next);
+    if (!context.dryRun) {
+      components.register(next);
+      if (undoGroupId !== undefined) options.onDefinitionStep?.(undoGroupId);
+    }
     return true;
   };
 
@@ -1001,7 +1014,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
             suggestion: "Republish it onto the copies, or undo the detach.",
           });
         }
-        commitDefinition(context, pruned, diagnostics);
+        commitDefinition(context, pruned, diagnostics, applied.undoGroupId);
       }
 
       return {

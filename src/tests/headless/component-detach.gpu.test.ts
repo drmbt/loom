@@ -475,6 +475,39 @@ describe("B239 on Dawn — detach inside a component edit session draws what the
   }, 120_000);
 
   /**
+   * T1545b — UNDO AND REDO OF THAT DETACH. The moved targets and FRAME's output exposure
+   * live in the catalogue, not in the session's store; undo used to bring `inner` back with
+   * the page and the exposure still aimed at the (gone) copies, which the prune then dropped:
+   * FRAME exposed nothing and the root drew no picture. Each state is rendered on Dawn.
+   */
+  it("T1545b: detach, undo, redo inside FRAME — all three draw 0.5 × 0.25, byte for byte", async () => {
+    requireDawn();
+    const system = catalogue([lookDefinition, frame({}, [knob("level", [{ nodeId: "inner", key: "bright" }]), knob("glow", [{ nodeId: "inner", key: "gain" }])])]);
+    const root = graphOf(
+      { scene: node("scene", componentNodeType("frame", 1), "scene", { level: 0.5, glow: 0.25 }), out: node("out", "output", "out1", {}) },
+      { e9: { id: "e9", source: { nodeId: "scene", portId: "out" }, target: { nodeId: "out", portId: "input" } } },
+    );
+    const before = await renderWith(system, root);
+    expect(before.pixel).toEqual([0.125, 0.125, 0.125, 1]);
+    const session = openComponentSession({ components: system.components, nodes: system.nodes, componentId: "frame", version: 1 });
+    const step = async (command: "component.detach" | "graph.undo" | "graph.redo"): Promise<{ bytes: Buffer; pixel: number[] }> => {
+      const result = command === "component.detach"
+        ? await session.bus.execute(command, { nodeId: "inner" }, contextFor(alice))
+        : await session.bus.execute(command, {}, contextFor(alice));
+      expect(result.status, `${command}: ${result.diagnostics.map((each) => each.message).join("; ")}`).toBe("applied");
+      return renderWith(system, root);
+    };
+    const detached = await step("component.detach");
+    const undone = await step("graph.undo");
+    expect(system.components.get("frame", 1)?.graph.nodes["inner"]).toBeDefined();
+    const redone = await step("graph.redo");
+    session.dispose();
+    expect(Buffer.compare(detached.bytes, before.bytes)).toBe(0);
+    expect(Buffer.compare(undone.bytes, before.bytes)).toBe(0);
+    expect(Buffer.compare(redone.bytes, before.bytes)).toBe(0);
+  }, 120_000);
+
+  /**
    * T1545b — A CARRIED READ SKIPS THE PAGE KNOB'S CHECK. Flattening does not clamp what
    * reaches a page knob from outside: the page knob REFUSES it, as an error, and falls back
    * (here the instance's page holds `parent.glow`, and Bright is 0..1 bounded while FRAME's

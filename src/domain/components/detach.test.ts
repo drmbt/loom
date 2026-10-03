@@ -559,3 +559,100 @@ describe("B239 — detach inside a component edit session", () => {
     expect(inside.outerAfter.parameters.map((published) => published.key)).toEqual(["size"]);
   });
 });
+
+/**
+ * T1545b — UNDO OF AN IN-SESSION DETACH. The session's store holds OUTER's graph; the
+ * detach also moved OUTER's published targets and its output exposure onto the copies, in
+ * the catalogue only. Undo brought `inner` back with the page still aimed at copies that
+ * were gone, so the write-back prune dropped them: Size and Mood lost their targets and
+ * OUTER exposed nothing. The session now records the definition with the step.
+ */
+describe("T1545b — undo and redo inside a component session restore the definition with the graph", () => {
+  const size = { type: "number", label: "Size", default: 4, min: 0, max: 64 } as const;
+  const mood = { type: "number", label: "Mood", default: 0.5, min: 0, max: 1 } as const;
+  const outerWithKnobs = (): GraphComponentDefinition => ({
+    ...outer({ ...PAGE }, {}, [
+      { key: "size", definition: size, targets: [{ nodeId: "grade", key: "radius" }, { nodeId: "inner", key: "blur" }] },
+      { key: "mood", definition: mood, targets: [{ nodeId: "inner", key: "amount" }] },
+    ]),
+    outputs: [
+      { externalId: "out", label: "Out", nodeId: "inner", portId: "out" },
+      { externalId: "side", label: "Side", nodeId: "grade", portId: "out" },
+    ],
+  });
+
+  function opened(definition: GraphComponentDefinition) {
+    const harness = createComponentHarness("t", graphOf([instanceOf("outer", { size: 11, mood: 0.75 })]));
+    harness.components.register(look());
+    harness.components.register(definition);
+    const session = openComponentSession({ components: harness.components, nodes: harness.nodes, componentId: "outer", version: 1 });
+    const shell = () => {
+      const { graph: _graph, ...rest } = harness.components.get("outer", 1)!;
+      void _graph;
+      return JSON.parse(JSON.stringify(rest)) as unknown;
+    };
+    const flat = () => {
+      const flattened = flattenComponents({ graph: harness.store.view.getGraph(), registry: harness.nodes, components: harness.components });
+      return Object.values(flattened.graph.nodes).map((each) => [each.type, rendered(each)]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    };
+    return { harness, session, shell, flat };
+  }
+
+  it("detach, undo: OUTER's page targets and exposure are back on inner, and the root flattens as before; redo puts them back on the copies", async () => {
+    const { harness, session, shell, flat } = opened(outerWithKnobs());
+    const shellBefore = shell();
+    const flatBefore = flat();
+    const detached = await session.bus.execute("component.detach", { nodeId: "inner" }, ctx);
+    expect(detached.status).toBe("applied");
+    const shellAfter = shell();
+    expect(shellAfter).not.toEqual(shellBefore);
+    expect(flat()).toEqual(flatBefore);
+
+    expect((await session.bus.execute("graph.undo", {}, ctx)).status).toBe("applied");
+    expect(harness.components.get("outer", 1)?.graph.nodes["inner"]).toBeDefined();
+    expect(shell()).toEqual(shellBefore);
+    expect(flat()).toEqual(flatBefore);
+
+    expect((await session.bus.execute("graph.redo", {}, ctx)).status).toBe("applied");
+    expect(harness.components.get("outer", 1)?.graph.nodes["inner"]).toBeUndefined();
+    expect(shell()).toEqual(shellAfter);
+    expect(flat()).toEqual(flatBefore);
+    session.dispose();
+  });
+
+  it("the general case: deleting the node a knob and an exposure name prunes both, and undo brings them back with the node", async () => {
+    const { harness, session, shell } = opened(outerWithKnobs());
+    const shellBefore = shell();
+    const removed = await session.bus.execute(
+      "graph.applyPatch",
+      { baseRevision: session.store.view.getRevision(), label: "delete grade", operations: [{ op: "removeNodes", nodeIds: ["grade"] }] },
+      ctx,
+    );
+    expect(removed.status).toBe("applied");
+    const pruned = harness.components.get("outer", 1)!;
+    expect(pruned.parameters.find((each) => each.key === "size")?.targets).toEqual([{ nodeId: "inner", key: "blur" }]);
+    expect(pruned.outputs.map((each) => each.externalId)).toEqual(["out"]);
+    expect((await session.bus.execute("graph.undo", {}, ctx)).status).toBe("applied");
+    expect(shell()).toEqual(shellBefore);
+    expect((await session.bus.execute("graph.redo", {}, ctx)).status).toBe("applied");
+    expect(harness.components.get("outer", 1)!.parameters.find((each) => each.key === "size")?.targets).toEqual([{ nodeId: "inner", key: "blur" }]);
+    session.dispose();
+  });
+
+  it("a publish made after the step (which has no undo step of its own) survives the step's undo", async () => {
+    const { harness, session } = opened(outerWithKnobs());
+    expect((await session.bus.execute("component.detach", { nodeId: "inner" }, ctx)).status).toBe("applied");
+    const published = await session.bus.execute(
+      "component.publishParameter",
+      { key: "extra", definition: { type: "number", label: "Extra", default: 1, min: 0, max: 8 }, targets: [{ nodeId: "grade", key: "radius" }] },
+      ctx,
+    );
+    expect(published.status).toBe("applied");
+    expect((await session.bus.execute("graph.undo", {}, ctx)).status).toBe("applied");
+    const after = harness.components.get("outer", 1)!;
+    expect(after.parameters.map((each) => each.key)).toContain("extra");
+    // The exposure, which nothing else touched, is still restored onto inner.
+    expect(after.outputs[0]).toEqual({ externalId: "out", label: "Out", nodeId: "inner", portId: "out" });
+    session.dispose();
+  });
+});

@@ -1,8 +1,9 @@
+import type { GraphComponentDefinition } from "../types/components.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { ComponentId } from "../types/ids.ts";
 import type { IdFactory } from "../graph/ids.ts";
-import type { GraphStore } from "../graph/store.ts";
-import { createGraphStore } from "../graph/store.ts";
+import type { GraphStore, GraphStoreState } from "../graph/store.ts";
+import { actorKeyOf, createGraphStore } from "../graph/store.ts";
 import type { LoomBus } from "../commands/bus.ts";
 import { createDomainBus } from "../commands/index.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
@@ -46,6 +47,25 @@ import type { ComponentRegistry } from "./registry.ts";
  * (`use-component-editing.ts`) — the rebase. Nothing is lost there: every valid session
  * edit has already been committed by the time anything else can write, so the session
  * holds nothing the new definition lacks; what restarts is its undo history.
+ *
+ * ## Undo restores the definition too (§T1545b)
+ *
+ * The session's store holds the GRAPH; the rest of the definition — exposed ports, the
+ * published page and its targets — lives only in the catalogue, and a graph step can change
+ * it: the write-back prune drops a target or an exposure whose node is gone, and an
+ * in-session `component.detach` moves the outer page's targets and exposures onto the
+ * copies. Undoing the graph step alone brought the node back with its targets and exposures
+ * still gone (a detach undone left the page aimed at copies that no longer exist, and the
+ * prune then dropped them). So the session records, per undo step, the definition before and
+ * after it — `before` when the step is pushed, `after` once it is written back and again
+ * when the command that made it re-registers the definition in the same step
+ * (`onDefinitionStep`) — and an undo or redo of that step puts the recorded side back,
+ * field by field, for every field that still holds what the step left.
+ *
+ * What it does NOT cover: a definition-only command (publish, unpublish, expose, unexpose,
+ * reorder) changes no graph, so the store makes no undo step for it at all and there is
+ * nothing to pair it with — undo skips it, before and after this. Making those undoable
+ * needs the store to record a step that is not a graph change.
  */
 
 export interface ComponentSession {
@@ -93,9 +113,25 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
     ...(options.ids === undefined ? {} : { ids: options.ids }),
   });
   const { bus } = createDomainBus({ store, registry: options.nodes });
+
+  // T1545b: the definition around each undo step (see "Undo restores the definition too").
+  const steps = new Map<string, DefinitionStep>();
+  let lastPush: { readonly id: string; readonly before: DefinitionShell } | undefined;
+  const registered = (): GraphComponentDefinition | undefined => options.components.get(options.componentId, options.version);
+  const record = (id: string, before: DefinitionShell): void => {
+    const now = registered();
+    if (now === undefined) return;
+    const after = shellOf(now);
+    if (sameShell(before, after)) steps.delete(id);
+    else steps.set(id, { before, after });
+  };
+
   registerComponentCommands(bus, {
     components: options.components,
     host: { componentId: options.componentId, version: options.version },
+    onDefinitionStep: (undoGroupId) => {
+      if (lastPush?.id === undoGroupId) record(undoGroupId, lastPush.before);
+    },
   });
 
   // The definition graph this session and the catalogue last agreed on. Identity is the
@@ -136,7 +172,17 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
       ]);
       return;
     }
-    const next = pruneComponentDefinition({ ...current, graph: state.graph }, options.nodes, options.components);
+    // T1545b: which step this commit is, and the definition around it.
+    const step = historyStep(state, previous);
+    const shell = shellOf(current);
+    let restored: DefinitionShell = shell;
+    if (step.direction !== "push") {
+      const recorded = step.id === undefined ? undefined : steps.get(step.id);
+      if (recorded !== undefined) {
+        restored = step.direction === "undo" ? rewind(shell, recorded.after, recorded.before) : rewind(shell, recorded.before, recorded.after);
+      }
+    }
+    const next = pruneComponentDefinition({ ...current, ...restored, graph: state.graph }, options.nodes, options.components);
     const problems = options.components.validate(next);
     if (problems.some((diagnostic) => diagnostic.severity === "error")) {
       options.onInvalid?.(problems);
@@ -151,6 +197,13 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
       synced = before;
       throw error;
     }
+    if (step.direction === "push" && step.id !== undefined) {
+      // A coalesced push (a drag) keeps the definition from where the step began.
+      const from = step.coalesced ? (steps.get(step.id)?.before ?? (lastPush?.id === step.id ? lastPush.before : shell)) : shell;
+      lastPush = { id: step.id, before: from };
+      record(step.id, from);
+      if (steps.size > MAX_STEPS) forgetEvicted(steps, state);
+    }
   });
 
   return {
@@ -163,4 +216,73 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
       unsubscribeCatalogue();
     },
   };
+}
+
+/** A definition without its graph: the exposures and the page a session step can change. */
+type DefinitionShell = Omit<GraphComponentDefinition, "graph">;
+
+/** T1545b: the definition just before and just after one undo step, when they differ. */
+interface DefinitionStep {
+  readonly before: DefinitionShell;
+  readonly after: DefinitionShell;
+}
+
+const MAX_STEPS = 256;
+
+function shellOf(definition: GraphComponentDefinition): DefinitionShell {
+  const { graph: _graph, ...shell } = definition;
+  void _graph;
+  return shell;
+}
+
+function sameShell(a: DefinitionShell, b: DefinitionShell): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * `current`, with every field that still holds what the step left (`from`) put back to what
+ * the step started from (`to`). A field something else has changed since — a publish, which
+ * has no undo step of its own — is kept as it is now.
+ */
+function rewind(current: DefinitionShell, from: DefinitionShell, to: DefinitionShell): DefinitionShell {
+  const next: Record<string, unknown> = { ...current };
+  const fields = new Set([...Object.keys(from), ...Object.keys(to)]);
+  for (const field of fields) {
+    const now = (current as Record<string, unknown>)[field];
+    if (JSON.stringify(now) !== JSON.stringify((from as Record<string, unknown>)[field])) continue;
+    const wanted = (to as Record<string, unknown>)[field];
+    if (wanted === undefined) delete next[field];
+    else next[field] = wanted;
+  }
+  return next as unknown as DefinitionShell;
+}
+
+/**
+ * Which undo step the commit that produced `state` is, and how: read off the store's own
+ * record of it (the audit entry it appended and the actor's stacks), never inferred from
+ * the graph. An undo moves the group from the undo stack's top to the redo stack's; a redo
+ * the other way; anything else pushed (or, coalescing, re-pushed) it.
+ */
+function historyStep(state: GraphStoreState, previous: GraphStoreState): { id: string | undefined; direction: "push" | "undo" | "redo"; coalesced: boolean } {
+  const entry = state.audit[state.audit.length - 1];
+  if (entry === undefined || entry.revision !== state.graph.revision || entry.undoGroupId === undefined) {
+    return { id: undefined, direction: "push", coalesced: false };
+  }
+  const id = entry.undoGroupId;
+  const key = actorKeyOf(entry.actor);
+  const top = (stack: readonly { id: string }[] | undefined): string | undefined => stack?.[stack.length - 1]?.id;
+  const now = state.history[key];
+  const before = previous.history[key];
+  if (top(now?.redo) === id && top(before?.undo) === id) return { id, direction: "undo", coalesced: false };
+  if (top(now?.undo) === id && top(before?.redo) === id) return { id, direction: "redo", coalesced: false };
+  return { id, direction: "push", coalesced: top(before?.undo) === id };
+}
+
+/** Drops the steps no actor can undo or redo any more (the store caps its history). */
+function forgetEvicted(steps: Map<string, DefinitionStep>, state: GraphStoreState): void {
+  const live = new Set<string>();
+  for (const history of Object.values(state.history)) {
+    for (const group of [...history.undo, ...history.redo]) live.add(group.id);
+  }
+  for (const id of [...steps.keys()]) if (!live.has(id)) steps.delete(id);
 }
