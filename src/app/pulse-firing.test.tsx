@@ -366,3 +366,127 @@ describe("usePulseFiring — a pulse reading a morphing parameter fires mid-fade
     runtime.dispose();
   });
 });
+
+/**
+ * T1541b — A RECALL PULSE FIRED FROM INSIDE A LOOK (the design doc §1.2 Q4; the gap §T1500b
+ * handed to §T1505b). The look's page bank `looks` has its Recall driven by an expression
+ * INSIDE the component, and its Select published as the instance's `look` knob, so each
+ * instance picks its own preset. The watcher sees the pulse on the flattened document and
+ * fires `preset.recall` with the flat id `cityA/looks`; that is the instance's own recall —
+ * one patch on cityA, its `presetCurrent` set, exactly as a press on its strip. A look
+ * nested inside another component stays refused by name (`preset.bank.nested`).
+ */
+describe("usePulseFiring — a look's Recall pulse fires from inside its component (T1541b)", () => {
+  const recallAtQuarterSecond = {
+    mode: "expression",
+    bindings: {
+      static: { kind: "static", value: false },
+      expression: { kind: "expression", source: `max(0, sign(time - ${String(PULSE_CROSSES_AT_SECONDS)}))` },
+    },
+  };
+
+  function lookDefinition() {
+    const presets = serializePresetBank({
+      version: 1,
+      presets: [
+        { name: "calm", values: { parent: { glow: 2 } } },
+        { name: "wide", values: { parent: { glow: 40 } } },
+      ],
+    });
+    return {
+      componentId: "look",
+      version: 1,
+      name: "Look",
+      graph: {
+        revision: 0,
+        nodes: {
+          blur: { id: "blur", type: "blur", label: "blur", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { size: 4 } },
+          looks: {
+            id: "looks",
+            type: "presets",
+            label: "looks",
+            definitionVersion: 1,
+            position: { x: 0, y: 200 },
+            parameters: { targets: "parent", select: "calm", presets, recall: recallAtQuarterSecond },
+          },
+        },
+        edges: {},
+        groups: {},
+      },
+      inputs: [],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "blur", portId: "out" }],
+      parameters: [
+        { key: "glow", definition: { type: "number", label: "Glow", default: 4, min: 0, max: 64 }, targets: [{ nodeId: "blur", key: "size" }] },
+        { key: "look", definition: { type: "string", label: "Look", default: "calm" }, targets: [{ nodeId: "looks", key: "select" }] },
+      ],
+    } as never;
+  }
+
+  /** The look nested one level down: `outer`'s internals hold an instance of it. */
+  function outerDefinition() {
+    return {
+      componentId: "outer",
+      version: 1,
+      name: "Outer",
+      graph: {
+        revision: 0,
+        nodes: { inner: { id: "inner", type: componentNodeType("look", 1), label: "inner", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { glow: 9 } } },
+        edges: {},
+        groups: {},
+      },
+      inputs: [],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "inner", portId: "out" }],
+      parameters: [],
+    } as never;
+  }
+
+  const auditSince = (runtime: AppRuntime, from: number, command: string): string[] =>
+    runtime.bus.store
+      .getAudit()
+      .slice(from)
+      .filter((entry) => entry.command === command)
+      .map((entry) => entry.status);
+
+  it("recalls on each instance its own Select names — one patch each — and a nested look is refused by name", async () => {
+    const runtime = newRuntime();
+    runtime.components.register(lookDefinition());
+    runtime.components.register(outerDefinition());
+    let ids: Record<string, string> = {};
+    await act(async () => {
+      const result = await seed(runtime, [
+        { op: "addNode", ref: "$a", type: componentNodeType("look", 1), position: { x: 0, y: 0 }, label: "cityA", parameters: { glow: 10, look: "calm" } },
+        { op: "addNode", ref: "$b", type: componentNodeType("look", 1), position: { x: 0, y: 300 }, label: "cityB", parameters: { glow: 10, look: "wide" } },
+        { op: "addNode", ref: "$o", type: componentNodeType("outer", 1), position: { x: 400, y: 0 }, label: "outer1", parameters: {} },
+      ]);
+      expect(result.status, JSON.stringify(result.diagnostics)).toBe("applied");
+      ids = result.output.createdIds as Record<string, string>;
+    });
+    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current().graph);
+    const nodeOf = (ref: string) => runtime.bus.store.getGraph().nodes[ids[ref] ?? ""];
+    const outerBefore = JSON.stringify(nodeOf("$o"));
+    const auditBefore = runtime.bus.store.getAudit().length;
+
+    const { result } = renderHook(() => usePulseFiring(runtime, runtime.invocation));
+    await act(async () => {
+      for (let frameIndex = 0; frameIndex < 40; frameIndex += 1) result.current.observe(frameAt(frameIndex));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(nodeOf("$a")?.parameters["glow"]).toBe(2);
+    expect(nodeOf("$a")?.parameters["presetCurrent"]).toBe("calm");
+    expect(nodeOf("$b")?.parameters["glow"]).toBe(40);
+    expect(nodeOf("$b")?.parameters["presetCurrent"]).toBe("wide");
+    // The nested look: its pulse fired too, and the recall it asked for was refused — by
+    // name (below) — so nothing it could have written moved.
+    expect(JSON.stringify(nodeOf("$o"))).toBe(outerBefore);
+    expect(auditSince(runtime, auditBefore, "preset.recall").sort()).toEqual(["applied", "applied", "rejected"]);
+    const nested = await runtime.bus.execute("preset.recall", { nodeId: `${ids["$o"] ?? ""}/inner/looks` }, runtime.invocation);
+    expect(nested.diagnostics.map((each) => each.code)).toEqual(["preset.bank.nested"]);
+    // One recall patch per instance: one undo puts exactly one of them back.
+    await act(async () => {
+      await runtime.bus.execute("graph.undo", {}, runtime.invocation);
+    });
+    expect([nodeOf("$a")?.parameters["glow"], nodeOf("$b")?.parameters["glow"]].filter((glow) => glow === 10)).toHaveLength(1);
+    runtime.dispose();
+  });
+});

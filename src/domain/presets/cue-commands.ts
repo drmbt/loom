@@ -563,7 +563,7 @@ function reportList(bus: LoomBus, graph: GraphDocument, node: GraphNode): CueLis
     follow: following ? CUE_FOLLOW_TIMELINE : CUE_FOLLOW_LIVE,
     timelineCurrent: timeline.current,
     timelineNext: timeline.next,
-    warnings: timelineCueWarnings(graph, bus.registry, node.id).map((warning) => warning.diagnostic.message),
+    warnings: timelineCueWarnings(graph, bus.registry, node.id, presetCatalogueOf(bus)?.components).map((warning) => warning.diagnostic.message),
   };
 }
 

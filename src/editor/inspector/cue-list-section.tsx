@@ -137,8 +137,9 @@ export function CueListSection({ nodeId, cues, current, standby, wrap, follow, g
     follow && parsed.ok && clock?.timeSeconds !== undefined ? timelineCuePosition(parsed.list, clock.timeSeconds, rate) : null;
   const next = follow ? (timeline?.next ?? null) : parsed.ok ? nextCueName(parsed.list, { current, standby, wrap }) : null;
   const shownCurrent = follow ? (timeline?.current ?? "") : current;
-  const warnings = follow ? timelineCueWarnings(graph, bus.registry, nodeId) : [];
-  const structural = follow ? timelineStructuralSettings(graph, bus.registry, nodeId) : [];
+  const timedCatalogue = presetCatalogueHolderFor(bus).current?.components;
+  const warnings = follow ? timelineCueWarnings(graph, bus.registry, nodeId, timedCatalogue) : [];
+  const structural = follow ? timelineStructuralSettings(graph, bus.registry, nodeId, timedCatalogue) : [];
 
   /**
    * bank node name → its preset names, for every bank the document holds: each Presets node,

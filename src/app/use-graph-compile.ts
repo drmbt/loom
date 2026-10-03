@@ -481,7 +481,8 @@ export function useGraphCompile(
   const segmentStore = useMemo(createSegmentStore, []);
   const askedFrame = useSyncExternalStore(segmentStore.subscribe, segmentStore.get, segmentStore.get);
   const structure = useMemo(
-    () => buildTimelineStructure({ document: graph, registry: runtime.registry, flattened }),
+    // T1541b: with the catalogue, as the morph index the flattening builds has it.
+    () => buildTimelineStructure({ document: graph, registry: runtime.registry, components: runtime.components, flattened }),
     [graph, flattened, runtime],
   );
   const segment: TimelineStructureState =

@@ -26,6 +26,7 @@ import { PRESET_CURRENT_KEY, PRESET_MORPHS_KEY, pageBankOf } from "./bank-view.t
 import { serializeCueList, type Cue } from "./cue-list.ts";
 import { parseMorphRecords } from "./morph.ts";
 import { bankMorphRecords, buildMorphIndex } from "./morph-index.ts";
+import { planTimelineCues } from "./timeline-cues.ts";
 
 /**
  * T1505b — A LOOK'S PRESETS INSIDE ITS COMPONENT, through the real bus and the real
@@ -560,3 +561,177 @@ function parseCueListBank(text: unknown): string[] {
   const raw = JSON.parse(String(text)) as { cues: Array<{ bank: string }> };
   return raw.cues.map((cue) => cue.bank);
 }
+
+/**
+ * T1541b — A TIMED CUE NAMING A LOOK'S INSTANCE. The timeline plans it through the same
+ * catalogue GO reads (`bankOf`), so `cue.list` reports no skip for it where the catalogue is
+ * attached, and — on the headless twin with none — names why it is skipped rather than
+ * calling the instance "not a Presets bank". The pixels are `preset-morph.gpu.test.ts`.
+ */
+describe("T1541b — a timed cue names a look's instance", () => {
+  const timed = (): GraphNode =>
+    node("show", "cueList", "show", {
+      follow: "timeline",
+      cues: serializeCueList({ version: 1, cues: [{ name: "A", bank: "cityA", preset: "calm", at: 1 }] }),
+    }, 400);
+
+  it("cue.list warns nothing about it with the catalogue, and names the missing catalogue without one", async () => {
+    const withCatalogue = documentWith([...twoLooks(), timed()]);
+    const listed = await withCatalogue.bus.query("cue.list", { nodeId: "show" }, ctx);
+    expect(listed.lists[0]?.warnings).toEqual([]);
+
+    const bare = documentWith([...twoLooks(), timed()], { catalogue: false });
+    const warned = (await bare.bus.query("cue.list", { nodeId: "show" }, ctx)).lists[0]?.warnings ?? [];
+    expect(warned).toEqual([
+      'Cue "A" (show): "cityA" is a component instance, and this surface has no component catalogue to read its presets from; the timeline skips it.',
+    ]);
+  });
+
+  it("the morph index the flattening builds folds the cue onto the instance's page from its frame on", () => {
+    const doc = documentWith([...twoLooks(), timed()]);
+    const graph = doc.graph();
+    const plain = buildMorphIndex({ document: graph, registry: doc.bus.registry });
+    const timedIndex = buildMorphIndex({ document: graph, registry: doc.bus.registry, components: doc.components });
+    // Without the catalogue the cue covers nothing; with it, cityA's published page.
+    expect(plain.keysOf("a")).toBeUndefined();
+    expect([...(timedIndex.keysOf("a") ?? [])].sort()).toEqual(["amount", "blur"]);
+    expect(timedIndex.keysOf("b")).toBeUndefined();
+    const frame = { frameIndex: 30, timeSeconds: 1, fps: 30 } as Parameters<typeof timedIndex.stepsAt>[2];
+    expect(timedIndex.stepsAt("a", "blur", frame)?.at(-1)?.to).toBe(2);
+    expect(timedIndex.stepsAt("a", "amount", frame)?.at(-1)?.to).toBe(0.25);
+  });
+});
+
+/**
+ * T1541b — `preset.recall` NAMED BY A FLAT ID, as a Recall pulse fired inside a look names
+ * it (`city/looks`): the page bank's id under a ROOT instance is that instance's recall. The
+ * internal authoring bank (`inner`) is not the page bank and stays refused; so does a deeper
+ * path. The app-level pulse path (watcher → `parameter.pulse` → here) is `pulse-firing.test.tsx`.
+ */
+describe("T1541b — a recall named by the page bank's flat id is the instance's", () => {
+  it("cityA/looks recalls on cityA, one patch; cityA/inner and a/x/looks are refused by name", async () => {
+    const doc = documentWith(twoLooks());
+    const beforeB = JSON.stringify(doc.graph().nodes["b"]);
+    const undoBefore = doc.store.view.getHistory(alice).undo.length;
+
+    const recalled = await doc.bus.execute("preset.recall", { nodeId: "a/looks", name: "calm" }, ctx);
+    expect(recalled.status).toBe("applied");
+    expect(param(doc, "a", "blur")).toBe(2);
+    expect(param(doc, "a", "amount")).toBe(0.25);
+    expect(param(doc, "a", PRESET_CURRENT_KEY)).toBe("calm");
+    expect(JSON.stringify(doc.graph().nodes["b"])).toBe(beforeB);
+    expect(doc.store.view.getHistory(alice).undo.length).toBe(undoBefore + 1);
+
+    const revision = doc.store.view.getRevision();
+    expect(codes(await doc.bus.execute("preset.recall", { nodeId: "a/inner", name: "calm" }, ctx))).toEqual(["preset.bank.nested"]);
+    expect(codes(await doc.bus.execute("preset.recall", { nodeId: "a/x/looks", name: "calm" }, ctx))).toEqual(["preset.bank.nested"]);
+    expect(doc.store.view.getRevision()).toBe(revision);
+  });
+});
+
+/**
+ * T1541b — DETACHING A LOOK REWRITES ITS PAGE BANK (the design doc §1.2 Q7). The copy of
+ * `looks` would target `parent`, which names nothing at the root; detach points it at the
+ * internal parameters the page drove instead — by the copies' names, after detach's own
+ * renames — and carries cityA's current preset and running fade. When that cannot be exact
+ * it is left alone and a warning names it as inert, and why.
+ */
+describe("T1541b — detaching a look's instance rewrites its page bank", () => {
+  const byLabel = (doc: Doc, label: string): GraphNode | undefined => Object.values(doc.graph().nodes).find((each) => each.label === label);
+
+  it("targets the copies by name, carries the presets, cityA's current and its fade — and a recall on it sets the copies", async () => {
+    // A root `solid` already exists, so the look's own `solid` lands renamed.
+    const doc = documentWith([...twoLooks(), node("rootSolid", "test.solid", "solid", { amount: 0.1 }, 600)]);
+    doc.at({ epoch: "e1", absTimeSeconds: 0 });
+    expect((await doc.bus.execute("preset.recall", { nodeId: "a", name: "calm", morph: { seconds: 1, curve: "linear" } }, ctx)).status).toBe("applied");
+    const definitionBefore = JSON.stringify(doc.components.get("city", 1));
+
+    const detached = await doc.bus.execute("component.detach", { nodeId: "a" }, ctx);
+    expect(detached.status).toBe("applied");
+    expect(codes(detached)).toContain("component.detach.pageBank");
+
+    const bank = byLabel(doc, "looks");
+    const copiedSolid = Object.values(doc.graph().nodes).find((each) => each.type === "test.solid" && each.id !== "rootSolid");
+    expect(copiedSolid?.label).toBe("solid1");
+    expect(bank?.parameters["targets"]).toBe("blurA.radius solid1.amount");
+    expect(parsePresetBank(bank?.parameters["presets"])).toEqual({
+      ok: true,
+      bank: { version: 1, presets: [{ name: "calm", values: { blurA: { radius: 2 }, solid1: { amount: 0.25 } } }] },
+    });
+    expect(bank?.parameters["current"]).toBe("calm");
+    const [record] = parseMorphRecords(bank?.parameters["morphs"]);
+    expect(record?.from).toEqual({ blurA: { radius: 10 }, solid1: { amount: 0.9 } });
+    expect(record?.to).toEqual({ blurA: { radius: 2 }, solid1: { amount: 0.25 } });
+    // The internal authoring bank is not a page bank: copied as it was.
+    expect(byLabel(doc, "inner")?.parameters["targets"]).toBe("blurA");
+    // The component and the other instance are untouched.
+    expect(JSON.stringify(doc.components.get("city", 1))).toBe(definitionBefore);
+    expect(param(doc, "b", "blur")).toBe(30);
+
+    // The rewritten bank WORKS: a recall sets the copies, not the root `solid`.
+    const blurCopy = byLabel(doc, "blurA");
+    const nudged = await doc.bus.execute("graph.applyPatch", patch(doc.store.view.getRevision(), [{ op: "setParameters", nodeId: blurCopy!.id, parameters: { radius: 7 } }]), ctx);
+    expect(nudged.status).toBe("applied");
+    expect((await doc.bus.execute("preset.recall", { nodeId: bank!.id, name: "calm" }, ctx)).status).toBe("applied");
+    expect(byLabel(doc, "blurA")?.parameters["radius"]).toBe(2);
+    expect(byLabel(doc, "solid1")?.parameters["amount"]).toBe(0.25);
+    expect(doc.graph().nodes["rootSolid"]?.parameters["amount"]).toBe(0.1);
+  });
+
+  it("cannot be exact when a preset holds a key the page does not publish: left as it was, and named as inert", async () => {
+    const odd: Preset = { name: "odd", values: { parent: { blur: 3, glow: 1 } } };
+    const doc = documentWith(twoLooks(), { definitions: [city([CALM, odd])] });
+    const detached = await doc.bus.execute("component.detach", { nodeId: "a" }, ctx);
+    expect(detached.status).toBe("applied");
+    const inert = detached.diagnostics.find((each) => each.code === "component.detach.pageBankInert");
+    expect(inert?.severity).toBe("warning");
+    expect(inert?.message).toContain('Preset bank "looks"');
+    expect(inert?.message).toContain('"glow" is not a published parameter of the component');
+    expect(codes(detached)).not.toContain("component.detach.pageBank");
+    expect(byLabel(doc, "looks")?.parameters["targets"]).toBe("parent");
+  });
+});
+
+/**
+ * T1541b × §T1537b — a timed cue naming a look's instance feeds the same planner the
+ * structure is built from: a STRUCTURAL key on the look's page (a compile-time Source, here)
+ * keeps §T1537b's component-instance warning and is not filed as structure, while the
+ * look's ordinary keys still fade on the timeline.
+ */
+describe("T1541b — a timed cue on a look with a structural key on its page", () => {
+  function glyph(): GraphComponentDefinition {
+    const presets = bankText([{ name: "lit", values: { parent: { code: "fn x() {}", gain: 0.75 } } }]);
+    const nodes = [
+      node("shader", "test.customWgsl", "shader", { source: "", amount: 1 }),
+      node("looks", "presets", "looks", { targets: "parent", presets }, 200),
+    ];
+    return {
+      componentId: "glyph",
+      version: 1,
+      name: "Glyph",
+      graph: { revision: 0, nodes: Object.fromEntries(nodes.map((each) => [each.id, each])), edges: {}, groups: {} },
+      inputs: [],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "shader", portId: "out" }],
+      parameters: [
+        { key: "code", definition: { type: "code", language: "wgsl", label: "Code", default: "", compileTime: true }, targets: [{ nodeId: "shader", key: "source" }] },
+        { key: "gain", definition: { type: "number", label: "Gain", default: 1 }, targets: [{ nodeId: "shader", key: "amount" }] },
+      ],
+    };
+  }
+
+  it("warns the structural key by name, files no structure, and still times the number", () => {
+    const show = node("show", "cueList", "show", {
+      follow: "timeline",
+      cues: serializeCueList({ version: 1, cues: [{ name: "A", bank: "glyph1", preset: "lit", at: 1 }] }),
+    }, 400);
+    const doc = documentWith([instance("g", "glyph1", { code: "", gain: 1 }, "glyph"), show], { definitions: [glyph()] });
+    const plan = planTimelineCues(doc.graph(), doc.bus.registry, doc.components);
+    const structural = plan.warnings.filter((warning) => warning.diagnostic.code === "cue.timeline.structural");
+    expect(structural.map((warning) => warning.cue)).toEqual(["A"]);
+    expect(structural[0]?.diagnostic.message).toContain('"glyph1.code"');
+    expect(structural[0]?.diagnostic.message).toContain("inside a component");
+    expect(plan.structure.size).toBe(0);
+    expect(plan.chains.get("g")?.has("gain")).toBe(true);
+    expect(plan.chains.get("g")?.has("code")).toBe(false);
+  });
+});

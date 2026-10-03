@@ -6,6 +6,7 @@ import { alice, bob, contextFor, patch } from "../../domain/commands/test-suppor
 import { componentNodeType, createComponentSystem } from "../../domain/components/index.ts";
 import type { GraphComponentDefinition } from "../../domain/types/components.ts";
 import { parseMorphRecords } from "../../domain/presets/morph.ts";
+import { serializeCueList } from "../../domain/presets/cue-list.ts";
 import { presetBankNode, presetSession, type PresetSession } from "../../domain/presets/test-support.ts";
 import type { MorphSpec } from "../../domain/presets/bank.ts";
 import { loadProject, serializeProjectDocument } from "../../domain/project/index.ts";
@@ -506,4 +507,52 @@ describe("T1505b on Dawn — a look's own preset, recalled on ONE instance, fade
     expect(Buffer.compare(later?.bytes ?? Buffer.alloc(0), (await pageShot(pageGraph(folded, 0.2), 45)).bytes)).toBe(0);
     expect(Buffer.compare(landed?.bytes ?? Buffer.alloc(0), (await pageShot(pageGraph(0.2, 0.2), 90)).bytes)).toBe(0);
   }, 180_000);
+});
+
+/* ------------------------------------------------------------------------------------ */
+/* T1541b: a timed cue recalling a look's instance bank, on pixels                         */
+/* ------------------------------------------------------------------------------------ */
+
+/**
+ * A cue list following the timeline (§T1508b) whose cues name `cityA` — the look's instance,
+ * which IS its bank from outside (§T1505b). Until §T1541b the morph index had no catalogue,
+ * so it could not read the instance's presets and skipped both cues. Now the flattening hands
+ * the index its own catalogue, as recall reads the bus's: at 60 fps, cue A at 1 s fades cityA
+ * 0.2 → 0.8 over 1 s (`up`), cue B at 2.5 s cuts to 0.2 (`down`). Frames 30 / 90 / 120 / 150
+ * read 0.2 / 0.5 / 0.8 / 0.2, each byte-identical to the static twin; the document is never
+ * written, and cityB — on the same frames — keeps its own stored value.
+ */
+describe("T1541b on Dawn — a timed cue recalls a look's instance bank", () => {
+  const timedShow = (): GraphNode =>
+    node("show", "cueList", "show", {
+      follow: "timeline",
+      cues: serializeCueList({
+        version: 1,
+        cues: [
+          { name: "A", bank: "cityA", preset: "up", morph: LINEAR_1S, at: 1 },
+          { name: "B", bank: "cityA", preset: "down", morph: { seconds: 0, curve: "linear" }, at: 2.5 },
+        ],
+      }),
+    });
+
+  it("0.2 / 0.5 / 0.8 / 0.2 at frames 30 / 90 / 120 / 150, exact; cityB untouched; nothing written", async () => {
+    requireDawn();
+    const graph = pageGraph(0.2, 0.3, "a", { show: timedShow() });
+    const before = JSON.stringify(graph);
+
+    const [early, half, end, cut] = await renderPage(graph, [30, 90, 120, 150]);
+    expect(half?.pixel).toEqual([0.5, 0.5, 0.5, 1]);
+    expect(Buffer.compare(early?.bytes ?? Buffer.alloc(0), (await pageShot(pageGraph(0.2, 0.3), 30)).bytes)).toBe(0);
+    expect(Buffer.compare(half?.bytes ?? Buffer.alloc(0), (await pageShot(pageGraph(0.5, 0.3), 90)).bytes)).toBe(0);
+    expect(Buffer.compare(end?.bytes ?? Buffer.alloc(0), (await pageShot(pageGraph(0.8, 0.3), 120)).bytes)).toBe(0);
+    expect(Buffer.compare(cut?.bytes ?? Buffer.alloc(0), (await pageShot(pageGraph(0.2, 0.3), 150)).bytes)).toBe(0);
+    // The cue applied: frame 120 is not the stored value.
+    expect(Buffer.compare(end?.bytes ?? Buffer.alloc(0), early?.bytes ?? Buffer.alloc(0))).not.toBe(0);
+
+    // cityB on the cue's frame of the same document: exactly its own stored 0.3.
+    const other = await pageShot(showing(graph, "b"), 120);
+    expect(Buffer.compare(other.bytes, (await pageShot(pageGraph(0.2, 0.3, "b"), 120)).bytes)).toBe(0);
+    // A timed cue writes nothing (§V16): the document is as it was.
+    expect(JSON.stringify(graph)).toBe(before);
+  }, 240_000);
 });

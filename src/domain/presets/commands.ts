@@ -51,6 +51,7 @@ import {
   isPageBank,
   presetCatalogueHolderFor,
   withPageBankPresets,
+  type BankCatalogue,
   type BankLookup,
   type BankView,
   type PresetCatalogue,
@@ -255,8 +256,8 @@ export function bankLookupRefusal(
   }
 }
 
-/** Why a node is not a bank here, as the end of a sentence that names it. */
-function notABank(why: Exclude<BankLookup, { ok: true }>["why"], node: GraphNode): string {
+/** Why a node is not a bank here, as the end of a sentence that names it (T1541b: the timeline says it too). */
+export function notABank(why: Exclude<BankLookup, { ok: true }>["why"], node: GraphNode): string {
   switch (why) {
     case "notBank":
       return `is a ${node.type} node, not a Presets bank`;
@@ -339,6 +340,26 @@ export function requireBank(
 }
 
 /**
+ * T1541b — A RECALL PULSE FIRED FROM INSIDE A LOOK (the design doc §1.2 Q4, the gap §T1500b
+ * handed over). The pulse watcher runs on the FLATTENED document, so a page bank's `recall`
+ * driven by an expression inside the component fires `preset.recall` with the flat id
+ * `city/looks` — no root node. When `city` is a ROOT instance and `looks` is the page bank
+ * its definition uses, that is the instance's own recall: it is carried out on `city`, one
+ * patch, as a press on its strip would be. Anything deeper (`outer/city/looks`) is a nested
+ * instance and stays refused by name in `requireBank` (`preset.bank.nested`), as is an inner
+ * bank that is not the page bank (it would rewrite the definition).
+ */
+function pageBankPulse(graph: GraphDocument, nodeId: unknown, catalogue: PresetCatalogue | undefined): { instanceId: NodeId; flatId: string } | null {
+  if (typeof nodeId !== "string" || graph.nodes[nodeId] !== undefined) return null;
+  const parts = nodeId.split("/");
+  if (parts.length !== 2) return null;
+  const [instanceId, bankId] = parts as [NodeId, string];
+  const lookup = bankOf(graph.nodes[instanceId], catalogue?.components);
+  if (!lookup.ok || lookup.view.kind !== "instance" || lookup.view.bank.id !== bankId) return null;
+  return { instanceId, flatId: nodeId };
+}
+
+/**
  * T1505b §1.2 Q5 — Store and Recall on a PAGE bank inside a definition session are refused:
  * there is no instance whose page could be captured or written, and a recall there would
  * rewrite the definition for every instance. A bank that targets internal nodes is not a
@@ -387,7 +408,7 @@ function storedRecords(view: BankView, records: readonly MorphRecord[]): string 
 }
 
 /** The holder kind of a bank the planner only knows by id (one whose records lost keys). */
-function holderView(graph: GraphDocument, nodeId: NodeId, catalogue: PresetCatalogue | undefined): BankView | undefined {
+function holderView(graph: GraphDocument, nodeId: NodeId, catalogue: RecallCatalogue | undefined): BankView | undefined {
   const lookup = bankOf(graph.nodes[nodeId], catalogue?.components);
   if (lookup.ok) return lookup.view;
   // No catalogue to confirm it, but an instance holding records holds them under `presetMorphs`.
@@ -534,16 +555,20 @@ export interface PresetRecallPlan {
  * which way (§T1537b: a timed cue switches them at its time, through a recompile), and the
  * planner's own warnings. A cut with no clock, so no morph record is planned and nothing
  * reads a clock (§V44).
+ *
+ * T1541b: `bank` may be a look's instance (its `BankView`), and `components` lets a shot
+ * recall one — the catalogue GO reads off the bus, handed in by the morph index.
  */
 export function presetRecallEnd(
   graph: GraphDocument,
   registry: NodeRegistryView,
-  bankNode: GraphNode,
+  bank: GraphNode | BankView,
   preset: Preset,
+  components?: BankCatalogue,
 ): Pick<PresetRecallPlan, "after" | "skipped" | "diagnostics" | "refused"> & {
   readonly layers: ReadonlyArray<{ readonly nodeId: NodeId; readonly bypassed: boolean }>;
 } {
-  const plan = planPresetRecall(graph, registry, bankNode, preset);
+  const plan = planPresetRecall(graph, registry, bank, preset, components === undefined ? {} : { catalogue: { components } });
   const layers = plan.operations.flatMap((operation) =>
     operation.op === "setNodeUi" && typeof operation.ui["bypassed"] === "boolean" ? [{ nodeId: operation.nodeId, bypassed: operation.ui["bypassed"] }] : [],
   );
@@ -561,9 +586,13 @@ export interface PresetRecallPlanOptions {
   /**
    * T1505b: the component catalogue, so a shot can recall a look by naming its instance.
    * Absent (a bus with none), such a recall is skipped with a warning that names it.
+   * T1541b: only its lookup is read, so the morph index can hand in the flattening's.
    */
-  readonly catalogue?: PresetCatalogue | undefined;
+  readonly catalogue?: RecallCatalogue | undefined;
 }
+
+/** What the planner reads of a catalogue: the definitions a look's instance is a bank through. */
+type RecallCatalogue = { readonly components: BankCatalogue };
 
 /**
  * The value a recall writes for one key. A slot goes back verbatim; a bare value over a
@@ -622,7 +651,7 @@ function expandRecalls(
   graph: GraphDocument,
   top: RecallStep,
   skip: Skip,
-  catalogue: PresetCatalogue | undefined,
+  catalogue: RecallCatalogue | undefined,
 ): { ok: true; steps: readonly RecallStep[] } | { ok: false; diagnostic: RuntimeDiagnostic } {
   const steps: RecallStep[] = [];
   const path: RecallStep[] = [];
@@ -1132,14 +1161,18 @@ export function registerPresetCommands(bus: LoomBus): void {
     handler: (input, context) => {
       const revision = context.store.getRevision();
       const catalogue = presetCatalogueOf(bus);
-      const found = requireBank(context.graph, input?.nodeId, catalogue);
+      // T1541b: a Recall pulse fired INSIDE a look names its page bank by flattened id.
+      const pulse = pageBankPulse(context.graph, input?.nodeId, catalogue);
+      const found = requireBank(context.graph, pulse?.instanceId ?? input?.nodeId, catalogue);
       if (!found.ok) return recallRefusal(revision, [found.diagnostic]);
       const { view, bank } = found;
       const node = view.holder;
       const inside = inDefinitionRefusal(view, catalogue, "Recall");
       if (inside !== null) return recallRefusal(revision, [inside]);
-      // Select, Morph and Curve are the bank's — for an instance, its component's page bank's.
-      const settings = resolvedBank(view.bank, context);
+      // Select, Morph and Curve are the bank's — for an instance, its component's page bank's;
+      // for a pulse from inside, that bank as THIS instance flattened it (its published Select).
+      const flatBank = pulse === null ? undefined : bus.flattenedGraph()?.nodes[pulse.flatId];
+      const settings = resolvedBank(flatBank ?? view.bank, context);
       const name = typeof input.name === "string" ? input.name.trim() : resolvedSelect(settings);
       if (name === "") {
         return recallRefusal(revision, [

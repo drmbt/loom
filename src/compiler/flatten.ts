@@ -535,7 +535,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
   if (flatteningIsIdentity(request.graph)) {
     const identity = identityFlattening(request.graph);
     // T1497b: nothing was inlined, so the document's own nodes are what resolves.
-    return { ...identity, morphs: buildMorphIndex({ document: request.graph, registry: request.registry, flattened: identity }) };
+    return { ...identity, morphs: buildMorphIndex({ document: request.graph, registry: request.registry, components: request.components, flattened: identity }) };
   }
 
   const diagnostics: RuntimeDiagnostic[] = [];
@@ -1100,7 +1100,8 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     publishedOrigins,
     // T1497b: against the ROOT document (the banks and the nodes they name live there)
     // and this flattening (what actually resolves).
-    morphs: buildMorphIndex({ document: request.graph, registry: request.registry, flattened: { graph, publishedOrigins, instanceSchemas } }),
+    // T1541b: with the catalogue, so a timed cue can name a look's instance.
+    morphs: buildMorphIndex({ document: request.graph, registry: request.registry, components: request.components, flattened: { graph, publishedOrigins, instanceSchemas } }),
   };
 }
 

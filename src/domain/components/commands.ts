@@ -33,7 +33,8 @@ import type { ComponentUpgradePlan } from "./upgrade.ts";
 import { describeRecursion, wouldRecurse } from "./recursion.ts";
 import type { ComponentRegistry } from "./registry.ts";
 import { registerComponentFileCommands, type ComponentFileReader, type ComponentFileWriter } from "./file-commands.ts";
-import { presetCatalogueHolderFor } from "../presets/bank-view.ts";
+import { pageBanksOf, presetCatalogueHolderFor } from "../presets/bank-view.ts";
+import { detachedPageBank } from "../presets/detach-page-bank.ts";
 
 /**
  * Component commands (T129–T132, T136), registered by declaration merging like every
@@ -388,6 +389,56 @@ function copyInternalGraph(
   return remap;
 }
 
+/**
+ * T1541b — a detached LOOK's page bank (targets `parent`) would land as a root bank whose
+ * `parent` names nothing. The one its instances use is rewritten onto the copies
+ * (`detachedPageBank`: Targets and presets through the published mapping, the instance's
+ * current preset and running fades with them) and said as an info; when that cannot be
+ * exact — or for a second page bank, which no instance used — it is left as it was and a
+ * warning names it as inert, and why. Returns what to say.
+ */
+function rewritePageBanks(
+  draft: GraphDocument,
+  definition: GraphComponentDefinition,
+  instance: GraphNode,
+  remap: Readonly<Record<NodeId, NodeId>>,
+): RuntimeDiagnostic[] {
+  const said: RuntimeDiagnostic[] = [];
+  const look = instance.label ?? instance.id;
+  const nameOf = (internalId: NodeId): string | undefined => {
+    const copyId = remap[internalId];
+    return copyId === undefined ? undefined : draft.nodes[copyId]?.label;
+  };
+  for (const [index, pageBank] of pageBanksOf(definition).entries()) {
+    const copyId = remap[pageBank.id];
+    const copy = copyId === undefined ? undefined : draft.nodes[copyId];
+    if (copyId === undefined || copy === undefined) continue;
+    const name = copy.label ?? copyId;
+    const rewritten =
+      index === 0
+        ? detachedPageBank(definition, copy, instance, nameOf)
+        : { ok: false as const, reasons: [`"${definition.name}" used only its first preset bank targeting parent`] };
+    if (rewritten.ok) {
+      draft.nodes[copyId] = { ...copy, parameters: { ...copy.parameters, ...rewritten.parameters } };
+      said.push({
+        severity: "info",
+        code: "component.detach.pageBank",
+        message: `Preset bank "${name}" was rewritten for the detached copy: it now targets ${rewritten.targets === "" ? "nothing" : rewritten.targets}, its presets set those parameters, and it keeps "${look}"'s current preset and any fade in flight.`,
+        nodeId: copyId,
+      });
+    } else {
+      said.push({
+        severity: "warning",
+        code: "component.detach.pageBankInert",
+        message: `Preset bank "${name}" targets parent, which names nothing once "${look}" is detached, and it could not be rewritten exactly: ${rewritten.reasons.join("; ")}. Its recalls now do nothing.`,
+        nodeId: copyId,
+        suggestion: "Set its Targets and presets by hand, or undo the detach.",
+      });
+    }
+  }
+  return said;
+}
+
 /** Nodes carrying `parent.<key>` bindings, which cannot mean anything once detached. */
 function danglingParentBindings(internal: GraphDocument): NodeId[] {
   const found: NodeId[] = [];
@@ -703,6 +754,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         recipe: (draft) => {
           const remap = copyInternalGraph(draft, definition.graph, instance.position, context.ids);
           created.push(...Object.values(remap));
+          diagnostics.push(...rewritePageBanks(draft, definition, instance, remap));
 
           const inputById = new Map(definition.inputs.map((port) => [port.externalId, port]));
           const outputById = new Map(definition.outputs.map((port) => [port.externalId, port]));

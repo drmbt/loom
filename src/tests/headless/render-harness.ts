@@ -824,7 +824,12 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
      * crossing frame is the first one in the new structure — and a seek, a lap or a second
      * export lands on the same plan for the same playhead.
      */
-    const structure = buildTimelineStructure({ document: request.graph, registry: registry(request.nodes), flattened });
+    const structure = buildTimelineStructure({
+      document: request.graph,
+      registry: registry(request.nodes),
+      ...(request.components === undefined ? {} : { components: request.components }),
+      flattened,
+    });
     const subframeCount = request.subframes ?? 1;
     const firstState =
       structure === null

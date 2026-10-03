@@ -8,7 +8,7 @@ import { nodeNames } from "../graph/names.ts";
 import { effectiveParameterSchema, resolveParameter, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
 import { componentAddressedDefinition, componentNamesFor, isParameterSlot, parseComponentKey } from "../parameters/slots.ts";
 import { isComponentNodeType } from "../components/component-type.ts";
-import { PAGE_TARGET, PRESET_MORPHS_KEY, isPresetsNode } from "./bank-view.ts";
+import { PAGE_TARGET, PRESET_MORPHS_KEY, isPresetsNode, type BankCatalogue } from "./bank-view.ts";
 import { easeMorph, morphProgress, parseMorphRecords, renameRecordsNode, sameStored, type MorphRecord } from "./morph.ts";
 import { buildTimelineCueIndex, withTimelineCues } from "./timeline-cues.ts";
 
@@ -186,6 +186,12 @@ export interface MorphIndexInput {
   /** The ROOT document: the banks, and the nodes their records name. */
   readonly document: GraphDocument;
   readonly registry: NodeRegistryView;
+  /**
+   * T1541b: the component catalogue, so a timed cue naming a look's instance plans its
+   * component's presets (`planTimelineCues`) — the flattening's own (`FlattenRequest`),
+   * as recall reads the bus's. Absent, such a cue is skipped with a named warning.
+   */
+  readonly components?: BankCatalogue | undefined;
   /**
    * The flattening the frame paths resolve on, when the caller has one. Absent, the
    * document itself is what resolves and there are no published fan-outs to follow.

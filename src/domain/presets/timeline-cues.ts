@@ -11,8 +11,8 @@ import { effectiveParameterSchema, resolveParameters, type ParameterMorphStep, t
 import { componentAddressedDefinition, parseComponentKey, storedStaticValue } from "../parameters/slots.ts";
 import { defaultParameterValue } from "../parameters/validate.ts";
 import { parsePresetBank, type MorphCurve } from "./bank.ts";
-import { isPresetsNode } from "./bank-view.ts";
-import { presetMorph, presetRecallEnd } from "./commands.ts";
+import { bankOf, type BankCatalogue } from "./bank-view.ts";
+import { notABank, presetMorph, presetRecallEnd } from "./commands.ts";
 import { CUE_FOLLOW_TIMELINE, CUE_LIST_NODE_TYPE, cueReachFrame, parseCueList, type CueList } from "./cue-list.ts";
 import { easeMorph } from "./morph.ts";
 import { morphableKey, publishedTargets, type MorphIndexInput } from "./morph-index.ts";
@@ -166,8 +166,14 @@ const nameOf = (node: GraphNode): string => node.label ?? node.id;
  * warning — an untimed cue, a bank or preset that is not there, the planner's own skips, a
  * structural key on a component instance skipped, two lists on one key — and (§T1537b) the
  * structural settings each timed cue cuts. Pure; per revision.
+ *
+ * T1541b: `components` is the catalogue a look's instance is a bank through (`bankOf`) —
+ * the flattening's own, as recall reads the bus's. Without it a cue naming an instance is
+ * skipped, saying why. An instance's preset reaches only its page (its `on` and `recalls`
+ * are skipped by the recall planner), so it files no layer switch, and a structural key on
+ * its page keeps the component-instance warning above.
  */
-export function planTimelineCues(document: GraphDocument, registry: NodeRegistryView): TimelineCuePlan {
+export function planTimelineCues(document: GraphDocument, registry: NodeRegistryView, components?: BankCatalogue): TimelineCuePlan {
   const warnings: TimelineCueWarning[] = [];
   /** Root node id → key → links, and which lists cover it. */
   const chains = new Map<NodeId, Map<string, TimedLink[]>>();
@@ -201,19 +207,24 @@ export function planTimelineCues(document: GraphDocument, registry: NodeRegistry
       const at = cue.at;
       const bankId = nodeByName(document, cue.bank);
       const bankNode = bankId === undefined ? undefined : document.nodes[bankId];
-      // T1505b: a look's instance named by a timed cue is skipped: this index has no component catalogue to read its presets from.
-      if (bankNode === undefined || !isPresetsNode(bankNode)) {
-        warn(cue.name, "cue.timeline.bank", `${where}: "${cue.bank}" is not a Presets bank in this document; the timeline skips it.`);
+      // T1541b: a look's instance is a bank through the catalogue (`bankOf`), as at GO.
+      const lookup = bankOf(bankNode, components);
+      if (bankNode === undefined || !lookup.ok) {
+        const reason =
+          bankNode === undefined || lookup.ok || lookup.why === "notBank" ? "is not a Presets bank in this document" : notABank(lookup.why, bankNode);
+        warn(cue.name, "cue.timeline.bank", `${where}: "${cue.bank}" ${reason}; the timeline skips it.`);
         continue;
       }
-      const bank = parsePresetBank(bankNode.parameters["presets"]);
+      const { view } = lookup;
+      const bank = parsePresetBank(view.bank.parameters["presets"]);
       const preset = bank.ok ? bank.bank.presets.find((candidate) => candidate.name === cue.preset) : undefined;
       if (preset === undefined) {
         warn(cue.name, "cue.timeline.preset", `${where}: bank "${cue.bank}" has no preset "${cue.preset}" it can read; the timeline skips it.`);
         continue;
       }
-      const morph = presetMorph(cue.morph, preset, resolveParameters(bankNode, registry.get(bankNode.type)).values);
-      const end = presetRecallEnd(document, registry, bankNode, preset);
+      // Morph and Curve are the bank's — for an instance, its component's page bank's (as at GO).
+      const morph = presetMorph(cue.morph, preset, resolveParameters(view.bank, registry.get(view.bank.type)).values);
+      const end = presetRecallEnd(document, registry, view, preset, components);
       for (const said of end.diagnostics) {
         warnings.push({ list: listNode.id, cue: cue.name, diagnostic: { ...said, message: `${where}: ${said.message}`, nodeId: listNode.id } });
       }
@@ -298,21 +309,21 @@ export function planTimelineCues(document: GraphDocument, registry: NodeRegistry
  * §T1537b — what ONE following list switches in the compiled structure, as `node.key` (a
  * Layer's switch as `node.on`), sorted: the inspector's "switches structure" line.
  */
-export function timelineStructuralSettings(document: GraphDocument, registry: NodeRegistryView, listId: NodeId): readonly string[] {
+export function timelineStructuralSettings(document: GraphDocument, registry: NodeRegistryView, listId: NodeId, components?: BankCatalogue): readonly string[] {
   const node = document.nodes[listId];
   if (node === undefined || !followsTimeline(node)) return [];
   const said = new Set<string>();
-  for (const byTarget of planTimelineCues(document, registry).structure.values()) {
+  for (const byTarget of planTimelineCues(document, registry, components).structure.values()) {
     for (const links of byTarget.values()) for (const link of links) if (link.list === listId) said.add(link.address);
   }
   return [...said].sort();
 }
 
 /** The warnings about ONE list, as its surfaces (the inspector, `cue.list`) show them. */
-export function timelineCueWarnings(document: GraphDocument, registry: NodeRegistryView, listId: NodeId): readonly TimelineCueWarning[] {
+export function timelineCueWarnings(document: GraphDocument, registry: NodeRegistryView, listId: NodeId, components?: BankCatalogue): readonly TimelineCueWarning[] {
   const node = document.nodes[listId];
   if (node === undefined || !followsTimeline(node)) return [];
-  return planTimelineCues(document, registry).warnings.filter((warning) => warning.list === listId);
+  return planTimelineCues(document, registry, components).warnings.filter((warning) => warning.list === listId);
 }
 
 /**
@@ -395,7 +406,7 @@ export interface TimelineMorphs {
 export function buildTimelineCueIndex(input: MorphIndexInput): TimelineMorphs | null {
   if (!hasTimelineCueLists(input.document)) return null;
   const registry = plannerRegistry(input);
-  const plan = planTimelineCues(input.document, registry);
+  const plan = planTimelineCues(input.document, registry, input.components);
   if (plan.chains.size === 0) return null;
   const graph = input.flattened?.graph ?? input.document;
 
@@ -563,7 +574,8 @@ const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON
 export function buildTimelineStructure(input: MorphIndexInput): TimelineStructure | null {
   if (!hasTimelineCueLists(input.document)) return null;
   const registry = plannerRegistry(input);
-  const plan = planTimelineCues(input.document, registry);
+  // T1541b: the same catalogue as the value fold, so both plan the same cues.
+  const plan = planTimelineCues(input.document, registry, input.components);
   if (plan.structure.size === 0) return null;
 
   const targets: StructuralTarget[] = [];
