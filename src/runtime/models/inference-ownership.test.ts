@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createWorkerCore, type InferenceSessionLike } from "./inference-worker-core.ts";
+import { createWorkerCore, MODEL_PLANS, type InferenceSessionLike } from "./inference-worker-core.ts";
 import type { InferenceResponse, WorkerLike } from "./inference-protocol.ts";
 import { createWorkerRunner } from "./worker-runner.ts";
 import { MATTE_RVM } from "./model-catalogue.ts";
@@ -7,14 +7,16 @@ import { MATTE_RVM } from "./model-catalogue.ts";
 /** Exercise the real runner/protocol/core together without model weights or a GPU. */
 function harness(modelId: string, smoothing: number, session: InferenceSessionLike) {
   let deliver: ((event: { data: InferenceResponse }) => void) | undefined;
+  const transferredResults: ArrayBuffer[] = [];
   const createSession = vi.fn(async () => session);
   const core = createWorkerCore({
     isolated: true,
     createSession,
     createTensor: (type, data, dims) => ({ type, data, dims }),
-    post: (data) => {
+    post: (data, transfer) => {
       if (!deliver) throw new Error("Worker listener not installed");
-      deliver({ data });
+      if (data.kind === "result") transferredResults.push(data.bytes);
+      deliver({ data: structuredClone(data, transfer === undefined ? {} : { transfer }) });
     },
   });
   const worker: WorkerLike = {
@@ -31,7 +33,7 @@ function harness(modelId: string, smoothing: number, session: InferenceSessionLi
     describe: () => target,
     weightsFor: async () => new ArrayBuffer(4),
   });
-  return { createSession, runner, target,
+  return { createSession, runner, target, transferredResults,
     run: (nodeId: string) => runner.run(nodeId, new ArrayBuffer(target.side ** 2 * 16)) };
 }
 
@@ -170,5 +172,91 @@ describe("temporal inference state belongs to a node, not shared model weights",
       expect([...new Float32Array(third.buffer, third.byteOffset, third.byteLength / 4)])
         .toEqual([0, 0, 0, 0]);
     } finally { test.runner.dispose(); }
+  });
+});
+
+describe("inference results own transferable storage", () => {
+  it("rejects an aliased encoder before smoothing changes model output or retained history", async () => {
+    const model = "modnet-photographic";
+    const encode = vi.spyOn(MODEL_PLANS[model]!, "encode");
+    const outputs = [new Float32Array(4), new Float32Array(4).fill(1), new Float32Array(4).fill(1)];
+    let frame = 0;
+    const test = harness(model, 0.5, {
+      inputNames: ["input"], outputNames: ["output"],
+      run: async () => ({ output: { data: outputs[frame++]! } }),
+    });
+    try {
+      await test.run("a");
+      encode.mockImplementationOnce(output => new Uint8Array(output.buffer));
+      await expect(test.run("a")).rejects.toThrow(/must return an owned exact ArrayBuffer/);
+      expect([...outputs[1]!]).toEqual([1, 1, 1, 1]);
+      const next = await test.run("a");
+      expect([...new Float32Array(next.buffer)]).toEqual([0.5, 0.5, 0.5, 0.5]);
+      expect(test.transferredResults).toHaveLength(2);
+    } finally {
+      test.runner.dispose();
+      encode.mockRestore();
+    }
+  });
+
+  it("transfers the encoder's buffer directly while retaining independent smoothing history", async () => {
+    const encode = vi.spyOn(MODEL_PLANS["modnet-photographic"]!, "encode");
+    let frame = 0;
+    const test = harness("modnet-photographic", 0.5, {
+      inputNames: ["input"], outputNames: ["output"],
+      run: async () => ({ output: { data: new Float32Array(4).fill(frame++ % 2) } }),
+    });
+    try {
+      const first = await test.run("a");
+      const second = await test.run("a");
+      const third = await test.run("a");
+      expect([...new Float32Array(first.buffer)]).toEqual([0, 0, 0, 0]);
+      expect([...new Float32Array(second.buffer)]).toEqual([0.5, 0.5, 0.5, 0.5]);
+      expect([...new Float32Array(third.buffer)]).toEqual([0.25, 0.25, 0.25, 0.25]);
+      for (let i = 0; i < 3; i += 1) {
+        const encoded = encode.mock.results[i]!.value as Uint8Array;
+        expect(test.transferredResults[i]).toBe(encoded.buffer);
+        expect(encoded.byteLength).toBe(0);
+      }
+    } finally {
+      test.runner.dispose();
+      encode.mockRestore();
+    }
+  });
+
+  it.each(["offset", "aliased"])("refuses an encoder's %s result instead of detaching unrelated storage", async (kind) => {
+    const output = new Float32Array(4).fill(0.5);
+    const bytes = kind === "offset" ? new Uint8Array(new ArrayBuffer(20), 4, 16) : new Uint8Array(output.buffer);
+    const encode = vi.spyOn(MODEL_PLANS["modnet-photographic"]!, "encode").mockReturnValue(bytes);
+    const test = harness("modnet-photographic", 1, {
+      inputNames: ["input"], outputNames: ["output"],
+      run: async () => ({ output: { data: output } }),
+    });
+    try {
+      await expect(test.run("a")).rejects.toThrow(/must return an owned exact ArrayBuffer/);
+      expect(output.byteLength).toBe(16);
+      expect(test.transferredResults).toHaveLength(0);
+    } finally {
+      test.runner.dispose();
+      encode.mockRestore();
+    }
+  });
+
+  it.each(Object.entries(MODEL_PLANS))("%s encodes a fresh exact buffer without retaining or detaching model output", (_modelId, plan) => {
+    const output = Float32Array.from({ length: 51 }, (_, i) => (i % 4) / 3);
+    const before = output.slice();
+    const first = plan.encode(output, 2, 2, 2, 2, 2);
+    const second = plan.encode(output, 2, 2, 2, 2, 2);
+    expect(first.byteOffset).toBe(0);
+    expect(first.byteLength).toBe(first.buffer.byteLength);
+    expect(first.buffer).toBeInstanceOf(ArrayBuffer);
+    expect(first.buffer).not.toBe(output.buffer);
+    expect(first.buffer).not.toBe(second.buffer);
+    const received = structuredClone(first, { transfer: [first.buffer] });
+    expect(first.byteLength).toBe(0);
+    expect(received).toEqual(second);
+    expect(output).toEqual(before);
+    output.fill(0);
+    expect(received).toEqual(second);
   });
 });

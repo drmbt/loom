@@ -36,6 +36,7 @@ export interface PerfFiber {
   readonly flags: number;
   readonly type: unknown;
   readonly tag: number;
+  readonly actualDuration?: number;
 }
 
 export interface WalkResult {
@@ -45,6 +46,8 @@ export interface WalkResult {
   readonly signature: string;
   /** Per-component render counts for this commit. */
   readonly counts: Record<string, number>;
+  /** Inclusive subtree render time; nested entries must never be added together. */
+  readonly timings?: Record<string, { renders: number; inclusiveMs: number }>;
 }
 
 /*
@@ -56,7 +59,7 @@ export interface WalkResult {
  * counts PerformedWork inside that. Measured without the rule: every commit "rendered"
  * ~1750 fibers, the whole canvas, which was the stale bit.
  */
-export function walkCommit(root: { readonly current: PerfFiber }, performedWorkBit: number): WalkResult {
+export function walkCommit(root: { readonly current: PerfFiber }, performedWorkBit: number, measuredComponents?: readonly string[]): WalkResult {
   function nameOf(fiber: PerfFiber): string {
     const type = fiber.type as { displayName?: string; name?: string; render?: { name?: string }; type?: { name?: string } } | string | null;
     if (type === null || type === undefined) return `#${fiber.tag}`;
@@ -65,6 +68,8 @@ export function walkCommit(root: { readonly current: PerfFiber }, performedWorkB
   }
   let performed = 0;
   const counts: Record<string, number> = {};
+  const measured = measuredComponents === undefined ? undefined : new Set(measuredComponents);
+  const timings: Record<string, { renders: number; inclusiveMs: number }> = {};
   const stack: PerfFiber[] = [];
   if (root.current.child) stack.push(root.current.child);
   while (stack.length > 0) {
@@ -73,6 +78,14 @@ export function walkCommit(root: { readonly current: PerfFiber }, performedWorkB
       performed += 1;
       const name = nameOf(fiber);
       counts[name] = (counts[name] ?? 0) + 1;
+      if (measured?.has(name)) {
+        if (typeof fiber.actualDuration !== "number" || !Number.isFinite(fiber.actualDuration)) {
+          throw new Error(`Missing React render duration for ${name}`);
+        }
+        const timing = timings[name] ??= { renders: 0, inclusiveMs: 0 };
+        timing.renders += 1;
+        timing.inclusiveMs += fiber.actualDuration;
+      }
     }
     if (fiber.sibling) stack.push(fiber.sibling);
     const cloned = fiber.alternate === null || fiber.child !== fiber.alternate.child;
@@ -83,7 +96,7 @@ export function walkCommit(root: { readonly current: PerfFiber }, performedWorkB
     .slice(0, 3)
     .map(([name, count]) => `${name}×${count}`)
     .join(" ");
-  return { performed, signature, counts };
+  return { performed, signature, counts, ...(measured === undefined ? {} : { timings }) };
 }
 
 /**

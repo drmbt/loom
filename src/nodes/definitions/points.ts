@@ -609,7 +609,8 @@ export const pointKernelNode: NodeDefinition = {
         timeSeconds: 0,
         deltaSeconds: 0,
         frameIndex: 0,
-        seed: readNumber(parameters, "seed", 7),
+        // Preserve unsigned buffer packing: truncate fractions and wrap into u32.
+        seed: readNumber(parameters, "seed", 7) >>> 0,
         count: capacity,
         // T367: present exactly when the generated block declares it. The backend
         // overwrites it every frame from the SAME value the shared block gets (§V182);
@@ -1555,4 +1556,3 @@ export const pointNodeDefinitions: readonly NodeDefinition[] = [
   textureToAttributeNode,
   renderPointsNode,
 ];
-

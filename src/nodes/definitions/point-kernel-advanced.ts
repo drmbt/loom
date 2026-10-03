@@ -433,7 +433,8 @@ export const pointKernelAdvancedNode: NodeDefinition = {
         // the backend fills it per frame from the shared block's own value (§V182).
         uniforms: {
           ...frameUniforms,
-          seed: readNumber(parameters, "seed", 7),
+          // Match the basic kernel's unsigned buffer packing for every numeric seed.
+          seed: readNumber(parameters, "seed", 7) >>> 0,
           count: capacity,
           ...(module.usesPointer ? { pointer: [0, 0, 0, 0] } : {}),
         // T510: reserved exactly when the module declared it — the backend overwrites it
@@ -495,7 +496,7 @@ export const pointKernelAdvancedNode: NodeDefinition = {
               buffers: kernelBufferBindings(hookModule.buffers, hookPlan as KernelStoragePlan, counts),
               uniforms: {
                 ...frameUniforms,
-                seed: readNumber(parameters, "seed", 7),
+                seed: readNumber(parameters, "seed", 7) >>> 0,
                 count: capacity,
                 ...(hookModule.usesPointer ? { pointer: [0, 0, 0, 0] } : {}),
                 // T479: the hook's own slots, mirrored from the same parameters.

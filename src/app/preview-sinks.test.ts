@@ -2,6 +2,99 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createPreviewSinkStore } from "./preview-sinks.ts";
 
+describe("preview consumers own their current demand while their ticks are quiet", () => {
+  it("a quiet owner's withdrawal starts its absence grace, and a return inside it never recompiles", () => {
+    let clock = 0;
+    const store = createPreviewSinkStore(() => clock);
+    const owner = {}, ref = { nodeId: "quiet", portId: "out" };
+    store.set([ref], owner);
+    const notify = vi.fn();
+    store.subscribe(notify);
+    clock = 10000;
+    store.set([], owner);
+    clock = 11000;
+    store.set([], owner);
+    expect(store.get()).toHaveLength(1);
+    expect(notify).not.toHaveBeenCalled();
+    store.set([ref], owner);
+    clock = 12000;
+    store.set([ref], owner);
+    expect(notify).not.toHaveBeenCalled();
+    store.set([], owner);
+    clock = 13001;
+    store.set([], owner);
+    clock = 13401;
+    store.set([], owner);
+    expect(store.get()).toEqual([]);
+    expect(notify).toHaveBeenCalledOnce();
+  });
+  it("keeps quiet tile refs across empty background ticks and retires only the background owner", () => {
+    let clock = 0;
+    const store = createPreviewSinkStore(() => clock);
+    const tiles = {}, background = {};
+    const tile = { nodeId: "tile", portId: "out" }, backdrop = { nodeId: "background", portId: "out" };
+    const notify = vi.fn();
+    store.subscribe(notify);
+    store.set([tile], tiles);
+    for (let frame = 0; frame < 120; frame++) { clock += 25; store.set([], background); }
+    expect(store.get().map(sink => sink.nodeId)).toEqual(["tile"]);
+    expect(notify).toHaveBeenCalledOnce();
+    store.set([backdrop], background);
+    expect(notify).toHaveBeenCalledTimes(2);
+    store.set([], background);
+    clock += 1000;
+    store.set([], background);
+    expect(store.get()).toHaveLength(2);
+    clock += 1;
+    store.set([], background);
+    clock += 400;
+    store.set([], background);
+    expect(store.get().map(sink => sink.nodeId)).toEqual(["tile"]);
+    expect(notify).toHaveBeenCalledTimes(3);
+  });
+
+  it("cleanup releases only its own contribution on grace/settle timers with no subsequent tick", () => {
+    vi.useFakeTimers();
+    try {
+      const store = createPreviewSinkStore(() => Date.now());
+      const tiles = {}, background = {};
+      store.set([{ nodeId: "tile", portId: "out" }], tiles);
+      store.set([{ nodeId: "background", portId: "out" }], background);
+      const notify = vi.fn();
+      store.subscribe(notify);
+      store.set([], background);
+      vi.advanceTimersByTime(1000);
+      expect(store.get()).toHaveLength(2);
+      vi.advanceTimersByTime(400);
+      expect(store.get()).toHaveLength(2);
+      vi.advanceTimersByTime(1);
+      expect(store.get().map(sink => sink.nodeId)).toEqual(["tile"]);
+      expect(notify).toHaveBeenCalledOnce();
+      store.set([], tiles);
+      vi.advanceTimersByTime(1401);
+      expect(store.get()).toEqual([]);
+      expect(notify).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("a ref shared by two owners survives either owner's cleanup and replacement", () => {
+    let clock = 0;
+    const store = createPreviewSinkStore(() => clock, 0);
+    const tiles = {}, background = {};
+    const shared = { nodeId: "shared", portId: "out" };
+    store.set([shared], tiles);
+    store.set([shared], background);
+    store.set([], tiles);
+    clock = 1500;
+    store.set([{ nodeId: "new-document", portId: "out" }], tiles);
+    expect(store.get().map(sink => sink.nodeId)).toEqual(["new-document", "shared"]);
+    store.set([], background);
+    clock = 3000;
+    store.set([{ nodeId: "new-document", portId: "out" }], tiles);
+    expect(store.get().map(sink => sink.nodeId)).toEqual(["new-document"]);
+  });
+});
+
 /**
  * T620 — removal grace is a CLOCK, not a call count.
  *

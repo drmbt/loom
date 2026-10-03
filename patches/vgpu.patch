@@ -1,5 +1,4 @@
 diff --git a/dist/api-types.d.ts b/dist/api-types.d.ts
-index e444670e232e0d03f6387c3a35e3f5959c668c71..a9f33aa51b8e4c558b736423c21d7705f0964b3e 100644
 --- a/dist/api-types.d.ts
 +++ b/dist/api-types.d.ts
 @@ -5,7 +5,9 @@
@@ -12,7 +11,7 @@ index e444670e232e0d03f6387c3a35e3f5959c668c71..a9f33aa51b8e4c558b736423c21d7705
  export interface ComputeOptions {
      readonly label?: string;
      readonly set?: Record<string, unknown>;
-@@ -21,10 +23,22 @@ export interface DispatchOptions {
+@@ -21,10 +23,22 @@
          readonly offset?: number;
      };
  }
@@ -38,10 +37,9 @@ index e444670e232e0d03f6387c3a35e3f5959c668c71..a9f33aa51b8e4c558b736423c21d7705
  export type StorageAccess = "read" | "read-write";
  export interface StorageOptions {
 diff --git a/dist/compute.d.ts b/dist/compute.d.ts
-index 287bdf781aa076099649632b1d6effc1fdaba2d7..a971889ae90d3d271e5c84b4a4ce621168de90bd 100644
 --- a/dist/compute.d.ts
 +++ b/dist/compute.d.ts
-@@ -3,7 +3,7 @@ import type { ShaderSource } from "@vgpu/wgsl";
+@@ -3,7 +3,7 @@
  import { type Reflection } from "@vgpu/wgsl/reflect-source";
  import { type BindGroupCache } from "./bind-cache.ts";
  import { type SetBag, type SetCore } from "./set-core.ts";
@@ -50,7 +48,7 @@ index 287bdf781aa076099649632b1d6effc1fdaba2d7..a971889ae90d3d271e5c84b4a4ce6211
  import type { Gpu } from "./kernel.ts";
  /**
   * Compute pipeline for this gpu, ready to `set()` bindings and `dispatch()`.
-@@ -35,7 +35,7 @@ export declare class ComputePipeline implements Compute {
+@@ -35,7 +35,7 @@
      readonly pipeline: GPUComputePipeline;
      constructor(device: Device, source: string, opts?: ComputeOptions, cache?: BindGroupCache);
      set(values: SetBag): this;
@@ -62,22 +60,19 @@ index 287bdf781aa076099649632b1d6effc1fdaba2d7..a971889ae90d3d271e5c84b4a4ce6211
  //# sourceMappingURL=compute.d.ts.map
 \ No newline at end of file
 diff --git a/dist/compute.js b/dist/compute.js
-index fa1d930d97886ed6168d1ce9598f810e9ce61e15..dbfa741a882f8dce3a59aaf5f62607e5ca72cc87 100644
 --- a/dist/compute.js
 +++ b/dist/compute.js
-@@ -71,26 +71,62 @@ export class ComputePipeline {
+@@ -71,27 +71,61 @@
          if (opts.set)
              this.set(opts.set);
      }
 +    /**
 +     * shaderloom patch (T1180): drop this compute's cached bind groups; see
-+     * InternalDraw.evictBindGroups. A compute shares the gpu's one bind cache with every draw
-+     * while `nextComputeId` is a counter separate from `nextDrawId`, so one id can name both —
-+     * the worst case is still a rebuilt bind group on the other one's next encode, never a
-+     * wrong one. Its own pipeline and shader module are per-instance and are left to the GC.
++     * InternalDraw.evictBindGroups. The compute-prefixed key matches 0.5.0 createSetCore ownership; it cannot evict a draw
++     * with the same numeric id. Pipeline and shader module stay per-instance.
 +     */
 +    evictBindGroups() {
-+        this.cache.clearDraw(this.id);
++        this.cache.clearDraw(`compute:${this.id}`);
 +    }
      set(values) {
          assertDeviceUsable(this.device, `${this.label}.set`);
@@ -91,10 +86,11 @@ index fa1d930d97886ed6168d1ce9598f810e9ce61e15..dbfa741a882f8dce3a59aaf5f62607e5
 +        const opts = typeof x === "object" && x !== null ? x : undefined;
 +        const indirect = opts ? this.#resolveIndirectDispatch(x, y, z) : undefined;
          this.#preflightAliasing();
+         const bindings = this.setCore.bindGroups();
 -        const encoder = this.device.gpu.createCommandEncoder({ label: `${this.label}.encoder` });
 -        const pass = encoder.beginComputePass({ label: `${this.label}.pass` });
 -        pass.setPipeline(this.pipeline);
--        for (const binding of this.setCore.bindGroups())
+-        for (const binding of bindings)
 -            pass.setBindGroup(binding.group, binding.bindGroup, binding.offsets);
 -        if (indirect)
 -            pass.dispatchWorkgroupsIndirect(indirect.buffer, indirect.offset);
@@ -124,7 +120,7 @@ index fa1d930d97886ed6168d1ce9598f810e9ce61e15..dbfa741a882f8dce3a59aaf5f62607e5
 +                ? { label: `${this.label}.pass`, timestampWrites }
 +                : { label: `${this.label}.pass` });
 +            pass.setPipeline(this.pipeline);
-+            for (const binding of this.setCore.bindGroups())
++            for (const binding of bindings)
 +                pass.setBindGroup(binding.group, binding.bindGroup, binding.offsets);
 +            if (indirect)
 +                pass.dispatchWorkgroupsIndirect(indirect.buffer, indirect.offset);
@@ -142,10 +138,9 @@ index fa1d930d97886ed6168d1ce9598f810e9ce61e15..dbfa741a882f8dce3a59aaf5f62607e5
      /** The GPU reads the workgroup counts from the buffer, so explicit counts alongside indirect are dead options and throw. */
      #resolveIndirectDispatch(opts, y, z) {
 diff --git a/dist/draw.d.ts b/dist/draw.d.ts
-index 3a363e3a6b8df312ab2e8b78f6d76d472c09fb94..70b440489134c1131403f3b69f3b8a1833c5ebc0 100644
 --- a/dist/draw.d.ts
 +++ b/dist/draw.d.ts
-@@ -4,6 +4,8 @@ import { type Reflection } from "@vgpu/wgsl/reflect-source";
+@@ -4,6 +4,8 @@
  import { type BindGroupCache } from "./bind-cache.ts";
  import { type ClaimedGroupValidationResult, type ValidationErrorSink } from "./claim-validation.ts";
  import { type BindingIdentityChange, type BindingState, type SetBag } from "./set-core.ts";
@@ -154,7 +149,7 @@ index 3a363e3a6b8df312ab2e8b78f6d76d472c09fb94..70b440489134c1131403f3b69f3b8a18
  import type { CompileTarget, Target, TargetSignature } from "./target.ts";
  import { type PipelineLayoutCache, type PipelineStore, type ShaderModuleCache } from "./pipeline-store.ts";
  import type { StorageBuffer } from "./api-types.ts";
-@@ -135,6 +137,13 @@ export interface DrawCallOptions {
+@@ -135,6 +137,13 @@
          readonly buffer: StorageBuffer;
          readonly offset?: number;
      };
@@ -169,10 +164,9 @@ index 3a363e3a6b8df312ab2e8b78f6d76d472c09fb94..70b440489134c1131403f3b69f3b8a18
  export interface DrawLayoutOptions {
      readonly dynamicOffsets?: boolean;
 diff --git a/dist/draw.js b/dist/draw.js
-index d6011f8aba886f4a9f5f4e15b7da07fe889ad006..eac7c0b03a71525a8bb6621a4ac74241d25893d2 100644
 --- a/dist/draw.js
 +++ b/dist/draw.js
-@@ -102,6 +102,35 @@ export class InternalDraw {
+@@ -102,6 +102,35 @@
      writesDepth() { return drawWritesDepth(this); }
      /** @internal Frame drawable protocol; see {@link drawStencilWritingOps}. */
      stencilWritingOps() { return drawStencilWritingOps(this); }
@@ -208,7 +202,7 @@ index d6011f8aba886f4a9f5f4e15b7da07fe889ad006..eac7c0b03a71525a8bb6621a4ac74241
      set(values) {
          const state = drawState(this);
          assertDeviceUsable(state.device, `${this.label}.set`);
-@@ -151,71 +180,94 @@ export class InternalDraw {
+@@ -151,71 +180,94 @@
              throw targetRequiredError(`${this.label}.draw`);
          assertSurfaceTargetInFrame(target, `${this.label}.draw`);
          const encoder = state.device.gpu.createCommandEncoder();
@@ -231,37 +225,12 @@ index d6011f8aba886f4a9f5f4e15b7da07fe889ad006..eac7c0b03a71525a8bb6621a4ac74241
 +        let submitted = false;
          try {
 -            this.encode(pass, target, opts, (result) => validations.push(result));
--        }
--        catch (error) {
--            discardClaimedGroupValidationResults(validations);
--            discardClaimedGroupValidationScopes(state.device);
 +            const descriptor = target.renderPassDescriptor();
 +            const pass = encoder.beginRenderPass(timestampWrites ? { ...descriptor, timestampWrites } : descriptor);
 +            const validations = [];
-             try {
--                pass.end();
++            try {
 +                this.encode(pass, target, opts, (result) => validations.push(result));
-             }
--            catch { /* ignore cleanup failure after encode failure */ }
--            throw error;
--        }
--        endRenderPassWithClaimValidation(state.device, pass, validations, validations[0]?.context);
--        let commandBuffer;
--        const finishContext = validations[0]?.context;
--        if (finishContext)
--            pushClaimedGroupValidationScope(state.device, finishContext);
--        try {
--            commandBuffer = encoder.finish();
--        }
--        catch (error) {
--            const result = finishContext ? popLastClaimedGroupValidationScope(state.device) : undefined;
--            discardClaimedGroupValidationResults(validations);
--            if (result)
--                discardClaimedGroupValidationResults([result]);
--            const context = result?.context ?? finishContext;
--            if (context) {
--                void reportDrawValidationError(state, context.label, context.group, error);
--                return;
++            }
 +            catch (error) {
 +                discardClaimedGroupValidationResults(validations);
 +                discardClaimedGroupValidationScopes(state.device);
@@ -270,29 +239,7 @@ index d6011f8aba886f4a9f5f4e15b7da07fe889ad006..eac7c0b03a71525a8bb6621a4ac74241
 +                }
 +                catch { /* ignore cleanup failure after encode failure */ }
 +                throw error;
-             }
--            throw error;
--        }
--        if (finishContext) {
--            const result = popLastClaimedGroupValidationScope(state.device);
--            if (result)
--                validations[0] = validations[0] ? preferClaimedGroupValidationResult(result, validations[0]) : result;
--        }
--        const submitContext = validations[0]?.context;
--        if (submitContext)
--            pushClaimedGroupValidationScope(state.device, submitContext);
--        try {
--            state.device.gpu.queue.submit([commandBuffer]);
--        }
--        catch (error) {
--            const result = submitContext ? popLastClaimedGroupValidationScope(state.device) : undefined;
--            discardClaimedGroupValidationResults(validations);
--            if (result)
--                discardClaimedGroupValidationResults([result]);
--            const context = result?.context ?? submitContext;
--            if (context) {
--                void reportDrawValidationError(state, context.label, context.group, error);
--                return;
++            }
 +            endRenderPassWithClaimValidation(state.device, pass, validations, validations[0]?.context);
 +            let commandBuffer;
 +            const finishContext = validations[0]?.context;
@@ -345,14 +292,65 @@ index d6011f8aba886f4a9f5f4e15b7da07fe889ad006..eac7c0b03a71525a8bb6621a4ac74241
 +            if (validations.length) {
 +                const done = claimedGroupValidationDone(state.device, validations, { errorSink: state.errorSink });
 +                state.trackSettled?.(done);
-             }
++            }
+         }
+-        catch (error) {
+-            discardClaimedGroupValidationResults(validations);
+-            discardClaimedGroupValidationScopes(state.device);
+-            try {
+-                pass.end();
+-            }
+-            catch { /* ignore cleanup failure after encode failure */ }
+-            throw error;
+-        }
+-        endRenderPassWithClaimValidation(state.device, pass, validations, validations[0]?.context);
+-        let commandBuffer;
+-        const finishContext = validations[0]?.context;
+-        if (finishContext)
+-            pushClaimedGroupValidationScope(state.device, finishContext);
+-        try {
+-            commandBuffer = encoder.finish();
+-        }
+-        catch (error) {
+-            const result = finishContext ? popLastClaimedGroupValidationScope(state.device) : undefined;
+-            discardClaimedGroupValidationResults(validations);
+-            if (result)
+-                discardClaimedGroupValidationResults([result]);
+-            const context = result?.context ?? finishContext;
+-            if (context) {
+-                void reportDrawValidationError(state, context.label, context.group, error);
+-                return;
+-            }
+-            throw error;
+-        }
+-        if (finishContext) {
+-            const result = popLastClaimedGroupValidationScope(state.device);
+-            if (result)
+-                validations[0] = validations[0] ? preferClaimedGroupValidationResult(result, validations[0]) : result;
+-        }
+-        const submitContext = validations[0]?.context;
+-        if (submitContext)
+-            pushClaimedGroupValidationScope(state.device, submitContext);
+-        try {
+-            state.device.gpu.queue.submit([commandBuffer]);
+-        }
+-        catch (error) {
+-            const result = submitContext ? popLastClaimedGroupValidationScope(state.device) : undefined;
+-            discardClaimedGroupValidationResults(validations);
+-            if (result)
+-                discardClaimedGroupValidationResults([result]);
+-            const context = result?.context ?? submitContext;
+-            if (context) {
+-                void reportDrawValidationError(state, context.label, context.group, error);
+-                return;
+-            }
 -            throw error;
 -        }
 -        if (submitContext) {
 -            const result = popLastClaimedGroupValidationScope(state.device);
 -            if (result)
 -                validations[0] = validations[0] ? preferClaimedGroupValidationResult(result, validations[0]) : result;
-         }
+-        }
 -        if (validations.length) {
 -            const done = claimedGroupValidationDone(state.device, validations, { errorSink: state.errorSink });
 -            state.trackSettled?.(done);
@@ -363,10 +361,9 @@ index d6011f8aba886f4a9f5f4e15b7da07fe889ad006..eac7c0b03a71525a8bb6621a4ac74241
      }
      encode(pass, target, opts = {}, claimValidation) {
 diff --git a/dist/effect.js b/dist/effect.js
-index 079c6686ce2c87a580f217b12c9ea978f0ed3005..fb684c09ba66ed7763f8f2123a5f6ec635bda0ea 100644
 --- a/dist/effect.js
 +++ b/dist/effect.js
-@@ -31,6 +31,8 @@ export class InternalEffect {
+@@ -31,6 +31,8 @@
          effectImpls.set(this, impl);
      }
      set(values) { effectImpl(this).set(values); return this; }
@@ -376,10 +373,9 @@ index 079c6686ce2c87a580f217b12c9ea978f0ed3005..fb684c09ba66ed7763f8f2123a5f6ec6
      compile(target) { return effectImpl(this).compile(target).then(() => this); }
      compileSync(target) { effectImpl(this).compileSync(target); return this; }
 diff --git a/dist/frame.d.ts b/dist/frame.d.ts
-index 195a58c3a3a8f8c01f53307ec31e5449d1608748..efa932e214e1a318e1c8c245e62b65192634e656 100644
 --- a/dist/frame.d.ts
 +++ b/dist/frame.d.ts
-@@ -82,6 +82,16 @@ export declare class Frame {
+@@ -87,6 +87,16 @@
      constructor(device: Device, defaultTarget?: Target | undefined, errorSink?: ValidationErrorSink | undefined, trackSettled?: ((promise: Promise<unknown>) => void) | undefined, releaseLifecycle?: (() => void) | undefined);
      pass(target: Target, body: Effect | Draw | ((pass: FramePass) => void)): void;
      pass(options: FramePassOptions, body: Effect | Draw | ((pass: FramePass) => void)): void;
@@ -397,10 +393,9 @@ index 195a58c3a3a8f8c01f53307ec31e5449d1608748..efa932e214e1a318e1c8c245e62b6519
      /**
       * Discards the frame without submitting it: the command encoder is dropped (nothing this frame
 diff --git a/dist/frame.js b/dist/frame.js
-index 0cda97810db3bb9bec195d8399cd768baf9b8c2c..12c6848abe2c81541cd7da22c7180e74d29ebc29 100644
 --- a/dist/frame.js
 +++ b/dist/frame.js
-@@ -119,8 +119,8 @@ export class Frame {
+@@ -119,8 +119,8 @@
              throw surfaceNotInFrameError("Frame.pass");
          const clear = targetOnly ? undefined : target.clear;
          const preserve = clear === false;
@@ -411,10 +406,11 @@ index 0cda97810db3bb9bec195d8399cd768baf9b8c2c..12c6848abe2c81541cd7da22c7180e74
          const clearDepth = targetOnly ? undefined : target.clearDepth;
          if (clearDepth !== undefined) {
              if (typeof clearDepth !== "number" || !(clearDepth >= 0 && clearDepth <= 1))
-@@ -221,6 +221,36 @@ export class Frame {
+@@ -220,6 +220,36 @@
+             throw error;
          }
          endRenderPassWithClaimValidation(this.device, encoder, this.#validations);
-     }
++    }
 +    /**
 +     * shaderloom patch (T1247): time GPU work that is NOT encoded into this frame's encoder.
 +     *
@@ -444,12 +440,10 @@ index 0cda97810db3bb9bec195d8399cd768baf9b8c2c..12c6848abe2c81541cd7da22c7180e74
 +            timestampWrites: result.timestampWrites,
 +            retract: () => { result.owner.retractSpan?.(span, this); },
 +        };
-+    }
+     }
      submit() {
          // Closed either way: a re-submit has nothing left to flush, and a canceled frame dropped its
-         // encoder. Both are silent no-ops so `frame(gpu, cb)`'s implicit submit-on-return never masks
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index f11060a2a7f9b234465d04371e8826941e6b8d90..b301ef54962d1ed25106e5b321f33dcde9b59af0 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -1,6 +1,6 @@
@@ -461,7 +455,6 @@ index f11060a2a7f9b234465d04371e8826941e6b8d90..b301ef54962d1ed25106e5b321f33dcd
  export { Geometry } from "./scene/geometry-descriptor.ts";
  export type { GeometryAttributeOverride, GeometryAttributes, GeometryBuffer, GeometryBufferOptions, GeometryData, GeometryOptions, GeometrySlice, GeometrySliceOptions } from "./scene/geometry-descriptor.ts";
 diff --git a/dist/init.d.ts b/dist/init.d.ts
-index d4cb959be6bc7d6e9c8fbad4d42cd90058c1ade1..ef89e3a22e6e138a7106b86e75555908eeb1efb5 100644
 --- a/dist/init.d.ts
 +++ b/dist/init.d.ts
 @@ -1,9 +1,9 @@
@@ -477,10 +470,9 @@ index d4cb959be6bc7d6e9c8fbad4d42cd90058c1ade1..ef89e3a22e6e138a7106b86e75555908
  export type { Bundle, BundleOptions, BundleRecorder } from "./bundle.ts";
  export type { Surface, SurfaceOptions, SurfaceResizeEvent } from "./surface.ts";
 diff --git a/dist/mock.d.ts b/dist/mock.d.ts
-index 1a10c694a982bde7440229d528c1e7c973a9a389..2b33e90ca6fe3a6ccbfc5c83cfec9a5ae254dbbd 100644
 --- a/dist/mock.d.ts
 +++ b/dist/mock.d.ts
-@@ -3,7 +3,7 @@ export { initFromDevice } from "./init-from-device.ts";
+@@ -3,7 +3,7 @@
  export { createMockAdapter } from "@vgpu/adapter-mock";
  export type { CreateMockAdapterOptions } from "@vgpu/adapter-mock";
  export { getMockGPUDeviceInstrumentation } from "@vgpu/core";
@@ -490,10 +482,9 @@ index 1a10c694a982bde7440229d528c1e7c973a9a389..2b33e90ca6fe3a6ccbfc5c83cfec9a5a
  export { Geometry } from "./scene/geometry-descriptor.ts";
  export type { GeometryAttributeOverride, GeometryAttributes, GeometryBuffer, GeometryBufferOptions, GeometryData, GeometryOptions, GeometrySlice, GeometrySliceOptions } from "./scene/geometry-descriptor.ts";
 diff --git a/dist/node.d.ts b/dist/node.d.ts
-index c7b92ed4fba8ab1d0641d585d80c85e49bb6a6f9..36015c3285f00e873fccb742f5fab6a858bd4bb7 100644
 --- a/dist/node.d.ts
 +++ b/dist/node.d.ts
-@@ -2,7 +2,7 @@ import { type NodeAdapterInfo, type NodeAdapterMode } from "@vgpu/adapter-node";
+@@ -2,7 +2,7 @@
  import type { VGPUAdapter } from "@vgpu/core";
  import { type Gpu, type InitOptions } from "./init.ts";
  export { createNodeAdapter } from "@vgpu/adapter-node";
@@ -503,10 +494,9 @@ index c7b92ed4fba8ab1d0641d585d80c85e49bb6a6f9..36015c3285f00e873fccb742f5fab6a8
  export { Geometry } from "./scene/geometry-descriptor.ts";
  export type { GeometryAttributeOverride, GeometryAttributes, GeometryBuffer, GeometryBufferOptions, GeometryData, GeometryOptions, GeometrySlice, GeometrySliceOptions } from "./scene/geometry-descriptor.ts";
 diff --git a/dist/set-resources.js b/dist/set-resources.js
-index 43d3530106957dcbd764af7bd07f91b8d8b14ef3..ccc4d62b4cd3708633a7a0473b3d9c8d89a622cd 100644
 --- a/dist/set-resources.js
 +++ b/dist/set-resources.js
-@@ -47,8 +47,15 @@ function normalizeBufferResource(binding, value, context) {
+@@ -59,8 +59,15 @@
          assertBufferUsable(value.buffer, `${context.sourceHint}.set`);
          return { resource: { buffer: value.gpu, offset: 0, size: value.size }, identity: value.buffer.resourceIdentity, unsubscribe: (cb) => value.buffer.onDestroy(cb) };
      }
@@ -524,7 +514,7 @@ index 43d3530106957dcbd764af7bd07f91b8d8b14ef3..ccc4d62b4cd3708633a7a0473b3d9c8d
      if (isRawGPUBuffer(value))
          return { resource: { buffer: value }, identity: syntheticIdentity(value) };
      throw incompatibleResourceError(binding, "buffer", `Pass a compatible Buffer/Uniform: ${binding.name}.set({ ${binding.name}: gpu.device.createBuffer(...) }).`);
-@@ -113,7 +120,13 @@ function asTarget(value) {
+@@ -177,7 +184,13 @@
  }
  function hasAnyResourceShape(value) {
      const record = value;
@@ -540,11 +530,10 @@ index 43d3530106957dcbd764af7bd07f91b8d8b14ef3..ccc4d62b4cd3708633a7a0473b3d9c8d
  function syntheticIdentity(value) {
      if (typeof value !== "object" || value === null)
 diff --git a/dist/target-offscreen.js b/dist/target-offscreen.js
-index 3b4221148054e92c95a08f089a637249297b8d51..bbe26d4d064ec9c644c47c4a79d79a6ad64c7c0d 100644
 --- a/dist/target-offscreen.js
 +++ b/dist/target-offscreen.js
-@@ -87,6 +87,8 @@ export class OffscreenTarget {
-             size: this.#currentSize,
+@@ -155,6 +155,8 @@
+             size,
              format: spec.format,
              usage: ["render_attachment", "texture_binding", "copy_src"],
 +            // shaderloom patch (T1307): same allocation, alternate sampling interpretation.
@@ -553,10 +542,9 @@ index 3b4221148054e92c95a08f089a637249297b8d51..bbe26d4d064ec9c644c47c4a79d79a6a
              label: this.options.label ? `${this.options.label}.color${index}.resolve` : undefined,
          }));
 diff --git a/dist/target-utils.js b/dist/target-utils.js
-index ec39e15a23d7dfdf7172e74d7c7305b34670a3e6..f9f04834e0554f53331cdb50872d04f6ef5cf94c 100644
 --- a/dist/target-utils.js
 +++ b/dist/target-utils.js
-@@ -53,11 +53,15 @@ function validateMsaaFormat(format, caps) {
+@@ -53,11 +53,15 @@
      throw unsupportedError("target", "Dawn compatibility mode does not support rgba16float+msaa.", "Use rgba8unorm for MSAA here, or disable msaa.");
  }
  export function colorAttachment(resolved, msaa, clear, preserve) {
@@ -573,7 +561,7 @@ index ec39e15a23d7dfdf7172e74d7c7305b34670a3e6..f9f04834e0554f53331cdb50872d04f6
      };
      if (!preserve)
          attachment.clearValue = colorValue(clear);
-@@ -74,13 +78,15 @@ export function depthAttachment(depth, preserve, clearDepth, clearStencil, readO
+@@ -74,13 +78,15 @@
              attachment.stencilReadOnly = true;
          return attachment;
      }
@@ -592,10 +580,9 @@ index ec39e15a23d7dfdf7172e74d7c7305b34670a3e6..f9f04834e0554f53331cdb50872d04f6
              attachment.stencilClearValue = clearStencil ?? 0;
      }
 diff --git a/dist/target.d.ts b/dist/target.d.ts
-index f642ba8b4a9ba90b3d3aff09484779766564f86a..fcaa44da00b451720e69d0347dabe6244cc933e1 100644
 --- a/dist/target.d.ts
 +++ b/dist/target.d.ts
-@@ -2,6 +2,8 @@ import type { ClearColor } from "./target-utils.ts";
+@@ -2,6 +2,8 @@
  import type { Texture, ResourceDestroyCallback, ResourceIdentity, UnsubscribeResourceDestroy } from "@vgpu/core";
  export interface TargetTextureOptions {
      readonly format?: GPUTextureFormat;
@@ -605,10 +592,9 @@ index f642ba8b4a9ba90b3d3aff09484779766564f86a..fcaa44da00b451720e69d0347dabe624
       * Default clear color of this target, used by passes that clear without naming a color.
       * Defaults to `[0, 0, 0, 1]`; mutable at runtime through `target.clearColor`.
 diff --git a/dist/timer.d.ts b/dist/timer.d.ts
-index 4571da5a860793c7250ad8862c5341d700217765..04998a9ceec949475f1cb4005900f244d53e8bdc 100644
 --- a/dist/timer.d.ts
 +++ b/dist/timer.d.ts
-@@ -10,12 +10,33 @@ import { type QueryHostOptions } from "./query-ring.ts";
+@@ -10,12 +10,33 @@
  export interface TimerSpan {
      readonly name: string;
  }
@@ -644,7 +630,7 @@ index 4571da5a860793c7250ad8862c5341d700217765..04998a9ceec949475f1cb4005900f244
      /** Releases the timer's query set and buffers. Further use of the timer or its spans throws. */
      dispose(): void;
  }
-@@ -54,8 +75,11 @@ export declare class InternalTimer {
+@@ -54,8 +75,11 @@
      #private;
      constructor(device: Device, host?: QueryHostOptions);
      span(name: string): TimerSpan;
@@ -658,10 +644,9 @@ index 4571da5a860793c7250ad8862c5341d700217765..04998a9ceec949475f1cb4005900f244
       * @internal Frame.pass hook: registers the span for the current frame and returns the pass
       * descriptor's timestampWrites, or undefined when the span is dropped for this frame because
 diff --git a/dist/timer.js b/dist/timer.js
-index 88f211164c7f4d19a965d45ef4cce5d75fe08086..0488902ba2a30085e8cafcc5b068ca03c3c16282 100644
 --- a/dist/timer.js
 +++ b/dist/timer.js
-@@ -8,6 +8,14 @@ const INITIAL_SPAN_CAPACITY = 32;
+@@ -8,6 +8,14 @@
  const MAX_QUERIES = 4096;
  const MAX_SPANS_PER_FRAME = MAX_QUERIES / 2;
  const MS_PER_NS = 1 / 1_000_000;
@@ -676,7 +661,7 @@ index 88f211164c7f4d19a965d45ef4cce5d75fe08086..0488902ba2a30085e8cafcc5b068ca03
  class InternalTimerSpan {
      name;
      owner;
-@@ -63,6 +71,12 @@ export class InternalTimer {
+@@ -63,6 +71,12 @@
      #encodedSpans;
      #resultSeq = 0;
      #appliedSeq = -1;
@@ -689,7 +674,7 @@ index 88f211164c7f4d19a965d45ef4cce5d75fe08086..0488902ba2a30085e8cafcc5b068ca03
      /**
       * One retain per open frame whose pass descriptors reference a ring's query set, keyed by frame
       * identity and remembering *which* ring it pinned (capacity growth swaps the ring mid-life).
-@@ -100,11 +114,25 @@ export class InternalTimer {
+@@ -100,11 +114,25 @@
          this.#listeners.add(cb);
          return () => { this.#listeners.delete(cb); };
      }
@@ -715,15 +700,16 @@ index 88f211164c7f4d19a965d45ef4cce5d75fe08086..0488902ba2a30085e8cafcc5b068ca03
          this.#spans.clear();
          this.#frameNames.clear();
          this.#frameSpans = [];
-@@ -153,10 +181,33 @@ export class InternalTimer {
+@@ -153,10 +181,33 @@
      /** @internal Frame.submit hook, before encoder.finish(): appends this frame's single resolve to the frame encoder. */
      finalizeFrame(frame, encoder) {
          this.#encodedSpans = undefined;
 -        if (this.#disposed || frame !== this.#frame || this.#usedQueries === 0)
+-            return;
+-        if (this.#ring.encodeResolve(encoder, this.#usedQueries))
 +        // shaderloom patch (T1295): a frame whose every span was retracted has nothing to read back.
 +        if (this.#disposed || frame !== this.#frame || this.#usedQueries === 0 || this.#frameSpans.length === 0)
-             return;
--        if (this.#ring.encodeResolve(encoder, this.#usedQueries))
++            return;
 +        if (this.#ring.encodeResolve(encoder, this.#usedQueries)) {
              this.#encodedSpans = [...this.#frameSpans];
 +            return;
@@ -751,7 +737,7 @@ index 88f211164c7f4d19a965d45ef4cce5d75fe08086..0488902ba2a30085e8cafcc5b068ca03
      }
      /** @internal Frame.submit hook, after queue.submit succeeds: starts the non-blocking readback. */
      frameSubmitted(frame) {
-@@ -181,7 +232,7 @@ export class InternalTimer {
+@@ -181,7 +232,7 @@
              if (seq <= this.#appliedSeq)
                  return;
              this.#appliedSeq = seq;
@@ -760,7 +746,7 @@ index 88f211164c7f4d19a965d45ef4cce5d75fe08086..0488902ba2a30085e8cafcc5b068ca03
          });
      }
      /**
-@@ -191,16 +242,24 @@ export class InternalTimer {
+@@ -191,16 +242,24 @@
       * it attached a span — the counterpart of frameSubmitted() for frames that never submit.
       */
      frameAbandoned(frame) {
@@ -787,7 +773,7 @@ index 88f211164c7f4d19a965d45ef4cce5d75fe08086..0488902ba2a30085e8cafcc5b068ca03
              this.#ring = this.#createRing();
          }
          this.#demand = this.#capacity;
-@@ -209,19 +268,51 @@ export class InternalTimer {
+@@ -209,19 +268,51 @@
          this.#frameNames.clear();
          this.#usedQueries = 0;
      }
@@ -841,7 +827,7 @@ index 88f211164c7f4d19a965d45ef4cce5d75fe08086..0488902ba2a30085e8cafcc5b068ca03
              }
              catch (error) {
                  console.error(error);
-@@ -242,7 +333,7 @@ export class InternalTimer {
+@@ -242,7 +333,7 @@
          ring.release();
      }
      #createRing() {

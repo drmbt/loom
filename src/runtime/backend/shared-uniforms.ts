@@ -113,8 +113,9 @@ export function sharedUniformsFromFrame(inputs: FrameInputs): SharedUniformValue
  * from the frame, so a point kernel and a fragment shader cannot come to disagree about
  * where the cursor is or how long the show has run (§V182).
  *
- * Passes whose block declares none of these ignore the keys — vgpu writes by NAME into the
- * layout it reflected — so a kernel that named no optional member pays nothing (§V309).
+ * The backend selects only fields present in the dispatch pass's initial uniform values.
+ * Optional frame members are declared there by the kernel emitter. vgpu validates unknown
+ * fields, so this candidate bag must never be broadcast to a smaller KernelFrame layout.
  */
 export function dispatchFrameUniforms(
   frame: FrameEvaluationInput,

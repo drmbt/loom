@@ -1,6 +1,6 @@
 # vgpu patches — scope and rationale
 
-Loom is a browser WebGPU node compositor built entirely on `vgpu` (0.3.1 when this was written; pinned 0.4.1 since T1261, see the end). We carry a
+Loom is a browser WebGPU node compositor built entirely on `vgpu` (0.3.1 when this was written; pinned 0.5.0 after the October 2 audit, see the end). We carry a
 patch against the published `dist` (pnpm `patchedDependencies` → `patches/vgpu.patch`,
 the original four themes below, T1247's fifth, T1295's sixth, plus T1307's compatible texture views). We would rather not: a pinned
 dependency's diff is maintenance forever, and a silently dropped patch returns each bug
@@ -424,7 +424,7 @@ default flip), `loom/buffer-binding-resource` (classifier + range identity + int
 aliasing preflight), `loom/clear-draw` (`evictBindGroups()` on Draw/Effect/Compute with the
 `compute:` key), `loom/timer-frame-extent`. Not pushed; see the T1255 report for paths.
 
-## Pinned 0.4.1 (T1261, 2026-09-10)
+## Previous pin: 0.4.1 (T1261, 2026-09-10)
 
 `package.json` pins `vgpu` 0.4.1; `patches/vgpu.patch` is byte-identical and its lockfile
 hash unchanged (`fp5cunzchnnbwyhn5a36cnah3q`) — pnpm applied it with the `frame.js` hunk
@@ -441,3 +441,55 @@ and pinned on Dawn by `frame-throw.gpu.test.ts`:
   leaves every pair as it was rather than one half cleared.
 
 The four patch themes are still needed, unchanged (see the audit above).
+
+
+## Pinned 0.5.0 (2026-10-02)
+
+The latest published stable release is 0.5.0. Loom still uses the published package
+with a pnpm patch; no fork or unreleased canary dependency was introduced. The source
+audit found no redundant retained theme. Seventeen of eighteen patched files port directly.
+The compute eviction method now clears `compute:${this.id}`, matching upstream's
+cache owner. Binding validation runs before timing-query attachment, preserving
+upstream's destroyed-resource error without reserving an unwritten query.
+
+API consumers now declare external texture `kind: "2d"` and read output from
+`target.color.read({ mipLevel: 0, region: "all" })`. Strict uniform validation also
+required declared-field dispatch updates, complete initial laser clock values,
+point-preview updates without a shaded-only eye field, and explicit unsigned point
+seed conversion preserving prior u32 packing. Rejected updates enter retained state
+only after validation succeeds. No saved-project schema or rendering precision changes.
+
+The migration-specific mock regressions verify compute cache eviction and binding
+validation before timing reservation. Real GPU, browser presentation and project-wide
+validation results are recorded in [the realtime investigation](./realtime-performance-2026-10-02.md).
+
+Upstream references: [release](https://github.com/vercel-labs/vgpu/releases/tag/v0.5.0),
+[migration guide](https://github.com/vercel-labs/vgpu/blob/v0.5.0/docs/migrations/0.5.0.docs.md).
+
+### Bounded pristine-versus-patched probes
+
+Three representative probes compare pristine published 0.5.0 and the installed patched
+package against the same mock dependencies. All assertions pass:
+
+- Pristine rejects raw buffer bindings, and still rejects two non-overlapping writable
+  regions when distinct identities are supplied. Patched dispatches the identified
+  regions. The patch does not calculate interval overlap; callers must supply correct
+  identities. Plain regions without identities still alias in the patched package.
+- Pristine refuses a preserved second pass into a 4× MSAA target. Patched accepts it
+  and emits stored color/depth attachments with preserved color loading.
+- Pristine drops compatible `viewFormats` on both initial and resized Target allocation.
+  Patched forwards them, supporting the current sRGB presentation path.
+
+These are capability and descriptor proofs, not FPS or physical GPU pixel comparisons.
+No surprising difference justified expanding the audit. Other themes retain source
+and existing regression evidence; they were not individually ablated here. The carried
+patch already has no destruction/storage hunks; upstream supplies those lifecycles.
+
+Potential costs remain unmeasured: unconditional MSAA stores, timestamp writes, and
+timer staging growth from three to 32 slots. Evicting bindings too eagerly can also
+cause rebuilds. This audit makes no claim that each patch improves performance or that
+32 slots are optimal. Several capabilities could move into the backend, but replacing
+their ownership does not make the current hunks redundant.
+
+Reproduction and captured results: `scratchpad/perf-realtime-2026-10-02/vgpu-patch-audit/`.
+The follow-up fixes and validation are in [the realtime investigation](./realtime-performance-2026-10-02.md).

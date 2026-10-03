@@ -48,7 +48,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it.each(["success", "failure", "cancel"] as const)("owns canvas capture through %s without reading pixels", async outcome => {
+it.each(["success", "failure", "cancel", "unavailable"] as const)("owns canvas capture through %s without reading pixels", async outcome => {
   const { bus } = createHarness();
   let current = 0;
   transportHolderFor(bus).current = {
@@ -63,11 +63,13 @@ it.each(["success", "failure", "cancel"] as const)("owns canvas capture through 
     codedWidth: 2, codedHeight: 2, timestamp: timing.timestampMicros, duration: timing.durationMicros, close() {},
   }));
   const write = vi.fn(async () => ({ kind: "cancelled" as const }));
+  const releasePreparation = vi.fn();
   const view = renderHook(() => useRenderRange({
     createCapture: () => ({ captureFrame, dispose }),
+    beforeRender: async () => releasePreparation,
     bus, exports: { ...api, read }, compiled: COMPILED, graph: graphWith("timeline"),
     registry: REGISTRY, settings: SETTINGS, latestFrame: () => frameInputs(current), name: () => "test", write,
-    loadEncoder: async options => ({
+    loadEncoder: async options => outcome === "unavailable" ? null : ({
       ...fakeEncoder(),
       encodeCapturedFrame(timing) {
         options!.captureFrame!(timing).close();
@@ -76,13 +78,18 @@ it.each(["success", "failure", "cancel"] as const)("owns canvas capture through 
       },
     }),
   }));
-  await act(async () => { await bus.execute("export.renderRange", {}, contextFor(alice)); });
+  let result: unknown;
+  await act(async () => { result = await bus.execute("export.renderRange", {}, contextFor(alice)); });
   expect(read).not.toHaveBeenCalled();
-  expect(captureFrame).toHaveBeenCalledTimes(outcome === "success" ? 3 : 1);
+  expect(captureFrame).toHaveBeenCalledTimes(outcome === "success" ? 3 : outcome === "unavailable" ? 0 : 1);
   expect(dispose).toHaveBeenCalledOnce();
+  expect(releasePreparation).toHaveBeenCalledOnce();
   expect(view.result.current.rendering).toBe(false);
   expect(write).toHaveBeenCalledTimes(outcome === "success" ? 1 : 0);
   if (outcome === "failure") expect(view.result.current.diagnostics.some(d => d.message.includes("Capture failed"))).toBe(true);
+  if (outcome === "unavailable") expect(result).toMatchObject({
+    status: "rejected", diagnostics: [{ code: "export.encoderUnavailable" }],
+  });
 });
 
 it("refuses odd render dimensions before audio preparation or capture allocation", async () => {

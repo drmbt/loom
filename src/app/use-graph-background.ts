@@ -49,7 +49,7 @@ export interface GraphBackgroundInputs {
   readonly graph: GraphDocument;
   readonly compiledOutputs: ReadonlyArray<ResolvedOutput>;
   /** T252 (§V158): the same sink set the tile scheduler feeds — refs merge. */
-  readonly previewSinks?: { set(refs: ReadonlyArray<{ nodeId: string; portId: string }>): void };
+  readonly previewSinks?: { set(refs: ReadonlyArray<{ nodeId: string; portId: string }>, owner?: object): void };
   readonly previewFps: number;
   readonly previewLongEdge: number;
   /** Which DOCUMENT is open — see the same field on `NodePreviewInputs` (T519, B106). */
@@ -200,6 +200,15 @@ export function useGraphBackground(inputs: GraphBackgroundInputs): void {
     let lastDeviceGeneration = backend.status.deviceGeneration;
     let lastDocumentIdentity = inputsRef.current.documentIdentity;
     let frameHandle = 0;
+    let hasPresented = false;
+    const sinkOwner = {};
+    let sinkWriter = inputsRef.current.previewSinks;
+    const setSinks = (refs: ReadonlyArray<{ nodeId: string; portId: string }>): void => {
+      const writer = inputsRef.current.previewSinks;
+      if (sinkWriter !== writer) sinkWriter?.set([], sinkOwner);
+      sinkWriter = writer;
+      writer?.set(refs, sinkOwner);
+    };
 
     /**
      * T519/B106 — the background tile is keyed by node id like every other preview.
@@ -216,6 +225,7 @@ export function useGraphBackground(inputs: GraphBackgroundInputs): void {
       lastDocumentIdentity = identity;
       host.setPreviewProgram(EMPTY_PREVIEW_PROGRAM);
       system.reset();
+      setSinks([]);
     };
 
     const step = (): void => {
@@ -233,8 +243,8 @@ export function useGraphBackground(inputs: GraphBackgroundInputs): void {
       const marks = current.marks;
       // Marking IS watching (T252): the refs keep their nodes materialized. The sink
       // store merges callers, so this coexists with the tile scheduler's own set.
-      if (marks.length > 0) {
-        current.previewSinks?.set(
+      if (marks.length > 0 || hasPresented) {
+        setSinks(
           marks
             .map((mark) => mark.output)
             .filter((output): output is ResolvedOutput => output !== undefined)
@@ -248,6 +258,9 @@ export function useGraphBackground(inputs: GraphBackgroundInputs): void {
             ),
         );
       }
+      // An unused background must not measure layout or submit a transparent GPU
+      // clear every display frame. Clear once after retiring a populated surface.
+      if (marks.length === 0 && !hasPresented) return;
 
       const rect = canvas.getBoundingClientRect();
       const surface = { x: 0, y: 0, width: rect.width, height: rect.height };
@@ -313,6 +326,7 @@ export function useGraphBackground(inputs: GraphBackgroundInputs): void {
         previewFps: current.previewFps,
         previewLongEdge: current.previewLongEdge,
       });
+      hasPresented = marks.length > 0;
     };
 
     const tick = (): void => {
@@ -330,6 +344,7 @@ export function useGraphBackground(inputs: GraphBackgroundInputs): void {
       stepRef.current = null;
       boundaryRef.current = null;
       cancelAnimationFrame(frameHandle);
+      sinkWriter?.set([], sinkOwner);
       host.dispose();
     };
     // The ref carries per-tick inputs; the effect re-runs only for a new surface/backend.
@@ -343,7 +358,7 @@ export function useGraphBackground(inputs: GraphBackgroundInputs): void {
     }
     // The graph too, not just the plan: a mark is ui state, and a ui-only edit moves
     // the document without moving the compiled outputs.
-  }, [inputs.compiledOutputs, inputs.graph]);
+  }, [inputs.compiledOutputs, inputs.graph, inputs.previewSinks]);
 
   // B143 — the document boundary at COMMIT time, before the incoming main plan installs.
   // Unconditional, unlike the hidden-page gate above: this is not a step, so it moves no

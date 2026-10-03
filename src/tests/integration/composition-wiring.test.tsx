@@ -163,6 +163,7 @@ function fixtureBackend(): LoomBackend {
     compileShader: () => Promise.resolve({ ok: false, validated: false, diagnostics: [] }),
     readBuffer: noGpu,
     registerMediaSource: () => () => {},
+    registerDispatchGate: () => () => {},
     setCookPolicy() {},
     setSurfaceResizeHold() {},
   };

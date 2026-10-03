@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CompiledGraph } from "@compiler/index.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
-import { absTimeSecondsOf, type FrameEvaluationInput } from "@domain/types/frame.ts";
+import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import type { NodeMetricSink } from "@runtime/telemetry/index.ts";
@@ -310,6 +310,7 @@ function kindFor(nodeType: string): InferenceKind | undefined {
 /** One tracked model node: what it needs and how big its output is. */
 interface DepthTarget {
   readonly nodeId: string;
+  readonly preprocessPassId: string;
   readonly kind: InferenceKind;
   readonly descriptor: ModelDescriptor;
   readonly size: readonly [number, number];
@@ -425,12 +426,14 @@ export interface ModelInferenceBinding {
    * nothing for the hook existing.
    */
   readonly settle: (frameIndex: number) => Promise<void>;
+  /** Acquire offline ownership; release after success, failure, or cancellation. */
+  readonly prepareForRender: () => Promise<() => void>;
   /** Consent, progress and failure, for the strip under the top bar. */
   readonly notices: readonly Notice[];
   /**
    * §T976 — the fourth resolver in the composition root's `externalChannels` merge.
    *
-   * Answers `<nodeName>:ready | :lagFrames | :delaySeconds | :fps | :realtimeFactor` and
+   * Answers `<nodeName>:ready | :lagFrames | :cacheFrames | :delaySeconds | :fps | :realtimeFactor` and
    * NOTHING else, so it composes in front of the others without shadowing them. Stable
    * identity for the life of the hook, like analyze's, so putting it in the merge does not
    * re-key the compile memo every render.
@@ -481,6 +484,9 @@ export function useModelInference(
   const helperPaired = helper?.paired === true;
 
   const [states, setStates] = useState<Readonly<Record<string, AcquisitionState>>>({});
+  const statesRef = useRef(states);
+  statesRef.current = states;
+  const offlineLeasesRef = useRef(0);
   const targetsRef = useRef<readonly DepthTarget[]>([]);
   // T1525b: the reads, the graph `track` was handed and the frame last observed — what a
   // RUN resolves its per-run parameters (Detail Ratio, Smoothing) with, in `describe`.
@@ -711,6 +717,11 @@ export function useModelInference(
   const sources = useMemo(
     () =>
       createInferenceSources({
+        nextRenderIndex: () => {
+          const live = backendRef.current;
+          if (live == null) throw new Error("No backend is attached; no render ordinal is available.");
+          return live.status.framesSubmitted + 1;
+        },
         readBuffer: (resourceId) => {
           const live = backendRef.current;
           if (live === null || live === undefined) {
@@ -749,6 +760,29 @@ export function useModelInference(
       }),
     [runMediaPipe, runnerFor],
   );
+
+  useEffect(() => () => {
+    for (const off of unregisterRef.current.values()) off();
+    unregisterRef.current.clear();
+    registeredOnRef.current = null;
+  }, []);
+
+  const prepareForRender = useCallback(async () => {
+    offlineLeasesRef.current += 1;
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      offlineLeasesRef.current -= 1;
+    };
+    try {
+      await sources.drain();
+      return release;
+    } catch (error) {
+      release();
+      throw error;
+    }
+  }, [sources]);
 
   /**
    * ═══════════════════════════════════════════════════════════════════════════════════
@@ -831,15 +865,19 @@ export function useModelInference(
       }
       // T992: which texture each model node's preprocess actually reads, from the plan
       // itself — the source aspect the un-letterbox needs, never assumed from the output.
-      const sourceOf = new Map<string, string>();
+      const preprocessOf = new Map<string, { passId: string; sourceId: string }>();
       for (const pass of (compiled?.passes ?? []) as ReadonlyArray<{
         id?: string;
+        kind?: string;
+        nodeId?: string;
         textures?: ReadonlyArray<{ binding?: string; resourceId?: string }>;
       }>) {
-        if (typeof pass.id !== "string" || !pass.id.endsWith(":preprocess")) continue;
+        if (pass.kind !== "dispatch" || pass.id === undefined || pass.nodeId === undefined) continue;
         const source = pass.textures?.find((texture) => texture.binding === "sourceTexture");
         if (source?.resourceId !== undefined) {
-          sourceOf.set(pass.id.slice(0, -":preprocess".length), source.resourceId);
+          // Compiler pass IDs are namespaced and opaque. Ownership comes from nodeId,
+          // and the gate must use the exact ID the backend actually encodes.
+          preprocessOf.set(pass.nodeId, { passId: pass.id, sourceId: source.resourceId });
         }
       }
 
@@ -853,16 +891,21 @@ export function useModelInference(
         // pruning. It must not be tracked, must not acquire and must not download.
         const resultId = scratchResourceId(nodeId, kind.resultKey);
         if (!allocated.has(resultId)) continue;
+        const preprocess = preprocessOf.get(nodeId);
+        if (preprocess === undefined) {
+          throw new Error(`Inference node ${nodeId} has a result resource but no compiled preprocess pass.`);
+        }
         // The node's OWN parameters, through the resolver at no frame — the read a structural
         // compile makes, so the model and Input Size agree with the plan (T1525b); the node
         // definition still applies its own defaults (§T965). Per-run keys re-read in `describe`.
         const settings = kind.settings(inferenceParametersAt(node, graph, parametersRef.current, undefined));
         targets.push({
           nodeId,
+          preprocessPassId: preprocess.passId,
           kind,
           descriptor: settings.descriptor,
           size: sized.get(resultId) ?? [1, 1],
-          sourceSize: sized.get(sourceOf.get(nodeId) ?? "") ?? [1, 1],
+          sourceSize: sized.get(preprocess.sourceId) ?? [1, 1],
           settings,
           // §T976: the FLAT document's uniqued label, exactly as `analyzeChannelEntries`
           // reads it from the same graph — so `depth1:ready` names the node the canvas
@@ -887,6 +930,7 @@ export function useModelInference(
       // is a new object with an empty media registry whether or not one existed before.
       const attached = backendRef.current ?? null;
       if (attached !== registeredOnRef.current) {
+        sources.track([]);
         for (const off of unregisterRef.current.values()) off();
         unregisterRef.current.clear();
         registeredOnRef.current = attached;
@@ -905,11 +949,26 @@ export function useModelInference(
         for (const target of targets) {
           const sourceId = inferenceSourceIdFor(target.nodeId);
           if (unregisterRef.current.has(sourceId)) continue;
+          const offMedia = live.registerMediaSource(sourceId, {
+            currentFrame: () => sources.currentFrame(target.nodeId),
+          });
+          const offGate = live.registerDispatchGate(target.preprocessPassId, (frame, timing) => {
+            const current = targetsRef.current.find(candidate => candidate.nodeId === target.nodeId);
+            if (current === undefined || statesRef.current[current.descriptor.id]?.kind !== "ready") {
+              sources.cancelPreparation(target.nodeId);
+              return false;
+            }
+            // A render-produced input has no valid pixels before its first submission.
+            if (timing.source === undefined) {
+              sources.cancelPreparation(target.nodeId);
+              return false;
+            }
+            return sources.prepare(target.nodeId, frame,
+              offlineLeasesRef.current > 0 || frame.mode !== "realtime", timing.source);
+          });
           unregisterRef.current.set(
             sourceId,
-            live.registerMediaSource(sourceId, {
-              currentFrame: () => sources.currentFrame(target.nodeId),
-            }),
+            () => { offGate(); offMedia(); },
           );
         }
       }
@@ -1000,7 +1059,10 @@ export function useModelInference(
        * on a transport that publishes no absolute clock, so an unbounded timeline keeps
        * exactly the numbers it had.
        */
-      queueMicrotask(() => sources.sample(frame.frameIndex, absTimeSecondsOf(frame)));
+      queueMicrotask(() => {
+        // A lease may begin after this observer queued. Its owner alone settles inputs.
+        sources.samplePrepared(frame, offlineLeasesRef.current === 0);
+      });
     },
     [sink, sources, states],
   );
@@ -1014,7 +1076,7 @@ export function useModelInference(
         (candidate) => states[candidate.descriptor.id]?.kind === "ready",
       );
       if (!ready) return;
-      await sources.settle(frameIndex);
+      await sources.settlePrepared(frameIndex);
     },
     [sources, states],
   );
@@ -1039,8 +1101,8 @@ export function useModelInference(
   );
 
   return useMemo(
-    () => ({ observe, track, settle, notices, resolver }),
-    [observe, track, settle, notices, resolver],
+    () => ({ observe, track, settle, prepareForRender, notices, resolver }),
+    [observe, track, settle, prepareForRender, notices, resolver],
   );
 }
 
@@ -1192,4 +1254,3 @@ export function runNote(target: Pick<DepthTarget, "kind">, run: RunHealth | unde
   }
   return null;
 }
-

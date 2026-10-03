@@ -2,6 +2,7 @@ import { effect, frame, frameLoop, sampler, surface, timer, uniforms } from "vgp
 import type { Effect, Frame, PingPongTargets, StorageBuffer, Surface, SurfaceCanvas, Target, Timer, TimerSpan } from "vgpu";
 import { nativeInputTransportSize, NATIVE_INPUT_PACK_WGSL } from "../../models/native-input-layout.ts";
 import type { RuntimeDiagnostic } from "../../../domain/types/diagnostics.ts";
+import type { FrameEvaluationInput } from "../../../domain/types/frame.ts";
 // T933: the ONE place the project rate's default is applied. The scheduler is the third
 // reader of `fps` after the settings pane and the clock, and it used to be the one that
 // read the raw field.
@@ -13,6 +14,8 @@ import type {
 } from "../../../domain/types/backend.ts";
 import type {
   BackendStatus,
+  DispatchInputTiming,
+  DispatchSourceFrame,
   BuildStats,
   FrameLoopSettings,
   GpuFrameTiming,
@@ -39,7 +42,6 @@ import {
 } from "../diagnostics.ts";
 import { createFrameGuard } from "../frame-guard.ts";
 import { createPacedGate } from "../frame-pacing.ts";
-import { wgsl } from "../wgsl.ts";
 import {
   bytesPerPixelFor,
   estimateResourceBytes,
@@ -51,12 +53,15 @@ import {
   planUniformValues,
   readExecutionPlan,
   type PassDescriptor,
+  type BufferBindingDescriptor,
+  type TextureBindingDescriptor,
   type ResourceDescriptor,
   type UniformValues,
 } from "../plan.ts";
 import { dispatchFrameUniforms, sharedUniformsFromFrame } from "../shared-uniforms.ts";
 import { describeCapabilities, meetsBaseline } from "./capabilities.ts";
 import { browserGpuHost, type GpuHost, type GpuSession } from "./gpu-host.ts";
+import { BLIT_WGSL, RGBA_BLIT_WGSL } from "./presentation-shaders.ts";
 import {
   ResourceBuildError,
   bufferRegion,
@@ -123,12 +128,26 @@ export interface VgpuBackend extends LoomBackend {
   whenSettled(): Promise<void>;
 }
 
+/** Intrinsic copy extent; element CSS dimensions never describe video/image pixels. */
+function externalImageSize(image: unknown): readonly [number, number] | undefined {
+  if (typeof image !== "object" || image === null) return undefined;
+  const source = image as Record<string, unknown>;
+  const keys = "videoWidth" in source ? ["videoWidth", "videoHeight"]
+    : "naturalWidth" in source ? ["naturalWidth", "naturalHeight"]
+      : "displayWidth" in source ? ["displayWidth", "displayHeight"] : ["width", "height"];
+  const width = source[keys[0]!];
+  const height = source[keys[1]!];
+  return typeof width === "number" && Number.isInteger(width) && width > 0 &&
+    typeof height === "number" && Number.isInteger(height) && height > 0 ? [width, height] : undefined;
+}
+
 interface Program {
   readonly id: string;
   /** Mutable: `resize()` reconciles both so the compile cache never diverges from the GPU (R4). */
   signature: string;
   resourceDescriptors: ReadonlyArray<ResourceDescriptor>;
   readonly passes: ReadonlyArray<PassDescriptor>;
+  readonly textureFrames: Map<string, DispatchSourceFrame>;
   /**
    * T387: plan order with every substep region expanded — the order the ENCODER walks.
    *
@@ -138,17 +157,22 @@ interface Program {
    * what HAPPENS this frame, and the same pass object appears in it once per iteration.
    * Building resources from the expanded list would build the same pipeline fifty times.
    */
-  readonly encodePasses: ReadonlyArray<PassDescriptor>;
+  encodePasses: ReadonlyArray<PassDescriptor> | undefined;
+  /** Direct-path submit boundaries for encodePasses; no GPU objects are retained here. */
+  encodeSegments: ReadonlyArray<ReadonlyArray<PassDescriptor>> | undefined;
   /**
    * T425: live per-loop iteration counts, keyed by loopId. Seeded from the plan's
    * declared counts; `updateUniforms` on a loop-begin pass overwrites one, and the
-   * encoder re-expands against this map every frame — a substep count is a VALUE.
+   * encoder re-expands when a count changes — a substep count is a VALUE.
    */
   readonly loopCounts: Map<string, number>;
   readonly compiled: CompiledExecutionPlan;
   /** Latest uniform values per pass, including live updates. Survives a device rebuild. */
   readonly liveUniforms: Map<string, UniformValues>;
   resources: ResourceSet;
+  /** Resource → pass → bindings. Built outside frames; a swap visits only its consumers. */
+  textureConsumers: BindingConsumers<TextureBindingDescriptor>;
+  bufferConsumers: BindingConsumers<BufferBindingDescriptor>;
   /** externalTexture resource ids whose contents changed THIS frame (T253, §V136). */
   mediaDirty?: ReadonlySet<string>;
   /**
@@ -164,6 +188,30 @@ interface Program {
   pendingBufferClear: boolean;
   /** Something changed since the last encoded frame: uniforms, a compile, a reset. */
   dirty: boolean;
+}
+
+type BindingConsumers<T> = ReadonlyMap<string, ReadonlyMap<string, ReadonlyArray<T>>>;
+
+function indexBindingConsumers<T extends { readonly resourceId: string }>(
+  bindingsByPass: ReadonlyMap<string, ReadonlyArray<T>>,
+): BindingConsumers<T> {
+  const consumers = new Map<string, Map<string, T[]>>();
+  for (const [passId, bindings] of bindingsByPass) {
+    for (const binding of bindings) {
+      let passes = consumers.get(binding.resourceId);
+      if (passes === undefined) {
+        passes = new Map();
+        consumers.set(binding.resourceId, passes);
+      }
+      let matching = passes.get(passId);
+      if (matching === undefined) {
+        matching = [];
+        passes.set(passId, matching);
+      }
+      matching.push(binding);
+    }
+  }
+  return consumers;
 }
 
 interface LoopRegistration {
@@ -185,6 +233,7 @@ interface PresentationState {
   readonly modelInputSize?: readonly [number, number];
   /** §T1391b: `"source"` = backing store is the presented target's size, never the box's. */
   readonly sizing: "layout" | "source";
+  readonly alphaDisplay: "rgba" | "rgb";
   outputId: string;
   surface: Surface | undefined;
   blit: Effect | undefined;
@@ -201,14 +250,6 @@ interface PresentationState {
   presentedFrames: number;
   lastPresentTime: number | undefined;
 }
-
-/** Presenting is a GPU-to-GPU copy (§V7): sample the output, write the surface. */
-const BLIT_WGSL = wgsl`@group(0) @binding(0) var blitSampler: sampler;
-@group(0) @binding(1) var blitSource: texture_2d<f32>;
-@fragment
-fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
-  return textureSample(blitSource, blitSampler, uv);
-}`;
 
 export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend {
   const host = options.host ?? browserGpuHost();
@@ -246,6 +287,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
   let cookPolicy: CookPolicy = "always";
   /** sourceId → frame producer (T229, §V135). Backend-lifetime: survives recompiles and device loss. */
   const mediaSources = new Map<string, { source: MediaSource; token: object }>();
+  const mediaExtentFailures = new Map<string, string>();
+  const dispatchGates = new Map<string, { gate: (frame: FrameEvaluationInput, timing: DispatchInputTiming) => boolean }>();
   let presentationCounter = 0;
   let presentSampler: GPUSampler | undefined;
   /** GPU pass timer (T163). Exists only when the device has timestamp-query (§V12). */
@@ -708,10 +751,14 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           program.passes,
           guard,
         );
+        program.textureConsumers = indexBindingConsumers(program.resources.dynamicTextures);
+        program.bufferConsumers = indexBindingConsumers(program.resources.dynamicBuffers);
         resourceBuilds += 1;
         // Live values, not the ones the plan was compiled with: a rebuild must not roll a
         // parameter back to whatever it was when the shader last changed.
         flushUniforms(program);
+        estimatedBytes = estimatedProgramBytes(program);
+        mediaExtentFailures.clear();
       }
 
       halted = false;
@@ -758,12 +805,23 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     const block = target.resources.passUniforms.get(passId);
     if (!block) return;
     const merged = { ...(target.liveUniforms.get(passId) ?? {}), ...values };
-    target.liveUniforms.set(passId, merged);
     block.set(toMutable(merged));
+    target.liveUniforms.set(passId, merged);
   }
 
   function flushUniforms(target: Program): void {
     for (const [passId, values] of target.liveUniforms) applyUniforms(target, passId, values);
+  }
+
+  function estimatedProgramBytes(active: Program): number {
+    let bytes = estimateResourceBytes(active.resourceDescriptors);
+    for (const descriptor of active.resourceDescriptors) {
+      if (descriptor.kind !== "externalTexture") continue;
+      const entry = active.resources.externalTextures.get(descriptor.id);
+      if (entry !== undefined) bytes += (entry.size[0] * entry.size[1] - descriptor.size[0] * descriptor.size[1]) *
+        bytesPerPixelFor(descriptor.format as Parameters<typeof bytesPerPixelFor>[0]);
+    }
+    return bytes;
   }
 
   function clearTemporalHistory(
@@ -847,6 +905,14 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
        and therefore costs no webcam permission re-prompt (§V754: the existing signal
        gains a reason, it does not gain a policy). */
     const boundaryScoped = options?.buffers === true && resourceIds === undefined;
+    // Provenance is invalid whenever the pixels it describes are cleared.
+    if (boundaryScoped) activeProgram.textureFrames.clear();
+    else for (const id of activeProgram.textureFrames.keys()) {
+      if ((resourceIds === undefined || resourceIds.includes(id)) &&
+          (activeProgram.resources.pingPongs.has(id) || activeProgram.resources.rings.has(id))) {
+        activeProgram.textureFrames.delete(id);
+      }
+    }
     const boundaryTargets = boundaryScoped ? [...activeProgram.resources.targets.values()] : [];
     const boundaryExternals = boundaryScoped
       ? [...activeProgram.resources.externalTextures.values()]
@@ -979,6 +1045,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     // T1329b: the sizing vgpu used to do at frame advance, at the same boundary, minus the
     // part that cannot be held for the duration of a gesture.
     fitSurfacesToLayout();
+    reconcileExternalTextureExtents();
     flushRings(); // T321: archive last frame's ring writes before anything binds a tap.
     const previous = currentFrame;
     currentFrame = f;
@@ -1055,12 +1122,23 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
 
   /** T425: this frame's expanded order — declared counts overridden by the live map. */
   function expandedPasses(active: Program): ReadonlyArray<PassDescriptor> {
-    return expandLoops(active.passes, (loopId, declared) => active.loopCounts.get(loopId) ?? declared);
+    if (active.encodePasses === undefined) {
+      active.encodePasses = expandLoops(active.passes, (loopId, declared) => active.loopCounts.get(loopId) ?? declared);
+    }
+    return active.encodePasses;
+  }
+
+  function setLoopCount(active: Program, loopId: string, count: number): void {
+    if (active.loopCounts.get(loopId) === count) return;
+    active.loopCounts.set(loopId, count);
+    active.encodePasses = undefined;
+    active.encodeSegments = undefined;
   }
 
   function encode(
     f: Frame,
     active: Program,
+    input: FrameEvaluationInput,
     passes: ReadonlyArray<PassDescriptor> = expandedPasses(active),
     withPresentations = true,
   ): void {
@@ -1122,6 +1200,26 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           continue;
         }
         if (pass.kind === "dispatch") {
+          // Reserve only an input its CPU consumer can use. The decision is made while
+          // encoding, rather than again after a model may have finished asynchronously.
+          const demand = dispatchGates.get(pass.id);
+          if (demand !== undefined) {
+            const resourceId = pass.textures?.[0]?.resourceId;
+            const source = resourceId !== undefined && active.resources.externalTextures.has(resourceId)
+              ? { renderIndex: framesSubmitted + 1, frameIndex: input.frameIndex,
+                  timeSeconds: input.absTimeSeconds ?? input.timeSeconds }
+              : resourceId === undefined ? undefined : active.textureFrames.get(resourceId);
+            if (!demand.gate(input, { renderIndex: framesSubmitted + 1, source })) continue;
+          }
+          if (demand !== undefined) {
+            if (!active.resources.computes.has(pass.id)) {
+              throw new Error(`Demanded dispatch ${pass.id} has no compute pipeline.`);
+            }
+            if ("indirect" in (pass.workgroups as object) &&
+              !active.resources.buffers.has((pass.workgroups as { indirect: string }).indirect)) {
+              throw new Error(`Demanded dispatch ${pass.id} has no indirect workgroup buffer.`);
+            }
+          }
           // Inside an OPEN frame (the loop path) a dispatch cannot be ordered after
           // this frame's render passes — vgpu submits it now, the frame submits later.
           // Kernel→draw chains are therefore correct here; an effect→dispatch read
@@ -1166,6 +1264,11 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
                 ...(span === undefined ? {} : { timer: span, frame: f }),
               }),
             );
+            // Indirect draws submit immediately; a later preprocess reads this render.
+            if (dispatchGates.size > 0) active.textureFrames.set(pass.target, {
+              renderIndex: framesSubmitted + 1, frameIndex: input.frameIndex,
+              timeSeconds: input.absTimeSeconds ?? input.timeSeconds,
+            });
           } else {
             // Literal draws encode through f.pass, which is what gives them a clear
             // knob (T180 - clear:false is the trails pattern) and a GPU timer span
@@ -1231,35 +1334,49 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
    * segment only once that segment holds something the FRAME will submit — everything
    * before it has already run.
    */
-  function encodeSegmented(gpu: GpuSession["gpu"], active: Program): void {
-    const segments: PassDescriptor[][] = [];
-    let current: PassDescriptor[] = [];
-    /**
-     * Does `current` hold a pass a later dispatch would overtake? Only `f.pass` work
-     * really waits for the frame's submit — an indirect draw self-submits like a
-     * dispatch — but every non-dispatch kind sets this, because an unnecessary split
-     * costs one empty command buffer and a missing one reorders the plan.
-     */
-    let deferred = false;
-    // T387: the EXPANDED order — the offline/export path runs the same number of substeps
-    // the live path does, or the same project renders two different pictures (§V47).
-    for (const pass of expandedPasses(active)) {
-      if (pass.kind === "dispatch" && deferred) {
-        segments.push(current);
-        current = [];
-        deferred = false;
-      }
-      if (pass.kind !== "dispatch") deferred = true;
-      current.push(pass);
+  function stampRenderedTextures(active: Program, passes: ReadonlyArray<PassDescriptor>, input: FrameEvaluationInput): void {
+    if (dispatchGates.size === 0) return;
+    const stamp: DispatchSourceFrame = { renderIndex: framesSubmitted + 1,
+      frameIndex: input.frameIndex, timeSeconds: input.absTimeSeconds ?? input.timeSeconds };
+    for (const pass of passes) {
+      if (pass.kind === "effect" || pass.kind === "draw") active.textureFrames.set(pass.target, stamp);
     }
-    // The final frame always runs, even empty: it carries the presentations.
-    segments.push(current);
+  }
+
+  function encodeSegmented(gpu: GpuSession["gpu"], active: Program, input: FrameEvaluationInput): void {
+    let segments = active.encodeSegments;
+    if (segments === undefined) {
+      const next: PassDescriptor[][] = [];
+      let current: PassDescriptor[] = [];
+      /**
+       * Does `current` hold a pass a later dispatch would overtake? Only `f.pass` work
+       * really waits for the frame's submit — an indirect draw self-submits like a
+       * dispatch — but every non-dispatch kind sets this, because an unnecessary split
+       * costs one empty command buffer and a missing one reorders the plan.
+       */
+      let deferred = false;
+      // T387: the EXPANDED order — the offline/export path runs the same number of substeps
+      // the live path does, or the same project renders two different pictures (§V47).
+      for (const pass of expandedPasses(active)) {
+        if (pass.kind === "dispatch" && deferred) {
+          next.push(current);
+          current = [];
+          deferred = false;
+        }
+        if (pass.kind !== "dispatch") deferred = true;
+        current.push(pass);
+      }
+      // The final frame always runs, even empty: it carries the presentations.
+      next.push(current);
+      segments = next;
+      active.encodeSegments = segments;
+    }
 
     segments.forEach((passes, index) => {
       const final = index === segments.length - 1;
       frame(gpu, (f) => {
         try {
-          encode(f, active, passes, final);
+          encode(f, active, input, passes, final);
         } catch (error) {
           // T1261: PARTIAL SUBMIT, on purpose. vgpu ≥ 0.4 cancels a frame whose callback
           // throws (nothing encoded reaches the queue); 0.3.1 submitted what was there.
@@ -1278,6 +1395,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           throw error;
         }
       });
+      stampRenderedTextures(active, passes, input);
     });
   }
 
@@ -1300,10 +1418,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       active.resources.computes.get(passId) ??
       active.resources.draws.get(passId);
 
-    if (pair || ring) {
-      for (const [passId, bindings] of active.resources.dynamicTextures) {
-        const matching = bindings.filter((binding) => binding.resourceId === resourceId);
-        if (matching.length === 0) continue;
+    const textureConsumers = active.textureConsumers.get(resourceId);
+    if ((pair || ring) && textureConsumers !== undefined) {
+      for (const [passId, matching] of textureConsumers) {
         const drawable = settableFor(passId);
         if (!drawable) continue;
         const values: Record<string, unknown> = {};
@@ -1322,10 +1439,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         drawable.set(values);
       }
     }
-    if (bufferPair) {
-      for (const [passId, bindings] of active.resources.dynamicBuffers) {
-        const matching = bindings.filter((binding) => binding.resourceId === resourceId);
-        if (matching.length === 0) continue;
+    const bufferConsumers = active.bufferConsumers.get(resourceId);
+    if (bufferPair && bufferConsumers !== undefined) {
+      for (const [passId, matching] of bufferConsumers) {
         const drawable = settableFor(passId);
         if (!drawable) continue;
         const values: Record<string, unknown> = {};
@@ -1388,6 +1504,56 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     }
   }
 
+  /** Source storage follows decoded pixels; Common controls only the shader's output. */
+  function reconcileExternalTextureExtents(): void {
+    if (!session || !program) return;
+    guard.assertOutsideFrame("media source texture resize");
+    const active = program;
+    for (const [resourceId, entry] of active.resources.externalTextures) {
+      const mediaFrame = mediaSources.get(entry.sourceId)?.source.currentFrame();
+      if (mediaFrame === undefined) continue;
+      // Bytes have an authored extent, unlike a browser image's intrinsic pixel size.
+      const descriptor = mediaFrame.bytes === undefined ? undefined
+        : active.resourceDescriptors.find(resource => resource.id === resourceId && resource.kind === "externalTexture");
+      const size = mediaFrame.bytes !== undefined && descriptor?.kind === "externalTexture"
+        ? descriptor.size : externalImageSize(mediaFrame.image);
+      if (size === undefined || (size[0] === entry.size[0] && size[1] === entry.size[1])) continue;
+      const max = capabilities?.limits["maxTextureDimension2D"] ?? 0;
+      if (max > 0 && (size[0] > max || size[1] > max)) {
+        const rejected = `${size[0]}x${size[1]}`;
+        if (mediaExtentFailures.get(resourceId) !== rejected) {
+          mediaExtentFailures.set(resourceId, rejected);
+          hub.report(backendDiagnostic("error", BackendDiagnosticCode.resourceLimit,
+            `Media source "${entry.sourceId}" is ${rejected}, above this device's ${max}px texture limit.`,
+            { suggestion: "Use a smaller source or re-export the video at a supported resolution." }));
+        }
+        continue;
+      }
+      mediaExtentFailures.delete(resourceId);
+      const texture = session.gpu.device.createTexture({
+        kind: "2d", size, format: entry.format as GPUTextureFormat,
+        usage: ["texture_binding", "copy_dst", "render_attachment"],
+        label: `${entry.sourceId} source texture`,
+      });
+      active.resources = {
+        ...active.resources,
+        externalTextures: new Map(active.resources.externalTextures).set(resourceId, { ...entry, texture, size, lastFrameId: undefined }),
+      };
+      for (const pass of active.passes) {
+        if (pass.kind !== "effect" && pass.kind !== "draw" && pass.kind !== "dispatch") continue;
+        const bindings = (pass.textures ?? []).filter(binding => binding.resourceId === resourceId);
+        if (bindings.length === 0) continue;
+        const drawable = active.resources.effects.get(pass.id) ?? active.resources.draws.get(pass.id) ?? active.resources.computes.get(pass.id);
+        if (drawable === undefined) continue;
+        evictBindGroups(drawable);
+        drawable.set(Object.fromEntries(bindings.map(binding => [binding.binding, texture])));
+      }
+      entry.texture.destroy();
+      estimatedBytes += (size[0] * size[1] - entry.size[0] * entry.size[1]) * bytesPerPixelFor(entry.format as Parameters<typeof bytesPerPixelFor>[0]);
+      active.dirty = true;
+    }
+  }
+
   /**
    * Uploads new media frames into their external textures (T229, §V136).
    *
@@ -1411,6 +1577,10 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       const mediaFrame = registered.source.currentFrame();
       if (mediaFrame === undefined ||
           (mediaFrame.frameId === entry.lastFrameId && registered.token === entry.lastSourceToken)) continue;
+      const imageSize = mediaFrame.bytes === undefined ? externalImageSize(mediaFrame.image) : undefined;
+      // A live surface can resize after the frame prelude. Wait for next frame's
+      // reconciliation instead of copying a cropped subset or allocating while encoding.
+      if (imageSize !== undefined && (imageSize[0] !== entry.size[0] || imageSize[1] !== entry.size[1])) continue;
       entry.lastSourceToken = registered.token;
       try {
         if (mediaFrame.bytes !== undefined) {
@@ -1609,7 +1779,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       if (isPair(source)) preparePresentationView(source.write);
       const bindValue = presentationBinding(readTarget);
       if (!p.blit) {
-        p.blit = effect(active.gpu, BLIT_WGSL, {
+        p.blit = effect(active.gpu, p.alphaDisplay === "rgba" ? RGBA_BLIT_WGSL : BLIT_WGSL, {
           set: { blitSampler: presentSampler, blitSource: bindValue },
           label: `present:${p.id}`,
         });
@@ -2021,6 +2191,11 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         for (const [passId, values] of planUniformValues(read.passes)) {
           applyUniforms(program, passId, values);
         }
+        for (const pass of read.passes) {
+          if (pass.kind === "loop" && pass.edge === "begin") {
+            setLoopCount(program, pass.loopId, pass.count ?? 1);
+          }
+        }
         program.dirty = true; // values moved; the next frame must draw them (§V159)
         stale = false;
         return program.compiled;
@@ -2132,7 +2307,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         signature,
         resourceDescriptors: read.resources,
         passes: read.passes,
+        textureFrames: new Map(),
         encodePasses: expandLoops(read.passes),
+        encodeSegments: undefined,
         loopCounts: new Map(
           read.passes.flatMap((pass) =>
             pass.kind === "loop" && pass.edge === "begin" ? [[pass.loopId, pass.count ?? 1] as const] : [],
@@ -2141,6 +2318,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         compiled: { id, logical: plan },
         liveUniforms: new Map(planUniformValues(read.passes)),
         resources,
+        textureConsumers: indexBindingConsumers(resources.dynamicTextures),
+        bufferConsumers: indexBindingConsumers(resources.dynamicBuffers),
         everyFrame: planRequiresEveryFrame(read.passes, read.resources),
         dirty: true, // a fresh program must draw its first frame
         pendingBufferClear: false,
@@ -2151,7 +2330,10 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       flushUniforms(program);
       lastBuildStats = stats;
       stale = false;
-      estimatedBytes = estimateResourceBytes(read.resources);
+      estimatedBytes = estimatedProgramBytes(program);
+      for (const resourceId of mediaExtentFailures.keys()) {
+        if (!resources.externalTextures.has(resourceId)) mediaExtentFailures.delete(resourceId);
+      }
       // Rebuilt outputs replaced their objects; every attached surface rebinds (T87),
       // and preview bindings into the main program get re-pointed (T161).
       ensureAllPresentations();
@@ -2168,6 +2350,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       if (currentFrame === undefined) {
         retryDirtyPreviewHosts();
         fitSurfacesToLayout(); // T1329b, same seam: outside the frame, before anything encodes.
+        reconcileExternalTextureExtents();
         flushRings(); // T321: same reasoning, same seam.
       }
       if (compiled.id !== program.id) {
@@ -2191,7 +2374,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // WHICH numbers is `dispatchFrameUniforms`'s call to make, not this loop's (T489):
       // the pointer (T367/§V182) and the absolute clock (T461/T468) are read off the object
       // just handed to the shared block, so a kernel and a fragment shader cannot come to
-      // disagree about either. Passes whose block declares none of them ignore the keys.
+      // disagree about either. Supply only fields declared in the pass's initial uniform
+      // contract: vgpu 0.5 rejects unknown fields instead of silently ignoring them.
+      let dispatchValues: Array<[string, UniformValues[string]]> | undefined;
       for (const pass of active.passes) {
         if (pass.kind === "dispatch" && pass.uniformBinding !== undefined) {
           // T510: firstRun = 1u exactly when this pass's storage was created or cleared
@@ -2202,10 +2387,15 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             (pass.buffers ?? []).some((binding) =>
               active.resources.freshStorage.has(binding.resourceId),
             );
-          applyUniforms(active, pass.id, {
-            ...dispatchFrameUniforms(frameInputs.frame, shared),
-            firstRun: firstRun ? 1 : 0,
-          });
+          const values: Record<string, UniformValues[string]> = {};
+          dispatchValues ??= Object.entries(dispatchFrameUniforms(frameInputs.frame, shared));
+          for (const [name, value] of dispatchValues) {
+            if (pass.uniforms !== undefined && Object.hasOwn(pass.uniforms, name)) values[name] = value;
+          }
+          if (pass.uniforms !== undefined && Object.hasOwn(pass.uniforms, "firstRun")) {
+            values["firstRun"] = firstRun ? 1 : 0;
+          }
+          if (Object.keys(values).length > 0) applyUniforms(active, pass.id, values);
         }
       }
       // T321: passes reading a ring as an ARRAY need to know where "now" is. The
@@ -2248,10 +2438,11 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
 
       const open = currentFrame;
       if (open) {
-        encode(open, active);
+        encode(open, active, frameInputs.frame);
+        stampRenderedTextures(active, expandedPasses(active), frameInputs.frame);
       } else {
         try {
-          encodeSegmented(session.gpu, active);
+          encodeSegmented(session.gpu, active, frameInputs.frame);
         } catch (error) {
           // Direct (non-loop) render: the caller sees the throw, the problems tab sees
           // the diagnostic. Loop renders get the same treatment inside runFrame().
@@ -2287,6 +2478,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         return;
       }
       for (const t of found) t.resize(size);
+      program?.textureFrames.delete(outputId);
       // Alternate views belong to the old texture allocation, not the retained Target.
       // Recreate/rebind outside the frame, just as after a structural rebuild.
       ensureAllPresentations();
@@ -2304,7 +2496,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             : resource,
         );
         program.signature = planStructureSignature(program.resourceDescriptors, program.passes);
-        estimatedBytes = estimateResourceBytes(program.resourceDescriptors);
+        estimatedBytes = estimatedProgramBytes(program);
       }
 
       // A resized feedback pair carries garbage from the old resolution (§V23 resetOn).
@@ -2347,7 +2539,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       readbacks += 1;
       // vgpu returns an owned, unpadded Uint8Array after releasing its staging buffer.
       // Re-wrapping that array copies the entire frame (63 MiB at 4K rgba16float).
-      const raw = await first.read();
+      const raw = await first.color.read({ mipLevel: 0, region: "all" });
       if (raw.byteLength !== width * height * bytesPerPixel) {
         throw new Error(
           `readOutput("${outputId}") returned ${raw.byteLength} bytes; expected ${width * height * bytesPerPixel} for ${width}×${height} ${format}.`,
@@ -2454,7 +2646,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       if (loopBegin !== undefined && loopBegin.kind === "loop") {
         const requested = update.values["count"];
         if (typeof requested === "number" && Number.isFinite(requested)) {
-          program.loopCounts.set(loopBegin.loopId, requested);
+          setLoopCount(program, loopBegin.loopId, requested);
         }
         return;
       }
@@ -2518,6 +2710,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         label: options.label,
         ...(options.modelInputSize ? { modelInputSize: options.modelInputSize } : {}),
         sizing: options.sizing ?? "layout",
+        alphaDisplay: options.alphaDisplay ?? "rgb",
         outputId: options.outputId,
         surface: undefined,
         blit: undefined,
@@ -2913,6 +3106,14 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       };
     },
 
+    registerDispatchGate(passId, gate) {
+      const registration = { gate };
+      dispatchGates.set(passId, registration);
+      return () => {
+        if (dispatchGates.get(passId) === registration) dispatchGates.delete(passId);
+      };
+    },
+
     async whenSettled() {
       await recovery;
       await session?.gpu.settled();
@@ -2923,6 +3124,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       disposed = true;
       stopLoops();
       loops.clear();
+      dispatchGates.clear();
+      mediaExtentFailures.clear();
       for (const p of presentations.values()) {
         p.disposed = true;
         try {

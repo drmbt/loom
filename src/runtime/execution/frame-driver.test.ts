@@ -87,6 +87,7 @@ function recordingBackend(): LoomBackend & {
     compileShader: () => Promise.resolve({ ok: false, validated: false, diagnostics: [] }),
     readBuffer: () => Promise.resolve(new ArrayBuffer(0)),
     registerMediaSource: () => () => {},
+    registerDispatchGate: () => () => {},
     setCookPolicy() {},
     setSurfaceResizeHold() {},
   };

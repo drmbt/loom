@@ -52,6 +52,23 @@ function fiber(name: string, options: { flags?: number; child?: MutableFiber | n
 const root = (tree: MutableFiber): { current: PerfFiber } => ({ current: fiber("HostRoot", { child: tree }) as PerfFiber });
 
 describe("walkCommit", () => {
+  it("records opt-in inclusive component durations without charging stale children", () => {
+    const stale = { ...fiber("Inspector", { flags: PERFORMED_WORK }), actualDuration: 99 };
+    const bailed = fiber("Pane", { child: stale });
+    bailed.alternate = { ...bailed };
+    const graph = { ...fiber("GraphPane", { flags: PERFORMED_WORK, sibling: bailed }), actualDuration: 0.8 };
+    const app = { ...fiber("App", { flags: PERFORMED_WORK, child: graph }), actualDuration: 1 };
+    expect(walkCommit(root(app), PERFORMED_WORK, ["App", "GraphPane", "Inspector"]).timings)
+      .toEqual({ App: { renders: 1, inclusiveMs: 1 }, GraphPane: { renders: 1, inclusiveMs: 0.8 } });
+    expect(walkCommit(root(app), PERFORMED_WORK).timings).toBeUndefined();
+  });
+
+  it("refuses missing component timing rather than reporting zero", () => {
+    const app = fiber("App", { flags: PERFORMED_WORK });
+    expect(() => walkCommit(root(app), PERFORMED_WORK, ["App"]))
+      .toThrow("Missing React render duration for App");
+  });
+
   it("counts every fiber React marked PerformedWork, by component name", () => {
     // HostRoot's child is the tree of this commit: two CostCells and a ValuePlot rendered,
     // a Presence did not.

@@ -37,7 +37,7 @@ export interface ScenarioResult {
   readonly scriptMs: Record<Category, number>;
   readonly topEntries: Array<{ label: string; ms: number }>;
   readonly spans: Record<string, { count: number; ms: number }>;
-  readonly reactCommits: { count: number; actualDurationMs: number[]; performedFibers: (number | null)[]; signatures: (string | null)[] };
+  readonly reactCommits: { count: number; actualDurationMs: number[]; performedFibers: (number | null)[]; signatures: (string | null)[]; componentTimings?: CommitRecord["componentTimings"][] };
   readonly renders: Record<string, number>;
   /**
    * The idle scenarios measure the frame budget with the fiber walk OFF, so their windows
@@ -182,6 +182,9 @@ function analyse(
       actualDurationMs: commits.map((commit) => commit.actualDuration),
       performedFibers,
       signatures: commits.map((commit) => commit.signature),
+      ...(commits.some(commit => commit.componentTimings !== undefined)
+        ? { componentTimings: commits.map(commit => commit.componentTimings) }
+        : {}),
     },
     renders: captured.renders,
     walkProbe: meta.walkProbe ?? null,
@@ -226,7 +229,8 @@ async function selectDockTab(page: Page, name: string): Promise<void> {
 export async function scenarioIdlePlaying(context: ScenarioContext, pass: number, tab: "examples" | "performance"): Promise<ScenarioResult> {
   const { page } = context;
   await selectDockTab(page, tab);
-  await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+  const transport = page.getByRole("group", { name: "Transport", exact: true });
+  await expect(transport.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   await page.waitForTimeout(3000);
   const key = `A-${tab}-${pass}`;
   const captured = await capture(context, key, false, () => page.waitForTimeout(5000));
@@ -245,15 +249,16 @@ export async function scenarioIdlePlaying(context: ScenarioContext, pass: number
 /** B — idle, paused: what still runs at display rate with the transport stopped. */
 export async function scenarioIdlePaused(context: ScenarioContext, pass: number): Promise<ScenarioResult> {
   const { page } = context;
-  await page.getByRole("button", { name: "Pause" }).click();
-  await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+  const transport = page.getByRole("group", { name: "Transport", exact: true });
+  await transport.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(transport.getByRole("button", { name: "Play", exact: true })).toBeVisible();
   await page.waitForTimeout(1500);
   const key = `B-${pass}`;
   const captured = await capture(context, key, false, () => page.waitForTimeout(5000));
   const hub = await readHub(page);
   const probe = await walkProbe(context, key, WALK_PROBE_MS);
-  await page.getByRole("button", { name: "Play" }).click();
-  await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+  await transport.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(transport.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   return analyse(context, captured, key, {
     scenario: "B",
     variant: "transport paused",

@@ -4,7 +4,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { useSyncExternalStore } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import type { GraphDocument } from "@domain/types/graph.ts";
+import type { GraphPatchOperation } from "@domain/types/patch.ts";
+import { isParameterSlot, withMode } from "@domain/parameters/slots.ts";
+import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
+import type { PhoneDoorView } from "./phone-door-copy.ts";
 import { createAppRuntime } from "../../app/app-runtime.ts";
 import type { AppRuntime } from "../../app/app-runtime.ts";
 import { ControlsPane } from "./controls-pane.tsx";
@@ -18,6 +23,18 @@ import surface from "./panel-surface.module.css";
  * button that is visibly held and counts its presses, what each control drives as chips
  * that can be let go of, in a grid that uses the pane's width.
  */
+const phoneRenders = vi.hoisted(() => ({ count: 0 }));
+vi.mock("./phone-door.tsx", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./phone-door.tsx")>();
+  return {
+    ...original,
+    PhoneDoorButton: (props: Parameters<typeof original.PhoneDoorButton>[0]) => {
+      phoneRenders.count += 1;
+      return original.PhoneDoorButton(props);
+    },
+  };
+});
+beforeAll(installDomStubs);
 afterEach(cleanup);
 
 async function runtimeWith(): Promise<AppRuntime> {
@@ -59,6 +76,66 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
 const node = (runtime: AppRuntime, label: string) => Object.values(runtime.bus.store.getGraph().nodes).find((each) => each.label === label)!;
 
 describe("T1388b — the controls pane", () => {
+  it("uses one inventory pass per nodes revision, no pass for edge revisions, and keeps the empty phone surface quiet", () => {
+    const runtime = createAppRuntime({ identityStorage: null });
+    let scans = 0;
+    const counted = (nodes: GraphDocument["nodes"]) => new Proxy(nodes, {
+      ownKeys(target) {
+        scans += 1;
+        return Reflect.ownKeys(target);
+      },
+    });
+    let graph: GraphDocument = {
+      revision: 1,
+      nodes: counted({ solid: { id: "solid", type: "solid", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} } }),
+      edges: {},
+      groups: {},
+    };
+    let phone: PhoneDoorView = {
+      state: null, pending: false, publishedPanels: 0, refusal: null,
+      awaitingHelper: false, open: vi.fn(), close: vi.fn(), dismissRefusal: vi.fn(),
+    };
+    const draw = () => <ControlsPane graph={graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation} phone={phone} />;
+    const view = render(draw());
+    expect(scans).toBe(1);
+    const mounted = phoneRenders.count;
+    expect(mounted).toBeGreaterThan(0);
+
+    for (let edit = 0; edit < 60; edit++) {
+      graph = { ...graph, revision: graph.revision + 1, nodes: counted({ solid: { ...graph.nodes["solid"]!, parameters: { color: [edit / 60, 0, 0, 1] } } }) };
+      view.rerender(draw());
+    }
+    expect(scans).toBe(61);
+    expect(phoneRenders.count).toBe(mounted);
+    expect(screen.getByText("No controls")).toBeDefined();
+
+    for (let edit = 0; edit < 60; edit++) {
+      graph = { ...graph, revision: graph.revision + 1, edges: {} };
+      view.rerender(draw());
+    }
+    expect(scans).toBe(61);
+    expect(phoneRenders.count).toBe(mounted);
+
+    phone = { ...phone, pending: true };
+    view.rerender(draw());
+    expect(phoneRenders.count).toBe(mounted + 1);
+    fireEvent.click(screen.getByRole("button", { name: "Phone" }));
+    expect(screen.getByText("Opening…")).toBeDefined();
+
+    graph = {
+      ...graph, revision: graph.revision + 1,
+      nodes: { ...graph.nodes, fader: { id: "fader", type: "slider", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { channel: "gain", value: 0.5 } } },
+    };
+    view.rerender(draw());
+    expect(screen.queryByText("No controls")).toBeNull();
+    expect(screen.getByRole("slider", { name: "gain" })).toBeDefined();
+    graph = { ...graph, revision: graph.revision + 1, nodes: { solid: graph.nodes["solid"]! } };
+    view.rerender(draw());
+    expect(screen.getByText("No controls")).toBeDefined();
+    expect(screen.queryByRole("slider", { name: "gain" })).toBeNull();
+    runtime.dispose();
+  });
+
   it("lays the Panel out and a drag writes the slider node's value", async () => {
     const runtime = await runtimeWith();
     render(<Pane runtime={runtime} />);
@@ -82,6 +159,35 @@ describe("T1388b — the controls pane", () => {
 });
 
 describe("T1513b — the controls show their state", () => {
+  it("reads changed target bindings and names from the current full graph while widgets remain unchanged", async () => {
+    const runtime = await runtimeWith();
+    render(<Pane runtime={runtime} />);
+    const blur = node(runtime, "blur1");
+    const fader = node(runtime, "fader1");
+    const binding = blur.parameters["size"]!;
+    if (!isParameterSlot(binding)) throw new Error("Expected the fixture's expression slot");
+    const constant = withMode(binding, "static", 7);
+    if (constant === null) throw new Error("Expected the retained static binding");
+    const apply = async (operations: GraphPatchOperation[]) => {
+      await act(async () => {
+        const result = await runtime.bus.execute("graph.applyPatch", {
+          baseRevision: runtime.bus.store.getRevision(), operations,
+        }, runtime.invocation);
+        expect(result.status).toBe("applied");
+      });
+      expect(runtime.bus.store.getGraph().nodes[fader.id]).toBe(fader);
+    };
+    expect(document.querySelector("[data-target='blur1.size']")).not.toBeNull();
+    await apply([{ op: "setNodeLabel", nodeId: blur.id, label: "warm1" }]);
+    expect(document.querySelector("[data-target='blur1.size']")).toBeNull();
+    expect(document.querySelector("[data-target='warm1.size']")).not.toBeNull();
+    await apply([{ op: "setParameters", nodeId: blur.id, parameters: { size: constant } }]);
+    expect(document.querySelector("[data-target='warm1.size']")).toBeNull();
+    await apply([{ op: "setParameters", nodeId: blur.id, parameters: { size: binding } }]);
+    expect(document.querySelector("[data-target='warm1.size']")).not.toBeNull();
+    runtime.dispose();
+  });
+
   it("a toggle is a switch that says whether it is on, and pressing it flips the node", async () => {
     const runtime = await runtimeWith();
     render(<Pane runtime={runtime} />);

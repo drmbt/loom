@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { ComponentSummary, InstanceUpgradeSummary } from "@domain/components/commands.ts";
 import type { ComponentRegistryView } from "@domain/components/registry.ts";
-import { instanceDisplayNames } from "@domain/components/instance.ts";
+import { instanceDisplayNames, isComponentInstance } from "@domain/components/instance.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { ComponentId, NodeId } from "@domain/types/ids.ts";
 import { Button } from "@ui/primitives/button.tsx";
+import { useStoreSelector } from "@ui/hooks/use-store-selector.ts";
 import { LibraryPanel, LibrarySearch } from "./library-panel.tsx";
 import styles from "./library.module.css";
 
@@ -55,6 +56,24 @@ interface Placement {
   mode: "linked" | "detached";
 }
 
+// Upgrades and instance display names read ids and pinned component types, never
+// parameter values, positions, edges or preview state. Keep the graph only for naming.
+function componentUsage(graph: GraphDocument) {
+  const instances: Array<readonly [string, string]> = [];
+  for (const nodeId of Object.keys(graph.nodes).sort()) {
+    const node = graph.nodes[nodeId];
+    if (node !== undefined && isComponentInstance(node)) instances.push([nodeId, node.type]);
+  }
+  return { graph, instances };
+}
+
+function sameUsage(a: ReturnType<typeof componentUsage>, b: ReturnType<typeof componentUsage>): boolean {
+  return a.instances.length === b.instances.length && a.instances.every((instance, index) => {
+    const other = b.instances[index];
+    return other !== undefined && instance[0] === other[0] && instance[1] === other[1];
+  });
+}
+
 export function ComponentLibrary({
   bus,
   context,
@@ -63,11 +82,13 @@ export function ComponentLibrary({
   position,
   onPlaced,
 }: ComponentLibraryProps) {
-  const graph = useSyncExternalStore<GraphDocument>(
+  const usage = useStoreSelector(
     bus.store.subscribe,
     bus.store.getGraph,
-    bus.store.getGraph,
+    componentUsage,
+    sameUsage,
   );
+  const graph = usage.graph;
 
   const [catalogueRevision, bumpCatalogue] = useState(0);
   useEffect(
@@ -94,8 +115,8 @@ export function ComponentLibrary({
     setUpgrades(stale);
   }, [bus, context]);
 
-  // Both sources move independently: the graph when an instance is placed or upgraded,
-  // the catalogue when a definition is registered.
+  // Parameter edits leave both query answers unchanged. Refresh when component usage
+  // changes or the catalogue changes, including re-authoring without a graph revision.
   useEffect(() => {
     void refresh();
   }, [refresh, graph, catalogueRevision]);

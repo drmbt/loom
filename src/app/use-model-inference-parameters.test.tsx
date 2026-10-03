@@ -128,11 +128,23 @@ async function runsAcross(
       terminate() {}
     },
   );
+  const gates = new Map<string, Parameters<LoomBackend["registerDispatchGate"]>[1]>();
+  const registerDispatchGate = vi.fn((passId: string, gate: Parameters<LoomBackend["registerDispatchGate"]>[1]) => {
+    gates.set(passId, gate);
+    return () => { gates.delete(passId); };
+  });
+  const status = { framesSubmitted: 0 };
+  const readBuffer = vi.fn(async () => new ArrayBuffer(16));
   const backend = {
-    readBuffer: async () => new ArrayBuffer(16),
+    status,
+    registerDispatchGate,
+    readBuffer,
     registerMediaSource: () => () => undefined,
   } as unknown as LoomBackend;
   const plan = compileGraph({ graph, settings: DEFAULT_PROJECT_SETTINGS, registry, capabilities: TIER_B_CAPABILITIES });
+  expect(plan.ok).toBe(true);
+  const preprocess = plan.passes.find((pass) => pass.kind === "dispatch" && pass.nodeId === "cut");
+  if (preprocess === undefined) throw new Error("Matte has no compiled preprocess pass");
   const view = renderHook(() => useModelInference(backend, undefined, undefined, undefined, reads));
   act(() => view.result.current.track(graph, plan));
   const settle = async () =>
@@ -140,11 +152,29 @@ async function runsAcross(
       for (let tick = 0; tick < 4; tick += 1) await new Promise((resolve) => setTimeout(resolve, 0));
     });
   await settle();
+  expect(registerDispatchGate).toHaveBeenCalledOnce();
+  const gate = gates.get(preprocess.id);
+  if (gate === undefined) throw new Error("Compiled matte preprocess has no registered gate");
   for (const frameIndex of frames) {
-    act(() => view.result.current.observe(liveFrame(frameIndex)));
+    const frame = liveFrame(frameIndex);
+    // Model the direct render path: its upstream input has submitted current-frame
+    // pixels before this preprocess dispatch, then the whole render is counted before
+    // the observer consumes the prepared buffer. Frame labels can skip; submits cannot.
+    const renderIndex = status.framesSubmitted + 1;
+    act(() => {
+      expect(gate(frame, { renderIndex, source: {
+        renderIndex, frameIndex, timeSeconds: frame.absTimeSeconds!,
+      } })).toBe(true);
+      status.framesSubmitted = renderIndex;
+      view.result.current.observe(frame);
+    });
     await settle();
   }
+  expect(readBuffer).toHaveBeenCalledTimes(frames.length);
+  expect(runs).toHaveLength(frames.length);
+  expect(status.framesSubmitted).toBe(frames.length);
   view.unmount();
+  expect(gates.size).toBe(0);
   return runs;
 }
 

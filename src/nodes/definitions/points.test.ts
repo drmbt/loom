@@ -11,6 +11,7 @@ import {
 import { pointStorageId } from "./point-storage.ts";
 import { packAttributes } from "../../points/packing.ts";
 import { compileContext, fixturePairs } from "./test-support.ts";
+import { pointKernelAdvancedNode } from "./point-kernel-advanced.ts";
 
 /** T1076: the u32 words one half of a default-schema point buffer occupies. */
 function packedWords(capacity: number): number {
@@ -27,6 +28,27 @@ function packedWords(capacity: number): number {
  */
 
 describe("pointKernel — manifest and emission (T121)", () => {
+  it.each([[0.19069375889375806, 0], [7.9, 7], [-1.9, 4294967295], [4294967297.9, 1]])(
+    "preserves unsigned seed packing for seed %s in basic, advanced, and spawn kernels",
+    (seed, expected) => {
+      for (const definition of [pointKernelNode, pointKernelAdvancedNode]) {
+        const result = definition.compile(compileContext({
+          nodeId: "sim", outputs: [], parameters: {
+            capacity: 4, seed,
+            ...(definition === pointKernelAdvancedNode ? {
+              spawn: "fn spawn(child: Point, ctx: PointCtx) -> Point { return child; }",
+            } : {}),
+          },
+        }));
+        expect(result.diagnostics ?? []).toEqual([]);
+        const seeds = (result.passes as ReadonlyArray<{ uniforms?: Record<string, unknown> }>)
+          .filter((pass) => pass.uniforms !== undefined && Object.hasOwn(pass.uniforms, "seed"))
+          .map((pass) => pass.uniforms?.["seed"]);
+        expect(seeds).toEqual(definition === pointKernelNode ? [expected] : [expected, expected]);
+      }
+    },
+  );
+
   it("declares determinism honestly and carries the kernel contract version (§V46, §V77)", () => {
     expect(pointKernelNode.stateful).toEqual({
       reset: true,

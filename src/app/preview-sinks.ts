@@ -18,8 +18,11 @@ import type { ActiveSink } from "../compiler/types.ts";
  */
 
 export interface PreviewSinkStore {
-  /** The scheduler's kept set, replaced wholesale each tick. Cheap when unchanged. */
-  set(refs: ReadonlyArray<{ nodeId: string; portId: string }>): void;
+  /**
+   * Replace this consumer's contribution. Stable owner tokens retain quiet demand;
+   * empty refs retire only that owner. Omitted owner is the single default writer.
+   */
+  set(refs: ReadonlyArray<{ nodeId: string; portId: string }>, owner?: object): void;
   get(): ReadonlyArray<ActiveSink>;
   subscribe(listener: () => void): () => void;
 }
@@ -116,6 +119,9 @@ export function createPreviewSinkStore(
   let pending: ReadonlyArray<ActiveSink> = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
   const lastSeen = new Map<string, { ref: { nodeId: string; portId: string }; at: number }>();
+  const defaultOwner = {};
+  const requests = new Map<object, ReadonlyArray<{ nodeId: string; portId: string }>>();
+  let retirementTimer: ReturnType<typeof setTimeout> | null = null;
   const listeners = new Set<() => void>();
 
   function cancel(): void {
@@ -134,58 +140,88 @@ export function createPreviewSinkStore(
     for (const listener of [...listeners]) listener();
   }
 
-  return {
-    set(refs) {
-      const at = now();
+  function reconcile(withdrawn: ReadonlyArray<{ nodeId: string; portId: string }> = []): void {
+    const at = now();
+    const demanded = new Set<string>();
+    for (const refs of requests.values()) {
       for (const ref of refs) {
-        lastSeen.set(`${ref.nodeId}:${ref.portId}`, { ref, at });
+        const refKey = `${ref.nodeId}:${ref.portId}`;
+        demanded.add(refKey);
+        lastSeen.set(refKey, { ref, at });
       }
-      for (const [seenKey, entry] of lastSeen) {
-        if (at - entry.at > REMOVAL_GRACE_MS) lastSeen.delete(seenKey);
-      }
-      const sorted = [...lastSeen.values()]
-        .map((entry) => entry.ref)
-        .sort((a, b) => `${a.nodeId}:${a.portId}`.localeCompare(`${b.nodeId}:${b.portId}`));
-      const nextKey = sorted.map((ref) => `${ref.nodeId}:${ref.portId}`).join("|");
+    }
+    for (const ref of withdrawn) {
+      const refKey = `${ref.nodeId}:${ref.portId}`;
+      const previous = lastSeen.get(refKey);
+      if (!demanded.has(refKey) && previous !== undefined) lastSeen.set(refKey, { ref: previous.ref, at });
+    }
+    for (const [seenKey, entry] of lastSeen) {
+      if (at - entry.at > REMOVAL_GRACE_MS) lastSeen.delete(seenKey);
+    }
+    // A quiet consumer still owns its refs. Retirement, including unmount while
+    // every other preview is quiet, completes on the same grace/settle clocks.
+    if (retirementTimer !== null) clearTimeout(retirementTimer);
+    retirementTimer = null;
+    let nextRetirement = Number.POSITIVE_INFINITY;
+    for (const [seenKey, entry] of lastSeen) {
+      if (!demanded.has(seenKey)) nextRetirement = Math.min(nextRetirement, entry.at + REMOVAL_GRACE_MS + 1);
+    }
+    if (Number.isFinite(nextRetirement)) {
+      retirementTimer = setTimeout(() => { retirementTimer = null; reconcile(); }, Math.max(0, nextRetirement - at));
+    }
+    const sorted = [...lastSeen.values()]
+      .map((entry) => entry.ref)
+      .sort((a, b) => `${a.nodeId}:${a.portId}`.localeCompare(`${b.nodeId}:${b.portId}`));
+    const nextKey = sorted.map((ref) => `${ref.nodeId}:${ref.portId}`).join("|");
 
-      if (nextKey !== pendingKey) {
-        // The set moved. Whatever quiet window was running is over; a new one starts here.
-        pendingKey = nextKey;
-        pendingAt = at;
-        pending = sorted.map((ref) => ({
-          nodeId: ref.nodeId,
-          portId: ref.portId,
-          kind: "preview" as const,
-        }));
-        cancel();
+    if (nextKey !== pendingKey) {
+      // The set moved. Whatever quiet window was running is over; a new one starts here.
+      pendingKey = nextKey;
+      pendingAt = at;
+      pending = sorted.map((ref) => ({
+        nodeId: ref.nodeId,
+        portId: ref.portId,
+        kind: "preview" as const,
+      }));
+      cancel();
+    }
+    if (nextKey === key) {
+      // What was pending came back to what is published — a node that left the viewport
+      // and returned inside its own grace. Nothing to settle, nothing to recompile.
+      cancel();
+      return;
+    }
+    // AN ARRIVAL IS URGENT; A DEPARTURE IS A RELEASE. A ref that is not yet a sink has
+    // no materialized output, so nothing can draw it — holding that back is holding back
+    // a PICTURE, which is the one thing this hysteresis may not do. A ref on its way OUT
+    // already has its output, its tile and its picture (§V455), and the compile that drops
+    // it only releases (T143 carry), so it is free to wait for the gesture to end.
+    let arriving = false;
+    for (const seenKey of lastSeen.keys()) {
+      if (!published.has(seenKey)) {
+        arriving = true;
+        break;
       }
-      if (nextKey === key) {
-        // What was pending came back to what is published — a node that left the viewport
-        // and returned inside its own grace. Nothing to settle, nothing to recompile.
-        cancel();
-        return;
-      }
-      // AN ARRIVAL IS URGENT; A DEPARTURE IS A RELEASE. A ref that is not yet a sink has
-      // no materialized output, so nothing can draw it — holding that back is holding back
-      // a PICTURE, which is the one thing this hysteresis may not do. A ref on its way OUT
-      // already has its output, its tile and its picture (§V455), and the compile that drops
-      // it only releases (T143 carry), so it is free to wait for the gesture to end.
-      let arriving = false;
-      for (const seenKey of lastSeen.keys()) {
-        if (!published.has(seenKey)) {
-          arriving = true;
-          break;
-        }
-      }
-      // Opening a document, an arrival, or a set that has already been still for the quiet
-      // window. The window is read off the store's OWN clock as well as off the timer, so a
-      // caller driving it faster or slower than wall time (an offline render, a test, a
-      // profiling harness) settles on the clock it was given rather than on `setTimeout`.
-      if (key === "" || arriving || at - pendingAt >= settleMs) {
-        publish();
-        return;
-      }
-      if (timer === null) timer = setTimeout(publish, settleMs);
+    }
+    // Opening a document, an arrival, or a set that has already been still for the quiet
+    // window. The window is read off the store's OWN clock as well as off the timer, so a
+    // caller driving it faster or slower than wall time (an offline render, a test, a
+    // profiling harness) settles on the clock it was given rather than on `setTimeout`.
+    if (key === "" || arriving || at - pendingAt >= settleMs) {
+      publish();
+      return;
+    }
+    if (timer === null) timer = setTimeout(publish, settleMs);
+  }
+
+  return {
+    set(refs, owner = defaultOwner) {
+      // Explicit owners retain demand while quiet, so absence starts at withdrawal.
+      // The existing default writer keeps its last-observed cadence semantics.
+      const withdrawn = owner === defaultOwner ? [] : requests.get(owner) ?? [];
+      if (refs.length === 0) requests.delete(owner);
+      else requests.set(owner, refs);
+      reconcile(withdrawn);
     },
     get: () => sinks,
     subscribe(listener) {

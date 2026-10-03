@@ -171,6 +171,38 @@ describe("the MediaPipe matte runner (T1088)", () => {
     expect(opens).toBe(1);
   });
 
+  it("reuses input ImageData while fully refreshing each frame, and releases it on dispose", async () => {
+    const side = 2;
+    const images: ImageData[] = [];
+    let allocations = 0;
+    const canvas = {
+      getContext: () => ({
+        createImageData: () => {
+          allocations += 1;
+          return { data: new Uint8ClampedArray(side * side * 4) } as ImageData;
+        },
+        putImageData: (image: ImageData) => { images.push(image); },
+      }),
+    } as unknown as OffscreenCanvas;
+    const runner = createMediaPipeMatteRunner({
+      side,
+      openSegmenter: async () => segmenterReturning(new Float32Array(side * side)),
+      createCanvas: () => canvas,
+    });
+    const samples = new Float32Array(side * side * 4).fill(1);
+    await runner.run(samples.buffer, 2, 2);
+    expect([...images[0]!.data]).toEqual(new Array(16).fill(255));
+    samples.fill(0);
+    await runner.run(samples.buffer, 2, 2);
+    expect(images[1]).toBe(images[0]);
+    expect([...images[1]!.data]).toEqual([0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255]);
+    expect(allocations).toBe(1);
+    runner.dispose();
+    await runner.run(samples.buffer, 2, 2);
+    expect(images[2]).not.toBe(images[0]);
+    expect(allocations).toBe(2);
+  });
+
   /**
    * A failed open must stay RETRYABLE. The download this depends on can fail for reasons
    * that clear themselves — a captive portal, a dropped connection — and caching the
@@ -214,6 +246,14 @@ describe("the MediaPipe matte runner (T1088)", () => {
 });
 
 describe("matteTexelsToRgba", () => {
+  it("writes into supplied output and refuses a wrongly sized output", () => {
+    const out = new Uint8ClampedArray(4);
+    expect(matteTexelsToRgba(new Float32Array([0.5, 0, 1, 0]), 1, out)).toBe(out);
+    expect([...out]).toEqual([128, 0, 255, 255]);
+    expect(() => matteTexelsToRgba(new Float32Array(4), 1, new Uint8ClampedArray(3)))
+      .toThrow("matte RGBA output is 3 bytes, expected 4");
+  });
+
   it("clamps out-of-range texels rather than wrapping them", () => {
     // The working space is linear and unbounded above 1 — a bright highlight or an
     // over-exposed source genuinely lands there, and wrapping would put a white pixel in

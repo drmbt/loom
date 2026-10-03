@@ -68,6 +68,24 @@ describe("spectrumDecibels — WebAudio's analyser, restated", () => {
     expect(() => spectrumDecibels(sine(1, 4), window, new Float64Array(3))).toThrow(/do not fit/);
     expect(() => fftInPlace(new Float64Array(6), new Float64Array(6))).toThrow(/power of two/);
   });
+
+  it("reuses dirty FFT storage without carrying previous transforms into the next window", () => {
+    const workspace = { real: new Float64Array(N).fill(Number.NaN), imag: new Float64Array(N).fill(123) };
+    const out = new Float64Array(N / 2);
+    for (const samples of [sine(1, 100), new Float64Array(N), sine(0.001, 5)]) {
+      const expected = spectrumDecibels(samples, window);
+      expect(spectrumDecibels(samples, window, out, workspace)).toBe(out);
+      expect(out).toEqual(expected);
+    }
+  });
+
+  it("refuses FFT storage of the wrong size before changing its contents", () => {
+    const workspace = { real: new Float64Array(N).fill(7), imag: new Float64Array(N - 1).fill(8) };
+    expect(() => spectrumDecibels(sine(1, 4), window, new Float64Array(N / 2), workspace))
+      .toThrow(/FFT workspace 2048\/2047 does not fit 2048 samples/);
+    expect(workspace.real.every((value) => value === 7)).toBe(true);
+    expect(workspace.imag.every((value) => value === 8)).toBe(true);
+  });
 });
 
 describe("the byte quantisers — what `getByte*Data` does to a float", () => {

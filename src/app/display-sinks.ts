@@ -60,7 +60,7 @@ export function mergeSinkStores(preview: PreviewSinkStore, display: DisplaySinkS
     return merged;
   };
   return {
-    set: (refs) => preview.set(refs),
+    set: (refs, owner) => preview.set(refs, owner),
     get,
     subscribe(listener) {
       const offPreview = preview.subscribe(listener);

@@ -1,7 +1,22 @@
 import type { RenderBackend } from "../../domain/types/backend.ts";
 import type { RuntimeDiagnostic } from "../../domain/types/diagnostics.ts";
+import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { PreviewFrameCommand, PreviewProgram, PreviewRuntimeHost } from "../previews/types.ts";
 import type { UniformValues } from "./plan.ts";
+
+/** Provenance of a texture sampled by a demanded dispatch. Ordinals count encoded
+ * renders, independent of skipped or looping project frame indices. */
+export interface DispatchSourceFrame {
+  readonly renderIndex: number;
+  readonly frameIndex: number;
+  readonly timeSeconds: number;
+}
+
+export interface DispatchInputTiming {
+  readonly renderIndex: number;
+  /** Absent until a render-produced input has actually been submitted. */
+  readonly source: DispatchSourceFrame | undefined;
+}
 
 /** Stops a running frame loop. Mirrors vgpu's `FrameLoopHandle` without leaking the import. */
 export interface FrameLoopControl {
@@ -73,6 +88,8 @@ export interface PresentationOptions {
    * the bitmap into the window.
    */
   readonly sizing?: "layout" | "source";
+  /** Display-only coverage inspection. Raw RGB is the default for transport integrity. */
+  readonly alphaDisplay?: "rgba" | "rgb";
 }
 
 /**
@@ -339,6 +356,15 @@ export interface LoomBackend extends RenderBackend {
    * frame). Re-registering a sourceId replaces the previous source.
    */
   registerMediaSource(sourceId: string, source: MediaSource): () => void;
+
+  /**
+   * Registers demand for a CPU-consumed compute input. Evaluated before each matching
+   * dispatch, with the exact frame passed to render(), before either timing span starts.
+   * The consumer reserves that frame here and consumes it after submission. Returning
+   * false skips only this dispatch; its previous buffer contents remain unchanged.
+   * Registration may precede compilation. A replacement owns the pass until unregistered.
+   */
+  registerDispatchGate(passId: string, gate: (frame: FrameEvaluationInput, timing: DispatchInputTiming) => boolean): () => void;
 }
 
 /** §V157: "auto" must be byte-identical to "always" at EVERY frame index. */

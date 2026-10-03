@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createMemoryStorage, installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { installFlowStubs } from "@editor/graph-canvas/testing.tsx";
@@ -51,6 +51,20 @@ const leafRenders = vi.hoisted(() => ({ count: 0 }));
  * emptied the range edit never reaches the bar (`expected 1 to be greater than 1`).
  */
 const topBarRenders = vi.hoisted(() => ({ count: 0 }));
+// The layout menu's trigger reads only layout state. The memoized body did not
+// protect this separate subtree from graph revisions.
+const layoutRenders = vi.hoisted(() => ({ count: 0 }));
+
+vi.mock("@ui/primitives/button.tsx", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@ui/primitives/button.tsx")>();
+  return {
+    ...original,
+    Button: (props: Parameters<typeof original.Button>[0]) => {
+      if (props["aria-label"] === "Layout") layoutRenders.count += 1;
+      return original.Button(props);
+    },
+  };
+});
 
 vi.mock("@editor/library/node-library.tsx", async (importOriginal) => {
   const original = await importOriginal<typeof import("@editor/library/node-library.tsx")>();
@@ -169,16 +183,20 @@ describe("T1238 — the node library, the shell chrome and the top bar do not re
     expect(leavesMounted).toBeGreaterThan(0);
     const topBarMounted = topBarRenders.count;
     expect(topBarMounted).toBeGreaterThan(0);
+    const layoutMounted = layoutRenders.count;
+    expect(layoutMounted).toBeGreaterThan(0);
 
-    // Two revisions, the knob-drag shape: each one re-renders `App` (it reads the
-    // document) and re-compiles. Neither may reach a library row.
+    // Sixty revisions, the knob-drag shape: each one re-renders `App` (it reads the
+    // document) and re-compiles. None may reach a library row or the layout menu.
     const before = runtime.bus.store.getRevision();
-    await patch(runtime, "knob", [{ op: "setParameters", nodeId: level, parameters: { brightness: 0.4 } }]);
-    await patch(runtime, "knob", [{ op: "setParameters", nodeId: level, parameters: { brightness: 0.7 } }]);
-    expect(runtime.bus.store.getRevision()).toBe(before + 2);
+    for (let edit = 0; edit < 60; edit++) {
+      await patch(runtime, "knob", [{ op: "setParameters", nodeId: level, parameters: { brightness: 0.4 + edit * 0.005 } }]);
+    }
+    expect(runtime.bus.store.getRevision()).toBe(before + 60);
     expect(libraryRenders.count).toBe(mounted);
     expect(leafRenders.count).toBe(leavesMounted);
     expect(topBarRenders.count).toBe(topBarMounted);
+    expect(layoutRenders.count).toBe(layoutMounted);
 
     // And the other trigger §T1235 saw on chain-200: view state that lives in `App`
     // (selection, hover) changing under a stationary library.
@@ -189,6 +207,7 @@ describe("T1238 — the node library, the shell chrome and the top bar do not re
     expect(libraryRenders.count).toBe(mounted);
     expect(leafRenders.count).toBe(leavesMounted);
     expect(topBarRenders.count).toBe(topBarMounted);
+    expect(layoutRenders.count).toBe(layoutMounted);
 
     // The legitimate case: the timeline range is document state (§V177) and the top
     // bar shows it, so a settings edit that moves it must get through the memo.
@@ -204,6 +223,14 @@ describe("T1238 — the node library, the shell chrome and the top bar do not re
     expect((screen.getByLabelText("In point") as HTMLInputElement).value).toBe("10");
     expect(libraryRenders.count).toBe(mounted);
     expect(leafRenders.count).toBe(leavesMounted);
+
+    // Opening and changing the layout still reach the menu after the quiet edits.
+    fireEvent.click(screen.getByRole("button", { name: "Layout" }));
+    expect(screen.getByRole("button", { name: "Save as…" })).toBeDefined();
+    expect(layoutRenders.count).toBeGreaterThan(layoutMounted);
+    fireEvent.click(screen.getByRole("button", { name: /^Perform/ }));
+    expect(screen.getByRole("tab", { name: "viewer" })).toBeDefined();
+    expect(leafRenders.count).toBeGreaterThan(leavesMounted);
 
     runtime.dispose();
   });

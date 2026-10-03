@@ -9,6 +9,7 @@ import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { createPreviewSystem } from "./system.ts";
 import { DEFAULT_PREVIEW_VIEW } from "./types.ts";
+import { DEFAULT_PREVIEW_ORBIT, orbitUniforms } from "./orbit.ts";
 import type { PreviewFrameCommand, PreviewProgram, PreviewRequest, PreviewRuntimeHost } from "./types.ts";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
@@ -279,7 +280,47 @@ describe("§B176 — a synthesized preview's own uniforms reach the GPU", () => 
       expect([kind, pass.id, pushed !== undefined]).toEqual([kind, pass.id, true]);
       const missing = Object.keys(pass.uniforms ?? {}).filter((key) => !(key in (pushed ?? {})));
       expect([kind, pass.id, missing]).toEqual([kind, pass.id, []]);
+      // Strict WGSL writers reject undeclared values. A splat has no eye uniform,
+      // while a shaded scene does; orbit publication must respect each block.
+      expect(Object.keys(pushed!).sort()).toEqual(Object.keys(pass.uniforms ?? {}).sort());
     }
+  });
+
+  it.each(["pointset", "geometry", "light", "material"] as const)("%s — orbit updates only declared camera fields", (kind) => {
+    const fixture = FIXTURES[kind];
+    const compiled = compile(fixture.graph, fixture.nodeId);
+    const request = requestFor(compiled, fixture.nodeId);
+    const basis = request.synthesis?.orbit;
+    if (basis === undefined) throw new Error(`${kind} fixture has no inspection orbit`);
+    const orbit = { ...DEFAULT_PREVIEW_ORBIT, azimuth: 0.6, elevation: 0.2 };
+    const host = drive([request, { ...request, orbit }]);
+    const expected = orbitUniforms(basis, orbit);
+    for (const passId of basis.passIds) {
+      const pass = request.synthesis!.passes.find(candidate => candidate.id === passId);
+      if (pass?.uniforms === undefined) throw new Error(`${passId} fixture declares no uniforms`);
+      const pushes = pushesTo(host, passId);
+      expect(pushes).toHaveLength(2);
+      const pushed = pushes[1]!;
+      expect(Object.keys(pushed).sort()).toEqual(Object.keys(pass.uniforms).sort());
+      expect(pushed["viewProjection"]).toEqual(expected.viewProjection);
+      if (pass.uniforms["eye"] !== undefined) expect(pushed["eye"]).toEqual(expected.eye);
+      else expect(pushed).not.toHaveProperty("eye");
+      expect(host.commands[1]!.refresh).toContain(passId);
+    }
+    expect(host.programs).toHaveLength(1);
+  });
+
+  it("refuses an orbit target with no declared matrix instead of adding an undeclared uniform", () => {
+    const fixture = FIXTURES.pointset;
+    const request = requestFor(compile(fixture.graph, fixture.nodeId), fixture.nodeId);
+    const synthesis = request.synthesis!;
+    expect(() => drive([{
+      ...request,
+      synthesis: {
+        ...synthesis,
+        passes: synthesis.passes.map(pass => ({ ...pass, uniforms: { pointSize: [1, 1] } })),
+      },
+    }])).toThrow(/preview orbit pass .* declares no viewProjection uniform/);
   });
 
   /**

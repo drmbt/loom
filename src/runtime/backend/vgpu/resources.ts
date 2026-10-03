@@ -522,6 +522,7 @@ export function buildResources(
         }
         externalTextures.set(resource.id, {
           texture: gpu.device.createTexture({
+            kind: "2d",
             size: resource.size,
             format: resource.format as GPUTextureFormat,
             // RENDER_ATTACHMENT is not optional here, and it is not this file's choice:

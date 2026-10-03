@@ -301,24 +301,14 @@ describe("the catalogue compiles through the real compiler", () => {
         expect(binding, definition.type).toBeTypeOf("string");
         const declared = uniformStructMembers(pass.shader, binding as string);
         expect(declared.length, `${definition.type}: no uniform struct found`).toBeGreaterThan(0);
-        /* T1029 follow-up — the FRAME-INJECTED names are legal residents of a dispatch
-           pass's own uniform struct: `dispatchFrameUniforms` (shared-uniforms.ts) writes
-           them BY NAME at encode time, so a kernel may declare them and the compiler
-           rightly sets no static value (laserPath's scanner clock is the case). The gate
-           therefore demands: everything SET is DECLARED, and everything declared-but-unset
-           is one of the frame keys. A misspelled field still fails both directions. */
-        const FRAME_INJECTED = new Set([
-          "timeSeconds", "deltaSeconds", "frameIndex", "pointer", "absTimeSeconds", "absFrameIndex",
-        ]);
+        // vgpu validates every struct member when the uniform block adopts its layout.
+        // Frame fields need initial values too, before the first render supplies time.
         const set = new Set(Object.keys(pass.uniforms));
         for (const key of set) {
           expect(declared, `${definition.type}: sets "${key}" its shader never declares`).toContain(key);
         }
         const unset = declared.filter((member) => !set.has(member));
-        const illegal = unset.filter(
-          (member) => pass.kind !== "dispatch" || !FRAME_INJECTED.has(member),
-        );
-        expect(illegal, `${definition.type}: declares but never sets`).toEqual([]);
+        expect(unset, `${definition.type}: declares but never sets`).toEqual([]);
 
         // A shared-block binding must name a real declaration too, or the runtime binds a
         // value the shader never reads and vgpu rejects the whole pass.
@@ -528,4 +518,3 @@ function uniformStructMembers(shader: string, binding: string): string[] {
 /* T751: the minimal graph lives in test-support.ts now, shared with the Dawn sweep
    (catalogue-dawn.gpu.test.ts) — coverage-by-example is coverage by accident (§B146),
    so the same graphs that prove the catalogue compiles headless also reach a device. */
-

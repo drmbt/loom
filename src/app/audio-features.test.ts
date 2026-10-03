@@ -175,4 +175,24 @@ describe("computeAudioFeatures (T414, §V147)", () => {
     const byteWeightedHz = ((loud * 255 + quiet * 128) / (255 + 128)) * binHz;
     expect(centroid).toBeLessThan((byteWeightedHz - lowHz) / (highHz - lowHz) / 2);
   });
+
+  it("centroid preserves every byte magnitude across mixed spectra and sample rates", () => {
+    const frequency = spectrum((bin) => bin % 256);
+    for (const sampleRate of [22_050, 44_100, 48_000, 96_000]) {
+      const binHz = sampleRate / FFT_SIZE;
+      const [lowHz, highHz] = CENTROID_RANGE_HZ;
+      let weighted = 0;
+      let total = 0;
+      for (let bin = Math.ceil(lowHz / binHz); bin <= Math.min(frequency.length - 1, Math.floor(highHz / binHz)); bin += 1) {
+        const byte = frequency[bin]!;
+        if (byte === 0) continue;
+        const magnitude = 10 ** ((-100 + (byte / 255) * 70) / 20);
+        weighted += bin * binHz * magnitude;
+        total += magnitude;
+      }
+      const expected = Math.max(0, Math.min(1, (weighted / total - lowHz) / (highHz - lowHz)));
+      const features = computeAudioFeatures({ frequency, timeDomain: silence(), sampleRate, fftSize: FFT_SIZE, state: freshState() });
+      expect(features.centroid).toBe(expected);
+    }
+  });
 });

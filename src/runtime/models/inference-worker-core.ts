@@ -62,6 +62,8 @@ interface Packing {
   readonly tensorType: string;
   pack(texels: Float32Array, side: number): Float32Array | Uint8Array;
   dims(side: number): readonly number[];
+  /** Fresh, exclusively owned ArrayBuffer; the returned view covers the entire buffer.
+   * Never aliases a model tensor or retained temporal state: it transfers to the caller. */
   encode(
     output: Float32Array,
     width: number,
@@ -413,7 +415,7 @@ export function createWorkerCore(options: WorkerCoreOptions) {
           recurrent.set(temporalKey, { ratio: request.ratio, side, tensors });
         }
 
-        let bytes = plan.encode(
+        const bytes = plan.encode(
           data,
           request.width,
           request.height,
@@ -421,6 +423,12 @@ export function createWorkerCore(options: WorkerCoreOptions) {
           request.sourceWidth,
           request.sourceHeight,
         );
+        // Validate ownership before smoothing can mutate the encoder's storage or
+        // replace retained history. An invalid encoder must leave both untouched.
+        const buffer = bytes.buffer;
+        if (!(buffer instanceof ArrayBuffer) || bytes.byteOffset !== 0 || bytes.byteLength !== buffer.byteLength || buffer === data.buffer) {
+          throw new Error(`inference encoder for "${request.modelId}" must return an owned exact ArrayBuffer`);
+        }
         if (request.nodeType === "matte" && request.smoothing < 1) {
           /* Per-frame matting flickers at the edges; the EMA trades edge lag for temporal
              stability (stated on the node's Smoothing parameter, §T957). The alpha is the
@@ -430,12 +438,10 @@ export function createWorkerCore(options: WorkerCoreOptions) {
           const view = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
           const smoothed = smoothMatte(previousMatte.get(temporalKey), view, request.smoothing);
           previousMatte.set(temporalKey, Float32Array.from(smoothed));
-          bytes = new Uint8Array(smoothed.buffer, smoothed.byteOffset, smoothed.byteLength);
         }
-        // Transferred, not cloned: a 1080p depth map is 8.3 MB per frame. Copied out of
-        // its view first so the transferred buffer is exactly the result and nothing else.
-        const buffer = new ArrayBuffer(bytes.byteLength);
-        new Uint8Array(buffer).set(bytes);
+        // Every encoder owns a fresh exact buffer. Smoothing retains a separate copy
+        // above, so transferring this result detaches neither model nor temporal state.
+        // A copy here would allocate and move another 8.3 MB for a 1080p result.
         options.post(
           {
             kind: "result",

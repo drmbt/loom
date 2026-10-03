@@ -232,6 +232,9 @@ export const laserPathNode: NodeDefinition = {
     const color = readColor(parameters, "color", [1, 1, 1, 1]);
 
     const planUniforms = {
+      // Declare frame fields before layout adoption; the backend replaces them per frame.
+      absTimeSeconds: 0,
+      deltaSeconds: 0,
       count: capacity,
       closed: readFlag(parameters, "closed", true),
       pps: Math.max(1, readNumber(parameters, "pps", 30000)),

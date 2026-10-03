@@ -334,6 +334,10 @@ export default tseslint.config(
       "playwright-report/**",
       "test-results/**",
       "scratchpad/**",
+      // Separate peer checkouts own their validation; never scan them from this tree.
+      ".claude/worktrees/**",
+      // Generated Python dependencies may contain vendored JavaScript.
+      "**/.venv/**",
     ],
   },
   js.configs.recommended,

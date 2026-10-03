@@ -164,6 +164,43 @@ export function telemetryPlan(plan: PlanLike, options: TelemetryPlanOptions = {}
   };
 }
 
+/** Uniform values are absent from this projection; compare every fact the UI reads. */
+function samePlan(a: TelemetryPlan | null, b: TelemetryPlan | null): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  if (
+    a.resourceCount !== b.resourceCount ||
+    a.estimatedResourceBytes !== b.estimatedResourceBytes ||
+    a.memoryBudgetBytes !== b.memoryBudgetBytes ||
+    a.nodeCount !== b.nodeCount || a.prunedCount !== b.prunedCount ||
+    a.passes.length !== b.passes.length || a.sources.length !== b.sources.length ||
+    a.categories.size !== b.categories.size ||
+    a.readback.count !== b.readback.count || a.readback.bytes !== b.readback.bytes ||
+    a.readback.incomplete !== b.readback.incomplete || a.readback.rows.length !== b.readback.rows.length
+  ) return false;
+  for (const [nodeId, category] of a.categories) {
+    if (b.categories.get(nodeId) !== category) return false;
+  }
+  for (let index = 0; index < a.passes.length; index += 1) {
+    const left = a.passes[index]!;
+    const right = b.passes[index]!;
+    if (left.id !== right.id || left.kind !== right.kind || left.nodeId !== right.nodeId || left.label !== right.label) return false;
+  }
+  for (let index = 0; index < a.sources.length; index += 1) {
+    const left = a.sources[index]!;
+    const right = b.sources[index]!;
+    if (left.nodeId !== right.nodeId || left.sourcePath !== right.sourcePath || left.path.length !== right.path.length) return false;
+    for (let part = 0; part < left.path.length; part += 1) if (left.path[part] !== right.path[part]) return false;
+  }
+  for (let index = 0; index < a.readback.rows.length; index += 1) {
+    const left = a.readback.rows[index]!;
+    const right = b.readback.rows[index]!;
+    if (left.nodeId !== right.nodeId || left.sourcePath !== right.sourcePath || left.reason !== right.reason ||
+      left.resourceId !== right.resourceId || left.bytes !== right.bytes) return false;
+  }
+  return true;
+}
+
 export interface TelemetryHubOptions {
   /** The graph canvas's per-node runtime channel. Omitted, node gpuMs is not mirrored. */
   readonly sink?: NodeMetricSink | undefined;
@@ -501,6 +538,12 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
   return {
     setPlan(next) {
       if (next !== null) timeline.mark(perfNow(), "compile");
+      if (samePlan(plan, next)) {
+        // Compile marks still need the ordinary coalesced tick. Keep metadata identity
+        // and measured timings when only values absent from this projection changed.
+        if (next !== null) schedule();
+        return;
+      }
       plan = next;
       indexPlan(next);
       // Spans belong to pass ids that may no longer exist. Dropping stale ones is what

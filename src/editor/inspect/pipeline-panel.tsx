@@ -257,6 +257,18 @@ export function PipelineReport({
 }
 
 export function PipelinePanel({ open, onOpenChange, telemetry, ...request }: PipelinePanelProps) {
+  return (
+    <DialogRoot open={open} onOpenChange={onOpenChange}>
+      <DialogContent className={styles.panel} aria-describedby={undefined} data-testid="pipeline">
+        <PipelineContent {...request} {...(telemetry === undefined ? {} : { telemetry })} />
+      </DialogContent>
+    </DialogRoot>
+  );
+}
+
+// Radix mounts the content only while the dialog is present. Building the model in
+// the shell above would walk the current plan on every edit even with the dialog shut.
+function PipelineContent({ telemetry, ...request }: Omit<PipelinePanelProps, "open" | "onOpenChange">) {
   const { installed, compiled, graph, registry, capabilities } = request;
   const view = useMemo(
     () => buildPipelineView({ installed, compiled, graph, registry, capabilities }),
@@ -264,38 +276,36 @@ export function PipelinePanel({ open, onOpenChange, telemetry, ...request }: Pip
   );
 
   return (
-    <DialogRoot open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={styles.panel} aria-describedby={undefined} data-testid="pipeline">
-        <header className={styles.masthead}>
-          <DialogTitle className={styles.title}>Pipeline</DialogTitle>
-          <div
-            className={styles.banner}
-            data-kind={view.install.kind}
-            data-testid="pipeline-install"
-            {...(view.stats === null ? {} : { title: `plan ${view.stats.signature}` })}
-          >
-            <span className={styles.bannerHeadline}>{view.install.headline}</span>
-            <span className={styles.bannerDetail}>{view.install.detail}</span>
+    <>
+      <header className={styles.masthead}>
+        <DialogTitle className={styles.title}>Pipeline</DialogTitle>
+        <div
+          className={styles.banner}
+          data-kind={view.install.kind}
+          data-testid="pipeline-install"
+          {...(view.stats === null ? {} : { title: `plan ${view.stats.signature}` })}
+        >
+          <span className={styles.bannerHeadline}>{view.install.headline}</span>
+          <span className={styles.bannerDetail}>{view.install.detail}</span>
+        </div>
+        {view.stats === null ? null : (
+          <div className={styles.meters}>
+            <Meter label="passes" value={`${view.stats.passes}`} />
+            <Meter
+              label="encodes / frame"
+              value={`${view.stats.encodes}`}
+              {...(view.stats.encodes > view.stats.passes ? { tone: "signal" as const } : {})}
+            />
+            <Meter label="resources" value={`${view.stats.resources}`} />
+            <Meter
+              label="nodes running"
+              value={`${view.stats.nodes} of ${view.stats.documentNodes}`}
+            />
+            <Meter label="texture memory" value={formatBytes(view.stats.estimatedBytes)} />
           </div>
-          {view.stats === null ? null : (
-            <div className={styles.meters}>
-              <Meter label="passes" value={`${view.stats.passes}`} />
-              <Meter
-                label="encodes / frame"
-                value={`${view.stats.encodes}`}
-                {...(view.stats.encodes > view.stats.passes ? { tone: "signal" as const } : {})}
-              />
-              <Meter label="resources" value={`${view.stats.resources}`} />
-              <Meter
-                label="nodes running"
-                value={`${view.stats.nodes} of ${view.stats.documentNodes}`}
-              />
-              <Meter label="texture memory" value={formatBytes(view.stats.estimatedBytes)} />
-            </div>
-          )}
-        </header>
-        <PipelineReport view={view} request={request} {...(telemetry === undefined ? {} : { telemetry })} />
-      </DialogContent>
-    </DialogRoot>
+        )}
+      </header>
+      <PipelineReport view={view} request={request} {...(telemetry === undefined ? {} : { telemetry })} />
+    </>
   );
 }

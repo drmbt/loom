@@ -638,7 +638,42 @@ export function AppShell({
     tree,
   ]);
 
-  const tabs = allTabs(tree);
+  const tabs = useMemo(() => allTabs(tree), [tree]);
+
+  // The menu reads layout state, not pane contents or graph revisions.
+  const layoutMenu = useMemo(
+    () => (
+      <LayoutMenu
+        open={menuOpen}
+        onOpenChange={onMenuOpenChange}
+        store={menuStore}
+        collapsed={collapsed}
+        floating={tree.floating}
+        absentRoles={PANE_IDS.filter((role) => !tabs.some((tab) => tab.role === role))}
+        onRestoreRole={onRestoreRole}
+        baselines={BASELINE_REGIONS.map((region) => {
+          const node = baselineRegionNode(tree, region);
+          return {
+            region,
+            label: BASELINE_REGION_LABELS[region],
+            node,
+            state: node === null ? "absent" : collapsed[node] === true ? "hidden" : "shown",
+          } as const;
+        })}
+        onRestoreRegion={onRestoreRegion}
+        presentToggles={EXTRA_TOGGLE_TARGETS.filter((target) =>
+          target.id.startsWith("leaf-")
+            ? findLeaf(tree, target.id) !== undefined
+            : hasSplit(tree.root, target.id),
+        )}
+        onToggle={togglePanel}
+        onDock={onDock}
+        onRestore={restoreLayout}
+        onMutate={mutateNamed}
+      />
+    ),
+    [collapsed, menuOpen, menuStore, mutateNamed, onDock, onMenuOpenChange, onRestoreRegion, onRestoreRole, restoreLayout, tabs, togglePanel, tree],
+  );
 
   return (
     <TooltipProvider delayDuration={400} skipDelayDuration={200}>
@@ -670,34 +705,7 @@ export function AppShell({
           <header className={styles.topbar}>
             <div className={styles.topbarSlot}>{topBar ?? <TopBar />}</div>
             <div className={styles.topbarTrailing}>
-              <LayoutMenu
-                open={menuOpen}
-                onOpenChange={onMenuOpenChange}
-                store={menuStore}
-                collapsed={collapsed}
-                floating={tree.floating}
-                absentRoles={PANE_IDS.filter((role) => !tabs.some((tab) => tab.role === role))}
-                onRestoreRole={onRestoreRole}
-                baselines={BASELINE_REGIONS.map((region) => {
-                  const node = baselineRegionNode(tree, region);
-                  return {
-                    region,
-                    label: BASELINE_REGION_LABELS[region],
-                    node,
-                    state: node === null ? "absent" : collapsed[node] === true ? "hidden" : "shown",
-                  } as const;
-                })}
-                onRestoreRegion={onRestoreRegion}
-                presentToggles={EXTRA_TOGGLE_TARGETS.filter((target) =>
-                  target.id.startsWith("leaf-")
-                    ? findLeaf(tree, target.id) !== undefined
-                    : hasSplit(tree.root, target.id),
-                )}
-                onToggle={togglePanel}
-                onDock={onDock}
-                onRestore={restoreLayout}
-                onMutate={mutateNamed}
-              />
+              {layoutMenu}
             </div>
           </header>
 

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { Dispatch, SetStateAction, KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ExpressionScope } from "@domain/expressions/index.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import { useOptionalKeymap } from "@editor/keymap/keymap-hooks.ts";
@@ -109,33 +109,6 @@ export function HelpPanel({
   const [capturing, setCapturing] = useState<string | null>(null);
   const [status, setStatus] = useState("");
 
-  // Asked of the resolved keymap on every render: an override applied a moment ago is
-  // already in `resolved`, so there is nothing to invalidate (§V55).
-  const shortcuts = useMemo(
-    () => (keymap === null ? [] : shortcutSections(keymap.resolved)),
-    [keymap],
-  );
-
-  // §T1178: the references are built ONCE per registry and the search filters the built
-  // sections — a keystroke used to rebuild every matching definition's reference (ports,
-  // parameters, descriptions for up to 92 types). No debounce: with the build hoisted the
-  // filter is a string test per node, and a search that lags its keystroke reads as broken.
-  const allSections = useMemo(() => nodeReferenceSections(nodes), [nodes]);
-  const nodeSections = useMemo(() => {
-    const needle = nodeQuery.trim().toLowerCase();
-    if (needle === "") return allSections;
-    return allSections
-      .map((section) => ({
-        category: section.category,
-        nodes: section.nodes.filter(
-          (reference) =>
-            reference.title.toLowerCase().includes(needle) ||
-            reference.type.toLowerCase().includes(needle),
-        ),
-      }))
-      .filter((section) => section.nodes.length > 0);
-  }, [nodeQuery, allSections]);
-
   const store: KeymapStore | null = keymap?.store ?? null;
 
   function rebind(entry: ShortcutEntry, keys: string | null): void {
@@ -198,172 +171,248 @@ export function HelpPanel({
           if (capturing !== null) event.preventDefault();
         }}
       >
-        <DialogTitle className={styles.title}>Help</DialogTitle>
-
-        <TabsRoot
-          value={section}
-          onValueChange={(next) => onSectionChange(next as HelpSection)}
-          className={styles.tabs}
-        >
-          <TabsList aria-label="Help sections">
-            {(Object.keys(SECTION_LABEL) as HelpSection[]).map((name) => (
-              <TabsTrigger key={name} value={name}>
-                {SECTION_LABEL[name]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          <TabsContent value="shortcuts" className={styles.body}>
-            {shortcuts.length === 0 ? (
-              <p className={styles.none}>No keymap is mounted.</p>
-            ) : (
-              <>
-                {/* One line, and empty until something happens. A rebind that lands with
-                    no acknowledgement is indistinguishable from one that did not. */}
-                <p className={styles.status} role="status" aria-live="polite">
-                  {status}
-                </p>
-                {shortcuts.map((group) => (
-                  <section key={group.context} aria-label={group.context}>
-                    <h3 className={styles.groupHeader}>{group.context}</h3>
-                    <dl className={styles.shortcutList}>
-                      {group.entries.map((entry) => (
-                        <div key={entry.id} className={styles.shortcutRow}>
-                          <dt
-                            className={styles.shortcutLabel}
-                            title={entry.description ?? entry.command}
-                          >
-                            {entry.label}
-                          </dt>
-                          <dd className={styles.shortcutKeys}>
-                            {/* The keys cell IS the control (T360): the thing you read is
-                                the thing you click, so the list never becomes a form. */}
-                            <button
-                              type="button"
-                              className={styles.keyButton}
-                              aria-label={`Change shortcut for ${entry.label}`}
-                              aria-pressed={capturing === entry.id}
-                              disabled={store === null}
-                              onClick={() => {
-                                setStatus("");
-                                setCapturing((current) =>
-                                  current === entry.id ? null : entry.id,
-                                );
-                              }}
-                              onKeyDown={(event) => {
-                                if (capturing !== entry.id) return;
-                                onCaptureKeyDown(event, entry);
-                              }}
-                            >
-                              {capturing === entry.id ? (
-                                <span className={styles.capturing}>press a key</span>
-                              ) : entry.display === null ? (
-                                <span className={styles.none}>unbound</span>
-                              ) : (
-                                entry.display
-                              )}
-                            </button>
-                            {entry.conflicted ? (
-                              <span
-                                className={styles.conflict}
-                                title={
-                                  entry.conflictWith.length === 0
-                                    ? undefined
-                                    : `Also runs ${entry.conflictWith.join(", ")}.`
-                                }
-                              >
-                                conflict
-                              </span>
-                            ) : null}
-                            {/* Only where it means something: a row still on its shipped
-                                key has nothing to reset (§V90). */}
-                            {entry.source === "override" ? (
-                              <button
-                                type="button"
-                                className={styles.reset}
-                                aria-label={`Reset shortcut for ${entry.label}`}
-                                onClick={() => {
-                                  store?.resetBinding(entry.id);
-                                  setCapturing(null);
-                                  setStatus(`${entry.label} is back to its default.`);
-                                }}
-                              >
-                                reset
-                              </button>
-                            ) : null}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </section>
-                ))}
-              </>
-            )}
-          </TabsContent>
-
-          <TabsContent value="nodes" className={styles.body}>
-            <input
-              type="search"
-              className={styles.search}
-              value={nodeQuery}
-              placeholder="Search nodes"
-              aria-label="Search node reference"
-              onChange={(event) => setNodeQuery(event.target.value)}
-              onKeyDown={(event) => event.stopPropagation()}
-            />
-            {nodeSections.length === 0 ? (
-              <p className={styles.none}>No node matches.</p>
-            ) : (
-              nodeSections.map((group) => (
-                <section key={group.category} aria-label={group.category}>
-                  <h3 className={styles.groupHeader}>{group.category}</h3>
-                  {group.nodes.map((node) => (
-                    <article key={node.type} className={styles.node}>
-                      <header className={styles.nodeHeader}>
-                        <span className={styles.nodeTitle}>{node.title}</span>
-                        <span className={styles.nodeType}>{node.type}</span>
-                      </header>
-                      {/* T1337b — the author's own first sentence, always. This is the
-                          line that used to exist only inside a `title=` tooltip. */}
-                      {node.summary === undefined ? null : (
-                        <p className={styles.summary}>{node.summary}</p>
-                      )}
-                      <p className={styles.ports}>
-                        {node.inputs.map((port) => `${port.label}: ${port.type}`).join(" · ")}
-                        {node.inputs.length > 0 && node.outputs.length > 0 ? " → " : ""}
-                        {node.outputs.map((port) => `${port.label}: ${port.type}`).join(" · ")}
-                      </p>
-                      {node.parameters.length === 0 ? null : (
-                        <p className={styles.params}>
-                          {node.parameters
-                            .map((parameter) =>
-                              parameter.unit === undefined
-                                ? parameter.label
-                                : `${parameter.label} (${parameter.unit})`,
-                            )
-                            .join(" · ")}
-                        </p>
-                      )}
-                      <NodeDetails node={node} />
-                    </article>
-                  ))}
-                </section>
-              ))
-            )}
-          </TabsContent>
-
-          <TabsContent value="expressions" className={styles.body}>
-            <ExpressionHelp source="" scope={scope} />
-          </TabsContent>
-
-          {/* T399: how to attach an EXTERNAL agent. The in-app transports and what they
-              have published are the agent pane's job (T397); this is the setup only. */}
-          <TabsContent value="agents" className={styles.body}>
-            <McpSetup />
-          </TabsContent>
-        </TabsRoot>
+        <HelpContent
+          section={section}
+          onSectionChange={onSectionChange}
+          nodes={nodes}
+          scope={scope}
+          keymap={keymap}
+          nodeQuery={nodeQuery}
+          setNodeQuery={setNodeQuery}
+          capturing={capturing}
+          setCapturing={setCapturing}
+          status={status}
+          setStatus={setStatus}
+          onCaptureKeyDown={onCaptureKeyDown}
+        />
       </DialogContent>
     </DialogRoot>
+  );
+}
+
+interface HelpContentProps extends Pick<HelpPanelProps, "section" | "onSectionChange" | "nodes"> {
+  scope: ExpressionScope;
+  keymap: ReturnType<typeof useOptionalKeymap>;
+  nodeQuery: string;
+  setNodeQuery: Dispatch<SetStateAction<string>>;
+  capturing: string | null;
+  setCapturing: Dispatch<SetStateAction<string | null>>;
+  status: string;
+  setStatus: Dispatch<SetStateAction<string>>;
+  onCaptureKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>, entry: ShortcutEntry) => void;
+}
+
+/** Radix mounts the reference only while visible, including its closing animation.
+ * Search and shortcut-edit state stay in HelpPanel so closing does not reset them. */
+function HelpContent({
+  section,
+  onSectionChange,
+  nodes,
+  scope,
+  keymap,
+  nodeQuery,
+  setNodeQuery,
+  capturing,
+  setCapturing,
+  status,
+  setStatus,
+  onCaptureKeyDown,
+}: HelpContentProps) {
+  // Asked of the resolved keymap on every render: an override applied a moment ago is
+  // already in `resolved`, so there is nothing to invalidate (§V55).
+  const shortcuts = useMemo(
+    () => (keymap === null ? [] : shortcutSections(keymap.resolved)),
+    [keymap],
+  );
+
+  // §T1178: the references are built ONCE per registry and the search filters the built
+  // sections — a keystroke used to rebuild every matching definition's reference (ports,
+  // parameters, descriptions for up to 92 types). No debounce: with the build hoisted the
+  // filter is a string test per node, and a search that lags its keystroke reads as broken.
+  const allSections = useMemo(() => nodeReferenceSections(nodes), [nodes]);
+  const nodeSections = useMemo(() => {
+    const needle = nodeQuery.trim().toLowerCase();
+    if (needle === "") return allSections;
+    return allSections
+      .map((section) => ({
+        category: section.category,
+        nodes: section.nodes.filter(
+          (reference) =>
+            reference.title.toLowerCase().includes(needle) ||
+            reference.type.toLowerCase().includes(needle),
+        ),
+      }))
+      .filter((section) => section.nodes.length > 0);
+  }, [nodeQuery, allSections]);
+
+  const store = keymap?.store ?? null;
+  return (
+    <>
+      <DialogTitle className={styles.title}>Help</DialogTitle>
+
+      <TabsRoot
+        value={section}
+        onValueChange={(next) => onSectionChange(next as HelpSection)}
+        className={styles.tabs}
+      >
+        <TabsList aria-label="Help sections">
+          {(Object.keys(SECTION_LABEL) as HelpSection[]).map((name) => (
+            <TabsTrigger key={name} value={name}>
+              {SECTION_LABEL[name]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent value="shortcuts" className={styles.body}>
+          {shortcuts.length === 0 ? (
+            <p className={styles.none}>No keymap is mounted.</p>
+          ) : (
+            <>
+              {/* One line, and empty until something happens. A rebind that lands with
+                  no acknowledgement is indistinguishable from one that did not. */}
+              <p className={styles.status} role="status" aria-live="polite">
+                {status}
+              </p>
+              {shortcuts.map((group) => (
+                <section key={group.context} aria-label={group.context}>
+                  <h3 className={styles.groupHeader}>{group.context}</h3>
+                  <dl className={styles.shortcutList}>
+                    {group.entries.map((entry) => (
+                      <div key={entry.id} className={styles.shortcutRow}>
+                        <dt
+                          className={styles.shortcutLabel}
+                          title={entry.description ?? entry.command}
+                        >
+                          {entry.label}
+                        </dt>
+                        <dd className={styles.shortcutKeys}>
+                          {/* The keys cell IS the control (T360): the thing you read is
+                              the thing you click, so the list never becomes a form. */}
+                          <button
+                            type="button"
+                            className={styles.keyButton}
+                            aria-label={`Change shortcut for ${entry.label}`}
+                            aria-pressed={capturing === entry.id}
+                            disabled={store === null}
+                            onClick={() => {
+                              setStatus("");
+                              setCapturing((current) =>
+                                current === entry.id ? null : entry.id,
+                              );
+                            }}
+                            onKeyDown={(event) => {
+                              if (capturing !== entry.id) return;
+                              onCaptureKeyDown(event, entry);
+                            }}
+                          >
+                            {capturing === entry.id ? (
+                              <span className={styles.capturing}>press a key</span>
+                            ) : entry.display === null ? (
+                              <span className={styles.none}>unbound</span>
+                            ) : (
+                              entry.display
+                            )}
+                          </button>
+                          {entry.conflicted ? (
+                            <span
+                              className={styles.conflict}
+                              title={
+                                entry.conflictWith.length === 0
+                                  ? undefined
+                                  : `Also runs ${entry.conflictWith.join(", ")}.`
+                              }
+                            >
+                              conflict
+                            </span>
+                          ) : null}
+                          {/* Only where it means something: a row still on its shipped
+                              key has nothing to reset (§V90). */}
+                          {entry.source === "override" ? (
+                            <button
+                              type="button"
+                              className={styles.reset}
+                              aria-label={`Reset shortcut for ${entry.label}`}
+                              onClick={() => {
+                                store?.resetBinding(entry.id);
+                                setCapturing(null);
+                                setStatus(`${entry.label} is back to its default.`);
+                              }}
+                            >
+                              reset
+                            </button>
+                          ) : null}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              ))}
+          </>
+        )}
+      </TabsContent>
+
+      <TabsContent value="nodes" className={styles.body}>
+        <input
+          type="search"
+          className={styles.search}
+          value={nodeQuery}
+          placeholder="Search nodes"
+          aria-label="Search node reference"
+          onChange={(event) => setNodeQuery(event.target.value)}
+          onKeyDown={(event) => event.stopPropagation()}
+        />
+        {nodeSections.length === 0 ? (
+          <p className={styles.none}>No node matches.</p>
+        ) : (
+          nodeSections.map((group) => (
+            <section key={group.category} aria-label={group.category}>
+              <h3 className={styles.groupHeader}>{group.category}</h3>
+              {group.nodes.map((node) => (
+                <article key={node.type} className={styles.node}>
+                  <header className={styles.nodeHeader}>
+                    <span className={styles.nodeTitle}>{node.title}</span>
+                    <span className={styles.nodeType}>{node.type}</span>
+                  </header>
+                  {/* T1337b — the author's own first sentence, always. This is the
+                      line that used to exist only inside a `title=` tooltip. */}
+                  {node.summary === undefined ? null : (
+                    <p className={styles.summary}>{node.summary}</p>
+                  )}
+                  <p className={styles.ports}>
+                    {node.inputs.map((port) => `${port.label}: ${port.type}`).join(" · ")}
+                    {node.inputs.length > 0 && node.outputs.length > 0 ? " → " : ""}
+                    {node.outputs.map((port) => `${port.label}: ${port.type}`).join(" · ")}
+                  </p>
+                  {node.parameters.length === 0 ? null : (
+                    <p className={styles.params}>
+                      {node.parameters
+                        .map((parameter) =>
+                          parameter.unit === undefined
+                            ? parameter.label
+                            : `${parameter.label} (${parameter.unit})`,
+                        )
+                        .join(" · ")}
+                    </p>
+                  )}
+                  <NodeDetails node={node} />
+                </article>
+              ))}
+            </section>
+          ))
+        )}
+      </TabsContent>
+
+      <TabsContent value="expressions" className={styles.body}>
+        <ExpressionHelp source="" scope={scope} />
+      </TabsContent>
+
+      {/* T399: how to attach an EXTERNAL agent. The in-app transports and what they
+          have published are the agent pane's job (T397); this is the setup only. */}
+      <TabsContent value="agents" className={styles.body}>
+        <McpSetup />
+      </TabsContent>
+    </TabsRoot>
+    </>
   );
 }
 

@@ -35,7 +35,7 @@ export default defineConfig({
   use: {
     // Exercise audio analysis and encoding without playing test tracks through speakers.
     launchOptions: { args: ["--mute-audio"] },
-    baseURL: "http://localhost:5173",
+    baseURL: "http://localhost:5189",
     trace: "on-first-retry",
     /*
      * T469: nodes render at ~514x427 device px at the default zoom since the design
@@ -94,9 +94,11 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "pnpm dev",
-      url: "http://localhost:5173",
-      reuseExistingServer: !process.env.CI,
+      command: "pnpm dev --port 5189 --strictPort",
+      url: "http://localhost:5189",
+      // A reused dev port can serve another repository. Both lanes own their server
+      // so a passing test always describes this working copy.
+      reuseExistingServer: false,
     },
     {
       command: "pnpm dev --port 5199 --strictPort",

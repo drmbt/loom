@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createMemoryStorage, installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { installFlowStubs } from "@editor/graph-canvas/testing.tsx";
 import { DEFAULT_BINDINGS } from "@editor/keymap/index.ts";
@@ -14,6 +14,7 @@ import { createAppRuntime } from "@/app/app-runtime.ts";
 import type { AppRuntime } from "@/app/app-runtime.ts";
 import type { GpuStatus } from "@/app/gpu-status.ts";
 import { PipelinePanel } from "./pipeline-panel.tsx";
+import * as pipelineModel from "./pipeline-model.ts";
 import { SHOW_PIPELINE_COMMAND, registerPipelineCommand } from "./pipeline-command.ts";
 
 /**
@@ -30,7 +31,10 @@ beforeAll(() => {
   installDomStubs();
   installFlowStubs();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const NO_GPU: GpuStatus = { kind: "unavailable", reason: "No WebGPU in this environment." };
 
@@ -119,6 +123,56 @@ function showPipeline(graph: GraphDocument) {
 }
 
 describe("T1188 — the screen SAYS what the compiler decided", () => {
+  it("builds no model across sixty closed revisions and opens on the current graph", () => {
+    const initial = chainDocument();
+    const plan = compileGraph({ graph: initial, settings, registry, capabilities });
+    const build = vi.spyOn(pipelineModel, "buildPipelineView");
+    const changeOpen = () => {};
+    const view = render(
+      <PipelinePanel open={false} onOpenChange={changeOpen} installed={plan} compiled={plan} graph={initial} registry={registry} />,
+    );
+    let current = initial;
+    for (let revision = 2; revision <= 61; revision++) {
+      current = {
+        ...current,
+        revision,
+        nodes: { ...current.nodes, blur: { ...current.nodes["blur"]!, label: `blur revision ${revision}` } },
+      };
+      view.rerender(
+        <PipelinePanel open={false} onOpenChange={changeOpen} installed={plan} compiled={plan} graph={current} registry={registry} />,
+      );
+    }
+    expect(build).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("pipeline")).toBeNull();
+
+    view.rerender(
+      <PipelinePanel open onOpenChange={changeOpen} installed={plan} compiled={plan} graph={current} registry={registry} />,
+    );
+    expect(build).toHaveBeenCalledTimes(1);
+    expect(panelText()).toContain("blur revision 61");
+
+    current = { ...current, revision: 62, nodes: { ...current.nodes, blur: { ...current.nodes["blur"]!, label: "live rename" } } };
+    view.rerender(
+      <PipelinePanel open onOpenChange={changeOpen} installed={plan} compiled={plan} graph={current} registry={registry} />,
+    );
+    expect(build).toHaveBeenCalledTimes(2);
+    expect(panelText()).toContain("live rename");
+
+    view.rerender(
+      <PipelinePanel open={false} onOpenChange={changeOpen} installed={plan} compiled={plan} graph={current} registry={registry} />,
+    );
+    current = { ...current, revision: 63, nodes: { ...current.nodes, blur: { ...current.nodes["blur"]!, label: "reopened rename" } } };
+    view.rerender(
+      <PipelinePanel open={false} onOpenChange={changeOpen} installed={plan} compiled={plan} graph={current} registry={registry} />,
+    );
+    expect(build).toHaveBeenCalledTimes(2);
+    view.rerender(
+      <PipelinePanel open onOpenChange={changeOpen} installed={plan} compiled={plan} graph={current} registry={registry} />,
+    );
+    expect(build).toHaveBeenCalledTimes(3);
+    expect(panelText()).toContain("reopened rename");
+  });
+
   it("renders the reachability, format and flow facts of a real plan", () => {
     const graph = chainDocument();
     const { plan } = showPipeline(graph);

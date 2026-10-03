@@ -6,6 +6,7 @@ import type { ResolvedOutput } from "@compiler/index.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { useViewerSynthesis } from "./use-viewer-synthesis.ts";
 import { useGraphBackground } from "./use-graph-background.ts";
+import { createPreviewSinkStore } from "./preview-sinks.ts";
 
 const calls = vi.hoisted(() => ({ update: vi.fn(), reset: vi.fn(), create: vi.fn() }));
 vi.mock("@runtime/previews/index.ts", () => ({
@@ -31,7 +32,7 @@ it("background selection scans only on graph/output changes, while rendering sti
   act(() => { for (let i = 0; i < 60; i++) tick(i); });
   expect(ownKeys).toHaveBeenCalledTimes(1);
   expect(calls.update.mock.calls.length).toBeGreaterThanOrEqual(60);
-  expect(previewSinks.set).toHaveBeenLastCalledWith([{ nodeId: "a", portId: "out" }]);
+  expect(previewSinks.set).toHaveBeenLastCalledWith([{ nodeId: "a", portId: "out" }], expect.any(Object));
 
   const output = { nodeId: "a", portId: "out", resourceId: "target:a:out", resourceKind: "target",
     size: [1280, 720], format: "rgba8unorm", space: "linear", temporal: false } as ResolvedOutput;
@@ -43,6 +44,95 @@ it("background selection scans only on graph/output changes, while rendering sti
   expect(calls.update.mock.lastCall?.[0].requests).toEqual([]);
   expect(host.setPreviewProgram).toHaveBeenCalled();
   view.unmount(); expect(host.dispose).toHaveBeenCalledOnce();
+});
+
+it("unused background submits nothing; removing the final mark clears once and can resume", () => {
+  let tick!: FrameRequestCallback;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { tick = callback; return 1; });
+  vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  const host = { dispose: vi.fn(), setPreviewProgram: vi.fn() };
+  const status = { deviceGeneration: 0 };
+  const backend = { previewHost: () => host, status } as unknown as LoomBackend;
+  const canvas = document.createElement("canvas");
+  const measure = vi.spyOn(canvas, "getBoundingClientRect");
+  const graph = { revision: 1, nodes: {}, edges: {}, groups: {} } as GraphDocument;
+  const inputs = { backend, canvasRef: { current: canvas }, graph, compiledOutputs: [] as ResolvedOutput[],
+    previewFps: 30, previewLongEdge: 320, documentIdentity: "one" };
+  const view = renderHook(props => useGraphBackground(props), { initialProps: inputs });
+  act(() => { for (let frame = 0; frame < 60; frame++) tick(frame); });
+  expect(calls.update).not.toHaveBeenCalled();
+  expect(measure).not.toHaveBeenCalled();
+
+  const marked = { ...graph, nodes: {
+    a: { id: "a", type: "noise", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {}, ui: { background: true } },
+  } } as GraphDocument;
+  const output = { nodeId: "a", portId: "out", resourceId: "target:a:out", resourceKind: "target",
+    size: [1280, 720], format: "rgba8unorm", space: "linear", temporal: false } as ResolvedOutput;
+  view.rerender({ ...inputs, graph: marked, compiledOutputs: [output] });
+  act(() => tick(60));
+  expect(calls.update).toHaveBeenCalledOnce();
+  expect(calls.update.mock.lastCall?.[0].requests).toHaveLength(1);
+
+  view.rerender(inputs);
+  act(() => { for (let frame = 61; frame < 121; frame++) tick(frame); });
+  expect(calls.update).toHaveBeenCalledTimes(2);
+  expect(calls.update.mock.lastCall?.[0].requests).toEqual([]);
+  expect(measure).toHaveBeenCalledTimes(2);
+  status.deviceGeneration++;
+  act(() => tick(121));
+  expect(calls.reset).toHaveBeenCalledOnce();
+  expect(calls.update).toHaveBeenCalledTimes(2);
+
+  view.rerender({ ...inputs, graph: marked, compiledOutputs: [output] });
+  act(() => tick(122));
+  expect(calls.update).toHaveBeenCalledTimes(3);
+  expect(calls.update.mock.lastCall?.[0].requests).toHaveLength(1);
+  view.unmount();
+  measure.mockRestore();
+});
+
+it("background removal, document replacement and unmount retain another quiet consumer's demand", () => {
+  vi.useFakeTimers();
+  try {
+    let tick!: FrameRequestCallback;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { tick = callback; return 1; });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const host = { dispose: vi.fn(), setPreviewProgram: vi.fn() };
+    const backend = { previewHost: () => host, status: { deviceGeneration: 0 } } as unknown as LoomBackend;
+    const previewSinks = createPreviewSinkStore(() => Date.now());
+    previewSinks.set([{ nodeId: "quiet-tile", portId: "out" }], {});
+    const graph = { revision: 1, nodes: {
+      a: { id: "a", type: "noise", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {}, ui: { background: true } },
+    }, edges: {}, groups: {} } as GraphDocument;
+    const inputs = { backend, canvasRef: { current: document.createElement("canvas") }, graph,
+      compiledOutputs: [] as ResolvedOutput[], previewSinks, previewFps: 30, previewLongEdge: 320, documentIdentity: "one" };
+    const view = renderHook(props => useGraphBackground(props), { initialProps: inputs });
+    act(() => tick(0));
+    expect(previewSinks.get().map(sink => sink.nodeId)).toEqual(["a", "quiet-tile"]);
+
+    view.rerender({ ...inputs, graph: { ...graph, nodes: {} } });
+    act(() => { tick(1); vi.advanceTimersByTime(1401); });
+    expect(previewSinks.get().map(sink => sink.nodeId)).toEqual(["quiet-tile"]);
+
+    view.rerender(inputs);
+    act(() => tick(2));
+    const nextGraph = { ...graph, nodes: { b: { ...graph.nodes["a"]!, id: "b" } } } as GraphDocument;
+    view.rerender({ ...inputs, graph: nextGraph, documentIdentity: "two" });
+    act(() => { tick(3); vi.advanceTimersByTime(1401); });
+    expect(previewSinks.get().map(sink => sink.nodeId)).toEqual(["b", "quiet-tile"]);
+    const replacementSinks = createPreviewSinkStore(() => Date.now());
+    replacementSinks.set([{ nodeId: "other-tile", portId: "out" }], {});
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    view.rerender({ ...inputs, graph: nextGraph, documentIdentity: "two", previewSinks: replacementSinks });
+    // No rAF and no graph/plan/identity edit: replacing only the writer resynchronizes.
+    act(() => vi.advanceTimersByTime(1401));
+    visibility.mockRestore();
+    expect(previewSinks.get().map(sink => sink.nodeId)).toEqual(["quiet-tile"]);
+    expect(replacementSinks.get().map(sink => sink.nodeId)).toEqual(["b", "other-tile"]);
+    view.unmount();
+    act(() => vi.advanceTimersByTime(1401));
+    expect(replacementSinks.get().map(sink => sink.nodeId)).toEqual(["other-tile"]);
+  } finally { vi.useRealTimers(); }
 });
 
 it.each(["background","viewer"] as const)("%s pauses live during export and resumes without recreating its preview system", kind => {

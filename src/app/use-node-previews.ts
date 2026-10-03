@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { RefObject } from "react";
 import { liveClock } from "@domain/transport/live-clock.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
@@ -93,7 +93,7 @@ export interface NodePreviewInputs {
    * T252 (§V158): where the scheduler's kept set goes, so the COMPILER materializes
    * exactly what is watched. Optional: absent means nobody is gating on previews.
    */
-  readonly previewSinks?: { set(refs: ReadonlyArray<{ nodeId: string; portId: string }>): void };
+  readonly previewSinks?: { set(refs: ReadonlyArray<{ nodeId: string; portId: string }>, owner?: object): void };
   readonly backend: LoomBackend | null | undefined;
   readonly canvasRef: RefObject<HTMLCanvasElement | null>;
   readonly bounds: PreviewSlotBoundsStore;
@@ -114,6 +114,8 @@ export interface NodePreviewInputs {
   readonly interest?: import("@editor/viewer/index.ts").PreviewInterestStore | undefined;
   /** T601: resolves a component instance's preview to an INNER node's flat output row. */
   readonly components?: ComponentRegistryView | undefined;
+  /** Compiler-owned component outputs, including Common channel processing boundaries. */
+  readonly componentOutputs?: import("@compiler/flatten.ts").FlattenedGraph["instanceOutputs"];
   /**
    * T1019 — the FLAT id prefix of the graph this pane is SHOWING. Empty/absent at the
    * root; inside a component it is the dived instance chain joined by "/" (exactly the
@@ -299,6 +301,17 @@ export function componentPreviewTarget(
   const definition = current.components.get(ref.componentId, ref.version);
   if (definition === undefined) return undefined;
   const chosen = node.ui?.componentPreview;
+  if (chosen === undefined) {
+    const prefix = current.flatPrefix ?? "";
+    const instanceId = (prefix === "" ? nodeId : `${prefix}/${nodeId}`) as NodeId;
+    const exposed = definition.outputs[0];
+    const endpoint = exposed === undefined ? undefined : current.componentOutputs?.get(instanceId)?.get(exposed.externalId);
+    if (endpoint !== undefined && current.compiledOutputs?.some(output => output.nodeId === endpoint.nodeId &&
+        output.portId === endpoint.portId && output.resourceKind !== "pointset")) {
+      return { nodeId: (prefix === "" ? endpoint.nodeId : endpoint.nodeId.slice(prefix.length + 1)) as NodeId,
+        portId: endpoint.portId };
+    }
+  }
   const inner =
     (typeof chosen === "string" && definition.graph.nodes[chosen as NodeId] !== undefined
       ? (chosen as NodeId)
@@ -320,8 +333,21 @@ export function componentPreviewTarget(
 }
 
 export function useNodePreviews(inputs: NodePreviewInputs): void {
-  const inputsRef = useRef(inputs);
-  inputsRef.current = inputs;
+  // These indexes depend on the immutable plan/document, never on frame cadence.
+  // Preserve first bindable row and last resolved facts for each port (T527/T1174).
+  const outputIndex = useMemo(() => {
+    const bindable = new Map<string, ResolvedOutput>();
+    const facts = new Map<string, { width: number; height: number; format: string }>();
+    for (const output of inputs.compiledOutputs) {
+      const key = `${output.nodeId}:${output.portId}`;
+      if (output.resourceKind !== "pointset" && !bindable.has(key)) bindable.set(key, output);
+      facts.set(key, { width: output.size[0], height: output.size[1], format: output.format });
+    }
+    return { bindable, facts };
+  }, [inputs.compiledOutputs]);
+  const nodeCount = useMemo(() => Object.keys(inputs.graph.nodes).length, [inputs.graph.nodes]);
+  const inputsRef = useRef({ ...inputs, outputIndex, nodeCount });
+  inputsRef.current = { ...inputs, outputIndex, nodeCount };
   /** The live tick body, for the T620 resync effect below. Null while not mounted. */
   const stepRef = useRef<(() => void) | null>(null);
   /** The live document-boundary body, for the B143 effect below. Null while not mounted. */
@@ -381,6 +407,14 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
     // tick, so a load costs a comparison and never a teardown of the host.
     let lastDocumentIdentity = inputsRef.current.documentIdentity;
     let frameHandle = 0;
+    const sinkOwner = {};
+    let sinkWriter = inputsRef.current.previewSinks;
+    const setSinks = (refs: ReadonlyArray<{ nodeId: string; portId: string }>): void => {
+      const writer = inputsRef.current.previewSinks;
+      if (sinkWriter !== writer) sinkWriter?.set([], sinkOwner);
+      sinkWriter = writer;
+      writer?.set(refs, sinkOwner);
+    };
 
     /**
      * T519/B106 — a DIFFERENT DOCUMENT is open. Every tile and every refresh clock in here
@@ -411,6 +445,7 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
       lastDocumentIdentity = identity;
       host.setPreviewProgram(EMPTY_PREVIEW_PROGRAM);
       system.reset();
+      setSinks([]);
       // T501's first-paint reservations are keyed by preview key too, so they belong
       // to the document that just closed.
       everMaterialized.clear();
@@ -556,7 +591,7 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
        * comparison — boxes only ever outnumber nodes just after a delete.
        */
       const boxes = current.bounds.snapshot();
-      if (boxes.size > Object.keys(current.graph.nodes).length) {
+      if (boxes.size > current.nodeCount) {
         for (const nodeId of boxes.keys()) {
           if (current.graph.nodes[nodeId] === undefined) current.bounds.clear(nodeId);
         }
@@ -665,17 +700,7 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
        * kind on purpose — it answers "what did the compiler resolve for this slot", which
        * is a different question — so the two indexes are not interchangeable.
        */
-      const bindable = new Map<string, ResolvedOutput>();
-      const facts = new Map<string, { width: number; height: number; format: string }>();
-      for (const output of current.compiledOutputs) {
-        const key = `${output.nodeId}:${output.portId}`;
-        if (output.resourceKind !== "pointset" && !bindable.has(key)) bindable.set(key, output);
-        facts.set(key, {
-          width: output.size[0],
-          height: output.size[1],
-          format: output.format,
-        });
-      }
+      const { bindable, facts } = current.outputIndex;
 
       for (const { nodeId, portId, on } of candidates) {
         // §V297 — OFF is not "hidden". No request means no tile, nothing scheduled and no
@@ -942,7 +967,7 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
         nodeId: entry.sink.nodeId as string,
         portId: entry.sink.portId,
       });
-      current.previewSinks?.set([
+      setSinks([
         ...reserved.map(asSink),
         ...drawing,
         ...returning.map(asSink),
@@ -1038,6 +1063,7 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
       stepRef.current = null;
       boundaryRef.current = null;
       frames.cancelAnimationFrame(frameHandle);
+      sinkWriter?.set([], sinkOwner);
       system.reset();
       host.dispose();
     };
@@ -1073,7 +1099,7 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
     // The graph too, not just the plan: preview candidates read ui state (the P toggle,
     // the pin), and a ui-only edit moves the document without moving the compiled
     // outputs.
-  }, [inputs.compiledOutputs, inputs.graph]);
+  }, [inputs.compiledOutputs, inputs.graph, inputs.previewSinks]);
 
   /*
    * B143 — the document boundary at COMMIT time, which is the only time early enough.

@@ -91,9 +91,15 @@ export interface MediaPipeMatteRunner {
  * whole path. ⚠ THIS BLOCK'S OWN ONE-FRAME NUMBER IS THE CAUTIONARY HALF: IoU 0.9713 was
  * true of that portrait and the same model reads 0.675 on a harder frame.
  */
-export function matteTexelsToRgba(texels: Float32Array, side: number): Uint8ClampedArray {
+export function matteTexelsToRgba(
+  texels: Float32Array,
+  side: number,
+  out: Uint8ClampedArray = new Uint8ClampedArray(side * side * 4),
+): Uint8ClampedArray {
   const pixels = side * side;
-  const out = new Uint8ClampedArray(pixels * 4);
+  if (out.length !== pixels * 4) {
+    throw new Error(`matte RGBA output is ${out.length} bytes, expected ${pixels * 4}`);
+  }
   for (let at = 0; at < pixels; at += 1) {
     const base = at * 4;
     for (let channel = 0; channel < 3; channel += 1) {
@@ -125,6 +131,7 @@ export function createMediaPipeMatteRunner(options: {
   let segmenter: MatteSegmenter | null = null;
   let opening: Promise<MatteSegmenter> | null = null;
   let canvas: OffscreenCanvas | null = null;
+  let image: ImageData | null = null;
 
   const ready = async (): Promise<MatteSegmenter> => {
     if (segmenter !== null) return segmenter;
@@ -160,8 +167,10 @@ export function createMediaPipeMatteRunner(options: {
       if (canvas === null) canvas = makeCanvas(side, side);
       const context = canvas.getContext("2d");
       if (context === null) throw new Error("no 2d context for the matte input square");
-      const image = context.createImageData(side, side);
-      image.data.set(matteTexelsToRgba(texels, side));
+      // The square is fixed for this runner. Reuse its pixels and write directly into
+      // them rather than allocate and copy two RGBA arrays on every inference.
+      if (image === null) image = context.createImageData(side, side);
+      matteTexelsToRgba(texels, side, image.data);
       context.putImageData(image, 0, 0);
 
       const mask = active.segment(canvas);
@@ -175,6 +184,7 @@ export function createMediaPipeMatteRunner(options: {
       segmenter = null;
       opening = null;
       canvas = null;
+      image = null;
     },
   };
 }

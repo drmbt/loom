@@ -144,6 +144,12 @@ export interface InferenceFrame {
   readonly bytes: Uint8Array;
 }
 
+export interface InferenceCapture {
+  readonly frameIndex: number;
+  readonly timeSeconds: number;
+  readonly renderIndex: number;
+}
+
 export interface InferenceSources {
   /** Replaces the tracked set — called after each successful compile. */
   track(entries: ReadonlyArray<InferenceEntry>): void;
@@ -165,6 +171,16 @@ export interface InferenceSources {
    * Absent, no entry is rate limited and the rate channels report nothing measured.
    */
   sample(frameIndex: number, absSeconds?: number): void;
+  /** Decide before encoding. Only this frame's prepared input may be sampled below. */
+  prepare(nodeId: NodeId, frame: FrameEvaluationInput, blocking?: boolean, capture?: InferenceCapture): boolean;
+  /** Withdraw a reservation when its producer becomes unavailable. */
+  cancelPreparation(nodeId: NodeId): void;
+  /** Consume eligible encoded inputs, never a buffer skipped during this render. */
+  samplePrepared(frame: FrameEvaluationInput, startLive?: boolean): void;
+  /** Drain earlier work, then consume this frame's prepared input exactly once. */
+  settlePrepared(frameIndex: number): Promise<void>;
+  /** Drain outstanding live work before acquiring an offline rendering lease. */
+  drain(): Promise<void>;
   /**
    * NON-REALTIME fill policy. Resolves once every tracked entry holds a result computed
    * from THIS frame's input, so the picture a take renders does not depend on when a
@@ -223,9 +239,11 @@ export interface InferenceSources {
    * it has more than one number to say and `:` is already the addressing separator.
    *
    *   `depth1:ready`           1 once a result HAS LANDED, else 0.
-   *   `depth1:lagFrames`       frames between the frame the published result was computed
-   *                            from and the frame being rendered.
-   *   `depth1:delaySeconds`    the same distance on the absolute clock — what a lerp wants.
+   *   `depth1:lagFrames`       project-frame-index difference (legacy; wraps with timeline).
+   *                            Use cacheFrames for compensation in stored render history.
+   *   `depth1:cacheFrames`     stored renders from the captured input to the NEXT encode,
+   *                            including live effect→compute latency; for Cache taps.
+   *   `depth1:delaySeconds`    absolute time since the captured input, INCLUDING inference.
    *   `depth1:fps`             completed inferences per second.
    *   `depth1:realtimeFactor`  that rate over the DISPLAY rate. 1 is keeping up; 0.05 is
    *                            one inference every twenty frames.
@@ -280,6 +298,7 @@ export function inferenceSourceIdFor(nodeId: string): string {
 /** The numeric fields, named once so the no-result answer and the switch cannot diverge. */
 const TIMING_FIELDS: ReadonlySet<string> = new Set([
   "lagFrames",
+  "cacheFrames",
   "delaySeconds",
   "fps",
   "realtimeFactor",
@@ -288,12 +307,16 @@ const TIMING_FIELDS: ReadonlySet<string> = new Set([
 export function createInferenceSources(options: {
   readBuffer: (resourceId: string) => Promise<ArrayBuffer>;
   run: InferenceRunner;
+  /** Ordinal of the next render, supplied by the backend adapter for Cache taps. */
+  nextRenderIndex?: () => number;
 }): InferenceSources {
   let tracked: ReadonlyArray<InferenceEntry> = [];
   /** nodeId -> the most recent completed result. */
   const latest = new Map<NodeId, Uint8Array>();
   /** nodeId -> the frame index whose input produced `latest` (§V329). */
   const sourceFrame = new Map<NodeId, number>();
+  const sourceSeconds = new Map<NodeId, number>();
+  const sourceRender = new Map<NodeId, number>();
   /** nodeId -> upload generation. Bumped only when the bytes change (§V136). */
   const generation = new Map<NodeId, number>();
   /**
@@ -305,6 +328,14 @@ export function createInferenceSources(options: {
    * defend the spin.
    */
   const inFlight = new Map<NodeId, Promise<void>>();
+  const prepared = new Map<NodeId, {
+    readonly frame: FrameEvaluationInput;
+    readonly entry: InferenceEntry;
+    readonly epoch: number;
+    readonly blocking: boolean;
+    readonly capture: InferenceCapture | undefined;
+    started?: Promise<void>;
+  }>();
   /**
    * nodeId -> the absolute time the OUTSTANDING run was issued at (B190's wedge guard).
    *
@@ -330,7 +361,7 @@ export function createInferenceSources(options: {
   const coverage = new Map<NodeId, number>();
   /** nodeId -> the absolute time the last live run was ISSUED at (`minIntervalSeconds`). */
   const issuedAt = new Map<NodeId, number>();
-  /** nodeId -> the absolute time the CURRENT result completed (§T976's rate and delay). */
+  /** nodeId -> completion time, used for inference rate only. */
   const resultAt = new Map<NodeId, number>();
   /** nodeId -> seconds between the last two completed results. 0 until there are two. */
   const resultInterval = new Map<NodeId, number>();
@@ -368,8 +399,11 @@ export function createInferenceSources(options: {
     // maps below and left `inFlight` holding the node, so the gesture that promised to
     // clear "every run in flight" cleared the results and left the wedge exactly as it was.
     abandon(nodeId);
+    prepared.delete(nodeId);
     latest.delete(nodeId);
     sourceFrame.delete(nodeId);
+    sourceSeconds.delete(nodeId);
+    sourceRender.delete(nodeId);
     generation.delete(nodeId);
     failure.delete(nodeId);
     coverage.delete(nodeId);
@@ -405,6 +439,8 @@ export function createInferenceSources(options: {
    */
   const timingOf = (entry: InferenceEntry, frame: FrameEvaluationInput, field: string): number | undefined => {
     const { nodeId } = entry;
+    // Bridge-owned inference without rendered-input provenance does not publish Cache timing.
+    if (field === "cacheFrames" && options.nextRenderIndex === undefined) return undefined;
     if (field === "ready") return latest.has(nodeId) ? 1 : 0;
     if (field === "coverage") {
       // UNKNOWN for a node that publishes no such measurement (depth, pose) — so
@@ -422,8 +458,15 @@ export function createInferenceSources(options: {
     switch (field) {
       case "lagFrames":
         return Math.max(0, frame.frameIndex - stamped);
+      case "cacheFrames": {
+        const render = sourceRender.get(nodeId);
+        if (render === undefined || options.nextRenderIndex === undefined) {
+          throw new Error(`Inference result ${nodeId} has no rendered input provenance for Cache compensation.`);
+        }
+        return Math.max(0, options.nextRenderIndex() - render);
+      }
       case "delaySeconds": {
-        const at = resultAt.get(nodeId);
+        const at = sourceSeconds.get(nodeId);
         if (at === undefined) return 0;
         return Math.max(0, absTimeSecondsOf(frame) - at);
       }
@@ -453,7 +496,7 @@ export function createInferenceSources(options: {
    * and offline is whether the caller awaits this, which is what keeps §V47's "same graph
    * and same compiler" literally true — both modes produce the identical plan.
    */
-  const runOnce = async (entry: InferenceEntry, frameIndex: number): Promise<void> => {
+  const runOnce = async (entry: InferenceEntry, frameIndex: number, seconds: number | undefined, capture?: InferenceCapture): Promise<void> => {
     const { nodeId } = entry;
     // B190: the generation this run belongs to, read ONCE at the top. Everything below is
     // conditional on it still being current — an abandoned, reset or untracked run has
@@ -465,10 +508,16 @@ export function createInferenceSources(options: {
       const input = await options.readBuffer(entry.inputResourceId);
       const bytes = await options.run(nodeId, input);
       if (disowned()) return;
-      // Stamped with the frame the run was ISSUED for, not the frame it landed on: the
-      // buffer held that frame's input whenever the model finishes with it.
+      // The backend supplies the actual sampled texture's provenance. An open-frame
+      // preprocess can read an earlier submitted effect, rather than the issue frame.
+      // Legacy direct sampling supplies its input clock at issue, never at completion.
       latest.set(nodeId, bytes);
-      sourceFrame.set(nodeId, frameIndex);
+      sourceFrame.set(nodeId, capture?.frameIndex ?? frameIndex);
+      const capturedSeconds = capture?.timeSeconds ?? seconds;
+      if (capturedSeconds !== undefined) sourceSeconds.set(nodeId, capturedSeconds);
+      else sourceSeconds.delete(nodeId);
+      if (capture !== undefined) sourceRender.set(nodeId, capture.renderIndex);
+      else sourceRender.delete(nodeId);
       generation.set(nodeId, (generation.get(nodeId) ?? 0) + 1);
       failure.delete(nodeId);
       // Measured from THESE bytes, beside the value they describe, so a coverage reading
@@ -516,10 +565,10 @@ export function createInferenceSources(options: {
    * synchronously up to its first `await`, and the earliest a `finally` can execute is a
    * microtask after that — so the entry is always in the map before anything removes it.
    */
-  const issue = (entry: InferenceEntry, frameIndex: number): Promise<void> => {
+  const issue = (entry: InferenceEntry, frameIndex: number, capture?: InferenceCapture): Promise<void> => {
     const outstanding = inFlight.get(entry.nodeId);
     if (outstanding !== undefined) return outstanding;
-    const started = runOnce(entry, frameIndex);
+    const started = runOnce(entry, frameIndex, clockSeconds, capture);
     inFlight.set(entry.nodeId, started);
     if (clockSeconds !== undefined) inFlightSince.set(entry.nodeId, clockSeconds);
     return started;
@@ -553,15 +602,34 @@ export function createInferenceSources(options: {
     return absSeconds >= since && absSeconds - since >= WEDGED_AFTER_SECONDS;
   };
 
+  const reportClock = (absSeconds: number | undefined): void => {
+    if (absSeconds === undefined) return;
+    if (clockSeconds !== undefined && absSeconds > clockSeconds) displayInterval = absSeconds - clockSeconds;
+    clockSeconds = absSeconds;
+  };
+
+  const allowLive = (entry: InferenceEntry, absSeconds: number | undefined): boolean => {
+    if (inFlight.has(entry.nodeId)) {
+      if (!wedged(entry.nodeId, absSeconds)) return false;
+      abandon(entry.nodeId);
+      failure.set(entry.nodeId, `The model stopped responding — no result for ${WEDGED_AFTER_SECONDS}s. Restarted it.`);
+    }
+    return !heldBack(entry) && !rateLimited(entry, absSeconds);
+  };
+
   return {
     track(entries) {
+      // A compile may replace the buffer or its input under the same resource ID.
+      // Only a dispatch against the newly tracked plan can authorize its readback.
+      prepared.clear();
+      const known = new Set([...tracked.map(entry => entry.nodeId), ...latest.keys(), ...inFlight.keys()]);
       tracked = entries;
       const live = new Set(entries.map((entry) => entry.nodeId));
       // The age and the generation must be dropped with the value they describe: a
       // renamed or deleted node whose stamp survived would report an age for bytes
       // nobody can read.
-      for (const known of [...latest.keys()]) {
-        if (!live.has(known)) forget(known);
+      for (const nodeId of known) {
+        if (!live.has(nodeId)) forget(nodeId);
       }
     },
 
@@ -570,12 +638,7 @@ export function createInferenceSources(options: {
       // `realtimeFactor` is one measurement divided by another rather than a measurement
       // divided by a setting. A backwards step (a loop on a transport with no absolute
       // clock) is ignored rather than producing a negative interval.
-      if (absSeconds !== undefined) {
-        if (clockSeconds !== undefined && absSeconds > clockSeconds) {
-          displayInterval = absSeconds - clockSeconds;
-        }
-        clockSeconds = absSeconds;
-      }
+      reportClock(absSeconds);
       for (const entry of tracked) {
         if (inFlight.has(entry.nodeId)) {
           /*
@@ -609,6 +672,55 @@ export function createInferenceSources(options: {
         if (absSeconds !== undefined) issuedAt.set(entry.nodeId, absSeconds);
         void issue(entry, frameIndex);
       }
+    },
+
+    prepare(nodeId, frame, blocking = blocksForResult(frame.mode), capture) {
+      // A later render supersedes a queued sample, even if the playhead did not move.
+      const previous = prepared.get(nodeId);
+      if (previous?.frame === frame) return true;
+      prepared.delete(nodeId);
+      const entry = tracked.find(candidate => candidate.nodeId === nodeId);
+      if (entry === undefined || heldBack(entry)) return false;
+      if (!blocking && !allowLive(entry, absTimeSecondsOf(frame))) return false;
+      prepared.set(nodeId, { frame, entry, epoch: runEpoch.get(nodeId) ?? 0, blocking, capture });
+      return true;
+    },
+
+    cancelPreparation(nodeId) {
+      prepared.delete(nodeId);
+    },
+
+    samplePrepared(frame, startLive = true) {
+      const seconds = absTimeSecondsOf(frame);
+      reportClock(seconds);
+      if (!startLive) return;
+      for (const [nodeId, input] of prepared) {
+        if (input.frame !== frame || input.blocking || input.started !== undefined) continue;
+        if (input.epoch !== (runEpoch.get(nodeId) ?? 0)) continue;
+        // Eligibility was decided before encoding. A completion between encode and
+        // this microtask cannot make an unprepared node consume yesterday's buffer.
+        issuedAt.set(nodeId, seconds);
+        input.started = issue(input.entry, frame.frameIndex, input.capture);
+      }
+    },
+
+    async settlePrepared(frameIndex) {
+      for (const [nodeId, input] of prepared) {
+        if (input.frame.frameIndex !== frameIndex || input.epoch !== (runEpoch.get(nodeId) ?? 0)) continue;
+        if (input.started !== undefined) {
+          await input.started;
+          continue;
+        }
+        const outstanding = inFlight.get(nodeId);
+        if (outstanding !== undefined) await outstanding;
+        if (prepared.get(nodeId) !== input || input.epoch !== (runEpoch.get(nodeId) ?? 0) || heldBack(input.entry)) continue;
+        input.started = issue(input.entry, frameIndex, input.capture);
+        await input.started;
+      }
+    },
+
+    async drain() {
+      await Promise.all(inFlight.values());
     },
 
     async settle(frameIndex) {

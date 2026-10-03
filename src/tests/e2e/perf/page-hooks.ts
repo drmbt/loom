@@ -32,16 +32,16 @@ export async function installPageHooks(page: Page): Promise<void> {
    * This script runs before the one below, which reads the function off the window.
    */
   await page.addInitScript({ content: `window.__perfWalkCommit = ${walkCommit.toString()};` });
-  await page.addInitScript((performedWorkBit: number) => {
+  await page.addInitScript(({ performedWorkBit, measuredComponents }: { performedWorkBit: number; measuredComponents?: string[] }) => {
     const perf = {
-      commits: [] as Array<{ t: number; actualDuration: number; performed: number | null; signature: string | null }>,
+      commits: [] as CommitRecord[],
       walk: false,
       renders: new Map<string, number>(),
       spins: { cheap: [] as number[], dear: [] as number[] },
     };
     (window as unknown as { __perf: typeof perf }).__perf = perf;
 
-    type Walker = (root: { current: PerfFiber }, bit: number) => WalkResult;
+    type Walker = (root: { current: PerfFiber }, bit: number, measuredComponents?: readonly string[]) => WalkResult;
     const __perfWalk = (window as unknown as { __perfWalkCommit: Walker }).__perfWalkCommit;
 
     const hook = {
@@ -55,7 +55,7 @@ export async function installPageHooks(page: Page): Promise<void> {
       },
       checkDCE(): void {},
       onCommitFiberRoot(_id: number, root: { current: PerfFiber & { actualDuration?: number } }): void {
-        const walked = perf.walk ? __perfWalk(root, performedWorkBit) : null;
+        const walked = perf.walk ? __perfWalk(root, performedWorkBit, measuredComponents) : null;
         if (walked !== null) {
           for (const [name, count] of Object.entries(walked.counts)) perf.renders.set(name, (perf.renders.get(name) ?? 0) + count);
         }
@@ -64,6 +64,7 @@ export async function installPageHooks(page: Page): Promise<void> {
           actualDuration: root.current.actualDuration ?? Number.NaN,
           performed: walked === null ? null : walked.performed,
           signature: walked === null ? null : walked.signature,
+          ...(measuredComponents === undefined ? {} : { componentTimings: walked?.timings ?? null }),
         });
       },
       onCommitFiberUnmount(): void {},
@@ -86,7 +87,12 @@ export async function installPageHooks(page: Page): Promise<void> {
       return performance.now() - start;
     }
     (window as unknown as { __perfSpin: typeof __perfSpin }).__perfSpin = __perfSpin;
-  }, PERFORMED_WORK);
+  }, {
+    performedWorkBit: PERFORMED_WORK,
+    ...(process.env["PERF_COMPONENT_TIMINGS"] !== "1" ? {} : {
+      measuredComponents: ["App", "AppShell", "GraphPane", "GraphCanvas", "InspectorPane", "Inspector", "ViewerPane", "ControlsPane", "ProblemsPanel", "ProjectSettingsHost", "ProjectSettingsDialog", "HelpHost", "HelpPanel", "RenderVideoDialog", "PipelineHost", "PipelinePanel", "UnsavedChangesDialog", "CommandPalette", "PerformanceSections"],
+    }),
+  });
 }
 
 export interface CommitRecord {
@@ -96,6 +102,7 @@ export interface CommitRecord {
   readonly performed: number | null;
   /** The commit's shape, `""` when nothing rendered, `null` when the walk was off. */
   readonly signature: string | null;
+  readonly componentTimings?: WalkResult["timings"] | null;
 }
 
 /** Drains the commit log and the per-component render counts collected since the last drain. */

@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { alice, contextFor } from "@domain/commands/test-support.ts";
 import { evaluateExpression, scopeFromFrame } from "@domain/expressions/index.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import { createComponentHarness, graphOf } from "@domain/components/test-support.ts";
 import { createTestRegistry } from "@nodes/registry/test-nodes.ts";
 import { friendlyPortLabel } from "@editor/library/search.ts";
+import * as nodeReference from "./node-reference.ts";
 import { nodeReferenceSections, splitLede } from "./node-reference.ts";
 import { DEFAULT_BINDINGS } from "@editor/keymap/defaults.ts";
 import { KeymapProvider } from "@editor/keymap/keymap-provider.tsx";
@@ -32,7 +33,10 @@ import type { NodeDefinition } from "@domain/types/node-definition.ts";
  */
 
 beforeAll(installDomStubs);
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const context = contextFor(alice);
 const registry = createTestRegistry();
@@ -74,6 +78,46 @@ async function openHelp(store: KeymapStore) {
 }
 
 describe("HelpPanel (T200)", () => {
+  it("does not build the closed reference across live application updates", () => {
+    const build = vi.spyOn(nodeReference, "nodeReferenceSections");
+    const nodes = registry.list();
+    const props = {
+      open: false,
+      onOpenChange: () => {},
+      section: "nodes" as const,
+      onSectionChange: () => {},
+      nodes,
+    };
+    const view = render(<HelpPanel {...props} />);
+    for (let frameIndex = 0; frameIndex < 60; frameIndex += 1) {
+      view.rerender(<HelpPanel {...props} scope={scopeFromFrame({ ...FRAME, frameIndex })} />);
+    }
+    expect(build).not.toHaveBeenCalled();
+    view.rerender(<HelpPanel {...props} open nodes={[...nodes]} />);
+    expect(build).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("searchbox", { name: "Search node reference" })).toBeDefined();
+  });
+
+  it("keeps the search across close while opening with the current catalogue", () => {
+    const props = {
+      open: true,
+      onOpenChange: () => {},
+      section: "nodes" as const,
+      onSectionChange: () => {},
+      nodes: [blurNode],
+    };
+    const view = render(<HelpPanel {...props} />);
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "blur" } });
+    view.rerender(<HelpPanel {...props} open={false} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    view.rerender(<HelpPanel {...props} open={false} nodes={[]} />);
+    view.rerender(<HelpPanel {...props} nodes={[]} />);
+    expect((screen.getByRole("searchbox") as HTMLInputElement).value).toBe("blur");
+    expect(screen.getByText("No node matches.")).toBeDefined();
+    view.rerender(<HelpPanel {...props} />);
+    expect(screen.queryByText("No node matches.")).toBeNull();
+  });
+
   it("stays closed until asked — help is on demand (§V90)", () => {
     setup(createKeymapStore({ defaults: DEFAULT_BINDINGS, storage: null, platform: "mac" }));
     expect(screen.queryByRole("dialog")).toBeNull();

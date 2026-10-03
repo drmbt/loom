@@ -278,7 +278,17 @@ export function createPreviewSystem(options: PreviewSystemOptions): PreviewSyste
       }
       if (orbitValues !== undefined && orbitBasis !== undefined) {
         for (const orbitPassId of orbitBasis.passIds) {
-          synthesisValues.set(orbitPassId, { ...synthesisValues.get(orbitPassId), ...orbitValues });
+          const values = synthesisValues.get(orbitPassId);
+          if (values?.["viewProjection"] === undefined) {
+            throw new Error(`preview orbit pass "${orbitPassId}" declares no viewProjection uniform`);
+          }
+          // Splat passes declare only the matrix. Shaded scene passes also declare
+          // eye for specular lighting; update that value only on its owning block.
+          synthesisValues.set(orbitPassId, {
+            ...values,
+            viewProjection: orbitValues.viewProjection,
+            ...(values["eye"] === undefined ? {} : { eye: orbitValues.eye }),
+          });
         }
       }
       for (const [synthPassId, synthValues] of synthesisValues) {

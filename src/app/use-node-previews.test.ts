@@ -5,6 +5,7 @@ import { createTestRegistry } from "@nodes/registry/test-nodes.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
 import { SINK_TARGET_PORT } from "@compiler/index.ts";
+import type { ResolvedOutput } from "@compiler/index.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import { createNodeRuntimeStore } from "@editor/graph-canvas/index.ts";
 import { createPreviewInterestStore, createPreviewSlotBounds, createPreviewViewStore } from "@editor/viewer/index.ts";
@@ -12,7 +13,7 @@ import { DEFAULT_PREVIEW_VIEW, previewShader, previewUniforms, rectsIntersect } 
 import type { PreviewFrameCommand, PreviewProgram, PreviewRect } from "@runtime/previews/index.ts";
 import type { BackendStatus } from "@runtime/backend/index.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
-import { previewCandidates, useNodePreviews } from "./use-node-previews.ts";
+import { componentPreviewTarget, previewCandidates, useNodePreviews } from "./use-node-previews.ts";
 
 /**
  * T185 — the preview system had no caller anywhere in the app, so a node body stayed an
@@ -910,6 +911,27 @@ describe("componentPreviewTarget resolves an instance's preview to an inner node
     expect(target?.nodeId).toBe("c1/blurA");
   });
 
+  it.each(["", "outer"])("default component preview follows processed public output at prefix %s", async prefix => {
+    const { system, type } = await makeSystem();
+    const firstPort = system.components.get("fan", 1)!.outputs[0]!.externalId;
+    const flatInstance = prefix === "" ? "c1" : `${prefix}/c1`;
+    const endpoint = { nodeId: `${flatInstance}/$channels:${firstPort}`, portId: "out" };
+    const inputs = {
+      ...(inputsFor(system, type) as object),
+      flatPrefix: prefix,
+      componentOutputs: new Map([[flatInstance, new Map([[firstPort, endpoint]])]]),
+      compiledOutputs: [{ nodeId: endpoint.nodeId, portId: "out", resourceKind: "target" }],
+    } as unknown as Parameters<typeof componentPreviewTarget>[0];
+    expect(componentPreviewTarget(inputs, "c1")).toEqual({
+      nodeId: `c1/$channels:${firstPort}`, portId: "out",
+    });
+    expect(componentPreviewTarget({
+      ...inputs, graph: { ...inputs.graph, nodes: {
+        ...inputs.graph.nodes, c1: { ...inputs.graph.nodes.c1!, ui: { componentPreview: "blurA" } },
+      } },
+    }, "c1")).toEqual({ nodeId: "c1/blurA", portId: "out" });
+  });
+
   it("a non-instance resolves to nothing — the ordinary path is untouched", async () => {
     const { componentPreviewTarget } = await import("./use-node-previews.ts");
     const { system } = await makeSystem();
@@ -1037,13 +1059,15 @@ describe("the viewer's interest pins a hidden tile (T756)", () => {
       getNodeBoxes: () => [], previewFps: 20, previewLongEdge: 192, documentIdentity: "demand",
     }));
     vi.advanceTimersToNextFrame();
-    expect(set).toHaveBeenLastCalledWith([]);
+    const owner = set.mock.lastCall?.[1];
+    expect(owner).toEqual({});
+    expect(set).toHaveBeenLastCalledWith([], owner);
     interest.set("n1");
     vi.advanceTimersToNextFrame();
-    expect(set).toHaveBeenLastCalledWith([{ nodeId: "n1", portId: "out" }]);
+    expect(set).toHaveBeenLastCalledWith([{ nodeId: "n1", portId: "out" }], owner);
     interest.set(null);
     vi.advanceTimersToNextFrame();
-    expect(set).toHaveBeenLastCalledWith([]);
+    expect(set).toHaveBeenLastCalledWith([], owner);
     nodeRuntime.dispose();
   });
 
@@ -1503,9 +1527,14 @@ describe("the tick skips itself when nothing it reads has moved (T1241)", () => 
    * reads (§V939), so each of those reads must be able to wake it on its own, and
    * nothing else may.
    */
-  function mount(options: { readonly withLayoutSignal?: boolean; readonly isExporting?: () => boolean } = {}) {
+  function mount(options: {
+    readonly withLayoutSignal?: boolean;
+    readonly isExporting?: () => boolean;
+    readonly outputs?: ReadonlyArray<ResolvedOutput>;
+    readonly graph?: GraphDocument;
+  } = {}) {
     const registry = createTestRegistry().view();
-    const graph = graphWith("test.blur");
+    const graph = options.graph ?? graphWith("test.blur");
     const nodeRuntime = createNodeRuntimeStore();
     const bounds = createPreviewSlotBounds();
     bounds.publish("n1", { x: 0, y: 0, width: 200, height: 120 });
@@ -1533,7 +1562,7 @@ describe("the tick skips itself when nothing it reads has moved (T1241)", () => 
     /* T1248: how many times the tick asked the DOM. The saving IS this number. */
     let boxReads = 0;
     let revision = 0;
-    const compiledOutputs = [
+    const compiledOutputs = options.outputs ?? [
       {
         nodeId: "n1",
         portId: "out",
@@ -1545,15 +1574,16 @@ describe("the tick skips itself when nothing it reads has moved (T1241)", () => 
         temporal: false,
       },
     ];
+    const initialProps: { identity: string; outputs?: ReadonlyArray<ResolvedOutput> } = { identity: "document-under-test" };
     const { rerender } = renderHook(
-      ({ identity }: { identity: string }) =>
+      ({ identity, outputs }: { identity: string; outputs?: ReadonlyArray<ResolvedOutput> | undefined }) =>
         useNodePreviews({
           backend,
           canvasRef: { current: canvas },
           bounds,
           graph,
           registry,
-          compiledOutputs,
+          compiledOutputs: outputs ?? compiledOutputs,
           nodeRuntime,
           views,
           interest,
@@ -1570,7 +1600,7 @@ describe("the tick skips itself when nothing it reads has moved (T1241)", () => 
           previewLongEdge: 192,
           documentIdentity: identity,
         }),
-      { initialProps: { identity: "document-under-test" } },
+      { initialProps },
     );
     const ticks = (count: number) => {
       for (let index = 0; index < count; index += 1) vi.advanceTimersToNextFrame();
@@ -1633,6 +1663,46 @@ describe("the tick skips itself when nothing it reads has moved (T1241)", () => 
     // The cook was consumed; a display frame with no new cook presents nothing.
     t.ticks(3);
     expect(t.presents).toHaveLength(2);
+    t.dispose();
+  });
+
+  it("indexes output rows once across sixty cooked frames and rebuilds on plan replacement", () => {
+    const row = {
+      nodeId: "n1", portId: "out", resourceId: "res:n1:out", resourceKind: "target",
+      size: [64, 64], format: "rgba8unorm", space: "linear", temporal: false,
+    } as ResolvedOutput;
+    const iterate = vi.fn(function* () { yield row; return undefined; });
+    const outputs = [row];
+    outputs[Symbol.iterator] = iterate;
+    const ownKeys = vi.fn(Reflect.ownKeys);
+    const graph = graphWith("test.blur");
+    graph.nodes = new Proxy<GraphDocument["nodes"]>(graph.nodes, { ownKeys });
+    const t = mount({ outputs, graph });
+    t.status.framesSubmitted++;
+    t.ticks(1);
+    const initialScans = ownKeys.mock.calls.length;
+    expect(initialScans).toBeGreaterThan(0);
+    for (let frame = 1; frame < 60; frame++) {
+      t.status.framesSubmitted++;
+      t.ticks(1);
+    }
+    expect(t.presents).toHaveLength(60);
+    expect(iterate).toHaveBeenCalledOnce();
+    expect(ownKeys).toHaveBeenCalledTimes(initialScans);
+    expect(t.presents[59]?.composite).toHaveLength(1);
+
+    const replacement = { ...row, resourceId: "res:n1:new", size: [128, 64] as const };
+    const iterateReplacement = vi.fn(function* () { yield replacement; return undefined; });
+    const nextOutputs = [replacement];
+    nextOutputs[Symbol.iterator] = iterateReplacement;
+    t.rerender({ identity: "document-under-test", outputs: nextOutputs });
+    t.ticks(1);
+    expect(iterateReplacement).toHaveBeenCalledOnce();
+    expect(t.presents).toHaveLength(61);
+    expect(t.setPreviewProgram.mock.lastCall?.[0].passes.some((pass: { textures?: Array<{ resourceId: string }> }) =>
+      pass.textures?.some(binding => binding.resourceId === replacement.resourceId))).toBe(true);
+    t.ticks(10);
+    expect(iterateReplacement).toHaveBeenCalledOnce();
     t.dispose();
   });
 

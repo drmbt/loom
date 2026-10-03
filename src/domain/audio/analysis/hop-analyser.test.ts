@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createHopAnalyser, type HopFeatures } from "./hop-analyser.ts";
 import { blackmanWindow, decibelsToByte } from "./stft.ts";
 
@@ -69,6 +69,36 @@ function clickByte(position: number): number {
 }
 
 describe("createHopAnalyser — v1 flux and events at hop rate", () => {
+  it("allocates no fftSize float arrays after construction and survives transferred hop results", () => {
+    const engine = analyser();
+    const signal = sine(100);
+    const silence = new Float64Array(FFT_SIZE);
+    const allocations: number[] = [];
+    const FloatArray = Float64Array;
+    vi.stubGlobal("Float64Array", new Proxy(FloatArray, {
+      construct(target, args) {
+        allocations.push(args[0] as number);
+        return Reflect.construct(target, args);
+      },
+    }));
+    let second: HopFeatures;
+    try {
+      const first = engine.analyse(signal);
+      structuredClone(first, { transfer: [
+        first.frequency.buffer, first.timeDomain.buffer, first.bandFlux.buffer, first.bandEvents.buffer,
+      ] });
+      expect(first.frequency.byteLength).toBe(0);
+      second = engine.analyse(silence);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    // One bandFlux array per hop is transferred. The two FFT parts stay private.
+    expect(allocations).toEqual([BANDS.length + 1, BANDS.length + 1]);
+    expect(second.frequency.every((value) => value === 0)).toBe(true);
+    expect(second.timeDomain.every((value) => value === 128)).toBe(true);
+    expect(second.flux).toBe(0);
+  });
+
   it("the first window reports flux 0 and no event, however loud it is", () => {
     const first = analyser().analyse(sine(100));
     expect(first.flux).toBe(0);

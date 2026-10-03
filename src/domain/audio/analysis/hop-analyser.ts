@@ -75,6 +75,8 @@ export function createHopAnalyser(options: HopAnalyserOptions): HopAnalyser {
   const binHz = sampleRate / fftSize;
   const window = blackmanWindow(fftSize);
   const scratch = new Float64Array(binCount);
+  // FFT storage stays here; only the fresh result arrays cross the worklet port.
+  const workspace = { real: new Float64Array(fftSize), imag: new Float64Array(fftSize) };
   const streams = bands.length + 1;
   /** Bin ranges per stream: the whole spectrum first, then each band. */
   const ranges: ReadonlyArray<readonly [number, number]> = [
@@ -101,7 +103,7 @@ export function createHopAnalyser(options: HopAnalyserOptions): HopAnalyser {
       }
       const frequency = new Uint8Array(binCount);
       const timeDomain = new Uint8Array(fftSize);
-      analyserBytes(samples, window, frequency, timeDomain, scratch);
+      analyserBytes(samples, window, frequency, timeDomain, scratch, workspace);
 
       const previous = hops >= 1 ? (history[(hops - 1) % lag] as Uint8Array) : null;
       const flux = positiveFlux(frequency, previous);

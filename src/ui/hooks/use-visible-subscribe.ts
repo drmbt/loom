@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useMemo } from "react";
 import type { RefObject } from "react";
 
 /**
@@ -9,7 +9,9 @@ import type { RefObject } from "react";
  * hidden Performance tab re-rendered its whole table ten times a second for nobody — and
  * on E24 that was most of the idle commit budget. This hook wraps a store's `subscribe` so
  * the listener runs only while the subscribing element is visible, and runs once more the
- * instant the element becomes visible again. The store keeps aggregating; only the DOM
+ * instant the element becomes visible again. All consumers of this gate share one store
+ * subscription and one observer, so a telemetry table checks visibility once per tick.
+ * The store keeps aggregating; only the DOM
  * stops. A pane that comes back shows current data on its first paint (§V86) and never
  * rendered while it was hidden.
  *
@@ -49,52 +51,76 @@ export function useVisibleSubscribe(
   ref: RefObject<Element | null>,
   subscribe: Subscribe,
 ): Subscribe {
-  return useCallback(
-    (listener: () => void) => {
-      const element = ref.current;
-      // Subscribed before the element exists (never the case under React, which
-      // subscribes from a passive effect) — no gate is better than a gate that never opens.
-      if (element === null) return subscribe(listener);
-
-      let visible = isElementVisible(element);
+  return useMemo(
+    () => {
+      const listeners = new Set<() => void>();
+      let element: Element | null = null;
+      let visible = true;
       let chain: Element[] = [];
       let observer: MutationObserver | null = null;
+      let observedDocument: Document | null = null;
+      let unsubscribe: (() => void) | null = null;
+
+      const notify = (): void => {
+        for (const listener of [...listeners]) {
+          if (listeners.has(listener)) listener();
+        }
+      };
 
       /** Re-reads visibility; true when it just flipped to visible. */
       const check = (): boolean => {
-        const now = isElementVisible(element);
+        const now = element === null || isElementVisible(element);
         const shown = now && !visible;
         visible = now;
         return shown;
       };
 
       const arm = (): void => {
-        const next = ancestorsOf(element);
-        if (observer !== null && sameChain(chain, next)) return;
+        const nextElement = ref.current;
+        const next = nextElement === null ? [] : ancestorsOf(nextElement);
+        const nextDocument = nextElement?.ownerDocument ?? null;
+        if (observer !== null && element === nextElement && observedDocument === nextDocument && sameChain(chain, next)) return;
         observer?.disconnect();
+        element = nextElement;
+        observedDocument = nextDocument;
         chain = next;
-        const Observer = element.ownerDocument.defaultView?.MutationObserver;
+        const Observer = nextDocument?.defaultView?.MutationObserver;
         if (Observer === undefined) {
           observer = null;
           return;
         }
         observer = new Observer(() => {
+          if (listeners.size === 0) return;
           arm();
-          if (check()) listener();
+          if (check()) notify();
         });
         for (const node of chain) observer.observe(node, { attributes: true });
       };
 
-      arm();
-      const unsubscribe = subscribe(() => {
-        arm();
-        check();
-        if (visible) listener();
-      });
-      return () => {
-        observer?.disconnect();
-        observer = null;
-        unsubscribe();
+      return (listener: () => void): (() => void) => {
+        const entry = (): void => listener();
+        listeners.add(entry);
+        if (listeners.size === 1) {
+          arm();
+          check();
+          unsubscribe = subscribe(() => {
+            if (listeners.size === 0) return;
+            arm();
+            check();
+            if (visible) notify();
+          });
+        }
+        return () => {
+          listeners.delete(entry);
+          if (listeners.size !== 0) return;
+          observer?.disconnect();
+          observer = null;
+          unsubscribe?.();
+          unsubscribe = null;
+          element = null;
+          observedDocument = null;
+          chain = [];
+        };
       };
     },
     [ref, subscribe],

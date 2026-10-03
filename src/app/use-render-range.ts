@@ -112,8 +112,8 @@ export interface UseRenderRangeInputs {
    * node supplies nothing and the loop is unchanged.
    */
   readonly onFrameRendered?: ((frameIndex: number) => Promise<void>) | undefined;
-  /** Await external output shutdown before the first offline frame is evaluated. */
-  readonly beforeRender?: (() => Promise<void>) | undefined;
+  /** Await preparation before replay; an optional cleanup releases its export ownership. */
+  readonly beforeRender?: (() => Promise<void | (() => void)>) | undefined;
   /** Mutes only speaker monitoring for every take; returned cleanup restores it. */
   readonly muteAudioMonitor?: (() => (() => void)) | undefined;
   readonly prepareAudio?: ((
@@ -458,11 +458,13 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
         if (notReproducible !== null) onDiagnostic(notReproducible);
         let preparedAudio: Awaited<ReturnType<NonNullable<UseRenderRangeInputs["prepareAudio"]>>> = null;
         let restoreAudioMonitor: (() => void) | null = null;
+        let releasePreparation: (() => void) | undefined;
         let disposeRendered: (() => Promise<void>) | null = null;
         let capture: RenderCanvasCapture | null = null;
         try {
           restoreAudioMonitor = live.muteAudioMonitor?.() ?? null;
-          await live.beforeRender?.();
+          const prepared = await live.beforeRender?.();
+          if (prepared !== undefined) releasePreparation = prepared;
           if (controller.signal.aborted) throw new RenderRangeCancelledError();
           // A timeline-locked file drives visuals even when its PCM is excluded from the
           // MP4. Always await its deterministic pre-analysis before replay; inclusion
@@ -598,6 +600,7 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
             capture?.dispose();
             preparedAudio?.close();
             restoreAudioMonitor?.();
+            releasePreparation?.();
             if (abortRef.current === controller) abortRef.current = null;
             renderingRef.current = false;
             refreshElapsed();

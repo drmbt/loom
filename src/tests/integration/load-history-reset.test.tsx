@@ -6,6 +6,7 @@ import { installFlowStubs } from "@editor/graph-canvas/testing.tsx";
 import type { BackendCapabilities } from "@domain/types/backend.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
+import type { CompiledGraph } from "@compiler/index.ts";
 import { App } from "../../app/app.tsx";
 import { createAppRuntime } from "../../app/app-runtime.ts";
 import type { AppRuntime } from "../../app/app-runtime.ts";
@@ -53,9 +54,10 @@ import type { GpuStatus } from "../../app/gpu-status.ts";
  *
  * One load cannot show this: with nothing before it there is no carried-over ring to leak.
  * And a gate that flushed each compile before the next revision would be green on the
- * broken code, so the fixture CHECKS that two compiles were genuinely in flight together
- * before asserting anything about what landed (§V461 — a fixture must be capable of
- * distinguishing what its test asserts).
+ * broken code. Since §B235 serializes backend compiles, the fixture CHECKS that later
+ * revisions wait behind the held load, only the newest waiting revision is compiled,
+ * and the superseded load cannot discharge the reset before that newest plan installs
+ * (§V461 — a fixture must be capable of distinguishing what its test asserts).
  */
 
 beforeAll(() => {
@@ -136,6 +138,8 @@ interface Journal {
   readonly calls: string[];
   /** Each `resetTemporalHistory`, with the two things that distinguish the LOAD rite. */
   readonly resets: Array<{ scoped: boolean; buffers: boolean }>;
+  /** Logical plans actually sent to the backend, excluding superseded queued requests. */
+  readonly compiles: CompiledGraph[];
 }
 
 interface Deferred {
@@ -153,7 +157,7 @@ interface Deferred {
  * closes that window before anything can interleave with it.
  */
 function deferredBackend(): Deferred {
-  const journal: Journal = { calls: [], resets: [] };
+  const journal: Journal = { calls: [], resets: [], compiles: [] };
   const pending: Array<() => void> = [];
   let planCount = 0;
   const backend = {
@@ -180,12 +184,16 @@ function deferredBackend(): Deferred {
     present: () => ({ id: "present", outputId: "", setOutput: () => {}, dispose: () => {} }),
     onGpuTimings: () => () => {},
     onCpuTimings: () => () => {},
-    compile: () => {
+    compile: (plan: CompiledGraph) => {
       journal.calls.push("compile");
+      journal.compiles.push(plan);
       planCount += 1;
       const id = `plan-${planCount}`;
       return new Promise((resolve) => {
-        pending.push(() => resolve({ id, passes: [] }));
+        pending.push(() => {
+          journal.calls.push(`install:${id}`);
+          resolve({ id, passes: [] });
+        });
       });
     },
     render: () => {},
@@ -222,6 +230,8 @@ interface Session {
   patch(operations: GraphPatchOperation[]): Promise<void>;
   /** Answers every compile now outstanding, oldest first. */
   flush(): Promise<void>;
+  /** Lands one held compile, allowing its newest queued successor to start. */
+  answerOne(): Promise<void>;
   readonly journal: Journal;
   readonly pending: Array<() => void>;
 }
@@ -248,14 +258,19 @@ async function mount(): Promise<Session> {
   await act(async () => {});
   await settle();
 
-  const flush = async (): Promise<void> => {
+  const answerOne = async (): Promise<void> => {
     await act(async () => {
-      // Oldest first, which is the order a real backend answers a queue in — and the
-      // order that makes supersession happen rather than being ruled out by luck.
-      while (pending.length > 0) pending.shift()?.();
+      const next = pending.shift();
+      if (next === undefined) throw new Error("No backend compile is in flight.");
+      next();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     await settle();
+  };
+  const flush = async (): Promise<void> => {
+    // Each answer lets compileLatest start the newest waiting plan on a microtask.
+    // Drain that successor too, rather than observing only the first pending array.
+    while (pending.length > 0) await answerOne();
   };
 
   return {
@@ -263,6 +278,7 @@ async function mount(): Promise<Session> {
     journal,
     pending,
     flush,
+    answerOne,
     async open(text, fileName) {
       // Through the BUS — the door the example library and the file picker both use
       // (§V29, §V88).
@@ -304,20 +320,44 @@ describe("T733 — a load's history reset is owed work, not an observed flag (B1
 
     const before = session.journal.calls.length;
     const resetsBefore = session.journal.resets.length;
+    const compilesBefore = session.journal.compiles.length;
 
     // The load. Its compile is left IN FLIGHT — this is the window B141 lives in.
     await session.open(DOCUMENT_B, "B.loom.json");
-    expect(session.pending.length).toBeGreaterThan(0);
+    expect(session.pending).toHaveLength(1);
+    expect(session.journal.compiles).toHaveLength(compilesBefore + 1);
 
     // A second revision lands while it is still in flight. In the app this is the preview
     // scheduler republishing its kept tile set; here it is a patch, which produces the
     // same shape and is a real path in its own right (§V32).
     await session.patch(ADD_A_NODE);
+    await session.patch([
+      { op: "addNode", ref: "$newest", type: "noise", position: { x: 200, y: 400 } },
+    ]);
+    const addedIds = Object.values(session.runtime().bus.store.getGraph().nodes)
+      .filter((node) => node.type === "noise")
+      .map((node) => node.id);
+    expect(addedIds).toHaveLength(2);
 
-    // THE FIXTURE IS CAPABLE (§V461). Two compiles outstanding together is the situation
-    // under test; if the second had waited for the first, the assertions below would pass
-    // on the broken code and mean nothing.
-    expect(session.pending.length).toBeGreaterThanOrEqual(2);
+    // THE FIXTURE IS CAPABLE (§V461). Both revisions are queued while B's load compile
+    // remains held; a second backend call now would violate §B235, not prove B141.
+    expect(session.pending).toHaveLength(1);
+    expect(session.journal.compiles).toHaveLength(compilesBefore + 1);
+    expect(session.journal.resets).toHaveLength(resetsBefore);
+
+    await session.answerOne();
+    // The running load was superseded. Its install cannot consume the debt; only the
+    // newest waiting revision starts, with BOTH added preview outputs present. The
+    // intermediate queued revision would contain only the first added node.
+    expect(session.pending).toHaveLength(1);
+    expect(session.journal.compiles).toHaveLength(compilesBefore + 2);
+    const newestOutputs = session.journal.compiles.at(-1)!.outputs.map((output) => output.nodeId);
+    const loadOutputs = session.journal.compiles[compilesBefore]!.outputs.map((output) => output.nodeId);
+    for (const id of addedIds) {
+      expect(newestOutputs).toContain(id);
+      expect(loadOutputs).not.toContain(id);
+    }
+    expect(session.journal.resets).toHaveLength(resetsBefore);
 
     await session.flush();
 
@@ -350,7 +390,9 @@ describe("T733 — a load's history reset is owed work, not an observed flag (B1
     // program, and the active program is the previous document's until a compile resolves
     // — the reversed order wipes the picture the user is looking at and leaves the
     // incoming document's carried resources exactly as contaminated as they were.
-    expect(since.indexOf("resetTemporalHistory")).toBeGreaterThan(since.indexOf("compile"));
+    const installs = since.flatMap((call, index) => call.startsWith("install:") ? [index] : []);
+    expect(installs).toHaveLength(2);
+    expect(since.indexOf("resetTemporalHistory")).toBeGreaterThan(installs[1]!);
   }, 30_000);
 
   it("does not clear history for an ordinary edit inside ONE document (the control)", async () => {

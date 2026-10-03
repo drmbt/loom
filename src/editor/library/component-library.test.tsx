@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { alice, contextFor } from "@domain/commands/test-support.ts";
 import { componentInstances } from "@domain/components/instance.ts";
@@ -46,6 +46,62 @@ function setup(options: { registerV2?: boolean; withInstance?: boolean } = {}) {
 }
 
 describe("ComponentLibrary (T188)", () => {
+  it("sixty parameter revisions refresh no catalogue/upgrades queries; instance and definition changes still refresh", async () => {
+    const harness = createComponentHarness("c", graphOf([
+      node("soften", "test.blur", { radius: 4 }),
+      instanceNode("inst", "bloom", 1, { blur: 12 }),
+    ]));
+    harness.components.register(bloomComponent("bloom", 1, [blurKnob]));
+    const query = vi.spyOn(harness.bus, "query");
+    render(<ComponentLibrary bus={harness.bus} context={context} components={harness.components.view()} />);
+    await screen.findByRole("button", { name: /^Bloom/ });
+    expect(query.mock.calls.map(call => call[0])).toEqual(["component.list", "component.upgrades"]);
+    for (let revision = 0; revision < 60; revision++) {
+      await act(async () => {
+        const result = await harness.bus.execute("graph.applyPatch", {
+          baseRevision: harness.bus.store.getGraph().revision,
+          operations: [{ op: "setParameters", nodeId: revision % 2 === 0 ? "soften" : "inst",
+            parameters: revision % 2 === 0 ? { radius: revision + 1 } : { blur: revision + 1 } }],
+        }, context);
+        expect(result.status).toBe("applied");
+      });
+    }
+    expect(query).toHaveBeenCalledTimes(2);
+    await act(async () => harness.components.register(bloomComponent("bloom", 2, [blurKnob])));
+    const upgrades = await screen.findByRole("region", { name: "Upgrades" });
+    expect(within(upgrades).getByText("v1 → v2")).toBeDefined();
+    expect(query).toHaveBeenCalledTimes(4);
+
+    await act(async () => {
+      await harness.bus.execute("component.instantiate", { componentId: "bloom", version: 1, mode: "linked" }, context);
+    });
+    expect(query).toHaveBeenCalledTimes(6);
+    expect(within(upgrades).getAllByText("v1 → v2")).toHaveLength(2);
+
+    const names = within(upgrades).getAllByRole("button", { name: /Upgrade Bloom/ });
+    fireEvent.click(names[0]!);
+    await waitFor(() => expect(within(upgrades).getAllByText("v1 → v2")).toHaveLength(1));
+    expect(query.mock.calls.filter(call => call[0] === "component.upgrades").length).toBeGreaterThan(3);
+
+    await act(async () => {
+      harness.components.register({ ...bloomComponent("bloom", 1, [blurKnob]), name: "Reauthored" });
+      harness.components.register({ ...bloomComponent("bloom", 2, [blurKnob]), name: "Reauthored" });
+    });
+    expect(await screen.findByRole("button", { name: /^Reauthored/ })).toBeDefined();
+    expect(within(upgrades).getByRole("button", { name: /Upgrade Reauthored/ })).toBeDefined();
+
+    const beforeRemoval = query.mock.calls.length;
+    const pinned = componentInstances(harness.bus.store.getGraph()).find(instance => instance.state.version === 1)!;
+    await act(async () => {
+      const result = await harness.bus.execute("graph.applyPatch", {
+        baseRevision: harness.bus.store.getGraph().revision,
+        operations: [{ op: "removeNodes", nodeIds: [pinned.nodeId] }],
+      }, context);
+      expect(result.status).toBe("applied");
+    });
+    expect(screen.queryByRole("region", { name: "Upgrades" })).toBeNull();
+    expect(query).toHaveBeenCalledTimes(beforeRemoval + 2);
+  });
   it("lists what the bus says is installed, with its version", async () => {
     const harness = setup();
     render(

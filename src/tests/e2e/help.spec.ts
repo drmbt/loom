@@ -1,0 +1,30 @@
+import { expect, test } from "@playwright/test";
+import { openApp } from "./app.ts";
+
+test("Help mounts on demand and preserves search and shortcut capture across reopening", async ({ page }) => {
+  await openApp(page);
+  await expect(page.getByRole("dialog", { name: "Help" })).toHaveCount(0);
+  await page.keyboard.press("ControlOrMeta+/");
+  const dialog = page.getByRole("dialog", { name: "Help" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("tab", { name: "Nodes", exact: true }).click();
+  await dialog.getByRole("searchbox", { name: "Search node reference" }).fill("blur");
+  await expect(dialog.getByRole("article").first()).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await page.keyboard.press("ControlOrMeta+/");
+  await dialog.getByRole("tab", { name: "Nodes", exact: true }).click();
+  await expect(dialog.getByRole("searchbox", { name: "Search node reference" })).toHaveValue("blur");
+  await dialog.getByRole("tab", { name: "Shortcuts", exact: true }).click();
+  const binding = dialog.getByRole("button", { name: "Change shortcut for Help", exact: true });
+  await binding.click();
+  await expect(binding).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await expect(binding).toHaveAttribute("aria-pressed", "false");
+  await expect(dialog.getByRole("status")).toHaveText("Rebinding cancelled.");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await page.keyboard.press("ControlOrMeta+/");
+  await expect(dialog.getByRole("status")).toHaveText("Rebinding cancelled.");
+});

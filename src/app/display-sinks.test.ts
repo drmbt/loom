@@ -8,6 +8,17 @@ import { createPreviewSinkStore } from "./preview-sinks.ts";
  * array (no recompile), and an open or close must hand back a new one (a recompile).
  */
 describe("display sinks", () => {
+  it("forwards independent preview owners through the merged store", () => {
+    let clock = 0;
+    const merged = mergeSinkStores(createPreviewSinkStore(() => clock, 0), createDisplaySinkStore());
+    const tiles = {}, background = {};
+    merged.set([{ nodeId: "tile", portId: "out" }], tiles);
+    merged.set([{ nodeId: "background", portId: "out" }], background);
+    merged.set([], background);
+    clock = 1500;
+    merged.set([], background);
+    expect(merged.get().map(sink => sink.nodeId)).toEqual(["tile"]);
+  });
   it("names each shown Window Out as an output sink, sorted and de-duplicated", () => {
     const store = createDisplaySinkStore();
     store.set(["win2", "win1", "win2"]);

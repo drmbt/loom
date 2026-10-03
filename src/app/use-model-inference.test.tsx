@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { InferenceRequest } from "@runtime/models/inference-protocol.ts";
+import type { InferenceRequest, InferenceResponse } from "@runtime/models/inference-protocol.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
+import type { DispatchInputTiming } from "@runtime/backend/backend-types.ts";
 import * as acquisitionModule from "@runtime/models/model-acquisition.ts";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { compileGraph } from "@compiler/index.ts";
 import type { CompiledGraph } from "@compiler/index.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import { EXAMPLE_DOCUMENTS } from "@/examples/documents.ts";
 import { TIER_B_CAPABILITIES, exampleRegistry } from "@/examples/runner.ts";
 import { buildNotices, claimsNothingAfter, runNote, useModelInference } from "./use-model-inference.ts";
@@ -42,6 +44,12 @@ function planFor(graph: GraphDocument): CompiledGraph {
   });
 }
 
+function preprocessId(plan: CompiledGraph, nodeId: string): string {
+  const pass = plan.passes.find(candidate => candidate.kind === "dispatch" && candidate.nodeId === nodeId);
+  if (pass === undefined) throw new Error(`No compiled preprocess for ${nodeId}`);
+  return pass.id;
+}
+
 /** A document with nothing inferential in it — E44 with the graph emptied. */
 const EMPTY_GRAPH: GraphDocument = { revision: 1, nodes: {}, edges: {}, groups: {} };
 
@@ -51,6 +59,30 @@ async function settleRefresh(): Promise<void> {
     await Promise.resolve();
     await Promise.resolve();
   });
+}
+
+function dispatchGates() {
+  const gates = new Map<string, (frame: FrameEvaluationInput) => boolean>();
+  const callbacks = new Map<string, (frame: FrameEvaluationInput, timing: DispatchInputTiming) => boolean>();
+  const removed = vi.fn();
+  return {
+    gates, callbacks, removed,
+    registerDispatchGate: vi.fn((passId: string, gate: (frame: FrameEvaluationInput, timing: DispatchInputTiming) => boolean) => {
+      callbacks.set(passId, gate);
+      // Existing fixtures model direct, already-submitted current-frame input. Tests
+      // exercising open-frame provenance call callbacks with their explicit source.
+      gates.set(passId, frame => gate(frame, {
+        renderIndex: frame.frameIndex + 1,
+        source: { renderIndex: frame.frameIndex + 1, frameIndex: frame.frameIndex,
+          timeSeconds: frame.absTimeSeconds ?? frame.timeSeconds },
+      }));
+      return () => { gates.delete(passId); callbacks.delete(passId); removed(passId); };
+    }),
+  };
+}
+
+function inferenceFrame(index: number): FrameEvaluationInput {
+  return { frameIndex: index, timeSeconds: index / 60, deltaSeconds: 1 / 60, mode: "realtime", randomSeed: 7 };
 }
 
 afterEach(() => {
@@ -78,7 +110,10 @@ it("T1323: graph deletion retires worker history; lack of demand does not", asyn
     addEventListener() {}
     terminate() {}
   });
+  const gates = dispatchGates();
   const backend = {
+    status: { framesSubmitted: 0 },
+    registerDispatchGate: gates.registerDispatchGate,
     readBuffer: async () => new ArrayBuffer(16),
     registerMediaSource: () => () => undefined,
   } as unknown as LoomBackend;
@@ -87,12 +122,15 @@ it("T1323: graph deletion retires worker history; lack of demand does not", asyn
   const view = renderHook(() => useModelInference(backend));
   act(() => view.result.current.track(graph, plan));
   await settleRefresh();
+  const release = await view.result.current.prepareForRender();
+  const depthId = Object.keys(graph.nodes).find(id => graph.nodes[id]!.type === "depth")!;
+  expect(gates.gates.get(preprocessId(plan, depthId))!(inferenceFrame(0))).toBe(true);
   await act(async () => { await view.result.current.settle(0); });
+  release();
   expect(workers).toBe(1);
   act(() => view.result.current.track(graph, { ...plan, resources: [], passes: [] }));
   expect(sent.filter(message => message.kind === "forget")).toEqual([]);
   act(() => view.result.current.track(EMPTY_GRAPH, planFor(EMPTY_GRAPH)));
-  const depthId = Object.keys(graph.nodes).find(id => graph.nodes[id]!.type === "depth");
   expect(depthId).toBeDefined();
   expect(sent.filter(message => message.kind === "forget"))
     .toEqual([{ kind: "forget", nodeIds: [depthId] }]);
@@ -123,8 +161,10 @@ it("T1487b: a held model's run state is published to its node, and cleared when 
     terminate() {}
   });
   const backend = {
+    status: { framesSubmitted: 0 },
     readBuffer: async () => new ArrayBuffer(16),
     registerMediaSource: () => () => undefined,
+    registerDispatchGate: dispatchGates().registerDispatchGate,
   } as unknown as LoomBackend;
   const published: Array<[string, unknown]> = [];
   const sink = {
@@ -443,9 +483,13 @@ describe("T1044 — the inference result is registered on whichever backend is l
   /** Records what it was asked to serve. Only the two methods this seam ever calls. */
   function recordingBackend() {
     const registered: string[] = [];
+    const gateRegistry = dispatchGates();
     return {
       registered,
+      gateRegistry,
       backend: {
+        status: { framesSubmitted: 0 },
+        registerDispatchGate: gateRegistry.registerDispatchGate,
         registerMediaSource: (sourceId: string) => {
           registered.push(sourceId);
           return () => {};
@@ -472,6 +516,8 @@ describe("T1044 — the inference result is registered on whichever backend is l
     expect(first.registered, "the first backend was never given the matte's result source").toContain(
       "infer:cut",
     );
+    expect(first.gateRegistry.gates.has(preprocessId(plan, "cut"))).toBe(true);
+    expect(first.gateRegistry.gates.get(preprocessId(plan, "cut"))!(inferenceFrame(0))).toBe(false);
 
     // The device is replaced and the document recompiles against it — the ordering an HMR
     // update or a rebuilt device produces.
@@ -487,5 +533,145 @@ describe("T1044 — the inference result is registered on whichever backend is l
       "the live backend has no source for the matte's result texture, so it will never be " +
         "uploaded and the node renders zero everywhere while reporting itself healthy",
     ).toContain("infer:cut");
+    expect(first.gateRegistry.gates.size).toBe(0);
+    expect(second.gateRegistry.gates.has(preprocessId(plan, "cut"))).toBe(true);
+    view.unmount();
+    expect(second.gateRegistry.gates.size).toBe(0);
   });
+});
+
+it("an offline lease prepares each export input and releases to the live rate gate idempotently", async () => {
+  const createAcquisition = acquisitionModule.createModelAcquisition;
+  vi.spyOn(acquisitionModule, "createModelAcquisition").mockImplementation(options => ({
+    ...createAcquisition(options),
+    refresh: async descriptor => {
+      options.onStateChange?.(descriptor.id, { kind: "ready" });
+      return { kind: "ready" };
+    },
+    acquire: async () => undefined,
+  }));
+  vi.stubGlobal("Worker", class { postMessage() {} addEventListener() {} terminate() {} });
+  const gates = dispatchGates();
+  const readBuffer = vi.fn(async () => new ArrayBuffer(16));
+  const backend = {
+    status: { framesSubmitted: 0 },
+    readBuffer, registerDispatchGate: gates.registerDispatchGate, registerMediaSource: () => () => undefined,
+  } as unknown as LoomBackend;
+  const graph = structuredClone(sounding!.graph) as GraphDocument;
+  const depthId = Object.keys(graph.nodes).find(id => graph.nodes[id]!.type === "depth")!;
+  graph.nodes[depthId]!.parameters["rateLimit"] = 2;
+  const plan = planFor(graph);
+  const view = renderHook(() => useModelInference(backend));
+  act(() => view.result.current.track(graph, plan));
+  const gate = gates.gates.get(preprocessId(plan, depthId))!;
+  await settleRefresh();
+  const live = inferenceFrame(0);
+  expect(gate(live)).toBe(true);
+  await act(async () => { view.result.current.observe(live); await settleRefresh(); });
+  expect(readBuffer).toHaveBeenCalledOnce();
+  expect(gate(inferenceFrame(1))).toBe(false);
+
+  const release = await view.result.current.prepareForRender();
+  for (let index = 1; index <= 2; index++) {
+    const current = inferenceFrame(index);
+    expect(gate(current)).toBe(true); // Export still uses the live transport's mode.
+    await act(async () => { view.result.current.observe(current); await settleRefresh(); });
+    expect(readBuffer).toHaveBeenCalledTimes(index);
+    await act(async () => { await view.result.current.settle(index); });
+    expect(readBuffer).toHaveBeenCalledTimes(index + 1);
+  }
+  release(); release();
+  expect(gate(inferenceFrame(3))).toBe(false);
+  view.unmount();
+  expect(gates.gates.size).toBe(0);
+});
+
+it.each(["depth", "pose", "matte"])("%s skips unsubmitted input and preserves captured timing and source extent through retracking", async type => {
+  const createAcquisition = acquisitionModule.createModelAcquisition;
+  vi.spyOn(acquisitionModule, "createModelAcquisition").mockImplementation(options => ({
+    ...createAcquisition(options),
+    refresh: async descriptor => {
+      options.onStateChange?.(descriptor.id, { kind: "ready" });
+      return { kind: "ready" };
+    },
+    acquire: async () => new ArrayBuffer(16),
+  }));
+  const requests: Array<Extract<InferenceRequest, { kind: "run" }>> = [];
+  vi.stubGlobal("Worker", class {
+    listener: ((event: { data: InferenceResponse }) => void) | undefined;
+    addEventListener(kind: string, listener: (event: { data: InferenceResponse }) => void) {
+      if (kind === "message") this.listener = listener;
+    }
+    postMessage(request: InferenceRequest) {
+      if (request.kind === "forget") return;
+      if (request.kind === "run") requests.push(request);
+      const response: InferenceResponse = request.kind === "load"
+        ? { kind: "loaded", sessionKey: request.sessionKey, backend: "stub", millis: 1, isolated: true }
+        : { kind: "result", requestId: request.requestId, bytes: new ArrayBuffer(16), backend: "stub", millis: 1, isolated: true };
+      queueMicrotask(() => this.listener?.({ data: response }));
+    }
+    terminate() {}
+  });
+  const nodeId = "component/inner#model:opaque";
+  const graph: GraphDocument = {
+    revision: 1, groups: {},
+    nodes: {
+      src: { id: "src", type: "solid", definitionVersion: 1, parameters: {}, position: { x: 0, y: 0 } },
+      [nodeId]: { id: nodeId, type, definitionVersion: 1, parameters: {}, position: { x: 250, y: 0 }, label: "model1" },
+      out: { id: "out", type: "output", definitionVersion: 1, parameters: {}, position: { x: 500, y: 0 } },
+    },
+    edges: {
+      a: { id: "a", source: { nodeId: "src", portId: "out" }, target: { nodeId, portId: "input" } },
+      b: { id: "b", source: { nodeId, portId: "out" }, target: { nodeId: "out", portId: "input" } },
+    },
+  };
+  const plan = planFor(graph);
+  expect(plan.ok).toBe(true);
+  const gates = dispatchGates();
+  const readBuffer = vi.fn(async () => new ArrayBuffer(16));
+  const status = { framesSubmitted: 0 };
+  const backend = {
+    status,
+    readBuffer, registerDispatchGate: gates.registerDispatchGate, registerMediaSource: () => () => undefined,
+  } as unknown as LoomBackend;
+  const view = renderHook(() => useModelInference(backend));
+  act(() => view.result.current.track(graph, plan));
+  await settleRefresh();
+  const gate = gates.gates.get(preprocessId(plan, nodeId));
+  expect(gate).toBeTypeOf("function");
+  if (gate === undefined) throw new Error("Compiled preprocess has no consumer gate");
+  const frame = inferenceFrame(0);
+  const callback = gates.callbacks.get(preprocessId(plan, nodeId));
+  if (callback === undefined) throw new Error("Compiled preprocess has no provenance callback");
+  expect(callback(frame, { renderIndex: 1, source: undefined })).toBe(false);
+  await act(async () => { view.result.current.observe(frame); await view.result.current.settle(0); });
+  expect(readBuffer).not.toHaveBeenCalled();
+  expect(requests).toEqual([]);
+  expect(view.result.current.resolver("model1:ready", { frame } as never)).toBe(0);
+  expect(view.result.current.resolver("model1:cacheFrames", { frame } as never)).toBe(0);
+  expect(gate(frame)).toBe(true);
+  status.framesSubmitted = 1;
+  await act(async () => { view.result.current.observe(frame); await view.result.current.settle(0); });
+  expect(readBuffer).toHaveBeenCalledOnce();
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({ nodeId, nodeType: type, sourceWidth: 1280, sourceHeight: 720 });
+  if (type === "pose") expect(requests[0]).toMatchObject({ width: 17, height: 1 });
+  // Uniform-only tracking retains the gate; the next real compiled dispatch still starts.
+  act(() => view.result.current.track({ ...graph, revision: 2 }, planFor(graph)));
+  expect(gates.registerDispatchGate).toHaveBeenCalledOnce();
+  const next = inferenceFrame(60);
+  // The live open-frame dispatch sees render1's pixels, even though the project
+  // skipped to frame60. The compensation must count stored renders, not frame labels.
+  expect(callback(next, { renderIndex: 2,
+    source: { renderIndex: 1, frameIndex: 0, timeSeconds: 0 },
+  })).toBe(true);
+  status.framesSubmitted = 2;
+  await act(async () => { view.result.current.observe(next); await view.result.current.settle(60); });
+  expect(readBuffer).toHaveBeenCalledTimes(2);
+  expect(view.result.current.resolver("model1:ready", { frame: next } as never)).toBe(1);
+  expect(view.result.current.resolver("model1:lagFrames", { frame: next } as never)).toBe(60);
+  expect(view.result.current.resolver("model1:cacheFrames", { frame: next } as never)).toBe(2);
+  expect(view.result.current.resolver("model1:delaySeconds", { frame: next } as never)).toBe(1);
+  view.unmount();
+  expect(gates.gates.size).toBe(0);
 });

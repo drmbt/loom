@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NodeId } from "../../domain/types/ids.ts";
 import { TELEMETRY_TICK_MS, createTelemetryHub, telemetryPlan } from "./hub.ts";
 import type { NodeMetricSink, PlanLike } from "./hub.ts";
-import type { FrameSpanExtent, PassSpanResults, PassTimingSource } from "./types.ts";
+import type { FrameSpanExtent, PassSpanResults, PassTimingSource, TelemetryPlan } from "./types.ts";
 
 /**
  * The metrics pipe (T41, T42, §V16, §V86).
@@ -82,6 +82,119 @@ function advance(ms: number): void {
   clock += ms;
   vi.advanceTimersByTime(ms);
 }
+
+function metadataPlan(): TelemetryPlan {
+  const nodeId = "blur" as NodeId;
+  return telemetryPlan(planOf([], {
+    passes: [{ id: "p1", kind: "effect", nodeId, label: "Blur pass" }],
+    order: [nodeId], pruned: ["pruned" as NodeId],
+    sources: [{ nodeId, path: ["instance" as NodeId], sourcePath: "Main / Blur" }],
+    resources: [{ id: "input", kind: "buffer", stride: 4, capacity: 4 }],
+  }), {
+    categories: new Map([[nodeId, "filter"]]), memoryBudgetBytes: 4096,
+    readbacks: [{ nodeId, resourceId: "input", reason: "Analyze channel blur" }],
+  });
+}
+
+describe("equivalent compile metadata preserves telemetry structure", () => {
+  it("keeps the plan and measurements across sixty fresh projections while publishing compile marks", () => {
+    const hub = createTelemetryHub({ now });
+    const timing = fakeTimingSource(true);
+    hub.attachTimingSource(timing);
+    const first = metadataPlan();
+    hub.setPlan(first);
+    timing.emit({ p1: 3 }, { gpuMs: 2, submit: 1 });
+    timing.drop();
+    advance(TELEMETRY_TICK_MS);
+    const notify = vi.fn();
+    hub.subscribe(notify);
+    for (let revision = 0; revision < 60; revision += 1) {
+      hub.setPlan(metadataPlan());
+      advance(TELEMETRY_TICK_MS);
+      expect(hub.snapshot().plan).toBe(first);
+      expect(hub.snapshot().frame.gpuMs).toBe(2);
+      expect(hub.snapshot().frame.droppedFrames).toBe(1);
+    }
+    if (hub.timeline === undefined) throw new Error("The telemetry hub must provide a timeline.");
+    expect(hub.timeline(10_000).marks.filter(mark => mark.kind === "compile")).toHaveLength(61);
+    expect(notify).toHaveBeenCalledTimes(60);
+    hub.dispose();
+  });
+
+  const changes: Array<[string, (plan: TelemetryPlan) => TelemetryPlan]> = [
+    ...(["id", "kind", "nodeId", "label"] as const).map(key => [
+      `pass ${key}`, (plan: TelemetryPlan) => ({ ...plan, passes: plan.passes.map(pass => ({ ...pass, [key]: "changed" })) }),
+    ] as [string, (plan: TelemetryPlan) => TelemetryPlan]),
+    ["pass membership", plan => ({ ...plan, passes: [] })],
+    ...(["nodeId", "sourcePath"] as const).map(key => [
+      `source ${key}`, (plan: TelemetryPlan) => ({ ...plan, sources: plan.sources.map(source => ({ ...source, [key]: "changed" })) }),
+    ] as [string, (plan: TelemetryPlan) => TelemetryPlan]),
+    ["source hierarchy", plan => ({ ...plan, sources: plan.sources.map(source => ({ ...source, path: [] })) })],
+    ["source membership", plan => ({ ...plan, sources: [] })],
+    ["category value", plan => ({ ...plan, categories: new Map([["blur" as NodeId, "other"]]) })],
+    ["category key", plan => ({ ...plan, categories: new Map([["other" as NodeId, "filter"]]) })],
+    ["category membership", plan => ({ ...plan, categories: new Map() })],
+    ...(["nodeId", "sourcePath", "reason", "resourceId", "bytes"] as const).map(key => [
+      `readback row ${key}`, (plan: TelemetryPlan) => ({ ...plan, readback: { ...plan.readback,
+        rows: plan.readback.rows.map(row => ({ ...row, [key]: key === "bytes" ? null : "changed" })),
+      } }),
+    ] as [string, (plan: TelemetryPlan) => TelemetryPlan]),
+    ["readback membership", plan => ({ ...plan, readback: { ...plan.readback, rows: [] } })],
+    ...(["count", "bytes"] as const).map(key => [
+      `readback ${key}`, (plan: TelemetryPlan) => ({ ...plan, readback: { ...plan.readback, [key]: plan.readback[key] + 1 } }),
+    ] as [string, (plan: TelemetryPlan) => TelemetryPlan]),
+    ["readback incomplete", plan => ({ ...plan, readback: { ...plan.readback, incomplete: true } })],
+    ...(["resourceCount", "estimatedResourceBytes", "nodeCount", "prunedCount"] as const).map(key => [
+      key, (plan: TelemetryPlan) => ({ ...plan, [key]: plan[key] + 1 }),
+    ] as [string, (plan: TelemetryPlan) => TelemetryPlan]),
+    ["memory budget", plan => ({ ...plan, memoryBudgetBytes: null })],
+  ];
+  it.each(changes)("publishes changed %s", (_name, change) => {
+    const hub = createTelemetryHub({ now });
+    hub.setPlan(metadataPlan());
+    advance(TELEMETRY_TICK_MS);
+    const next = change(metadataPlan());
+    const notify = vi.fn();
+    hub.subscribe(notify);
+    hub.setPlan(next);
+    advance(TELEMETRY_TICK_MS);
+    expect(hub.snapshot().plan).toBe(next);
+    expect(notify).toHaveBeenCalledOnce();
+    hub.dispose();
+  });
+
+  it("handles null transitions and clears measurements when the timing source is replaced", () => {
+    const hub = createTelemetryHub({ now });
+    const first = metadataPlan();
+    hub.setPlan(first);
+    const old = fakeTimingSource(true);
+    hub.attachTimingSource(old);
+    old.emit({ p1: 3 }, { gpuMs: 2, submit: 1 });
+    old.drop();
+    advance(TELEMETRY_TICK_MS);
+    hub.attachTimingSource(fakeTimingSource(true));
+    hub.setPlan(metadataPlan());
+    advance(TELEMETRY_TICK_MS);
+    expect(hub.snapshot().plan).toBe(first);
+    expect(hub.snapshot().frame.availability).toBe("pending");
+    expect(hub.snapshot().frame.gpuMs).toBeNull();
+    expect(hub.snapshot().frame.droppedFrames).toBe(0);
+    expect(old.listenerCount()).toBe(0);
+    hub.setPlan(null);
+    advance(TELEMETRY_TICK_MS);
+    expect(hub.snapshot().plan).toBeNull();
+    const notify = vi.fn();
+    hub.subscribe(notify);
+    hub.setPlan(null);
+    advance(TELEMETRY_TICK_MS);
+    expect(notify).not.toHaveBeenCalled();
+    const restored = metadataPlan();
+    hub.setPlan(restored);
+    advance(TELEMETRY_TICK_MS);
+    expect(hub.snapshot().plan).toBe(restored);
+    hub.dispose();
+  });
+});
 
 describe("§V16 — the UI is notified at most 10 times a second", () => {
   it("coalesces a 60 Hz frame burst into <= 10 notifications per second", () => {

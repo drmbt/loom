@@ -25,6 +25,13 @@ function ruleIdsOf(messages: { ruleId: string | null }[]): (string | null)[] {
   return messages.map((message) => message.ruleId);
 }
 
+it("keeps peer checkouts and generated environments outside root source lint", async () => {
+  const eslint = new ESLint({ overrideConfigFile: eslintConfigPath, cwd: repoRoot });
+  expect(await eslint.isPathIgnored(`${repoRoot}.claude/worktrees/peer/src/app.ts`)).toBe(true);
+  expect(await eslint.isPathIgnored(`${repoRoot}renders/on-nothing/.venv/vendor/worker.js`)).toBe(true);
+  expect(await eslint.isPathIgnored(`${repoRoot}src/app/app.tsx`)).toBe(false);
+});
+
 describe("§V3 — vgpu import restricted to src/runtime/backend/vgpu/**", () => {
   const importsVgpu = 'import { init } from "vgpu";\nexport function use() { return init; }\n';
   const importsVgpuMock = 'import { frame } from "vgpu/mock";\nexport function use() { return frame; }\n';

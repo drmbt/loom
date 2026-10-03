@@ -52,6 +52,13 @@ export const CENTROID_RANGE_HZ = [20, 16000] as const;
 const ANALYSER_MIN_DB = -100;
 const ANALYSER_DB_SPAN = 70;
 
+// Frequency bytes have only 256 possible magnitudes. Retain the exact inverse map
+// rather than repeat its exponentiation for every occupied bin of every audio frame.
+const BYTE_MAGNITUDES = Float64Array.from(
+  { length: 256 },
+  (_, byte) => 10 ** ((ANALYSER_MIN_DB + (byte / 255) * ANALYSER_DB_SPAN) / 20),
+);
+
 export interface AudioAnalysisState {
   /** Previous frame's frequency bytes, for spectral flux. Null on the first frame. */
   previousSpectrum: Uint8Array | null;
@@ -107,7 +114,7 @@ function spectralCentroid(frequency: Uint8Array, binHz: number): number {
   for (let bin = first; bin <= last; bin += 1) {
     const byte = frequency[bin] ?? 0;
     if (byte === 0) continue;
-    const magnitude = 10 ** ((ANALYSER_MIN_DB + (byte / 255) * ANALYSER_DB_SPAN) / 20);
+    const magnitude = BYTE_MAGNITUDES[byte] as number;
     weighted += bin * binHz * magnitude;
     total += magnitude;
   }

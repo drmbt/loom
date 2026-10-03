@@ -59,8 +59,24 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
   useEffect(() => () => editor.dispose(), [editor]);
   const write = useMemo<ControlWrite>(() => (nodeId, entries, phase) => editor.setStored(nodeId, entries, phase), [editor]);
 
-  const panels = useMemo(() => Object.values(graph.nodes).filter((node) => node.type === "panel"), [graph]);
-  const widgets = useMemo(() => Object.values(graph.nodes).filter((node) => CONTROL_WIDGET_TYPES.has(node.type)), [graph]);
+  const { panels, widgets } = useMemo(() => {
+    const panels: GraphNode[] = [];
+    const widgets: GraphNode[] = [];
+    for (const node of Object.values(graph.nodes)) {
+      const type = node.type;
+      if (type === "panel") panels.push(node);
+      else if (CONTROL_WIDGET_TYPES.has(type)) widgets.push(node);
+    }
+    return { panels, widgets };
+  }, [graph.nodes]);
+  // The empty surface reads only the phone door, not graph parameters or edges.
+  // Keep that element so an unrelated edit does not rebuild the phone popover.
+  const empty = useMemo(() => (
+    <div className={styles.empty}>
+      <p>No controls</p>
+      {phone === undefined ? null : <PhoneDoorButton door={phone} />}
+    </div>
+  ), [phone]);
   const [chosen, setChosen] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const panel = panels.find((candidate) => candidate.id === chosen) ?? panels[0];
@@ -72,12 +88,7 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
   };
 
   if (widgets.length === 0 && panel === undefined) {
-    return (
-      <div className={styles.empty}>
-        <p>No controls</p>
-        {phone === undefined ? null : <PhoneDoorButton door={phone} />}
-      </div>
-    );
+    return empty;
   }
 
   /** What a widget drives, as chips with × (`ControlTargets`) — under a card. */

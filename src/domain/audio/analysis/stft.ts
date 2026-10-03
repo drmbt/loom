@@ -71,23 +71,38 @@ export function fftInPlace(real: Float64Array, imag: Float64Array): void {
 /** Silence has no logarithm; the analyser reports this for an all-zero bin. */
 export const SILENT_DECIBELS = -1000;
 
+/** Private FFT storage, reused across windows and never transferred with analysis results. */
+export interface SpectrumWorkspace {
+  readonly real: Float64Array;
+  readonly imag: Float64Array;
+}
+
 /**
  * One analyser frame: `samples` (fftSize of them) → per-bin dB, fftSize / 2 bins.
  * `window` is `blackmanWindow(samples.length)`, hoisted by the caller because the
  * worklet computes ~100 of these a second and the window never changes.
+ * Realtime callers also retain `workspace`: two fftSize arrays otherwise allocate on
+ * every hop. Both parts are completely overwritten before each transform.
  */
 export function spectrumDecibels(
   samples: ArrayLike<number>,
   window: Float64Array,
   out: Float64Array = new Float64Array(samples.length / 2),
+  workspace: SpectrumWorkspace = {
+    real: new Float64Array(samples.length),
+    imag: new Float64Array(samples.length),
+  },
 ): Float64Array {
   const size = samples.length;
   if (window.length !== size || out.length !== size / 2) {
     throw new Error(`spectrumDecibels: window ${window.length} / out ${out.length} do not fit ${size} samples`);
   }
-  const real = new Float64Array(size);
-  const imag = new Float64Array(size);
+  const { real, imag } = workspace;
+  if (real.length !== size || imag.length !== size) {
+    throw new Error(`spectrumDecibels: FFT workspace ${real.length}/${imag.length} does not fit ${size} samples`);
+  }
   for (let i = 0; i < size; i += 1) real[i] = (samples[i] as number) * (window[i] as number);
+  imag.fill(0);
   fftInPlace(real, imag);
   const scale = 1 / size;
   for (let bin = 0; bin < size / 2; bin += 1) {
@@ -128,8 +143,9 @@ export function analyserBytes(
   frequency: Uint8Array,
   timeDomain: Uint8Array,
   scratch: Float64Array = new Float64Array(samples.length / 2),
+  workspace?: SpectrumWorkspace,
 ): void {
-  const decibels = spectrumDecibels(samples, window, scratch);
+  const decibels = spectrumDecibels(samples, window, scratch, workspace);
   for (let bin = 0; bin < decibels.length; bin += 1) frequency[bin] = decibelsToByte(decibels[bin] as number);
   for (let i = 0; i < samples.length; i += 1) timeDomain[i] = sampleToByte(samples[i] as number);
 }
