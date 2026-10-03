@@ -32,6 +32,7 @@ import {
   removeFromPanelOperations,
 } from "./panel-board-edit.ts";
 import { joinPanelOperations } from "./panel-join.ts";
+import { usePresetCatalogue } from "./use-preset-catalogue.ts";
 import styles from "./panel-board.module.css";
 
 /**
@@ -217,6 +218,7 @@ const capture = (event: ReactPointerEvent<HTMLElement>): void => {
 
 export function PanelBoardEditor({ graph, panelId, board, write, bus, invocation, apply, registry }: PanelBoardEditorProps) {
   const [selected, setSelected] = useState<string | null>(null);
+  const catalogue = usePresetCatalogue(bus);
   const [ghost, setGhost] = useState<{ readonly key: string; readonly rect: BoardRect; readonly fits: boolean } | null>(null);
   const drag = useRef<Drag | null>(null);
   /**
@@ -279,12 +281,13 @@ export function PanelBoardEditor({ graph, panelId, board, write, bus, invocation
   for (let y = 0; y < rows; y += 1) for (let x = 0; x < board.columns; x += 1) slots.push({ x, y, w: 1, h: 1 });
   const chosen = board.items.find((item) => item.key === selected);
   // T1527b: every node this Panel still lacks, by the predicate the join itself reads (`panelLacks`).
+  // T1541b: with the catalogue, so a look's instance is offered as its bank.
   const panel = graph.nodes[panelId];
   const joinable =
     panel === undefined
       ? []
       : Object.values(graph.nodes)
-          .filter((node) => panelLacks(graph, panel, node))
+          .filter((node) => panelLacks(graph, panel, node, catalogue))
           .sort((a, b) => controlNameOf(a).localeCompare(controlNameOf(b)));
 
   return (
@@ -323,7 +326,7 @@ export function PanelBoardEditor({ graph, panelId, board, write, bus, invocation
           onChange={(event) => {
             const node = joinable.find((each) => each.id === event.target.value);
             if (node === undefined) return;
-            apply(joinPanelOperations(graph, node.id, panelId), "Add to panel");
+            apply(joinPanelOperations(graph, node.id, panelId, catalogue), "Add to panel");
             setSelected(`member:${controlNameOf(node)}`);
           }}
         >

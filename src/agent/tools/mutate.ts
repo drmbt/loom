@@ -5,6 +5,7 @@ import type { GraphDocument } from "@domain/types/graph.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
 import { placeFree, placeRelative } from "@domain/graph/layout.ts";
 import { previewAspectOf } from "@domain/graph/node-box.ts";
+import { presetCatalogueHolderFor } from "@domain/presets/bank-view.ts";
 
 import {
   addNodeInput,
@@ -122,8 +123,9 @@ export const addNode: AgentTool<AddNodeInput, PatchToolData> = {
               input.placement.relativeTo,
               input.placement.direction ?? "right",
               previewAspectOf(runtime.bus.store.getSettings()),
+              presetCatalogueHolderFor(runtime.bus).current?.components,
             )
-          : placeFree(graph, runtime.bus.registry, input.type, previewAspectOf(runtime.bus.store.getSettings()));
+          : placeFree(graph, runtime.bus.registry, input.type, previewAspectOf(runtime.bus.store.getSettings()), presetCatalogueHolderFor(runtime.bus).current?.components);
     }
     return dispatchOperations("add_node", runtime, [operationsForAdd(input, at)], {
       label: "Add node",

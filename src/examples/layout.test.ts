@@ -145,7 +145,8 @@ function placedIn(graph: GraphDocument, previewAspect: number): readonly PlacedN
     // with its own — a square document's previewing nodes are 177px tall, not 99.
     // T695: and with its own WIRING — a variadic input grows a row per edge landing on
     // it, so a Composite fed by two layers is a row taller than one fed by one.
-    box: nodeBox(node, registry.get(node.type), previewAspect, graph),
+    // T1541b: and with the catalogue, so a look's instance carries the "+ panel" the canvas draws.
+    box: nodeBox(node, registry.get(node.type), previewAspect, graph, components),
   }));
 }
 

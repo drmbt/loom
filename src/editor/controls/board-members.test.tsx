@@ -619,3 +619,105 @@ describe("T1501b — joining and leaving a Panel", () => {
     expect(boardOf(runtime, ids["$panel"]!).map((item) => ("member" in item ? item.member : item.label))).toEqual(["looks", "fx", "set"]);
   });
 });
+
+/**
+ * T1541b — A LOOK'S INSTANCE JOINS A PANEL THE WAYS A BANK DOES (split from §T1505b). A
+ * component whose definition holds a page bank is a bank from outside, so its instance takes
+ * the bank's two doors onto a board — its own "+ panel" and edit mode's "+ Add…" (the drop
+ * is `look-panel-join.test.ts`) — and lands as the bank's strip. An instance of a component
+ * with NO page bank is offered by neither: an item naming it would draw nothing.
+ */
+describe("T1541b — a look's instance joins a Panel", () => {
+  const LOOK_PRESETS = serializePresetBank({
+    version: 1,
+    presets: ["calm", "wide", "dark", "warm", "cold"].map((name, index) => ({ name, values: { parent: { glow: index } } })),
+  });
+  const boardOf = (runtime: AppRuntime, panelId: NodeId) => parsePanelBoard(nodeOf(runtime, panelId).parameters["board"]).items;
+
+  /** `look` holds a page bank of five presets; `plain` is the same network with none. */
+  function withComponents(runtime: AppRuntime): void {
+    const blur = { id: "blur", type: "blur", label: "blur", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { size: 4 } };
+    const shape = (componentId: string, name: string, nodes: Record<string, unknown>) => ({
+      componentId,
+      version: 1,
+      name,
+      graph: { revision: 0, nodes: { blur, ...nodes }, edges: {}, groups: {} },
+      inputs: [],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "blur", portId: "out" }],
+      parameters: [{ key: "glow", definition: { type: "number" as const, label: "Glow", default: 4, min: 0, max: 64 }, targets: [{ nodeId: "blur", key: "size" }] }],
+    });
+    runtime.components.register(
+      shape("look", "Look", {
+        looks: { id: "looks", type: "presets", label: "looks", definitionVersion: 1, position: { x: 0, y: 200 }, parameters: { targets: "parent", presets: LOOK_PRESETS } },
+      }) as never,
+    );
+    runtime.components.register(shape("plain", "Plain", {}) as never);
+  }
+
+  async function looks(panels: number): Promise<{ runtime: AppRuntime; ids: Record<string, NodeId> }> {
+    const runtime = createAppRuntime({ identityStorage: null, actor: { kind: "human", id: "tester", label: "Tester" } });
+    withComponents(runtime);
+    const result = await runtime.bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: runtime.bus.store.getRevision(),
+        label: "setup",
+        operations: [
+          add("city", "component:look@1", "city", { glow: 30 }),
+          add("other", "component:plain@1", "other", { glow: 30 }),
+          ...Array.from({ length: panels }, (_, index) => add(`panel${String(index + 1)}`, "panel", `panel${String(index + 1)}`, { title: index === 0 ? "Desk" : "Stage" })),
+        ],
+      },
+      runtime.invocation,
+    );
+    expect(result.output.status).toBe("applied");
+    return { runtime, ids: result.output.createdIds as Record<string, NodeId> };
+  }
+
+  it("its own “+ panel” puts it on the only Panel as its bank's strip, one patch, no wire — a plain instance offers none", async () => {
+    const { runtime, ids } = await looks(1);
+    const plain = render(<OnCanvas runtime={runtime} nodeId={ids["$other"]!} />);
+    expect(within(plain.container).queryByRole("button", { name: "Add to panel" })).toBeNull();
+    plain.unmount();
+    const look = render(<OnCanvas runtime={runtime} nodeId={ids["$city"]!} />);
+    const before = undoDepth(runtime);
+
+    await click(within(look.container).getByRole("button", { name: "Add to panel" }));
+
+    // Five presets at four a row: the strip lands two rows tall, as a bank of five does.
+    expect(boardOf(runtime, ids["$panel1"]!)).toEqual([{ member: "city", rect: { x: 0, y: 0, w: 4, h: 2 } }]);
+    expect(Object.keys(runtime.bus.store.getGraph().edges)).toEqual([]);
+    expect(undoDepth(runtime)).toBe(before + 1);
+    expect(within(look.container).queryByRole("button", { name: "Add to panel" })).toBeNull();
+
+    // The Panel draws the look's strip, and a press recalls on the instance.
+    const tab = render(<Tab runtime={runtime} />);
+    await click(within(tab.container).getByRole("button", { name: "wide" }));
+    expect(nodeOf(runtime, ids["$city"]!).parameters["glow"]).toBe(1);
+    expect(nodeOf(runtime, ids["$city"]!).parameters["presetCurrent"]).toBe("wide");
+
+    await undo(runtime);
+    await undo(runtime);
+    expect(boardOf(runtime, ids["$panel1"]!)).toEqual([]);
+  });
+
+  it("with two Panels, edit mode's “+ Add…” offers the look and not the plain instance, and puts it on THIS Panel", async () => {
+    const { runtime, ids } = await looks(2);
+    render(<Tab runtime={runtime} />);
+    await click(screen.getByRole("tab", { name: "Stage" }));
+    await click(screen.getByRole("button", { name: "Edit board" }));
+    const picker = () => screen.getByRole("combobox", { name: "Add to panel" }) as HTMLSelectElement;
+    expect([...picker().options].map((option) => option.textContent)).toEqual(["+ Add…", "city"]);
+    const before = undoDepth(runtime);
+
+    await act(async () => {
+      fireEvent.change(picker(), { target: { value: ids["$city"]! } });
+      await settle();
+    });
+
+    expect(boardOf(runtime, ids["$panel2"]!)).toEqual([{ member: "city", rect: { x: 0, y: 0, w: 4, h: 2 } }]);
+    expect(boardOf(runtime, ids["$panel1"]!)).toEqual([]);
+    expect(undoDepth(runtime)).toBe(before + 1);
+    expect([...picker().options].map((option) => option.textContent)).toEqual(["Nothing to add"]);
+  });
+});

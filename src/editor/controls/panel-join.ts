@@ -1,7 +1,8 @@
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
-import { BOARD_NAMED_TYPES, CONTROL_WIDGET_TYPES, PANEL_INPUT, panelBoard, panelLacks } from "@nodes/definitions/controls.ts";
+import type { BankCatalogue } from "@domain/presets/bank-view.ts";
+import { CONTROL_WIDGET_TYPES, PANEL_INPUT, joinsBoardByName, panelBoard, panelLacks } from "@nodes/definitions/controls.ts";
 import { boardOperations, boardWithMember } from "./panel-board-edit.ts";
 
 /**
@@ -17,26 +18,32 @@ import { boardOperations, boardWithMember } from "./panel-board-edit.ts";
  * none of them has a value output to wire, so the patch is one board write that adds an
  * item naming the node (`boardWithMember`). A Panel laid out by its legacy Layout text has
  * no board, so it takes none of them.
+ *
+ * T1541b — a look's INSTANCE (a component whose definition holds a page bank, §T1505b) is
+ * a bank from outside and joins exactly as a bank does, by name. Whether an instance is one
+ * only the component catalogue can say (`bankOf`), so every function here takes it; the
+ * callers read it off the bus (`presetCatalogueHolderFor`). Without one, no instance joins.
  */
 
 type Graph = Pick<GraphDocument, "nodes" | "edges">;
 
-/** The node kinds a Panel takes: the widgets it wires in, and the kinds its board names. */
-const joinsPanel = (type: string | undefined): boolean => type !== undefined && (CONTROL_WIDGET_TYPES.has(type) || BOARD_NAMED_TYPES.has(type));
+/** The nodes a Panel takes: the widgets it wires in, and the ones its board names. */
+const joinsPanel = (node: GraphNode | undefined, catalogue: BankCatalogue | undefined): boolean =>
+  node !== undefined && (CONTROL_WIDGET_TYPES.has(node.type) || joinsBoardByName(node, catalogue));
 
 /**
  * What putting this node on that Panel writes, or nothing when it is already there: a
  * widget's `out` wired into the Panel's Controls; a bank, layer or cue list named on its board.
  */
-export function joinPanelOperations(graph: Graph, widgetId: NodeId, panelId: NodeId): GraphPatchOperation[] {
+export function joinPanelOperations(graph: Graph, widgetId: NodeId, panelId: NodeId, catalogue?: BankCatalogue): GraphPatchOperation[] {
   const widget = graph.nodes[widgetId];
   const panel = graph.nodes[panelId];
   // T1527b: whether there is anything to write is `panelLacks` — the same answer the "+ panel"
   // button and the layout model's room for it come from (`soloPanelFor`, `controls.ts`).
-  if (widget === undefined || panel === undefined || !panelLacks(graph, panel, widget)) return [];
-  if (BOARD_NAMED_TYPES.has(widget.type)) {
+  if (widget === undefined || panel === undefined || !panelLacks(graph, panel, widget, catalogue)) return [];
+  if (joinsBoardByName(widget, catalogue)) {
     const board = panelBoard(graph, panel);
-    const stored = board === null ? null : boardWithMember(board, widget);
+    const stored = board === null ? null : boardWithMember(board, widget, catalogue);
     return stored === null ? [] : boardOperations(panelId, stored);
   }
   return [{ op: "connect", source: { nodeId: widgetId, portId: "out" }, target: { nodeId: panelId, portId: PANEL_INPUT } }];
@@ -61,8 +68,9 @@ export function panelUnderDrop(
   widgetId: NodeId,
   centre: { readonly x: number; readonly y: number },
   boxOf: (nodeId: NodeId) => CanvasBox | null,
+  catalogue?: BankCatalogue,
 ): NodeId | null {
-  if (!joinsPanel(graph.nodes[widgetId]?.type)) return null;
+  if (!joinsPanel(graph.nodes[widgetId], catalogue)) return null;
   let hit: NodeId | null = null;
   for (const node of Object.values(graph.nodes)) {
     if (node.type !== "panel") continue;

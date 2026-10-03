@@ -1,5 +1,6 @@
 import { layoutGraph } from "../graph/layout.ts";
 import { previewAspectOf } from "../graph/node-box.ts";
+import { presetCatalogueHolderFor, type BankCatalogue } from "../presets/bank-view.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { GraphDocument } from "../types/graph.ts";
 import type { NodeId, Revision } from "../types/ids.ts";
@@ -101,10 +102,13 @@ function tidy(
   context: CommandContext,
   label: string,
   only: ReadonlySet<NodeId> | undefined,
+  catalogue: BankCatalogue | undefined,
 ): CommandOutcome<GraphPatchResult> {
   const positions = layoutGraph(context.graph, context.registry, {
     // T668: node heights depend on the project's own aspect, so tidy measures with it.
     previewAspect: previewAspectOf(context.store.getSettings()),
+    // T1541b: a look's instance is as tall as the canvas draws it ("+ panel" included).
+    catalogue,
     ...(only === undefined ? {} : { only }),
   });
   const moved = movedPositions(context.graph, positions);
@@ -135,7 +139,7 @@ export function registerLayoutCommands(bus: LoomBus): void {
       if (Object.keys(context.graph.nodes).length === 0) {
         return refuse(context, "layout.empty", "The graph is empty, so there is nothing to lay out.");
       }
-      return tidy(context, "Layout graph", undefined);
+      return tidy(context, "Layout graph", undefined, presetCatalogueHolderFor(bus).current?.components);
     },
     rejectionOutput: rejection,
   });
@@ -159,7 +163,7 @@ export function registerLayoutCommands(bus: LoomBus): void {
         );
       }
       const only = new Set(asked.filter((nodeId) => context.graph.nodes[nodeId] !== undefined));
-      return tidy(context, "Layout nodes", only);
+      return tidy(context, "Layout nodes", only, presetCatalogueHolderFor(bus).current?.components);
     },
     rejectionOutput: rejection,
   });

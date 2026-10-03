@@ -105,6 +105,13 @@ export function presetCatalogueHolderFor(bus: object): CommandHolder<PresetCatal
   return commandHolder<PresetCatalogue>(bus, "presets.catalogue");
 }
 
+/**
+ * T1541b — the one lookup `bankOf` needs from a catalogue: a definition by id and version.
+ * What the surfaces that are not command handlers (a Panel board, the layout model, the
+ * morph index) hand in, from the holder or from the flattening's own registry.
+ */
+export type BankCatalogue = Pick<ComponentRegistry, "get">;
+
 /** A bank as the outside sees it. */
 export interface BankView {
   /** `node`: a Presets node. `instance`: a component instance whose definition has a page bank. */

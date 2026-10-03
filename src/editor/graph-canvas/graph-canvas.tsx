@@ -81,6 +81,7 @@ import type { LoomEdge, LoomNode } from "./derive.ts";
 import { createNodeRuntimeStore } from "./node-runtime.ts";
 import type { NodeRuntimeSource } from "./node-runtime.ts";
 import { joinPanelOperations, panelUnderDrop } from "@editor/controls/panel-join.ts";
+import { presetCatalogueHolderFor } from "@domain/presets/bank-view.ts";
 import { addBankTargetsOperations, bankUnderDrop, topmostDropTarget } from "@editor/controls/bank-join.ts";
 import { orderSelection, promoteInSelection } from "@editor/selection/selection-order.ts";
 import styles from "./graph-canvas.module.css";
@@ -433,13 +434,15 @@ export function GraphCanvas({
         const h = panel?.measured?.height ?? panel?.height ?? 0;
         return panel === undefined || !(w > 0) || !(h > 0) ? null : { x: panel.position.x, y: panel.position.y, width: w, height: h };
       };
-      const panelId = panelUnderDrop(graph, nodeId, centre, boxOf);
+      // T1541b: a look's instance joins a Panel like a bank — the catalogue says which are looks.
+      const catalogue = presetCatalogueHolderFor(bus).current?.components;
+      const panelId = panelUnderDrop(graph, nodeId, centre, boxOf, catalogue);
       const bankId = bankUnderDrop(graph, nodeId, centre, boxOf);
       const target = topmostDropTarget(graph, panelId, bankId);
       if (target === null) return none;
       return target === bankId
         ? { operations: addBankTargetsOperations(graph, bankId, [nodeId]), label: "Add to preset targets" }
-        : { operations: joinPanelOperations(graph, nodeId, target), label: "Add to panel" };
+        : { operations: joinPanelOperations(graph, nodeId, target, catalogue), label: "Add to panel" };
     },
     [bus],
   );

@@ -66,6 +66,8 @@ function modelledBoxes(document: ExampleDocument): Record<string, { width: numbe
         // T695: variadic inputs render one socket per edge plus a spare, so the model
         // cannot predict a node's height from its definition alone any more.
         document.graph,
+        // T1541b: a look's instance draws a bank's "+ panel"; only the catalogue says which.
+        components,
       );
       return [node.id, { width: box.width, height: box.height }];
     }),

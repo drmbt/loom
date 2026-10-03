@@ -6,12 +6,14 @@ import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { isRemotePanel } from "@devices/phone/phone-snapshot.ts";
+import { isComponentNodeType } from "@domain/components/component-type.ts";
 import { BOARD_NAMED_TYPES, CONTROL_WIDGET_TYPES, soloPanelFor } from "@nodes/definitions/controls.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
 import { joinPanelOperations } from "./panel-join.ts";
 import { PanelEdit } from "./panel-edit.tsx";
 import { PanelNodeBody } from "./panel-surface.tsx";
 import { PhoneDoorButton } from "./phone-door.tsx";
+import { usePresetCatalogue } from "./use-preset-catalogue.ts";
 import type { PhoneDoorView } from "./phone-door-copy.ts";
 import styles from "./control-widget.module.css";
 
@@ -29,6 +31,9 @@ import styles from "./control-widget.module.css";
  * - T1501b: a Presets bank, a Layer and a Cue List join a Panel by name, not by wire, so
  *   their body offers the same one-press "+ panel" — and nothing else: with no Panel to
  *   offer, the region is empty and takes no room (`.controls:empty`, `node-view.module.css`).
+ * - T1541b: so does a look's instance — a component whose definition holds a page bank is a
+ *   bank from outside (§T1505b). Every instance gets the button's slot; the button itself
+ *   asks the catalogue (`soloPanelFor` with it) and draws nothing on any other instance.
  *
  * Here rather than in the graph pane so the tests mount the SAME seams the product does.
  * Every closure is keyed on stable things (the bus, the writer, the door view) so the
@@ -54,9 +59,13 @@ function apply(bus: LoomBus, invocation: InvocationContext, operations: GraphPat
   void bus.execute("graph.applyPatch", { baseRevision: bus.store.getRevision(), label, operations }, invocation);
 }
 
-/** A widget's "add to panel" — offered only while there is exactly one Panel to add it to. */
+/**
+ * A widget's "add to panel" — offered only while there is exactly one Panel to add it to.
+ * T1541b: with the catalogue, re-read when it changes, so a look's instance is offered too.
+ */
 function AddToPanel({ bus, invocation, widgetId }: { bus: LoomBus; invocation: InvocationContext; widgetId: NodeId }) {
-  const panelId = useStore(bus.store, (state) => soloPanelFor(state.graph, widgetId));
+  const catalogue = usePresetCatalogue(bus);
+  const panelId = useStore(bus.store, (state) => soloPanelFor(state.graph, widgetId, catalogue));
   if (panelId === null) return null;
   return (
     <button
@@ -64,7 +73,7 @@ function AddToPanel({ bus, invocation, widgetId }: { bus: LoomBus; invocation: I
       className={styles.addToPanel}
       aria-label="Add to panel"
       title="Add to panel"
-      onClick={() => apply(bus, invocation, joinPanelOperations(bus.store.getGraph(), widgetId, panelId), "Add to panel")}
+      onClick={() => apply(bus, invocation, joinPanelOperations(bus.store.getGraph(), widgetId, panelId, catalogue), "Add to panel")}
     >
       + panel
     </button>
@@ -96,7 +105,7 @@ export function useControlBodies({ bus, invocation, write, phone }: ControlBodie
       const node = bus.store.getGraph().nodes[nodeId];
       if (node === undefined) return null;
       if (node.type === "panel") return <PanelNodeBody bus={bus} invocation={invocation} panelId={nodeId} write={write} />;
-      if (BOARD_NAMED_TYPES.has(node.type)) return <AddToPanel bus={bus} invocation={invocation} widgetId={nodeId} />;
+      if (BOARD_NAMED_TYPES.has(node.type) || isComponentNodeType(node.type)) return <AddToPanel bus={bus} invocation={invocation} widgetId={nodeId} />;
       if (!CONTROL_WIDGET_TYPES.has(node.type)) return null;
       return (
         <>

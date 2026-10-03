@@ -6,7 +6,7 @@ import { incomingEdgesInOrder } from "../../domain/graph/edge-order.ts";
 import { overridingWire, sourceReferencesOf } from "../../domain/graph/source-references.ts";
 import { isParameterSlot, staticBindingValue } from "../../domain/parameters/slots.ts";
 import { PRESETS_NODE_TYPE, parsePresetBank } from "../../domain/presets/bank.ts";
-import { isPresetsNode } from "../../domain/presets/bank-view.ts";
+import { bankViewOf, type BankCatalogue } from "../../domain/presets/bank-view.ts";
 import { isComponentNodeType } from "../../domain/components/component-type.ts";
 import { CUE_LIST_NODE_TYPE } from "../../domain/presets/cue-list.ts";
 import { VALUE_PORT } from "./common-ports.ts";
@@ -272,6 +272,19 @@ export function boardNamesMember(node: GraphNode): boolean {
   return BOARD_NAMED_TYPES.has(node.type) || isComponentNodeType(node.type);
 }
 
+/**
+ * T1541b — CAN THIS NODE JOIN A BOARD BY NAME: one of `BOARD_NAMED_TYPES`, or a look's
+ * INSTANCE — a component instance whose component holds a page bank, which is a bank from
+ * outside (§T1505b). Only the catalogue can say the second (`bankViewOf`), so with none an
+ * instance joins nothing, and an instance of a component with no page bank never does: an
+ * item naming it would draw nothing. `boardNamesMember` above is the KEEP rule, and stays
+ * graph-only on purpose.
+ */
+export function joinsBoardByName(node: GraphNode, catalogue: BankCatalogue | undefined): boolean {
+  if (BOARD_NAMED_TYPES.has(node.type)) return true;
+  return isComponentNodeType(node.type) && bankViewOf(node, catalogue)?.kind === "instance";
+}
+
 /* ------------------------------------------------------------ membership */
 
 /** A stored parameter's plain value: a static-mode slot is its static binding, a driven one is nothing. */
@@ -456,11 +469,15 @@ export const PRESETS_PER_BOARD_ROW = 4;
  * a bank grows a row for every four presets it already holds, so a bank of ten does not
  * land as ten slivers on one row. Read once, at the join; after that the stored rect is
  * the owner's, and a bank that gains presets fits them into the rect it has.
+ *
+ * T1541b: a look's instance is a bank from outside, so it lands as a bank's strip, sized by
+ * the presets its component holds (`catalogue`, `bankViewOf`).
  */
-export function boardMemberSize(node: GraphNode): CellSize {
-  const size = boardDefaultSize(node.type);
-  if (!isPresetsNode(node)) return size;
-  const parsed = parsePresetBank(plainValue(node.parameters["presets"]));
+export function boardMemberSize(node: GraphNode, catalogue?: BankCatalogue): CellSize {
+  const view = bankViewOf(node, catalogue);
+  if (view === undefined) return boardDefaultSize(node.type);
+  const size = boardDefaultSize(PRESETS_NODE_TYPE);
+  const parsed = parsePresetBank(plainValue(view.bank.parameters["presets"]));
   const count = parsed.ok ? parsed.bank.presets.length : 0;
   return { w: size.w, h: Math.max(size.h, Math.ceil(count / PRESETS_PER_BOARD_ROW)) };
 }
@@ -627,9 +644,10 @@ export function storedBoardOf(board: PanelBoard): StoredBoard {
  * Layout text has no board, so it takes none of them). The ONE answer behind the patch
  * that joins them (`joinPanelOperations`, `panel-join.ts`) and `soloPanelFor` below.
  */
-export function panelLacks(graph: Pick<GraphDocument, "nodes" | "edges">, panel: GraphNode, node: GraphNode): boolean {
+export function panelLacks(graph: Pick<GraphDocument, "nodes" | "edges">, panel: GraphNode, node: GraphNode, catalogue?: BankCatalogue): boolean {
   if (panel.type !== "panel") return false;
-  if (BOARD_NAMED_TYPES.has(node.type)) {
+  // T1541b: a look's instance joins by name like a bank — when the catalogue can see it is one.
+  if (joinsBoardByName(node, catalogue)) {
     const board = panelBoard(graph, panel);
     return board !== null && !board.items.some((item) => item.kind === "widget" && item.node.id === node.id);
   }
@@ -647,7 +665,7 @@ export function panelLacks(graph: Pick<GraphDocument, "nodes" | "edges">, panel:
  * cannot import the editor). While only the canvas asked, E82's two banks and two layers
  * rendered 29px taller than the §V389 gate laid them out.
  */
-export function soloPanelFor(graph: Pick<GraphDocument, "nodes" | "edges">, nodeId: NodeId): NodeId | null {
+export function soloPanelFor(graph: Pick<GraphDocument, "nodes" | "edges">, nodeId: NodeId, catalogue?: BankCatalogue): NodeId | null {
   const node = graph.nodes[nodeId];
   if (node === undefined) return null;
   let only: GraphNode | null = null;
@@ -656,5 +674,5 @@ export function soloPanelFor(graph: Pick<GraphDocument, "nodes" | "edges">, node
     if (only !== null) return null;
     only = each;
   }
-  return only !== null && panelLacks(graph, only, node) ? only.id : null;
+  return only !== null && panelLacks(graph, only, node, catalogue) ? only.id : null;
 }

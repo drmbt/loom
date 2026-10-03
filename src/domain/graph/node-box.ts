@@ -1,4 +1,5 @@
-import { parseComponentNodeType } from "@domain/components/component-type.ts";
+import { isComponentNodeType, parseComponentNodeType } from "@domain/components/component-type.ts";
+import type { BankCatalogue } from "@domain/presets/bank-view.ts";
 import { isNameOnlyInput } from "@domain/graph/source-references.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import { incomingEdgesInOrder } from "./edge-order.ts";
@@ -231,6 +232,8 @@ function widgetBodyHeight(type: string): number {
  * `gap: var(--space-1)` comes with it; on a bank, a layer or a cue list it is the region's
  * only child. Drawn when `soloPanelFor` (`controls.ts`) names a Panel — the canvas asks the
  * same function (`control-bodies.tsx`), so the model and the DOM cannot decide differently.
+ * T1541b: a look's instance carries it too, which only the component catalogue can tell —
+ * the model is handed the catalogue the canvas reads (`nodeBox`'s `catalogue`).
  */
 const ADD_TO_PANEL_HEIGHT = 4 + MICRO_LINE + 1 * 2;
 const CONTROLS_GAP = 2;
@@ -274,15 +277,16 @@ function panelBoardHeight(rows: number, columns: number): number {
  * `panelLayout` derives them — the SAME derivation the body renders from, so a widget wired
  * into a Panel makes the Panel taller here exactly as it does on the canvas.
  */
-export function nodeControlsHeight(node: GraphNode, graph?: Pick<GraphDocument, "nodes" | "edges">): number {
+export function nodeControlsHeight(node: GraphNode, graph?: Pick<GraphDocument, "nodes" | "edges">, catalogue?: BankCatalogue): number {
   let content: number;
   if (CONTROL_WIDGET_TYPES.has(node.type)) {
     content = widgetBodyHeight(node.type);
     if (graph !== undefined && soloPanelFor(graph, node.id) !== null) content += CONTROLS_GAP + ADD_TO_PANEL_HEIGHT;
-  } else if (BOARD_NAMED_TYPES.has(node.type)) {
+  } else if (BOARD_NAMED_TYPES.has(node.type) || isComponentNodeType(node.type)) {
     // The button is all this region ever holds on these nodes; without it the region is
-    // empty and takes no room (`.controls:empty`, `node-view.module.css`).
-    if (graph === undefined || soloPanelFor(graph, node.id) === null) return 0;
+    // empty and takes no room (`.controls:empty`, `node-view.module.css`). T1541b: on a
+    // component instance it is drawn only for a look's, which `soloPanelFor` asks `catalogue`.
+    if (graph === undefined || soloPanelFor(graph, node.id, catalogue) === null) return 0;
     content = ADD_TO_PANEL_HEIGHT;
   } else if (node.type === "panel") {
     const board = graph === undefined ? null : panelBoard(graph, node);
@@ -379,6 +383,12 @@ export function nodeBox(
   previewAspect: number = DEFAULT_PREVIEW_ASPECT,
   /** T695 — see `nodePortRows`; T1512b — a Panel's body follows its wired members. Pass it wherever the graph is in hand. */
   graph?: Pick<GraphDocument, "nodes" | "edges">,
+  /**
+   * T1541b — the component catalogue, wherever one is in hand: a look's instance (its
+   * component holds a page bank) draws the "+ panel" button a bank does, and only the
+   * catalogue can say which instances are looks. Omitted, an instance is modelled without it.
+   */
+  catalogue?: BankCatalogue,
 ): NodeBox {
   // A node the user resized fills the box they dragged (T208/§V116) — the document says
   // so outright, and nothing derived can override a stated size.
@@ -398,7 +408,7 @@ export function nodeBox(
     height += Math.floor(contentWidth / aspect) + PREVIEW_BORDER;
   }
   const rows = nodePortRows(node, definition, graph);
-  height += nodeControlsHeight(node, graph);
+  height += nodeControlsHeight(node, graph, catalogue);
   height += PORTS_PADDING + (rows === 0 ? 0 : rows * PORT_ROW_HEIGHT + (rows - 1) * PORT_ROW_GAP);
 
   // Only the `.controls` region is fractional; `offsetHeight` rounds the node once.

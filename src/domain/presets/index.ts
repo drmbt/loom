@@ -113,6 +113,6 @@ export {
   pageBankOf,
   presetCatalogueHolderFor,
 } from "./bank-view.ts";
-export type { BankLookup, BankView, PresetCatalogue } from "./bank-view.ts";
+export type { BankCatalogue, BankLookup, BankView, PresetCatalogue } from "./bank-view.ts";
 export { PRESET_MOVE_INTO_COMPONENT_COMMAND } from "./move-command.ts";
 export type { PresetMoveInput, PresetMoveOutput } from "./move-command.ts";

@@ -2,9 +2,10 @@ import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { incomingEdgesInOrder } from "@domain/graph/edge-order.ts";
+import type { BankCatalogue } from "@domain/presets/bank-view.ts";
 import {
   BOARD_MAX_COLUMNS,
-  BOARD_NAMED_TYPES,
+  joinsBoardByName,
   PANEL_INPUT,
   boardDefaultSize,
   boardMemberSize,
@@ -73,12 +74,15 @@ export function boardWithLabel(board: PanelBoard, text: string): { readonly stor
  * T1501b — a bank, a layer or a cue list JOINS the board: an item naming it, in the first
  * free spot at the size the node asks for (`boardMemberSize`). `null` when it is not one of
  * those kinds or the board already shows it — for these nodes the item IS the membership.
+ *
+ * T1541b: a look's instance joins the same way, as its bank's strip (`joinsBoardByName`),
+ * which only the catalogue can tell.
  */
-export function boardWithMember(board: PanelBoard, node: GraphNode): StoredBoard | null {
-  if (!BOARD_NAMED_TYPES.has(node.type)) return null;
+export function boardWithMember(board: PanelBoard, node: GraphNode, catalogue?: BankCatalogue): StoredBoard | null {
+  if (!joinsBoardByName(node, catalogue)) return null;
   if (board.items.some((item) => item.kind === "widget" && item.node.id === node.id)) return null;
   const stored = storedBoardOf(board);
-  const rect = firstFreeRect(board.items.map((item) => item.rect), board.columns, boardMemberSize(node));
+  const rect = firstFreeRect(board.items.map((item) => item.rect), board.columns, boardMemberSize(node, catalogue));
   return { ...stored, items: [...stored.items, { member: controlNameOf(node), rect }] };
 }
 
