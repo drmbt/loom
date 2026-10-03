@@ -81,6 +81,7 @@ import type { LoomEdge, LoomNode } from "./derive.ts";
 import { createNodeRuntimeStore } from "./node-runtime.ts";
 import type { NodeRuntimeSource } from "./node-runtime.ts";
 import { joinPanelOperations, panelUnderDrop } from "@editor/controls/panel-join.ts";
+import { addBankTargetsOperations, bankUnderDrop, topmostDropTarget } from "@editor/controls/bank-join.ts";
 import styles from "./graph-canvas.module.css";
 
 /**
@@ -410,23 +411,34 @@ export function GraphCanvas({
    * T1512b — a WIDGET dropped ON a Panel joins it: its `out` wired into the Panel's
    * Controls, in the same patch as the move. Graph space both sides, like the splice above:
    * the widget's centre from the live drag, each Panel's box from React Flow's measure.
+   *
+   * T1531b — a node dropped ON a Presets bank becomes one of its targets the same way
+   * (`bank-join.ts`). Where a Panel and a bank overlap under the drop, the one drawn on top
+   * takes it (`topmostDropTarget`); the other is not consulted.
    */
-  const panelJoinAt = useCallback(
-    (nodeId: NodeId, position: { x: number; y: number }): GraphPatchOperation[] => {
+  const dropJoinAt = useCallback(
+    (nodeId: NodeId, position: { x: number; y: number }): { operations: GraphPatchOperation[]; label: string } => {
+      const none = { operations: [], label: "" };
       const flow = flowRef.current;
       const view = flow?.getNode(nodeId);
       const width = view?.measured?.width ?? view?.width ?? 0;
       const height = view?.measured?.height ?? view?.height ?? 0;
-      if (flow === null || !(width > 0) || !(height > 0)) return [];
+      if (flow === null || !(width > 0) || !(height > 0)) return none;
       const graph = bus.store.getGraph();
       const centre = { x: position.x + width / 2, y: position.y + height / 2 };
-      const panelId = panelUnderDrop(graph, nodeId, centre, (id) => {
+      const boxOf = (id: NodeId) => {
         const panel = flow.getNode(id);
         const w = panel?.measured?.width ?? panel?.width ?? 0;
         const h = panel?.measured?.height ?? panel?.height ?? 0;
         return panel === undefined || !(w > 0) || !(h > 0) ? null : { x: panel.position.x, y: panel.position.y, width: w, height: h };
-      });
-      return panelId === null ? [] : joinPanelOperations(graph, nodeId, panelId);
+      };
+      const panelId = panelUnderDrop(graph, nodeId, centre, boxOf);
+      const bankId = bankUnderDrop(graph, nodeId, centre, boxOf);
+      const target = topmostDropTarget(graph, panelId, bankId);
+      if (target === null) return none;
+      return target === bankId
+        ? { operations: addBankTargetsOperations(graph, bankId, [nodeId]), label: "Add to preset targets" }
+        : { operations: joinPanelOperations(graph, nodeId, target), label: "Add to panel" };
     },
     [bus],
   );
@@ -513,20 +525,22 @@ export function GraphCanvas({
         const target = only === undefined ? undefined : committed[only];
         // T1512b: a widget dropped ON a Panel joins it, and that wins over a wire under it —
         // the Panel is the thing the widget was aimed at.
-        const join = only === undefined || target === undefined ? [] : panelJoinAt(only, target);
+        // T1531b: so does a node dropped ON a Presets bank (it becomes a target).
+        const joined = only === undefined || target === undefined ? null : dropJoinAt(only, target);
+        const join = joined?.operations ?? [];
         const splice = only === undefined || target === undefined || join.length > 0 ? [] : spliceAt(only, target);
         // The move and the splice are ONE gesture, so they are one patch and one undo
         // entry (§V15, §V32, §V34): undoing puts the node back AND restores the wire it
         // cut into. Two patches would make the user undo twice for one drop, and would
         // leave a graph rewired around a node that had moved back.
         operations.push(...join, ...splice);
-        dispatch(operations, join.length > 0 ? "Add to panel" : splice.length > 0 ? "Insert node into edge" : "Move node");
+        dispatch(operations, joined !== null && join.length > 0 ? joined.label : splice.length > 0 ? "Insert node into edge" : "Move node");
       }
       if (removed.length > 0) {
         dispatch([{ op: "removeNodes", nodeIds: removed }], "Delete node");
       }
     },
-    [dispatch, spliceAt, panelJoinAt, onNodeLayoutChange],
+    [dispatch, spliceAt, dropJoinAt, onNodeLayoutChange],
   );
 
   const onEdgesChange = useCallback(

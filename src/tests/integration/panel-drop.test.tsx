@@ -177,3 +177,111 @@ describe("T1501b — a Layer dropped on a Panel joins its board by name", () => 
     expect(runtime.bus.store.getGraph().nodes[fx]?.position).toEqual({ x: 0, y: 200 });
   }, 20_000);
 });
+
+/**
+ * T1531b — A NODE DROPPED ON A PRESETS BANK BECOMES ONE OF ITS TARGETS, the Panel drop's
+ * gesture: the node's name appended to the bank's `targets` in the move's own patch, one
+ * undo step. What is asserted is the document the bank's Store reads (`targets`), never
+ * which handler ran.
+ */
+describe("T1531b — a node dropped on a Presets bank becomes a target", () => {
+  const nodeNamed = (runtime: AppRuntime, label: string) => Object.values(runtime.bus.store.getGraph().nodes).find((node) => node.label === label)!.id;
+  const targets = (runtime: AppRuntime, bank: string) => runtime.bus.store.getGraph().nodes[bank]?.parameters["targets"];
+  async function rendered(view: { container: HTMLElement }, nodeId: string) {
+    await waitFor(() => {
+      expect(view.container.querySelector(`.react-flow__node[data-id="${nodeId}"]`)).not.toBeNull();
+    });
+  }
+
+  it("appends the node's name to targets in the same patch as the move, one undo step", async () => {
+    const { runtime, view, ids } = await mount([{ op: "addNode", ref: "$bank", type: "presets", position: { x: 260, y: 0 }, label: "looks" }]);
+    const bank = nodeNamed(runtime, "looks");
+    await rendered(view, bank);
+    const actor = runtime.invocation.actor;
+    const before = runtime.bus.store.getHistory(actor).undo.length;
+
+    await dragNodeCentreTo(view.container, ids.fader, { x: 260 + 178 / 2, y: 60 }, runtime);
+
+    await waitFor(() => {
+      expect(targets(runtime, bank)).toBe("fader1");
+    });
+    expect(edges(runtime)).toHaveLength(0);
+    expect(runtime.bus.store.getHistory(actor).undo.length).toBe(before + 1);
+
+    await act(async () => {
+      await runtime.bus.execute("graph.undo", {}, runtime.invocation);
+    });
+    expect(targets(runtime, bank)).toBe("");
+    expect(runtime.bus.store.getGraph().nodes[ids.fader]?.position).toEqual({ x: 0, y: 400 });
+  }, 20_000);
+
+  it("writes nothing more for a node that is already a target — the drop is only a move", async () => {
+    const { runtime, view, ids } = await mount([
+      { op: "addNode", ref: "$bank", type: "presets", position: { x: 260, y: 0 }, label: "looks", parameters: { targets: "fader1" } },
+    ]);
+    const bank = nodeNamed(runtime, "looks");
+    await rendered(view, bank);
+    const actor = runtime.invocation.actor;
+    const before = runtime.bus.store.getHistory(actor).undo.length;
+
+    await dragNodeCentreTo(view.container, ids.fader, { x: 260 + 178 / 2, y: 60 }, runtime);
+
+    await waitFor(() => {
+      expect(runtime.bus.store.getGraph().nodes[ids.fader]?.position.y).toBeLessThan(200);
+    });
+    expect(targets(runtime, bank)).toBe("fader1");
+    const history = runtime.bus.store.getHistory(actor).undo;
+    expect(history.length).toBe(before + 1);
+    expect(history.at(-1)?.label).toBe("Move node");
+  }, 20_000);
+
+  it("takes no bank, Panel or cue list as a target", async () => {
+    const { runtime, view, ids } = await mount([
+      { op: "addNode", ref: "$bank", type: "presets", position: { x: 260, y: 0 }, label: "looks" },
+      { op: "addNode", ref: "$other", type: "presets", position: { x: 0, y: 200 }, label: "moods" },
+      { op: "addNode", ref: "$cues", type: "cueList", position: { x: 260, y: 400 }, label: "show" },
+    ]);
+    const bank = nodeNamed(runtime, "looks");
+    for (const id of [bank, nodeNamed(runtime, "moods"), nodeNamed(runtime, "show")]) await rendered(view, id);
+
+    for (const [dragged, at] of [
+      [nodeNamed(runtime, "moods"), { x: 0, y: 200 }],
+      [ids.panel, { x: 520, y: 0 }],
+      [nodeNamed(runtime, "show"), { x: 260, y: 400 }],
+    ] as const) {
+      await dragNodeCentreTo(view.container, dragged, { x: 260 + 178 / 2, y: 60 }, runtime);
+      await waitFor(() => {
+        expect(runtime.bus.store.getGraph().nodes[dragged]?.position).not.toEqual(at);
+      });
+    }
+    expect(targets(runtime, bank)).toBe("");
+  }, 30_000);
+
+  it("where a Panel and a bank overlap, the one drawn on top (later in the document) takes the drop", async () => {
+    // The bank sits on panel1 and was added after it, so it is drawn on top.
+    const onBank = await mount([{ op: "addNode", ref: "$bank", type: "presets", position: { x: 520, y: 0 }, label: "looks" }]);
+    const bank = nodeNamed(onBank.runtime, "looks");
+    await rendered(onBank.view, bank);
+    await dragNodeCentreTo(onBank.view.container, onBank.ids.fader, { x: 520 + 178 / 2, y: 60 }, onBank.runtime);
+    await waitFor(() => {
+      expect(targets(onBank.runtime, bank)).toBe("fader1");
+    });
+    expect(edges(onBank.runtime)).toHaveLength(0);
+    cleanup();
+
+    // Here a second Panel sits on the bank and was added after it: the Panel takes it.
+    const onPanel = await mount([
+      { op: "addNode", ref: "$bank", type: "presets", position: { x: 260, y: 0 }, label: "looks" },
+      { op: "addNode", ref: "$top", type: "panel", position: { x: 260, y: 0 }, label: "panel2" },
+    ]);
+    const lowerBank = nodeNamed(onPanel.runtime, "looks");
+    const top = nodeNamed(onPanel.runtime, "panel2");
+    await rendered(onPanel.view, top);
+    await dragNodeCentreTo(onPanel.view.container, onPanel.ids.fader, { x: 260 + 178 / 2, y: 60 }, onPanel.runtime);
+    await waitFor(() => {
+      expect(edges(onPanel.runtime)).toHaveLength(1);
+    });
+    expect(edges(onPanel.runtime)[0]?.target.nodeId).toBe(top);
+    expect(targets(onPanel.runtime, lowerBank)).toBe("");
+  }, 30_000);
+});
