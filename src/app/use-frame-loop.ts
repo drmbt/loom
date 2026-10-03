@@ -654,6 +654,9 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
      * replay, the step button) can see which structure the frame needs before it is rendered
      * and install that plan first (`stepInStructure`). The driver's next step consumes it; a
      * reset drops it. Nothing is pulled while no timeline switches structure.
+     * §T1547b: a frame the scheduled loop HOLDS is kept here too (`ready`), because stopping
+     * the driver drops its own copy — and the transport has already moved past it, so the
+     * next paused step would show the frame after it.
      */
     let pulled: FrameEvaluationInput | null = null;
     const transport: typeof clock = {
@@ -755,7 +758,13 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       },
       // §T1537b: playback holds a frame whose structure is still installing — and asks for it.
       ready: (frame) => {
-        if (structureReady(frame)) return true;
+        if (structureReady(frame)) {
+          // The held frame renders now: the transport must not offer it again.
+          if (pulled === frame) pulled = null;
+          return true;
+        }
+        // §T1547b: a pause drops the driver's held frame; the next step takes it from here.
+        pulled = frame;
         timelineRef.current?.request(frame);
         telemetryRef.current?.noteHeldTick();
         return false;

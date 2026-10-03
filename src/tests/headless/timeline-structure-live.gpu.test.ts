@@ -562,3 +562,85 @@ describe("§T1544b — paused seeks and steps cross structure exactly", () => {
     }
   }, 240_000);
 });
+
+/**
+ * §T1547b (b) — A STEP AFTER THE LOOP HELD A FRAME AND WAS PAUSED. Playback reaches the
+ * crossing (60) before its plan is installed, so the scheduled loop holds 60 (§T1537b); the
+ * person pauses there, still looking at 59, and steps. The step is one frame: 60, in its own
+ * structure — and `stepFrame`, which returns before the install lands, reports the frame
+ * that is then shown. It used to report 60 and show 61: the pause dropped the held frame
+ * the transport had already produced, and the step took the one after it.
+ */
+describe("§T1547b — a paused step after a held frame", () => {
+  it("play into the held crossing frame, pause, step: frame 60 is shown in its own structure, and 60 is what the step reported", async () => {
+    const rig = await mount();
+    try {
+      await act(async () => {
+        rig.transport().togglePlay();
+        await gap();
+      });
+      await act(async () => {
+        expect(rig.transport().stepFrame(58)).toBe(57);
+        await gap();
+      });
+      const compilesBefore = rig.compiles.length;
+      const from = rig.renders.length;
+      let reported = -1;
+      // One synchronous turn: the install the ask-ahead starts for 60 cannot land inside it.
+      await act(async () => {
+        rig.transport().stepFrame(1);
+        rig.transport().togglePlay();
+        for (let index = 0; index < 3; index += 1) rig.tick();
+        rig.transport().togglePlay();
+        expect(rig.transport().isPlaying()).toBe(false);
+        expect(rig.renders.slice(from).map((entry) => entry.frame)).toEqual([58, 59]);
+        reported = rig.transport().stepFrame(1);
+      });
+      await waitFor(() => expect(rig.compiles.length).toBe(compilesBefore + 1), { timeout: 10_000 });
+      await waitFor(() => expect(rig.renders.length).toBe(from + 3), { timeout: 10_000 });
+      const shown = rig.renders.at(-1);
+      expect(rig.renders.slice(from).map((entry) => entry.frame)).toEqual([58, 59, 60]);
+      expect(reported).toBe(shown?.frame);
+      expect(layersOf(shown?.plan)).toEqual(expectedOn(60));
+      expect(rig.transport().isPlaying()).toBe(false);
+      expect(rig.diagnostics()).toEqual([]);
+      expect(rig.reported).toEqual([]);
+    } finally {
+      rig.dispose();
+    }
+  }, 180_000);
+
+  it("kept for the step, a held frame still renders ONCE when playback goes on: 60 once the plan lands, then the frames after it", async () => {
+    const rig = await mount();
+    try {
+      await act(async () => {
+        rig.transport().togglePlay();
+        await gap();
+      });
+      await act(async () => {
+        expect(rig.transport().stepFrame(58)).toBe(57);
+        await gap();
+      });
+      const compilesBefore = rig.compiles.length;
+      const from = rig.renders.length;
+      await act(async () => {
+        rig.transport().stepFrame(1);
+        rig.transport().togglePlay();
+        for (let index = 0; index < 3; index += 1) rig.tick();
+      });
+      await waitFor(() => expect(rig.compiles.length).toBe(compilesBefore + 1), { timeout: 10_000 });
+      await act(async () => {
+        rig.tick();
+        rig.tick();
+      });
+      const frames = rig.renders.slice(from).map((entry) => entry.frame);
+      expect(frames.slice(0, 3)).toEqual([58, 59, 60]);
+      // The frame after the held one is a later frame — never 60 offered a second time.
+      expect(frames).toHaveLength(4);
+      expect(frames[3]).toBeGreaterThan(60);
+      expect(rig.reported).toEqual([]);
+    } finally {
+      rig.dispose();
+    }
+  }, 180_000);
+});
