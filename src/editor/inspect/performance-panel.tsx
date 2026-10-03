@@ -568,6 +568,8 @@ function PerformanceSections({
           <LiveStat source={source} label="gpu time" select={(s) => frameGpuText(s.frame)} />
           <LiveStat source={source} label="pass sum" select={(s) => passSumText(s.frame)} />
           <LiveStat source={source} label="frames" select={(s) => String(s.framesRendered)} />
+          {/* §T1544b: ticks the loop held for a timed structural cue's plan — late, never wrong. */}
+          <LiveStat source={source} label="held ticks" select={(s) => String(s.heldTicks)} />
           <LiveStat
             source={source}
             label="frame index"
@@ -638,6 +640,8 @@ function PerformanceSections({
             <Stat label="resources reused" value={String(build.resourcesReused)} />
             <Stat label="effects built" value={String(build.effectsBuilt)} />
             <Stat label="effects reused" value={String(build.effectsReused)} />
+            {/* §T1507b: Effects adopted from the warm-up instead of built. */}
+            <Stat label="effects warmed" value={String(build.effectsWarmed ?? 0)} />
           </div>
         )}
       </section>

@@ -96,6 +96,8 @@ interface Rig {
   diagnostics(): readonly unknown[];
   /** §T1544b: the bytes of `nodeId`'s output as the last rendered frame left them. */
   read(nodeId: string): Promise<Buffer>;
+  /** §T1544b: the performance pane's snapshot, as the app's hub has it. */
+  telemetry(): ReturnType<AppRuntime["telemetry"]["snapshot"]>;
   dispose(): void;
 }
 
@@ -160,6 +162,7 @@ async function mount(settings: typeof SETTINGS = SETTINGS, graph: GraphDocument 
       documentBoundary: compiled.documentBoundary,
       warmPlan: compiled.warmPlan,
       timeline: compiled.timeline,
+      telemetry: runtime.telemetry,
     });
   });
   await waitFor(() => expect(view.result.current.installedPlan).not.toBeNull(), { timeout: 20_000 });
@@ -177,6 +180,7 @@ async function mount(settings: typeof SETTINGS = SETTINGS, graph: GraphDocument 
     },
     reported,
     diagnostics: () => view.result.current.diagnostics,
+    telemetry: () => runtime.telemetry.snapshot(),
     read: async (nodeId) => {
       const plan = renders.at(-1)?.plan as unknown as { readonly outputs: ReadonlyArray<{ readonly nodeId: string; readonly resourceId: string }> } | undefined;
       const output = plan?.outputs.find((entry) => entry.nodeId === nodeId);
@@ -310,6 +314,13 @@ describe("§T1537b — the live loop: exact crossings, one compile each, warmed"
       const after = rig.renders.slice(rendersBefore);
       expect(after.map((entry) => entry.frame)).toEqual([58, 59, 60]);
       expect(after.map((entry) => layersOf(entry.plan))).toEqual([expectedOn(58), expectedOn(59), expectedOn(60)]);
+      // §T1544b: the performance pane counts the three ticks that held frame 60, and shows the
+      // crossing's build as the backend reported it — what it built and what it adopted.
+      await waitFor(() => expect(rig.telemetry().heldTicks).toBe(3), { timeout: 5_000 });
+      const crossing = rig.compiles.at(-1);
+      expect(crossing?.effectsWarmed ?? 0).toBeGreaterThan(0);
+      await waitFor(() => expect(rig.telemetry().build?.effectsWarmed).toBe(crossing?.effectsWarmed), { timeout: 5_000 });
+      expect(rig.telemetry().build?.effectsBuilt).toBe(crossing?.effectsBuilt);
       expect(rig.diagnostics()).toEqual([]);
       expect(rig.reported).toEqual([]);
     } finally {

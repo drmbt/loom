@@ -13,6 +13,7 @@ import { createFrameDriver, createPointerSource } from "@runtime/execution/index
 import type { FrameDriver, PointerSource } from "@runtime/execution/index.ts";
 import { planStructureSignature } from "@runtime/backend/index.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
+import type { TelemetryHub } from "@runtime/telemetry/index.ts";
 import { createUniformAnimator } from "./animate-parameters.ts";
 import type { StructureFrame, TimelineStructureLink, WarmLoop } from "./use-graph-compile.ts";
 import { compileLatest } from "./compile-latest.ts";
@@ -242,6 +243,12 @@ export interface FrameLoopOptions {
    *    exact and deterministic whatever the machine.
    */
   readonly timeline?: TimelineStructureLink | null | undefined;
+  /**
+   * §T1544b — the performance pane's hub: each tick the scheduled loop HOLDS for a structure
+   * still installing (`noteHeldTick`), and the backend's build stats after each install —
+   * `effectsWarmed` among them (§T1507b) — so the pane says what a crossing cost.
+   */
+  readonly telemetry?: Pick<TelemetryHub, "noteHeldTick" | "setBuild"> | undefined;
 }
 
 /**
@@ -335,6 +342,9 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
   /** §T1537b: the newest structure link, read per frame. */
   const timelineRef = useRef<TimelineStructureLink | null>(options.timeline ?? null);
   timelineRef.current = options.timeline ?? null;
+  /** §T1544b: the hub, read where a tick is held and where a plan lands. */
+  const telemetryRef = useRef(options.telemetry);
+  telemetryRef.current = options.telemetry;
   /**
    * §T1537b: the segment of the plan the BACKEND holds (moved where `planRef` moves), and the
    * newest segment whose plan could not be installed (§V9: its frames render on the plan
@@ -747,6 +757,7 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       ready: (frame) => {
         if (structureReady(frame)) return true;
         timelineRef.current?.request(frame);
+        telemetryRef.current?.noteHeldTick();
         return false;
       },
     });
@@ -1068,6 +1079,8 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
         animatorRef.current.reset();
         driftRef.current = false;
         driverRef.current?.setPlan(plan);
+        // §T1544b: what this install built and adopted, for the performance pane.
+        telemetryRef.current?.setBuild(backend.status.lastBuild ?? null);
         /**
          * AFTER the install, and that order is the whole point (T519, B106, §V22).
          *

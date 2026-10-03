@@ -507,6 +507,25 @@ describe("plan facts (T41)", () => {
     });
     hub.dispose();
   });
+
+  it("§T1544b: counts held ticks (coalesced, one notification per tick window) and carries a build's warmed Effects", () => {
+    const hub = createTelemetryHub({ now });
+    let notified = 0;
+    hub.subscribe(() => {
+      notified += 1;
+    });
+    expect(hub.snapshot().heldTicks).toBe(0);
+    hub.noteHeldTick();
+    hub.noteHeldTick();
+    hub.noteHeldTick();
+    advance(TELEMETRY_TICK_MS);
+    expect(hub.snapshot().heldTicks).toBe(3);
+    expect(notified).toBe(1);
+    hub.setBuild({ resourcesCreated: 0, resourcesReused: 4, effectsBuilt: 0, effectsReused: 3, effectsWarmed: 2 });
+    advance(TELEMETRY_TICK_MS);
+    expect(hub.snapshot().build?.effectsWarmed).toBe(2);
+    hub.dispose();
+  });
 });
 
 describe("lifecycle", () => {

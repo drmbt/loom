@@ -322,6 +322,7 @@ describe("the performance tab (T41)", () => {
     nodes: [],
     categories: [],
     framesRendered: 120,
+    heldTicks: 0,
     lastFrameIndex: 119,
     frame: { availability: "measured", gpuMs: 3.5, passCount: 1, nodeCount: 1 },
     passes: [

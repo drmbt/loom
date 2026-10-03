@@ -229,6 +229,11 @@ export interface TelemetryHub extends TelemetrySource {
    */
   setFrameCompileReason(reason: string | null): void;
   /**
+   * §T1544b: one scheduled tick the frame loop HELD (its frame's timeline structure was
+   * still installing). A counter and a coalesced notification, like `noteFrame` (§V16).
+   */
+  noteHeldTick(): void;
+  /**
    * Points the hub at a CPU span source (T256). Returns a detach function. Without one
    * every `cpu` bucket reads "unavailable" — the honest state, and the one the app is in
    * until something measures encode time per pass.
@@ -280,6 +285,8 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
   let plan: TelemetryPlan | null = null;
   let build: TelemetryBuildStats | null = null;
   let framesRendered = 0;
+  /** §T1544b: see `noteHeldTick`. */
+  let heldTicks = 0;
   let lastFrameIndex: number | null = null;
   /** T304: see `recentFrameTimes` on the interface. */
   const frameTimes: number[] = [];
@@ -527,6 +534,7 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
       plan,
       build,
       framesRendered,
+      heldTicks,
       lastFrameIndex,
       frame: frameBucket(),
       passes: passRows(),
@@ -573,6 +581,11 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
     setFrameCompileReason(reason) {
       if (reason === frameCompileReason) return;
       frameCompileReason = reason;
+      schedule();
+    },
+
+    noteHeldTick() {
+      heldTicks += 1;
       schedule();
     },
 

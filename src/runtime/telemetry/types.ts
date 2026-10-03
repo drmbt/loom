@@ -234,6 +234,12 @@ export interface TelemetryBuildStats {
   readonly resourcesReused: number;
   readonly effectsBuilt: number;
   readonly effectsReused: number;
+  /**
+   * §T1507b / §T1544b: Effects this build ADOPTED from the warm-up (`backend.warmPasses`)
+   * rather than building them — a structural switch the warm-up anticipated builds none.
+   * Absent from a backend that does not warm.
+   */
+  readonly effectsWarmed?: number | undefined;
 }
 
 /** One row of the performance tab's per-pass table. */
@@ -268,6 +274,12 @@ export interface TelemetrySnapshot {
   readonly build: TelemetryBuildStats | null;
   /** Frames the driver actually rendered since the hub was created. */
   readonly framesRendered: number;
+  /**
+   * §T1544b: scheduled ticks the frame loop HELD since the hub was created — a frame whose
+   * timeline structure was still installing, shown late rather than wrong (§T1537b). Zero
+   * while every crossing's plan lands ahead of its frame.
+   */
+  readonly heldTicks: number;
   readonly lastFrameIndex: number | null;
   /**
    * The frame's GPU cost (T1243): the extent of the latest submitted frame when the

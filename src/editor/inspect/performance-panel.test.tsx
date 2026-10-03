@@ -106,6 +106,7 @@ function snapshot(
       },
     ],
     framesRendered,
+    heldTicks: 0,
     lastFrameIndex: framesRendered - 1,
     // T1243: the frame is the submit's extent; the pass sum is a different number on
     // purpose, so a test can tell which one a stat reads.
@@ -287,5 +288,23 @@ describe("PerformancePanel names why frames compile in full (T1254)", () => {
     // The fast path came back (a new revision no longer animates the structural key).
     hub.tick({ ...snapshot(3.5, 122), frameCompileReason: null });
     expect(screen.queryByTestId("frame-compile-reason")).toBeNull();
+  });
+});
+
+/**
+ * §T1544b — what a timed structural cue cost, where the rest of the frame's cost is read:
+ * the ticks the loop HELD for a crossing's plan (live, a number that moves) and the Effects
+ * the last build ADOPTED from the warm-up (§T1507b), beside the ones it built.
+ */
+describe("PerformancePanel shows held ticks and warmed Effects (§T1544b)", () => {
+  it("held ticks move with the hub; the last build says how many Effects were warmed", () => {
+    const warmed = { ...build, effectsBuilt: 0, effectsWarmed: 4 };
+    const hub = fakeSource({ ...snapshot(3.5, 120), build: warmed });
+    mount(hub.source);
+    expect(stat("held ticks")).toBe("0");
+    expect(stat("effects built")).toBe("0");
+    expect(stat("effects warmed")).toBe("4");
+    hub.tick({ ...snapshot(3.5, 121), build: warmed, heldTicks: 3 });
+    expect(stat("held ticks")).toBe("3");
   });
 });

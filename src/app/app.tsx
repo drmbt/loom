@@ -985,6 +985,8 @@ export function App({
     warmPlan: compile.warmPlan,
     // §T1537b: a timed cue list's structural settings switch on their cue frames.
     timeline: compile.timeline,
+    // §T1544b: held ticks and each install's build stats, for the performance pane.
+    telemetry: runtime.telemetry,
   });
 
   /**
