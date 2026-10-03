@@ -2,6 +2,8 @@
 
 Row: §T1398b. First written 2026-09-29 (`e56e63aa`). The owner ruled on all fifteen questions the same day. This revision folds the rulings in. §13 records each ruling, and §12 is the build plan in row-sized slices. File:line citations are against the tree this revision was written on (main at `f9f451ff`, which includes the phone door `be146d5d` and component files `5a438a8f`). Nothing here is built yet.
 
+**Corrected 2026-10-03 against the landed build** (§T1496b–§T1504b): the fold's chain rules in §5.3 (epoch, contiguous tail, a finished record ends older ones, structural keys cut), a shot writing each nested bank's `current` (§4.4, §8.1), the nesting limit counted in `recalls` hops, the agent tool `set_cue_standby` (§10), and a MIDI trigger that MIDI In can actually publish (§8.2). The rulings in §13 are recorded as given.
+
 What the rulings changed from the first draft:
 - **Morph is in v1.** It runs on the **timeline clock**, so it pauses with the transport and renders the same way every time (§5).
 - The performance role is called a **look**. "Scene" stays reserved for the 3D scene (§6).
@@ -167,7 +169,7 @@ export interface Preset {
   readonly values: Readonly<Record<string, Readonly<Record<string, StoredParameter>>>>;
   /** node NAME → layer on/off (§7). Written as ui.bypassed = !on. Always a cut. */
   readonly on?: Readonly<Record<string, boolean>>;
-  /** Shots (§8.1): other banks' presets in the same patch; cycle-checked, depth 4, own values win (ruling 14). */
+  /** Shots (§8.1): other banks' presets in the same patch; cycle-checked, at most 4 hops, own values win (ruling 14). */
   readonly recalls?: ReadonlyArray<{ readonly bank: string; readonly preset: string }>;
   /** This preset's own morph. Absent means the bank's `morph` / `curve`. */
   readonly morph?: MorphSpec;
@@ -203,13 +205,14 @@ The output names every target it could not find.
 `preset.recall { nodeId, name?, morph?: MorphSpec }`. Without `name` it recalls the bank's resolved `select`.
 
 1. Parse the bank. Malformed JSON is refused with a diagnostic that names the bank.
-2. Expand `recalls` depth-first. Cycles are refused by name, depth is capped at 4, and the preset's own values win (ruling 14).
+2. Expand `recalls` depth-first. Cycles are refused by name, and so is a chain of more than 4 `recalls` hops (the recalled preset is depth 0, so a shot may reach four banks down; a fifth hop is refused, `MAX_RECALL_DEPTH`). The preset's own values win (ruling 14).
 3. Resolve names in the current graph and check each key against the node's effective schema and the manifest (§V66). **Anything missing or invalid is skipped with a warning that names it. The recall is refused only when nothing is left to apply** (ruling 4).
 4. Work out the morph (§5.1). If it is non-zero, build one morph record for this recall (§5.2).
 5. Build **one** `GraphPatch`:
    - `setParameters` on each target with its end value;
    - `setNodeUi { bypassed }` for each layer in `on`;
-   - `setParameters` on the bank with `current` and, when morphing, the updated `morphs`.
+   - `setParameters` on the bank with `current` and, when morphing, the updated `morphs`;
+   - `setParameters { current }` on every NESTED bank a shot actually wrote something from (and `morphs` on any bank whose records lost keys), so a Panel beside a look's bank highlights the preset the shot just recalled there. A bank reached twice shows the later preset.
 6. Apply it with `splitUndo: true` (`bus.ts:63`). The result is one revision, one undo group (`Recall "riot" (cityLooks)`) and one audit entry `preset.recall` carrying the invoking actor.
 
 **Undo** brings back every target, the bank's `current` and its morph records in one step (`store.ts:54-74`). The screen jumps back; it does not fade in reverse. Undo belongs to the actor who recalled (`store.ts:97`), so a phone's recall stays on that phone's history.
@@ -275,9 +278,9 @@ A bank keeps at most **four** records. Each recall drops the ones that are alrea
 
 For each key, the value on screen is a **pure function of the document and the frame**. It is supplied through the resolver's driver seam, which outranks the stored slot (`resolve.ts:153-155`):
 
-1. Gather the unfinished records, across **every bank**, that touch this key, oldest `start` first.
+1. Gather the records of the clock's current **epoch**, across **every bank**, that touch this key, oldest `start` first. Only the **contiguous tail** counts: a record whose `to` is not the next record's `from` was followed by something other than a recall (a manual edit), so the chain starts after it. A **finished** record (p = 1) ends every older one on the key: the chain starts after the newest finished record, and with none left the key shows its stored value. Structural keys (`compileTime`, or read by a resolution policy) never chain; they cut.
 2. If the key's current stored slot is not the newest record's `to`, someone has edited the key since. **The edit wins and no fade applies** (see interruption below).
-3. Otherwise, start from the oldest record's `from` slot, resolved at this frame, and fold through the records in order:
+3. Otherwise, start from the oldest remaining record's `from` slot, resolved at this frame, and fold through the records in order:
    `V = lerp(V, resolve(to_i, frame), curve_i(p_i))`, where `p_i = clamp((frame.absTimeSeconds − start_i) / seconds_i, 0, 1)`.
 
 What that gives:
@@ -376,7 +379,7 @@ A **Layers view** listing the stack, derived by walking `below` from each output
 
 ### 8.1 Shots (ruling 14)
 
-A shot is a preset in a bank that targets layers (`picture`, `opacity`, `blend`, plus `on`) and recalls other banks' presets through `recalls`. Nesting is cycle-checked, capped at depth 4, and the shot's own values win. Recalling a shot is one patch across everything it touches. With a morph, one record covers all the keys it changes.
+A shot is a preset in a bank that targets layers (`picture`, `opacity`, `blend`, plus `on`) and recalls other banks' presets through `recalls`. Nesting is cycle-checked, capped at 4 `recalls` hops, and the shot's own values win. Each nested bank the shot wrote from gets its `current` in the same patch (§4.4 step 5). Recalling a shot is one patch across everything it touches. With a morph, one record covers all the keys it changes.
 
 ```jsonc
 // bank "shots", targets "layer1 layer2 layer3"
@@ -450,7 +453,7 @@ Without a `nodeId`, the command acts on the one cue list with `keys` on. With no
 |---|---|
 | Panel | a cue list named in the layout → GO and BACK buttons, current / next captions, the list (tap a cue = standby) (§9.1) |
 | phone | a `cueList` control (§9.2) |
-| MIDI / OSC | the `go` pulse driven by an expression, e.g. `op('midi1').chan.note60` |
+| MIDI / OSC | the `go` pulse driven by an expression on a learned control, e.g. `op('midi1').chan.pad1` (a pad learned as a Control Change and named `pad1`; MIDI In does not read notes) |
 | keyboard | new global bindings `mod+alt+g` → `cue.go` and `mod+alt+b` → `cue.back`, free in `src/editor/keymap/defaults.ts` (compare `perform.toggle`, `defaults.ts:538-551`) |
 | beat | the `go` pulse driven by a beat channel, e.g. `op('audio1').chan.kick > 0.5` |
 
@@ -536,7 +539,7 @@ readonly values: Readonly<Record<string, number | boolean | string>>;
 - New thin tools following `src/agent/tools/read.ts` and `mutate.ts`:
   - `list_presets`, which includes running morphs with progress;
   - `store_preset`, `recall_preset` (with an optional morph) and `delete_preset`;
-  - `list_cues`, `cue_go`, `cue_back`, `cue_fire` and `cue_set_standby`.
+  - `list_cues`, `cue_go`, `cue_back`, `cue_fire` and `set_cue_standby`.
 - Layers need no new tool.
 - An agent may write bank or cue JSON with `set_parameters`. Malformed JSON reports at recall or GO, and nothing is lost.
 - No new capability class (§V38).
