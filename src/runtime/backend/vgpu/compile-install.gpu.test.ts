@@ -190,6 +190,47 @@ describe("§T1529b — a throw after the build leaves the previous program insta
   }, 60_000);
 });
 
+describe("§T1533b — a same-signature update applies every uniform block or none", () => {
+  it("pass b's block rejects its value: pass a keeps its previous bytes too, one diagnostic, the corrected update applies", async () => {
+    const { backend, reported, read } = await stage();
+    try {
+      const before = await backend.compile(plan({ a: RED, b: BLUE }));
+      backend.render(before, inputs(1));
+      const aBefore = await read("a");
+      const bBefore = await read("b");
+      expect(aBefore.equals(filled(RED))).toBe(true);
+      expect(bBefore.equals(filled(BLUE))).toBe(true);
+      expect(reported).toEqual([]);
+
+      // Same passes, same uniform NAMES: the same structure signature, so this is the
+      // values-only path — no build, each pass's block written in plan order. `a` gets a
+      // valid new colour and is written first; `b` hands a vec4f three numbers, which its
+      // block rejects. Without the roll-back `a` would now draw GREEN under a plan that
+      // was refused.
+      await expect(backend.compile(plan({ a: GREEN, b: [1, 1, 1] }))).rejects.toThrow();
+      expect(backend.status.stale).toBe(true);
+      expect(reported.map((entry) => entry.code)).toEqual([BackendDiagnosticCode.compileFailed]);
+      reported.length = 0;
+
+      // The installed program draws exactly what it drew before the refused update.
+      backend.render(before, inputs(2));
+      expect(reported).toEqual([]);
+      expect((await read("a")).equals(aBefore)).toBe(true);
+      expect((await read("b")).equals(bBefore)).toBe(true);
+
+      // Not wedged: the corrected update takes the same path and lands in both blocks.
+      const fixed = await backend.compile(plan({ a: GREEN, b: WHITE }));
+      expect(backend.status.stale).toBe(false);
+      backend.render(fixed, inputs(3));
+      expect((await read("a")).equals(filled(GREEN))).toBe(true);
+      expect((await read("b")).equals(filled(WHITE))).toBe(true);
+      expect(reported).toEqual([]);
+    } finally {
+      backend.dispose();
+    }
+  }, 60_000);
+});
+
 describe("§T1528b — a compile outlived by its carry starts over", () => {
   it("device lost while the compile waits on the settle: the rebuilt program is carried from, the new plan renders", async () => {
     const { backend, holding, reported, read } = await stage();

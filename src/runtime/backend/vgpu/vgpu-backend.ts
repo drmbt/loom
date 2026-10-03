@@ -2189,8 +2189,33 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
 
       if (program && program.signature === signature) {
         // Structurally identical: only uniform values can differ, so nothing is rebuilt (§V5).
-        for (const [passId, values] of planUniformValues(read.passes)) {
-          applyUniforms(program, passId, values);
+        // §T1533b: all or nothing. A block's `set` can throw (a value its adopted layout
+        // rejects — the signature holds uniform NAMES, not shapes — or a destroyed buffer),
+        // and both conditions live inside vgpu (the layout is private, its packer is not
+        // exported), so they cannot be checked up front without a second copy of vgpu's
+        // packing rules. Instead every block written before the throw gets its previous
+        // values back, and the previous plan keeps rendering, flagged stale (§V9).
+        const written: Array<[string, UniformValues]> = [];
+        try {
+          for (const [passId, values] of planUniformValues(read.passes)) {
+            const previous = program.liveUniforms.get(passId);
+            applyUniforms(program, passId, values);
+            if (previous !== undefined) written.push([passId, previous]);
+          }
+        } catch (error) {
+          for (const [passId, previous] of written) {
+            program.resources.passUniforms.get(passId)?.set(toMutable(previous));
+            program.liveUniforms.set(passId, previous);
+          }
+          stale = true;
+          hub.report(
+            backendDiagnostic(
+              "error",
+              BackendDiagnosticCode.compileFailed,
+              `Plan compile failed: ${describeError(error)}`,
+            ),
+          );
+          throw error;
         }
         for (const pass of read.passes) {
           if (pass.kind === "loop" && pass.edge === "begin") {
