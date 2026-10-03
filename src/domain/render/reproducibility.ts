@@ -88,6 +88,7 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   // is false, so `freeRunMediaNodes` never saw it and T586's warning returned null for a
   // document whose whole content was a live camera.
   webcam: "external-live",
+  screenIn: "external-live",
   syphonIn: "external-live",
   ndiIn: "external-live",
   spoutIn: "external-live",

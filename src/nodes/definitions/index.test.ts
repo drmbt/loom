@@ -164,6 +164,7 @@ describe("core catalogue (T70, T40)", () => {
       "movieFileIn",
       "webcam",
       "text",
+      "screenIn",
       "syphonIn",
       "ndiIn",
       "syphonOut",

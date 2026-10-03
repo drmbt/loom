@@ -102,6 +102,7 @@ describe("T645 — every registered node type is classified, or this fails (§V4
       // per-machine portability caveat carried on the table row and the node description.
       "personMask:async-cached",
       "pose:async-cached",
+      "screenIn:external-live",
       "spoutIn:external-live",
       "syphonIn:external-live",
       "webcam:external-live",
@@ -201,6 +202,15 @@ describe("SETTLED_BY_EXPORT is answered for every async-cached node, in both dir
  * not make any of them pass.
  */
 describe("T644 — a take over a live device is named at render time", () => {
+  it("names Screen In and its live capture at render time", () => {
+    const warning = nonReproducibleRenderWarning(graphWith({ display: node("screenIn", "display") }), registry);
+    expect(warning?.code).toBe("export.nonReproducible");
+    expect(warning?.nodeId).toBe("display");
+    expect(warning?.message).toContain('Screen In "display"');
+    expect(warning?.message).toContain("Rendering the same range twice gives two different files.");
+    expect(warning?.suggestion).toContain("Record the input to a file");
+  });
+
   it("names the WEBCAM, which produced a different file every time and said nothing", () => {
     const warning = nonReproducibleRenderWarning(graphWith({ cam1: node("webcam", "cam1") }), registry);
     expect(warning, "a document whose whole content is a live camera warned about nothing").not.toBeNull();

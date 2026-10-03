@@ -29,6 +29,8 @@ import { poseNode } from "./pose.ts";
 import { matteNode } from "./matte.ts";
 import { personMaskNode } from "./person-mask.ts";
 import { mediaNodeDefinitions } from "./media.ts";
+import { screenInNode } from "./screen-in.ts";
+export { screenInNode, SCREEN_IN_TYPE } from "./screen-in.ts";
 import { syphonInNode } from "./syphon-in.ts";
 import { ndiInNode } from "./ndi-in.ts";
 import { syphonOutNode } from "./syphon-out.ts";
@@ -287,6 +289,7 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   matteNode,
   personMaskNode,
   ...mediaNodeDefinitions,
+  screenInNode,
   syphonInNode,
   ndiInNode,
   syphonOutNode,

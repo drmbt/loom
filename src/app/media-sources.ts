@@ -80,23 +80,31 @@ export function awaitMediaReady(
   timeoutMs: number = MEDIA_OPEN_TIMEOUT_MS,
   schedule: (callback: () => void, ms: number) => unknown = setTimeout,
   cancel: (handle: unknown) => void = (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  signal?: AbortSignal,
 ): Promise<void> {
+  if (signal?.aborted) return Promise.reject(signal.reason);
   // HAVE_METADATA. Already there — a cached file, a stream that came up instantly — so
   // there is no event left to wait for and waiting would hang on exactly the fast path.
   if ((element.readyState ?? 0) >= 1) return Promise.resolve();
   return new Promise<void>((resolve, reject) => {
     let handle: unknown = null;
+    let settled = false;
     const done = (settle: () => void) => {
+      if (settled) return;
+      settled = true;
       element.removeEventListener("loadedmetadata", onReady);
       element.removeEventListener("error", onError);
+      signal?.removeEventListener("abort", onAbort);
       if (handle !== null) cancel(handle);
       settle();
     };
     const onReady = () => done(resolve);
     const onError = () =>
       done(() => reject(new Error(`The file could not be decoded (code ${element.error?.code ?? 0}).`)));
+    const onAbort = () => done(() => reject(signal?.reason));
     element.addEventListener("loadedmetadata", onReady);
     element.addEventListener("error", onError);
+    signal?.addEventListener("abort", onAbort, { once: true });
     handle = schedule(
       () => done(() => reject(new Error(`Timed out after ${timeoutMs}ms waiting for the file to open.`))),
       timeoutMs,

@@ -299,6 +299,7 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
    * most benign answer on that axis and the only `"emits"` on this one.
    */
   webcam: "none",
+  screenIn: "none",
   syphonIn: "none",
   ndiIn: "none",
   spoutIn: "none",
