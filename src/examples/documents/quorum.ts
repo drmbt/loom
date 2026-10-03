@@ -428,16 +428,16 @@ export const quorumDocument = document(
       /* E45's clock seam: every lane reads `clock1`, never `beat1`, so the tempo source is
          one node to exchange for a real track's analysis. At index 0 it is the deterministic
          pattern, which is what ships (§V44/§V45 — no device on load). */
-      node("beat", "audioPattern", [-2560, 700], { bpm: 116, amount: 1 }, { label: "beat1" }),
-      node("clock", "valueSwitch", [-2260, 700], { index: 0 }, { label: "clock1" }),
+      node("beat", "audioPattern", [-2560, 704], { bpm: 116, amount: 1 }, { label: "beat1" }),
+      node("clock", "valueSwitch", [-2260, 704], { index: 0 }, { label: "clock1" }),
       /* HIGH band -> how far ahead the agents look. Rest subtracted first (T701), then one
          envelope so the network breathes on strikes rather than flickering on every analyser
          frame (T824). 0.038 clip at rest is a 7-pixel sensor and a fine mesh; 0.073 on a hit
          is 13 pixels and a few thick trunks. */
-      node("hsub", "valueMath", [-1960, 700], { operation: "add", operand: -0.381 }, { label: "hsub1" }),
-      node("henv", "valueLag", [-1660, 700], { lag: 0.04, releaseRatio: 8 }, { label: "henv1" }),
-      node("rgain", "valueMath", [-1360, 700], { operation: "multiply", operand: 0.10 }, { label: "rgain1" }),
-      node("reach", "valueMath", [-1060, 700], { operation: "add", operand: 0.20 }, { label: "reach1" }),
+      node("hsub", "valueMath", [-1960, 704], { operation: "add", operand: -0.381 }, { label: "hsub1" }),
+      node("henv", "valueLag", [-1660, 704], { lag: 0.04, releaseRatio: 8 }, { label: "henv1" }),
+      node("rgain", "valueMath", [-1360, 704], { operation: "multiply", operand: 0.10 }, { label: "rgain1" }),
+      node("reach", "valueMath", [-1060, 704], { operation: "add", operand: 0.20 }, { label: "reach1" }),
       /* THE PHRASE, on `Envoy`: how hard each army is pushed off the other two's scent, held
          four bars and eased in so a change of régime is a swell and not a snap.
 
@@ -449,22 +449,22 @@ export const quorumDocument = document(
          hard-edged networks and the ceiling is three interpenetrating ones, so the worst case
          this lane can produce is a different picture rather than no picture. That is the part
          the former file could not say. */
-      node("cstep", "valueStep", [-1960, 940], { every: 4, minimum: 0, maximum: 1, seed: 330 }, { label: "cstep1" }),
-      node("cmul", "valueMath", [-1660, 940], { operation: "multiply", operand: 0.6 }, { label: "cmul1" }),
-      node("csub", "valueMath", [-1360, 940], { operation: "add", operand: -0.6 }, { label: "csub1" }),
-      node("clim", "valueLimit", [-1060, 940], { minimum: -0.55, maximum: -0.05 }, { label: "clim1" }),
-      node("clag", "valueLag", [-760, 940], { lag: 0.9, releaseRatio: 3 }, { label: "clag1" }),
+      node("cstep", "valueStep", [-1960, 944], { every: 4, minimum: 0, maximum: 1, seed: 330 }, { label: "cstep1" }),
+      node("cmul", "valueMath", [-1660, 944], { operation: "multiply", operand: 0.6 }, { label: "cmul1" }),
+      node("csub", "valueMath", [-1360, 944], { operation: "add", operand: -0.6 }, { label: "csub1" }),
+      node("clim", "valueLimit", [-1060, 944], { minimum: -0.55, maximum: -0.05 }, { label: "clim1" }),
+      node("clag", "valueLag", [-760, 944], { lag: 0.9, releaseRatio: 3 }, { label: "clag1" }),
       /* THE DEPOSIT LANE, two bars against the phrase's four so the two never line up: how
          much scent a footfall leaves, which is the balance against `trail1`'s decay and so
          how bold the network draws. [0.395, 0.875] into a clamp [0.44, 0.84] is the same 1.20
          clamp-widths and the same 83.3 % interior. It gets its own step rather than reading
          `cstep1` because a threshold on the phrase's draw would fire in step with the phrase
          instead of across it. */
-      node("dstep", "valueStep", [-1360, 1420], { every: 2, minimum: 0.395, maximum: 0.875, seed: 82 }, { label: "dstep1" }),
-      node("dlim", "valueLimit", [-1060, 1420], { minimum: 0.44, maximum: 0.84 }, { label: "dlim1" }),
-      node("dlag", "valueLag", [-760, 1420], { lag: 0.7, releaseRatio: 2 }, { label: "dlag1" }),
+      node("dstep", "valueStep", [-1360, 1424], { every: 2, minimum: 0.395, maximum: 0.875, seed: 82 }, { label: "dstep1" }),
+      node("dlim", "valueLimit", [-1060, 1424], { minimum: 0.44, maximum: 0.84 }, { label: "dlim1" }),
+      node("dlag", "valueLag", [-760, 1424], { lag: 0.7, releaseRatio: 2 }, { label: "dlag1" }),
       /* The only free-running clock in the file, and it turns once every 80 seconds. */
-      node("hue", "lfo", [-1960, 1180], { shape: "sine", frequency: 0.0125, amplitude: 150, offset: 0, phase: 0 }, { label: "hue1" }),
+      node("hue", "lfo", [-1960, 1184], { shape: "sine", frequency: 0.0125, amplitude: 150, offset: 0, phase: 0 }, { label: "hue1" }),
 
       // ---- the agents ----------------------------------------------------------------
       /* 120 000 agents, and the count is a density rather than a flourish: one agent per two
@@ -508,7 +508,7 @@ export const quorumDocument = document(
          is mechanical rather than cosmetic: a saturated texel has NO GRADIENT, so the three
          sensors of every agent crossing a busy trunk read the same number and the steering
          rule has nothing left to answer. */
-      node("sow", "renderPoints", [-1360, 120], {
+      node("sow", "renderPoints", [-1360, 124], {
         count: AGENTS, blend: "alpha", accumulate: false,
         color: [1, 1, 1, 1], sizePixels: 5, group: "",
       }, {
@@ -530,7 +530,7 @@ export const quorumDocument = document(
          stronger and nothing stops it taking the rest. Renders opened at each. The memory
          this file actually runs on is WHERE THE AGENTS ARE, which the lag profile measures in
          seconds; the field is the coupling medium, not the archive. */
-      node("trail", "feedback", [-1660, 320], {
+      node("trail", "feedback", [-1660, 324], {
         source: "mix1", persistence: 0.72, clearColor: [0, 0, 0, 0], reset: false, substeps: 1,
       }, {
         label: "trail1",
@@ -541,7 +541,7 @@ export const quorumDocument = document(
          and unfiltered by construction (§V57) — so an undiffused splat field is a set of
          isolated texels and the difference between two adjacent sensor readings is mostly
          quantisation. Three pixels of blur is a gradient the three sensors can answer. */
-      node("spread", "blur", [-1360, 320], { size: 4, filter: "gaussian", extend: "hold" }, {
+      node("spread", "blur", [-1360, 324], { size: 4, filter: "gaussian", extend: "hold" }, {
         label: "spread1",
         resolution: { mode: "fixed", width: 288, height: 288 },
         format: { mode: "fixed", format: "rgba16float" },
@@ -550,7 +550,7 @@ export const quorumDocument = document(
          list. Composite's opacity scales THE FRONT LAYER, which is `in1`, so the deposit has
          to be `in1` for `dlag1` to mean "how much scent a footfall leaves" rather than "how
          much of last frame the field keeps". */
-      node("mix", "add", [-1060, 320], { opacity: 0.6 }, {
+      node("mix", "add", [-1060, 324], { opacity: 0.6 }, {
         label: "mix1",
         resolution: { mode: "fixed", width: 288, height: 288 },
         format: { mode: "fixed", format: "rgba16float" },
@@ -589,10 +589,10 @@ export const quorumDocument = document(
          drawn nodes by about 1.4, which is what lifts a link off its own filament and lets
          the web reach ACROSS to the next one. §V788's park, not a compaction: the other half
          keep their slots and go on laying the trail the visible ones are walking. */
-      node("bound", "pointRange", [-1660, 20], {
+      node("bound", "pointRange", [-1660, 24], {
         attribute: "sense", component: "z", from: 0, to: DRAWN_SHARE, mode: "inside",
       }, { label: "bound1" }),
-      node("web", "pointProximity", [-1660, -180], { neighbors: 6, falloff: 3 }, {
+      node("web", "pointProximity", [-1660, -176], { neighbors: 6, falloff: 3 }, {
         label: "web1",
         parameters: { radius: drivenSlot("reach1:high", 0.24) },
       }),
@@ -602,7 +602,7 @@ export const quorumDocument = document(
          six links leaving one node do not fuse into a wedge. Proximity writes a WHITE tint
          whose alpha is the link's strength, so the web is pale by construction — the colour
          in this picture belongs to the nodes. */
-      node("links", "geometry", [-1360, -180], {
+      node("links", "geometry", [-1360, -176], {
         mode: "beam", endpoint: "tip", material: "ink1",
         scale: 0.0022, taper: 0, soft: 0.9, blend: "additive",
       }, {
@@ -649,7 +649,7 @@ export const quorumDocument = document(
       /* Two passes, one camera, each layer graded for its job — blurring ONE render that held
          both would smear the web's filaments over the coloured nodes and the bed would come
          out grey. */
-      node("webs", "render", [-1060, -180], {
+      node("webs", "render", [-1060, -176], {
         scenes: "links1", camera: "cam1", lights: "", ambientIntensity: 0, background: [0, 0, 0, 1],
       }, { label: "webs1" }),
       node("nodes", "render", [-1060, -440], {
@@ -663,7 +663,7 @@ export const quorumDocument = document(
       node("haze", "blur", [-760, -440], { size: 44, filter: "gaussian", extend: "hold" }, { label: "haze1" }),
       /* §V880: perlin4d with a real time axis and an OFF-LATTICE t4d, so Speed is a control
          that does something. A 3d variant here would be a static poster wearing a clock. */
-      node("neb", "noise", [-1060, 120], {
+      node("neb", "noise", [-1060, 124], {
         type: "perlin4d", seed: 54, period: 0.42, harmon: 3, spread: 2, gain: 0.55,
         rough: 0.5, exp: 1.4, amp: 1, offset: 0.4, mono: true, aspectcorrect: true,
         speed: 0.055, t4d: 0.41, s4d: 1,
@@ -674,7 +674,7 @@ export const quorumDocument = document(
       node("bed", "hsv", [-160, -300], { hueoffset: 0, saturation: 1.9, value: 0.42 }, { label: "bed1" }),
       /* The filaments, graded down so the web is structure rather than glare — a network
          reads its links as thread, not as light. */
-      node("thread", "level", [-760, -120], { brightness: 0.42, gamma1: 1.3 }, { label: "thread1" }),
+      node("thread", "level", [-760, -116], { brightness: 0.42, gamma1: 1.3 }, { label: "thread1" }),
       /* THE NODES GO NEAR-WHITE AND THE COLOUR STAYS IN THE HAZE. It is one node in one
          place because of where it sits: `haze1` taps `nodes1` UPSTREAM of this, so the blur
          still sees fully saturated armies and the bed carries each army's own hue, while what
@@ -687,11 +687,11 @@ export const quorumDocument = document(
       // ---- assemble, glow, iris ------------------------------------------------------
       /* Front is the NODES; the filaments and the bed fold in behind, in that order. */
       node("sum", "add", [140, -300], {}, { label: "sum1" }),
-      node("glow", "blur", [440, -140], { size: 16, filter: "gaussian", extend: "hold" }, { label: "glow1" }),
+      node("glow", "blur", [440, -136], { size: 16, filter: "gaussian", extend: "hold" }, { label: "glow1" }),
       node("lit", "add", [740, -300], { opacity: 0.45 }, { label: "lit1" }),
       /* The aperture the whole thing is observed through: a radial ramp, open in the middle
          and closed to black before the corners. */
-      node("iris", "ramp", [440, 100], {
+      node("iris", "ramp", [440, 104], {
         type: "radial", interp: "smooth", phase: 0, period: 1,
         stops: [
           { position: 0, color: [1, 1, 1, 1] },

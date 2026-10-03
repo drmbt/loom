@@ -397,7 +397,7 @@ export const siroccoDocument = document(
 
       // ---- the shot -----------------------------------------------------------------
       node("orbx", "lfo", [-1500, 520], { shape: "sine", frequency: 0.021, amplitude: SIROCCO_ORBIT, offset: 0, phase: 0.25 }, { label: "orbx1" }),
-      node("orbz", "lfo", [-1500, 700], { shape: "sine", frequency: 0.021, amplitude: SIROCCO_ORBIT, offset: 0, phase: 0 }, { label: "orbz1" }),
+      node("orbz", "lfo", [-1500, 704], { shape: "sine", frequency: 0.021, amplitude: SIROCCO_ORBIT, offset: 0, phase: 0 }, { label: "orbz1" }),
       node("eye", "camera", [-540, 0], {
         eye: [SIROCCO_ORBIT, 0.90, 0], lookAt: [0, 0, 0], fov: 42, near: 0.1, far: 24, ortho: false,
       }, {

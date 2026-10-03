@@ -60,11 +60,11 @@ export const fluidDocument = document(
   settings({ outputResolution: { width: 640, height: 640 }, randomSeed: 17 }),
   graph(
     [
-      node("mouse", "mouse", [-980, 320], {}, { label: "mouse1" }),
+      node("mouse", "mouse", [-980, 324], {}, { label: "mouse1" }),
       node(
         "velocity",
         "feedback",
-        [-640, 200],
+        [-640, 204],
         // T350 (§V285): the loop is a REFERENCE. The velocity feedback NAMES the kernel
         // that produces it, so `edges` stays a DAG and the picture stops showing a cycle.
         { persistence: 1, clearColor: [0, 0, 0, 0], reset: false, source: "stir1" },
@@ -78,7 +78,7 @@ export const fluidDocument = document(
       node(
         "stir",
         "customWgsl",
-        [-320, 200],
+        [-320, 204],
         { [SHADER_SOURCE_PARAMETER]: FLUID_VELOCITY_WGSL, amount: 1 },
         { label: "stir1" },
       ),
@@ -108,7 +108,7 @@ export const fluidDocument = document(
       node(
         "ink",
         "circle",
-        [-40, 137],
+        [-40, 141],
         {
           mode: "fill",
           radius: [0.028, 0.028],

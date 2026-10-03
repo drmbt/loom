@@ -77,7 +77,7 @@ export const gooeyballDocument = document(
       node(
         "wobble",
         "noise",
-        [-1480, -220],
+        [-1480, -208],
         {
           type: "perlin4d",
           period: 0.45,
@@ -99,11 +99,11 @@ export const gooeyballDocument = document(
         },
         { label: "noise1" },
       ),
-      node("sheet", "pointGrid", [-1480, 0], { cols: GOOEY_COLS, rows: GOOEY_ROWS }, { label: "grid1" }),
+      node("sheet", "pointGrid", [-1480, 12], { cols: GOOEY_COLS, rows: GOOEY_ROWS }, { label: "grid1" }),
       node(
         "ball",
         "pointKernel",
-        [-1180, 0],
+        [-1180, 12],
         {
           capacity: GOOEY_COLS * GOOEY_ROWS,
           seed: 37,
@@ -112,11 +112,11 @@ export const gooeyballDocument = document(
         },
         { label: "ball1" },
       ),
-      node("bridge", "textureToAttribute", [-880, 0], { count: GOOEY_COLS * GOOEY_ROWS }, { label: "sample1" }),
+      node("bridge", "textureToAttribute", [-880, 12], { count: GOOEY_COLS * GOOEY_ROWS }, { label: "sample1" }),
       node(
         "goo",
         "pointKernel",
-        [-580, 0],
+        [-580, 12],
         {
           capacity: GOOEY_COLS * GOOEY_ROWS,
           seed: 37,
@@ -131,7 +131,7 @@ export const gooeyballDocument = document(
       node(
         "claim",
         "pointTopology",
-        [-280, 0],
+        [-280, 12],
         { connectivity: "grid", cols: GOOEY_COLS, rows: GOOEY_ROWS, wrapU: true, wrapV: false },
         { label: "topology1" },
       ),
@@ -142,7 +142,7 @@ export const gooeyballDocument = document(
        * raw into its ROUGHNESS map, so bulges are coloured differently from hollows
        * and shine differently too. One field, three uses.
        */
-      node("palette", "ramp", [-880, -420], {
+      node("palette", "ramp", [-880, -412], {
         type: "horizontal", interp: "smooth", phase: 0, period: 1,
         stops: [
           { position: 0, color: [0.12, 0.07, 0.25, 1] },
@@ -151,24 +151,24 @@ export const gooeyballDocument = document(
           { position: 1, color: [1, 0.9, 0.6, 1] },
         ],
       }, { label: "goopalette1", definitionVersion: 2 }),
-      node("paint", "lookup", [-580, -420], { channel: "red", row: 0.5, scale: 1, offset: 0 }, { label: "paint1" }),
-      node("gooskin", "materialPhong", [-280, -420], {
+      node("paint", "lookup", [-580, -412], { channel: "red", row: 0.5, scale: 1, offset: 0 }, { label: "paint1" }),
+      node("gooskin", "materialPhong", [-280, -412], {
         color: [1, 1, 1, 1], specular: [1, 0.9, 0.7, 1], shininess: 64, roughness: 0.45,
       }, { label: "gooskin1" }),
-      node("body", "geometry", [20, -200], { mode: "surface", material: "gooskin1" }, { label: "body1" }),
-      node("cam", "camera", [20, -420], { eye: [0, 0.5, 2.6], lookAt: [0, 0, 0], fov: 55 }, { label: "cam1" }),
+      node("body", "geometry", [20, -188], { mode: "surface", material: "gooskin1" }, { label: "body1" }),
+      node("cam", "camera", [20, -412], { eye: [0, 0.5, 2.6], lookAt: [0, 0, 0], fov: 55 }, { label: "cam1" }),
       /*
        * TWO lights, one of them MOVING — the first shipped example with an animated
        * light: the warm key holds still, the cool fill ORBITS (its x/z driven by two
        * LFOs in quadrature), and because a light is VALUES, the orbit never rebuilds
        * anything (§V5).
        */
-      node("key", "light", [340, -580], {
+      node("key", "light", [340, -572], {
         kind: "directional", color: [1, 0.9, 0.75, 1], intensity: 0.9, direction: [-0.5, -0.7, -0.5],
       }, { label: "key1" }),
-      node("orbitx", "lfo", [340, -760], { shape: "sine", frequency: 0.11, amplitude: 2.2, offset: 0, phase: 0 }, { label: "orbitx1" }),
+      node("orbitx", "lfo", [340, -756], { shape: "sine", frequency: 0.11, amplitude: 2.2, offset: 0, phase: 0 }, { label: "orbitx1" }),
       node("orbitz", "lfo", [340, -940], { shape: "sine", frequency: 0.11, amplitude: 2.2, offset: 0, phase: 0.25 }, { label: "orbitz1" }),
-      node("fill", "light", [340, -400], {
+      node("fill", "light", [340, -388], {
         kind: "point", color: [0.35, 0.65, 1, 1], intensity: 1.6,
       }, {
         label: "fill1",
@@ -178,11 +178,11 @@ export const gooeyballDocument = document(
           "position.z": drivenSlot("orbitz1", 0.5),
         },
       }),
-      node("skin", "render", [340, -200], {
+      node("skin", "render", [340, -188], {
         scenes: "body1", camera: "cam1", lights: "key1 fill1",
         ambientColor: [0.4, 0.45, 0.6, 1], ambientIntensity: 0.22,
       }, { label: "shot1" }),
-      node("out", "output", [620, -200], {}, { label: "out1" }),
+      node("out", "output", [620, -188], {}, { label: "out1" }),
     ],
     [
       edge("e-sheet-ball", ["sheet", "out"], ["ball", "in"]),

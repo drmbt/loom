@@ -50,16 +50,22 @@ import { exampleRegistry } from "./runner.ts";
  * The two gutters, and they are different NUMBERS because they carry different RISKS.
  *
  * VERTICAL is the one that has to absorb growth. `.message` — two clamped lines of
- * `--fs-micro` with `var(--space-2)` padding, about 30px — appears on any node the
- * compiler complains about, and the agent-activity row appears on any node an agent is
- * touching. Those are the two regions `nodeBox` deliberately does not model, they only
- * ever push DOWNWARD, and a graph that is legal until something errors is not laid out.
+ * `--fs-micro` with `var(--space-2)` padding — appears on any node the compiler
+ * complains about, and the agent-activity row appears on any node an agent is touching.
+ * Those are the two regions `nodeBox` deliberately does not model, they only ever push
+ * DOWNWARD, and a graph that is legal until something errors is not laid out.
+ *
+ * 36 is that row MEASURED, not estimated: §T1515b's headed node-box spec read a two-line
+ * `.message` row at 36 px in Chromium (E71–E74's "cannot run on this machine" nodes, 36 px
+ * over the model in every browser). The old 32 came from "about 30px" and left 49 stacked
+ * pairs in 18 examples able to overlap by up to 4 px the moment the upper node showed a
+ * two-line diagnostic (§T1520b).
  *
  * HORIZONTAL only has to be legible. `--node-width` is a constant and nothing at runtime
  * widens a node, so a column pitch that clears the box clears it forever; this is the
  * space an edge and a port label need, not a safety margin.
  */
-const MIN_VERTICAL_GUTTER = 32;
+const MIN_VERTICAL_GUTTER = 36;
 const MIN_HORIZONTAL_GUTTER = 16;
 
 /**

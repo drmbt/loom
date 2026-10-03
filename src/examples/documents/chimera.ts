@@ -955,7 +955,7 @@ export const chimeraDocument = document(
        *
        * ⚑ NOTHING DRIVES THE CAMERA, and nothing drives a clock except `tempoScale`. */
       node("music1", "audioPattern", [-1200, 400], { amount: 1, bpm: 112 }, { label: "music1" }),
-      node("track1", "audioFileIn", [-1200, 620], {
+      node("track1", "audioFileIn", [-1200, 624], {
         cue: false, cuePoint: 0, extend: "loop", file: "", monitor: true, play: true,
         playMode: "freeRun", speed: 1, trimEnd: 0, trimStart: 0, volume: 1,
       }, { label: "track1" }),
@@ -990,7 +990,7 @@ export const chimeraDocument = document(
       /* T1302b: a Select at `*` passes every channel through unchanged — a Limit at 0..1
          would clip the tempo claims the hits bag also carries. */
       node("lvl1", "valueSelect", [-480, 420], { channels: "*" }, { label: "lvl1" }),
-      node("hit1", "valueSelect", [-480, 600], { channels: "*" }, { label: "hit1" }),
+      node("hit1", "valueSelect", [-480, 604], { channels: "*" }, { label: "hit1" }),
     ],
     [
       edge("e-sky-shape", ["sky", "out"], ["shape", "input"]),

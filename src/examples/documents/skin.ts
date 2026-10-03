@@ -138,7 +138,7 @@ export const skinDocument = document(
       node(
         "field",
         "noise",
-        [-2020, 0],
+        [-2020, 12],
         {
           type: "perlin4d",
           period: 0.24,
@@ -166,7 +166,7 @@ export const skinDocument = document(
          its own centre makes u = 0 and u = 1 read the SAME texel, so the two edges agree
          and the seam closes invisibly. One node, and the symmetry it puts in the backdrop
          is the picture telling you it is there. */
-      node("fold", "mirror", [-1720, 0], {
+      node("fold", "mirror", [-1720, 12], {
         mirrorx: true, mirrory: false, pivot: [0.5, 0.5], keephigh: false, rotate: 0, extend: "hold",
       }, { label: "fold1" }),
       /* One point per lattice cell, and the reason the whole chain works: the generator
@@ -175,7 +175,7 @@ export const skinDocument = document(
       node(
         "hide",
         "pointsFromTexture",
-        [-1420, 0],
+        [-1420, 12],
         { mode: "grid", cols: SKIN_COLS, rows: SKIN_ROWS, sizeX: 2, sizeY: 2, depth: 1, threshold: 0 },
         { label: "hide1" },
       ),
@@ -183,7 +183,7 @@ export const skinDocument = document(
       node(
         "standA",
         "pointKernel",
-        [-1120, -320],
+        [-1120, -308],
         {
           capacity: SKIN_COLS * SKIN_ROWS,
           seed: 63,
@@ -197,7 +197,7 @@ export const skinDocument = document(
       node(
         "standB",
         "pointKernel",
-        [-1120, 0],
+        [-1120, 12],
         {
           capacity: SKIN_COLS * SKIN_ROWS,
           seed: 63,
@@ -211,7 +211,7 @@ export const skinDocument = document(
       node(
         "standC",
         "pointKernel",
-        [-1120, 320],
+        [-1120, 332],
         {
           capacity: SKIN_COLS * SKIN_ROWS,
           seed: 63,
@@ -229,7 +229,7 @@ export const skinDocument = document(
       node(
         "seam",
         "pointTopology",
-        [-820, 320],
+        [-820, 332],
         { connectivity: "grid", cols: SKIN_COLS, rows: SKIN_ROWS, wrapU: true, wrapV: false },
         { label: "seam1" },
       ),
@@ -239,20 +239,20 @@ export const skinDocument = document(
       node(
         "hidemat",
         "materialPhong",
-        [-820, -520],
+        [-820, -508],
         { color: [0.52, 0.4, 0.35, 1], specular: [1, 0.82, 0.6, 1], shininess: 30, roughness: 0.65 },
         { label: "hidemat1" },
       ),
 
-      node("dots", "geometry", [-520, -320], {
+      node("dots", "geometry", [-520, -308], {
         mode: "points", material: "hidemat1", scale: 0.008, soft: 0, spherical: true, blend: "opaque",
       }, { label: "dots1" }),
-      node("open", "geometry", [-520, 0], { mode: "surface", material: "hidemat1" }, { label: "open1" }),
-      node("closed", "geometry", [-520, 320], { mode: "surface", material: "hidemat1" }, { label: "closed1" }),
+      node("open", "geometry", [-520, 12], { mode: "surface", material: "hidemat1" }, { label: "open1" }),
+      node("closed", "geometry", [-520, 332], { mode: "surface", material: "hidemat1" }, { label: "closed1" }),
 
-      node("cam", "camera", [-520, -700], { eye: [0, 0.32, 4.1], lookAt: [0, 0.01, 0], fov: 46 }, { label: "cam1" }),
+      node("cam", "camera", [-520, -692], { eye: [0, 0.32, 4.1], lookAt: [0, 0.01, 0], fov: 46 }, { label: "cam1" }),
       /* Warm key, held still. */
-      node("key", "light", [-220, -700], {
+      node("key", "light", [-220, -692], {
         kind: "directional", color: [1, 0.72, 0.42, 1], intensity: 1.0, direction: [-0.45, -0.5, -0.72],
       }, { label: "key1" }),
       /* The RAKE, and it turns. A relief is invisible under a light that faces it, so the
@@ -262,8 +262,8 @@ export const skinDocument = document(
          flooding the fronts. Directional, so all three panels get exactly the same light and
          the comparison is not contaminated by which tube is nearer a lamp. */
       node("rakex", "lfo", [-220, -1060], { shape: "sine", frequency: 0.07, amplitude: 0.95, offset: 0, phase: 0 }, { label: "rakex1" }),
-      node("rakez", "lfo", [-220, -880], { shape: "sine", frequency: 0.07, amplitude: 0.55, offset: 0.35, phase: 0.25 }, { label: "rakez1" }),
-      node("rim", "light", [-220, -520], {
+      node("rakez", "lfo", [-220, -876], { shape: "sine", frequency: 0.07, amplitude: 0.55, offset: 0.35, phase: 0.25 }, { label: "rakez1" }),
+      node("rim", "light", [-220, -508], {
         kind: "directional", color: [0.22, 0.55, 1, 1], intensity: 1.1,
       }, {
         label: "rim1",
@@ -279,7 +279,7 @@ export const skinDocument = document(
          tube is convex and has no crease deep enough for it to find — and cost 0.39 ms of
          2.52 at 720p and about 1.4 ms at 1080p. MSAA stays: the seam is eight pixels wide
          and it is the subject. */
-      node("shot", "render", [-220, 0], {
+      node("shot", "render", [-220, 12], {
         scenes: "dots1 open1 closed1", camera: "cam1", lights: "key1 rim1",
         ambientColor: [0.38, 0.46, 0.68, 1], ambientIntensity: 0.055,
         background: [0, 0, 0, 0], antialias: "msaa",
@@ -290,7 +290,7 @@ export const skinDocument = document(
          the skin. It is dimmed by the PALETTE — every stop is dark — rather than by a
          Level, so there is no multiplier here whose value could be inherited from another
          file and quietly zero the plate (§V920). */
-      node("swatch", "ramp", [-820, 700], {
+      node("swatch", "ramp", [-820, 712], {
         type: "horizontal", interp: "smooth", phase: 0, period: 1,
         stops: [
           { position: 0, color: [0.02, 0.028, 0.06, 1] },
@@ -299,9 +299,9 @@ export const skinDocument = document(
           { position: 1, color: [0.44, 0.31, 0.24, 1] },
         ],
       }, { label: "swatch1", definitionVersion: 2 }),
-      node("bed", "lookup", [-520, 700], { channel: "red", row: 0.5, scale: 1, offset: 0 }, { label: "bed1" }),
-      node("plate", "over", [80, 0], {}, { label: "plate1" }),
-      node("out", "output", [380, 0], {}, { label: "out1" }),
+      node("bed", "lookup", [-520, 712], { channel: "red", row: 0.5, scale: 1, offset: 0 }, { label: "bed1" }),
+      node("plate", "over", [80, 12], {}, { label: "plate1" }),
+      node("out", "output", [380, 12], {}, { label: "out1" }),
     ],
     [
       edge("e-field-fold", ["field", "out"], ["fold", "input"]),

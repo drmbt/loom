@@ -46,7 +46,7 @@
         "parameters": {},
         "position": {
           "x": -640,
-          "y": 40
+          "y": 44
         },
         "type": "checker"
       },
@@ -90,7 +90,7 @@
         },
         "position": {
           "x": -640,
-          "y": 220
+          "y": 228
         },
         "type": "lfo"
       },

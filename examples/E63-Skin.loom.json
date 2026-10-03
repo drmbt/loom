@@ -173,7 +173,7 @@
         },
         "position": {
           "x": -520,
-          "y": 700
+          "y": 712
         },
         "type": "lookup"
       },
@@ -196,7 +196,7 @@
         },
         "position": {
           "x": -520,
-          "y": -700
+          "y": -692
         },
         "type": "camera"
       },
@@ -210,7 +210,7 @@
         },
         "position": {
           "x": -520,
-          "y": 320
+          "y": 332
         },
         "type": "geometry"
       },
@@ -228,7 +228,7 @@
         },
         "position": {
           "x": -520,
-          "y": -320
+          "y": -308
         },
         "type": "geometry"
       },
@@ -255,7 +255,7 @@
         },
         "position": {
           "x": -2020,
-          "y": 0
+          "y": 12
         },
         "type": "noise"
       },
@@ -276,7 +276,7 @@
         },
         "position": {
           "x": -1720,
-          "y": 0
+          "y": 12
         },
         "type": "mirror"
       },
@@ -295,7 +295,7 @@
         },
         "position": {
           "x": -1420,
-          "y": 0
+          "y": 12
         },
         "type": "pointsFromTexture"
       },
@@ -321,7 +321,7 @@
         },
         "position": {
           "x": -820,
-          "y": -520
+          "y": -508
         },
         "type": "materialPhong"
       },
@@ -346,7 +346,7 @@
         },
         "position": {
           "x": -220,
-          "y": -700
+          "y": -692
         },
         "type": "light"
       },
@@ -360,7 +360,7 @@
         },
         "position": {
           "x": -520,
-          "y": 0
+          "y": 12
         },
         "type": "geometry"
       },
@@ -371,7 +371,7 @@
         "parameters": {},
         "position": {
           "x": 380,
-          "y": 0
+          "y": 12
         },
         "type": "output"
       },
@@ -382,7 +382,7 @@
         "parameters": {},
         "position": {
           "x": 80,
-          "y": 0
+          "y": 12
         },
         "type": "over"
       },
@@ -416,7 +416,7 @@
         },
         "position": {
           "x": -220,
-          "y": -880
+          "y": -876
         },
         "type": "lfo"
       },
@@ -463,7 +463,7 @@
         },
         "position": {
           "x": -220,
-          "y": -520
+          "y": -508
         },
         "type": "light"
       },
@@ -480,7 +480,7 @@
         },
         "position": {
           "x": -820,
-          "y": 320
+          "y": 332
         },
         "type": "pointTopology"
       },
@@ -509,7 +509,7 @@
         },
         "position": {
           "x": -220,
-          "y": 0
+          "y": 12
         },
         "type": "render"
       },
@@ -530,7 +530,7 @@
         },
         "position": {
           "x": -1120,
-          "y": -320
+          "y": -308
         },
         "type": "pointKernel"
       },
@@ -551,7 +551,7 @@
         },
         "position": {
           "x": -1120,
-          "y": 0
+          "y": 12
         },
         "type": "pointKernel"
       },
@@ -572,7 +572,7 @@
         },
         "position": {
           "x": -1120,
-          "y": 320
+          "y": 332
         },
         "type": "pointKernel"
       },
@@ -626,7 +626,7 @@
         },
         "position": {
           "x": -820,
-          "y": 700
+          "y": 712
         },
         "type": "ramp"
       }

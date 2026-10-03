@@ -512,8 +512,8 @@ export const prismDocument = document(
       // The swing LFO is GONE — the owner: "it should be static aside from user
       // interaction". The default aim is value1's static payload below; the pointer takes
       // the aim while it moves (T857) and the lag chain hands it back to the static.
-      node("mouse", "mouse", [-1880, 840], {}, { label: "mouse1" }),
-      node("follow", "valueLag", [-1560, 840], { lag: 0.18 }, { label: "follow1" }),
+      node("mouse", "mouse", [-1880, 844], {}, { label: "mouse1" }),
+      node("follow", "valueLag", [-1560, 844], { lag: 0.18 }, { label: "follow1" }),
       /* T934 — PASSIVE BODY DRIFT, on the OBJECT and never the aim. The owner: "slight
          rotate, pivot, swivel … driven by lfos … different frequencies resp slight
          offsets for the different axis". Two sines at mutually incommensurate
@@ -525,8 +525,8 @@ export const prismDocument = document(
          motes churns at the body's drift rate, which read as dust "movement" no matter
          what the motes themselves did. Slowed 3x; both frequencies are ordinary node
          params, tune them in the inspector. */
-      node("driftyaw", "lfo", [-1560, 1020], { shape: "sine", frequency: 0.013, phase: 0.13 }, { label: "driftyaw1" }),
-      node("driftnod", "lfo", [-1560, 1280], { shape: "sine", frequency: 0.021, phase: 0.71 }, { label: "driftnod1" }),
+      node("driftyaw", "lfo", [-1560, 1028], { shape: "sine", frequency: 0.013, phase: 0.13 }, { label: "driftyaw1" }),
+      node("driftnod", "lfo", [-1560, 1288], { shape: "sine", frequency: 0.021, phase: 0.71 }, { label: "driftnod1" }),
       // itself, which is the only absolute value the CHOP set has and is also the right
       // 0.6s to fall, so the hand keeps the aim for a second or two after it stops and
       // then gives it back. A cursor that has never moved reads EXACTLY zero through all
@@ -560,7 +560,7 @@ export const prismDocument = document(
         kernel: WALL_PLACE_KERNEL,
       }, { label: "wallplace1" }),
       node("wallskin", "textureToAttribute", [-1560, -200], { count: WALL_COLS * WALL_ROWS }, { label: "wallskin1" }),
-      node("wall", "geometry", [-920, -160], {
+      node("wall", "geometry", [-920, -156], {
         mode: "surface", material: "flare1", tint: [1, 1, 1, 1],
       }, { label: "wall1", parameters: { tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "sample" } } } } }),
 
@@ -602,7 +602,7 @@ export const prismDocument = document(
       // A ramp that GOES somewhere (§V471.6), and it is not decoration: this is the
       // curve n(t) is read against, so retuning it retunes the spectrum's colour without
       // touching a line of WGSL.
-      node("spectrum", "ramp", [-1880, 100], {
+      node("spectrum", "ramp", [-1880, 104], {
         type: "horizontal", interp: "smooth", phase: 0, period: 1,
         stops: [
           { position: 0.00, color: [1, 0.10, 0.06, 1] },
@@ -614,7 +614,7 @@ export const prismDocument = document(
           { position: 1.00, color: [0.55, 0.14, 1, 1] },
         ],
       }, { label: "spectrum1", definitionVersion: 2, resolution: { mode: "fixed", width: 256, height: 8 } }),
-      node("optics", "pointKernel", [-1560, 100], {
+      node("optics", "pointKernel", [-1560, 104], {
         /* T920: the beam — 2 fixed slots + SLICES(9) x BANDS(61) x 3 legs. */
         capacity: 2 + 9 * PRISM_BANDS * 3,
         attributes: PRISM_OPTICS_ATTRIBUTES,
@@ -644,18 +644,18 @@ export const prismDocument = document(
       }),
       // UNLIT, and white: a beam is scattered light in the air, not a surface, and it
       // takes no part in shadowing either (§V617). The colour is the attribute's.
-      node("flare", "materialUnlit", [-2520, -140], { color: [1, 1, 1, 1] }, { label: "flare1" }),
+      node("flare", "materialUnlit", [-2520, -136], { color: [1, 1, 1, 1] }, { label: "flare1" }),
       // §V471.1 — ONE SOURCE, TWO READINGS, split by a group predicate rather than by
       // more nodes. The split is not cosmetic: a single shaft wants a parallel-sided
       // ribbon, and 61 beams leaving the same face within 0.03 of each other fuse into
       // an opaque wedge at any taper above about zero (T680).
-      node("shaft", "geometry", [-1240, -84], {
+      node("shaft", "geometry", [-1240, -80], {
         /* T917: SOFT + ADDITIVE — the beams are light now, not ribbons of paint. The soft
            profile falls off across the width; additive lets the ghost, interior and shaft
            sum where they cross instead of z-fighting. */
         mode: "beam", endpoint: "tip", scale: 0.006, taper: 1, soft: 0.85, blend: "additive", material: "flare1", group: "p.role < 0.5",
       }, { label: "shaft1", parameters: { tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } } } }),
-      node("fan", "geometry", [-1240, 100], {
+      node("fan", "geometry", [-1240, 104], {
         /* T917: the CONTINUUM — 61 soft bands overlapping ADDITIVELY blend into one
            spectrum, no new primitive: exactly the reference's 128-wavelength additive
            accumulation, at our band count. The width comes up slightly so neighbours
@@ -671,7 +671,7 @@ export const prismDocument = document(
       } }),
       // T941b — the IN-GLASS fan: interior wedge segments (role 0.5), width-mapped
       // like the exit fan, pinched at the shared entry point by the taper.
-      node("core", "geometry", [-920, 100], {
+      node("core", "geometry", [-920, 104], {
         mode: "beam", endpoint: "tip", scale: 4, taper: 0.05, soft: 1, blend: "additive", material: "flare1",
         group: "p.role > 0.25 && p.role < 0.75", tint: [1, 1, 1, 1],
       }, { label: "core1", parameters: {
@@ -679,7 +679,7 @@ export const prismDocument = document(
         scale: { mode: "map", bindings: { static: { kind: "static", value: 4 }, map: { kind: "map", attribute: "tint", channel: "w" } } },
       } }),
       // T940 — the dust cloud (see PRISM_DUST_KERNEL above).
-      node("dust", "pointKernel", [-1560, 340], {
+      node("dust", "pointKernel", [-1560, 344], {
         capacity: 650, seed: 7,
         attributes: JSON.stringify([
           { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
@@ -698,7 +698,7 @@ export const prismDocument = document(
           driftSpeed: 1,
         },
       }),
-      node("motes", "geometry", [-920, 300], {
+      node("motes", "geometry", [-920, 304], {
         /* T940b: spherical soft splats, per-mote sizes — dust, not confetti. */
         mode: "points", scale: 0.004, soft: 1, spherical: true, blend: "additive", material: "flare1", tint: [1, 1, 1, 1],
       }, { label: "motes1", parameters: {
@@ -782,9 +782,9 @@ export const prismDocument = document(
       // spreads them over the whole frame and `add` then SUBTRACTS a halo from the
       // picture. On a document this black almost every pixel is below the threshold, so
       // without `clip1` the frame goes out entirely (E33's and E34's lesson, twice).
-      node("cut", "level", [-600, -140], { blacklevel: 0.32, whitelevel: 1, gamma1: 1, contrast: 1, brightness: 1, opacity: 1 }, { label: "cut1" }),
-      node("clip", "limit", [-280, -140], { mode: "clamp", low: 0, high: 6, steps: 4 }, { label: "clip1" }),
-      node("halo", "blur", [40, -140], { size: 22, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
+      node("cut", "level", [-600, -136], { blacklevel: 0.32, whitelevel: 1, gamma1: 1, contrast: 1, brightness: 1, opacity: 1 }, { label: "cut1" }),
+      node("clip", "limit", [-280, -136], { mode: "clamp", low: 0, high: 6, steps: 4 }, { label: "clip1" }),
+      node("halo", "blur", [40, -136], { size: 22, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
       node("glow", "add", [360, -420], {}, { label: "glow1" }),
       node("out", "output", [680, -420], {}, { label: "out1" }),
     ],

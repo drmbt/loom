@@ -188,7 +188,7 @@ export const audioRdDocument = document(
        * `valueSwitch` (T508) is exclusive by construction — the unselected branch is not
        * read into the output at all.
        */
-      node("music", "audioPattern", [-2000, 300], { bpm: 112, amount: 1 }, { label: "music1" }),
+      node("music", "audioPattern", [-2000, 308], { bpm: 112, amount: 1 }, { label: "music1" }),
       /*
        * THE DROP TARGET, and it is placed where you would look for it: directly under the
        * pattern it replaces, wired into the same box, with an empty File parameter waiting.
@@ -197,8 +197,8 @@ export const audioRdDocument = document(
        * defaults here, which is a timeline-anchored playhead, so bar one of your track
        * lands on the in point and an offline render of it reproduces.
        */
-      node("track", "audioFileIn", [-2000, 640], { monitor: true }, { label: "track1" }),
-      node("source", "valueSwitch", [-1720, 460], {
+      node("track", "audioFileIn", [-2000, 652], { monitor: true }, { label: "track1" }),
+      node("source", "valueSwitch", [-1720, 472], {
         /* 0 = the pattern, 1 = the file. The ORDER is the port order (in1, in2), not an
            edge tiebreak — value ports are named, so this is unambiguous by construction
            in a way the texture Switch's variadic port is not (§V131). */
@@ -221,12 +221,12 @@ export const audioRdDocument = document(
        * the other half of the same rule: a one-pole answers a single-frame impulse with
        * 1-exp(-dt/tau), so the trigger goes through nothing at all.
        */
-      node("analysis", "component:audioAnalysis@1", [-1440, 460], {
+      node("analysis", "component:audioAnalysis@1", [-1440, 472], {
         envelope: 0.08, window: 16, settle: 0.15, hitDecay: 250,
       }, { label: "analysis1" }),
-      node("lvl", "valueSelect", [-1160, 380], { channels: "*" }, { label: "lvl1" }),
-      node("hit", "valueSelect", [-1160, 560], { channels: "*" }, { label: "hit1" }),
-      node("trig", "valueTrigger", [-1440, 760], { threshold: 0.5 }, { label: "trig1" }),
+      node("lvl", "valueSelect", [-1160, 388], { channels: "*" }, { label: "lvl1" }),
+      node("hit", "valueSelect", [-1160, 572], { channels: "*" }, { label: "hit1" }),
+      node("trig", "valueTrigger", [-1440, 776], { threshold: 0.5 }, { label: "trig1" }),
       /* T1237 — WHAT KIND OF PATTERN THE DISC GROWS, on three free-running clocks that
          never share a period. `band1` walks the kernel's `morph` 0..1 (mitosis spots at 0,
          the holes regime — negative spots in a foam, the Voronoi look — at 1) over 80 s;
@@ -236,13 +236,13 @@ export const audioRdDocument = document(
          combination never repeats inside a set. Free-running (§V436, B98). The amplitude
          on `grain1` is the one number here that is a FENCE and not a taste: T1237 measured
          stripes surviving where spots die past |0.5|, and the 0.35 ceiling is in the docblock. */
-      node("band", "lfo", [-1440, 1000], { shape: "sine", frequency: 0.0125, amplitude: 0.5, offset: 0.5 }, {
+      node("band", "lfo", [-1440, 1016], { shape: "sine", frequency: 0.0125, amplitude: 0.5, offset: 0.5 }, {
         label: "band1",
       }),
-      node("stencil", "lfo", [-1440, 1200], { shape: "sine", frequency: 0.0083, amplitude: 1, offset: 0 }, {
+      node("stencil", "lfo", [-1440, 1220], { shape: "sine", frequency: 0.0083, amplitude: 1, offset: 0 }, {
         label: "stencil1",
       }),
-      node("grain", "lfo", [-1440, 1400], { shape: "sine", frequency: 0.0061, amplitude: 0.3, offset: 0 }, {
+      node("grain", "lfo", [-1440, 1420], { shape: "sine", frequency: 0.0061, amplitude: 0.3, offset: 0 }, {
         label: "grain1",
       }),
       // ---- the chemistry map (E2's, verbatim in spirit) -------------------------
@@ -259,20 +259,20 @@ export const audioRdDocument = document(
          at roughly 150, 75 and 38 pixels of a 512 frame — several Gray-Scott features per
          region, which is the scale at which "this area is spots and that one is labyrinth"
          is a thing the eye can see rather than a statistic. */
-      node("broad", "noise", [-1460, -140], {
+      node("broad", "noise", [-1460, -136], {
         type: "perlin4d", seed: 5, period: 0.3, harmon: 3, spread: 2, gain: 0.55,
         rough: 0.5, exp: 1.25, amp: 1, offset: 0, mono: true, aspectcorrect: true,
         t4d: 0.37, s4d: 1, speed: 0.05,
       }, { label: "broad1" }),
-      node("detail", "noise", [-1460, 117], {
+      node("detail", "noise", [-1460, 125], {
         type: "perlin4d", seed: 19, period: 0.15, harmon: 3, spread: 2, gain: 0.5,
         rough: 0.6, exp: 1.2, amp: 1, offset: 0, mono: true, aspectcorrect: true,
         t4d: 0.37, s4d: 1, speed: 0.09,
       }, { label: "detail1" }),
-      node("warp", "displace", [-1180, -60], {
+      node("warp", "displace", [-1180, -56], {
         weight: [0.22, 0.22], offset: [0.5, 0.5], sourcex: "red", sourcey: "green", extend: "mirror",
       }, { label: "warp1" }),
-      node("shape", "level", [-940, -60], {
+      node("shape", "level", [-940, -56], {
         /* T507 — NEGATIVE SPACE. The owner's read was that the dish sat too dense: every
            part of the frame in the labyrinth regime at once, so the reaction-diffusion had
            no empty field to resolve against and the whole thing read as one texture. This
@@ -342,13 +342,13 @@ export const audioRdDocument = document(
         mode: "fill", center: [0.395, 0.635], radius: [0.225, 0.225], softness: 0.055,
         fillcolor: [1, 1, 1, 1], bgcolor: [0, 0, 0, 1], aspectcorrect: true,
       }, { label: "bowl1" }),
-      node("rim", "level", [-1720, -160], {
+      node("rim", "level", [-1720, -156], {
         blacklevel: 0, whitelevel: 1, contrast: 1, brightness: 1, gamma1: 1, invert: 1, opacity: 1,
       }, { label: "rim1" }),
-      node("dish", "screen", [-700, -127], { opacity: 1 }, { label: "dish1" }),
+      node("dish", "screen", [-700, -123], { opacity: 1 }, { label: "dish1" }),
 
       // ---- the simulation loop, with wind ---------------------------------------
-      node("state", "feedback", [-680, 162], { source: "pack1", persistence: 1, clearColor: [0, 0, 0, 0] }, {
+      node("state", "feedback", [-680, 170], { source: "pack1", persistence: 1, clearColor: [0, 0, 0, 0] }, {
         resolution: { mode: "fixed", width: 512, height: 512 },
         format: { mode: "fixed", format: "rgba16float" },
         // T1234: 8 at the quietest bar, 32 at the loudest, clamped 1..34 in the expression.
@@ -370,14 +370,14 @@ export const audioRdDocument = document(
        * from `dish1` after the reaction — so this is advection through a static parameter
        * field, which is the thing that shears.
        */
-      node("swell", "noise", [-440, -140], {
+      node("swell", "noise", [-440, -136], {
         type: "perlin4d", seed: 41, period: 0.55, harmon: 2, spread: 2, gain: 0.55, rough: 0.5,
         exp: 1, amp: 1, offset: 0, mono: false, aspectcorrect: true, t4d: 0.37, s4d: 1, speed: 0.035,
       }, { label: "swell1", resolution: { mode: "fixed", width: 512, height: 512 } }),
-      node("wind", "displace", [-440, 120], {
+      node("wind", "displace", [-440, 128], {
         weight: [0.0002, 0.0002], offset: [0.5, 0.5], sourcex: "red", sourcey: "green", extend: "hold",
       }, { label: "wind1", resolution: { mode: "fixed", width: 512, height: 512 } }),
-      node("rd", "customWgsl", [-200, 120], {
+      node("rd", "customWgsl", [-200, 128], {
         [SHADER_SOURCE_PARAMETER]: GRAY_SCOTT_WGSL,
         ...GRAY_SCOTT_DEFAULTS,
       }, {
@@ -456,12 +456,12 @@ export const audioRdDocument = document(
          survive it: the probe measured range 0.0700 and a colony that DIED by frame 600.
          Pinning the composite to the state's size takes the output resolution out of the
          simulation entirely, which is what it should never have been in. */
-      node("inject", "screen", [60, 240], { opacity: 0.6 }, {
+      node("inject", "screen", [60, 248], { opacity: 0.6 }, {
         label: "inject1",
         resolution: { mode: "fixed", width: 512, height: 512 },
       }),
 
-      node("pack", "reorder", [320, 120], {
+      node("pack", "reorder", [320, 128], {
         outr: "in1r", outg: "in1g", outb: "in2lum", outa: "in1a",
       }, { label: "pack1" }),
 
@@ -472,7 +472,7 @@ export const audioRdDocument = document(
          gives a monochrome picture however many stops it has. The shipped ramp had five
          and was perfectly good; the reason it read as two colours is below, and it is not
          the ramp's fault. */
-      node("palette", "ramp", [60, 818], {
+      node("palette", "ramp", [60, 834], {
         type: "horizontal", interp: "smooth", phase: 0, period: 1,
         stops: [
           { position: 0, color: [0.004, 0.006, 0.025, 1] },
@@ -484,7 +484,7 @@ export const audioRdDocument = document(
           { position: 1, color: [1, 0.96, 0.9, 1] },
         ],
       }, { label: "palette1", definitionVersion: 2 }),
-      node("cycle", "lfo", [60, 1075], { shape: "sine", frequency: 0.05, amplitude: 0.06, offset: 0 }, {
+      node("cycle", "lfo", [60, 1095], { shape: "sine", frequency: 0.05, amplitude: 0.06, offset: 0 }, {
         label: "lfo1",
       }),
       /* ---- §V471.1: THE CHEMISTRY MAP, READ A SECOND TIME — as COLOUR -----------------
@@ -513,12 +513,12 @@ export const audioRdDocument = document(
        * the ground is the ramp's own first stop, which is black. Inside the disc the sense
        * is also the better one: a region running the LOW (labyrinth) chemistry is the dense
        * one, and it now gets the warmer base rather than the colder. */
-      node("chem", "level", [-200, 700], {
+      node("chem", "level", [-200, 712], {
         blacklevel: 0, whitelevel: 1, contrast: 1, gamma1: 1, invert: 1,
         brightness: 0.17, opacity: 0,
       }, { label: "chem1" }),
-      node("blend", "add", [60, 529], {}, { label: "blend1" }),
-      node("tint", "lookup", [320, 393], { channel: "green", row: 0.5 }, {
+      node("blend", "add", [60, 541], {}, { label: "blend1" }),
+      node("tint", "lookup", [320, 405], { channel: "green", row: 0.5 }, {
         label: "tint1",
         parameters: {
           offset: drivenSlot("lfo1", 0),
@@ -608,7 +608,7 @@ export const audioRdDocument = document(
        * diagonal slide of the whole image. At 0 the displacement is zero where the field
        * is, and only the rings move anything.
        */
-      node("rings", "ramp", [320, 1120], {
+      node("rings", "ramp", [320, 1140], {
         type: "radial", interp: "smooth", period: 8,
         stops: [
           { position: 0, color: [0, 0, 0, 1] },
@@ -631,11 +631,11 @@ export const audioRdDocument = document(
          thinking about) the number lands on the rings instead and they go three times too
          faint while the echoes go three times too hot: the frame becomes a bright smear
          with a couple of arcs in the corner of it. */
-      node("stamp", "add", [580, 1120], { opacity: 0.32 }, { label: "stamp1" }),
-      node("echo", "feedback", [840, 1120], {
+      node("stamp", "add", [580, 1140], { opacity: 0.32 }, { label: "stamp1" }),
+      node("echo", "feedback", [840, 1140], {
         source: "crest1", persistence: 0.987, clearColor: [0, 0, 0, 1],
       }, { label: "echo1" }),
-      node("grow", "transform", [1100, 1120], {
+      node("grow", "transform", [1100, 1140], {
         t: [0, 0], r: 0.25, s: [1.012, 1.012], p: [0, 0], xord: "srt", extend: "zero",
         aspectcorrect: true,
       }, {
@@ -645,7 +645,7 @@ export const audioRdDocument = document(
           "s.y": expressionSlot(`1.008 + 0.021 * ${LEVELS("low")}`, 1.0185),
         },
       }),
-      node("fade", "level", [1360, 1120], {
+      node("fade", "level", [1360, 1140], {
         blacklevel: 0.0005, whitelevel: 1, contrast: 1, brightness: 1, gamma1: 0.98, opacity: 1,
       }, { label: "dim1" }),
       /* T1234 — THE LOOP IS CAPPED, because the rebuild made it honestly expansive. The
@@ -658,12 +658,12 @@ export const audioRdDocument = document(
          diverged to inf and rendered as a hard magenta band. A clamp at 1 in the loop is
          the bound the persistence and the gamma cannot supply — bounded input, bounded
          state — and it costs nothing in [0,1] where the loop was already correct. */
-      node("cap", "limit", [1490, 1420], { mode: "clamp", low: 0, high: 1 }, { label: "cap1" }),
-      node("born", "add", [1620, 1120], {}, {
+      node("cap", "limit", [1490, 1440], { mode: "clamp", low: 0, high: 1 }, { label: "cap1" }),
+      node("born", "add", [1620, 1140], {}, {
         label: "crest1",
         parameters: { opacity: expressionSlot(`0.02 + 0.6 * ${TRIG}`, 0.02) },
       }),
-      node("show", "add", [1880, 1120], {}, { label: "show1" }),
+      node("show", "add", [1880, 1140], {}, { label: "show1" }),
 
       /* ---- T507: THREE LENSES, and the point is that they are at different SCALES ----
        *
@@ -709,12 +709,12 @@ export const audioRdDocument = document(
        * in it. `crest1` is faster, is already in the graph, and is the thing the picture is
        * about — so the finest glass now ripples exactly where a ring is passing.
        */
-      node("lensA", "noise", [1880, 860], {
+      node("lensA", "noise", [1880, 876], {
         type: "perlin4d", seed: 71, period: 1.15, harmon: 1, spread: 2, gain: 0.5,
         rough: 0.5, exp: 1, amp: 1, offset: 0, mono: false, aspectcorrect: true,
         t4d: 0.37, s4d: 1, speed: 0.018,
       }, { label: "lensa1" }),
-      node("warpA", "displace", [2140, 380], {
+      node("warpA", "displace", [2140, 388], {
         offset: [0.5, 0.5], sourcex: "red", sourcey: "green", extend: "mirror",
       }, {
         label: "warpa1",
@@ -723,12 +723,12 @@ export const audioRdDocument = document(
           "weight.y": expressionSlot(`0.14 * ${HITS("kickCount")}`, 0.062),
         },
       }),
-      node("lensB", "noise", [2140, 860], {
+      node("lensB", "noise", [2140, 876], {
         type: "perlin4d", seed: 137, period: 0.42, harmon: 2, spread: 2, gain: 0.55,
         rough: 0.5, exp: 1, amp: 1, offset: 0, mono: false, aspectcorrect: true,
         t4d: 0.37, s4d: 1, speed: 0.046,
       }, { label: "lensb1" }),
-      node("warpB", "displace", [2400, 380], {
+      node("warpB", "displace", [2400, 388], {
         offset: [0.5, 0.5], sourcex: "red", sourcey: "green", extend: "mirror",
       }, {
         label: "warpb1",
@@ -737,7 +737,7 @@ export const audioRdDocument = document(
           "weight.y": expressionSlot(`0.06 * ${HITS("snareCount")}`, 0.024),
         },
       }),
-      node("warpC", "displace", [2660, 380], {
+      node("warpC", "displace", [2660, 388], {
         offset: [0, 0], sourcex: "red", sourcey: "green", extend: "mirror",
       }, {
         label: "warpc1",
@@ -749,15 +749,15 @@ export const audioRdDocument = document(
 
       // The RGB delay: three taps into time, one per channel. Full scale — this ring
       // is read for its colour, not just its motion.
-      node("tapR", "cache", [2920, 240], { frames: 4, index: 2, scale: 1 }, { label: "tapr1" }),
-      node("tapG", "cache", [2920, 500], { frames: 5, index: 4, scale: 1 }, { label: "tapg1" }),
-      node("tapB", "cache", [2920, 760], { frames: 8, index: 7, scale: 1 }, { label: "tapb1" }),
+      node("tapR", "cache", [2920, 248], { frames: 4, index: 2, scale: 1 }, { label: "tapr1" }),
+      node("tapG", "cache", [2920, 512], { frames: 5, index: 4, scale: 1 }, { label: "tapg1" }),
+      node("tapB", "cache", [2920, 776], { frames: 8, index: 7, scale: 1 }, { label: "tapb1" }),
       // Reorder is two-input, so the three taps braid in two steps: red-with-green
       // first, then the blue tap joins.
-      node("fringeRG", "reorder", [3180, 330], {
+      node("fringeRG", "reorder", [3180, 338], {
         outr: "in1r", outg: "in2g", outb: "in1b", outa: "in1a",
       }, { label: "fringerg1" }),
-      node("fringe", "reorder", [3440, 600], {
+      node("fringe", "reorder", [3440, 612], {
         outr: "in1r", outg: "in1g", outb: "in2b", outa: "in1a",
       }, { label: "fringe1" }),
       /* T560 — THE LIFT. The fastest path in the file: `level` on the finished picture,
@@ -765,7 +765,7 @@ export const audioRdDocument = document(
          is up on the frame a hit lands and back inside the beat. Rest 0.94 against a hit at
          1.24 is §V477 again — the calm state is deliberately UNDER unity so the hit is a
          lift rather than a clip, and the picture has a floor to come back to. */
-      node("glow", "level", [3700, 600], {
+      node("glow", "level", [3700, 612], {
         blacklevel: 0, whitelevel: 1, contrast: 1, gamma1: 1, invert: 0, opacity: 1,
       }, { label: "glow1", parameters: { brightness: expressionSlot(`0.94 + 0.3 * ${HITS("onsetCount")}`, 0.94) } }),
       /* §V471.8 — A LONG CYCLE. 0.033 Hz is a 30-SECOND lap, slower than anyone's
@@ -773,14 +773,14 @@ export const audioRdDocument = document(
          own LFO above moves the ramp's offset a hair at 0.05 Hz; this one turns the whole
          graded picture through ±15° of hue, so the piece never sits in one colour.
          Free-running (§V436, B98): a timeline lap must not restart the drift. */
-      node("drift", "lfo", [3700, 857], {
+      node("drift", "lfo", [3700, 873], {
         shape: "sine", frequency: 0.033, amplitude: 15, offset: 0, phase: 0,
       }, { label: "drift1" }),
-      node("hue", "hsv", [3960, 600], { saturation: 1.08, value: 1 }, {
+      node("hue", "hsv", [3960, 612], { saturation: 1.08, value: 1 }, {
         label: "hue1",
         parameters: { hueoffset: drivenSlot("drift1", 0) },
       }),
-      node("out", "output", [4220, 600]),
+      node("out", "output", [4220, 612]),
     ],
     [
       // sound. BOTH sources reach the Switch; exactly one leaves it.

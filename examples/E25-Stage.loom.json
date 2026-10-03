@@ -85,7 +85,7 @@
         },
         "position": {
           "x": 0,
-          "y": -340
+          "y": -328
         },
         "type": "lfo"
       },
@@ -130,7 +130,7 @@
         },
         "position": {
           "x": -1180,
-          "y": -380
+          "y": -368
         },
         "type": "camera"
       },
@@ -163,7 +163,7 @@
         },
         "position": {
           "x": 0,
-          "y": 40
+          "y": 56
         },
         "type": "camera"
       },
@@ -179,7 +179,7 @@
         },
         "position": {
           "x": -200,
-          "y": 240
+          "y": 256
         },
         "type": "geometry"
       },
@@ -194,7 +194,7 @@
         },
         "position": {
           "x": -410,
-          "y": 240
+          "y": 256
         },
         "type": "pointKernel"
       },
@@ -211,7 +211,7 @@
         },
         "position": {
           "x": -620,
-          "y": 240
+          "y": 256
         },
         "type": "pointGrid"
       },
@@ -227,7 +227,7 @@
         },
         "position": {
           "x": -1180,
-          "y": -200
+          "y": -184
         },
         "type": "geometry"
       },
@@ -289,7 +289,7 @@
         },
         "position": {
           "x": 0,
-          "y": 240
+          "y": 256
         },
         "type": "light"
       },
@@ -315,7 +315,7 @@
         },
         "position": {
           "x": -1460,
-          "y": -400
+          "y": -392
         },
         "type": "materialPhong"
       },
@@ -341,7 +341,7 @@
         },
         "position": {
           "x": -410,
-          "y": 450
+          "y": 466
         },
         "type": "materialPhong"
       },
@@ -358,7 +358,7 @@
         },
         "position": {
           "x": -1180,
-          "y": -560
+          "y": -552
         },
         "type": "lfo"
       },
@@ -375,7 +375,7 @@
         },
         "position": {
           "x": -1180,
-          "y": -740
+          "y": -736
         },
         "type": "lfo"
       },
@@ -392,7 +392,7 @@
         },
         "position": {
           "x": 0,
-          "y": -160
+          "y": -144
         },
         "type": "lfo"
       },
@@ -403,7 +403,7 @@
         "parameters": {},
         "position": {
           "x": 560,
-          "y": 40
+          "y": 56
         },
         "type": "output"
       },
@@ -419,7 +419,7 @@
         },
         "position": {
           "x": -1460,
-          "y": -200
+          "y": -184
         },
         "type": "pointTorus"
       },
@@ -433,7 +433,7 @@
         },
         "position": {
           "x": -280,
-          "y": 40
+          "y": 56
         },
         "type": "geometry"
       },
@@ -450,7 +450,7 @@
         },
         "position": {
           "x": -580,
-          "y": 40
+          "y": 56
         },
         "type": "pointGrid"
       },
@@ -468,7 +468,7 @@
         },
         "position": {
           "x": -580,
-          "y": -200
+          "y": -184
         },
         "type": "materialUnlit"
       },
@@ -496,7 +496,7 @@
         },
         "position": {
           "x": -880,
-          "y": -200
+          "y": -184
         },
         "type": "render"
       },
@@ -524,7 +524,7 @@
         },
         "position": {
           "x": 280,
-          "y": 40
+          "y": 56
         },
         "type": "render"
       }

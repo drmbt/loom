@@ -85,7 +85,7 @@ export const feedbackEchoDocument = document(
         { label: "pathy1" },
       ),
       node("over", "over", [40, -60], { opacity: 1 }, { label: "over1" }),
-      node("echo", "feedback", [40, 152], {
+      node("echo", "feedback", [40, 156], {
         // T350 (§V285): the loop is a NAME — no wired back-edge, edges stay a DAG.
         source: "over1",
         /**
@@ -98,7 +98,7 @@ export const feedbackEchoDocument = document(
         persistence: 0.997,
         clearColor: [0, 0, 0, 0],
       }),
-      node("drift", "transform", [-160, 220], {
+      node("drift", "transform", [-160, 224], {
         // Gentle now that the SOURCE supplies the motion: over 333 surviving frames this
         // is 83 degrees of roll and a 28% shrink, which curls the old ribbon inward
         // instead of shredding it. At the old 3.5 deg/frame the tail spun a full turn in
@@ -111,8 +111,8 @@ export const feedbackEchoDocument = document(
         extend: "zero",
         aspectcorrect: true,
       }),
-      node("soften", "blur", [-360, 240], { size: 1.4, filter: "gaussian", extend: "zero" }),
-      node("decay", "level", [-360, 60], { blacklevel: 0.0015, whitelevel: 1, opacity: 1 }),
+      node("soften", "blur", [-360, 248], { size: 1.4, filter: "gaussian", extend: "zero" }),
+      node("decay", "level", [-360, 64], { blacklevel: 0.0015, whitelevel: 1, opacity: 1 }),
       node("out", "output", [260, -60]),
     ],
     [

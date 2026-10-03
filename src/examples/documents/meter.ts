@@ -75,11 +75,11 @@ export const meterDocument = document(
          the identity only on lanes that live there: the hits bag also carries the tempo
          claim, and it clipped `bpm` 124 to 1 and `beat`/`bar` to at most 1. */
       node("lvl", "valueSelect", [-900, 540], { channels: "*" }, { label: "lvl1" }),
-      node("hit", "valueSelect", [-900, 720], { channels: "*" }, { label: "hit1" }),
+      node("hit", "valueSelect", [-900, 724], { channels: "*" }, { label: "hit1" }),
 
       // ── the backdrop: onsets ─────────────────────────────────────────────────
-      node("bg", "solid", [-600, 1000], { color: [0.03, 0.035, 0.06, 1] }, { label: "bg1" }),
-      node("flash", "level", [-320, 1000], {
+      node("bg", "solid", [-600, 1004], { color: [0.03, 0.035, 0.06, 1] }, { label: "bg1" }),
+      node("flash", "level", [-320, 1004], {
         blacklevel: 0, whitelevel: 1, invert: 0, gamma1: 1, contrast: 1, opacity: 1,
       }, { label: "flash1", parameters: { brightness: expressionSlot(`1 + 3 * ${HITS("onsetCount")}`, 1) } }),
 
@@ -142,14 +142,14 @@ export const meterDocument = document(
       }, { label: "hats1", parameters: { brightness: expressionSlot(`0.9 * ${HITS("hatCount")}`, 0) } }),
 
       // ── the hand: bar phase and beat phase, from the source ──────────────────
-      node("hand", "rectangle", [-600, 760], {
+      node("hand", "rectangle", [-600, 764], {
         mode: "fill", center: [0.5, 0.365], size: [0.003, 0.135], softness: 0.002, aspectcorrect: true,
         fillcolor: [0.85, 0.95, 1, 1], bgcolor: [...TRANSPARENT],
       }, { label: "hand1" }),
-      node("sweep", "transform", [-320, 760], {
+      node("sweep", "transform", [-320, 764], {
         t: [0, 0], s: [1, 1], p: [0, 0], xord: "srt", extend: "zero", aspectcorrect: true,
       }, { label: "sweep1", parameters: { r: expressionSlot(`360 * ${CLIP("barPhase")}`, 0) } }),
-      node("tick", "level", [-40, 760], {
+      node("tick", "level", [-40, 764], {
         blacklevel: 0, whitelevel: 1, invert: 0, gamma1: 1, contrast: 1, opacity: 1,
       }, { label: "tick1", parameters: { brightness: expressionSlot(`0.35 + 1.4 * (1 - ${CLIP("beatPhase")})`, 1) } }),
 

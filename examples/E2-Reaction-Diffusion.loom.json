@@ -167,7 +167,7 @@
         },
         "position": {
           "x": 140,
-          "y": 637
+          "y": 649
         },
         "type": "lfo"
       },
@@ -194,7 +194,7 @@
         },
         "position": {
           "x": -900,
-          "y": 117
+          "y": 121
         },
         "type": "noise"
       },
@@ -217,7 +217,7 @@
         },
         "position": {
           "x": -120,
-          "y": 380
+          "y": 388
         },
         "resolution": {
           "height": 512,
@@ -232,7 +232,7 @@
         "parameters": {},
         "position": {
           "x": 660,
-          "y": 380
+          "y": 388
         },
         "type": "output"
       },
@@ -248,7 +248,7 @@
         },
         "position": {
           "x": 400,
-          "y": 120
+          "y": 124
         },
         "type": "reorder"
       },
@@ -311,7 +311,7 @@
         },
         "position": {
           "x": 140,
-          "y": 380
+          "y": 388
         },
         "type": "ramp"
       },
@@ -332,7 +332,7 @@
         },
         "position": {
           "x": 140,
-          "y": 120
+          "y": 124
         },
         "type": "customWgsl"
       },
@@ -373,7 +373,7 @@
         },
         "position": {
           "x": -120,
-          "y": 120
+          "y": 124
         },
         "resolution": {
           "height": 512,
@@ -405,7 +405,7 @@
         },
         "position": {
           "x": -380,
-          "y": 380
+          "y": 388
         },
         "resolution": {
           "height": 512,
@@ -438,7 +438,7 @@
         },
         "position": {
           "x": 400,
-          "y": 393
+          "y": 401
         },
         "type": "lookup"
       },

@@ -19,7 +19,7 @@ export const lfoDissolveDocument = document(
   settings({ randomSeed: 11, workingFormat: "rgba8unorm-srgb" }),
   graph(
     [
-      node("lfo", "lfo", [-640, 220], { shape: "sine", frequency: 0.25, amplitude: 0.5, offset: 0.5, phase: 0 }, { label: "lfo1" }),
+      node("lfo", "lfo", [-640, 228], { shape: "sine", frequency: 0.25, amplitude: 0.5, offset: 0.5, phase: 0 }, { label: "lfo1" }),
       node(
         "field",
         "noise",
@@ -44,7 +44,7 @@ export const lfoDissolveDocument = document(
         },
         { label: "noise1" },
       ),
-      node("bars", "checker", [-640, 40], {}, { label: "checker1" }),
+      node("bars", "checker", [-640, 44], {}, { label: "checker1" }),
       node("mix", "cross", [-260, -60], {}, {
         label: "cross1",
         parameters: {

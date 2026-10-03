@@ -80,7 +80,7 @@ export const sundialDocument = document(
       // ---- the caster: one octahedron on a slow circular orbit --------------------
       node("sunPt", "pointGrid", [-1460, 660], { cols: 1, rows: 1, count: 1, sizeX: 1, sizeY: 1 }, { label: "sunpt1" }),
       node("orbX", "lfo", [-1460, 900], { shape: "sine", frequency: 0.04, amplitude: 1.7, offset: 0, phase: 0 }, { label: "orbx1" }),
-      node("orbZ", "lfo", [-1460, 1080], { shape: "sine", frequency: 0.04, amplitude: 1.7, offset: 0, phase: 0.25 }, { label: "orbz1" }),
+      node("orbZ", "lfo", [-1460, 1084], { shape: "sine", frequency: 0.04, amplitude: 1.7, offset: 0, phase: 0.25 }, { label: "orbz1" }),
       node("sunOrbit", "pointKernel", [-1180, 660], {
         capacity: 1,
         attributes: '[{"name":"position","type":"vec3f","semantic":"position","default":[0,0,0]}]',

@@ -705,7 +705,7 @@
         },
         "position": {
           "x": -140,
-          "y": 820
+          "y": 824
         },
         "type": "component:audioAnalysis@1"
       },
@@ -728,7 +728,7 @@
         },
         "position": {
           "x": -420,
-          "y": 700
+          "y": 704
         },
         "type": "audioFileIn"
       },
@@ -777,7 +777,7 @@
         },
         "position": {
           "x": 1880,
-          "y": 220
+          "y": 224
         },
         "type": "feedback"
       },
@@ -790,7 +790,7 @@
         },
         "position": {
           "x": 160,
-          "y": 940
+          "y": 948
         },
         "type": "valueSelect"
       },
@@ -848,7 +848,7 @@
         },
         "position": {
           "x": 560,
-          "y": 200
+          "y": 204
         },
         "type": "level"
       },
@@ -879,7 +879,7 @@
         },
         "position": {
           "x": 560,
-          "y": 460
+          "y": 464
         },
         "type": "level"
       },
@@ -927,7 +927,7 @@
         },
         "position": {
           "x": -420,
-          "y": 880
+          "y": 888
         },
         "type": "lfo"
       },
@@ -955,7 +955,7 @@
         },
         "position": {
           "x": 1440,
-          "y": 112
+          "y": 116
         },
         "type": "lookup"
       },
@@ -968,7 +968,7 @@
         },
         "position": {
           "x": 160,
-          "y": 740
+          "y": 744
         },
         "type": "valueSelect"
       },
@@ -995,7 +995,7 @@
         },
         "position": {
           "x": -420,
-          "y": 440
+          "y": 444
         },
         "type": "audioPattern"
       },
@@ -1039,7 +1039,7 @@
         },
         "position": {
           "x": 1220,
-          "y": 380
+          "y": 384
         },
         "type": "noise"
       },
@@ -1209,7 +1209,7 @@
         },
         "position": {
           "x": 1220,
-          "y": 160
+          "y": 164
         },
         "type": "ramp"
       },
@@ -1267,7 +1267,7 @@
         },
         "position": {
           "x": 240,
-          "y": 200
+          "y": 204
         },
         "type": "renderPoints"
       },
@@ -1302,7 +1302,7 @@
         },
         "position": {
           "x": 240,
-          "y": 460
+          "y": 464
         },
         "type": "renderPoints"
       },
@@ -1354,7 +1354,7 @@
         },
         "position": {
           "x": -160,
-          "y": 570
+          "y": 574
         },
         "type": "valueSwitch"
       }

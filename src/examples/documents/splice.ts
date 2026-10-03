@@ -52,35 +52,35 @@ export const spliceDocument = document(
         mode: "fill", center: [0.5, 0.5], radius: [0.13, 0.13], softness: 0.045,
         fillcolor: [1, 0.42, 0.12, 1], bgcolor: [0, 0, 0, 0], aspectcorrect: true,
       }, { label: "orb1", parameters: { "center.x": drivenSlot("pathx1", 0.5), "center.y": drivenSlot("pathy1", 0.5) } }),
-      node("pathx", "lfo", [-2220, 420], { shape: "sine", frequency: 0.29, amplitude: 0.33, offset: 0.5, phase: 0 }, { label: "pathx1" }),
-      node("pathy", "lfo", [-2220, 700], { shape: "sine", frequency: 0.203, amplitude: 0.3, offset: 0.5, phase: 0.25 }, { label: "pathy1" }),
+      node("pathx", "lfo", [-2220, 424], { shape: "sine", frequency: 0.29, amplitude: 0.33, offset: 0.5, phase: 0 }, { label: "pathx1" }),
+      node("pathy", "lfo", [-2220, 704], { shape: "sine", frequency: 0.203, amplitude: 0.3, offset: 0.5, phase: 0.25 }, { label: "pathy1" }),
       node("clip", "movieFileIn", [-2220, 140], { file: "", playMode: "freeRun", speed: 1 }, { label: "clip1" }),
       node("stand", "add", [-1920, -280], { opacity: 1 }, { label: "stand1" }),
       node("pick", "switch", [-1920, 20], { index: 0 }, { label: "pick1" }),
 
       // ---- the beat, and the rest-subtracted drives (T701) --------------------------
-      node("beat", "audioPattern", [-1920, 420], { bpm: 122, amount: 1 }, { label: "beat1" }),
+      node("beat", "audioPattern", [-1920, 424], { bpm: 122, amount: 1 }, { label: "beat1" }),
       /* HIGH band → the glitch. Rest 0.3809 subtracted first (T701), so silence drives
          EXACTLY zero and the §V147 identity is the rack's own resting state. */
-      node("gsub", "valueMath", [-1620, 420], { operation: "add", operand: -0.381 }, { label: "gsub1" }),
-      node("gmul", "valueMath", [-1320, 420], { operation: "multiply", operand: 5.5 }, { label: "gd1" }),
+      node("gsub", "valueMath", [-1620, 424], { operation: "add", operand: -0.381 }, { label: "gsub1" }),
+      node("gmul", "valueMath", [-1320, 424], { operation: "multiply", operand: 5.5 }, { label: "gd1" }),
       /* T824 — envelope the tear MAGNITUDE. The deal timing is the shader's own
          floor(absTime·DEALS) clock, so the §T749 hold-and-slam is untouched; this only
          stops the per-frame band wobble the shader's own §V681 warns is noise. Fast
          attack, slow release — a hit blooms and decays like a hit, not a jitter. At
          silence the rest-subtracted band is 0 and the lag of 0 is 0, so §V147 holds. */
-      node("genv", "valueLag", [-1020, 420], { lag: 0.02, releaseRatio: 6 }, { label: "genv1" }),
+      node("genv", "valueLag", [-1020, 424], { lag: 0.02, releaseRatio: 6 }, { label: "genv1" }),
       /* LOW band → the echo. Rest 0.7119 (T701). */
-      node("esub", "valueMath", [-1620, 660], { operation: "add", operand: -0.712 }, { label: "esub1" }),
-      node("emul", "valueMath", [-1320, 660], { operation: "multiply", operand: 1.7 }, { label: "ed1" }),
+      node("esub", "valueMath", [-1620, 664], { operation: "add", operand: -0.712 }, { label: "esub1" }),
+      node("emul", "valueMath", [-1320, 664], { operation: "multiply", operand: 1.7 }, { label: "ed1" }),
       /* T824 — envelope the echo opacity so it blooms on the kick and decays, instead
          of flickering per frame. Slower than the glitch: the echo is a sustain. */
-      node("lenv", "valueLag", [-1020, 660], { lag: 0.05, releaseRatio: 5 }, { label: "lenv1" }),
+      node("lenv", "valueLag", [-1020, 664], { lag: 0.05, releaseRatio: 5 }, { label: "lenv1" }),
       /* ONSETS → the letterbox slam, through a lag so the bar decays like a hit. */
-      node("slag", "valueLag", [-1620, 900], { lag: 0.14 }, { label: "slag1" }),
-      node("smul", "valueMath", [-1320, 900], { operation: "multiply", operand: 0.24 }, { label: "sl1" }),
+      node("slag", "valueLag", [-1620, 904], { lag: 0.14 }, { label: "slag1" }),
+      node("smul", "valueMath", [-1320, 904], { operation: "multiply", operand: 0.24 }, { label: "sl1" }),
       /* The fold axis drifts — a locked mirror reads as a screenshot (E13's lesson). */
-      node("spin", "lfo", [-1320, 1140], { shape: "sine", frequency: 0.019, amplitude: 22, offset: 8, phase: 0 }, { label: "spin1" }),
+      node("spin", "lfo", [-1320, 1144], { shape: "sine", frequency: 0.019, amplitude: 22, offset: 8, phase: 0 }, { label: "spin1" }),
 
       // ---- the rack -----------------------------------------------------------------
       node("splice", "customWgsl", [-1620, -60], { source: SPLICE_WGSL }, {

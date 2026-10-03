@@ -92,7 +92,7 @@ export const reactionDiffusionDocument = document(
         s4d: 1,
         speed: 0.05,
       }, { label: "broad1" }),
-      node("detail", "noise", [-900, 117], {
+      node("detail", "noise", [-900, 121], {
         type: "perlin4d",
         seed: 19,
         period: 0.13,
@@ -156,7 +156,7 @@ export const reactionDiffusionDocument = document(
       node(
         "state",
         "feedback",
-        [-120, 120],
+        [-120, 124],
         // T350 (§V285): the simulation loop is a NAME, not a wired back-edge.
         { source: "pack1", persistence: 1, clearColor: [0, 0, 0, 0], substeps: 20 },
         {
@@ -183,7 +183,7 @@ export const reactionDiffusionDocument = document(
        * fraction rises monotonically with it, but motion PEAKS near 0.00025 and falls above
        * ~0.0005, because past that the flow removes the material that was doing the moving.
        */
-      node("swell", "noise", [-380, 380], {
+      node("swell", "noise", [-380, 388], {
         type: "perlin4d",
         seed: 41,
         period: 0.55,
@@ -200,7 +200,7 @@ export const reactionDiffusionDocument = document(
         s4d: 1,
         speed: 0.035, // slower than either map noise: the flow should outlive the shapes it carries
       }, { label: "swell1", resolution: { mode: "fixed", width: 512, height: 512 } }),
-      node("flow", "displace", [-120, 380], {
+      node("flow", "displace", [-120, 388], {
         weight: [0.00035, 0.00035],
         offset: [0.5, 0.5],
         sourcex: "red",
@@ -215,7 +215,7 @@ export const reactionDiffusionDocument = document(
        * pins the pixels) and a later `@default` cannot move it (§V920). E2 keeps the
        * isotropic stencil and the default band; E24 is where they are driven.
        */
-      node("rd", "customWgsl", [140, 120], {
+      node("rd", "customWgsl", [140, 124], {
         [SHADER_SOURCE_PARAMETER]: GRAY_SCOTT_WGSL,
         ...GRAY_SCOTT_DEFAULTS,
       }, { label: "rd1" }),
@@ -224,7 +224,7 @@ export const reactionDiffusionDocument = document(
        * chemistry coordinate for the NEXT step, read from the noise chain's luminance;
        * alpha stays the kernel's, because that is the "history exists" flag a reset clears.
        */
-      node("pack", "reorder", [400, 120], {
+      node("pack", "reorder", [400, 124], {
         outr: "in1r",
         outg: "in1g",
         outb: "in2lum",
@@ -236,7 +236,7 @@ export const reactionDiffusionDocument = document(
        * range across the whole ramp; `offset` is driven by the LFO, which slides every pixel
        * along the gradient together — the colour breathes without the simulation changing.
        */
-      node("palette", "ramp", [140, 380], {
+      node("palette", "ramp", [140, 388], {
         type: "horizontal",
         interp: "smooth",
         phase: 0,
@@ -249,10 +249,10 @@ export const reactionDiffusionDocument = document(
           { position: 1, color: [1, 0.97, 0.9, 1] },
         ],
       }, { label: "palette1", definitionVersion: 2 }),
-      node("cycle", "lfo", [140, 637], { shape: "sine", frequency: 0.05, amplitude: 0.06, offset: 0 }, {
+      node("cycle", "lfo", [140, 649], { shape: "sine", frequency: 0.05, amplitude: 0.06, offset: 0 }, {
         label: "lfo1",
       }),
-      node("tint", "lookup", [400, 393], { channel: "green", row: 0.5, scale: 2.4 }, {
+      node("tint", "lookup", [400, 401], { channel: "green", row: 0.5, scale: 2.4 }, {
         label: "tint1",
         parameters: {
           // §V107/§V108: the retained static is what a host with no channel attached
@@ -260,7 +260,7 @@ export const reactionDiffusionDocument = document(
           offset: drivenSlot("lfo1", 0),
         },
       }),
-      node("out", "output", [660, 380]),
+      node("out", "output", [660, 388]),
     ],
     [
       edge("e-broad-warp", ["broad", "out"], ["warp", "source"]),
