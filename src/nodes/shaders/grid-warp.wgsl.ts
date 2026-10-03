@@ -44,10 +44,17 @@ const members = Array.from({ length: (GRID_WARP_MAX * GRID_WARP_MAX) / 2 }, (_, 
  * sampler's settings (linear, clamp-to-edge), so a Grid Warp reads the input the way a
  * Corner Pin does.
  *
+ * T1534b — each grid line also has a PICTURE POSITION, and `st` is interpolated from those
+ * with the points' own weights (`gridWarpSource` in the definition). They arrive as each
+ * line's offset from the even spread, in cells (`lu0`/`lu1` per column, `lv0`/`lv1` per
+ * row), so an evenly spread grid adds exact zeros and its `st` is `gu / (columns − 1)` to the
+ * bit, as it was before lines had positions.
+ *
  * FEATHER fades every channel, as Corner Pin's does and for its reason: the picture goes
  * to a projector, which shows rgb, so a soft edge carried in alpha only would be a hard
- * edge on the wall. It is measured in `st`, the warped surface's own coordinates, so it
- * follows the surface's edges.
+ * edge on the wall. It is measured in the grid's own coordinates (`edge`, 0..1 across the
+ * surface), so it follows the surface's edges — which, after an edge line is deleted, are
+ * not the picture's 0 and 1.
  *
  * `valid` is 0 when the definition refused a folded mesh: every mesh vertex collapses and
  * only the transparent background is drawn — never NaN, never a doubled picture.
@@ -57,6 +64,10 @@ const SUBDIVISIONS: u32 = ${String(GRID_WARP_SUBDIVISIONS)}u;
 
 struct Params {
   ${members.map((name) => `${name}: vec4f,`).join("\n  ")}
+  lu0: vec4f,
+  lu1: vec4f,
+  lv0: vec4f,
+  lv1: vec4f,
   columns: f32,
   rows: f32,
   spline: f32,
@@ -70,6 +81,7 @@ struct VertexOut {
   @builtin(position) position: vec4f,
   @location(0) st: vec2f,
   @location(1) @interpolate(flat) inside: u32,
+  @location(2) edge: vec2f,
 };
 
 var<private> grid: array<vec4f, ${String(members.length)}>;
@@ -127,6 +139,39 @@ fn warp(gu: f32, gv: f32, columns: i32, rows: i32, spline: bool) -> vec2f {
   return result;
 }
 
+/* T1534b: line k's offset from the even spread, along columns (axis 0) or rows (axis 1). */
+fn lineOffset(axis: u32, k: i32) -> f32 {
+  let index = u32(k);
+  var lane: vec4f;
+  if (axis == 0u) {
+    lane = select(params.lu0, params.lu1, index >= 4u);
+  } else {
+    lane = select(params.lv0, params.lv1, index >= 4u);
+  }
+  return lane[index % 4u];
+}
+
+/* Past an end, the line continued straight on, as control() continues the points. */
+fn lineAlong(axis: u32, k: i32, n: i32) -> f32 {
+  if (k < 0) { return 2.0 * lineOffset(axis, 0) - lineOffset(axis, 1); }
+  if (k > n - 1) { return 2.0 * lineOffset(axis, n - 1) - lineOffset(axis, n - 2); }
+  return lineOffset(axis, k);
+}
+
+/* The picture coordinate at grid coordinate g along one axis of n lines: the line offsets
+   interpolated with the points' weights, added to the even spread. */
+fn pictureAt(axis: u32, g: f32, n: i32, spline: bool) -> f32 {
+  let i = min(i32(floor(g)), n - 2);
+  let t = g - f32(i);
+  var offset: f32;
+  if (spline) {
+    offset = dot(catmullRom(t), vec4f(lineAlong(axis, i - 1, n), lineAlong(axis, i, n), lineAlong(axis, i + 1, n), lineAlong(axis, i + 2, n)));
+  } else {
+    offset = mix(lineAlong(axis, i, n), lineAlong(axis, i + 1, n), t);
+  }
+  return (g + offset) / f32(n - 1);
+}
+
 fn quadCorner(v: u32) -> vec2u {
   var corners = array<vec2u, 6>(
     vec2u(0u, 0u), vec2u(1u, 0u), vec2u(0u, 1u),
@@ -142,6 +187,7 @@ fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
     let corner = vec2f(quadCorner(vertex));
     out.position = vec4f(corner * 2.0 - 1.0, 0.0, 1.0);
     out.st = corner;
+    out.edge = corner;
     out.inside = 0u;
     return out;
   }
@@ -156,6 +202,7 @@ fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
   if (params.valid < 0.5 || cell >= cellsX * cellsY) {
     out.position = vec4f(0.0, 0.0, 0.0, 1.0);
     out.st = vec2f(0.0);
+    out.edge = vec2f(0.0);
     return out;
   }
   let within = m % perCell;
@@ -166,9 +213,11 @@ fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
   let gu = f32(su) / f32(SUBDIVISIONS);
   let gv = f32(sv) / f32(SUBDIVISIONS);
   loadGrid();
-  let p = warp(gu, gv, columns, rows, params.spline > 0.5);
+  let spline = params.spline > 0.5;
+  let p = warp(gu, gv, columns, rows, spline);
   out.position = vec4f(p * 2.0 - 1.0, 0.0, 1.0);
-  out.st = vec2f(gu / f32(columns - 1), gv / f32(rows - 1));
+  out.st = vec2f(pictureAt(0u, gu, columns, spline), pictureAt(1u, gv, rows, spline));
+  out.edge = vec2f(gu / f32(columns - 1), gv / f32(rows - 1));
   return out;
 }
 
@@ -199,7 +248,7 @@ fn fs(input: VertexOut) -> @location(0) vec4f {
   if (params.feather <= 0.0) {
     return value;
   }
-  let edge = min(input.st, vec2f(1.0) - input.st) / params.feather;
+  let edge = min(input.edge, vec2f(1.0) - input.edge) / params.feather;
   let mask = clamp(edge.x, 0.0, 1.0) * clamp(edge.y, 0.0, 1.0);
   return value * mask;
 }`;

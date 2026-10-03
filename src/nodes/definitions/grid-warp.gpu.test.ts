@@ -9,7 +9,7 @@ import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { renderHeadless } from "../../tests/headless/render-harness.ts";
 import { TOLERANCE_CROSS_GPU_HDR, decodeComponents } from "../../tests/headless/pixel-compare.ts";
-import { gridWarpNode } from "./grid-warp.ts";
+import { deleteGridLine, gridOf, gridPointWrites, gridWarpNode, insertGridLine } from "./grid-warp.ts";
 
 /**
  * Grid Warp on a real device (T1509b, T1532b, §V147).
@@ -248,14 +248,18 @@ function affineInverse([px, py]: P): P {
   return [(0.7 * dx - 0.2 * dy) / det, (-0.1 * dx + 0.6 * dy) / det];
 }
 
-/** Every pixel against the analytic inverse of `affineForward`; returns how many were claimed inside and outside. */
-function expectAffine({ at }: Rendered): { inside: number; outside: number } {
+/**
+ * Every pixel against the analytic inverse of `affineForward`; returns how many were claimed
+ * inside and outside. The surface covers picture u from `uFrom` to 1 (T1534b: a grid whose
+ * left column was deleted shows the picture from its next column's position on).
+ */
+function expectAffine({ at }: Rendered, uFrom = 0): { inside: number; outside: number } {
   let inside = 0;
   let outside = 0;
   for (let y = 0; y < H; y += 1) {
     for (let x = 0; x < W; x += 1) {
       const [s, t] = affineInverse(outputPoint(x, y));
-      const distance = Math.min(s, 1 - s, t, 1 - t);
+      const distance = Math.min(s - uFrom, 1 - s, t, 1 - t);
       if (Math.abs(distance) < EDGE_MARGIN) continue;
       if (distance < 0) {
         expect(at(x, y), `outside ${x},${y}`).toEqual([0, 0, 0, 0]);
@@ -338,6 +342,45 @@ describe("Grid Warp on a real device (T1509b)", () => {
     },
     60_000,
   );
+
+  /*
+   * T1534b — a column INSERTED at picture u = 0.3 sits at grid column 1 of 4, where an evenly
+   * spread grid would put u = 1/3: a shader that ignored the line positions would read every
+   * pixel of the left two cells up to 0.033 of the picture off, 8x the tolerance. Drawn
+   * right, it is the one affine map, pixel by pixel, under either interpolation.
+   */
+  it.each(["linear", "smooth"] as const)(
+    "a column INSERTED into an affine grid at u = 0.3 draws the same analytic map (T1534b, %s)",
+    async (interpolation) => {
+      requireDawn();
+      const before: Record<string, ParameterValue> = { ...gridParameters(3, 3, affineForward), interpolation };
+      const edit = insertGridLine(gridOf(before), "column", 0.3);
+      if (!edit.ok) throw new Error(edit.reason);
+      const after: Record<string, ParameterValue> = { ...before, columns: 4, ...(gridPointWrites(edit.grid) as Record<string, ParameterValue>) };
+      expect(after["u1"]).toBeCloseTo(0.3, 15);
+
+      const rendered = await render(after);
+      expect(rendered.diagnostics.map((d) => d.code)).toEqual([]);
+      const claimed = expectAffine(rendered);
+      expect(claimed.inside).toBeGreaterThan(W * H * 0.3);
+      expect(claimed.outside).toBeGreaterThan(W * H * 0.2);
+    },
+    60_000,
+  );
+
+  it("DELETING an affine grid's left column keeps the picture pinned: the surface now starts at picture u = 0.5 (T1534b)", async () => {
+    requireDawn();
+    const before: Record<string, ParameterValue> = { ...gridParameters(3, 3, affineForward), interpolation: "linear" };
+    const edit = deleteGridLine(gridOf(before), "column", 0);
+    if (!edit.ok) throw new Error(edit.reason);
+    const after: Record<string, ParameterValue> = { columns: 2, rows: 3, interpolation: "linear", ...(gridPointWrites(edit.grid) as Record<string, ParameterValue>) };
+    const rendered = await render(after);
+    expect(rendered.diagnostics.map((d) => d.code)).toEqual([]);
+    // Where the left half of the picture was is now outside; the right half has not moved.
+    const claimed = expectAffine(rendered, 0.5);
+    expect(claimed.inside).toBeGreaterThan(W * H * 0.15);
+    expect(claimed.outside).toBeGreaterThan(W * H * 0.4);
+  }, 60_000);
 
   it.each(["linear", "smooth"] as const)(
     "a displaced interior point takes the picture with it: its own picture point lands there, every pixel follows the mesh (%s)",

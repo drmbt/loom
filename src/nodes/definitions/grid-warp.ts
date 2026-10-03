@@ -24,9 +24,10 @@ import {
  *
  * PARITY: TouchDesigner has no grid-warp TOP. The job is done there by the palette's Stoner
  * component — a grid of draggable points warping a texture, built from several operators.
- * This is that job as one node, its points dragged on its own preview. Not attempted:
- * matching Stoner's own editing tools — here the surface between the points is Catmull-Rom
- * or bilinear, and the grid stops at 8 × 8. Product names stay out of `description` (the
+ * This is that job as one node, its points dragged on its own preview, with Stoner's Add /
+ * Delete Row and Column (T1534b; MadMapper's Alt-click and Remove Horizontal / Vertical).
+ * Not attempted: the rest of Stoner's editing tools — here the surface between the points
+ * is Catmull-Rom or bilinear, and the grid stops at 8 × 8. Product names stay out of `description` (the
  * copy guard, T424), so the comparison lives here.
  *
  * ## Storage: one `vector`/2 parameter per point of the CURRENT grid: `p{c}{r}`
@@ -61,6 +62,33 @@ import {
  * static size), and a resolved size that differs samples that surface at its own identity
  * points. The compile sees resolved values only, so it reads the stored grid's size off
  * the point keys it was handed — every key of the static grid, the resolver's contract.
+ *
+ * ## Each grid line also says WHERE IN THE PICTURE it sits (T1534b)
+ *
+ * A row or column can be inserted at a clicked point, and deleted, and neither may move the
+ * picture. On a grid whose lines are evenly spread over the picture that is impossible:
+ * inserting a column a quarter of the way across a 3-column grid would re-spread the picture
+ * over four even columns, sliding everything the user had pinned. So every column carries
+ * its picture position `u{c}` and every row `v{r}` (Advanced, 0..1, evenly spread by
+ * default, so a grid nobody inserted into is exactly the T1509b grid), and the picture
+ * coordinate between lines is interpolated from them with the SAME weights as the points
+ * (`gridWarpSource`). Same weights is what keeps an affine grid affine after an insert, under
+ * either interpolation: output and picture coordinate are one affine function of each other
+ * at every control point, and an affine combination of them preserves that.
+ *
+ *  - INSERT (`insertGridLine`): the new line's points are the current surface at the clicked
+ *    grid coordinate, and its picture position is the current one there. Every other point
+ *    and line keeps its value bit for bit. Under Linear the drawn map is then unchanged
+ *    everywhere (a bilinear cell split along a line is two bilinear cells); under Smooth it
+ *    is unchanged on every line and moves slightly between them, since the spline now
+ *    passes through more points.
+ *  - DELETE (`deleteGridLine`): the line goes, every other point and line keeps its value,
+ *    and the surface between re-forms. Deleting an EDGE line crops the picture to the next
+ *    line's position rather than stretching it back over the new edge: the picture stays
+ *    where it was pinned. The edge's position is an Advanced field to set back by hand.
+ *
+ * Both are one write of the size, every point and every line position: the
+ * `gridWarp.insertLine` / `gridWarp.deleteLine` commands (`domain/commands/grid-warp-commands.ts`).
  *
  * ## The cap is 8 × 8
  *
@@ -98,7 +126,9 @@ import {
  *   its quad; a mesh has no continuation past its outline, so outside is transparent.
  * - No perspective of its own. A grid is not a projective map; for the outer perspective
  *   layer chain Grid Warp → Corner Pin, and moving the corners carries the warp.
- * - No inserting or deleting one row or column at a clicked point (§T1534b).
+ * - A picture position out of order (a column whose `u` is left of its left neighbour's) is
+ *   drawn as asked — the picture folds across the surface — and not refused: the surface
+ *   itself does not fold, and the fold check is about the surface.
  */
 
 export type Point2 = readonly [number, number];
@@ -116,13 +146,36 @@ export const identityPoint = (column: number, row: number, columns: number, rows
   row / (rows - 1),
 ];
 
-/** A grid of control points, row-major from the bottom left: point (c, r) is `points[r * columns + c]`. */
+/** T1534b: one parameter key per grid line — where in the picture column c (`u{c}`) and row r (`v{r}`) sit. */
+export const columnKey = (column: number): string => `u${String(column)}`;
+export const rowKey = (row: number): string => `v${String(row)}`;
+const LINE_KEY = /^[uv]([0-7])$/;
+
+/** A point key's column and row, or null for any other key. */
+export function parsePointKey(key: string): { readonly column: number; readonly row: number } | null {
+  const match = POINT_KEY.exec(key);
+  return match === null ? null : { column: Number(match[1]), row: Number(match[2]) };
+}
+
+/**
+ * A grid of control points, row-major from the bottom left: point (c, r) is `points[r * columns + c]`.
+ * `us` / `vs` are each column's and row's picture position (T1534b); absent, they are evenly
+ * spread — the identity.
+ */
 export interface WarpGrid {
   readonly columns: number;
   readonly rows: number;
   readonly points: readonly Point2[];
   readonly smooth: boolean;
+  readonly us?: readonly number[] | undefined;
+  readonly vs?: readonly number[] | undefined;
 }
+
+/** Evenly spread picture positions for `count` lines: line k at k / (count − 1). */
+export const evenLines = (count: number): number[] => Array.from({ length: count }, (_, k) => k / (count - 1));
+
+const columnsOf = (grid: WarpGrid): readonly number[] => grid.us ?? evenLines(grid.columns);
+const rowsOf = (grid: WarpGrid): readonly number[] => grid.vs ?? evenLines(grid.rows);
 
 /** A grid size from any number: rounded, then clamped to 2..8. */
 export const clampGridSize = (value: number): number =>
@@ -188,6 +241,34 @@ export function gridWarpPoint(grid: WarpGrid, gu: number, gv: number): Point2 {
 }
 
 /**
+ * One line position at grid coordinate g along its axis, with the forward map's own weights
+ * (and its straight continuation past each end), so position and point stay one map (T1534b).
+ */
+function alongLines(lines: readonly number[], g: number, smooth: boolean): number {
+  const n = lines.length;
+  const at = (k: number): number =>
+    k < 0
+      ? 2 * (lines[0] as number) - (lines[1] as number)
+      : k > n - 1
+        ? 2 * (lines[n - 1] as number) - (lines[n - 2] as number)
+        : (lines[k] as number);
+  const i = Math.min(Math.floor(g), n - 2);
+  const t = g - i;
+  if (!smooth) return at(i) * (1 - t) + at(i + 1) * t;
+  const w = catmullRom(t);
+  return w[0] * at(i - 1) + w[1] * at(i) + w[2] * at(i + 1) + w[3] * at(i + 2);
+}
+
+/**
+ * T1534b — WHICH PICTURE POINT grid coordinate (gu, gv) shows: the line positions
+ * interpolated as the points are. On an evenly spread grid, (gu / (columns − 1), gv / (rows − 1)).
+ * The shader's `st`.
+ */
+export function gridWarpSource(grid: WarpGrid, gu: number, gv: number): Point2 {
+  return [alongLines(columnsOf(grid), gu, grid.smooth), alongLines(rowsOf(grid), gv, grid.smooth)];
+}
+
+/**
  * T1532b: `grid` RESAMPLED onto a columns × rows grid — each new point is the current
  * surface at that point's identity position, so the picture does not move. The grid
  * coordinate is computed as (c · (old − 1)) / (new − 1), exact wherever the two grids share
@@ -201,7 +282,89 @@ export function resampleGrid(grid: WarpGrid, columns: number, rows: number): War
       points.push(gridWarpPoint(grid, (column * (grid.columns - 1)) / (columns - 1), (row * (grid.rows - 1)) / (rows - 1)));
     }
   }
-  return { columns, rows, points, smooth: grid.smooth };
+  // T1534b: and each new line's picture position is the old one there, so the picture stays put.
+  const us = evenLines(columns).map((_, column) => alongLines(columnsOf(grid), (column * (grid.columns - 1)) / (columns - 1), grid.smooth));
+  const vs = evenLines(rows).map((_, row) => alongLines(rowsOf(grid), (row * (grid.rows - 1)) / (rows - 1), grid.smooth));
+  return { columns, rows, points, smooth: grid.smooth, us, vs };
+}
+
+export type GridAxis = "column" | "row";
+
+/** Why a line edit cannot be made: a diagnostic code and a sentence (T1534b). */
+export interface GridLineRefusal {
+  readonly code: string;
+  readonly reason: string;
+}
+
+export type GridLineEdit = { readonly ok: true; readonly grid: WarpGrid } | ({ readonly ok: false } & GridLineRefusal);
+
+/** Columns become rows: point (c, r) moves to (r, c), and the line positions swap. */
+function transpose(grid: WarpGrid): WarpGrid {
+  const points: Point2[] = [];
+  for (let column = 0; column < grid.columns; column += 1) {
+    for (let row = 0; row < grid.rows; row += 1) points.push(grid.points[row * grid.columns + column] as Point2);
+  }
+  return { columns: grid.rows, rows: grid.columns, points, smooth: grid.smooth, us: rowsOf(grid), vs: columnsOf(grid) };
+}
+
+/** Closer than this to an existing line (in cells), an insert is refused: it would be that line. */
+const LINE_EPSILON = 1e-3;
+
+/**
+ * T1534b — `grid` with a new column (or row) at `at`, 0..1 along the surface as the grid lies
+ * (0 the first line, 1 the last; on an evenly spread grid, the picture's own u or v). The new
+ * line's points are the CURRENT surface there and its picture position the current one;
+ * every other point and line keeps its value exactly. Refused at 8 lines, outside the
+ * surface, and on top of an existing line.
+ */
+export function insertGridLine(grid: WarpGrid, axis: GridAxis, at: number): GridLineEdit {
+  if (axis === "row") {
+    const edit = insertGridLine(transpose(grid), "column", at);
+    return edit.ok ? { ok: true, grid: transpose(edit.grid) } : { ...edit, reason: edit.reason.replaceAll("column", "row") };
+  }
+  if (grid.columns >= GRID_WARP_MAX) {
+    return { ok: false, code: "gridWarp.line.max", reason: `the grid already has ${String(GRID_WARP_MAX)} columns, the most it can have` };
+  }
+  if (!(Number.isFinite(at) && at > 0 && at < 1)) {
+    return { ok: false, code: "gridWarp.line.outside", reason: `a new column must lie inside the surface (0 < at < 1), not at ${String(at)}` };
+  }
+  const g = at * (grid.columns - 1);
+  const cell = Math.min(Math.floor(g), grid.columns - 2);
+  const t = g - cell;
+  if (t < LINE_EPSILON || t > 1 - LINE_EPSILON) {
+    return { ok: false, code: "gridWarp.line.exists", reason: `column ${String(t < 0.5 ? cell + 1 : cell + 2)} is already there` };
+  }
+  const columns = grid.columns + 1;
+  const points: Point2[] = [];
+  for (let row = 0; row < grid.rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      if (column === cell + 1) points.push(gridWarpPoint(grid, g, row));
+      else points.push(grid.points[row * grid.columns + (column <= cell ? column : column - 1)] as Point2);
+    }
+  }
+  const lines = columnsOf(grid);
+  const us = [...lines.slice(0, cell + 1), alongLines(lines, g, grid.smooth), ...lines.slice(cell + 1)];
+  return { ok: true, grid: { columns, rows: grid.rows, points, smooth: grid.smooth, us, vs: rowsOf(grid) } };
+}
+
+/**
+ * T1534b — `grid` without column (or row) `index`. Every other point and line keeps its value
+ * exactly; the surface between re-forms. Refused at 2 lines and for an index the grid lacks.
+ */
+export function deleteGridLine(grid: WarpGrid, axis: GridAxis, index: number): GridLineEdit {
+  if (axis === "row") {
+    const edit = deleteGridLine(transpose(grid), "column", index);
+    return edit.ok ? { ok: true, grid: transpose(edit.grid) } : { ...edit, reason: edit.reason.replaceAll("column", "row") };
+  }
+  if (!(Number.isInteger(index) && index >= 0 && index < grid.columns)) {
+    return { ok: false, code: "gridWarp.line.missing", reason: `the grid has no column ${String(index + 1)}; it has ${String(grid.columns)}` };
+  }
+  if (grid.columns <= GRID_WARP_MIN) {
+    return { ok: false, code: "gridWarp.line.min", reason: `the grid has ${String(GRID_WARP_MIN)} columns, the fewest it can have` };
+  }
+  const points = grid.points.filter((_, k) => k % grid.columns !== index);
+  const us = columnsOf(grid).filter((_, k) => k !== index);
+  return { ok: true, grid: { columns: grid.columns - 1, rows: grid.rows, points, smooth: grid.smooth, us, vs: rowsOf(grid) } };
 }
 
 /** Below this a sub-triangle's turn counts as none: a guard against an exact zero, as in Corner Pin. */
@@ -227,11 +390,7 @@ export function gridFold(grid: WarpGrid): { readonly reason: string; readonly ce
     return { reason: "a point is not a finite number" };
   }
   const S = GRID_WARP_SUBDIVISIONS;
-  const nu = (grid.columns - 1) * S + 1;
-  const nv = (grid.rows - 1) * S + 1;
-  const lattice: Point2[] = [];
-  for (let b = 0; b < nv; b += 1) for (let a = 0; a < nu; a += 1) lattice.push(gridWarpPoint(grid, a / S, b / S));
-  const at = (a: number, b: number): Point2 => lattice[b * nu + a] as Point2;
+  const { nu, nv, at } = meshLattice(grid);
 
   // The shader's two triangles per sub-quad, in its corner order.
   const turns: Array<{ readonly turn: number; readonly cell: readonly [number, number] }> = [];
@@ -256,6 +415,54 @@ export function gridFold(grid: WarpGrid): { readonly reason: string; readonly ce
   for (let a = nu - 1; a > 0; a -= 1) outline.push(at(a, nv - 1));
   for (let b = nv - 1; b > 0; b -= 1) outline.push(at(0, b));
   if (outlineCrosses(outline)) return { reason: "its outline crosses itself, so the grid lies over itself" };
+  return null;
+}
+
+/** The mesh the shader draws: every sub-quad vertex, placed by the forward map. Vertex (a, b) sits at grid coordinate (a / 16, b / 16). */
+function meshLattice(grid: WarpGrid): { readonly nu: number; readonly nv: number; readonly at: (a: number, b: number) => Point2 } {
+  const S = GRID_WARP_SUBDIVISIONS;
+  const nu = (grid.columns - 1) * S + 1;
+  const nv = (grid.rows - 1) * S + 1;
+  const lattice: Point2[] = [];
+  for (let b = 0; b < nv; b += 1) for (let a = 0; a < nu; a += 1) lattice.push(gridWarpPoint(grid, a / S, b / S));
+  return { nu, nv, at: (a, b) => lattice[b * nu + a] as Point2 };
+}
+
+/** Within this of a triangle's edge (in barycentric weight), a point counts as inside it. */
+const INSIDE_EPSILON = 1e-9;
+
+/**
+ * T1534b — THE GRID COORDINATE UNDER OUTPUT POINT `point`, or null where nothing is drawn
+ * (outside the surface, or a folded grid, which draws nothing). The inverse of the DRAWN
+ * mesh, exactly: the triangle holding the point, by the same triangulation the shader draws,
+ * and the grid coordinate interpolated across it as the rasteriser interpolates `st`. A
+ * click in output space lands on the line it looks like it lands on.
+ */
+export function gridWarpInverse(grid: WarpGrid, point: Point2): { readonly gu: number; readonly gv: number } | null {
+  if (cachedGridFold(grid) !== null) return null;
+  const S = GRID_WARP_SUBDIVISIONS;
+  const { nu, nv, at } = meshLattice(grid);
+  for (let b = 0; b < nv - 1; b += 1) {
+    for (let a = 0; a < nu - 1; a += 1) {
+      const corners: ReadonlyArray<readonly [number, number]> = [[a, b], [a + 1, b], [a, b + 1], [a, b + 1], [a + 1, b], [a + 1, b + 1]];
+      for (let k = 0; k < 6; k += 3) {
+        const [i, j, l] = [corners[k], corners[k + 1], corners[k + 2]] as [readonly [number, number], readonly [number, number], readonly [number, number]];
+        const p0 = at(i[0], i[1]);
+        const p1 = at(j[0], j[1]);
+        const p2 = at(l[0], l[1]);
+        const det = cross(p0, p1, p2);
+        if (det === 0) continue;
+        const w1 = cross(p0, point, p2) / det;
+        const w2 = cross(p0, p1, point) / det;
+        const w0 = 1 - w1 - w2;
+        if (w0 < -INSIDE_EPSILON || w1 < -INSIDE_EPSILON || w2 < -INSIDE_EPSILON) continue;
+        return {
+          gu: (w0 * i[0] + w1 * j[0] + w2 * l[0]) / S,
+          gv: (w0 * i[1] + w1 * j[1] + w2 * l[1]) / S,
+        };
+      }
+    }
+  }
   return null;
 }
 
@@ -367,12 +574,29 @@ const STATIC_PARAMETERS: ParameterSchema = {
   },
 };
 
-/** One point parameter per point of a columns × rows grid, defaulting to the identity. */
-function pointParameters(columns: number, rows: number): Record<string, VectorParameter> {
-  const schema: Record<string, VectorParameter> = {};
+/** T1534b: where in the picture one grid line sits — evenly spread by default, moved only by an insert or a delete. */
+function lineParameter(axis: GridAxis, index: number, count: number): ParameterSchema[string] {
+  const [label, across] = axis === "column" ? [`Column ${String(index + 1)} u`, "from the left"] : [`Row ${String(index + 1)} v`, "from the bottom"];
+  return {
+    type: "number",
+    label,
+    default: index / (count - 1),
+    min: 0,
+    max: 1,
+    range: "bounded",
+    group: "Advanced",
+    description: `Which part of the picture the grid's ${axis} ${String(index + 1)} carries, 0..1 ${across}. Evenly spread unless a ${axis} was inserted or deleted, which keeps the picture where it was.`,
+  };
+}
+
+/** One point parameter per point of a columns × rows grid (the identity), then each line's picture position (evenly spread). */
+function pointParameters(columns: number, rows: number): ParameterSchema {
+  const schema: ParameterSchema = {};
   for (let row = 0; row < rows; row += 1) {
     for (let column = 0; column < columns; column += 1) schema[pointKey(column, row)] = pointParameter(column, row, columns, rows);
   }
+  for (let column = 0; column < columns; column += 1) schema[columnKey(column)] = lineParameter("column", column, columns);
+  for (let row = 0; row < rows; row += 1) schema[rowKey(row)] = lineParameter("row", row, rows);
   return schema;
 }
 
@@ -390,8 +614,17 @@ function pointValue(value: unknown, column: number, row: number, columns: number
   return identityPoint(column, row, columns, rows);
 }
 
-/** The grid the document stores: its static size, interpolation and points (T1532b). */
-function storedGrid(stored: Readonly<Record<string, StoredParameter>>): WarpGrid {
+/** A line position's value, or the even spread's when it is missing or not a finite number. */
+function lineValue(value: unknown, index: number, count: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : index / (count - 1);
+}
+
+/**
+ * The grid a node's parameters describe: its static size, interpolation, points and line
+ * positions (T1532b, T1534b). Takes stored parameters or resolved values alike (a bare value
+ * is its own static value).
+ */
+export function gridOf(stored: Readonly<Record<string, StoredParameter>>): WarpGrid {
   const columns = storedGridSize(stored, "columns");
   const rows = storedGridSize(stored, "rows");
   const points: Point2[] = [];
@@ -400,8 +633,46 @@ function storedGrid(stored: Readonly<Record<string, StoredParameter>>): WarpGrid
       points.push(pointValue(storedStaticValue(stored[pointKey(column, row)]), column, row, columns, rows));
     }
   }
-  return { columns, rows, points, smooth: storedStaticValue(stored["interpolation"]) !== "linear" };
+  const us = evenLines(columns).map((_, column) => lineValue(storedStaticValue(stored[columnKey(column)]), column, columns));
+  const vs = evenLines(rows).map((_, row) => lineValue(storedStaticValue(stored[rowKey(row)]), row, rows));
+  return { columns, rows, points, smooth: storedStaticValue(stored["interpolation"]) !== "linear", us, vs };
 }
+
+/** T1534b: every point and line position of `grid`, keyed as the node stores them. */
+export function gridPointWrites(grid: WarpGrid): Record<string, StoredParameter> {
+  const writes: Record<string, StoredParameter> = {};
+  grid.points.forEach((point, index) => {
+    writes[pointKey(index % grid.columns, Math.floor(index / grid.columns))] = [point[0], point[1]];
+  });
+  columnsOf(grid).forEach((u, column) => {
+    writes[columnKey(column)] = u;
+  });
+  rowsOf(grid).forEach((v, row) => {
+    writes[rowKey(row)] = v;
+  });
+  return writes;
+}
+
+/** True for a key that belongs to one point or line of the grid (a component slot `p11.x` included), and its column/row. */
+function gridKeyPlace(key: string): { readonly column?: number; readonly row?: number } | null {
+  const base = key.split(".")[0] ?? "";
+  const point = POINT_KEY.exec(base);
+  if (point !== null) return { column: Number(point[1]), row: Number(point[2]) };
+  const line = LINE_KEY.exec(base);
+  if (line === null) return null;
+  return base.startsWith("u") ? { column: Number(line[1]) } : { row: Number(line[1]) };
+}
+
+/** Every stored key of a point or line the columns × rows grid does not have — component slots included. */
+export function keysPastGrid(stored: Readonly<Record<string, unknown>>, columns: number, rows: number): string[] {
+  return Object.keys(stored).filter((key) => {
+    const place = gridKeyPlace(key);
+    return place !== null && ((place.column ?? 0) >= columns || (place.row ?? 0) >= rows);
+  });
+}
+
+/** True for a key that is one of the grid's points or line positions (or a component slot of one). */
+export const isGridKey = (key: string): boolean => gridKeyPlace(key) !== null;
 
 /**
  * The size of the grid whose points the compile was handed: one past the highest column and
@@ -436,6 +707,30 @@ function packPoints(grid: WarpGrid): Record<string, number[]> {
   return members;
 }
 
+/** Below this (in cells) a line's offset from the even spread is none: f64 noise from a resample, not a moved line. */
+const LINE_OFFSET_EPSILON = 1e-9;
+
+/**
+ * T1534b — the line positions as the shader takes them: each line's OFFSET from the even
+ * spread, in cells (u·(columns − 1) − c), eight per axis in two `vec4f`s (`lu0`, `lu1`,
+ * `lv0`, `lv1`). An offset rather than the position, so an evenly spread grid hands the
+ * shader exact zeros and its `st` is `gu / (columns − 1)` to the bit, as before lines had
+ * positions — the identity stays bit-exact on the device.
+ */
+function packLines(grid: WarpGrid): Record<string, number[]> {
+  const offsets = (lines: readonly number[]): number[] => {
+    const lanes = new Array<number>(GRID_WARP_MAX).fill(0);
+    lines.forEach((value, index) => {
+      const offset = value * (lines.length - 1) - index;
+      lanes[index] = Math.abs(offset) < LINE_OFFSET_EPSILON ? 0 : offset;
+    });
+    return lanes;
+  };
+  const u = offsets(columnsOf(grid));
+  const v = offsets(rowsOf(grid));
+  return { lu0: u.slice(0, 4), lu1: u.slice(4), lv0: v.slice(0, 4), lv1: v.slice(4) };
+}
+
 export const gridWarpNode: NodeDefinition = {
   type: "gridWarp",
   version: 1,
@@ -457,25 +752,17 @@ export const gridWarpNode: NodeDefinition = {
   /**
    * T1532b: a size change resamples the current warp onto the new grid, in the same
    * operation: every point of the new grid is the current surface at its identity position,
-   * and points the new grid lacks (and any component slot of theirs) are deleted.
+   * and points the new grid lacks (and any component slot of theirs) are deleted. T1534b:
+   * the line positions likewise, so the picture stays where it was pinned.
    */
   coupledParameters(stored, written) {
     if (!("columns" in written) && !("rows" in written)) return null;
-    const from = storedGrid(stored);
+    const from = gridOf(stored);
     const after = { ...stored, ...written };
     const columns = storedGridSize(after, "columns");
     const rows = storedGridSize(after, "rows");
     if (columns === from.columns && rows === from.rows) return null;
-    const to = resampleGrid(from, columns, rows);
-    const set: Record<string, StoredParameter> = {};
-    to.points.forEach((point, index) => {
-      set[pointKey(index % columns, Math.floor(index / columns))] = [point[0], point[1]];
-    });
-    const remove = Object.keys(stored).filter((key) => {
-      const match = POINT_KEY.exec(key.split(".")[0] ?? "");
-      return match !== null && (Number(match[1]) >= columns || Number(match[2]) >= rows);
-    });
-    return { set, remove };
+    return { set: gridPointWrites(resampleGrid(from, columns, rows)), remove: keysPastGrid(stored, columns, rows) };
   },
   resolutionPolicy: { kind: "inherit", input: "input" },
   formatPolicy: { kind: "inherit", input: "input" },
@@ -499,7 +786,9 @@ export const gridWarpNode: NodeDefinition = {
         points.push(readVector(parameters, pointKey(column, row), fallback) as unknown as Point2);
       }
     }
-    const stored: WarpGrid = { columns: handed.columns, rows: handed.rows, points, smooth };
+    const us = evenLines(handed.columns).map((even, column) => readNumber(parameters, columnKey(column), even));
+    const vs = evenLines(handed.rows).map((even, row) => readNumber(parameters, rowKey(row), even));
+    const stored: WarpGrid = { columns: handed.columns, rows: handed.rows, points, smooth, us, vs };
     const grid = handed.columns === columns && handed.rows === rows ? stored : resampleGrid(stored, columns, rows);
     const fold = cachedGridFold(grid);
     const where = fold?.cell === undefined ? "" : ` at the cell right of column ${String(fold.cell[0] + 1)}, above row ${String(fold.cell[1] + 1)}`;
@@ -530,6 +819,7 @@ export const gridWarpNode: NodeDefinition = {
       uniformBinding: "params",
       uniforms: {
         ...packPoints(grid),
+        ...packLines(grid),
         columns,
         rows,
         spline: smooth ? 1 : 0,

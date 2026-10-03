@@ -55,7 +55,14 @@ function gridPoints(columns: number, rows: number, place: (u: number, v: number)
 }
 
 const STATIC_KEYS = ["columns", "feather", "interpolation", "rows"];
-const keysOf = (columns: number, rows: number): string[] => [...STATIC_KEYS, ...Object.keys(gridPoints(columns, rows, (u, v) => [u, v]))].sort();
+/** Every key a columns × rows node stores: the static ones, each point, and (T1534b) each line's picture position. */
+const keysOf = (columns: number, rows: number): string[] =>
+  [
+    ...STATIC_KEYS,
+    ...Object.keys(gridPoints(columns, rows, (u, v) => [u, v])),
+    ...Array.from({ length: columns }, (_, c) => `u${c}`),
+    ...Array.from({ length: rows }, (_, r) => `v${r}`),
+  ].sort();
 
 function expectPoint(actual: StoredParameter | undefined, expected: readonly [number, number], label: string): void {
   expect(Array.isArray(actual), `${label} is stored as a point`).toBe(true);
