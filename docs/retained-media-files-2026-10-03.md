@@ -16,6 +16,12 @@ Opening a project checks `queryPermission()` and does not initiate a permission 
 
 Chrome documents both [handle storage in IndexedDB](https://developer.chrome.com/docs/capabilities/web-apis/file-system-access) and [permission persistence choices](https://developer.chrome.com/blog/persistent-permissions-for-the-file-system-access-api). Permission availability depends on the browser and user grant. Electron already uses a persistent local profile and fixed renderer origin, so it uses the same retained-handle path with its existing exact-file permission policy.
 
+## Components (T1519b, 2026-10-04)
+
+A component never carries media bytes. A movie, audio or mesh node inside a component keeps the same retained reference, so exporting, importing and pasting a component moves only the reference. When a project is opened, or a component is imported or pasted, and a reference has no handle in this profile, the notice strip warns at that moment and names the file, the node and the component. A `blob:` URL from a component file written before export refused them gets the same warning, because it can never load. The node diagnostic stays as the lasting record.
+
+Relink a file inside a component from the instance: the instance's Component section in the Inspector lists its missing files with a **relink** button. Relinking stores the new handle under the reference's existing identity, so the component definition and the document do not change. Export still refuses a component that holds a session-only `blob:` URL; the refusal says to enter the component and choose the file again with the picker.
+
 ## Limits
 
 - References belong to the browser/Electron profile and origin. Another profile, machine, or dev-server origin needs relinking. Clearing site storage removes retained handles.
