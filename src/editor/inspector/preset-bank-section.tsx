@@ -4,7 +4,14 @@ import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { PRESET_DELETE_COMMAND } from "@domain/presets/delete-command.ts";
-import { PRESET_RECALL_COMMAND, PRESET_STORE_COMMAND, isPresetName, parsePresetBank, parsePresetTargets } from "@domain/presets/index.ts";
+import {
+  PRESET_RECALL_COMMAND,
+  PRESET_STORE_COMMAND,
+  isPresetName,
+  nextPresetName,
+  parsePresetBank,
+  parsePresetTargets,
+} from "@domain/presets/index.ts";
 import { Button } from "@ui/primitives/button.tsx";
 import { ControlRow } from "@ui/controls/control-row.tsx";
 import { EnumField } from "@ui/controls/enum-field.tsx";
@@ -47,14 +54,6 @@ export interface PresetBankSectionProps {
   readonly bus: LoomBus;
   readonly context: InvocationContext;
   readonly editor: ParameterEditor;
-}
-
-/** `preset1`, `preset2`, … — the first the bank does not hold, so Store never overwrites by default. */
-function nextPresetName(taken: readonly string[]): string {
-  for (let index = taken.length + 1; ; index += 1) {
-    const candidate = `preset${String(index)}`;
-    if (!taken.includes(candidate)) return candidate;
-  }
 }
 
 const NO_PICK = "";

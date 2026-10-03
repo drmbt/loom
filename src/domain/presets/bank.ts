@@ -67,6 +67,18 @@ export function isPresetName(name: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
 }
 
+/**
+ * `preset1`, `preset2`, … — the first name the bank does not hold, so a Store with no name
+ * typed never overwrites. The inspector's Store field and the Panel strip's Store
+ * (T1527b) both start from it.
+ */
+export function nextPresetName(taken: readonly string[]): string {
+  for (let index = taken.length + 1; ; index += 1) {
+    const candidate = `preset${String(index)}`;
+    if (!taken.includes(candidate)) return candidate;
+  }
+}
+
 export type PresetBankParse = { ok: true; bank: PresetBank } | { ok: false; reason: string };
 
 const plainObject = (value: unknown): value is Record<string, unknown> =>

@@ -10,9 +10,11 @@ import {
   CUE_LIST_NODE_TYPE,
   PRESETS_NODE_TYPE,
   PRESET_RECALL_COMMAND,
+  PRESET_STORE_COMMAND,
   morphProgress,
   morphRunning,
   nextCueName,
+  nextPresetName,
   parseCueList,
   parseMorphRecords,
   parsePresetBank,
@@ -33,6 +35,11 @@ import styles from "./board-members.module.css";
  *
  * - a Presets BANK is a strip: one button per preset, the one recalled last lit, and a
  *   bar across the button being faded to while a morph runs. A press is `preset.recall`.
+ *   T1527b: the strip ends in Store, which captures the bank's targets as a NEW preset
+ *   under the next free name (`preset.store`) — never over one, so a stray press mid-show
+ *   costs one undo and loses nothing; storing over a preset stays the inspector's. This
+ *   file draws only the desk (Controls tab, Panel node body): the phone page draws its
+ *   own strip with no Store, and its vet has no path to `preset.store` (§T1503b).
  * - a LAYER is a switch — on means not bypassed — and its opacity fader when the rect has
  *   room. The switch writes the STATE the press asked for (`setNodeUi { bypassed }`, the op
  *   the layer's own docblock names), never a flip, and nothing at all when the layer is
@@ -67,6 +74,8 @@ const PART_GAP_PX = 1;
 const GO_SCALE = 1.4;
 /** No cue: nothing fired yet, or nothing left to fire. */
 const NO_CUE = "—";
+/** The strip's Store button (T1527b). */
+const STORE_CAPTION = "Store";
 
 const text = (stored: unknown): string => (typeof stored === "string" ? stored.trim() : "");
 const px = (value: number): string => `${String(value)}px`;
@@ -146,18 +155,20 @@ function PresetStrip({ node, rect, cells, bus, invocation }: BoardMemberProps) {
   const current = text(node.parameters["current"]);
   const fade = useMorphFade(bus, node.parameters["morphs"]);
   const { refusal, press } = usePress(bus);
-  if (presets.length === 0) {
+  if (!parsed.ok) {
     return (
       <div className={styles.member} data-board-member={PRESETS_NODE_TYPE} data-control-node={node.id}>
-        <span className={styles.empty} title={parsed.ok ? undefined : parsed.reason}>
-          {parsed.ok ? "No presets" : "Presets unreadable"}
+        <span className={styles.empty} title={parsed.reason}>
+          Presets unreadable
         </span>
       </div>
     );
   }
-  const grid = presetStripGrid(presets.length, rect.h);
+  // T1527b: Store sits after the presets — its own cell, the strip's last.
+  const storeAs = nextPresetName(presets.map((preset) => preset.name));
+  const grid = presetStripGrid(presets.length + 1, rect.h);
   const buttonPx = (cells.widthOf(rect.w) - (grid.perRow - 1) * PART_GAP_PX) / grid.perRow;
-  const longest = presets.reduce((widest, preset) => (preset.name.length > widest.length ? preset.name : widest), "");
+  const longest = presets.reduce((widest, preset) => (preset.name.length > widest.length ? preset.name : widest), STORE_CAPTION);
   const fit = boardFit({ kind: "button", caption: longest, valueEm: 0, widthPx: buttonPx, cellPx: cells.cellPx });
   return (
     <div className={styles.member} data-board-member={PRESETS_NODE_TYPE} data-control-node={node.id}>
@@ -190,6 +201,15 @@ function PresetStrip({ node, rect, cells, bus, invocation }: BoardMemberProps) {
             </button>
           );
         })}
+        <button
+          type="button"
+          className={`${styles.press} ${styles.store}`}
+          title={`Store the targets as a new preset, ${storeAs}`}
+          data-preset-store={storeAs}
+          onClick={() => press(() => bus.execute(PRESET_STORE_COMMAND, { nodeId: node.id, name: storeAs }, invocation))}
+        >
+          <span className={styles.name}>{STORE_CAPTION}</span>
+        </button>
       </div>
       <Refusal message={refusal} />
     </div>

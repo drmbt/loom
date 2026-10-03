@@ -54,6 +54,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* T1527b: Store, after the presets — set apart from them by its dashed edge and dim text. */
+.store {
+  color: var(--text-dim);
+  border-style: dashed;
+  box-shadow: none;
+}
 /* The preset recalled last. */
 .lit,
 .lit:hover {

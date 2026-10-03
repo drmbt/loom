@@ -10,7 +10,7 @@ import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import type { FrameClock } from "@domain/types/frame.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
-import { serializeCueList, serializePresetBank } from "@domain/presets/index.ts";
+import { parsePresetBank, serializeCueList, serializePresetBank } from "@domain/presets/index.ts";
 import { parsePanelBoard, serializePanelBoard, type StoredBoardItem } from "@nodes/definitions/controls.ts";
 import { createAppRuntime, type AppRuntime } from "../../app/app-runtime.ts";
 import { useControlBodies } from "./control-bodies.tsx";
@@ -206,6 +206,55 @@ describe("T1501b — a bank's preset strip", () => {
   });
 });
 
+describe("T1527b — Store on a bank's strip", () => {
+  const bankOf = (runtime: AppRuntime, id: NodeId) => {
+    const parsed = parsePresetBank(nodeOf(runtime, id).parameters["presets"]);
+    if (!parsed.ok) throw new Error(parsed.reason);
+    return parsed.bank.presets;
+  };
+
+  it("captures the look as a NEW preset under the next free name — the others untouched — as one undo step, and it plays back", async () => {
+    const { runtime, ids } = await desk();
+    render(<Tab runtime={runtime} />);
+    const before = undoDepth(runtime);
+    const existing = bankOf(runtime, ids["$looks"]!);
+
+    // blur1 sits at 9: neither soft (4) nor hard (20).
+    await click(within(tabItem("member:looks")).getByRole("button", { name: "Store" }));
+
+    expect(bankOf(runtime, ids["$looks"]!)).toEqual([...existing, { name: "preset3", values: { blur1: expect.objectContaining({ size: 9 }) } }]);
+    expect(undoDepth(runtime)).toBe(before + 1);
+    // The new preset is a button on the strip, before Store, and recalls what was stored.
+    expect([...tabItem("member:looks").querySelectorAll("[data-preset]")].map((button) => button.getAttribute("data-preset"))).toEqual(["soft", "hard", "preset3"]);
+    await click(within(tabItem("member:looks")).getByRole("button", { name: "hard" }));
+    await click(within(tabItem("member:looks")).getByRole("button", { name: "preset3" }));
+    expect(nodeOf(runtime, ids["$blur"]!).parameters["size"]).toBe(9);
+
+    await undo(runtime);
+    await undo(runtime);
+    await undo(runtime);
+    expect(bankOf(runtime, ids["$looks"]!)).toEqual(existing);
+  });
+
+  it("an empty bank is Store alone, so the first preset can be stored from the Panel", async () => {
+    const { runtime, ids } = await desk({ bank: { presets: serializePresetBank({ version: 1, presets: [] }) } });
+    render(<Tab runtime={runtime} />);
+    expect(tabItem("member:looks").querySelectorAll("[data-preset]").length).toBe(0);
+    await click(within(tabItem("member:looks")).getByRole("button", { name: "Store" }));
+    expect(bankOf(runtime, ids["$looks"]!).map((preset) => preset.name)).toEqual(["preset1"]);
+  });
+
+  it("a Store the bus refuses says why on the strip and stores nothing", async () => {
+    const { runtime, ids } = await desk({ bank: { targets: "" } });
+    render(<Tab runtime={runtime} />);
+    const revision = runtime.bus.store.getRevision();
+    await click(within(tabItem("member:looks")).getByRole("button", { name: "Store" }));
+    expect(runtime.bus.store.getRevision()).toBe(revision);
+    expect(bankOf(runtime, ids["$looks"]!).map((preset) => preset.name)).toEqual(["soft", "hard"]);
+    expect(within(tabItem("member:looks")).getByRole("alert").textContent).toContain("declares no targets");
+  });
+});
+
 describe("T1501b — a layer's switch and fader", () => {
   it("two presses of OFF leave the layer off, in one undo step — the switch writes a state, not a flip", async () => {
     const { runtime, ids } = await desk();
@@ -343,7 +392,7 @@ describe("T1501b — the canvas body and the Controls tab draw the same three it
     expect(shown(body())).toEqual(shown(pane()));
     // …and it is the three kinds, not three empty boxes that happen to match.
     expect(shown(pane())).toEqual([
-      { key: "member:looks", rect: "0,0,4,1", kind: "presets", layout: null, presets: ["soft:false", "hard:false"], on: null, fader: null, cue: [null, null], presses: [] },
+      { key: "member:looks", rect: "0,0,4,1", kind: "presets", layout: null, presets: ["soft:false", "hard:false"], on: null, fader: null, cue: [null, null], presses: ["Store"] },
       { key: "member:fx", rect: "4,0,4,2", kind: "layer", layout: "stacked", presets: [], on: "true", fader: "1", cue: [null, null], presses: [] },
       { key: "member:set", rect: "0,2,4,2", kind: "cueList", layout: "stacked", presets: [], on: null, fader: null, cue: ["—", "1"], presses: ["BACK", "GO"] },
     ]);

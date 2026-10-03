@@ -9,6 +9,7 @@ export {
   MORPH_CURVES,
   PRESETS_NODE_TYPE,
   isPresetName,
+  nextPresetName,
   parsePresetBank,
   parsePresetTargets,
   serializePresetBank,
