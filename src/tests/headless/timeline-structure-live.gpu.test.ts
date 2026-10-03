@@ -96,7 +96,7 @@ interface Rig {
   dispose(): void;
 }
 
-async function mount(): Promise<Rig> {
+async function mount(settings: typeof SETTINGS = SETTINGS): Promise<Rig> {
   if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
   const real = createVgpuBackend({ host: nodeGpuHost() });
   const reported: string[] = [];
@@ -142,7 +142,7 @@ async function mount(): Promise<Rig> {
   const runtime: AppRuntime = createAppRuntime({
     identityStorage: null,
     actor: { kind: "human", id: "tester", label: "Tester" },
-    document: { ...structuredClone(setListDocument), graph: timedSetList(), settings: SETTINGS },
+    document: { ...structuredClone(setListDocument), graph: timedSetList(), settings },
   });
   const view = renderHook(() => {
     const compiled = useGraphCompile(runtime, CAPABILITIES);
@@ -307,4 +307,63 @@ describe("§T1537b — the live loop: exact crossings, one compile each, warmed"
       rig.dispose();
     }
   }, 180_000);
+});
+
+/**
+ * §T1544b (2) — THE LOOP'S WRAP IS WARMED LIKE A CROSSING. Looping 0..160: after the last
+ * crossing (150) the next structure the playhead meets is not a later cue — there is none
+ * before the out point — but frame 0's, at the lap. The warm-up after the 150 install builds
+ * THAT segment ahead (its plan kept for the install, its Effects warmed), so the lap's
+ * install builds no Effect, and the first frame of the new lap is in frame 0's structure.
+ */
+describe("§T1544b — the loop's wrap back to the first segment is precompiled and warmed", () => {
+  it("looping 0..160: the lap's install builds 0 Effects, and the wrapped frame is in frame 0's structure", async () => {
+    const rig = await mount({ ...SETTINGS, frameRange: { start: 0, end: 160 } });
+    try {
+      await act(async () => {
+        rig.transport().togglePlay();
+        await gap();
+      });
+      expect(rig.transport().isLooping()).toBe(true);
+      const initial = rig.compiles.length;
+      // Paused steps to 158, each crossing installed (and the next warmed) as it comes.
+      for (let frame = 0; frame <= 158; frame += 1) {
+        await act(async () => {
+          rig.transport().stepFrame(1);
+          await gap();
+        });
+        const owed = CROSSINGS.filter((crossing) => crossing <= frame + 1).length;
+        await waitFor(() => expect(rig.compiles.length).toBe(initial + owed), { timeout: 10_000 });
+      }
+      // The warm-up after the 150 install runs in a task of its own: let it land.
+      await act(async () => {
+        for (let turn = 0; turn < 20; turn += 1) await gap();
+      });
+      const beforeLap = rig.compiles.length;
+      const rendersBefore = rig.renders.length;
+      const lapped = (): boolean => rig.renders.slice(rendersBefore).some((entry) => entry.frame >= 160);
+      // Play: the loop reaches the out point and laps (one tick may cover several frames).
+      await act(async () => {
+        rig.transport().togglePlay();
+        for (let tick = 0; tick < 6 && !lapped(); tick += 1) rig.tick();
+      });
+      expect(lapped()).toBe(true);
+      // The lap asked for frame 0's segment: one install, and it built nothing.
+      await waitFor(() => expect(rig.compiles.length).toBe(beforeLap + 1), { timeout: 10_000 });
+      const lap = rig.compiles.at(-1);
+      expect(layersOf(lap?.plan)).toEqual(expectedOn(0));
+      expect(lap?.effectsBuilt).toBe(0);
+      expect(lap?.effectsWarmed ?? 0).toBeGreaterThan(0);
+      await act(async () => {
+        rig.tick();
+      });
+      const wrapped = rig.renders.slice(rendersBefore).find((entry) => entry.frame < 160);
+      expect(wrapped?.frame).toBe(0);
+      expect(layersOf(wrapped?.plan)).toEqual(expectedOn(0));
+      expect(rig.diagnostics()).toEqual([]);
+      expect(rig.reported).toEqual([]);
+    } finally {
+      rig.dispose();
+    }
+  }, 240_000);
 });

@@ -155,7 +155,7 @@ export interface GraphCompileResult {
    * on later builds nothing. Present on a structural compile only; null from it means
    * there is nothing to build ahead.
    */
-  readonly warmPlan?: (() => CompiledGraph | null) | undefined;
+  readonly warmPlan?: ((loop?: WarmLoop | null) => CompiledGraph | null) | undefined;
   /**
    * §T1537b — the timeline's structure, for the frame loop: null when no following cue list
    * cuts a structural setting, and then `compiled` is the document's plan as it always was.
@@ -163,6 +163,16 @@ export interface GraphCompileResult {
    * structural overrides at the playhead the frame loop last asked for — and this says which.
    */
   readonly timeline?: TimelineStructureLink | null | undefined;
+}
+
+/**
+ * §T1544b — the range playback is LOOPING, in frames, handed to `warmPlan` by the frame loop
+ * (null or absent: not looping). The lap renders frame `end` and wraps to `start`, so a
+ * crossing past `end` is never met and the segment at `start` is what comes next.
+ */
+export interface WarmLoop {
+  readonly start: number;
+  readonly end: number;
 }
 
 /** The frame reading a structure is decided on: its playhead, at its rate. */
@@ -990,18 +1000,26 @@ export function useGraphCompile(
       // into nothing.
       resetFeedback: change?.resetFeedback === true,
       documentBoundary: change?.documentBoundary === true,
-      warmPlan: () => {
+      warmPlan: (loop) => {
         /*
          * §T1537b — with a structural timeline, what to build ahead is the NEXT SEGMENT: its
          * plan is compiled here, off the frame, and kept for the crossing (`precompiled`
          * above), and its passes go to `backend.warmPasses`, so the crossing's install
          * builds nothing. Without one — or past the last crossing — §T1507b's layers.
+         *
+         * §T1544b — while LOOPING, the next segment met may be the wrap's: a crossing past
+         * the loop's out point is never reached, and the lap takes the playhead back to the
+         * in point, whose segment is then built ahead the same way (unless it is this one).
          */
         if (structure !== null) {
           const asked = segmentStore.get();
           const rate = asked === null ? projectFps(settings) : timelineRate(asked);
           const playhead = asked === null ? 0 : playheadFrame(asked.timeSeconds, rate);
-          const next = structure.nextAfter(playhead, rate);
+          let next = structure.nextAfter(playhead, rate);
+          if (loop !== null && loop !== undefined && (next === null || next.frameIndex > loop.end)) {
+            const wrapped = structure.atFrame(loop.start, rate);
+            next = wrapped === structure.atFrame(playhead, rate) ? null : { frameIndex: loop.start, state: wrapped };
+          }
           if (next !== null && request !== null) {
             const nextRequest = segmentRequestFor(request, next.state);
             const ahead = compileSafely(nextRequest).result;

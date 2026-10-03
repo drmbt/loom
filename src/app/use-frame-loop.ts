@@ -14,7 +14,7 @@ import type { FrameDriver, PointerSource } from "@runtime/execution/index.ts";
 import { planStructureSignature } from "@runtime/backend/index.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { createUniformAnimator } from "./animate-parameters.ts";
-import type { StructureFrame, TimelineStructureLink } from "./use-graph-compile.ts";
+import type { StructureFrame, TimelineStructureLink, WarmLoop } from "./use-graph-compile.ts";
 import { compileLatest } from "./compile-latest.ts";
 import { MAX_RETAINED_DIAGNOSTICS, retainDiagnostic } from "./diagnostic-buffer.ts";
 import { registerTransportCommands, transportHolderFor } from "./transport-commands.ts";
@@ -222,9 +222,11 @@ export interface FrameLoopOptions {
   /**
    * §T1507b — the plan `compiled` would be with every bypassed Layer on, from
    * `useGraphCompile`. Asked for once `compiled` is installed, in a task of its own, and
-   * handed to `backend.warmPasses`: switching a layer on then builds nothing.
+   * handed to `backend.warmPasses`: switching a layer on then builds nothing. §T1544b: it is
+   * handed the range being looped (null when not looping), so a timeline's wrap back to the
+   * in point is built ahead like any crossing.
    */
-  readonly warmPlan?: (() => CompiledGraph | null) | null | undefined;
+  readonly warmPlan?: ((loop?: WarmLoop | null) => CompiledGraph | null) | null | undefined;
   /**
    * §T1537b — the timeline's structure, from `useGraphCompile`: which segment `compiled` is
    * and which segment a frame needs. Null or absent: every frame takes the installed plan.
@@ -1000,7 +1002,8 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
             if (generation !== generationRef.current) return;
             let ahead: CompiledGraph | null;
             try {
-              ahead = warmPlan();
+              // §T1544b: the range being looped, so a wrap back to its start is built ahead too.
+              ahead = warmPlan(loopingRef.current ? rangeRef.current : null);
             } catch {
               ahead = null;
             }
