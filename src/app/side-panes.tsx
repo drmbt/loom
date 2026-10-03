@@ -48,6 +48,7 @@ import { useViewerSynthesis } from "./use-viewer-synthesis.ts";
 import { useNativeOutput } from "./use-native-output.ts";
 import { useViewCameraOverride } from "./use-view-camera.ts";
 import { useViewerMapping, VIEWER_MAPPING_HINT, VIEWER_MAPPING_HINT_ON } from "./use-viewer-mapping.ts";
+import type { LiveReads } from "./perform-mapping.ts";
 import { useViewerFly } from "./use-viewer-fly.ts";
 import { VIEWER_NO_CAMERA_MESSAGE } from "./viewer-commands.ts";
 import type { GraphActions, PortDragOrigin } from "./graph-pane.tsx";
@@ -536,6 +537,13 @@ export interface ViewerPaneProps {
   /** T756: publishes which node this viewer is presenting — the graph pane's request
    *  assembler pins it, so a hidden tile keeps rendering under the viewer's gaze. */
   interest?: import("@editor/viewer/index.ts").PreviewInterestStore | undefined;
+  /**
+   * §T1539b — the app's live reads (§T1525b: the frame last rendered, the compile's channels,
+   * the morphs in flight), which Edit mapping resolves a driven Corner Pin with, exactly as a
+   * perform window does. REQUIRED, as on the window: an optional getter is how a reader ends
+   * up resolving without it.
+   */
+  liveReads: LiveReads;
 }
 
 /**
@@ -577,6 +585,7 @@ export function ViewerPane({
   previewSinks,
   previewFps = 20,
   previewLongEdge = 192,
+  liveReads,
 }: ViewerPaneProps) {
   // T726: `documentIdentity` — WHICH document the pin below was made in. Taken from the
   // runtime because the runtime IS the loaded document (`adoptDocument`, `app.tsx`).
@@ -758,6 +767,8 @@ export function ViewerPane({
     invocation,
     output: selected === null ? null : { nodeId: selected.nodeId, size: selected.size },
     surfaceKey: canvasKey,
+    reads: liveReads,
+    plan: compiled,
   });
   editMappingRef.current = mapping.setEditing;
   /**

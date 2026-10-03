@@ -1,6 +1,9 @@
 import { synthesizeSourceReferenceEdges } from "@compiler/source-reference-edges.ts";
 import { bypassPassthroughPorts } from "@domain/graph/bypass.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
+import type { ChannelResolver, ParameterMorphs, ResolvedParameters } from "@domain/parameters/resolve.ts";
+import type { FrameEvaluationInput } from "@domain/types/frame.ts";
+import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { applyHomography, cornerPinNode, cornerPinQuads, invertMat3, outputToSquare, quadDegeneracy, squareToQuad } from "@nodes/definitions/corner-pin.ts";
@@ -203,6 +206,41 @@ function walkMappingTargets(
     current = follow === undefined ? undefined : into(current, follow);
   }
   return targets;
+}
+
+/**
+ * T1525b's live reads, as a perform window and the viewer pane hold them: the compile's
+ * channel resolver, the preset morphs in flight and the frame the loop last rendered.
+ * Getters, read at the moment of a resolve; no frame yet is the zero frame.
+ */
+export interface LiveReads {
+  readonly channels: () => ChannelResolver | undefined;
+  readonly morphs: () => ParameterMorphs | undefined;
+  readonly frame: () => FrameEvaluationInput | undefined;
+}
+
+/**
+ * A node's parameters as the one read path resolves them NOW (§V61) — at `at`, or the frame
+ * last rendered — with the channels and the morphs: what is on screen. §T1539b: the ONE
+ * resolve both the perform window and the viewer place a crossed Corner Pin with, so the two
+ * put the same handle at the same picture point (and a Window Out's own Screen, Fullscreen,
+ * Hide cursor and Fit are read through it too).
+ */
+export function liveParameters(
+  node: GraphNode,
+  graph: GraphDocument,
+  registry: NodeRegistryView,
+  reads: LiveReads,
+  at?: FrameEvaluationInput,
+): ResolvedParameters {
+  const options = createParameterReadOptions({
+    graph,
+    registry,
+    frame: at ?? reads.frame(),
+    channels: reads.channels(),
+    morphs: reads.morphs(),
+  });
+  return resolveParameters(node, registry.get(node.type), options);
 }
 
 /** The note a window in edit mode shows when there is nothing to draw. */

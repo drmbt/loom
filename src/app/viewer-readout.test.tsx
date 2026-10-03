@@ -376,7 +376,7 @@ it.each(["selector", "command"])("%s requests an uncompiled Syphon input through
   const view = render(
     <TooltipProvider><AppRuntimeContext.Provider value={runtime}>
       <ViewerPane compiled={{ outputs: [], diagnostics: [] } as never} graph={graph}
-        backend={null} probe={undefined} interest={interest} />
+        backend={null} probe={undefined} interest={interest} liveReads={{ channels: () => undefined, morphs: () => undefined, frame: () => undefined }} />
     </AppRuntimeContext.Provider></TooltipProvider>,
   );
   const select = screen.getByTestId("viewer-output-select") as HTMLSelectElement;
@@ -439,7 +439,7 @@ describe("a preview-off node gets a sentence, not a blank pane (T763)", () => {
     render(
       <TooltipProvider>
         <AppRuntimeContext.Provider value={runtime}>
-          <ViewerPane compiled={compiled as never} graph={graph} backend={null} pointer={null} probe={undefined} />
+          <ViewerPane compiled={compiled as never} graph={graph} backend={null} pointer={null} probe={undefined} liveReads={{ channels: () => undefined, morphs: () => undefined, frame: () => undefined }} />
         </AppRuntimeContext.Provider>
       </TooltipProvider>,
     );

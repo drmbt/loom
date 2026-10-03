@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SINK_TARGET_PORT } from "@compiler/index.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
-import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
 import type { ChannelResolver, ParameterMorphs, ResolvedParameters } from "@domain/parameters/resolve.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
@@ -24,7 +23,7 @@ import { browserPerformOpener, openPerformWindow } from "./perform-window.ts";
 import type { PerformWindowHandle } from "./perform-window.ts";
 import { MAPPING_OVERLAY_TOKENS, createMappingOverlay, mappingOverlayView } from "./perform-mapping-overlay.ts";
 import type { MappingOverlay, MappingOverlayView } from "./perform-mapping-overlay.ts";
-import { mappingAbsentNote, mappingTargetsOf, windowPicture } from "./perform-mapping.ts";
+import { liveParameters, mappingAbsentNote, mappingTargetsOf, windowPicture } from "./perform-mapping.ts";
 import type { MappingTarget, Size, WindowFit } from "./perform-mapping.ts";
 
 /**
@@ -142,17 +141,9 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
    * document the caller already read the node from — the same authored one (see above).
    */
   const parametersOf = useCallback(
-    (node: GraphNode, graph: GraphDocument, at?: FrameEvaluationInput): ResolvedParameters => {
-      const { registry, channels, morphs, frame } = readsRef.current;
-      const options = createParameterReadOptions({
-        graph,
-        registry,
-        frame: at ?? frame(),
-        channels: channels(),
-        morphs: morphs(),
-      });
-      return resolveParameters(node, registry.get(node.type), options);
-    },
+    // §T1539b: the resolve the viewer's Edit mapping places a crossed Corner Pin with too.
+    (node: GraphNode, graph: GraphDocument, at?: FrameEvaluationInput): ResolvedParameters =>
+      liveParameters(node, graph, readsRef.current.registry, readsRef.current, at),
     [],
   );
   const openRef = useRef(openWindow);

@@ -148,7 +148,7 @@ async function mount(options: { withCamera: boolean }) {
   render(
     <TooltipProvider>
       <AppRuntimeContext.Provider value={runtime}>
-        <ViewerPane compiled={compiled} graph={graph} backend={backend} orbits={orbits} />
+        <ViewerPane compiled={compiled} graph={graph} backend={backend} orbits={orbits} liveReads={{ channels: () => undefined, morphs: () => undefined, frame: () => undefined }} />
       </AppRuntimeContext.Provider>
     </TooltipProvider>,
   );

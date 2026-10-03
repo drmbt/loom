@@ -2280,6 +2280,8 @@ export function App({
                 previewSinks={previewSinks}
                 previewFps={runtime.settings.previewFps}
                 previewLongEdge={runtime.settings.previewLongEdge}
+                /* §T1539b: Edit mapping resolves a driven Corner Pin as the perform window does. */
+                liveReads={{ ...liveReads, frame: () => frameLoop.latestFrame()?.frame }}
               />
             </ErrorBoundary>
           }

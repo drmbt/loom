@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { useSyncExternalStore } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { compileGraph } from "@compiler/compile.ts";
+import { serializePresetBank } from "@domain/presets/bank.ts";
+import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import { DEFAULT_PROJECT_SETTINGS } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { StoredParameter } from "@domain/types/parameters.ts";
@@ -10,12 +12,17 @@ import { DEFAULT_BINDINGS } from "@editor/keymap/defaults.ts";
 import { KeymapProvider } from "@editor/keymap/keymap-provider.tsx";
 import { createKeymapStore } from "@editor/keymap/store.ts";
 import { gridOf, gridWarpPoint } from "@nodes/definitions/grid-warp.ts";
+import type { LoomBackend, PresentationOptions } from "@runtime/backend/backend-types.ts";
 import { TooltipProvider } from "@ui/primitives/tooltip.tsx";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { TIER_B_CAPABILITIES } from "@/examples/runner.ts";
 import { AppRuntimeContext } from "./app-context.ts";
 import { createAppRuntime } from "./app-runtime.ts";
+import { createDisplaySinkStore } from "./display-sinks.ts";
+import type { ScreenSource } from "./perform-screens.ts";
 import { ViewerPane } from "./side-panes.tsx";
+import { usePerformWindows } from "./use-perform-windows.ts";
+import type { PerformPlan } from "./use-perform-windows.ts";
 import { VIEWER_MAPPING_ABSENT_NOTE } from "./use-viewer-mapping.ts";
 
 /**
@@ -52,9 +59,11 @@ interface Stage {
   readonly parameters?: Readonly<Record<number, Record<string, StoredParameter>>>;
   /** Which chain index the viewer shows. */
   readonly shows: number;
+  /** §T1539b: the frame the loop last rendered, as the app's live reads hand it over. */
+  readonly frame?: () => FrameEvaluationInput | undefined;
 }
 
-async function setup({ chain, parameters = {}, shows }: Stage) {
+async function setup({ chain, parameters = {}, shows, frame = () => undefined }: Stage) {
   const runtime = createAppRuntime({ identityStorage: null, actor: { kind: "human", id: "tester", label: "Tester" } });
   const { bus, invocation } = runtime;
   const created = await bus.execute(
@@ -80,19 +89,22 @@ async function setup({ chain, parameters = {}, shows }: Stage) {
   );
   expect(created.status, JSON.stringify(created.diagnostics)).toBe("applied");
   const ids = chain.map((_, index) => created.output.createdIds[`$${String(index)}`] as NodeId);
-  // Every node a preview sink, as the editor's visible tiles make them (§V28b).
+  // Every node a preview sink, as the editor's visible tiles make them (§V28b) — but a Window
+  // Out, whose picture is its perform window's (a display sink, below).
   const compiled = compileGraph({
     graph: bus.store.getGraph(),
     registry: runtime.registry,
     settings: DEFAULT_PROJECT_SETTINGS,
     capabilities: TIER_B_CAPABILITIES,
-    sinks: ids.map((nodeId) => ({ nodeId, kind: "preview" as const })),
+    sinks: ids.filter((_, index) => chain[index] !== "window").map((nodeId) => ({ nodeId, kind: "preview" as const })),
   });
+  /** §T1539b: the app's `liveReads` shape — the runtime's own morph index, the given frame. */
+  const liveReads = { channels: () => undefined, morphs: () => runtime.flattened.current().morphs, frame };
   const keymap = createKeymapStore({ defaults: DEFAULT_BINDINGS, storage: null, platform: "other" });
   /** The document as the app hands it to the pane: `useGraphCompile`'s live subscription. */
   function Viewer() {
     const graph = useSyncExternalStore(bus.store.subscribe, bus.store.getGraph, bus.store.getGraph);
-    return <ViewerPane compiled={compiled} graph={graph} backend={null} />;
+    return <ViewerPane compiled={compiled} graph={graph} backend={null} liveReads={liveReads} />;
   }
   render(
     <TooltipProvider>
@@ -123,7 +135,7 @@ async function setup({ chain, parameters = {}, shows }: Stage) {
   const label = (index: number) => bus.store.getGraph().nodes[ids[index]!]?.label ?? "";
   const parameter = (index: number, key: string) => bus.store.getGraph().nodes[ids[index]!]?.parameters[key];
   const settle = () => act(async () => new Promise((resolve) => setTimeout(resolve, 40)));
-  return { runtime, bus, invocation, ids, host, toggle, layer, handle, handles, note, at, label, parameter, settle };
+  return { runtime, bus, invocation, ids, host, toggle, layer, handle, handles, note, at, label, parameter, settle, liveReads };
 }
 
 describe("§T1536b (viewer) — the viewer shows a Corner Pin: its own pins, no Fit step", () => {
@@ -393,22 +405,186 @@ describe("§T1536b (viewer) — Grid Warp → Corner Pin → Level on screen: th
     expect(stage.parameter(1, "p11")).toEqual(before);
   });
 
-  it("a Corner Pin in between whose corner is driven refuses by name: the viewer reads the document's values only", async () => {
-    const stage = await setup({
-      chain: ["checker", "gridWarp", "cornerPin", "level"],
-      parameters: { 2: { ...cornerPinValues, pintr: { mode: "bind", bindings: { bind: { kind: "bind", ref: "pinbr" }, static: { kind: "static", value: [0.95, 0.9] } } } } },
-      shows: 3,
-    });
+});
+
+/*
+ * §T1539b — A DRIVEN CORNER PIN IN BETWEEN IS PLACED, NOT REFUSED: the viewer resolves it with
+ * the window's resolve and the app's live reads (the frame last rendered, the morphs). The
+ * expected pixels go through the same hand-solved homography, built from the corner's value
+ * worked out here by hand — never from what the document stores.
+ */
+const EPOCH = "session-1";
+const liveFrame = (frameIndex: number): FrameEvaluationInput => ({
+  timeSeconds: frameIndex / 60,
+  deltaSeconds: 1 / 60,
+  frameIndex,
+  mode: "realtime",
+  randomSeed: 1,
+  absFrameIndex: frameIndex,
+  absTimeSeconds: frameIndex / 60,
+  absEpoch: EPOCH,
+});
+/** Pin Top Right's x as an expression of time: 0.5 + time, so 0.8 at frame 18 (0.3 s). The document stores 0.95. */
+const drivenPin: Record<string, StoredParameter> = {
+  ...cornerPinValues,
+  "pintr.x": { mode: "expression", bindings: { static: { kind: "static", value: 0.95 }, expression: { kind: "expression", source: "0.5 + time" } } },
+};
+const withTopRight = (topRight: P2): Quad4 => [PINS[0], PINS[1], topRight, PINS[3]];
+const expectGridThrough = (stage: Awaited<ReturnType<typeof setup>>, through: (point: P2) => [number, number]): void => {
+  for (let column = 0; column < 3; column += 1) {
+    for (let row = 0; row < 3; row += 1) {
+      expectNear(stage.at(stage.handle(`p${String(column)}${String(row)}`)), viewerPixel(through([column / 2, row / 2])));
+    }
+  }
+};
+
+describe("§T1539b — the viewer places a Grid Warp through a DRIVEN Corner Pin, as the window shows it", () => {
+  it("an expression corner: the handles sit where the expression's value at the last rendered frame puts them", async () => {
+    const stage = await setup({ chain: ["checker", "gridWarp", "cornerPin", "level"], parameters: { 2: drivenPin }, shows: 3, frame: () => liveFrame(18) });
     stage.toggle();
-    // The Corner Pin itself is still editable (its driven pin is locked, as on its tile) …
-    expect(stage.handle("pinbl")).not.toBeNull();
-    // … but nothing behind it can be placed through a quad that moves.
     await act(async () => {
       fireEvent.change(screen.getByTestId("viewer-mapping-target"), { target: { value: stage.ids[1] } });
     });
     expect(stage.note()).toBe(
-      `Corner Pin "${stage.label(2)}"'s corners are driven, and the viewer places handles from the document's values only, so Grid Warp "${stage.label(1)}"'s handles cannot be placed exactly here.`,
+      `Editing Grid Warp "${stage.label(1)}" through Corner Pin "${stage.label(2)}": drag a point, Option-click to add a column (with Shift a row), right-click a point to delete one. M or Esc to stop.`,
     );
-    expect(stage.handles()).toHaveLength(0);
+    const live = homographyThrough(EXTRACT, withTopRight([0.8, 0.9]));
+    expectGridThrough(stage, live);
+    // Not the stored value passing for the live one: through 0.95 the top-right point is elsewhere.
+    const stored = viewerPixel(pinned([1, 1]));
+    const drawn = stage.at(stage.handle("p22"));
+    expect(Math.hypot(drawn[0] - stored[0], drawn[1] - stored[1])).toBeGreaterThan(20);
+  });
+
+  it("a preset morph mid-fade on the Corner Pin: the half-way corner at frame 30 of a one-second fade", async () => {
+    const stage = await setup({ chain: ["checker", "gridWarp", "cornerPin", "level"], parameters: { 2: cornerPinValues }, shows: 3, frame: () => liveFrame(30) });
+    const pin = stage.label(2);
+    await act(async () => {
+      const added = await stage.bus.execute(
+        "graph.applyPatch",
+        {
+          baseRevision: stage.bus.store.getRevision(),
+          operations: [{
+            op: "addNode",
+            ref: "$bank",
+            type: "presets",
+            position: { x: 0, y: 300 },
+            parameters: {
+              targets: pin,
+              presets: serializePresetBank({ version: 1, presets: [{ name: "lower", values: { [pin]: { pintr: [0.75, 0.7] } } }] }),
+            },
+          }],
+        },
+        stage.invocation,
+      );
+      expect(added.status, JSON.stringify(added.diagnostics)).toBe("applied");
+      stage.bus.attachFrameClock(() => ({ epoch: EPOCH, absTimeSeconds: 0 }));
+      const recalled = await stage.bus.execute(
+        "preset.recall",
+        { nodeId: added.output.createdIds["$bank"] ?? "", name: "lower", morph: { seconds: 1, curve: "linear" } },
+        stage.invocation,
+      );
+      expect(recalled.status, JSON.stringify(recalled.diagnostics)).toBe("applied");
+    });
+    // The document already holds the destination; the picture at frame 30 is half-way there.
+    expect(stage.parameter(2, "pintr")).toEqual([0.75, 0.7]);
+    stage.toggle();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("viewer-mapping-target"), { target: { value: stage.ids[1] } });
+    });
+    expectGridThrough(stage, homographyThrough(EXTRACT, withTopRight([0.85, 0.8])));
+  });
+});
+
+/** No screens; one object, so the hook's screen memo holds across renders. */
+const NO_SCREENS: ScreenSource = {
+  screens: () => [],
+  editor: () => undefined,
+  permission: () => "unsupported",
+  request: () => Promise.resolve(),
+  subscribe: () => () => {},
+};
+
+describe("§T1539b — the window and the viewer put the same handle at the same picture point", () => {
+  it("a Grid Warp behind an expression-driven Corner Pin, edited on both at once", async () => {
+    const frame = () => liveFrame(18);
+    const stage = await setup({
+      chain: ["checker", "gridWarp", "cornerPin", "window"],
+      parameters: { 2: drivenPin, 3: { width: 1000, height: 1000, fit: "fit" } },
+      shows: 2,
+      frame,
+    });
+    const windowId = stage.ids[3]!;
+    const displaySinks = createDisplaySinkStore();
+    const backend = {
+      setFrameSource: () => {},
+      present: (_canvas: unknown, options: PresentationOptions) => ({ id: "p", outputId: options.outputId, setOutput: () => {}, dispose: () => {} }),
+    } as unknown as LoomBackend;
+    // A perform window 1600×1000 CSS px, in its own realm.
+    const openWindow = () => {
+      const child = document.body.appendChild(document.createElement("iframe")).contentWindow;
+      if (child !== null) {
+        Object.defineProperty(child, "innerWidth", { value: 1600, configurable: true });
+        Object.defineProperty(child, "innerHeight", { value: 1000, configurable: true });
+      }
+      return child;
+    };
+    const perform = renderHook(
+      ({ plan }: { plan: PerformPlan | null }) =>
+        usePerformWindows({
+          bus: stage.bus,
+          backend,
+          plan,
+          displaySinks,
+          openWindow,
+          screenSource: NO_SCREENS,
+          registry: stage.runtime.registry,
+          ...stage.liveReads,
+          invocation: stage.invocation,
+        }),
+      { initialProps: { plan: null as PerformPlan | null } },
+    );
+    await act(async () => {
+      expect((await stage.bus.execute("perform.toggle", { nodeIds: [windowId] }, stage.invocation)).status).toBe("applied");
+    });
+    const plan = compileGraph({
+      graph: stage.bus.store.getGraph(),
+      registry: stage.runtime.registry,
+      settings: DEFAULT_PROJECT_SETTINGS,
+      capabilities: TIER_B_CAPABILITIES,
+      sinks: displaySinks.get(),
+    });
+    act(() => perform.rerender({ plan }));
+    const child = perform.result.current.windows[0];
+    if (child === undefined) throw new Error("no perform window opened");
+    act(() => {
+      perform.result.current.surface.setEditingMapping(windowId, true);
+      perform.result.current.surface.chooseMapping(windowId, stage.ids[1]!);
+    });
+    stage.toggle();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("viewer-mapping-target"), { target: { value: stage.ids[1] } });
+    });
+    /*
+     * Each surface's pixels back to the picture, by hand. The viewer: its letterbox
+     * (`fromViewerPixel`). The window: the 1000×1000 bitmap contained in 1600×1000 is x
+     * 300..1300; Fit "fit" of the 16:9 input scaled the height by 0.5625 about the centre.
+     */
+    const fromWindowPixel = ([x, y]: readonly [number, number]): [number, number] => [(x - 300) / 1000, (1 - y / 1000 - 0.5) / 0.5625 + 0.5];
+    const windowAt = (key: string): [number, number] => {
+      const element = child.document.querySelector<HTMLElement>(`[data-testid="perform-mapping-handle-${key}"]`);
+      expect(element, `window handle ${key}`).not.toBeNull();
+      return [Number.parseFloat(element!.style.left), Number.parseFloat(element!.style.top)];
+    };
+    const live = homographyThrough(EXTRACT, withTopRight([0.8, 0.9]));
+    for (let column = 0; column < 3; column += 1) {
+      for (let row = 0; row < 3; row += 1) {
+        const key = `p${String(column)}${String(row)}`;
+        const fromViewer = fromViewerPixel(stage.at(stage.handle(key)));
+        expectNear(fromViewer, fromWindowPixel(windowAt(key)));
+        // And both are the expression's value, not some other agreement.
+        expectNear(fromViewer, live([column / 2, row / 2]));
+      }
+    }
   });
 });

@@ -135,6 +135,7 @@ async function mount(kind: "scene" | "texture") {
           graph={graph}
           backend={backend}
           previewSinks={{ set: (refs) => sinkRefs.push(refs) }}
+          liveReads={{ channels: () => undefined, morphs: () => undefined, frame: () => undefined }}
         />
       </AppRuntimeContext.Provider>
     </TooltipProvider>,

@@ -16,7 +16,7 @@ describe("native output toolbar", () => {
     const runtime = createAppRuntime({ identityStorage: null, actor: { kind: "human", id: "test", label: "Test" } });
     try {
       render(<TooltipProvider><AppRuntimeContext.Provider value={runtime}>
-        <ViewerPane compiled={null} graph={runtime.bus.store.getGraph()} backend={null} pointer={null} probe={undefined} />
+        <ViewerPane compiled={null} graph={runtime.bus.store.getGraph()} backend={null} pointer={null} probe={undefined} liveReads={{ channels: () => undefined, morphs: () => undefined, frame: () => undefined }} />
       </AppRuntimeContext.Provider></TooltipProvider>);
       const button = screen.getByRole("button", { name: "Stop native SDR output" });
       expect(button.textContent).toBe("SDR");
