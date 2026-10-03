@@ -205,7 +205,8 @@ export function createIndexedDbFileHandleStore(): RetainedFileHandleStore {
   const open = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
     if (typeof indexedDB === "undefined") { reject(new Error("IndexedDB is unavailable; file references cannot be retained.")); return; }
     let blocked = false;
-    const request = indexedDB.open("shaderloom.retained-files", 1);
+    // A new storage address after the Loom rename (§T899), so it carries the new name.
+    const request = indexedDB.open("loom.retained-files", 1);
     request.onupgradeneeded = () => request.result.createObjectStore("handles");
     request.onsuccess = () => { if (blocked) request.result.close(); else resolve(request.result); };
     request.onerror = () => reject(request.error ?? new Error("Retained file storage could not be opened."));
