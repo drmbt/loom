@@ -1,8 +1,11 @@
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
+import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId, Revision } from "../types/ids.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts";
 import { applyGraphPatch } from "../commands/apply-patch.ts";
-import { PRESETS_NODE_TYPE, parsePresetBank, serializePresetBank } from "./bank.ts";
+import { nodeByName } from "../graph/names.ts";
+import { PRESETS_NODE_TYPE, parsePresetBank, serializePresetBank, type Preset } from "./bank.ts";
+import { CUE_LIST_NODE_TYPE, parseCueList } from "./cue-list.ts";
 
 /**
  * T1502b (§T1398b S7) — `preset.delete`: one preset out of a bank, as one patch.
@@ -20,6 +23,11 @@ import { PRESETS_NODE_TYPE, parsePresetBank, serializePresetBank } from "./bank.
  * preset is ruling 4's case at the moment it fires — a GO is refused naming it
  * (`cue.preset.missing`), a shot skips it with a warning (`preset.recalls.unknown`) — so
  * nothing here rewrites another node's text.
+ *
+ * T1527b: but it SAYS so, now rather than mid-show. A delete that leaves a cue or a shot
+ * naming the preset is still applied (the delete is what was asked for, and one undo takes
+ * it back), with one warning per cue list or bank that still names it, naming each cue
+ * and each shot (`stillNamedBy`).
  *
  * A name the bank does not hold is REFUSED, naming the presets it does hold: "deleted"
  * with nothing removed would be a lie in the audit log (the recall's rule, §4.4).
@@ -53,14 +61,73 @@ export interface PresetDeleteOutput {
   remaining: readonly string[];
 }
 
-function diagnostic(code: string, message: string, nodeId?: NodeId, suggestion?: string): RuntimeDiagnostic {
+function diagnostic(
+  code: string,
+  message: string,
+  nodeId?: NodeId,
+  suggestion?: string,
+  severity: RuntimeDiagnostic["severity"] = "error",
+): RuntimeDiagnostic {
   return {
-    severity: "error",
+    severity,
     code,
     message,
     ...(nodeId === undefined ? {} : { nodeId }),
     ...(suggestion === undefined ? {} : { suggestion }),
   };
+}
+
+const quoted = (names: readonly string[]): string => names.map((name) => `"${name}"`).join(", ");
+
+/**
+ * T1527b — WHO STILL NAMES `preset` OF `bank` once it is gone: one warning per cue list
+ * whose cues name it and per bank whose shots recall it, each naming the cues or shots.
+ * Names resolve as GO and the recall planner resolve them (`nodeByName`), so a warning is
+ * given exactly where a GO would be refused or a shot would skip it. `remaining` is the
+ * bank's own presets after the delete: a shot in the same bank can recall it too.
+ */
+function stillNamedBy(graph: GraphDocument, bank: GraphNode, preset: string, remaining: readonly Preset[]): RuntimeDiagnostic[] {
+  const bankName = bank.label ?? bank.id;
+  const isThisBank = (name: string): boolean => nodeByName(graph, name) === bank.id;
+  const warnings: RuntimeDiagnostic[] = [];
+  for (const nodeId of Object.keys(graph.nodes).sort()) {
+    const node = graph.nodes[nodeId] as GraphNode;
+    const where = node.label ?? node.id;
+    if (node.type === CUE_LIST_NODE_TYPE) {
+      const parsed = parseCueList(node.parameters["cues"]);
+      const cues = parsed.ok ? parsed.list.cues.filter((cue) => cue.preset === preset && isThisBank(cue.bank)).map((cue) => cue.name) : [];
+      if (cues.length === 0) continue;
+      const one = cues.length === 1;
+      warnings.push(
+        diagnostic(
+          "preset.delete.cued",
+          `Cue list "${where}": ${one ? "cue" : "cues"} ${quoted(cues)} still ${one ? "names" : "name"} "${preset}" (${bankName}), which is gone; GO on ${one ? "it" : "them"} will be refused.`,
+          node.id,
+          "Point those cues at another preset, or undo the delete.",
+          "warning",
+        ),
+      );
+    } else if (node.type === PRESETS_NODE_TYPE) {
+      const parsed = node.id === bank.id ? { ok: true as const, bank: { presets: remaining } } : parsePresetBank(node.parameters["presets"]);
+      const shots = parsed.ok
+        ? parsed.bank.presets
+            .filter((each) => (each.recalls ?? []).some((recall) => recall.preset === preset && isThisBank(recall.bank)))
+            .map((each) => each.name)
+        : [];
+      if (shots.length === 0) continue;
+      const one = shots.length === 1;
+      warnings.push(
+        diagnostic(
+          "preset.delete.recalled",
+          `Bank "${where}": ${one ? "preset" : "presets"} ${quoted(shots)} still ${one ? "recalls" : "recall"} "${preset}" (${bankName}), which is gone; recalling ${one ? "it" : "them"} will skip it.`,
+          node.id,
+          "Take that entry out of their recalls, or undo the delete.",
+          "warning",
+        ),
+      );
+    }
+  }
+  return warnings;
 }
 
 /** A context whose `apply` always opens a fresh undo group (§V34 "unless explicitly split"). */
@@ -128,7 +195,7 @@ export function registerPresetDeleteCommand(bus: LoomBus): void {
       return {
         status: outcome.status,
         revision: outcome.revision ?? revision,
-        diagnostics: outcome.diagnostics ?? [],
+        diagnostics: [...(outcome.diagnostics ?? []), ...(ok ? stillNamedBy(context.graph, node, name, presets) : [])],
         ...(outcome.undoGroupId === undefined ? {} : { undoGroupId: outcome.undoGroupId }),
         output: { ok, preset: ok ? name : null, remaining: ok ? presets.map((preset) => preset.name) : names },
       };

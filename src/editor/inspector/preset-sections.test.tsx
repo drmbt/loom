@@ -140,6 +140,25 @@ describe("T1501b — the bank's section: Store, Recall, Delete", () => {
     expect(presetNames(runtime, bank)).toEqual(["preset1"]);
     expect(within(section()).queryByRole("alert")).toBeNull();
   });
+
+  it("T1527b: Delete of a preset a cue still names deletes it and says which cue now points at nothing", async () => {
+    const cues = JSON.stringify({ version: 1, cues: [{ name: "7", bank: "looks", preset: "soft" }] });
+    const { runtime, ids } = await documentWith([
+      add("blur", "blur", "blur1", { size: 4 }),
+      add("looks", "presets", "looks", { targets: "blur1", presets: serializePresetBank({ version: 1, presets: [{ name: "soft", values: { blur1: { size: 4 } } }] }) }),
+      add("set", "cueList", "set", { cues }),
+    ]);
+    const bank = ids["$looks"]!;
+    mount(runtime, bank);
+    const section = () => screen.getByRole("region", { name: "Presets bank" });
+
+    await press(within(section()).getByRole("button", { name: "Delete soft" }));
+    expect(presetNames(runtime, bank)).toEqual([]);
+    expect(within(section()).queryByRole("alert")).toBeNull();
+    expect(within(section()).getByRole("status").textContent).toBe(
+      'Cue list "set": cue "7" still names "soft" (looks), which is gone; GO on it will be refused.',
+    );
+  });
 });
 
 describe("T1501b — the cue list's section: the table, the standby, GO and BACK", () => {

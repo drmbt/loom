@@ -9,7 +9,9 @@ import { alice, contextFor } from "../commands/test-support.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { testNodeDefinitions } from "../../nodes/registry/test-nodes.ts";
 import { presetsNode } from "../../nodes/definitions/presets.ts";
+import { cueListNode } from "../../nodes/definitions/cue-list.ts";
 import { parsePresetBank, type Preset } from "./bank.ts";
+import { serializeCueList, type Cue } from "./cue-list.ts";
 import { presetBankNode } from "./test-support.ts";
 
 /**
@@ -21,7 +23,7 @@ import { presetBankNode } from "./test-support.ts";
  * presets, what the remaining ones still recall, the undo stack and the audit ring.
  */
 
-const registry = createNodeRegistry([...testNodeDefinitions, presetsNode]).view();
+const registry = createNodeRegistry([...testNodeDefinitions, presetsNode, cueListNode]).view();
 
 const LOOKS: readonly Preset[] = [
   { name: "a", values: { blur1: { radius: 10 } } },
@@ -29,9 +31,17 @@ const LOOKS: readonly Preset[] = [
   { name: "c", values: { blur1: { radius: 30 } } },
 ];
 
-function harness(bank: GraphNode = presetBankNode("bank", "looks", "blur1", LOOKS, { current: "b" })): { bus: LoomBus; store: GraphStore } {
+function harness(
+  bank: GraphNode = presetBankNode("bank", "looks", "blur1", LOOKS, { current: "b" }),
+  others: readonly GraphNode[] = [],
+): { bus: LoomBus; store: GraphStore } {
   const blur: GraphNode = { id: "blur", type: "test.blur", label: "blur1", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { radius: 4 } };
-  const initialGraph: GraphDocument = { revision: 0, nodes: { blur, [bank.id]: bank }, edges: {}, groups: {} };
+  const initialGraph: GraphDocument = {
+    revision: 0,
+    nodes: { blur, [bank.id]: bank, ...Object.fromEntries(others.map((other) => [other.id, other])) },
+    edges: {},
+    groups: {},
+  };
   const store = createGraphStore({ ids: createSequentialIdFactory("t"), now: () => "2026-10-02T00:00:00.000Z", initialGraph });
   const { bus } = createDomainBus({ store, registry });
   return { bus, store };
@@ -100,5 +110,68 @@ describe("preset.delete removes one preset as one undoable step (T1502b)", () =>
     expect(malformed.status).toBe("rejected");
     expect(malformed.diagnostics.map((each) => each.code)).toEqual(["preset.bank.malformed"]);
     expect(store.view.getGraph().nodes["bank"]?.parameters["presets"]).toBe("{ not json");
+  });
+});
+
+/**
+ * T1527b — a delete that leaves a cue or a shot pointing at nothing SAYS so when it happens.
+ * Without it the first anyone hears of it is a GO refused mid-show. It warns rather than
+ * refuses: the delete is what was asked for, and one undo takes it back.
+ */
+describe("preset.delete names every cue and shot that still names the deleted preset (T1527b)", () => {
+  const cueList = (id: string, label: string, cues: readonly Cue[]): GraphNode => ({
+    id,
+    type: "cueList",
+    label,
+    definitionVersion: 1,
+    position: { x: 0, y: 0 },
+    parameters: { cues: serializeCueList({ version: 1, cues }) },
+  });
+  // "b" in ANOTHER bank is a different preset: cues and shots naming fx's "b" must not warn.
+  const other = presetBankNode("fxBank", "fx", "blur1", [{ name: "b", values: {} }]);
+  const shots = presetBankNode("shotBank", "shots", "", [
+    { name: "drop", values: {}, recalls: [{ bank: "looks", preset: "b" }] },
+    { name: "calm", values: {}, recalls: [{ bank: "fx", preset: "b" }] },
+    { name: "riot", values: {}, recalls: [{ bank: "fx", preset: "b" }, { bank: "looks", preset: "b" }] },
+  ]);
+  // A shot in the deleted preset's OWN bank recalls it too.
+  const looks = presetBankNode("bank", "looks", "blur1", [...LOOKS, { name: "d", values: {}, recalls: [{ bank: "looks", preset: "b" }] }]);
+  const set = cueList("setList", "set", [
+    { name: "1", bank: "looks", preset: "a" },
+    { name: "2", bank: "looks", preset: "b" },
+    { name: "3", bank: "fx", preset: "b" },
+    { name: "4", bank: "looks", preset: "b" },
+  ]);
+  const encore = cueList("encoreList", "encore", [{ name: "e1", bank: "looks", preset: "b" }]);
+  const clean = cueList("cleanList", "clean", [{ name: "x", bank: "fx", preset: "b" }]);
+
+  it("applies the delete and warns once per cue list and bank, naming each cue and each shot", async () => {
+    const { bus, store } = harness(looks, [other, shots, set, encore, clean]);
+    const deleted = await bus.execute("preset.delete", { nodeId: "bank", name: "b" }, contextFor(alice));
+
+    expect(deleted.status).toBe("applied");
+    expect(presetsOf(store).map((preset) => preset.name)).toEqual(["a", "c", "d"]);
+    expect(deleted.diagnostics.map((each) => [each.severity, each.code, each.nodeId, each.message])).toEqual([
+      ["warning", "preset.delete.recalled", "bank", 'Bank "looks": preset "d" still recalls "b" (looks), which is gone; recalling it will skip it.'],
+      ["warning", "preset.delete.cued", "encoreList", 'Cue list "encore": cue "e1" still names "b" (looks), which is gone; GO on it will be refused.'],
+      ["warning", "preset.delete.cued", "setList", 'Cue list "set": cues "2", "4" still name "b" (looks), which is gone; GO on them will be refused.'],
+      ["warning", "preset.delete.recalled", "shotBank", 'Bank "shots": presets "drop", "riot" still recall "b" (looks), which is gone; recalling them will skip it.'],
+    ]);
+    // The warning is about the document as the delete left it: the cue really is refused now.
+    const go = await bus.execute("cue.fire", { nodeId: "setList", cue: "2" }, contextFor(alice));
+    expect(go.status).toBe("rejected");
+  });
+
+  it("says nothing when no cue or shot names the deleted preset", async () => {
+    const { bus } = harness(looks, [other, shots, set, encore, clean]);
+    const deleted = await bus.execute("preset.delete", { nodeId: "bank", name: "c" }, contextFor(alice));
+    expect(deleted.status).toBe("applied");
+    expect(deleted.diagnostics).toEqual([]);
+  });
+
+  it("warns about nothing on a refusal: nothing was deleted", async () => {
+    const { bus } = harness(looks, [set]);
+    const refused = await bus.execute("preset.delete", { nodeId: "bank", name: "zz" }, contextFor(alice));
+    expect(refused.diagnostics.map((each) => each.code)).toEqual(["preset.delete.unknown"]);
   });
 });

@@ -84,6 +84,15 @@ export function PresetBankSection({ nodeId, targets, presets, current, graph, bu
     });
   };
 
+  // T1527b: a delete that leaves a cue or a shot naming the preset is applied, and says which.
+  const remove = (preset: string): void => {
+    void bus.execute(PRESET_DELETE_COMMAND, { nodeId, name: preset }, context).then((result) => {
+      if (refused(result)) return;
+      const warnings = result.diagnostics.filter((entry) => entry.severity === "warning").map((entry) => entry.message);
+      if (warnings.length > 0) setSaid({ text: warnings.join(" "), error: false });
+    });
+  };
+
   const listed = new Set(parsePresetTargets(targets).filter((target) => target.key === undefined).map((target) => target.node));
   const candidates = Object.values(graph.nodes)
     .filter((node) => node.id !== nodeId)
@@ -128,7 +137,7 @@ export function PresetBankSection({ nodeId, targets, presets, current, graph, bu
             <Button variant="outline" aria-label={`Recall ${preset}`} onClick={() => void bus.execute(PRESET_RECALL_COMMAND, { nodeId, name: preset }, context).then(refused)}>
               Recall
             </Button>
-            <Button aria-label={`Delete ${preset}`} onClick={() => void bus.execute(PRESET_DELETE_COMMAND, { nodeId, name: preset }, context).then(refused)}>
+            <Button aria-label={`Delete ${preset}`} onClick={() => remove(preset)}>
               Delete
             </Button>
           </div>
