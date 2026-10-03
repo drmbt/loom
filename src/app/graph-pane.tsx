@@ -36,7 +36,7 @@ import {
   lensMarker,
   usePreviewViews,
 } from "@editor/viewer/index.ts";
-import type { PreviewGizmoTile } from "@editor/viewer/index.ts";
+import type { GridLineActions, PreviewGizmoTile } from "@editor/viewer/index.ts";
 import { prefixedOrbitStore } from "@editor/viewer/index.ts";
 import { ValuePlot } from "@editor/nodes/value-plot.tsx";
 import { plotValues } from "@editor/nodes/value-function.ts";
@@ -497,6 +497,28 @@ function GraphPaneInner({
     () => createVec3GizmoStore({ editor: parameterEditor }),
     [parameterEditor],
   );
+
+  /**
+   * §T1534b — a Grid Warp's row/column insert and delete from its tile, on the pane's bus
+   * (a component's internals are edited through the session bus, as every other gesture
+   * here). A refusal (a cap, a driven grid) reaches the same rejection banner a refused
+   * patch does.
+   */
+  const gridLines = useMemo<GridLineActions>(() => {
+    const report = (result: { status: CommandStatus; revision: number; diagnostics: RuntimeDiagnostic[] }): void => {
+      if (result.status === "applied") return;
+      const { status, revision, diagnostics } = result;
+      onPatchResult({ status, revision, diagnostics, output: { status, revision, diagnostics, appliedOperations: 0, createdIds: {} } });
+    };
+    return {
+      insert: (nodeId, axis, at) => {
+        void bus.execute("gridWarp.insertLine", { nodeId, axis, at }, invocation).then(report);
+      },
+      remove: (nodeId, axis, index) => {
+        void bus.execute("gridWarp.deleteLine", { nodeId, axis, index }, invocation).then(report);
+      },
+    };
+  }, [bus, invocation, onPatchResult]);
   /**
    * The orbit is read HERE rather than baked into the map above, because it is the one
    * input that changes without notifying anybody: `PreviewOrbitStore.apply` moves the
@@ -1085,6 +1107,7 @@ function GraphPaneInner({
         tile={gizmoTile}
         store={gizmoStore}
         active={gizmoTiles.size > 0}
+        lines={gridLines}
       />
       <PortDragBridge onChange={onPortDragChange} />
     </div>

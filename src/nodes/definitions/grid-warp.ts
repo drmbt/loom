@@ -737,7 +737,7 @@ export const gridWarpNode: NodeDefinition = {
   title: "Grid Warp",
   category: "filter",
   description:
-    "Warps the image through a grid of control points, to map it onto a curved or irregular surface: drag each point to where that part of the picture must land, and the picture follows a smooth (or bilinear) surface between them. Up to 8 × 8 points; changing the grid size keeps the warp, placing the new points on the current surface. Outside the grid is transparent, and a folded grid renders nothing and says where. Drag the points on the node's own preview. For a surface also seen in perspective, follow it with a Corner Pin: moving the corners there carries the whole warp.",
+    "Warps the image through a grid of control points, to map it onto a curved or irregular surface: drag each point to where that part of the picture must land, and the picture follows a smooth (or bilinear) surface between them. Up to 8 × 8 points; changing the grid size keeps the warp, placing the new points on the current surface. Outside the grid is transparent, and a folded grid renders nothing and says where. Drag the points on the node's own preview; Option-click (Alt-click) it to insert a column through that place, with Shift a row, and right-click a point to delete its row or column — the picture stays where it is. For a surface also seen in perspective, follow it with a Corner Pin: moving the corners there carries the whole warp.",
   tags: ["mapping", "projection", "warp", "mesh warp", "grid warp", "curved surface"],
   inputs: [{ id: "input", label: "Input", type: RGBA_TEXTURE }],
   outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],

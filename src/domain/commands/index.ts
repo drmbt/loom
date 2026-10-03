@@ -13,6 +13,7 @@ import { registerSettingsCommands } from "./settings-commands.ts";
 import { registerPresetCommands } from "../presets/commands.ts";
 import { registerCueCommands } from "../presets/cue-commands.ts";
 import { registerPresetDeleteCommand } from "../presets/delete-command.ts";
+import { registerGridWarpCommands } from "./grid-warp-commands.ts";
 
 export {
   CapabilityDeniedError,
@@ -132,6 +133,8 @@ export function createDomainBus(options: DomainBusOptions = {}): { bus: LoomBus;
   registerCueCommands(bus);
   // T1502b: Delete, the third of a bank's three edits, in its own file (`delete-command.ts`).
   registerPresetDeleteCommand(bus);
+  // T1534b: a Grid Warp's row/column insert and delete — document edits, so every bus has them.
+  registerGridWarpCommands(bus);
   return { bus, store };
 }
 export { LOOM_CLIPBOARD_TYPE, decodeLoomClipboard, encodeLoomClipboard } from "./loom-clipboard.ts";

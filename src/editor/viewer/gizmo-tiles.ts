@@ -2,6 +2,7 @@ import type { GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import { effectiveParameterSchema, resolveParameters } from "@domain/parameters/resolve.ts";
+import { gridOf, gridWarpNode } from "@nodes/definitions/grid-warp.ts";
 import type { OrbitCameraBasis } from "@runtime/previews/index.ts";
 import type { PreviewGizmoTile } from "./preview-gizmo-overlay.tsx";
 import { gizmoHandlesFor, offersPictureHandles, pictureHandlesFor } from "./vec3-gizmo-store.ts";
@@ -63,7 +64,14 @@ export function gizmoTilesFor(
     };
     const handles = basis === undefined ? pictureHandlesFor(facts) : gizmoHandlesFor(facts);
     if (handles.length === 0) continue;
-    tiles.set(nodeId, basis === undefined ? { source: output.size, handles } : { basis, source: output.size, handles });
+    if (basis !== undefined) {
+      tiles.set(nodeId, { basis, source: output.size, handles });
+      continue;
+    }
+    // §T1534b — a Grid Warp's tile also carries its surface (the effective grid), so the
+    // overlay can find the line under a click and preview it before it is inserted.
+    const grid = node.type === gridWarpNode.type ? gridOf(resolved.values) : undefined;
+    tiles.set(nodeId, grid === undefined ? { source: output.size, handles } : { source: output.size, handles, grid });
   }
   return tiles;
 }

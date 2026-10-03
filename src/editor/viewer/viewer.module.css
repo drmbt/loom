@@ -188,6 +188,37 @@
 }
 
 /*
+ * §T1534b — a Grid Warp's picture while Option/Alt is held: a press inserts a line there.
+ * Mounted only while the modifier is down, so it never takes a plain press from the node.
+ */
+.gridSurface {
+  position: absolute;
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+.gridSurface[data-full="true"] {
+  cursor: not-allowed;
+}
+
+/* The line a press would insert, drawn along the warped surface. */
+.gridLine {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.gridLine polyline {
+  fill: none;
+  stroke: var(--signal);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+/*
  * §T1311b(c) — THE CORNER GIZMO, drawn over the top-right of the viewer's picture.
  *
  * The corner, and not the bar: it has to be read WHILE flying, in the same glance as the

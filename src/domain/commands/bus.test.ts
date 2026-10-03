@@ -91,6 +91,9 @@ describe("command bus — registration surface (§V39)", () => {
       "graph.removeNodes",
       "graph.revertTransaction",
       "graph.undo",
+      // T1534b: a Grid Warp's row/column insert and delete at a place on its surface.
+      "gridWarp.deleteLine",
+      "gridWarp.insertLine",
       // T1102: stacking order among overlapping nodes, persisted in `ui.z`.
       "node.bringToFront",
       "node.rename",

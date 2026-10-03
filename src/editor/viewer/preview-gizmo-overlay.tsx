@@ -1,11 +1,15 @@
-import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { useStoreApi } from "@xyflow/react";
 import type { ReactFlowState } from "@xyflow/react";
 import type { NodeId } from "@domain/types/ids.ts";
 import { fitInsideRegion } from "@editor/nodes/preview-fit.ts";
 import { cssVars } from "@editor/graph-canvas/css-vars.ts";
+import { GRID_WARP_MIN, gridWarpInverse, gridWarpPoint, parsePointKey } from "@nodes/definitions/grid-warp.ts";
+import type { GridAxis, WarpGrid } from "@nodes/definitions/grid-warp.ts";
+import { GRID_WARP_MAX } from "@nodes/shaders/grid-warp.wgsl.ts";
 import { slotScreenRect } from "@runtime/previews/index.ts";
+import { ContextMenuContent, ContextMenuItem, ContextMenuRoot, ContextMenuTrigger } from "@ui/primitives/context-menu.tsx";
 import type { OrbitCameraBasis, PreviewOrbit } from "@runtime/previews/index.ts";
 import { handleScreenPoint, pointerToPlane, tileCamera } from "./gizmo-projection.ts";
 import type { PictureRect, TileCamera } from "./gizmo-projection.ts";
@@ -81,6 +85,28 @@ import styles from "./viewer.module.css";
  * a 3D picture; a texture tile carries none and offers only picture handles. A pin past the
  * frame (overscan) is drawn past the picture, where its value puts it — it is still the
  * point the drag moves.
+ *
+ * ## §T1534b — a Grid Warp's rows and columns, inserted and deleted on its picture
+ *
+ * The gestures, and why these:
+ *
+ *  - OPTION/ALT + CLICK on the picture inserts a COLUMN through the clicked place;
+ *    OPTION/ALT + SHIFT + CLICK inserts a ROW. While the modifier is held the line that a
+ *    click would insert is drawn under the pointer, along the warped surface, so the
+ *    choice is visible before it is made. Alt is the tile's own key already (T675: the
+ *    camera key on a 3D tile, and the only modifier React Flow leaves free); a Grid Warp
+ *    tile has no camera, so on it alt means the grid's own tool — MadMapper's Alt+click.
+ *    The capture surface exists only while alt is down, so a plain press on the tile
+ *    still selects and drags the node exactly as before.
+ *  - RIGHT-CLICK ON A POINT opens "Delete column N" / "Delete row N" (MadMapper's Remove
+ *    Vertical / Horizontal; Stoner's select-a-point-then-Delete-Row). Right-click is not a
+ *    drag button, so the left-button drag of that same point is untouched.
+ *
+ * The click is in OUTPUT space; `gridWarpInverse` finds the grid coordinate under it on the
+ * mesh the shader draws, so the line lands where it looks like it lands, and a click off
+ * the surface does nothing. Both write through the bus (`gridWarp.insertLine`,
+ * `gridWarp.deleteLine`) as one undo step; the caps (2..8) are honoured before the press
+ * (no line is offered, the menu row is disabled with the reason) and refused by the command.
  */
 
 /** Everything one tile needs to place and drag its handles. */
@@ -95,6 +121,16 @@ export interface PreviewGizmoTile {
   /** The synthesized target's pixel size — §V118's letterbox input. */
   readonly source: readonly [number, number];
   readonly handles: readonly GizmoHandle[];
+  /** §T1534b: a Grid Warp's effective grid — its rows and columns can be inserted and deleted here. */
+  readonly grid?: WarpGrid | undefined;
+}
+
+/** §T1534b — what the overlay asks of the document for a Grid Warp's lines. The caller dispatches on the bus. */
+export interface GridLineActions {
+  /** Insert a line at `at`, 0..1 along the surface as the grid lies. */
+  insert(nodeId: NodeId, axis: GridAxis, at: number): void;
+  /** Delete column or row `index` (from 0). */
+  remove(nodeId: NodeId, axis: GridAxis, index: number): void;
 }
 
 export interface PreviewGizmoOverlaysProps {
@@ -110,6 +146,8 @@ export interface PreviewGizmoOverlaysProps {
   store: Vec3GizmoStore;
   /** False when no node in this document offers a handle: the frame loop stays off. */
   active: boolean;
+  /** §T1534b: a Grid Warp's line insert/delete. Absent, its tile offers only the point drags. */
+  lines?: GridLineActions | undefined;
 }
 
 interface Placement {
@@ -121,9 +159,28 @@ interface Placement {
   readonly x: number;
   readonly y: number;
   readonly zoom: number;
+  /** §T1534b: the tile's Grid Warp grid, or null on every other tile. */
+  readonly grid: WarpGrid | null;
 }
 
 const EMPTY: readonly Placement[] = [];
+
+/** By value: a caller that derives the grid afresh per frame must not re-render the layer per frame. */
+function sameGrid(a: WarpGrid | null, b: WarpGrid | null): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  const sameNumbers = (x: readonly number[] | undefined, y: readonly number[] | undefined): boolean =>
+    x === y || (x !== undefined && y !== undefined && x.length === y.length && x.every((value, index) => value === y[index]));
+  return (
+    a.columns === b.columns &&
+    a.rows === b.rows &&
+    a.smooth === b.smooth &&
+    a.points.length === b.points.length &&
+    a.points.every((point, index) => sameNumbers(point, b.points[index])) &&
+    sameNumbers(a.us, b.us) &&
+    sameNumbers(a.vs, b.vs)
+  );
+}
 
 function samePlacements(a: readonly Placement[], b: readonly Placement[]): boolean {
   if (a.length !== b.length) return false;
@@ -137,6 +194,7 @@ function samePlacements(a: readonly Placement[], b: readonly Placement[]): boole
       side.camera === null ? [] : [...side.camera.pose.eye, ...side.camera.pose.lookAt];
     return (
       left.nodeId === right.nodeId &&
+      sameGrid(left.grid, right.grid) &&
       left.handle.key === right.handle.key &&
       left.handle.refusal === right.handle.refusal &&
       left.handle.value.length === right.handle.value.length &&
@@ -154,7 +212,7 @@ function samePlacements(a: readonly Placement[], b: readonly Placement[]): boole
   });
 }
 
-export function PreviewGizmoOverlays({ bounds, tile, store, active }: PreviewGizmoOverlaysProps) {
+export function PreviewGizmoOverlays({ bounds, tile, store, active, lines }: PreviewGizmoOverlaysProps) {
   const boxes = useSyncExternalStore(bounds.subscribe, bounds.snapshot, bounds.snapshot);
 
   const select = useMemo(
@@ -183,13 +241,14 @@ export function PreviewGizmoOverlays({ bounds, tile, store, active }: PreviewGiz
             { x: tx, y: ty, zoom },
           );
           const camera = facts.basis === undefined ? null : tileCamera(facts.basis, facts.orbit);
+          const grid = facts.grid ?? null;
           for (const handle of facts.handles) {
             if (handle.space === "picture") {
               // §T1491b — y UP in the value, y DOWN on the screen.
               const [u, v] = handle.value;
               const x = rect.x + u * rect.width;
               const y = rect.y + (1 - v) * rect.height;
-              placements.push({ nodeId: id, handle, camera, rect, x, y, zoom });
+              placements.push({ nodeId: id, handle, camera, rect, x, y, zoom, grid });
               continue;
             }
             if (camera === null) continue;
@@ -198,7 +257,7 @@ export function PreviewGizmoOverlays({ bounds, tile, store, active }: PreviewGiz
             // and dollies, so the value is one wheel turn from being reachable; a handle
             // clamped to the edge would claim a position the parameter does not have.
             if (!point.visible) continue;
-            placements.push({ nodeId: id, handle, camera, rect, x: point.x, y: point.y, zoom });
+            placements.push({ nodeId: id, handle, camera, rect, x: point.x, y: point.y, zoom, grid });
           }
         }
         return placements;
@@ -240,17 +299,158 @@ export function PreviewGizmoOverlays({ bounds, tile, store, active }: PreviewGiz
   const placements = useSyncExternalStore(subscribe, read, read);
 
   const layer = useRef<HTMLDivElement | null>(null);
+  /** §T1534b: one line surface per Grid Warp tile, from its first placement. */
+  const surfaces = useMemo(() => {
+    const seen = new Map<NodeId, GridSurface>();
+    for (const { nodeId, rect, grid } of placements) if (grid !== null && !seen.has(nodeId)) seen.set(nodeId, { nodeId, rect, grid });
+    return [...seen.values()];
+  }, [placements]);
+  const modifiers = useModifierKeys(lines !== undefined && surfaces.length > 0);
   if (placements.length === 0) return null;
   return (
     <div ref={layer} className={styles.previewChrome} data-testid="preview-gizmo-overlays">
+      {/* Under the handles, so a handle stays draggable with alt held. */}
+      {lines !== undefined && modifiers.alt
+        ? surfaces.map((surface) => (
+            <GridLineSurface
+              key={surface.nodeId}
+              surface={surface}
+              axis={modifiers.shift ? "row" : "column"}
+              lines={lines}
+              layer={layer}
+            />
+          ))
+        : null}
       {placements.map((placement) => (
         <GizmoHandleControl
           key={`${placement.nodeId} ${placement.handle.key}`}
           placement={placement}
           store={store}
           layer={layer}
+          lines={lines}
         />
       ))}
+    </div>
+  );
+}
+
+/**
+ * §T1534b — whether alt and shift are down, while any tile could use them. Read off every
+ * key and pointer event (a pointer move carries the modifiers, so a key released while the
+ * window was elsewhere corrects itself on the next move), and dropped on blur.
+ */
+function useModifierKeys(enabled: boolean): { readonly alt: boolean; readonly shift: boolean } {
+  const [state, setState] = useState(NO_MODIFIERS);
+  useEffect(() => {
+    if (!enabled) return;
+    const update = (event: KeyboardEvent | PointerEvent): void => {
+      setState((previous) =>
+        previous.alt === event.altKey && previous.shift === event.shiftKey ? previous : { alt: event.altKey, shift: event.shiftKey },
+      );
+    };
+    const reset = (): void => setState(NO_MODIFIERS);
+    window.addEventListener("keydown", update);
+    window.addEventListener("keyup", update);
+    window.addEventListener("pointermove", update);
+    window.addEventListener("blur", reset);
+    return () => {
+      window.removeEventListener("keydown", update);
+      window.removeEventListener("keyup", update);
+      window.removeEventListener("pointermove", update);
+      window.removeEventListener("blur", reset);
+    };
+  }, [enabled]);
+  return enabled ? state : NO_MODIFIERS;
+}
+
+const NO_MODIFIERS: { readonly alt: boolean; readonly shift: boolean } = { alt: false, shift: false };
+
+interface GridSurface {
+  readonly nodeId: NodeId;
+  readonly rect: PictureRect;
+  readonly grid: WarpGrid;
+}
+
+/** Points along a line of the grid, every sub-quad vertex the shader draws: 16 per cell. */
+const LINE_STEPS_PER_CELL = 16;
+
+/**
+ * §T1534b — a Grid Warp's picture while alt is held: a press inserts the line through the
+ * pressed place, and hovering draws that line first. Only mounted while alt is down, so it
+ * never takes a plain press from the node.
+ */
+function GridLineSurface({
+  surface,
+  axis,
+  lines,
+  layer,
+}: {
+  surface: GridSurface;
+  axis: GridAxis;
+  lines: GridLineActions;
+  layer: RefObject<HTMLDivElement | null>;
+}) {
+  const { nodeId, rect, grid } = surface;
+  const [hover, setHover] = useState<{ readonly gu: number; readonly gv: number } | null>(null);
+  const full = (axis === "column" ? grid.columns : grid.rows) >= GRID_WARP_MAX;
+
+  /** The grid coordinate under the pointer, on the drawn mesh — or null off the surface. */
+  const locate = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      // Pointer events are in client coordinates and the rect in pane coordinates: the
+      // layer's origin, measured at the event (§V657), converts.
+      const box = layer.current?.getBoundingClientRect();
+      const u = (event.clientX - (box?.left ?? 0) - rect.x) / rect.width;
+      const v = 1 - (event.clientY - (box?.top ?? 0) - rect.y) / rect.height;
+      return gridWarpInverse(grid, [u, v]);
+    },
+    [grid, layer, rect],
+  );
+
+  const onPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => setHover(locate(event)), [locate]);
+  const onPointerLeave = useCallback(() => setHover(null), []);
+  const onPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      event.stopPropagation();
+      event.preventDefault();
+      const at = locate(event);
+      if (at === null || full) return;
+      lines.insert(nodeId, axis, axis === "column" ? at.gu / (grid.columns - 1) : at.gv / (grid.rows - 1));
+    },
+    [axis, full, grid, lines, locate, nodeId],
+  );
+
+  let preview: string | null = null;
+  if (hover !== null && !full) {
+    const along = axis === "column" ? grid.rows : grid.columns;
+    const steps = (along - 1) * LINE_STEPS_PER_CELL;
+    const points: string[] = [];
+    for (let step = 0; step <= steps; step += 1) {
+      const g = step / LINE_STEPS_PER_CELL;
+      const [px, py] = axis === "column" ? gridWarpPoint(grid, hover.gu, g) : gridWarpPoint(grid, g, hover.gv);
+      points.push(`${String(px * rect.width)},${String((1 - py) * rect.height)}`);
+    }
+    preview = points.join(" ");
+  }
+
+  const other = axis === "column" ? "hold Shift for a row" : "release Shift for a column";
+  return (
+    <div
+      className={styles.gridSurface}
+      data-testid={`preview-grid-surface-${nodeId}`}
+      data-full={full ? "true" : undefined}
+      title={full ? `A Grid Warp has at most ${String(GRID_WARP_MAX)} ${axis}s` : `Click to insert a ${axis} here (${other})`}
+      style={{ left: `${String(rect.x)}px`, top: `${String(rect.y)}px`, width: `${String(rect.width)}px`, height: `${String(rect.height)}px` }}
+      onPointerMove={onPointerMove}
+      onPointerLeave={onPointerLeave}
+      onPointerDown={onPointerDown}
+    >
+      {preview === null ? null : (
+        <svg className={styles.gridLine} data-testid={`preview-grid-line-${nodeId}`} aria-hidden="true">
+          <polyline points={preview} />
+        </svg>
+      )}
     </div>
   );
 }
@@ -268,10 +468,12 @@ function GizmoHandleControl({
   placement,
   store,
   layer,
+  lines,
 }: {
   placement: Placement;
   store: Vec3GizmoStore;
   layer: RefObject<HTMLDivElement | null>;
+  lines: GridLineActions | undefined;
 }) {
   const { nodeId, handle, camera, rect, x, y, zoom } = placement;
   const locked = handle.refusal !== null;
@@ -344,7 +546,9 @@ function GizmoHandleControl({
     [handle.key, nodeId, store],
   );
 
-  return (
+  // §T1534b — a Grid Warp's point also names its column and row, for the delete menu.
+  const place = placement.grid !== null && lines !== undefined ? parsePointKey(handle.key) : null;
+  const button = (
     <button
       type="button"
       className={styles.gizmoHandle}
@@ -355,7 +559,9 @@ function GizmoHandleControl({
         locked
           ? (handle.refusal ?? "")
           : handle.space === "picture"
-            ? `Drag ${handle.label} on the picture`
+            ? place === null
+              ? `Drag ${handle.label} on the picture`
+              : `Drag ${handle.label} on the picture; right-click to delete its row or column, Option-click the picture to add one`
             : `Drag ${handle.label} across the view plane`
       }
       style={{ ...cssVars({ "--chrome-zoom": zoom }), left: `${String(x)}px`, top: `${String(y)}px` }}
@@ -364,5 +570,22 @@ function GizmoHandleControl({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     />
+  );
+  if (place === null || placement.grid === null || lines === undefined) return button;
+  const { columns, rows } = placement.grid;
+  return (
+    <ContextMenuRoot>
+      <ContextMenuTrigger asChild>{button}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem danger disabled={columns <= GRID_WARP_MIN} onSelect={() => lines.remove(nodeId, "column", place.column)}>
+          {`Delete column ${String(place.column + 1)}`}
+          {columns <= GRID_WARP_MIN ? ` — ${String(GRID_WARP_MIN)} is the fewest` : ""}
+        </ContextMenuItem>
+        <ContextMenuItem danger disabled={rows <= GRID_WARP_MIN} onSelect={() => lines.remove(nodeId, "row", place.row)}>
+          {`Delete row ${String(place.row + 1)}`}
+          {rows <= GRID_WARP_MIN ? ` — ${String(GRID_WARP_MIN)} is the fewest` : ""}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenuRoot>
   );
 }

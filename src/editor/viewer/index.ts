@@ -43,7 +43,7 @@ export type { PreviewInspectOverlaysProps } from "./preview-inspect-overlay.tsx"
  * the reason the graph pane hosts it are written out in the three modules.
  */
 export { PreviewGizmoOverlays } from "./preview-gizmo-overlay.tsx";
-export type { PreviewGizmoOverlaysProps, PreviewGizmoTile } from "./preview-gizmo-overlay.tsx";
+export type { GridLineActions, PreviewGizmoOverlaysProps, PreviewGizmoTile } from "./preview-gizmo-overlay.tsx";
 export {
   GIZMO_LOCKED_REASON,
   PICTURE_GIZMO_LOCKED_REASON,
