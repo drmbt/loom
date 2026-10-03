@@ -568,10 +568,8 @@ describe("T1501b — joining and leaving a Panel", () => {
     own.unmount();
 
     render(<Tab runtime={runtime} />);
-    await act(async () => {
-      fireEvent.change(screen.getByRole("combobox", { name: "Panel" }), { target: { value: stage } });
-      await settle();
-    });
+    // T1506b: one tab per Panel, at the bottom of the pane.
+    await click(screen.getByRole("tab", { name: "Stage" }));
     await click(screen.getByRole("button", { name: "Edit board" }));
     const picker = () => screen.getByRole("combobox", { name: "Add to panel" }) as HTMLSelectElement;
     // What Stage lacks, by name: the three named kinds, and nothing that cannot join a Panel (blur1).

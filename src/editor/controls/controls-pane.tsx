@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
-import { CONTROL_WIDGET_TYPES, panelBoard, panelTitle } from "@nodes/definitions/controls.ts";
+import { CONTROL_WIDGET_TYPES, LAYER_NODE_TYPE, panelBoard, panelTitle } from "@nodes/definitions/controls.ts";
 import { isRemotePanel } from "@devices/phone/phone-snapshot.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
 import { ControlTargets } from "./control-targets.tsx";
 import { controlTargets } from "./parameter-controls.ts";
 import { PanelBoardEditor, PanelBoardGrid, Pencil } from "./panel-board.tsx";
+import { LayersView } from "./layers-view.tsx";
 import { PanelRows } from "./panel-surface.tsx";
 import { PhoneDoorButton } from "./phone-door.tsx";
 import { PANEL_EMPTY_HINT, type PhoneDoorView } from "./phone-door-copy.ts";
@@ -43,6 +44,13 @@ import surface from "./panel-surface.module.css";
  * area scrolls instead, so in a short bottom dock the header and the toolbar stay put and
  * the spare rows are a scroll of the board away. The same editor opens from the pencil on
  * the Panel node's header (`panel-edit.tsx`).
+ *
+ * T1506b — a BOTTOM TAB STRIP, as the phone page has (§T1517b): one tab per Panel (it
+ * replaces the Panel picker that sat in the header), and a LAYERS tab listing every layer
+ * stack in the document (`layers-view.tsx`). The Layers tab is there only while the
+ * document holds a Layer — a list with nothing in it is a dead end, and the way to add a
+ * layer is the node library's, not this pane's — and the strip only while there are two
+ * tabs to choose between, so a document with one Panel and no layer draws as before.
  */
 
 export interface ControlsPaneProps {
@@ -59,15 +67,17 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
   useEffect(() => () => editor.dispose(), [editor]);
   const write = useMemo<ControlWrite>(() => (nodeId, entries, phase) => editor.setStored(nodeId, entries, phase), [editor]);
 
-  const { panels, widgets } = useMemo(() => {
+  const { panels, widgets, layers } = useMemo(() => {
     const panels: GraphNode[] = [];
     const widgets: GraphNode[] = [];
+    let layers = false;
     for (const node of Object.values(graph.nodes)) {
       const type = node.type;
       if (type === "panel") panels.push(node);
       else if (CONTROL_WIDGET_TYPES.has(type)) widgets.push(node);
+      else if (type === LAYER_NODE_TYPE) layers = true;
     }
-    return { panels, widgets };
+    return { panels, widgets, layers };
   }, [graph.nodes]);
   // The empty surface reads only the phone door, not graph parameters or edges.
   // Keep that element so an unrelated edit does not rebuild the phone popover.
@@ -79,6 +89,9 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
   ), [phone]);
   const [chosen, setChosen] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [layersChosen, setLayersChosen] = useState(false);
+  // The last Layer gone: back to the controls, without forgetting the choice.
+  const showLayers = layersChosen && layers;
   const panel = panels.find((candidate) => candidate.id === chosen) ?? panels[0];
   const board = panel === undefined ? null : panelBoard(graph, panel);
 
@@ -87,8 +100,60 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
     void bus.execute("graph.applyPatch", { baseRevision: bus.store.getRevision(), label, operations }, invocation);
   };
 
+  const tabs = (body: ReactNode): ReactNode => {
+    const panelTabs = panels.length === 0 ? [{ id: "", title: "All controls" }] : panels.map((each) => ({ id: each.id, title: panelTitle(each) }));
+    if (panelTabs.length + (layers ? 1 : 0) < 2) return body;
+    return (
+      <div className={styles.tabbed}>
+        <div className={styles.tabBody}>{body}</div>
+        <div className={styles.tabs} role="tablist" aria-label="Controls">
+          {panelTabs.map((tab) => {
+            const selected = !showLayers && (panel?.id ?? "") === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                className={`${styles.tab} ${selected ? styles.selectedTab : ""}`}
+                onClick={() => {
+                  setLayersChosen(false);
+                  if (tab.id !== "") setChosen(tab.id);
+                }}
+              >
+                {tab.title}
+              </button>
+            );
+          })}
+          {layers ? (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={showLayers}
+              className={`${styles.tab} ${showLayers ? styles.selectedTab : ""}`}
+              onClick={() => setLayersChosen(true)}
+            >
+              Layers
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
+  if (showLayers) {
+    return tabs(
+      <div className={styles.pane} data-layers-pane>
+        <header className={styles.header}>
+          <h2 className={styles.title}>Layers</h2>
+        </header>
+        <LayersView graph={graph} bus={bus} invocation={invocation} write={write} />
+      </div>,
+    );
+  }
+
   if (widgets.length === 0 && panel === undefined) {
-    return empty;
+    return tabs(empty);
   }
 
   /** What a widget drives, as chips with × (`ControlTargets`) — under a card. */
@@ -99,15 +164,10 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
       </div>
     );
 
-  return (
+  return tabs(
     <div className={styles.pane} data-controls-pane data-editing={editing && board !== null ? true : undefined}>
       <header className={styles.header}>
         <h2 className={styles.title}>{panel === undefined ? "All controls" : panelTitle(panel)}</h2>
-        {panels.length > 1 ? (
-          <select aria-label="Panel" value={panel?.id ?? ""} onChange={(event) => setChosen(event.target.value)}>
-            {panels.map((candidate) => <option key={candidate.id} value={candidate.id}>{panelTitle(candidate)}</option>)}
-          </select>
-        ) : null}
         {board === null ? null : (
           <button
             type="button"

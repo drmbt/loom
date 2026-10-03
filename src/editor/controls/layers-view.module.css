@@ -1,0 +1,84 @@
+/* T1506b — the Layers tab: one list per stack, one row per layer. Tokens only. */
+.stacks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.title {
+  margin: 0;
+  font-size: var(--fs-meta);
+  font-weight: normal;
+  color: var(--text-dim);
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* Name | switch | opacity | blend · picture — one control-height row, like a layer list. */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(var(--space-48), 2fr) minmax(0, auto);
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--control-h-lg);
+  font-size: var(--fs-ui);
+}
+.nameCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.name {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.name:hover {
+  text-decoration: underline;
+}
+/* An off layer reads as off at a glance: its name dims with it. */
+.off .name {
+  color: var(--text-dim);
+}
+.morphing {
+  flex: 0 0 auto;
+  font-size: var(--fs-micro);
+  color: var(--signal);
+}
+/* A board-size widget fills its cell: the row's height is the control's. */
+.control {
+  height: 100%;
+  min-width: 0;
+}
+.meta {
+  display: flex;
+  gap: var(--space-3);
+  min-width: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.picture {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+}

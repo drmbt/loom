@@ -3,8 +3,6 @@ import { useStore } from "zustand";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphNode } from "@domain/types/graph.ts";
-import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
-import { isParameterSlot, staticBindingValue } from "@domain/parameters/slots.ts";
 import {
   CUE_BACK_COMMAND,
   CUE_GO_COMMAND,
@@ -25,6 +23,7 @@ import { LAYER_NODE_TYPE, controlNameOf, layerPicture, type BoardRect } from "@n
 import { refusalMessage, type CommandAnswer } from "@editor/inspector/command-refusal.ts";
 import { boardFit, boardValueEm, cueListBoardLayout, cueListShowsCues, layerBoardLayout, presetStripGrid, type BoardCells } from "./board-fit.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
+import { layerOpacityFader, setLayerOn } from "./layer-controls.ts";
 import styles from "./board-members.module.css";
 
 /**
@@ -115,7 +114,7 @@ function Refusal({ message }: { readonly message: string | null }) {
 }
 
 /** How often a running fade is re-read off the frame clock: ten a second, like the timeline's readout. */
-const MORPH_POLL_MS = 100;
+export const MORPH_POLL_MS = 100;
 
 /**
  * The fade a bank is running, as its strip shows it: which preset, and how far along —
@@ -221,44 +220,15 @@ function PresetStrip({ node, rect, cells, bus, invocation }: BoardMemberProps) {
   );
 }
 
-/** A number off a parameter definition, or the fallback. */
-const declared = (definition: unknown, key: "default" | "min" | "max", fallback: number): number => {
-  const value = (definition as Record<string, unknown> | undefined)?.[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-};
-
 function LayerStrip({ node, rect, cells, bus, invocation, write }: BoardMemberProps) {
   const name = controlNameOf(node);
   const on = node.ui?.bypassed !== true;
   const layout = layerBoardLayout(rect);
   const width = cells.widthOf(rect.w);
   const partPx = layout === "beside" ? (width - PART_GAP_PX) / 2 : width;
-
-  /**
-   * The state the press asked for, written as that state — and not at all when the layer is
-   * already so. Read from the document at the press, not from what was drawn, so a second
-   * press that lands before the first has repainted cannot flip the layer back.
-   */
-  const setOn = (next: boolean): void => {
-    if ((bus.store.getGraph().nodes[node.id]?.ui?.bypassed !== true) === next) return;
-    void bus.execute(
-      "graph.applyPatch",
-      {
-        baseRevision: bus.store.getRevision(),
-        label: `${next ? "Layer on" : "Layer off"} (${name})`,
-        operations: [{ op: "setNodeUi", nodeId: node.id, ui: { bypassed: !next } }],
-      },
-      invocation,
-    );
-  };
-
-  // Through the schema funnel (§T903): the fader's range and default are the layer's own.
-  const definition = effectiveParameterSchema(bus.registry.get(node.type), node.parameters)["opacity"];
-  const stored = node.parameters["opacity"];
-  // A static-mode slot is a plain number in an envelope; any other slot is DRIVEN, and the
-  // slider shows it and refuses the drag exactly as a driven Slider node does.
-  const opacity = stored === undefined ? declared(definition, "default", 1) : isParameterSlot(stored) && stored.mode === "static" ? staticBindingValue(stored) : stored;
-  const fader = { caption: "Opacity", value: opacity, min: declared(definition, "min", 0), max: declared(definition, "max", 1), step: 0 };
+  // The press writes a state, never a flip; the fader's range and driven-ness are the layer's own (`layer-controls.ts`).
+  const setOn = (next: boolean): void => setLayerOn(bus, invocation, node.id, next);
+  const fader = layerOpacityFader(bus, node);
 
   // T1527b: what the layer shows, beside its name when the rect has room — the phone's rule
   // (its switch names its picture except at the bare 2×1 switch, §T1526b); always on hover.
