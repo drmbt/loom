@@ -335,25 +335,33 @@ function noteAt(source: string, visible: string, from: number, bodyEnd: number):
  * The slice indices come from the MASKED text, whose length matches the original character
  * for character, so a `struct Params` written inside a comment is neither reflected nor cut.
  */
-export function extractParamsStruct(source: string): { declaration: string; rest: string } {
+export function extractParamsStruct(source: string): { declaration: string; rest: string; start: number } {
   const hit = extractedBySource.get(source);
   // T1172: a FRESH object over the cached strings. The declared return type is mutable, so
   // handing the same object to every caller would let one of them poison the cache; the
   // two strings — which are the whole cost — are shared, and the wrapper is two words.
   if (hit !== undefined) return { ...hit };
   const match = PARAMS_STRUCT.exec(maskComments(source));
-  if (match === null) return { ...remember(extractedBySource, source, { declaration: "", rest: source }) };
+  if (match === null) {
+    return { ...remember(extractedBySource, source, { declaration: "", rest: source, start: source.length }) };
+  }
   const start = match.index;
   const end = start + match[0].length;
   return {
     ...remember(extractedBySource, source, {
       declaration: source.slice(start, end),
       rest: `${source.slice(0, start)}${source.slice(end)}`,
+      // T1523b: where the cut was, so a device position in the pasted remainder or in the
+      // hoisted declaration can be put back on the author's own line.
+      start,
     }),
   };
 }
 
-const extractedBySource = new Map<string, { readonly declaration: string; readonly rest: string }>();
+const extractedBySource = new Map<
+  string,
+  { readonly declaration: string; readonly rest: string; readonly start: number }
+>();
 
 /**
  * A colour default as the FOUR-TUPLE the parameter type is (T1184). `vector` hands back a plain

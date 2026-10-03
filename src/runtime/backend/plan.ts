@@ -6,6 +6,8 @@ import type { LogicalExecutionPlan } from "../../domain/types/backend.ts";
 import { BackendDiagnosticCode, backendDiagnostic } from "./diagnostics.ts";
 import type { EmittedWgsl } from "./wgsl.ts";
 import { wgslFromPlan } from "./wgsl.ts";
+import type { WgslSourceMap } from "./wgsl-source-map.ts";
+import { readSourceMap } from "./wgsl-source-map.ts";
 
 /**
  * The backend's view of a `LogicalExecutionPlan`.
@@ -265,6 +267,11 @@ export interface EffectPassDescriptor {
   readonly sharedBinding?: string;
   readonly nodeId?: NodeId;
   readonly label?: string;
+  /**
+   * T1523b: where the author's code parameters sit inside `shader`, so a device position is
+   * reported on the author's line. Absent for a pass with no authored text.
+   */
+  readonly sourceMap?: WgslSourceMap;
 }
 
 /** Swaps a ping-pong pair. Emitted after the last consumer of its read half (§V22). */
@@ -332,6 +339,11 @@ export interface DispatchPassDescriptor {
   readonly id: string;
   readonly nodeId?: string;
   readonly shader: EmittedWgsl;
+  /**
+   * T1523b: where the author's code parameters sit inside `shader`, so a device position is
+   * reported on the author's line. Absent for a pass with no authored text.
+   */
+  readonly sourceMap?: WgslSourceMap;
   readonly entryPoint: string;
   /** Literal workgroup counts, or a counter resource read on the GPU (indirect). */
   readonly workgroups: readonly [number, number, number] | { readonly indirect: string };
@@ -354,6 +366,11 @@ export interface DrawPassDescriptor {
   readonly id: string;
   readonly nodeId?: string;
   readonly shader: EmittedWgsl;
+  /**
+   * T1523b: where the author's code parameters sit inside `shader`, so a device position is
+   * reported on the author's line. Absent for a pass with no authored text.
+   */
+  readonly sourceMap?: WgslSourceMap;
   readonly target: string;
   readonly topology: "point-list" | "line-list" | "triangle-list" | "triangle-strip";
   /** A literal count, or a counter resource so the GPU decides how much to draw. */
@@ -653,6 +670,8 @@ export function readPass(value: unknown): PassDescriptor | undefined {
 
   const nodeId = value["nodeId"];
   const label = value["label"];
+  const sourceMap = readSourceMap(value["sourceMap"]);
+  if (sourceMap === null) return undefined;
 
   return {
     kind: "effect",
@@ -666,6 +685,7 @@ export function readPass(value: unknown): PassDescriptor | undefined {
     ...(typeof sharedBinding === "string" ? { sharedBinding } : {}),
     ...(typeof nodeId === "string" ? { nodeId } : {}),
     ...(typeof label === "string" ? { label } : {}),
+    ...(sourceMap === undefined ? {} : { sourceMap }),
   };
 }
 
@@ -721,6 +741,8 @@ function readDispatchPass(id: string, value: Record<string, unknown>): DispatchP
   if (uniforms !== undefined && typeof uniformBinding !== "string") return undefined;
 
   const nodeId = value["nodeId"];
+  const sourceMap = readSourceMap(value["sourceMap"]);
+  if (sourceMap === null) return undefined;
   return {
     kind: "dispatch",
     id,
@@ -733,6 +755,7 @@ function readDispatchPass(id: string, value: Record<string, unknown>): DispatchP
       ? {}
       : { uniforms: uniforms as NonNullable<DispatchPassDescriptor["uniforms"]>, uniformBinding: uniformBinding as string }),
     ...(typeof nodeId === "string" ? { nodeId } : {}),
+    ...(sourceMap === undefined ? {} : { sourceMap }),
   };
 }
 
@@ -782,6 +805,8 @@ function readDrawPass(id: string, value: Record<string, unknown>): DrawPassDescr
   if (clear !== undefined && typeof clear !== "boolean") return undefined;
 
   const nodeId = value["nodeId"];
+  const sourceMap = readSourceMap(value["sourceMap"]);
+  if (sourceMap === null) return undefined;
   return {
     kind: "draw",
     id,
@@ -798,6 +823,7 @@ function readDrawPass(id: string, value: Record<string, unknown>): DrawPassDescr
     ...(depthWrite === undefined ? {} : { depthWrite }),
     ...(clear === undefined ? {} : { clear }),
     ...(typeof nodeId === "string" ? { nodeId } : {}),
+    ...(sourceMap === undefined ? {} : { sourceMap }),
   };
 }
 

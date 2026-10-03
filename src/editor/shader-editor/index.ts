@@ -50,6 +50,7 @@ export type { ShaderCompileCache } from "./shader-cache.ts";
 export {
   ShaderDiagnosticCode,
   describeCompileError,
+  diagnosticsForCodeParameter,
   diagnosticsToMarkers,
   formatDiagnosticLocation,
   internalCompileDiagnostic,

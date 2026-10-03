@@ -1,0 +1,225 @@
+import { beforeAll, describe, expect, it } from "vitest";
+
+import { compileGraph } from "../../../compiler/index.ts";
+import type { RuntimeDiagnostic } from "../../../domain/types/diagnostics.ts";
+import type { GraphDocument, ProjectSettings } from "../../../domain/types/graph.ts";
+import { allNodeDefinitions } from "../../../nodes/definitions/index.ts";
+import { createNodeRegistry } from "../../../nodes/registry/registry.ts";
+import { SHARED_WGSL_MODULES } from "../../../nodes/shaders/shared-modules.ts";
+import { BackendDiagnosticCode } from "../diagnostics.ts";
+import { nodeGpuHost, probeDawn } from "./node-gpu-host.ts";
+import { createVgpuBackend } from "./vgpu-backend.ts";
+
+/**
+ * T1523b — A SHADER ERROR IS REPORTED ON THE AUTHOR'S LINE, AND ON ITS NODE, FROM EVERY BUILD.
+ *
+ * (a) The device's compiler counts lines in the module it was handed, and a node rarely
+ *     hands it the author's text alone: a Custom WGSL puts its `// @use` modules in front,
+ *     a point kernel wraps its body in generated code and hoists its `struct Params` above
+ *     that. Each case below is the literal error through compiler + backend + Dawn, and
+ *     asserts the AUTHOR'S `parameter line:col` — with the generated line asserted to be a
+ *     different one, so a map that does nothing cannot pass.
+ */
+
+let dawnError: string | undefined;
+beforeAll(async () => {
+  dawnError = (await probeDawn()).error;
+}, 60_000);
+
+const settings: ProjectSettings = {
+  outputResolution: { width: 64, height: 64 },
+  workingFormat: "rgba8unorm",
+  randomSeed: 7,
+  previewLongEdge: 64,
+  previewFps: 20,
+  limits: { maxResolution: 4096, maxDispatch: 65535, maxBufferBytes: 268_435_456, memoryBudgetBytes: 1_073_741_824 },
+};
+
+const registry = createNodeRegistry(allNodeDefinitions).view();
+
+/** Everything the problems tab was told that is not an info row, as (code, node, message). */
+const told = (diagnostics: readonly RuntimeDiagnostic[]): ReadonlyArray<readonly [string, string | undefined, string]> =>
+  diagnostics.filter((d) => d.severity !== "info").map((d) => [d.code, d.nodeId, d.message] as const);
+
+/** The 1-based line and column of `needle` in `text`. */
+function positionOf(text: string, needle: string): { line: number; column: number } {
+  const lines = text.split("\n");
+  const line = lines.findIndex((entry) => entry.includes(needle));
+  if (line < 0) throw new Error(`"${needle}" is not in the text`);
+  return { line: line + 1, column: lines[line]!.indexOf(needle) + 1 };
+}
+
+function pointsGraph(type: "pointKernel" | "pointKernelAdvanced", parameters: Record<string, unknown>): GraphDocument {
+  return {
+    revision: 1,
+    nodes: {
+      sim: { id: "sim", type, definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { capacity: 8, seed: 7, ...parameters } },
+      draw: { id: "draw", type: "renderPoints", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { count: 8, sizePixels: 6 } },
+      out: { id: "out", type: "output", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} },
+    },
+    edges: {
+      e1: { id: "e1", source: { nodeId: "sim", portId: "out" }, target: { nodeId: "draw", portId: "points" } },
+      e2: { id: "e2", source: { nodeId: "draw", portId: "out" }, target: { nodeId: "out", portId: "input" } },
+    },
+    groups: {},
+  } as unknown as GraphDocument;
+}
+
+function customGraph(source: string, nodeId = "fx"): GraphDocument {
+  return {
+    revision: 1,
+    nodes: {
+      solid: { id: "solid", type: "solid", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} },
+      [nodeId]: { id: nodeId, type: "customWgsl", definitionVersion: 1, position: { x: 200, y: 0 }, parameters: { source } },
+      out: { id: "out", type: "output", definitionVersion: 1, position: { x: 400, y: 0 }, parameters: {} },
+    },
+    edges: {
+      e1: { id: "e1", source: { nodeId: "solid", portId: "out" }, target: { nodeId, portId: "input" } },
+      e2: { id: "e2", source: { nodeId, portId: "out" }, target: { nodeId: "out", portId: "input" } },
+    },
+    groups: {},
+  } as unknown as GraphDocument;
+}
+
+/** The node's device-side failure for `graph`, plus the pass the plan built for it. */
+async function refusal(
+  graph: GraphDocument,
+  passId: (id: string) => boolean,
+): Promise<{ diagnostics: RuntimeDiagnostic[]; pass: { id: string; shader: string } }> {
+  if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+  const backend = createVgpuBackend({ host: nodeGpuHost() });
+  const diagnostics: RuntimeDiagnostic[] = [];
+  backend.onDiagnostic((diagnostic) => diagnostics.push(diagnostic));
+  try {
+    const capabilities = await backend.initialize({});
+    const plan = compileGraph({ graph, settings, registry, capabilities });
+    // The graph compiler does not parse WGSL: each failure here can only happen at the device.
+    expect(plan.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const pass = (plan.passes as ReadonlyArray<{ id: string; shader?: string }>).find((entry) => passId(entry.id));
+    if (pass?.shader === undefined) throw new Error("the pass under test is not in the plan");
+    await expect(backend.compile(plan)).rejects.toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return { diagnostics, pass: { id: pass.id, shader: pass.shader } };
+  } finally {
+    backend.dispose();
+  }
+}
+
+/** A kernel in the shipped shape: its own `struct Params` block in front of `process`. */
+const PARAMS_KERNEL = `// Drift, scaled by a knob.
+struct Params {
+  // How fast. @default 1
+  speed: f32,
+}
+
+fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  q.position = notAFunction(p.position) * ctx.params.speed;
+  return q;
+}`;
+
+const PLAIN_KERNEL = `fn process(p: Point, ctx: PointCtx) -> Point {
+  return p;
+}`;
+
+describe("a device error is reported on the author's line (T1523b(a), §V27)", () => {
+  it("a point kernel whose `struct Params` was hoisted out of it: the line after the struct", async () => {
+    const { diagnostics, pass } = await refusal(pointsGraph("pointKernel", { kernel: PARAMS_KERNEL }), (id) =>
+      id.endsWith(":kernel"),
+    );
+    const authored = positionOf(PARAMS_KERNEL, "notAFunction");
+    expect(authored).toEqual({ line: 9, column: 16 });
+    expect(positionOf(pass.shader, "notAFunction").line).not.toBe(authored.line);
+    expect(told(diagnostics)).toEqual([
+      [
+        BackendDiagnosticCode.compileFailed,
+        "sim",
+        `Pass "${pass.id}" failed to compile on the device: kernel 9:16 unresolved call target 'notAFunction'`,
+      ],
+    ]);
+    expect(diagnostics.find((d) => d.nodeId === "sim")?.source).toEqual({ file: "kernel", line: 9, column: 16 });
+  }, 60_000);
+
+  it("a group predicate: its own parameter, its own line, the column inside the predicate", async () => {
+    const group = "\n  notAFunction(p.position.x) > 0.0";
+    const { diagnostics, pass } = await refusal(pointsGraph("pointKernel", { kernel: PLAIN_KERNEL, group }), (id) =>
+      id.endsWith(":kernel"),
+    );
+    expect(positionOf(pass.shader, "notAFunction").line).not.toBe(2);
+    expect(told(diagnostics)).toEqual([
+      [
+        BackendDiagnosticCode.compileFailed,
+        "sim",
+        `Pass "${pass.id}" failed to compile on the device: group 2:3 unresolved call target 'notAFunction'`,
+      ],
+    ]);
+    expect(diagnostics.find((d) => d.nodeId === "sim")?.source).toEqual({ file: "group", line: 2, column: 3 });
+  }, 60_000);
+
+  it("a spawn hook: the hook's line, with the kernel's struct hoisted above it", async () => {
+    const spawn = `
+fn spawn(child: Point, ctx: PointCtx) -> Point {
+  var c = child;
+  c.position = notAFunction(c.position) * ctx.params.speed;
+  return c;
+}`;
+    const kernel = PARAMS_KERNEL.replace("notAFunction(p.position)", "p.position");
+    const { diagnostics, pass } = await refusal(pointsGraph("pointKernelAdvanced", { kernel, spawn }), (id) =>
+      id.endsWith(":spawnHook"),
+    );
+    expect(positionOf(pass.shader, "notAFunction").line).not.toBe(4);
+    expect(told(diagnostics)).toEqual([
+      [
+        BackendDiagnosticCode.compileFailed,
+        "sim",
+        `Pass "${pass.id}" failed to compile on the device: spawn 4:16 unresolved call target 'notAFunction'`,
+      ],
+    ]);
+  }, 60_000);
+
+  it("a Custom WGSL that pulls in a `// @use` module: the author's line, not the expansion's", async () => {
+    const source = `// @use grid
+@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let cell = gridCellAt(uv, vec2f(4.0, 4.0));
+  return notAFunction(textureSample(inputTexture, inputSampler, cell.origin));
+}`;
+    expect(SHARED_WGSL_MODULES["grid"]).toBeDefined();
+    const { diagnostics, pass } = await refusal(customGraph(source), (id) => id.endsWith(":custom"));
+    expect(positionOf(source, "notAFunction")).toEqual({ line: 8, column: 10 });
+    expect(positionOf(pass.shader, "notAFunction").line).toBeGreaterThan(8);
+    expect(told(diagnostics)).toEqual([
+      [
+        BackendDiagnosticCode.compileFailed,
+        "fx",
+        `Pass "${pass.id}" failed to compile on the device: source 8:10 unresolved call target 'notAFunction'`,
+      ],
+    ]);
+    expect(diagnostics.find((d) => d.nodeId === "fx")?.source).toEqual({ file: "source", line: 8, column: 10 });
+  }, 60_000);
+
+  it("a position in generated code says so, and is not pinned to an author line", async () => {
+    // The kernel declares the generator's own `groupMatch`; the generated one, emitted AFTER
+    // the kernel, is the redeclaration the device points at.
+    const kernel = `${PLAIN_KERNEL}
+
+fn groupMatch(p: Point, ctx: PointCtx) -> bool {
+  return true;
+}`;
+    const { diagnostics, pass } = await refusal(
+      pointsGraph("pointKernel", { kernel, group: "p.position.x > 0.0" }),
+      (id) => id.endsWith(":kernel"),
+    );
+    const failures = diagnostics.filter((d) => d.code === BackendDiagnosticCode.compileFailed);
+    expect(failures.map((d) => d.nodeId)).toEqual(["sim"]);
+    expect(failures[0]!.message).toMatch(
+      new RegExp(
+        `^Pass "${pass.id}" failed to compile on the device: \\d+:\\d+ of the generated module \\(not your code\\) redeclaration of 'groupMatch'`,
+      ),
+    );
+    expect(failures[0]!.source).toBeUndefined();
+  }, 60_000);
+});

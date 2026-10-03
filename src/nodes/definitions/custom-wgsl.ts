@@ -29,6 +29,7 @@ import {
   CUSTOM_WGSL_UNIFORM_BINDING,
 } from "../shaders/custom-wgsl-default.wgsl.ts";
 import { wgsl } from "../../runtime/backend/wgsl.ts";
+import { endOf, placed } from "../../runtime/backend/wgsl-source-map.ts";
 
 /**
  * CustomWGSL — the user-authored fragment effect (T15, T166; §I custom WGSL node contract).
@@ -381,6 +382,10 @@ export const customWgslNode: NodeDefinition = {
         : {}),
       nodeId,
       label: "Custom WGSL",
+      // T1523b: the author's text starts where the `// @use` prelude ends, so the device's
+      // line 40 is the author's line 3 when the prelude is 37 lines — and a position inside
+      // the prelude is a shared module's, not the author's.
+      sourceMap: [placed(SHADER_SOURCE_PARAMETER, shader, endOf(shared.prelude))],
     };
     return viewDiagnostics.length === 0 ? { passes: [pass] } : { passes: [pass], diagnostics: viewDiagnostics };
   },

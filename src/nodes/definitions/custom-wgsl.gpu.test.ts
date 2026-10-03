@@ -325,9 +325,10 @@ describe("every node sharing a broken shader carries the failure (T1490b, §V27)
  *
  * `BROKEN_BODY` calls `notAFunction` on its line 6, column 10. That is the position asserted,
  * and it is the AUTHOR'S: the module the device actually compiled has vgpu's vertex stage in
- * front of this text and reports the same call on its line 19.
+ * front of this text and reports the same call on its line 19. T1523b names the code
+ * parameter the position is in (`source`), read off the pass's source map.
  */
-const BROKEN_REASON = "6:10 unresolved call target 'notAFunction'";
+const BROKEN_REASON = "source 6:10 unresolved call target 'notAFunction'";
 
 /** Everything the problems tab was told, as (code, node, message) — nothing filtered out. */
 const told = (diagnostics: readonly RuntimeDiagnostic[]): ReadonlyArray<readonly [string, string | undefined, string]> =>

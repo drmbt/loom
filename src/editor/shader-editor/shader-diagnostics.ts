@@ -173,6 +173,29 @@ export function diagnosticsToMarkers(
   });
 }
 
+/**
+ * T1523b — WHICH CODE PARAMETER'S EDITOR A DIAGNOSTIC MARKS.
+ *
+ * A node can carry several code parameters (a kernel, its group predicate, its spawn hook),
+ * and a position is only meaningful in the text it was counted in. The backend says which
+ * one a device error is in — `source.file` names the parameter, read off the pass's source
+ * map — so such a diagnostic marks that parameter's editor and no other. One that names no
+ * code parameter (the shader editor's own compile, which files under the node id; a failure
+ * with no position at all) keeps marking `sourceKey`'s editor, as every diagnostic did
+ * before a second parameter could be marked.
+ */
+export function diagnosticsForCodeParameter(
+  diagnostics: readonly RuntimeDiagnostic[],
+  key: string,
+  codeKeys: readonly string[],
+  sourceKey: string,
+): RuntimeDiagnostic[] {
+  return diagnostics.filter((diagnostic) => {
+    const file = diagnostic.source?.file;
+    return file !== undefined && codeKeys.includes(file) ? file === key : key === sourceKey;
+  });
+}
+
 /** `file:line:column`, or as much of it as the compiler actually reported. */
 export function formatDiagnosticLocation(diagnostic: RuntimeDiagnostic): string | null {
   const source = diagnostic.source;

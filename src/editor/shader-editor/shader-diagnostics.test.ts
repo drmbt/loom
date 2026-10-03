@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import {
   ShaderDiagnosticCode,
+  diagnosticsForCodeParameter,
   diagnosticsToMarkers,
   formatDiagnosticLocation,
   internalCompileDiagnostic,
@@ -181,5 +182,32 @@ describe("§T1178 — one line-start scan for a whole set of diagnostics", () =>
     );
     // The gate's own guard: an empty set is an empty array, not a scan.
     expect(diagnosticsToMarkers(source, [])).toEqual([]);
+  });
+});
+
+describe("T1523b — a diagnostic marks the code parameter its position is in", () => {
+  const keys = ["attributes", "kernel", "group", "spawn"];
+  const at = (file: string | undefined): RuntimeDiagnostic => ({
+    severity: "error",
+    code: "backend/compile-failed",
+    message: "unresolved call target",
+    nodeId: "sim",
+    ...(file === undefined ? {} : { source: { file, line: 3, column: 16 } }),
+  });
+
+  it("one that names a code parameter marks that parameter's editor and no other", () => {
+    const kernel = at("kernel");
+    expect(keys.map((key) => diagnosticsForCodeParameter([kernel], key, keys, "source").length)).toEqual([0, 1, 0, 0]);
+    // `source` is not this node's parameter, so it does not get the kernel's marker either.
+    expect(diagnosticsForCodeParameter([kernel], "source", keys, "source")).toEqual([]);
+  });
+
+  it("one that names none — or names the node, as the editor's own compile does — keeps marking `source`", () => {
+    const custom = ["source"];
+    for (const diagnostic of [at(undefined), at("node-1")]) {
+      expect(diagnosticsForCodeParameter([diagnostic], "source", custom, "source")).toEqual([diagnostic]);
+      expect(diagnosticsForCodeParameter([diagnostic], "kernel", keys, "source")).toEqual([]);
+    }
+    expect(diagnosticsForCodeParameter([at("source")], "source", custom, "source")).toHaveLength(1);
   });
 });

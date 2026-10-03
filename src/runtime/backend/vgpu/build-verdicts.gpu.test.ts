@@ -142,9 +142,10 @@ describe("what the device says while a pass is built is told on that pass's node
  * the device's objections arrived on the uncaptured path naming no node.
  *
  * The kernel is the author's text inside a GENERATED module, so the position the device
- * reports is that module's. It is derived here from the pass's own shader rather than
- * written down: the claim is that the compiler's position reaches the badge, whatever the
- * generator puts in front of the author's lines.
+ * reports is that module's (line 84 here). T1523b: the badge reads the AUTHOR'S position —
+ * line 3 of the kernel parameter, column 16, where `notAFunction` is in `BROKEN_KERNEL` —
+ * through the pass's source map, and the generated line is asserted to be a different one
+ * so this cannot pass on a map that changes nothing.
  */
 const BROKEN_KERNEL = `fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
@@ -204,8 +205,12 @@ describe("a broken dispatch shader fails the compile on its own node (T1522b, §
     );
     if (kernel?.shader === undefined) throw new Error("the kernel's dispatch pass is not in the plan");
     const lines = kernel.shader.split("\n");
-    const line = lines.findIndex((text) => text.includes("notAFunction"));
-    const at = `${line + 1}:${lines[line]!.indexOf("notAFunction") + 1}`;
+    const generatedLine = lines.findIndex((text) => text.includes("notAFunction")) + 1;
+    const authored = BROKEN_KERNEL.split("\n");
+    const line = authored.findIndex((text) => text.includes("notAFunction"));
+    expect([line + 1, authored[line]!.indexOf("notAFunction") + 1]).toEqual([3, 16]);
+    // The precondition that makes the claim worth asserting: the module moved the line.
+    expect(generatedLine).toBeGreaterThan(3);
 
     const backend = createVgpuBackend({ host: nodeGpuHost() });
     const diagnostics: RuntimeDiagnostic[] = [];
@@ -219,9 +224,11 @@ describe("a broken dispatch shader fails the compile on its own node (T1522b, §
         [
           BackendDiagnosticCode.compileFailed,
           "sim",
-          `Pass "${kernel.id}" failed to compile on the device: ${at} unresolved call target 'notAFunction'`,
+          `Pass "${kernel.id}" failed to compile on the device: kernel 3:16 unresolved call target 'notAFunction'`,
         ],
       ]);
+      // What the code pane marks: the kernel parameter, at the author's line and column.
+      expect(diagnostics.find((d) => d.nodeId === "sim")?.source).toEqual({ file: "kernel", line: 3, column: 16 });
     } finally {
       backend.dispose();
     }

@@ -525,7 +525,15 @@ describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
     });
     if (passes.length === 0) continue;
     kernelCount += Object.values(graph.nodes).filter((node) => POINT_KERNEL_TYPES.has(node.type)).length;
-    digests.set(file.fileName, createHash("sha256").update(JSON.stringify(passes)).digest("hex").slice(0, 16));
+    // T1523b: a pass's `sourceMap` says where the author's lines sit in its shader, for error
+    // reporting; it reaches no GPU object and no pixel. Left out so the digest stays the
+    // GPU-facing state it pins — and every digest below survived that row unchanged, which is
+    // the proof its codegen split left every shipped module byte-identical.
+    const digested = passes.map((pass) => {
+      const { sourceMap: _sourceMap, ...gpuFacing } = pass as { sourceMap?: unknown };
+      return gpuFacing;
+    });
+    digests.set(file.fileName, createHash("sha256").update(JSON.stringify(digested)).digest("hex").slice(0, 16));
   }
 
   it("covers exactly the looms that carry kernels — a shrinking gate is a passing gate", () => {

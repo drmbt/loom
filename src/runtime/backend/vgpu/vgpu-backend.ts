@@ -59,6 +59,7 @@ import {
   type UniformValues,
 } from "../plan.ts";
 import { dispatchFrameUniforms, sharedUniformsFromFrame } from "../shared-uniforms.ts";
+import { authoredPosition, type WgslSourceMap } from "../wgsl-source-map.ts";
 import { describeCapabilities, meetsBaseline } from "./capabilities.ts";
 import { browserGpuHost, type GpuHost, type GpuSession } from "./gpu-host.ts";
 import { BLIT_WGSL, RGBA_BLIT_WGSL } from "./presentation-shaders.ts";
@@ -3664,12 +3665,16 @@ async function deviceVerdictDiagnostics(
         ? await wgslErrorsOf(raw, pass.shader)
         : [];
     const built = buildErrors.get(label);
-    const reason =
-      wgsl.length > 0 ? wgsl.map((entry) => `${entry.line}:${entry.column} ${entry.message}`).join("\n") : built;
+    const described = describeWgslErrors(wgsl, pass !== undefined && "sourceMap" in pass ? pass.sourceMap : undefined);
+    const reason = described?.reason ?? built;
     if (built !== undefined && (reason === built || wgsl.some((entry) => built.includes(entry.message)))) {
       told.add(label);
     }
-    failures.push(deviceFailureDiagnostic(label, reason ?? cause, passes));
+    failures.push(
+      deviceFailureDiagnostic(label, reason ?? cause, passes, {
+        ...(described?.source === undefined ? {} : { source: described.source }),
+      }),
+    );
   }
   const notices = [...buildErrors]
     .filter(([passId]) => !told.has(passId))
@@ -3702,6 +3707,7 @@ function deviceFailureDiagnostic(
   label: string,
   reason: string,
   passes: readonly PassDescriptor[],
+  options: { readonly source?: RuntimeDiagnostic["source"] } = {},
 ): ReturnType<typeof backendDiagnostic> {
   const pass = passes.find((candidate) => candidate.id === label);
   const nodeId =
@@ -3712,7 +3718,41 @@ function deviceFailureDiagnostic(
     `${pass === undefined ? (label.length > 0 ? `"${label}"` : "A pipeline") : `Pass "${pass.id}"`} failed to compile on the device: ${reason}`,
     {
       ...(nodeId === undefined ? {} : { nodeId }),
+      ...(options.source === undefined ? {} : { source: options.source }),
       suggestion: "The previous program is retained and still renders (§V9); fix the shader and recompile.",
     },
   );
+}
+
+/**
+ * T1523b — THE COMPILER'S MESSAGES, ON THE AUTHOR'S LINES.
+ *
+ * `wgslErrorsOf` answers in the pass's WGSL. A pass whose node wrote its author's text into a
+ * bigger module says where (`sourceMap`), and every message is put back on the parameter and
+ * line the author typed — `kernel 3:10 …`. A position in generated code says so instead of
+ * borrowing an author line it is not on. A pass with no map (a built-in node's own shader)
+ * keeps the positions as the device gave them.
+ *
+ * `source` is the first message's authored position, which is what the shader editor marks:
+ * `file` names the code parameter, so a node with several (kernel, group, spawn) marks the
+ * right one.
+ */
+function describeWgslErrors(
+  errors: readonly WgslError[],
+  map: WgslSourceMap | undefined,
+): { reason: string; source?: NonNullable<RuntimeDiagnostic["source"]> } | undefined {
+  if (errors.length === 0) return undefined;
+  if (map === undefined) {
+    return { reason: errors.map((entry) => `${entry.line}:${entry.column} ${entry.message}`).join("\n") };
+  }
+  let source: NonNullable<RuntimeDiagnostic["source"]> | undefined;
+  const lines = errors.map((entry) => {
+    const authored = entry.line >= 1 ? authoredPosition(map, entry) : undefined;
+    if (authored === undefined) {
+      return `${entry.line}:${entry.column} of the generated module (not your code) ${entry.message}`;
+    }
+    source ??= { file: authored.parameter, line: authored.line, column: authored.column };
+    return `${authored.parameter} ${authored.line}:${authored.column} ${entry.message}`;
+  });
+  return { reason: lines.join("\n"), ...(source === undefined ? {} : { source }) };
 }

@@ -22,6 +22,7 @@ import { codeParametersLast } from "../../domain/parameters/code.ts";
 import { readNumber } from "./parameter-readers.ts";
 import {
   kernelBodyOf,
+  kernelSourceMap,
   kernelParamCollisions,
   kernelParamSchema,
   kernelParamsFor,
@@ -449,6 +450,7 @@ export const pointKernelAdvancedNode: NodeDefinition = {
         },
         uniformBinding: "kernelFrame",
         nodeId,
+        sourceMap: kernelSourceMap(module, { kernel: kernelSource, group: groupSource }),
       },
       {
         kind: "dispatch",
@@ -507,6 +509,11 @@ export const pointKernelAdvancedNode: NodeDefinition = {
               },
               uniformBinding: "kernelFrame",
               nodeId,
+              // T1523b: the hook's own text, and the kernel's `struct Params` hoisted above it.
+              sourceMap: kernelSourceMap(hookModule, {
+                kernel: kernelSource,
+                spawn: typeof parameters["spawn"] === "string" ? parameters["spawn"] : "",
+              }),
             },
           ]
         : []),

@@ -2,6 +2,8 @@ import type { RuntimeDiagnostic } from "../../domain/types/diagnostics.ts";
 import type { CompiledNodeDescription, NodeDefinition, PointsetAttributeRef } from "../../domain/types/node-definition.ts";
 import type { ParameterSchema, ParameterValue } from "../../domain/types/parameters.ts";
 import type { DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
+import type { AuthoredSpan, WgslSourceMap } from "../../runtime/backend/wgsl-source-map.ts";
+import { endOf, placed, placedAroundCut } from "../../runtime/backend/wgsl-source-map.ts";
 import {
   validateAttributes,
   type PointAttributeSchema,
@@ -256,6 +258,62 @@ export function kernelParamsFor(stored: Readonly<Record<string, unknown>>): {
 export function kernelBodyOf(source: string): string {
   return extractParamsStruct(source).rest;
 }
+
+/**
+ * T1523b — A GENERATED KERNEL'S SOURCE MAP: which lines of the module are which parameter's.
+ *
+ * Codegen says where it pasted each text (`module.placed`); this says what each text WAS:
+ * the kernel minus its hoisted `struct Params` (so the body maps around the cut and the
+ * declaration back to where it was written), and a group predicate or spawn hook with the
+ * leading whitespace codegen trimmed off. A device error on the author's line 3 then reads
+ * line 3, not line 84 of a module they never saw.
+ *
+ * Memoised by the generated text (§T259 compiles every frame; the module's text is the
+ * `wgsl` tag's cached string), with the inputs kept beside it so a different reading of the
+ * same bytes can never be handed a stale map.
+ */
+export function kernelSourceMap(
+  module: { readonly wgsl: string; readonly placed: KernelModulePlacements },
+  texts: { readonly kernel: string; readonly group?: string; readonly spawn?: string },
+): WgslSourceMap {
+  const group = texts.group ?? "";
+  const spawn = texts.spawn ?? "";
+  const hit = kernelMaps.get(module.wgsl);
+  if (hit !== undefined && hit.kernel === texts.kernel && hit.group === group && hit.spawn === spawn) return hit.map;
+  const spans: AuthoredSpan[] = [];
+  const { declaration, start } = extractParamsStruct(texts.kernel);
+  if (module.placed.kernel !== undefined) {
+    spans.push(...placedAroundCut("kernel", texts.kernel, start, start + declaration.length, module.placed.kernel));
+  }
+  if (module.placed.params !== undefined && declaration !== "") {
+    spans.push(placed("kernel", declaration, module.placed.params, endOf(texts.kernel.slice(0, start))));
+  }
+  if (module.placed.group !== undefined) {
+    spans.push(placed("group", group.trim(), module.placed.group, trimmedStart(group)));
+  }
+  if (module.placed.hook !== undefined) {
+    spans.push(placed("spawn", spawn.trim(), module.placed.hook, trimmedStart(spawn)));
+  }
+  kernelMaps.set(module.wgsl, { kernel: texts.kernel, group, spawn, map: spans });
+  if (kernelMaps.size > KERNEL_MAP_LIMIT) {
+    const oldest = kernelMaps.keys().next();
+    if (oldest.done !== true) kernelMaps.delete(oldest.value);
+  }
+  return spans;
+}
+
+type KernelModulePlacements = Extract<ReturnType<typeof generateKernelModule>, { ok: true }>["placed"];
+
+/** Where a text's first non-blank character is — codegen pastes the TRIMMED group and hook. */
+function trimmedStart(raw: string): { line: number; column: number } {
+  return endOf(raw.slice(0, raw.length - raw.trimStart().length));
+}
+
+const KERNEL_MAP_LIMIT = 64;
+const kernelMaps = new Map<
+  string,
+  { readonly kernel: string; readonly group: string; readonly spawn: string; readonly map: WgslSourceMap }
+>();
 
 /**
  * T900's collision pair, now shared — see `reflectedParamSchema` / `reflectedParamCollisions` in
@@ -643,6 +701,7 @@ export const pointKernelNode: NodeDefinition = {
         : {}),
       uniformBinding: "kernelFrame",
       nodeId,
+      sourceMap: kernelSourceMap(module, { kernel: kernelSource, group: groupSource }),
     };
 
     return {

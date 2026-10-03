@@ -10,6 +10,8 @@ import { MAX_SPAWN_PER_PARENT } from "./lifecycle.ts";
 import { regionAccessorWgsl, regionStoreWgsl } from "./packing.ts";
 import type { EmittedWgsl } from "../runtime/backend/wgsl.ts";
 import { wgsl } from "../runtime/backend/wgsl.ts";
+import type { WgslPosition } from "../runtime/backend/wgsl-source-map.ts";
+import { advance, endOf } from "../runtime/backend/wgsl-source-map.ts";
 
 /**
  * The attribute→WGSL codegen module (T117) — named the TOP RISK of the P3a slice, which
@@ -287,6 +289,13 @@ export interface KernelModule {
    * reads the clock that wraps and has not declared itself timeline-anchored.
    */
   readonly notices: ReadonlyArray<KernelNotice>;
+  /**
+   * T1523b: where each request text starts in `wgsl` — the kernel body, the group predicate,
+   * the hoisted `struct Params` declaration, the spawn hook. Codegen is the only party that
+   * knows where it pasted them; the emitting node knows which parameter each came from and
+   * what was cut out of it, so it turns these into the pass's `sourceMap`.
+   */
+  readonly placed: Readonly<Partial<Record<"kernel" | "group" | "params" | "hook", WgslPosition>>>;
 }
 
 export interface KernelModuleFailure {
@@ -991,14 +1000,7 @@ ${touched.map((attribute) => `  n.${attribute.name} = ${loadName(attribute.name)
   /* T300: a group predicate gates `process`; non-members pass through byte-identical.
      The no-group text stays EXACTLY what v1 generated, so existing plans' pass
      signatures do not change under this feature's mere existence. */
-  const groupFunction =
-    groupSource === ""
-      ? ""
-      : `
-fn groupMatch(p: Point, ctx: PointCtx) -> bool {
-  return (${groupSource});
-}
-`;
+  const groupFunction = groupSource === "" ? "" : `${GROUP_OPEN}${groupSource});\n}\n`;
   const invoke =
     groupSource === ""
       ? "  let q = process(p, ctx);"
@@ -1114,7 +1116,10 @@ fn groupMatch(p: Point, ctx: PointCtx) -> bool {
      contract (the salt keys randomness to the timeline frame so a replayed frame
      reproduces). What this file must never do is INFER storage freshness from
      frameIndex == 0 — that is `ctx.firstRun` (T510); the clock audit counts these reads. */
-  const text = wgsl`// Generated point kernel (T117, contract v${POINT_KERNEL_CONTRACT_VERSION}). Do not edit by hand.
+  /* T1523b: built in three cached pieces, byte-identical to the one template it was, so the
+     line each author text starts on is read off the text in front of it (§T1335b: each
+     piece is the `wgsl` tag's cached string, so the position memo hits on every frame). */
+  const top = wgsl`// Generated point kernel (T117, contract v${POINT_KERNEL_CONTRACT_VERSION}). Do not edit by hand.
 struct KernelFrame {
   timeSeconds: f32,
   deltaSeconds: f32,
@@ -1129,7 +1134,8 @@ ${bufferDeclarations}
 
 ${accessorDeclarations}
 
-${paramsDeclaration}struct Point {
+`;
+  const head = wgsl`${top}${paramsDeclaration}struct Point {
 ${structFields}
 };
 
@@ -1144,7 +1150,8 @@ ${dimStruct}struct PointCtx {
 
 ${RNG_WGSL}
 
-${fieldDeclarations}${neighborDeclaration}${kernel}
+${fieldDeclarations}${neighborDeclaration}`;
+  const text = wgsl`${head}${kernel}
 ${groupFunction}
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid: vec3u) {
@@ -1173,8 +1180,16 @@ ${stores}
     /* T587: the GROUP predicate is scanned with the kernel because it compiles against the
        same `PointCtx` — a predicate gating on `ctx.time` wraps exactly as loudly. */
     notices: noticesOf(wrappingClockNotice("kernel", kernel, groupSource)),
+    placed: {
+      kernel: endOf(head),
+      ...(groupSource === "" ? {} : { group: advance(advance(endOf(head), kernel), `\n${GROUP_OPEN}`) }),
+      ...(paramsDeclaration === "" ? {} : { params: endOf(top) }),
+    },
   };
 }
+
+/** The group predicate's wrapper up to the predicate itself — one text, emitted and measured. */
+const GROUP_OPEN = "\nfn groupMatch(p: Point, ctx: PointCtx) -> bool {\n  return (";
 
 /** One place that turns "maybe a notice" into the list every module carries. */
 function noticesOf(...found: ReadonlyArray<KernelNotice | undefined>): ReadonlyArray<KernelNotice> {
@@ -1352,7 +1367,8 @@ export function generateSpawnHookModule(request: SpawnHookRequest): KernelModule
     ),
   ].join("\n\n");
 
-  const text = wgsl`// Generated spawn hook (T339, contract v${ADVANCED_KERNEL_CONTRACT_VERSION}). Do not edit by hand.
+  /* T1523b: split where the author texts are pasted, byte-identical to the one template. */
+  const hookTop = wgsl`// Generated spawn hook (T339, contract v${ADVANCED_KERNEL_CONTRACT_VERSION}). Do not edit by hand.
 struct KernelFrame {
   timeSeconds: f32,
   deltaSeconds: f32,
@@ -1368,7 +1384,8 @@ ${hookGroups.map((group, index) => `@group(0) @binding(${index + 1}) var<storage
 
 ${hookAccessors}
 
-${hookParamsDeclaration}struct Point {
+`;
+  const hookHead = wgsl`${hookTop}${hookParamsDeclaration}struct Point {
 ${shaped.map((attribute) => `  ${attribute.name}: ${attribute.type},`).join("\n")}
 };
 
@@ -1383,7 +1400,8 @@ struct PointCtx {
 
 ${RNG_WGSL}
 
-${request.hook}
+`;
+  const text = wgsl`${hookHead}${request.hook}
 
 @compute @workgroup_size(${workgroupSize})
 fn main(@builtin(global_invocation_id) gid: vec3u) {
@@ -1421,6 +1439,10 @@ ${shaped.map((attribute) => `  pointStore_${attribute.name}(index, q.${attribute
        clock" is the natural thing to write there, and on the wrapping one every generation
        born after a lap repeats the phases of the generation born before it. */
     notices: noticesOf(wrappingClockNotice("spawn hook", request.hook)),
+    placed: {
+      hook: endOf(hookHead),
+      ...(hookParamsDeclaration === "" ? {} : { params: endOf(hookTop) }),
+    },
   };
 }
 

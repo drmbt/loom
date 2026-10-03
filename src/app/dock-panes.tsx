@@ -11,7 +11,12 @@ import { PerformancePanel, TimingUnavailableNote } from "@editor/inspect/index.t
 import type { CookPolicyValue } from "@editor/inspect/index.ts";
 import type { TimingUnavailableReason } from "@runtime/telemetry/index.ts";
 import { KEYMAP_CONTEXT_ATTRIBUTE } from "@editor/keymap/index.ts";
-import { ShaderEditor, commitShaderSource, diagnosticsToMarkers } from "@editor/shader-editor/index.ts";
+import {
+  ShaderEditor,
+  commitShaderSource,
+  diagnosticsForCodeParameter,
+  diagnosticsToMarkers,
+} from "@editor/shader-editor/index.ts";
 import type { ShaderEditorMarker } from "@editor/shader-editor/index.ts";
 import { codeParametersOf } from "@domain/parameters/index.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
@@ -264,11 +269,20 @@ export function ShaderPane({ nodeId, graph, diagnostics, stale = false }: Shader
     // moves with the text above it instead of being re-derived from stale line numbers.
     // The draft is read through the ref so the offsets are laid against the text the
     // diagnostics arrived on.
-    () =>
-      activeKey === SHADER_SOURCE_PARAMETER && nodeDiagnostics.length > 0
-        ? diagnosticsToMarkers(draftRef.current, nodeDiagnostics)
-        : NO_MARKERS,
-    [activeKey, nodeDiagnostics],
+    //
+    // T1523b: every code parameter takes the markers whose `source.file` names it — a point
+    // kernel's device error marks the kernel's own line — and `source` keeps the rest.
+    () => {
+      if (activeKey === null || nodeDiagnostics.length === 0) return NO_MARKERS;
+      const own = diagnosticsForCodeParameter(
+        nodeDiagnostics,
+        activeKey,
+        codeParameters.map((entry) => entry.key),
+        SHADER_SOURCE_PARAMETER,
+      );
+      return own.length === 0 ? NO_MARKERS : diagnosticsToMarkers(draftRef.current, own);
+    },
+    [activeKey, codeParameters, nodeDiagnostics],
   );
 
   if (!authorable) {
