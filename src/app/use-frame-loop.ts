@@ -13,6 +13,7 @@ import type { FrameDriver, PointerSource } from "@runtime/execution/index.ts";
 import { planStructureSignature } from "@runtime/backend/index.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { createUniformAnimator } from "./animate-parameters.ts";
+import { compileLatest } from "./compile-latest.ts";
 import { MAX_RETAINED_DIAGNOSTICS, retainDiagnostic } from "./diagnostic-buffer.ts";
 import { registerTransportCommands, transportHolderFor } from "./transport-commands.ts";
 
@@ -823,12 +824,14 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
     }
 
     const generation = (generationRef.current += 1);
-    void backend
-      .compile(compiled)
+    // §B235: queued behind the compile already in flight, never beside it — two compiles
+    // carrying from one retained program destroy each other's objects. A request a newer
+    // one overtook while it waited is never sent (`null`).
+    void compileLatest(backend, compiled)
       .then((plan) => {
         // A newer compile landed while this one was in flight — that result, not this
         // one, is authoritative for the driver.
-        if (generation !== generationRef.current) return;
+        if (generation !== generationRef.current || plan === null) return;
         // The structural plan the per-frame push diffs against. Reset together, so a
         // recompile never leaves the animator comparing against a plan that is gone.
         planRef.current = compiled;
