@@ -101,6 +101,7 @@ describe("core catalogue (T70, T40)", () => {
       "tile",
       // T1491b: the 2D projection-mapping warp.
       "cornerPin",
+      "gridWarp",
       "level",
       "hsv",
       "threshold",

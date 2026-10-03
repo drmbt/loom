@@ -197,6 +197,7 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   crop: "pure",
   tile: "pure",
   cornerPin: "pure",
+  gridWarp: "pure",
   level: "pure",
   hsv: "pure",
   threshold: "pure",

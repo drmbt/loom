@@ -6,6 +6,7 @@ import { noiseNode } from "./noise.ts";
 import { generatorNodes } from "./generators.ts";
 import { transformNodes } from "./transforms.ts";
 import { cornerPinNode } from "./corner-pin.ts";
+import { gridWarpNode } from "./grid-warp.ts";
 import { colorNodes } from "./color.ts";
 import { filterNodes } from "./filters.ts";
 import { opticsNodes } from "./optics.ts";
@@ -260,6 +261,8 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   ...transformNodes,
   // T1491b: the 2D projection-mapping warp, the stack's mapping stage.
   cornerPinNode,
+  // T1509b: the grid warp, for curved and irregular surfaces.
+  gridWarpNode,
   ...colorNodes,
   ...filterNodes,
   // T1402b: the look-building filters promoted from the On Nothing project's passes.
