@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { Buffer } from "node:buffer";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
@@ -86,17 +87,19 @@ function layersOf(plan: LogicalExecutionPlan | undefined): Layers | null {
 }
 
 interface Rig {
-  readonly renders: Array<{ frame: number; plan: LogicalExecutionPlan | undefined }>;
+  readonly renders: Array<{ frame: number; plan: LogicalExecutionPlan | undefined; at: number }>;
   readonly compiles: Array<{ plan: LogicalExecutionPlan; at: number; effectsBuilt: number; effectsWarmed: number }>;
   /** The scheduled loop's tick, as `backend.loop` was handed it (null until the loop starts). */
   tick(): void;
   transport(): TransportHandlers;
   readonly reported: string[];
   diagnostics(): readonly unknown[];
+  /** §T1544b: the bytes of `nodeId`'s output as the last rendered frame left them. */
+  read(nodeId: string): Promise<Buffer>;
   dispose(): void;
 }
 
-async function mount(settings: typeof SETTINGS = SETTINGS): Promise<Rig> {
+async function mount(settings: typeof SETTINGS = SETTINGS, graph: GraphDocument = timedSetList()): Promise<Rig> {
   if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
   const real = createVgpuBackend({ host: nodeGpuHost() });
   const reported: string[] = [];
@@ -131,7 +134,7 @@ async function mount(settings: typeof SETTINGS = SETTINGS): Promise<Rig> {
       }
       if (property === "render") {
         return (compiled: CompiledExecutionPlan, inputs: FrameInputs) => {
-          renders.push({ frame: inputs.frame.frameIndex, plan: logical.get(compiled.id) });
+          renders.push({ frame: inputs.frame.frameIndex, plan: logical.get(compiled.id), at: performance.now() });
           target.render(compiled, inputs);
         };
       }
@@ -142,7 +145,7 @@ async function mount(settings: typeof SETTINGS = SETTINGS): Promise<Rig> {
   const runtime: AppRuntime = createAppRuntime({
     identityStorage: null,
     actor: { kind: "human", id: "tester", label: "Tester" },
-    document: { ...structuredClone(setListDocument), graph: timedSetList(), settings },
+    document: { ...structuredClone(setListDocument), graph, settings },
   });
   const view = renderHook(() => {
     const compiled = useGraphCompile(runtime, CAPABILITIES);
@@ -174,6 +177,12 @@ async function mount(settings: typeof SETTINGS = SETTINGS): Promise<Rig> {
     },
     reported,
     diagnostics: () => view.result.current.diagnostics,
+    read: async (nodeId) => {
+      const plan = renders.at(-1)?.plan as unknown as { readonly outputs: ReadonlyArray<{ readonly nodeId: string; readonly resourceId: string }> } | undefined;
+      const output = plan?.outputs.find((entry) => entry.nodeId === nodeId);
+      if (output === undefined) throw new Error(`no output for  in the last rendered plan`);
+      return Buffer.from((await real.readOutput(output.resourceId)).bytes);
+    },
     dispose: () => {
       view.unmount();
       runtime.dispose();
@@ -360,6 +369,181 @@ describe("§T1544b — the loop's wrap back to the first segment is precompiled 
       const wrapped = rig.renders.slice(rendersBefore).find((entry) => entry.frame < 160);
       expect(wrapped?.frame).toBe(0);
       expect(layersOf(wrapped?.plan)).toEqual(expectedOn(0));
+      expect(rig.diagnostics()).toEqual([]);
+      expect(rig.reported).toEqual([]);
+    } finally {
+      rig.dispose();
+    }
+  }, 240_000);
+});
+
+/**
+ * §T1544b (1) — A PAUSED SCRUB OR STEP ACROSS A CROSSING RENDERS EACH FRAME IN ITS OWN
+ * STRUCTURE. A seek replays from frame 0 on the paused driver and the step button steps it;
+ * neither passes the scheduled loop's `ready` hold, so until §T1544b every replayed frame
+ * rendered on whatever plan was installed — the crossing frame in the old structure, and
+ * every frame of a replay from the far side of a crossing in the new one. Now each frame
+ * waits for its segment's plan before it is stepped.
+ */
+describe("§T1544b — paused seeks and steps cross structure exactly", () => {
+  /** The renders since `from`, each against its own playhead's structure: the frames that are wrong. */
+  const wrongSince = (rig: Rig, from: number): number[] =>
+    rig.renders
+      .slice(from)
+      .filter((entry) => JSON.stringify(layersOf(entry.plan)) !== JSON.stringify(expectedOn(entry.frame)))
+      .map((entry) => entry.frame);
+
+  it("E82 paused at 50: a seek to the crossing (60) shows the new structure ON frame 60; a step queued behind a seek lands on 90 in its own; every replayed frame in its own", async () => {
+    const rig = await mount();
+    try {
+      await act(async () => {
+        rig.transport().togglePlay();
+        await gap();
+      });
+      await act(async () => {
+        expect(rig.transport().stepFrame(51)).toBe(50);
+        await gap();
+      });
+      // A scrub to the crossing frame: the replay's frames 0..59 in the first structure, 60 in the next.
+      const fromSeek = rig.renders.length;
+      await act(async () => {
+        expect(rig.transport().seek(60)).toBe(60);
+      });
+      await waitFor(() => expect(rig.renders.slice(fromSeek).map((entry) => entry.frame).at(-1)).toBe(60), { timeout: 10_000 });
+      expect(rig.renders.slice(fromSeek).map((entry) => entry.frame)).toEqual(Array.from({ length: 61 }, (_, index) => index));
+      expect(layersOf(rig.renders.at(-1)?.plan)).toEqual(expectedOn(60));
+      expect(wrongSince(rig, fromSeek)).toEqual([]);
+
+      // A seek to 88 and, at once, a step of two: the step waits for the replay, then 89, 90.
+      const fromStep = rig.renders.length;
+      await act(async () => {
+        expect(rig.transport().seek(88)).toBe(88);
+        expect(rig.transport().stepFrame(2)).toBe(90);
+      });
+      await waitFor(() => expect(rig.renders.slice(fromStep).map((entry) => entry.frame).at(-1)).toBe(90), { timeout: 10_000 });
+      expect(rig.renders.slice(fromStep).map((entry) => entry.frame)).toEqual(Array.from({ length: 91 }, (_, index) => index));
+      expect(layersOf(rig.renders.at(-1)?.plan)).toEqual(expectedOn(90));
+      expect(wrongSince(rig, fromStep)).toEqual([]);
+      expect(rig.transport().isPlaying()).toBe(false);
+
+      // MEASURED: a seek to 170 replays 171 frames across all three crossings — four installs
+      // (frame 0's segment first, then one per crossing) — against the same replay's own steps.
+      const fromLong = rig.renders.length;
+      const compilesBefore = rig.compiles.length;
+      const started = performance.now();
+      await act(async () => {
+        rig.transport().seek(170);
+      });
+      await waitFor(() => expect(rig.renders.slice(fromLong).map((entry) => entry.frame).at(-1)).toBe(170), { timeout: 20_000 });
+      const long = rig.renders.slice(fromLong);
+      expect(wrongSince(rig, fromLong)).toEqual([]);
+      expect(rig.compiles.length - compilesBefore).toBe(4);
+      if (process.env["LOOM_MEASURE"] === "1") {
+        const gaps = long.slice(1).map((entry, index) => entry.at - (long[index] as (typeof long)[number]).at);
+        const waits = [(long[0]?.at ?? started) - started, ...gaps.filter((ms) => ms > 1).sort((a, b) => b - a).slice(0, 3)];
+        const steps = gaps.filter((ms) => ms <= 1);
+        console.info(
+          `§T1544b seek →170 across 3 crossings (Dawn, E82 160×90, jsdom React): ${((long.at(-1)?.at ?? started) - started).toFixed(1)} ms in all, ` +
+            `4 installs; the 4 waits (frame 0's first) ${waits.map((ms) => ms.toFixed(1)).join(", ")} ms; ` +
+            `the other ${String(steps.length)} steps ${(steps.reduce((sum, ms) => sum + ms, 0) / Math.max(1, steps.length)).toFixed(2)} ms each`,
+        );
+      }
+
+      // Play pressed while a replay is still installing is OWED: the scheduler does not run
+      // beside the replay, and starts once it has landed.
+      await act(async () => {
+        rig.transport().seek(10);
+        rig.transport().togglePlay();
+        expect(rig.transport().isPlaying()).toBe(true);
+        expect(() => rig.tick()).toThrow("the loop is not running");
+      });
+      await waitFor(() => expect(rig.renders.at(-1)?.frame).toBe(10), { timeout: 10_000 });
+      await waitFor(() => expect(() => rig.tick()).not.toThrow(), { timeout: 10_000 });
+      expect(rig.transport().isPlaying()).toBe(true);
+      expect(rig.diagnostics()).toEqual([]);
+      expect(rig.reported).toEqual([]);
+    } finally {
+      rig.dispose();
+    }
+  }, 240_000);
+
+  /**
+   * TEMPORAL STATE ACROSS THE CROSSING. A feedback loop records the output; a Layer the
+   * timeline turns on at 1.0 s (frame 60) adds green into it, so from frame 60 on every frame
+   * carries the history of the frames before it in BOTH structures. A seek to 70 from 70
+   * replays 0..59 without the Layer and 60..70 with it — byte-identical to the play-through.
+   */
+  it("a feedback loop across the crossing: seek(70) from the far side is byte-identical to playing 0..70", async () => {
+    const node = (id: string, type: string, parameters: Record<string, unknown>, ui?: Record<string, unknown>) =>
+      ({ id, type, label: id, definitionVersion: 1, position: { x: 0, y: 0 }, parameters, ...(ui === undefined ? {} : { ui }) }) as GraphDocument["nodes"][string];
+    const edge = (id: string, source: string, target: string, port: string) => ({
+      id,
+      source: { nodeId: source, portId: "out" },
+      target: { nodeId: target, portId: port },
+    });
+    const graph = {
+      revision: 1,
+      nodes: {
+        base: node("base", "solid", { color: [0.02, 0, 0, 1] }),
+        green: node("green", "solid", { color: [0, 0.25, 0, 1] }),
+        fb: node("fb", "feedback", { source: "layer1", persistence: 1 }),
+        acc: node("acc", "layer", { opacity: 0.9, blend: "add" }),
+        layer1: node("layer1", "layer", { opacity: 1, blend: "add" }, { bypassed: true }),
+        out: node("out", "output", {}),
+        stage: node("stage", "presets", { targets: "layer1", presets: JSON.stringify({ version: 1, presets: [{ name: "on", values: {}, on: { layer1: true } }] }) }),
+        show: node("show", "cueList", { follow: "timeline", cues: serializeCueList({ version: 1, cues: [{ name: "in", bank: "stage", preset: "on", at: 1 }] }) }),
+      },
+      edges: {
+        e0: edge("e0", "base", "acc", "below"),
+        e1: edge("e1", "fb", "acc", "picture"),
+        e2: edge("e2", "acc", "layer1", "below"),
+        e3: edge("e3", "green", "layer1", "picture"),
+        e4: edge("e4", "layer1", "out", "input"),
+      },
+      groups: {},
+    } as unknown as GraphDocument;
+    const layerOn = (plan: LogicalExecutionPlan | undefined): boolean =>
+      plan?.passes.some((pass) => (pass as { readonly id: string }).id.startsWith("layer1#")) === true;
+
+    const rig = await mount(SETTINGS, graph);
+    try {
+      await act(async () => {
+        rig.transport().togglePlay();
+        await gap();
+      });
+      const initial = rig.compiles.length;
+      // PLAY-THROUGH: 0..70 one step at a time, the crossing installed ahead as playback does.
+      const fromPlay = rig.renders.length;
+      for (let frame = 0; frame <= 70; frame += 1) {
+        await act(async () => {
+          rig.transport().stepFrame(1);
+          await gap();
+        });
+        await waitFor(() => expect(rig.compiles.length).toBe(initial + (frame + 1 >= 60 ? 1 : 0)), { timeout: 10_000 });
+      }
+      const played = rig.renders.slice(fromPlay);
+      expect(played.map((entry) => entry.frame)).toEqual(Array.from({ length: 71 }, (_, index) => index));
+      expect(played.filter((entry) => layerOn(entry.plan) !== entry.frame >= 60).map((entry) => entry.frame)).toEqual([]);
+      const before = await rig.read("out");
+
+      // THE SEEK, from the far side of the crossing: frame 0's plan must be installed first.
+      const fromSeek = rig.renders.length;
+      await act(async () => {
+        expect(rig.transport().seek(70)).toBe(70);
+      });
+      await waitFor(() => expect(rig.renders.slice(fromSeek).map((entry) => entry.frame).at(-1)).toBe(70), { timeout: 10_000 });
+      const replayed = rig.renders.slice(fromSeek);
+      expect(replayed.map((entry) => entry.frame)).toEqual(Array.from({ length: 71 }, (_, index) => index));
+      expect(replayed.filter((entry) => layerOn(entry.plan) !== entry.frame >= 60).map((entry) => entry.frame)).toEqual([]);
+      const seekBytes = await rig.read("out");
+      expect(Buffer.compare(seekBytes, before)).toBe(0);
+
+      // Not vacuous: a seek to 59 (the last frame without the Layer) is a different picture.
+      await act(async () => {
+        rig.transport().seek(59);
+      });
+      await waitFor(() => expect(rig.renders.at(-1)?.frame).toBe(59), { timeout: 10_000 });
+      expect(Buffer.compare(await rig.read("out"), before)).not.toBe(0);
       expect(rig.diagnostics()).toEqual([]);
       expect(rig.reported).toEqual([]);
     } finally {

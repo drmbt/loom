@@ -631,7 +631,7 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
     // same reason fps is — the answer changes while the transport does not.
     // T1497b: a new clock counts from zero, so it counts in a new epoch. See `epochRef`.
     epochRef.current = mintClockEpoch();
-    const transport = liveClock({
+    const clock = liveClock({
       fps: () => fpsRef.current,
       // T1100: the document's seed, per frame (§V45's live half). See `seedRef` above.
       seed: () => seedRef.current,
@@ -639,6 +639,25 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       // T1497b: which run of the absolute clock a frame counts in. See `epochRef`.
       epoch: () => epochRef.current ?? undefined,
     });
+    /**
+     * §T1544b — a frame PULLED ahead of the step that renders it, so a paused step (a seek's
+     * replay, the step button) can see which structure the frame needs before it is rendered
+     * and install that plan first (`stepInStructure`). The driver's next step consumes it; a
+     * reset drops it. Nothing is pulled while no timeline switches structure.
+     */
+    let pulled: FrameEvaluationInput | null = null;
+    const transport: typeof clock = {
+      ...clock,
+      next: () => {
+        const frame = pulled ?? clock.next();
+        pulled = null;
+        return frame;
+      },
+      reset: (nextSeed) => {
+        pulled = null;
+        clock.reset(nextSeed);
+      },
+    };
 
     /**
      * The lap boundary (T433, T464).
@@ -735,15 +754,90 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
     driver.start();
     setPlaying(true);
 
+    /**
+     * §T1544b — PAUSED STEPS, EACH IN ITS OWN STRUCTURE.
+     *
+     * A seek replays 0..n and the step button steps one; both drive `driver.step()` with the
+     * scheduler stopped, and the driver's `ready` hold is for the scheduled loop only. So
+     * each frame is pulled before it is stepped (`pulled`), and a frame whose timeline
+     * segment is not the installed plan's waits for that plan — asked for, compiled,
+     * installed — exactly as `prepareFrame` makes a take wait. Every replayed frame then
+     * renders in its own segment, so temporal state carried across a crossing is the
+     * play-through's, byte for byte.
+     *
+     * Synchronous for as long as every frame's segment is installed — always, with no
+     * structural timeline — so a plain seek or step is what it always was. The first frame
+     * that needs another plan turns the rest of the run asynchronous: the command has
+     * returned by then, and the picture lands once the replay does (each crossing costs one
+     * install — measured in `timeline-structure-live.gpu.test.ts`). A newer seek abandons a
+     * run in flight (it resets the transport and replays from zero itself); a step queues
+     * behind one; play pressed during one starts when it ends.
+     */
+    /** The asynchronous run in flight (null: none), where the queue lands, and play owed after it. */
+    let tail: Promise<void> | null = null;
+    let landsOn = -1;
+    let resumeAfter = false;
+    /** Bumped by a seek and by teardown: a run of an older generation stops at its next wait. */
+    let generation = 0;
+    const needsPlan = (): FrameEvaluationInput | null => {
+      if (timelineRef.current === null) return null;
+      pulled ??= clock.next();
+      return structureReady(pulled) ? null : pulled;
+    };
+    const stepInStructure = (count: number, finish: (last: FrameInputs | null) => void): { readonly pending: boolean; readonly last: FrameInputs | null } => {
+      const mine = generation;
+      let last: FrameInputs | null = null;
+      let index = 0;
+      if (tail === null) {
+        for (; index < count; index += 1) {
+          if (needsPlan() !== null) break;
+          last = driver.step() ?? last;
+        }
+        if (index === count) {
+          finish(last);
+          return { pending: false, last };
+        }
+      }
+      const run: Promise<void> = (tail ?? Promise.resolve()).then(async () => {
+        if (mine !== generation) return;
+        for (; index < count; index += 1) {
+          for (let frame = needsPlan(); frame !== null; frame = needsPlan()) {
+            const waited = new Promise<void>((resolve) => installWaitersRef.current.push(resolve));
+            timelineRef.current?.request(frame);
+            await waited;
+            if (mine !== generation || driverRef.current !== driver) return;
+          }
+          last = driver.step() ?? last;
+        }
+        finish(last);
+      });
+      tail = run;
+      void run.then(() => {
+        if (tail !== run) return;
+        tail = null;
+        if (mine === generation && resumeAfter && !driver.running) driver.start();
+        resumeAfter = false;
+        setPlaying(driver.running);
+      });
+      return { pending: true, last };
+    };
+
     // §V52/§V55 — the top bar's play/pause and step buttons, and `space`/`.` from the
     // keymap, all run through these two bus commands (`transport-commands.ts`) rather
     // than calling this closure directly, so the button and the hotkey cannot drift.
     const holder = transportHolderFor(bus);
     holder.current = {
-      isPlaying: () => driverRef.current?.running ?? false,
+      // §T1544b: while a paused run is still installing, "playing" is the play owed after it.
+      isPlaying: () => (tail !== null ? resumeAfter : (driverRef.current?.running ?? false)),
       togglePlay: () => {
         const live = driverRef.current;
         if (live === null) return;
+        if (tail !== null) {
+          // §T1544b: the scheduler may not run beside a replay; play starts when it ends.
+          resumeAfter = !resumeAfter;
+          setPlaying(resumeAfter);
+          return;
+        }
         if (live.running) live.stop();
         else live.start();
         setPlaying(live.running);
@@ -751,9 +845,13 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       stepFrame: (frames) => {
         const live = driverRef.current;
         if (live === null) return -1;
-        let last = null;
-        for (let index = 0; index < frames; index += 1) last = live.step();
-        return last?.frame.frameIndex ?? -1;
+        // §T1544b: each frame in its own structure. Where the steps land is known up front:
+        // a paused step is one frame, and a queued step lands after the run before it.
+        const target = (tail !== null ? landsOn : (latestFrameRef.current?.frame.frameIndex ?? -1)) + frames;
+        const stepped = stepInStructure(frames, () => undefined);
+        if (!stepped.pending) return stepped.last?.frame.frameIndex ?? -1;
+        landsOn = target;
+        return target;
       },
       // `onFrame` above already records this into `latestFrameRef`, so there is nothing
       // to write here — the export path needs the value RETURNED, not stored.
@@ -768,8 +866,13 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       seek: (frameIndex) => {
         const live = driverRef.current;
         if (live === null) return -1;
-        const wasRunning = live.running;
-        if (wasRunning) live.stop();
+        // §T1544b: a run still installing is abandoned — this replays from zero itself — and
+        // play it owed is owed by this one.
+        const wasRunning = live.running || (tail !== null && resumeAfter);
+        generation += 1;
+        tail = null;
+        resumeAfter = false;
+        if (live.running) live.stop();
         transport.reset();
         // T510: a seek REPLAYS from zero, so its clear includes the point pairs —
         // "a SEEK zeroes frameIndex and drops the point pairs together", now true on
@@ -779,12 +882,19 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
         // are both "not a function of frame index", so both are cleared before the replay
         // or the replayed frames carry a trajectory from the history just abandoned.
         onResetRef.current?.();
-        let last = null;
-        for (let index = 0; index <= frameIndex; index += 1) last = live.step();
-        latestFrameRef.current = last;
+        // §T1544b: every replayed frame in its own segment's plan (`stepInStructure`).
+        const replayed = stepInStructure(frameIndex + 1, (last) => {
+          latestFrameRef.current = last;
+        });
+        if (replayed.pending) {
+          landsOn = frameIndex;
+          resumeAfter = wasRunning;
+          setPlaying(wasRunning);
+          return frameIndex;
+        }
         if (wasRunning) live.start();
         setPlaying(live.running);
-        return last?.frame.frameIndex ?? -1;
+        return replayed.last?.frame.frameIndex ?? -1;
       },
       /*
        * §T1537b — the export's half: resolves once the plan for timeline frame `frameIndex`
@@ -817,6 +927,9 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
 
     return () => {
       if (holder.current !== null) holder.current = null;
+      // §T1544b: a paused run still installing stops at its next wait.
+      generation += 1;
+      tail = null;
       driver.stop();
       driverRef.current = null;
     };

@@ -21,7 +21,7 @@ declare module "@domain/types/commands.ts" {
     /** Idempotent verbs (T292): an agent told "play" while playing must not pause. */
     "transport.play": { input: Record<string, never>; output: { playing: boolean } };
     "transport.pause": { input: Record<string, never>; output: { playing: boolean } };
-    /** Render exactly `frames` (default 1) frames synchronously. Reports the last frame index. */
+    /** Render exactly `frames` (default 1) frames synchronously — across a timed structural cue, once its plan is installed (§T1544b). Reports the last frame index. */
     "transport.stepFrame": { input: { frames?: number }; output: { frameIndex: number } };
     /**
      * Jump to a frame (T265, §V170).
@@ -75,7 +75,14 @@ export interface TransportHandlers {
    * render actually consumed, never one reconstructed alongside it.
    */
   stepOnce(): FrameInputs | null;
-  /** Replays from frame 0 to `frameIndex`, clearing temporal state first (§V170). */
+  /**
+   * Replays from frame 0 to `frameIndex`, clearing temporal state first (§V170).
+   *
+   * §T1544b: with a timeline that switches structure, each replayed frame is rendered in its
+   * own segment's plan; a frame whose plan is not installed waits for it, and the rest of
+   * the replay (and any step queued behind it) completes asynchronously, after the command
+   * has returned the frame it lands on. `stepFrame` steps the same way.
+   */
   seek(frameIndex: number): number;
   /**
    * §T1537b: resolves once the plan timeline frame `frameIndex` compiles in is the installed
