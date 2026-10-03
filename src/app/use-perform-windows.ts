@@ -3,12 +3,19 @@ import { SINK_TARGET_PORT } from "@compiler/index.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
 import type { ChannelResolver, ParameterMorphs, ResolvedParameters } from "@domain/parameters/resolve.ts";
+import type { InvocationContext } from "@domain/types/commands.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import type { NodeId } from "@domain/types/ids.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
-import type { WindowSectionSurface } from "@editor/inspector/window-section.tsx";
+import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
+import type { ParameterEditor } from "@editor/inspector/parameter-editor.ts";
+import type { WindowMappingView, WindowSectionSurface } from "@editor/inspector/window-section.tsx";
+import { createVec3GizmoStore, gizmoTilesFor } from "@editor/viewer/index.ts";
+import type { GridLineActions, PictureGizmoHandle } from "@editor/viewer/index.ts";
 import { WINDOW_OUT_TYPE } from "@nodes/definitions/window-out.ts";
 import type { LoomBackend } from "@runtime/backend/backend-types.ts";
+import type { PassDescriptor, ResourceDescriptor } from "@runtime/backend/plan.ts";
 import type { DisplaySinkStore } from "./display-sinks.ts";
 import { registerPerformCommands } from "./perform-commands.ts";
 import type { PerformWindows } from "./perform-commands.ts";
@@ -16,6 +23,10 @@ import { createScreenSource, performWindowName, physicalSize, placementFeatures,
 import type { ScreenSource } from "./perform-screens.ts";
 import { browserPerformOpener, openPerformWindow } from "./perform-window.ts";
 import type { PerformWindowHandle } from "./perform-window.ts";
+import { MAPPING_OVERLAY_TOKENS, createMappingOverlay } from "./perform-mapping-overlay.ts";
+import type { MappingOverlay, MappingOverlayView } from "./perform-mapping-overlay.ts";
+import { mappingAbsentNote, mappingTargetsOf } from "./perform-mapping.ts";
+import type { MappingTarget, Size, WindowFit } from "./perform-mapping.ts";
 
 /**
  * The perform windows of this session (§T1391b): which Window Outs have one open, the
@@ -30,9 +41,21 @@ import type { PerformWindowHandle } from "./perform-window.ts";
  * handed to the window — so a window opens black for the one frame the recompile takes.
  */
 
-/** The slice of a compiled plan this needs: where each node's `$target` lives. */
+/**
+ * The slice of a compiled plan this needs: where each node's `$target` lives and, for the
+ * edit-mapping mode (§T1536b), its size and the size of the texture the Window Out samples
+ * (its pass's input binding) — the two aspects its Fit is computed from. A plan without the
+ * pass or the sizes (one that has not compiled the window yet) draws no handles.
+ */
 export interface PerformPlan {
-  readonly outputs: ReadonlyArray<{ readonly nodeId: string; readonly portId: string; readonly resourceId: string }>;
+  readonly outputs: ReadonlyArray<{
+    readonly nodeId: string;
+    readonly portId: string;
+    readonly resourceId: string;
+    readonly size?: readonly [number, number];
+  }>;
+  readonly passes?: ReadonlyArray<PassDescriptor>;
+  readonly resources?: ReadonlyArray<ResourceDescriptor>;
 }
 
 export interface PerformWindowsOptions {
@@ -56,6 +79,11 @@ export interface PerformWindowsOptions {
   readonly channels: () => ChannelResolver | undefined;
   readonly morphs: () => ParameterMorphs | undefined;
   readonly frame: () => FrameEvaluationInput | undefined;
+  /**
+   * §T1536b: who a mapping-handle drag on a perform window is — the local human, exactly as
+   * a drag on the node's preview tile (the same parameter editor, so one undo group per drag).
+   */
+  readonly invocation: InvocationContext;
 }
 
 export interface PerformWindowsResult {
@@ -82,6 +110,18 @@ const booleanParameter = (parameters: ResolvedParameters, key: string, fallback:
   return typeof value === "boolean" ? value : fallback;
 };
 
+const FITS: readonly WindowFit[] = ["fit", "fill", "stretch"];
+
+/** One window in edit-mapping mode: its layer and the parameter editor its drags write through. */
+interface MappingSession {
+  /** A refused line insert/delete, shown until the next successful one. */
+  message: string | null;
+  readonly overlay: MappingOverlay;
+  readonly editor: ParameterEditor;
+}
+
+const WAITING_NOTE = "Waiting for this window's first frame.";
+
 const NO_SCREENS: ScreenSource = {
   screens: () => [],
   editor: () => undefined,
@@ -90,7 +130,7 @@ const NO_SCREENS: ScreenSource = {
   subscribe: () => () => {},
 };
 
-export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow, screenSource, ...reads }: PerformWindowsOptions): PerformWindowsResult {
+export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow, screenSource, invocation, ...reads }: PerformWindowsOptions): PerformWindowsResult {
   const screens = useMemo(
     () => screenSource ?? (typeof window === "undefined" ? NO_SCREENS : createScreenSource(window)),
     [screenSource],
@@ -131,6 +171,10 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
   planRef.current = plan;
   const backendRef = useRef(backend);
   backendRef.current = backend;
+  const invocationRef = useRef(invocation);
+  invocationRef.current = invocation;
+  /** §T1536b: the windows in edit-mapping mode. Session state, like the open set. */
+  const mapping = useRef(new Map<string, MappingSession>());
 
   // Re-pointed every render so it always writes the CURRENT (per-document) sink store.
   const changed = useRef<() => void>(() => {});
@@ -147,6 +191,148 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
 
   const outputFor = (nodeId: string): string | undefined =>
     planRef.current?.outputs.find((output) => output.nodeId === nodeId && output.portId === SINK_TARGET_PORT)?.resourceId;
+
+  /**
+   * §T1536b — EDIT MAPPING on an open window: the handles of a Corner Pin / Grid Warp
+   * upstream, drawn over the window's picture where the window shows them
+   * (`perform-mapping.ts` decides which node and the exact map, or refuses by name). Every
+   * drag writes through a parameter editor on the bus with the local human's invocation —
+   * the tile's own write path (`Vec3GizmoStore`), one undo group per drag. Re-drawn on a
+   * document change (a drag lands there first), a new plan (sizes) and a window resize.
+   */
+  const choices = useRef(new Map<string, string>());
+  /** Hide cursor as resolved — except while the window is in edit-mapping mode (§T1536b). */
+  const hideCursorOf = useCallback(
+    (nodeId: string, node: GraphNode, graph: GraphDocument, at?: FrameEvaluationInput): boolean =>
+      !mapping.current.has(nodeId) && booleanParameter(parametersOf(node, graph, at), "hideCursor", true),
+    [parametersOf],
+  );
+  const mappingOps = useMemo(() => {
+    const notify = (): void => {
+      for (const listener of listeners.current) listener();
+    };
+    /** The Fit facts the plan and the Window Out's parameters give, or null before the plan has them. */
+    const pictureFacts = (windowId: string, graph: GraphDocument) => {
+      const current = planRef.current;
+      const targetSize = current?.outputs.find((output) => output.nodeId === windowId && output.portId === SINK_TARGET_PORT)?.size;
+      let binding: string | undefined;
+      for (const pass of current?.passes ?? []) {
+        if (pass.kind !== "effect" || pass.nodeId !== windowId) continue;
+        binding = pass.textures?.[0]?.resourceId;
+        break;
+      }
+      const resource = binding === undefined ? undefined : current?.resources?.find((entry) => entry.id === binding);
+      const inputSize = resource !== undefined && "size" in resource ? resource.size : undefined;
+      const node = graph.nodes[windowId];
+      if (targetSize === undefined || inputSize === undefined || node === undefined) return null;
+      const fit = stringParameter(parametersOf(node, graph), "fit", "fit");
+      return { fit: FITS.find((mode) => mode === fit) ?? "fit", inputSize: inputSize as Size, targetSize: targetSize as Size };
+    };
+    // The AUTHORED document: a Window Out and the mapping nodes it edits are nodes the user
+    // placed at the root (as the windows' own reads below). Read on a toggle, a document
+    // change, a new plan or a resize — never per frame.
+    const authored = (): GraphDocument => bus.store.getGraph();
+    const targetsOf = (windowId: string, graph: GraphDocument): readonly MappingTarget[] =>
+      mappingTargetsOf(graph, readsRef.current.registry, windowId);
+    const chosenOf = (windowId: string, targets: readonly MappingTarget[]): MappingTarget | undefined =>
+      targets.find((target) => target.nodeId === choices.current.get(windowId)) ?? targets[0];
+    const viewOf = (windowId: string, session: MappingSession): MappingOverlayView => {
+      const graph = authored();
+      const { registry } = readsRef.current;
+      const target = chosenOf(windowId, targetsOf(windowId, graph));
+      if (target === undefined) return { note: mappingAbsentNote() };
+      if (target.refusal !== null) return { note: target.refusal };
+      const facts = pictureFacts(windowId, graph);
+      if (facts === null) return { note: WAITING_NOTE };
+      const port = registry.get(graph.nodes[target.nodeId]?.type ?? "")?.outputs[0]?.id;
+      // The tile's own derivation (T935, §T1491b): the same handles, the same refusals.
+      const tile =
+        port === undefined
+          ? undefined
+          : gizmoTilesFor([{ nodeId: target.nodeId, portId: port, size: facts.inputSize }], graph.nodes, registry).get(target.nodeId as NodeId);
+      const handles = (tile?.handles ?? []).filter((handle): handle is PictureGizmoHandle => handle.space === "picture");
+      const how =
+        target.kind === "gridWarp"
+          ? "drag a point, Option-click to add a column (with Shift a row), right-click a point to delete one"
+          : "drag a pin";
+      const note = `Editing ${target.title} "${target.name}": ${how}. M or Esc to stop.`;
+      return {
+        note: session.message === null ? note : `${note} ${session.message}`,
+        edit: { nodeId: target.nodeId as NodeId, handles, grid: tile?.grid, picture: facts },
+      };
+    };
+    const refresh = (windowId: string): void => {
+      const session = mapping.current.get(windowId);
+      if (session !== undefined) session.overlay.update(viewOf(windowId, session));
+    };
+    const end = (windowId: string): void => {
+      const session = mapping.current.get(windowId);
+      if (session === undefined) return;
+      mapping.current.delete(windowId);
+      session.overlay.dispose();
+      session.editor.dispose();
+    };
+    /** The editor's token values, for a document that does not carry its stylesheet. */
+    const tokens = (): Record<string, string> => {
+      if (typeof window === "undefined") return {};
+      const style = window.getComputedStyle(window.document.documentElement);
+      return Object.fromEntries(MAPPING_OVERLAY_TOKENS.map((name) => [name, style.getPropertyValue(name).trim()]));
+    };
+    const set = (windowId: string, on: boolean): void => {
+      const handle = handles.current.get(windowId);
+      if (!on || handle === undefined) end(windowId);
+      else if (!mapping.current.has(windowId)) {
+        const editor = createParameterEditor({ bus, context: invocationRef.current });
+        const report = (result: { status: string; diagnostics?: ReadonlyArray<{ message: string }> | undefined }): void => {
+          const session = mapping.current.get(windowId);
+          if (session === undefined) return;
+          session.message = result.status === "applied" ? null : (result.diagnostics?.[0]?.message ?? "The edit was refused.");
+          refresh(windowId);
+        };
+        // §T1534b's line insert/delete, on the bus as the tile's (`graph-pane.tsx`).
+        const lines: GridLineActions = {
+          insert: (nodeId, axis, at) => void bus.execute("gridWarp.insertLine", { nodeId, axis, at }, invocationRef.current).then(report),
+          remove: (nodeId, axis, index) => void bus.execute("gridWarp.deleteLine", { nodeId, axis, index }, invocationRef.current).then(report),
+        };
+        const overlay = createMappingOverlay({ window: handle.window, store: createVec3GizmoStore({ editor }), lines, tokens: tokens() });
+        mapping.current.set(windowId, { message: null, overlay, editor });
+        refresh(windowId);
+      }
+      // The operator points at the projector while mapping: Hide cursor yields to the mode.
+      const node = handle === undefined ? undefined : authored().nodes[windowId];
+      if (handle !== undefined && node !== undefined) handle.setHideCursor(hideCursorOf(windowId, node, authored()));
+      notify();
+    };
+    return {
+      set,
+      end,
+      refresh,
+      refreshAll: () => {
+        for (const windowId of mapping.current.keys()) refresh(windowId);
+      },
+      notify,
+      choose(windowId: string, nodeId: string) {
+        choices.current.set(windowId, nodeId);
+        refresh(windowId);
+        notify();
+      },
+      view(windowId: string): WindowMappingView {
+        const targets = targetsOf(windowId, authored());
+        return {
+          editing: mapping.current.has(windowId),
+          targets: targets.map((target) => ({ nodeId: target.nodeId, label: `${target.title} "${target.name}"`, refusal: target.refusal })),
+          chosen: chosenOf(windowId, targets)?.nodeId,
+        };
+      },
+      /** `M` toggles, Escape leaves (and is left to the keymap when the mode is off). */
+      key(windowId: string, key: "toggle" | "leave"): boolean {
+        const on = mapping.current.has(windowId);
+        if (key === "leave" && !on) return false;
+        set(windowId, key === "toggle" ? !on : false);
+        return true;
+      },
+    };
+  }, [bus, parametersOf, hideCursorOf]);
 
   const windows = useMemo<PerformWindows>(() => {
     const graph = (): GraphDocument => bus.store.getGraph();
@@ -186,9 +372,11 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
               fullscreen,
               hideCursor: booleanParameter(parameters, "hideCursor", true),
               onClosed: (id) => {
+                mappingOps.end(id);
                 if (!handles.current.delete(id)) return;
                 changed.current();
               },
+              onMappingKey: mappingOps.key,
             },
           );
           if (handle === null) blocked.push(nodeId);
@@ -201,13 +389,14 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
         for (const nodeId of nodeIds) {
           const handle = handles.current.get(nodeId);
           if (handle === undefined) continue;
+          mappingOps.end(nodeId);
           handles.current.delete(nodeId);
           handle.close();
         }
         changed.current();
       },
     };
-  }, [bus, screens, parametersOf]);
+  }, [bus, screens, parametersOf, mappingOps]);
 
   // §B48: registered at mount, whatever the backend; the holder is ours while mounted.
   useEffect(() => {
@@ -222,7 +411,8 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
   // open is the one that gives it one).
   useEffect(() => {
     for (const [nodeId, handle] of handles.current) handle.setOutput(outputFor(nodeId));
-  }, [plan]);
+    mappingOps.refreshAll();
+  }, [plan, mappingOps]);
 
   // The document moved: a deleted Window Out closes its window; Hide cursor applies live.
   useEffect(
@@ -235,11 +425,14 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
         for (const [nodeId, handle] of handles.current) {
           const node = nodes[nodeId];
           if (node === undefined || node.type !== WINDOW_OUT_TYPE) gone.push(nodeId);
-          else handle.setHideCursor(booleanParameter(parametersOf(node, authored), "hideCursor", true));
+          else handle.setHideCursor(hideCursorOf(nodeId, node, authored));
         }
         if (gone.length > 0) windows.close(gone);
+        // §T1536b: a dragged handle lands in the document first; the window follows it.
+        mappingOps.refreshAll();
+        if (handles.current.size > 0) mappingOps.notify();
       }),
-    [bus, windows, parametersOf],
+    [bus, windows, mappingOps, hideCursorOf],
   );
 
   /*
@@ -284,6 +477,9 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
         const state = handles.current.has(nodeId) ? `Open on ${where}` : `Closed — opens on ${where}${size}`;
         return resolved.warning === undefined ? state : `${state}. ${resolved.warning}`;
       },
+      mapping: (nodeId) => mappingOps.view(nodeId),
+      setEditingMapping: (nodeId, on) => mappingOps.set(nodeId, on),
+      chooseMapping: (nodeId, mappingNodeId) => mappingOps.choose(nodeId, mappingNodeId),
       subscribe(listener) {
         listeners.current.add(listener);
         const off = screens.subscribe(listener);
@@ -293,7 +489,7 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
         };
       },
     }),
-    [bus, screens, parametersOf],
+    [bus, screens, parametersOf, mappingOps],
   );
 
   const observe = useCallback(
@@ -303,10 +499,10 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
       for (const [nodeId, handle] of handles.current) {
         const node = authored.nodes[nodeId];
         if (node === undefined || node.type !== WINDOW_OUT_TYPE) continue;
-        handle.setHideCursor(booleanParameter(parametersOf(node, authored, frame), "hideCursor", true));
+        handle.setHideCursor(hideCursorOf(nodeId, node, authored, frame));
       }
     },
-    [parametersOf],
+    [hideCursorOf],
   );
 
   return { surface, windows: open, observe };

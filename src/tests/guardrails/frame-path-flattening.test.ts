@@ -71,8 +71,8 @@ const RAW_READ = /store\.getGraph/g;
 const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
   {
     file: "app/use-perform-windows.ts",
-    reads: 3,
-    why: "§T1391b: NOT per frame — on a perform command (which Window Outs exist, and the one being opened), on a document change (close the window of a deleted Window Out), and when the inspector describes a window. A Window Out is an AUTHORED node the user picks; a perform window for one inside a component is not offered.",
+    reads: 4,
+    why: "§T1391b: NOT per frame — on a perform command (which Window Outs exist, and the one being opened), on a document change (close the window of a deleted Window Out), and when the inspector describes a window. A Window Out is an AUTHORED node the user picks; a perform window for one inside a component is not offered. §T1536b: the edit-mapping mode reads it (one site) on a toggle, a document change, a new plan and a window resize, to find the Corner Pin / Grid Warp upstream — authored nodes, whose parameters a drag writes.",
   },
   {
     file: "app/use-mesh-sources.ts",

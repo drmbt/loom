@@ -92,6 +92,7 @@ async function setup(types: readonly string[], reads: Reads = {}) {
         channels: () => undefined,
         morphs: reads.morphs ?? (() => undefined),
         frame: reads.frame ?? (() => undefined),
+        invocation: context,
       }),
     { initialProps: { plan: null as PerformPlan | null } },
   );

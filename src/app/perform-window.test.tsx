@@ -53,6 +53,7 @@ function setup(outputId: string | undefined, options: { readonly hideCursor?: bo
       fullscreen: true,
       hideCursor: options.hideCursor ?? true,
       onClosed: (id) => closed.push(id),
+      onMappingKey: () => false,
     },
   );
   return { frame, child, handle, presented, closed, requested: () => requested };
@@ -107,10 +108,33 @@ describe("a perform window", () => {
     expect(child.document.body.style.cursor).toBe("none");
   });
 
+  it("§T1536b: a double click on the mapping layer is a mapping gesture, never a fullscreen toggle", () => {
+    const { child } = setup("t");
+    const doc = child.document;
+    const realm = child as Window & typeof globalThis;
+    // Windowed (jsdom implements no Fullscreen API): a toggle would REQUEST fullscreen.
+    Object.defineProperty(doc, "fullscreenElement", { value: null, configurable: true });
+    let requests = 0;
+    doc.documentElement.requestFullscreen = () => {
+      requests += 1;
+      return Promise.resolve();
+    };
+    const layer = doc.createElement("div");
+    layer.dataset["performMapping"] = "on";
+    const handle = doc.createElement("button");
+    layer.appendChild(handle);
+    doc.body.appendChild(layer);
+    handle.dispatchEvent(new realm.MouseEvent("dblclick", { bubbles: true }));
+    handle.dispatchEvent(new realm.MouseEvent("click", { bubbles: true }));
+    expect(requests).toBe(0);
+    doc.body.dispatchEvent(new realm.MouseEvent("dblclick", { bubbles: true }));
+    expect(requests).toBe(1);
+  });
+
   it("returns null when the browser blocks the popup", () => {
     const handle = openPerformWindow(
       { open: () => null, present: () => { throw new Error("must not present"); }, parent: window },
-      { nodeId: "w", name: "loom-perform-77", title: "", features: "", outputId: "t", fullscreen: false, hideCursor: false, onClosed: () => {} },
+      { nodeId: "w", name: "loom-perform-77", title: "", features: "", outputId: "t", fullscreen: false, hideCursor: false, onClosed: () => {}, onMappingKey: () => false },
     );
     expect(handle).toBeNull();
   });

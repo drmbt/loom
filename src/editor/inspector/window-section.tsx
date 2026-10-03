@@ -20,6 +20,11 @@ import styles from "./inspector.module.css";
  *
  * Screen access is asked for with a click, because the browser's permission prompt needs
  * one and must not spend the gesture that opens a window.
+ *
+ * §T1536b — EDIT MAPPING: on an open window, the toggle draws the handles of the Corner Pin /
+ * Grid Warp upstream ON the perform window (also `M` there, Escape to leave). With more than
+ * one on the chain the picker chooses which; one that cannot be placed exactly (something
+ * between it and the window moves the picture) says why here and in the window.
  */
 
 /** A display, as the section needs it. The app's `ScreenInfo` satisfies this shape. */
@@ -31,6 +36,15 @@ export interface WindowScreenView {
   readonly isPrimary: boolean;
 }
 
+/** §T1536b: a window's edit-mapping state, for the section. */
+export interface WindowMappingView {
+  readonly editing: boolean;
+  /** The Corner Pins / Grid Warps on the window's input chain, nearest first. */
+  readonly targets: ReadonlyArray<{ readonly nodeId: string; readonly label: string; readonly refusal: string | null }>;
+  /** The one edited: the picked one, else the nearest. */
+  readonly chosen: string | undefined;
+}
+
 export interface WindowSectionSurface {
   screens(): readonly WindowScreenView[];
   permission(): "granted" | "prompt" | "denied" | "unsupported";
@@ -39,6 +53,10 @@ export interface WindowSectionSurface {
   /** One line about this node's window: where it is, or why it is not. */
   describe(nodeId: string): string;
   subscribe(listener: () => void): () => void;
+  /** §T1536b. */
+  mapping(nodeId: string): WindowMappingView;
+  setEditingMapping(nodeId: string, on: boolean): void;
+  chooseMapping(nodeId: string, mappingNodeId: string): void;
 }
 
 /** T994's claim: the section presents Screen; every other parameter keeps its row. */
@@ -63,7 +81,7 @@ export function WindowSection({ nodeId, screen, bus, context, editor, windows }:
   // Re-render on open/close, on a screen being plugged in, and on a permission change.
   const version = useSyncExternalStore(
     windows.subscribe,
-    () => `${windowsVersion(windows)}|${windows.describe(nodeId)}`,
+    () => `${windowsVersion(windows)}|${windows.describe(nodeId)}|${JSON.stringify(windows.mapping(nodeId))}`,
     () => "",
   );
   void version;
@@ -72,6 +90,8 @@ export function WindowSection({ nodeId, screen, bus, context, editor, windows }:
   const permission = windows.permission();
   const open = windows.isOpen(nodeId);
   const chosen = screens.find((entry) => entry.label === screen);
+  const mapping = windows.mapping(nodeId);
+  const edited = mapping.targets.find((target) => target.nodeId === mapping.chosen);
 
   const options = [
     { value: AUTO, label: "Auto — a screen other than the editor's" },
@@ -150,6 +170,29 @@ export function WindowSection({ nodeId, screen, bus, context, editor, windows }:
           {open ? "Close window" : "Open window"}
         </Button>
       </ControlRow>
+
+      <ControlRow label="Mapping">
+        <Button
+          variant="outline"
+          disabled={!open}
+          aria-pressed={mapping.editing}
+          title={open ? "Draw the mapping handles on the window (M there, Esc to stop)" : "Open the window first"}
+          onClick={() => windows.setEditingMapping(nodeId, !mapping.editing)}
+        >
+          {mapping.editing ? "Stop editing" : "Edit mapping"}
+        </Button>
+      </ControlRow>
+      {mapping.targets.length > 1 ? (
+        <ControlRow label="Edits">
+          <EnumField
+            label="Edits"
+            value={mapping.chosen ?? ""}
+            options={mapping.targets.map((target) => ({ value: target.nodeId, label: target.label }))}
+            onChange={(value) => windows.chooseMapping(nodeId, value)}
+          />
+        </ControlRow>
+      ) : null}
+      {edited?.refusal == null ? null : <span className={styles.statusHint}>{edited.refusal}</span>}
     </section>
   );
 }

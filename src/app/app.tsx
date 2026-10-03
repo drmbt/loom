@@ -1406,6 +1406,8 @@ export function App({
     ...liveReads,
     // T1525b: opening a window is a moment; its parameters are read at the frame last rendered.
     frame: () => frameLoop.latestFrame()?.frame,
+    // §T1536b: a mapping-handle drag on a perform window is the local human's edit.
+    invocation: runtime.invocation,
   });
   performObserveRef.current = perform.observe;
   const muteInputMonitorForRender = audioInput.muteMonitorForRender;

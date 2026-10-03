@@ -34,9 +34,12 @@ const surface: WindowSectionSurface = {
   isOpen: () => false,
   describe: () => "Closed — opens on EPSON PJ (1920×1080 physical)",
   subscribe: () => () => {},
+  mapping: () => ({ editing: false, targets: [], chosen: undefined }),
+  setEditingMapping: () => {},
+  chooseMapping: () => {},
 };
 
-async function mount() {
+async function mount(windows: WindowSectionSurface = surface) {
   const store = createGraphStore({ ids: createSequentialIdFactory("n") });
   const { bus } = createDomainBus({ store, registry: createNodeRegistry(allNodeDefinitions).view() });
   const created = await bus.execute(
@@ -65,7 +68,7 @@ async function mount() {
         context={context}
         nodeId={nodeId}
         settings={{ outputResolution: { width: 64, height: 64 }, workingFormat: "rgba8unorm" }}
-        performWindows={surface}
+        performWindows={windows}
       />
     </StrictMode>,
   );
@@ -106,6 +109,56 @@ describe("the Window section (§T1391b)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open window" }));
     await settle();
     expect(toggled).toEqual([[nodeId]]);
+  });
+
+  it("§T1536b: Edit mapping turns the open window's mode on; the picker chooses among the warps; a refusal is said", async () => {
+    const calls: unknown[][] = [];
+    let editing = false;
+    let chosen = "near";
+    const listeners = new Set<() => void>();
+    const windows: WindowSectionSurface = {
+      ...surface,
+      isOpen: () => true,
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      mapping: () => ({
+        editing,
+        chosen,
+        targets: [
+          { nodeId: "near", label: 'Corner Pin "cornerPin2"', refusal: null },
+          { nodeId: "far", label: 'Grid Warp "gridWarp1"', refusal: "Behind a second warp." },
+        ],
+      }),
+      setEditingMapping: (...args) => {
+        calls.push(["edit", ...args]);
+        editing = args[1];
+        for (const listener of listeners) listener();
+      },
+      chooseMapping: (...args) => {
+        calls.push(["choose", ...args]);
+        chosen = args[1];
+        for (const listener of listeners) listener();
+      },
+    };
+    const { nodeId, settle } = await mount(windows);
+    fireEvent.click(screen.getByRole("button", { name: "Edit mapping" }));
+    await settle();
+    expect(calls).toEqual([["edit", nodeId, true]]);
+    expect(screen.getByRole("button", { name: "Stop editing" }).getAttribute("aria-pressed")).toBe("true");
+    const picker = screen.getByRole("combobox", { name: "Edits" }) as HTMLSelectElement;
+    expect([...picker.options].map((option) => option.value)).toEqual(["near", "far"]);
+    expect(screen.queryByText("Behind a second warp.")).toBeNull();
+    fireEvent.change(picker, { target: { value: "far" } });
+    await settle();
+    expect(calls.at(-1)).toEqual(["choose", nodeId, "far"]);
+    expect(screen.getByText("Behind a second warp.")).toBeTruthy();
+  });
+
+  it("§T1536b: Edit mapping waits for an open window", async () => {
+    await mount();
+    expect((screen.getByRole("button", { name: "Edit mapping" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("presents Screen in the section, not again as a text row", async () => {

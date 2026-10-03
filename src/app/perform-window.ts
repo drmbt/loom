@@ -22,6 +22,14 @@ import type { PresentableCanvas, PresentationHandle, PresentationOptions } from 
  * sized on its screen, and a click inside it goes fullscreen — the Fullscreen API needs a
  * gesture IN that window. A double click toggles, as on the viewer (T813).
  *
+ * ## Edit mapping (§T1536b)
+ *
+ * `M` toggles the window's "edit mapping" mode and Escape leaves it — keys of THIS window,
+ * like the double click, answered by `onMappingKey` and consumed only when it acts (so
+ * Escape outside the mode still reaches the keymap). The handles themselves are a DOM layer
+ * over the canvas (`perform-mapping-overlay.ts`, `[data-perform-mapping]`); a click or a
+ * double click on that layer is a mapping gesture, never a fullscreen toggle.
+ *
  * ## Lifetime
  *
  * Closing the window (its close button, Escape out of a kiosk, the OS) disposes the
@@ -42,6 +50,8 @@ export interface PerformWindowRequest {
   readonly fullscreen: boolean;
   readonly hideCursor: boolean;
   readonly onClosed: (nodeId: string) => void;
+  /** §T1536b: `M` (toggle) or Escape (leave) in the window; true when it acted. */
+  readonly onMappingKey: (nodeId: string, key: "toggle" | "leave") => boolean;
 }
 
 export interface PerformWindowDeps {
@@ -102,11 +112,28 @@ export function openPerformWindow(deps: PerformWindowDeps, request: PerformWindo
     if (doc.fullscreenElement === null) void doc.documentElement.requestFullscreen?.().catch(() => undefined);
     else void doc.exitFullscreen?.().catch(() => undefined);
   };
-  const onClick = (): void => {
+  /** §T1536b: a press on the mapping layer is a mapping gesture. */
+  const onMappingLayer = (event: Event): boolean =>
+    // Duck-typed: an element of the child document is no `instanceof` the editor's classes.
+    typeof (event.target as Element | null)?.closest === "function" && (event.target as Element).closest("[data-perform-mapping]") !== null;
+  const onClick = (event: MouseEvent): void => {
+    if (onMappingLayer(event)) return;
     if (request.fullscreen && doc.fullscreenElement === null) toggleFullscreen();
   };
+  const onDoubleClick = (event: MouseEvent): void => {
+    if (!onMappingLayer(event)) toggleFullscreen();
+  };
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.defaultPrevented || event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+    const key = event.key === "Escape" ? "leave" : event.key === "m" || event.key === "M" ? "toggle" : null;
+    if (key !== null && request.onMappingKey(request.nodeId, key)) {
+      // Consumed: the keymap listening on this window skips a handled key.
+      event.preventDefault();
+    }
+  };
   doc.addEventListener("click", onClick);
-  doc.addEventListener("dblclick", toggleFullscreen);
+  doc.addEventListener("dblclick", onDoubleClick);
+  doc.addEventListener("keydown", onKeyDown);
 
   let closed = false;
   const teardown = (): void => {
@@ -115,7 +142,8 @@ export function openPerformWindow(deps: PerformWindowDeps, request: PerformWindo
     presentation?.dispose();
     presentation = undefined;
     doc.removeEventListener("click", onClick);
-    doc.removeEventListener("dblclick", toggleFullscreen);
+    doc.removeEventListener("dblclick", onDoubleClick);
+    doc.removeEventListener("keydown", onKeyDown);
     child.removeEventListener("pagehide", onChildGone);
     deps.parent.removeEventListener("pagehide", onParentGone);
     request.onClosed(request.nodeId);
