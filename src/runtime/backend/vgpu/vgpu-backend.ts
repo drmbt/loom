@@ -2094,7 +2094,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     }
   }
 
-  return {
+  // A name, so `compile()` can start itself over (§T1528b).
+  const backend: VgpuBackend = {
     status,
     get capabilities() {
       return capabilities;
@@ -2206,6 +2207,13 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // unrelated structural edit no longer zeroes anyone's feedback history; carried
       // effects skip shader recompilation, so the edit hitch scales with the edit.
       const carry = program ? computeCarryOver(program, read.resources, read.passes) : emptyCarryOver;
+      // §T1528b: the carry is only good while the device it was built on is the live one
+      // and the objects it took are still the installed program's. The window below
+      // waits, and while it waits a device loss can rebuild `program.resources` on a new
+      // device (`rebuild()`), or another direct caller's compile can install and release
+      // what this one carried (§B235). Either way, this build points at dead objects.
+      const carriedFrom = program?.resources;
+      const outlived = (): boolean => session !== active || program?.resources !== carriedFrom;
       const stats: BuildStats = { resourcesCreated: 0, resourcesReused: 0, effectsBuilt: 0, effectsReused: 0 };
 
       let resources: ResourceSet;
@@ -2251,6 +2259,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           read.passes,
         );
       } catch (error) {
+        // §T1528b: a build that failed on a device which has since been replaced says
+        // nothing about this plan; it is tried again against what is installed now.
+        if (outlived()) return backend.compile(plan);
         // T95 (§V9, §V27): shader and allocation failures must reach onDiagnostic — the
         // problems tab listens there, not on thrown errors. The previous program is
         // retained and keeps rendering, flagged stale. Carried objects still belong to
@@ -2278,6 +2289,17 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         compileErrorWindow = false;
       }
 
+      // §T1528b: RESTART, not refuse. The plan is still the one the caller wants installed,
+      // and nothing in it was wrong — refusing would leave the previous graph rendering,
+      // flagged stale, until some unrelated edit happened to compile again. The half-built
+      // set goes, except what the installed program shares with it; on a lost device that
+      // is everything, and destroying a dead device's objects is a no-op. The verdicts the
+      // window collected are dropped with it: they are about objects nobody will draw.
+      if (outlived()) {
+        releaseResourcesExcept(resources, program?.resources);
+        return backend.compile(plan);
+      }
+
       // Anything else the device reported in the window (a dropped readback, say) still
       // reaches the problems tab — it just does not veto the install.
       for (const other of asyncErrors) {
@@ -2297,12 +2319,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         for (const diagnostic of failureDiagnostics) hub.report(diagnostic);
         throw new ResourceBuildError(failureDiagnostics);
       }
-      resourceBuilds += 1;
-      planCounter += 1;
-      const id = `plan-${planCounter}`;
-
-      const previous = program;
-      program = {
+      const id = `plan-${planCounter + 1}`;
+      const next: Program = {
         id,
         signature,
         resourceDescriptors: read.resources,
@@ -2324,10 +2342,33 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         dirty: true, // a fresh program must draw its first frame
         pendingBufferClear: false,
       };
-      if (previous) releaseResourcesExcept(previous.resources, resources);
       // Reused uniform blocks still hold pre-recompile values; the plan's values are
       // authoritative (they come from the domain graph), so sync every block.
-      flushUniforms(program);
+      // §T1529b: BEFORE the install, so a throw here (a value the block's layout rejects,
+      // a carried buffer someone destroyed) cannot leave a half-installed program: §V9's
+      // failure path instead — the previous program stays installed, flagged stale, and
+      // loses nothing. Carried blocks are shared with it and the flush may already have
+      // written new values into some of them, so its own live values go back in.
+      try {
+        flushUniforms(next);
+      } catch (error) {
+        stale = program !== undefined;
+        releaseResourcesExcept(resources, program?.resources);
+        hub.report(
+          backendDiagnostic(
+            "error",
+            BackendDiagnosticCode.compileFailed,
+            `Plan compile failed: ${describeError(error)}`,
+          ),
+        );
+        if (program) flushUniforms(program);
+        throw error;
+      }
+      resourceBuilds += 1;
+      planCounter += 1;
+      const previous = program;
+      program = next;
+      if (previous) releaseResourcesExcept(previous.resources, resources);
       lastBuildStats = stats;
       stale = false;
       estimatedBytes = estimatedProgramBytes(program);
@@ -3161,6 +3202,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       session = undefined;
     },
   };
+  return backend;
 }
 
 /**
