@@ -12,6 +12,7 @@ import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { scratchResourceId } from "@compiler/resources.ts";
+import { serializePresetBank } from "@domain/presets/bank.ts";
 import { createAppRuntime } from "./app-runtime.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 import { useAnalyzeChannels } from "./use-analyze-channels.ts";
@@ -481,6 +482,113 @@ describe("T305 — a frame in the COMPOSED app produces a readback", () => {
 
     // The assertion that survives a signature change: a rendered frame READ SOMETHING.
     expect(reads).toContain(scratchResourceId(analyzeNodeId, "result"));
+    runtime.dispose();
+  });
+});
+
+/**
+ * T1525b — WHICH REDUCTION AN ANALYZE PUBLISHES IS A PARAMETER READ, AT A FRAME.
+ *
+ * Operation was read off the stored slot, so an expression on it did nothing: the slot's
+ * retained static ("average") stood whatever the expression said. Here Operation is
+ * `op('knob1').par.value` — an index into [average, minimum, maximum, logAverage] — and a
+ * bank fades the knob from 0 to 2 over one second. At frame 30 the knob reads 1, so the
+ * channel must publish the MINIMUM; the document already holds 2 (maximum), which is what
+ * a read without the morph index picks; the raw slot publishes the average. The four
+ * reductions the fake readback returns are distinct, so each wrong reader is a different
+ * number.
+ */
+describe("T1525b — an expression on Operation, reading a fading knob, picks the reduction at the frame", () => {
+  const EPOCH = "session-1";
+  const liveFrame = (frameIndex: number): FrameEvaluationInput => ({
+    timeSeconds: frameIndex / 60,
+    deltaSeconds: 1 / 60,
+    frameIndex,
+    mode: "realtime",
+    randomSeed: 1,
+    absFrameIndex: frameIndex,
+    absTimeSeconds: frameIndex / 60,
+    absEpoch: EPOCH,
+  });
+
+  it("publishes the minimum half-way through the knob's 0 → 2 fade, and the maximum once it lands", async () => {
+    const runtime = newRuntime();
+    // [average, minimum, maximum, logAverage], each its own number.
+    const backend = { readBuffer: () => Promise.resolve(Float32Array.from([0.125, 0.25, 0.5, 0.75]).buffer) } as unknown as LoomBackend;
+    let meterId = "";
+    await act(async () => {
+      const first = await seed(runtime, [
+        { op: "addNode", ref: "$knob", type: "constant", position: { x: 0, y: 200 }, parameters: { value: 0 } },
+      ]);
+      expect(first.status).toBe("applied");
+      const knobId = first.output.createdIds["$knob"] ?? "";
+      const knob = runtime.bus.store.getGraph().nodes[knobId]?.label ?? "";
+      expect(knob).not.toBe("");
+      const second = await seed(runtime, [
+        { op: "addNode", ref: "$noise", type: "noise", position: { x: 0, y: 0 } },
+        {
+          op: "addNode",
+          ref: "$meter",
+          type: "analyze",
+          position: { x: 240, y: 0 },
+          parameters: {
+            operation: {
+              mode: "expression",
+              bindings: {
+                static: { kind: "static", value: "average" },
+                expression: { kind: "expression", source: `op('${knob}').par.value` },
+              },
+            },
+          },
+        },
+        { op: "connect", source: { nodeId: "$noise", portId: "out" }, target: { nodeId: "$meter", portId: "input" } },
+        {
+          op: "addNode",
+          ref: "$bank",
+          type: "presets",
+          position: { x: 240, y: 200 },
+          parameters: {
+            targets: knob,
+            presets: serializePresetBank({ version: 1, presets: [{ name: "up", values: { [knob]: { value: 2 } } }] }),
+          },
+        },
+      ]);
+      expect(second.status, JSON.stringify(second.diagnostics)).toBe("applied");
+      meterId = second.output.createdIds["$meter"] ?? "";
+      runtime.bus.attachFrameClock(() => ({ epoch: EPOCH, absTimeSeconds: 0 }));
+      const recalled = await runtime.bus.execute(
+        "preset.recall",
+        { nodeId: second.output.createdIds["$bank"] ?? "", name: "up", morph: { seconds: 1, curve: "linear" } },
+        runtime.invocation,
+      );
+      expect(recalled.status, JSON.stringify(recalled.diagnostics)).toBe("applied");
+    });
+    const channelName = runtime.bus.store.getGraph().nodes[meterId]?.label ?? "";
+    expect(channelName).not.toBe("");
+
+    const { result } = renderHook(() => {
+      const compile = useGraphCompile(runtime, CAPABILITIES);
+      const analyze = useAnalyzeChannels(backend, runtime.registry, undefined, {
+        channels: () => compile.channels,
+        morphs: () => runtime.flattened.current().morphs,
+      });
+      return { analyze, compile };
+    });
+    await act(async () => {
+      result.current.analyze.track(result.current.compile.flatGraph, result.current.compile.compiled);
+    });
+    const publishedAt = async (frameIndex: number): Promise<unknown> => {
+      await act(async () => {
+        result.current.analyze.observe(liveFrame(frameIndex));
+        await flushMicrotasks();
+        await flushMicrotasks();
+      });
+      return result.current.analyze.resolver(channelName, { frame: liveFrame(frameIndex) } as never);
+    };
+
+    expect(await publishedAt(0)).toBe(0.125);
+    expect(await publishedAt(30)).toBe(0.25);
+    expect(await publishedAt(60)).toBe(0.5);
     runtime.dispose();
   });
 });

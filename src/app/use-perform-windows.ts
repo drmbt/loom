@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SINK_TARGET_PORT } from "@compiler/index.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
+import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
+import type { ChannelResolver, ParameterMorphs, ResolvedParameters } from "@domain/parameters/resolve.ts";
+import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { WindowSectionSurface } from "@editor/inspector/window-section.tsx";
 import { WINDOW_OUT_TYPE } from "@nodes/definitions/window-out.ts";
 import type { LoomBackend } from "@runtime/backend/backend-types.ts";
@@ -40,6 +44,18 @@ export interface PerformWindowsOptions {
   readonly openWindow?: (name: string, features: string) => Window | null;
   /** The screen list, injectable for a test; the real one reads the browser. */
   readonly screenSource?: ScreenSource;
+  /**
+   * T1525b: what Screen, Fullscreen and Hide cursor are resolved with when they are read —
+   * the catalogue, the compile's channel resolver, the preset morphs in flight
+   * (`FlattenedGraph.morphs`) and the frame the loop last rendered, since opening a window
+   * is a moment and an expression on Fullscreen is read at it. REQUIRED, like the media
+   * transport's (§T1524b): an optional getter nothing supplies is how a reader ends up
+   * resolving without it. No frame yet: the zero frame.
+   */
+  readonly registry: NodeRegistryView;
+  readonly channels: () => ChannelResolver | undefined;
+  readonly morphs: () => ParameterMorphs | undefined;
+  readonly frame: () => FrameEvaluationInput | undefined;
 }
 
 export interface PerformWindowsResult {
@@ -48,12 +64,14 @@ export interface PerformWindowsResult {
   readonly windows: readonly Window[];
 }
 
-const stringParameter = (node: GraphNode, key: string, fallback: string): string => {
-  const value = node.parameters[key];
+// T1525b: off the RESOLVED parameters, never the stored slot — an expression on Fullscreen
+// is an object in the slot, and reading the slot was a typeof check that fell to the default.
+const stringParameter = (parameters: ResolvedParameters, key: string, fallback: string): string => {
+  const value = parameters.get(key)?.value;
   return typeof value === "string" ? value : fallback;
 };
-const booleanParameter = (node: GraphNode, key: string, fallback: boolean): boolean => {
-  const value = node.parameters[key];
+const booleanParameter = (parameters: ResolvedParameters, key: string, fallback: boolean): boolean => {
+  const value = parameters.get(key)?.value;
   return typeof value === "boolean" ? value : fallback;
 };
 
@@ -65,10 +83,31 @@ const NO_SCREENS: ScreenSource = {
   subscribe: () => () => {},
 };
 
-export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow, screenSource }: PerformWindowsOptions): PerformWindowsResult {
+export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow, screenSource, ...reads }: PerformWindowsOptions): PerformWindowsResult {
   const screens = useMemo(
     () => screenSource ?? (typeof window === "undefined" ? NO_SCREENS : createScreenSource(window)),
     [screenSource],
+  );
+  // T1525b: through a ref, so a fresh getter per render does not rebuild the commands' holder.
+  const readsRef = useRef(reads);
+  readsRef.current = reads;
+  /**
+   * A Window Out's parameters as the one read path resolves them, now (§V61). `graph` is the
+   * document the caller already read the node from — the same authored one (see above).
+   */
+  const parametersOf = useCallback(
+    (node: GraphNode, graph: GraphDocument): ResolvedParameters => {
+      const { registry, channels, morphs, frame } = readsRef.current;
+      const options = createParameterReadOptions({
+        graph,
+        registry,
+        frame: frame(),
+        channels: channels(),
+        morphs: morphs(),
+      });
+      return resolveParameters(node, registry.get(node.type), options);
+    },
+    [],
   );
   const openRef = useRef(openWindow);
   openRef.current = openWindow;
@@ -115,8 +154,9 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
         for (const nodeId of nodeIds) {
           const node = graph().nodes[nodeId];
           if (node === undefined || handles.current.has(nodeId)) continue;
-          const fullscreen = booleanParameter(node, "fullscreen", true);
-          const target = resolveScreen(screens.screens(), stringParameter(node, "screen", ""), screens.editor());
+          const parameters = parametersOf(node, graph());
+          const fullscreen = booleanParameter(parameters, "fullscreen", true);
+          const target = resolveScreen(screens.screens(), stringParameter(parameters, "screen", ""), screens.editor());
           const handle = openPerformWindow(
             {
               open: openRef.current ?? browserPerformOpener(window),
@@ -130,7 +170,7 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
               features: placementFeatures(target.screen, { fullscreen: fullscreen && screens.permission() === "granted" }),
               outputId: outputFor(nodeId),
               fullscreen,
-              hideCursor: booleanParameter(node, "hideCursor", true),
+              hideCursor: booleanParameter(parameters, "hideCursor", true),
               onClosed: (id) => {
                 if (!handles.current.delete(id)) return;
                 changed.current();
@@ -153,7 +193,7 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
         changed.current();
       },
     };
-  }, [bus, screens]);
+  }, [bus, screens, parametersOf]);
 
   // §B48: registered at mount, whatever the backend; the holder is ours while mounted.
   useEffect(() => {
@@ -174,16 +214,17 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
   useEffect(
     () =>
       bus.store.subscribe(() => {
-        const nodes = bus.store.getGraph().nodes;
+        const authored = bus.store.getGraph();
+        const nodes = authored.nodes;
         const gone: string[] = [];
         for (const [nodeId, handle] of handles.current) {
           const node = nodes[nodeId];
           if (node === undefined || node.type !== WINDOW_OUT_TYPE) gone.push(nodeId);
-          else handle.setHideCursor(booleanParameter(node, "hideCursor", true));
+          else handle.setHideCursor(booleanParameter(parametersOf(node, authored), "hideCursor", true));
         }
         if (gone.length > 0) windows.close(gone);
       }),
-    [bus, windows],
+    [bus, windows, parametersOf],
   );
 
   /*
@@ -219,9 +260,10 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
       requestScreenAccess: () => screens.request(),
       isOpen: (nodeId) => handles.current.has(nodeId),
       describe(nodeId) {
-        const node = bus.store.getGraph().nodes[nodeId];
+        const authored = bus.store.getGraph();
+        const node = authored.nodes[nodeId];
         if (node === undefined) return "";
-        const resolved = resolveScreen(screens.screens(), stringParameter(node, "screen", ""), screens.editor());
+        const resolved = resolveScreen(screens.screens(), stringParameter(parametersOf(node, authored), "screen", ""), screens.editor());
         const where = resolved.screen === undefined ? "this screen" : resolved.screen.label;
         const size = resolved.screen === undefined ? "" : ` (${physicalSize(resolved.screen).join("×")} physical)`;
         const state = handles.current.has(nodeId) ? `Open on ${where}` : `Closed — opens on ${where}${size}`;
@@ -236,7 +278,7 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
         };
       },
     }),
-    [bus, screens],
+    [bus, screens, parametersOf],
   );
 
   return { surface, windows: open };

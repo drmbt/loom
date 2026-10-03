@@ -1,9 +1,10 @@
-import type { GraphDocument } from "../../domain/types/graph.ts";
+import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
 import type { NodeId } from "../../domain/types/ids.ts";
 import type { ChannelResolver } from "../../domain/parameters/resolve.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { scratchResourceId } from "../../compiler/resources.ts";
-import { storedStaticValue } from "../../domain/parameters/slots.ts";
+import { resolveParameters } from "../../domain/parameters/resolve.ts";
+import { createParameterReadOptions, type ParameterReadContext } from "../../domain/parameters/node-references.ts";
 
 /**
  * Analyze readback channels (T236, §V144, §V48).
@@ -36,6 +37,27 @@ export interface AnalyzeEntry {
   readonly operation: "average" | "minimum" | "maximum" | "logAverage";
 }
 
+/**
+ * T1525b — WHICH REDUCTION one Analyze node publishes, through the one read path.
+ *
+ * It was read off the stored slot, so an expression or a bind on Operation did nothing
+ * here. All four reductions are computed every frame and this only picks one, so it is
+ * the CPU's to resolve — at the moment the caller hands in (`read.frame`), with the
+ * channels and the preset morphs in flight then. An Operation never fades itself (an enum
+ * cuts), but its expression can read a parameter that does. No `read`: what the document
+ * says, an expression at the zero frame.
+ */
+export function analyzeOperationOf(
+  node: GraphNode,
+  graph: GraphDocument,
+  registry: NodeRegistryView,
+  read: Pick<ParameterReadContext, "frame" | "channels" | "morphs"> = {},
+): AnalyzeEntry["operation"] {
+  const resolved = resolveParameters(node, registry.get(node.type), createParameterReadOptions({ graph, registry, ...read }));
+  const operation = resolved.get("operation")?.value;
+  return operation === "minimum" || operation === "maximum" || operation === "logAverage" ? operation : "average";
+}
+
 /** The entries the current document declares — recomputed after each compile. */
 export function analyzeChannelEntries(
   graph: GraphDocument,
@@ -48,12 +70,11 @@ export function analyzeChannelEntries(
     if (node === undefined || node.label === undefined) continue;
     const definition = registry.get(node.type);
     if (definition?.type !== "analyze") continue;
-    const operation = storedStaticValue(node.parameters["operation"]);
     entries.push({
       channel: node.label,
       nodeId,
       resourceId: scratchResourceId(nodeId, resultKey),
-      operation: operation === "minimum" || operation === "maximum" || operation === "logAverage" ? operation : "average",
+      operation: analyzeOperationOf(node, graph, registry),
     });
   }
   return entries;

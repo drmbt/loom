@@ -67,6 +67,7 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import type { DeviceClient } from "@devices/device-client.ts";
 import { MODEL_NEEDS_HELPER } from "@devices/helper.ts";
 import { createModelFetch } from "./model-fetch.ts";
+import { inferenceParametersAt, type InferenceParameterReads } from "./inference-parameters.ts";
 import type { Notice } from "./notices.tsx";
 import type { InferenceNote } from "@editor/graph-canvas/node-runtime.ts";
 
@@ -457,6 +458,11 @@ export function useModelInference(
   bus?: LoomBus | undefined,
   /** B232 — absent in a test that wants no helper; the composition root passes the real one. */
   helper?: ModelHelper | undefined,
+  /**
+   * T1525b — what each node's own parameters are resolved with (`inferenceParametersAt`).
+   * The composition root passes it; absent, the seam reads the stored bag as it always did.
+   */
+  parameters?: InferenceParameterReads | undefined,
 ): ModelInferenceBinding {
   const backendRef = useRef(backend);
   backendRef.current = backend;
@@ -476,6 +482,12 @@ export function useModelInference(
 
   const [states, setStates] = useState<Readonly<Record<string, AcquisitionState>>>({});
   const targetsRef = useRef<readonly DepthTarget[]>([]);
+  // T1525b: the reads, the graph `track` was handed and the frame last observed — what a
+  // RUN resolves its per-run parameters (Detail Ratio, Smoothing) with, in `describe`.
+  const parametersRef = useRef(parameters);
+  parametersRef.current = parameters;
+  const trackedGraphRef = useRef<GraphDocument | null>(null);
+  const frameRef = useRef<FrameEvaluationInput | undefined>(undefined);
   /**
    * The tracked set MIRRORED INTO STATE, and the duplication is the fix rather than the
    * sloppiness (B156).
@@ -569,6 +581,13 @@ export function useModelInference(
       describe: (nodeId) => {
         const found = targetsRef.current.find((candidate) => candidate.nodeId === nodeId);
         if (found === undefined) return undefined;
+        // T1525b: per RUN, at the frame last observed — so a fading Smoothing reaches the
+        // worker at the value the picture is at, and an expression on Detail Ratio moves it.
+        const node = trackedGraphRef.current?.nodes[nodeId];
+        const run =
+          node === undefined
+            ? found.settings
+            : found.kind.settings(inferenceParametersAt(node, trackedGraphRef.current!, parametersRef.current, frameRef.current));
         return {
           modelId: found.descriptor.id,
           // Widened by hand because `InferenceKind.nodeType` is a plain string; the
@@ -580,8 +599,8 @@ export function useModelInference(
           sourceWidth: found.sourceSize[0],
           sourceHeight: found.sourceSize[1],
           // T1040: the worker's plan table is per MODEL now, and these two ride with it.
-          ratio: found.settings.ratio,
-          smoothing: found.settings.smoothing,
+          ratio: run.ratio,
+          smoothing: run.smoothing,
           side: found.settings.inputSide,
           providers: found.settings.providers,
         };
@@ -834,9 +853,10 @@ export function useModelInference(
         // pruning. It must not be tracked, must not acquire and must not download.
         const resultId = scratchResourceId(nodeId, kind.resultKey);
         if (!allocated.has(resultId)) continue;
-        // The node's OWN parameters, read from the stored bag: this seam sits outside the
-        // parameter resolver, so the node definition applies its own defaults (§T965).
-        const settings = kind.settings(node.parameters);
+        // The node's OWN parameters, through the resolver at no frame — the read a structural
+        // compile makes, so the model and Input Size agree with the plan (T1525b); the node
+        // definition still applies its own defaults (§T965). Per-run keys re-read in `describe`.
+        const settings = kind.settings(inferenceParametersAt(node, graph, parametersRef.current, undefined));
         targets.push({
           nodeId,
           kind,
@@ -851,6 +871,7 @@ export function useModelInference(
         });
       }
       targetsRef.current = targets;
+      trackedGraphRef.current = graph;
       // Demand pruning is not deletion: retain history for every inference node that
       // still exists in the graph, including nodes with no allocated render resources.
       workerRef.current?.retainNodes(
@@ -922,6 +943,7 @@ export function useModelInference(
 
   const observe = useCallback(
     (frame: FrameEvaluationInput) => {
+      frameRef.current = frame;
       const target = sink;
       if (target !== undefined) {
         for (const age of sources.resultAges(frame.frameIndex)) {

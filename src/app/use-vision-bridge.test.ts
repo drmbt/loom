@@ -12,12 +12,21 @@ import type { CompiledGraph } from "../compiler/index.ts";
 import type { DeviceClient } from "@devices/device-client.ts";
 import type { VisionOutcome } from "@devices/device-protocol.ts";
 import type { LoomBackend } from "../runtime/backend/index.ts";
+import type { FrameEvaluationInput } from "@domain/types/frame.ts";
+import { buildMorphIndex } from "@domain/presets/morph-index.ts";
+import { presetBankNode, presetSession } from "@domain/presets/test-support.ts";
+import { createNodeRegistry } from "@nodes/registry/registry.ts";
+import { allNodeDefinitions } from "@nodes/definitions/index.ts";
 import {
   maskCoverage,
   maskToFloats,
   texelsToRgbaBase64,
   useVisionBridge,
 } from "./use-vision-bridge.ts";
+
+const registry = createNodeRegistry(allNodeDefinitions).view();
+/** What the node's own parameters are read with: the real catalogue, no channels, no fade. */
+const READS = { registry, channels: () => undefined, morphs: () => undefined };
 
 /**
  * T1029 — the Person Mask CPU half, per path and by mechanism (the laser pump's
@@ -67,7 +76,7 @@ it("unchanged native diagnostics do not enqueue React updates on every frame", (
     setters.push(setter); return [state, setter];
   }) as typeof React.useState);
   try {
-    const view = renderHook(() => useVisionBridge({ deviceClient: () => null }));
+    const view = renderHook(() => useVisionBridge({ ...READS, deviceClient: () => null }));
     setters.forEach(setter => setter.mockClear());
     act(() => { for (let index = 0; index < 60; index++) view.result.current.observe({
       frameIndex: index, timeSeconds: index / 60, deltaSeconds: 1 / 60, mode: "offline", randomSeed: 1,
@@ -132,7 +141,7 @@ describe("T1029 — the hook, per path", () => {
     const { client, requests } = fakeClient({ ok: true, maskWidth: 1, maskHeight: 1, maskBase64: 'AA==', millis: 1 });
     const { backend } = fakeBackend(new Float32Array(4));
     const nativePlan = { ...compiled, resources: [{ kind: "externalTexture", id: "scratch:mask:modelResult", size: [4, 2], format: "rgba16float", sourceId: "inference:mask" }] } as unknown as CompiledGraph;
-    const view = renderHook(() => useVisionBridge({ deviceClient: () => client, backend: () => backend }));
+    const view = renderHook(() => useVisionBridge({ ...READS, deviceClient: () => client, backend: () => backend }));
     act(() => view.result.current.track(graph, nativePlan));
     act(() => view.result.current.observe(frame)); await flush();
     expect(requests).toEqual([]);
@@ -143,7 +152,7 @@ describe("T1029 — the hook, per path", () => {
   it("NO HELPER: a WARNING at the node, coverage READS ZERO, and nothing ever crosses (T1067)", async () => {
     const { backend } = fakeBackend(new Float32Array(4));
     const view = renderHook(() =>
-      useVisionBridge({ deviceClient: () => null, backend: () => backend }),
+      useVisionBridge({ ...READS, deviceClient: () => null, backend: () => backend }),
     );
     act(() => view.result.current.track(graph, compiled));
     // WARNING, so the node's own badge lights: info reached only the problems pane and
@@ -160,7 +169,7 @@ describe("T1029 — the hook, per path", () => {
     // belongs to the NODE, answered from the live document, or the first compile pins
     // an expression error nothing later clears — the shipped E52 failure exactly.
     const cold = renderHook(() =>
-      useVisionBridge({ deviceClient: () => null, graph: () => graph }),
+      useVisionBridge({ ...READS, deviceClient: () => null, graph: () => graph }),
     );
     expect(cold.result.current.resolver("mask1:coverage", { frame } as never)).toBe(0);
     expect(cold.result.current.resolver("depth1:coverage", { frame } as never)).toBeUndefined();
@@ -185,7 +194,7 @@ describe("T1029 — the hook, per path", () => {
     });
     const { backend, registered } = fakeBackend(texels);
     const view = renderHook(() =>
-      useVisionBridge({ deviceClient: () => client, backend: () => backend }),
+      useVisionBridge({ ...READS, deviceClient: () => client, backend: () => backend }),
     );
     act(() => view.result.current.track(graph, compiled));
     act(() => view.result.current.observe(frame));
@@ -214,7 +223,7 @@ describe("T1029 — the hook, per path", () => {
     const { client } = fakeClient({ ok: false, reason: "person segmentation needs Apple's Vision framework, which only exists on macOS" });
     const { backend } = fakeBackend(new Float32Array(512 * 512 * 4));
     const view = renderHook(() =>
-      useVisionBridge({ deviceClient: () => client, backend: () => backend }),
+      useVisionBridge({ ...READS, deviceClient: () => client, backend: () => backend }),
     );
     act(() => view.result.current.track(graph, compiled));
     act(() => view.result.current.observe(frame));
@@ -236,7 +245,7 @@ describe("T1254 — the resolver's identity does not follow the caller's accesso
     // memos key on, so identity is what this pins — and the ref must not go stale, or a
     // renamed mask would keep answering for its old name.
     let current = graph;
-    const view = renderHook(() => useVisionBridge({ deviceClient: () => null, graph: () => current }));
+    const view = renderHook(() => useVisionBridge({ ...READS, deviceClient: () => null, graph: () => current }));
     const first = view.result.current.resolver;
     view.rerender();
     view.rerender();
@@ -251,5 +260,79 @@ describe("T1254 — the resolver's identity does not follow the caller's accesso
     expect(view.result.current.resolver).toBe(first);
     expect(first("mask2:coverage", { frame } as never)).toBe(0);
     expect(first("mask1:coverage", { frame } as never)).toBeUndefined();
+  });
+});
+
+/**
+ * T1525b — MIN INTERVAL IS A PARAMETER READ, AT THE FRAME THE HELPER IS ASKED ON.
+ *
+ * `rateLimit` was read off the stored slot, so an expression on it did nothing and a bank
+ * fading it reached the helper at its DESTINATION on the frame of the recall. Here a bank
+ * takes Min interval from 4.1 s down to 0.1 s over 2 s (linear), recalled on frame 0. The
+ * fade puts the gap at 4.1 - 2t: at t = 1.35 it is 1.4 — a run 1.35 s after the last is
+ * still refused — and at t = 1.40 it is 1.3, so that one goes. Read at the destination
+ * (0.1), every one of those frames asks the helper. What is asserted is the request on the
+ * wire, which is what the cadence knob exists to thin.
+ */
+describe("T1525b — a fading Min interval paces the helper at the value the fade is at", () => {
+  const EPOCH = "session-1";
+  const at = (seconds: number): FrameEvaluationInput => ({
+    frameIndex: Math.round(seconds * 60),
+    timeSeconds: seconds,
+    deltaSeconds: 1 / 60,
+    mode: "realtime",
+    randomSeed: 7,
+    absFrameIndex: Math.round(seconds * 60),
+    absTimeSeconds: seconds,
+    absEpoch: EPOCH,
+  });
+
+  async function fading(): Promise<GraphDocument> {
+    const session = presetSession(
+      {
+        ...graph,
+        nodes: {
+          mask: { ...graph.nodes["mask"]!, parameters: { rateLimit: 4.1 } },
+          bank: presetBankNode("bank", "looks", "mask1", [{ name: "quick", values: { mask1: { rateLimit: 0.1 } } }]),
+        },
+      } as unknown as GraphDocument,
+      registry,
+    );
+    session.at({ epoch: EPOCH, absTimeSeconds: 0 });
+    await session.recall("bank", "quick", { seconds: 2, curve: "linear" });
+    return session.graph();
+  }
+
+  async function requestsAcross(document: GraphDocument, morphs: () => ReturnType<typeof buildMorphIndex> | undefined): Promise<number[]> {
+    const mask = new Uint8Array([255]);
+    const { client, requests } = fakeClient({ ok: true, maskWidth: 1, maskHeight: 1, maskBase64: btoa(String.fromCharCode(...mask)), millis: 1 });
+    const { backend } = fakeBackend(new Float32Array(512 * 512 * 4));
+    const view = renderHook(() =>
+      useVisionBridge({ ...READS, morphs, deviceClient: () => client, backend: () => backend }),
+    );
+    act(() => view.result.current.track(document, compiled));
+    const counts: number[] = [];
+    for (const seconds of [0, 1.0, 1.35, 1.4]) {
+      act(() => view.result.current.observe(at(seconds)));
+      await flush();
+      await flush();
+      counts.push(requests.length);
+    }
+    view.unmount();
+    return counts;
+  }
+
+  it("refuses a run 1.35 s after the last while the gap is 1.4, and lets the one at 1.40 through", async () => {
+    const document = await fading();
+    // The document holds the destination from the recall on; only the frames are on their way.
+    expect(document.nodes["mask"]?.parameters["rateLimit"]).toBe(0.1);
+    const morphs = buildMorphIndex({ document, registry });
+    expect(await requestsAcross(document, () => morphs)).toEqual([1, 1, 1, 2]);
+  });
+
+  it("cut the wire: read without the morph index, the destination's 0.1 s lets 1.0 and 1.35 ask too", async () => {
+    const document = await fading();
+    // 1.40 is 0.05 s after 1.35, inside even the destination's 0.1 s gap.
+    expect(await requestsAcross(document, () => undefined)).toEqual([1, 2, 3, 3]);
   });
 });

@@ -4,7 +4,12 @@ import { createDomainBus } from "@domain/commands/index.ts";
 import { alice, contextFor } from "@domain/commands/test-support.ts";
 import { createSequentialIdFactory } from "@domain/graph/ids.ts";
 import { createGraphStore } from "@domain/graph/store.ts";
+import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
+import type { FrameEvaluationInput } from "@domain/types/frame.ts";
+import type { ParameterMorphs } from "@domain/parameters/resolve.ts";
+import { buildMorphIndex } from "@domain/presets/morph-index.ts";
+import { serializePresetBank } from "@domain/presets/bank.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import type { LoomBackend, PresentationOptions } from "@runtime/backend/backend-types.ts";
@@ -36,9 +41,17 @@ const screens: ScreenSource = {
   subscribe: () => () => {},
 };
 
-async function setup(types: readonly string[]) {
+const registry = createNodeRegistry(allNodeDefinitions).view();
+
+/** T1525b: the moment and the fade a Window Out's parameters are read at; none by default. */
+interface Reads {
+  readonly morphs?: () => ParameterMorphs | undefined;
+  readonly frame?: () => FrameEvaluationInput | undefined;
+}
+
+async function setup(types: readonly string[], reads: Reads = {}) {
   const store = createGraphStore({ ids: createSequentialIdFactory("n") });
-  const { bus } = createDomainBus({ store, registry: createNodeRegistry(allNodeDefinitions).view() });
+  const { bus } = createDomainBus({ store, registry });
   const created = await bus.execute(
     "graph.applyPatch",
     {
@@ -68,7 +81,18 @@ async function setup(types: readonly string[]) {
   };
   const hook = renderHook(
     ({ plan }: { plan: PerformPlan | null }) =>
-      usePerformWindows({ bus, backend, plan, displaySinks, openWindow, screenSource: screens }),
+      usePerformWindows({
+        bus,
+        backend,
+        plan,
+        displaySinks,
+        openWindow,
+        screenSource: screens,
+        registry,
+        channels: () => undefined,
+        morphs: reads.morphs ?? (() => undefined),
+        frame: reads.frame ?? (() => undefined),
+      }),
     { initialProps: { plan: null as PerformPlan | null } },
   );
   const toggle = async (nodeIds?: string[]) =>
@@ -136,5 +160,106 @@ describe("perform windows, through perform.toggle", () => {
     const result = await toggle();
     expect(result.status).toBe("rejected");
     expect(result.diagnostics?.[0]?.code).toBe("perform.noWindowNode");
+  });
+});
+
+/**
+ * T1525b — FULLSCREEN IS A PARAMETER READ, AT THE MOMENT THE WINDOW OPENS.
+ *
+ * Screen, Fullscreen and Hide cursor were read off the stored slot with a typeof check, so
+ * an expression on Fullscreen — an object in the slot — fell to the default (true) whatever
+ * it said. Here Fullscreen is `op('knob1').par.value > 0.6` and a bank fades the knob from
+ * 0 to 1 over one second. Opened at frame 30 the knob reads 0.5, so the window must open
+ * WINDOWED; the document already holds 1, which is what a read without the morph index
+ * sees, and the raw slot reads true. Opened again once the fade has landed, it is
+ * fullscreen. What is asserted is the feature string the window was asked to open with.
+ */
+describe("T1525b — an expression on Fullscreen, reading a fading knob, is read when the window opens", () => {
+  const EPOCH = "session-1";
+  const liveFrame = (frameIndex: number): FrameEvaluationInput => ({
+    timeSeconds: frameIndex / 60,
+    deltaSeconds: 1 / 60,
+    frameIndex,
+    mode: "realtime",
+    randomSeed: 1,
+    absFrameIndex: frameIndex,
+    absTimeSeconds: frameIndex / 60,
+    absEpoch: EPOCH,
+  });
+  const WINDOWED = "popup=yes,left=1512,top=0,width=1920,height=1080";
+
+  async function staged(withIndex: boolean) {
+    let current: FrameEvaluationInput | undefined;
+    let currentDocument: () => GraphDocument = () => { throw new Error("no bus yet"); };
+    const staging = await setup(["window", "constant"], {
+      morphs: () => (withIndex ? buildMorphIndex({ document: currentDocument(), registry }) : undefined),
+      frame: () => current,
+    });
+    const { bus, ids } = staging;
+    currentDocument = () => bus.store.getGraph();
+    const knob = bus.store.getGraph().nodes[ids[1]!]?.label ?? "";
+    expect(knob).not.toBe("");
+    await act(async () => {
+      const patched = await bus.execute(
+        "graph.applyPatch",
+        {
+          baseRevision: bus.store.getRevision(),
+          operations: [
+            {
+              op: "setParameters",
+              nodeId: ids[0]!,
+              parameters: {
+                fullscreen: {
+                  mode: "expression",
+                  bindings: {
+                    static: { kind: "static", value: true },
+                    expression: { kind: "expression", source: `op('${knob}').par.value > 0.6` },
+                  },
+                },
+              },
+            },
+            { op: "setParameters", nodeId: ids[1]!, parameters: { value: 0 } },
+            {
+              op: "addNode",
+              ref: "$bank",
+              type: "presets",
+              position: { x: 0, y: 300 },
+              parameters: {
+                targets: knob,
+                presets: serializePresetBank({ version: 1, presets: [{ name: "up", values: { [knob]: { value: 1 } } }] }),
+              },
+            },
+          ],
+        },
+        context,
+      );
+      expect(patched.status, JSON.stringify(patched.diagnostics)).toBe("applied");
+      bus.attachFrameClock(() => ({ epoch: EPOCH, absTimeSeconds: 0 }));
+      const recalled = await bus.execute(
+        "preset.recall",
+        { nodeId: patched.output.createdIds["$bank"] ?? "", name: "up", morph: { seconds: 1, curve: "linear" } },
+        context,
+      );
+      expect(recalled.status, JSON.stringify(recalled.diagnostics)).toBe("applied");
+    });
+    return { ...staging, at: (frameIndex: number) => { current = liveFrame(frameIndex); } };
+  }
+
+  it("opens windowed at frame 30 (knob 0.5), and fullscreen once the fade has landed (knob 1)", async () => {
+    const { ids, opened, toggle, at } = await staged(true);
+    at(30);
+    await toggle([ids[0]!]);
+    expect(opened.at(-1)?.features).toBe(WINDOWED);
+    await toggle([ids[0]!]);
+    at(60);
+    await toggle([ids[0]!]);
+    expect(opened.at(-1)?.features).toBe(`${WINDOWED},fullscreen`);
+  });
+
+  it("cut the wire: read without the morph index, frame 30 already opens fullscreen", async () => {
+    const { ids, opened, toggle, at } = await staged(false);
+    at(30);
+    await toggle([ids[0]!]);
+    expect(opened.at(-1)?.features).toBe(`${WINDOWED},fullscreen`);
   });
 });

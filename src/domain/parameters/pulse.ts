@@ -9,7 +9,7 @@ import type {
 import { isParameterSlot } from "./slots.ts";
 import { effectiveParameterSchema, resolveParameter } from "./resolve.ts";
 import { createParameterReadOptions } from "./node-references.ts";
-import type { ChannelResolver, ParameterSchemaSource } from "./resolve.ts";
+import type { ChannelResolver, ParameterMorphs, ParameterSchemaSource } from "./resolve.ts";
 
 /**
  * Pulse mechanics (T214, §V123, §V124, §V125).
@@ -109,6 +109,13 @@ export interface PulseWatcher {
     frame: FrameEvaluationInput,
     /** T628: the §V61 channel resolver — absent, a DRIVEN pulse reads its retained static and never fires. */
     channels?: ChannelResolver,
+    /**
+     * T1525b: the preset morphs in flight over `graph` (`FlattenedGraph.morphs`). A pulse
+     * never fades itself, but `op('level1').par.brightness > 0.6` reads a parameter a bank
+     * may be fading — and without the index that read is the destination from the frame
+     * of the recall, so the edge comes early (or, already true at first sight, never).
+     */
+    morphs?: ParameterMorphs,
   ) => readonly PulseFire[];
   /** Forget every armed state. Used when the document is replaced. */
   reset: () => void;
@@ -147,7 +154,7 @@ export function createPulseWatcher(registry: SchemaSource): PulseWatcher {
     reset() {
       armed = new Map();
     },
-    step(graph, frame, channels) {
+    step(graph, frame, channels, morphs) {
       const fires: PulseFire[] = [];
       const next = new Map<string, boolean>();
       /*
@@ -163,7 +170,7 @@ export function createPulseWatcher(registry: SchemaSource): PulseWatcher {
        */
       let read: ReturnType<typeof createParameterReadOptions> | undefined;
       const readOptions = (): ReturnType<typeof createParameterReadOptions> =>
-        (read ??= createParameterReadOptions({ graph, registry, frame, channels }));
+        (read ??= createParameterReadOptions({ graph, registry, frame, channels, morphs }));
 
       for (const nodeId of Object.keys(graph.nodes).sort()) {
         const node = graph.nodes[nodeId];

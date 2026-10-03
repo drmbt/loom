@@ -263,3 +263,106 @@ describe("usePulseFiring — a take fires no command that edits the document (T1
     runtime.dispose();
   });
 });
+
+/**
+ * T1525b — A PULSE EXPRESSION READING A FADING PARAMETER CROSSES WHEN THE PICTURE DOES.
+ *
+ * A pulse never fades, but its expression can read a parameter a bank is fading. A recall
+ * with a morph commits the DESTINATION at once, so a watcher resolving without the morph
+ * index reads the end value from the recall frame on: here 0.8 against a 0.555 threshold —
+ * armed at first sight, which is a level, so the reset never fires at all. With the index
+ * the Level reads 0.2 + 0.01·n at frame n of the 1 s linear fade, and the reset fires once,
+ * on frame 36, the first frame past 0.555.
+ *
+ * The recall is the real command on the real bus with a frame clock attached; the index
+ * is the one the runtime's flattening builds; what is asserted is the command the pulse
+ * dispatched, and on which frame.
+ */
+describe("usePulseFiring — a pulse reading a morphing parameter fires mid-fade (T1525b)", () => {
+  const EPOCH = "session-1";
+  const liveFrame = (frameIndex: number): FrameEvaluationInput => ({
+    timeSeconds: frameIndex / 60,
+    deltaSeconds: 1 / 60,
+    frameIndex,
+    mode: "realtime",
+    randomSeed: 1,
+    absFrameIndex: frameIndex,
+    absTimeSeconds: frameIndex / 60,
+    absEpoch: EPOCH,
+  });
+
+  it("fires on the frame the fade crosses the threshold, once — not never, as the destination would", async () => {
+    const runtime = newRuntime();
+    const fired: number[] = [];
+    let at = -1;
+    runtime.bus.registerCommand({
+      name: "runtime.resetFeedback",
+      description: "Test double for the feedback reset a pulse fires.",
+      handler: () => {
+        fired.push(at);
+        return { status: "applied", output: { cleared: 1 }, diagnostics: [] };
+      },
+      rejectionOutput: () => ({ cleared: 0 }),
+    });
+    let bank = "";
+    let level = "";
+    await act(async () => {
+      const first = await seed(runtime, [
+        { op: "addNode", ref: "$level", type: "level", position: { x: 0, y: 0 }, parameters: { brightness: 0.2 } },
+      ]);
+      expect(first.status).toBe("applied");
+      level = first.output.createdIds["$level"] ?? "";
+      const name = runtime.bus.store.getGraph().nodes[level]?.label ?? "";
+      expect(name).not.toBe("");
+      const second = await seed(runtime, [
+        {
+          op: "addNode",
+          ref: "$bank",
+          type: "presets",
+          position: { x: 0, y: 200 },
+          parameters: {
+            targets: name,
+            presets: serializePresetBank({ version: 1, presets: [{ name: "bright", values: { [name]: { brightness: 0.8 } } }] }),
+          },
+        },
+        {
+          op: "addNode",
+          ref: "$fb",
+          type: "feedback",
+          position: { x: 200, y: 0 },
+          parameters: {
+            resetPulse: {
+              mode: "expression",
+              bindings: {
+                static: { kind: "static", value: false },
+                expression: { kind: "expression", source: `op('${name}').par.brightness > 0.555` },
+              },
+            },
+          },
+        },
+      ]);
+      expect(second.status, JSON.stringify(second.diagnostics)).toBe("applied");
+      bank = second.output.createdIds["$bank"] ?? "";
+      runtime.bus.attachFrameClock(() => ({ epoch: EPOCH, absTimeSeconds: 0 }));
+      const recalled = await runtime.bus.execute(
+        "preset.recall",
+        { nodeId: bank, name: "bright", morph: { seconds: 1, curve: "linear" } },
+        runtime.invocation,
+      );
+      expect(recalled.status, JSON.stringify(recalled.diagnostics)).toBe("applied");
+    });
+    // The document holds the destination from the recall on; only the frames are on their way.
+    expect(runtime.bus.store.getGraph().nodes[level]?.parameters["brightness"]).toBe(0.8);
+
+    const { result } = renderHook(() => usePulseFiring(runtime, runtime.invocation));
+    for (let frameIndex = 0; frameIndex <= 70; frameIndex += 1) {
+      await act(async () => {
+        at = frameIndex;
+        result.current.observe(liveFrame(frameIndex));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+    expect(fired).toEqual([36]);
+    runtime.dispose();
+  });
+});

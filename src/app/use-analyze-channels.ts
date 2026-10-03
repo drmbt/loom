@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { CompiledGraph } from "@compiler/index.ts";
-import type { ChannelResolver } from "@domain/parameters/resolve.ts";
+import type { ChannelResolver, ParameterMorphs } from "@domain/parameters/resolve.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
-import { analyzeChannelEntries, createAnalyzeChannels } from "@runtime/execution/index.ts";
+import { analyzeChannelEntries, analyzeOperationOf, createAnalyzeChannels } from "@runtime/execution/index.ts";
 import type { AnalyzeEntry } from "@runtime/execution/index.ts";
 import type { NodeMetricSink } from "@runtime/telemetry/index.ts";
 
@@ -110,6 +110,14 @@ export function useAnalyzeChannels(
    * graph canvas's own store, which is the ONE per-node channel (§V16).
    */
   sink?: NodeMetricSink | undefined,
+  /**
+   * T1525b: what Operation is resolved with each frame — the compile's channel resolver and
+   * the preset morphs in flight over the graph `track` was handed (`FlattenedGraph.morphs`),
+   * so an expression on Operation follows a channel or a fading parameter. Getters, read per
+   * frame, like the media transport's (§T1524b). Absent, Operation resolves with neither:
+   * an expression still runs, a channel read or a fade does not reach it.
+   */
+  reads?: { readonly channels: () => ChannelResolver | undefined; readonly morphs: () => ParameterMorphs | undefined },
 ): AnalyzeChannelBinding {
   // Read through a ref: the channels object is built once and must survive the backend
   // being replaced by a device-loss rebuild (§V23) without losing its latest values.
@@ -134,10 +142,45 @@ export function useAnalyzeChannels(
 
   const registryRef = useRef(registry);
   registryRef.current = registry;
+  const readsRef = useRef(reads);
+  readsRef.current = reads;
+  /** T1525b: what `track` was last handed, so each frame can re-resolve Operation on it. */
+  const trackedRef = useRef<{ graph: GraphDocument; entries: readonly AnalyzeEntry[] }>({
+    graph: { revision: 0, nodes: {}, edges: {}, groups: {} },
+    entries: [],
+  });
 
   const track = useCallback(
     (graph: GraphDocument, compiled: CompiledGraph | null) => {
-      channels.track(trackableEntries(graph, registryRef.current, compiled));
+      const entries = trackableEntries(graph, registryRef.current, compiled);
+      trackedRef.current = { graph, entries };
+      channels.track(entries);
+    },
+    [channels],
+  );
+
+  /**
+   * T1525b — Operation AT THIS FRAME. The set is the compile's; which reduction each entry
+   * publishes is a parameter read, and a parameter read happens at a frame. Re-tracked only
+   * when one actually changed, so a still document does nothing here but resolve.
+   */
+  const refreshOperations = useCallback(
+    (frame: FrameEvaluationInput) => {
+      const { graph, entries } = trackedRef.current;
+      if (entries.length === 0) return;
+      const live = readsRef.current;
+      const read = { frame, channels: live?.channels(), morphs: live?.morphs() };
+      let changed = false;
+      const next = entries.map((entry) => {
+        const node = graph.nodes[entry.nodeId];
+        const operation = node === undefined ? entry.operation : analyzeOperationOf(node, graph, registryRef.current, read);
+        if (operation === entry.operation) return entry;
+        changed = true;
+        return { ...entry, operation };
+      });
+      if (!changed) return;
+      trackedRef.current = { graph, entries: next };
+      channels.track(next);
     },
     [channels],
   );
@@ -156,12 +199,13 @@ export function useAnalyzeChannels(
           target.publish(age.nodeId, { resultAgeFrames: age.ageFrames });
         }
       }
+      refreshOperations(frame);
       // See the module note: this runs inside the open frame, so the read is deferred to a
       // microtask that drains after it closes. Not a stylistic choice — a direct call here
       // fails the frame guard and is swallowed.
       queueMicrotask(() => channels.sample(frame.frameIndex));
     },
-    [channels],
+    [channels, refreshOperations],
   );
 
   const resolver = useCallback<ChannelResolver>(

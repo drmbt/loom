@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { ChannelResolver } from "@domain/parameters/resolve.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { ChannelResolver, ParameterMorphs } from "@domain/parameters/resolve.ts";
+import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
+import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import { absTimeSecondsOf } from "@domain/types/frame.ts";
@@ -19,6 +20,7 @@ import {
   PERSON_MASK_INPUT_SIDE,
   PERSON_MASK_RESULT_KEY,
 } from "@nodes/definitions/index.ts";
+import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { DeviceClient } from "@devices/device-client.ts";
 import { DEVICE_HELPER_COMMAND, DEVICE_HELPER_NAME, DEVICE_HELPER_START } from "@devices/helper.ts";
 import { createNativeVisionSources, type NativeVisionTarget } from "./native-vision-sources.ts";
@@ -124,6 +126,47 @@ interface VisionTarget {
   readonly channel?: string;
 }
 
+/** What a Person Mask's own parameters are read with (T1525b) — see `useVisionBridge`'s options. */
+interface VisionParameterReads {
+  readonly registry: NodeRegistryView;
+  readonly channels: () => ChannelResolver | undefined;
+  readonly morphs: () => ParameterMorphs | undefined;
+}
+
+/**
+ * T1525b — the node's Min interval at `frame`, through the one read path (§V61).
+ *
+ * It was read off the stored slot, so an expression on it did nothing and a bank fading it
+ * reached the helper at its destination on the frame of the recall. No frame: what the
+ * document says, an expression at the zero frame — `observe` re-reads it at every frame.
+ */
+function minIntervalAt(
+  node: GraphNode,
+  graph: GraphDocument,
+  reads: VisionParameterReads,
+  frame: FrameEvaluationInput | undefined,
+): number {
+  const { registry } = reads;
+  const options = createParameterReadOptions({ graph, registry, frame, channels: reads.channels(), morphs: reads.morphs() });
+  const rate = resolveParameters(node, registry.get(node.type), options).get("rateLimit")?.value;
+  return typeof rate === "number" ? Math.max(0, rate) : 0.1;
+}
+
+/** One tracked target as the inference seam takes it. */
+function visionEntry(target: VisionTarget): InferenceEntry {
+  return {
+    nodeId: target.nodeId as NodeId,
+    inputResourceId: scratchResourceId(target.nodeId, PERSON_MASK_INPUT_KEY),
+    sourceId: inferenceSourceIdFor(target.nodeId),
+    // r32float zeros at the output size: the empty mask, "nobody" — which composes
+    // to a no-op for a masking consumer rather than to a hole (§T715).
+    fallback: new Uint8Array(target.size[0] * target.size[1] * 4),
+    minIntervalSeconds: target.minIntervalSeconds,
+    ...(target.channel === undefined ? {} : { channel: target.channel }),
+    coverage: maskCoverage,
+  };
+}
+
 export function useVisionBridge(options: {
   /** Document owner identity; replacing the project retires native model history. */
   scope?: object;
@@ -135,6 +178,16 @@ export function useVisionBridge(options: {
    *  structural compile therefore resolved `mask1:coverage` as unknown and pinned a
    *  diagnostic nothing later cleared. The channel belongs to the NODE, not the seam. */
   graph?: () => GraphDocument;
+  /**
+   * T1525b: what the node's own parameters (Min interval) are resolved with — the catalogue,
+   * the compile's channel resolver and the preset morphs in flight over the graph `track`
+   * is handed (`FlattenedGraph.morphs`). Getters, read per frame. REQUIRED, like the media
+   * transport's (§T1524b): an optional getter nothing supplies is how a reader ends up
+   * resolving without it.
+   */
+  registry: NodeRegistryView;
+  channels: () => ChannelResolver | undefined;
+  morphs: () => ParameterMorphs | undefined;
 }): {
   readonly diagnostics: readonly RuntimeDiagnostic[];
   observe(frame: FrameEvaluationInput): void;
@@ -190,6 +243,11 @@ export function useVisionBridge(options: {
      new resolvers, E24 scenario C). The resolver's identity now moves with `sources` only. */
   const graphRef = useRef(options.graph);
   graphRef.current = options.graph;
+  /* T1525b — through a ref for the same reason; `trackedGraphRef` is the document `track`
+     was last handed, the one each frame re-reads Min interval on. */
+  const readsRef = useRef<VisionParameterReads>(options);
+  readsRef.current = options;
+  const trackedGraphRef = useRef<GraphDocument | null>(null);
   const unregisterRef = useRef(new Map<string, () => void>());
   const registeredOnRef = useRef<LoomBackend | null>(null);
 
@@ -244,12 +302,10 @@ export function useVisionBridge(options: {
         const resultId = scratchResourceId(nodeId, PERSON_MASK_RESULT_KEY);
         // §V585: unwired = unallocated = untracked; nothing is asked of the helper.
         if (!sized.has(resultId)) continue;
-        const rate = node.parameters["rateLimit"];
-        const stored = typeof rate === "number" ? rate : (rate as { value?: unknown } | undefined)?.value;
         const target = {
           nodeId,
           size: sized.get(resultId) ?? [1, 1],
-          minIntervalSeconds: typeof stored === "number" ? Math.max(0, stored) : 0.1,
+          minIntervalSeconds: minIntervalAt(node, graph, readsRef.current, undefined),
           ...(node.label === undefined ? {} : { channel: node.label }),
         };
         // The compiler resolved static/bound transport and declared its format.
@@ -277,6 +333,7 @@ export function useVisionBridge(options: {
         }
       }
       targetsRef.current = targets;
+      trackedGraphRef.current = graph;
       setDiagnostics((prior) =>
         prior.length === next.length &&
         prior.every((entry, at) => entry.code === next[at]?.code && entry.nodeId === next[at]?.nodeId && entry.message === next[at]?.message)
@@ -311,18 +368,7 @@ export function useVisionBridge(options: {
         }
       }
 
-      const entries: InferenceEntry[] = targets.map((target) => ({
-        nodeId: target.nodeId as NodeId,
-        inputResourceId: scratchResourceId(target.nodeId, PERSON_MASK_INPUT_KEY),
-        sourceId: inferenceSourceIdFor(target.nodeId),
-        // r32float zeros at the output size: the empty mask, "nobody" — which composes
-        // to a no-op for a masking consumer rather than to a hole (§T715).
-        fallback: new Uint8Array(target.size[0] * target.size[1] * 4),
-        minIntervalSeconds: target.minIntervalSeconds,
-        ...(target.channel === undefined ? {} : { channel: target.channel }),
-        coverage: maskCoverage,
-      }));
-      sources.track(entries);
+      sources.track(targets.map(visionEntry));
       native.track(nativeTargets, attached);
       nativeTargetsRef.current = nativeTargets;
       refreshNative();
@@ -330,14 +376,43 @@ export function useVisionBridge(options: {
     [client, sources, native, refreshNative],
   );
 
+  /**
+   * T1525b — Min interval AT THIS FRAME, for both paths. The set is the compile's; the gap
+   * is a parameter read, and a parameter read happens at a frame. Re-tracked only when a
+   * gap actually moved, so a still document does nothing here but resolve.
+   */
+  const refreshIntervals = useCallback(
+    (frame: FrameEvaluationInput) => {
+      const graph = trackedGraphRef.current;
+      if (graph === null || (targetsRef.current.length === 0 && nativeTargetsRef.current.length === 0)) return;
+      let changed = false;
+      const at = <T extends VisionTarget>(target: T): T => {
+        const node = graph.nodes[target.nodeId];
+        const gap = node === undefined ? target.minIntervalSeconds : minIntervalAt(node, graph, readsRef.current, frame);
+        if (gap === target.minIntervalSeconds) return target;
+        changed = true;
+        return { ...target, minIntervalSeconds: gap };
+      };
+      const targets = targetsRef.current.map(at);
+      const nativeTargets = nativeTargetsRef.current.map(at);
+      if (!changed) return;
+      targetsRef.current = targets;
+      sources.track(targets.map(visionEntry));
+      nativeTargetsRef.current = nativeTargets;
+      native.track(nativeTargets, backendRef.current?.() ?? null);
+    },
+    [sources, native],
+  );
+
   const observe = useCallback(
     (frame: FrameEvaluationInput) => {
+      refreshIntervals(frame);
       native.observe(frame); refreshNative();
       if (targetsRef.current.length === 0) return;
       // Between frames, exactly as analyze and the model seam do (§V184).
       queueMicrotask(() => sources.sample(frame.frameIndex, absTimeSecondsOf(frame)));
     },
-    [sources, native, refreshNative],
+    [sources, native, refreshNative, refreshIntervals],
   );
 
   const settle = useCallback(

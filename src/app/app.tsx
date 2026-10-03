@@ -388,6 +388,18 @@ export function App({
   const previewInterest = usePerDocument(runtime.documentIdentity, createPreviewInterestStore);
   const backend = status.kind === "ready" ? status.backend : undefined;
 
+  /*
+   * T1525b: what the CPU readers outside the plan resolve their nodes' OWN parameters with —
+   * the compile's channel resolver (read late: the compile is built below, from these
+   * readers' channels) and the morph index of the runtime's flattening, the one the plan
+   * and the value graph resolve with (§T1524b).
+   */
+  const liveReads = {
+    registry: runtime.registry,
+    channels: () => compileRef.current.channels,
+    morphs: () => runtime.flattened.current().morphs,
+  };
+
   /**
    * B25/T305 — the CPU half of Analyze, constructed. Before this, `createAnalyzeChannels`
    * had exactly one construction site in the tree (its own GPU test), so an Analyze node
@@ -398,7 +410,7 @@ export function App({
    */
   // T645: the third argument is §V329's staleness sink — the graph canvas's own per-node
   // channel, the same one the telemetry hub mirrors `gpuMs` into. One channel, not two.
-  const analyze = useAnalyzeChannels(backend, runtime.registry, runtime.nodeRuntime);
+  const analyze = useAnalyzeChannels(backend, runtime.registry, runtime.nodeRuntime, liveReads);
   /**
    * T942 tier 3 — the session's ONE device attachment, constructed. It dials NOTHING on
    * mount unless this tab already paired in this browser session (T925's memory), and the
@@ -412,7 +424,7 @@ export function App({
   const depth = useModelInference(backend, runtime.nodeRuntime, runtime.bus, {
     client: osc.deviceClient,
     paired: helperFactFrom(osc.state) === "paired",
-  });
+  }, liveReads);
 
   /**
    * B27/T305 — the value graph, constructed. `createValueGraphSession` had no caller, so
@@ -452,6 +464,7 @@ export function App({
     backend: () => backendRef.current,
     // T1067: the FLAT document, so a coverage spent inside a component resolves too.
     graph: () => runtime.flattened.current().graph,
+    ...liveReads,
   });
   // T1396b: the phone door — published Panels to phones on the LAN, over the same client.
   // T1495b: it follows the attachment, so a helper started after the ask still opens it.
@@ -1375,7 +1388,15 @@ export function App({
    */
   const nativeOutputs = useNativeOutputs(runtime, backend ?? null, compile.flatGraph, frameLoop.installedPlan);
   // §T1391b: Window Out perform windows — the commands, the open set, the inspector surface.
-  const perform = usePerformWindows({ bus: runtime.bus, backend, plan: frameLoop.installedPlan, displaySinks });
+  const perform = usePerformWindows({
+    bus: runtime.bus,
+    backend,
+    plan: frameLoop.installedPlan,
+    displaySinks,
+    ...liveReads,
+    // T1525b: opening a window is a moment; its parameters are read at the frame last rendered.
+    frame: () => frameLoop.latestFrame()?.frame,
+  });
   const renderRange = useRenderRange({
     createCapture: output => {
       if (backend === undefined || backend === null) throw new Error("No GPU device for video capture.");
