@@ -19,6 +19,8 @@ import { createVgpuBackend } from "./vgpu-backend.ts";
  *     that. Each case below is the literal error through compiler + backend + Dawn, and
  *     asserts the AUTHOR'S `parameter line:col` — with the generated line asserted to be a
  *     different one, so a map that does nothing cannot pass.
+ * (c) An error that exists only in vgpu's combined module is stated by the device once;
+ *     its reason must survive to a later compile of the same bytes.
  */
 
 let dawnError: string | undefined;
@@ -221,5 +223,45 @@ fn groupMatch(p: Point, ctx: PointCtx) -> bool {
       ),
     );
     expect(failures[0]!.source).toBeUndefined();
+  }, 60_000);
+});
+
+describe("an error only vgpu's combined module has keeps its reason (T1523b(c))", () => {
+  it("a later compile of the same bytes is told what the device said the first time", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+    // Valid WGSL on its own; it collides with the fullscreen vertex stage vgpu puts in front.
+    const source = `@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+
+struct VgpuFullscreenVertexOut {
+  x: f32,
+};
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  return textureSample(inputTexture, inputSampler, uv);
+}`;
+    const backend = createVgpuBackend({ host: nodeGpuHost() });
+    const diagnostics: RuntimeDiagnostic[] = [];
+    backend.onDiagnostic((diagnostic) => diagnostics.push(diagnostic));
+    try {
+      const capabilities = await backend.initialize({});
+      await expect(backend.compile(compileGraph({ graph: customGraph(source, "first"), settings, registry, capabilities }))).rejects.toBeDefined();
+      const first = diagnostics.filter((d) => d.code === BackendDiagnosticCode.compileFailed);
+      expect(first.map((d) => d.nodeId)).toEqual(["first"]);
+      expect(first[0]!.message).toContain("VgpuFullscreenVertexOut");
+
+      // The same bytes on another node: vgpu hands back its cached invalid module and the
+      // device says only "invalid due to a previous error".
+      await expect(backend.compile(compileGraph({ graph: customGraph(source, "again"), settings, registry, capabilities }))).rejects.toBeDefined();
+      const later = diagnostics.slice(diagnostics.indexOf(first[0]!) + 1).filter((d) => d.code === BackendDiagnosticCode.compileFailed);
+      expect(later.map((d) => d.nodeId)).toEqual(["again"]);
+      expect(later[0]!.message).toContain("VgpuFullscreenVertexOut");
+      expect(later[0]!.message.slice(later[0]!.message.indexOf(": ") + 2)).toBe(
+        first[0]!.message.slice(first[0]!.message.indexOf(": ") + 2),
+      );
+    } finally {
+      backend.dispose();
+    }
   }, 60_000);
 });

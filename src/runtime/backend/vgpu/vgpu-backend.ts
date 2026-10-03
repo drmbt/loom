@@ -3666,9 +3666,18 @@ async function deviceVerdictDiagnostics(
         : [];
     const built = buildErrors.get(label);
     const described = describeWgslErrors(wgsl, pass !== undefined && "sourceMap" in pass ? pass.sourceMap : undefined);
-    const reason = described?.reason ?? built;
+    const reason =
+      described?.reason ?? built ?? (pass !== undefined && "shader" in pass ? rememberedReason(raw, pass.shader) : undefined);
     if (built !== undefined && (reason === built || wgsl.some((entry) => built.includes(entry.message)))) {
       told.add(label);
+    }
+    // T1523b(c): the device states an error that lives only in vgpu's combined module (a name
+    // colliding with its fullscreen vertex stage) ONCE — vgpu then keeps the invalid module
+    // under the pass's source and every later build fails with "invalid due to a previous
+    // error" and nothing else. So the reason the scope caught is kept against those bytes,
+    // for as long as that device (and so vgpu's copy of the module) lives.
+    if (wgsl.length === 0 && built !== undefined && pass !== undefined && "shader" in pass) {
+      rememberReason(raw, pass.shader, built);
     }
     failures.push(
       deviceFailureDiagnostic(label, reason ?? cause, passes, {
@@ -3755,4 +3764,27 @@ function describeWgslErrors(
     return `${authored.parameter} ${authored.line}:${authored.column} ${entry.message}`;
   });
   return { reason: lines.join("\n"), ...(source === undefined ? {} : { source }) };
+}
+
+/** T1523b(c): per device, the last reason the device gave for a source vgpu now holds invalid. */
+const rememberedReasons = new WeakMap<GPUDevice, Map<string, string>>();
+const REMEMBERED_REASON_LIMIT = 64;
+
+function rememberReason(raw: GPUDevice | undefined, shader: string, reason: string): void {
+  if (raw === undefined) return;
+  let reasons = rememberedReasons.get(raw);
+  if (reasons === undefined) {
+    reasons = new Map();
+    rememberedReasons.set(raw, reasons);
+  }
+  reasons.delete(shader);
+  reasons.set(shader, reason);
+  if (reasons.size > REMEMBERED_REASON_LIMIT) {
+    const oldest = reasons.keys().next();
+    if (oldest.done !== true) reasons.delete(oldest.value);
+  }
+}
+
+function rememberedReason(raw: GPUDevice | undefined, shader: string): string | undefined {
+  return raw === undefined ? undefined : rememberedReasons.get(raw)?.get(shader);
 }
