@@ -40,6 +40,14 @@ export interface MovieAudioPlayback {
    * or one that cannot be routed when the first one is.
    */
   attachPartner(partner: PlayableMedia, show: (playing: PlayableMedia) => void): boolean;
+  /**
+   * §T1560b: drop the element that is NOT playing — paused, off the speakers, forgotten —
+   * and hand it back so its opener can free its decoder. Null when there is none. A silent
+   * whole-file Loop asks for this: it loops natively on one element.
+   */
+  releasePartner(): PlayableMedia | null;
+  /** §T1560b: the PLAYING element's length (0 while unknown) — after a hand-over, the partner's. */
+  duration(): number;
   pause(): void;
   setRenderMuted(muted: boolean): void;
   dispose(): void;
@@ -67,23 +75,45 @@ function canLoop(element: AudibleMedia): boolean {
 const PRIMED_PRECISION_SECONDS = 1e-6;
 /** HAVE_CURRENT_DATA: the frame at the element's position is decoded. */
 const HAVE_CURRENT_DATA = 2;
+/**
+ * §T1560b: how close to the end of the FILE a whole-file hand-over arms its timer. An
+ * element stops at the end of its file, so waiting for the next frame there is silence.
+ * Re-armed every frame from the element's own clock, so it only has to exceed a frame.
+ */
+const END_HORIZON_SECONDS = 0.25;
+/**
+ * §T1560b: how many ms before the end of the file the partner is started. Measured in headed
+ * Chromium through the product's routing (docs/media-fit-and-audio-2026-10-03.md): at 0 and
+ * 1.5 ms every lap ran 1–4 ms long with two or three 1–4 ms near-silent runs at the join (a
+ * timer fires late and `play()` takes a few ms to sound); at 3 ms laps were -5.4..+1.9 ms of
+ * the file and the runs no worse than a trimmed hand-over's.
+ */
+export const END_LEAD_MS = 3;
+
+/** §T1560b: the window is the whole file — in point 0, out point the duration. */
+function wholeFile(head: MediaPlayhead, duration: number): boolean {
+  return head.start <= PRIMED_PRECISION_SECONDS && head.end >= duration - PRIMED_PRECISION_SECONDS;
+}
 
 /**
- * §T1548b — how a movie loops in REALTIME FREE RUN: `"native"` for the whole file (in
- * point 0, out point the duration), on its one element with `loop = true`; `"handOver"` for
- * a trimmed window, which takes the second element. Null wherever a lap stays an exact
- * seek: under the lock (§V436), off realtime (§V662), any other extend, a held cue, or
- * before the duration is known.
+ * §T1548b — how a movie loops in REALTIME FREE RUN: `"native"` on its one element with
+ * `loop = true`, or `"handOver"` to a second element. A trimmed window always hands over.
+ * §T1560b (owner, 2026-10-04): the WHOLE FILE (in point 0, out point the duration) hands
+ * over too while the movie's `audio` is on — Chrome's native loop costs ~20 ms and a 16 ms
+ * silence per wrap, which is heard — and loops natively, on one decoder, while it is off.
+ * Null wherever a lap stays an exact seek: under the lock (§V436), off realtime (§V662),
+ * any other extend, a held cue, or before the duration is known.
  */
 export function movieLoopOf(
   transport: MediaTransportValues,
   head: MediaPlayhead,
   duration: number,
   mode: FrameEvaluationInput["mode"],
+  audio: boolean,
 ): "native" | "handOver" | null {
   if (mode !== "realtime" || transport.playMode !== "freeRun" || transport.extend !== "loop" || transport.cue) return null;
   if (!(duration > 0) || head.end - head.start <= PRIMED_PRECISION_SECONDS) return null;
-  return head.start <= PRIMED_PRECISION_SECONDS && head.end >= duration - PRIMED_PRECISION_SECONDS ? "native" : "handOver";
+  return wholeFile(head, duration) && !audio ? "native" : "handOver";
 }
 
 /**
@@ -104,12 +134,20 @@ export function movieLoopOf(
  *
  * LOOPING IN REALTIME FREE RUN WITHOUT A SEEK. With the element as the clock (§V1027) a lap
  * that seeks pays the decoder's seek latency every lap, in picture and sound.
- * - The WHOLE FILE loops natively: `loop = true` on its one element, no partner, nothing
- *   written at the lap. The wrap shows as `currentTime` running backwards; `position()`
- *   adds one window on that frame, so the runner takes it as a lap and the playhead does
- *   not read it as a scrub.
- * - A TRIMMED window HANDS OVER: a second element on the same file waits paused on the in
- *   point; at the lap it plays, the finished one pauses and is put back on the in point.
+ * - A SILENT WHOLE FILE loops natively: `loop = true` on its one element, no partner,
+ *   nothing written at the lap. The wrap shows as `currentTime` running backwards;
+ *   `position()` adds one window on that frame, so the runner takes it as a lap and the
+ *   playhead does not read it as a scrub. A whole file with `audio` on also loops so while
+ *   its partner is not primed yet (§T1560b), so turning Audio on never costs a seek.
+ * - A TRIMMED window, and a whole file with `audio` on (§T1560b), HAND OVER: a second
+ *   element on the same file waits paused on the in point; at the lap it plays, the
+ *   finished one pauses and is put back on the in point.
+ * - §T1560b: an element STOPS at the end of its file, where a trimmed one plays on past
+ *   its out point, so a whole-file lap taken on the next frame is that much silence (up to
+ *   20 ms, measured). Within `END_HORIZON_SECONDS` of the end each frame arms a timer off
+ *   the element's own clock that starts the partner at the end of the file; the first frame
+ *   after the finished element has stopped there completes the hand-over with nothing
+ *   carried, because the partner's own time is then the position.
  *   Routed through a running context this measured 0.500 s laps for a 0.5 s window with no
  *   audio gap (T1548b); through the elements' own outputs `play()` waited ~0.2 s for audio
  *   output to start, as a seek does.
@@ -145,6 +183,11 @@ export function createMovieAudioPlayback(
   let nativeLooping = false;
   let loopWindow = 0;
   let lastSeen: number | null = null;
+  /** §T1560b: the partner the end-of-file timer started ahead of the frame, and the window it laps. */
+  let early: AudibleMedia | null = null;
+  let endTimer: ReturnType<typeof setTimeout> | null = null;
+  let loopStart = 0;
+  let loopEnd = 0;
   let disposed = false;
   let pending: object | null = null;
   let blocked = false;
@@ -170,20 +213,23 @@ export function createMovieAudioPlayback(
   };
   /** Routed sound waits for the context; until it runs, the elements stay muted. */
   const waitingForContext = () => door !== null && !door.running();
+  /** Whether `media` should be heard now: the playing element, or a partner started for the lap. */
+  const sounding = (media: AudibleMedia) => media === audioElement || media === early;
   const refreshLevel = () => {
     const silent = !audible || renderMuted || mode !== "realtime" || !wantedPlaying;
     if (door !== null) {
       const muted = !door.running();
       for (const [media, entry] of routes) {
         if (media.muted !== muted) media.muted = muted;
-        const gain = media === audioElement && !silent ? level : 0;
+        const gain = sounding(media) && !silent ? level : 0;
         if (entry.level !== gain) {
           entry.level = gain;
           entry.route.gain.value = gain;
         }
       }
-    } else if (audioElement.muted !== silent) {
-      audioElement.muted = silent;
+    } else {
+      if (audioElement.muted !== silent) audioElement.muted = silent;
+      if (early !== null && early.muted !== silent) early.muted = silent;
     }
     if (silent === silentBefore) return;
     silentBefore = silent;
@@ -242,9 +288,24 @@ export function createMovieAudioPlayback(
     // Stay on the activation event's stack; an awaited retry loses browser permission.
     play();
   }
+  const cancelEndTimer = () => {
+    if (endTimer === null) return;
+    clearTimeout(endTimer);
+    endTimer = null;
+  };
+  /** §T1560b: a partner started for a lap the frame did not take goes back to waiting, silent. */
+  const stopEarly = () => {
+    const started = early;
+    if (started === null) return;
+    early = null;
+    if (!started.paused) started.pause();
+    if (!routed) started.muted = true;
+  };
   const pause = () => {
     wantedPlaying = false;
     pending = null;
+    cancelEndTimer();
+    stopEarly();
     clearBlock();
     refreshLevel();
     if (!audioElement.paused) audioElement.pause();
@@ -264,6 +325,32 @@ export function createMovieAudioPlayback(
     partner.paused && partner.seeking !== true
     && (partner.readyState ?? HAVE_CURRENT_DATA) >= HAVE_CURRENT_DATA
     && Math.abs(partner.currentTime - start) <= PRIMED_PRECISION_SECONDS;
+  /**
+   * §T1560b — the end of the file, on the element's own clock rather than the next frame's:
+   * start the primed partner there. Fired early (timers are coarse) it re-arms for what is
+   * left; a frame that arrives first cancels it and arms afresh.
+   */
+  const endOfFile = () => {
+    endTimer = null;
+    const partner = idle;
+    if (disposed || early !== null || partner === null || !wantedPlaying || !primed(partner, loopStart)) return;
+    const rate = audioElement.playbackRate > 0 ? audioElement.playbackRate : 1;
+    const left = ((loopEnd - audioElement.currentTime) / rate) * 1000 - END_LEAD_MS;
+    if (left > 1) {
+      endTimer = setTimeout(endOfFile, left);
+      return;
+    }
+    if (partner.playbackRate !== audioElement.playbackRate) partner.playbackRate = audioElement.playbackRate;
+    early = partner;
+    refreshLevel();
+    try {
+      const result = partner.play();
+      // A refusal leaves it paused on the in point: primed, so the frame hands over as before.
+      if (result !== undefined) void result.catch(() => undefined);
+    } catch {
+      // As above.
+    }
+  };
   audioElement.muted = true;
   return {
     sync(stepped, currentMode) {
@@ -274,13 +361,21 @@ export function createMovieAudioPlayback(
         throw new Error("Movie audio and volume must resolve to a boolean and a finite number.");
       }
       level = Math.max(0, Math.min(1, volume));
-      const loop = movieLoopOf(stepped.transport, stepped.head, durationOf(audioElement), currentMode);
-      const native = loop === "native" && canLoop(audioElement);
+      cancelEndTimer();
+      const duration = durationOf(audioElement);
+      const loop = movieLoopOf(stepped.transport, stepped.head, duration, currentMode, enabled);
+      const whole = loop !== null && wholeFile(stepped.head, duration);
+      const waiting = idle;
+      // Ready to take the lap: waiting on the in point, or already started there by the end-of-file timer.
+      const ready = waiting !== null && (waiting === early || primed(waiting, stepped.head.start));
+      // §T1560b: a lap the element took by looping itself is not handed over as well.
+      const nativeWrap = stepped.lap && nativeLooping && lastSeen !== null
+        && audioElement.currentTime < lastSeen - loopWindow / 2;
+      const native = canLoop(audioElement)
+        && (loop === "native" || (loop === "handOver" && whole && (!ready || nativeWrap)));
       // §T1548b — THE HAND-OVER. The finished element is paused and silenced, never sought
       // while it plays; the partner starts from the in point it was waiting on.
-      const waiting = idle;
-      const handOver = stepped.lap && !native && currentMode === "realtime"
-        && waiting !== null && primed(waiting, stepped.head.start);
+      const handOver = stepped.lap && !native && currentMode === "realtime" && waiting !== null && ready;
       if (handOver) {
         const finished = audioElement;
         audioElement = waiting;
@@ -288,18 +383,25 @@ export function createMovieAudioPlayback(
         pending = null;
         if (!routed) finished.muted = true;
         finished.pause();
-        carried = stepped.head.position - stepped.head.start;
+        // §T1560b: a partner the timer started is AT the position already; nothing to carry.
+        carried = waiting === early ? 0 : stepped.head.position - stepped.head.start;
+        early = null;
         show(audioElement);
       } else if (!stepped.continuous && !(native && stepped.lap)) {
         // Any other discontinuity seeks the element exactly onto the playhead: nothing carried.
         carried = 0;
       }
+      // A partner started for a lap this frame did not take (a cue, a hold, a trim edit); a
+      // continuous frame is the finished element still playing out its last milliseconds.
+      if (!handOver && !(early !== null && stepped.continuous)) stopEarly();
       // §T1548b: the whole file loops on the element itself; everything else wraps by the
       // transport (a seek or a hand-over), and an element left looping would fight it.
       if (canLoop(audioElement) && audioElement.loop !== native) audioElement.loop = native;
       if (idle !== null && idle.loop === true) idle.loop = false;
       nativeLooping = native;
       loopWindow = stepped.head.end - stepped.head.start;
+      loopStart = stepped.head.start;
+      loopEnd = stepped.head.end;
       if (!routed && audioElement.volume !== level) audioElement.volume = level;
       audible = enabled && level > 0 && stepped.head.visible;
       mode = currentMode;
@@ -314,9 +416,21 @@ export function createMovieAudioPlayback(
         idle.currentTime = stepped.head.start;
       }
       lastSeen = audioElement.currentTime;
+      // §T1560b: near the end of the file, start the partner there rather than a frame late.
+      if (whole && !native && wantedPlaying && !waitingForContext() && idle !== null && primed(idle, loopStart)) {
+        const rate = audioElement.playbackRate > 0 ? audioElement.playbackRate : 1;
+        const left = (loopEnd - audioElement.currentTime) / rate;
+        if (left <= END_HORIZON_SECONDS) endTimer = setTimeout(endOfFile, Math.max(0, left * 1000 - END_LEAD_MS));
+      }
     },
     position() {
       if (waitingForContext()) return null;
+      // §T1560b: the partner started at the end of the file is the next lap, from the in point —
+      // once the finished element has played to that end. Until then it is still followed, so
+      // a frame between the partner's `play()` and its first sound cuts nothing off the file.
+      if (early !== null && (audioElement.paused || audioElement.currentTime >= loopEnd - PRIMED_PRECISION_SECONDS)) {
+        return loopEnd + early.currentTime - loopStart;
+      }
       const now = audioElement.currentTime;
       // A native loop wrapped since the last frame: the element ran back by about a window.
       const wrapped = nativeLooping && lastSeen !== null && now < lastSeen - loopWindow / 2 ? loopWindow : 0;
@@ -339,11 +453,25 @@ export function createMovieAudioPlayback(
       refreshLevel();
       return true;
     },
+    releasePartner() {
+      if (disposed) throw new Error("Movie playback is closed.");
+      const dropped = idle;
+      if (dropped === null) return null;
+      cancelEndTimer();
+      stopEarly();
+      idle = null;
+      if (!dropped.paused) dropped.pause();
+      routes.get(dropped)?.route.release();
+      routes.delete(dropped);
+      return dropped;
+    },
+    duration: () => durationOf(audioElement),
     pause,
     setRenderMuted(muted) { renderMuted = muted; refreshLevel(); },
     dispose() {
       if (disposed) return;
       pause();
+      cancelEndTimer();
       if (idle !== null && !idle.paused) idle.pause();
       for (const { route } of routes.values()) route.release();
       routes.clear();

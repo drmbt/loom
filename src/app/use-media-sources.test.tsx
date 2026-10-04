@@ -220,7 +220,12 @@ describe("movie sound and output extent share the existing media session", () =>
     act(() => wiring.sync(frame));
     expect(element.muted).toBe(false);
     expect(element.volume).toBeCloseTo(0.3, 10);
-    expect(opens).toBe(1);
+    // §T1560b: Audio on a whole-file Loop asks for the loop partner — one open, once (this
+    // door hands back the same element, which is refused), and the playing one is not reopened.
+    expect(opens).toBe(2);
+    await act(async () => {});
+    act(() => wiring.sync(frame));
+    expect(opens).toBe(2);
     view.unmount();
     expect(element.muted).toBe(true);
     expect(element.paused).toBe(true);
@@ -1324,6 +1329,89 @@ describe("media sources reach the backend (T264)", () => {
     expect(heard.get(first)).toEqual([]);
     expect(heard.get(second)).toEqual([]);
     expect(opens).toBe(2);
+    runtime.dispose();
+  });
+
+  /**
+   * §T1560b — THE REACH of the Audio rule for a WHOLE-FILE Loop: silent, it loops natively
+   * on one element and no second one is opened; Audio on opens the partner and the playing
+   * element stops looping itself; Audio off again releases the partner (paused, dropped:
+   * the next Audio on has to open a new one) and the playing element loops itself again.
+   * Nothing is written on the playing element at any of the switches.
+   */
+  it("Audio on a whole-file Loop opens the loop partner, and Audio off releases it (T1560b)", async () => {
+    const runtime = newRuntime();
+    const { backend, registered } = fakeBackend();
+    const opened = [fakeElement(), fakeElement(), fakeElement()];
+    const [first, second, third] = opened as [ReturnType<typeof fakeElement>, ReturnType<typeof fakeElement>, ReturnType<typeof fakeElement>];
+    const heard: number[] = [];
+    let clock = 0;
+    Object.defineProperty(first, "currentTime", {
+      get: () => clock,
+      set: (value: number) => {
+        if (!first.paused) heard.push(value);
+        clock = value;
+      },
+    });
+    let opens = 0;
+    let wiring: MediaWiring | null = null;
+    const environment: MediaEnvironment = {
+      openStill: () => Promise.reject(new Error("no still in this test")),
+      openFile: () => Promise.resolve(opened[opens++] as unknown as MediaElement),
+      openCamera: () => Promise.reject(new Error("not used")),
+    };
+    const draw = (audio: boolean) => (
+      <Harness
+        runtime={runtime}
+        backend={backend}
+        graph={graphWith({ movie: { type: "movieFileIn", parameters: { file: "blob:clip", audio, volume: 1 } } })}
+        environment={environment}
+        onWiring={(value) => {
+          wiring = value;
+        }}
+      />
+    );
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(draw(false));
+    });
+    await waitFor(() => expect(registered.has(mediaSourceIdFor("movie"))).toBe(true));
+    let index = 0;
+    const tick = () => {
+      if (index > 0 && !first.paused) clock += 1 / 60;
+      act(() =>
+        (wiring as unknown as MediaWiring).sync({
+          timeSeconds: index / 60, deltaSeconds: 1 / 60, frameIndex: index, mode: "realtime", randomSeed: 1,
+        }),
+      );
+      index += 1;
+    };
+    tick();
+    tick();
+    // Silent: one element, looping itself.
+    expect([opens, first.loop, first.paused]).toEqual([1, true, false]);
+    heard.length = 0;
+    view.rerender(draw(true));
+    tick();
+    expect(opens).toBe(2);
+    await act(async () => {});
+    tick();
+    // Audio on: the partner waits paused and muted; the playing element no longer loops itself.
+    expect([second.paused, second.muted, first.loop, first.paused, first.muted]).toEqual([true, true, false, false, false]);
+    view.rerender(draw(false));
+    tick();
+    tick();
+    // Audio off: the partner is released, the playing element loops itself again.
+    expect([second.paused, first.loop, first.paused]).toEqual([true, true, false]);
+    expect(opens).toBe(2);
+    view.rerender(draw(true));
+    tick();
+    // Released, not kept: Audio on again opens a new partner.
+    expect(opens).toBe(3);
+    await act(async () => {});
+    tick();
+    expect([third.paused, first.loop]).toEqual([true, false]);
+    expect(heard).toEqual([]);
     runtime.dispose();
   });
 

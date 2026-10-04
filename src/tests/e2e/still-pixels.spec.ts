@@ -223,7 +223,7 @@ test("a full PNG fits a smaller Common output, and the same bytes stay on the gl
 });
 
 test("a movie plays its embedded audio on the same native video transport", async ({ page }, testInfo) => {
-  test.setTimeout(60_000);
+  test.setTimeout(120_000);
   const browserErrors: string[] = [];
   page.on("pageerror", error => {
     browserErrors.push(error.message);
@@ -236,7 +236,21 @@ test("a movie plays its embedded audio on the same native video transport", asyn
     // playing is the one most recently told to play.
     const gains: (GainNode | undefined)[] = [];
     const state = { movieAudioVideos: videos, movieAudioEvents: events, movieActiveVideo: 0, movieAudioGains: gains };
-    Object.assign(window, state);
+    /*
+     * §T1560b: Audio on a whole-file Loop opens the partner too, and opening an element kicks
+     * a `play()` on it before it is paused to wait — so "the last told to play" can name the
+     * partner. The element heard is the one playing with its gain up; with none playing, the
+     * last told to play.
+     */
+    const movieActive = () => {
+      let best = -1;
+      videos.forEach((video, index) => {
+        if (video.paused) return;
+        if (best < 0 || (gains[index]?.gain.value ?? 0) > (gains[best]?.gain.value ?? 0)) best = index;
+      });
+      return best >= 0 ? best : (window as unknown as typeof state).movieActiveVideo;
+    };
+    Object.assign(window, state, { movieActive });
     // §T1548b: movie sound is routed element → gain → destination, and the gain is what is
     // heard (Chrome ignores `volume` on a routed element). Record each element's gain.
     const createSource = AudioContext.prototype.createMediaElementSource;
@@ -358,11 +372,12 @@ test("a movie plays its embedded audio on the same native video transport", asyn
   });
   const snapshot = () => page.evaluate(() => {
     const win = window as unknown as {
-      movieAudioVideos: HTMLVideoElement[]; movieActiveVideo: number; movieAudioGains: (GainNode | undefined)[];
+      movieAudioVideos: HTMLVideoElement[]; movieActive: () => number; movieAudioGains: (GainNode | undefined)[];
     };
     const videos = win.movieAudioVideos;
-    const video = videos[win.movieActiveVideo];
-    const gain = win.movieAudioGains[win.movieActiveVideo];
+    const active = win.movieActive();
+    const video = videos[active];
+    const gain = win.movieAudioGains[active];
     return video === undefined ? null : {
       count: videos.length, ready: video.readyState >= 2, paused: video.paused,
       muted: video.muted, volume: video.volume, rate: video.playbackRate,
@@ -383,8 +398,9 @@ test("a movie plays its embedded audio on the same native video transport", asyn
   await volume.fill("0.25");
   await volume.press("Enter");
   // The context runs (Playwright's page has activation), so the element is unmuted and the
-  // Volume is on the gain; the element's own volume stays 1.
-  await expect.poll(snapshot).toMatchObject({ count: 1, paused: false, muted: false, gain: 0.25, volume: 1, preservesPitch: true });
+  // Volume is on the gain; the element's own volume stays 1. §T1560b: Audio on a whole-file
+  // Loop opens the loop partner — two elements on the file from here on.
+  await expect.poll(snapshot).toMatchObject({ count: 2, paused: false, muted: false, gain: 0.25, volume: 1, preservesPitch: true });
   expect(await page.evaluate(() => {
     const video = (window as unknown as { movieAudioVideos: HTMLVideoElement[] }).movieAudioVideos[0];
     if (video === undefined || !("captureStream" in video) || typeof video.captureStream !== "function") {
@@ -394,6 +410,56 @@ test("a movie plays its embedded audio on the same native video transport", asyn
     try { return decoded.getAudioTracks().length; }
     finally { for (const track of decoded.getTracks()) track.stop(); }
   })).toBe(1);
+
+  /*
+   * §T1560b: a WHOLE-FILE free-run Loop with Audio on HANDS OVER, like a trimmed one: the
+   * partner waits paused on 0 and is started at the end of the file, off the playing
+   * element's own clock (an element stops at the end of its file, so a lap left to the next
+   * frame was up to 20 ms of silence). So each lap starts from 0 on the other element, lasts
+   * the file to within one frame (native `loop` measured ~16–20 ms long, with a 13–16 ms
+   * silence), and nothing is written on an element while it plays.
+   */
+  const wholeProof = await page.evaluate(async () => {
+    const win = window as unknown as {
+      movieAudioVideos: HTMLVideoElement[]; movieActive: () => number;
+      movieAudioEvents: { kind: string; wall: number; time: number; target?: number; video: number; paused: boolean }[];
+    };
+    const duration = win.movieAudioVideos[0]!.duration;
+    const eventStart = win.movieAudioEvents.length;
+    const playing = win.movieActive();
+    const start = performance.now();
+    const handOvers = () => {
+      let current = playing;
+      return win.movieAudioEvents.slice(eventStart).filter((event) => {
+        if (event.kind !== "play" || event.video === current) return false;
+        current = event.video;
+        return true;
+      });
+    };
+    await new Promise<void>((resolve) => {
+      const tick = () => {
+        if (handOvers().length >= 3 || performance.now() - start >= (3 * duration + 3) * 1000) resolve();
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    return { duration, handOvers: handOvers(), events: win.movieAudioEvents.slice(eventStart) };
+  });
+  const wholePath = testInfo.outputPath("movie-whole-loop.json");
+  await writeFile(wholePath, JSON.stringify(wholeProof, null, 2));
+  await testInfo.attach("movie-whole-loop", { path: wholePath, contentType: "application/json" });
+  expect(Number.isFinite(wholeProof.duration)).toBe(true);
+  expect(wholeProof.handOvers.length).toBeGreaterThanOrEqual(3);
+  for (const handOver of wholeProof.handOvers) expect(handOver.time).toBeLessThan(0.05);
+  const wholeLapMs = wholeProof.handOvers.slice(1).map((handOver, index) => handOver.wall - wholeProof.handOvers[index]!.wall);
+  for (const period of wholeLapMs) {
+    expect(Math.abs(period - wholeProof.duration * 1000), `whole-file lap ${period.toFixed(1)} ms`).toBeLessThan(17);
+  }
+  expect(wholeProof.events.filter(event => event.kind === "set" && !event.paused)).toEqual([]);
+  console.log("Movie whole-file loop", JSON.stringify({
+    duration: wholeProof.duration, lapWallMs: wholeLapMs.map(period => +period.toFixed(1)),
+    handOverAt: wholeProof.handOvers.map(event => +event.time.toFixed(3)),
+  }));
 
   const clockProofs = [];
   for (const fps of [30, 60]) {
@@ -415,15 +481,16 @@ test("a movie plays its embedded audio on the same native video transport", asyn
       await transport.getByRole("button", { name: "Reset time", exact: true }).click();
       await playMode.selectOption(mode);
       await transport.getByRole("button", { name: "Play", exact: true }).click();
-      await expect.poll(snapshot).toMatchObject({ count: 1, paused: false, gain: 0.25, loop: mode === "freeRun" });
+      // §T1560b: with Audio on neither mode loops on the element (free run hands over).
+      await expect.poll(snapshot).toMatchObject({ count: 2, paused: false, gain: 0.25, loop: false });
       await expect.poll(async () => (await snapshot())?.time).toBeGreaterThan(0.05);
       const clockProof = await page.evaluate(async () => {
         const win = window as unknown as {
           movieAudioVideos: HTMLVideoElement[];
-          movieActiveVideo: number;
+          movieActive: () => number;
           movieAudioEvents: { kind: string; wall: number; time: number; target?: number }[];
         };
-        const video = win.movieAudioVideos[win.movieActiveVideo];
+        const video = win.movieAudioVideos[win.movieActive()];
         if (video === undefined) throw new Error("Movie source video was not created.");
         const start = performance.now();
         const eventStart = win.movieAudioEvents.length;
@@ -472,7 +539,7 @@ test("a movie plays its embedded audio on the same native video transport", asyn
   await cuePoint.press("Enter");
   const cue = page.getByRole("switch", { name: "Cue", exact: true });
   await cue.click();
-  await expect.poll(snapshot).toMatchObject({ count: 1, paused: true, gain: 0, time: 0.5 });
+  await expect.poll(snapshot).toMatchObject({ count: 2, paused: true, gain: 0, time: 0.5 });
   const heldProof = await page.evaluate(async () => {
     const events = (window as unknown as {
       movieAudioEvents: { kind: string; wall: number; time: number; target?: number }[];

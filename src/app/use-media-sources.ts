@@ -17,7 +17,6 @@ import type { MediaControlRegistry } from "./media-commands.ts";
 import type { PhoneCameraOpener } from "./use-phone-cameras.ts";
 import {
   createMediaTransportRunner,
-  durationOf,
   playableMedia,
   type MediaTransportRunner,
   type PlayableMedia,
@@ -480,14 +479,15 @@ export function useMediaSources(
    * its free-run accumulator. A webcam is deliberately absent — a live camera has no
    * playhead to derive, which is why the transport is on the FILE node and not on
    * `compileMedia`'s shared shape. §T1548b: `partner` opens the second element a free-run
-   * Loop hands over to at a lap, once, on the first frame that could need it.
+   * Loop hands over to at a lap, once, on the first frame that could need it; §T1560b:
+   * `release` drops it again when the loop goes back to one element (a silent whole file).
    */
   const playersRef = useRef(
     new Map<NodeId, {
-      element: PlayableMedia;
       runner: MediaTransportRunner;
       audio: MovieAudioPlayback;
       partner: () => void;
+      release: () => void;
     }>(),
   );
   /**
@@ -797,25 +797,59 @@ export function useMediaSources(
              * §T1548b — the loop PARTNER: a second element on the same file, so a free-run
              * lap is a hand-over rather than a seek (`createMovieAudioPlayback`). Opened on
              * first need, not here, so a movie that is locked, held or never loops costs no
-             * second decoder, and only for a TRIMMED window: the whole file loops natively on
-             * its one element (`movieLoopOf`). Until it is primed, and if it never opens, a
-             * lap seeks as it always did — the partner refines a working lap.
+             * second decoder, and only for a window that hands over (`movieLoopOf`): a
+             * trimmed one, or the whole file with Audio on (§T1560b). Until it is primed, and
+             * if it never opens, a lap seeks as it always did — the partner refines a working
+             * lap (a whole file loops natively meanwhile).
+             *
+             * §T1560b — a silent whole file loops natively on ONE element, so `release` drops
+             * the one not playing and empties it: its decoder goes now, not at a garbage
+             * collection. Either element can be the one dropped, so the picture source is
+             * told which ELEMENT plays through this map, not by "the second or the first".
              */
-            let partnerAsked = false;
-            const partner = () => {
-              if (partnerAsked) return;
-              partnerAsked = true;
-              void env.openFile(request.url).then((second) => {
-                const playable2 = playableMedia(second);
-                if (playable2 === null || second === element) return;
-                if (!live || !audio.attachPartner(playable2, (playing) => {
-                  media.show(playing === playable2 ? second : element);
-                })) {
-                  playable2.pause();
-                }
-              }, () => undefined);
+            const shownAs = new Map<PlayableMedia, MediaElement>([[playable, element]]);
+            // "refused": the file would not open a second time, or not as a second element —
+            // not asked again every frame.
+            let partnerState: "none" | "opening" | "attached" | "refused" = "none";
+            let partnerWanted = false;
+            const unload = (dropped: PlayableMedia) => {
+              shownAs.delete(dropped);
+              dropped.pause();
+              if (typeof HTMLMediaElement !== "undefined" && dropped instanceof HTMLMediaElement) {
+                dropped.removeAttribute("src");
+                dropped.load();
+              }
             };
-            livePlayers.set(request.nodeId, { element: playable, runner, audio, partner });
+            const partner = () => {
+              partnerWanted = true;
+              if (partnerState !== "none") return;
+              partnerState = "opening";
+              void env.openFile(request.url).then((second) => {
+                partnerState = "none";
+                const playable2 = playableMedia(second);
+                if (playable2 === null || shownAs.has(playable2)) {
+                  partnerState = "refused";
+                  return;
+                }
+                shownAs.set(playable2, second);
+                if (live && partnerWanted && audio.attachPartner(playable2, (playing) => {
+                  const shown = shownAs.get(playing);
+                  if (shown !== undefined) media.show(shown);
+                })) {
+                  partnerState = "attached";
+                } else {
+                  unload(playable2);
+                }
+              }, () => { partnerState = "refused"; });
+            };
+            const dropPartner = () => {
+              partnerWanted = false;
+              if (partnerState !== "attached") return;
+              partnerState = "none";
+              const dropped = audio.releasePartner();
+              if (dropped !== null) unload(dropped);
+            };
+            livePlayers.set(request.nodeId, { runner, audio, partner, release: dropPartner });
             playerOpened.push(request.nodeId);
             const release = controls?.register(request.nodeId, {
               cue: () => runner.cue(),
@@ -914,11 +948,15 @@ export function useMediaSources(
   const sync = useCallback((frame: FrameEvaluationInput, channels?: ChannelResolver) => {
     channelsRef.current = channels;
     runningRef.current = true;
-    for (const { element, runner, audio, partner } of playersRef.current.values()) {
+    for (const { runner, audio, partner, release } of playersRef.current.values()) {
       // §T1548b: the playing element's clock, which after a loop hand-over is the partner's.
-      const stepped = runner.step(frame, durationOf(element), audio.position());
+      const duration = audio.duration();
+      const stepped = runner.step(frame, duration, audio.position());
       if (stepped === null) continue;
-      if (movieLoopOf(stepped.transport, stepped.head, durationOf(element), frame.mode) === "handOver") partner();
+      // §T1560b: Audio on a whole-file Loop opens the partner, and turning it off releases it.
+      const loop = movieLoopOf(stepped.transport, stepped.head, duration, frame.mode, stepped.read("audio") === true);
+      if (loop === "handOver") partner();
+      else if (loop === "native") release();
       audio.sync(stepped, frame.mode);
     }
   }, []);

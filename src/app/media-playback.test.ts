@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { flatDocument } from "@compiler/test-support.ts";
 import {
@@ -13,7 +13,7 @@ import {
   type PlayableMedia,
 } from "./media-playback.ts";
 import { createMediaControlRegistry } from "./media-commands.ts";
-import { createMovieAudioPlayback, type MovieAudioOutput } from "./movie-audio-playback.ts";
+import { END_LEAD_MS, createMovieAudioPlayback, type MovieAudioOutput } from "./movie-audio-playback.ts";
 import { MEDIA_OPEN_TIMEOUT_MS, awaitMediaReady } from "./media-sources.ts";
 import { mediaPlayhead, type MediaTransportValues } from "@domain/media/transport.ts";
 import { liveClock } from "@domain/transport/live-clock.ts";
@@ -1373,7 +1373,12 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       parameters: Record<string, unknown>,
       partner = true,
       duration = 10,
-      audio: { output: MovieAudioOutput | null; stalled?: (element: { readonly muted: boolean }) => boolean } = { output: null },
+      audio: {
+        output: MovieAudioOutput | null;
+        stalled?: (element: { readonly muted: boolean }) => boolean;
+        /** §T1560b: called after every slice of wall time (fake timers: at most 1 ms each). */
+        listen?: (seconds: number) => void;
+      } = { output: null },
     ) {
       let nowMs = 0;
       const clock = liveClock({ fps: 60, presenting: () => true, now: () => nowMs });
@@ -1397,11 +1402,18 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       if (partner) expect(playback.attachPartner(second, (playing) => shown.push(playing))).toBe(true);
       const wall = (seconds: number): void => {
         nowMs += seconds * 1000;
-        first.advanceReal(seconds);
-        second.advanceReal(seconds);
+        // §T1560b: under fake timers, real time moves in slices of at most 1 ms and a timer
+        // fires inside the frame it is due in, as a page's would.
+        const slices = vi.isFakeTimers() ? Math.ceil(seconds * 1000 - 1e-9) : 1;
+        for (let slice = 0; slice < slices; slice += 1) {
+          first.advanceReal(seconds / slices);
+          second.advanceReal(seconds / slices);
+          if (vi.isFakeTimers()) vi.advanceTimersByTime((seconds / slices) * 1000);
+          audio.listen?.(seconds / slices);
+        }
       };
       const frame = () => {
-        const stepped = runner.step(clock.next(), durationOf(first), playback.position());
+        const stepped = runner.step(clock.next(), playback.duration(), playback.position());
         if (stepped === null) throw new Error("the node is in the graph, so the runner must step");
         playback.sync(stepped, "realtime");
         return stepped;
@@ -1418,7 +1430,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         return last;
       };
       const start = frame();
-      return { first, second, shown, graph, play, frame, wall, start, wallSeconds: () => nowMs / 1000 };
+      return { first, second, shown, graph, play, frame, wall, start, playback, wallSeconds: () => nowMs / 1000 };
     }
     /** §T1548b: the app's AudioContext door, faked — each route's gain, and the context's state. */
     function fakeOutput(running: boolean) {
@@ -1510,14 +1522,15 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
     });
 
     /**
-     * §T1548b, owner's ruling — the WHOLE FILE loops on its one element (`loop = true`): no
-     * partner, nothing written at the lap, and the lap lasts the file. The element runs
+     * §T1548b, owner's ruling — a SILENT WHOLE FILE loops on its one element (`loop = true`):
+     * no partner, nothing written at the lap, and the lap lasts the file. The element runs
      * back from the end to 0 by itself; the playhead must take that as a lap, not a scrub
-     * it then "corrects" with a seek.
+     * it then "corrects" with a seek. §T1560b: a whole file with Audio on does the same
+     * while it has no partner yet, so the partner opening late never costs a seek.
      */
-    for (const hz of [60, 45]) {
-      it(`a whole-file Loop at ${String(hz)} Hz: the element loops itself, five laps in 5.25 s of a 1 s file, nothing written`, () => {
-        const { first, play, start, wallSeconds } = pairSession({ audio: true, volume: 1 }, false, 1, fakeOutput(true));
+    for (const [hz, audio] of [[60, false], [45, false], [60, true]] as const) {
+      it(`a whole-file Loop at ${String(hz)} Hz, Audio ${audio ? "on, no partner yet" : "off"}: the element loops itself, five laps in 5.25 s of a 1 s file, nothing written`, () => {
+        const { first, play, start, wallSeconds } = pairSession({ audio, volume: 1 }, false, 1, fakeOutput(true));
         first.rebufferOnSeek(0.2);
         const last = play(5.25, hz, (stepped) => {
           expect(first.loop).toBe(true);
@@ -1555,6 +1568,178 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       graph.nodes["m"]!.parameters["playMode"] = "timeline";
       play(1 / 60, 60);
       expect(first.loop).toBe(false);
+    });
+
+    /**
+     * §T1560b, owner's ruling — A WHOLE FILE WITH AUDIO ON HANDS OVER TOO. Chrome's native
+     * loop costs ~20 ms and a 16 ms silence per wrap, which is heard: a click, and tempo
+     * drift against anything else in time. So with Audio on the whole file takes the
+     * partner, like a trimmed window. And an element STOPS at the end of its file (a
+     * trimmed one plays on past its out point), so the partner must start AT the end, off
+     * the element's own clock, not on the next frame: what is asserted is the silence a
+     * listener gets between laps, the lap count against wall time, and no write on an
+     * element while it plays.
+     */
+    describe("§T1560b — a whole-file Loop with Audio on hands over at the end of the file", () => {
+      beforeEach(() => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      });
+      afterEach(() => {
+        vi.restoreAllMocks();
+        vi.useRealTimers();
+      });
+
+      /** Wall seconds in which nothing was heard: no element playing with its gain up. */
+      function listener(
+        gains: Map<PlayableMedia, { value: number }>,
+        elements: () => PlayableMedia[],
+        /** Only while this holds is silence a gap (Audio off is silent by design). */
+        active: () => boolean = () => true,
+      ) {
+        let silent = 0;
+        let longest = 0;
+        let run = 0;
+        /** Where each element was when it stopped playing: the end of the file, unless a lap cut it. */
+        const ends: number[] = [];
+        const was = new Map<PlayableMedia, number>();
+        return {
+          listen(seconds: number) {
+            for (const element of elements()) {
+              const before = was.get(element);
+              if (element.paused && before !== undefined) ends.push(Math.max(before, element.currentTime));
+              if (element.paused) was.delete(element);
+              else was.set(element, element.currentTime);
+            }
+            if (!active()) {
+              run = 0;
+              return;
+            }
+            const heard = elements().some((element) => !element.paused && (gains.get(element)?.value ?? 0) > 0);
+            if (heard) {
+              run = 0;
+              return;
+            }
+            silent += seconds;
+            run += seconds;
+            longest = Math.max(longest, run);
+          },
+          silent: () => silent,
+          longest: () => longest,
+          ends: () => ends,
+        };
+      }
+
+      for (const hz of [60, 45, 30]) {
+        it(`${String(hz)} Hz, a 1.005 s file (its end off the frame grid): 5.25 s of wall is five hand-overs and five laps, no silence between them, nothing written on a playing element`, () => {
+          const { output, gains } = fakeOutput(true);
+          let elements: () => PlayableMedia[] = () => [];
+          const ear = listener(gains, () => elements());
+          const { first, second, shown, play, start, wallSeconds } = pairSession(
+            { audio: true, volume: 0.5 }, true, 1.005, { output, listen: ear.listen },
+          );
+          elements = () => [first, second];
+          first.rebufferOnSeek(0.2);
+          second.rebufferOnSeek(0.2);
+          // A routed `play()` sounds a few ms after it is called (Chrome, measured): the
+          // reason the partner is started `END_LEAD_MS` early. Without it the lead would be
+          // pure overlap here, 3 ms short a lap.
+          first.rebufferOnStart(END_LEAD_MS / 1000);
+          second.rebufferOnStart(END_LEAD_MS / 1000);
+          const heard = [first.writesWhilePlaying.length, second.writesWhilePlaying.length];
+          let overlaps = 0;
+          const last = play(5.25, hz, () => {
+            // What plays is heard at the Volume, what waits is not. Both play only while the
+            // finished one plays out its last milliseconds over the partner's start. (The
+            // playing one loops itself while the other re-primes after a seek, the fallback;
+            // five hand-overs in five laps below says no lap was taken that way.)
+            for (const element of [first, second]) expect(gains.get(element)?.value).toBe(element.paused ? 0 : 0.5);
+            if (!first.paused && !second.paused) overlaps += 1;
+          });
+          expect(overlaps).toBeLessThanOrEqual(5);
+          expect([first.writesWhilePlaying.length, second.writesWhilePlaying.length]).toEqual(heard);
+          expect(shown).toHaveLength(5);
+          expect(shown.slice(0, 2)).toEqual([second, first]);
+          expect(last.head.laps).toBe(5);
+          // N laps last N files: within one frame over all five.
+          expect(Math.abs(travelled(last) - travelled(start) - wallSeconds())).toBeLessThanOrEqual(1 / hz);
+          // Nothing heard is missing between laps, and no lap cut the end of the file off.
+          expect(ear.silent()).toBe(0);
+          expect(ear.ends()).toHaveLength(5);
+          for (const end of ear.ends()) expect(end).toBeCloseTo(1.005, 9);
+        });
+      }
+
+      /**
+       * The same session with the end-of-file timer defeated: the frame takes the lap after
+       * the element has stopped at the end, and the wait is silence — the T1548b worker's
+       * 15 ms. This is what the timer is for; the gate above must fail without it.
+       */
+      it("a hand-over left to the next frame is silent from the end of the file to that frame", () => {
+        const { output, gains } = fakeOutput(true);
+        let elements: () => PlayableMedia[] = () => [];
+        const ear = listener(gains, () => elements());
+        const { first, second, shown, play } = pairSession({ audio: true, volume: 0.5 }, true, 1, { output, listen: ear.listen });
+        elements = () => [first, second];
+        vi.spyOn(globalThis, "setTimeout").mockImplementation((() => 0) as unknown as typeof setTimeout);
+        play(5.25, 30);
+        expect(shown).toHaveLength(5);
+        expect(ear.silent()).toBeGreaterThan(0.02);
+      });
+
+      it("Audio off: one element loops itself, the partner never plays, nothing is written", () => {
+        const { output, gains } = fakeOutput(true);
+        const { first, second, shown, play } = pairSession({ audio: false, volume: 0.5 }, true, 1, { output });
+        const last = play(3.25, 60, () => {
+          expect([first.loop, second.loop, second.paused]).toEqual([true, false, true]);
+          expect([gains.get(first)?.value, gains.get(second)?.value]).toEqual([0, 0]);
+        });
+        expect(last.head.laps).toBe(3);
+        expect(shown).toEqual([]);
+        expect(first.seeks).toEqual([]);
+      });
+
+      /**
+       * Toggling Audio on a PLAYING whole-file loop switches mode with no seek on the element
+       * that plays: on, it stops looping itself and the partner takes the next lap; off, the
+       * one playing (now the partner) loops itself, and the one waiting can be released.
+       */
+      it("toggling Audio on a playing whole-file loop: hand-over from the next end of file, native again on the element then playing", () => {
+        const { output, gains } = fakeOutput(true);
+        let elements: () => PlayableMedia[] = () => [];
+        let audioOn = false;
+        const ear = listener(gains, () => elements(), () => audioOn);
+        const { first, second, shown, graph, play, playback } = pairSession(
+          { audio: false, volume: 0.5 }, true, 1, { output, listen: ear.listen },
+        );
+        elements = () => [first, second];
+        play(1.5, 60);
+        expect([first.loop, shown.length]).toEqual([true, 0]);
+        graph.nodes["m"]!.parameters["audio"] = true;
+        play(1 / 60, 60);
+        audioOn = true;
+        // On: the playing element stops looping itself (an attribute, not a seek) and is heard.
+        expect([first.loop, gains.get(first)?.value, gains.get(second)?.value]).toEqual([false, 0.5, 0]);
+        play(1, 60);
+        expect(shown).toEqual([second]);
+        expect([first.paused, second.paused]).toEqual([true, false]);
+        graph.nodes["m"]!.parameters["audio"] = false;
+        audioOn = false;
+        play(1 / 60, 60);
+        // Off: the one playing loops itself; nothing is heard, no element is held muted.
+        expect([second.loop, first.loop]).toEqual([true, false]);
+        expect([gains.get(first)?.value, gains.get(second)?.value]).toEqual([0, 0]);
+        expect([first.muted, second.muted]).toEqual([false, false]);
+        expect(playback.releasePartner()).toBe(first);
+        expect(playback.releasePartner()).toBeNull();
+        const last = play(2, 60);
+        expect(last.head.laps).toBe(4);
+        expect(shown).toEqual([second]);
+        expect([first.paused, second.paused]).toEqual([true, false]);
+        expect(first.writesWhilePlaying).toEqual([]);
+        expect(second.writesWhilePlaying).toEqual([]);
+        // While Audio was on, the switch from the first element's end to the partner was not heard as a gap.
+        expect(ear.longest()).toBeLessThan(0.002);
+      });
     });
 
     /**
