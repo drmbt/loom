@@ -97,6 +97,15 @@ const cursorPosition: InputBuilder = (_item, target) =>
     ? { ok: true, input: {} }
     : { ok: true, input: { position: { x: target.position.x, y: target.position.y } } };
 
+/**
+ * VN1: the canvas selection, for a row on a surface with no node under the cursor. The
+ * refusal is what greys "Save selection as component…" when nothing is selected.
+ */
+const selectionNodeIds: InputBuilder = (_item, _target, context) =>
+  context.selection.length === 0
+    ? { ok: false, reason: "Select the nodes to save first." }
+    : { ok: true, input: { nodeIds: [...new Set(context.selection)].sort() } };
+
 /** T1494b: the component a clicked instance runs — the id and version its type names. */
 const componentRef: InputBuilder = (_item, target, context) => {
   const node = nodeForTarget(target, context);
@@ -176,6 +185,7 @@ const BUILDERS: Record<string, InputBuilder> = {
   "canvas:graph.applyPatch": addNode,
   "canvas:ui.openNodeSearch": cursorPosition,
   "canvas:component.import": cursorPosition,
+  "canvas:ui.createComponent": selectionNodeIds,
   "port:graph.applyPatch": disconnect,
   "edge:graph.applyPatch": disconnect,
 

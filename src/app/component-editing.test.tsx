@@ -4,6 +4,8 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { NodeId } from "@domain/types/ids.ts";
 import { componentNodeType } from "@domain/components/component-type.ts";
 import { readComponentInstance } from "@domain/components/instance.ts";
+import { isMenuSeparator, type MenuEntry, type MenuItem } from "@domain/types/menus.ts";
+import { menuSchemaFor, resolveMenuInput, type MenuContext } from "@editor/menus/index.ts";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { createAppRuntime } from "./app-runtime.ts";
 import type { AppRuntime } from "./app-runtime.ts";
@@ -403,6 +405,71 @@ describe("save selection as a component, from the canvas (§V307)", () => {
     expect(result.status).toBe("rejected");
     expect(result.diagnostics.map((d) => d.code)).toContain("component.create.noSelection");
     expect(screen.queryByPlaceholderText("Component name")).toBeNull();
+  });
+});
+
+/**
+ * VN1 — "Save selection as component…" on the CANVAS menu. A right-click on the background
+ * with nodes selected offered "Import component…" and nothing about making one; the gesture
+ * lived only on the node menu and `Shift+C`. Each test takes the REAL row out of the real
+ * canvas schema and resolves it the way the menu host does on open.
+ */
+describe("the canvas menu saves the selection as a component (VN1)", () => {
+  const walk = (entries: readonly MenuEntry[]): MenuItem[] =>
+    entries.flatMap((entry) => (isMenuSeparator(entry) ? [] : [entry, ...walk(entry.submenu ?? [])]));
+
+  function canvasRow(runtime: AppRuntime): MenuItem {
+    const row = walk(menuSchemaFor("canvas", runtime.bus.registry).entries).find(
+      (item) => item.command === "ui.createComponent",
+    );
+    if (row === undefined) throw new Error("no ui.createComponent row on the canvas menu");
+    return row;
+  }
+
+  const menuContext = (runtime: AppRuntime, selection: readonly NodeId[]): MenuContext => ({
+    graph: runtime.bus.store.getGraph(),
+    revision: runtime.bus.store.getRevision(),
+    selection,
+    registry: runtime.bus.registry,
+  });
+
+  it("opens the naming prompt for the selected nodes from a background right-click", async () => {
+    const { runtime } = await mount();
+    const added = await runtime.bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: runtime.bus.store.getRevision(),
+        label: "add",
+        operations: [
+          { op: "addNode", ref: "$a", type: "noise", position: { x: 0, y: 0 } },
+          { op: "addNode", ref: "$b", type: "blur", position: { x: 200, y: 0 } },
+        ],
+      },
+      runtime.invocation,
+    );
+    const nodeIds = [added.output.createdIds["$a"], added.output.createdIds["$b"]] as NodeId[];
+
+    // No `nodeId` on the target: the click landed on the background, between the nodes.
+    const resolved = resolveMenuInput(
+      canvasRow(runtime),
+      { surface: "canvas", position: { x: 100, y: 300 } },
+      menuContext(runtime, nodeIds),
+    );
+    if (!resolved.ok) throw new Error(resolved.reason);
+
+    await act(async () => {
+      await runtime.bus.execute("ui.createComponent", resolved.input as { nodeIds: NodeId[] }, runtime.invocation);
+    });
+
+    // What the user reads back: the prompt, counting the nodes they had selected.
+    expect(screen.getByText("Save 2 nodes as")).toBeDefined();
+    expect(screen.getByPlaceholderText("Component name")).toBeDefined();
+  });
+
+  it("greys out with nothing selected, saying what to do first", async () => {
+    const { runtime } = await mount();
+    const resolved = resolveMenuInput(canvasRow(runtime), { surface: "canvas" }, menuContext(runtime, []));
+    expect(resolved).toEqual({ ok: false, reason: "Select the nodes to save first." });
   });
 });
 
