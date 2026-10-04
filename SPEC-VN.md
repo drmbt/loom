@@ -31,6 +31,7 @@ id|status|report|notes
 VNB1|?|**Webcam does not work in Firefox.** No upstream row mentions it. First suspect, unverified: `copyExternalImageToTexture` from a video element (`vgpu-backend.ts`). Needs: Firefox version, OS, console output.|B39
 VNB2|?|**Returning to the tab lands on the default template instead of the last session.** By design edited work autosaves and wins on boot, an unedited example reopens by name, and an unedited file from disk boots to an empty canvas (`last-opened.ts`, T1164). Landing on the starter after editing would be a bug. Needs: exact steps.|T1164, T1123
 VNB3|?|**Dragging panes to edges to split / insert.** The code has draggable tabs, edge strips and floating windows (V95, T494). Reported as a wish, so either it is not discoverable or it did not work. Needs: one attempt with the steps written down.|V95, T494, T739
+VNB5|?|**React logs "Maximum update depth exceeded" in the dev build (Chrome, `pnpm dev`, drmbt @ `2071bb75`).** A `setState` inside a `useEffect` that re-fires every render. Seen once, 2026-10-04; steps unknown. Not reproduced on a fresh starter document or after adding a Depth node. Needs: the expanded console entry (component stack) and what was on screen.|
 
 ## Tracked upstream
 
