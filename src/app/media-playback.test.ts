@@ -702,6 +702,12 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
     let buffering = 0;
     /** Seconds a SEEK costs the decoder before sound resumes (0: a seek is free). */
     let seekBuffering = 0;
+    /**
+     * B242, measured in Chrome: the element plays on for about a video frame after a seek
+     * or a `play()` BEFORE it freezes for its audio start. Wall seconds of that, per start.
+     */
+    let creep = 0;
+    let seekCreep = 0;
     const seeks: number[] = [];
     const rates: number[] = [];
     let pauses = 0;
@@ -710,8 +716,8 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       readonly rates: readonly number[];
       readonly pauses: number;
       advanceReal(seconds: number): void;
-      buffer(seconds: number): void;
-      rebufferOnSeek(seconds: number): void;
+      buffer(seconds: number, creepSeconds?: number): void;
+      rebufferOnSeek(seconds: number, creepSeconds?: number): void;
       skew(seconds: number): void;
     } = {
       get currentTime() {
@@ -721,6 +727,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         currentTime = value;
         seeks.push(value);
         buffering = Math.max(buffering, seekBuffering);
+        creep = seekCreep;
       },
       get playbackRate() {
         return playbackRate;
@@ -749,15 +756,19 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       rates,
       advanceReal(seconds: number) {
         if (paused) return;
-        const silent = Math.min(buffering, seconds);
+        const early = buffering > 0 ? Math.min(creep, seconds) : 0;
+        creep -= early;
+        const silent = Math.min(buffering, seconds - early);
         buffering -= silent;
         currentTime += (seconds - silent) * playbackRate;
       },
-      buffer(seconds: number) {
+      buffer(seconds: number, creepSeconds = 0) {
         buffering = seconds;
+        creep = creepSeconds;
       },
-      rebufferOnSeek(seconds: number) {
+      rebufferOnSeek(seconds: number, creepSeconds = 0) {
         seekBuffering = seconds;
+        seekCreep = creepSeconds;
       },
       /** Move the element's own clock with no write anyone could count: injected drift. */
       skew(seconds: number) {
@@ -1025,10 +1036,19 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
      * T493): a seek costs the decoder its buffering again, so the drift that triggered it
      * comes straight back. ONE seek, then the rate closes what the decoder lost.
      */
+    /*
+     * B242 changed this case: it used to assert that the 0.3 s START-UP lag cost exactly
+     * one seek — the cost T1549b's row flagged as unmeasured, which Chrome turned into a
+     * storm. Start-up is now alignment (no seek), and the re-buffering decoder is exercised
+     * by the drift that legitimately seeks it: a 1 s jump once the element is playing.
+     */
     it("a decoder that re-buffers 0.3 s after every seek is sought once, not forever", () => {
       const { element, play } = session({ playMode: "timeline" });
       element.rebufferOnSeek(0.3);
       element.buffer(0.3);
+      play(20);
+      expect(element.seeks).toEqual([]);
+      element.skew(-1);
       let last: MediaSteppedTransport | null = null;
       play(30, 60, (stepped) => { last = stepped; });
       expect(element.seeks.length).toBe(1);
@@ -1037,6 +1057,46 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       expect(Math.abs((final?.head.position ?? Infinity) - element.currentTime)).toBeLessThanOrEqual(1 / 60);
       expect(element.playbackRate).toBe(1);
     });
+
+    /**
+     * B242 — CHROME'S SEQUENCE, as the headed still-pixels run logged it. After a seek the
+     * element reports `seeked`, `readyState` 4, `paused` false within a millisecond, plays
+     * about one video frame past the seek point, then sits still for ~0.2 s (longer on a
+     * loaded machine) until its audio output starts. Nothing on the element says it is not
+     * playing. T1549b re-armed its one resync as soon as the element read past the seek
+     * point — inside that first frame — so every freeze over 0.25 s was another seek:
+     * 14 and 16 in the 3 s proof. Here the freeze is 0.3 s, after every `play()` and every
+     * seek: start-up costs nothing, a real 1 s drift costs exactly one seek, the freeze
+     * after it is not chased, and the rate steps close the rest to within one frame.
+     */
+    // 45 Hz on a 60 fps timeline lands the playhead either side of real time by up to half
+    // a frame: the drift jitters across the threshold while the rate closes it.
+    for (const hz of [60, 45, 30]) {
+      it(`${String(hz)} Hz delivered, Chrome's 0.3 s start-up freeze after a one-frame creep: at most one seek, then 1% steps to within a frame`, () => {
+        const { element, play } = session({ playMode: "timeline" });
+        element.rebufferOnSeek(0.3, 1 / hz);
+        element.buffer(0.3, 1 / hz);
+        play(20, hz);
+        // Start-up lag is alignment: closed by the rate, never by a seek.
+        expect(element.seeks).toEqual([]);
+        expect(element.rates.length).toBeGreaterThan(0);
+        element.skew(-1);
+        let last: MediaSteppedTransport | null = null;
+        let maxGap = 0;
+        play(30, hz, (stepped) => {
+          last = stepped;
+          if (element.seeks.length === 1) maxGap = Math.max(maxGap, stepped.head.position - element.currentTime);
+        });
+        expect(element.seeks.length).toBe(1);
+        // The freeze after that seek really did reopen a gap past the threshold — the case a
+        // looser re-arm turns into the next seek — and it was closed by the rate instead.
+        expect(maxGap).toBeGreaterThan(LOCK_RESYNC_SECONDS);
+        expect(percents(element.rates).every((percent) => Math.abs(percent) <= 5)).toBe(true);
+        const final = last as MediaSteppedTransport | null;
+        expect(Math.abs((final?.head.position ?? Infinity) - element.currentTime)).toBeLessThanOrEqual(1 / hz);
+        expect(element.playbackRate).toBe(1);
+      });
+    }
   });
 
   /**
