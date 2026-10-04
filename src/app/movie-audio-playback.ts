@@ -183,6 +183,11 @@ export function createMovieAudioPlayback(
   let nativeLooping = false;
   let loopWindow = 0;
   let lastSeen: number | null = null;
+  /**
+   * §T1560b: a release swapped to a partner started for a lap the runner has not taken yet;
+   * the next frame must read that lap as the native wrap it now is (see `releasePartner`).
+   */
+  let wrapPending = false;
   /** §T1560b: the partner the end-of-file timer started ahead of the frame, and the window it laps. */
   let early: AudibleMedia | null = null;
   let endTimer: ReturnType<typeof setTimeout> | null = null;
@@ -415,7 +420,10 @@ export function createMovieAudioPlayback(
         && Math.abs(idle.currentTime - stepped.head.start) > PRIMED_PRECISION_SECONDS) {
         idle.currentTime = stepped.head.start;
       }
-      lastSeen = audioElement.currentTime;
+      // After a swap the runner still follows the finished lap: leave `lastSeen` at its end,
+      // so the next `position()` reads the partner's early time as a wrap, not a scrub.
+      lastSeen = wrapPending ? loopEnd : audioElement.currentTime;
+      wrapPending = false;
       // §T1560b: near the end of the file, start the partner there rather than a frame late.
       if (whole && !native && wantedPlaying && !waitingForContext() && idle !== null && primed(idle, loopStart)) {
         const rate = audioElement.playbackRate > 0 ? audioElement.playbackRate : 1;
@@ -458,6 +466,29 @@ export function createMovieAudioPlayback(
       const dropped = idle;
       if (dropped === null) return null;
       cancelEndTimer();
+      /*
+       * §T1560b — released in the frame between the end-of-file timer and the hand-over: the
+       * partner already plays from the in point and the finished element is at (or a few
+       * milliseconds from) the end of the file. Re-looping the finished one would restart it
+       * from 0 — an implicit seek on a playing element. So the PARTNER stays, as the element
+       * that plays (and now loops itself), and the finished one is released instead.
+       */
+      if (early !== null && early === dropped) {
+        const finished = audioElement;
+        const lapped = finished.paused || finished.currentTime >= loopEnd - PRIMED_PRECISION_SECONDS;
+        audioElement = early;
+        early = null;
+        idle = null;
+        pending = null;
+        carried = 0;
+        wrapPending = !lapped;
+        if (!finished.paused) finished.pause();
+        if (!routed) finished.muted = true;
+        routes.get(finished)?.route.release();
+        routes.delete(finished);
+        show(audioElement);
+        return finished;
+      }
       stopEarly();
       idle = null;
       if (!dropped.paused) dropped.pause();

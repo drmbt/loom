@@ -820,12 +820,18 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
     /** §T1548b: the writes a listener HEARS — those made while the element plays. */
     const writesWhilePlaying: number[] = [];
     const rates: number[] = [];
+    /**
+     * §T1560b: `play()` on an element stopped at the end of its file starts it again from 0
+     * (HTML: "seek to the earliest possible position") — an implicit seek, heard as one.
+     */
+    const restarts: number[] = [];
     let pauses = 0;
     const element: PlayableMedia & {
       readonly seeks: readonly number[];
       readonly writesWhilePlaying: readonly number[];
       readonly rates: readonly number[];
       readonly pauses: number;
+      readonly restarts: readonly number[];
       readonly seeking: boolean;
       muted: boolean;
       volume: number;
@@ -870,6 +876,11 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         return paused;
       },
       play() {
+        if (paused && currentTime >= duration) {
+          restarts.push(currentTime);
+          currentTime = 0;
+          buffering = Math.max(buffering, decodeOnSeek);
+        }
         if (paused) {
           buffering = Math.max(buffering, seekBuffering);
           creep = seekCreep;
@@ -886,6 +897,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       seeks,
       writesWhilePlaying,
       rates,
+      restarts,
       advanceReal(seconds: number) {
         if (paused) {
           buffering = Math.max(0, buffering - seconds);
@@ -1412,9 +1424,11 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
           audio.listen?.(seconds / slices);
         }
       };
-      const frame = () => {
+      /** One frame; `beforeSync` runs where the hook releases a partner: after the step, before the sync. */
+      const frame = (beforeSync?: () => void) => {
         const stepped = runner.step(clock.next(), playback.duration(), playback.position());
         if (stepped === null) throw new Error("the node is in the graph, so the runner must step");
+        beforeSync?.();
         playback.sync(stepped, "realtime");
         return stepped;
       };
@@ -1740,6 +1754,45 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         // While Audio was on, the switch from the first element's end to the partner was not heard as a gap.
         expect(ear.longest()).toBeLessThan(0.002);
       });
+
+      /*
+       * Audio OFF in the one frame between the end-of-file timer and the hand-over: the partner
+       * already plays from the in point, and the finished element is a few milliseconds from
+       * the end of the file, or already stopped there. Looping the finished one again would
+       * restart it from 0 — an implicit seek on a playing element. The partner is already at
+       * the start, so IT plays on (and loops itself), and the finished one is released.
+       */
+      for (const [label, after] of [["still playing out its last milliseconds", 0.0035], ["already stopped at the end", 0.012]] as const) {
+        it(`Audio off between the end-of-file timer and the hand-over, the finished element ${label}: the partner plays on, nothing restarts`, () => {
+          const { output, gains } = fakeOutput(true);
+          const { first, second, shown, graph, play, frame, wall, playback, start, wallSeconds } = pairSession(
+            { audio: true, volume: 0.5 }, true, 1.005, { output },
+          );
+          first.rebufferOnStart(END_LEAD_MS / 1000);
+          second.rebufferOnStart(END_LEAD_MS / 1000);
+          play(1, 60);
+          expect([first.paused, second.paused, shown.length]).toEqual([false, true, 0]);
+          wall(after);
+          // The timer has started the partner; the frame that would hand over has not come.
+          expect([first.paused, second.paused]).toEqual([after > 0.005, false]);
+          graph.nodes["m"]!.parameters["audio"] = false;
+          let released: PlayableMedia | null = null;
+          frame(() => {
+            released = playback.releasePartner();
+          });
+          expect(released).toBe(first);
+          expect(shown).toEqual([second]);
+          expect([first.paused, second.paused, second.loop]).toEqual([true, false, true]);
+          expect([gains.get(first)?.value, gains.get(second)?.value]).toEqual([0, 0]);
+          const last = play(2.5, 60);
+          expect(first.paused).toBe(true);
+          expect([first.restarts, second.restarts]).toEqual([[], []]);
+          expect([first.writesWhilePlaying, second.writesWhilePlaying]).toEqual([[], []]);
+          // The partner's lap is the playhead's: three laps, the wall within one frame.
+          expect(last.head.laps).toBe(3);
+          expect(Math.abs(travelled(last) - travelled(start) - wallSeconds())).toBeLessThanOrEqual(1 / 60);
+        });
+      }
     });
 
     /**
