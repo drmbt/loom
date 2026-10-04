@@ -147,6 +147,8 @@ export interface InstantiateOutput {
 export interface DetachOutput {
   ok: boolean;
   nodeIds: readonly NodeId[];
+  /** T1553b: internal node id (in the definition) -> the id of its copy. Empty when refused. */
+  copies: Readonly<Record<NodeId, NodeId>>;
   diagnostics: RuntimeDiagnostic[];
 }
 
@@ -409,6 +411,9 @@ function copyInternalGraph(
     const newEdgeId = ids.edge();
     draft.edges[newEdgeId] = {
       id: newEdgeId,
+      // T1553b: a variadic port's declared order (§V131) survives the copy, as it survives
+      // flattening (B155) — the new ids sort however they sort, so dropping it re-stacked layers.
+      ...(edge.order === undefined ? {} : { order: edge.order }),
       source: { nodeId: source, portId: edge.source.portId },
       target: { nodeId: target, portId: edge.target.portId },
     };
@@ -955,7 +960,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         status: "rejected",
         revision,
         diagnostics,
-        output: { ok: false, nodeIds: [], diagnostics },
+        output: { ok: false, nodeIds: [], copies: {}, diagnostics },
       });
 
       const instance = context.graph.nodes[input.nodeId];
@@ -1155,7 +1160,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         revision: applied.revision,
         diagnostics,
         ...(applied.undoGroupId === undefined ? {} : { undoGroupId: applied.undoGroupId }),
-        output: { ok: true, nodeIds: created, diagnostics },
+        output: { ok: true, nodeIds: created, copies: copiedAs, diagnostics },
       };
     },
   });
