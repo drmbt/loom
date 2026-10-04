@@ -23,6 +23,7 @@ import {
   type AudioAnalysisPingMessage,
   type AudioAnalysisPongMessage,
   type AudioAnalysisProcessorOptions,
+  type AudioAnalysisStopMessage,
 } from "./audio-analysis-protocol.ts";
 
 /*
@@ -48,6 +49,8 @@ class AudioAnalysisProcessor extends AudioWorkletProcessor {
   private written = 0;
   /** The sample count at which the next window ends. */
   private nextEnd: number;
+  /** §T1548b: told the capture is over; `process` lets the node go. */
+  private stopped = false;
 
   constructor(options?: { processorOptions?: unknown }) {
     super(options);
@@ -63,8 +66,9 @@ class AudioAnalysisProcessor extends AudioWorkletProcessor {
     this.ring = new Float32Array(this.fftSize * 2);
     this.frame = new Float64Array(this.fftSize);
     this.nextEnd = this.fftSize;
-    this.port.onmessage = (event: MessageEvent<AudioAnalysisPingMessage>) => {
-      if (event.data?.type === "ping") {
+    this.port.onmessage = (event: MessageEvent<AudioAnalysisPingMessage | AudioAnalysisStopMessage>) => {
+      if (event.data?.type === "stop") this.stopped = true;
+      else if (event.data?.type === "ping") {
         const pong: AudioAnalysisPongMessage = { type: "pong", id: event.data.id };
         this.port.postMessage(pong);
       }
@@ -72,6 +76,7 @@ class AudioAnalysisProcessor extends AudioWorkletProcessor {
   }
 
   override process(inputs: Float32Array[][]): boolean {
+    if (this.stopped) return false;
     const channel = inputs[0]?.[0];
     // A disconnected input renders as silence, exactly as the analyser would see it.
     const quantum = channel?.length ?? 128;

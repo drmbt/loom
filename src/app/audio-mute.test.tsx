@@ -21,7 +21,8 @@ import { AUDIO_DETECTOR_DEFAULTS } from "@nodes/definitions/audio.ts";
  * would pass while sound still came out of the speakers — the element was already playing
  * and nobody told it to stop. So the harness below stubs `AudioContext` and `Audio`, runs
  * the REAL hook, and asserts on the element the hook actually created: it was playing, and
- * after the mute it is PAUSED, its source is cleared, and its context is closed. Selection
+ * after the mute it is PAUSED, its source is cleared, and its monitor is disconnected from
+ * the speakers (§T1548b: the context is the app's one and stays open). Selection
  * is tested too, but as the mechanism, not as the proof.
  *
  * ## The rule, and the ordering that had to be decided
@@ -101,10 +102,11 @@ function installAudioStubs(): void {
         getByteFrequencyData: () => undefined,
         getByteTimeDomainData: () => undefined,
         connect: () => undefined,
+        disconnect: () => undefined,
       };
     }
     createMediaElementSource() {
-      return { connect: () => undefined };
+      return { connect: () => undefined, disconnect: () => undefined };
     }
     createGain() {
       const record = this.record;
@@ -113,6 +115,11 @@ function installAudioStubs(): void {
         gain: { value: 1 },
         connect: (target: unknown) => {
           if (target === destination) record.connectedToDestination = true;
+        },
+        // §T1548b: the context is the app's one and stays open; a capture that ends takes
+        // its monitor off the speakers by disconnecting it.
+        disconnect: () => {
+          record.connectedToDestination = false;
         },
       };
     }
@@ -188,7 +195,7 @@ describe("T555 — muting an audio node stops the SOUND, not just the channels",
   });
 
   for (const flag of ["muted", "bypassed"] as const) {
-    it(`${flag} while playing: the element is PAUSED, its source cleared, its context closed`, async () => {
+    it(`${flag} while playing: the element is PAUSED, its source cleared, its monitor off the speakers`, async () => {
       const graph = { current: graphOf([node("music", "audioFileIn", FILE)]) };
       render(<Harness getGraph={() => graph.current} />);
       await tick();
@@ -201,7 +208,9 @@ describe("T555 — muting an audio node stops the SOUND, not just the channels",
       // The assertion that matters: the ELEMENT stopped. Not "the parameter says muted".
       expect(element?.paused, `${flag} left the element playing`).toBe(true);
       expect(element?.src).toBe("");
-      expect(contexts[0]?.closed).toBe(true);
+      expect(contexts[0]?.connectedToDestination).toBe(false);
+      // §T1548b: the shared context is not closed under the movies routed into it.
+      expect(contexts[0]?.closed).toBe(false);
       // And nothing was opened in its place.
       expect(elements.length).toBe(1);
     });

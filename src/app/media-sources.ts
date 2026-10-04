@@ -186,12 +186,21 @@ export function createStillMediaSource(image: StillImage): VideoMediaSource {
  * Nothing here starts playback, picks a file or asks for a camera: the owner does that
  * and hands over an element that is already producing frames. This module's only job is
  * to answer "is there a new frame, and what is it".
+ *
+ * §T1548b: `show` moves it to another element on the same file — the movie door's loop
+ * partner taking over at a lap. The frame id advances once for the switch (the partner's
+ * waiting frame is new to the texture) and from then on only on the shown element's
+ * decodes, so the one put back on the in point uploads nothing.
  */
-export function createVideoMediaSource(element: MediaElement): VideoMediaSource {
+export function createVideoMediaSource(
+  first: MediaElement,
+): VideoMediaSource & { show(element: MediaElement): void } {
+  let element = first;
   let frameId = 0;
   let ended = false;
   let disposed = false;
   let handle: number | null = null;
+  let request: MediaElement["requestVideoFrameCallback"];
 
   const advance = () => {
     frameId += 1;
@@ -200,21 +209,31 @@ export function createVideoMediaSource(element: MediaElement): VideoMediaSource 
   const onEnded = () => {
     ended = true;
   };
-  element.addEventListener("ended", onEnded);
 
-  const request = element.requestVideoFrameCallback?.bind(element);
-  if (request !== undefined) {
-    const step = () => {
-      if (disposed) return;
-      advance();
+  const attach = () => {
+    element.addEventListener("ended", onEnded);
+    request = element.requestVideoFrameCallback?.bind(element);
+    if (request !== undefined) {
+      const watched = element;
+      const step = () => {
+        if (disposed || watched !== element || request === undefined) return;
+        advance();
+        handle = request(step);
+      };
       handle = request(step);
-    };
-    handle = request(step);
-  } else {
-    // Older engines and test doubles: coarser, but still driven by DECODE rather than by
-    // the render loop, which is what §V136 actually cares about.
-    element.addEventListener("timeupdate", advance);
-  }
+    } else {
+      // Older engines and test doubles: coarser, but still driven by DECODE rather than by
+      // the render loop, which is what §V136 actually cares about.
+      element.addEventListener("timeupdate", advance);
+    }
+  };
+  const detach = () => {
+    element.removeEventListener("ended", onEnded);
+    if (request === undefined) element.removeEventListener("timeupdate", advance);
+    else if (handle !== null) element.cancelVideoFrameCallback?.(handle);
+    handle = null;
+  };
+  attach();
 
   return {
     source: {
@@ -234,12 +253,18 @@ export function createVideoMediaSource(element: MediaElement): VideoMediaSource 
       if (element.videoWidth === 0 || element.videoHeight === 0) return null;
       return { width: element.videoWidth, height: element.videoHeight };
     },
+    show(next) {
+      if (disposed || next === element) return;
+      detach();
+      element = next;
+      ended = false;
+      advance();
+      attach();
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
-      element.removeEventListener("ended", onEnded);
-      if (request === undefined) element.removeEventListener("timeupdate", advance);
-      else if (handle !== null) element.cancelVideoFrameCallback?.(handle);
+      detach();
     },
   };
 }

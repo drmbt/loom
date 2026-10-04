@@ -8,12 +8,14 @@ import { isSilencedSource } from "@domain/graph/bypass.ts";
 import { createHopAnalyser } from "@domain/audio/analysis/hop-analyser.ts";
 import { mediaTransportFrom, type MediaPlayhead, type MediaTransportValues } from "@domain/media/transport.ts";
 import { awaitMediaReady } from "./media-sources.ts";
+import { appAudioContext } from "./app-audio-context.ts";
 import { createAudioHopReducer } from "./audio-analysis-frame.ts";
 import {
   AUDIO_ANALYSIS_OPTIONS,
   AUDIO_ANALYSIS_PROCESSOR_NAME,
   analysisOptionsFor,
   type AudioAnalysisProcessorOptions,
+  type AudioAnalysisStopMessage,
   type AudioAnalysisWorkletMessage,
   type DetectorSettings,
 } from "./audio-analysis-protocol.ts";
@@ -121,6 +123,9 @@ function polledReader(
 
 type EngineAttachment = { readonly node: AudioWorkletNode; readonly read: FeatureReader } | { readonly failure: string };
 
+/** §T1548b: the analysis worklet module, added once per context. */
+const workletModules = new WeakMap<BaseAudioContext, Promise<void>>();
+
 /**
  * T1226 — the engine on `context`'s audio thread, or the reason it could not be. Never
  * throws: a missing `audioWorklet` (an old WebView), a rejected `addModule` (the chunk
@@ -132,7 +137,15 @@ async function attachAnalysisEngine(
 ): Promise<EngineAttachment> {
   try {
     if (context.audioWorklet === undefined) throw new Error("AudioWorklet is not supported here");
-    await context.audioWorklet.addModule(AUDIO_ANALYSIS_WORKLET_URL);
+    // §T1548b: the context is the app's one (`appAudioContext`) and outlives a capture, so
+    // the module is added once per context, not once per capture.
+    let loaded = workletModules.get(context);
+    if (loaded === undefined) {
+      loaded = context.audioWorklet.addModule(AUDIO_ANALYSIS_WORKLET_URL);
+      workletModules.set(context, loaded);
+      void loaded.catch(() => workletModules.delete(context));
+    }
+    await loaded;
     const node = new AudioWorkletNode(context, AUDIO_ANALYSIS_PROCESSOR_NAME, {
       numberOfInputs: 1,
       numberOfOutputs: 0,
@@ -512,8 +525,30 @@ export function useAudioInput(
     };
 
     const acquire = async (config: CaptureConfig): Promise<void> => {
-      const context = new AudioContext();
-      const analyser = context.createAnalyser();
+      /*
+       * §T1548b — the app's ONE context, shared with movie sound, so it is never closed
+       * here: a capture that ends disconnects the nodes it made (`release`) and leaves the
+       * context to the movies routed into it. That disconnect is what takes a muted node off
+       * the speakers (T555).
+       */
+      const context = appAudioContext();
+      if (context === null) {
+        statusRef.current = { kind: "error", message: "This browser has no Web Audio." };
+        return;
+      }
+      const nodes: AudioNode[] = [];
+      const made = <T extends AudioNode>(node: T): T => {
+        nodes.push(node);
+        return node;
+      };
+      let stopEngine = (): void => undefined;
+      const release = (): void => {
+        stopEngine();
+        stopEngine = () => undefined;
+        for (const node of nodes) node.disconnect();
+        nodes.length = 0;
+      };
+      const analyser = made(context.createAnalyser());
       // The engine's window, so the polled fallback analyses exactly what the worklet would.
       analyser.fftSize = AUDIO_ANALYSIS_OPTIONS.fftSize;
       // Zero: valueLag downstream owns smoothing; the default 0.8 would pre-damp
@@ -530,6 +565,15 @@ export function useAudioInput(
       const options = analysisOptionsFor(config.detector, context.sampleRate);
       const engine = await attachAnalysisEngine(context, options);
       if ("failure" in engine) messages.push(workletFallbackMessage(engine.failure));
+      else {
+        made(engine.node);
+        // The processor runs until told otherwise; the context outlives this capture.
+        const stop: AudioAnalysisStopMessage = { type: "stop" };
+        stopEngine = () => {
+          engine.node.port.onmessage = null;
+          engine.node.port.postMessage(stop);
+        };
+      }
       const attachEngine = (input: AudioNode): void => {
         if ("failure" in engine) {
           readerRef.current = polledReader(context, analyser, options);
@@ -546,7 +590,7 @@ export function useAudioInput(
         };
       };
       if (cancelled) {
-        void context.close();
+        release();
         return;
       }
 
@@ -574,10 +618,10 @@ export function useAudioInput(
           }
           if (cancelled) {
             for (const track of stream.getTracks()) track.stop();
-            void context.close();
+            release();
             return;
           }
-          const input = context.createMediaStreamSource(stream);
+          const input = made(context.createMediaStreamSource(stream));
           input.connect(analyser);
           attachEngine(input);
           captureRef.current = {
@@ -585,13 +629,13 @@ export function useAudioInput(
             analyser,
             dispose: () => {
               for (const track of stream.getTracks()) track.stop();
-              void context.close();
+              release();
             },
           };
         } else {
           if (config.url.trim() === "") {
             statusRef.current = { kind: "error", message: "File source needs a URL." };
-            void context.close();
+            release();
             return;
           }
           const element = new Audio();
@@ -601,7 +645,7 @@ export function useAudioInput(
           // wrapping now, and the element's own loop would fight every seek.
           element.loop = false;
           element.src = config.url;
-          const input = context.createMediaElementSource(element);
+          const input = made(context.createMediaElementSource(element));
           input.connect(analyser);
           attachEngine(input);
           /*
@@ -613,7 +657,7 @@ export function useAudioInput(
            * slider a hidden master fader on the whole graph — the plausible-wrong wiring,
            * with no error to find it by.
            */
-          const gain = context.createGain();
+          const gain = made(context.createGain());
           gain.gain.value = monitorGainLevel(monitorLevelRef.current, renderMutedRef.current);
           analyser.connect(gain);
           if (config.monitor) gain.connect(context.destination);
@@ -625,7 +669,7 @@ export function useAudioInput(
           await awaitMediaReady(element);
           if (cancelled) {
             element.pause();
-            void context.close();
+            release();
             return;
           }
           captureRef.current = {
@@ -636,7 +680,7 @@ export function useAudioInput(
             dispose: () => {
               element.pause();
               element.src = "";
-              void context.close();
+              release();
             },
           };
           const nodeId = config.nodeId;
@@ -692,7 +736,7 @@ export function useAudioInput(
           );
         }
       } catch (error) {
-        void context.close();
+        release();
         statusRef.current = {
           kind: "error",
           message: error instanceof Error ? error.message : String(error),

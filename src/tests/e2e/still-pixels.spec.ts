@@ -231,8 +231,25 @@ test("a movie plays its embedded audio on the same native video transport", asyn
   });
   await page.addInitScript(() => {
     const videos: HTMLVideoElement[] = [];
-    const events: { kind: string; wall: number; time: number; target?: number }[] = [];
-    Object.assign(window, { movieAudioVideos: videos, movieAudioEvents: events });
+    const events: { kind: string; wall: number; time: number; target?: number; video: number; paused: boolean }[] = [];
+    // §T1548b: a TRIMMED free-run Loop movie has two elements on its file, and the one
+    // playing is the one most recently told to play.
+    const gains: (GainNode | undefined)[] = [];
+    const state = { movieAudioVideos: videos, movieAudioEvents: events, movieActiveVideo: 0, movieAudioGains: gains };
+    Object.assign(window, state);
+    // §T1548b: movie sound is routed element → gain → destination, and the gain is what is
+    // heard (Chrome ignores `volume` on a routed element). Record each element's gain.
+    const createSource = AudioContext.prototype.createMediaElementSource;
+    AudioContext.prototype.createMediaElementSource = function (this: AudioContext, media: HTMLMediaElement) {
+      const source = createSource.call(this, media);
+      const connect = source.connect.bind(source) as (target: AudioNode) => AudioNode;
+      source.connect = ((target: AudioNode) => {
+        const index = videos.indexOf(media as HTMLVideoElement);
+        if (target instanceof GainNode && index >= 0) gains[index] = target;
+        return connect(target);
+      }) as typeof source.connect;
+      return source;
+    };
     const create = document.createElement.bind(document);
     const time = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
     if (time?.get === undefined || time.set === undefined) throw new Error("Native media clock descriptor is missing.");
@@ -242,16 +259,19 @@ test("a movie plays its embedded audio on the same native video transport", asyn
       const element = create(name, options);
       if (name.toLowerCase() === "video") {
         const video = element as HTMLVideoElement;
-        videos.push(video);
+        const index = videos.push(video) - 1;
         Object.defineProperty(video, "currentTime", {
           get() { return getTime.call(video) as number; },
           set(value: number) {
-            events.push({ kind: "set", wall: performance.now(), time: video.currentTime, target: value });
+            events.push({ kind: "set", wall: performance.now(), time: video.currentTime, target: value, video: index, paused: video.paused });
             setTime.call(video, value);
           },
         });
         for (const kind of ["seeking", "seeked", "play", "pause", "ended"]) {
-          video.addEventListener(kind, () => events.push({ kind, wall: performance.now(), time: video.currentTime }));
+          video.addEventListener(kind, () => {
+            if (kind === "play") (window as unknown as typeof state).movieActiveVideo = index;
+            events.push({ kind, wall: performance.now(), time: video.currentTime, video: index, paused: video.paused });
+          });
         }
       }
       return element;
@@ -337,15 +357,23 @@ test("a movie plays its embedded audio on the same native video transport", asyn
     name: "loom-embedded-audio.webm", mimeType: "video/webm", buffer: Buffer.from(fixture.bytes),
   });
   const snapshot = () => page.evaluate(() => {
-    const videos = (window as unknown as { movieAudioVideos: HTMLVideoElement[] }).movieAudioVideos;
-    const video = videos[0];
+    const win = window as unknown as {
+      movieAudioVideos: HTMLVideoElement[]; movieActiveVideo: number; movieAudioGains: (GainNode | undefined)[];
+    };
+    const videos = win.movieAudioVideos;
+    const video = videos[win.movieActiveVideo];
+    const gain = win.movieAudioGains[win.movieActiveVideo];
     return video === undefined ? null : {
       count: videos.length, ready: video.readyState >= 2, paused: video.paused,
       muted: video.muted, volume: video.volume, rate: video.playbackRate,
-      preservesPitch: video.preservesPitch, time: video.currentTime,
+      preservesPitch: video.preservesPitch, time: video.currentTime, loop: video.loop,
+      // §T1548b: what a listener hears is the gain; null would mean the element is not routed.
+      gain: gain?.gain.value ?? null,
     };
   });
-  await expect.poll(snapshot).toMatchObject({ count: 1, ready: true, muted: true });
+  // §T1548b: free run and Loop are the defaults, and the whole file loops on its ONE
+  // element (`loop`), so no partner is opened. Audio is off: silent on the gain.
+  await expect.poll(snapshot).toMatchObject({ count: 1, ready: true, loop: true, gain: 0 });
   const audioSwitch = page.getByRole("switch", { name: "Audio", exact: true });
   await audioSwitch.scrollIntoViewIfNeeded();
   await audioSwitch.click();
@@ -354,7 +382,9 @@ test("a movie plays its embedded audio on the same native video transport", asyn
   await volume.click();
   await volume.fill("0.25");
   await volume.press("Enter");
-  await expect.poll(snapshot).toMatchObject({ count: 1, paused: false, muted: false, volume: 0.25, preservesPitch: true });
+  // The context runs (Playwright's page has activation), so the element is unmuted and the
+  // Volume is on the gain; the element's own volume stays 1.
+  await expect.poll(snapshot).toMatchObject({ count: 1, paused: false, muted: false, gain: 0.25, volume: 1, preservesPitch: true });
   expect(await page.evaluate(() => {
     const video = (window as unknown as { movieAudioVideos: HTMLVideoElement[] }).movieAudioVideos[0];
     if (video === undefined || !("captureStream" in video) || typeof video.captureStream !== "function") {
@@ -385,14 +415,15 @@ test("a movie plays its embedded audio on the same native video transport", asyn
       await transport.getByRole("button", { name: "Reset time", exact: true }).click();
       await playMode.selectOption(mode);
       await transport.getByRole("button", { name: "Play", exact: true }).click();
-      await expect.poll(snapshot).toMatchObject({ count: 1, paused: false, muted: false });
+      await expect.poll(snapshot).toMatchObject({ count: 1, paused: false, gain: 0.25, loop: mode === "freeRun" });
       await expect.poll(async () => (await snapshot())?.time).toBeGreaterThan(0.05);
       const clockProof = await page.evaluate(async () => {
         const win = window as unknown as {
           movieAudioVideos: HTMLVideoElement[];
+          movieActiveVideo: number;
           movieAudioEvents: { kind: string; wall: number; time: number; target?: number }[];
         };
-        const video = win.movieAudioVideos[0];
+        const video = win.movieAudioVideos[win.movieActiveVideo];
         if (video === undefined) throw new Error("Movie source video was not created.");
         const start = performance.now();
         const eventStart = win.movieAudioEvents.length;
@@ -441,7 +472,7 @@ test("a movie plays its embedded audio on the same native video transport", asyn
   await cuePoint.press("Enter");
   const cue = page.getByRole("switch", { name: "Cue", exact: true });
   await cue.click();
-  await expect.poll(snapshot).toMatchObject({ count: 1, paused: true, muted: true, time: 0.5 });
+  await expect.poll(snapshot).toMatchObject({ count: 1, paused: true, gain: 0, time: 0.5 });
   const heldProof = await page.evaluate(async () => {
     const events = (window as unknown as {
       movieAudioEvents: { kind: string; wall: number; time: number; target?: number }[];
@@ -465,7 +496,7 @@ test("a movie plays its embedded audio on the same native video transport", asyn
     window as unknown as { movieAudioEvents: { kind: string; target?: number }[] }
   ).movieAudioEvents.slice(start).some(event => event.kind === "set"
     && event.target !== undefined && event.target >= 0.5 && event.target < 0.6), cueEventStart)).toBe(true);
-  await expect.poll(snapshot).toMatchObject({ paused: false, muted: false });
+  await expect.poll(snapshot).toMatchObject({ paused: false, gain: 0.25 });
 
   for (const [label, value] of [["Trim Start", "0.25"], ["Trim End", "0.75"]] as const) {
     const field = page.getByLabel(label, { exact: true });
@@ -476,50 +507,66 @@ test("a movie plays its embedded audio on the same native video transport", asyn
   }
   const loopProof = await page.evaluate(async () => {
     const events = (window as unknown as {
-      movieAudioEvents: { kind: string; wall: number; time: number; target?: number }[];
+      movieAudioEvents: { kind: string; wall: number; time: number; target?: number; video: number; paused: boolean }[];
     }).movieAudioEvents;
     const eventStart = events.length;
     const start = performance.now();
-    // Until the element has been lapped twice. Bounded, because the lap is now taken
-    // where the ELEMENT is (§V1027), so a loop lasts its window plus the decoder's seek
-    // latency rather than a fixed 0.5 s of frame time.
-    const lapped = () => events.slice(eventStart).filter(event => event.kind === "set" && event.time >= 0.7).length;
+    // Until the loop has been handed over six times, bounded.
+    const handOvers = () => events.slice(eventStart).filter((event, index, all) => event.kind === "play"
+      && all.slice(0, index).some(earlier => earlier.kind === "play" && earlier.video !== event.video)).length;
     await new Promise<void>(resolve => {
       const tick = () => {
-        if (lapped() >= 2 || performance.now() - start >= 6000) resolve();
+        if (handOvers() >= 6 || performance.now() - start >= 8000) resolve();
         else requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
     });
     return events.slice(eventStart);
   });
-  const loopSeeks = loopProof.filter(event => event.kind === "set");
   /*
-   * §V1027, T1542b: a lap is a seek, and it is taken once the element has PLAYED the
-   * window — within three frames of the 0.75 out point — landing on the in point plus the
-   * overshoot. The frame-led clock lapped on its own count, a decoder's seek latency
-   * before the element got there, and cut that much off the end of every lap.
+   * §T1548b: in free run a lap is a HAND-OVER — the second element, waiting paused on the
+   * 0.25 in point, plays and the finished one pauses. Under T1542b it was a seek on the
+   * playing element (0.709 s a lap for this 0.5 s window). So: the elements alternate, each
+   * starts from the in point, no lap is cut short, and nothing is written on an element while
+   * it plays — the writes that remain put the finished one back on the in point, paused.
+   *
+   * And a lap LASTS ITS WINDOW. The trim made it a trimmed Loop, so the partner opened (two
+   * decoders now); both elements are routed through the app's running AudioContext, where a
+   * `play()` starts at once. Through their own outputs `play()` waited ~0.2 s for audio
+   * output to start (~0.74 s a lap here, measured). Each lap is taken on a delivered frame,
+   * so one lap may be a frame long or short; the carried remainder keeps the mean on 0.5 s.
    */
-  const laps = loopSeeks.filter(seek => seek.time >= 0.7);
-  expect(laps.length).toBeGreaterThanOrEqual(2);
-  for (const lap of laps) {
-    expect(lap.target).toBeGreaterThanOrEqual(0.25);
-    expect(lap.target).toBeLessThan(0.35);
-  }
-  // Once it loops, nothing but a lap moves the element.
-  expect(loopSeeks.slice(loopSeeks.indexOf(laps[0]!))).toEqual(laps);
   const loopPath = testInfo.outputPath("movie-trim-loop.json");
   await writeFile(loopPath, JSON.stringify({ heldProof, loopProof }, null, 2));
   await testInfo.attach("movie-trim-loop", { path: loopPath, contentType: "application/json" });
+  const plays = loopProof.filter(event => event.kind === "play");
+  const handOvers = plays.filter((event, index) => index > 0 && plays[index - 1]!.video !== event.video);
+  expect(handOvers.length).toBeGreaterThanOrEqual(6);
+  for (const handOver of handOvers) {
+    expect(handOver.time).toBeGreaterThanOrEqual(0.25);
+    expect(handOver.time).toBeLessThan(0.3);
+  }
+  expect((await snapshot())?.count).toBe(2);
+  const lapWallMs = handOvers.slice(1).map((handOver, index) => handOver.wall - handOvers[index]!.wall);
+  // One delivered frame either way per lap (a 60 Hz frame is 16.7 ms; 40 ms leaves load room).
+  for (const period of lapWallMs) {
+    expect(period).toBeGreaterThan(460);
+    expect(period).toBeLessThan(540);
+  }
+  const meanLapMs = lapWallMs.reduce((sum, period) => sum + period, 0) / lapWallMs.length;
+  expect(Math.abs(meanLapMs - 500), `mean lap ${meanLapMs.toFixed(1)} ms`).toBeLessThan(15);
+  const loopSeeks = loopProof.filter(event => event.kind === "set");
+  expect(loopSeeks.filter(seek => seek.wall > handOvers[0]!.wall && !seek.paused)).toEqual([]);
   console.log("Movie cue/trim", JSON.stringify({
-    cue: 0.5, heldWrites: 0, loopTargets: loopSeeks.map(seek => seek.target),
-    lappedAt: laps.map(lap => lap.time), lapWallMs: laps.map(lap => Math.round(lap.wall)),
+    cue: 0.5, heldWrites: 0, handOverAt: handOvers.map(event => event.time),
+    lapWallMs: lapWallMs.map(period => Math.round(period)),
+    pausedWrites: loopSeeks.filter(seek => seek.paused).map(seek => seek.target),
   }));
 
   const play = page.getByRole("switch", { name: "Play", exact: true });
   await play.scrollIntoViewIfNeeded();
   await play.click();
-  await expect.poll(snapshot).toMatchObject({ count: 1, paused: true, muted: true });
+  await expect.poll(snapshot).toMatchObject({ count: 2, paused: true, gain: 0 });
   const pausedTime = (await snapshot())?.time;
   await page.evaluate(() => new Promise<void>(resolve => {
     let frames = 0;
@@ -528,11 +575,11 @@ test("a movie plays its embedded audio on the same native video transport", asyn
   }));
   expect((await snapshot())?.time).toBe(pausedTime);
   await play.click();
-  await expect.poll(snapshot).toMatchObject({ count: 1, paused: false, muted: false });
+  await expect.poll(snapshot).toMatchObject({ count: 2, paused: false, gain: 0.25 });
   await selectNode(page, movie);
   await page.keyboard.press("Backspace");
   await expect(page.locator(".react-flow__node")).toHaveCount(1);
-  await expect.poll(snapshot).toMatchObject({ count: 1, paused: true, muted: true });
+  await expect.poll(snapshot).toMatchObject({ count: 2, paused: true, gain: 0 });
   for (const proof of clockProofs) {
     expect(proof.events.filter(event => event.kind === "set" || event.kind === "seeking"),
       `${proof.mode} at ${proof.fps} FPS must play continuously without destructive seeks`).toEqual([]);

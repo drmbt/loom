@@ -22,7 +22,8 @@ import {
   type MediaTransportRunner,
   type PlayableMedia,
 } from "./media-playback.ts";
-import { createMovieAudioPlayback, type MovieAudioPlayback } from "./movie-audio-playback.ts";
+import { createMovieAudioPlayback, movieLoopOf, type MovieAudioPlayback } from "./movie-audio-playback.ts";
+import { appMovieAudioOutput } from "./app-audio-context.ts";
 import {
   hdrPictureRefusal,
   pictureFileKind,
@@ -475,10 +476,16 @@ export function useMediaSources(
    * T493 — live movie transports by node: the element to drive, and the runner that owns
    * its free-run accumulator. A webcam is deliberately absent — a live camera has no
    * playhead to derive, which is why the transport is on the FILE node and not on
-   * `compileMedia`'s shared shape.
+   * `compileMedia`'s shared shape. §T1548b: `partner` opens the second element a free-run
+   * Loop hands over to at a lap, once, on the first frame that could need it.
    */
   const playersRef = useRef(
-    new Map<NodeId, { element: PlayableMedia; runner: MediaTransportRunner; audio: MovieAudioPlayback }>(),
+    new Map<NodeId, {
+      element: PlayableMedia;
+      runner: MediaTransportRunner;
+      audio: MovieAudioPlayback;
+      partner: () => void;
+    }>(),
   );
   /**
    * T1043 — live cameras by node: what was asked for, and the door that can still be asked
@@ -770,6 +777,7 @@ export function useMediaSources(
               // T1524b: the index of the same flattening `graph` is (T615), read per step.
               morphs: () => runtimeRef.current.flattened.current().morphs,
             });
+            // §T1548b: through the app's one AudioContext — null where there is no Web Audio.
             const audio = createMovieAudioPlayback(playable, window, message => {
               if (!live) return;
               setPlaybackDiagnostics(previous => {
@@ -779,10 +787,32 @@ export function useMediaSources(
                   suggestion: "Click or press a key in the page to retry movie playback.",
                 }];
               });
-            });
+            }, appMovieAudioOutput());
             audio.setRenderMuted(renderMuteLeases.current > 0);
             if (!runningRef.current) audio.pause();
-            livePlayers.set(request.nodeId, { element: playable, runner, audio });
+            /*
+             * §T1548b — the loop PARTNER: a second element on the same file, so a free-run
+             * lap is a hand-over rather than a seek (`createMovieAudioPlayback`). Opened on
+             * first need, not here, so a movie that is locked, held or never loops costs no
+             * second decoder, and only for a TRIMMED window: the whole file loops natively on
+             * its one element (`movieLoopOf`). Until it is primed, and if it never opens, a
+             * lap seeks as it always did — the partner refines a working lap.
+             */
+            let partnerAsked = false;
+            const partner = () => {
+              if (partnerAsked) return;
+              partnerAsked = true;
+              void env.openFile(request.url).then((second) => {
+                const playable2 = playableMedia(second);
+                if (playable2 === null || second === element) return;
+                if (!live || !audio.attachPartner(playable2, (playing) => {
+                  media.show(playing === playable2 ? second : element);
+                })) {
+                  playable2.pause();
+                }
+              }, () => undefined);
+            };
+            livePlayers.set(request.nodeId, { element: playable, runner, audio, partner });
             playerOpened.push(request.nodeId);
             const release = controls?.register(request.nodeId, {
               cue: () => runner.cue(),
@@ -881,9 +911,11 @@ export function useMediaSources(
   const sync = useCallback((frame: FrameEvaluationInput, channels?: ChannelResolver) => {
     channelsRef.current = channels;
     runningRef.current = true;
-    for (const { element, runner, audio } of playersRef.current.values()) {
-      const stepped = runner.step(frame, durationOf(element), element.currentTime);
+    for (const { element, runner, audio, partner } of playersRef.current.values()) {
+      // §T1548b: the playing element's clock, which after a loop hand-over is the partner's.
+      const stepped = runner.step(frame, durationOf(element), audio.position());
       if (stepped === null) continue;
+      if (movieLoopOf(stepped.transport, stepped.head, durationOf(element), frame.mode) === "handOver") partner();
       audio.sync(stepped, frame.mode);
     }
   }, []);

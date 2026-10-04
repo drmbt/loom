@@ -210,6 +210,14 @@ export interface MediaSteppedTransport {
   /** The element is left playing, never sought; false marks a cue, scrub, lap or edit. */
   readonly continuous: boolean;
   /**
+   * §T1548b: this frame's only discontinuity is a Loop window wrapping ONCE in realtime free
+   * run — everything else follows. `continuous` is false, so a door with one element seeks
+   * as before; a door holding a second element primed on the in point hands over to it
+   * instead and writes nothing on the element that was playing. Never true under the lock
+   * (§V436: there a lap stays an exact seek) or off realtime (§V662).
+   */
+  readonly lap: boolean;
+  /**
    * §T1549b: the fraction the element's rate is bent off `speed` this frame — a whole
    * percent, at most ±5%, under the timeline lock; 0 everywhere else. Hand it to
    * `applyMediaPlayhead` with `continuous`.
@@ -323,7 +331,9 @@ export function createMediaTransportRunner(
       lastDuration = duration;
       const last = previous;
       const pending = cuePending;
-      const follows = (candidate: MediaPlayhead): boolean =>
+      // `lap` 1 asks the other question (§T1548b): would it follow, but for the Loop window
+      // having wrapped exactly once? Free run only — under the lock a lap is a new target.
+      const follows = (candidate: MediaPlayhead, lap: 0 | 1 = 0): boolean =>
         frame.mode === "realtime" && last !== null && last.mode === frame.mode && !pending
         && !isMediaPlayheadHeld(transport, candidate, duration) && !isMediaPlayheadHeld(last.transport, last.head, duration)
         && transport.playMode === last.transport.playMode
@@ -334,13 +344,16 @@ export function createMediaTransportRunner(
         && (transport.speed === last.transport.speed || transport.playMode === "freeRun")
         && transport.trimStart === last.transport.trimStart && transport.trimEnd === last.transport.trimEnd
         && transport.extend === last.transport.extend
-        && candidate.laps === last.head.laps && candidate.position >= last.head.position
+        && candidate.laps === last.head.laps + lap
+        && (lap === 0 ? candidate.position >= last.head.position
+          : transport.extend === "loop" && transport.playMode === "freeRun")
         && (transport.playMode === "freeRun"
           || Math.abs(frame.timeSeconds - last.time - frame.deltaSeconds) < 1e-6);
       // B187: the clock hands back the media offset (`∫ speed dt` in free run, `timeline ×
       // speed` under the lock), so it enters through `mediaPlayheadAt`, never multiplied twice.
       let head = mediaPlayheadAt(transport, clock.advance(transport, frame.deltaSeconds, frame.timeSeconds), duration);
       let continuous = follows(head);
+      let lap = !continuous && follows(head, 1);
       /*
        * §V1027, T1542b — THE ELEMENT IS THE CLOCK. The accumulator above is only a
        * prediction of where a playing element got to; the element knows. So on a frame
@@ -351,10 +364,16 @@ export function createMediaTransportRunner(
        * Realtime free run only. Under the lock the position is `f(frame)` (§V436), which
        * the `playMode` check keeps out; in a take the frame is the master (§V662), and
        * `follows` is false on every frame that is not realtime.
+       *
+       * §T1548b: a frame the prediction says has wrapped is asked the element too, in the
+       * lap the element was in — the lap is taken when the ELEMENT reaches the out point,
+       * not a frame early on the accumulator's guess, so a hand-over cuts nothing off.
        */
-      if (continuous && transport.playMode === "freeRun" && elementSeconds !== null && Number.isFinite(elementSeconds)) {
-        head = mediaPlayheadAt(transport, clock.adopt(head, elementSeconds), duration);
+      if ((continuous || lap) && last !== null && transport.playMode === "freeRun"
+        && elementSeconds !== null && Number.isFinite(elementSeconds)) {
+        head = mediaPlayheadAt(transport, clock.adopt({ ...head, laps: last.head.laps }, elementSeconds), duration);
         continuous = follows(head);
+        lap = !continuous && follows(head, 1);
       }
       /*
        * §T1549b, option (a) — UNDER THE LOCK THE FRAME STAYS MASTER, CALMLY. The playhead is
@@ -418,7 +437,7 @@ export function createMediaTransportRunner(
       lastLocked = locked && continuous ? { head: head.position, element: elementSeconds } : null;
       previous = { transport, head, time: frame.timeSeconds, mode: frame.mode };
       cuePending = false;
-      return { transport, head, continuous, correction: locked ? lockStep / 100 : 0, read };
+      return { transport, head, continuous, lap, correction: locked ? lockStep / 100 : 0, read };
     },
     cue() {
       const read = readAll();

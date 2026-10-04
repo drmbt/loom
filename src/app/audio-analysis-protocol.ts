@@ -92,4 +92,13 @@ export interface AudioAnalysisPongMessage {
   readonly id: number;
 }
 
+/**
+ * §T1548b: the capture is over. The context is the app's one and outlives the capture, so
+ * the processor is told to stop (its `process` returns false from then on) instead of
+ * going down with a closed context.
+ */
+export interface AudioAnalysisStopMessage {
+  readonly type: "stop";
+}
+
 export type AudioAnalysisWorkletMessage = AudioAnalysisHopMessage | AudioAnalysisPongMessage;

@@ -33,9 +33,30 @@ TouchDesigner reads a movie soundtrack with an Audio Movie CHOP referencing Movi
 
 Loom's movie browser adapter hard-muted every video. Movie File In now exposes **Audio** and **Volume** in its Audio parameter group. Enable Audio to hear the embedded soundtrack. Default off preserves existing silent projects; still-image controls explain that there is no soundtrack.
 
-Picture and sound share the same HTMLVideoElement, transport runner, playhead, speed, cue and trim. Native mute/volume controls change speaker monitoring without adding an AudioContext or another decoder. Rejected playback reports explicitly; one owned activation listener retries from a user gesture instead of retrying every frame. Pause, held/reverse/cued playback, node retirement and unmount clear playback ownership/listeners. Offline frames are silent. Export takes a nested-safe monitor-mute lease, including exports whose evaluation mode is realtime.
+Picture and sound share the same HTMLVideoElement, transport runner, playhead, speed, cue and trim. Rejected playback reports explicitly; one owned activation listener retries from a user gesture instead of retrying every frame. Pause, held/reverse/cued playback, node retirement and unmount clear playback ownership/listeners. Offline frames are silent. Export takes a nested-safe monitor-mute lease, including exports whose evaluation mode is realtime.
 
 This change adds speaker playback. It does not add a movie audio-analysis graph output or soundtrack muxing to exported video.
+
+### Routing through the app's AudioContext (T1548b, 2026-10-04)
+
+The first version used the element's own `muted` and `volume` and no AudioContext. That is reversed (owner's ruling, 2026-10-04). Movie sound now goes `createMediaElementSource(element)` → a `GainNode` per element → the destination of the app's **one** AudioContext (`src/app/app-audio-context.ts`). Audio File In / Audio In capture uses the same context. It is created on first use and never closed: a routed element belongs to its context for life, so a closed context would silence it for good. A capture that ends disconnects its own nodes and tells its analysis worklet to stop. `createMediaElementSource` runs once per element (a `WeakMap` keeps the route), and every movie open makes fresh elements. When there is no Web Audio, the element plays through its own output as before.
+
+- **Volume and mute are the gain.** Chrome ignores `element.volume` on a routed element. The playing element's gain is the Volume while it should sound; otherwise it is 0, which covers Audio off, a black extend, a pause, a cue, offline and fixed-step frames, and an export lease. A waiting loop partner's gain is 0. The element's own `volume` stays 1.
+- **Gesture rule.** A context created before the page's first user gesture starts suspended. The first pointer, key or touch resumes it, on that event's stack. An unmuted routed element nearly stops its clock while its context is suspended (measured: 0.002 s of media in 1 s of wall; muted, 0.978 s). So until the context runs, every routed element is held `muted`, and the free-run playhead runs on the frame clock without adopting the element (§V1027 is suspended, not stalled). Once the context runs, the elements are unmuted (the gain decides what is heard) and the next frame adopts the element's position. At that frame the playhead can step back by the element's start-up lag.
+- **Whole-file Loop** (in point 0, out point the duration, realtime free run): native `element.loop = true` on one decoder. No partner is opened and nothing is written at the lap. The wrap shows as `currentTime` running backwards, and the playback reports one extra window on that frame, so the runner counts it as a lap and not as a scrub.
+- **Trimmed Loop** (realtime free run): the two-element hand-over. A second element on the same file opens on the first trimmed Loop frame, is routed with gain 0, and waits paused on the in point. At the lap it plays, the finished one pauses and goes back to the in point, and the picture source follows (`createVideoMediaSource().show`). The overshoot past each out point is carried, so N laps last N windows to within a frame.
+- Under the timeline lock, offline and fixed-step nothing changes: a lap is an exact seek there (§V436, §V662), and the element's own loop is off.
+
+Measured in headed Chromium 151 with `--mute-audio`, through the product's routing, with the audio tapped after the product's gain nodes in 5.33 ms blocks (`scratchpad/t1548/measure.spec.ts` in the T1548b worktree):
+
+| Clip | Trimmed 0.5 s loop: lap period | Audio gap at the lap | Whole-file native loop |
+| --- | --- | --- | --- |
+| 320×180 H.264/AAC, 4.000 s sine | 480.8–520.1 ms, mean 500.0 ms (10 laps) | none | 4020 ms per lap, one 16 ms silent run per wrap |
+| 1920×1080 H.264/AAC, 4.000 s sine | 480.2–519.8 ms, mean 502.0 ms | none | 4020 ms per lap, one 16 ms silent run per wrap |
+| `v2-edit-1920.mp4` (music) | 498.9–501.1 ms, mean 500.0 ms | none | not reached (184 s file) |
+| still-pixels WebM fixture (headed spec) | 499–501 ms | not measured | n/a |
+
+Each lap is taken on a delivered frame, so one lap can run a frame long or short; the carried remainder keeps the mean on the window. Before the routing, the same hand-over measured 540–743 ms laps and the seek 578–822 ms. The native loop is not gapless: each wrap costs about 20 ms of extra time and a 16 ms silent run, and the source file has no silence at either end. If whole-file loops must be gapless, the hand-over would also work for them, at the cost of a second decoder; that is the owner's call. With the context suspended through `context.suspend()`, both elements went muted, the playing one kept time, and hand-overs continued. After `resume()` the elements were unmuted, laps were 491–509 ms and no gap was detected. Every measurement here ran with `--mute-audio`, so nothing was measured at the speakers of a real output device.
 
 ## Audio stutter diagnosis and fix
 
