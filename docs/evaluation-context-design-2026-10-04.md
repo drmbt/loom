@@ -72,7 +72,7 @@ Closing those means making `resolveParameters` itself take the context. That tou
 | `presets/commands.ts` `bankSettings` for an **instance** bank | storage, for now | `resolveStored`: the page bank lives in the definition (see above) |
 | `presets/cue-commands.ts` Keys, position, `cue.list`, GO's Morph | evaluation (§B181) | `context.readScope()` / `bus.readScope()`; GO via `bankSettings` |
 | `editor/viewer/camera-pose.ts` (graph-pane gizmo) | evaluation (§B181) | `cameraPoseAt` over `bus.readScope()` |
-| `commands/parameter-commands.ts` copy (×2, T1008) | storage today | `STORED_READ`. T1008 says the copy "copies what the row shows", and the inspector's row is live, so for a driven parameter this is arguably an evaluation read. Not changed without a failing case: **follow-up** |
+| `commands/parameter-commands.ts` copy (×2, T1008) | evaluation (§T1559b (2), ruled) | `context.readScope()` with no fade (`NO_MORPHS`), which is the inspector row's read: a copy copies what the row shows |
 | `commands/parameter-commands.ts` mode switch seed | storage | `STORED_READ` (the seed is written into the document) |
 | `presets/morph-index.ts` `bakedEnd` | storage | `STORED_READ` (stored space, no frame, by its docblock) |
 | `components/detach-values.ts` | storage | `resolveStoredSchema` (writes the page back, as flattening resolves it) |
@@ -80,8 +80,9 @@ Closing those means making `resolveParameters` itself take the context. That tou
 | `examples/runtime-requirements.ts` | storage | `STORED_READ` (a requirement is compile-time) |
 | `app/use-requirement-diagnostics.ts` | storage | `resolveStored` (same rule as above) |
 | `app/use-native-inputs.ts` | storage | `resolveStored` (which device; memoized per revision) |
-| `app/use-native-outputs.ts` | storage | `resolveStored` (session key per revision). A channel-driven `enabled` would need a per-frame pump: **follow-up** |
-| `presets/timeline-cues.ts` | storage | `resolveStored` (the structure is built once per revision). A channel-driven Morph reads live at GO but stored on the timeline: **follow-up** |
+| `app/use-native-outputs.ts` session key, name | storage | `resolveStored` (session key per revision) |
+| `app/use-native-outputs.ts` `enabled` (Publish) | evaluation (§T1559b (2), ruled) | `bus.readScope()` over the flattened graph, once per frame in the pump's tick; the session acts on edges |
+| `presets/timeline-cues.ts` | storage | `resolveStored` (the structure is built once per revision). Ruled live in §T1559b (2), but NOT changed: see "T1559b (2)" below — reported back for a second ruling |
 | `editor/component/component-page.tsx` `publishedValue` | storage | `resolveStored` ("what one of them holds") |
 | `editor/component/component-scope.ts` `resolveInstanceValues` | storage | `resolveStored` (stored space by its docblock) |
 | `editor/component/component-scope.ts` `resolveComponentParameters` | the caller's choice | takes a required `read` (no product caller; tests pass `STORED_READ`) |
@@ -109,3 +110,14 @@ Closing those means making `resolveParameters` itself take the context. That tou
 - **The Text raster and the free-run classification are storage reads.** They call `resolveStored`. Both are built per document change with no frame, which is what they always read.
 - **`createParameterReadOptions` and `LegacyParameterReadContext` are deleted.** The `node-references.test.ts` block that allow-listed callers went with them, because a call to a deleted function is a type error.
 - **`resolveParameters` has no deprecated overload left.** `effective-schema-closure.test.ts` now proves that an options literal there is a type error. `resolveParameterSchema` keeps its overload for `value-graph.ts` alone, which is the only `LEGACY_READ_CALLERS` entry left (another session's uncommitted work). Delete it, and the ledger block, when that work lands.
+
+## T1559b (2): the three stored follow-ups, ruled live
+
+- **Parameter copy reads the row's read.** `capture` (`parameter-commands.ts`, both the whole-key and the component path) resolves through `context.readScope()`: the frame on screen, the app's channels, `op()` reads of the document as authored, and the flattening's instances. It reads no fade (`NO_MORPHS`), because the inspector's row shows the document's (destination) value mid-fade by design (T1525b), and the copy copies what the row shows. Test: `parameter-commands.test.ts`, "§T1559b — a copy reads what the row shows", red-verified (the copy gave the static 2 for `op('blur1').par.radius`, and the zero frame's 0 for `time / 10` on `tint.g`).
+- **A native output's Publish follows a driven value.** `use-native-outputs.ts` still keys the session on the stored values per revision. `enabled` is read once per frame in the pump's tick through `bus.readScope()` over the flattened graph the node came from, morphs included. The tick reconciles, so a change of the resolved value acts once: an open on a rising edge, a close on a falling edge, and nothing re-applied while it holds. There is no debounce. A value that flips every frame is rate-limited by the existing drain rule: a close drains before the next open (`draining`), so sessions cannot stack up. Test: `use-native-outputs.test.tsx`, "§T1559b — Publish driven by an expression …", red-verified (at t = 2 s nothing opened).
+- **Timeline cues still read the bank's Morph stored.** This was not changed, because the ruling left one thing open. GO reads the Morph once, at the moment of the command, and writes the seconds into the morph record it commits. A timed cue writes nothing. Its fade is recomputed from scratch at every playhead (`stepsAt(nodeId, key, frame)`, which is a pure function of the revision and the frame), and that is what makes playback, a cold seek and an export agree (§T1508b). A live Morph needs a moment to be read at, and both candidates break something:
+  - **At the current frame:** the fade length changes during the fade, so `(t − at) / seconds(t)` can jump or run backwards, and "the newest finished cue" can become unfinished again.
+  - **At the cue's reach frame (GO's analogue):** this needs channels at a past frame. The read world has none: a framed read of the value graph returns the last evaluated frame. It would only be exact for pure time expressions and pure channels. A stateful stage (Lag) or a device channel (MIDI, audio, OSC) would differ between playback, a seek and an export.
+  
+  Either way, the morph index (`MorphIndexInput`, built per revision in flatten and compile) would need a read scope it does not have today, and `ParameterMorphs.stepsAt` would need one passed through it. Options for the ruling: (a) read at the reach frame, accepting that it is exact only for deterministic drivers; (b) read at the current frame; (c) keep it stored and add a named warning on a timed list whose bank's Morph is driven.
+

@@ -189,3 +189,31 @@ it("switching to Spout drains the previous publisher before opening a dedicated 
   finish(); await h.tick(); await h.tick();
   expect(createNativeOutputSession).toHaveBeenLastCalledWith(expect.anything(), spout, expect.anything(), "Test");
 });
+
+/* §T1559b (2), ruled live: Publish follows a driven value. The request read `enabled` from
+   the document (`resolveStored`), so an expression on it was read at the zero frame and the
+   output never followed the clock. The bus carries the frame on screen as the composition
+   root attaches it (`attachFrame`), and the hook reads through `bus.readScope()`. The value
+   is read every frame, but the session reacts to its EDGES: one open per rising edge, one
+   close per falling edge, nothing re-applied while it holds. */
+it("§T1559b — Publish driven by an expression opens and closes on the resolved value's edges", async () => {
+  let seconds = 0;
+  const h = setup();
+  h.runtime.bus.attachFrame(() => ({ timeSeconds: seconds, deltaSeconds: 1 / 60, frameIndex: Math.round(seconds * 60), mode: "realtime", randomSeed: 0 }));
+  const enabled = { mode: "expression", bindings: { static: { kind: "static", value: false }, expression: { kind: "expression", source: "(time > 1) * (time < 3)" } } };
+  const driven = { ...h.graph, revision: 2, nodes: { ...h.graph.nodes, sink: { ...h.graph.nodes["sink"]!, parameters: { name: "Test", enabled } } } } as GraphDocument;
+  h.view.rerender({ graph: driven, compiled: h.compiled });
+  await h.tick(); await h.tick();
+  // t = 0: the expression says off (and so does the retained static), so nothing opens.
+  expect(createNativeOutputSession).not.toHaveBeenCalled();
+  seconds = 2; await h.tick(); await h.tick(); await h.tick();
+  // t = 2: on — the bug never got here. ONE session across three frames of "on": an edge,
+  // not a re-open per frame.
+  expect(h.sessions).toHaveLength(1);
+  expect(h.sessions[0]!.close).not.toHaveBeenCalled();
+  expect(h.sessions[0]!.pump).toHaveBeenCalledTimes(3);
+  seconds = 4; await h.tick(); await h.tick();
+  // t = 4: off again — closed once, and not reopened.
+  expect(h.sessions[0]!.close).toHaveBeenCalledOnce();
+  expect(h.sessions).toHaveLength(1);
+});
