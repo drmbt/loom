@@ -103,6 +103,13 @@ export const LOCK_RESYNC_SECONDS = 0.25;
  * reaches it, however long the freeze.
  */
 const LOCK_SETTLE_SECONDS = 0.5;
+/**
+ * B242: a lag no decoder start-up explains. Chrome's freeze is 0.2–0.3 s; a locked element
+ * that has PLAYED `LOCK_SETTLE_SECONDS` and is still more than this far off (autoplay was
+ * blocked for 30 s, say) gets its one seek even though the resync is not armed — the 1%
+ * steps alone would take ten minutes over 30 s.
+ */
+const LOCK_LAG_CEILING_SECONDS = 1;
 /** The least time between two rate-step writes: a hard ceiling of four a second. */
 const LOCK_STEP_DWELL_SECONDS = 0.25;
 
@@ -266,11 +273,13 @@ export function createMediaTransportRunner(
   let cuePending = false;
   // §T1549b — the timeline lock's correction state: the whole-percent rate step in force,
   // when it was last changed (seconds of delivered frames), whether a resync seek is armed,
-  // and (B242) the position the element was last put at, which it must play past to arm.
+  // and (B242) the position the element was last put at or last seen frozen at, which it
+  // must play past to arm, and the previous locked frame's playhead and element reading.
   let lockStep = 0;
   let lockStepAt = -Infinity;
   let resyncArmed = false;
   let settleFrom = 0;
+  let lastLocked: { head: number; element: number } | null = null;
   let runSeconds = 0;
 
   const readAll = (
@@ -356,20 +365,33 @@ export function createMediaTransportRunner(
        *
        * B242: a resync is armed only once the element has played `LOCK_SETTLE_SECONDS`
        * past where it was last put AND is back inside half of `LOCK_RESYNC_SECONDS`.
-       * Every seek, cue, lap and first frame disarms it. The lag a decoder builds while it
-       * starts is alignment, which the rate closes, not drift (§T493: a seek restarts that
-       * start-up and recreates the lag). T1549b re-armed as soon as the element read past the seek
-       * point, and Chrome's element does that within a frame, before it freezes for its
-       * audio start: every start-up longer than 0.25 s became one more seek, 14 and 16 in
-       * the 3 s still-pixels proof. A real drift (a stall, a jump) on a playing element
-       * still gets its one seek.
+       * Every seek, cue, lap and first frame disarms it, and so does any frame on which the
+       * element did not PLAY — it moved less than a quarter of what the playhead moved: a
+       * transport resume (the door paused it while no frames ran; the first frame back
+       * carries up to 0.25 s of playhead), blocked autoplay, a start-up freeze, a decoder
+       * stall. The lag a decoder builds while it starts is alignment, which the rate
+       * closes, not drift (§T493: a seek restarts that start-up and recreates the lag).
+       * T1549b re-armed as soon as the element read past the seek point, and Chrome's
+       * element does that within a frame, before it freezes for its audio start: every
+       * start-up longer than 0.25 s became one more seek, 14 and 16 in the 3 s
+       * still-pixels proof. A real drift (a page stall, a jump) on a playing element still
+       * gets its one seek, and a lag past `LOCK_LAG_CEILING_SECONDS` once it plays gets one
+       * whether armed or not.
        */
       runSeconds += Number.isFinite(frame.deltaSeconds) ? Math.max(0, frame.deltaSeconds) : 0;
       const locked = continuous && transport.playMode !== "freeRun"
         && elementSeconds !== null && Number.isFinite(elementSeconds);
       if (locked) {
         const drift = head.position - elementSeconds;
-        if (resyncArmed && Math.abs(drift) > LOCK_RESYNC_SECONDS) {
+        // Moved forward, but by under a quarter of the playhead's step: not playing. A
+        // BACKWARD move is a jump, which is drift, not a freeze.
+        const moved = lastLocked === null ? -1 : elementSeconds - lastLocked.element;
+        if (lastLocked !== null && moved >= 0 && moved < (head.position - lastLocked.head) / 4) {
+          resyncArmed = false;
+          settleFrom = elementSeconds;
+        }
+        const played = elementSeconds - settleFrom >= LOCK_SETTLE_SECONDS * transport.speed;
+        if (resyncArmed ? Math.abs(drift) > LOCK_RESYNC_SECONDS : played && Math.abs(drift) > LOCK_LAG_CEILING_SECONDS) {
           continuous = false;
           resyncArmed = false;
           settleFrom = head.position;
@@ -377,8 +399,7 @@ export function createMediaTransportRunner(
         } else {
           // Back inside HALF the threshold: armed right at it, the frame grid's jitter
           // (±1 frame of `currentTime` granularity) crosses it the next frame and seeks.
-          if (!resyncArmed && Math.abs(drift) <= LOCK_RESYNC_SECONDS / 2
-            && elementSeconds - settleFrom >= LOCK_SETTLE_SECONDS * transport.speed) {
+          if (!resyncArmed && played && Math.abs(drift) <= LOCK_RESYNC_SECONDS / 2) {
             resyncArmed = true;
           }
           const proposed = nextLockStep(lockStep, drift, frame.deltaSeconds);
@@ -394,6 +415,7 @@ export function createMediaTransportRunner(
         resyncArmed = false;
         settleFrom = head.position;
       }
+      lastLocked = locked && continuous ? { head: head.position, element: elementSeconds } : null;
       previous = { transport, head, time: frame.timeSeconds, mode: frame.mode };
       cuePending = false;
       return { transport, head, continuous, correction: locked ? lockStep / 100 : 0, read };
@@ -417,6 +439,7 @@ export function createMediaTransportRunner(
       lockStepAt = -Infinity;
       resyncArmed = false;
       settleFrom = 0;
+      lastLocked = null;
     },
   };
 }

@@ -700,7 +700,10 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
     let playbackRate = 1;
     /** Seconds of real time before a `play()` produces sound: decoder start-up. */
     let buffering = 0;
-    /** Seconds a SEEK costs the decoder before sound resumes (0: a seek is free). */
+    /**
+     * Seconds a SEEK, or a `play()` from paused, costs the decoder before sound resumes
+     * (0: free). Chrome pays it on both (B242).
+     */
     let seekBuffering = 0;
     /**
      * B242, measured in Chrome: the element plays on for about a video frame after a seek
@@ -717,7 +720,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       readonly pauses: number;
       advanceReal(seconds: number): void;
       buffer(seconds: number, creepSeconds?: number): void;
-      rebufferOnSeek(seconds: number, creepSeconds?: number): void;
+      rebufferOnStart(seconds: number, creepSeconds?: number): void;
       skew(seconds: number): void;
     } = {
       get currentTime() {
@@ -743,6 +746,10 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         return paused;
       },
       play() {
+        if (paused) {
+          buffering = Math.max(buffering, seekBuffering);
+          creep = seekCreep;
+        }
         paused = false;
       },
       pause() {
@@ -766,7 +773,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         buffering = seconds;
         creep = creepSeconds;
       },
-      rebufferOnSeek(seconds: number, creepSeconds = 0) {
+      rebufferOnStart(seconds: number, creepSeconds = 0) {
         seekBuffering = seconds;
         seekCreep = creepSeconds;
       },
@@ -1044,7 +1051,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
      */
     it("a decoder that re-buffers 0.3 s after every seek is sought once, not forever", () => {
       const { element, play } = session({ playMode: "timeline" });
-      element.rebufferOnSeek(0.3);
+      element.rebufferOnStart(0.3);
       element.buffer(0.3);
       play(20);
       expect(element.seeks).toEqual([]);
@@ -1074,7 +1081,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
     for (const hz of [60, 45, 30]) {
       it(`${String(hz)} Hz delivered, Chrome's 0.3 s start-up freeze after a one-frame creep: at most one seek, then 1% steps to within a frame`, () => {
         const { element, play } = session({ playMode: "timeline" });
-        element.rebufferOnSeek(0.3, 1 / hz);
+        element.rebufferOnStart(0.3, 1 / hz);
         element.buffer(0.3, 1 / hz);
         play(20, hz);
         // Start-up lag is alignment: closed by the rate, never by a seek.
@@ -1091,6 +1098,60 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         // The freeze after that seek really did reopen a gap past the threshold — the case a
         // looser re-arm turns into the next seek — and it was closed by the rate instead.
         expect(maxGap).toBeGreaterThan(LOCK_RESYNC_SECONDS);
+        expect(percents(element.rates).every((percent) => Math.abs(percent) <= 5)).toBe(true);
+        const final = last as MediaSteppedTransport | null;
+        expect(Math.abs((final?.head.position ?? Infinity) - element.currentTime)).toBeLessThanOrEqual(1 / hz);
+        expect(element.playbackRate).toBe(1);
+      });
+    }
+
+    /**
+     * B242 — A LAG NO START-UP EXPLAINS. An element that starts 30 s late (autoplay blocked
+     * under the lock, say) is never back inside the arming band, and 1% steps capped at 5%
+     * would take ten minutes over 30 s. Once it has played, a lag past a second gets its
+     * one seek armed or not — and the start-up freeze after THAT seek is alignment again.
+     */
+    for (const hz of [60, 30]) {
+      it(`${String(hz)} Hz delivered, an element that starts 30 s late: one seek once it plays, then within a frame`, () => {
+        const { element, play } = session({ playMode: "timeline" });
+        element.rebufferOnStart(0.3, 1 / hz);
+        element.buffer(30);
+        let last: MediaSteppedTransport | null = null;
+        play(55, hz, (stepped) => { last = stepped; });
+        expect(element.seeks.length).toBe(1);
+        // Taken after the element got going — it lands on the playhead, 30 s on.
+        expect(element.seeks[0]).toBeGreaterThan(30);
+        expect(percents(element.rates).every((percent) => Math.abs(percent) <= 5)).toBe(true);
+        const final = last as MediaSteppedTransport | null;
+        expect(Math.abs((final?.head.position ?? Infinity) - element.currentTime)).toBeLessThanOrEqual(1 / hz);
+        expect(element.playbackRate).toBe(1);
+      });
+    }
+
+    /**
+     * B242 — RESUME IS A START. A transport pause stops the frames and the door pauses the
+     * element (`setRunning(false)`); the first frame back carries up to 0.25 s of playhead
+     * (`liveClock`'s clamp) while the element sits where it was paused, then the element
+     * pays Chrome's start-up freeze. Together that is well past 0.25 s of lag, and none of
+     * it is drift: the rate closes it, no seek.
+     */
+    for (const hz of [60, 30]) {
+      it(`${String(hz)} Hz delivered, resume after a 2 s transport pause: no seek, then within a frame`, () => {
+        const { element, wall, play } = session({ playMode: "timeline" });
+        element.rebufferOnStart(0.3, 1 / hz);
+        play(5, hz);
+        expect(element.seeks).toEqual([]);
+        element.pause();
+        wall(2);
+        let last: MediaSteppedTransport | null = null;
+        let maxGap = 0;
+        play(30, hz, (stepped) => {
+          last = stepped;
+          maxGap = Math.max(maxGap, stepped.head.position - element.currentTime);
+        });
+        // The lag an armed resync would have sought.
+        expect(maxGap).toBeGreaterThan(LOCK_RESYNC_SECONDS);
+        expect(element.seeks).toEqual([]);
         expect(percents(element.rates).every((percent) => Math.abs(percent) <= 5)).toBe(true);
         const final = last as MediaSteppedTransport | null;
         expect(Math.abs((final?.head.position ?? Infinity) - element.currentTime)).toBeLessThanOrEqual(1 / hz);
