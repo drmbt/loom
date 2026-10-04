@@ -6,7 +6,7 @@ import type { NodeId } from "@domain/types/ids.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
-import { resolveParameters } from "@domain/parameters/index.ts";
+import { resolveStored } from "@domain/parameters/index.ts";
 import { storedStaticValue } from "@domain/parameters/slots.ts";
 import { mediaNodeDefinitions, mediaSourceIdFor, phoneCameraName } from "@nodes/definitions/index.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
@@ -229,7 +229,7 @@ function colorValue(
 /**
  * What a Text node wants drawn (T243), or null while its size is unknown.
  *
- * Parameters are read through `resolveParameters` — §V61's single read path — so an
+ * Parameters are read through `resolveStored` — §V61's single read path — so an
  * expression or a driven slot on the string, the size or the colour reaches the canvas
  * like any other mode (§V107). Colours come from `entries[].value`, which stays in the
  * space the user picked (display/sRGB); a canvas paints in sRGB and the external texture
@@ -248,7 +248,10 @@ function textRasterFor(
 ): TextRaster | null {
   const node = graph.nodes[nodeId];
   if (node === undefined || size === undefined) return null;
-  const resolved = resolveParameters(node, registry.get(node.type));
+  // §T1559b: the storage read, by name — the raster is pushed per document change, not per
+  // frame, so it draws what the document says (an expression at the zero frame, a driven
+  // slot at its retained static, §V108); it never was a read of a moment.
+  const resolved = resolveStored(node, registry.get(node.type));
   const read = (key: string): ParameterValue | undefined => resolved.get(key)?.value;
 
   const align = text(read("align"), "center");
@@ -774,8 +777,8 @@ export function useMediaSources(
               graph: () => graphRef.current,
               registry: runtimeRef.current.registry,
               channels: () => channelsRef.current,
-              // T1524b: the index of the same flattening `graph` is (T615), read per step.
-              morphs: () => runtimeRef.current.flattened.current().morphs,
+              // T1524b / §T1559b: the same flattening `graph` is (T615), whole, read per step.
+              flattening: () => runtimeRef.current.flattened.current(),
             });
             // §T1548b: through the app's one AudioContext — null where there is no Web Audio.
             const audio = createMovieAudioPlayback(playable, window, message => {

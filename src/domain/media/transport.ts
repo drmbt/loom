@@ -7,7 +7,7 @@ import type {
   ParameterValue,
 } from "../types/parameters.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
-import { resolveParameters } from "../parameters/index.ts";
+import { resolveStored } from "../parameters/index.ts";
 import { isStillPictureFile } from "./picture-file.ts";
 
 /**
@@ -528,9 +528,10 @@ export interface FreeRunMediaNode {
  *
  * DERIVED, not a hand list (§V316, and the same derivation `hasMediaTransport` already
  * powers): media node N+1 is covered the moment it declares the transport, with nothing to
- * remember to update here. Read through `resolveParameters` (§V61) so a `playMode` on an
+ * remember to update here. Read through `resolveStored` (§V61) so a `playMode` on an
  * expression or a bind answers the same way a typed one does — this is the one parameter
- * read path, not a second opinion about what the document says.
+ * read path, not a second opinion about what the document says. A storage read on purpose
+ * (§T1559b): the warning is about the document's take, built per revision, with no frame.
  */
 export function freeRunMediaNodes(
   graph: GraphDocument,
@@ -540,7 +541,7 @@ export function freeRunMediaNodes(
   for (const [nodeId, node] of Object.entries(graph.nodes)) {
     const definition = registry.get(node.type);
     if (definition === undefined || !hasMediaTransport(definition)) continue;
-    const resolved = resolveParameters(node, definition, {});
+    const resolved = resolveStored(node, definition);
     /*
      * T1223 — A STILL IN FREE RUN STILL REPRODUCES, so naming it here would be a NEW lie
      * of exactly the kind T586 wrote this function to avoid. The warning's claim is "this

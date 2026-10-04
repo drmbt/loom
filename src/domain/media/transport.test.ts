@@ -14,7 +14,7 @@ import type { NodeDefinition } from "../types/node-definition.ts";
 import type { ParameterValue } from "../types/parameters.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
-import { resolveParameters } from "../parameters/index.ts";
+import { resolveStored } from "../parameters/index.ts";
 
 /**
  * T493 — the media transport, asserted at EXACT VALUES.
@@ -399,7 +399,7 @@ describe("T493 — §V146: a control that cannot act says so", () => {
    * bug the owner hit: they dropped in a file and found Play DIMMED, and the value that
    * dimmed it came from `resolveParameters` filling in the manifest default for a node
    * that stores nothing. So this goes through the real resolver on a real registry node —
-   * the same call `inspector.tsx` makes — and asserts the control is LIVE.
+   * the storage read of the resolver `inspector.tsx` reads through — and asserts the control is LIVE.
    *
    * §V146's logic is untouched and still right; it is simply now describing the mode you
    * opted into rather than the one you were dropped in.
@@ -414,8 +414,8 @@ describe("T493 — §V146: a control that cannot act says so", () => {
         definitionVersion: 1,
         position: { x: 0, y: 0 },
         parameters: {},
-      } as unknown as Parameters<typeof resolveParameters>[0];
-      const resolved = resolveParameters(node, definition as NodeDefinition, {});
+      } as unknown as Parameters<typeof resolveStored>[0];
+      const resolved = resolveStored(node, definition as NodeDefinition);
       expect(resolved.values["playMode"], type).toBe("freeRun");
       // The whole point of the flip: no dimming, no "this control cannot act" sentence.
       expect(MEDIA_TRANSPORT_PARAMETERS["play"]?.inactiveWhen?.(resolved.values), type).toBeNull();

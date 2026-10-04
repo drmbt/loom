@@ -350,23 +350,6 @@ describe("T1129 — the parameter read options come from one factory", () => {
     ).toEqual(["src/domain/parameters/node-references.ts"]);
 
     /*
-     * §T1551b — and none builds one through the LOOSE door. `createParameterReadOptions`
-     * takes the pre-T1551b context, every field optional and no flattening, so a reader
-     * built through it cannot read `op('<instance>').chan.<c>` and nothing says so. It is
-     * kept for the one caller another session owns; the required-field factory,
-     * `parameterReadOptions`, is the only door for everything else.
-     */
-    const loose = sources
-      .filter((file) => /\bcreateParameterReadOptions\s*\(/.test(code(file)))
-      .map((file) => relative(root, file).replaceAll("\\", "/"));
-    expect(
-      loose,
-      "A module builds its reader through `createParameterReadOptions`, the optional-field " +
-        "adapter, so it reads no instance channels and silently drops whatever the context " +
-        "grows next. Call `parameterReadOptions` with the flattening (T1551b).",
-    ).toEqual(["src/app/media-playback.ts", "src/domain/parameters/node-references.ts"]);
-
-    /*
      * §T1557b — and none MINTS one. `ParameterReadOptions` is branded so an options literal
      * cannot stand in for it; a cast is the one way round the brand, and the two producers
      * are the only modules allowed it: the factory, and `STORED_READ` beside the resolver.

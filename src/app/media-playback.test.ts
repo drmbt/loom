@@ -19,6 +19,12 @@ import { liveClock } from "@domain/transport/live-clock.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import { buildMorphIndex } from "@domain/presets/morph-index.ts";
+import { NO_FLATTENING } from "@domain/parameters/index.ts";
+import { flattenComponents } from "@compiler/index.ts";
+import { createValueGraphSession } from "@domain/channels/value-graph.ts";
+import { componentNodeType, createComponentSystem } from "@domain/components/index.ts";
+import type { GraphComponentDefinition } from "@domain/types/components.ts";
+import { expressionSlot } from "@/examples/documents/builders.ts";
 import { presetBankNode, presetSession } from "@domain/presets/test-support.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
@@ -254,7 +260,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
       graph: () => graph,
       registry,
       channels: () => undefined,
-      morphs: () => undefined,
+      flattening: () => NO_FLATTENING,
     });
 
   it("marks ordinary playback continuous and cue pulses, trims, scrubs and laps as discontinuities", () => {
@@ -354,7 +360,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
       graph: () => graph,
       registry,
       channels: () => (channel) => (channel === "rate" ? 4 : undefined),
-      morphs: () => undefined,
+      flattening: () => NO_FLATTENING,
     });
     expect(runner.step(frame(2), 10, null)?.head.position).toBe(8);
   });
@@ -364,7 +370,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
       graph: () => graphWith({}),
       registry,
       channels: () => undefined,
-      morphs: () => undefined,
+      flattening: () => NO_FLATTENING,
     });
     expect(runner.step(frame(1), 10, null)).toBeNull();
   });
@@ -563,7 +569,7 @@ describe("T1155 — a DRIVEN transport parameter reaches the playhead", () => {
       graph: () => drivenCue,
       registry,
       channels: () => sweeping(index) as never,
-      morphs: () => undefined,
+      flattening: () => NO_FLATTENING,
     });
 
     const positions: number[] = [];
@@ -641,7 +647,7 @@ describe("T1524b — a morphing transport parameter reaches the runner at its ha
     // The document holds the destination from the moment of the recall.
     expect(graph.nodes["m"]?.parameters).toMatchObject({ speed: 3, trimStart: 2 });
     const morphs = buildMorphIndex({ document: graph, registry });
-    const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, morphs: () => morphs });
+    const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, flattening: () => ({ ...NO_FLATTENING, morphs }) });
 
     const start = runner.step(frameAt(0), 10, null);
     expect(start?.transport.speed).toBe(1);
@@ -666,8 +672,95 @@ describe("T1524b — a morphing transport parameter reaches the runner at its ha
 
   it("cut the wire: a runner handed no index hands over the end value at half-time", async () => {
     const graph = await fading();
-    const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, morphs: () => undefined });
+    const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, flattening: () => NO_FLATTENING });
     expect(runner.step(frameAt(30), 10, null)?.transport.speed).toBe(3);
+  });
+});
+
+/**
+ * §T1559b — A TRANSPORT PARAMETER READING A COMPONENT INSTANCE'S CHANNEL REACHES THE PLAYHEAD.
+ *
+ * `op('<instance>').chan.<c>` names an instance the flattening deleted (§T1485b); the reader
+ * finds it only through the flattening's `instanceChannels`. The runner used to read through
+ * `createParameterReadOptions`, which handed the morphs and NO instances, so a Movie's Speed
+ * driven by an instance failed "there is no node named …" and played at the retained 1
+ * while the compiler and the inspector read 2. Everything is the real thing: the real
+ * flattener produces the map, the real value graph publishes the channel, and the runner
+ * reads them the way the app's doors hand them over (`() => runtime.flattened.current()`).
+ *
+ * Red-verified: with the runner's read handed the flattening minus its `instanceChannels`
+ * (the old adapter's shape), the first case fails on speed 1.
+ */
+describe("§T1559b — a Movie's Speed driven by op('<instance>').chan.<c> reaches the transport", () => {
+  const FRAME_30: FrameEvaluationInput = {
+    timeSeconds: 0.5, deltaSeconds: 1 / 60, frameIndex: 30, mode: "realtime", randomSeed: 1,
+    absFrameIndex: 30, absTimeSeconds: 0.5, absEpoch: "session-1",
+  };
+  const pace: GraphComponentDefinition = {
+    componentId: "pace",
+    version: 1,
+    name: "Pace",
+    graph: {
+      revision: 1,
+      groups: {},
+      nodes: {
+        source: { id: "source", type: "valueExpression", definitionVersion: 1, position: { x: 0, y: 0 }, label: "source1", parameters: { expressions: "rate = 2" } },
+        out: { id: "out", type: "componentOutValue", definitionVersion: 1, position: { x: 200, y: 0 }, label: "rates", parameters: {} },
+      },
+      edges: { a: { id: "a", source: { nodeId: "source", portId: "out" }, target: { nodeId: "out", portId: "in" } } },
+    },
+    inputs: [],
+    outputs: [],
+    parameters: [],
+  } as unknown as GraphComponentDefinition;
+
+  function world() {
+    const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
+    system.components.register(pace);
+    const graph = {
+      revision: 1,
+      groups: {},
+      edges: {},
+      nodes: {
+        inst: { id: "inst", type: componentNodeType("pace", 1), definitionVersion: 1, position: { x: 0, y: 200 }, label: "pace1", parameters: {} },
+        m: {
+          id: "m", type: "movieFileIn", label: "movie1", definitionVersion: 1, position: { x: 0, y: 0 },
+          parameters: { playMode: "timeline", trimStart: 0, speed: expressionSlot("op('pace1').chan.rate", 1) },
+        },
+      },
+    } as unknown as GraphDocument;
+    const flattened = flattenComponents({ graph, registry: system.nodes, components: system.components.view() });
+    // The premise: the instance the expression names is not in the graph the runner reads.
+    expect(Object.keys(flattened.graph.nodes)).not.toContain("inst");
+    const channels = createValueGraphSession(system.nodes).evaluate(flattened.graph, FRAME_30).resolver;
+    return { registry: system.nodes, flattened, channels };
+  }
+
+  it("plays at the instance's 2: the transport speed and the playhead the element is put at", () => {
+    const { registry, flattened, channels } = world();
+    const runner = createMediaTransportRunner("m", {
+      graph: () => flattened.graph,
+      registry,
+      channels: () => channels,
+      flattening: () => flattened,
+    });
+    const stepped = runner.step(FRAME_30, 10, null);
+    expect(stepped?.transport.speed).toBe(2);
+    // Timeline lock: half a second at speed 2 from trim 0.
+    expect(stepped?.head.position).toBe(1);
+  });
+
+  it("cut the wire: handed no flattening, the read fails and the retained 1 plays", () => {
+    const { registry, flattened, channels } = world();
+    const runner = createMediaTransportRunner("m", {
+      graph: () => flattened.graph,
+      registry,
+      channels: () => channels,
+      flattening: () => NO_FLATTENING,
+    });
+    const stepped = runner.step(FRAME_30, 10, null);
+    expect(stepped?.transport.speed).toBe(1);
+    expect(stepped?.head.position).toBe(0.5);
   });
 });
 
@@ -853,7 +946,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       graph: () => graph,
       registry,
       channels,
-      morphs: () => undefined,
+      flattening: () => NO_FLATTENING,
     });
     const wall = (seconds: number): void => {
       nowMs += seconds * 1000;
@@ -1296,7 +1389,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         graph: () => graph,
         registry,
         channels: () => undefined,
-        morphs: () => undefined,
+        flattening: () => NO_FLATTENING,
       });
       const playback = createMovieAudioPlayback(first, new EventTarget(), () => undefined, audio.output);
       const shown: PlayableMedia[] = [];
@@ -1519,7 +1612,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         nodes: { m: { id: "m", type: "movieFileIn", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} } },
         edges: {},
       } as unknown as GraphDocument;
-      const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, morphs: () => undefined });
+      const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, flattening: () => NO_FLATTENING });
       const at = (index: number): FrameEvaluationInput =>
         ({ timeSeconds: index / 60, deltaSeconds: 1 / 60, frameIndex: index, mode, randomSeed: 1 });
       runner.step(at(0), 3600, 0);

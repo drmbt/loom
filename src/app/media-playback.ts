@@ -2,8 +2,8 @@ import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
-import type { ChannelResolver, ParameterMorphs } from "@domain/parameters/resolve.ts";
-import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
+import type { ChannelResolver } from "@domain/parameters/resolve.ts";
+import { parameterReadOptions, resolveParameters, type FlatteningReads } from "@domain/parameters/index.ts";
 import {
   createMediaClock,
   mediaPlayhead,
@@ -180,7 +180,7 @@ export function applyMediaPlayhead(
   // with a seek can therefore recreate that lag forever. During a continuous run the
   // runner has already decided the rate — it holds the history a calm correction needs
   // (§T1549b) — and this only writes it when it changed; discontinuities still seek exactly.
-  // REQUIRED with `continuous: true`, for `morphs`' reason: a door that dropped it would
+  // REQUIRED with `continuous: true`, for `flattening`'s reason: a door that dropped it would
   // leave a locked element uncorrected until it drifted far enough to seek, and say nothing.
   if (continuous === true && correction === undefined) {
     throw new Error("applyMediaPlayhead: a continuous frame needs the runner's `correction` (MediaSteppedTransport.correction).");
@@ -237,7 +237,7 @@ export interface MediaTransportRunner {
    *
    * `elementSeconds` is the element's own `currentTime`, read by the door this frame. In
    * realtime free run a continuous frame takes the playhead from it (§V1027). REQUIRED,
-   * for `morphs`' reason: a door that forgot it would keep a playhead nothing corrects,
+   * for `flattening`'s reason: a door that forgot it would keep a playhead nothing corrects,
    * and say nothing. `null` is the answer where there is no element to follow.
    */
   step(frame: FrameEvaluationInput, duration: number, elementSeconds: number | null): MediaSteppedTransport | null;
@@ -252,14 +252,14 @@ export interface MediaTransportContext {
   /** The value graph's resolver, so a DRIVEN speed or trim reaches here like any other. */
   readonly channels: () => ChannelResolver | undefined;
   /**
-   * T1524b: the preset morphs in flight over `graph()` (`FlattenedGraph.morphs`), so a
-   * speed, a trim or a volume a bank is fading reaches the element at the value the
-   * picture is at that frame, not at its destination. Read per step, like `channels`, and
-   * REQUIRED like it: an optional getter nothing supplies is how a door ends up resolving
-   * without it (§V272). `undefined` — and `cue()`, which has no frame — reads what the
-   * document stores.
+   * §T1559b: the flattening `graph()` came out of (`runtime.flattened.current()`), WHOLE —
+   * the preset morphs in flight (T1524b: a speed, a trim or a volume a bank is fading
+   * reaches the element at the value the picture is at that frame) and the component
+   * instances `op('<instance>').chan.<c>` names (T1485b). Read per step, like `channels`,
+   * and REQUIRED like it: an optional getter nothing supplies is how a door ends up
+   * resolving without it (§V272). A door with no flattening passes `() => NO_FLATTENING`.
    */
-  readonly morphs: () => ParameterMorphs | undefined;
+  readonly flattening: () => FlatteningReads;
 }
 
 /**
@@ -297,7 +297,6 @@ export function createMediaTransportRunner(
     if (node === undefined) return null;
     const definition = context.registry.get(node.type);
     if (definition === undefined) return null;
-    const channels = context.channels();
     /**
      * ⚑ T1155 — §V837's ONE FACTORY, and this call site is why it exists.
      *
@@ -313,12 +312,12 @@ export function createMediaTransportRunner(
      * by E56, whose whole picture is a driven `cuePoint`: the file loaded, the element
      * reached readyState 4, and `currentTime` sat at the retained 3.42 forever.
      */
-    const resolved = resolveParameters(node, definition, createParameterReadOptions({
+    const resolved = resolveParameters(node, definition, parameterReadOptions({
       graph: context.graph(),
       registry: context.registry,
-      ...(frame === undefined ? {} : { frame }),
-      ...(channels === undefined ? {} : { channels }),
-      morphs: context.morphs(),
+      frame,
+      channels: context.channels(),
+      flattening: context.flattening(),
     }));
     return (key) => resolved.get(key)?.value;
   };

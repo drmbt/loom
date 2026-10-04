@@ -898,8 +898,9 @@ export function App({
     mediaControls,
     // T1229: the grid a bound file is pre-analysed on — the same rate the track below records at.
     () => projectFps(runtime.settings),
-    // T1524b: the morph index of that same flattening, so a fading volume or speed follows the fade.
-    () => runtime.flattened.current().morphs,
+    // T1524b / §T1559b: that same flattening, whole — a fading volume or speed follows the
+    // fade, and an `op('<instance>').chan.<c>` on a transport parameter reads the instance.
+    () => runtime.flattened.current(),
   );
   // T452: the recorder WRAPS that read, so the track holds what the engine actually saw.
   const audioTrack = useAudioTrack({

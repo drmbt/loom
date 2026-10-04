@@ -1264,9 +1264,10 @@ function resolveOne(
  */
 export function resolveParameterSchema(node: GraphNode, schema: ParameterSchema, read: ParameterRead): ResolvedParameters;
 /**
- * @deprecated §T1557b — the optional-options form, kept ONLY for callers another session owns
- * (`effective-schema-closure.test.ts`'s `LEGACY_READ_CALLERS` names each). Pass
- * `parameterReadOptions(…)`, or `STORED_READ` for a read of the document itself.
+ * @deprecated §T1557b — the optional-options form, kept ONLY for `value-graph.ts` (another
+ * session's uncommitted work; `effective-schema-closure.test.ts`'s `LEGACY_READ_CALLERS`).
+ * §T1559b: `resolveParameters`' twin is gone. Pass `parameterReadOptions(…)`, or
+ * `STORED_READ` for a read of the document itself.
  */
 export function resolveParameterSchema(node: GraphNode, schema: ParameterSchema, options?: ResolveParametersOptions): ResolvedParameters;
 export function resolveParameterSchema(
@@ -1364,20 +1365,8 @@ export function effectiveParameterSchema(
  * Effective parameters of a node, in manifest order. An unknown node type (§V10
  * placeholder) resolves to nothing rather than guessing a schema.
  */
-export function resolveParameters(node: GraphNode, definition: NodeDefinition | undefined, read: ParameterRead): ResolvedParameters;
-/**
- * @deprecated §T1557b — the optional-options form, kept ONLY for callers another session owns
- * (`effective-schema-closure.test.ts`'s `LEGACY_READ_CALLERS` names each). Pass
- * `parameterReadOptions(…)` for an evaluation read, or call `resolveStored` for a read of
- * the document itself.
- */
-export function resolveParameters(node: GraphNode, definition: NodeDefinition | undefined, options?: ResolveParametersOptions): ResolvedParameters;
-export function resolveParameters(
-  node: GraphNode,
-  definition: NodeDefinition | undefined,
-  options: ResolveParametersOptions = {},
-): ResolvedParameters {
-  return resolveSchemaWith(node, effectiveParameterSchema(definition, node.parameters), options);
+export function resolveParameters(node: GraphNode, definition: NodeDefinition | undefined, read: ParameterRead): ResolvedParameters {
+  return resolveSchemaWith(node, effectiveParameterSchema(definition, node.parameters), read);
 }
 
 /**

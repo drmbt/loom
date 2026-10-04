@@ -74,7 +74,6 @@ export {
   NO_FLATTENING,
   NO_INSTANCES,
   createNodeReferenceReader,
-  createParameterReadOptions,
   nodeReferenceMembers,
   nodeReferenceNames,
 } from "./node-references.ts";
@@ -87,7 +86,6 @@ export type {
   NodeReferenceCatalogueOptions,
   NodeReferenceMember,
   NodeReferenceOptions,
-  LegacyParameterReadContext,
   ParameterReadContext,
 } from "./node-references.ts";
 export { codeParametersLast, codeParametersOf } from "./code.ts";

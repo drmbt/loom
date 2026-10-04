@@ -495,35 +495,6 @@ function readOptionsOf(options: Pick<ResolveParametersOptions, "frame" | "channe
 }
 
 /**
- * The context `createParameterReadOptions` took before §T1551b: every field optional.
- * @deprecated Kept for ONE caller, `src/app/media-playback.ts`, while another session owns
- * it; `parameter-read-context.test.ts` refuses any other. Use `parameterReadOptions`.
- */
-export interface LegacyParameterReadContext {
-  readonly graph: GraphDocument;
-  readonly registry: ParameterReadContext["registry"];
-  readonly frame?: FrameEvaluationInput | undefined;
-  readonly channels?: ChannelResolver | undefined;
-  readonly morphs?: ParameterMorphs | undefined;
-}
-
-/**
- * §T1551b's adapter for the one caller not yet migrated. It reads NO instance channels —
- * which is exactly the gap: `op('<instance>').chan.<c>` on a media transport parameter
- * still fails "there is no node named …" until that caller hands a flattening.
- * @deprecated Use `parameterReadOptions`.
- */
-export function createParameterReadOptions(context: LegacyParameterReadContext): ParameterReadOptions {
-  return parameterReadOptions({
-    graph: context.graph,
-    registry: context.registry,
-    frame: context.frame,
-    channels: context.channels,
-    flattening: { morphs: context.morphs ?? NO_MORPHS, instanceChannels: NO_INSTANCES },
-  });
-}
-
-/**
  * T1485b — `op('<instance>').chan.<c>`: the union of the instance's exposed value outputs.
  *
  * Each publisher is asked for `<c>` exactly as `op('<publisher>').chan.<c>` would ask, so an

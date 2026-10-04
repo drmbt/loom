@@ -628,20 +628,13 @@ describe("§T903 — nothing reads a node's parameter schema outside the funnel"
  * is deleted: it asks the checker which declaration every call resolved to, and fails on
  * any caller of the deprecated one that is not named here. When the list is empty, delete
  * the overload (`resolve.ts`) and this block with it — the type then does the whole job.
+ *
+ * §T1559b: `resolveParameters`' overload is GONE (the media callers moved: the transport
+ * runner to `parameterReadOptions`, the Text raster and the free-run classification to
+ * `resolveStored`), so an options literal there is a type error — the last case below holds
+ * that. `resolveParameterSchema`'s stays for `value-graph.ts` alone.
  */
 const LEGACY_READ_CALLERS: Readonly<Record<string, { readonly reason: string; readonly calls: readonly string[] }>> = {
-  "src/app/use-media-sources.ts": {
-    reason: "a Text raster's frameless read; the media worker owns this file (design doc item 5).",
-    calls: ["resolveParameters"],
-  },
-  "src/domain/media/transport.ts": {
-    reason: "the free-run classification (a storage read: `resolveStored`); the media worker owns this file (design doc item 5).",
-    calls: ["resolveParameters"],
-  },
-  "src/domain/media/transport.test.ts": {
-    reason: "the free-run classification's own test; the media worker owns `src/domain/media/**` (design doc item 5).",
-    calls: ["resolveParameters"],
-  },
   "src/domain/channels/value-graph.ts": {
     reason: "the value graph's frame-scoped read; another session has uncommitted work here (it needs `parameterReadOptions`).",
     calls: ["resolveParameterSchema"],
@@ -718,13 +711,13 @@ describe("§T1557b — no parameter read lands on the optional-options overload"
       writeFileSync(
         file,
         [
-          `import { resolveParameters, STORED_READ, type ChannelResolver } from ${JSON.stringify(resolve)};`,
+          `import { resolveParameterSchema, STORED_READ, type ChannelResolver } from ${JSON.stringify(resolve)};`,
           `import type { GraphNode } from ${JSON.stringify(graph)};`,
           `import type { NodeDefinition } from ${JSON.stringify(nodeDefinition)};`,
           "",
           "export function settings(node: GraphNode, definition: NodeDefinition, channels: ChannelResolver) {",
-          "  const stored = resolveParameters(node, definition, STORED_READ);",
-          "  return [stored, resolveParameters(node, definition, { channels })];",
+          "  const stored = resolveParameterSchema(node, definition.parameters, STORED_READ);",
+          "  return [stored, resolveParameterSchema(node, definition.parameters, { channels })];",
           "}",
           "",
         ].join("\n"),
@@ -735,7 +728,41 @@ describe("§T1557b — no parameter read lands on the optional-options overload"
       const program = ts.createProgram([file], parsed.options);
       // Exactly the literal: the branded storage read beside it is the legitimate case the
       // collector must not swallow.
-      expect(collectLegacyReads(program, program.getTypeChecker(), directory).map((entry) => entry.read)).toEqual(["resolveParameters"]);
+      expect(collectLegacyReads(program, program.getTypeChecker(), directory).map((entry) => entry.read)).toEqual(["resolveParameterSchema"]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 180_000);
+
+  it("§T1559b — `resolveParameters` has no loose overload left: an options literal is a type error", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "shaderloom-legacy-read-"));
+    try {
+      const resolve = path.join(REPO_ROOT, "src/domain/parameters/resolve.ts");
+      const graph = path.join(REPO_ROOT, "src/domain/types/graph.ts");
+      const nodeDefinition = path.join(REPO_ROOT, "src/domain/types/node-definition.ts");
+      const file = path.join(directory, "b181.ts");
+      const lines = [
+        `import { resolveParameters, STORED_READ, type ChannelResolver } from ${JSON.stringify(resolve)};`,
+        `import type { GraphNode } from ${JSON.stringify(graph)};`,
+        `import type { NodeDefinition } from ${JSON.stringify(nodeDefinition)};`,
+        "",
+        "export function settings(node: GraphNode, definition: NodeDefinition, channels: ChannelResolver) {",
+        "  const stored = resolveParameters(node, definition, STORED_READ);",
+        "  return [stored, resolveParameters(node, definition, { channels })];",
+        "}",
+        "",
+      ];
+      writeFileSync(file, lines.join("\n"), "utf8");
+      const config = ts.readConfigFile(path.join(REPO_ROOT, "tsconfig.app.json"), ts.sys.readFile);
+      const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, REPO_ROOT);
+      const program = ts.createProgram([file], parsed.options);
+      const source = program.getSourceFile(file);
+      if (source === undefined) throw new Error("the probe file did not load");
+      // Errors only on the literal's line; the branded storage read beside it typechecks.
+      const errorLines = program.getSemanticDiagnostics(source)
+        .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error && diagnostic.start !== undefined)
+        .map((diagnostic) => source.getLineAndCharacterOfPosition(diagnostic.start as number).line);
+      expect([...new Set(errorLines)]).toEqual([lines.findIndex((line) => line.includes("{ channels }"))]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
