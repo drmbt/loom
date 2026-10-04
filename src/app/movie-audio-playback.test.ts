@@ -8,7 +8,7 @@ const BASE: MediaTransportValues = {
   trimStart: 0, trimEnd: 0, extend: "loop",
 };
 function stepped(audio = true, volume = 0.5, transport = BASE, elapsed = 0): MediaSteppedTransport {
-  return { transport, head: mediaPlayhead(transport, elapsed, 10), continuous: false,
+  return { transport, head: mediaPlayhead(transport, elapsed, 10), continuous: false, correction: 0,
     read: key => key === "audio" ? audio : key === "volume" ? volume : undefined };
 }
 class Activation extends EventTarget {

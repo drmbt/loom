@@ -6,6 +6,9 @@ import {
   createMediaTransportRunner,
   durationOf,
   playableMedia,
+  LOCK_RESYNC_SECONDS,
+  type MediaSteppedTransport,
+  type MediaTransportContext,
   type PlayableMedia,
 } from "./media-playback.ts";
 import { createMediaControlRegistry } from "./media-commands.ts";
@@ -74,31 +77,20 @@ function fakeElement(duration = 10, at = 0) {
 }
 
 describe("T493 — the element is corrected on DRIFT, not every frame", () => {
-  it("continuous playback recovers startup lag without repeatedly restarting decoder buffering", () => {
-    const element = fakeElement(60);
-    let buffering = 0.3;
-    applyMediaPlayhead(element, BASE, mediaPlayhead(BASE, 0, 60), false);
-    // Native media advances on its own clock, after an initial audio-buffering delay.
-    // A seek would impose another delay, which reproduced the endless real Chrome loop.
-    const seekCount = () => element.calls.filter(call => call.startsWith("seek:")).length;
-    for (let tick = 1; tick <= 600; tick++) {
-      const delta = 1 / 60;
-      if (buffering > 0) buffering -= delta;
-      else {
-        // Mutate the double's clock without logging a decoder seek.
-        const prior = element.calls.length;
-        element.currentTime += delta * element.playbackRate;
-        (element.calls as string[]).splice(prior);
-      }
-      const before = seekCount();
-      const seeked = applyMediaPlayhead(element, BASE, mediaPlayhead(BASE, tick / 60, 60), true);
-      if (seeked) buffering = 0.3;
-      expect(seekCount()).toBe(before);
-      expect(element.playbackRate).toBeGreaterThanOrEqual(0.95);
-      expect(element.playbackRate).toBeLessThanOrEqual(1.05);
-    }
-    expect(seekCount()).toBe(0);
-    expect(Math.abs(10 - element.currentTime)).toBeLessThan(0.04);
+  /*
+   * A continuous frame plays at the RUNNER's rate and never seeks, however far off it is:
+   * the runner holds the history a calm correction needs (§T1549b) and decides when a
+   * drift is worth its one seek. The startup-lag case this used to cover through a bare
+   * loop now runs through the real chain below ("a decoder that re-buffers after every
+   * seek"), because the decision it gated moved into the runner.
+   */
+  it("a continuous frame writes the runner's correction and does not seek, at any drift", () => {
+    const element = fakeElement(60, 2);
+    expect(applyMediaPlayhead(element, BASE, mediaPlayhead(BASE, 3, 60), true, 0.03)).toBe(false);
+    expect(element.playbackRate).toBe(1.03);
+    expect(element.calls).toEqual(["play"]);
+    // A door that dropped the correction is told so rather than playing uncorrected.
+    expect(() => applyMediaPlayhead(element, BASE, mediaPlayhead(BASE, 3, 60), true)).toThrow(/correction/);
   });
 
   it("a deliberate discontinuity seeks exactly even inside the ordinary drift tolerance", () => {
@@ -209,7 +201,7 @@ describe("T493 — held states PAUSE the element, because the position no longer
     expect(element.currentTime).toBe(2);
     for (const duration of [0, Infinity]) {
       const unknown = fakeElement(duration);
-      applyMediaPlayhead(unknown, BASE, mediaPlayhead(BASE, 0, 0), true);
+      applyMediaPlayhead(unknown, BASE, mediaPlayhead(BASE, 0, 0), true, 0);
       expect(unknown.paused).toBe(false);
     }
   });
@@ -708,6 +700,8 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
     let playbackRate = 1;
     /** Seconds of real time before a `play()` produces sound: decoder start-up. */
     let buffering = 0;
+    /** Seconds a SEEK costs the decoder before sound resumes (0: a seek is free). */
+    let seekBuffering = 0;
     const seeks: number[] = [];
     const rates: number[] = [];
     let pauses = 0;
@@ -717,6 +711,8 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       readonly pauses: number;
       advanceReal(seconds: number): void;
       buffer(seconds: number): void;
+      rebufferOnSeek(seconds: number): void;
+      skew(seconds: number): void;
     } = {
       get currentTime() {
         return currentTime;
@@ -724,6 +720,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       set currentTime(value: number) {
         currentTime = value;
         seeks.push(value);
+        buffering = Math.max(buffering, seekBuffering);
       },
       get playbackRate() {
         return playbackRate;
@@ -759,6 +756,13 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       buffer(seconds: number) {
         buffering = seconds;
       },
+      rebufferOnSeek(seconds: number) {
+        seekBuffering = seconds;
+      },
+      /** Move the element's own clock with no write anyone could count: injected drift. */
+      skew(seconds: number) {
+        currentTime += seconds;
+      },
     };
     return element;
   }
@@ -768,7 +772,11 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
    * `wall` moves real time for the element and the page alike; `frame` is one delivered
    * frame. A stall, a throttled rAF and a hidden tab are all "wall without frame".
    */
-  function session(parameters: Record<string, unknown> = {}, duration = 3600) {
+  function session(
+    parameters: Record<string, unknown> = {},
+    duration = 3600,
+    channels: MediaTransportContext["channels"] = () => undefined,
+  ) {
     let nowMs = 0;
     const clock = liveClock({ fps: 60, presenting: () => true, now: () => nowMs });
     const element = ownClockElement(duration);
@@ -782,7 +790,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
     const runner = createMediaTransportRunner("m", {
       graph: () => graph,
       registry,
-      channels: () => undefined,
+      channels,
       morphs: () => undefined,
     });
     const wall = (seconds: number): void => {
@@ -792,15 +800,15 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
     const frame = () => {
       const stepped = runner.step(clock.next(), durationOf(element), element.currentTime);
       if (stepped === null) throw new Error("the node is in the graph, so the runner must step");
-      applyMediaPlayhead(element, stepped.transport, stepped.head, stepped.continuous);
+      applyMediaPlayhead(element, stepped.transport, stepped.head, stepped.continuous, stepped.correction);
       return stepped;
     };
     /** `seconds` of playback with the browser delivering `hz` frames a second. */
-    const play = (seconds: number, hz = 60, each?: () => void): void => {
+    const play = (seconds: number, hz = 60, each?: (stepped: MediaSteppedTransport) => void): void => {
       for (let tick = 0; tick < Math.round(seconds * hz); tick += 1) {
         wall(1 / hz);
-        frame();
-        each?.();
+        const stepped = frame();
+        each?.(stepped);
       }
     };
     frame();
@@ -898,19 +906,194 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
 
   /**
    * §V436 and T1542b (4): the timeline lock is NOT covered. Its position is `f(frame)` —
-   * that is what a scrub and an offline render stand on — so the element cannot lead it,
-   * and who is master there is the owner's open call. Until it is made the lock keeps the
-   * bounded rate convergence, and this pins that the new rule did not leak into it.
+   * that is what a scrub and an offline render stand on — so the element cannot lead it.
+   * §T1549b ruled option (a): the frame stays master, and a stall the clamp turned into
+   * more than a quarter second of drift is ONE seek back to the frame's position.
    */
-  it("under the timeline lock the frame stays master and the element still converges", () => {
+  it("under the timeline lock the frame stays master: a 1 s stall is one seek back to the frame", () => {
     const { element, wall, frame, play } = session({ playMode: "timeline" });
     play(2);
     wall(1);
     const back = frame();
-    // The lock's playhead is the timeline's second, which the clamp left a stall behind.
-    expect(element.currentTime - back.head.position).toBeGreaterThan(0.7);
-    expect(element.playbackRate).toBe(0.95);
-    expect(element.seeks).toEqual([]);
+    // The lock's playhead is the timeline's second, which the clamp left 0.75 s behind
+    // the element — and the element is put back there, not left leading.
+    expect(back.head.position).toBeCloseTo(2.25, 9);
+    expect(element.seeks).toEqual([back.head.position]);
+    expect(element.rates).toEqual([]);
+    play(2, 60, () => expect(element.playbackRate).toBe(1));
+    expect(element.seeks.length).toBe(1);
+  });
+
+  /**
+   * §T1549b, option (a) — UNDER THE LOCK THE CORRECTION IS CALM. The owner's complaint
+   * (§B236) was the music stuttering; under the lock the frame must still be master
+   * (§V436), so what a listener hears is HOW the element is brought back: every
+   * `playbackRate` write is a resample and every seek a jump. The gate therefore reads the
+   * writes themselves, on an element advancing on its OWN clock: how many rate writes a
+   * second, that each is a whole percent within ±5%, how many seeks, and that it ends up
+   * within one delivered frame of the playhead and stays there with nothing written.
+   */
+  describe("§T1549b — the timeline lock's correction: 1-frame deadband, 1% steps, one seek past 0.25 s", () => {
+    /** `rates` as whole percents of the speed, or the first value that is not one. */
+    const percents = (rates: readonly number[], speed = 1): number[] =>
+      rates.map((rate) => {
+        const percent = (rate / speed - 1) * 100;
+        if (Math.abs(percent - Math.round(percent)) > 1e-9) throw new Error(`rate ${String(rate)} is not a whole percent of ${String(speed)}`);
+        return Math.round(percent);
+      });
+
+    for (const hz of [60, 30]) {
+      for (const drift of [0.1, -0.1, 0.3, -0.3, 1, -1]) {
+        const behind = drift > 0 ? "behind" : "ahead";
+        const size = Math.abs(drift);
+        it(`${String(hz)} Hz delivered, element ${String(size)} s ${behind}: ${size <= LOCK_RESYNC_SECONDS ? "converges by 1% steps with no seek" : "one seek, then calm"}`, () => {
+          const { element, play } = session({ playMode: "timeline" });
+          const frameSeconds = 1 / hz;
+          play(2, hz);
+          expect([element.rates, element.seeks]).toEqual([[], []]);
+          element.skew(-drift);
+
+          /** Rate writes, bucketed by the second of playback they fell in. */
+          const perSecond = new Array<number>(20).fill(0);
+          let tick = 0;
+          let written = 0;
+          let last: MediaSteppedTransport | null = null;
+          let seekedAt: number | null = null;
+          play(20, hz, (stepped) => {
+            perSecond[Math.floor(tick / hz)]! += element.rates.length - written;
+            written = element.rates.length;
+            if (seekedAt === null && element.seeks.length > 0) seekedAt = stepped.head.position;
+            last = stepped;
+            tick += 1;
+          });
+          // A few writes a second at most, never one a frame — and none at all once settled.
+          expect(Math.max(...perSecond)).toBeLessThanOrEqual(4);
+          expect(perSecond.slice(15)).toEqual([0, 0, 0, 0, 0]);
+          // Whole percents, within ±5%.
+          expect(percents(element.rates).every((percent) => Math.abs(percent) <= 5)).toBe(true);
+
+          if (size <= LOCK_RESYNC_SECONDS) {
+            expect(element.seeks).toEqual([]);
+            // A correction happened (the deadband did not swallow 0.1 s), toward the target,
+            // stepping DOWN to the speed: 0.1 s × the 0.25 gain is 2–3% by the frame grid.
+            const steps = percents(element.rates);
+            expect(Math.sign(steps[0]!)).toBe(Math.sign(drift));
+            expect(Math.abs(steps[0]!)).toBeGreaterThanOrEqual(2);
+            expect(steps.at(-1)).toBe(0);
+          } else {
+            expect(element.seeks.length).toBe(1);
+            // ...to exactly the frame's position: the frame is master.
+            expect(element.seeks[0]).toBe(seekedAt);
+          }
+          const final = last as MediaSteppedTransport | null;
+          expect(Math.abs((final?.head.position ?? Infinity) - element.currentTime)).toBeLessThanOrEqual(frameSeconds);
+          expect(element.playbackRate).toBe(1);
+        });
+      }
+    }
+
+    it("inside one delivered frame nothing is written at all — the deadband", () => {
+      for (const hz of [60, 30]) {
+        const { element, play } = session({ playMode: "timeline" });
+        play(1, hz);
+        element.skew(-0.9 / hz);
+        play(10, hz);
+        expect([hz, element.rates, element.seeks]).toEqual([hz, [], []]);
+      }
+    });
+
+    /**
+     * The frame grid's own jitter: a 45 Hz display on a 60 fps timeline puts the playhead
+     * either side of real time by up to half a frame, every frame. Without the hysteresis
+     * that is a rate write on most frames, forever.
+     */
+    it("45 Hz delivered: the frame grid's jitter does not keep the rate flickering", () => {
+      const { element, play } = session({ playMode: "timeline" });
+      play(2, 45);
+      element.skew(-0.1);
+      const before = element.rates.length;
+      play(15, 45);
+      const correcting = element.rates.length - before;
+      play(15, 45);
+      expect(correcting).toBeLessThanOrEqual(8);
+      expect(element.rates.length - before - correcting).toBe(0);
+      expect(element.seeks).toEqual([]);
+    });
+
+    /**
+     * The trap a seek policy has to avoid (it reproduced an endless Chrome loop under
+     * T493): a seek costs the decoder its buffering again, so the drift that triggered it
+     * comes straight back. ONE seek, then the rate closes what the decoder lost.
+     */
+    it("a decoder that re-buffers 0.3 s after every seek is sought once, not forever", () => {
+      const { element, play } = session({ playMode: "timeline" });
+      element.rebufferOnSeek(0.3);
+      element.buffer(0.3);
+      let last: MediaSteppedTransport | null = null;
+      play(30, 60, (stepped) => { last = stepped; });
+      expect(element.seeks.length).toBe(1);
+      expect(percents(element.rates).every((percent) => Math.abs(percent) <= 5)).toBe(true);
+      const final = last as MediaSteppedTransport | null;
+      expect(Math.abs((final?.head.position ?? Infinity) - element.currentTime)).toBeLessThanOrEqual(1 / 60);
+      expect(element.playbackRate).toBe(1);
+    });
+  });
+
+  /**
+   * B187 — A DRIVEN SPEED MADE THE PLAYHEAD LEAP RETROACTIVELY. Free run multiplied the
+   * whole elapsed history by the current speed, so speed 1 → 2 five seconds in re-priced
+   * those five seconds and the playhead jumped to ten — and a speed change was a
+   * discontinuity, so the element was SOUGHT there (T1542b item 5). With the element as the
+   * clock a positive speed change is a `playbackRate` write and nothing else.
+   */
+  describe("B187 — a driven speed continues from where the playhead is", () => {
+    const DRIVEN_SPEED = { mode: "driven", bindings: { driven: { kind: "driven", channel: "rate" } } };
+
+    function driven(playMode: "freeRun" | "timeline") {
+      let rate = 1;
+      const run = session({ playMode, speed: DRIVEN_SPEED }, 3600, () => (channel) => (channel === "rate" ? rate : undefined));
+      return { ...run, drive: (value: number) => { rate = value; } };
+    }
+
+    it("free run, speed 1 → 2 at t = 5 s: the playhead is at ~5 s, not ~10 s, and nothing is sought", () => {
+      const { element, wall, frame, play, drive } = driven("freeRun");
+      play(5);
+      drive(2);
+      wall(1 / 60);
+      const changed = frame();
+      expect(changed.transport.speed).toBe(2);
+      expect(Math.abs(changed.head.position - 5)).toBeLessThan(0.05);
+      expect(changed.continuous).toBe(true);
+      expect(element.seeks).toEqual([]);
+      expect(element.rates).toEqual([2]);
+      // ...and it plays on from there at twice the speed, still with no seek.
+      play(2, 60, () => expect(element.playbackRate).toBe(2));
+      expect(element.seeks).toEqual([]);
+      expect(element.currentTime).toBeCloseTo(5 + 1 / 60 + 4, 9);
+    });
+
+    it("free run, speed → -1 is the held scrub, running back from where the playhead was", () => {
+      const { element, wall, frame, play, drive } = driven("freeRun");
+      play(5);
+      drive(-1);
+      wall(1 / 60);
+      const back = frame();
+      expect(back.head.position).toBeCloseTo(5 - 1 / 60, 9);
+      expect(element.paused).toBe(true);
+      expect(element.seeks).toEqual([back.head.position]);
+    });
+
+    /** ⚠ the row's warning: an integrator under the lock would make position path-dependent. */
+    it("under the lock the same change is still timeline × speed — a new target, one exact seek", () => {
+      const { element, wall, frame, play, drive } = driven("timeline");
+      play(5);
+      drive(2);
+      wall(1 / 60);
+      const changed = frame();
+      expect(changed.head.position).toBeCloseTo((5 + 1 / 60) * 2, 9);
+      expect(changed.continuous).toBe(false);
+      expect(element.seeks).toEqual([changed.head.position]);
+    });
   });
 
   /** §V662: a take is silent and the frame is its master — an element's clock has no say. */

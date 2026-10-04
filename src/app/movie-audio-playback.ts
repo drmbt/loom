@@ -128,7 +128,7 @@ export function createMovieAudioPlayback(
       mode = currentMode;
       if (isMediaPlayheadHeld(stepped.transport, stepped.head, element.duration)) pause();
       refreshMute();
-      applyMediaPlayhead(controlled, stepped.transport, stepped.head, stepped.continuous);
+      applyMediaPlayhead(controlled, stepped.transport, stepped.head, stepped.continuous, stepped.correction);
     },
     pause,
     setRenderMuted(muted) { renderMuted = muted; refreshMute(); },

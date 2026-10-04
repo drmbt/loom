@@ -6,6 +6,7 @@ import {
   createMediaClock,
   hasMediaTransport,
   mediaPlayhead,
+  mediaPlayheadAt,
   mediaTransportFrom,
   type MediaTransportValues,
 } from "./transport.ts";
@@ -200,19 +201,73 @@ describe("T493 — the free-run clock is the only state, and only in free-run", 
     clock.advance(freeRun, 1, 1);
     const head = mediaPlayhead(freeRun, 1, 10);
     expect(head.position).toBe(2);
-    clock.cueTo(freeRun, head, 7);
-    // The jump inverts through the SAME arithmetic: elapsed 3.5 × speed 2 = 7.
-    expect(mediaPlayhead(freeRun, clock.advance(freeRun, 0, 1), 10).position).toBe(7);
+    clock.cueTo(head, 7);
+    // The jump is stored as the offset from the in point, so it reads back as 7.
+    expect(mediaPlayheadAt(freeRun, clock.advance(freeRun, 0, 1), 10).position).toBe(7);
     // ...and one more second at speed 2 is 9, not back to 2.
-    expect(mediaPlayhead(freeRun, clock.advance(freeRun, 1, 2), 10).position).toBe(9);
+    expect(mediaPlayheadAt(freeRun, clock.advance(freeRun, 1, 2), 10).position).toBe(9);
   });
 
   it("a cue pulse into a TRIMMED window lands on the point, not on the point plus the in", () => {
     const freeRun: MediaTransportValues = { ...BASE, playMode: "freeRun", trimStart: 3, trimEnd: 8 };
     const clock = createMediaClock();
-    const head = mediaPlayhead(freeRun, clock.advance(freeRun, 1, 1), 10);
-    clock.cueTo(freeRun, head, 6);
-    expect(mediaPlayhead(freeRun, clock.advance(freeRun, 0, 1), 10).position).toBe(6);
+    const head = mediaPlayheadAt(freeRun, clock.advance(freeRun, 1, 1), 10);
+    clock.cueTo(head, 6);
+    expect(mediaPlayheadAt(freeRun, clock.advance(freeRun, 0, 1), 10).position).toBe(6);
+  });
+});
+
+/**
+ * B187 — A DRIVEN SPEED MUST NOT RE-PRICE THE PAST. The free-run clock used to hold raw
+ * elapsed seconds that the playhead multiplied by the CURRENT speed, so a speed that went
+ * from 1 to 2 five seconds in put the playhead at ten. Free run integrates `speed dt`; the
+ * timeline lock must NOT (§V436: its position is `f(frame)`, so a scrub finds the same
+ * frame every time and an offline render reproduces).
+ */
+describe("B187 — free run integrates speed; the timeline lock stays a function of the frame", () => {
+  const freeRun: MediaTransportValues = { ...BASE, playMode: "freeRun", extend: "hold" };
+  const FRAME = 1 / 60;
+
+  /** `seconds` of 60 fps frames at `speed`, continuing `clock`; returns the last offset. */
+  const run = (clock: ReturnType<typeof createMediaClock>, transport: MediaTransportValues, from: number, seconds: number) => {
+    let offset = 0;
+    for (let index = 1; index <= Math.round(seconds * 60); index += 1) {
+      offset = clock.advance(transport, FRAME, from + index * FRAME);
+    }
+    return offset;
+  };
+
+  it("speed 1 → 2 at t = 5 s continues from 5 s: one frame later it is at 5 + 2/60, not 10", () => {
+    const clock = createMediaClock();
+    expect(mediaPlayheadAt(freeRun, run(clock, freeRun, 0, 5), 60).position).toBeCloseTo(5, 9);
+    const fast = { ...freeRun, speed: 2 };
+    const next = mediaPlayheadAt(fast, clock.advance(fast, FRAME, 5 + FRAME), 60);
+    expect(next.position).toBeCloseTo(5 + 2 * FRAME, 9);
+    // ...and a second later it has gained two seconds, not re-priced the first five.
+    expect(mediaPlayheadAt(fast, run(clock, fast, 5 + FRAME, 1), 60).position).toBeCloseTo(7 + 2 * FRAME, 9);
+  });
+
+  it("speed 0 freezes WHERE THE PLAYHEAD IS, and reverse runs back from there", () => {
+    const clock = createMediaClock();
+    run(clock, freeRun, 0, 3);
+    const still = { ...freeRun, speed: 0 };
+    expect(mediaPlayheadAt(still, run(clock, still, 3, 2), 60).position).toBeCloseTo(3, 9);
+    const back = { ...freeRun, speed: -1 };
+    expect(mediaPlayheadAt(back, run(clock, back, 5, 1), 60).position).toBeCloseTo(2, 9);
+  });
+
+  it("under the lock the same timeline second is the same position, whatever speed history led there", () => {
+    const locked: MediaTransportValues = { ...BASE, extend: "hold" };
+    const fast = { ...locked, speed: 2 };
+    const changed = createMediaClock();
+    run(changed, locked, 0, 5);
+    const viaChange = run(changed, fast, 5, 1);
+    const always = createMediaClock();
+    const viaConstant = run(always, fast, 0, 6);
+    // `timeline × speed`, exactly: path-independent, and the number `mediaPlayhead` derives.
+    expect(viaChange).toBe(viaConstant);
+    expect(mediaPlayheadAt(fast, viaChange, 60).position).toBe(mediaPlayhead(fast, 6, 60).position);
+    expect(viaChange).toBe(12);
   });
 });
 
@@ -228,28 +283,29 @@ describe("T1542b — adopting an element's position keeps the lap it is in", () 
     const transport: MediaTransportValues = { ...freeRun, speed: 2, trimStart: 3, trimEnd: 8 };
     const clock = createMediaClock();
     // 6.5 s at speed 2 into a 5 s window: two laps done, 3 s into the third.
-    const head = mediaPlayhead(transport, clock.advance(transport, 6.5, 0), 10);
+    const head = mediaPlayheadAt(transport, clock.advance(transport, 6.5, 0), 10);
     expect([head.laps, head.position]).toEqual([2, 6]);
-    const adopted = mediaPlayhead(transport, clock.adopt(transport, head, 7.25), 10);
+    const adopted = mediaPlayheadAt(transport, clock.adopt(head, 7.25), 10);
     expect([adopted.laps, adopted.position]).toEqual([2, 7.25]);
     // ...and carries on from there: half a second at speed 2 is the out point less nothing.
-    expect(mediaPlayhead(transport, clock.advance(transport, 0.25, 0), 10).position).toBe(7.75);
+    expect(mediaPlayheadAt(transport, clock.advance(transport, 0.25, 0), 10).position).toBe(7.75);
   });
 
   it("an element past the out point is the NEXT lap, by how far it overran", () => {
     const transport: MediaTransportValues = { ...freeRun, trimEnd: 8 };
     const clock = createMediaClock();
-    const head = mediaPlayhead(transport, clock.advance(transport, 7, 0), 10);
-    const adopted = mediaPlayhead(transport, clock.adopt(transport, head, 9.5), 10);
+    const head = mediaPlayheadAt(transport, clock.advance(transport, 7, 0), 10);
+    const adopted = mediaPlayheadAt(transport, clock.adopt(head, 9.5), 10);
     expect([adopted.laps, adopted.position]).toEqual([1, 1.5]);
   });
 
   /**
    * THE EDGE. An element waiting on its decoder sits EXACTLY on the in point — every
-   * start and every lap begins there. `laps × window / speed × speed / window` comes back
-   * one rounding error short of `laps` for about one combination in eleven below, which
-   * reads as the END of the lap before: a lap that never happened and a seek to the out
-   * point. Red-verified with the edge margin at 0: 561 of these 6030 fail.
+   * start and every lap begins there. `laps × window / window` comes back one rounding
+   * error short of `laps` for many combinations below, which reads as the END of the lap
+   * before: a lap that never happened and a seek to the out point. Red-verified with the
+   * edge margin at 0: 561 of these 6030 failed while the offset was divided by the speed;
+   * since B187 the clock holds the offset itself and 2340 fail (the same 468 per speed).
    */
   it("an element sitting ON the in point is in this lap, never at the end of the last one", () => {
     const wrong: string[] = [];
@@ -259,7 +315,7 @@ describe("T1542b — adopting an element's position keeps the lap it is in", () 
         for (let laps = 0; laps <= 200; laps += 1) {
           const clock = createMediaClock();
           const head = { ...mediaPlayhead(transport, 0, 1000), laps };
-          const adopted = mediaPlayhead(transport, clock.adopt(transport, head, head.start), 1000);
+          const adopted = mediaPlayheadAt(transport, clock.adopt(head, head.start), 1000);
           // A microsecond is the precision an element's own clock reports at.
           if (adopted.laps !== laps || Math.abs(adopted.position - head.start) > 1e-6) {
             wrong.push(`speed ${String(speed)} window ${String(window)} lap ${String(laps)}: lap ${String(adopted.laps)} @ ${String(adopted.position)}`);
