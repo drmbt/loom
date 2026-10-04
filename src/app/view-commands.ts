@@ -1,5 +1,7 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
+import { NO_INPUT, nodeIdsInput } from "@domain/commands/input-schema.ts";
 
 /**
  * `view.frameAll` / `view.frameSelected` — TouchDesigner's `F` and `f` (T430, §V354).
@@ -77,6 +79,7 @@ export function registerViewCommands(bus: LoomBus): ViewHolder {
 
   bus.registerCommand({
     name: "view.frameAll",
+    inputSchema: NO_INPUT,
     description: "Fit every node in the graph into the view.",
     handler: (_input, context) => {
       const revision = context.store.getRevision();
@@ -108,6 +111,7 @@ export function registerViewCommands(bus: LoomBus): ViewHolder {
 
   bus.registerCommand({
     name: "view.frameSelected",
+    inputSchema: z.object({ nodeIds: nodeIdsInput }).strict(),
     description: "Fit the selected nodes into the view.",
     handler: (input, context) => {
       const revision = context.store.getRevision();
@@ -140,6 +144,7 @@ export function registerViewCommands(bus: LoomBus): ViewHolder {
 
   bus.registerCommand({
     name: "view.home",
+    inputSchema: NO_INPUT,
     description: "Return the view to 1:1 zoom, centred on the graph.",
     handler: (_input, context) => {
       const revision = context.store.getRevision();

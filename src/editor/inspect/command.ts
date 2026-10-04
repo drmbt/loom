@@ -1,6 +1,8 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
+import { idInput } from "@domain/commands/input-schema.ts";
 
 /**
  * `ui.showNodeInfo` — the ONE command every route to the node info popup names
@@ -67,6 +69,7 @@ export function registerNodeInfoCommand(bus: LoomBus): NodeInfoHolder {
 
   bus.registerCommand({
     name: SHOW_NODE_INFO_COMMAND,
+    inputSchema: z.object({ nodeId: idInput.optional() }).strict(),
     description: "Show node info — resolution, format, GPU time, pass count.",
     handler: (input, context) => {
       const revision = context.store.getRevision();

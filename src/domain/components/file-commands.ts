@@ -225,6 +225,7 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
 
   bus.registerCommand({
     name: "component.import",
+    inputSchema: componentImportInputSchema,
     description: "Import a component file: reuse it if it is already installed, otherwise install it (renamed if its name is taken), and place it.",
     handler: async (input, context): Promise<CommandOutcome<ComponentImportOutput>> => {
       const revision = context.store.getRevision();
@@ -362,6 +363,7 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
 
   bus.registerCommand({
     name: "component.export",
+    inputSchema: componentExportInputSchema,
     description: "Export a component, and every component it nests, to a .loom.json file.",
     handler: async (input, context): Promise<CommandOutcome<ComponentExportOutput>> => {
       const revision = context.store.getRevision();

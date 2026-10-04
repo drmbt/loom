@@ -1,6 +1,8 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
+import { NO_INPUT } from "@domain/commands/input-schema.ts";
 
 /**
  * `project.save` and `project.open` (T43, T139, §V29).
@@ -112,6 +114,7 @@ export function registerProjectCommands(bus: LoomBus): ProjectHolder {
   if (!bus.hasCommand(SAVE_PROJECT_COMMAND)) {
     bus.registerCommand({
       name: SAVE_PROJECT_COMMAND,
+      inputSchema: z.object({ saveAs: z.boolean().optional() }).strict(),
       description: "Save the project to a .loom.json file.",
       handler: async (input, context) => {
         const revision = context.store.getRevision();
@@ -137,6 +140,7 @@ export function registerProjectCommands(bus: LoomBus): ProjectHolder {
   if (!bus.hasCommand(OPEN_PROJECT_COMMAND)) {
     bus.registerCommand({
       name: OPEN_PROJECT_COMMAND,
+      inputSchema: z.object({ text: z.string().optional(), fileName: z.string().optional() }).strict(),
       description: "Open a .loom.json project, replacing the one that is open.",
       handler: async (input, context) => {
         const revision = context.store.getRevision();
@@ -164,6 +168,7 @@ export function registerProjectCommands(bus: LoomBus): ProjectHolder {
   if (!bus.hasCommand(NEW_PROJECT_COMMAND)) {
     bus.registerCommand({
       name: NEW_PROJECT_COMMAND,
+      inputSchema: NO_INPUT,
       description: "Start an empty project, replacing the one that is open.",
       handler: async (_input, context) => {
         const revision = context.store.getRevision();

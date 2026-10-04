@@ -16,6 +16,7 @@ import type { PlannedOutput } from "./resolution.ts";
 import type { ProjectSettings } from "@domain/types/graph.ts";
 import { Inspector } from "./inspector.tsx";
 import type { InspectorProjectSettings } from "./inspector.tsx";
+import { z } from "zod";
 
 beforeAll(installDomStubs);
 afterEach(cleanup);
@@ -597,6 +598,7 @@ describe("T1342b — the type badge opens this node's reference", () => {
     const asked: unknown[] = [];
     bus.registerCommand({
       name: "ui.openHelp",
+      inputSchema: z.object({ section: z.enum(["shortcuts", "nodes", "expressions", "agents"]).optional(), nodeType: z.string().optional() }).strict(),
       description: "test double",
       handler: (input, ctx) => {
         asked.push(input);

@@ -135,6 +135,12 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
       "manifest so a newly added owned parameter is reserved by construction.",
     reads: ["materialWgslNode.parameters"],
   },
+  "src/tests/integration/command-input-data.test.ts": {
+    reason:
+      "§T1556b: finds every PULSE a node TYPE declares, to hold its `fires` template to that " +
+      "command's input schema. A pulse's template is manifest data; there is no instance.",
+    reads: ["definition.parameters"],
+  },
   "src/nodes/definitions/custom-wgsl.test.ts": {
     reason:
       `${TYPE_ONLY_UNIT_TEST} ${HOOK_UNDER_TEST} SIX hook calls now, not two — each drives ` +

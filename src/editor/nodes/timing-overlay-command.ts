@@ -2,6 +2,7 @@
 // no undo group — whether a debug readout is DRAWN is not something the document knows about.
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { sharedForBus } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
 
 /**
  * `ui.toggleTimingOverlay` — the ONE way the per-node timing overlay turns on and off
@@ -92,6 +93,7 @@ export function registerTimingOverlayCommand(bus: LoomBus): TimingOverlayStore {
 
   bus.registerCommand({
     name: TOGGLE_TIMING_OVERLAY_COMMAND,
+    inputSchema: z.object({ show: z.boolean().optional() }).strict(),
     description:
       "Show or hide the per-node GPU timing overlay — absolute ms and each node's share of the frame (T1010).",
     handler: (input, context) => {

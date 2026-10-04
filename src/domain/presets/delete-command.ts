@@ -3,6 +3,8 @@ import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId, Revision } from "../types/ids.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts";
 import { applyGraphPatch } from "../commands/apply-patch.ts";
+import { idInput } from "../commands/input-schema.ts";
+import { z } from "zod";
 import { nodeByName } from "../graph/names.ts";
 import { parsePresetBank, serializePresetBank, type Preset } from "./bank.ts";
 import { CUE_LIST_NODE_TYPE, parseCueList } from "./cue-list.ts";
@@ -59,6 +61,9 @@ export interface PresetDeleteInput {
   /** The preset to remove. */
   name: string;
 }
+
+/** §T1556b: THE definition; the agent's `delete_preset` extends it with `dryRun`. */
+export const presetDeleteInputSchema = z.object({ nodeId: idInput, name: z.string().min(1) }).strict();
 
 export interface PresetDeleteOutput {
   ok: boolean;
@@ -160,6 +165,7 @@ export function registerPresetDeleteCommand(bus: LoomBus): void {
 
   bus.registerCommand({
     name: PRESET_DELETE_COMMAND,
+    inputSchema: presetDeleteInputSchema,
     description: "Delete one preset from a bank, as one patch and one undo step (§T1502b).",
     handler: (input, context) => {
       const revision = context.store.getRevision();

@@ -307,6 +307,14 @@ function staleBaseOutcome(
   };
 }
 
+/**
+ * §T1556b: a patch-shaped command's `rejectionOutput` — the answer it gives when the bus
+ * refuses its input (or a grant) before the handler runs, in the shape its own refusals have.
+ */
+export function patchRejectionOutput(_input: unknown, diagnostics: RuntimeDiagnostic[], revision: number): GraphPatchResult {
+  return rejected(revision, diagnostics).output;
+}
+
 function rejected(revision: number, diagnostics: RuntimeDiagnostic[]): CommandOutcome<GraphPatchResult> {
   return {
     status: "rejected",

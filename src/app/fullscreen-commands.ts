@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { sharedForBus } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
 
 /**
  * Fullscreen the viewer, as a bus command (T394, §V29, §V52, §V78, §V307).
@@ -96,6 +97,7 @@ export function registerFullscreenCommand(bus: LoomBus): FullscreenHolder {
 
   bus.registerCommand({
     name: "view.toggleFullscreen",
+    inputSchema: z.object({ fullscreen: z.boolean().optional(), target: z.enum(["viewer", "app"]).optional() }).strict(),
     description: "Fill the screen with the viewer's output, or leave fullscreen.",
     handler: async (input, context) => {
       const revision = context.store.getRevision();

@@ -3,6 +3,8 @@ import { useEffect, useRef } from "react";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { CompiledGraph } from "../compiler/types.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
+import { z } from "zod";
+import { nodeIdsInput } from "@domain/commands/input-schema.ts";
 
 /**
  * `runtime.resetFeedback`, REGISTERED (T292's enumeration found it missing — the
@@ -41,6 +43,7 @@ export function registerResetFeedbackCommand(
   if (bus.hasCommand("runtime.resetFeedback")) return;
   bus.registerCommand({
       name: "runtime.resetFeedback",
+      inputSchema: z.object({ nodeIds: nodeIdsInput.optional() }).strict(),
       description: "Clear temporal (feedback) history — one node's pair, or all of them.",
       handler: (input) => {
         const backend = sources.backend();

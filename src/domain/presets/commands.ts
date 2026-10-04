@@ -7,6 +7,8 @@ import type { GraphPatchOperation } from "../types/patch.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts";
 import { applyGraphPatch } from "../commands/apply-patch.ts";
+import { z } from "zod";
+import { finiteInput, idInput } from "../commands/input-schema.ts";
 import { nodeByName } from "../graph/names.ts";
 import { effectiveParameterSchema, resolveParameters, resolveStored } from "../parameters/resolve.ts";
 import { parameterReadOptions, type ParameterReadContext } from "../parameters/node-references.ts";
@@ -175,6 +177,27 @@ export interface PresetStoreInput {
   /** The preset to write. An existing name is overwritten in place, keeping its position. */
   name: string;
 }
+
+/**
+ * §T1556b — the preset commands' input schemas: THE definition, which the agent's
+ * `store_preset` / `recall_preset` tools extend with `dryRun` rather than copy.
+ */
+export const presetStoreInputSchema = z.object({ nodeId: idInput, name: z.string().min(1) }).strict();
+
+/** 0 is a cut, whatever the preset or the bank says. The curve list is the bank parser's. */
+export const morphSpecSchema = z
+  .object({ seconds: finiteInput.min(0), curve: z.enum(MORPH_CURVES as unknown as [MorphCurve, ...MorphCurve[]]) })
+  .strict();
+
+export const presetRecallInputSchema = z
+  .object({
+    nodeId: idInput,
+    /** Omitted: the preset named in the bank's Select. */
+    name: z.string().min(1).optional(),
+    /** How THIS recall is carried out, over the preset's and the bank's own morph. */
+    morph: morphSpecSchema.optional(),
+  })
+  .strict();
 
 export interface PresetStoreOutput {
   ok: boolean;
@@ -1098,6 +1121,7 @@ export function registerPresetCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: PRESET_STORE_COMMAND,
+    inputSchema: presetStoreInputSchema,
     description:
       "Store a bank's targets, as their whole stored slots, under a preset name (§T1496b). On a component instance whose component holds a preset bank, the preset is written into the component, for every instance (§T1505b).",
     handler: (input, context) => {
@@ -1170,6 +1194,7 @@ export function registerPresetCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: PRESET_RECALL_COMMAND,
+    inputSchema: presetRecallInputSchema,
     description:
       "Recall a bank's preset: every target it holds written back as one patch, one undo step (§T1496b); with a morph, the end state commits at once and the screen fades to it (§T1497b). A preset's recalls (other banks' presets) and its layer on/off ride in the same patch (§T1499b).",
     handler: (input, context) => {
@@ -1258,6 +1283,6 @@ export function registerPresetCommands(bus: LoomBus): void {
         output: { ok, preset: name, applied: ok ? plan.applied : [], skipped: plan.skipped, morph: ok ? plan.morph : null },
       };
     },
-    rejectionOutput: (input) => ({ ok: false, preset: typeof input?.name === "string" ? input.name : null, applied: [], skipped: [], morph: null }),
+    rejectionOutput: (input) => ({ ok: false, preset: typeof (input as Partial<PresetRecallInput> | null)?.name === "string" ? (input as PresetRecallInput).name ?? null : null, applied: [], skipped: [], morph: null }),
   });
 }

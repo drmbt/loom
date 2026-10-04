@@ -1,10 +1,12 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { CommandContext, CommandOutcome } from "@domain/commands/bus.ts";
-import { applyGraphPatch } from "@domain/commands/apply-patch.ts";
+import { applyGraphPatch, patchRejectionOutput } from "@domain/commands/apply-patch.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchResult } from "@domain/types/patch.ts";
 import { presetCatalogueHolderFor } from "@domain/presets/bank-view.ts";
 import { bindParameterPlan, boundControls, controlFromParameterPlan, unbindOperations, type ControlPlan } from "./parameter-controls.ts";
+import { z } from "zod";
+import { idInput } from "@domain/commands/input-schema.ts";
 
 /**
  * T1514b — the parameter-first mapping gestures as BUS COMMANDS (§V78).
@@ -70,6 +72,7 @@ export function registerControlCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CONTROL_FROM_PARAMETER_COMMAND,
+    inputSchema: z.object({ nodeId: idInput, parameterKey: idInput, panelId: idInput.optional() }).strict(),
     description: "Create the fitting control (slider, toggle, XY pad) for a parameter, bind it and add it to a Panel (T1514b).",
     handler: (input, context) => {
       // T1547b: the catalogue the canvas sizes nodes with, so the control lands clear of a
@@ -82,17 +85,21 @@ export function registerControlCommands(bus: LoomBus): void {
       // (`selectCreatedNodes` reads this flag).
       return { ...outcome, output: { ...outcome.output, keepSelection: true } };
     },
+    rejectionOutput: patchRejectionOutput,
   });
 
   bus.registerCommand({
     name: BIND_CONTROL_COMMAND,
+    inputSchema: z.object({ nodeId: idInput, parameterKey: idInput, controlId: idInput, channel: z.string().min(1).optional() }).strict(),
     description: "Drive a parameter from an existing control's channel (T1514b).",
     handler: (input, context) =>
       run(context, bindParameterPlan(context.graph, context.registry, input.nodeId, input.parameterKey, input.controlId, input.channel), input.nodeId),
+    rejectionOutput: patchRejectionOutput,
   });
 
   bus.registerCommand({
     name: UNBIND_CONTROL_COMMAND,
+    inputSchema: z.object({ nodeId: idInput, parameterKey: idInput }).strict(),
     description: "Let go of the control a parameter reads; it goes back to the value it held (T1514b).",
     handler: (input, context) => {
       const keys = boundControls(context.graph, context.registry, input.nodeId, input.parameterKey).map((bound) => bound.key);
@@ -100,5 +107,6 @@ export function registerControlCommands(bus: LoomBus): void {
       const operations = unbindOperations(context.graph, context.registry, input.nodeId, keys);
       return applyGraphPatch({ baseRevision: context.store.getRevision(), label: `Unlink ${input.parameterKey}`, operations }, context);
     },
+    rejectionOutput: patchRejectionOutput,
   });
 }

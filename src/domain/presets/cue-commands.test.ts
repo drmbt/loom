@@ -585,8 +585,13 @@ describe("cue.fire fires a named cue; cue.setStandby moves the standby without f
     const { bus } = session();
     const fire = await bus.execute("cue.fire", { cue: "1" } as never, contextFor(alice));
     const standby = await bus.execute("cue.setStandby", { cue: "1" } as never, contextFor(alice));
-    expect(codes(fire)).toEqual(["cue.list.missing"]);
-    expect(codes(standby)).toEqual(["cue.list.missing"]);
+    // §T1556b: `nodeId` is required by both commands' input schema, so the bus refuses the
+    // call by the field it lacks, before the handler could look for a list.
+    for (const result of [fire, standby]) {
+      expect(result.status).toBe("rejected");
+      expect(codes(result)).toEqual(["command.input"]);
+      expect(result.diagnostics[0]?.message).toContain("invalid at nodeId");
+    }
   });
 
   it("a dry run validates and moves nothing (§V36)", async () => {

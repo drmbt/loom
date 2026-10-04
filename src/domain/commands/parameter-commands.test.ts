@@ -14,6 +14,7 @@ import { SHADER_SOURCE_PARAMETER } from "./apply-patch.ts";
 import { createDomainBus } from "./index.ts";
 import type { LoomBus } from "./bus.ts";
 import { alice, contextFor, createHarness, patch, type Harness } from "./test-support.ts";
+import { z } from "zod";
 
 /**
  * Firing a pulse (T214, §V123, §V124, §V125).
@@ -95,6 +96,7 @@ describe("parameter.pulse", () => {
     // backend. The pulse's own contract is that it names a command and the bus finds it.
     harness.bus.registerCommand({
       name: "test.clearHistory",
+      inputSchema: z.object({ nodeIds: z.array(z.string()).optional() }).strict(),
       handler: (input) => {
         fired.push(input);
         return { status: "applied", output: { cleared: input.nodeIds?.length ?? 0 } };

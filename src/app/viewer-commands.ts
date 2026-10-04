@@ -2,6 +2,8 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
 import { FLY_AXES, isFlyAxis } from "@editor/viewer/orbit-gestures.ts";
 import type { FlyAxis } from "@editor/viewer/orbit-gestures.ts";
+import { z } from "zod";
+import { NO_INPUT, nodeIdsInput } from "@domain/commands/input-schema.ts";
 
 /**
  * `node.openViewer` — point the viewer at a node's output (T440, §V354).
@@ -113,6 +115,7 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
 
   bus.registerCommand({
     name: "node.openViewer",
+    inputSchema: z.object({ nodeIds: nodeIdsInput }).strict(),
     description: "Show a node's output in the viewer.",
     handler: (input, context) => {
       const revision = context.store.getRevision();
@@ -193,6 +196,7 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
   });
   bus.registerCommand({
     name: "viewer.cameraHome",
+    inputSchema: NO_INPUT,
     description: "Return the viewer's inspection camera to its baked framing.",
     handler: (_input, context) => {
       const revision = context.store.getRevision();
@@ -207,6 +211,7 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
   });
   bus.registerCommand({
     name: "viewer.frameContent",
+    inputSchema: NO_INPUT,
     description: "Frame the viewer's inspection camera on the content's measured bounds.",
     handler: async (_input, context) => {
       const revision = context.store.getRevision();
@@ -238,6 +243,7 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
   });
   bus.registerCommand({
     name: "viewer.fly",
+    inputSchema: z.object({ direction: z.string() }).strict(),
     description: "Move the viewer's inspection camera one step in a direction.",
     handler: (input, context) => {
       const revision = context.store.getRevision();
@@ -277,6 +283,7 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
    */
   bus.registerCommand({
     name: "viewer.editMapping",
+    inputSchema: z.object({ on: z.boolean().optional() }).strict(),
     description: "Turn the viewer's Edit mapping mode on or off (Corner Pin / Grid Warp handles over the picture).",
     handler: (input, context) => {
       const revision = context.store.getRevision();

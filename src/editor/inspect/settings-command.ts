@@ -1,5 +1,6 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { NO_INPUT } from "@domain/commands/input-schema.ts";
 
 /**
  * `ui.openSettings` — the ONE command that opens project settings (T359, §V307, §V52).
@@ -56,6 +57,7 @@ export function registerProjectSettingsCommand(bus: LoomBus): ProjectSettingsHol
 
   bus.registerCommand({
     name: OPEN_SETTINGS_COMMAND,
+    inputSchema: NO_INPUT,
     description: "Open project settings — resolution, working format, frame rate, seed.",
     handler: (_input, context) => {
       const revision = context.store.getRevision();

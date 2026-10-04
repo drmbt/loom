@@ -12,6 +12,7 @@ import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { Inspector } from "./inspector.tsx";
 import type { InspectorProjectSettings } from "./inspector.tsx";
+import { z } from "zod";
 
 /**
  * Pulse, on the ASSEMBLED pane, mounted the way `main.tsx` mounts it (T214, B10).
@@ -76,6 +77,7 @@ async function setup() {
   const fired: Array<{ nodeIds?: readonly string[] }> = [];
   bus.registerCommand({
     name: "test.clearHistory",
+    inputSchema: z.object({ nodeIds: z.array(z.string()).optional() }).strict(),
     handler: (input) => {
       fired.push(input);
       return { status: "applied", output: { cleared: 1 } };

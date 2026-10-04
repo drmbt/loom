@@ -13,6 +13,7 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import type { DeviceClient } from "@devices/device-client.ts";
 import type { LaserStateReport } from "@devices/device-protocol.ts";
 import { DEVICE_HELPER_COMMAND, DEVICE_HELPER_NAME, DEVICE_HELPER_START } from "@devices/helper.ts";
+import { NO_INPUT } from "@domain/commands/input-schema.ts";
 
 declare module "@domain/types/commands.ts" {
   interface CommandMap {
@@ -193,6 +194,7 @@ export function useLaserBridge(options: {
     if (bus === undefined || bus.hasCommand("laser.estop")) return;
     bus.registerCommand({
       name: "laser.estop",
+      inputSchema: NO_INPUT,
       description:
         "EMERGENCY STOP the laser output: blank, stop, e-stop the DAC and disarm this session. Safe to fire at any time; does nothing when no laser is connected.",
       handler: () => {

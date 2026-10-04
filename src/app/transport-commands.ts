@@ -2,6 +2,8 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import type { FrameInputs } from "@domain/types/backend.ts";
 import { SEEK_FRAME_LIMIT } from "@domain/types/graph.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
+import { NO_INPUT } from "@domain/commands/input-schema.ts";
 
 /**
  * Transport as a bus command (§V29, §V52, T184).
@@ -132,6 +134,7 @@ export function registerTransportCommands(bus: LoomBus): TransportHolder {
   if (!bus.hasCommand("transport.togglePlay")) {
     bus.registerCommand({
       name: "transport.togglePlay",
+      inputSchema: NO_INPUT,
       description: "Play or pause the live frame loop.",
       handler: (_input, context) => {
         if (holder.current === null) {
@@ -160,6 +163,7 @@ export function registerTransportCommands(bus: LoomBus): TransportHolder {
     if (bus.hasCommand(name)) return;
     bus.registerCommand<"transport.play">({
       name: name as "transport.play",
+      inputSchema: NO_INPUT,
       description: want ? "Start the frame loop (idempotent)." : "Stop the frame loop (idempotent).",
       handler: (_input, context) => {
         if (holder.current === null) {
@@ -186,6 +190,7 @@ export function registerTransportCommands(bus: LoomBus): TransportHolder {
   if (!bus.hasCommand("transport.stepFrame")) {
     bus.registerCommand({
       name: "transport.stepFrame",
+      inputSchema: z.object({ frames: z.number().optional() }).strict(),
       description: "Render exactly one frame (or the given count) synchronously.",
       handler: (input, context) => {
         if (holder.current === null) {
@@ -207,6 +212,7 @@ export function registerTransportCommands(bus: LoomBus): TransportHolder {
   if (!bus.hasCommand("transport.seek")) {
     bus.registerCommand({
       name: "transport.seek",
+      inputSchema: z.object({ frameIndex: z.number() }).strict(),
       description: "Jump to a frame by replaying from the start (§V170).",
       handler: (input, context) => {
         const revision = context.store.getRevision();
@@ -259,6 +265,7 @@ export function registerTransportCommands(bus: LoomBus): TransportHolder {
   if (!bus.hasCommand("transport.toggleLoop")) {
     bus.registerCommand({
       name: "transport.toggleLoop",
+      inputSchema: NO_INPUT,
       description: "Loop playback over the timeline's in/out range.",
       handler: (_input, context) => {
         const revision = context.store.getRevision();

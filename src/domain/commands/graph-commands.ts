@@ -5,6 +5,9 @@ import type { GraphPatch, GraphPatchResult } from "../types/patch.ts";
 import type { Revision } from "../types/ids.ts";
 import type { LoomBus } from "./bus.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
+import { z } from "zod";
+import { graphPatchSchema } from "../types/schemas.ts";
+import { NO_INPUT, type CommandInputSchema } from "./input-schema.ts";
 
 /**
  * Built-in graph commands and queries.
@@ -79,6 +82,12 @@ export function registerGraphCommands(bus: LoomBus): void {
   bus.registerCommand({
     name: "graph.applyPatch",
     description: "Atomically apply a list of graph operations (§V32).",
+    // §T1556b: the patch schema is the document's structural boundary (§V66) and is looser
+    // than `GraphPatch` on purpose in two places — a connect's `$` ref narrows at runtime
+    // only, and an override's fields are checked when it applies — so it cannot be typed as
+    // the command's input; the coverage guard beside it (GRAPH_PATCH_OPERATIONS_COVERED) is
+    // what holds the two together.
+    inputSchema: graphPatchSchema as unknown as CommandInputSchema<"graph.applyPatch">,
     handler: (input: GraphPatch, context) => applyGraphPatch(input, context),
     rejectionOutput: (_input, diagnostics, revision): GraphPatchResult => ({
       status: "rejected",
@@ -92,6 +101,7 @@ export function registerGraphCommands(bus: LoomBus): void {
   bus.registerCommand({
     name: "graph.undo",
     description: "Undo this actor's most recent undo group.",
+    inputSchema: NO_INPUT,
     handler: (_input, context) => {
       const history = context.store.getHistory(context.actor);
       const group = history.undo[history.undo.length - 1];
@@ -138,6 +148,7 @@ export function registerGraphCommands(bus: LoomBus): void {
   bus.registerCommand({
     name: "graph.redo",
     description: "Redo this actor's most recently undone group.",
+    inputSchema: NO_INPUT,
     handler: (_input, context) => {
       const history = context.store.getHistory(context.actor);
       const group = history.redo[history.redo.length - 1];
@@ -198,6 +209,7 @@ export function registerGraphCommands(bus: LoomBus): void {
   bus.registerCommand({
     name: "graph.revertTransaction",
     description: "Undo every undo group belonging to one transaction, newest first (§V34).",
+    inputSchema: z.object({ transactionId: z.string().min(1) }).strict(),
     handler: (input, context) => {
       const revisionNow = (): Revision => context.store.getRevision();
       const groupsOf = (): string[] =>
@@ -291,7 +303,8 @@ export function registerGraphCommands(bus: LoomBus): void {
       };
     },
     rejectionOutput: (input, _diagnostics, revision): RevertTransactionOutput => ({
-      transactionId: input.transactionId,
+      // §T1556b: on an input refusal this is the input the schema refused.
+      transactionId: typeof (input as Partial<RevertTransactionInput> | null)?.transactionId === "string" ? (input as RevertTransactionInput).transactionId : "",
       undoneGroupIds: [],
       remainingGroupIds: [],
       revision,

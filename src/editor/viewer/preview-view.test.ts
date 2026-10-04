@@ -202,7 +202,11 @@ describe("preview.setView / preview.resetView (§V78)", () => {
       contextFor(alice),
     );
     expect(result.status).toBe("rejected");
-    expect(result.diagnostics?.[0]?.code).toBe("preview.unknownLens");
+    // §T1556b: the bus checks it now, against the command's input schema (the lens enum is
+    // `PREVIEW_LENSES`), and names the field and the lenses there are.
+    expect(result.diagnostics?.[0]?.code).toBe("command.input");
+    expect(result.diagnostics?.[0]?.message).toContain("invalid at lens");
+    expect(result.diagnostics?.[0]?.message).toContain("'luminance'");
     expect(store.isDefault(nodeId)).toBe(true);
   });
 

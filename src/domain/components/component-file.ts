@@ -69,19 +69,28 @@ export interface ComponentCatalogue {
   get(componentId: ComponentId, version: number): GraphComponentDefinition | undefined;
 }
 
-export const componentImportInputSchema = z.object({
-  /** Absent: the command asks its reader for a file (T1494b — the palette and menu doors). */
-  text: z.string().min(1).optional(),
-  fileName: z.string().optional(),
-  position: z.object({ x: z.number().finite(), y: z.number().finite() }).optional(),
-});
+/**
+ * §T1556b: the bus parses these before either command runs (`inputSchema`), and the agent's
+ * `import_component` / `export_component` extend them, so they are strict like every other
+ * command input: an unknown key is a caller's mistake, reported, not dropped.
+ */
+export const componentImportInputSchema = z
+  .object({
+    /** Absent: the command asks its reader for a file (T1494b — the palette and menu doors). */
+    text: z.string().min(1).optional(),
+    fileName: z.string().min(1).optional(),
+    position: z.object({ x: z.number().finite(), y: z.number().finite() }).strict().optional(),
+  })
+  .strict();
 
-export const componentExportInputSchema = z.object({
-  componentId: z.string().min(1),
-  version: z.number().int().positive().optional(),
-  /** `text` hands the file's bytes back instead of writing them (T1494b — the agent door). */
-  destination: z.enum(["file", "text"]).optional(),
-});
+export const componentExportInputSchema = z
+  .object({
+    componentId: z.string().min(1),
+    version: z.number().int().positive().optional(),
+    /** `text` hands the file's bytes back instead of writing them (T1494b — the agent door). */
+    destination: z.enum(["file", "text"]).optional(),
+  })
+  .strict();
 
 const refKey = (componentId: ComponentId, version: number): string => `${componentId}@${version}`;
 

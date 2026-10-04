@@ -6,6 +6,8 @@ import type { StoredParameter } from "../types/parameters.ts";
 import type { GraphPatchOperation } from "../types/patch.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts";
 import { applyGraphPatch } from "../commands/apply-patch.ts";
+import { idInput } from "../commands/input-schema.ts";
+import { z } from "zod";
 import { nodeByName, rewriteNodeNameReferences, uniqueNodeName } from "../graph/names.ts";
 import { parseComponentNodeType } from "../components/component-type.ts";
 import { PRESETS_NODE_TYPE, parsePresetBank, parsePresetTargets, serializePresetBank, type Preset } from "./bank.ts";
@@ -162,6 +164,7 @@ export function registerPresetMoveCommand(bus: LoomBus): void {
 
   bus.registerCommand({
     name: PRESET_MOVE_INTO_COMPONENT_COMMAND,
+    inputSchema: z.object({ nodeId: idInput }).strict(),
     description:
       "Move a Presets bank that targets one component instance INTO that component: its presets become the component's own (for every instance, travelling with it), and the instance becomes the bank its cues and Panels name (§T1505b).",
     handler: (input, context: CommandContext) => {

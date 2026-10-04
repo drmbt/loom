@@ -10,6 +10,10 @@ import type { ParameterDefinition, ParameterSchema, ParameterValue } from "../ty
 import type { GraphPatchResult } from "../types/patch.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts";
 import { applyGraphPatch } from "../commands/apply-patch.ts";
+import { z } from "zod";
+import { idInput, nodeIdsInput, pointInput } from "../commands/input-schema.ts";
+import { parameterValueSchema } from "../types/schemas.ts";
+import { parameterDefinitionSchema } from "./schemas.ts";
 import { attachClipboardComponents } from "../commands/loom-clipboard.ts";
 import { renumberedName, rewriteNodeNameReferences } from "../graph/names.ts";
 import { withBoundaryPorts } from "./boundary-ports.ts";
@@ -299,6 +303,10 @@ function editOutcome(
     },
   };
 }
+
+/** §T1556b: the input schemas' shared pieces. A component version is a positive integer. */
+const versionInput = z.number().int().positive();
+const portDirection = z.enum(["input", "output"]);
 
 function patchRejection(revision: Revision, diagnostics: RuntimeDiagnostic[]): CommandOutcome<GraphPatchResult> {
   return {
@@ -655,6 +663,19 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
   const components = options.components;
   const host = options.host ?? null;
 
+  /**
+   * §T1556b: what an edit command answers when the bus refuses its input before the handler
+   * runs, in the shape its own refusals have. The parameter menu's "Publish to component" row
+   * sends a target, not a publish, and must get a refusal back, not a throw.
+   */
+  const editRejection = (_input: unknown, diagnostics: RuntimeDiagnostic[]): ComponentEditOutput => ({
+    ok: false,
+    componentId: host?.componentId ?? null,
+    version: host?.version ?? null,
+    diagnostics,
+  });
+  const patchRejectionOutput = (_input: unknown, diagnostics: RuntimeDiagnostic[], revision: Revision): GraphPatchResult =>
+    patchRejection(revision, diagnostics).output;
   const requireHostDefinition = (): GraphComponentDefinition | undefined =>
     host === null ? undefined : components.get(host.componentId, host.version);
 
@@ -708,6 +729,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
 
   bus.registerCommand({
     name: "component.saveSelection",
+    inputSchema: z.object({ nodeIds: nodeIdsInput, name: z.string(), description: z.string().optional(), componentId: idInput.optional(), portNames: z.record(z.string()).optional() }).strict(),
     description: "Save the selected nodes as a reusable component and instance it (§V79).",
     handler: (input, context): CommandOutcome<SaveSelectionOutput> => {
       const diagnostics: RuntimeDiagnostic[] = [];
@@ -817,10 +839,14 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         },
       };
     },
+    rejectionOutput: (_input, diagnostics): SaveSelectionOutput => ({
+      ok: false, componentId: null, version: null, instanceNodeId: null, exposedInputs: [], exposedOutputs: [], diagnostics,
+    }),
   });
 
   bus.registerCommand({
     name: "component.instantiate",
+    inputSchema: z.object({ componentId: idInput, version: versionInput.optional(), position: pointInput.optional(), mode: z.enum(["linked", "detached"]).optional() }).strict(),
     description: "Place a component as a linked instance or a detached copy (§V79, §V83).",
     handler: (input, context): CommandOutcome<InstantiateOutput> => {
       const diagnostics: RuntimeDiagnostic[] = [];
@@ -948,10 +974,15 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         },
       };
     },
+    rejectionOutput: (input, diagnostics): InstantiateOutput => ({
+      ok: false, nodeId: null, nodeIds: [], version: null, diagnostics,
+      componentId: typeof (input as Partial<InstantiateInput> | null)?.componentId === "string" ? (input as InstantiateInput).componentId : "",
+    }),
   });
 
   bus.registerCommand({
     name: "component.detach",
+    inputSchema: z.object({ nodeId: idInput }).strict(),
     description: "Replace a linked instance with an independent copy of its internals (§V79).",
     handler: (input, context): CommandOutcome<DetachOutput> => {
       const diagnostics: RuntimeDiagnostic[] = [];
@@ -1163,10 +1194,12 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         output: { ok: true, nodeIds: created, copies: copiedAs, diagnostics },
       };
     },
+    rejectionOutput: (_input, diagnostics): DetachOutput => ({ ok: false, nodeIds: [], copies: {}, diagnostics }),
   });
 
   bus.registerCommand({
     name: "component.exposePort",
+    inputSchema: z.object({ direction: portDirection, nodeId: idInput, portId: idInput, externalId: idInput.optional(), label: z.string().optional() }).strict(),
     description: "Surface an internal port on the component's boundary (T131).",
     handler: (input, context): CommandOutcome<ComponentEditOutput> => {
       const diagnostics: RuntimeDiagnostic[] = [];
@@ -1199,10 +1232,12 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
       const next = withExposedPort(definition, input.direction, exposed);
       return commitDefinitionStep(context, `Expose ${exposed.label}`, next, diagnostics);
     },
+    rejectionOutput: editRejection,
   });
 
   bus.registerCommand({
     name: "component.unexposePort",
+    inputSchema: z.object({ direction: portDirection, externalId: idInput }).strict(),
     description: "Remove an exposed port from the component boundary (T131).",
     handler: (input, context): CommandOutcome<ComponentEditOutput> => {
       const diagnostics: RuntimeDiagnostic[] = [];
@@ -1215,10 +1250,12 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
       const next = withoutExposedPort(definition, input.direction, input.externalId);
       return commitDefinitionStep(context, `Unexpose ${input.externalId}`, next, diagnostics);
     },
+    rejectionOutput: editRejection,
   });
 
   bus.registerCommand({
     name: "component.publishParameter",
+    inputSchema: z.object({ key: idInput, definition: parameterDefinitionSchema, targets: z.array(z.object({ nodeId: idInput, key: idInput }).strict()) }).strict(),
     description: "Promote internal parameters onto the component's parameter page (§V80).",
     handler: (input, context): CommandOutcome<ComponentEditOutput> => {
       const diagnostics: RuntimeDiagnostic[] = [];
@@ -1261,10 +1298,12 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
       });
       return commitDefinitionStep(context, `Publish ${input.definition.label}`, next, diagnostics);
     },
+    rejectionOutput: editRejection,
   });
 
   bus.registerCommand({
     name: "component.unpublishParameter",
+    inputSchema: z.object({ key: idInput }).strict(),
     description: "Remove a parameter from the component's parameter page.",
     handler: (input, context): CommandOutcome<ComponentEditOutput> => {
       const diagnostics: RuntimeDiagnostic[] = [];
@@ -1276,10 +1315,12 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
       }
       return commitDefinitionStep(context, `Unpublish ${input.key}`, withoutPublishedParameter(definition, input.key), diagnostics);
     },
+    rejectionOutput: editRejection,
   });
 
   bus.registerCommand({
     name: "component.reorderParameter",
+    inputSchema: z.object({ key: idInput, toIndex: z.number().int() }).strict(),
     description: "Move a published parameter on the component's parameter page (T423, §V80).",
     handler: (input, context): CommandOutcome<ComponentEditOutput> => {
       const diagnostics: RuntimeDiagnostic[] = [];
@@ -1303,10 +1344,12 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
       const next = reorderPublishedParameter(definition, input.key, input.toIndex);
       return commitDefinitionStep(context, `Reorder ${input.key}`, next, diagnostics);
     },
+    rejectionOutput: editRejection,
   });
 
   bus.registerCommand({
     name: "component.setPublishedParameter",
+    inputSchema: z.object({ key: idInput, value: parameterValueSchema }).strict(),
     description: "Turn a published knob: every internal target, one patch, one undo step (§V80).",
     handler: (input, context): CommandOutcome<GraphPatchResult> => {
       const revision = context.store.getRevision();
@@ -1340,10 +1383,12 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         context,
       );
     },
+    rejectionOutput: patchRejectionOutput,
   });
 
   bus.registerCommand({
     name: "component.setParentBinding",
+    inputSchema: z.object({ nodeId: idInput, key: idInput, reference: z.string().nullable() }).strict(),
     description: "Bind an internal parameter to a published parameter of the owning component (§V81).",
     handler: (input, context): CommandOutcome<ComponentEditOutput> => {
       const diagnostics: RuntimeDiagnostic[] = [];
@@ -1402,10 +1447,12 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         },
       };
     },
+    rejectionOutput: editRejection,
   });
 
   bus.registerCommand({
     name: "component.upgradeInstance",
+    inputSchema: z.object({ nodeId: idInput, toVersion: versionInput.optional() }).strict(),
     description: "Move one instance to another component version, explicitly and migrated (§V84).",
     handler: (input, context): CommandOutcome<UpgradeInstanceOutput> => {
       const diagnostics: RuntimeDiagnostic[] = [];
@@ -1482,6 +1529,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         output: { ok: true, plan, migrations: plan.migrations, diagnostics },
       };
     },
+    rejectionOutput: (_input, diagnostics): UpgradeInstanceOutput => ({ ok: false, plan: null, migrations: [], diagnostics }),
   });
 
   bus.registerQuery({

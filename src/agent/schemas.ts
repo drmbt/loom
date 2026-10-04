@@ -2,10 +2,14 @@ import { z } from "zod";
 
 import {
   graphPatchOperationSchema as domainGraphPatchOperationSchema,
+  graphPatchSchema,
   storedParameterSchema,
 } from "@domain/types/schemas.ts";
 import { channelExpression } from "@domain/parameters/slots.ts";
-import { MORPH_CURVES, type MorphCurve } from "@domain/presets/bank.ts";
+import { componentExportInputSchema, componentImportInputSchema } from "@domain/components/component-file.ts";
+import { presetRecallInputSchema, presetStoreInputSchema } from "@domain/presets/commands.ts";
+import { presetDeleteInputSchema } from "@domain/presets/delete-command.ts";
+import { cueNamedInputSchema, cueStepInputSchema } from "@domain/presets/cue-commands.ts";
 
 /**
  * Tool input schemas — the "schema" half of "transport plus schema" (§V39, §V66).
@@ -158,11 +162,12 @@ export const graphPatchOperationSchema = domainGraphPatchOperationSchema
  * built against a snapshot at all, so there they may default — a human clicking "add
  * node" does not carry a base revision either.
  */
-export const applyGraphPatchInput = z
-  .object({
-    baseRevision: z.number().int().nonnegative(),
-    operations: z.array(graphPatchOperationSchema).min(1),
-    label: z.string().max(200).optional(),
+export const applyGraphPatchInput = graphPatchSchema
+  // §T1556b: the command's own schema (`graph.applyPatch` parses it on the bus), with this
+  // boundary's policy on each operation and an empty patch refused. The cap is the command's
+  // (`graphPatchSchema`), which the bus applies to this input anyway.
+  .extend({
+    operations: z.array(graphPatchOperationSchema).min(1).max(10_000),
     /** §V36: validate and report, mutate nothing. */
     dryRun: z.boolean().optional(),
   })
@@ -326,23 +331,14 @@ export const saveProjectInput = z.object({ saveAs: z.boolean().optional() }).str
  * T1494b: a component file crosses as TEXT, never as a path — the page cannot open a path,
  * and a tool that works on one transport is the split §V39 exists to prevent (§V485).
  */
-export const importComponentInput = z
-  .object({
-    text: z.string().min(1),
-    /** Named in every refusal, so the message says which file. */
-    fileName: z.string().min(1).optional(),
-    position: position.optional(),
-    dryRun,
-  })
+export const importComponentInput = componentImportInputSchema
+  // §T1556b: the command's own schema, with the one thing that differs at this door: an
+  // agent has no file picker, so the text is required here.
+  .extend({ text: z.string().min(1), dryRun })
   .strict();
 
-export const exportComponentInput = z
-  .object({
-    componentId: z.string().min(1),
-    /** Omitted: the latest installed version. */
-    version: z.number().int().positive().optional(),
-  })
-  .strict();
+/** §T1556b: the command's schema; the tool itself picks `destination` (text). */
+export const exportComponentInput = componentExportInputSchema.omit({ destination: true }).strict();
 
 /**
  * T1502b: preset banks and the cue list. Every field is one the COMMAND reads
@@ -350,16 +346,9 @@ export const exportComponentInput = z
  * `cue.setStandby`) — nothing here is a tool-side option, because a field the command does
  * not take would have to be implemented in the adapter (§V39).
  *
- * The curve list is the domain's (`MORPH_CURVES`), not a second copy of it: a curve added
- * to the bank's parser is one the agent can ask for in the same commit.
+ * §T1556b: and so each tool's schema IS the command's (`presetRecallInputSchema` and the
+ * rest, which the bus parses), extended with `dryRun` — one definition, not a mirror.
  */
-const morphSpec = z
-  .object({
-    /** 0 is a cut, whatever the preset or the bank says. */
-    seconds: finite.min(0),
-    curve: z.enum(MORPH_CURVES as unknown as [MorphCurve, ...MorphCurve[]]),
-  })
-  .strict();
 
 export const listPresetsInput = z
   .object({
@@ -368,20 +357,11 @@ export const listPresetsInput = z
   })
   .strict();
 
-export const storePresetInput = z.object({ nodeId: z.string().min(1), name: z.string().min(1), dryRun }).strict();
+export const storePresetInput = presetStoreInputSchema.extend({ dryRun }).strict();
 
-export const recallPresetInput = z
-  .object({
-    nodeId: z.string().min(1),
-    /** Omitted: the preset named in the bank's Select. */
-    name: z.string().min(1).optional(),
-    /** How THIS recall is carried out, over the preset's and the bank's own morph. */
-    morph: morphSpec.optional(),
-    dryRun,
-  })
-  .strict();
+export const recallPresetInput = presetRecallInputSchema.extend({ dryRun }).strict();
 
-export const deletePresetInput = z.object({ nodeId: z.string().min(1), name: z.string().min(1), dryRun }).strict();
+export const deletePresetInput = presetDeleteInputSchema.extend({ dryRun }).strict();
 
 export const listCuesInput = z
   .object({
@@ -390,15 +370,10 @@ export const listCuesInput = z
   })
   .strict();
 
-export const cueStepInput = z
-  .object({
-    /** Omitted: the one cue list whose Keys switch is on — refused, naming them, when none or several are. */
-    nodeId: z.string().min(1).optional(),
-    dryRun,
-  })
-  .strict();
+/** Omitted `nodeId`: the one cue list whose Keys switch is on — refused, naming them, when none or several are. */
+export const cueStepInput = cueStepInputSchema.extend({ dryRun }).strict();
 
-export const cueNamedInput = z.object({ nodeId: z.string().min(1), cue: z.string().min(1), dryRun }).strict();
+export const cueNamedInput = cueNamedInputSchema.extend({ dryRun }).strict();
 
 /**
  * Tool input types are INFERRED from the schemas above, never hand-written beside them.

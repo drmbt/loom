@@ -5,6 +5,8 @@ import { parameterReadOptions, type ParameterReadContext } from "../parameters/n
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts";
 import { applyGraphPatch } from "../commands/apply-patch.ts";
+import { z } from "zod";
+import { idInput } from "../commands/input-schema.ts";
 import { nodeByName } from "../graph/names.ts";
 import { resolveParameters } from "../parameters/resolve.ts";
 import { parsePresetBank, type MorphCurve, type MorphSpec, type Preset } from "./bank.ts";
@@ -115,6 +117,15 @@ export interface CueSetStandbyInput {
   /** The cue GO fires next, by name. */
   cue: string;
 }
+
+/**
+ * §T1556b — the cue commands' input schemas: THE definition, which the agent's cue tools
+ * extend with `dryRun` rather than copy.
+ */
+export const cueStepInputSchema = z.object({ nodeId: idInput.optional() }).strict();
+
+/** `cue.fire` and `cue.setStandby`: a cue list and one of its cues, by name. */
+export const cueNamedInputSchema = z.object({ nodeId: idInput, cue: z.string().min(1) }).strict();
 
 export interface CueFireOutput {
   ok: boolean;
@@ -583,6 +594,7 @@ export function registerCueCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CUE_GO_COMMAND,
+    inputSchema: cueStepInputSchema,
     description:
       "GO: fire a cue list's standby cue — its preset recalled and the list advanced as one patch, one undo step (§T1500b). Without a nodeId, the one cue list whose Keys switch is on.",
     handler: (input, context) => fireCue(context, input?.nodeId, true, "GO", standbyCue, presetCatalogueOf(bus)),
@@ -591,6 +603,7 @@ export function registerCueCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CUE_BACK_COMMAND,
+    inputSchema: cueStepInputSchema,
     description:
       "BACK: fire the cue before a cue list's current one, with that cue's own morph (§T1500b). Without a nodeId, the one cue list whose Keys switch is on.",
     handler: (input, context) => fireCue(context, input?.nodeId, true, "BACK", previousCue, presetCatalogueOf(bus)),
@@ -599,6 +612,7 @@ export function registerCueCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CUE_FIRE_COMMAND,
+    inputSchema: cueNamedInputSchema,
     description: "Fire a named cue of a cue list directly; the standby becomes the cue after it (§T1500b).",
     handler: (input, context) => {
       const name = typeof input?.cue === "string" ? input.cue.trim() : "";
@@ -609,6 +623,7 @@ export function registerCueCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CUE_SET_STANDBY_COMMAND,
+    inputSchema: cueNamedInputSchema,
     description: "Move a cue list's standby — the cue GO fires next — without firing anything (§T1500b).",
     handler: (input, context) => {
       const revision = context.store.getRevision();

@@ -8,6 +8,7 @@ import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import { authoredGraph } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import type { LoomBus } from "./bus.ts";
+import { NO_INPUT } from "./input-schema.ts";
 
 /**
  * `project.validate` (T174, §V39).
@@ -73,6 +74,7 @@ export interface ValidationReport {
 export function registerValidateCommand(bus: LoomBus): void {
   bus.registerCommand({
     name: "project.validate",
+    inputSchema: NO_INPUT,
     description: "Validate the graph without compiling it: definitions, wiring and cycles.",
     handler: (_input, context) => {
       /**

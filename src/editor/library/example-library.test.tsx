@@ -9,6 +9,7 @@ import { runtimeRequirement, type HostFacts } from "@domain/types/requirements.t
 import { capabilityOf, listExampleProjects } from "./example-catalogue.ts";
 import { ExampleLibrary } from "./example-library.tsx";
 import { readExampleLink, resolveExampleLink } from "./example-link.ts";
+import { z } from "zod";
 
 /**
  * The example library (T189, §V93, §V88).
@@ -59,6 +60,7 @@ function busWithOpen(): { bus: LoomBus; opened: Array<{ text?: string; fileName?
   const opened: Array<{ text?: string; fileName?: string }> = [];
   harness.bus.registerCommand({
     name: "project.open",
+    inputSchema: z.object({ text: z.string().optional(), fileName: z.string().optional() }).strict(),
     description: "Test double for the composition root's open (T43).",
     handler: (input, commandContext) => {
       opened.push(input);
@@ -380,6 +382,7 @@ describe("ExampleLibrary (T189, §V93)", () => {
     const harness = createComponentHarness("e", graphOf([]));
     harness.bus.registerCommand({
       name: "project.open",
+      inputSchema: z.object({ text: z.string().optional(), fileName: z.string().optional() }).strict(),
       description: "Test double that refuses (T43).",
       handler: (_input, commandContext) => ({
         status: "rejected" as const,

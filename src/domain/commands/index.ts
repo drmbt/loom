@@ -18,6 +18,7 @@ import { registerGridWarpCommands } from "./grid-warp-commands.ts";
 
 export {
   CapabilityDeniedError,
+  InvalidCommandInputError,
   InvalidInvocationError,
   UnknownCommandError,
   UnknownQueryError,

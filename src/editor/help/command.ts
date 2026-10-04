@@ -1,5 +1,6 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
 
 /**
  * `ui.openHelp` — the one command that opens the help panel (T200, §V52, §V90).
@@ -71,6 +72,7 @@ export function registerHelpCommand(bus: LoomBus): HelpHolder {
 
   bus.registerCommand({
     name: OPEN_HELP_COMMAND,
+    inputSchema: z.object({ section: z.enum(HELP_SECTIONS as unknown as [HelpSection, ...HelpSection[]]).optional(), nodeType: z.string().optional() }).strict(),
     description: "Open help — shortcuts, node reference, expression reference, agent setup.",
     handler: (input, context) => {
       const revision = context.store.getRevision();

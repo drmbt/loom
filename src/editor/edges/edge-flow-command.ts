@@ -2,6 +2,7 @@
 // undo group — whether a wire is ANIMATED is not something the document knows about.
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { sharedForBus } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
 
 /**
  * `ui.toggleEdgeFlow` — the flow-dash animation becomes a DEBUG VIEW (T1013, T1010).
@@ -87,6 +88,7 @@ export function registerEdgeFlowCommand(bus: LoomBus): EdgeFlowStore {
 
   bus.registerCommand({
     name: TOGGLE_EDGE_FLOW_COMMAND,
+    inputSchema: z.object({ show: z.boolean().optional() }).strict(),
     description:
       "Show or hide the animated flow dashes on edges — speed and opacity from real per-pass GPU ms (T1013).",
     handler: (input, context) => {

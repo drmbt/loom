@@ -117,7 +117,9 @@ describe("node output overrides", () => {
     );
 
     expect(result.status).toBe("rejected");
-    expect(result.diagnostics.some((d) => d.code === "node.format.invalid")).toBe(true);
+    // §T1556b: refused by the bus against the command's input schema (`nodeFormatOverrideSchema`,
+    // the same one the patch applies), naming the field, before any patch is built.
+    expect(result.diagnostics.some((d) => d.code === "command.input" && d.message.includes("format.format"))).toBe(true);
     expect(node()).toEqual(before);
   });
 

@@ -15,6 +15,7 @@ import { createAppRuntime } from "./app-runtime.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 import { usePulseFiring } from "./pulse-firing.ts";
 import { renderRangeHolderFor } from "./render-range.ts";
+import { z } from "zod";
 
 /**
  * Expression-fired pulses reach a node INSIDE a component (T615, T214, §V125).
@@ -66,6 +67,7 @@ describe("usePulseFiring — a pulse inside a component fires, and lands on ITS 
     const cleared: string[][] = [];
     runtime.bus.registerCommand({
       name: "runtime.resetFeedback",
+      inputSchema: z.object({ nodeIds: z.array(z.string()).optional() }).strict(),
       description: "Test double for the feedback reset a pulse fires.",
       handler: (input) => {
         cleared.push([...(input.nodeIds ?? [])]);
@@ -233,6 +235,7 @@ describe("usePulseFiring — a take fires no command that edits the document (T1
     const cleared: string[][] = [];
     runtime.bus.registerCommand({
       name: "runtime.resetFeedback",
+      inputSchema: z.object({ nodeIds: z.array(z.string()).optional() }).strict(),
       description: "Test double for the feedback reset a pulse fires.",
       handler: (input) => {
         cleared.push([...(input.nodeIds ?? [])]);
@@ -297,6 +300,7 @@ describe("usePulseFiring — a pulse reading a morphing parameter fires mid-fade
     let at = -1;
     runtime.bus.registerCommand({
       name: "runtime.resetFeedback",
+      inputSchema: z.object({ nodeIds: z.array(z.string()).optional() }).strict(),
       description: "Test double for the feedback reset a pulse fires.",
       handler: () => {
         fired.push(at);

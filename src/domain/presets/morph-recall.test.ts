@@ -590,7 +590,10 @@ describe("which morph applies (§5.1): the recall's own, else the preset's, else
     const revision = run.store.view.getRevision();
     const result = await run.bus.execute("preset.recall", { nodeId: "bank", name: "plain", morph: { seconds: -1, curve: "linear" } }, contextFor(alice));
     expect(result.status).toBe("rejected");
-    expect(result.diagnostics[0]?.code).toBe("preset.recall.morph");
+    // §T1556b: the bus refuses it against the recall's input schema (`morphSpecSchema`, the
+    // one the agent's recall_preset also extends), naming the field.
+    expect(result.diagnostics[0]?.code).toBe("command.input");
+    expect(result.diagnostics[0]?.message).toContain("morph.seconds");
     expect(run.store.view.getRevision()).toBe(revision);
     expect(run.stored("level", "brightness")).toBe(0.2);
   });

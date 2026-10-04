@@ -2,6 +2,7 @@ import type { CompiledGraph } from "@compiler/index.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { NO_INPUT } from "@domain/commands/input-schema.ts";
 
 /**
  * `project.compile` on the bus (T174, T220, §V39, §V29).
@@ -131,6 +132,7 @@ export function registerCompileCommand(bus: LoomBus): CompileHolder {
   if (!bus.hasCommand("project.compile")) {
     bus.registerCommand({
       name: "project.compile",
+      inputSchema: NO_INPUT,
       description: "Compile the graph to an execution plan and report its diagnostics.",
       handler: (_input, context) => {
         const revision = context.store.getRevision();

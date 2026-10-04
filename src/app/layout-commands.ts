@@ -1,5 +1,6 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { NO_INPUT } from "@domain/commands/input-schema.ts";
 
 /**
  * The shell layout's bus commands (T436, §V78, §V307).
@@ -79,6 +80,7 @@ export function registerLayoutCommands(bus: LoomBus): LayoutCommandHolder {
 
   bus.registerCommand({
     name: OPEN_LAYOUTS_COMMAND,
+    inputSchema: NO_INPUT,
     description: "Open the layout menu — save, name, update or restore a window layout.",
     handler: (_input, context) => {
       const revision = context.store.getRevision();
@@ -100,6 +102,7 @@ export function registerLayoutCommands(bus: LoomBus): LayoutCommandHolder {
 
   bus.registerCommand({
     name: RESET_LAYOUT_COMMAND,
+    inputSchema: NO_INPUT,
     description: "Reset the window layout to the built-in default arrangement.",
     handler: (_input, context) => {
       const revision = context.store.getRevision();
@@ -120,6 +123,7 @@ export function registerLayoutCommands(bus: LoomBus): LayoutCommandHolder {
 
   bus.registerCommand({
     name: SHOW_PROBLEMS_COMMAND,
+    inputSchema: NO_INPUT,
     description: "Show the problems pane — bring its tab to the front, restoring it if closed.",
     handler: (_input, context) => {
       const revision = context.store.getRevision();

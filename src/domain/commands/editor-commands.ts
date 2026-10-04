@@ -7,6 +7,8 @@ import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "./bus.ts";
 import { nodeNames, renumberedName, rewriteNodeNameReferences } from "../graph/names.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
+import { z } from "zod";
+import { idInput, nodeIdsInput, pointInput } from "./input-schema.ts";
 import { clipboardComponentsFor, encodeLoomClipboard, readLoomClipboard } from "./loom-clipboard.ts";
 import type { ClipboardArrival, SystemClipboard } from "./loom-clipboard.ts";
 
@@ -121,6 +123,13 @@ interface Clipboard {
 
 /** Successive pastes of one clipboard cascade instead of stacking on each other. */
 const CASCADE = { x: 32, y: 32 } as const;
+
+/** §T1556b: the input schemas, one per input shape above. */
+const nodeSelectionSchema = z.object({ nodeIds: nodeIdsInput }).strict();
+const pasteSchema = z.object({ offset: pointInput.optional() }).strict();
+const duplicateSchema = z.object({ nodeIds: nodeIdsInput, offset: pointInput.optional() }).strict();
+const renameSchema = z.object({ nodeId: idInput, label: z.string().nullable() }).strict();
+const valuePlotModeSchema = z.object({ nodeId: idInput, mode: z.enum(["bar", "trail"]).nullable() }).strict();
 
 const rejection = (
   _input: unknown,
@@ -354,6 +363,7 @@ function registerToggle(
   bus.registerCommand({
     name,
     description: `${label} on the target nodes.`,
+    inputSchema: nodeSelectionSchema,
     handler: (input, context) => {
       const nodes = existing(context.graph, targets(input));
       if (nodes.length === 0) {
@@ -447,6 +457,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.removeNodes",
+    inputSchema: nodeSelectionSchema,
     description: "Delete nodes and their incident edges (§V40).",
     handler: (input, context) => {
       const nodeIds = targets(input);
@@ -460,6 +471,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.copySelection",
+    inputSchema: nodeSelectionSchema,
     description: "Copy the selected nodes and the edges between them.",
     handler: (input, context) => {
       const copied = snapshot(context.graph, targets(input));
@@ -490,6 +502,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.cutSelection",
+    inputSchema: nodeSelectionSchema,
     description: "Copy the selection to the clipboard, then delete it.",
     handler: (input, context) => {
       const nodeIds = targets(input);
@@ -514,6 +527,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.paste",
+    inputSchema: pasteSchema,
     description: "Paste the clipboard as new nodes with new ids (§V35).",
     handler: async (input, context) => {
       /*
@@ -588,6 +602,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.duplicateSelection",
+    inputSchema: duplicateSchema,
     description: "Copy the selected nodes in place, offset, keeping the edges between them.",
     handler: (input, context) => {
       const copied = snapshot(context.graph, targets(input));
@@ -602,6 +617,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "node.rename",
+    inputSchema: renameSchema,
     description: "Rename a node, or clear the name back to its definition title (§V29).",
     handler: (input, context) =>
       patchThrough(context, input.label === null ? "Clear name" : "Rename", [
@@ -626,6 +642,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
    */
   bus.registerCommand({
     name: "node.setValuePlotMode",
+    inputSchema: valuePlotModeSchema,
     description: "Draw a value node's body as a bar or as a curve (null: follow the default).",
     handler: (input, context) =>
       patchThrough(context, input.mode === null ? "Default value plot" : "Set value plot", [
@@ -666,6 +683,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
    */
   bus.registerCommand({
     name: "node.bringToFront",
+    inputSchema: nodeSelectionSchema,
     description: "Raise the target nodes above every other node in the graph.",
     handler: (input, context) => {
       const nodes = existing(context.graph, targets(input));
@@ -698,5 +716,6 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
         })),
       );
     },
+    rejectionOutput: rejection,
   });
 }

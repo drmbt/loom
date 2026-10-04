@@ -70,6 +70,8 @@ import { createModelFetch } from "./model-fetch.ts";
 import { inferenceParametersAt, type InferenceParameterReads } from "./inference-parameters.ts";
 import type { Notice } from "./notices.tsx";
 import type { InferenceNote } from "@editor/graph-canvas/node-runtime.ts";
+import { z } from "zod";
+import { nodeIdsInput } from "@domain/commands/input-schema.ts";
 
 declare module "@domain/types/commands.ts" {
   interface CommandMap {
@@ -845,6 +847,7 @@ export function useModelInference(
     if (bus === undefined || bus.hasCommand("runtime.resetInference")) return;
     bus.registerCommand({
       name: "runtime.resetInference",
+      inputSchema: z.object({ nodeIds: nodeIdsInput.optional() }).strict(),
       description:
         "Restart inference: the worker thread, model sessions and provider ladders, and the named nodes' results. Keeps the downloaded models.",
       handler: (input) => ({

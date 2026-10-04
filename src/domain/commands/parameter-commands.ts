@@ -13,6 +13,9 @@ import type {
   StoredParameter,
 } from "../types/parameters.ts";
 import { nodeByName, nodeName } from "../graph/names.ts";
+import { z } from "zod";
+import { parameterModeSchema } from "../types/schemas.ts";
+import { idInput } from "./input-schema.ts";
 import { pulseCommandInput } from "../parameters/pulse.ts";
 import { parameterReference, parseParameterReference } from "../parameters/reference.ts";
 import { resolveParameter, effectiveParameterSchema, STORED_READ } from "../parameters/resolve.ts";
@@ -97,6 +100,9 @@ export interface ParameterRef {
   nodeId: NodeId;
   parameterKey: string;
 }
+
+/** §T1556b: `ParameterRef`'s schema, and the base of every parameter command's. */
+const parameterRefSchema = z.object({ nodeId: idInput, parameterKey: z.string().min(1) }).strict();
 
 export interface ParameterCopyOutput {
   /** The text that was copied, or null when nothing could be. */
@@ -524,6 +530,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.pulse",
+    inputSchema: parameterRefSchema,
     description:
       "Fire a momentary pulse parameter. Audited, never undoable, never serialized (§V124).",
     handler: async (input, context) => {
@@ -648,6 +655,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.copy",
+    inputSchema: parameterRefSchema,
     description:
       "Copy a parameter WHOLE — value, reference and binding — so paste can choose.",
     // The reference is what a user most often wants out in the world (§V148); a node with
@@ -659,6 +667,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.copyValue",
+    inputSchema: parameterRefSchema,
     description: "Copy a parameter's effective value as text (T246).",
     handler: copyHandler("value", (payload) => payload.valueText),
     rejectionOutput: () => ({ text: null }),
@@ -666,6 +675,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.copyReference",
+    inputSchema: parameterRefSchema,
     description: "Copy a reference that pastes into an expression (T246, §V148).",
     // Null mirror = refuse. Unlike `parameter.copy`, this command's ENTIRE purpose is the
     // string, so an unnamed node has to be told rather than handed a number instead.
@@ -675,6 +685,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "channel.copy",
+    inputSchema: z.object({ nodeId: idInput, channel: z.string().min(1), value: z.number().optional() }).strict(),
     description:
       "Copy a value node's channel — its reference, its name and its reading — so paste can choose (T1393b).",
     handler: (input, context) => {
@@ -708,6 +719,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.paste",
+    inputSchema: parameterRefSchema.extend({ text: z.string().optional(), as: z.enum(["value", "reference", "binding", "name"]).optional() }).strict(),
     description:
       "Paste the copied value, reference or binding onto this parameter (T246).",
     handler: async (input, context) => {
@@ -957,6 +969,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.reset",
+    inputSchema: parameterRefSchema,
     description: "Restore the manifest default and the Constant mode (T246, §V149).",
     handler: (input, context) => {
       const revision = context.store.getRevision();
@@ -1086,6 +1099,7 @@ export function registerParameterCommands(
    */
   bus.registerCommand({
     name: "parameter.revert",
+    inputSchema: parameterRefSchema,
     description: "Restore the value this document was opened with (T1184).",
     handler: (input, context) => {
       const revision = context.store.getRevision();
@@ -1159,6 +1173,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.setMode",
+    inputSchema: parameterRefSchema.extend({ mode: parameterModeSchema }).strict(),
     description: "Switch a parameter's active mode, keeping every other payload (§V108).",
     handler: (input, context) => {
       const revision = context.store.getRevision();
