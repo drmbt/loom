@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import type { LoomBus } from "@domain/commands/bus.ts";
+import { COMPONENT_ID_SEPARATOR, flattenedNodeId } from "@domain/components/internal-resolutions.ts";
 import type { CompiledGraph } from "../compiler/types.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { z } from "zod";
@@ -98,6 +99,48 @@ export function registerResetFeedbackCommand(
         };
       },
     });
+}
+
+/**
+ * VNB6 — the same command on a COMPONENT SESSION bus, forwarded to the document's.
+ *
+ * Diving into a component edits through a separate bus (`openComponentSession`), which
+ * knows component commands and nothing about the renderer. `parameter.pulse` asks the bus
+ * it runs on whether the pulse's command exists, so every Reset inside a component —
+ * Feedback, Echo, Cache, Slit Scan — refused with "which no track has registered": the
+ * button was there and could not work (§V123's "a button that lies", reached by packaging
+ * the node, which is exactly when TouchDesigner's reset idiom is wanted most).
+ *
+ * The history being cleared lives in the ROOT plan under FLATTENED ids, so the forward
+ * rewrites each id onto the instance the user is standing in (`<instance>/<node>`, nested
+ * paths joined the same way). One instance, not every instance of the definition: a pulse
+ * inside a definition acts on its instance (T1541b's rule for preset recalls). `path` is a
+ * getter because one session outlives a move between two instances of the same component.
+ */
+export function registerForwardedResetFeedback(
+  session: LoomBus,
+  root: LoomBus,
+  path: () => readonly string[],
+): void {
+  if (session.hasCommand("runtime.resetFeedback")) return;
+  session.registerCommand({
+    name: "runtime.resetFeedback",
+    description: "Clear temporal (feedback) history for the component instance being edited.",
+    handler: async (input, context) => {
+      const prefix = path().join(COMPONENT_ID_SEPARATOR);
+      const result = await root.execute(
+        "runtime.resetFeedback",
+        input.nodeIds === undefined ? {} : { nodeIds: input.nodeIds.map((id) => flattenedNodeId(prefix, id)) },
+        context.invocation,
+      );
+      return {
+        status: result.status === "applied" ? ("applied" as const) : ("rejected" as const),
+        output: { cleared: result.output.cleared },
+        diagnostics: result.diagnostics,
+      };
+    },
+    rejectionOutput: () => ({ cleared: 0 }),
+  });
 }
 
 export function useRuntimeCommands(inputs: {
