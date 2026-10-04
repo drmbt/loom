@@ -9,6 +9,9 @@ import { createAgentToolSurface } from "../agent/surface.ts";
 import { attachStateSources } from "../domain/commands/index.ts";
 import { registerCompileCommand } from "../app/compile-command.ts";
 import { registerResetFeedbackCommand } from "../app/runtime-commands.ts";
+import { readProblemSources, type ProblemSource } from "../app/problem-sources.ts";
+import { retainDiagnostic } from "../app/diagnostic-buffer.ts";
+import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
 import { compileGraph, timelineStructureRequest, type CompileRequest } from "../compiler/index.ts";
 import { buildTimelineStructure } from "../domain/presets/timeline-cues.ts";
 import type { BackendCapabilities } from "../domain/types/backend.ts";
@@ -191,6 +194,9 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
 
   let backend: ReturnType<typeof createVgpuBackend> | undefined;
   let compiled: ReturnType<typeof compileGraph> | null = null;
+  // T1555b: why there is no GPU, and what the backend has reported, held for `diagnostics.get`.
+  let gpuProblems: readonly RuntimeDiagnostic[] = [];
+  let backendProblems: readonly RuntimeDiagnostic[] = [];
   let frameIndex = 0;
   let disposed = false;
   /**
@@ -255,8 +261,8 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
    * T597 (§V39): the headless twin registers the SAME commands and queries the page
    * registers, with headless-truthful sources — so an in-page agent and a desktop
    * client are told one story about one product. `selection.get` answers empty (no
-   * editor is open, and empty IS the truth); `diagnostics.get` reports the last
-   * compile; `runtime.metrics` counts the offline frames this server rendered.
+   * editor is open, and empty IS the truth); `diagnostics.get` reads `problemSources`
+   * below (T1555b); `runtime.metrics` counts the offline frames this server rendered.
    * `project.compile` and `runtime.resetFeedback` come from the same registration
    * modules the app uses, never a re-implementation. What is NOT registered is waived
    * BY NAME in the T597 parity gates: transport.play/pause (there is no frame loop —
@@ -264,11 +270,21 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
    * targets a browser project store this process does not have), graph.setOutput
    * (a deliberate stub on every surface, see mutate.ts), and component.import/export
    * (T1494b: this twin has no component catalogue at all).
+   *
+   * T1555b: `problemSources` is the Problems registry the page reads too
+   * (`app/problem-sources.ts`), holding the sources this process actually has. Every other
+   * app source is named, with the reason, in `HEADLESS_ABSENT_PROBLEM_SOURCES`, and
+   * `problem-sources.test.ts` checks that the two agree.
    */
+  const problemSources: readonly ProblemSource[] = [
+    { id: "gpu", read: () => gpuProblems },
+    { id: "compile", read: () => compiled?.diagnostics ?? [] },
+    { id: "backend", read: () => backendProblems },
+  ];
   attachStateSources(bus, {
     selection: () => ({ nodeIds: [], edgeIds: [] }),
     diagnostics: () => ({
-      diagnostics: compiled?.diagnostics ?? [],
+      diagnostics: readProblemSources(problemSources),
       revision: store.view.getGraph().revision,
     }),
     metrics: () => ({
@@ -427,13 +443,14 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
   const ready = (async () => {
     const probe = await probeDawn();
     if (!probe.available) {
-      connection.notifyDiagnostics([
+      gpuProblems = [
         {
           severity: "info",
           code: "mcp/no-gpu",
           message: `No GPU attached (${probe.error ?? "Dawn unavailable"}); graph tools work in full, pixel tools report unavailable.`,
         },
-      ]);
+      ];
+      connection.notifyDiagnostics(gpuProblems as unknown as Record<string, unknown>[]);
       return;
     }
     if (options.grantExport !== true) {
@@ -450,6 +467,8 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
     live.onDiagnostic((diagnostic) => {
       // T294: the backend's verdicts ride the EXISTING notification channel.
       connection.notifyDiagnostics([diagnostic as unknown as Record<string, unknown>]);
+      // T1555b: and are held, one slot per condition (T596), so `diagnostics.get` has them too.
+      backendProblems = retainDiagnostic(backendProblems, diagnostic);
     });
     await live.initialize({});
     if (disposed) {

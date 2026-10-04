@@ -42,7 +42,7 @@ import type { FrameRange, ProjectSettings } from "@domain/types/graph.ts";
 import { projectFps, projectRange } from "@domain/types/graph.ts";
 import { ComponentBar } from "./component-bar.tsx";
 import { useComponentEditing } from "./use-component-editing.ts";
-import { humanizeDiagnostics } from "@domain/graph/index.ts";
+import { useProblems } from "./use-problems.ts";
 import { GraphPane } from "./graph-pane.tsx";
 import { createPreviewInterestStore, createPreviewOrbitStore } from "@editor/viewer/index.ts";
 import type { GraphActions, PortDragOrigin } from "./graph-pane.tsx";
@@ -1372,23 +1372,6 @@ export function App({
     openText: openProjectText,
   });
 
-  /**
-   * T465: Clear EMPTIES every accumulating source; the list rebuilds from the current
-   * compile on the next render, so live problems return immediately (the proof they
-   * are live) and resolved ones do not. Deliberately no dismissed-set — nothing can
-   * be silenced while still true.
-   */
-  const { clearDiagnostics: clearEditingDiagnostics } = editing;
-  const clearProblems = useCallback(() => {
-    setRejection(NO_DIAGNOSTICS);
-    autosave.clearDiagnostics();
-    media.clearDiagnostics();
-    project.clearDiagnostics();
-    recovery.clearDiagnostics();
-    frameLoop.clearDiagnostics();
-    clearEditingDiagnostics();
-  }, [autosave, clearEditingDiagnostics, frameLoop, media, project, recovery]);
-
   // T1531b: the LAST-CLICKED node of a multi-selection — the canvas reports in append order.
   const selectedNodeId = primaryOf(selection);
 
@@ -1470,82 +1453,70 @@ export function App({
    * Every diagnostic the session has to offer, in one list (§V338: the honest answer has
    * to be OBTAINABLE, which means one place holds it).
    *
+   * T1555b: the list is a registry (`problem-sources.ts`). Each source is ONE entry here,
+   * read in this order. An entry with `clear` is an ACCUMULATING source, and the Problems
+   * pane's Clear empties it (T465). The list rebuilds from the current state on the next
+   * render, so live problems come back at once (the proof they are live) and resolved ones
+   * do not. There is deliberately no dismissed-set: nothing can be silenced while still
+   * true. `problem-sources.test.ts` fails on a hook that hands this file diagnostics
+   * without an entry, and `mcp/serve.ts` registers the subset a headless process can have.
+   *
    * Declared after `useRenderRange` rather than before it only because it now reads that
    * hook's output — T586's free-run render warning. It is consumed first by the agent
    * surface immediately below, so nothing moved relative to a reader.
    */
-  const problems = useMemo<RuntimeDiagnostic[]>(() => {
-    const list: RuntimeDiagnostic[] = [];
-    if (status.kind === "unavailable") {
-      list.push({
-        severity: "error",
-        code: "gpu.unavailable",
-        message: status.reason,
-        suggestion:
-          "Editing still works. Open this in Chrome or Edge 128+ on a machine with WebGPU to render.",
-      });
-    }
-    list.push(
-      ...compile.diagnostics,
-      ...valueGraph.diagnostics,
-      ...media.diagnostics,
-      ...fileReferences.diagnostics,
-      ...screenCapture.diagnostics,
-      ...meshes.diagnostics,
-      ...nativeInputs.diagnostics,
-      ...phoneCameras.diagnostics,
-      ...nativeOutputs.diagnostics,
+  const gpuProblems = useMemo<readonly RuntimeDiagnostic[]>(
+    () =>
+      status.kind === "unavailable"
+        ? [
+            {
+              severity: "error",
+              code: "gpu.unavailable",
+              message: status.reason,
+              suggestion: "Editing still works. Open this in Chrome or Edge 128+ on a machine with WebGPU to render.",
+            },
+          ]
+        : NO_DIAGNOSTICS,
+    [status],
+  );
+  const { problems, clearProblems } = useProblems(
+    [
+      { id: "gpu", read: () => gpuProblems },
+      { id: "compile", read: () => compile.diagnostics },
+      { id: "valueGraph", read: () => valueGraph.diagnostics },
+      { id: "media", read: () => media.diagnostics, clear: () => media.clearDiagnostics() },
+      { id: "fileReferences", read: () => fileReferences.diagnostics },
+      { id: "screenCapture", read: () => screenCapture.diagnostics },
+      { id: "meshes", read: () => meshes.diagnostics },
+      { id: "nativeInputs", read: () => nativeInputs.diagnostics },
+      { id: "phoneCameras", read: () => phoneCameras.diagnostics },
+      { id: "nativeOutputs", read: () => nativeOutputs.diagnostics },
       // T1340b — the host-level limitation a node declares about itself. Same list as
       // everything else, which is what makes the node badge and this panel agree.
-      ...requirements,
+      { id: "requirements", read: () => requirements },
       // T942 tier 3 — why OSC is not working, keyed to the node it concerns. It joins the
       // ONE list rather than growing a panel of its own: the owner's ruling is that a
       // device's interface lives in its NODE, so its degraded reason belongs on the
       // surface every other node-scoped problem already uses (§V365, §V338).
-      ...osc.diagnostics,
+      { id: "osc", read: () => osc.diagnostics },
       // T950 — the laser pump's honest state, on the same one-list rule as OSC's.
-      ...laser.diagnostics,
-      ...vision.diagnostics,
-      ...rejection,
-      ...autosave.diagnostics,
-      ...project.diagnostics,
-      ...recovery.diagnostics,
-      ...frameLoop.diagnostics,
+      { id: "laser", read: () => laser.diagnostics },
+      { id: "vision", read: () => vision.diagnostics },
+      { id: "rejection", read: () => rejection, clear: () => setRejection(NO_DIAGNOSTICS) },
+      { id: "autosave", read: () => autosave.diagnostics, clear: () => autosave.clearDiagnostics() },
+      { id: "project", read: () => project.diagnostics, clear: () => project.clearDiagnostics() },
+      { id: "backend", read: () => recovery.diagnostics, clear: () => recovery.clearDiagnostics() },
+      { id: "frameLoop", read: () => frameLoop.diagnostics, clear: () => frameLoop.clearDiagnostics() },
       // §T1543b — the component editor's held notes: why it put you back out, and the
       // session it reopened over an outside write.
-      ...editing.diagnostics,
+      { id: "componentEditing", read: () => editing.diagnostics, clear: () => editing.clearDiagnostics() },
       // T586 — what the LAST TAKE had to say about itself. A refusal reaches the user
       // through `reportRefusal`, which returns early on `applied`; a take that succeeds
       // and is nonetheless not reproducible had no channel at all before this.
-      ...renderRange.diagnostics,
-    );
-    // T599: the message boundary — any quoted node id becomes the node's display label,
-    // so the pane says `blur1` like every other surface, not the minted receipt.
-    return [...humanizeDiagnostics(list, compile.graph)];
-  }, [
+      { id: "renderRange", read: () => renderRange.diagnostics },
+    ],
     compile.graph,
-    autosave.diagnostics,
-    compile.diagnostics,
-    frameLoop.diagnostics,
-    valueGraph.diagnostics,
-    media.diagnostics,
-    fileReferences.diagnostics,
-    screenCapture.diagnostics,
-    meshes.diagnostics,
-    nativeInputs.diagnostics,
-    phoneCameras.diagnostics,
-    nativeOutputs.diagnostics,
-    osc.diagnostics,
-    laser.diagnostics,
-    requirements,
-    vision.diagnostics,
-    project.diagnostics,
-    recovery.diagnostics,
-    rejection,
-    editing.diagnostics,
-    renderRange.diagnostics,
-    status,
-  ]);
+  );
 
   const errorCount = problems.filter((diagnostic) => diagnostic.severity === "error").length;
   /**
