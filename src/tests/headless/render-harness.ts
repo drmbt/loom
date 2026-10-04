@@ -1,4 +1,4 @@
-import { compileGraph, flattenComponents, timelineStructureRequest } from "../../compiler/index.ts";
+import { compileGraph, compiledWithoutCatalogue, flattenComponents, timelineStructureRequest } from "../../compiler/index.ts";
 import type { CompileRequest } from "../../compiler/types.ts";
 import type { ComponentRegistryView } from "../../domain/components/index.ts";
 import type { CompiledGraph } from "../../compiler/types.ts";
@@ -796,7 +796,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
             components: request.components,
           });
     /** What the value graph and every compile read. §V437: the raw document is not it. */
-    const logicalGraph = flattened?.graph ?? request.graph;
+    const logicalGraph = flattened?.graph ?? compiledWithoutCatalogue(request.graph);
     /** T1497b: the preset morphs in flight — the flattening's, or the document's own. */
     const morphs = flattened?.morphs ?? buildMorphIndex({ document: request.graph, registry: registry(request.nodes) });
 

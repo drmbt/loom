@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { flatDocument } from "@compiler/test-support.ts";
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { createAppRuntime } from "./app-runtime.ts";
@@ -29,7 +30,7 @@ function setup(type = "syphonOut", backend = {} as LoomBackend) {
   vi.stubGlobal("requestAnimationFrame", vi.fn((fn: FrameRequestCallback) => { callback = fn; return 1; }));
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
   const tick = () => act(async () => { callback(0); });
-  const view = renderHook(({ graph, compiled }) => useNativeOutputs(runtime, backend, graph, compiled), { initialProps: { graph, compiled } });
+  const view = renderHook(({ graph, compiled }) => useNativeOutputs(runtime, backend, flatDocument(graph), compiled), { initialProps: { graph, compiled } });
   return { runtime, graph, compiled, sessions, tick, view };
 }
 it.each(["syphonOut", "ndiOut", "spoutOut"])("%s publishes full input size, survives movement, closes on deletion", async type => {
@@ -135,7 +136,7 @@ it("publishes nothing, and says nothing of its own, when there is no bridge", as
   const h = setup(); h.view.unmount();
   vi.mocked(desktopOutputBridge).mockReturnValue(undefined);
   const backend = {} as LoomBackend;
-  const view = renderHook(() => useNativeOutputs(h.runtime, backend, h.graph, h.compiled));
+  const view = renderHook(() => useNativeOutputs(h.runtime, backend, flatDocument(h.graph), h.compiled));
   await h.tick();
   expect(createNativeOutputSession).not.toHaveBeenCalled();
   expect(view.result.current.diagnostics).toEqual([]);

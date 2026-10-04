@@ -1,5 +1,5 @@
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
-import type { GraphDocument, GraphNode } from "../types/graph.ts";
+import { authoredGraph, type GraphDocument, type GraphNode } from "../types/graph.ts";
 import type { NodeId, Revision } from "../types/ids.ts";
 import { parameterReadOptions, type ParameterReadContext } from "../parameters/node-references.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
@@ -527,7 +527,7 @@ const emptyFireOutput = (): CueFireOutput => ({
 
 /** One list as `cue.list` reports it. */
 function reportList(bus: LoomBus, graph: GraphDocument, node: GraphNode): CueListReport {
-  const values = resolvedValues(node, bus.registry, { ...bus.readScope(), graph });
+  const values = resolvedValues(node, bus.registry, { ...bus.readScope(), graph: authoredGraph(graph) });
   const position = positionOf(values);
   const parsed = parseCueList(node.parameters["cues"]);
   const list: CueList = parsed.ok ? parsed.list : { version: 1, cues: [] };

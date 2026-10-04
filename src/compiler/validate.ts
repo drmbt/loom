@@ -1,6 +1,6 @@
 import type { NodeId, PortId } from "../domain/types/ids.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
-import type { GraphDocument, GraphNode } from "../domain/types/graph.ts";
+import type { FlatOrAuthoredGraph, GraphNode } from "../domain/types/graph.ts";
 import type { NodeDefinition } from "../domain/types/node-definition.ts";
 import type { ParameterSchema, ParameterValue } from "../domain/types/parameters.ts";
 import type { PortDefinition } from "../domain/types/ports.ts";
@@ -187,9 +187,13 @@ export function resolveParameterValues(
  *
  * Runs over the WHOLE document rather than the pruned subgraph: a miswired branch that
  * nothing renders is still a mistake worth surfacing in the problems tab.
+ *
+ * §T1552b: either side, said by the caller — the compile validates its flattening,
+ * `project.validate` the document as authored (`authoredGraph(…)`), and `op()` names
+ * resolve in whichever it was handed.
  */
 export function validateGraph(
-  graph: GraphDocument,
+  graph: FlatOrAuthoredGraph,
   registry: NodeRegistryView,
   options: ParameterResolution = {},
 ): ValidatedGraph {

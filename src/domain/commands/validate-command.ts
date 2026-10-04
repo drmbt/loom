@@ -5,6 +5,7 @@ import {
   validateRequiredInputs,
 } from "../../compiler/index.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
+import { authoredGraph } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import type { LoomBus } from "./bus.ts";
 
@@ -86,7 +87,8 @@ export function registerValidateCommand(bus: LoomBus): void {
        * satisfy — the validator could not be made green by any legal edit. One resolution
        * mechanism, not two: `synthesizeSourceReferenceEdges` is the compiler's own.
        */
-      const referenced = synthesizeSourceReferenceEdges(context.graph, context.registry);
+      // §T1552b: the document AS AUTHORED, on purpose — "the whole document", instances whole.
+      const referenced = synthesizeSourceReferenceEdges(authoredGraph(context.graph), context.registry);
       const graph = referenced.graph;
       /**
        * T593/B121 — the resolver the APP is compiling through, handed down the bus.

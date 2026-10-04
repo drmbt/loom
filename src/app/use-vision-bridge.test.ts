@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { flatDocument } from "@compiler/test-support.ts";
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import * as React from "react";
@@ -143,7 +144,7 @@ describe("T1029 — the hook, per path", () => {
     const { backend } = fakeBackend(new Float32Array(4));
     const nativePlan = { ...compiled, resources: [{ kind: "externalTexture", id: "scratch:mask:modelResult", size: [4, 2], format: "rgba16float", sourceId: "inference:mask" }] } as unknown as CompiledGraph;
     const view = renderHook(() => useVisionBridge({ ...READS, deviceClient: () => client, backend: () => backend }));
-    act(() => view.result.current.track(graph, nativePlan));
+    act(() => view.result.current.track(flatDocument(graph), nativePlan));
     act(() => view.result.current.observe(frame)); await flush();
     expect(requests).toEqual([]);
     expect(view.result.current.diagnostics.map(value => value.code)).toEqual(["vision.native.refused"]);
@@ -155,7 +156,7 @@ describe("T1029 — the hook, per path", () => {
     const view = renderHook(() =>
       useVisionBridge({ ...READS, deviceClient: () => null, backend: () => backend }),
     );
-    act(() => view.result.current.track(graph, compiled));
+    act(() => view.result.current.track(flatDocument(graph), compiled));
     // WARNING, so the node's own badge lights: info reached only the problems pane and
     // the owner met a silently black node (the shipped E52 report, verbatim).
     expect(view.result.current.diagnostics[0]?.severity).toBe("warning");
@@ -170,7 +171,7 @@ describe("T1029 — the hook, per path", () => {
     // belongs to the NODE, answered from the live document, or the first compile pins
     // an expression error nothing later clears — the shipped E52 failure exactly.
     const cold = renderHook(() =>
-      useVisionBridge({ ...READS, deviceClient: () => null, graph: () => graph }),
+      useVisionBridge({ ...READS, deviceClient: () => null, graph: () => flatDocument(graph) }),
     );
     expect(cold.result.current.resolver("mask1:coverage", { frame } as never)).toBe(0);
     expect(cold.result.current.resolver("depth1:coverage", { frame } as never)).toBeUndefined();
@@ -197,7 +198,7 @@ describe("T1029 — the hook, per path", () => {
     const view = renderHook(() =>
       useVisionBridge({ ...READS, deviceClient: () => client, backend: () => backend }),
     );
-    act(() => view.result.current.track(graph, compiled));
+    act(() => view.result.current.track(flatDocument(graph), compiled));
     act(() => view.result.current.observe(frame));
     await flush();
     await flush();
@@ -226,11 +227,11 @@ describe("T1029 — the hook, per path", () => {
     const view = renderHook(() =>
       useVisionBridge({ ...READS, deviceClient: () => client, backend: () => backend }),
     );
-    act(() => view.result.current.track(graph, compiled));
+    act(() => view.result.current.track(flatDocument(graph), compiled));
     act(() => view.result.current.observe(frame));
     await flush();
     await flush();
-    act(() => view.result.current.track(graph, compiled));
+    act(() => view.result.current.track(flatDocument(graph), compiled));
     const warning = view.result.current.diagnostics.find((entry) => entry.code === "vision.refused");
     expect(warning?.message).toContain("only exists on macOS");
   });
@@ -246,7 +247,7 @@ describe("T1254 — the resolver's identity does not follow the caller's accesso
     // memos key on, so identity is what this pins — and the ref must not go stale, or a
     // renamed mask would keep answering for its old name.
     let current = graph;
-    const view = renderHook(() => useVisionBridge({ ...READS, deviceClient: () => null, graph: () => current }));
+    const view = renderHook(() => useVisionBridge({ ...READS, deviceClient: () => null, graph: () => flatDocument(current) }));
     const first = view.result.current.resolver;
     view.rerender();
     view.rerender();
@@ -311,7 +312,7 @@ describe("T1525b — a fading Min interval paces the helper at the value the fad
     const view = renderHook(() =>
       useVisionBridge({ ...READS, flattening: () => { const index = morphs(); return index === undefined ? NO_FLATTENING : { ...NO_FLATTENING, morphs: index }; }, deviceClient: () => client, backend: () => backend }),
     );
-    act(() => view.result.current.track(document, compiled));
+    act(() => view.result.current.track(flatDocument(document), compiled));
     const counts: number[] = [];
     for (const seconds of [0, 1.0, 1.35, 1.4]) {
       act(() => view.result.current.observe(at(seconds)));

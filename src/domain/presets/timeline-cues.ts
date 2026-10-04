@@ -788,7 +788,8 @@ export function buildTimelineStructure(input: MorphIndexInput): TimelineStructur
  * whose playhead is in that structure's segment. Pure; the input is untouched, and a node
  * the graph does not hold is ignored. The document's own structure is the graph itself.
  */
-export function applyTimelineStructure(graph: GraphDocument, state: TimelineStructureState): GraphDocument {
+// §T1552b: generic, so the flattening a segment compiles stays a `FlatGraph` (a spread keeps the kind).
+export function applyTimelineStructure<G extends GraphDocument>(graph: G, state: TimelineStructureState): G {
   if (state.key === "") return graph;
   const nodes: Record<NodeId, GraphNode> = { ...graph.nodes };
   for (const [nodeId, bypassed] of state.bypassed) {

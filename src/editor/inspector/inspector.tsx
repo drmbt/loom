@@ -4,7 +4,7 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import { OPEN_HELP_COMMAND } from "@editor/help/command.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import { authoredGraph, type GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
@@ -638,7 +638,9 @@ export function Inspector({
    */
   const readOptionsAt = (frame?: FrameEvaluationInput) =>
     parameterReadOptions({
-      graph: instanceRead?.graph ?? graph,
+      // §T1552b: an instance's inner node reads its flattening; the panel otherwise reads the
+      // document AS AUTHORED, on purpose (the node the user selected, by its authored id).
+      graph: instanceRead?.graph ?? authoredGraph(graph),
       registry: bus.registry,
       channels,
       frame,

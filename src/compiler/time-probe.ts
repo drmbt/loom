@@ -1,5 +1,5 @@
 import type { FrameEvaluationInput } from "../domain/types/frame.ts";
-import type { GraphDocument, GraphNode, ProjectSettings } from "../domain/types/graph.ts";
+import type { FlatGraph, GraphNode, ProjectSettings } from "../domain/types/graph.ts";
 import { projectFps } from "../domain/types/graph.ts";
 import type { NodeDefinition } from "../domain/types/node-definition.ts";
 import type { ParameterValue } from "../domain/types/parameters.ts";
@@ -45,7 +45,8 @@ function shiftFrame(frame: FrameEvaluationInput, offsetSeconds: number): FrameEv
 export function timeProbeFor(
   node: GraphNode,
   definition: NodeDefinition,
-  graph: GraphDocument,
+  /** §T1552b: the retained compile's flat graph — what `op()` reads against. */
+  graph: FlatGraph,
   registry: NodeRegistryView,
   options: ParameterResolution,
   settings: ProjectSettings,

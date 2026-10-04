@@ -5,7 +5,7 @@ import type { ResolvedParameters } from "@domain/parameters/resolve.ts";
 import type { LiveParameterReads } from "@domain/parameters/index.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import { authoredGraph, type GraphDocument, type GraphNode } from "@domain/types/graph.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import type { ParameterEditor } from "@editor/inspector/parameter-editor.ts";
@@ -144,7 +144,7 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
   const parametersOf = useCallback(
     // §T1539b: the resolve the viewer's Edit mapping places a crossed Corner Pin with too.
     (node: GraphNode, graph: GraphDocument, at?: FrameEvaluationInput): ResolvedParameters =>
-      liveParameters(node, graph, readsRef.current.registry, readsRef.current, at),
+      liveParameters(node, authoredGraph(graph), readsRef.current.registry, readsRef.current, at),
     [],
   );
   const openRef = useRef(openWindow);

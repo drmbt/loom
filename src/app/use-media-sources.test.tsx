@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { flatDocument } from "@compiler/test-support.ts";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { GraphDocument } from "@domain/types/graph.ts";
@@ -173,7 +174,7 @@ function Harness({
   /** T493: the per-frame seam, so a test can drive a frame the way the loop does. */
   onWiring?: (wiring: MediaWiring) => void;
 }) {
-  const media = useMediaSources(runtime, backend, graph, resolved ?? null, environment, controls);
+  const media = useMediaSources(runtime, backend, flatDocument(graph), resolved ?? null, environment, controls);
   onDiagnostics?.(media.diagnostics.map((entry) => entry.message));
   onWiring?.(media);
   return null;

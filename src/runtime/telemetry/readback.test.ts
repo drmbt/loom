@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { flatDocument } from "@compiler/test-support.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { ANALYZE_RESULT_KEY } from "../../nodes/definitions/analyze.ts";
@@ -47,9 +48,9 @@ const registry = createNodeRegistry(allNodeDefinitions).view();
 
 describe("readbacks are counted and sized from the plan (§V185)", () => {
   it("counts one per Analyze node and scales with them — the §V185 claim", () => {
-    const one = analyzeReadbacks(graphOf([analyzeNode("a", "meter1")]), registry);
+    const one = analyzeReadbacks(flatDocument(graphOf([analyzeNode("a", "meter1")])), registry);
     const twenty = analyzeReadbacks(
-      graphOf(Array.from({ length: 20 }, (_x, i) => analyzeNode(`a${i}`, `meter${i}`))),
+      flatDocument(graphOf(Array.from({ length: 20 }, (_x, i) => analyzeNode(`a${i}`, `meter${i}`)))),
       registry,
     );
     expect(one).toHaveLength(1);
@@ -70,7 +71,7 @@ describe("readbacks are counted and sized from the plan (§V185)", () => {
     // A resource the plan sized differently: the budget must follow the plan, or it is
     // reporting what this file believes rather than what the graph allocated.
     const budget = readbackPlanBudget({
-      declared: analyzeReadbacks(graphOf([analyzeNode("a", "meter1")]), registry),
+      declared: analyzeReadbacks(flatDocument(graphOf([analyzeNode("a", "meter1")])), registry),
       resources: [{ ...analyzeResource("a"), stride: 64, capacity: 4 }],
       sources: [],
     });
@@ -80,7 +81,7 @@ describe("readbacks are counted and sized from the plan (§V185)", () => {
   it("reports an unsizable row as UNKNOWN and the total as a floor, never as zero", () => {
     const budget = readbackPlanBudget({
       declared: analyzeReadbacks(
-        graphOf([analyzeNode("a", "meter1"), analyzeNode("b", "meter2")]),
+        flatDocument(graphOf([analyzeNode("a", "meter1"), analyzeNode("b", "meter2")])),
         registry,
       ),
       // "b" was pruned out of the plan, so nothing sizes its readback.
@@ -96,7 +97,7 @@ describe("readbacks are counted and sized from the plan (§V185)", () => {
 
   it("attributes a row to the node's SOURCE PATH when it came from a component (§V82)", () => {
     const budget = readbackPlanBudget({
-      declared: analyzeReadbacks(graphOf([analyzeNode("a", "meter1")]), registry),
+      declared: analyzeReadbacks(flatDocument(graphOf([analyzeNode("a", "meter1")])), registry),
       resources: [analyzeResource("a")],
       sources: [{ nodeId: "a", path: ["inst"], sourcePath: "Main / Bloom_1 / meter1" }],
     });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
@@ -89,7 +90,7 @@ function session(nodes: GraphNode[]): Session {
       const target = graph().nodes[nodeId];
       if (target === undefined || last === null) throw new Error(`no node ${nodeId}, or no frame yet`);
       const morphs = buildMorphIndex({ document: graph(), registry });
-      return resolveParameters(target, registry.get(target.type), parameterReadOptions({ graph: graph(), registry, frame: last, channels: undefined, flattening: { ...NO_FLATTENING, morphs } })).values[key];
+      return resolveParameters(target, registry.get(target.type), parameterReadOptions({ graph: flatDocument(graph()), registry, frame: last, channels: undefined, flattening: { ...NO_FLATTENING, morphs } })).values[key];
     },
     records: (bankId) => parseMorphRecords(graph().nodes[bankId]?.parameters["morphs"]),
     snapshot: () => JSON.stringify(Object.values(graph().nodes).map((each) => [each.id, each.parameters, each.ui ?? null])),

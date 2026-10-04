@@ -4,7 +4,7 @@ import { parameterReadOptions, resolveParameters } from "@domain/parameters/inde
 import type { ResolvedParameters } from "@domain/parameters/resolve.ts";
 import type { LiveParameterReads } from "@domain/parameters/index.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import type { FlatOrAuthoredGraph, GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { applyHomography, cornerPinNode, cornerPinQuads, invertMat3, outputToSquare, quadDegeneracy, squareToQuad } from "@nodes/definitions/corner-pin.ts";
@@ -228,7 +228,7 @@ export interface LiveReads extends LiveParameterReads {
  */
 export function liveParameters(
   node: GraphNode,
-  graph: GraphDocument,
+  graph: FlatOrAuthoredGraph,
   registry: NodeRegistryView,
   reads: LiveReads,
   at?: FrameEvaluationInput,

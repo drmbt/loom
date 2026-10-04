@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import type { CompiledGraph } from "@compiler/index.ts";
+import { compiledWithoutCatalogue, type CompiledGraph } from "@compiler/index.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import type { LiveParameterReads } from "@domain/parameters/index.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph } from "@domain/types/graph.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { analyzeChannelEntries, analyzeOperationOf, createAnalyzeChannels } from "@runtime/execution/index.ts";
@@ -78,7 +78,7 @@ export interface AnalyzeChannelBinding {
   /** The frame-loop observer seam. Queues the between-frames sample. Stable. */
   readonly observe: (frame: FrameEvaluationInput) => void;
   /** Re-derives the tracked set. Call after each compile. Stable. */
-  readonly track: (graph: GraphDocument, compiled: CompiledGraph | null) => void;
+  readonly track: (graph: FlatGraph, compiled: CompiledGraph | null) => void;
 }
 
 /**
@@ -92,7 +92,7 @@ export interface AnalyzeChannelBinding {
  * the same story: declared, not yet real.
  */
 function trackableEntries(
-  graph: GraphDocument,
+  graph: FlatGraph,
   registry: NodeRegistryView,
   compiled: CompiledGraph | null,
 ): readonly AnalyzeEntry[] {
@@ -146,13 +146,13 @@ export function useAnalyzeChannels(
   const readsRef = useRef(reads);
   readsRef.current = reads;
   /** T1525b: what `track` was last handed, so each frame can re-resolve Operation on it. */
-  const trackedRef = useRef<{ graph: GraphDocument; entries: readonly AnalyzeEntry[] }>({
-    graph: { revision: 0, nodes: {}, edges: {}, groups: {} },
+  const trackedRef = useRef<{ graph: FlatGraph; entries: readonly AnalyzeEntry[] }>({
+    graph: compiledWithoutCatalogue({ revision: 0, nodes: {}, edges: {}, groups: {} }),
     entries: [],
   });
 
   const track = useCallback(
-    (graph: GraphDocument, compiled: CompiledGraph | null) => {
+    (graph: FlatGraph, compiled: CompiledGraph | null) => {
       const entries = trackableEntries(graph, registryRef.current, compiled);
       trackedRef.current = { graph, entries };
       channels.track(entries);

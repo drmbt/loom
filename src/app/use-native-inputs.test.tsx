@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { flatDocument } from "@compiler/test-support.ts";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { createAppRuntime } from "./app-runtime.ts";
@@ -23,7 +24,7 @@ function setup(type = "syphonIn") {
 }
 it.each(["pagehide", "loom-native-input-retire"])("%s releases document-owned frames without waiting for React unmount", (event) => {
   const h = setup();
-  const view = renderHook(() => useNativeInputs(h.runtime, h.backend, h.graph, h.resolved));
+  const view = renderHook(() => useNativeInputs(h.runtime, h.backend, flatDocument(h.graph), h.resolved));
   window.dispatchEvent(new Event(event));
   expect(h.releaseForNavigation).toHaveBeenCalledTimes(1);
   expect(h.unregister).toHaveBeenCalledTimes(1);
@@ -34,7 +35,7 @@ it.each(["pagehide", "loom-native-input-retire"])("%s releases document-owned fr
 });
 it.each(["syphonIn", "ndiIn", "spoutIn"])("%s opens demanded nodes only, preserves sessions across movement, and retires on pruning", async type => {
   const h = setup(type);
-  const view = renderHook(({ graph, resolved }) => useNativeInputs(h.runtime, h.backend, graph, resolved),
+  const view = renderHook(({ graph, resolved }) => useNativeInputs(h.runtime, h.backend, flatDocument(graph), resolved),
     { initialProps: { graph: h.graph, resolved: { ...h.resolved, order: [] as string[] } } });
   expect(createNativeInputSource).not.toHaveBeenCalled();
   view.rerender({ graph: h.graph, resolved: h.resolved });
@@ -47,7 +48,7 @@ it.each(["syphonIn", "ndiIn", "spoutIn"])("%s opens demanded nodes only, preserv
 });
 it("replacing the document retires the old session even when the node IDs match", () => {
   const h = setup();
-  const view = renderHook(({ runtime }) => useNativeInputs(runtime, h.backend, h.graph, h.resolved), { initialProps: { runtime: h.runtime } });
+  const view = renderHook(({ runtime }) => useNativeInputs(runtime, h.backend, flatDocument(h.graph), h.resolved), { initialProps: { runtime: h.runtime } });
   view.rerender({ runtime: { ...h.runtime, documentIdentity: "replacement" } });
   expect(h.dispose).toHaveBeenCalledTimes(1);
   expect(createNativeInputSource).toHaveBeenCalledTimes(2);
@@ -63,7 +64,7 @@ it("replacing the document retires the old session even when the node IDs match"
 it("clears its own diagnostics on document replacement", () => {
   const h = setup(); vi.mocked(desktopInputBridge).mockReturnValue({} as never);
   h.graph.nodes["input"]!.parameters = { source: "" };
-  const view = renderHook(({ runtime, graph }) => useNativeInputs(runtime, h.backend, graph, h.resolved), { initialProps: { runtime: h.runtime, graph: h.graph } });
+  const view = renderHook(({ runtime, graph }) => useNativeInputs(runtime, h.backend, flatDocument(graph), h.resolved), { initialProps: { runtime: h.runtime, graph: h.graph } });
   expect(view.result.current.diagnostics[0]?.message).toContain("Select a Syphon source");
   view.rerender({ runtime: { ...h.runtime, documentIdentity: "empty" }, graph: { ...h.graph, nodes: {} } });
   expect(view.result.current.diagnostics).toEqual([]);
@@ -71,7 +72,7 @@ it("clears its own diagnostics on document replacement", () => {
 
 it("opens nothing at all when the machine has no Syphon bridge", () => {
   const h = setup(); vi.mocked(desktopInputBridge).mockReturnValue(undefined);
-  const view = renderHook(() => useNativeInputs(h.runtime, h.backend, h.graph, h.resolved));
+  const view = renderHook(() => useNativeInputs(h.runtime, h.backend, flatDocument(h.graph), h.resolved));
   expect(createNativeInputSource).not.toHaveBeenCalled();
   // And it does not mint a sentence of its own: the node carries exactly one requirement
   // warning, in the one vocabulary. Two rows saying the same thing differently is the
@@ -83,7 +84,7 @@ it("selects NDI explicitly and retires an identically named Syphon session on tr
   const h = setup();
   const syphon = {} as never, ndi = {} as never;
   vi.mocked(desktopInputBridge).mockImplementation(transport => transport === "ndi" ? ndi : syphon);
-  const view = renderHook(({ graph }) => useNativeInputs(h.runtime, h.backend, graph, h.resolved),
+  const view = renderHook(({ graph }) => useNativeInputs(h.runtime, h.backend, flatDocument(graph), h.resolved),
     { initialProps: { graph: h.graph } });
   expect(createNativeInputSource).toHaveBeenLastCalledWith(syphon, "uuid", expect.anything());
   view.rerender({ graph: { ...h.graph, nodes: { input: { ...h.graph.nodes["input"]!, type: "ndiIn" } } } });
@@ -97,7 +98,7 @@ it("refuses to stand a Syphon bridge in for an absent NDI one", () => {
   const h = setup();
   vi.mocked(desktopInputBridge).mockImplementation(transport => transport === "ndi" ? undefined : {} as never);
   const graph = { ...h.graph, nodes: { input: { ...h.graph.nodes["input"]!, type: "ndiIn" } } };
-  renderHook(() => useNativeInputs(h.runtime, h.backend, graph, h.resolved));
+  renderHook(() => useNativeInputs(h.runtime, h.backend, flatDocument(graph), h.resolved));
   // A Syphon bridge IS available in this test, which is the substitution the claim is
   // about: asking for NDI and silently getting the other transport's picture.
   expect(desktopInputBridge).toHaveBeenCalledWith("ndi");
@@ -107,7 +108,7 @@ it("refuses to stand a Syphon bridge in for an absent NDI one", () => {
 it("Spout preparation reports unimplemented native sharing without opening another transport", () => {
   const h = setup("spoutIn");
   vi.mocked(desktopInputBridge).mockImplementation(transport => transport === "spout" ? undefined : {} as never);
-  const view = renderHook(() => useNativeInputs(h.runtime, h.backend, h.graph, h.resolved));
+  const view = renderHook(() => useNativeInputs(h.runtime, h.backend, flatDocument(h.graph), h.resolved));
   expect(desktopInputBridge).toHaveBeenCalledWith("spout");
   expect(view.result.current.diagnostics).toEqual([]);
   expect(createNativeInputSource).not.toHaveBeenCalled();
@@ -116,7 +117,7 @@ it("Spout preparation reports unimplemented native sharing without opening anoth
 it("empty Spout selection never opens the SDK's active sender", () => {
   const h = setup("spoutIn");
   h.graph.nodes["input"]!.parameters = { source: "" };
-  const view = renderHook(() => useNativeInputs(h.runtime, h.backend, h.graph, h.resolved));
+  const view = renderHook(() => useNativeInputs(h.runtime, h.backend, flatDocument(h.graph), h.resolved));
   expect(view.result.current.diagnostics[0]?.message).toContain("Select a Spout source");
   expect(createNativeInputSource).not.toHaveBeenCalled();
 });
@@ -125,7 +126,7 @@ it("switching to Spout retires the previous transport even for the same source n
   const h = setup();
   const syphon = {} as never, spout = {} as never;
   vi.mocked(desktopInputBridge).mockImplementation(transport => transport === "spout" ? spout : syphon);
-  const view = renderHook(({ graph }) => useNativeInputs(h.runtime, h.backend, graph, h.resolved), { initialProps: { graph: h.graph } });
+  const view = renderHook(({ graph }) => useNativeInputs(h.runtime, h.backend, flatDocument(graph), h.resolved), { initialProps: { graph: h.graph } });
   view.rerender({ graph: { ...h.graph, nodes: { input: { ...h.graph.nodes["input"]!, type: "spoutIn" } } } });
   expect(h.dispose).toHaveBeenCalledOnce();
   expect(createNativeInputSource).toHaveBeenLastCalledWith(spout, "uuid", expect.anything());

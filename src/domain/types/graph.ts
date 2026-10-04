@@ -229,6 +229,48 @@ export interface GraphDocument {
   viewport?: ViewportState;
 }
 
+/** Phantom keys: no module can write them, so only a cast (gated) or a spread of one makes either brand. */
+declare const flatGraphBrand: unique symbol;
+declare const authoredGraphBrand: unique symbol;
+
+/**
+ * §T1552b — THE FLATTENED GRAPH, as a type of its own.
+ *
+ * The document the user authored and the one the compiler, the runtime and every per-frame
+ * reader evaluate are both `GraphDocument`, so a consumer that needs the flat one accepted
+ * the authored one without a word, and a component's internals did not exist for it: B29,
+ * B41, B177, B188, T615 (six sites, one cause), T1067, T1485b, T1550b. A consumer that needs
+ * the flat graph takes `FlatGraph`, and `store.getGraph()` is a type error there.
+ *
+ * Produced only by the flattener (`flattenComponents`, and `compiledWithoutCatalogue` for a
+ * compile with no catalogue). `frame-path-flattening.test.ts` refuses an `as FlatGraph` cast
+ * anywhere else. A spread of a flat graph is still flat (`{ ...flat, nodes }`): a transform
+ * of the flattening, which is what the timeline's structure overrides are.
+ */
+export type FlatGraph = GraphDocument & { readonly [flatGraphBrand]: true };
+
+/**
+ * §T1552b — THE AUTHORED GRAPH, said ON PURPOSE where a reader evaluates it.
+ *
+ * The store's document stays a plain `GraphDocument`; this brand exists only for the sites
+ * that EVALUATE parameters (`parameterReadOptions`, `validateGraph`) and accept either side,
+ * so each one says which it reads. The inspector, a command's read scope and `project.validate`
+ * read the document as the user wrote it, instances and all; they wrap it in
+ * `authoredGraph(…)`. Everything else evaluates the flattening.
+ */
+export type AuthoredGraph = GraphDocument & { readonly [authoredGraphBrand]: true };
+
+/** What a parameter read or a validation may evaluate: one side or the other, named. */
+export type FlatOrAuthoredGraph = FlatGraph | AuthoredGraph;
+
+/**
+ * §T1552b: read this document AS AUTHORED — instances whole, labels as the user wrote them.
+ * A flat graph is refused (it would claim to be the document while naming inlined nodes).
+ */
+export function authoredGraph(graph: GraphDocument & { readonly [flatGraphBrand]?: never }): AuthoredGraph {
+  return graph as AuthoredGraph;
+}
+
 /**
  * Media is referenced, never inlined. v1 saves a single .loom.json with external
  * references; unresolved assets keep identity and offer a relink flow (§C).

@@ -1,4 +1,4 @@
-import type { GraphDocument } from "../../domain/types/graph.ts";
+import type { FlatGraph } from "../../domain/types/graph.ts";
 import type { NodeId } from "../../domain/types/ids.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { analyzeChannelEntries } from "../execution/analyze-channels.ts";
@@ -149,7 +149,7 @@ export function readbackPlanBudget(input: ReadbackBudgetInput): ReadbackPlanBudg
  * A second kind of per-frame readback belongs here beside it, not in a parallel counter.
  */
 export function analyzeReadbacks(
-  graph: GraphDocument,
+  graph: FlatGraph,
   registry: NodeRegistryView,
 ): readonly DeclaredReadback[] {
   return analyzeChannelEntries(graph, registry).map((entry) => ({

@@ -1,4 +1,4 @@
-import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
+import type { FlatGraph, GraphNode } from "../../domain/types/graph.ts";
 import type { NodeId } from "../../domain/types/ids.ts";
 import type { ChannelResolver } from "../../domain/parameters/resolve.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
@@ -49,7 +49,7 @@ export interface AnalyzeEntry {
  */
 export function analyzeOperationOf(
   node: GraphNode,
-  graph: GraphDocument,
+  graph: FlatGraph,
   registry: NodeRegistryView,
   read: Pick<ParameterReadContext, "frame" | "channels" | "flattening">,
 ): AnalyzeEntry["operation"] {
@@ -60,7 +60,7 @@ export function analyzeOperationOf(
 
 /** The entries the current document declares — recomputed after each compile. */
 export function analyzeChannelEntries(
-  graph: GraphDocument,
+  graph: FlatGraph,
   registry: NodeRegistryView,
   resultKey = "result",
 ): AnalyzeEntry[] {

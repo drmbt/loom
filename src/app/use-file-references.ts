@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "r
 import { createFileReference, parseFileReference } from "@domain/media/file-reference.ts";
 import { isParameterSlot, storedStaticValue } from "@domain/parameters/slots.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { AssetReference, GraphDocument } from "@domain/types/graph.ts";
+import type { AssetReference, FlatGraph, GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { retainedFiles } from "@ui/files/retained-files.ts";
 
@@ -42,12 +42,12 @@ function fileParameters(graph: GraphDocument): readonly FileParameter[] {
 }
 
 export interface FileReferenceWiring {
-  readonly graph: GraphDocument;
+  readonly graph: FlatGraph;
   readonly diagnostics: readonly RuntimeDiagnostic[];
 }
 
 /** Session-only IO view: durable identities stay in the authoring graph and saves. */
-export function useFileReferences(graph: GraphDocument): FileReferenceWiring {
+export function useFileReferences(graph: FlatGraph): FileReferenceWiring {
   const broker = useMemo(() => retainedFiles(), []);
   const files = useMemo(() => fileParameters(graph), [graph]);
   // A parameter edit must not release/reopen unchanged files. Multiple flattened nodes

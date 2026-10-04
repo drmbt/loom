@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
@@ -152,7 +153,7 @@ function session(nodes: GraphNode[], options: { attachClock?: boolean } = {}): S
       const target = graph.nodes[nodeId];
       if (target === undefined) throw new Error(`no node ${nodeId}`);
       const morphs = buildMorphIndex({ document: graph, registry });
-      return resolveParameters(target, registry.get(target.type), parameterReadOptions({ graph, registry, frame, channels: undefined, flattening: { ...NO_FLATTENING, morphs } })).values[key];
+      return resolveParameters(target, registry.get(target.type), parameterReadOptions({ graph: flatDocument(graph), registry, frame, channels: undefined, flattening: { ...NO_FLATTENING, morphs } })).values[key];
     },
     records: (bankId = "bank") => parseMorphRecords(store.view.getGraph().nodes[bankId]?.parameters["morphs"]),
     stored: (nodeId, key) => store.view.getGraph().nodes[nodeId]?.parameters[key],
@@ -743,7 +744,7 @@ describe("§T1557b — a bank's Morph driven by op('k1').chan.value (B181's shap
       node("k1", "constant", "k1", { value: 3 }),
       bank("bank", "looks", [preset("bright", { level1: { brightness: 0.8 } })], { morph: expression("op('k1').chan.value", 0) }),
     ]);
-    run.bus.attachChannelResolver(() => graphChannelResolver(run.store.view.getGraph(), registry));
+    run.bus.attachChannelResolver(() => graphChannelResolver(flatDocument(run.store.view.getGraph()), registry));
     run.bus.attachFrame(() => run.latest());
     run.frames(1);
 

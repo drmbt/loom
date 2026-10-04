@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CompiledGraph } from "@compiler/index.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph } from "@domain/types/graph.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import type { NodeMetricSink } from "@runtime/telemetry/index.ts";
 import {
@@ -416,7 +416,7 @@ export interface ModelInferenceBinding {
   /** Frame-loop observer. Publishes staleness, then queues the next inference. Stable. */
   readonly observe: (frame: FrameEvaluationInput) => void;
   /** Re-derives the tracked set. Call after each compile. Stable. */
-  readonly track: (graph: GraphDocument, compiled: CompiledGraph | null) => void;
+  readonly track: (graph: FlatGraph, compiled: CompiledGraph | null) => void;
   /**
    * T747: awaited by the export path after each frame renders (§V586's blocking half).
    *
@@ -492,7 +492,7 @@ export function useModelInference(
   // RUN resolves its per-run parameters (Detail Ratio, Smoothing) with, in `describe`.
   const parametersRef = useRef(parameters);
   parametersRef.current = parameters;
-  const trackedGraphRef = useRef<GraphDocument | null>(null);
+  const trackedGraphRef = useRef<FlatGraph | null>(null);
   const frameRef = useRef<FrameEvaluationInput | undefined>(undefined);
   /**
    * The tracked set MIRRORED INTO STATE, and the duplication is the fix rather than the
@@ -856,7 +856,7 @@ export function useModelInference(
   }, [bus]);
 
   const track = useCallback(
-    (graph: GraphDocument, compiled: CompiledGraph | null) => {
+    (graph: FlatGraph, compiled: CompiledGraph | null) => {
       const allocated = new Set((compiled?.resources ?? []).map((resource) => resource.id));
       const sized = new Map<string, readonly [number, number]>();
       for (const resource of compiled?.resources ?? []) {

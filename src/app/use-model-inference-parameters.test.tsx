@@ -7,6 +7,7 @@ import * as acquisitionModule from "@runtime/models/model-acquisition.ts";
 import { MATTE_RVM } from "@runtime/models/model-catalogue.ts";
 import { compileGraph } from "@compiler/index.ts";
 import { DEFAULT_PROJECT_SETTINGS, type GraphDocument } from "@domain/types/graph.ts";
+import { flatDocument } from "@compiler/test-support.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import { buildMorphIndex } from "@domain/presets/morph-index.ts";
 import { presetBankNode, presetSession } from "@domain/presets/test-support.ts";
@@ -152,7 +153,7 @@ async function driveAcross(
   const preprocess = plan.passes.find((pass) => pass.kind === "dispatch" && pass.nodeId === nodeId);
   if (preprocess === undefined) throw new Error(`${nodeId} has no compiled preprocess pass`);
   const view = renderHook(() => useModelInference(backend, undefined, undefined, undefined, reads));
-  act(() => view.result.current.track(graph, plan));
+  act(() => view.result.current.track(flatDocument(graph), plan));
   const settle = async () =>
     act(async () => {
       for (let tick = 0; tick < 4; tick += 1) await new Promise((resolve) => setTimeout(resolve, 0));

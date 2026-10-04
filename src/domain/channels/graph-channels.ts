@@ -1,4 +1,4 @@
-import type { GraphDocument } from "../types/graph.ts";
+import type { FlatGraph, GraphDocument } from "../types/graph.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { ParameterValue, StoredParameter } from "../types/parameters.ts";
 import type { NodeId } from "../types/ids.ts";
@@ -38,7 +38,7 @@ import { defaultParameterValue } from "../parameters/validate.ts";
  * therefore read through the resolver's own fold, over that same static view.
  */
 export function graphChannelResolver(
-  graph: GraphDocument,
+  graph: FlatGraph,
   registry: NodeRegistryView,
   morphs?: ParameterMorphs,
 ): ChannelResolver {

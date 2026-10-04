@@ -6,7 +6,7 @@ import type { Viewport } from "@xyflow/react";
 import type { CommandResult, CommandStatus } from "@domain/types/commands.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { LoomBus } from "@domain/commands/index.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import { authoredGraph, type GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId, PortId } from "@domain/types/ids.ts";
 import { publishesValueChannels } from "@domain/types/node-definition.ts";
 import { bypassPassthroughPorts } from "@domain/graph/bypass.ts";
@@ -419,7 +419,7 @@ function GraphPaneInner({
     (nodeId: NodeId): CameraPose | null => {
       const node = graphRef.current.nodes[nodeId];
       if (node === undefined) return null;
-      return cameraPoseAt(node, registry.get(node.type), { ...bus.readScope(), graph: graphRef.current, registry });
+      return cameraPoseAt(node, registry.get(node.type), { ...bus.readScope(), graph: authoredGraph(graphRef.current), registry });
     },
     [bus, registry],
   );

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { flatDocument } from "@compiler/test-support.ts";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -226,7 +227,7 @@ function mountDesk(
   return renderHook(
     ({ door, graph }: { door: PhoneDoorState; graph: GraphDocument }) => {
       const phones = usePhoneCameras({ deviceClient: h.deviceClient, door, environment: h.phoneEnvironment });
-      const media = useMediaSources(runtime, h.backend, graph, null, h.mediaEnvironment, undefined, phones.opener);
+      const media = useMediaSources(runtime, h.backend, flatDocument(graph), null, h.mediaEnvironment, undefined, phones.opener);
       return { phones, media };
     },
     { initialProps: { door: initial.door, graph: initial.graph ?? runtime.bus.store.getGraph() } },

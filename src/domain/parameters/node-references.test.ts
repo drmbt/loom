@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
+import { flatDocument } from "@compiler/test-support.ts";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -306,7 +307,7 @@ describe("T1129 — the parameter read options come from one factory", () => {
     const subject = node("n2", "a", { gain: expression("op('lfo1').chan.value") });
     const graph = graphOf(source, subject);
     const options = parameterReadOptions({
-      graph,
+      graph: flatDocument(graph),
       registry: { get: () => ({ parameters: SCHEMA }) } as unknown as NodeRegistryView,
       frame: undefined,
       channels,
@@ -430,7 +431,7 @@ describe("T1172 — the reader's name index", () => {
     });
     const graph = graphOf(lfo, subject);
     const options = parameterReadOptions({
-      graph,
+      graph: flatDocument(graph),
       registry: { get: () => ({ parameters: SCHEMA }) } as unknown as NodeRegistryView,
       frame: undefined,
       channels: (address: string) => (address === "lfo1:value" || address === "lfo1" ? 1 : undefined),
@@ -532,7 +533,7 @@ describe("T1172 — the per-reader memo of a referenced node's parameters", () =
         sink,
         SCHEMA,
         parameterReadOptions({
-          graph,
+          graph: flatDocument(graph),
           registry,
           frame: undefined,
           channels: (address: string) => (address === "lfo1" || address === "lfo1:value" ? level : undefined),

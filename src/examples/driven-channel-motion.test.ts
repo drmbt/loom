@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import { flattenComponents } from "../compiler/flatten.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
 import { componentNodeType, createComponentSystem } from "../domain/components/index.ts";
@@ -279,7 +280,7 @@ function motionOf(
       instances.size === 0
         ? undefined
         : parameterReadOptions({
-            graph,
+            graph: flatDocument(graph),
             registry,
             frame,
             channels: (address) => ladder(address),

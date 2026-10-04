@@ -5,7 +5,7 @@ import type {
   ParentScope,
 } from "../domain/types/components.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
-import type { GraphDocument, GraphEdge, GraphNode } from "../domain/types/graph.ts";
+import type { FlatGraph, GraphDocument, GraphEdge, GraphNode } from "../domain/types/graph.ts";
 import type { NodeId, PortId } from "../domain/types/ids.ts";
 import type {
   ParameterSchema,
@@ -138,8 +138,9 @@ export interface FlattenedGraph extends FlatteningReads {
   readonly instanceNodes: ReadonlyMap<NodeId, GraphNode>;
   /** The parent logical graph with every instance inlined. No component types remain —
    *  except a MUTED or BYPASSED instance, kept whole so the compiler's splice can see
-   *  its flags (T1032); the splice removes it before any node compiles. */
-  readonly graph: GraphDocument;
+   *  its flags (T1032); the splice removes it before any node compiles. §T1552b: a
+   *  `FlatGraph`, so a consumer that needs this cannot be handed the authored document. */
+  readonly graph: FlatGraph;
   /** Flattened node id -> where it came from, sorted by id. */
   readonly sources: ReadonlyMap<NodeId, ComponentSource>;
   /**
@@ -405,7 +406,7 @@ function identityFlattening(graph: GraphDocument): FlattenedGraph {
   }
 
   return {
-    graph: { revision: graph.revision, nodes, edges, groups: {} },
+    graph: flat({ revision: graph.revision, nodes, edges, groups: {} }),
     sources,
     instanceOutputs: new Map(),
     instanceChannels: new Map(),
@@ -429,6 +430,25 @@ function identityFlattening(graph: GraphDocument): FlattenedGraph {
  * T1176: `flatteningIsIdentity` answers first, for the documents that have no component
  * in them at all — which is most of them, on every commit.
  */
+/**
+ * §T1552b — THE MINT. A `FlatGraph` is made here and nowhere else (the gate in
+ * `frame-path-flattening.test.ts` refuses an `as FlatGraph` cast in any other module), so
+ * holding one means the flattener produced it.
+ */
+function flat(graph: GraphDocument): FlatGraph {
+  return graph as FlatGraph;
+}
+
+/**
+ * §T1552b — the graph a compile reads when it was handed NO catalogue: the document as it
+ * is. Not a flattening — an instance in it stays an instance and meets the manifest's
+ * `component.notFlattened` tripwire — but it is the graph that compile evaluates, so it is
+ * named here rather than cast at the compile.
+ */
+export function compiledWithoutCatalogue(graph: GraphDocument): FlatGraph {
+  return flat(graph);
+}
+
 export function flattenComponents(request: FlattenRequest): FlattenedGraph {
   // T1176: the overwhelming majority of documents have nothing to flatten. See
   // `flatteningIsIdentity`.
@@ -453,7 +473,8 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       }),
     );
     return {
-      graph: request.graph,
+      // §V83: untouched, and nothing compiles it — the compile stops on `recursion`.
+      graph: flat(request.graph),
       sources: new Map(),
       instanceOutputs: new Map(),
       instanceChannels: new Map(),
@@ -977,13 +998,13 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       target: { nodeId: boundary.id, portId: "preserved" } };
   }
 
-  const graph: GraphDocument = {
+  const graph = flat({
     revision: request.graph.revision,
     nodes,
     edges,
     // Groups are a canvas affordance, not a logical one: a flattened graph has no canvas.
     groups: {},
-  };
+  });
   return {
     graph,
     sources,

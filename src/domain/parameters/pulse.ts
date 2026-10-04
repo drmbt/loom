@@ -1,4 +1,4 @@
-import type { GraphDocument, GraphNode } from "../types/graph.ts";
+import type { FlatGraph, GraphNode } from "../types/graph.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { NodeId } from "../types/ids.ts";
 import type {
@@ -105,7 +105,8 @@ export interface PulseWatcher {
    * open", reached by the other road).
    */
   step: (
-    graph: GraphDocument,
+    /** §T1552b: the FLAT graph (`runtime.flattened.current().graph`) — a pulse inside a component exists only there (T615). */
+    graph: FlatGraph,
     frame: FrameEvaluationInput,
     /** T628: the §V61 channel resolver — `undefined`, a DRIVEN pulse reads its retained static and never fires. */
     channels: ChannelResolver | undefined,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import type { FrameClock } from "../types/frame.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
@@ -822,7 +823,7 @@ describe("§T1557b — GO on a bank whose Morph is op('k1').chan.value (B181's s
         : each,
     );
     const { bus, store, at } = session(driven);
-    bus.attachChannelResolver(() => graphChannelResolver(store.view.getGraph(), registry));
+    bus.attachChannelResolver(() => graphChannelResolver(flatDocument(store.view.getGraph()), registry));
     at({ epoch: "show", absTimeSeconds: 5 });
 
     const result = await go(bus);

@@ -1,5 +1,5 @@
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
@@ -247,7 +247,7 @@ export interface MediaTransportRunner {
 }
 
 export interface MediaTransportContext {
-  readonly graph: () => GraphDocument;
+  readonly graph: () => FlatGraph;
   readonly registry: NodeRegistryView;
   /** The value graph's resolver, so a DRIVEN speed or trim reaches here like any other. */
   readonly channels: () => ChannelResolver | undefined;

@@ -14,7 +14,7 @@ import type {
 } from "../types/commands.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { FrameClock, FrameEvaluationInput } from "../types/frame.ts";
-import type { GraphDocument, ProjectSettings } from "../types/graph.ts";
+import { authoredGraph, type FlatGraph, type GraphDocument, type ProjectSettings } from "../types/graph.ts";
 import type { ChannelResolver } from "../parameters/resolve.ts";
 import { NO_FLATTENING, type FlatteningReads, type ParameterReadContext } from "../parameters/node-references.ts";
 import type { Revision } from "../types/ids.ts";
@@ -382,9 +382,9 @@ export interface LoomBus extends AppCommandBus {
    * §T1557b: the flattening WHOLE (`runtime.flattened.current()`), not its graph alone, so
    * `readScope` carries the morphs and instances off the same object (`FlatteningReads`).
    */
-  attachFlattenedGraph: (read: () => (FlatteningReads & { readonly graph: GraphDocument }) | undefined) => void;
+  attachFlattenedGraph: (read: () => (FlatteningReads & { readonly graph: FlatGraph }) | undefined) => void;
   /** The flattened document, or undefined when nothing has attached one. */
-  readonly flattenedGraph: () => GraphDocument | undefined;
+  readonly flattenedGraph: () => FlatGraph | undefined;
   /** Read-only document access for the UI. Mutation stays behind `execute` (§V29). */
   readonly store: GraphStoreView;
   readonly registry: NodeRegistryView;
@@ -434,14 +434,17 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
   /** T593: null until a composition root attaches one. Null means "no app", not "empty". */
   let readChannels: (() => ChannelResolver | undefined) | null = null;
   /** T615: likewise — null is "no app", and a handler falls back to the document. */
-  let readFlattened: (() => (FlatteningReads & { readonly graph: GraphDocument }) | undefined) | null = null;
+  let readFlattened: (() => (FlatteningReads & { readonly graph: FlatGraph }) | undefined) | null = null;
   /** T1497b: likewise — null is "no app", and a morph commits as a cut. */
   let readFrameClock: (() => FrameClock | undefined) | null = null;
   /** §T1557b: likewise — null is "no app", and a read resolves at the zero frame. */
   let readFrame: (() => FrameEvaluationInput | undefined) | null = null;
   /** §T1557b: the one producer behind `bus.readScope` and every `CommandContext.readScope`. */
   const readScopeOver = (graph: GraphDocument): ParameterReadContext => ({
-    graph,
+    // §T1552b: a command addresses the document AS AUTHORED (the ids it patches, an instance
+    // whole), on purpose. A site that must read the flattening overrides `graph` with
+    // `flattenedGraph()`, which is a `FlatGraph` and says so.
+    graph: authoredGraph(graph),
     registry,
     frame: readFrame?.() ?? undefined,
     channels: readChannels?.() ?? undefined,
@@ -458,7 +461,7 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
     },
     channelResolver: () => readChannels?.() ?? undefined,
 
-    attachFlattenedGraph(read: () => (FlatteningReads & { readonly graph: GraphDocument }) | undefined): void {
+    attachFlattenedGraph(read: () => (FlatteningReads & { readonly graph: FlatGraph }) | undefined): void {
       readFlattened = read;
     },
     flattenedGraph: () => readFlattened?.()?.graph ?? undefined,

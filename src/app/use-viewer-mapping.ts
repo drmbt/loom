@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import { authoredGraph, type GraphDocument } from "@domain/types/graph.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { createVec3GizmoStore } from "@editor/viewer/index.ts";
@@ -166,7 +166,7 @@ export function useViewerMapping({ bus, graph, registry, invocation, output, sur
         // §T1539b: the crossed Corner Pins as on screen — the window's resolve, the app's live reads.
         valuesOf: (nodeId) => {
           const node = graph.nodes[nodeId];
-          return node === undefined ? undefined : liveParameters(node, graph, nodes, live).values;
+          return node === undefined ? undefined : liveParameters(node, authoredGraph(graph), nodes, live).values;
         },
         frame: (lens) => ({ size: shown.size, place: (size) => viewerPicture(shown.size, size, lens) }),
         message,

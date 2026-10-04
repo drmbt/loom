@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
+import { authoredGraph } from "@domain/types/graph.ts";
 import { createComponentSystem } from "@domain/components/registry.ts";
 import { loadProject } from "@domain/project/index.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
@@ -182,9 +184,9 @@ describe("§T1557b — a camera eye channel on op('k1').chan.value (B181's shape
     const k1: GraphNode = { id: "k1" as GraphNode["id"], type: "constant", label: "k1", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { value: 5 } };
     const graph: GraphDocument = { revision: 1, nodes: { cam: camera, k1 }, edges: {}, groups: {} };
     const { bus } = createDomainBus({ store: createGraphStore({ initialGraph: graph }), registry: nodes });
-    bus.attachChannelResolver(() => graphChannelResolver(graph, nodes));
+    bus.attachChannelResolver(() => graphChannelResolver(flatDocument(graph), nodes));
 
-    const pose = cameraPoseAt(camera, definition, { ...bus.readScope(), graph });
+    const pose = cameraPoseAt(camera, definition, { ...bus.readScope(), graph: authoredGraph(graph) });
     // x 5 only if the channel reached a reader; the bug left the static 0 there.
     expect(pose?.eye).toEqual([5, 0.5, 3]);
     expect(pose?.eyeMask).toEqual([false, true, true]);

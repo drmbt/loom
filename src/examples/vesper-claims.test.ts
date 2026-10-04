@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
 import { mediaPlayhead, mediaTransportFrom } from "../domain/media/transport.ts";
 import { NO_FLATTENING, parameterReadOptions, resolveParameters } from "../domain/parameters/index.ts";
@@ -125,7 +126,7 @@ function playheads(graph: GraphDocument, frames = HORIZON): number[] {
        with "no resolver", falls back to §V108's retained static, and reports a lane that
        never moves while the app animates (§B181). */
     const resolved = resolveParameters(clip, definition, parameterReadOptions({
-      graph,
+      graph: flatDocument(graph),
       registry: view,
       frame,
       channels: evaluated.resolver,

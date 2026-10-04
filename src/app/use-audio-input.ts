@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { AudioFeatures, FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { FrameRange, GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import type { FlatGraph, FrameRange, GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import { NO_FLATTENING, type FlatteningReads } from "@domain/parameters/node-references.ts";
@@ -447,7 +447,7 @@ interface LiveCapture {
 }
 
 export function useAudioInput(
-  getGraph: () => GraphDocument,
+  getGraph: () => FlatGraph,
   /**
    * T493 — the node registry, so transport parameters resolve through the ONE read path
    * (§V61) and take every mode. Optional because `captureConfigOf` and the analysis half

@@ -8,7 +8,7 @@ import { NO_FLATTENING, nodeReferenceMembers, parameterReadOptions } from "@doma
 import { effectiveParameterSchema, resolveParameters } from "@domain/parameters/resolve.ts";
 import type { GraphComponentDefinition } from "@domain/types/components.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import { authoredGraph, type GraphDocument, type GraphNode } from "@domain/types/graph.ts";
 import type { StoredParameter } from "@domain/types/parameters.ts";
 import { expressionSlot } from "@/examples/documents/builders.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
@@ -128,7 +128,8 @@ function inspected(amount: StoredParameter, level = 0.75) {
     target,
     system.nodes.get(target.type),
     parameterReadOptions({
-      graph,
+      // §T1552b: the inspector reads the document AS AUTHORED (the instance node exists there).
+      graph: authoredGraph(graph),
       registry: system.nodes,
       channels: evaluated.resolver,
       frame: FRAME,

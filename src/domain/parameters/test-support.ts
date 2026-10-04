@@ -1,5 +1,5 @@
 import type { FrameEvaluationInput } from "../types/frame.ts";
-import type { GraphDocument } from "../types/graph.ts";
+import { authoredGraph, type GraphDocument } from "../types/graph.ts";
 import { NO_MORPHS } from "../presets/morph-index.ts";
 import { NO_INSTANCES, parameterReadOptions, type InstanceChannelSources, type ParameterReadContext } from "./node-references.ts";
 import type { ChannelResolver, ParameterMorphs, ParameterReadOptions } from "./resolve.ts";
@@ -26,7 +26,8 @@ export interface TestReadContext {
  */
 export function testRead(context: TestReadContext = {}): ParameterReadOptions {
   return parameterReadOptions({
-    graph: context.graph ?? EMPTY_GRAPH,
+    // §T1552b: a test read with no flattening reads its document as authored.
+    graph: authoredGraph((context.graph ?? EMPTY_GRAPH) as GraphDocument),
     registry: context.registry ?? NO_TYPES,
     frame: context.frame,
     channels: context.channels,

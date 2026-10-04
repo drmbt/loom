@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import {
   SEEK_TOLERANCE_SECONDS,
   applyMediaPlayhead,
@@ -257,7 +258,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
 
   const runnerFor = (graph: GraphDocument) =>
     createMediaTransportRunner("m", {
-      graph: () => graph,
+      graph: () => flatDocument(graph),
       registry,
       channels: () => undefined,
       flattening: () => NO_FLATTENING,
@@ -357,7 +358,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
       speed: { mode: "driven", bindings: { driven: { kind: "driven", channel: "rate" } } },
     });
     const runner = createMediaTransportRunner("m", {
-      graph: () => graph,
+      graph: () => flatDocument(graph),
       registry,
       channels: () => (channel) => (channel === "rate" ? 4 : undefined),
       flattening: () => NO_FLATTENING,
@@ -367,7 +368,7 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
 
   it("a node that has been DELETED steps to null rather than throwing into the frame loop", () => {
     const runner = createMediaTransportRunner("gone", {
-      graph: () => graphWith({}),
+      graph: () => flatDocument(graphWith({})),
       registry,
       channels: () => undefined,
       flattening: () => NO_FLATTENING,
@@ -566,7 +567,7 @@ describe("T1155 — a DRIVEN transport parameter reaches the playhead", () => {
   it("holds at the CHANNEL's value, not at the retained static", () => {
     let index = 0;
     const runner = createMediaTransportRunner("m", {
-      graph: () => drivenCue,
+      graph: () => flatDocument(drivenCue),
       registry,
       channels: () => sweeping(index) as never,
       flattening: () => NO_FLATTENING,
@@ -647,7 +648,7 @@ describe("T1524b — a morphing transport parameter reaches the runner at its ha
     // The document holds the destination from the moment of the recall.
     expect(graph.nodes["m"]?.parameters).toMatchObject({ speed: 3, trimStart: 2 });
     const morphs = buildMorphIndex({ document: graph, registry });
-    const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, flattening: () => ({ ...NO_FLATTENING, morphs }) });
+    const runner = createMediaTransportRunner("m", { graph: () => flatDocument(graph), registry, channels: () => undefined, flattening: () => ({ ...NO_FLATTENING, morphs }) });
 
     const start = runner.step(frameAt(0), 10, null);
     expect(start?.transport.speed).toBe(1);
@@ -672,7 +673,7 @@ describe("T1524b — a morphing transport parameter reaches the runner at its ha
 
   it("cut the wire: a runner handed no index hands over the end value at half-time", async () => {
     const graph = await fading();
-    const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, flattening: () => NO_FLATTENING });
+    const runner = createMediaTransportRunner("m", { graph: () => flatDocument(graph), registry, channels: () => undefined, flattening: () => NO_FLATTENING });
     expect(runner.step(frameAt(30), 10, null)?.transport.speed).toBe(3);
   });
 });
@@ -943,7 +944,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       edges: {},
     } as unknown as GraphDocument;
     const runner = createMediaTransportRunner("m", {
-      graph: () => graph,
+      graph: () => flatDocument(graph),
       registry,
       channels,
       flattening: () => NO_FLATTENING,
@@ -1386,7 +1387,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         edges: {},
       } as unknown as GraphDocument;
       const runner = createMediaTransportRunner("m", {
-        graph: () => graph,
+        graph: () => flatDocument(graph),
         registry,
         channels: () => undefined,
         flattening: () => NO_FLATTENING,
@@ -1612,7 +1613,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         nodes: { m: { id: "m", type: "movieFileIn", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} } },
         edges: {},
       } as unknown as GraphDocument;
-      const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, flattening: () => NO_FLATTENING });
+      const runner = createMediaTransportRunner("m", { graph: () => flatDocument(graph), registry, channels: () => undefined, flattening: () => NO_FLATTENING });
       const at = (index: number): FrameEvaluationInput =>
         ({ timeSeconds: index / 60, deltaSeconds: 1 / 60, frameIndex: index, mode, randomSeed: 1 });
       runner.step(at(0), 3600, 0);

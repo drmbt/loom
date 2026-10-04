@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { flatDocument } from "@compiler/test-support.ts";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -153,7 +154,7 @@ const graphOf = (nodes: GraphNode[]): GraphDocument =>
 
 /** Renders the real hook against a graph the test can swap under it. */
 function Harness({ getGraph }: { getGraph: () => GraphDocument }): null {
-  useAudioInput(getGraph);
+  useAudioInput(() => flatDocument(getGraph()));
   return null;
 }
 
@@ -351,7 +352,7 @@ describe("T1542b — the audio door follows its element's clock", () => {
     const graph = graphOf([node("music", "audioFileIn", FILE)]);
     let source: AudioInputSource | null = null;
     function Wired(): null {
-      source = useAudioInput(() => graph, registry);
+      source = useAudioInput(() => flatDocument(graph), registry);
       return null;
     }
     render(<Wired />);

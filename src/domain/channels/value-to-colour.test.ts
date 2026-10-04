@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { flatDocument } from "@compiler/test-support.ts";
 import { compileGraph } from "../../compiler/index.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
@@ -104,7 +105,7 @@ function colourAt(frameIndex: number): readonly number[] {
     settings,
     registry,
     capabilities: TIER_B_CAPABILITIES,
-    resolution: { frame, channels: graphChannelResolver(document, registry) },
+    resolution: { frame, channels: graphChannelResolver(flatDocument(document), registry) },
   });
   expect(plan.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   const pass = plan.passes.find((entry) => entry.kind === "effect" && entry.nodeId === "fill");
@@ -142,7 +143,7 @@ describe("value to colour (T389)", () => {
       edges: {},
     } as unknown as GraphDocument;
 
-    const resolve = graphChannelResolver(document, fakeRegistry);
+    const resolve = graphChannelResolver(flatDocument(document), fakeRegistry);
     const context = {
       node: document.nodes["src"]!,
       key: "color",

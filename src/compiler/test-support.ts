@@ -1,5 +1,7 @@
 import type { EdgeId, NodeId, PortId } from "../domain/types/ids.ts";
-import type { GraphDocument, GraphEdge, GraphNode, ProjectSettings } from "../domain/types/graph.ts";
+import type { FlatGraph, GraphDocument, GraphEdge, GraphNode, ProjectSettings } from "../domain/types/graph.ts";
+import { isComponentNodeType } from "../domain/components/component-type.ts";
+import { compiledWithoutCatalogue } from "./flatten.ts";
 import type { BackendCapabilities } from "../domain/types/backend.ts";
 import type { NodeDefinition, TextureFormat } from "../domain/types/node-definition.ts";
 import { TEXTURE_FORMATS } from "../domain/types/node-definition.ts";
@@ -15,6 +17,21 @@ import { wgsl } from "../runtime/backend/wgsl.ts";
  * emit real `EffectPassDescriptor`s through the documented `asCompilerContext` seam, so the
  * compiler tests exercise the same integration a shipped node will.
  */
+
+/**
+ * §T1552b — a TEST document handed to a consumer of the flat graph. A document with no
+ * component instance is its own flattening (the identity flattening copies it), so it is
+ * passed as-is, by identity; one WITH an instance is refused, because handing that to a
+ * flat consumer is the very mistake the brand exists to stop — flatten it
+ * (`flattenComponents`) instead.
+ */
+export function flatDocument(graph: GraphDocument): FlatGraph {
+  const instance = Object.values(graph.nodes).find((node) => isComponentNodeType(node.type));
+  if (instance !== undefined) {
+    throw new Error(`flatDocument: "${instance.id}" is a component instance — flatten the document instead (§T1552b).`);
+  }
+  return compiledWithoutCatalogue(graph);
+}
 
 const rgba = { kind: "texture2d", sample: "float", channels: 4 } as const;
 

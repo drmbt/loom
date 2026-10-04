@@ -4,7 +4,7 @@ import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import { parameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
 import type { LiveParameterReads } from "@domain/parameters/index.ts";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import type { FlatGraph, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import { absTimeSecondsOf } from "@domain/types/frame.ts";
@@ -141,7 +141,7 @@ interface VisionParameterReads extends LiveParameterReads {
  */
 function minIntervalAt(
   node: GraphNode,
-  graph: GraphDocument,
+  graph: FlatGraph,
   reads: VisionParameterReads,
   frame: FrameEvaluationInput | undefined,
 ): number {
@@ -176,7 +176,7 @@ export function useVisionBridge(options: {
    *  the seam's entries fill only after a compile allocates the node, and the first
    *  structural compile therefore resolved `mask1:coverage` as unknown and pinned a
    *  diagnostic nothing later cleared. The channel belongs to the NODE, not the seam. */
-  graph?: () => GraphDocument;
+  graph?: () => FlatGraph;
   /**
    * T1525b: what the node's own parameters (Min interval) are resolved with — the catalogue
    * and the live read world (§T1551b: the compile's channel resolver and the runtime's
@@ -190,7 +190,7 @@ export function useVisionBridge(options: {
 }): {
   readonly diagnostics: readonly RuntimeDiagnostic[];
   observe(frame: FrameEvaluationInput): void;
-  track(graph: GraphDocument, compiled: CompiledGraph | null): void;
+  track(graph: FlatGraph, compiled: CompiledGraph | null): void;
   settle(frameIndex: number): Promise<void>;
   prepareForRender(): Promise<void>;
   /** T1067 — `mask1:coverage` et al. Present whenever the NODE is tracked, whether or
@@ -246,7 +246,7 @@ export function useVisionBridge(options: {
      was last handed, the one each frame re-reads Min interval on. */
   const readsRef = useRef<VisionParameterReads>(options);
   readsRef.current = options;
-  const trackedGraphRef = useRef<GraphDocument | null>(null);
+  const trackedGraphRef = useRef<FlatGraph | null>(null);
   const unregisterRef = useRef(new Map<string, () => void>());
   const registeredOnRef = useRef<LoomBackend | null>(null);
 
@@ -284,7 +284,7 @@ export function useVisionBridge(options: {
   );
 
   const track = useCallback(
-    (graph: GraphDocument, compiled: CompiledGraph | null) => {
+    (graph: FlatGraph, compiled: CompiledGraph | null) => {
       const sized = new Map<string, readonly [number, number]>();
       const nativeResults = new Set<string>();
       for (const resource of compiled?.resources ?? []) {

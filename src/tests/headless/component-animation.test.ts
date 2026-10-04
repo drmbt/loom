@@ -8,7 +8,7 @@ import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { createPulseWatcher, pulseCommandInput } from "../../domain/parameters/pulse.ts";
 import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
-import { DEFAULT_PROJECT_SETTINGS } from "../../domain/types/graph.ts";
+import { DEFAULT_PROJECT_SETTINGS, type FlatGraph } from "../../domain/types/graph.ts";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import { analyzeChannelEntries, createAnalyzeChannels } from "../../runtime/execution/index.ts";
 import {
@@ -199,7 +199,9 @@ describe("T615 — a component's own animation runs, per instance", () => {
 
     // The control, and the exact shape T608 measured: the reduction buffer IS allocated
     // by the plan; only the CPU sampler could not see it.
-    expect(analyzeChannelEntries(raw, registry)).toEqual([]);
+    // §T1552b: the raw document is no longer a type the sampler accepts; forced past the
+    // brand ON PURPOSE, because this control IS the defect.
+    expect(analyzeChannelEntries(raw as FlatGraph, registry)).toEqual([]);
 
     const entries = analyzeChannelEntries(flat.graph, registry);
     expect(entries.map((entry) => entry.nodeId).sort()).toEqual(["c1/an", "c2/an"]);
@@ -247,7 +249,7 @@ describe("T615 — a component's own animation runs, per instance", () => {
     const deadWatcher = createPulseWatcher(registry);
     const deadFires: string[] = [];
     for (let index = 0; index < 40; index += 1) {
-      for (const fire of deadWatcher.step(raw, frameAt(index), undefined, NO_FLATTENING)) deadFires.push(fire.nodeId);
+      for (const fire of deadWatcher.step(raw as FlatGraph, frameAt(index), undefined, NO_FLATTENING)) deadFires.push(fire.nodeId); // §T1552b: the defect, forced past the brand
     }
     expect(deadFires).toEqual([]);
 

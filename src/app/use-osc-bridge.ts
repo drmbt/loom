@@ -6,7 +6,7 @@ import { NO_MORPHS } from "@domain/presets/index.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { OSC_CHANNEL_PREFIX } from "@domain/osc/osc-address.ts";
@@ -174,7 +174,7 @@ export interface OscBridgeBinding {
    */
   readonly sync: (
     frame: FrameEvaluationInput,
-    graph: GraphDocument,
+    graph: FlatGraph,
     registry: NodeRegistryView,
     bags: ReadonlyMap<NodeId, Readonly<Record<string, number>>>,
     channels: ChannelResolver,
@@ -297,7 +297,7 @@ export function useOscBridge(options: OscBridgeOptions = {}): OscBridgeBinding {
   const sync = useCallback(
     (
       frame: FrameEvaluationInput,
-      graph: GraphDocument,
+      graph: FlatGraph,
       registry: NodeRegistryView,
       bags: ReadonlyMap<NodeId, Readonly<Record<string, number>>>,
       channels: ChannelResolver,

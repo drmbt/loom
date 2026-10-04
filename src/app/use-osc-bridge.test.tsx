@@ -5,7 +5,8 @@ import { DEVICE_HELPER_COMMAND } from "@devices/helper.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph, GraphDocument } from "@domain/types/graph.ts";
+import { flatDocument } from "@compiler/test-support.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { BridgeSocket } from "@devices/transport/bridge-socket.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
@@ -83,8 +84,8 @@ function fakeSocket(): {
   };
 }
 
-function graphOf(nodes: Record<string, { type: string; label: string; parameters: Record<string, unknown> }>): GraphDocument {
-  return {
+function graphOf(nodes: Record<string, { type: string; label: string; parameters: Record<string, unknown> }>): FlatGraph {
+  return flatDocument({
     revision: 1,
     groups: {},
     edges: {},
@@ -94,7 +95,7 @@ function graphOf(nodes: Record<string, { type: string; label: string; parameters
         { id, definitionVersion: 1, position: { x: 0, y: 0 }, ...node },
       ]),
     ),
-  } as unknown as GraphDocument;
+  } as unknown as GraphDocument);
 }
 
 const NO_CHANNELS = (): undefined => undefined;
@@ -229,7 +230,7 @@ describe("oscOut transmits only what the document configured (§T950 gap 4)", ()
    * and then asks the pump for something, which is exactly what makes a real session pick
    * the attachment up mid-flight without a reload (§T948 rule 1).
    */
-  function pumped(graph: GraphDocument) {
+  function pumped(graph: FlatGraph) {
     globalThis.sessionStorage.setItem("loom.bridge.pairing.v1", "ABCDEF");
     const socket = fakeSocket();
     const hook = renderHook(() => useOscBridge({ socketFactory: socket.factory, port: 1, autoConnect: false }));
@@ -560,7 +561,7 @@ describe("§T1006 — the pump's node set is derived from the registry and the l
    * `listen(ports)` the set it derived, and the client opens those sockets the moment the
    * helper answers.
    */
-  function attached(graph: GraphDocument, view: NodeRegistryView) {
+  function attached(graph: FlatGraph, view: NodeRegistryView) {
     globalThis.sessionStorage.setItem("loom.bridge.pairing.v1", "ABCDEF");
     const socket = fakeSocket();
     const hook = renderHook(() => useOscBridge({ socketFactory: socket.factory, port: 1, autoConnect: false }));

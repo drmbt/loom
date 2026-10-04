@@ -1,5 +1,5 @@
 import type { NodeId, PortId } from "../domain/types/ids.ts";
-import type { GraphDocument, GraphNode } from "../domain/types/graph.ts";
+import type { FlatGraph, GraphNode } from "../domain/types/graph.ts";
 import { instanceShapeIndex } from "../nodes/definitions/render-instances.ts";
 import { attributeBinding } from "../nodes/definitions/point-storage.ts";
 import { bypassPassthroughPorts } from "../domain/graph/bypass.ts";
@@ -40,7 +40,7 @@ import { colorPolicyOf, sinkTargetSpace } from "../domain/color/display.ts";
 import { CompilerDiagnosticCode, compilerDiagnostic, hasError } from "./diagnostics.ts";
 import { synthesizeSourceReferenceEdges } from "./source-reference-edges.ts";
 import { bindingOverflows, describeOverflow } from "./bindings.ts";
-import { flattenComponents, redirectSink, withSourcePath } from "./flatten.ts";
+import { compiledWithoutCatalogue, flattenComponents, redirectSink, withSourcePath } from "./flatten.ts";
 import type { ComponentSource } from "./flatten.ts";
 import { wgsl } from "../runtime/backend/wgsl.ts";
 import { resolveNodeFormat } from "./format.ts";
@@ -841,7 +841,7 @@ export interface RetainedCompile {
    */
   readonly request: CompileRequest;
   /** The flat graph with source-reference edges synthesized — what `op()` reads against. */
-  readonly graph: GraphDocument;
+  readonly graph: FlatGraph;
   /** Kept nodes in topological order (spliced passthroughs excluded). */
   readonly order: ReadonlyArray<NodeId>;
   /** One record per node that compiled without throwing, by id. */
@@ -905,7 +905,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       return { compiled: emptyPlan(stamp(diagnostics), [], sourceRows), retained: null };
     }
   }
-  const flatGraph = flattened?.graph ?? request.graph;
+  const flatGraph = flattened?.graph ?? compiledWithoutCatalogue(request.graph);
 
   /**
    * T1497b — THE PRESET MORPHS IN FLIGHT, derived HERE rather than asked of each caller.

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { flatDocument } from "@compiler/test-support.ts";
 import { StrictMode } from "react";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -111,7 +112,7 @@ function planAmp(graph: GraphDocument, nodeId: NodeId, frames: FrameInputs): num
     // §V163's per-frame compile: the SAME frame and the SAME resolver the panel was
     // handed. Anything less and the two sides would be compared at different moments,
     // which is a test that can pass while the bug is present.
-    resolution: { frame: frames.frame, channels: graphChannelResolver(graph, registry) },
+    resolution: { frame: frames.frame, channels: graphChannelResolver(flatDocument(graph), registry) },
   });
   const passes: ReadonlyArray<PassDescriptor> = compiled.passes;
   const pass = passes.find(
@@ -162,7 +163,7 @@ async function setup() {
   // The app's resolver, built the way `use-graph-compile.ts` builds it: over the document,
   // over the real registry. Not a stub — a stub would answer an address the real one does
   // not publish, and "which address" is half of what went wrong here.
-  const channels = graphChannelResolver(bus.store.getGraph(), registry);
+  const channels = graphChannelResolver(flatDocument(bus.store.getGraph()), registry);
 
   let current: FrameInputs | null = null;
   const latestFrame = (): FrameInputs | null => current;

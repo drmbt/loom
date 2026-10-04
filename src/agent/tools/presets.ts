@@ -1,5 +1,5 @@
 import type { FrameClock } from "@domain/types/frame.ts";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import { authoredGraph, type GraphDocument, type GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { nodeByName } from "@domain/graph/names.ts";
 import {
@@ -215,7 +215,7 @@ function bankView(view: BankView, runtime: ToolRuntime, clock: FrameClock | unde
   // The bank's own settings as the commands read them (`bankSettings`: at this moment, through
   // the bus's read scope; for a look's instance, its component's page bank's). §T1557b: this
   // was `{ channels }` alone, so a Morph on `op('k1').chan.value` listed as its static.
-  const settings = bankSettings(view, runtime.bus.registry, { ...runtime.bus.readScope(), graph });
+  const settings = bankSettings(view, runtime.bus.registry, { ...runtime.bus.readScope(), graph: authoredGraph(graph) });
   const parsed = parsePresetBank(view.bank.parameters["presets"]);
   const instance = node.label ?? node.id;
   // A look's preset holds `parent`; what a recall writes is the instance's own page.

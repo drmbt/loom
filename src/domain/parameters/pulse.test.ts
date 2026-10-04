@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { GraphDocument, GraphNode } from "../types/graph.ts";
+import type { FlatGraph, GraphNode } from "../types/graph.ts";
+import { flatDocument } from "../../compiler/test-support.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { ParameterSchema, PulseParameter } from "../types/parameters.ts";
 import {
@@ -46,8 +47,8 @@ function node(expression: string | null): GraphNode {
   };
 }
 
-function graphWith(n: GraphNode): GraphDocument {
-  return { revision: 1, nodes: { [n.id]: n }, edges: {}, groups: {} };
+function graphWith(n: GraphNode): FlatGraph {
+  return flatDocument({ revision: 1, nodes: { [n.id]: n }, edges: {}, groups: {} });
 }
 
 function frameAt(frameIndex: number): FrameEvaluationInput {
@@ -208,7 +209,7 @@ describe("a DRIVEN pulse fires through the channel resolver (T628, T593's class)
  */
 describe("a pulse expression that names another node fires (T1500b)", () => {
   const source: GraphNode = { id: "n2", type: "feedback", label: "pad1", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { decay: 0 } };
-  const graphOf = (expression: string, decay = 0): GraphDocument => ({
+  const graphOf = (expression: string, decay = 0): FlatGraph => flatDocument({
     revision: 1,
     nodes: { n1: node(expression), n2: { ...source, parameters: { decay } } },
     edges: {},

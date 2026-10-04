@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CompiledGraph } from "@compiler/index.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph } from "@domain/types/graph.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
 import { resolveStored } from "@domain/parameters/index.ts";
@@ -20,7 +20,7 @@ type Entry = { key: string; selectionKey?: string; session?: Session; polling: b
 const STATUS_POLL_MS = 1000;
 
 export function useNativeOutputs(runtime: AppRuntime, backend: LoomBackend | null,
-  graph: GraphDocument, compiled: CompiledGraph | null) {
+  graph: FlatGraph, compiled: CompiledGraph | null) {
   const [diagnostics, setDiagnostics] = useState<readonly RuntimeDiagnostic[]>([]);
   const requests = useMemo(() => {
     const demanded = new Set(compiled?.order);

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { resolveStored } from "@domain/parameters/index.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { nodeRuntimeRequirements } from "@domain/types/node-definition.ts";
 import {
@@ -93,7 +93,7 @@ function documentOwner(flatId: string): NodeId {
 }
 
 export function requirementDiagnostics(
-  flatGraph: GraphDocument,
+  flatGraph: FlatGraph,
   registry: NodeRegistryView,
   host: HostFacts,
 ): readonly RuntimeDiagnostic[] {
@@ -157,7 +157,7 @@ export function useRequirementDiagnostics(
   runtime: {
     readonly bus: { readonly store: { subscribe(listener: () => void): () => void } };
     readonly components: { subscribe(listener: () => void): () => void };
-    readonly flattened: { current(): { readonly graph: GraphDocument } };
+    readonly flattened: { current(): { readonly graph: FlatGraph } };
     readonly registry: NodeRegistryView;
   },
   host: HostFacts,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { createDomainBus } from "@domain/commands/index.ts";
 import { createSequentialIdFactory } from "@domain/graph/ids.ts";
@@ -430,7 +431,7 @@ describe("§T1557b — list_presets on a bank whose Morph is op('k1').chan.value
       nodes: [node("k1", "constant", "k1", { value: 3 })],
       looks: { morph: { mode: "expression", bindings: { static: { kind: "static", value: 0 }, expression: { kind: "expression", source: "op('k1').chan.value" } } } },
     });
-    bus.attachChannelResolver(() => graphChannelResolver(store.view.getGraph(), registry));
+    bus.attachChannelResolver(() => graphChannelResolver(flatDocument(store.view.getGraph()), registry));
     const { banks } = await banksOf(surface);
     const looks = banks.find((bank) => bank.nodeId === "looks");
     expect(looks?.presets.map((preset) => preset.morph)).toEqual([

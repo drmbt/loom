@@ -153,7 +153,7 @@ describe("T305 — the Analyze channel is constructed and sampled between frames
     });
 
     await act(async () => {
-      result.current.analyze.track(result.current.compile.graph, result.current.compile.compiled);
+      result.current.analyze.track(result.current.compile.flatGraph, result.current.compile.compiled);
     });
 
     // Nothing has been sampled yet: §V144's retained-value rule means the channel is
@@ -224,7 +224,7 @@ describe("T305 — the Analyze channel is constructed and sampled between frames
       return { analyze, compile };
     });
     await act(async () => {
-      result.current.analyze.track(result.current.compile.graph, result.current.compile.compiled);
+      result.current.analyze.track(result.current.compile.flatGraph, result.current.compile.compiled);
     });
 
     // Frame 0 ISSUES the first read. Nothing has landed, so nothing is published: an age
@@ -291,7 +291,7 @@ describe("T305 — the Analyze channel is constructed and sampled between frames
     expect(allocated).not.toContain(scratchResourceId(orphanId, "result"));
 
     await act(async () => {
-      result.current.analyze.track(result.current.compile.graph, result.current.compile.compiled);
+      result.current.analyze.track(result.current.compile.flatGraph, result.current.compile.compiled);
       gpu.duringFrame(() => result.current.analyze.observe(FRAME));
       await flushMicrotasks();
       await flushMicrotasks();

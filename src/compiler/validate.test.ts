@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { flatDocument } from "@compiler/test-support.ts";
 import { validateGraph, validateRequiredInputs } from "./validate.ts";
 import { CompilerDiagnosticCode } from "./diagnostics.ts";
 import { createCompilerTestRegistry, testEdge, testGraph, testNode } from "./test-support.ts";
@@ -10,21 +11,21 @@ const registry = createCompilerTestRegistry().view();
 describe("validateGraph — definitions and parameters (T24)", () => {
   it("reports an unknown node type instead of throwing", () => {
     const graph = testGraph([testNode("a", "fx.nope")]);
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     expect(result.nodes.has("a")).toBe(false);
     expect(result.diagnostics.map((d) => d.code)).toContain(CompilerDiagnosticCode.unknownNodeType);
   });
 
   it("fills declared parameters from their defaults", () => {
-    const result = validateGraph(testGraph([testNode("a", "fx.blur")]), registry);
+    const result = validateGraph(flatDocument(testGraph([testNode("a", "fx.blur")])), registry);
     expect(result.nodes.get("a")?.parameters).toEqual({ radius: 4 });
   });
 
   /** A wrong-typed value is a reported error and falls back to the default — never a silent cast. */
   it("rejects an out-of-range parameter and uses the default", () => {
     const graph = testGraph([testNode("a", "fx.blur", { parameters: { radius: 999 } })]);
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     expect(result.nodes.get("a")?.parameters["radius"]).toBe(4);
     expect(result.diagnostics.some((d) => d.severity === "error" && d.nodeId === "a")).toBe(true);
@@ -32,7 +33,7 @@ describe("validateGraph — definitions and parameters (T24)", () => {
 
   it("warns about a parameter the definition does not declare", () => {
     const graph = testGraph([testNode("a", "fx.blur", { parameters: { radius: 2, ghost: 1 } })]);
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     expect(
       result.diagnostics.some((d) => d.code === CompilerDiagnosticCode.parameterUnknown),
@@ -41,7 +42,7 @@ describe("validateGraph — definitions and parameters (T24)", () => {
 
   it("warns when the saved definition version differs from the registry's", () => {
     const graph = testGraph([testNode("a", "fx.blur", { definitionVersion: 0 })]);
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     expect(
       result.diagnostics.some((d) => d.code === CompilerDiagnosticCode.definitionVersion),
@@ -55,7 +56,7 @@ describe("validateGraph — connections (§V13, §V14)", () => {
       [testNode("gen", "fx.generator"), testNode("mono", "fx.mono")],
       [testEdge("e1", ["gen", "out"], ["mono", "source"])],
     );
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     expect(result.edges).toHaveLength(0);
     const diagnostic = result.diagnostics.find(
@@ -74,7 +75,7 @@ describe("validateGraph — connections (§V13, §V14)", () => {
         testEdge("e2", ["b", "out"], ["blur", "source"]),
       ],
     );
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     expect(result.edges.map((edge) => edge.id)).toEqual(["e1"]);
     expect(result.diagnostics.some((d) => d.code === CompilerDiagnosticCode.portOccupied)).toBe(true);
@@ -88,7 +89,7 @@ describe("validateGraph — connections (§V13, §V14)", () => {
         testEdge("e2", ["b", "out"], ["c", "layers"]),
       ],
     );
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     expect(result.edges.map((edge) => edge.id)).toEqual(["e1", "e2"]);
     expect(result.diagnostics).toHaveLength(0);
@@ -99,13 +100,13 @@ describe("validateGraph — connections (§V13, §V14)", () => {
       [testNode("fb", "fx.feedback"), testNode("blur", "fx.blur")],
       [testEdge("e1", ["fb", "out"], ["blur", "source"])],
     );
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
     expect(result.edges[0]?.temporal).toBe(true);
   });
 
   it("reports a required input with nothing connected, for kept nodes only", () => {
     const graph = testGraph([testNode("blur", "fx.blur"), testNode("lonely", "fx.blur")]);
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     const reported = validateRequiredInputs(result.nodes, result.edges, new Set(["blur"]));
     expect(reported).toHaveLength(1);
@@ -150,7 +151,7 @@ describe("validateGraph — per-component expressions (§B231)", () => {
         parameters: { kernel: KERNEL, place: [1, 2, 3], "place.x": slot("saturate(abstime)", 0.25) },
       }),
     ]);
-    const result = validateGraph(graph, shipped);
+    const result = validateGraph(flatDocument(graph), shipped);
     const [reported, ...rest] = expressionDiagnostics(result);
     expect(rest).toEqual([]);
     expect(reported?.nodeId).toBe("k");
@@ -164,7 +165,7 @@ describe("validateGraph — per-component expressions (§B231)", () => {
     const graph = testGraph([
       testNode("cam", "camera", { parameters: { "lookAt.y": slot("mod(abstime, 0)", 0.5) } }),
     ]);
-    const [reported, ...rest] = expressionDiagnostics(validateGraph(graph, shipped));
+    const [reported, ...rest] = expressionDiagnostics(validateGraph(flatDocument(graph), shipped));
     expect(rest).toEqual([]);
     expect(reported?.nodeId).toBe("cam");
     expect(reported?.message).toContain('"lookAt.y"');
@@ -177,7 +178,7 @@ describe("validateGraph — per-component expressions (§B231)", () => {
         parameters: { kernel: KERNEL, place: [1, 2, 3], "place.x": slot("clamp(7, 0, 5) + abstime", 0.25) },
       }),
     ]);
-    const result = validateGraph(graph, shipped);
+    const result = validateGraph(flatDocument(graph), shipped);
     expect(result.diagnostics.filter((d) => d.nodeId === "k" && d.code.startsWith("parameter."))).toEqual([]);
     // `abstime` is 0 in the frameless compile (§V44's zero frame): 5, not the retained 0.25.
     expect(result.nodes.get("k")?.parameters["place"]).toEqual([5, 2, 3]);

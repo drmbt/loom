@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { flatDocument } from "@compiler/test-support.ts";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -110,7 +111,7 @@ function Harness({
   graph: GraphDocument;
   environment: MediaEnvironment;
 }) {
-  useMediaSources(runtime, backend, graph, null, environment);
+  useMediaSources(runtime, backend, flatDocument(graph), null, environment);
   return null;
 }
 

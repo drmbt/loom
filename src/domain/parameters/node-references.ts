@@ -1,7 +1,7 @@
 import { nodeByName, nodeNames } from "../graph/names.ts";
 import type { NodeReferenceReader, NodeReferenceResult } from "../expressions/index.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
-import type { GraphDocument, GraphNode } from "../types/graph.ts";
+import type { FlatOrAuthoredGraph, GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId, PortId } from "../types/ids.ts";
 import type { ParameterDefinition, ParameterSchema, ParameterValue } from "../types/parameters.ts";
 import { componentKey, componentNamesFor } from "./slots.ts";
@@ -416,7 +416,13 @@ export interface LiveParameterReads {
  * site that does not supply it, which is the whole guard.
  */
 export interface ParameterReadContext {
-  readonly graph: GraphDocument;
+  /**
+   * The graph `op()` names resolve in, and WHICH one (§T1552b): the flattening a frame path
+   * evaluates (`runtime.flattened.current().graph`), or the document as authored, said by
+   * name (`authoredGraph(document)`: the inspector, a command's read scope). A bare
+   * `GraphDocument` is a type error, so no reader evaluates one side believing it the other.
+   */
+  readonly graph: FlatOrAuthoredGraph;
   /**
    * The catalogue, as the ONE thing this reads from it: a type's schema source (§T903).
    * Structural, so the pulse watcher — which is handed exactly that and no more — asks

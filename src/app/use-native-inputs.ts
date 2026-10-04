@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph } from "@domain/types/graph.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
 import { resolveStored } from "@domain/parameters/index.ts";
@@ -10,7 +10,7 @@ import type { LoomBackend } from "@runtime/backend/index.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 import type { ResolvedSizeSource } from "./use-media-sources.ts";
 
-export function useNativeInputs(runtime: AppRuntime, backend: LoomBackend | null, graph: GraphDocument,
+export function useNativeInputs(runtime: AppRuntime, backend: LoomBackend | null, graph: FlatGraph,
   resolved: (ResolvedSizeSource & { readonly order: readonly string[] }) | null) {
   const [diagnostics, setDiagnostics] = useState<readonly RuntimeDiagnostic[]>([]);
   const sizes = new Map(resolved?.outputs.map(output => [output.nodeId, output.size]));

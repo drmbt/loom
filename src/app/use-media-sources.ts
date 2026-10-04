@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph, GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
@@ -412,7 +412,7 @@ export interface MediaWiring {
 export function useMediaSources(
   runtime: AppRuntime,
   backend: LoomBackend | null,
-  graph: GraphDocument,
+  graph: FlatGraph,
   /** Resolved output sizes (T312). Null before the first successful compile. */
   resolved: ResolvedSizeSource | null,
   environment?: MediaEnvironment,

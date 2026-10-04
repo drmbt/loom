@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { flatDocument } from "@compiler/test-support.ts";
 import { CompilerDiagnosticCode } from "./diagnostics.ts";
 import { isDeclaredSink, pruneToActiveSinks, resolveSinks } from "./prune.ts";
 import { validateGraph } from "./validate.ts";
@@ -52,7 +53,7 @@ describe("resolveSinks (T26)", () => {
       testNode("peek", "fx.generator", { ui: { previewPinned: true } }),
       testNode("quiet", "fx.generator"),
     ]);
-    const validated = validateGraph(document, registry);
+    const validated = validateGraph(flatDocument(document), registry);
     const { sinks } = resolveSinks(validated.nodes, undefined);
 
     expect(sinks.map((sink) => `${sink.nodeId}:${sink.kind}`).sort()).toEqual([
@@ -67,7 +68,7 @@ describe("resolveSinks (T26)", () => {
       testNode("peek", "fx.generator", { ui: { previewPinned: true } }),
       testNode("also", "fx.generator", { ui: { previewPinned: true } }),
     ]);
-    const validated = validateGraph(document, registry);
+    const validated = validateGraph(flatDocument(document), registry);
 
     // The caller says only "also" is actually on screen: "peek"'s document flag must
     // NOT be unioned back in — that narrowing is the caller's whole job. Declared
@@ -84,7 +85,7 @@ describe("resolveSinks (T26)", () => {
   });
 
   it("warns about a sink naming a node or port that does not exist", () => {
-    const validated = validateGraph(testGraph([testNode("out", "fx.output")]), registry);
+    const validated = validateGraph(flatDocument(testGraph([testNode("out", "fx.output")])), registry);
     const { sinks, diagnostics } = resolveSinks(validated.nodes, [
       { nodeId: "ghost", kind: "output" },
       { nodeId: "out", portId: "nope", kind: "readback" },
@@ -95,7 +96,7 @@ describe("resolveSinks (T26)", () => {
   });
 
   it("does not duplicate a sink the caller already named", () => {
-    const validated = validateGraph(testGraph([testNode("out", "fx.output")]), registry);
+    const validated = validateGraph(flatDocument(testGraph([testNode("out", "fx.output")])), registry);
     const { sinks } = resolveSinks(validated.nodes, [{ nodeId: "out", kind: "output" }]);
     expect(sinks).toHaveLength(1);
   });
@@ -103,7 +104,7 @@ describe("resolveSinks (T26)", () => {
 
 describe("pruneToActiveSinks (§V25)", () => {
   it("keeps only what a sink reaches backward", () => {
-    const validated = validateGraph(graph(), registry);
+    const validated = validateGraph(flatDocument(graph()), registry);
     const result = pruneToActiveSinks(validated.nodes, validated.edges, [
       { nodeId: "out", kind: "output" },
     ]);
@@ -120,7 +121,7 @@ describe("pruneToActiveSinks (§V25)", () => {
         testEdge("e2", ["fb", "out"], ["blur", "source"]),
       ],
     );
-    const validated = validateGraph(document, registry);
+    const validated = validateGraph(flatDocument(document), registry);
     const result = pruneToActiveSinks(validated.nodes, validated.edges, [
       { nodeId: "blur", kind: "preview" },
     ]);

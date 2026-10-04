@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import { createUniformAnimator } from "../../app/animate-parameters.ts";
 import { compileGraph } from "../../compiler/index.ts";
 import { scratchResourceId } from "../../compiler/resources.ts";
@@ -314,7 +315,7 @@ async function runAlignment(graph: GraphDocument, frames: number): Promise<Align
     const compiled = await backend.compile(base);
     const builds = backend.status.resourceBuilds;
 
-    const channels = graphChannelResolver(graph, registry);
+    const channels = graphChannelResolver(flatDocument(graph), registry);
     const animator = createUniformAnimator();
     const taps: number[] = [];
     let written = 0;

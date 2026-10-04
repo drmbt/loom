@@ -35,7 +35,7 @@ const NO_STORE = { subscribe: () => () => {}, get: () => EMPTY_SINKS };
 const NO_CHANNELS: readonly ChannelResolver[] = [];
 const NO_SESSION_DIAGNOSTICS: readonly RuntimeDiagnostic[] = [];
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { GraphDocument, ProjectSettings } from "@domain/types/graph.ts";
+import type { FlatGraph, GraphDocument, ProjectSettings } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { NodeRunStatus, NodeRuntimeStore } from "@editor/graph-canvas/index.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
@@ -71,7 +71,7 @@ export interface GraphCompileResult {
    * The same object `runtime.flattened.current()` returns and the same one this compile
    * was built from, so a consumer cannot end up on a second flattening (§V109).
    */
-  readonly flatGraph: GraphDocument;
+  readonly flatGraph: FlatGraph;
   /**
    * The channel resolver this compile used — published so the INSPECTOR reads through it
    * too (B46, T374, §V61).

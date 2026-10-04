@@ -1,7 +1,7 @@
 import { parameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
 import type { LiveParameterReads } from "@domain/parameters/index.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import type { FlatGraph, GraphNode } from "@domain/types/graph.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 
 /**
@@ -28,7 +28,7 @@ export interface InferenceParameterReads extends LiveParameterReads {
  */
 export function inferenceParametersAt(
   node: GraphNode,
-  graph: GraphDocument,
+  graph: FlatGraph,
   reads: InferenceParameterReads | undefined,
   frame: FrameEvaluationInput | undefined,
 ): Readonly<Record<string, unknown>> {

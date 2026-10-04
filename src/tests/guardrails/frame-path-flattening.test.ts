@@ -1,6 +1,8 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -235,4 +237,83 @@ describe("the raw document is unreachable from a per-frame path (T615, §V437)",
     expect(total).toBe(DECLARED.reduce((sum, entry) => sum + entry.reads, 0));
     expect(total).toBeGreaterThan(10);
   });
+});
+
+/**
+ * §T1552b — THE AUTHORED AND THE FLAT GRAPH ARE TWO TYPES.
+ *
+ * The scan above catches a raw read in the frame-path tree by its SPELLING. The brand
+ * catches the mistake by its TYPE, wherever it is written: a consumer that needs the
+ * flattening takes `FlatGraph` (the pulse watcher, the OSC pump, the media transport, the
+ * Analyze/vision/inference readers, the file and device doors, the compiler past flatten),
+ * and every parameter evaluation (`parameterReadOptions`, `validateGraph`) takes
+ * `FlatGraph | AuthoredGraph`, so the inspector and a command's read scope say
+ * `authoredGraph(…)` by name. Two halves hold it: the cast that would forge a brand is
+ * refused outside its producer, and the checker itself is asked to refuse the mistake.
+ */
+describe("§T1552b — a FlatGraph is minted only by the flattener", () => {
+  const MINTS: ReadonlyArray<{ cast: RegExp; allowed: readonly string[] }> = [
+    { cast: /\bas\s+FlatGraph\b/, allowed: ["compiler/flatten.ts"] },
+    { cast: /\bas\s+AuthoredGraph\b/, allowed: ["domain/types/graph.ts"] },
+  ];
+
+  it("finds the brand cast only in its producer (product code; a test may force the defect on purpose)", () => {
+    const files = sourceFiles(SRC).filter((path) => !/test-support\.ts$/.test(path));
+    for (const { cast, allowed } of MINTS) {
+      const found = files
+        .filter((path) => cast.test(code(readFileSync(path, "utf8"))))
+        .map((path) => relative(SRC, path))
+        .sort();
+      expect(
+        found,
+        `${cast} outside its producer forges the brand: a graph that was never flattened (or ` +
+          `never chosen as the authored one) claims to be. Flatten it (\`flattenComponents\`), ` +
+          `read \`runtime.flattened.current().graph\`, or say \`authoredGraph(…)\` (§T1552b).`,
+      ).toEqual(allowed);
+    }
+  });
+
+  it("asks the checker: the authored document is refused where the flat graph is needed, and vice versa", () => {
+    const directory = mkdtempSync(join(tmpdir(), "shaderloom-graph-brand-"));
+    try {
+      const graph = join(SRC, "domain/types/graph.ts");
+      const nodeRefs = join(SRC, "domain/parameters/node-references.ts");
+      const file = join(directory, "brand.ts");
+      const lines = [
+        `import { authoredGraph, type FlatGraph, type GraphDocument } from ${JSON.stringify(graph)};`,
+        `import { NO_FLATTENING, parameterReadOptions } from ${JSON.stringify(nodeRefs)};`,
+        "declare const stored: GraphDocument;",
+        "declare const flat: FlatGraph;",
+        "declare function needsFlat(graph: FlatGraph): void;",
+        "const registry = { get: () => undefined };",
+        "needsFlat(flat);",
+        "parameterReadOptions({ graph: flat, registry, frame: undefined, channels: undefined, flattening: NO_FLATTENING });",
+        "parameterReadOptions({ graph: authoredGraph(stored), registry, frame: undefined, channels: undefined, flattening: NO_FLATTENING });",
+        "needsFlat(stored); // REFUSED: the store's document where the flattening is needed",
+        "parameterReadOptions({ graph: stored, registry, frame: undefined, channels: undefined, flattening: NO_FLATTENING }); // REFUSED: no side said",
+        "authoredGraph(flat); // REFUSED: a flattening is not the document",
+        "",
+      ];
+      writeFileSync(file, lines.join("\n"), "utf8");
+      const config = ts.readConfigFile(join(SRC, "../tsconfig.app.json"), ts.sys.readFile);
+      const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, join(SRC, ".."));
+      const program = ts.createProgram([file], parsed.options);
+      const source = program.getSourceFile(file);
+      if (source === undefined) throw new Error("the probe file did not load");
+      const errorLines = [
+        ...new Set(
+          program
+            .getSemanticDiagnostics(source)
+            .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error && diagnostic.start !== undefined)
+            .map((diagnostic) => source.getLineAndCharacterOfPosition(diagnostic.start as number).line),
+        ),
+      ].sort((a, b) => a - b);
+      // Exactly the three marked lines; the legitimate reads beside them typecheck.
+      const refused = lines.flatMap((line, index) => (line.includes("// REFUSED") ? [index] : []));
+      expect(refused).toHaveLength(3);
+      expect(errorLines).toEqual(refused);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 180_000);
 });

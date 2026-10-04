@@ -19,6 +19,7 @@ export type { CompilerDiagnosticCodeValue, DiagnosticDetails } from "./diagnosti
 export {
   COMPONENT_ID_SEPARATOR,
   componentPathOf,
+  compiledWithoutCatalogue,
   flattenComponents,
   flattenedNodeId,
   redirectSink,
