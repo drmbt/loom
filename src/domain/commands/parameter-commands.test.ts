@@ -343,6 +343,60 @@ describe("copy (T246)", () => {
   });
 });
 
+/**
+ * §T1559b (2), ruled live: a copy copies what the row SHOWS (T1008), and the row is the
+ * live read — the frame on screen, the app's channels, `op()` reads of other nodes. The
+ * copy used to read `STORED_READ` (no frame, no reader), so off a parameter following
+ * another node or the clock it copied the retained static (2) while the row showed the
+ * running number. The bus is wired as the composition root wires it: `attachFrame`.
+ */
+describe("§T1559b — a copy reads what the row shows, not the stored static", () => {
+  it("copies the value an op() reference and the clock give right now", async () => {
+    const harness = createMenuHarness();
+    const source = await named(harness.bus, "blur1");
+    const target = await named(harness.bus, "blur2");
+    await harness.bus.execute(
+      "graph.applyPatch",
+      patch(harness.bus.store.getRevision(), [{ op: "setParameters", nodeId: source, parameters: { radius: 9 } }]),
+      context,
+    );
+    await withExpressionOn(harness, target, "radius", "op('blur1').par.radius");
+    await withExpressionOn(harness, target, "amount", "time * 2");
+    harness.bus.attachFrame(() => ({ timeSeconds: 5, deltaSeconds: 1 / 60, frameIndex: 300, mode: "realtime", randomSeed: 0 }));
+
+    const referenced = await harness.bus.execute("parameter.copyValue", { nodeId: target, parameterKey: "radius" }, context);
+    // 9 — blur1's radius, which is what the row shows; the bug copied the static 2.
+    expect(referenced.output.text).toBe("9");
+    const timed = await harness.bus.execute("parameter.copyValue", { nodeId: target, parameterKey: "amount" }, context);
+    // 10 at t = 5 s; the bug copied the zero-frame read (0).
+    expect(timed.output.text).toBe("10");
+  });
+
+  it("a compound's component copies its live channel too (T1008's component path)", async () => {
+    const harness = createMenuHarness();
+    const nodeId = await named(harness.bus, "blur1");
+    await harness.bus.execute(
+      "graph.applyPatch",
+      patch(harness.bus.store.getRevision(), [
+        {
+          op: "setParameters",
+          nodeId,
+          parameters: {
+            tint: [0.2, 0.2, 0.2, 1],
+            "tint.g": { mode: "expression", bindings: { expression: { kind: "expression", source: "time / 10" } } },
+          },
+        },
+      ]),
+      context,
+    );
+    harness.bus.attachFrame(() => ({ timeSeconds: 5, deltaSeconds: 1 / 60, frameIndex: 300, mode: "realtime", randomSeed: 0 }));
+
+    const result = await harness.bus.execute("parameter.copyValue", { nodeId, parameterKey: "tint.g" }, context);
+    // 0.5 at t = 5 s; the stored read gave the zero frame's 0.
+    expect(result.output.text).toBe("0.5");
+  });
+});
+
 describe("copy → paste → the value is the source's (§V148)", () => {
   /**
    * The round trip the invariant asks for, run all the way through the resolver — which

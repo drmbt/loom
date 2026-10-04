@@ -19,6 +19,8 @@ import { idInput } from "./input-schema.ts";
 import { pulseCommandInput } from "../parameters/pulse.ts";
 import { parameterReference, parseParameterReference } from "../parameters/reference.ts";
 import { resolveParameter, effectiveParameterSchema, STORED_READ } from "../parameters/resolve.ts";
+import { parameterReadOptions } from "../parameters/node-references.ts";
+import { NO_MORPHS } from "../presets/morph-index.ts";
 import {
   componentAddressedDefinition,
   componentKey,
@@ -424,6 +426,14 @@ function capture(
 ): ParameterClipboard {
   const schema = effectiveParameterSchema(context.registry.get(found.node.type), found.node.parameters);
   /*
+   * §T1559b (2), ruled live — the read is the ROW's (T1008: a copy "copies what the row
+   * shows"): the command's read scope (the frame on screen, the app's channels, `op()` reads
+   * of the document as authored, the flattening's instances) with no fade, because the
+   * inspector's row shows the document's (destination) value mid-fade by design (T1525b).
+   */
+  const scope = context.readScope();
+  const read = parameterReadOptions({ ...scope, flattening: { morphs: NO_MORPHS, instanceChannels: scope.flattening.instanceChannels } });
+  /*
    * T1008 — a COMPONENT key copies what the channel row SHOWS. Resolving the dotted
    * key against its derived scalar definition would fall back to the compound's
    * DECLARED default whenever the component follows the compound (no slot of its
@@ -434,7 +444,7 @@ function capture(
   const parsed = schema[key] === undefined ? parseComponentKey(key) : null;
   const baseDefinition = parsed === null ? undefined : schema[parsed.base];
   if (parsed !== null && baseDefinition !== undefined) {
-    const base = resolveParameter(found.node, parsed.base, baseDefinition, { ...STORED_READ, schema });
+    const base = resolveParameter(found.node, parsed.base, baseDefinition, { ...read, schema });
     const names = componentNamesFor(baseDefinition) ?? [];
     const component = base.components?.[names.indexOf(parsed.component)];
     const name = nodeName(found.node);
@@ -454,7 +464,7 @@ function capture(
       typeName: found.definition.type,
     };
   }
-  const resolved = resolveParameter(found.node, key, found.definition, { ...STORED_READ, schema });
+  const resolved = resolveParameter(found.node, key, found.definition, { ...read, schema });
   const name = nodeName(found.node);
   const stored = found.node.parameters[key];
   const slot = isParameterSlot(stored) ? stored : null;
