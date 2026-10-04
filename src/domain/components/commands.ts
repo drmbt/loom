@@ -39,8 +39,9 @@ import { effectiveParameterSchema } from "../parameters/resolve.ts";
 import { detachedValues, nestedParentReads, type DetachedValues, type MovedOuterTarget } from "./detach-values.ts";
 import { publishedSchema } from "./published-page.ts";
 import { pruneComponentDefinition } from "./definition.ts";
-import { carryInstanceChannelMask, internalChannelMasks, projectInternalChannelMasks } from "./internal-channel-masks.ts";
-import { internalResolutions, projectInternalResolutions } from "./internal-resolutions.ts";
+import { carryInstanceChannelMask, internalChannelMasks } from "./internal-channel-masks.ts";
+import { internalResolutions } from "./internal-resolutions.ts";
+import { applyInstance } from "./apply-instance.ts";
 
 /**
  * Component commands (T129–T132, T136), registered by declaration merging like every
@@ -470,10 +471,9 @@ function rewritePageBanks(
 /**
  * B238/B239 — everything a detached copy needs decided BEFORE the patch: the values
  * (`detachedValues`), and the definition graph with the instance's own internal channel
- * masks and resolution overrides written onto it — the two per-instance edits flattening
- * applies to the internals beside the page (`projectInternalChannelMasks` is flattening's
- * own step; `projectInternalResolutions` is its post-expansion step, applied once). What
- * cannot be carried exactly is said, by name.
+ * masks and resolution overrides written onto it. T1553b: the page, its fan-out and that
+ * graph are flattening's own projection of the instance (`applyInstance`), not a second
+ * assembly of the same parts. What cannot be carried exactly is said, by name.
  */
 interface DetachPlan {
   readonly values: DetachedValues;
@@ -500,9 +500,11 @@ function planDetach(input: {
     const nested = readComponentInstance(node);
     return nested === null ? undefined : input.components.get(nested.componentId, nested.version);
   };
+  const applied = applyInstance({ definition, instance });
   const values = detachedValues({
     definition,
     instance,
+    applied,
     schemaOf: (node) => {
       const nested = definitionOf(node);
       return nested === undefined ? effectiveParameterSchema(input.registry.get(node.type), node.parameters) : publishedSchema(nested);
@@ -525,9 +527,7 @@ function planDetach(input: {
   for (const message of values.inexact) {
     diagnostics.push({ severity: "warning", code: "component.detach.inexact", message: `${message}.`, ...at, suggestion: "Set it by hand on the copies, or undo the detach." });
   }
-  const masked = projectInternalChannelMasks(definition.graph, internalChannelMasks(instance));
-  const sized = projectInternalResolutions(masked.graph, internalResolutions(instance));
-  for (const [what, missing] of [["channel mask", masked.missing], ["resolution", sized.missing]] as const) {
+  for (const [what, missing] of [["channel mask", applied.missing.channelMasks], ["resolution", applied.missing.resolutions]] as const) {
     for (const path of missing) {
       diagnostics.push({
         severity: "warning",
@@ -539,7 +539,7 @@ function planDetach(input: {
   }
   // T1545b: the instance's own Processing Channels, onto the node behind each output when
   // that draws the same picture (`carryInstanceChannelMask`); otherwise said by name.
-  const channels = input.outer === undefined ? { graph: sized.graph } : carryInstanceChannelMask({ graph: sized.graph, definition, instance, outer: input.outer, registry: input.registry });
+  const channels = input.outer === undefined ? { graph: applied.graph } : carryInstanceChannelMask({ graph: applied.graph, definition, instance, outer: input.outer, registry: input.registry });
   if (channels.reason !== undefined) {
     const mask = instance.channelMask;
     const kept = mask === undefined ? "" : (["r", "g", "b", "a"] as const).filter((channel) => mask[channel]).map((channel) => channel.toUpperCase()).join(" ");

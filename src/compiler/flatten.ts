@@ -31,7 +31,6 @@ import {
   componentSourcePath,
   describeRecursion,
   detectComponentRecursion,
-  effectiveInternalOverrides,
   instanceDisplayNames,
   internalParameterPath,
   isComponentInstance,
@@ -39,7 +38,6 @@ import {
   parentScopeDrivers,
   parseInternalParameterPath,
   parseParentReference,
-  publishedPage,
   publishedSchema,
   readComponentInstance,
   readParentBindings,
@@ -48,8 +46,8 @@ import type { ComponentRegistryView } from "../domain/components/index.ts";
 import { CompilerDiagnosticCode, compilerDiagnostic } from "./diagnostics.ts";
 import { resolveNodeParameters } from "./validate.ts";
 import type { ActiveSink } from "./types.ts";
-import { COMPONENT_ID_SEPARATOR, flattenedNodeId, internalResolutions } from "../domain/components/internal-resolutions.ts";
-import { internalChannelMasks, projectInternalChannelMasks } from "../domain/components/internal-channel-masks.ts";
+import { COMPONENT_ID_SEPARATOR, flattenedNodeId } from "../domain/components/internal-resolutions.ts";
+import { applyInstance } from "../domain/components/apply-instance.ts";
 import { isDefaultChannelMask } from "../domain/types/graph.ts";
 export { COMPONENT_ID_SEPARATOR, flattenedNodeId } from "../domain/components/internal-resolutions.ts";
 
@@ -764,33 +762,31 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       // its slot, so the internal parameter animates per frame while this walk stays a
       // pure function of the document (§V529's memo). `publishedPage` is the one place
       // both shapes are decided; see its docblock for why they are not two call sites.
+      //
+      // T1553b: the page, its fan-out and the instance's internal masks and resolution
+      // overrides are ONE projection, shared with `component.detach` (`applyInstance`).
       const publishedDiagnostics: RuntimeDiagnostic[] = [];
-      const page = publishedPage(
-        resolveNodeParameters(
-          resolved,
-          publishedSchema(componentDefinition),
-          node.type,
-          publishedDiagnostics,
-          // §T1557b: the document, not a moment — this walk is a pure function of it (§V529).
-          STORED_READ,
-        ),
-        componentDefinition,
-      );
+      const applied = applyInstance({
+        definition: componentDefinition,
+        instance: resolved,
+        // §T1557b: the document, not a moment — this walk is a pure function of it (§V529).
+        readPage: (instanceNode, pageSchema) =>
+          resolveNodeParameters(instanceNode, pageSchema, node.type, publishedDiagnostics, STORED_READ),
+      });
+      const page = applied.page;
       for (const diagnostic of publishedDiagnostics) {
         if (!page.deferred.has(diagnostic)) diagnostics.push(diagnostic);
       }
       const published = page.values;
-      const childOverrides = effectiveInternalOverrides(componentDefinition, resolved, page.stored);
 
-      const channelProjection = projectInternalChannelMasks(componentDefinition.graph, internalChannelMasks(resolved));
-      for (const path of channelProjection.missing) diagnostics.push({ severity: "error", code: "component.channelMaskTargetMissing", nodeId: flatId,
+      for (const path of applied.missing.channelMasks) diagnostics.push({ severity: "error", code: "component.channelMaskTargetMissing", nodeId: flatId,
         message: `Component channel mask override names missing internal node "${path}".` });
       const child = flattenLevel({
-        graph: channelProjection.graph,
+        graph: applied.graph,
         definition: componentDefinition,
         prefix: flatId,
         path: [...input.path, flatId],
-        overrides: childOverrides,
+        overrides: applied.overrides,
         origins: publishedOriginsFor(
           componentDefinition,
           resolved,
@@ -803,17 +799,13 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
           publishedKeyOrigins(componentDefinition, input.definition === null ? node.id : null, publishedFrom),
         ],
       });
-      // Inner overrides land first; the outer instance can override one nested
-      // descendant without editing the shared definition or its sibling instance.
-      for (const [relativeId, resolution] of Object.entries(internalResolutions(resolved))) {
-        const targetId = flattenedNodeId(flatId, relativeId);
-        const target = nodes[targetId];
-        if (!target) {
-          diagnostics.push({ severity: "error", code: "component.resolutionTargetMissing", nodeId: flatId,
-            message: `Component resolution override names missing internal node "${relativeId}".` });
-          continue;
-        }
-        nodes[targetId] = { ...target, resolution };
+      // Said after the child level, where they were always said. The overrides themselves
+      // landed on `applied.graph` before it: a nested path merged into the nested instance's
+      // own, outer winning, so one nested descendant is overridden without editing the
+      // shared definition or its sibling instance.
+      for (const relativeId of applied.missing.resolutions) {
+        diagnostics.push({ severity: "error", code: "component.resolutionTargetMissing", nodeId: flatId,
+          message: `Component resolution override names missing internal node "${relativeId}".` });
       }
       childInputs.set(nodeId, child.inputs);
       childOutputs.set(nodeId, child.outputs);
