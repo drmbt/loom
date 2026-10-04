@@ -307,6 +307,8 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
     // T1497b: the morph index the BASE was compiled and classified with, unless the
     // caller brings its own — the same precedence `compileGraphRetaining` applies.
     const morphs = resolution.morphs ?? retained.morphs;
+    // T1485b: the instances the BASE compile read through, by the same precedence.
+    const instances = resolution.instances ?? retained.instances;
     // The same reader `validateGraph` builds (§V939): a caller's own `nodes` wins, as there.
     const reader: ParameterResolution =
       resolution.nodes === undefined
@@ -318,6 +320,7 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
               frame: resolution.frame,
               channels: resolution.channels,
               morphs,
+              instances,
             }),
           }
         : { ...resolution, morphs };
@@ -342,7 +345,7 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
       const sceneMoved = bindingsReadScene(record.context.inputs, recompiled);
       if (frameValues === undefined && !sceneMoved) continue;
       // T1421b: the probe moves with the frame, exactly as the full compile's does.
-      const probe = timeProbeFor(record.node, record.definition, retained.graph, request.registry, { ...resolution, morphs }, retained.request.settings);
+      const probe = timeProbeFor(record.node, record.definition, retained.graph, request.registry, { ...resolution, morphs, ...(instances === undefined ? {} : { instances }) }, retained.request.settings);
       const context: CompilerNodeContext = {
         ...record.context,
         ...(frameValues === undefined ? {} : frameValues),

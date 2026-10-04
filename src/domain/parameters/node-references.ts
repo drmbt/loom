@@ -2,7 +2,7 @@ import { nodeByName, nodeNames } from "../graph/names.ts";
 import type { NodeReferenceReader, NodeReferenceResult } from "../expressions/index.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
-import type { NodeId } from "../types/ids.ts";
+import type { NodeId, PortId } from "../types/ids.ts";
 import type { ParameterDefinition, ParameterSchema, ParameterValue } from "../types/parameters.ts";
 import { componentKey, componentNamesFor } from "./slots.ts";
 import {
@@ -64,6 +64,54 @@ const PARAMETER_NAMESPACE = "par";
 const CHANNEL_NAMESPACE = "chan";
 
 /**
+ * T1485b — ONE EXPOSED VALUE OUTPUT OF A COMPONENT INSTANCE, and the node publishing it.
+ *
+ * `op('analysis1').chan.level` names an instance, and flattening DELETES the instance: the
+ * compiler reads `op()` against the flat graph, where nothing is called `analysis1`, and
+ * the inspector reads against the document, where `analysis1` exists but no channel
+ * resolver has ever published under its name (the value graph runs flat, so its bags are
+ * keyed by the INNER labels). So neither side could read it, and examples read through a
+ * labelled node downstream instead.
+ *
+ * The flattening already knows the answer — `instanceOutputs` maps each exposed port to the
+ * inner endpoint it became — so it records, once, which inner LABEL publishes each value
+ * output (`FlattenedGraph.instanceChannels`), and the reader turns an instance read into
+ * reads of those labels through whichever channel resolver it was handed. No resolver
+ * learns what an instance is; the address it is asked for is one it already answers.
+ */
+export interface InstanceChannelSource {
+  /** The exposed output port — what a refusal names. */
+  readonly port: PortId;
+  /** The publisher's LABEL in the flattened graph: the address its bag is read under (§V129). */
+  readonly publisher: string;
+}
+
+/**
+ * Instance LABEL → its exposed value outputs, in exposure order, ONE ENTRY PER DISTINCT
+ * PUBLISHER (two ports onto one inner node are one bag — the value graph publishes per
+ * node — so they carry one signal and cannot disagree).
+ */
+export type InstanceChannelSources = ReadonlyMap<string, readonly InstanceChannelSource[]>;
+
+/**
+ * The channel names `op('<instance>').chan.` can complete to: the union of what the
+ * instance's publishers carry right now, MINUS every name two of them carry — the reader
+ * refuses those by name (§V150: the menu may not offer what the reader rejects).
+ */
+function instanceChannelNames(
+  sources: readonly InstanceChannelSource[],
+  channelsOf: ((name: string) => readonly string[]) | undefined,
+): readonly string[] {
+  const carriers = new Map<string, number>();
+  for (const source of sources) {
+    for (const channel of new Set(channelsOf?.(source.publisher) ?? [])) {
+      carriers.set(channel, (carriers.get(channel) ?? 0) + 1);
+    }
+  }
+  return [...carriers].filter(([, count]) => count === 1).map(([channel]) => channel);
+}
+
+/**
  * WHAT `op('…')` CAN COMPLETE TO (T990), answered by the module that decides what it can
  * READ.
  *
@@ -105,6 +153,8 @@ export interface NodeReferenceCatalogueOptions {
    * which is the truth: nothing here knows what is on the wire.
    */
   readonly channelsOf?: (name: string) => readonly string[];
+  /** T1485b: the component instances `op('…').chan` can name — the reader's own map. */
+  readonly instances?: InstanceChannelSources | undefined;
 }
 
 /** Every name `op('…')` can address — LABELS (§B170), in the graph's own sorted order. */
@@ -143,6 +193,8 @@ export function nodeReferenceMembers(
   if (namespace === CHANNEL_NAMESPACE) {
     // `.chan.<channel>` is the whole path the reader accepts — nothing hangs off a channel.
     if (key !== undefined) return [];
+    const sources = options.instances?.get(name);
+    if (sources !== undefined) return instanceChannelNames(sources, options.channelsOf).map((text) => ({ text }));
     return (options.channelsOf?.(name) ?? []).map((text) => ({ text }));
   }
   if (namespace !== PARAMETER_NAMESPACE) return [];
@@ -190,6 +242,11 @@ export interface NodeReferenceOptions {
    * value that is right on its own and wrong in context.
    */
   readonly base?: Omit<ResolveParametersOptions, "nodes" | "schema">;
+  /**
+   * T1485b: the component instances `op('<instance>').chan.<c>` can name. Absent, an
+   * instance's channels are unreadable, as they were before.
+   */
+  readonly instances?: InstanceChannelSources | undefined;
 }
 
 /**
@@ -331,6 +388,12 @@ export interface ParameterReadContext {
    * the destination while the parameter it reads is still fading on screen.
    */
   readonly morphs?: ParameterMorphs | undefined;
+  /**
+   * T1485b: the component instances `op('<instance>').chan.<c>` can name
+   * (`FlattenedGraph.instanceChannels`). Here for the reason `channels` is: the read
+   * happens INSIDE the reader.
+   */
+  readonly instances?: InstanceChannelSources | undefined;
 }
 
 /**
@@ -369,9 +432,61 @@ export function createParameterReadOptions(
        */
       schemaOf: (node) => effectiveParameterSchema(context.registry.get(node.type), node.parameters),
       base,
+      ...(context.instances === undefined ? {} : { instances: context.instances }),
     }),
     ...base,
   };
+}
+
+/**
+ * T1485b — `op('<instance>').chan.<c>`: the union of the instance's exposed value outputs.
+ *
+ * Each publisher is asked for `<c>` exactly as `op('<publisher>').chan.<c>` would ask, so an
+ * instance reads the same number as the node inside it. A name more than one publisher
+ * carries RIGHT NOW is refused, naming every port it arrived on: picking one would be a
+ * number that looks like an answer while the other output says something else (§V71's
+ * reasoning, one level up). The bare-channel fallback of `.chan.value` holds only for an
+ * instance with ONE publisher, which is the case where it reads exactly like that node.
+ */
+function readInstanceChannel(
+  reference: string,
+  name: string,
+  key: string,
+  sources: readonly InstanceChannelSource[],
+  channels: ChannelResolver,
+  frame: FrameEvaluationInput | undefined,
+  nodeNamed: (label: string) => GraphNode | undefined,
+): NodeReferenceResult {
+  const found: Array<{ port: PortId; value: number }> = [];
+  for (const source of sources) {
+    // The context rides along for resolvers that want the frame; they key on the ADDRESS.
+    // The publisher is in the flat graph; in the document, the instance stands for it.
+    const node = nodeNamed(source.publisher) ?? nodeNamed(name);
+    if (node === undefined) return { ok: false, reason: `${reference}: there is no node named "${name}"` };
+    const context = {
+      node,
+      key,
+      definition: { type: "number", label: key, default: 0 } as const,
+      ...(frame === undefined ? {} : { frame }),
+    };
+    const direct = channels(`${source.publisher}:${key}`, context);
+    const supplied =
+      direct ?? (key === "value" && sources.length === 1 ? channels(source.publisher, context) : undefined);
+    if (typeof supplied === "number" && Number.isFinite(supplied)) found.push({ port: source.port, value: supplied });
+  }
+  const [first, ...others] = found;
+  if (first === undefined) {
+    return { ok: false, reason: `${reference}: "${name}" publishes no channel "${key}" right now` };
+  }
+  if (others.length > 0) {
+    const ports = found.map((entry) => `"${entry.port}"`);
+    const listed = `${ports.slice(0, -1).join(", ")} and ${ports[ports.length - 1]}`;
+    return {
+      ok: false,
+      reason: `${reference}: "${name}" publishes "${key}" on ${found.length} outputs, ${listed}, so the read is ambiguous — rename the channel on one of them inside the component, or read the node that feeds one`,
+    };
+  }
+  return { ok: true, value: first.value };
 }
 
 /**
@@ -418,6 +533,16 @@ function readerWithin(
           ok: false,
           reason: `${reference}: ${CHANNEL_RESOLVER_MISSING}, so "${name}"'s channels cannot be read`,
         };
+      }
+      // T1485b: an INSTANCE is read through the inner nodes its value outputs expose. Asked
+      // before the node lookup: in the flat graph the instance is gone, and in the document
+      // it is present but publishes nothing under its own name.
+      const sources = options.instances?.get(name);
+      if (sources !== undefined) {
+        return readInstanceChannel(reference, name, key, sources, channels, options.base?.frame, (label) => {
+          const id = nodeIdNamed(scope, options.graph, label);
+          return id === undefined ? undefined : options.graph.nodes[id];
+        });
       }
       const channelTarget = nodeIdNamed(scope, options.graph, name);
       const channelNode = channelTarget === undefined ? undefined : options.graph.nodes[channelTarget];

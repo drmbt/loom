@@ -89,6 +89,7 @@ function withTimeProbe(probe: TimeProbe | undefined): { timeProbe?: TimeProbe } 
 }
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import type { ParameterMorphs } from "../domain/parameters/resolve.ts";
+import type { InstanceChannelSources } from "../domain/parameters/node-references.ts";
 import { buildMorphIndex } from "../domain/presets/morph-index.ts";
 import { outputPixelScale } from "../domain/types/graph.ts";
 import { orderNodes } from "./topology.ts";
@@ -853,6 +854,8 @@ export interface RetainedCompile {
    * plan reads the SAME index the plan's "what animates" was classified from.
    */
   readonly morphs: ParameterMorphs;
+  /** T1485b: the component instances this compile's `op()` reads could name, kept as `morphs` is. */
+  readonly instances: InstanceChannelSources | undefined;
 }
 
 export interface CompileGraphResult {
@@ -920,7 +923,9 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
    */
   const morphs =
     request.resolution?.morphs ?? flattened?.morphs ?? buildMorphIndex({ document: request.graph, registry });
-  const reading: ParameterResolution = { ...(request.resolution ?? {}), morphs };
+  // T1485b: and the instances `op('<instance>').chan` can name, by the same precedence.
+  const instances = request.resolution?.instances ?? flattened?.instanceChannels;
+  const reading: ParameterResolution = { ...(request.resolution ?? {}), morphs, ...(instances === undefined ? {} : { instances }) };
 
   /**
    * T350 (§V285) / T447 (§V373): a SOURCE REFERENCE synthesizes the exact edge the wired
@@ -2512,7 +2517,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       signature: structure.signature,
       estimatedResourceBytes,
     },
-    retained: { request, graph, order: topology.order, nodes: retainedNodes, scenePayloads: sceneInfoByOutput, morphs },
+    retained: { request, graph, order: topology.order, nodes: retainedNodes, scenePayloads: sceneInfoByOutput, morphs, instances },
   };
 }
 

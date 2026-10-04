@@ -61,7 +61,7 @@ export function timeProbeFor(
       // The frame's own reading, moved: the same construction validateGraph makes.
       const reading: ParameterResolution =
         options.nodes === undefined
-          ? { ...options, frame: shifted, ...createParameterReadOptions({ graph, registry, frame: shifted, channels: options.channels, morphs: options.morphs }) }
+          ? { ...options, frame: shifted, ...createParameterReadOptions({ graph, registry, frame: shifted, channels: options.channels, morphs: options.morphs, instances: options.instances }) }
           : { ...options, frame: shifted };
       return resolveNodeParameters(node, effectiveParameterSchema(definition, node.parameters), definition.type, [], reading).values;
     },

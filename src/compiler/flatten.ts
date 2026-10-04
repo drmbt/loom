@@ -13,6 +13,7 @@ import type {
   StoredParameter,
 } from "../domain/types/parameters.ts";
 import type { ParameterMorphs } from "../domain/parameters/resolve.ts";
+import type { InstanceChannelSource, InstanceChannelSources } from "../domain/parameters/node-references.ts";
 import { NO_MORPHS, buildMorphIndex, type PublishedOrigin } from "../domain/presets/morph-index.ts";
 import { renumberedName, rewriteNodeNameReferences } from "../domain/graph/names.ts";
 import { isPreviewablePortKind } from "../domain/graph/previewable.ts";
@@ -144,6 +145,12 @@ export interface FlattenedGraph {
    * internal endpoint each became. This is what redirects a sink that named the instance.
    */
   readonly instanceOutputs: ReadonlyMap<NodeId, ReadonlyMap<PortId, FlatEndpoint>>;
+  /**
+   * T1485b: instance LABEL -> the inner labels its exposed VALUE outputs publish under,
+   * which is what lets `op('<instance>').chan.<c>` read an instance this flattening deleted.
+   * Derived from `instanceOutputs`, the redirect textures already use (`instanceChannelsOf`).
+   */
+  readonly instanceChannels: InstanceChannelSources;
   /** Sinks the flattened-away instances implied — a previewed instance (§V28, §V25). */
   readonly sinks: ReadonlyArray<ActiveSink>;
   /** Non-null when the graph recurses; the graph is returned untouched (§V83). */
@@ -399,6 +406,7 @@ function identityFlattening(graph: GraphDocument): FlattenedGraph {
     graph: { revision: graph.revision, nodes, edges, groups: {} },
     sources,
     instanceOutputs: new Map(),
+    instanceChannels: new Map(),
     sinks: [],
     recursion: null,
     diagnostics: [],
@@ -446,6 +454,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       graph: request.graph,
       sources: new Map(),
       instanceOutputs: new Map(),
+      instanceChannels: new Map(),
       sinks: [],
       recursion,
       diagnostics,
@@ -981,6 +990,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     graph,
     sources,
     instanceOutputs,
+    instanceChannels: instanceChannelsOf(instanceNodes, instanceOutputs, nodes, request.registry),
     sinks,
     recursion: null,
     diagnostics,
@@ -993,6 +1003,42 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     // T1541b: with the catalogue, so a timed cue can name a look's instance.
     morphs: buildMorphIndex({ document: request.graph, registry: request.registry, components: request.components, flattened: { graph, publishedOrigins, instanceSchemas } }),
   };
+}
+
+/**
+ * T1485b — each labelled instance's exposed VALUE outputs, as the inner labels that publish
+ * them (see `InstanceChannelSource`).
+ *
+ * The kind is the INNER node's own declared port, judged as `instance-value-channels.ts`
+ * judges it for the plot. Two ports onto one inner node are one publisher (one bag); the
+ * first port to reach it names it. An unlabelled publisher has no address the value graph
+ * publishes under, so it is not listed. Duplicate instance labels (legacy documents) keep
+ * the first, as `nodeNames` does.
+ */
+function instanceChannelsOf(
+  instanceNodes: ReadonlyMap<NodeId, GraphNode>,
+  instanceOutputs: ReadonlyMap<NodeId, ReadonlyMap<PortId, FlatEndpoint>>,
+  nodes: Readonly<Record<NodeId, GraphNode>>,
+  registry: NodeRegistryView,
+): InstanceChannelSources {
+  const byLabel = new Map<string, readonly InstanceChannelSource[]>();
+  for (const instanceId of [...instanceOutputs.keys()].sort()) {
+    const label = instanceNodes.get(instanceId)?.label;
+    if (label === undefined || byLabel.has(label)) continue;
+    const sources: InstanceChannelSource[] = [];
+    const seen = new Set<NodeId>();
+    for (const [port, endpoint] of instanceOutputs.get(instanceId) ?? []) {
+      if (seen.has(endpoint.nodeId)) continue;
+      const inner = nodes[endpoint.nodeId];
+      if (inner?.label === undefined) continue;
+      const declared = registry.get(inner.type)?.outputs.find((output) => output.id === endpoint.portId);
+      if (declared?.type.kind !== "value") continue;
+      seen.add(endpoint.nodeId);
+      sources.push({ port, publisher: inner.label });
+    }
+    byLabel.set(label, sources);
+  }
+  return byLabel;
 }
 
 /**

@@ -2254,6 +2254,8 @@ export function App({
                 // publishing. THE supply the completion menu spent its life without
                 // (§V272) — `expression-references.test.tsx` fails if it stops.
                 channelNames={valueGraph.channelNames}
+                // T1485b: which instances `op('…').chan` can name, off the same flattening.
+                instanceChannels={valueGraph.instanceChannels}
                 status={status}
                 unknownParameters={runtime.unknownParameters}
                 audioStatus={audioInput.status}

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { createValueGraphSession } from "@domain/channels/value-graph.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
+import type { InstanceChannelSources } from "@domain/parameters/node-references.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { FrameInputs } from "@domain/types/backend.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
@@ -106,6 +107,12 @@ export interface ValueGraphBinding {
    * reader then refuses.
    */
   readonly channelNames: (nodeName: string) => readonly string[];
+  /**
+   * T1485b — the component instances `op('<instance>').chan.<c>` can name, off the SAME
+   * flattening this graph evaluates: each instance label and the inner labels its value
+   * outputs publish under, which are the names `channelNames` and `resolver` answer for.
+   */
+  readonly instanceChannels: () => InstanceChannelSources;
   /** Clears every stateful stage (§V181, §V170). Transport reset and backward seek. */
   readonly reset: () => void;
   /**
@@ -252,5 +259,10 @@ export function useValueGraph(runtime: AppRuntime, externalChannels?: ChannelRes
     return Object.keys(structural.current?.byName.get(nodeName) ?? {});
   }, []);
 
-  return { resolver, evaluate, channels, channelNames, reset, diagnostics };
+  const instanceChannels = useCallback(
+    (): InstanceChannelSources => runtimeRef.current.flattened.current().instanceChannels,
+    [],
+  );
+
+  return { resolver, evaluate, channels, channelNames, instanceChannels, reset, diagnostics };
 }

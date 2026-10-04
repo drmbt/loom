@@ -6,7 +6,7 @@ import type { ParameterSchema, ParameterValue } from "../domain/types/parameters
 import type { PortDefinition } from "../domain/types/ports.ts";
 import { arePortsCompatible, describePortType } from "../domain/graph/port-compat.ts";
 import { resolveParameterSchema, effectiveParameterSchema, type ParameterMapBinding } from "../domain/parameters/resolve.ts";
-import { createParameterReadOptions } from "../domain/parameters/node-references.ts";
+import { createParameterReadOptions, type InstanceChannelSources } from "../domain/parameters/node-references.ts";
 import type { ResolveParametersOptions } from "../domain/parameters/resolve.ts";
 import { bindCycleDiagnostics } from "../domain/parameters/bind-cycles.ts";
 import { referenceCycleDiagnostics } from "../domain/graph/reference-cycles.ts";
@@ -33,7 +33,14 @@ import type { CompileEdge } from "./types.ts";
  * topology, same resources — so the resulting plan differs only in its uniform VALUES,
  * which is what makes the update path `updateUniforms` rather than a recompile (§V5).
  */
-export type ParameterResolution = Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs">;
+export type ParameterResolution = Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs"> & {
+  /**
+   * T1485b: the component instances `op('<instance>').chan.<c>` can name — the flattening's
+   * `instanceChannels`, carried beside `morphs` for the same reason: the reader is built
+   * here, so a `compileGraph` caller cannot forget it.
+   */
+  readonly instances?: InstanceChannelSources | undefined;
+};
 
 export interface ResolvedNode {
   readonly node: GraphNode;
@@ -197,7 +204,7 @@ export function validateGraph(
         // `options` already carries, so this spread changes nothing but where they come from.
         // T1497b: and the preset morphs in flight, for the same reason — a reference to a
         // fading parameter must read the fading value.
-        { ...options, ...createParameterReadOptions({ graph, registry, frame: options.frame, channels: options.channels, morphs: options.morphs }) }
+        { ...options, ...createParameterReadOptions({ graph, registry, frame: options.frame, channels: options.channels, morphs: options.morphs, instances: options.instances }) }
       : options;
 
   for (const nodeId of Object.keys(graph.nodes).sort()) {

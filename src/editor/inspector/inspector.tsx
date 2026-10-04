@@ -60,6 +60,7 @@ import {
   createParameterReadOptions,
   nodeReferenceMembers,
   nodeReferenceNames,
+  type InstanceChannelSources,
 } from "@domain/parameters/index.ts";
 import type { ExpressionReferenceSource } from "@ui/controls/expression-completion.ts";
 import { resolvedCommonFor } from "./resolution.ts";
@@ -272,6 +273,14 @@ export interface InspectorProps {
    * and the registry this pane already holds.
    */
   channelNames?: ((nodeName: string) => readonly string[]) | undefined;
+  /**
+   * T1485b: the component instances `op('<instance>').chan.<c>` can name — each instance
+   * label and the inner labels its value outputs publish under, off the flattening the
+   * compile reads through. Handed to the reader AND the completion menu, so what the menu
+   * offers under an instance is what the reader accepts (§V150). Absent, an instance's
+   * channels neither read nor complete, as before.
+   */
+  instanceChannels?: (() => InstanceChannelSources) | undefined;
 }
 
 /** §V16: <= 10 Hz. Shared with `TimelineReadout`'s cap, for the same reason. */
@@ -348,6 +357,7 @@ export function Inspector({
   channels,
   latestFrame,
   channelNames,
+  instanceChannels,
   audioStatus,
   cameraStatus,
   screenCapture,
@@ -416,21 +426,22 @@ export function Inspector({
    * `expression-references.test.tsx` holds that line: rename a node, type one character,
    * and the new name is offered.
    */
-  const sourceRef = useRef({ graph, registry: bus.registry, channelNames });
-  sourceRef.current = { graph, registry: bus.registry, channelNames };
+  const sourceRef = useRef({ graph, registry: bus.registry, channelNames, instanceChannels });
+  sourceRef.current = { graph, registry: bus.registry, channelNames, instanceChannels };
   const references = useMemo<ExpressionReferenceSource>(
     () => ({
       get names() {
         return nodeReferenceNames(sourceRef.current.graph);
       },
       membersOf: (name, path) => {
-        const { graph: current, registry, channelNames: channelsOf } = sourceRef.current;
+        const { graph: current, registry, channelNames: channelsOf, instanceChannels: instancesOf } = sourceRef.current;
         return nodeReferenceMembers(
           {
             graph: current,
             schemaOf: (target) =>
               effectiveParameterSchema(registry.get(target.type), target.parameters),
             ...(channelsOf === undefined ? {} : { channelsOf }),
+            ...(instancesOf === undefined ? {} : { instances: instancesOf() }),
           },
           name,
           path,
@@ -625,7 +636,13 @@ export function Inspector({
    * here is the panel's own question — which graph, which moment.
    */
   const readOptionsAt = (frame?: FrameEvaluationInput) =>
-    createParameterReadOptions({ graph: instanceRead?.graph ?? graph, registry: bus.registry, channels, frame });
+    createParameterReadOptions({
+      graph: instanceRead?.graph ?? graph,
+      registry: bus.registry,
+      channels,
+      frame,
+      ...(instanceChannels === undefined ? {} : { instances: instanceChannels() }),
+    });
   const readOptions = readOptionsAt();
 
   /**

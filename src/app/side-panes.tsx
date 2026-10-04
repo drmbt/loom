@@ -16,6 +16,7 @@ import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
+import type { InstanceChannelSources } from "@domain/parameters/node-references.ts";
 import type { FrameInputs } from "@domain/types/backend.ts";
 import { ComponentPage, InspectorSubjects } from "@editor/component/index.ts";
 import type { GraphComponentDefinition } from "@domain/types/components.ts";
@@ -165,6 +166,8 @@ export interface InspectorPaneProps {
    * invents no resolver.
    */
   channelNames?: ((nodeName: string) => readonly string[]) | undefined;
+  /** T1485b: the component instances `op('…').chan` can name. Passed straight through. */
+  instanceChannels?: (() => InstanceChannelSources) | undefined;
   status: GpuStatus;
   /** Values the open file carried that this build cannot read (§V68, §V69). */
   unknownParameters?: readonly UnknownParameter[];  /** T434(b)/T432: the session audio capture's status, for the Inspector's Audio section. */
@@ -280,6 +283,7 @@ export function InspectorPane({
   channels,
   latestFrame,
   channelNames,
+  instanceChannels,
   status,
   unknownParameters = [],
   audioStatus,
@@ -365,6 +369,7 @@ export function InspectorPane({
       {...(channels === undefined ? {} : { channels })}
       {...(latestFrame === undefined ? {} : { latestFrame })}
       {...(channelNames === undefined ? {} : { channelNames })}
+      {...(instanceChannels === undefined ? {} : { instanceChannels })}
       {...(audioStatus === undefined ? {} : { audioStatus })}
       {...(cameraStatus === undefined ? {} : { cameraStatus })}
       {...(screenCapture === undefined ? {} : { screenCapture })}

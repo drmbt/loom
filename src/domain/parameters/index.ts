@@ -71,6 +71,8 @@ export {
   nodeReferenceNames,
 } from "./node-references.ts";
 export type {
+  InstanceChannelSource,
+  InstanceChannelSources,
   NodeReferenceCatalogueOptions,
   NodeReferenceMember,
   NodeReferenceOptions,
