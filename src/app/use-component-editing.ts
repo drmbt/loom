@@ -8,6 +8,7 @@ import type { ComponentSession } from "@domain/components/session.ts";
 import type { Breadcrumb, ResolvedComponentPath } from "@domain/components/navigation.ts";
 import { resolveComponentNavigation } from "@editor/component/index.ts";
 import type { AppRuntime } from "./app-runtime.ts";
+import { registerForwardedResetFeedback } from "./runtime-commands.ts";
 import type { InstanceParameters } from "@editor/inspector/instance-parameters.ts";
 import { flattenedNodeId } from "@compiler/flatten.ts";
 import {
@@ -237,12 +238,15 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
       onStale,
       root: readRoot,
     });
+    // VNB6: a Reset pulse fired in here clears the viewed instance's history in the
+    // document's plan — the session bus has no renderer of its own to ask.
+    registerForwardedResetFeedback(opened.bus, runtime.bus, store.getPath);
     setSession(opened);
     return () => {
       opened.dispose();
       setSession(null);
     };
-  }, [componentId, onStale, readRoot, reopened, runtime.components, runtime.registry, version]);
+  }, [componentId, onStale, readRoot, reopened, runtime.bus, runtime.components, runtime.registry, store, version]);
 
   const live = session !== null && session.componentId === componentId && session.version === version;
   const editBus = live && session !== null ? session.bus : runtime.bus;

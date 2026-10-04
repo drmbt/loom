@@ -7,6 +7,7 @@ import { readComponentInstance } from "@domain/components/instance.ts";
 import { isMenuSeparator, type MenuEntry, type MenuItem } from "@domain/types/menus.ts";
 import { menuSchemaFor, resolveMenuInput, type MenuContext } from "@editor/menus/index.ts";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
+import { ANIMATED_COMPONENT_ID, animatedComponentDefinition } from "../tests/fixtures/animated-component.ts";
 import { createAppRuntime } from "./app-runtime.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 import { ComponentBar } from "./component-bar.tsx";
@@ -470,6 +471,69 @@ describe("the canvas menu saves the selection as a component (VN1)", () => {
     const { runtime } = await mount();
     const resolved = resolveMenuInput(canvasRow(runtime), { surface: "canvas" }, menuContext(runtime, []));
     expect(resolved).toEqual({ ok: false, reason: "Select the nodes to save first." });
+  });
+});
+
+/**
+ * VNB6 — A RESET PULSE FIRED INSIDE A COMPONENT REACHES THE DOCUMENT'S RENDERER. The report:
+ * `Pulse "resetPulse" fires "runtime.resetFeedback", which no track has registered.` The
+ * session bus the editor opens had no such command, so every Reset inside a component
+ * refused. Two instances of one component, and the fire is made while standing in the
+ * SECOND, so a forward that named the definition's bare node id, or the wrong instance,
+ * fails rather than passing by coincidence (§V461).
+ * Sensitivity: dropping `registerForwardedResetFeedback` from the session effect reddens it.
+ */
+describe("a Reset pulse inside a component clears ITS instance's history (VNB6)", () => {
+  it("forwards to the document's command with the viewed instance's flattened id", async () => {
+    const { runtime, handle } = await mount();
+    runtime.components.register(animatedComponentDefinition());
+    // The document's command, as the app registers it on the ROOT bus. A recording double
+    // here, as in `pulse-firing.test.tsx`: what is under test is the route into it.
+    const cleared: string[][] = [];
+    runtime.bus.registerCommand({
+      name: "runtime.resetFeedback",
+      description: "Test double for the feedback reset a pulse fires.",
+      handler: (input) => {
+        cleared.push([...(input.nodeIds ?? [])]);
+        return { status: "applied", output: { cleared: 1 }, diagnostics: [] };
+      },
+      rejectionOutput: () => ({ cleared: 0 }),
+    });
+
+    let two = "" as NodeId;
+    await act(async () => {
+      const added = await runtime.bus.execute(
+        "graph.applyPatch",
+        {
+          baseRevision: runtime.bus.store.getRevision(),
+          label: "add",
+          operations: [
+            { op: "addNode", ref: "$one", type: componentNodeType(ANIMATED_COMPONENT_ID, 1), position: { x: 0, y: 0 } },
+            { op: "addNode", ref: "$two", type: componentNodeType(ANIMATED_COMPONENT_ID, 1), position: { x: 240, y: 0 } },
+          ],
+        },
+        runtime.invocation,
+      );
+      two = added.output.createdIds["$two"] as NodeId;
+    });
+    await act(async () => {
+      await runtime.bus.execute("graph.diveIn", { nodeId: two }, runtime.invocation);
+    });
+    expect(handle.editing.path).toEqual([two]);
+
+    // The inspector's Reset button, inside the component: `parameter.pulse` on the bus the
+    // editor edits through, naming the definition's own node.
+    let result: Awaited<ReturnType<typeof handle.editing.bus.execute<"parameter.pulse">>> | undefined;
+    await act(async () => {
+      result = await handle.editing.bus.execute(
+        "parameter.pulse",
+        { nodeId: "fb" as NodeId, parameterKey: "resetPulse" },
+        runtime.invocation,
+      );
+    });
+
+    expect(result?.status, result?.diagnostics.map((d) => d.message).join("; ")).toBe("applied");
+    expect(cleared).toEqual([[`${two}/fb`]]);
   });
 });
 
