@@ -194,6 +194,12 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
 
   let backend: ReturnType<typeof createVgpuBackend> | undefined;
   let compiled: ReturnType<typeof compileGraph> | null = null;
+  /*
+   * B244: the compile last ATTEMPTED, which is what `diagnostics.get` reports. `compiled` is
+   * the plan the backend accepted and renders, which the pixel tools and metrics describe;
+   * after a backend refusal the two differ, and the problems belong to the refused one.
+   */
+  let attempted: ReturnType<typeof compileGraph> | null = null;
   // T1555b: why there is no GPU, and what the backend has reported, held for `diagnostics.get`.
   let gpuProblems: readonly RuntimeDiagnostic[] = [];
   let backendProblems: readonly RuntimeDiagnostic[] = [];
@@ -278,7 +284,7 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
    */
   const problemSources: readonly ProblemSource[] = [
     { id: "gpu", read: () => gpuProblems },
-    { id: "compile", read: () => compiled?.diagnostics ?? [] },
+    { id: "compile", read: () => attempted?.diagnostics ?? [] },
     { id: "backend", read: () => backendProblems },
   ];
   attachStateSources(bus, {
@@ -408,6 +414,7 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
     if (capabilities === null || capabilities === undefined) return;
     // §T1544b: in the timeline's structure at the frame this renders.
     const plan = compileGraph(requestAt(frameIndex, capabilities));
+    attempted = plan;
     if (!plan.ok) {
       compiled = plan;
       return;
@@ -489,6 +496,7 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
         // backend holds — so the report and the pixels describe one structure.
         const plan = compileGraph(requestAt(Math.max(0, frameIndex - 1), capabilities));
         compiled = plan;
+        attempted = plan;
         return { compiled: plan, diagnostics: [...plan.diagnostics] };
       },
     };

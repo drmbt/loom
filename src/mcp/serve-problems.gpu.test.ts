@@ -83,6 +83,9 @@ describe("T1555b — headless get_diagnostics holds what the backend reported", 
     expect(listed.filter((d) => d.severity === "error" && !d.code.startsWith("backend/"))).toEqual([]);
     // Registry order, as on the page: the compile's entries, then the backend's.
     const codes = listed.map((d) => d.code);
+    // B244: the compile entries describe THIS graph, the one the backend just refused — not
+    // the empty document before it, whose "no active sinks" outlived the refusal.
+    expect(codes).not.toContain("compiler/no-active-sinks");
     expect(codes.slice(codes.findIndex((code) => code.startsWith("backend/")))).toEqual([BackendDiagnosticCode.compileFailed]);
     server.dispose();
   }, 60_000);
