@@ -30,6 +30,7 @@ id|status|report|notes
 VNB1|?|**Webcam does not work in Firefox.** No upstream row mentions it. First suspect, unverified: `copyExternalImageToTexture` from a video element (`vgpu-backend.ts`). Needs: Firefox version, OS, console output.|B39
 VNB2|?|**Returning to the tab lands on the default template instead of the last session.** By design edited work autosaves and wins on boot, an unedited example reopens by name, and an unedited file from disk boots to an empty canvas (`last-opened.ts`, T1164). Landing on the starter after editing would be a bug. Needs: exact steps.|T1164, T1123
 VNB3|?|**Dragging panes to edges to split / insert.** The code has draggable tabs, edge strips and floating windows (V95, T494). Reported as a wish, so either it is not discoverable or it did not work. Needs: one attempt with the steps written down.|V95, T494, T739
+VNB4|?|**Desktop app: camera/microphone never becomes available ("stuck without allow access").** Reported 2026-10-04 on `pnpm desktop:dev`. Two gates exist: Loom's own Allow/Deny dialog (Deny is the default, resets on reload) and macOS consent via `askForMediaAccess`, which in dev mode macOS may attribute to the app that launched Electron. Needs: Settings → Permissions readout (App vs OS column) and the `LOOM_DESKTOP_PERMISSION` lines from the launching terminal. README: physical devices and real macOS prompts "still need manual proof".|T1329
 
 ## Tracked upstream
 
