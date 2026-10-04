@@ -12,6 +12,7 @@ import { registerResetFeedbackCommand } from "../app/runtime-commands.ts";
 import { compileGraph, timelineStructureRequest, type CompileRequest } from "../compiler/index.ts";
 import { buildTimelineStructure } from "../domain/presets/timeline-cues.ts";
 import type { BackendCapabilities } from "../domain/types/backend.ts";
+import { frameFromClock } from "../domain/types/frame.ts";
 import type { ProjectSettings } from "../domain/types/graph.ts";
 import { createVgpuBackend } from "../runtime/backend/vgpu/vgpu-backend.ts";
 import { nodeGpuHost, probeDawn } from "../runtime/backend/vgpu/node-gpu-host.ts";
@@ -398,13 +399,18 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
     const built = await live.compile(plan);
     compiled = plan;
     live.render(built, {
-      frame: {
+      // T1554b: the rate is stated, so `fps` reads HEADLESS_FPS rather than agreeing with
+      // the default by coincidence. This frame index never wraps, so the absolute pair the
+      // constructor fills from the timeline is the absolute clock; and the server mints no
+      // epoch (no app attaches a frame clock here, so a morph commits as a cut, T1497b).
+      frame: frameFromClock({
         timeSeconds: frameIndex / HEADLESS_FPS,
         deltaSeconds: 1 / HEADLESS_FPS,
         frameIndex,
         mode: "offline",
         randomSeed: HEADLESS_SETTINGS.randomSeed,
-      },
+        fps: HEADLESS_FPS,
+      }),
       pointer: { x: 0, y: 0, buttons: 0 },
       resolution: [HEADLESS_SETTINGS.outputResolution.width, HEADLESS_SETTINGS.outputResolution.height],
     });

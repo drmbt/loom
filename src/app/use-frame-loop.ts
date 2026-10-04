@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { liveClock } from "@domain/transport/live-clock.ts";
 import type { CompiledGraph } from "@compiler/index.ts";
-import type { FrameEvaluationInput } from "@domain/types/frame.ts";
+import type { EvaluationFrame, FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import { projectFps, projectRange } from "@domain/types/graph.ts";
@@ -661,7 +661,7 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
      * the driver drops its own copy — and the transport has already moved past it, so the
      * next paused step would show the frame after it.
      */
-    let pulled: FrameEvaluationInput | null = null;
+    let pulled: EvaluationFrame | null = null;
     const transport: typeof clock = {
       ...clock,
       next: () => {

@@ -2,6 +2,7 @@ import { effect, frame, frameLoop, sampler, surface, timer, uniforms } from "vgp
 import type { Effect, Frame, PingPongTargets, StorageBuffer, Surface, SurfaceCanvas, Target, Timer, TimerSpan } from "vgpu";
 import { nativeInputTransportSize, NATIVE_INPUT_PACK_WGSL } from "../../models/native-input-layout.ts";
 import type { RuntimeDiagnostic } from "../../../domain/types/diagnostics.ts";
+import { absTimeSecondsOf } from "../../../domain/types/frame.ts";
 import type { FrameEvaluationInput } from "../../../domain/types/frame.ts";
 // T933: the ONE place the project rate's default is applied. The scheduler is the third
 // reader of `fps` after the settings pane and the clock, and it used to be the one that
@@ -1303,7 +1304,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             const resourceId = pass.textures?.[0]?.resourceId;
             const source = resourceId !== undefined && active.resources.externalTextures.has(resourceId)
               ? { renderIndex: framesSubmitted + 1, frameIndex: input.frameIndex,
-                  timeSeconds: input.absTimeSeconds ?? input.timeSeconds }
+                  timeSeconds: absTimeSecondsOf(input) }
               : resourceId === undefined ? undefined : active.textureFrames.get(resourceId);
             if (!demand.gate(input, { renderIndex: framesSubmitted + 1, source })) continue;
           }
@@ -1363,7 +1364,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             // Indirect draws submit immediately; a later preprocess reads this render.
             if (dispatchGates.size > 0) active.textureFrames.set(pass.target, {
               renderIndex: framesSubmitted + 1, frameIndex: input.frameIndex,
-              timeSeconds: input.absTimeSeconds ?? input.timeSeconds,
+              timeSeconds: absTimeSecondsOf(input),
             });
           } else {
             // Literal draws encode through f.pass, which is what gives them a clear
@@ -1433,7 +1434,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
   function stampRenderedTextures(active: Program, passes: ReadonlyArray<PassDescriptor>, input: FrameEvaluationInput): void {
     if (dispatchGates.size === 0) return;
     const stamp: DispatchSourceFrame = { renderIndex: framesSubmitted + 1,
-      frameIndex: input.frameIndex, timeSeconds: input.absTimeSeconds ?? input.timeSeconds };
+      frameIndex: input.frameIndex, timeSeconds: absTimeSecondsOf(input) };
     for (const pass of passes) {
       if (pass.kind === "effect" || pass.kind === "draw") active.textureFrames.set(pass.target, stamp);
     }

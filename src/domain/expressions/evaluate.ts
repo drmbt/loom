@@ -1,11 +1,12 @@
 import {
   absFrameIndexOf,
   absTimeSecondsOf,
+  fpsOf,
+  subframesOf,
   wallDeltaSecondsOf,
   wallSecondsOf,
 } from "../types/frame.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
-import { DEFAULT_PROJECT_FPS } from "../types/graph.ts";
 
 /**
  * The parameter expression engine (T108, §V71): own closed grammar, jsep-style AST,
@@ -236,8 +237,8 @@ export function scopeFromFrame(
     absframe: absFrameIndexOf(frame),
     // T1426b/T1435b: the rates. A transport that states none is a plain project at the
     // default rate with no accumulation, which is what `projectFps()` says of absent settings.
-    fps: frame.fps !== undefined && Number.isFinite(frame.fps) && frame.fps > 0 ? frame.fps : DEFAULT_PROJECT_FPS,
-    subframes: frame.subframes !== undefined && Number.isFinite(frame.subframes) && frame.subframes >= 1 ? frame.subframes : 1,
+    fps: fpsOf(frame),
+    subframes: subframesOf(frame),
   };
 }
 

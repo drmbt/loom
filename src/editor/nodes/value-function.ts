@@ -1,7 +1,9 @@
 import { isPureValueSource } from "@domain/types/node-definition.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
-import type { FrameEvaluationInput } from "@domain/types/frame.ts";
+import { frameFromClock } from "@domain/types/frame.ts";
+import type { EvaluationFrame } from "@domain/types/frame.ts";
+import { DEFAULT_PROJECT_FPS } from "@domain/types/graph.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 
 /**
@@ -74,17 +76,21 @@ export interface SampleOptions {
  * Deliberately NOT a partial cast: `valueChannel` receives the same shape it receives in
  * the render, so a node reading `deltaSeconds` or `frameIndex` gets a coherent answer
  * rather than an undefined that happens not to crash today.
+ *
+ * T1554b: through `frameFromClock`, which fills the absolute pair from the timeline — the
+ * hypothetical clock has no laps, so absolute time IS this time, the same pair
+ * `value-plot-chain.ts` writes out by hand. `fps` is the default rate, which is what every
+ * reader took for this frame's absent one before; no pure source reads the rate.
  */
-function frameAt(timeSeconds: number, deltaSeconds: number, randomSeed: number): FrameEvaluationInput {
-  return {
+function frameAt(timeSeconds: number, deltaSeconds: number, randomSeed: number): EvaluationFrame {
+  return frameFromClock({
     timeSeconds,
     deltaSeconds,
     frameIndex: Math.max(0, Math.round(timeSeconds / (deltaSeconds || 1))),
     mode: "fixed-step",
     randomSeed,
-    wallSeconds: timeSeconds,
-    wallDeltaSeconds: deltaSeconds,
-  };
+    fps: DEFAULT_PROJECT_FPS,
+  });
 }
 
 /**

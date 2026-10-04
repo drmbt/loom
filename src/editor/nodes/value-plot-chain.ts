@@ -1,3 +1,5 @@
+import { frameFromClock } from "@domain/types/frame.ts";
+import { DEFAULT_PROJECT_FPS } from "@domain/types/graph.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
@@ -281,17 +283,16 @@ function sampleChainUncached(
 
   for (let index = 0; index < count; index += 1) {
     const timeSeconds = index * step;
-    const result = session.evaluate(chain.subgraph, {
+    // T1554b: the wall and absolute pairs are the timeline's — a hypothetical clock has no
+    // laps — which `frameFromClock` fills; the rate is the default every reader took before.
+    const result = session.evaluate(chain.subgraph, frameFromClock({
       timeSeconds,
       deltaSeconds: step,
       frameIndex: index,
       mode: "fixed-step",
       randomSeed: options.randomSeed,
-      wallSeconds: timeSeconds,
-      wallDeltaSeconds: step,
-      absFrameIndex: index,
-      absTimeSeconds: timeSeconds,
-    });
+      fps: DEFAULT_PROJECT_FPS,
+    }));
     const bag = result.byId.get(chain.nodeId) ?? {};
     for (const [name, value] of Object.entries(bag)) {
       let series = channels.get(name);

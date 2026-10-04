@@ -6,6 +6,7 @@ import type { ComponentRegistryView } from "../domain/components/index.ts";
 import type { UnknownNodePlaceholder } from "../domain/project/index.ts";
 import type { BackendCapabilities, FrameInputs } from "../domain/types/backend.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
+import { frameFromClock } from "../domain/types/frame.ts";
 import type { ProjectDocument } from "../domain/types/graph.ts";
 import type { NodeRegistryView } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
@@ -160,14 +161,18 @@ export function frameSequence(document: ProjectDocument, frameCount: number): re
     document.settings.outputResolution.width,
     document.settings.outputResolution.height,
   ];
+  // T1554b: the rate the sequence steps at is stated, not left to the readers' default; a
+  // sequence that never wraps has the timeline as its absolute clock, which the constructor
+  // fills in, and no epoch (an export's, T1497b).
   return Array.from({ length: frameCount }, (_unused, frameIndex) => ({
-    frame: {
+    frame: frameFromClock({
       timeSeconds: frameIndex / 60,
       deltaSeconds: 1 / 60,
       frameIndex,
-      mode: "offline" as const,
+      mode: "offline",
       randomSeed: document.settings.randomSeed,
-    },
+      fps: 60,
+    }),
     pointer: { x: 0, y: 0, buttons: 0 },
     resolution,
   }));

@@ -1,4 +1,5 @@
 import type { FlatGraph, GraphDocument } from "../types/graph.ts";
+import { ZERO_FRAME } from "../types/frame.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { ParameterValue, StoredParameter } from "../types/parameters.ts";
 import type { NodeId } from "../types/ids.ts";
@@ -124,15 +125,6 @@ export function graphChannelResolver(
     return Number.isFinite(value) ? value : undefined;
   };
 }
-
-/** §V44's deterministic zero frame: resolving outside a frame is t=0, not an error. */
-const ZERO_FRAME: FrameEvaluationInput = {
-  timeSeconds: 0,
-  deltaSeconds: 0,
-  frameIndex: 0,
-  mode: "offline",
-  randomSeed: 0,
-};
 
 /**
  * True when any parameter in the document animates per frame — an expression or driven

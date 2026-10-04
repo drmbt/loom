@@ -4,7 +4,7 @@ import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import type { InstanceChannelSources } from "@domain/parameters/node-references.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { FrameInputs } from "@domain/types/backend.ts";
-import type { FrameEvaluationInput } from "@domain/types/frame.ts";
+import { ZERO_FRAME } from "@domain/types/frame.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { FlattenedGraph } from "@compiler/index.ts";
 import type { AppRuntime } from "./app-runtime.ts";
@@ -132,15 +132,6 @@ export interface ValueGraphBinding {
 }
 
 const NO_DIAGNOSTICS: readonly RuntimeDiagnostic[] = [];
-
-/** §V44's deterministic zero frame: resolving outside a frame is t=0, never a wall clock. */
-const ZERO_FRAME: FrameEvaluationInput = {
-  timeSeconds: 0,
-  deltaSeconds: 0,
-  frameIndex: 0,
-  mode: "offline",
-  randomSeed: 0,
-};
 
 export function useValueGraph(runtime: AppRuntime, externalChannels?: ChannelResolver): ValueGraphBinding {
   // The store is the authority on the graph and is read AT evaluation time rather than

@@ -1,6 +1,7 @@
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
+import { fpsOf, subframesOf } from "../types/frame.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
-import { DEFAULT_PROJECT_FPS, type GraphDocument, type GraphNode } from "../types/graph.ts";
+import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import type { NodeDefinition } from "../types/node-definition.ts";
 import type { ParameterSchema, StoredParameter } from "../types/parameters.ts";
@@ -88,9 +89,7 @@ export function hasTimelineCueLists(graph: GraphDocument): boolean {
 
 /** Frames per TIMELINE second at a frame: the project rate times the sub-frames it is stepped at. */
 export function timelineRate(frame: Pick<FrameEvaluationInput, "fps" | "subframes">): number {
-  const fps = frame.fps !== undefined && Number.isFinite(frame.fps) && frame.fps > 0 ? frame.fps : DEFAULT_PROJECT_FPS;
-  const subframes = frame.subframes !== undefined && Number.isFinite(frame.subframes) && frame.subframes >= 1 ? frame.subframes : 1;
-  return fps * subframes;
+  return fpsOf(frame) * subframesOf(frame);
 }
 
 /**

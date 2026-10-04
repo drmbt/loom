@@ -1,4 +1,5 @@
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
+import { ZERO_FRAME } from "../types/frame.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { GraphNode } from "../types/graph.ts";
 import type { NodeDefinition } from "../types/node-definition.ts";
@@ -400,16 +401,11 @@ function checkAgainstManifest(
  * `abstime * 2` failed outright and fell back to the manifest default. A clock the rest of
  * the app offers, refused in one corner.
  *
- * Deriving it from `scopeFromFrame` of an all-zero frame means scope name #N+1 arrives
- * here by construction, the way `frameVariableNames` already does for the completion menu.
+ * Deriving it from `scopeFromFrame` of the zero frame means scope name #N+1 arrives here by
+ * construction, the way `frameVariableNames` already does for the completion menu — and,
+ * since T1554b, that zero frame is the domain's one `ZERO_FRAME`, not a fifth copy of it.
  */
-const ZERO_FRAME_SCOPE: ExpressionScope = scopeFromFrame({
-  timeSeconds: 0,
-  deltaSeconds: 0,
-  frameIndex: 0,
-  mode: "offline",
-  randomSeed: 0,
-});
+const ZERO_FRAME_SCOPE: ExpressionScope = scopeFromFrame(ZERO_FRAME);
 
 /** No frame = the deterministic zero frame (§V44), so a compile-time resolve of `time*2` is 0, not an error. */
 function expressionScope(options: ResolveParametersOptions): ExpressionScope {

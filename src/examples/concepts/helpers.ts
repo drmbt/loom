@@ -2,6 +2,7 @@ import { compileGraph, flattenComponents } from "../../compiler/index.ts";
 import type { CompiledGraph } from "../../compiler/index.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import type { ComponentRegistryView } from "../../domain/components/index.ts";
+import { frameFromClock } from "../../domain/types/frame.ts";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { GraphDocument, GraphNode, ProjectDocument } from "../../domain/types/graph.ts";
 import type { SelectableColorFormat } from "../../domain/types/node-definition.ts";
@@ -185,13 +186,15 @@ export function valueGraphRun(document: ProjectDocument) {
   const flat = flattenComponents({ graph: document.graph, registry: nodes, components }).graph;
   let frameIndex = 0;
 
-  const frameAt = (index: number): FrameEvaluationInput => ({
-    timeSeconds: index / 60,
-    deltaSeconds: 1 / 60,
-    frameIndex: index,
-    mode: "offline",
-    randomSeed: document.settings.randomSeed,
-  });
+  const frameAt = (index: number): FrameEvaluationInput =>
+    frameFromClock({
+      timeSeconds: index / 60,
+      deltaSeconds: 1 / 60,
+      frameIndex: index,
+      mode: "offline",
+      randomSeed: document.settings.randomSeed,
+      fps: 60,
+    });
 
   return {
     /** Advance one frame at this pointer and compile at the values it produced. */
