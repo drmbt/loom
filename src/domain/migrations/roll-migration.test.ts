@@ -5,7 +5,7 @@ import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { createComponentSystem } from "../components/index.ts";
 import { cameraPayloadMatrix, transformPoint } from "../geometry/camera.ts";
-import { createParameterReadOptions } from "../parameters/node-references.ts";
+import { NO_FLATTENING, parameterReadOptions } from "../parameters/node-references.ts";
 import { resolveParameters } from "../parameters/resolve.ts";
 import { loadProject } from "../project/load.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
@@ -131,7 +131,7 @@ describe("4 → 5: camera roll turns right-handed, and a saved document frames w
     const slot = nodeOf(document.graph, "reader").parameters["size"] as ParameterSlot;
     expect(slot.bindings.expression).toEqual({ kind: "expression", source: "(-op('came1').par.roll) / 10" });
     const blur = allNodeDefinitions.find((definition) => definition.type === "blur");
-    const options = createParameterReadOptions({ graph: document.graph, registry });
+    const options = parameterReadOptions({ graph: document.graph, registry, frame: undefined, channels: undefined, flattening: NO_FLATTENING });
     // 30 / 10 before the flip; (-(-30)) / 10 after it.
     expect(resolveParameters(nodeOf(document.graph, "reader"), blur, options).values["size"]).toBe(3);
   });

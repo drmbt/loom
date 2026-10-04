@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { CompiledGraph } from "@compiler/index.ts";
-import type { ChannelResolver, ParameterMorphs } from "@domain/parameters/resolve.ts";
+import type { ChannelResolver } from "@domain/parameters/resolve.ts";
+import type { LiveParameterReads } from "@domain/parameters/index.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
@@ -105,19 +106,19 @@ export function useAnalyzeChannels(
   backend: LoomBackend | null | undefined,
   registry: NodeRegistryView,
   /**
-   * The per-node telemetry channel §V329's staleness is published onto. Optional so a test
-   * that only cares about the resolver can leave it out; the composition root passes the
+   * The per-node telemetry channel §V329's staleness is published onto. `undefined` in a test
+   * that only cares about the resolver; the composition root passes the
    * graph canvas's own store, which is the ONE per-node channel (§V16).
    */
-  sink?: NodeMetricSink | undefined,
+  sink: NodeMetricSink | undefined,
   /**
-   * T1525b: what Operation is resolved with each frame — the compile's channel resolver and
-   * the preset morphs in flight over the graph `track` was handed (`FlattenedGraph.morphs`),
-   * so an expression on Operation follows a channel or a fading parameter. Getters, read per
-   * frame, like the media transport's (§T1524b). Absent, Operation resolves with neither:
-   * an expression still runs, a channel read or a fade does not reach it.
+   * T1525b: what Operation is resolved with each frame — the live read world (§T1551b: the
+   * compile's channel resolver and the runtime's flattening), so an expression on Operation
+   * follows a channel, a fading parameter or an instance's channel. Getters, read per frame.
+   * REQUIRED since §T1551b: a test with neither says so (`{ channels: () => undefined,
+   * flattening: () => NO_FLATTENING }`).
    */
-  reads?: { readonly channels: () => ChannelResolver | undefined; readonly morphs: () => ParameterMorphs | undefined },
+  reads: LiveParameterReads,
 ): AnalyzeChannelBinding {
   // Read through a ref: the channels object is built once and must survive the backend
   // being replaced by a device-loss rebuild (§V23) without losing its latest values.
@@ -169,7 +170,7 @@ export function useAnalyzeChannels(
       const { graph, entries } = trackedRef.current;
       if (entries.length === 0) return;
       const live = readsRef.current;
-      const read = { frame, channels: live?.channels(), morphs: live?.morphs() };
+      const read = { frame, channels: live.channels(), flattening: live.flattening() };
       let changed = false;
       const next = entries.map((entry) => {
         const node = graph.nodes[entry.nodeId];

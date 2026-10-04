@@ -5,6 +5,7 @@ import { ViewerPane } from "./side-panes.tsx";
 import { AppRuntimeContext } from "./app-context.ts";
 import { createAppRuntime } from "./app-runtime.ts";
 import { TooltipProvider } from "@ui/primitives/tooltip.tsx";
+import { NO_FLATTENING } from "@domain/parameters/index.ts";
 
 const native = vi.hoisted(() => ({ available: true, active: true, ready: true,
   status: "Native GPU: 1 published, 0 dropped; 533 rendered, 1 transferred", toggle: vi.fn() }));
@@ -16,7 +17,7 @@ describe("native output toolbar", () => {
     const runtime = createAppRuntime({ identityStorage: null, actor: { kind: "human", id: "test", label: "Test" } });
     try {
       render(<TooltipProvider><AppRuntimeContext.Provider value={runtime}>
-        <ViewerPane compiled={null} graph={runtime.bus.store.getGraph()} backend={null} pointer={null} probe={undefined} liveReads={{ channels: () => undefined, morphs: () => undefined, frame: () => undefined }} />
+        <ViewerPane compiled={null} graph={runtime.bus.store.getGraph()} backend={null} pointer={null} probe={undefined} liveReads={{ channels: () => undefined, flattening: () => NO_FLATTENING, frame: () => undefined }} />
       </AppRuntimeContext.Provider></TooltipProvider>);
       const button = screen.getByRole("button", { name: "Stop native SDR output" });
       expect(button.textContent).toBe("SDR");

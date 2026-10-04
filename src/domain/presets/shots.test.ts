@@ -9,7 +9,7 @@ import { createSequentialIdFactory } from "../graph/ids.ts";
 import { createDomainBus } from "../commands/index.ts";
 import type { LoomBus } from "../commands/bus.ts";
 import { alice, contextFor } from "../commands/test-support.ts";
-import { createParameterReadOptions } from "../parameters/node-references.ts";
+import { NO_FLATTENING, parameterReadOptions } from "../parameters/node-references.ts";
 import { resolveParameters } from "../parameters/resolve.ts";
 import { liveClock } from "../transport/live-clock.ts";
 import { createNodeRegistry, type NodeRegistryView } from "../../nodes/registry/registry.ts";
@@ -89,7 +89,7 @@ function session(nodes: GraphNode[]): Session {
       const target = graph().nodes[nodeId];
       if (target === undefined || last === null) throw new Error(`no node ${nodeId}, or no frame yet`);
       const morphs = buildMorphIndex({ document: graph(), registry });
-      return resolveParameters(target, registry.get(target.type), createParameterReadOptions({ graph: graph(), registry, frame: last, morphs })).values[key];
+      return resolveParameters(target, registry.get(target.type), parameterReadOptions({ graph: graph(), registry, frame: last, channels: undefined, flattening: { ...NO_FLATTENING, morphs } })).values[key];
     },
     records: (bankId) => parseMorphRecords(graph().nodes[bankId]?.parameters["morphs"]),
     snapshot: () => JSON.stringify(Object.values(graph().nodes).map((each) => [each.id, each.parameters, each.ui ?? null])),

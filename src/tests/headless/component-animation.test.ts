@@ -6,6 +6,7 @@ import { testCapabilities } from "../../compiler/test-support.ts";
 import { hasAnimatedParameters } from "../../domain/channels/graph-channels.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { createPulseWatcher, pulseCommandInput } from "../../domain/parameters/pulse.ts";
+import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
 import { DEFAULT_PROJECT_SETTINGS } from "../../domain/types/graph.ts";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
@@ -246,14 +247,14 @@ describe("T615 — a component's own animation runs, per instance", () => {
     const deadWatcher = createPulseWatcher(registry);
     const deadFires: string[] = [];
     for (let index = 0; index < 40; index += 1) {
-      for (const fire of deadWatcher.step(raw, frameAt(index))) deadFires.push(fire.nodeId);
+      for (const fire of deadWatcher.step(raw, frameAt(index), undefined, NO_FLATTENING)) deadFires.push(fire.nodeId);
     }
     expect(deadFires).toEqual([]);
 
     const watcher = createPulseWatcher(registry);
     const fires: Array<{ nodeId: string; key: string; frame: number }> = [];
     for (let index = 0; index < 40; index += 1) {
-      for (const fire of watcher.step(flat.graph, frameAt(index))) {
+      for (const fire of watcher.step(flat.graph, frameAt(index), undefined, flat)) {
         fires.push({ nodeId: fire.nodeId, key: fire.key, frame: index });
       }
     }

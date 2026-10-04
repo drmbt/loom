@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { flattenComponents } from "../compiler/flatten.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
+import { componentNodeType, createComponentSystem } from "../domain/components/index.ts";
+import { NO_INSTANCES, nodeReferenceMembers, type InstanceChannelSources } from "../domain/parameters/node-references.ts";
+import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import type { GraphDocument, GraphNode } from "../domain/types/graph.ts";
 import type { FrameEvaluationInput } from "../domain/types/frame.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
@@ -9,6 +12,8 @@ import { createNodeRegistry } from "../nodes/registry/registry.ts";
 import type { ExampleFile } from "./catalogue.ts";
 import { listExamples, listStarterComponentFiles } from "./catalogue.ts";
 import { requireExample } from "./runner.ts";
+import { ANALYSIS_COMPONENT_ID, analysisComponentDefinition } from "../tests/fixtures/analysis-component.ts";
+import { expressionSlot } from "./documents/builders.ts";
 
 /**
  * ⚑ T1074 — every `op('X').chan.K` in every shipped document names a channel X ACTUALLY
@@ -114,19 +119,57 @@ function publishedChannels(graph: GraphDocument): Map<string, Set<string>> {
 
 const EXAMPLE_PATHS = new Set(listExamples().map((file) => file.path));
 
+/** What the app evaluates: the flat graph, and the instances `op()` can still name in it. */
+interface Logical {
+  readonly graph: GraphDocument;
+  readonly instanceChannels: InstanceChannelSources;
+}
+
 /** The graph the app evaluates for `file`: flattened for an example, raw for a component file. */
-function logicalGraphOf(file: ExampleFile, graph: GraphDocument): GraphDocument {
-  if (!EXAMPLE_PATHS.has(file.path)) return graph;
+function logicalGraphOf(file: ExampleFile, graph: GraphDocument): Logical {
+  const raw = { graph, instanceChannels: NO_INSTANCES };
+  if (!EXAMPLE_PATHS.has(file.path)) return raw;
   const { document, result } = requireExample(file);
-  if (result.components === undefined || result.nodes === undefined) return graph;
-  return flattenComponents({ graph: document.graph, registry: result.nodes, components: result.components }).graph;
+  if (result.components === undefined || result.nodes === undefined) return raw;
+  return flattenComponents({ graph: document.graph, registry: result.nodes, components: result.components });
 }
 
 function unresolvable(file: ExampleFile, graph: GraphDocument, unverified: string[]): string[] {
-  const fileName = file.fileName;
-  const published = publishedChannels(logicalGraphOf(file, graph));
+  return unresolvableIn(file.fileName, graph, logicalGraphOf(file, graph), unverified);
+}
+
+function unresolvableIn(fileName: string, graph: GraphDocument, logical: Logical, unverified: string[]): string[] {
+  const published = publishedChannels(logical.graph);
   const problems: string[] = [];
   for (const reference of channelReferences(graph)) {
+    /*
+     * §T1551b — a component INSTANCE. The flattening deleted it, so no bag carries its
+     * label; `op('<instance>').chan.<c>` reads the inner nodes its exposed value outputs
+     * publish from. What it can read is what the completion menu offers, which is the
+     * reader's own rule (§V150): the union of those bags MINUS any name two outputs carry.
+     */
+    const sources = logical.instanceChannels.get(reference.name);
+    if (sources !== undefined) {
+      const readable = nodeReferenceMembers(
+        {
+          // The DOCUMENT graph, as the inspector asks: the instance is a node there.
+          graph,
+          schemaOf: (target) => effectiveParameterSchema(registry.get(target.type), target.parameters),
+          channelsOf: (name) => [...(published.get(name) ?? [])],
+          instances: logical.instanceChannels,
+        },
+        reference.name,
+        ["chan"],
+      ).map((member) => member.text);
+      if (readable.includes(reference.key)) continue;
+      // The bare-channel fallback holds for an instance with ONE publisher, as for a node.
+      const only = sources.length === 1 ? published.get(sources[0]!.publisher) : undefined;
+      if (reference.key === "value" && only?.size === 1) continue;
+      problems.push(
+        `${reference.where} reads op('${reference.name}').chan.${reference.key}, but the instance ${reference.name} can be read for only { ${[...readable].sort().join(", ")} } (a name two of its outputs publish is refused)`,
+      );
+      continue;
+    }
     const target = nodeByLabel(graph, reference.name);
     if (target === undefined) continue; // reference-integrity.test.ts owns this half.
     const definition = registry.get(target.type);
@@ -220,5 +263,43 @@ describe("every shipped op().chan reference names a channel that is PUBLISHED (T
       if (parsed.graph !== undefined) unresolvable(file, parsed.graph, unverified);
     }
     expect(unverified.sort()).toEqual([...UNVERIFIABLE].sort());
+  });
+});
+
+/**
+ * §T1551b — `op('<instance>').chan.<c>` is a reachable read (T1485b), so the gate CHECKS it
+ * rather than inventorying it as unverifiable — and still refuses the two reads the reader
+ * refuses: a name no output publishes, and a name two outputs publish.
+ */
+describe("§T1551b — a component instance's channel is checked, not inventoried", () => {
+  function instanceDocument(source: string): { graph: GraphDocument; logical: Logical } {
+    const system = createComponentSystem(registry);
+    system.components.register(analysisComponentDefinition());
+    const graph = {
+      revision: 1,
+      groups: {},
+      edges: {},
+      nodes: {
+        inst: { id: "inst", type: componentNodeType(ANALYSIS_COMPONENT_ID, 1), definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {}, label: "analysis1" },
+        glow: { id: "glow", type: "level", definitionVersion: 1, position: { x: 240, y: 0 }, parameters: { brightness: expressionSlot(source, 0.25) }, label: "glow1" },
+      },
+    } as unknown as GraphDocument;
+    return { graph, logical: flattenComponents({ graph, registry: system.nodes, components: system.components.view() }) };
+  }
+
+  const check = (source: string) => {
+    const { graph, logical } = instanceDocument(source);
+    const unverified: string[] = [];
+    return { problems: unresolvableIn("instance.loom.json", graph, logical, unverified), unverified };
+  };
+
+  it("accepts a channel one of the instance's outputs publishes", () => {
+    expect(check("op('analysis1').chan.level")).toEqual({ problems: [], unverified: [] });
+    expect(check("op('analysis1').chan.kick")).toEqual({ problems: [], unverified: [] });
+  });
+
+  it("refuses a channel nobody publishes, and one two outputs publish", () => {
+    expect(check("op('analysis1').chan.nope").problems).toHaveLength(1);
+    expect(check("op('analysis1').chan.shared").problems).toHaveLength(1);
   });
 });

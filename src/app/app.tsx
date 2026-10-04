@@ -395,13 +395,13 @@ export function App({
   /*
    * T1525b: what the CPU readers outside the plan resolve their nodes' OWN parameters with —
    * the compile's channel resolver (read late: the compile is built below, from these
-   * readers' channels) and the morph index of the runtime's flattening, the one the plan
-   * and the value graph resolve with (§T1524b).
+   * readers' channels) and the runtime's flattening, whole — its morph index, the one the
+   * plan and the value graph resolve with (§T1524b), and its instances (§T1551b).
    */
   const liveReads = {
     registry: runtime.registry,
     channels: () => compileRef.current.channels,
-    morphs: () => runtime.flattened.current().morphs,
+    flattening: () => runtime.flattened.current(),
   };
 
   /**
@@ -956,8 +956,8 @@ export function App({
          * and one frame is a real firing for the hardware this axis exists to protect.
          */
         renderRangeHolderFor(runtime.bus).current?.busy() === true ? "blocked" : "live-session",
-        // T1524b: the same index the value graph above and the plan resolve with.
-        runtime.flattened.current().morphs,
+        // T1524b/§T1551b: the same flattening the value graph above and the plan resolve with.
+        runtime.flattened.current(),
       );
       // T950 — the laser pump's assessment, same policy source and the same reasoning
       // as osc.sync above: a take is not a live session, checked per frame.

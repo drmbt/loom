@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
 import { mediaPlayhead, mediaTransportFrom } from "../domain/media/transport.ts";
-import { createParameterReadOptions, resolveParameters } from "../domain/parameters/index.ts";
+import { NO_FLATTENING, parameterReadOptions, resolveParameters } from "../domain/parameters/index.ts";
 import type { FrameEvaluationInput } from "../domain/types/frame.ts";
 import type { GraphDocument, GraphNode } from "../domain/types/graph.ts";
 import type { ParameterValue } from "../domain/types/parameters.ts";
@@ -124,11 +124,12 @@ function playheads(graph: GraphDocument, frames = HORIZON): number[] {
        READER, not off `channels` — a resolve handed only `channels` answers every chan read
        with "no resolver", falls back to §V108's retained static, and reports a lane that
        never moves while the app animates (§B181). */
-    const resolved = resolveParameters(clip, definition, createParameterReadOptions({
+    const resolved = resolveParameters(clip, definition, parameterReadOptions({
       graph,
       registry: view,
       frame,
       channels: evaluated.resolver,
+      flattening: NO_FLATTENING,
     }));
     /* `.get(key)?.value`, exactly as `createMediaTransportRunner` reads it. */
     const read = (key: string): ParameterValue | undefined => resolved.get(key)?.value;

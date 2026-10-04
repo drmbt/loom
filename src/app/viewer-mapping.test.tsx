@@ -99,7 +99,7 @@ async function setup({ chain, parameters = {}, shows, frame = () => undefined }:
     sinks: ids.filter((_, index) => chain[index] !== "window").map((nodeId) => ({ nodeId, kind: "preview" as const })),
   });
   /** §T1539b: the app's `liveReads` shape — the runtime's own morph index, the given frame. */
-  const liveReads = { channels: () => undefined, morphs: () => runtime.flattened.current().morphs, frame };
+  const liveReads = { channels: () => undefined, flattening: () => runtime.flattened.current(), frame };
   const keymap = createKeymapStore({ defaults: DEFAULT_BINDINGS, storage: null, platform: "other" });
   /** The document as the app hands it to the pane: `useGraphCompile`'s live subscription. */
   function Viewer() {

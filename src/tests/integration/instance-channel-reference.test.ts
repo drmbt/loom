@@ -4,7 +4,7 @@ import { compileGraphRetaining, flattenComponents, prepareFrameCompiler } from "
 import { testCapabilities, testSettings } from "@compiler/test-support.ts";
 import { createValueGraphSession } from "@domain/channels/value-graph.ts";
 import { componentNodeType, createComponentSystem } from "@domain/components/index.ts";
-import { createParameterReadOptions, nodeReferenceMembers } from "@domain/parameters/index.ts";
+import { NO_FLATTENING, nodeReferenceMembers, parameterReadOptions } from "@domain/parameters/index.ts";
 import { effectiveParameterSchema, resolveParameters } from "@domain/parameters/resolve.ts";
 import type { GraphComponentDefinition } from "@domain/types/components.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
@@ -127,12 +127,13 @@ function inspected(amount: StoredParameter, level = 0.75) {
   const resolved = resolveParameters(
     target,
     system.nodes.get(target.type),
-    createParameterReadOptions({
+    parameterReadOptions({
       graph,
       registry: system.nodes,
       channels: evaluated.resolver,
       frame: FRAME,
-      instances: flattened.instanceChannels,
+      // The inspector reads the stored document: no fade, and the flattening's instances.
+      flattening: { ...NO_FLATTENING, instanceChannels: flattened.instanceChannels },
     }),
   );
   return resolved.get("amount");

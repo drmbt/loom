@@ -43,7 +43,7 @@ import { ComponentSection, componentSectionParameters } from "./component-sectio
 import type { FlattenedGraph } from "@compiler/index.ts";
 import { PresetBankSection, presetBankSectionParameters } from "./preset-bank-section.tsx";
 import { CueListSection, cueListSectionParameters } from "./cue-list-section.tsx";
-import { CUE_LIST_NODE_TYPE, PRESET_STATE_KEYS, bankViewOf, followsTimeline, presetCatalogueHolderFor } from "@domain/presets/index.ts";
+import { CUE_LIST_NODE_TYPE, NO_MORPHS, PRESET_STATE_KEYS, bankViewOf, followsTimeline, presetCatalogueHolderFor } from "@domain/presets/index.ts";
 import { isComponentNodeType } from "@domain/components/component-type.ts";
 import { supportsChannelMask } from "@domain/graph/channel-mask.ts";
 import { LASER_OUT_TYPE } from "@nodes/definitions/laser-out.ts";
@@ -57,7 +57,8 @@ import { parseComponentNodeType } from "@domain/components/component-type.ts";
 import type { ComponentRegistryView } from "@domain/components/index.ts";
 import { resolveParameters } from "./parameter-resolver.ts";
 import {
-  createParameterReadOptions,
+  NO_INSTANCES,
+  parameterReadOptions,
   nodeReferenceMembers,
   nodeReferenceNames,
   type InstanceChannelSources,
@@ -636,12 +637,18 @@ export function Inspector({
    * here is the panel's own question — which graph, which moment.
    */
   const readOptionsAt = (frame?: FrameEvaluationInput) =>
-    createParameterReadOptions({
+    parameterReadOptions({
       graph: instanceRead?.graph ?? graph,
       registry: bus.registry,
       channels,
       frame,
-      ...(instanceChannels === undefined ? {} : { instances: instanceChannels() }),
+      /*
+       * §T1551b, said rather than left out: the panel reads the STORED document, so no
+       * fade (T1525b) — and the flattening's instances, so `op('<instance>').chan.<c>`
+       * reads here as it does in the plan (T1485b). No `instanceChannels` (a test mount
+       * with no value graph): no instance to name.
+       */
+      flattening: { morphs: NO_MORPHS, instanceChannels: instanceChannels?.() ?? NO_INSTANCES },
     });
   const readOptions = readOptionsAt();
 

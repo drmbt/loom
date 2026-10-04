@@ -6,7 +6,13 @@ import type { ParameterSchema, ParameterValue } from "../domain/types/parameters
 import type { PortDefinition } from "../domain/types/ports.ts";
 import { arePortsCompatible, describePortType } from "../domain/graph/port-compat.ts";
 import { resolveParameterSchema, effectiveParameterSchema, type ParameterMapBinding } from "../domain/parameters/resolve.ts";
-import { createParameterReadOptions, type InstanceChannelSources } from "../domain/parameters/node-references.ts";
+import {
+  NO_INSTANCES,
+  parameterReadOptions,
+  type FlatteningReads,
+  type InstanceChannelSources,
+} from "../domain/parameters/node-references.ts";
+import { NO_MORPHS } from "../domain/presets/morph-index.ts";
 import type { ResolveParametersOptions } from "../domain/parameters/resolve.ts";
 import { bindCycleDiagnostics } from "../domain/parameters/bind-cycles.ts";
 import { referenceCycleDiagnostics } from "../domain/graph/reference-cycles.ts";
@@ -41,6 +47,16 @@ export type ParameterResolution = Pick<ResolveParametersOptions, "frame" | "chan
    */
   readonly instances?: InstanceChannelSources | undefined;
 };
+
+/**
+ * §T1551b — the flattening a compile reads `op()` through, off the resolution that carries
+ * it. `compileGraphRetaining` fills both from the flattening it compiled; a resolution
+ * without them is a document with no flattening behind it (a direct `validateGraph`), and
+ * reads nothing fading and no instance — said here, once, for the three compiler readers.
+ */
+export function flatteningReadsOf(resolution: ParameterResolution): FlatteningReads {
+  return { morphs: resolution.morphs ?? NO_MORPHS, instanceChannels: resolution.instances ?? NO_INSTANCES };
+}
 
 export interface ResolvedNode {
   readonly node: GraphNode;
@@ -204,7 +220,7 @@ export function validateGraph(
         // `options` already carries, so this spread changes nothing but where they come from.
         // T1497b: and the preset morphs in flight, for the same reason — a reference to a
         // fading parameter must read the fading value.
-        { ...options, ...createParameterReadOptions({ graph, registry, frame: options.frame, channels: options.channels, morphs: options.morphs, instances: options.instances }) }
+        { ...options, ...parameterReadOptions({ graph, registry, frame: options.frame, channels: options.channels, flattening: flatteningReadsOf(options) }) }
       : options;
 
   for (const nodeId of Object.keys(graph.nodes).sort()) {

@@ -7,7 +7,7 @@ import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { evaluateExpression } from "../expressions/index.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { ParameterSchema } from "../types/parameters.ts";
-import { createNodeReferenceReader, createParameterReadOptions } from "./node-references.ts";
+import { NO_FLATTENING, createNodeReferenceReader, parameterReadOptions } from "./node-references.ts";
 import { resolveParameterSchema } from "./resolve.ts";
 
 /**
@@ -301,10 +301,12 @@ describe("T1129 — the parameter read options come from one factory", () => {
     const source = node("n1", "lfo1");
     const subject = node("n2", "a", { gain: expression("op('lfo1').chan.value") });
     const graph = graphOf(source, subject);
-    const options = createParameterReadOptions({
+    const options = parameterReadOptions({
       graph,
       registry: { get: () => ({ parameters: SCHEMA }) } as unknown as NodeRegistryView,
+      frame: undefined,
       channels,
+      flattening: NO_FLATTENING,
     });
     // 0.5 only if `channels` reached the READER's base. Without it the reference reports
     // "no channel resolver" and the parameter sits on §V108's retained static (1).
@@ -337,11 +339,28 @@ describe("T1129 — the parameter read options come from one factory", () => {
     expect(
       callers,
       "A module builds its own cross-node reader instead of calling " +
-        "`createParameterReadOptions`. The reader is a CLOSURE over its `base`, so a " +
+        "`parameterReadOptions`. The reader is a CLOSURE over its `base`, so a " +
         "hand-built one can be handed a frame and channels on the resolve that never reach " +
         "it — §B8's shape, which has now recurred four times (§T593, §T1000, §T1001, §B46). " +
         "Ask the factory for both, or this is the fifth (T1129).",
     ).toEqual(["src/domain/parameters/node-references.ts"]);
+
+    /*
+     * §T1551b — and none builds one through the LOOSE door. `createParameterReadOptions`
+     * takes the pre-T1551b context, every field optional and no flattening, so a reader
+     * built through it cannot read `op('<instance>').chan.<c>` and nothing says so. It is
+     * kept for the one caller another session owns; the required-field factory,
+     * `parameterReadOptions`, is the only door for everything else.
+     */
+    const loose = sources
+      .filter((file) => /\bcreateParameterReadOptions\s*\(/.test(code(file)))
+      .map((file) => relative(root, file).replaceAll("\\", "/"));
+    expect(
+      loose,
+      "A module builds its reader through `createParameterReadOptions`, the optional-field " +
+        "adapter, so it reads no instance channels and silently drops whatever the context " +
+        "grows next. Call `parameterReadOptions` with the flattening (T1551b).",
+    ).toEqual(["src/app/media-playback.ts", "src/domain/parameters/node-references.ts"]);
   });
 });
 
@@ -408,10 +427,12 @@ describe("T1172 — the reader's name index", () => {
       enabled: expression("op('lfo1').chan.value"),
     });
     const graph = graphOf(lfo, subject);
-    const options = createParameterReadOptions({
+    const options = parameterReadOptions({
       graph,
       registry: { get: () => ({ parameters: SCHEMA }) } as unknown as NodeRegistryView,
+      frame: undefined,
       channels: (address: string) => (address === "lfo1:value" || address === "lfo1" ? 1 : undefined),
+      flattening: NO_FLATTENING,
     });
     const resolved = resolveParameterSchema(subject, SCHEMA, options);
     expect(resolved.get("gain")?.value).toBe(4);
@@ -507,10 +528,12 @@ describe("T1172 — the per-reader memo of a referenced node's parameters", () =
       resolveParameterSchema(
         sink,
         SCHEMA,
-        createParameterReadOptions({
+        parameterReadOptions({
           graph,
           registry,
+          frame: undefined,
           channels: (address: string) => (address === "lfo1" || address === "lfo1:value" ? level : undefined),
+          flattening: NO_FLATTENING,
         }),
       ).get("gain");
 

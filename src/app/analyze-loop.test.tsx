@@ -17,6 +17,7 @@ import { createAppRuntime } from "./app-runtime.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 import { useAnalyzeChannels } from "./use-analyze-channels.ts";
 import { useGraphCompile } from "./use-graph-compile.ts";
+import { NO_FLATTENING } from "@domain/parameters/index.ts";
 
 /**
  * B25 / T305 — the image→parameter loop, closed in the COMPOSITION (§V144, §V205).
@@ -146,7 +147,7 @@ describe("T305 — the Analyze channel is constructed and sampled between frames
     expect(channelName).not.toBe("");
 
     const { result } = renderHook(() => {
-      const analyze = useAnalyzeChannels(gpu.backend, runtime.registry);
+      const analyze = useAnalyzeChannels(gpu.backend, runtime.registry, undefined, { channels: () => undefined, flattening: () => NO_FLATTENING });
       const compile = useGraphCompile(runtime, CAPABILITIES);
       return { analyze, compile };
     });
@@ -217,6 +218,7 @@ describe("T305 — the Analyze channel is constructed and sampled between frames
         gpu.backend,
         runtime.registry,
         sink as unknown as Parameters<typeof useAnalyzeChannels>[2],
+        { channels: () => undefined, flattening: () => NO_FLATTENING },
       );
       const compile = useGraphCompile(runtime, CAPABILITIES);
       return { analyze, compile };
@@ -278,7 +280,7 @@ describe("T305 — the Analyze channel is constructed and sampled between frames
     });
 
     const { result } = renderHook(() => {
-      const analyze = useAnalyzeChannels(gpu.backend, runtime.registry);
+      const analyze = useAnalyzeChannels(gpu.backend, runtime.registry, undefined, { channels: () => undefined, flattening: () => NO_FLATTENING });
       const compile = useGraphCompile(runtime, CAPABILITIES);
       return { analyze, compile };
     });
@@ -301,7 +303,7 @@ describe("T305 — the Analyze channel is constructed and sampled between frames
 
   it("survives having no backend at all, rather than throwing out of the frame loop", async () => {
     const runtime = newRuntime();
-    const { result } = renderHook(() => useAnalyzeChannels(null, runtime.registry));
+    const { result } = renderHook(() => useAnalyzeChannels(null, runtime.registry, undefined, { channels: () => undefined, flattening: () => NO_FLATTENING }));
     await act(async () => {
       result.current.observe(FRAME);
       await flushMicrotasks();
@@ -570,7 +572,7 @@ describe("T1525b — an expression on Operation, reading a fading knob, picks th
       const compile = useGraphCompile(runtime, CAPABILITIES);
       const analyze = useAnalyzeChannels(backend, runtime.registry, undefined, {
         channels: () => compile.channels,
-        morphs: () => runtime.flattened.current().morphs,
+        flattening: () => runtime.flattened.current(),
       });
       return { analyze, compile };
     });

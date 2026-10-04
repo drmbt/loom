@@ -6,14 +6,14 @@ import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
 import type { ParameterValue } from "../domain/types/parameters.ts";
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import type { ParameterMapBinding, ParameterMorphs } from "../domain/parameters/resolve.ts";
-import { createParameterReadOptions } from "../domain/parameters/node-references.ts";
+import { parameterReadOptions } from "../domain/parameters/node-references.ts";
 import type { PassDescriptor } from "../runtime/backend/plan.ts";
 import { passStructureKey, readPass } from "../runtime/backend/plan.ts";
 import { compileGraphRetaining, descriptionStructureKey, normalizePass } from "./compile.ts";
 import type { CompileGraphResult, RetainedCompile, RetainedNodeCompile } from "./compile.ts";
 import { isParameterPolicy } from "./resolution.ts";
 import { substepCount } from "./substeps.ts";
-import { resolveNodeParameters } from "./validate.ts";
+import { flatteningReadsOf, resolveNodeParameters } from "./validate.ts";
 import { scaleOutputPixels } from "./pixel-scale.ts";
 import { timeProbeFor } from "./time-probe.ts";
 import { outputPixelScale } from "../domain/types/graph.ts";
@@ -314,13 +314,12 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
       resolution.nodes === undefined
         ? {
             ...resolution,
-            ...createParameterReadOptions({
+            ...parameterReadOptions({
               graph: retained.graph,
               registry: request.registry,
               frame: resolution.frame,
               channels: resolution.channels,
-              morphs,
-              instances,
+              flattening: flatteningReadsOf({ morphs, instances }),
             }),
           }
         : { ...resolution, morphs };

@@ -12,6 +12,7 @@ import type { CompiledGraph } from "@compiler/index.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import type { UniformUpdate } from "@runtime/backend/backend-types.ts";
 import { createPreviewOrbitStore } from "@editor/viewer/preview-orbit-store.ts";
+import { NO_FLATTENING } from "@domain/parameters/index.ts";
 
 /**
  * §T1311b(c) — THE CORNER GIZMO, ASSERTED IN THE PANE THAT SHIPS IT.
@@ -148,7 +149,7 @@ async function mount(options: { withCamera: boolean }) {
   render(
     <TooltipProvider>
       <AppRuntimeContext.Provider value={runtime}>
-        <ViewerPane compiled={compiled} graph={graph} backend={backend} orbits={orbits} liveReads={{ channels: () => undefined, morphs: () => undefined, frame: () => undefined }} />
+        <ViewerPane compiled={compiled} graph={graph} backend={backend} orbits={orbits} liveReads={{ channels: () => undefined, flattening: () => NO_FLATTENING, frame: () => undefined }} />
       </AppRuntimeContext.Provider>
     </TooltipProvider>,
   );

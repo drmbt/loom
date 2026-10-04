@@ -119,7 +119,7 @@ const NOT_CONSTRUCTED: ReadonlyArray<{ name: string; reason: string }> = [
   {
     name: "createNodeReferenceReader",
     reason:
-      "T1129: composed by `createParameterReadOptions` in the SAME module, and that is now the " +
+      "T1129: composed by `parameterReadOptions` in the SAME module, and that is now the " +
       "point. The reader is a CLOSURE over its `base`, so a caller that builds one alone can be " +
       "handed a frame and channels on the resolve that never reach it — §B8's shape, four " +
       "recurrences deep (§B46, §T593, §T1000, §T1001). The inspector, the compiler and the OSC " +

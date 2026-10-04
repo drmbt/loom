@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createDeviceHub, nodeUdpSocketFactory, type DeviceSession } from "@devices/device-hub.ts";
 import { messagesFor } from "@/app/use-osc-bridge.ts";
 import { createValueGraphSession } from "@domain/channels/value-graph.ts";
-import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
+import { NO_FLATTENING, parameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
@@ -145,11 +145,12 @@ function step(
   const brightness = resolveParameters(
     dim as never,
     REGISTRY.get("level"),
-    createParameterReadOptions({
+    parameterReadOptions({
       graph: RELAY?.graph as never,
       registry: REGISTRY,
       frame,
       channels: evaluated.resolver,
+      flattening: NO_FLATTENING,
     }),
   ).get("brightness")?.value;
 

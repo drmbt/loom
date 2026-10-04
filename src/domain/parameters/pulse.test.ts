@@ -10,6 +10,7 @@ import {
   pulseCommandInput,
   pulseParametersOf,
 } from "./pulse.ts";
+import { NO_FLATTENING } from "./node-references.ts";
 
 const RESET: PulseParameter = {
   type: "pulse",
@@ -102,22 +103,22 @@ describe("the watcher fires on the rising edge, not the level (§V125)", () => {
     const watcher = createPulseWatcher(registry);
     const graph = graphWith(node("frame - 2"));
 
-    expect(watcher.step(graph, frameAt(0))).toEqual([]); // first sighting: record, do not fire
-    expect(watcher.step(graph, frameAt(1))).toEqual([]);
-    expect(watcher.step(graph, frameAt(2))).toEqual([]); // frame - 2 === 0, still disarmed
-    expect(watcher.step(graph, frameAt(3)).map((fire) => fire.key)).toEqual(["resetPulse"]);
-    expect(watcher.step(graph, frameAt(4))).toEqual([]);
-    expect(watcher.step(graph, frameAt(5))).toEqual([]);
+    expect(watcher.step(graph, frameAt(0), undefined, NO_FLATTENING)).toEqual([]); // first sighting: record, do not fire
+    expect(watcher.step(graph, frameAt(1), undefined, NO_FLATTENING)).toEqual([]);
+    expect(watcher.step(graph, frameAt(2), undefined, NO_FLATTENING)).toEqual([]); // frame - 2 === 0, still disarmed
+    expect(watcher.step(graph, frameAt(3), undefined, NO_FLATTENING).map((fire) => fire.key)).toEqual(["resetPulse"]);
+    expect(watcher.step(graph, frameAt(4), undefined, NO_FLATTENING)).toEqual([]);
+    expect(watcher.step(graph, frameAt(5), undefined, NO_FLATTENING)).toEqual([]);
   });
 
   it("fires again once the expression has fallen back to zero", () => {
     const watcher = createPulseWatcher(registry);
     const graph = graphWith(node("frame % 2"));
 
-    watcher.step(graph, frameAt(0)); // 0 — disarmed, first sighting
-    expect(watcher.step(graph, frameAt(1))).toHaveLength(1);
-    expect(watcher.step(graph, frameAt(2))).toHaveLength(0);
-    expect(watcher.step(graph, frameAt(3))).toHaveLength(1);
+    watcher.step(graph, frameAt(0), undefined, NO_FLATTENING); // 0 — disarmed, first sighting
+    expect(watcher.step(graph, frameAt(1), undefined, NO_FLATTENING)).toHaveLength(1);
+    expect(watcher.step(graph, frameAt(2), undefined, NO_FLATTENING)).toHaveLength(0);
+    expect(watcher.step(graph, frameAt(3), undefined, NO_FLATTENING)).toHaveLength(1);
   });
 
   it("does not fire on the first frame of a project whose expression is already true", () => {
@@ -125,22 +126,22 @@ describe("the watcher fires on the rising edge, not the level (§V125)", () => {
     // document must never trigger a reset just because its condition happens to hold.
     const watcher = createPulseWatcher(registry);
     const graph = graphWith(node("1"));
-    expect(watcher.step(graph, frameAt(0))).toEqual([]);
-    expect(watcher.step(graph, frameAt(1))).toEqual([]);
+    expect(watcher.step(graph, frameAt(0), undefined, NO_FLATTENING)).toEqual([]);
+    expect(watcher.step(graph, frameAt(1), undefined, NO_FLATTENING)).toEqual([]);
   });
 
   it("ignores a pulse nobody is driving — a click is not the watcher's business", () => {
     const watcher = createPulseWatcher(registry);
     const graph = graphWith(node(null));
-    expect(watcher.step(graph, frameAt(0))).toEqual([]);
-    expect(watcher.step(graph, frameAt(1))).toEqual([]);
+    expect(watcher.step(graph, frameAt(0), undefined, NO_FLATTENING)).toEqual([]);
+    expect(watcher.step(graph, frameAt(1), undefined, NO_FLATTENING)).toEqual([]);
   });
 
   it("reports the node and the definition, so the caller needs no second lookup", () => {
     const watcher = createPulseWatcher(registry);
     const graph = graphWith(node("frame - 1"));
-    watcher.step(graph, frameAt(1)); // frame - 1 === 0: disarmed, and the first sighting
-    const [fire] = watcher.step(graph, frameAt(2));
+    watcher.step(graph, frameAt(1), undefined, NO_FLATTENING); // frame - 1 === 0: disarmed, and the first sighting
+    const [fire] = watcher.step(graph, frameAt(2), undefined, NO_FLATTENING);
     expect(fire?.nodeId).toBe("n1");
     expect(fire?.definition.fires).toBe("runtime.resetFeedback");
   });
@@ -148,11 +149,11 @@ describe("the watcher fires on the rising edge, not the level (§V125)", () => {
   it("forgets its armed levels on reset, so a reload cannot inherit an edge", () => {
     const watcher = createPulseWatcher(registry);
     const graph = graphWith(node("frame % 2"));
-    watcher.step(graph, frameAt(0));
-    expect(watcher.step(graph, frameAt(1))).toHaveLength(1);
+    watcher.step(graph, frameAt(0), undefined, NO_FLATTENING);
+    expect(watcher.step(graph, frameAt(1), undefined, NO_FLATTENING)).toHaveLength(1);
     watcher.reset();
     // First sighting again: the level is recorded, nothing fires.
-    expect(watcher.step(graph, frameAt(3))).toHaveLength(0);
+    expect(watcher.step(graph, frameAt(3), undefined, NO_FLATTENING)).toHaveLength(0);
   });
 });
 
@@ -180,17 +181,17 @@ describe("a DRIVEN pulse fires through the channel resolver (T628, T593's class)
 
     const wired = createPulseWatcher(registry);
     const graph = graphWith(drivenNode());
-    expect(wired.step(graph, frameAt(0), channels as never)).toEqual([]); // first sighting
-    expect(wired.step(graph, frameAt(1), channels as never)).toHaveLength(1);
-    expect(wired.step(graph, frameAt(2), channels as never)).toHaveLength(0);
-    expect(wired.step(graph, frameAt(3), channels as never)).toHaveLength(1);
+    expect(wired.step(graph, frameAt(0), channels as never, NO_FLATTENING)).toEqual([]); // first sighting
+    expect(wired.step(graph, frameAt(1), channels as never, NO_FLATTENING)).toHaveLength(1);
+    expect(wired.step(graph, frameAt(2), channels as never, NO_FLATTENING)).toHaveLength(0);
+    expect(wired.step(graph, frameAt(3), channels as never, NO_FLATTENING)).toHaveLength(1);
 
     // WITHOUT the resolver the driven parameter reads its retained static forever —
     // the silent never-fires this parameter ended. Both worlds pinned: remove the
     // resolver plumbing and the wired half above is what catches it.
     const unwired = createPulseWatcher(registry);
     for (let index = 0; index < 4; index += 1) {
-      expect(unwired.step(graph, frameAt(index))).toEqual([]);
+      expect(unwired.step(graph, frameAt(index), undefined, NO_FLATTENING)).toEqual([]);
     }
   });
 });
@@ -222,19 +223,19 @@ describe("a pulse expression that names another node fires (T1500b)", () => {
     const graph = graphOf("op('pad1').chan.note");
 
     const wired = createPulseWatcher(registry);
-    const fired = [0, 1, 2, 3, 4, 5, 6, 7].map((index) => wired.step(graph, frameAt(index), channels as never).length);
+    const fired = [0, 1, 2, 3, 4, 5, 6, 7].map((index) => wired.step(graph, frameAt(index), channels as never, NO_FLATTENING).length);
     // Frame 2 and frame 6 are the two presses; HOLDING through 3 and 4 fires nothing.
     expect(fired).toEqual([0, 0, 1, 0, 0, 0, 1, 0]);
 
     // No channel behind the name: the same frames fire nothing.
     const unwired = createPulseWatcher(registry);
-    expect([0, 1, 2, 3, 4, 5, 6, 7].map((index) => unwired.step(graph, frameAt(index), (() => undefined) as never).length)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+    expect([0, 1, 2, 3, 4, 5, 6, 7].map((index) => unwired.step(graph, frameAt(index), (() => undefined) as never, NO_FLATTENING).length)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
   });
 
   it("op('pad1').par.decay: another node's PARAMETER arms it too, read at the watcher's own frame", () => {
     const watcher = createPulseWatcher(registry);
-    expect(watcher.step(graphOf("op('pad1').par.decay", 0), frameAt(0))).toEqual([]);
-    expect(watcher.step(graphOf("op('pad1').par.decay", 1), frameAt(1)).map((fire) => fire.nodeId)).toEqual(["n1"]);
-    expect(watcher.step(graphOf("op('pad1').par.decay", 1), frameAt(2))).toEqual([]);
+    expect(watcher.step(graphOf("op('pad1').par.decay", 0), frameAt(0), undefined, NO_FLATTENING)).toEqual([]);
+    expect(watcher.step(graphOf("op('pad1').par.decay", 1), frameAt(1), undefined, NO_FLATTENING).map((fire) => fire.nodeId)).toEqual(["n1"]);
+    expect(watcher.step(graphOf("op('pad1').par.decay", 1), frameAt(2), undefined, NO_FLATTENING)).toEqual([]);
   });
 });

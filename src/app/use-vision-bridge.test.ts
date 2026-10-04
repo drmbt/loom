@@ -23,10 +23,11 @@ import {
   texelsToRgbaBase64,
   useVisionBridge,
 } from "./use-vision-bridge.ts";
+import { NO_FLATTENING } from "@domain/parameters/index.ts";
 
 const registry = createNodeRegistry(allNodeDefinitions).view();
 /** What the node's own parameters are read with: the real catalogue, no channels, no fade. */
-const READS = { registry, channels: () => undefined, morphs: () => undefined };
+const READS = { registry, channels: () => undefined, flattening: () => NO_FLATTENING };
 
 /**
  * T1029 — the Person Mask CPU half, per path and by mechanism (the laser pump's
@@ -308,7 +309,7 @@ describe("T1525b — a fading Min interval paces the helper at the value the fad
     const { client, requests } = fakeClient({ ok: true, maskWidth: 1, maskHeight: 1, maskBase64: btoa(String.fromCharCode(...mask)), millis: 1 });
     const { backend } = fakeBackend(new Float32Array(512 * 512 * 4));
     const view = renderHook(() =>
-      useVisionBridge({ ...READS, morphs, deviceClient: () => client, backend: () => backend }),
+      useVisionBridge({ ...READS, flattening: () => { const index = morphs(); return index === undefined ? NO_FLATTENING : { ...NO_FLATTENING, morphs: index }; }, deviceClient: () => client, backend: () => backend }),
     );
     act(() => view.result.current.track(document, compiled));
     const counts: number[] = [];

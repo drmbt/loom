@@ -9,6 +9,7 @@ import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { BridgeSocket } from "@devices/transport/bridge-socket.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
+import { NO_FLATTENING } from "@domain/parameters/index.ts";
 import type { SideEffectPolicy } from "@domain/render/side-effects.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
@@ -126,6 +127,7 @@ describe("which UDP ports open is the DOCUMENT's decision, and its default is no
         new Map(),
         NO_CHANNELS,
         LIVE,
+        NO_FLATTENING,
       );
     });
     // Port 0 means NOT LISTENING. Opening a document must never open a socket by itself,
@@ -145,6 +147,7 @@ describe("which UDP ports open is the DOCUMENT's decision, and its default is no
         new Map(),
         NO_CHANNELS,
         LIVE,
+        NO_FLATTENING,
       );
     });
     // Nothing was sent, because nothing is attached — and that is the honest state, not an
@@ -165,6 +168,7 @@ describe("§T948 rule 3 — the reason reaches a surface, and says what to DO", 
         new Map(),
         NO_CHANNELS,
         LIVE,
+        NO_FLATTENING,
       );
     });
     const [diagnostic] = hook.result.current.diagnostics;
@@ -192,6 +196,7 @@ describe("§T948 rule 3 — the reason reaches a surface, and says what to DO", 
         new Map(),
         NO_CHANNELS,
         LIVE,
+        NO_FLATTENING,
       );
     });
     expect(hook.result.current.diagnostics).toEqual([]);
@@ -203,12 +208,12 @@ describe("§T948 rule 3 — the reason reaches a surface, and says what to DO", 
     const { hook } = unattached();
     const graph = graphOf({ a: { type: "oscIn", label: "osc1", parameters: { port: 9000 } } });
     act(() => {
-      hook.result.current.sync(frameAt(0), graph, registry, new Map(), NO_CHANNELS, LIVE);
+      hook.result.current.sync(frameAt(0), graph, registry, new Map(), NO_CHANNELS, LIVE, NO_FLATTENING);
     });
     const first = hook.result.current.diagnostics;
     act(() => {
-      hook.result.current.sync(frameAt(1), graph, registry, new Map(), NO_CHANNELS, LIVE);
-      hook.result.current.sync(frameAt(2), graph, registry, new Map(), NO_CHANNELS, LIVE);
+      hook.result.current.sync(frameAt(1), graph, registry, new Map(), NO_CHANNELS, LIVE, NO_FLATTENING);
+      hook.result.current.sync(frameAt(2), graph, registry, new Map(), NO_CHANNELS, LIVE, NO_FLATTENING);
     });
     expect(hook.result.current.diagnostics).toBe(first);
   });
@@ -230,7 +235,7 @@ describe("oscOut transmits only what the document configured (§T950 gap 4)", ()
     const hook = renderHook(() => useOscBridge({ socketFactory: socket.factory, port: 1, autoConnect: false }));
     act(() => {
       // The document asks for OSC → the pump retries from the remembered code.
-      hook.result.current.sync(frameAt(0), graph, registry, new Map(), NO_CHANNELS, LIVE);
+      hook.result.current.sync(frameAt(0), graph, registry, new Map(), NO_CHANNELS, LIVE, NO_FLATTENING);
       socket.open();
     });
     // The page presents the SAME pairing code the agent bridge uses — never a second
@@ -252,7 +257,7 @@ describe("oscOut transmits only what the document configured (§T950 gap 4)", ()
     });
     const { socket, hook } = pumped(graph);
     await act(async () => {
-      hook.result.current.sync(frameAt(0), graph, registry, new Map([["b" as NodeId, { value: 0.5 }]]), NO_CHANNELS, LIVE);
+      hook.result.current.sync(frameAt(0), graph, registry, new Map([["b" as NodeId, { value: 0.5 }]]), NO_CHANNELS, LIVE, NO_FLATTENING);
       await Promise.resolve();
     });
     expect(socket.sent.filter((message) => message["type"] === "deviceSend")).toEqual([]);
@@ -266,15 +271,15 @@ describe("oscOut transmits only what the document configured (§T950 gap 4)", ()
     const bags = new Map([["b" as NodeId, { value: 0.5 }]]);
     await act(async () => {
       // Three frames inside one tenth of a second: the first sends, the next two do not.
-      hook.result.current.sync(frameAt(0), graph, registry, bags, NO_CHANNELS, LIVE);
-      hook.result.current.sync(frameAt(0.016), graph, registry, bags, NO_CHANNELS, LIVE);
-      hook.result.current.sync(frameAt(0.033), graph, registry, bags, NO_CHANNELS, LIVE);
+      hook.result.current.sync(frameAt(0), graph, registry, bags, NO_CHANNELS, LIVE, NO_FLATTENING);
+      hook.result.current.sync(frameAt(0.016), graph, registry, bags, NO_CHANNELS, LIVE, NO_FLATTENING);
+      hook.result.current.sync(frameAt(0.033), graph, registry, bags, NO_CHANNELS, LIVE, NO_FLATTENING);
       await Promise.resolve();
     });
     const sends = socket.sent.filter((message) => message["type"] === "deviceSend");
     expect(sends).toHaveLength(1);
     await act(async () => {
-      hook.result.current.sync(frameAt(0.2), graph, registry, bags, NO_CHANNELS, LIVE);
+      hook.result.current.sync(frameAt(0.2), graph, registry, bags, NO_CHANNELS, LIVE, NO_FLATTENING);
       await Promise.resolve();
     });
     expect(socket.sent.filter((message) => message["type"] === "deviceSend")).toHaveLength(2);
@@ -288,7 +293,7 @@ describe("oscOut transmits only what the document configured (§T950 gap 4)", ()
     });
     const { socket, hook } = pumped(graph);
     await act(async () => {
-      hook.result.current.sync(frameAt(0), graph, registry, new Map(), NO_CHANNELS, LIVE);
+      hook.result.current.sync(frameAt(0), graph, registry, new Map(), NO_CHANNELS, LIVE, NO_FLATTENING);
       await Promise.resolve();
     });
     expect(socket.sent.filter((message) => message["type"] === "deviceSend")).toEqual([]);
@@ -312,7 +317,7 @@ describe("oscOut transmits only what the document configured (§T950 gap 4)", ()
     const { socket, hook } = pumped(graph);
     const bags = new Map([["b" as NodeId, { value: 0.5 }]]);
     await act(async () => {
-      hook.result.current.sync(frameAt(0), graph, registry, bags, NO_CHANNELS, BLOCKED);
+      hook.result.current.sync(frameAt(0), graph, registry, bags, NO_CHANNELS, BLOCKED, NO_FLATTENING);
       await Promise.resolve();
     });
     expect(socket.sent.filter((message) => message["type"] === "deviceSend")).toEqual([]);
@@ -331,7 +336,7 @@ describe("oscOut transmits only what the document configured (§T950 gap 4)", ()
     const { socket, hook } = pumped(graph);
     const bags = new Map([["b" as NodeId, { value: 0.5 }]]);
     await act(async () => {
-      hook.result.current.sync(frameAt(0), graph, registry, bags, NO_CHANNELS, LIVE);
+      hook.result.current.sync(frameAt(0), graph, registry, bags, NO_CHANNELS, LIVE, NO_FLATTENING);
       await Promise.resolve();
     });
     expect(socket.sent.filter((message) => message["type"] === "deviceSend")).toHaveLength(1);
@@ -389,7 +394,7 @@ describe("oscOut transmits only what the document configured (§T950 gap 4)", ()
     const { socket, hook } = pumped(graph);
     for (const seconds of [0, 1]) {
       await act(async () => {
-        hook.result.current.sync(frameAt(seconds), graph, registry, bags, channelsAt(seconds), LIVE);
+        hook.result.current.sync(frameAt(seconds), graph, registry, bags, channelsAt(seconds), LIVE, NO_FLATTENING);
         await Promise.resolve();
       });
     }
@@ -457,7 +462,7 @@ describe("oscOut transmits only what the document configured (§T950 gap 4)", ()
       // The order `advanceChannels` runs them in: the value graph, then the pump (§V179).
       const result = values.evaluate(flattened.graph, frame, { morphs: flattened.morphs });
       await act(async () => {
-        hook.result.current.sync(frame, flattened.graph, registry, result.byId, result.resolver, LIVE, flattened.morphs);
+        hook.result.current.sync(frame, flattened.graph, registry, result.byId, result.resolver, LIVE, flattened);
         await Promise.resolve();
       });
     }
@@ -484,7 +489,7 @@ describe("oscOut transmits only what the document configured (§T950 gap 4)", ()
       socket.sent.length = 0;
       for (const index of frames) {
         await act(async () => {
-          hook.result.current.sync(morphFrame(index), flattened.graph, registry, bags, NO_CHANNELS, LIVE, flattened.morphs);
+          hook.result.current.sync(morphFrame(index), flattened.graph, registry, bags, NO_CHANNELS, LIVE, flattened);
           await Promise.resolve();
         });
       }
@@ -560,7 +565,7 @@ describe("§T1006 — the pump's node set is derived from the registry and the l
     const socket = fakeSocket();
     const hook = renderHook(() => useOscBridge({ socketFactory: socket.factory, port: 1, autoConnect: false }));
     act(() => {
-      hook.result.current.sync(frameAt(0), graph, view, new Map(), NO_CHANNELS, LIVE);
+      hook.result.current.sync(frameAt(0), graph, view, new Map(), NO_CHANNELS, LIVE, NO_FLATTENING);
       socket.open();
     });
     act(() => {
@@ -736,7 +741,7 @@ describe("§B212 — the relay survives the lap", () => {
       useOscBridge({ socketFactory: socket.factory, port: 1, autoConnect: false }),
     );
     act(() => {
-      hook.result.current.sync(frameAt(0), relayGraph, registry, new Map(), NO_CHANNELS, LIVE);
+      hook.result.current.sync(frameAt(0), relayGraph, registry, new Map(), NO_CHANNELS, LIVE, NO_FLATTENING);
       socket.open();
     });
     act(() => {
@@ -796,7 +801,7 @@ describe("§B212 — the relay survives the lap", () => {
       const bags = new Map([["send1" as NodeId, { value: sent }]]);
       const before = socket.sent.length;
       act(() => {
-        hook.result.current.sync(frame, relayGraph, registry, bags, NO_CHANNELS, LIVE);
+        hook.result.current.sync(frame, relayGraph, registry, bags, NO_CHANNELS, LIVE, NO_FLATTENING);
       });
       act(() => {
         echo(socket, before);
@@ -895,7 +900,7 @@ describe("§B212 — the relay survives the lap", () => {
       const frame = transport.next();
       const before = dials.length;
       act(() => {
-        hook.result.current.sync(frame, relayGraph, registry, new Map(), NO_CHANNELS, LIVE);
+        hook.result.current.sync(frame, relayGraph, registry, new Map(), NO_CHANNELS, LIVE, NO_FLATTENING);
         // Connection refused, on whatever was just dialled.
         for (const dialled of dials.slice(before)) dialled.onclose?.();
       });

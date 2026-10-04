@@ -82,7 +82,8 @@ export function usePulseFiring(
       // T1525b: the morph index of that SAME flattening, so a pulse expression reading a
       // parameter a bank is fading crosses when the picture does, not on the recall frame.
       const flattened = runtimeRef.current.flattened.current();
-      const fires = watcher.step(flattened.graph, frame, channelsRef.current?.(), flattened.morphs);
+      // §T1551b: and the flattening itself, whole — its instances are what `op()` can name.
+      const fires = watcher.step(flattened.graph, frame, channelsRef.current?.(), flattened);
       const taking = renderRangeHolderFor(bus).current?.busy() === true;
       for (const fire of fires) {
         if (taking && RENDER_BLOCKED_PULSE_COMMANDS.has(fire.definition.fires)) continue;

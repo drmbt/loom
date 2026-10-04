@@ -19,6 +19,7 @@ import { usePerformWindows } from "./use-perform-windows.ts";
 import { lensHorizon, pictureLensFor, windowPicture } from "./perform-mapping.ts";
 import type { MappingTarget } from "./perform-mapping.ts";
 import type { PerformPlan } from "./use-perform-windows.ts";
+import { NO_FLATTENING } from "@domain/parameters/index.ts";
 
 /**
  * §T1536b — EDIT MAPPING ON THE PERFORM WINDOW, through the real Window Out wiring: the
@@ -120,7 +121,7 @@ async function setup({ chain, parameters = {} }: Stage) {
         screenSource: screens,
         registry,
         channels: () => undefined,
-        morphs: () => undefined,
+        flattening: () => NO_FLATTENING,
         frame: () => undefined,
         invocation: context,
       }),

@@ -8,8 +8,8 @@ import type {
 } from "../types/parameters.ts";
 import { isParameterSlot } from "./slots.ts";
 import { effectiveParameterSchema, resolveParameter } from "./resolve.ts";
-import { createParameterReadOptions } from "./node-references.ts";
-import type { ChannelResolver, ParameterMorphs, ParameterSchemaSource } from "./resolve.ts";
+import { parameterReadOptions, type FlatteningReads } from "./node-references.ts";
+import type { ChannelResolver, ParameterSchemaSource } from "./resolve.ts";
 
 /**
  * Pulse mechanics (T214, §V123, §V124, §V125).
@@ -107,15 +107,17 @@ export interface PulseWatcher {
   step: (
     graph: GraphDocument,
     frame: FrameEvaluationInput,
-    /** T628: the §V61 channel resolver — absent, a DRIVEN pulse reads its retained static and never fires. */
-    channels?: ChannelResolver,
+    /** T628: the §V61 channel resolver — `undefined`, a DRIVEN pulse reads its retained static and never fires. */
+    channels: ChannelResolver | undefined,
     /**
-     * T1525b: the preset morphs in flight over `graph` (`FlattenedGraph.morphs`). A pulse
-     * never fades itself, but `op('level1').par.brightness > 0.6` reads a parameter a bank
-     * may be fading — and without the index that read is the destination from the frame
-     * of the recall, so the edge comes early (or, already true at first sight, never).
+     * The flattening `graph` came from, whole (`runtime.flattened.current()`), or
+     * `NO_FLATTENING`. T1525b: its morphs — a pulse never fades itself, but
+     * `op('level1').par.brightness > 0.6` reads a parameter a bank may be fading, and
+     * without the index that read is the destination from the frame of the recall.
+     * §T1551b: its instances — `op('beat1').chan.kick > 0.5` on an instance `beat1`, which
+     * the flattening deleted, reads the inner node its exposed output publishes from.
      */
-    morphs?: ParameterMorphs,
+    flattening: FlatteningReads,
   ) => readonly PulseFire[];
   /** Forget every armed state. Used when the document is replaced. */
   reset: () => void;
@@ -154,7 +156,7 @@ export function createPulseWatcher(registry: SchemaSource): PulseWatcher {
     reset() {
       armed = new Map();
     },
-    step(graph, frame, channels, morphs) {
+    step(graph, frame, channels, flattening) {
       const fires: PulseFire[] = [];
       const next = new Map<string, boolean>();
       /*
@@ -168,9 +170,9 @@ export function createPulseWatcher(registry: SchemaSource): PulseWatcher {
        * ONE factory, together. Built once per step and only when a pulse is actually
        * watched, so a document with none pays nothing and several share one name index.
        */
-      let read: ReturnType<typeof createParameterReadOptions> | undefined;
-      const readOptions = (): ReturnType<typeof createParameterReadOptions> =>
-        (read ??= createParameterReadOptions({ graph, registry, frame, channels, morphs }));
+      let read: ReturnType<typeof parameterReadOptions> | undefined;
+      const readOptions = (): ReturnType<typeof parameterReadOptions> =>
+        (read ??= parameterReadOptions({ graph, registry, frame, channels, flattening }));
 
       for (const nodeId of Object.keys(graph.nodes).sort()) {
         const node = graph.nodes[nodeId];

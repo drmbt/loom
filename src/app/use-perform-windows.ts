@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SINK_TARGET_PORT } from "@compiler/index.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
-import type { ChannelResolver, ParameterMorphs, ResolvedParameters } from "@domain/parameters/resolve.ts";
+import type { ResolvedParameters } from "@domain/parameters/resolve.ts";
+import type { LiveParameterReads } from "@domain/parameters/index.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
@@ -67,15 +68,15 @@ export interface PerformWindowsOptions {
   readonly screenSource?: ScreenSource;
   /**
    * T1525b: what Screen, Fullscreen and Hide cursor are resolved with when they are read —
-   * the catalogue, the compile's channel resolver, the preset morphs in flight
-   * (`FlattenedGraph.morphs`) and the frame the loop last rendered, since opening a window
+   * the catalogue, the live read world (§T1551b: the compile's channel resolver and the
+   * runtime's flattening) and the frame the loop last rendered, since opening a window
    * is a moment and an expression on Fullscreen is read at it. REQUIRED, like the media
    * transport's (§T1524b): an optional getter nothing supplies is how a reader ends up
    * resolving without it. No frame yet: the zero frame.
    */
   readonly registry: NodeRegistryView;
-  readonly channels: () => ChannelResolver | undefined;
-  readonly morphs: () => ParameterMorphs | undefined;
+  readonly channels: LiveParameterReads["channels"];
+  readonly flattening: LiveParameterReads["flattening"];
   readonly frame: () => FrameEvaluationInput | undefined;
   /**
    * §T1536b: who a mapping-handle drag on a perform window is — the local human, exactly as

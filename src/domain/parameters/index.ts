@@ -65,17 +65,23 @@ export type {
   ResolvedParameters,
 } from "./resolve.ts";
 export {
+  NO_FLATTENING,
+  NO_INSTANCES,
   createNodeReferenceReader,
   createParameterReadOptions,
   nodeReferenceMembers,
   nodeReferenceNames,
 } from "./node-references.ts";
+export { parameterReadOptions } from "./node-references.ts";
 export type {
+  FlatteningReads,
+  LiveParameterReads,
   InstanceChannelSource,
   InstanceChannelSources,
   NodeReferenceCatalogueOptions,
   NodeReferenceMember,
   NodeReferenceOptions,
+  LegacyParameterReadContext,
   ParameterReadContext,
 } from "./node-references.ts";
 export { codeParametersLast, codeParametersOf } from "./code.ts";

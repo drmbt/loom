@@ -12,7 +12,7 @@ import type { LoomBus } from "../commands/bus.ts";
 import { alice, bob, contextFor, patch } from "../commands/test-support.ts";
 import { createValueGraphSession } from "../channels/value-graph.ts";
 import { hasAnimatedParameters } from "../channels/graph-channels.ts";
-import { createParameterReadOptions } from "../parameters/node-references.ts";
+import { NO_FLATTENING, parameterReadOptions } from "../parameters/node-references.ts";
 import { resolveParameters, srgbToLinear } from "../parameters/resolve.ts";
 import { liveClock } from "../transport/live-clock.ts";
 import { createNodeRegistry, type NodeRegistryView } from "../../nodes/registry/registry.ts";
@@ -151,7 +151,7 @@ function session(nodes: GraphNode[], options: { attachClock?: boolean } = {}): S
       const target = graph.nodes[nodeId];
       if (target === undefined) throw new Error(`no node ${nodeId}`);
       const morphs = buildMorphIndex({ document: graph, registry });
-      return resolveParameters(target, registry.get(target.type), createParameterReadOptions({ graph, registry, frame, morphs })).values[key];
+      return resolveParameters(target, registry.get(target.type), parameterReadOptions({ graph, registry, frame, channels: undefined, flattening: { ...NO_FLATTENING, morphs } })).values[key];
     },
     records: (bankId = "bank") => parseMorphRecords(store.view.getGraph().nodes[bankId]?.parameters["morphs"]),
     stored: (nodeId, key) => store.view.getGraph().nodes[nodeId]?.parameters[key],

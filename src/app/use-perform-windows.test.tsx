@@ -7,7 +7,7 @@ import { createGraphStore } from "@domain/graph/store.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { ParameterMorphs } from "@domain/parameters/resolve.ts";
+import type { FlatteningReads } from "@domain/parameters/index.ts";
 import { buildMorphIndex } from "@domain/presets/morph-index.ts";
 import { serializePresetBank } from "@domain/presets/bank.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
@@ -17,6 +17,7 @@ import { createDisplaySinkStore } from "./display-sinks.ts";
 import type { ScreenInfo, ScreenSource } from "./perform-screens.ts";
 import { usePerformWindows } from "./use-perform-windows.ts";
 import type { PerformPlan } from "./use-perform-windows.ts";
+import { NO_FLATTENING } from "@domain/parameters/index.ts";
 
 /**
  * §T1391b — the perform windows through the REAL bus command, the way the key, the palette
@@ -45,7 +46,7 @@ const registry = createNodeRegistry(allNodeDefinitions).view();
 
 /** T1525b: the moment and the fade a Window Out's parameters are read at; none by default. */
 interface Reads {
-  readonly morphs?: () => ParameterMorphs | undefined;
+  readonly flattening?: () => FlatteningReads;
   readonly frame?: () => FrameEvaluationInput | undefined;
 }
 
@@ -90,7 +91,7 @@ async function setup(types: readonly string[], reads: Reads = {}) {
         screenSource: screens,
         registry,
         channels: () => undefined,
-        morphs: reads.morphs ?? (() => undefined),
+        flattening: reads.flattening ?? (() => NO_FLATTENING),
         frame: reads.frame ?? (() => undefined),
         invocation: context,
       }),
@@ -193,7 +194,7 @@ describe("T1525b — an expression on Fullscreen, reading a fading knob, is read
     let current: FrameEvaluationInput | undefined;
     let currentDocument: () => GraphDocument = () => { throw new Error("no bus yet"); };
     const staging = await setup(["window", "constant"], {
-      morphs: () => (withIndex ? buildMorphIndex({ document: currentDocument(), registry }) : undefined),
+      flattening: () => (withIndex ? { ...NO_FLATTENING, morphs: buildMorphIndex({ document: currentDocument(), registry }) } : NO_FLATTENING),
       frame: () => current,
     });
     const { bus, ids } = staging;

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
-import type { ChannelResolver, ParameterMorphs } from "@domain/parameters/resolve.ts";
+import { parameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
+import type { FlatteningReads } from "@domain/parameters/index.ts";
+import { NO_MORPHS } from "@domain/presets/index.ts";
+import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
@@ -183,13 +185,15 @@ export interface OscBridgeBinding {
      */
     policy: SideEffectPolicy,
     /**
-     * T1524b: the preset morphs in flight over `graph` (`FlattenedGraph.morphs`). The bags
-     * already carry the fade — the value graph resolved them with this index — and this is
-     * what puts the node's OWN parameters on the same read path: a Rate a bank is fading,
-     * and an expression on one that reads a fading parameter by `op()`. A PORT is where a
-     * datagram goes, not how much of something there is, so it never fades (see `sync`).
+     * The flattening `graph` came from, whole (`runtime.flattened.current()`), or
+     * `NO_FLATTENING`. T1524b: its morphs — the bags already carry the fade (the value graph
+     * resolved them with this index), and this puts the node's OWN parameters on the same
+     * read path: a Rate a bank is fading, and an expression on one that reads a fading
+     * parameter by `op()`. A PORT is where a datagram goes, not how much of something there
+     * is, so it never fades (see `sync`). §T1551b: its instances, so a destination or a Rate
+     * reading `op('<instance>').chan.<c>` reads the inner node that publishes it.
      */
-    morphs?: ParameterMorphs,
+    flattening: FlatteningReads,
   ) => void;
   /**
    * Why OSC is not working, keyed to the node it concerns (§V359, §V365).
@@ -298,7 +302,7 @@ export function useOscBridge(options: OscBridgeOptions = {}): OscBridgeBinding {
       bags: ReadonlyMap<NodeId, Readonly<Record<string, number>>>,
       channels: ChannelResolver,
       policy: SideEffectPolicy,
-      morphs?: ParameterMorphs,
+      flattening: FlatteningReads,
     ): void => {
       const live = client.current;
       if (live === null) return;
@@ -321,12 +325,12 @@ export function useOscBridge(options: OscBridgeOptions = {}): OscBridgeBinding {
        *
        * That is §B8's shape for the THIRD time (§T593 was the second, §T1000 the inspector
        * one). §T1129 made the factory SHARED rather than restated at each of the three
-       * sites: "at which moment" is a parameter of `createParameterReadOptions`, so it
+       * sites: "at which moment" is a parameter of `parameterReadOptions`, so it
        * cannot be set on the resolve and forgotten on the reader here or anywhere else.
        * Built once per frame, not per node — two frames in one evaluation is a value that
        * is right on its own and wrong in context.
        */
-      const readOptions = createParameterReadOptions({ graph, registry, frame, channels, morphs });
+      const readOptions = parameterReadOptions({ graph, registry, frame, channels, flattening });
       /*
        * T1524b — A PORT CUTS. A number fades through every value in between, and for a
        * port those are other ports — or no port at all (9001 → 9003 passes 9001.7): a
@@ -337,7 +341,9 @@ export function useOscBridge(options: OscBridgeOptions = {}): OscBridgeBinding {
        * second read.
        */
       const settledOptions =
-        morphs?.activeAt(frame) === true ? createParameterReadOptions({ graph, registry, frame, channels }) : null;
+        flattening.morphs.activeAt(frame)
+          ? parameterReadOptions({ graph, registry, frame, channels, flattening: { morphs: NO_MORPHS, instanceChannels: flattening.instanceChannels } })
+          : null;
 
       /*
        * §T1006 — THE SET THIS PUMP OWNS IS DERIVED, IN BOTH DIRECTIONS.

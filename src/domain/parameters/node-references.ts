@@ -5,6 +5,7 @@ import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId, PortId } from "../types/ids.ts";
 import type { ParameterDefinition, ParameterSchema, ParameterValue } from "../types/parameters.ts";
 import { componentKey, componentNamesFor } from "./slots.ts";
+import { NO_MORPHS } from "../presets/morph-index.ts";
 import {
   CHANNEL_RESOLVER_MISSING,
   effectiveParameterSchema,
@@ -291,7 +292,7 @@ export function createNodeReferenceReader(options: NodeReferenceOptions): NodeRe
  * one's `uniqueNodeName` MUST see the node the first one added. A memo keyed on graph
  * identity would hand it the index from before the first add and mint a duplicate name,
  * which §V127 says cannot exist. So this memo lives where the graph provably does not
- * move: inside ONE reader, which is built by `createParameterReadOptions` per compile,
+ * move: inside ONE reader, which is built by `parameterReadOptions` per compile,
  * per inspector render, per OSC event, and is only ever read from. A new frame builds a
  * new reader and therefore a new index; there is nothing to invalidate and nothing that
  * could forget to. `names.ts` itself is left alone, which is what keeps the draft path
@@ -326,7 +327,7 @@ function nodeIdNamed(scope: ReaderScope, graph: GraphDocument, name: string): No
  * chained refs 5.4 ms/frame, 40 chained 15.3, 160 nodes + 160 chained **306 ms**.
  *
  * The memo is per READER, which is per frame — the same scope the name index lives in, and
- * for the same reason: a reader is built by `createParameterReadOptions` and only ever read
+ * for the same reason: a reader is built by `parameterReadOptions` and only ever read
  * from, so there is no window in which the graph it was built over can change underneath it.
  * A new frame builds a new reader and resolves everything again, which is what keeps a
  * driven value MOVING (§B181: a memo that survived the frame would freeze every reference
@@ -366,7 +367,53 @@ function targetOf(
   return resolved;
 }
 
-/** What a call site knows: the graph being read, the catalogue, and WHEN. */
+/**
+ * §T1551b — WHAT A FLATTENING CONTRIBUTES TO A READ, beside its graph.
+ *
+ * `FlattenedGraph` carries both, so the runtime hands its flattening over WHOLE
+ * (`runtime.flattened.current()`) and no consumer picks fields off it. That is the point:
+ * every evaluation input the flattening grew — the morphs (T1497b), the instances
+ * (T1485b) — was threaded by hand into each of a dozen readers, and the ones that were
+ * missed still compiled. A field added HERE reaches every reader handed a flattening, and
+ * is a type error at every site that spells one out (`NO_FLATTENING`, the compiler's
+ * `flatteningReadsOf`, the inspector).
+ */
+export interface FlatteningReads {
+  /** T1497b: the preset morphs in flight — a reference to a fading parameter reads the fade. */
+  readonly morphs: ParameterMorphs;
+  /** T1485b: the component instances `op('<instance>').chan.<c>` can name. */
+  readonly instanceChannels: InstanceChannelSources;
+}
+
+/** No component instance to name. One object, so "none" is an identity check. */
+export const NO_INSTANCES: InstanceChannelSources = new Map();
+
+/**
+ * A read with no flattening behind it: nothing fading, no instance to name. A caller that
+ * has none says so with this, by name — there is no omitted field for it to forget.
+ */
+export const NO_FLATTENING: FlatteningReads = { morphs: NO_MORPHS, instanceChannels: NO_INSTANCES };
+
+/**
+ * §T1551b — THE LIVE READ WORLD: what every CPU reader outside the plan resolves with — the
+ * compile's channel resolver and the runtime's flattening, each a getter read at the moment
+ * of a resolve. Produced ONCE, by the composition root (`app.tsx`'s `liveReads`), and handed
+ * to the analyze, depth, vision, perform-window and viewer readers whole, so none of them
+ * assembles its own from whatever it happens to hold.
+ */
+export interface LiveParameterReads {
+  readonly channels: () => ChannelResolver | undefined;
+  /** The runtime's flattening (`runtime.flattened.current()`), or `NO_FLATTENING`. */
+  readonly flattening: () => FlatteningReads;
+}
+
+/**
+ * What a call site knows: the graph being read, the catalogue, WHEN, the channels, and the
+ * flattening. §T1551b: EVERY FIELD IS REQUIRED. `frame` and `channels` may be `undefined`,
+ * but the key must be written, so "no moment" and "no resolver" are things a caller says
+ * rather than things it leaves out — and an input added here later is a type error at every
+ * site that does not supply it, which is the whole guard.
+ */
 export interface ParameterReadContext {
   readonly graph: GraphDocument;
   /**
@@ -378,22 +425,17 @@ export interface ParameterReadContext {
   /**
    * The moment. A PARAMETER rather than a field the caller sets afterwards, because
    * setting it on the resolve and forgetting it on the reader is the entire bug (§B46).
+   * `undefined` = the zero frame: what the document says.
    */
-  readonly frame?: FrameEvaluationInput | undefined;
-  /** Absent = `op('x').chan.*` reports "no channel resolver" and §V108's static stands. */
-  readonly channels?: ChannelResolver | undefined;
+  readonly frame: FrameEvaluationInput | undefined;
+  /** `undefined` = `op('x').chan.*` reports "no channel resolver" and §V108's static stands. */
+  readonly channels: ChannelResolver | undefined;
   /**
-   * T1497b: the preset morphs in flight. Here for the reason `frame` is: `op('level1').par.brightness`
-   * is resolved INSIDE the reader, and a reader built without them would hand a reference
-   * the destination while the parameter it reads is still fading on screen.
+   * The morphs in flight and the instances `op()` can name (`FlatteningReads`): the
+   * runtime's flattening, whole, or `NO_FLATTENING`. Read INSIDE the reader, which is why
+   * they are here at all.
    */
-  readonly morphs?: ParameterMorphs | undefined;
-  /**
-   * T1485b: the component instances `op('<instance>').chan.<c>` can name
-   * (`FlattenedGraph.instanceChannels`). Here for the reason `channels` is: the read
-   * happens INSIDE the reader.
-   */
-  readonly instances?: InstanceChannelSources | undefined;
+  readonly flattening: FlatteningReads;
 }
 
 /**
@@ -413,14 +455,20 @@ export interface ParameterReadContext {
  * site four spell it. So the pairing is no longer spelled at a call site at all. A caller
  * says WHICH graph, WHICH catalogue and WHEN; it cannot say "reader without base",
  * because there is no longer an argument for it.
+ *
+ * §T1551b closed the same hole one level up: the CONTEXT's fields were optional, so the
+ * morphs (T1497b) and the instances (T1485b) each reached only the readers someone
+ * remembered to hand them to. They are required now (`ParameterReadContext`), and
+ * `parameter-read-context.test.ts` holds that no product file builds a reader any other way.
  */
-export function createParameterReadOptions(
+export function parameterReadOptions(
   context: ParameterReadContext,
 ): Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs"> {
+  const { morphs, instanceChannels } = context.flattening;
   const base = {
     ...(context.channels === undefined ? {} : { channels: context.channels }),
     ...(context.frame === undefined ? {} : { frame: context.frame }),
-    ...(context.morphs === undefined ? {} : { morphs: context.morphs }),
+    morphs,
   };
   return {
     nodes: createNodeReferenceReader({
@@ -432,10 +480,41 @@ export function createParameterReadOptions(
        */
       schemaOf: (node) => effectiveParameterSchema(context.registry.get(node.type), node.parameters),
       base,
-      ...(context.instances === undefined ? {} : { instances: context.instances }),
+      instances: instanceChannels,
     }),
     ...base,
   };
+}
+
+/**
+ * The context `createParameterReadOptions` took before §T1551b: every field optional.
+ * @deprecated Kept for ONE caller, `src/app/media-playback.ts`, while another session owns
+ * it; `parameter-read-context.test.ts` refuses any other. Use `parameterReadOptions`.
+ */
+export interface LegacyParameterReadContext {
+  readonly graph: GraphDocument;
+  readonly registry: ParameterReadContext["registry"];
+  readonly frame?: FrameEvaluationInput | undefined;
+  readonly channels?: ChannelResolver | undefined;
+  readonly morphs?: ParameterMorphs | undefined;
+}
+
+/**
+ * §T1551b's adapter for the one caller not yet migrated. It reads NO instance channels —
+ * which is exactly the gap: `op('<instance>').chan.<c>` on a media transport parameter
+ * still fails "there is no node named …" until that caller hands a flattening.
+ * @deprecated Use `parameterReadOptions`.
+ */
+export function createParameterReadOptions(
+  context: LegacyParameterReadContext,
+): Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs"> {
+  return parameterReadOptions({
+    graph: context.graph,
+    registry: context.registry,
+    frame: context.frame,
+    channels: context.channels,
+    flattening: { morphs: context.morphs ?? NO_MORPHS, instanceChannels: NO_INSTANCES },
+  });
 }
 
 /**

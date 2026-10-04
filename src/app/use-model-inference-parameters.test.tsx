@@ -14,6 +14,7 @@ import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
 import { TIER_B_CAPABILITIES } from "@/examples/runner.ts";
 import { useModelInference } from "./use-model-inference.ts";
+import { NO_FLATTENING } from "@domain/parameters/index.ts";
 
 /**
  * T1525b — A MATTE'S PER-RUN PARAMETERS REACH THE WORKER THROUGH THE ONE READ PATH.
@@ -204,7 +205,7 @@ describe("T1525b — the matte's ratio and smoothing reach the worker at the fra
     expect(graph.nodes["cut"]?.parameters["smoothing"]).toBe(1);
     expect(graph.nodes["knob"]?.parameters["value"]).toBe(2);
     const morphs = buildMorphIndex({ document: graph, registry });
-    const runs = await runsAcross(graph, { registry, channels: () => undefined, morphs: () => morphs }, [0, 30, 60]);
+    const runs = await runsAcross(graph, { registry, channels: () => undefined, flattening: () => ({ ...NO_FLATTENING, morphs }) }, [0, 30, 60]);
     expect(runs).toEqual([
       { ratio: 0.25, smoothing: 0.2 },
       { ratio: 0.375, smoothing: 0.6 },
@@ -214,7 +215,7 @@ describe("T1525b — the matte's ratio and smoothing reach the worker at the fra
 
   it("cut the wire: without the morph index frame 30 runs at the destinations, 0.5 and 1", async () => {
     const graph = await fading();
-    const runs = await runsAcross(graph, { registry, channels: () => undefined, morphs: () => undefined }, [30]);
+    const runs = await runsAcross(graph, { registry, channels: () => undefined, flattening: () => NO_FLATTENING }, [30]);
     expect(runs).toEqual([{ ratio: 0.5, smoothing: 1 }]);
   });
 });
@@ -268,13 +269,13 @@ describe("T1530b — depth's Rate Limit and Refresh are read at each frame the g
     const graph = await fadingRate();
     expect(graph.nodes["deep"]?.parameters["rateLimit"]).toBe(1.25);
     const morphs = buildMorphIndex({ document: graph, registry });
-    const { decisions } = await driveAcross(graph, "deep", { registry, channels: () => undefined, morphs: () => morphs }, [0, 51, 54]);
+    const { decisions } = await driveAcross(graph, "deep", { registry, channels: () => undefined, flattening: () => ({ ...NO_FLATTENING, morphs }) }, [0, 51, 54]);
     expect(decisions).toEqual([true, false, true]);
   });
 
   it("cut the wire: without the morph index the destination's 0.8 s gap runs 51 and refuses 54", async () => {
     const graph = await fadingRate();
-    const { decisions } = await driveAcross(graph, "deep", { registry, channels: () => undefined, morphs: () => undefined }, [0, 51, 54]);
+    const { decisions } = await driveAcross(graph, "deep", { registry, channels: () => undefined, flattening: () => NO_FLATTENING }, [0, 51, 54]);
     expect(decisions).toEqual([true, true, false]);
   });
 
@@ -290,7 +291,7 @@ describe("T1530b — depth's Rate Limit and Refresh are read at each frame the g
         },
       },
     });
-    const { decisions } = await driveAcross(graph, "deep", { registry, channels: () => undefined, morphs: () => undefined }, [0, 15, 45, 50]);
+    const { decisions } = await driveAcross(graph, "deep", { registry, channels: () => undefined, flattening: () => NO_FLATTENING }, [0, 15, 45, 50]);
     expect(decisions).toEqual([true, true, false, false]);
   });
 });

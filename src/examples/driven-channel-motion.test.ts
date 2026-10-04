@@ -2,14 +2,20 @@ import { describe, expect, it } from "vitest";
 
 import { flattenComponents } from "../compiler/flatten.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
+import { componentNodeType, createComponentSystem } from "../domain/components/index.ts";
+import { NO_INSTANCES, parameterReadOptions, type InstanceChannelSources } from "../domain/parameters/node-references.ts";
+import { NO_MORPHS } from "../domain/presets/morph-index.ts";
 import { SILENCE } from "../domain/audio/feature-track.ts";
 import { SPECTRUM_BAND_NAMES } from "../domain/audio/spectrum-bands.ts";
 import type { AudioFeatures, FrameEvaluationInput } from "../domain/types/frame.ts";
 import type { GraphDocument } from "../domain/types/graph.ts";
 import type { ParameterValue } from "../domain/types/parameters.ts";
-import type { NodeRegistryView } from "../nodes/registry/registry.ts";
+import { createNodeRegistry, type NodeRegistryView } from "../nodes/registry/registry.ts";
+import { allNodeDefinitions } from "../nodes/definitions/index.ts";
 import { listExamples, listStarterComponentFiles } from "./catalogue.ts";
 import { requireExample } from "./runner.ts";
+import { ANALYSIS_COMPONENT_ID, analysisComponentDefinition } from "../tests/fixtures/analysis-component.ts";
+import { expressionSlot } from "./documents/builders.ts";
 
 /**
  * ⚑ T1145 / §V903 / §T1139 — EVERY DRIVEN CHANNEL IN EVERY SHIPPED DOCUMENT MOVES.
@@ -175,6 +181,12 @@ function motionOf(
   graph: GraphDocument,
   registry: NodeRegistryView,
   randomSeed: number,
+  /**
+   * §T1551b: the flattening's instances. `op('<instance>').chan.<c>` names a node the
+   * flattening deleted, so no address answers it; it is read the way the app reads it, by
+   * the reader itself, through the inner node the instance's output publishes from.
+   */
+  instances: InstanceChannelSources = NO_INSTANCES,
 ): Map<string, Motion> {
   const reads = channelReads(graph);
   const addresses = [...new Set(reads.map((read) => `${read.name}.${read.key}`))].map((key) => {
@@ -262,7 +274,25 @@ function motionOf(
     const ladder = (address: string): ParameterValue | undefined =>
       stimulus(address) ?? evaluated.resolver(address, undefined as never);
 
+    // §T1551b: the app's reader over this frame's ladder, for the instance reads only.
+    const instanceRead =
+      instances.size === 0
+        ? undefined
+        : parameterReadOptions({
+            graph,
+            registry,
+            frame,
+            channels: (address) => ladder(address),
+            flattening: { morphs: NO_MORPHS, instanceChannels: instances },
+          }).nodes;
+
     for (const address of addresses) {
+      if (instanceRead !== undefined && instances.has(address.name)) {
+        const read = instanceRead(address.name, ["chan", address.channel]);
+        if (read.ok) seen.get(address.key)?.add(read.value);
+        else unresolved.set(address.key, (unresolved.get(address.key) ?? 0) + 1);
+        continue;
+      }
       const direct = ladder(`${address.name}:${address.channel}`);
       // `.chan.value` also answers a node's single/bare channel — `node-references.ts`'s
       // fallback, and the shape `drivenSlot("name", …)` compiles to.
@@ -381,7 +411,7 @@ const SWEEP: Sweep[] = [...listExamples(), ...listStarterComponentFiles()].map((
   const flattened = flattenComponents({ graph: document.graph, registry, components });
   return {
     fileName: file.fileName,
-    motion: motionOf(flattened.graph, registry, document.settings.randomSeed),
+    motion: motionOf(flattened.graph, registry, document.settings.randomSeed, flattened.instanceChannels),
   };
 });
 
@@ -452,6 +482,30 @@ describe("T1145 — every driven channel in every shipped document actually move
     // And the same node's `bar` counts, so the same step index genuinely increments. This
     // is the half that proves the checker discriminates rather than condemning everything.
     expect(motion.get("step1.bar")?.distinct).toBeGreaterThan(1);
+  });
+
+  /**
+   * §T1551b — a lane read straight off a component INSTANCE (`op('analysis1').chan.level`)
+   * is measured like any other: it moves when the instance's output moves, and it is not
+   * "unresolved" merely because the flattening deleted the node it names.
+   */
+  it("measures a channel read off a component instance", () => {
+    const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
+    system.components.register(analysisComponentDefinition("frame / 1000"));
+    const graph = {
+      revision: 1,
+      groups: {},
+      edges: {},
+      nodes: {
+        inst: { id: "inst", type: componentNodeType(ANALYSIS_COMPONENT_ID, 1), definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {}, label: "analysis1" },
+        glow: { id: "glow", type: "level", definitionVersion: 1, position: { x: 240, y: 0 }, parameters: { brightness: expressionSlot("op('analysis1').chan.level", 0.25) }, label: "glow1" },
+      },
+    } as unknown as GraphDocument;
+    const flattened = flattenComponents({ graph, registry: system.nodes, components: system.components.view() });
+    const motion = motionOf(flattened.graph, system.nodes, 54, flattened.instanceChannels).get("analysis1.level");
+    expect(motion?.unresolved).toBe(0);
+    expect(motion?.distinct).toBe(HORIZON_FRAMES);
+    expect(motion?.maximum).toBeCloseTo((HORIZON_FRAMES - 1) / 1000, 12);
   });
 
   /**

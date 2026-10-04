@@ -13,7 +13,7 @@ import type {
   StoredParameter,
 } from "../domain/types/parameters.ts";
 import type { ParameterMorphs } from "../domain/parameters/resolve.ts";
-import type { InstanceChannelSource, InstanceChannelSources } from "../domain/parameters/node-references.ts";
+import type { FlatteningReads, InstanceChannelSource, InstanceChannelSources } from "../domain/parameters/node-references.ts";
 import { NO_MORPHS, buildMorphIndex, type PublishedOrigin } from "../domain/presets/morph-index.ts";
 import { renumberedName, rewriteNodeNameReferences } from "../domain/graph/names.ts";
 import { isPreviewablePortKind } from "../domain/graph/previewable.ts";
@@ -131,7 +131,11 @@ export interface FlattenRequest {
   readonly components: ComponentRegistryView;
 }
 
-export interface FlattenedGraph {
+/**
+ * §T1551b: a flattening IS what a parameter read needs from one (`FlatteningReads`), so the
+ * runtime hands it to readers whole — a field added there is a type error here first.
+ */
+export interface FlattenedGraph extends FlatteningReads {
   /** Effective component-instance nodes before inlining, for inspecting their published page. */
   readonly instanceNodes: ReadonlyMap<NodeId, GraphNode>;
   /** The parent logical graph with every instance inlined. No component types remain —
