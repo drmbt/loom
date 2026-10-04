@@ -22,6 +22,7 @@ import {
   planTimelineCues,
   timelineCuePosition,
 } from "./timeline-cues.ts";
+import { testRead } from "../parameters/test-support.ts";
 
 /**
  * T1508b — A CUE LIST THAT FOLLOWS THE TIMELINE, as the resolver reads it: values that are
@@ -93,7 +94,7 @@ const frame = (n: number, extra: Partial<FrameEvaluationInput> = {}): FrameEvalu
 function valueAt(graph: GraphDocument, nodeId: NodeId, key: string, n: number, extra: Partial<FrameEvaluationInput> = {}): unknown {
   const target = graph.nodes[nodeId] as GraphNode;
   const morphs = buildMorphIndex({ document: graph, registry });
-  return resolveParameters(target, registry.get(target.type), { frame: frame(n, extra), morphs }).values[key];
+  return resolveParameters(target, registry.get(target.type), testRead({ frame: frame(n, extra), morphs })).values[key];
 }
 const brightness = (graph: GraphDocument, n: number, extra: Partial<FrameEvaluationInput> = {}): unknown => valueAt(graph, "grade", "brightness", n, extra);
 
@@ -426,7 +427,7 @@ describe("T1508b — inside a component: a timed cue on a look's published knob 
     const flattened = flattenComponents({ graph, registry, components: system.components.view() });
     const inner = Object.values(flattened.graph.nodes).find((each) => each?.type === "level") as GraphNode;
     const at = (n: number): unknown =>
-      resolveParameters(inner, registry.get("level"), { frame: frame(n), morphs: flattened.morphs }).values["brightness"];
+      resolveParameters(inner, registry.get("level"), testRead({ frame: frame(n), morphs: flattened.morphs })).values["brightness"];
     expect(at(15)).toBe(0.2);
     expect(at(45)).toBe(0.5);
     expect(at(60)).toBe(0.8);

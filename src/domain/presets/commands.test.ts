@@ -8,7 +8,7 @@ import { createSequentialIdFactory } from "../graph/ids.ts";
 import { createDomainBus } from "../commands/index.ts";
 import type { LoomBus } from "../commands/bus.ts";
 import { alice, bob, contextFor, patch } from "../commands/test-support.ts";
-import { resolveParameters } from "../parameters/resolve.ts";
+import { STORED_READ, resolveParameters } from "../parameters/resolve.ts";
 import { createComponentSystem } from "../components/registry.ts";
 import { bloomComponent, blurKnob, instanceNode } from "../components/test-support.ts";
 import { createNodeRegistry, type NodeRegistryView } from "../../nodes/registry/registry.ts";
@@ -49,7 +49,7 @@ const value = (store: GraphStore, nodeId: NodeId, key: string): StoredParameter 
 /** The value a consumer reads for a key: the one read path (§V61), not the stored slot. */
 function resolved(store: GraphStore, nodeId: NodeId, key: string): unknown {
   const target = store.view.getGraph().nodes[nodeId]!;
-  return resolveParameters(target, registry.get(target.type)).values[key];
+  return resolveParameters(target, registry.get(target.type), STORED_READ).values[key];
 }
 
 async function set(bus: LoomBus, store: GraphStore, nodeId: NodeId, parameters: Record<string, StoredParameter>): Promise<void> {

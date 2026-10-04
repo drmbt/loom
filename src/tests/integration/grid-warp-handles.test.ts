@@ -5,7 +5,7 @@ import { createDomainBus } from "@domain/commands/index.ts";
 import { alice, contextFor } from "@domain/commands/test-support.ts";
 import { createSequentialIdFactory } from "@domain/graph/ids.ts";
 import { createGraphStore } from "@domain/graph/store.ts";
-import { resolveParameters } from "@domain/parameters/resolve.ts";
+import { STORED_READ, resolveParameters } from "@domain/parameters/resolve.ts";
 import type { Actor } from "@domain/types/commands.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { StoredParameter } from "@domain/types/parameters.ts";
@@ -95,7 +95,7 @@ async function placeGridWarp() {
     const node = store.view.getGraph().nodes[nodeId];
     const definition = registry.get("gridWarp");
     if (node === undefined || definition === undefined) throw new Error("the Grid Warp left the document");
-    return resolveParameters(node, definition).values;
+    return resolveParameters(node, definition, STORED_READ).values;
   };
   const set = async (entries: Record<string, StoredParameter>) => {
     editor.setStored(nodeId, entries, "commit");

@@ -19,6 +19,7 @@ import { effectiveParameterSchema, resolveParameters } from "../parameters/resol
 import { buildMorphIndex } from "../presets/morph-index.ts";
 import { presetBankNode, presetSession } from "../presets/test-support.ts";
 import { graphChannelResolver, hasAnimatedParameters } from "./graph-channels.ts";
+import { testRead } from "../parameters/test-support.ts";
 
 /**
  * The driven mode comes ALIVE (T238, T203, §V143): a parameter driven by channel
@@ -72,7 +73,7 @@ describe("graphChannelResolver (T238-T240)", () => {
     const channels = graphChannelResolver(graph, registry);
 
     const at = (t: number) =>
-      resolveParameters(driven, blurNode, { frame: frameAt(t), channels }).values["size"];
+      resolveParameters(driven, blurNode, testRead({ frame: frameAt(t), channels })).values["size"];
 
     expect(at(0.25)).toBeCloseTo(1, 10); // crest: 0.5 + 0.5·sin(π/2)
     expect(at(0.75)).toBeCloseTo(0, 10); // trough
@@ -82,7 +83,7 @@ describe("graphChannelResolver (T238-T240)", () => {
   it("returns undefined — retained value in effect — for a name that is no value source", () => {
     const graph = graphWith(driven); // no lfo1 in the document
     const channels = graphChannelResolver(graph, registry);
-    const resolved = resolveParameters(driven, blurNode, { frame: frameAt(1), channels });
+    const resolved = resolveParameters(driven, blurNode, testRead({ frame: frameAt(1), channels }));
     expect(resolved.get("size")?.value).toBe(8); // blur's manifest default
     expect(resolved.get("size")?.diagnostic?.code).toBe("parameter.driven");
   });
@@ -149,8 +150,8 @@ describe("hasAnimatedParameters", () => {
     // The reason, measured rather than asserted: resolve the same parameter a thousand
     // frames apart and it is the retained 12 both times. If that ever stopped being true,
     // THIS is the assertion that has to fail before the predicate is changed.
-    const early = resolveParameters(mapped, blurNode, { frame: frameAt(0) }).values["size"];
-    const late = resolveParameters(mapped, blurNode, { frame: frameAt(1000) }).values["size"];
+    const early = resolveParameters(mapped, blurNode, testRead({ frame: frameAt(0) })).values["size"];
+    const late = resolveParameters(mapped, blurNode, testRead({ frame: frameAt(1000) })).values["size"];
     expect(early).toBe(12);
     expect(late).toBe(early);
 
@@ -196,7 +197,7 @@ const constantNode = (id: string, label: string, value: number): GraphNode =>
 
 /** What the parameter resolver reads back for a size driven by `channel`. */
 const sizeDrivenBy = (channels: ChannelResolver, channel: string): ResolvedParameter | undefined =>
-  resolveParameters(drivenBlur(channel), blurNode, { frame: frameAt(0), channels }).get("size");
+  resolveParameters(drivenBlur(channel), blurNode, testRead({ frame: frameAt(0), channels })).get("size");
 
 /** Blur's manifest default — what a driven slot RETAINS when its channel answers nothing. */
 const NO_CHANNEL = 8;
@@ -300,10 +301,10 @@ function scene(definitions: GraphComponentDefinition[] = []): ChannelScene {
       const resolver = channels();
       const blur = flattened.current().graph.nodes[nodeId as NodeId];
       expect(blur).toBeDefined();
-      return resolveParameters(blur as GraphNode, blurNode, {
+      return resolveParameters(blur as GraphNode, blurNode, testRead({
         frame: frameAt(0),
         channels: resolver,
-      }).get("size");
+      })).get("size");
     },
   };
 }
@@ -455,7 +456,7 @@ describe("T1524b: a source parameter a bank is fading publishes the fading value
     expect(channels("knob", context())).toBe(0.8);
 
     // What the consumer reads back: the parameter the channel drives, through the one resolver.
-    const driven = (frame: FrameEvaluationInput): unknown => resolveParameters(level, levelNode, { frame, channels }).values["brightness"];
+    const driven = (frame: FrameEvaluationInput): unknown => resolveParameters(level, levelNode, testRead({ frame, channels })).values["brightness"];
     expect(driven(at(30))).toBe(0.5);
     expect(driven(at(60))).toBe(0.8);
   });

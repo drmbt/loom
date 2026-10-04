@@ -5,7 +5,7 @@ import type { NodeDefinition } from "../types/node-definition.ts";
 import type { ParameterSchema, StoredParameter } from "../types/parameters.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { nodeNames } from "../graph/names.ts";
-import { effectiveParameterSchema, resolveParameter, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
+import { effectiveParameterSchema, resolveParameter, STORED_READ, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
 import { componentAddressedDefinition, componentNamesFor, isParameterSlot, parseComponentKey } from "../parameters/slots.ts";
 import { isComponentNodeType } from "../components/component-type.ts";
 import { PAGE_TARGET, PRESET_MORPHS_KEY, isPresetsNode, type BankCatalogue } from "./bank-view.ts";
@@ -171,7 +171,7 @@ function bakedEnd(node: GraphNode, schema: ParameterSchema, key: string, stored:
   const base = channel === null ? key : channel.base;
   const definition = schema[base];
   if (definition === undefined) return undefined;
-  const resolved = resolveParameter({ ...node, parameters: { ...node.parameters, [key]: stored } }, base, definition, { schema });
+  const resolved = resolveParameter({ ...node, parameters: { ...node.parameters, [key]: stored } }, base, definition, { ...STORED_READ, schema });
   if (channel === null) return resolved.value;
   return resolved.components?.find((each) => each.name === channel.component)?.value;
 }

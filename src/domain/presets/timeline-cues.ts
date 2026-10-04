@@ -8,7 +8,7 @@ import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { isComponentNodeType, parseComponentNodeType } from "../components/component-type.ts";
 import { publishedSchema } from "../components/published-page.ts";
 import { nodeByName } from "../graph/names.ts";
-import { effectiveParameterSchema, resolveParameters, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
+import { effectiveParameterSchema, resolveStored, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
 import { componentAddressedDefinition, parseComponentKey, storedStaticValue } from "../parameters/slots.ts";
 import { defaultParameterValue } from "../parameters/validate.ts";
 import { parsePresetBank, type MorphCurve } from "./bank.ts";
@@ -264,7 +264,9 @@ export function planTimelineCues(document: GraphDocument, registry: NodeRegistry
         continue;
       }
       // Morph and Curve are the bank's — for an instance, its component's page bank's (as at GO).
-      const morph = presetMorph(cue.morph, preset, resolveParameters(view.bank, registry.get(view.bank.type)).values);
+      // §T1557b: the document (`resolveStored`) — this structure is a pure function of it,
+      // built once per revision; a channel-driven Morph is read live only at GO (`bankSettings`).
+      const morph = presetMorph(cue.morph, preset, resolveStored(view.bank, registry.get(view.bank.type)).values);
       const end = presetRecallEnd(document, registry, view, preset, components);
       for (const said of end.diagnostics) {
         warnings.push({ list: listNode.id, cue: cue.name, diagnostic: { ...said, message: `${where}: ${said.message}`, nodeId: listNode.id } });

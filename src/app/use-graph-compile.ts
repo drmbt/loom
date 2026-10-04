@@ -608,7 +608,7 @@ export function useGraphCompile(
   const flattenedRef = useRef(flattened);
   flattenedRef.current = flattened;
   useEffect(() => {
-    runtime.bus.attachFlattenedGraph(() => flattenedRef.current.graph);
+    runtime.bus.attachFlattenedGraph(() => flattenedRef.current);
   }, [runtime]);
 
   /**

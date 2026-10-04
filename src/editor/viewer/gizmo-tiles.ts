@@ -1,7 +1,7 @@
 import type { GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
-import { effectiveParameterSchema, resolveParameters } from "@domain/parameters/resolve.ts";
+import { effectiveParameterSchema, resolveStored } from "@domain/parameters/resolve.ts";
 import { gridOf, gridWarpNode } from "@nodes/definitions/grid-warp.ts";
 import type { OrbitCameraBasis } from "@runtime/previews/index.ts";
 import type { PreviewGizmoTile } from "./preview-gizmo-overlay.tsx";
@@ -56,7 +56,9 @@ export function gizmoTilesFor(
       output.portId === definition.outputs[0]?.id &&
       offersPictureHandles(schema);
     if (basis === undefined && !picture) continue;
-    const resolved = resolveParameters(node, definition);
+    // §T1557b: the document (`resolveStored`) — a handle edits the stored value and sits where
+    // that value puts it; a driven key's handle is held, not moved (`gizmoHandlesFor`).
+    const resolved = resolveStored(node, definition);
     const facts = {
       schema,
       resolved: resolved.entries,

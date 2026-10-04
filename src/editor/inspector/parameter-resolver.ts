@@ -15,12 +15,17 @@
  */
 
 export {
+  STORED_READ,
   resolveParameter,
   resolveParameterSchema,
   resolveParameters,
+  resolveStored,
+  resolveStoredSchema,
 } from "@domain/parameters/resolve.ts";
 export type {
   ParameterDriver,
+  ParameterRead,
+  ParameterReadOptions,
   ParameterDriverContext,
   ParameterSource,
   ResolveParametersOptions,

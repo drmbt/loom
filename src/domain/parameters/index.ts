@@ -45,9 +45,12 @@ export {
 export type { PulseFire, PulseWatcher } from "./pulse.ts";
 
 export {
+  STORED_READ,
   resolveParameter,
   resolveParameterSchema,
   resolveParameters,
+  resolveStored,
+  resolveStoredSchema,
   srgbToLinear,
 } from "./resolve.ts";
 export type {
@@ -59,6 +62,9 @@ export type {
   ParameterDriverContext,
   ParameterSource,
   ParentBindResolver,
+  ParameterRead,
+  ParameterReadOptions,
+  ResolveExtras,
   ResolveParametersOptions,
   ResolvedComponent,
   ResolvedParameter,

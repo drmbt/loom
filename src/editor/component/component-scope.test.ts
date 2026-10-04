@@ -9,6 +9,7 @@ import {
   node,
 } from "@domain/components/test-support.ts";
 import { resolveComponentNavigation, resolveComponentParameters } from "./component-scope.ts";
+import { STORED_READ } from "@domain/parameters/resolve.ts";
 
 /**
  * §V81 / T133 — `parent.<key>` resolved THROUGH the §V61 resolver, at any nesting depth.
@@ -92,7 +93,7 @@ describe("parent scope through resolveParameters (§V61, §V81)", () => {
 
     const radiusOf = (nodeId: string): unknown => {
       const target = resolved.graph.nodes[nodeId];
-      const { resolved: values } = resolveComponentParameters(target!, blurManifest, resolved.scope);
+      const { resolved: values } = resolveComponentParameters(target!, blurManifest, resolved.scope, STORED_READ);
       return values.get("radius")?.value;
     };
 
@@ -107,6 +108,7 @@ describe("parent scope through resolveParameters (§V61, §V81)", () => {
       resolved.graph.nodes.b1!,
       harness.nodes.get("test.blur"),
       resolved.scope,
+      STORED_READ,
     ).resolved.get("radius");
     expect(entry?.driven).toBe(true);
     // The document value is still there: an edit writes to the static value (§V61).
@@ -119,6 +121,7 @@ describe("parent scope through resolveParameters (§V61, §V81)", () => {
       resolved.graph.nodes.b4!,
       harness.nodes.get("test.blur"),
       resolved.scope,
+      STORED_READ,
     );
     expect(outcome.resolved.get("radius")?.value).toBe(4);
     expect(outcome.resolved.get("radius")?.driven).toBe(false);
@@ -132,7 +135,7 @@ describe("parent scope through resolveParameters (§V61, §V81)", () => {
     const orphan = node("b1", "test.blur", { radius: 4 }, {
       state: { parentBindings: { radius: "parent.blur" } },
     });
-    const outcome = resolveComponentParameters(orphan, harness.nodes.get("test.blur"), undefined);
+    const outcome = resolveComponentParameters(orphan, harness.nodes.get("test.blur"), undefined, STORED_READ);
     expect(outcome.diagnostics[0]?.code).toBe("component.parentScope.no-scope");
     expect(outcome.resolved.get("radius")?.value).toBe(4);
   });
@@ -140,7 +143,7 @@ describe("parent scope through resolveParameters (§V61, §V81)", () => {
   it("leaves an unbound parameter alone", () => {
     const { harness, resolved } = navigate(["rootInst", "outerInst", "innerInst"]);
     const plain = node("plain", "test.blur", { radius: 9 });
-    const outcome = resolveComponentParameters(plain, harness.nodes.get("test.blur"), resolved.scope);
+    const outcome = resolveComponentParameters(plain, harness.nodes.get("test.blur"), resolved.scope, STORED_READ);
     expect(outcome.resolved.get("radius")).toMatchObject({ value: 9, driven: false });
     expect(outcome.diagnostics).toEqual([]);
   });
@@ -261,6 +264,7 @@ describe("T187 — a published display colour decodes ONCE (§V56, B8)", () => {
       resolved.graph.nodes.s1!,
       harness.nodes.get("test.solid"),
       resolved.scope,
+      STORED_READ,
     );
 
     // What the inspector shows the user: the space they picked in (§V56, T148).
@@ -283,6 +287,7 @@ describe("T187 — a published display colour decodes ONCE (§V56, B8)", () => {
       unbound,
       harness.nodes.get("test.solid"),
       resolved.scope,
+      STORED_READ,
     );
     expect((outcome.resolved.values.color as readonly number[])[0]).toBeCloseTo(
       MID_GREY_LINEAR,

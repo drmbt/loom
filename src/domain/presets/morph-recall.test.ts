@@ -11,7 +11,7 @@ import { createDomainBus } from "../commands/index.ts";
 import type { LoomBus } from "../commands/bus.ts";
 import { alice, bob, contextFor, patch } from "../commands/test-support.ts";
 import { createValueGraphSession } from "../channels/value-graph.ts";
-import { hasAnimatedParameters } from "../channels/graph-channels.ts";
+import { graphChannelResolver, hasAnimatedParameters } from "../channels/graph-channels.ts";
 import { NO_FLATTENING, parameterReadOptions } from "../parameters/node-references.ts";
 import { resolveParameters, srgbToLinear } from "../parameters/resolve.ts";
 import { liveClock } from "../transport/live-clock.ts";
@@ -22,6 +22,7 @@ import { constantNode } from "../../nodes/definitions/values.ts";
 import { serializePresetBank, type MorphSpec, type Preset } from "./bank.ts";
 import { parseMorphRecords, type MorphRecord } from "./morph.ts";
 import { buildMorphIndex } from "./morph-index.ts";
+import { testRead } from "../parameters/test-support.ts";
 
 /**
  * T1497b (§T1398b S2) — A RECALL WITH A MORPH, through the real bus, the real live clock
@@ -520,7 +521,7 @@ describe("exports and reopened documents render the END state (§5.4)", () => {
     // And frameless — a control, a validate, a structural compile — is the destination too.
     const graph = run.store.view.getGraph();
     const level = graph.nodes["level"] as GraphNode;
-    expect(resolveParameters(level, registry.get("level"), { morphs: buildMorphIndex({ document: graph, registry }) }).values["brightness"]).toBe(0.8);
+    expect(resolveParameters(level, registry.get("level"), testRead({ morphs: buildMorphIndex({ document: graph, registry }) })).values["brightness"]).toBe(0.8);
   });
 });
 
@@ -722,5 +723,35 @@ describe("a bank keeps at most four records (§5.2)", () => {
     expect(said[0]?.message).toContain('"blacklevel"');
     // The key only the dropped record covered is at its end value.
     expect(run.shown("level", "blacklevel")).toBe(0.5);
+  });
+});
+
+/**
+ * §T1557b / §B181's shape — A RECALL READS ITS BANK'S MORPH AT THIS MOMENT, through the
+ * command's read scope.
+ *
+ * `resolvedBank` used to resolve the bank with `{ channels }` and nothing else: no cross-node
+ * reader, so `op('k1').chan.value` on the bank's Morph reported "no reader" and fell back to
+ * its retained static (0 — a cut) while the channel said 3. The bus is wired here as the app
+ * wires it: the channel resolver (`graphChannelResolver`, the backstop of the app's ladder)
+ * and the frame the transport last produced.
+ */
+describe("§T1557b — a bank's Morph driven by op('k1').chan.value (B181's shape)", () => {
+  it("fades for the channel's seconds, not the retained static", async () => {
+    const run = session([
+      node("level", "level", "level1", { brightness: 0.2 }),
+      node("k1", "constant", "k1", { value: 3 }),
+      bank("bank", "looks", [preset("bright", { level1: { brightness: 0.8 } })], { morph: expression("op('k1').chan.value", 0) }),
+    ]);
+    run.bus.attachChannelResolver(() => graphChannelResolver(run.store.view.getGraph(), registry));
+    run.bus.attachFrame(() => run.latest());
+    run.frames(1);
+
+    const result = await recall(run, "bright");
+    expect(result.status).toBe("applied");
+    // 3 s only if the bank's Morph was read through a reader with the channels behind it.
+    // The bug read the retained static: `morph: null`, a cut.
+    expect(result.output.morph).toEqual({ seconds: 3, curve: "smooth" });
+    expect(run.records().map((each) => each.seconds)).toEqual([3]);
   });
 });

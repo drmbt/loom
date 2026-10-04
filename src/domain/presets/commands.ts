@@ -8,7 +8,8 @@ import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts";
 import { applyGraphPatch } from "../commands/apply-patch.ts";
 import { nodeByName } from "../graph/names.ts";
-import { effectiveParameterSchema, resolveParameters } from "../parameters/resolve.ts";
+import { effectiveParameterSchema, resolveParameters, resolveStored } from "../parameters/resolve.ts";
+import { parameterReadOptions, type ParameterReadContext } from "../parameters/node-references.ts";
 import {
   componentAddressedDefinition,
   componentNamesFor,
@@ -978,11 +979,24 @@ export function planPresetRecall(
   return { operations, applied, skipped, diagnostics, morph, refused: false, after };
 }
 
-/** The bank's own parameters, through the one read path (§V61). */
-function resolvedBank(node: GraphNode, context: CommandContext): Readonly<Record<string, unknown>> {
-  return resolveParameters(node, context.registry.get(node.type), {
-    ...(context.channels === undefined ? {} : { channels: context.channels }),
-  }).values;
+/**
+ * §T1557b — A BANK'S OWN SETTINGS (Select, Morph, Curve) AT THIS MOMENT, through the one read
+ * path (§V61) and a read scope (`CommandContext.readScope`, `LoomBus.readScope`).
+ *
+ * This read used to be `{ channels }` alone — no cross-node reader — so `op('k1').chan.value`
+ * on a bank's Morph fell back to its retained static while the channel said otherwise
+ * (§B181's shape), here and in the three other readers of these settings (the cue list's GO,
+ * `list_presets`, and a Recall pulse fired inside a look, which reads its flat bank directly).
+ *
+ * An INSTANCE bank's settings live on its component's page bank, a node of the DEFINITION's
+ * graph: no live channel, morph or `op()` name of the root document belongs to it, and the
+ * per-instance read is the flat bank a pulse names. So it is read as the document holds it
+ * (`resolveStored`), which is what this read always was for it.
+ */
+export function bankSettings(view: BankView, registry: NodeRegistryView, scope: ParameterReadContext): Readonly<Record<string, unknown>> {
+  const definition = registry.get(view.bank.type);
+  if (view.kind === "instance") return resolveStored(view.bank, definition).values;
+  return resolveParameters(view.bank, definition, parameterReadOptions(scope)).values;
 }
 
 /** A `MorphSpec` off the wire, or `null` when it is not one. */
@@ -1171,8 +1185,12 @@ export function registerPresetCommands(bus: LoomBus): void {
       if (inside !== null) return recallRefusal(revision, [inside]);
       // Select, Morph and Curve are the bank's — for an instance, its component's page bank's;
       // for a pulse from inside, that bank as THIS instance flattened it (its published Select).
-      const flatBank = pulse === null ? undefined : bus.flattenedGraph()?.nodes[pulse.flatId];
-      const settings = resolvedBank(flatBank ?? view.bank, context);
+      const flat = pulse === null ? undefined : bus.flattenedGraph();
+      const flatBank = pulse === null ? undefined : flat?.nodes[pulse.flatId];
+      const settings =
+        flat === undefined || flatBank === undefined
+          ? bankSettings(view, context.registry, context.readScope())
+          : resolveParameters(flatBank, context.registry.get(flatBank.type), parameterReadOptions({ ...context.readScope(), graph: flat })).values;
       const name = typeof input.name === "string" ? input.name.trim() : resolvedSelect(settings);
       if (name === "") {
         return recallRefusal(revision, [

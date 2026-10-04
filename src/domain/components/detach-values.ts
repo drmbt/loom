@@ -3,7 +3,7 @@ import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import type { ParameterDefinition, ParameterSchema, StoredParameter } from "../types/parameters.ts";
 import { numericRangeOf } from "../parameters/expression-range.ts";
-import { resolveParameterSchema } from "../parameters/resolve.ts";
+import { resolveStoredSchema } from "../parameters/resolve.ts";
 import { isParameterSlot, parseComponentKey, storedStaticValue, withBinding } from "../parameters/slots.ts";
 import { effectiveInternalOverrides } from "./flatten.ts";
 import { PARENT_BINDINGS_STATE_KEY, internalParameterPath, parseInternalParameterPath, readComponentInstance, readParentBindings } from "./instance.ts";
@@ -19,7 +19,7 @@ import { publishedPage, publishedSchema } from "./published-page.ts";
  * Detach turns those internals into real nodes, so it must write, ONCE, what flattening
  * writes every compile — or the copies show the definition's 4 where the instance showed
  * its own 2. The rule is flattening's, and the parts that decide it are shared, not
- * restated: the page is resolved by the same `resolveParameterSchema` call and projected
+ * restated: the page is resolved by the same storage read (`STORED_READ`) and projected
  * by the same `publishedPage`, the fan-out is `effectiveInternalOverrides`, and every
  * `parent.<key>` read goes through `parentBindResolver` / `parentScopeDrivers`.
  *
@@ -162,7 +162,7 @@ export function detachedValues(input: DetachedValuesInput): DetachedValues {
   const schema = publishedSchema(definition);
   // The page, resolved and projected exactly as flattening resolves and projects it. No
   // scope: whatever an instance-level `parent.` read would see is carried, not resolved.
-  const page = publishedPage(resolveParameterSchema(instance, schema), definition);
+  const page = publishedPage(resolveStoredSchema(instance, schema), definition);
   const pageScope = buildParentScope([page.values]);
   const resolveRef = parentBindResolver(pageScope);
   const inexact: string[] = [];

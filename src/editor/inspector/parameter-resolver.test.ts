@@ -6,6 +6,8 @@ import { solidNode as catalogueSolidNode } from "@nodes/definitions/solid.ts";
 import { blurNode, solidNode } from "@nodes/registry/test-nodes.ts";
 import { DEFAULT_GROUP, groupParameters } from "./parameter-groups.ts";
 import { resolveParameter, resolveParameters } from "./parameter-resolver.ts";
+import { STORED_READ } from "@domain/parameters/resolve.ts";
+import { testRead } from "@domain/parameters/test-support.ts";
 
 /**
  * The single parameter read path (doc §8.2).
@@ -27,37 +29,37 @@ function nodeWith(parameters: GraphNode["parameters"], type = blurNode.type): Gr
 
 describe("effective values", () => {
   it("returns the stored value when the document has a usable one", () => {
-    const resolved = resolveParameters(nodeWith({ radius: 12 }), blurNode);
+    const resolved = resolveParameters(nodeWith({ radius: 12 }), blurNode, STORED_READ);
     expect(resolved.get("radius")).toMatchObject({ value: 12, stored: 12, source: "static" });
     expect(resolved.values).toEqual({ radius: 12 });
   });
 
   it("falls back to the manifest default when the document has nothing", () => {
-    const resolved = resolveParameters(nodeWith({}), blurNode);
+    const resolved = resolveParameters(nodeWith({}), blurNode, STORED_READ);
     expect(resolved.get("radius")).toMatchObject({ value: 4, stored: undefined, source: "default" });
   });
 
   it("falls back when the stored value does not fit the manifest", () => {
     // An older project, a renamed type, an agent patch built against a stale schema.
-    const resolved = resolveParameters(nodeWith({ radius: "big" as unknown as number }), blurNode);
+    const resolved = resolveParameters(nodeWith({ radius: "big" as unknown as number }), blurNode, STORED_READ);
     expect(resolved.get("radius")).toMatchObject({ value: 4, source: "default" });
     expect(resolved.get("radius")?.stored).toBe("big");
   });
 
   it("keeps manifest order, which is the order the author chose", () => {
-    const resolved = resolveParameters(nodeWith({}), solidNode);
+    const resolved = resolveParameters(nodeWith({}), solidNode, STORED_READ);
     expect(resolved.entries.map((entry) => entry.key)).toEqual(Object.keys(solidNode.parameters));
   });
 
   it("resolves nothing for an unknown node type rather than guessing a schema (§V10)", () => {
-    const resolved = resolveParameters(nodeWith({ anything: 1 }, "not.registered"), undefined);
+    const resolved = resolveParameters(nodeWith({ anything: 1 }, "not.registered"), undefined, STORED_READ);
     expect(resolved.entries).toEqual([]);
     expect(resolved.values).toEqual({});
   });
 
   it("copies array-valued defaults so two nodes never share one array", () => {
-    const first = resolveParameters(nodeWith({}), solidNode).get("color")?.value;
-    const second = resolveParameters(nodeWith({}), solidNode).get("color")?.value;
+    const first = resolveParameters(nodeWith({}), solidNode, STORED_READ).get("color")?.value;
+    const second = resolveParameters(nodeWith({}), solidNode, STORED_READ).get("color")?.value;
     expect(first).toEqual(second);
     expect(first).not.toBe(second);
   });
@@ -72,7 +74,7 @@ describe("effective values", () => {
 describe("T148 — colour parameter decode", () => {
   it("decodes a display-space colour to linear for evaluation, alpha untouched", () => {
     const node = nodeWith({ color: [0.5, 0.5, 0.5, 0.7] }, solidNode.type);
-    const resolved = resolveParameters(node, solidNode);
+    const resolved = resolveParameters(node, solidNode, STORED_READ);
     const [r, g, b, a] = resolved.values["color"] as readonly number[];
     expect(r).toBeCloseTo(0.214, 3);
     expect(g).toBeCloseTo(0.214, 3);
@@ -93,13 +95,13 @@ describe("T148 — colour parameter decode", () => {
       },
     };
     const node = nodeWith({ color: [0.5, 0.5, 0.5, 0.7] }, linearColorNode.type);
-    const resolved = resolveParameters(node, linearColorNode);
+    const resolved = resolveParameters(node, linearColorNode, STORED_READ);
     expect(resolved.values["color"]).toEqual([0.5, 0.5, 0.5, 0.7]);
   });
 
   it("round-trips: the inspector's per-entry value stays what the user picked, undecoded", () => {
     const node = nodeWith({ color: [0.5, 0.5, 0.5, 0.7] }, solidNode.type);
-    const resolved = resolveParameters(node, solidNode);
+    const resolved = resolveParameters(node, solidNode, STORED_READ);
     // The control-facing value is display-space, exactly the stored number — decoding
     // it here would make the swatch drift every time it round-trips through the document.
     expect(resolved.get("color")?.value).toEqual([0.5, 0.5, 0.5, 0.7]);
@@ -108,7 +110,7 @@ describe("T148 — colour parameter decode", () => {
 
   it("falls back to the manifest default before decoding, same as any other parameter", () => {
     const node = nodeWith({}, solidNode.type);
-    const resolved = resolveParameters(node, solidNode);
+    const resolved = resolveParameters(node, solidNode, STORED_READ);
     // Default is opaque black either way, but this pins that decode runs on the
     // resolved default, not only on a stored value.
     expect(resolved.values["color"]).toEqual([0, 0, 0, 1]);
@@ -123,7 +125,7 @@ describe("T148 — colour parameter decode", () => {
     ];
     for (const { definition, key } of cases) {
       const node = nodeWith({ [key]: midGrey }, definition.type);
-      const resolved = resolveParameters(node, definition);
+      const resolved = resolveParameters(node, definition, STORED_READ);
       const [r, g, b, a] = resolved.values[key] as readonly number[];
       expect(r).toBeCloseTo(0.214, 3);
       expect(g).toBeCloseTo(0.214, 3);
@@ -151,7 +153,7 @@ describe("T148 — colour parameter decode", () => {
       },
       rampNode.type,
     );
-    const resolved = resolveParameters(node, rampNode);
+    const resolved = resolveParameters(node, rampNode, STORED_READ);
     const stops = resolved.values["stops"] as ReadonlyArray<{ position: number; color: readonly number[] }>;
 
     expect(stops).toHaveLength(2);
@@ -176,6 +178,7 @@ describe("the driver seam (doc §8.2 — keyframes, expressions, MIDI, audio, li
   it("prefers a driver's value over the stored one, and says the value is driven", () => {
     const node = nodeWith({ radius: 12 });
     const resolved = resolveParameter(node, "radius", definition, {
+      ...STORED_READ,
       drivers: { radius: () => 30 },
     });
     expect(resolved).toMatchObject({ value: 30, stored: 12, source: "driven", driven: true });
@@ -184,6 +187,7 @@ describe("the driver seam (doc §8.2 — keyframes, expressions, MIDI, audio, li
   it("validates a driver's output against the manifest like any other value", () => {
     const node = nodeWith({ radius: 12 });
     const resolved = resolveParameter(node, "radius", definition, {
+      ...STORED_READ,
       drivers: { radius: () => "nonsense" as unknown as number },
     });
     expect(resolved.value).toBe(4);
@@ -192,6 +196,7 @@ describe("the driver seam (doc §8.2 — keyframes, expressions, MIDI, audio, li
   it("falls back to the static value when a driver declines to produce one", () => {
     const node = nodeWith({ radius: 12 });
     const resolved = resolveParameter(node, "radius", definition, {
+      ...STORED_READ,
       drivers: { radius: () => undefined },
     });
     expect(resolved).toMatchObject({ value: 12, driven: false });
@@ -207,7 +212,7 @@ describe("the driver seam (doc §8.2 — keyframes, expressions, MIDI, audio, li
       randomSeed: 7,
     };
     const resolved = resolveParameter(node, "radius", definition, {
-      frame,
+      ...testRead({ frame }),
       drivers: { radius: (ctx) => (ctx.frame?.frameIndex ?? 0) / 10 },
     });
     expect(resolved.value).toBe(12);
@@ -216,7 +221,7 @@ describe("the driver seam (doc §8.2 — keyframes, expressions, MIDI, audio, li
 
 describe("grouping (T38)", () => {
   it("puts ungrouped parameters under one default group", () => {
-    const groups = groupParameters(resolveParameters(nodeWith({}), blurNode).entries);
+    const groups = groupParameters(resolveParameters(nodeWith({}), blurNode, STORED_READ).entries);
     expect(groups).toHaveLength(1);
     expect(groups[0]?.name).toBe(DEFAULT_GROUP);
   });
@@ -232,7 +237,7 @@ describe("grouping (T38)", () => {
           c: { type: "number", label: "C", default: 0, group: "Shape" },
           d: { type: "number", label: "D", default: 0, group: "Colour" },
         },
-      },
+      }, STORED_READ,
     ).entries;
 
     const groups = groupParameters(entries);

@@ -231,7 +231,7 @@ describe("component processing channel overrides", () => {
     const { bus, store } = createDomainBus({ registry: system.nodes });
     const created = await bus.execute("graph.applyPatch", patch(0, [{ op: "addNode", ref: "$c", type: componentNodeType("image", 1), position: { x: 0, y: 0 } }]), contextFor(alice));
     const id = created.output.createdIds.$c!;
-    bus.attachFlattenedGraph(() => flattenComponents({ graph: store.view.getGraph(), registry: system.nodes, components: system.components.view() }).graph);
+    bus.attachFlattenedGraph(() => flattenComponents({ graph: store.view.getGraph(), registry: system.nodes, components: system.components.view() }));
     const channelMask = { r: true, g: true, b: true, a: false };
     const result = await bus.execute("node.setChannelMask", { nodeId: `${id}/src`, channelMask }, contextFor(alice));
     expect(result.status).toBe("applied");

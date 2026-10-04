@@ -92,7 +92,7 @@ describe("§T1551b — the pulse watcher reads op('<instance>').chan.<c>", () =>
       },
       rejectionOutput: () => ({ cleared: 0 }),
     });
-    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current().graph);
+    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current());
 
     let channels: ChannelResolver = () => undefined;
     const { result } = renderHook(() => usePulseFiring(runtime, runtime.invocation, () => channels));

@@ -9,7 +9,7 @@ import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import type { GraphDocument } from "../types/graph.ts";
 import { offlineTransport } from "../../runtime/execution/offline-transport.ts";
 import { FRAME_RATE_NAMES, scopeFromFrame, evaluateExpression } from "../expressions/evaluate.ts";
-import { resolveParameters } from "../parameters/resolve.ts";
+import { STORED_READ, resolveParameters } from "../parameters/resolve.ts";
 import { dispatchFrameUniforms, sharedUniformsFromFrame, SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 import { generateKernelModule, generateSpawnHookModule } from "../../points/codegen.ts";
 import { packAttributes } from "../../points/packing.ts";
@@ -252,7 +252,7 @@ const SURFACES: readonly ClockSurface[] = [
   {
     name: "frameless parameter resolve — Text raster, component instance values (T489)",
     read: () => {
-      const resolved = resolveParameters(ABSTIME_NODE, ABSTIME_DEFINITION);
+      const resolved = resolveParameters(ABSTIME_NODE, ABSTIME_DEFINITION, STORED_READ);
       const value = resolved.values["amount"];
       if (typeof value !== "number") throw new Error("frameless resolve did not produce a number");
       // Constant by construction (there IS no frame here), and constant is non-decreasing.
@@ -945,7 +945,7 @@ describe("B97 — point kernels can read the clock that does not reset", () => {
  */
 describe("T489 — the frameless resolve scope offers the same names as a real frame", () => {
   it("resolves `abstime` to the deterministic zero rather than refusing it", () => {
-    const resolved = resolveParameters(ABSTIME_NODE, ABSTIME_DEFINITION);
+    const resolved = resolveParameters(ABSTIME_NODE, ABSTIME_DEFINITION, STORED_READ);
     // 0, not the manifest default of -1: the name is KNOWN here, it simply has no frame.
     expect(resolved.values["amount"]).toBe(0);
   });
@@ -963,7 +963,7 @@ describe("T489 — the frameless resolve scope offers the same names as a real f
       // Every CLOCK reads the deterministic zero; a RATE (T1426b/T1435b: `fps`, `subframes`)
       // reads its default, because a rate of 0 is a division by zero, not a quiet start.
       const expected = (FRAME_RATE_NAMES as readonly string[]).includes(name) ? zero[name] : 0;
-      expect(resolveParameters(node, ABSTIME_DEFINITION).values["amount"], `frameless scope knows "${name}"`).toBe(expected);
+      expect(resolveParameters(node, ABSTIME_DEFINITION, STORED_READ).values["amount"], `frameless scope knows "${name}"`).toBe(expected);
     }
   });
 });

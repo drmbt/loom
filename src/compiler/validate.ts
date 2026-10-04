@@ -13,7 +13,7 @@ import {
   type InstanceChannelSources,
 } from "../domain/parameters/node-references.ts";
 import { NO_MORPHS } from "../domain/presets/morph-index.ts";
-import type { ResolveParametersOptions } from "../domain/parameters/resolve.ts";
+import type { ParameterReadOptions, ResolveParametersOptions } from "../domain/parameters/resolve.ts";
 import { bindCycleDiagnostics } from "../domain/parameters/bind-cycles.ts";
 import { referenceCycleDiagnostics } from "../domain/graph/reference-cycles.ts";
 import { isComponentKeyOf } from "../domain/parameters/slots.ts";
@@ -39,7 +39,7 @@ import type { CompileEdge } from "./types.ts";
  * topology, same resources — so the resulting plan differs only in its uniform VALUES,
  * which is what makes the update path `updateUniforms` rather than a recompile (§V5).
  */
-export type ParameterResolution = Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs"> & {
+export type ParameterResolution = Pick<ResolveParametersOptions, "frame" | "channels" | "morphs"> & {
   /**
    * T1485b: the component instances `op('<instance>').chan.<c>` can name — the flattening's
    * `instanceChannels`, carried beside `morphs` for the same reason: the reader is built
@@ -116,10 +116,15 @@ export function resolveNodeParameters(
   parameters: ParameterSchema,
   typeLabel: string,
   diagnostics: RuntimeDiagnostic[],
-  options: ParameterResolution = {},
+  /**
+   * §T1557b: REQUIRED. `parameterReadOptions(…)` for a read at a moment (`validateGraph`,
+   * the time probe, the per-frame compile), or `STORED_READ` for a read of the document
+   * itself (flattening's published page, a requirement classification).
+   */
+  read: ParameterReadOptions,
   retainedParameterKeys: readonly string[] = [],
 ): ResolvedParameters {
-  const resolved = resolveParameterSchema(node, parameters, options);
+  const resolved = resolveParameterSchema(node, parameters, read);
 
   // §V110 belt-and-braces: the patch gate refuses cycles at write time, but a document
   // can arrive from a file. Surfacing them here keeps compile the second line, and the
@@ -172,9 +177,9 @@ export function resolveParameterValues(
   parameters: ParameterSchema,
   typeLabel: string,
   diagnostics: RuntimeDiagnostic[],
-  options: ParameterResolution = {},
+  read: ParameterReadOptions,
 ): Record<string, ParameterValue> {
-  return { ...resolveNodeParameters(node, parameters, typeLabel, diagnostics, options).values };
+  return { ...resolveNodeParameters(node, parameters, typeLabel, diagnostics, read).values };
 }
 
 /**
@@ -205,23 +210,19 @@ export function validateGraph(
    * `op('noise1').par.gain` resolves against the graph being compiled, and this function
    * is the one place that has it: every compiler entry point comes through here, so
    * building the reader once means the plan's uniforms carry referenced values without a
-   * single `compileGraph` caller having to know the seam exists. A caller MAY pass its
-   * own (`options.nodes`) — the flattener does, so an instance's internals read against
-   * the flattened graph they actually live in — and its choice wins.
+   * single `compileGraph` caller having to know the seam exists. §T1557b: a caller can no
+   * longer pass a reader of its own (`ParameterResolution` has no `nodes`): the flattener
+   * that once did reads its published page with `STORED_READ`, and every other reader is
+   * this one, built from the one factory.
    *
    * §V61 in one line: the compiler and the inspector read through the same resolver with
    * the same reader, so a reference cannot mean one thing on screen and another on the
    * GPU. That divergence is B8, and it cost this project a day.
    */
-  const resolution: ParameterResolution =
-    options.nodes === undefined
-      ? // T1129/§V837: the reader and its base come from the one factory, not from a
-        // `base` spelled out here. The `frame` and `channels` it re-supplies are the ones
-        // `options` already carries, so this spread changes nothing but where they come from.
-        // T1497b: and the preset morphs in flight, for the same reason — a reference to a
-        // fading parameter must read the fading value.
-        { ...options, ...parameterReadOptions({ graph, registry, frame: options.frame, channels: options.channels, flattening: flatteningReadsOf(options) }) }
-      : options;
+  // T1129/§V837: the reader and its base come from the one factory, not from a `base`
+  // spelled out here. T1497b: and the preset morphs in flight, for the same reason — a
+  // reference to a fading parameter must read the fading value.
+  const read = parameterReadOptions({ graph, registry, frame: options.frame, channels: options.channels, flattening: flatteningReadsOf(options) });
 
   for (const nodeId of Object.keys(graph.nodes).sort()) {
     const node = graph.nodes[nodeId];
@@ -258,7 +259,7 @@ export function validateGraph(
       effectiveParameterSchema(definition, node.parameters),
       definition.type,
       diagnostics,
-      resolution,
+      read,
       definition.retainedParameterKeys,
     );
     nodes.set(nodeId, {

@@ -235,6 +235,44 @@ export interface ResolveParametersOptions {
   morphs?: ParameterMorphs | undefined;
 }
 
+/** §T1557b: the brand. Declared, never defined, so no module can spell a value carrying it. */
+declare const PARAMETER_READ: unique symbol;
+
+/**
+ * §T1557b — WHAT AN EVALUATION READ IS RESOLVED WITH: the frame, the channels, the
+ * cross-node reader and the morphs, as ONE value produced by `parameterReadOptions`
+ * (`node-references.ts`) and nowhere else.
+ *
+ * Branded, so an object literal cannot stand in for it. Every recurrence of §B8's shape
+ * (§T593, §T1000, §T1001, §B46, §B181) was a call site that wrote its own options from
+ * whatever it held — `{ channels }` with no reader — and still compiled. The brand makes
+ * that a type error: the only ways to hold one are the factory, which takes a
+ * `ParameterReadContext` whose every field is required, and `STORED_READ`, which says by
+ * name that this read is of the document and not of a moment.
+ */
+export type ParameterReadOptions = Readonly<Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs">> & {
+  readonly [PARAMETER_READ]: true;
+};
+
+/**
+ * What a call site may add to a read: the per-node inputs no factory can know — the
+ * `parent.*` scope (§V81), the drivers a component scope supplies, the sibling schema.
+ */
+export type ResolveExtras = Pick<ResolveParametersOptions, "drivers" | "parentBind" | "schema">;
+
+/** A read plus its extras: what `resolveParameters` and its siblings take. */
+export type ParameterRead = ParameterReadOptions & ResolveExtras;
+
+/**
+ * §T1557b — THE STORAGE READ: no frame, no channels, no cross-node reader, no morphs. What
+ * the document says, with an expression at the zero frame and a driven value at its
+ * retained static (§V108). For a command locating a slot, a structural classification
+ * memoized per document revision, a detach or a flattening that bakes values back into
+ * storage. Named, so "this read is not of a moment" is a decision a reviewer can see, and
+ * never the silent result of leaving an input out. `resolveStored` is the spelled-out form.
+ */
+export const STORED_READ: ParameterReadOptions = Object.freeze({}) as ParameterReadOptions;
+
 export interface ResolvedParameters {
   entries: readonly ResolvedParameter[];
   get: (key: string) => ResolvedParameter | undefined;
@@ -531,7 +569,7 @@ interface ResolveContext {
   maps?: Map<string, ParameterMapBinding>;
 }
 
-function resolveStored(
+function resolveSlot(
   context: ResolveContext,
   key: string,
   definition: ParameterDefinition,
@@ -877,14 +915,14 @@ function blendValues(
 /**
  * T1497b — WHAT ONE STORED KEY IS WORTH AT A FRAME, preset morphs included.
  *
- * Every read of a stored key comes through here rather than through `resolveStored`
+ * Every read of a stored key comes through here rather than through `resolveSlot`
  * directly — the bare key, a compound's base, each of its component slots, and a sibling
  * read by a bind — so a morphing value is the same number to all of them (§V109).
  *
  * The fold is the design doc's §5.3, verbatim: start from the OLDEST running record's
  * `from` slot and blend through the records in order,
  * `V = blend(V, resolve(to_i), progress_i)`. Both ends are RESOLVED, at this frame, by the
- * same `resolveStored` everything else uses — so an end that is an expression keeps
+ * same `resolveSlot` everything else uses — so an end that is an expression keeps
  * moving through the fade, and a second recall mid-fade starts from the value the first
  * had reached on screen, with no jump. The newest step's `to` is the slot the document
  * stores, so its resolution is the settled one and is not computed twice.
@@ -899,7 +937,7 @@ function resolveStoredAt(
   definition: ParameterDefinition,
   stored: StoredParameter | undefined,
 ): StoredResolution {
-  const settled = resolveStored(context, key, definition, stored);
+  const settled = resolveSlot(context, key, definition, stored);
   const { frame, morphs } = context.options;
   if (frame === undefined || morphs === undefined) return settled;
   const steps = morphs.stepsAt(context.node.id, key, frame);
@@ -908,14 +946,14 @@ function resolveStoredAt(
   // The ends are resolved for their VALUE only: a `from` slot in map mode must not file a
   // mapping for a parameter that is no longer mapped.
   const ends: ResolveContext = { node: context.node, options: context.options, visited: context.visited };
-  let value: ParameterValue | undefined = resolveStored(ends, key, definition, (steps[0] as ParameterMorphStep).from).value;
+  let value: ParameterValue | undefined = resolveSlot(ends, key, definition, (steps[0] as ParameterMorphStep).from).value;
   for (let index = 0; index < steps.length; index += 1) {
     const step = steps[index] as ParameterMorphStep;
     // T1508b: a timed step's end is the CUE's, never the stored slot, so it is resolved; and
     // a timed step that has arrived IS its end — exactly, with no `mix(a, b, 1)` rounding —
     // which is also how a type with no in-between (an enum, a string) cuts at its cue.
     const target =
-      index === steps.length - 1 && step.timed !== true ? settled.value : resolveStored(ends, key, definition, step.to).value;
+      index === steps.length - 1 && step.timed !== true ? settled.value : resolveSlot(ends, key, definition, step.to).value;
     value = step.timed === true && step.progress >= 1 ? target : blendValues(definition, value, target, step.progress);
     if (value === undefined) return settled;
   }
@@ -1135,11 +1173,24 @@ function resolveCompound(
   return { ...base, value: assembled, driven, components };
 }
 
+/**
+ * One parameter, through the one read path (§V61). §T1557b: `read` is required and comes from
+ * `parameterReadOptions` (or is `STORED_READ`, spread with the sibling schema).
+ */
 export function resolveParameter(
   node: GraphNode,
   key: string,
   definition: ParameterDefinition,
-  options: ResolveParametersOptions = {},
+  read: ParameterRead,
+): ResolvedParameter {
+  return resolveOne(node, key, definition, read);
+}
+
+function resolveOne(
+  node: GraphNode,
+  key: string,
+  definition: ParameterDefinition,
+  options: ResolveParametersOptions,
   /** T286: shared collector for map-mode bindings, threaded by resolveParameterSchema. */
   maps?: Map<string, ParameterMapBinding>,
 ): ResolvedParameter {
@@ -1211,10 +1262,33 @@ export function resolveParameter(
  * instance's parameter page is the component's PUBLISHED definitions, which exist
  * before any node manifest does (§V80) — and one resolver is the point.
  */
+export function resolveParameterSchema(node: GraphNode, schema: ParameterSchema, read: ParameterRead): ResolvedParameters;
+/**
+ * @deprecated §T1557b — the optional-options form, kept ONLY for callers another session owns
+ * (`effective-schema-closure.test.ts`'s `LEGACY_READ_CALLERS` names each). Pass
+ * `parameterReadOptions(…)`, or `STORED_READ` for a read of the document itself.
+ */
+export function resolveParameterSchema(node: GraphNode, schema: ParameterSchema, options?: ResolveParametersOptions): ResolvedParameters;
 export function resolveParameterSchema(
   node: GraphNode,
   schema: ParameterSchema,
   options: ResolveParametersOptions = {},
+): ResolvedParameters {
+  return resolveSchemaWith(node, schema, options);
+}
+
+/**
+ * §T1557b — the storage read of a bare schema (`STORED_READ`): a component's published page
+ * as the document holds it, for a detach that writes it back.
+ */
+export function resolveStoredSchema(node: GraphNode, schema: ParameterSchema, extras: ResolveExtras = {}): ResolvedParameters {
+  return resolveSchemaWith(node, schema, { ...STORED_READ, ...extras });
+}
+
+function resolveSchemaWith(
+  node: GraphNode,
+  schema: ParameterSchema,
+  options: ResolveParametersOptions,
 ): ResolvedParameters {
   const entries: ResolvedParameter[] = [];
   const values: Record<string, ParameterValue> = {};
@@ -1224,7 +1298,7 @@ export function resolveParameterSchema(
     options.schema === undefined ? { ...options, schema } : options;
 
   for (const [key, parameter] of Object.entries(schema)) {
-    const resolved = resolveParameter(node, key, parameter, withSchema, maps);
+    const resolved = resolveOne(node, key, parameter, withSchema, maps);
     entries.push(resolved);
     values[key] = evaluationValue(parameter, resolved.value);
     if (resolved.diagnostic !== null) diagnostics.push(resolved.diagnostic);
@@ -1290,10 +1364,29 @@ export function effectiveParameterSchema(
  * Effective parameters of a node, in manifest order. An unknown node type (§V10
  * placeholder) resolves to nothing rather than guessing a schema.
  */
+export function resolveParameters(node: GraphNode, definition: NodeDefinition | undefined, read: ParameterRead): ResolvedParameters;
+/**
+ * @deprecated §T1557b — the optional-options form, kept ONLY for callers another session owns
+ * (`effective-schema-closure.test.ts`'s `LEGACY_READ_CALLERS` names each). Pass
+ * `parameterReadOptions(…)` for an evaluation read, or call `resolveStored` for a read of
+ * the document itself.
+ */
+export function resolveParameters(node: GraphNode, definition: NodeDefinition | undefined, options?: ResolveParametersOptions): ResolvedParameters;
 export function resolveParameters(
   node: GraphNode,
   definition: NodeDefinition | undefined,
   options: ResolveParametersOptions = {},
 ): ResolvedParameters {
-  return resolveParameterSchema(node, effectiveParameterSchema(definition, node.parameters), options);
+  return resolveSchemaWith(node, effectiveParameterSchema(definition, node.parameters), options);
+}
+
+/**
+ * §T1557b — THE STORAGE READ of a node (`STORED_READ`): what the document says, with no
+ * frame, no channels, no cross-node reader and no morphs. For the reads that want the
+ * document on purpose — a command locating a slot, a classification memoized per document
+ * revision, a detach. An EVALUATION read (what is on screen, what the plan renders) goes
+ * through `parameterReadOptions` instead; the design doc's table records which is which.
+ */
+export function resolveStored(node: GraphNode, definition: NodeDefinition | undefined, extras: ResolveExtras = {}): ResolvedParameters {
+  return resolveSchemaWith(node, effectiveParameterSchema(definition, node.parameters), { ...STORED_READ, ...extras });
 }

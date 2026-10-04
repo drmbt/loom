@@ -12,6 +12,7 @@ import {
   resolveParameterSchema,
   type ChannelResolver,
   type ParameterMorphs,
+  type ParameterReadOptions,
   type ParameterSchemaSource,
   type ResolvedParameters,
   type ResolveParametersOptions,
@@ -359,10 +360,10 @@ function targetOf(
   // The recursive step. The target resolves with the same frame and channels, and with
   // a reader that remembers we came through here — so a loop is caught one hop before
   // it would repeat rather than however many frames later the stack gives out.
-  const resolved = resolveParameterSchema(target, schema, {
+  const resolved = resolveParameterSchema(target, schema, readOptionsOf({
     ...options.base,
     nodes: readerWithin(options, new Set([...visited, targetId]), scope),
-  });
+  }));
   if (scope.cycles === firesBefore) scope.resolved.set(targetId, resolved);
   return resolved;
 }
@@ -461,16 +462,14 @@ export interface ParameterReadContext {
  * remembered to hand them to. They are required now (`ParameterReadContext`), and
  * `parameter-read-context.test.ts` holds that no product file builds a reader any other way.
  */
-export function parameterReadOptions(
-  context: ParameterReadContext,
-): Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs"> {
+export function parameterReadOptions(context: ParameterReadContext): ParameterReadOptions {
   const { morphs, instanceChannels } = context.flattening;
   const base = {
     ...(context.channels === undefined ? {} : { channels: context.channels }),
     ...(context.frame === undefined ? {} : { frame: context.frame }),
     morphs,
   };
-  return {
+  return readOptionsOf({
     nodes: createNodeReferenceReader({
       graph: context.graph,
       /*
@@ -483,7 +482,16 @@ export function parameterReadOptions(
       instances: instanceChannels,
     }),
     ...base,
-  };
+  });
+}
+
+/**
+ * §T1557b — THE BRAND, applied. This module is the producer of `ParameterReadOptions`, and
+ * the only one: `node-references.test.ts` refuses the cast anywhere else, so a read is
+ * either built here from a complete `ParameterReadContext` or it is `STORED_READ`.
+ */
+function readOptionsOf(options: Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs">): ParameterReadOptions {
+  return options as ParameterReadOptions;
 }
 
 /**
@@ -505,9 +513,7 @@ export interface LegacyParameterReadContext {
  * still fails "there is no node named …" until that caller hands a flattening.
  * @deprecated Use `parameterReadOptions`.
  */
-export function createParameterReadOptions(
-  context: LegacyParameterReadContext,
-): Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs"> {
+export function createParameterReadOptions(context: LegacyParameterReadContext): ParameterReadOptions {
   return parameterReadOptions({
     graph: context.graph,
     registry: context.registry,

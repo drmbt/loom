@@ -16,6 +16,8 @@ import type { NodeId } from "@domain/types/ids.ts";
 import type { StoredParameter } from "@domain/types/parameters.ts";
 import { cueListNode } from "@nodes/definitions/cue-list.ts";
 import { presetsNode } from "@nodes/definitions/presets.ts";
+import { constantNode } from "@nodes/definitions/values.ts";
+import { graphChannelResolver } from "@domain/channels/graph-channels.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { testNodeDefinitions } from "@nodes/registry/test-nodes.ts";
 
@@ -40,7 +42,7 @@ import type { ToolResult } from "./types.ts";
 
 const AGENT: Actor = { kind: "agent", id: "claude", label: "Claude" };
 
-const registry = createNodeRegistry([...testNodeDefinitions, presetsNode, cueListNode]).view();
+const registry = createNodeRegistry([...testNodeDefinitions, presetsNode, cueListNode, constantNode]).view();
 
 function node(id: NodeId, type: string, label: string, parameters: Record<string, StoredParameter> = {}): GraphNode {
   return { id, type, label, definitionVersion: 1, position: { x: 0, y: 0 }, parameters };
@@ -67,13 +69,14 @@ interface Session {
   at(clock: FrameClock | undefined): void;
 }
 
-function session(): Session {
+function session(extra: { readonly nodes?: readonly GraphNode[]; readonly looks?: Record<string, StoredParameter> } = {}): Session {
   const nodes = [
     node("blur", "test.blur", "blur1", { radius: 4 }),
     node("solid", "test.solid", "solid1", { amount: 0.25 }),
-    presetBankNode("looks", "looks", "blur1", LOOKS),
+    presetBankNode("looks", "looks", "blur1", LOOKS, extra.looks),
     presetBankNode("fx", "fx", "solid1", FX),
     node("list", "cueList", "set", { cues: serializeCueList({ version: 1, cues: SET }) }),
+    ...(extra.nodes ?? []),
   ];
   const initialGraph: GraphDocument = { revision: 0, nodes: Object.fromEntries(nodes.map((each) => [each.id, each])), edges: {}, groups: {} };
   const store = createGraphStore({ ids: createSequentialIdFactory("t"), now: () => "2026-10-02T00:00:00.000Z", initialGraph });
@@ -409,5 +412,30 @@ describe("the nine tools on the surface (T1502b, §V38, §V39)", () => {
     const curve = await surface.callTool("recall_preset", { nodeId: "looks", name: "b", morph: { seconds: 1, curve: "bounce" } });
     expect(curve.status).toBe("error");
     expect(value(store, "blur", "radius")).toBe(4);
+  });
+});
+
+/**
+ * §T1557b / §B181's shape — list_presets reports the morph a plain recall WOULD use, and
+ * reads the bank's Morph as the recall reads it: at this moment, through the read scope.
+ * `bankView` used to resolve the bank with `{ channels }` alone, so `op('k1').chan.value`
+ * on the bank's Morph had no cross-node reader, fell back to its retained static and the
+ * listing said "a cut" while a recall (once fixed) would fade for 3 s. The bus is wired as
+ * the app wires it: the channel resolver (`graphChannelResolver`, the backstop of the
+ * app's ladder).
+ */
+describe("§T1557b — list_presets on a bank whose Morph is op('k1').chan.value (B181's shape)", () => {
+  it("reports the channel's seconds, not the retained static", async () => {
+    const { bus, store, surface } = session({
+      nodes: [node("k1", "constant", "k1", { value: 3 })],
+      looks: { morph: { mode: "expression", bindings: { static: { kind: "static", value: 0 }, expression: { kind: "expression", source: "op('k1').chan.value" } } } },
+    });
+    bus.attachChannelResolver(() => graphChannelResolver(store.view.getGraph(), registry));
+    const { banks } = await banksOf(surface);
+    const looks = banks.find((bank) => bank.nodeId === "looks");
+    expect(looks?.presets.map((preset) => preset.morph)).toEqual([
+      { seconds: 3, curve: "smooth" },
+      { seconds: 3, curve: "smooth" },
+    ]);
   });
 });

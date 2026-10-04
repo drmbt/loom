@@ -7,8 +7,9 @@ import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { evaluateExpression } from "../expressions/index.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { ParameterSchema } from "../types/parameters.ts";
-import { NO_FLATTENING, createNodeReferenceReader, parameterReadOptions } from "./node-references.ts";
+import { NO_FLATTENING, parameterReadOptions } from "./node-references.ts";
 import { resolveParameterSchema } from "./resolve.ts";
+import { testRead } from "./test-support.ts";
 
 /**
  * The cross-node read path (T316, §V148, §V152).
@@ -45,13 +46,17 @@ const expression = (source: string) => ({
   bindings: { expression: { kind: "expression" as const, source } },
 });
 
-function readerFor(graph: GraphDocument) {
-  return createNodeReferenceReader({ graph, schemaOf: () => SCHEMA });
+/** Every node in these graphs carries `SCHEMA`, as the factory's catalogue sees it. */
+const SCHEMA_REGISTRY = { get: () => ({ parameters: SCHEMA }) };
+
+/** §T1557b: a read over `graph` through the one factory — its `nodes` is the reader. */
+function readFor(graph: GraphDocument, channels?: (address: string) => number | undefined) {
+  return testRead({ graph, registry: SCHEMA_REGISTRY, channels });
 }
 
 /** What an expression on `subject` resolves to, with the reader attached. */
 function resolve(graph: GraphDocument, subject: GraphNode, key = "gain") {
-  return resolveParameterSchema(subject, SCHEMA, { nodes: readerFor(graph) }).get(key);
+  return resolveParameterSchema(subject, SCHEMA, readFor(graph)).get(key);
 }
 
 describe("reading op('name').par.key (T316)", () => {
@@ -244,8 +249,7 @@ describe("reading op('name').chan.channel (T901)", () => {
   };
 
   function resolveWith(graph: GraphDocument, subject: GraphNode) {
-    const reader = createNodeReferenceReader({ graph, schemaOf: () => SCHEMA, base: { channels } });
-    return resolveParameterSchema(subject, SCHEMA, { nodes: reader, channels }).get("gain");
+    return resolveParameterSchema(subject, SCHEMA, readFor(graph, channels)).get("gain");
   }
 
   it("reads a named channel and does inline maths over it", () => {
@@ -361,6 +365,21 @@ describe("T1129 — the parameter read options come from one factory", () => {
         "adapter, so it reads no instance channels and silently drops whatever the context " +
         "grows next. Call `parameterReadOptions` with the flattening (T1551b).",
     ).toEqual(["src/app/media-playback.ts", "src/domain/parameters/node-references.ts"]);
+
+    /*
+     * §T1557b — and none MINTS one. `ParameterReadOptions` is branded so an options literal
+     * cannot stand in for it; a cast is the one way round the brand, and the two producers
+     * are the only modules allowed it: the factory, and `STORED_READ` beside the resolver.
+     */
+    const minted = sources
+      .filter((file) => /\bas\s+ParameterReadOptions\b/.test(code(file)))
+      .map((file) => relative(root, file).replaceAll("\\", "/"));
+    expect(
+      minted,
+      "A module casts a value to `ParameterReadOptions` instead of asking `parameterReadOptions` " +
+        "for one, which is the options literal the brand exists to refuse (§B181's shape). " +
+        "Build it from a complete `ParameterReadContext`, or pass `STORED_READ` (T1557b).",
+    ).toEqual(["src/domain/parameters/node-references.ts", "src/domain/parameters/resolve.ts"]);
   });
 });
 
@@ -394,9 +413,9 @@ describe("T1172 — the reader's name index", () => {
     const graph = graphOf(a, b, subject, other);
 
     // One reader for all four reads, exactly as one compile resolves a whole graph.
-    const reader = readerFor(graph);
+    const options = readFor(graph);
     const read = (subjectNode: GraphNode) =>
-      resolveParameterSchema(subjectNode, SCHEMA, { nodes: reader }).get("gain")?.value;
+      resolveParameterSchema(subjectNode, SCHEMA, options).get("gain")?.value;
     expect(read(subject)).toBe(3);
     expect(read(other)).toBe(5);
     expect(read(subject)).toBe(3);
@@ -443,9 +462,9 @@ describe("T1172 — the reader's name index", () => {
     // A lazily built index must be built at all: an absent name has to come back absent
     // rather than as whatever the previous question found.
     const graph = graphOf(node("n1", "a", { gain: 3 }), node("n2", "x", { gain: expression("op('a').par.gain") }));
-    const reader = readerFor(graph);
-    expect(resolveParameterSchema(graph.nodes["n2"]!, SCHEMA, { nodes: reader }).get("gain")?.value).toBe(3);
-    expect(reader("nope", ["par", "gain"])).toEqual({
+    const options = readFor(graph);
+    expect(resolveParameterSchema(graph.nodes["n2"]!, SCHEMA, options).get("gain")?.value).toBe(3);
+    expect(options.nodes?.("nope", ["par", "gain"])).toEqual({
       ok: false,
       reason: `op('nope').par.gain: there is no node named "nope"`,
     });
@@ -500,14 +519,15 @@ describe("T1172 — the per-reader memo of a referenced node's parameters", () =
     const sink = node("n3", "sink", { gain: expression("op('relay').par.gain * 10") });
     const graph = graphOf(clock, relay, sink);
     const at = (timeSeconds: number) =>
-      resolveParameterSchema(sink, SCHEMA, {
-        frame: { timeSeconds, deltaSeconds: 1 / 60, frameIndex: timeSeconds * 60, mode: "realtime", randomSeed: 1 },
-        nodes: createNodeReferenceReader({
+      resolveParameterSchema(
+        sink,
+        SCHEMA,
+        testRead({
           graph,
-          schemaOf: () => SCHEMA,
-          base: { frame: { timeSeconds, deltaSeconds: 1 / 60, frameIndex: timeSeconds * 60, mode: "realtime", randomSeed: 1 } },
+          registry: SCHEMA_REGISTRY,
+          frame: { timeSeconds, deltaSeconds: 1 / 60, frameIndex: timeSeconds * 60, mode: "realtime", randomSeed: 1 },
         }),
-      }).get("gain");
+      ).get("gain");
 
     expect(at(0)?.value).toBe(10); // (0 * 2 + 1) * 10
     expect(at(1)?.value).toBe(30); // (2 + 1) * 10
@@ -598,9 +618,9 @@ describe("T1172 — the per-reader memo of a referenced node's parameters", () =
       node("nt", "t", { gain: expression("op('x').par.other") }),
     );
     const readsOf = (order: readonly string[]) => {
-      const reader = createNodeReferenceReader({ graph, schemaOf: () => two });
+      const options = testRead({ graph, registry: { get: () => ({ parameters: two }) } });
       return order.map((id) =>
-        resolveParameterSchema(graph.nodes[id]!, two, { nodes: reader }).get("gain"),
+        resolveParameterSchema(graph.nodes[id]!, two, options).get("gain"),
       );
     };
 
@@ -643,9 +663,7 @@ describe("a bind that names a NODE says what to write instead (T1207)", () => {
   const channels = (address: string) => (address === "lfo1" || address === "lfo1:value" ? 0.5 : undefined);
 
   function bound(graph: GraphDocument, subject: GraphNode, withChannels = false) {
-    const base = withChannels ? { channels } : {};
-    const reader = createNodeReferenceReader({ graph, schemaOf: () => SCHEMA, base });
-    return resolveParameterSchema(subject, SCHEMA, { nodes: reader, ...base }).get("gain");
+    return resolveParameterSchema(subject, SCHEMA, readFor(graph, withChannels ? channels : undefined)).get("gain");
   }
 
   it("names expression mode and the exact op() the ref meant — .par when the node declares it", () => {

@@ -15,7 +15,7 @@ import type {
 import { nodeByName, nodeName } from "../graph/names.ts";
 import { pulseCommandInput } from "../parameters/pulse.ts";
 import { parameterReference, parseParameterReference } from "../parameters/reference.ts";
-import { resolveParameter, effectiveParameterSchema } from "../parameters/resolve.ts";
+import { resolveParameter, effectiveParameterSchema, STORED_READ } from "../parameters/resolve.ts";
 import {
   componentAddressedDefinition,
   componentKey,
@@ -428,7 +428,7 @@ function capture(
   const parsed = schema[key] === undefined ? parseComponentKey(key) : null;
   const baseDefinition = parsed === null ? undefined : schema[parsed.base];
   if (parsed !== null && baseDefinition !== undefined) {
-    const base = resolveParameter(found.node, parsed.base, baseDefinition, { schema });
+    const base = resolveParameter(found.node, parsed.base, baseDefinition, { ...STORED_READ, schema });
     const names = componentNamesFor(baseDefinition) ?? [];
     const component = base.components?.[names.indexOf(parsed.component)];
     const name = nodeName(found.node);
@@ -448,7 +448,7 @@ function capture(
       typeName: found.definition.type,
     };
   }
-  const resolved = resolveParameter(found.node, key, found.definition, { schema });
+  const resolved = resolveParameter(found.node, key, found.definition, { ...STORED_READ, schema });
   const name = nodeName(found.node);
   const stored = found.node.parameters[key];
   const slot = isParameterSlot(stored) ? stored : null;
@@ -1185,7 +1185,7 @@ export function registerParameterCommands(
       // seed value against the static schema would hand a reflected control an unresolvable
       // key and seed the mode it is switching INTO from nothing.
       const schema = effectiveParameterSchema(context.registry.get(found.node.type), found.node.parameters);
-      const resolved = resolveParameter(found.node, input.parameterKey, found.definition, { schema });
+      const resolved = resolveParameter(found.node, input.parameterKey, found.definition, { ...STORED_READ, schema });
       const stored = found.node.parameters[input.parameterKey];
       const slot = isParameterSlot(stored) ? stored : slotFromValue(resolved.value);
       const next = withMode(slot, input.mode, resolved.value);

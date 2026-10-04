@@ -613,6 +613,9 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       // T1508b: the timeline reading of the same frame — where a timed cue list is.
       return { epoch: frame.absEpoch, absTimeSeconds: frame.absTimeSeconds, timeSeconds: frame.timeSeconds, timelineRate: timelineRate(frame) };
     });
+    // §T1557b: and the frame itself, for `readScope` — a command's parameter read resolves
+    // at the frame on screen, off the same record the clock above is read from.
+    bus.attachFrame(() => latestFrameRef.current?.frame);
   }, [bus]);
 
   useEffect(() => {

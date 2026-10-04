@@ -3,7 +3,7 @@ import type { CompiledGraph } from "@compiler/index.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
-import { resolveParameters } from "@domain/parameters/index.ts";
+import { resolveStored } from "@domain/parameters/index.ts";
 import { EMISSION_PUMPS } from "@domain/render/emission-pumps.ts";
 import { emissionRefusal } from "@domain/render/side-effects.ts";
 import { desktopOutputBridge } from "@devices/native-output.ts";
@@ -27,7 +27,8 @@ export function useNativeOutputs(runtime: AppRuntime, backend: LoomBackend | nul
     return Object.values(graph.nodes).filter(node => TYPES.has(node.type) && !isSilencedSource(node))
       .map(node => {
         const definition = runtime.registry.get(node.type)!;
-        const values = resolveParameters(node, definition).values;
+        // §T1557b: the document (`resolveStored`) — a session is keyed on these, per revision.
+        const values = resolveStored(node, definition).values;
         const edge = Object.values(graph.edges).find(edge => edge.target.nodeId === node.id && edge.target.portId === "input");
         const source = compiled?.outputs.find(output => output.nodeId === edge?.source.nodeId && output.portId === edge.source.portId);
         const selection = source && demanded.has(node.id) ? { resourceId: source.resourceId, size: source.size } : null;

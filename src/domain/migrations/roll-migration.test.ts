@@ -6,7 +6,7 @@ import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { createComponentSystem } from "../components/index.ts";
 import { cameraPayloadMatrix, transformPoint } from "../geometry/camera.ts";
 import { NO_FLATTENING, parameterReadOptions } from "../parameters/node-references.ts";
-import { resolveParameters } from "../parameters/resolve.ts";
+import { STORED_READ, resolveParameters } from "../parameters/resolve.ts";
 import { loadProject } from "../project/load.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { ParameterSlot } from "../types/parameters.ts";
@@ -123,7 +123,7 @@ describe("4 → 5: camera roll turns right-handed, and a saved document frames w
     expect(slot.mode).toBe("expression");
     expect(slot.bindings.expression).toEqual({ kind: "expression", source: "-(30 + 0 * time)" });
     expect(slot.bindings.static).toEqual({ kind: "static", value: -30 });
-    expect(resolveParameters(nodeOf(document.graph, "camE"), cameraDefinition).values["roll"]).toBe(-30);
+    expect(resolveParameters(nodeOf(document.graph, "camE"), cameraDefinition, STORED_READ).values["roll"]).toBe(-30);
   });
 
   it("an expression reading a camera's roll by reference still reads what it read", () => {
@@ -151,7 +151,7 @@ describe("4 → 5: camera roll turns right-handed, and a saved document frames w
     const flat = flattenComponents({ graph: document.graph, registry: system.nodes, components: system.components.view() });
     const rolls = Object.values(flat.graph.nodes)
       .filter((entry) => entry.type === "camera" && entry.id.startsWith("rig"))
-      .map((entry) => [entry.id.startsWith("rigA") ? "A" : "B", resolveParameters(entry, cameraDefinition).values["roll"]]);
+      .map((entry) => [entry.id.startsWith("rigA") ? "A" : "B", resolveParameters(entry, cameraDefinition, STORED_READ).values["roll"]]);
     expect(Object.fromEntries(rolls)).toEqual({ A: -9, B: -11 });
   });
 });

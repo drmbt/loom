@@ -13,6 +13,8 @@ import { createNodeRegistry, type NodeRegistryView } from "../../nodes/registry/
 import { testNodeDefinitions } from "../../nodes/registry/test-nodes.ts";
 import { cueListNode } from "../../nodes/definitions/cue-list.ts";
 import { presetsNode } from "../../nodes/definitions/presets.ts";
+import { constantNode } from "../../nodes/definitions/values.ts";
+import { graphChannelResolver } from "../channels/graph-channels.ts";
 import type { MorphSpec, Preset } from "./bank.ts";
 import { parseCueList, serializeCueList, type Cue } from "./cue-list.ts";
 import { parseMorphRecords } from "./morph.ts";
@@ -34,7 +36,7 @@ import { presetBankNode } from "./test-support.ts";
  *   3  looks/b      blur1.radius → 20
  */
 
-const registry: NodeRegistryView = createNodeRegistry([...testNodeDefinitions, presetsNode, cueListNode]).view();
+const registry: NodeRegistryView = createNodeRegistry([...testNodeDefinitions, presetsNode, cueListNode, constantNode]).view();
 
 function node(id: NodeId, type: string, label: string, parameters: Record<string, StoredParameter> = {}): GraphNode {
   return { id, type, label, definitionVersion: 1, position: { x: 0, y: 0 }, parameters };
@@ -802,5 +804,31 @@ describe("T1508b — a list that follows the timeline is all-timed: GO, BACK and
     at({ epoch: "show", absTimeSeconds: 99, timeSeconds: 60 / 30, timelineRate: 30 });
     expect(await report()).toMatchObject({ timelineCurrent: "2", timelineNext: null });
     expect((await report())?.warnings).toEqual(['Cue "3" (set) has no At time, so the timeline skips it.']);
+  });
+});
+
+/**
+ * §T1557b / §B181's shape — GO reads the bank's Morph at this moment, through the command's
+ * read scope. `resolvedValues` used to resolve with `{ channels }` alone: no cross-node
+ * reader, so `op('k1').chan.value` on the bank's Morph fell back to its retained static (0, a
+ * cut) while the channel said 3. The bus is wired as the app wires it: the channel resolver
+ * (`graphChannelResolver`, the backstop of the app's ladder) and the frame clock.
+ */
+describe("§T1557b — GO on a bank whose Morph is op('k1').chan.value (B181's shape)", () => {
+  it("fades for the channel's seconds, not the retained static", async () => {
+    const driven = stage([node("k1", "constant", "k1", { value: 3 })]).map((each) =>
+      each.id === "looks"
+        ? { ...each, parameters: { ...each.parameters, morph: { mode: "expression", bindings: { static: { kind: "static", value: 0 }, expression: { kind: "expression", source: "op('k1').chan.value" } } } as StoredParameter } }
+        : each,
+    );
+    const { bus, store, at } = session(driven);
+    bus.attachChannelResolver(() => graphChannelResolver(store.view.getGraph(), registry));
+    at({ epoch: "show", absTimeSeconds: 5 });
+
+    const result = await go(bus);
+    expect(result.status).toBe("applied");
+    // Cue 1 (looks/a) carries no morph and neither does its preset: the bank's Morph decides.
+    // 3 s only if it was read through a reader with the channels behind it; the bug cut.
+    expect(parseMorphRecords(value(store, "looks", "morphs")).map((each) => each.seconds)).toEqual([3]);
   });
 });

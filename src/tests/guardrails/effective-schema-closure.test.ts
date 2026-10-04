@@ -297,17 +297,13 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
   },
   "src/domain/commands/parameter-commands.test.ts": {
     reason:
-      `${TYPE_ONLY_UNIT_TEST} ELEVEN now, not seven, and every one is the funnel's own ` +
+      `${TYPE_ONLY_UNIT_TEST} EIGHT (§T1557b: the three reader-schemaOf reads became testRead reads over a registry), and every one is the funnel's own ` +
       "argument: `menuNode` is a fixture definition declared in this file, and each read " +
-      "hands its declared block INTO `resolveParameterSchema(node, menuNode.parameters)` or " +
-      "into a `createNodeReferenceReader({ schemaOf })`. Calling `effectiveParameterSchema` " +
+      "hands its declared block INTO `resolveParameterSchema(node, menuNode.parameters)`. Calling `effectiveParameterSchema` " +
       "first would only pre-apply the funnel to its own input — the fixture has no " +
       "`parametersFor`, so the two are the same object, and the indirection would hide " +
       "which schema the resolver was actually given.",
     reads: [
-      "menuNode.parameters",
-      "menuNode.parameters",
-      "menuNode.parameters",
       "menuNode.parameters",
       "menuNode.parameters",
       "menuNode.parameters",
@@ -504,6 +500,14 @@ function programOf(configPath: string): { program: ts.Program; checker: ts.TypeC
   return { program, checker: program.getTypeChecker() };
 }
 
+/**
+ * ONE program for the repo, shared by both closures in this file: building it is the whole
+ * cost of this gate (~8 s), and `test:gates` runs before every commit.
+ */
+let repoProgram: { program: ts.Program; checker: ts.TypeChecker } | undefined;
+const repo = (): { program: ts.Program; checker: ts.TypeChecker } =>
+  (repoProgram ??= programOf(path.join(REPO_ROOT, "tsconfig.app.json")));
+
 function tally(entries: readonly { file: string; read: string }[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const entry of entries) {
@@ -522,7 +526,7 @@ const FIX =
 
 describe("§T903 — nothing reads a node's parameter schema outside the funnel", () => {
   const collected = (() => {
-    const { program, checker } = programOf(path.join(REPO_ROOT, "tsconfig.app.json"));
+    const { program, checker } = repo();
     return collectSchemaReads(program, checker, path.join(REPO_ROOT, "src"));
   })();
 
@@ -606,4 +610,134 @@ describe("§T903 — nothing reads a node's parameter schema outside the funnel"
     expect(collected.length).toBeGreaterThan(50);
     expect(collected.some((entry) => entry.file === FUNNEL)).toBe(true);
   });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════
+ * §T1557b — NO PARAMETER READ IS BUILT WITHOUT ITS INPUTS
+ * ═══════════════════════════════════════════════════════════════════════════════════
+ *
+ * `resolveParameters` and `resolveParameterSchema` take a `ParameterRead`: a branded value
+ * only `parameterReadOptions` (every input required) or `STORED_READ` (the document, said
+ * by name) can produce. An options literal — `{ channels }` with no reader, §B181's shape
+ * and the fifth recurrence of §B8's — no longer typechecks against that signature.
+ *
+ * Except through ONE door left open on purpose: a `@deprecated` overload taking the old
+ * optional options, kept only because the callers below are owned by other sessions right
+ * now. A call that lands on it compiles, so THIS is what holds the line until the overload
+ * is deleted: it asks the checker which declaration every call resolved to, and fails on
+ * any caller of the deprecated one that is not named here. When the list is empty, delete
+ * the overload (`resolve.ts`) and this block with it — the type then does the whole job.
+ */
+const LEGACY_READ_CALLERS: Readonly<Record<string, { readonly reason: string; readonly calls: readonly string[] }>> = {
+  "src/app/use-media-sources.ts": {
+    reason: "a Text raster's frameless read; the media worker owns this file (design doc item 5).",
+    calls: ["resolveParameters"],
+  },
+  "src/domain/media/transport.ts": {
+    reason: "the free-run classification (a storage read: `resolveStored`); the media worker owns this file (design doc item 5).",
+    calls: ["resolveParameters"],
+  },
+  "src/domain/media/transport.test.ts": {
+    reason: "the free-run classification's own test; the media worker owns `src/domain/media/**` (design doc item 5).",
+    calls: ["resolveParameters"],
+  },
+  "src/domain/channels/value-graph.ts": {
+    reason: "the value graph's frame-scoped read; another session has uncommitted work here (it needs `parameterReadOptions`).",
+    calls: ["resolveParameterSchema"],
+  },
+};
+
+const LEGACY_READ_NAMES = new Set(["resolveParameters", "resolveParameterSchema"]);
+const RESOLVER = path.join(REPO_ROOT, "src/domain/parameters/resolve.ts");
+
+/** Every call, under `root`, that resolved to a `@deprecated` overload of the two readers. */
+function collectLegacyReads(program: ts.Program, checker: ts.TypeChecker, root: string): { file: string; read: string }[] {
+  const found: { file: string; read: string }[] = [];
+  for (const source of program.getSourceFiles()) {
+    if (source.isDeclarationFile || !source.fileName.startsWith(root)) continue;
+    const file = path.relative(REPO_ROOT, source.fileName).replaceAll("\\", "/");
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) {
+        const callee = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
+        if (ts.isIdentifier(callee) && LEGACY_READ_NAMES.has(callee.text)) {
+          const declaration = checker.getResolvedSignature(node)?.declaration;
+          if (
+            declaration !== undefined &&
+            ts.isFunctionDeclaration(declaration) &&
+            path.resolve(declaration.getSourceFile().fileName) === RESOLVER &&
+            ts.getJSDocDeprecatedTag(declaration) !== undefined
+          ) {
+            found.push({ file, read: callee.text });
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  return found;
+}
+
+describe("§T1557b — no parameter read lands on the optional-options overload", () => {
+  const actual = tally(collectLegacyReads(repo().program, repo().checker, path.join(REPO_ROOT, "src")));
+  const allowed = tally(
+    Object.entries(LEGACY_READ_CALLERS).flatMap(([file, entry]) => entry.calls.map((read) => ({ file, read }))),
+  );
+
+  it("finds no caller of the deprecated form that is not named and reasoned", () => {
+    const unlisted = [...actual]
+      .filter(([key, count]) => count > (allowed.get(key) ?? 0))
+      .map(([key, count]) => `${key} (found ${count}, allowed ${allowed.get(key) ?? 0})`)
+      .sort();
+    expect(
+      unlisted,
+      "a parameter read passes options the resolver cannot vouch for — an object literal, or " +
+        "nothing — so whatever it left out (the reader, the frame, the morphs, the instances) " +
+        "falls back silently to the stored value. That is §B181's shape. FIX: an evaluation read " +
+        "passes `parameterReadOptions({ graph, registry, frame, channels, flattening })` (a command: " +
+        "`context.readScope()`); a read of the document calls `resolveStored` / passes `STORED_READ`.",
+    ).toEqual([]);
+  }, 180_000);
+
+  it("keeps no ledger entry for a caller that has migrated (§V458)", () => {
+    const stale = [...allowed]
+      .filter(([key, count]) => count > (actual.get(key) ?? 0))
+      .map(([key, count]) => `${key} (allowed ${count}, found ${actual.get(key) ?? 0})`)
+      .sort();
+    expect(stale, "LEGACY_READ_CALLERS names a call that is gone — strike it, and when the list is empty delete the overload.").toEqual([]);
+  }, 180_000);
+
+  it("catches an options literal without a reader, in a file it has never seen", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "shaderloom-legacy-read-"));
+    try {
+      const resolve = path.join(REPO_ROOT, "src/domain/parameters/resolve.ts");
+      const graph = path.join(REPO_ROOT, "src/domain/types/graph.ts");
+      const nodeDefinition = path.join(REPO_ROOT, "src/domain/types/node-definition.ts");
+      const file = path.join(directory, "b181.ts");
+      writeFileSync(
+        file,
+        [
+          `import { resolveParameters, STORED_READ, type ChannelResolver } from ${JSON.stringify(resolve)};`,
+          `import type { GraphNode } from ${JSON.stringify(graph)};`,
+          `import type { NodeDefinition } from ${JSON.stringify(nodeDefinition)};`,
+          "",
+          "export function settings(node: GraphNode, definition: NodeDefinition, channels: ChannelResolver) {",
+          "  const stored = resolveParameters(node, definition, STORED_READ);",
+          "  return [stored, resolveParameters(node, definition, { channels })];",
+          "}",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+      const config = ts.readConfigFile(path.join(REPO_ROOT, "tsconfig.app.json"), ts.sys.readFile);
+      const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, REPO_ROOT);
+      const program = ts.createProgram([file], parsed.options);
+      // Exactly the literal: the branded storage read beside it is the legitimate case the
+      // collector must not swallow.
+      expect(collectLegacyReads(program, program.getTypeChecker(), directory).map((entry) => entry.read)).toEqual(["resolveParameters"]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 180_000);
 });

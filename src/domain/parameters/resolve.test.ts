@@ -4,7 +4,8 @@ import type { ParentScope } from "../types/components.ts";
 import type { GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import type { NodeDefinition } from "../types/node-definition.ts";
-import { resolveParameter, resolveParameterSchema, resolveParameters, srgbToLinear } from "./resolve.ts";
+import { STORED_READ, resolveParameter, resolveParameterSchema, resolveParameters, srgbToLinear } from "./resolve.ts";
+import { testRead } from "./test-support.ts";
 
 /**
  * The promoted §V61 resolver (T168, closing B8).
@@ -41,7 +42,7 @@ function nodeWith(parameters: GraphNode["parameters"], id = "node-1"): GraphNode
 
 describe("display→linear decode reaches evaluation (T148, §V56, B8)", () => {
   it("decodes a display-space colour into `values`, leaving alpha alone", () => {
-    const resolved = resolveParameters(nodeWith({ color: [0.5, 0.5, 0.5, 0.7] }), solidLike);
+    const resolved = resolveParameters(nodeWith({ color: [0.5, 0.5, 0.5, 0.7] }), solidLike, STORED_READ);
     const [r, g, b, a] = resolved.values["color"] as readonly number[];
 
     expect(r).toBeCloseTo(0.2140, 4);
@@ -52,14 +53,14 @@ describe("display→linear decode reaches evaluation (T148, §V56, B8)", () => {
   });
 
   it("leaves a space:\"linear\" colour untouched — it is already the working space", () => {
-    const resolved = resolveParameters(nodeWith({ linearColor: [0.5, 0.5, 0.5, 0.7] }), solidLike);
+    const resolved = resolveParameters(nodeWith({ linearColor: [0.5, 0.5, 0.5, 0.7] }), solidLike, STORED_READ);
     expect(resolved.values["linearColor"]).toEqual([0.5, 0.5, 0.5, 0.7]);
   });
 
   it("keeps the display/evaluation split: the entry a control renders is undecoded", () => {
     // If the per-entry value were decoded too, the picker would show a different number
     // than the one the user chose, every time the document round-tripped.
-    const resolved = resolveParameters(nodeWith({ color: [0.5, 0.5, 0.5, 0.7] }), solidLike);
+    const resolved = resolveParameters(nodeWith({ color: [0.5, 0.5, 0.5, 0.7] }), solidLike, STORED_READ);
     expect(resolved.get("color")?.value).toEqual([0.5, 0.5, 0.5, 0.7]);
     expect(resolved.get("color")?.stored).toEqual([0.5, 0.5, 0.5, 0.7]);
     expect(resolved.values["color"]).not.toEqual([0.5, 0.5, 0.5, 0.7]);
@@ -72,14 +73,14 @@ describe("display→linear decode reaches evaluation (T148, §V56, B8)", () => {
         color: { type: "color", label: "Color", default: [0.5, 0.5, 0.5, 1], space: "display" },
       },
     };
-    const [r] = resolveParameters(nodeWith({}), white).values["color"] as readonly number[];
+    const [r] = resolveParameters(nodeWith({}), white, STORED_READ).values["color"] as readonly number[];
     expect(r).toBeCloseTo(srgbToLinear(0.5), 10);
   });
 });
 
 describe("validation decides the value, so it lives in the resolver (§V61)", () => {
   it("falls back to the default and says why when the manifest refuses the stored value", () => {
-    const resolved = resolveParameters(nodeWith({ gain: "big" as unknown as number }), solidLike);
+    const resolved = resolveParameters(nodeWith({ gain: "big" as unknown as number }), solidLike, STORED_READ);
     const entry = resolved.get("gain");
 
     expect(entry?.value).toBe(4);
@@ -92,26 +93,26 @@ describe("validation decides the value, so it lives in the resolver (§V61)", ()
   it("treats an out-of-range number as unusable, the same way on both call sites", () => {
     // The one rule the two old implementations could still have disagreed about: the
     // editor's copy checked shape only, the compiler's checked range as well.
-    const resolved = resolveParameters(nodeWith({ gain: 999 }), solidLike);
+    const resolved = resolveParameters(nodeWith({ gain: 999 }), solidLike, STORED_READ);
     expect(resolved.get("gain")?.value).toBe(4);
     expect(resolved.get("gain")?.diagnostic?.code).toBe("parameter.range");
   });
 
   it("reports nothing when the document is simply silent — a default is not a fault", () => {
-    const resolved = resolveParameters(nodeWith({}), solidLike);
+    const resolved = resolveParameters(nodeWith({}), solidLike, STORED_READ);
     expect(resolved.get("gain")).toMatchObject({ value: 4, source: "default", diagnostic: null });
     expect(resolved.diagnostics).toEqual([]);
   });
 
   it("copies array defaults so two nodes never share one array", () => {
-    const first = resolveParameters(nodeWith({}), solidLike).get("color")?.value;
-    const second = resolveParameters(nodeWith({}), solidLike).get("color")?.value;
+    const first = resolveParameters(nodeWith({}), solidLike, STORED_READ).get("color")?.value;
+    const second = resolveParameters(nodeWith({}), solidLike, STORED_READ).get("color")?.value;
     expect(first).toEqual(second);
     expect(first).not.toBe(second);
   });
 
   it("resolves nothing for an unknown node type rather than guessing a schema (§V10)", () => {
-    const resolved = resolveParameters(nodeWith({ anything: 1 }), undefined);
+    const resolved = resolveParameters(nodeWith({ anything: 1 }), undefined, STORED_READ);
     expect(resolved.entries).toEqual([]);
     expect(resolved.values).toEqual({});
   });
@@ -123,6 +124,7 @@ describe("the driver seam survives the promotion (§V61 injection point)", () =>
 
   it("prefers a driver's value and marks the parameter driven", () => {
     const resolved = resolveParameter(nodeWith({ gain: 12 }), "gain", gain, {
+      ...STORED_READ,
       drivers: { gain: () => 30 },
     });
     expect(resolved).toMatchObject({ value: 30, stored: 12, source: "driven", driven: true });
@@ -130,6 +132,7 @@ describe("the driver seam survives the promotion (§V61 injection point)", () =>
 
   it("checks a driver's output against the manifest like any other value", () => {
     const resolved = resolveParameter(nodeWith({ gain: 12 }), "gain", gain, {
+      ...STORED_READ,
       drivers: { gain: () => "nonsense" as unknown as number },
     });
     expect(resolved.value).toBe(4);
@@ -138,6 +141,7 @@ describe("the driver seam survives the promotion (§V61 injection point)", () =>
 
   it("falls back to the stored value when a driver declines to produce one", () => {
     const resolved = resolveParameter(nodeWith({ gain: 12 }), "gain", gain, {
+      ...STORED_READ,
       drivers: { gain: () => undefined },
     });
     expect(resolved).toMatchObject({ value: 12, driven: false });
@@ -145,13 +149,15 @@ describe("the driver seam survives the promotion (§V61 injection point)", () =>
 
   it("hands the frame to the driver rather than letting it read a clock (§V44)", () => {
     const resolved = resolveParameter(nodeWith({ gain: 12 }), "gain", gain, {
-      frame: {
-        timeSeconds: 2,
-        deltaSeconds: 0.016,
-        frameIndex: 120,
-        mode: "realtime",
-        randomSeed: 7,
-      },
+      ...testRead({
+        frame: {
+          timeSeconds: 2,
+          deltaSeconds: 0.016,
+          frameIndex: 120,
+          mode: "realtime",
+          randomSeed: 7,
+        },
+      }),
       drivers: { gain: (context) => (context.frame?.frameIndex ?? 0) / 10 },
     });
     expect(resolved.value).toBe(12);
@@ -174,6 +180,7 @@ describe("parent.<key> bindings, at depth (§V81, T133)", () => {
   it("reads one hop out", () => {
     const node = bound("parent.gain");
     const resolved = resolveParameters(node, solidLike, {
+      ...STORED_READ,
       drivers: parentScopeDrivers(node, scope),
     });
     expect(resolved.get("gain")).toMatchObject({ value: 5, source: "driven", driven: true });
@@ -182,6 +189,7 @@ describe("parent.<key> bindings, at depth (§V81, T133)", () => {
   it("reads two hops out — nesting is lexical, not a per-depth special case", () => {
     const node = bound("parent.parent.gain");
     const resolved = resolveParameters(node, solidLike, {
+      ...STORED_READ,
       drivers: parentScopeDrivers(node, scope),
     });
     expect(resolved.get("gain")?.value).toBe(9);
@@ -191,6 +199,7 @@ describe("parent.<key> bindings, at depth (§V81, T133)", () => {
     const node = bound("parent.parent.parent.gain");
     const diagnostics: string[] = [];
     const resolved = resolveParameters(node, solidLike, {
+      ...STORED_READ,
       drivers: parentScopeDrivers(node, scope, {
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code),
       }),
@@ -205,6 +214,7 @@ describe("parent.<key> bindings, at depth (§V81, T133)", () => {
       state: { parentBindings: { color: "parent.tint" } },
     };
     const resolved = resolveParameters(node, solidLike, {
+      ...STORED_READ,
       drivers: parentScopeDrivers(node, buildParentScope([{ tint: [0.5, 0.5, 0.5, 1] }])),
     });
     expect(resolved.get("color")?.value).toEqual([0.5, 0.5, 0.5, 1]);
@@ -236,18 +246,18 @@ describe("parameter modes (T203, §V107)", () => {
     });
 
   it("evaluates an expression against the frame (§V71, §V44)", () => {
-    const resolved = resolveParameters(nodeWith({ gain: expr("time * 3") }), solidLike, { frame });
+    const resolved = resolveParameters(nodeWith({ gain: expr("time * 3") }), solidLike, testRead({ frame }));
     expect(resolved.get("gain")).toMatchObject({ value: 6, mode: "expression", source: "driven", driven: true });
   });
 
   it("resolves the deterministic zero frame when no frame is given — compile-time, not an error", () => {
-    const resolved = resolveParameters(nodeWith({ gain: expr("10 + time") }), solidLike);
+    const resolved = resolveParameters(nodeWith({ gain: expr("10 + time") }), solidLike, STORED_READ);
     expect(resolved.get("gain")?.value).toBe(10);
     expect(resolved.diagnostics).toEqual([]);
   });
 
   it("clamps an expression into the declared range instead of snapping to default", () => {
-    const resolved = resolveParameters(nodeWith({ gain: expr("9999") }), solidLike, { frame });
+    const resolved = resolveParameters(nodeWith({ gain: expr("9999") }), solidLike, testRead({ frame }));
     expect(resolved.get("gain")?.value).toBe(64);
   });
 
@@ -261,7 +271,7 @@ describe("parameter modes (T203, §V107)", () => {
    * parameter's own numbers (§V288).
    */
   it("SAYS SO when an expression is clamped, naming the parameter and the remedy (T368)", () => {
-    const resolved = resolveParameters(nodeWith({ gain: expr("time * 100") }), solidLike, { frame });
+    const resolved = resolveParameters(nodeWith({ gain: expr("time * 100") }), solidLike, testRead({ frame }));
     const entry = resolved.get("gain");
     expect(entry?.value).toBe(64); // pinned, as before — the value behaviour is unchanged
     expect(entry?.diagnostic?.code).toBe("parameter.expression.clamped");
@@ -282,12 +292,12 @@ describe("parameter modes (T203, §V107)", () => {
   it("stays quiet while the expression is inside the range — the warning is not ambient", () => {
     // The other half of the claim. A warning that fires on every expression is a warning
     // people learn to scroll past, and this one has to still mean something at t=3100.
-    const resolved = resolveParameters(nodeWith({ gain: expr("time * 3") }), solidLike, { frame });
+    const resolved = resolveParameters(nodeWith({ gain: expr("time * 3") }), solidLike, testRead({ frame }));
     expect(resolved.diagnostics).toEqual([]);
   });
 
   it("falls back to the RETAINED static value when the expression breaks (§V108)", () => {
-    const resolved = resolveParameters(nodeWith({ gain: expr("nope + 1", 12) }), solidLike, { frame });
+    const resolved = resolveParameters(nodeWith({ gain: expr("nope + 1", 12) }), solidLike, testRead({ frame }));
     const entry = resolved.get("gain");
     expect(entry?.value).toBe(12);
     expect(entry?.mode).toBe("expression"); // the active mode still shows, value or not
@@ -315,7 +325,7 @@ describe("parameter modes (T203, §V107)", () => {
     const resolved = resolveParameters(
       nodeWith({ on: expr("time"), blend: expr("1"), note: expr("time * 10") }),
       definition,
-      { frame },
+      testRead({ frame }),
     );
     expect(resolved.get("on")?.value).toBe(true);
     expect(resolved.get("blend")?.value).toBe("add");
@@ -330,7 +340,7 @@ describe("parameter modes (T203, §V107)", () => {
         color: slot("bind", { bind: { kind: "bind", ref: "linearColor" } }),
       }),
       solidLike,
-      { frame },
+      testRead({ frame }),
     );
     expect(resolved.get("color")?.value).toEqual([0, 0, 0, 1]);
     expect(resolved.get("color")?.driven).toBe(true);
@@ -339,6 +349,7 @@ describe("parameter modes (T203, §V107)", () => {
   it("binds parent.* through the injected resolver — one lookup with the legacy path", () => {
     const node = nodeWith({ gain: slot("bind", { bind: { kind: "bind", ref: "parent.gain" } }) });
     const resolved = resolveParameters(node, solidLike, {
+      ...STORED_READ,
       parentBind: parentBindResolver(buildParentScope([{ gain: 9 }])),
     });
     expect(resolved.get("gain")).toMatchObject({ value: 9, mode: "bind", driven: true });
@@ -348,7 +359,7 @@ describe("parameter modes (T203, §V107)", () => {
     const node = nodeWith({
       gain: slot("bind", { bind: { kind: "bind", ref: "missing" }, static: { kind: "static", value: 2 } }),
     });
-    const resolved = resolveParameters(node, solidLike);
+    const resolved = resolveParameters(node, solidLike, STORED_READ);
     expect(resolved.get("gain")?.value).toBe(2);
     expect(resolved.get("gain")?.diagnostic?.code).toBe("parameter.bind");
   });
@@ -358,7 +369,7 @@ describe("parameter modes (T203, §V107)", () => {
       nodeWith({
         gain: slot("bind", { bind: { kind: "bind", ref: "gain" } }),
       }),
-      solidLike,
+      solidLike, STORED_READ,
     );
     expect(resolved.get("gain")?.value).toBe(4); // default; no hang, no throw
     expect(resolved.get("gain")?.diagnostic?.code).toBe("parameter.bind");
@@ -369,13 +380,13 @@ describe("parameter modes (T203, §V107)", () => {
       driven: { kind: "driven", channel: "audio.rms" },
       static: { kind: "static", value: 8 },
     });
-    const idle = resolveParameters(nodeWith({ gain: stored }), solidLike);
+    const idle = resolveParameters(nodeWith({ gain: stored }), solidLike, STORED_READ);
     expect(idle.get("gain")?.value).toBe(8);
     expect(idle.get("gain")?.diagnostic?.severity).toBe("info");
 
-    const attached = resolveParameters(nodeWith({ gain: stored }), solidLike, {
+    const attached = resolveParameters(nodeWith({ gain: stored }), solidLike, testRead({
       channels: (channel) => (channel === "audio.rms" ? 32 : undefined),
-    });
+    }));
     expect(attached.get("gain")).toMatchObject({ value: 32, mode: "driven", driven: true });
   });
 
@@ -395,9 +406,9 @@ describe("parameter modes (T203, §V107)", () => {
       driven: { kind: "driven", channel: "gd1:high" },
       static: { kind: "static", value: 0 },
     });
-    const resolved = resolveParameters(nodeWith({ gain: stored }), solidLike, {
+    const resolved = resolveParameters(nodeWith({ gain: stored }), solidLike, testRead({
       channels: (channel) => (channel === "gd1:high" ? 67.9245 : undefined),
-    });
+    }));
     const entry = resolved.get("gain");
     expect(entry?.value).toBe(64); // the limit, not the retained fallback
     expect(entry?.driven).toBe(true);
@@ -415,9 +426,9 @@ describe("parameter modes (T203, §V107)", () => {
       driven: { kind: "driven", channel: "gd1:high" },
       static: { kind: "static", value: 0 },
     });
-    const resolved = resolveParameters(nodeWith({ gain: stored }), solidLike, {
+    const resolved = resolveParameters(nodeWith({ gain: stored }), solidLike, testRead({
       channels: () => 32,
-    });
+    }));
     expect(resolved.get("gain")?.value).toBe(32);
     expect(resolved.diagnostics).toEqual([]);
   });
@@ -429,8 +440,8 @@ describe("parameter modes (T203, §V107)", () => {
       static: { kind: "static", value: 12 },
       expression: { kind: "expression", source: "time * 3" },
     };
-    const asStatic = resolveParameters(nodeWith({ gain: slot("static", bindings) }), solidLike, { frame });
-    const asExpr = resolveParameters(nodeWith({ gain: slot("expression", bindings) }), solidLike, { frame });
+    const asStatic = resolveParameters(nodeWith({ gain: slot("static", bindings) }), solidLike, testRead({ frame }));
+    const asExpr = resolveParameters(nodeWith({ gain: slot("expression", bindings) }), solidLike, testRead({ frame }));
     expect(asStatic.get("gain")?.value).toBe(12);
     expect(asExpr.get("gain")?.value).toBe(6);
     expect(asStatic.get("gain")?.slot?.bindings.expression).toEqual(bindings.expression);
@@ -456,7 +467,7 @@ describe("compound components (T207, §V113)", () => {
         } as unknown as GraphNode["parameters"][string],
       }),
       solidLike,
-      { frame },
+      testRead({ frame }),
     );
     const entry = resolved.get("linearColor");
     expect(entry?.value).toEqual([0.1, 0.5, 0.3, 1]);
@@ -473,7 +484,7 @@ describe("compound components (T207, §V113)", () => {
           bindings: { static: { kind: "static", value: 1 } },
         } as unknown as GraphNode["parameters"][string],
       }),
-      solidLike,
+      solidLike, STORED_READ,
     );
     expect(Object.keys(resolved.values)).not.toContain("linearColor.r");
     expect(resolved.values["linearColor"]).toEqual([1, 0, 0, 1]);
@@ -489,7 +500,7 @@ describe("compound components (T207, §V113)", () => {
         } as unknown as GraphNode["parameters"][string],
       }),
       solidLike,
-      { frame },
+      testRead({ frame }),
     );
     // entry.value stays display-encoded; values gets the linear decode of 0.5.
     expect((resolved.get("color")?.value as readonly number[])[0]).toBe(0.5);
@@ -505,7 +516,7 @@ describe("compound components (T207, §V113)", () => {
           bindings: { bind: { kind: "bind", ref: "linearColor.r" } },
         } as unknown as GraphNode["parameters"][string],
       }),
-      solidLike,
+      solidLike, STORED_READ,
     );
     expect(resolved.get("gain")?.value).toBe(0.25);
   });
@@ -530,7 +541,7 @@ describe("the map mode resolves as data, not a value (T286/§V287)", () => {
         },
       },
     } as never;
-    const resolved = resolveParameterSchema(node, { sizePixels: definition });
+    const resolved = resolveParameterSchema(node, { sizePixels: definition }, STORED_READ);
     // §V108's corner-square: the inspector and the zero-frame compile see 7.
     expect(resolved.values["sizePixels"]).toBe(7);
     // §V287: the mapping is DATA the consumer compiles from.
@@ -551,7 +562,7 @@ describe("the map mode resolves as data, not a value (T286/§V287)", () => {
         sizePixels: { mode: "map", bindings: { map: { kind: "map", attribute: "size", channel: "x" } } },
       },
     } as never;
-    const resolved = resolveParameterSchema(node, { sizePixels: definition });
+    const resolved = resolveParameterSchema(node, { sizePixels: definition }, STORED_READ);
     expect(resolved.values["sizePixels"]).toBe(4);
     expect(resolved.maps["sizePixels"]).toEqual({ attribute: "size", channel: "x" });
   });
@@ -564,7 +575,7 @@ describe("the map mode resolves as data, not a value (T286/§V287)", () => {
       position: { x: 0, y: 0 },
       parameters: { sizePixels: 9 },
     } as never;
-    const resolved = resolveParameterSchema(node, { sizePixels: definition });
+    const resolved = resolveParameterSchema(node, { sizePixels: definition }, STORED_READ);
     expect(resolved.maps).toEqual({});
     expect(resolved.values["sizePixels"]).toBe(9);
   });
@@ -589,7 +600,7 @@ describe("map on a COMPOUND HEAD (T364, §V195 as amended)", () => {
     } as never;
     const resolved = resolveParameterSchema(node, {
       color: { type: "color", label: "Color", default: [1, 1, 1, 1], space: "display" },
-    });
+    }, STORED_READ);
     expect(resolved.maps).toEqual({ color: { attribute: "tint" } });
     // The retained tuple still resolves for the inspector and the zero-frame compile.
     expect(Array.isArray(resolved.values["color"])).toBe(true);

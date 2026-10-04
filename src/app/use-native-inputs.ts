@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
-import { resolveParameters } from "@domain/parameters/index.ts";
+import { resolveStored } from "@domain/parameters/index.ts";
 import { mediaSourceIdFor } from "@nodes/definitions/index.ts";
 import { NATIVE_INPUT_TRANSPORTS, NATIVE_VIDEO_LABELS } from "@devices/native-video.ts";
 import { createNativeInputSource, desktopInputBridge, type NativeInputTransport } from "@devices/native-input.ts";
@@ -20,7 +20,9 @@ export function useNativeInputs(runtime: AppRuntime, backend: LoomBackend | null
     .filter(node => NATIVE_INPUT_TRANSPORTS[node.type] !== undefined && !isSilencedSource(node))
     .map(node => {
       const definition = runtime.registry.get(node.type)!;
-      const values = resolveParameters(node, definition).values;
+      // §T1557b: the document (`resolveStored`) — which device a node names is structural,
+      // memoized per document revision; no frame exists here.
+      const values = resolveStored(node, definition).values;
       const transport = NATIVE_INPUT_TRANSPORTS[node.type]!;
       return { nodeId: node.id, uuid: String(values["source"] ?? ""), transport };
     }), [graph, runtime.registry]);

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
-import { resolveParameters } from "@domain/parameters/index.ts";
+import { resolveStored } from "@domain/parameters/index.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
@@ -109,7 +109,9 @@ export function requirementDiagnostics(
     if (definition === undefined) continue;
     let declared: readonly RuntimeRequirementId[];
     try {
-      declared = nodeRuntimeRequirements(definition, resolveParameters(node, definition).values);
+      // §T1557b: the document (`resolveStored`) — a requirement is compile-time, as in
+      // `examples/runtime-requirements.ts`.
+      declared = nodeRuntimeRequirements(definition, resolveStored(node, definition).values);
     } catch {
       /* The definition refused to classify itself — a transport value it does not know.
          The compiler is already reporting that same value as an invalid parameter, and a

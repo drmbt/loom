@@ -24,6 +24,7 @@ import type { UdpSocket, UdpSocketFactory } from "./device-hub.ts";
 import { encodeOscMessage } from "./osc-codec.ts";
 import type { OscBridgeState } from "../domain/osc/osc-status.ts";
 import type { OscSendOutcome } from "./device-protocol.ts";
+import { testRead } from "../domain/parameters/test-support.ts";
 
 /**
  * THE DEVICE BRIDGE, OVER A REAL SOCKET (T942 tier 3, §V382).
@@ -287,7 +288,7 @@ describe("GATE 1 — an OSC message drives a parameter, end to end", () => {
         },
       } as unknown as GraphNode,
       registry.get("blur"),
-      { frame, channels: evaluated.resolver },
+      testRead({ frame, channels: evaluated.resolver }),
     );
     expect(driven.get("size")?.value).toBeCloseTo(0.625, 6);
   });
@@ -735,7 +736,7 @@ describe("GATE 5 — devices with no agent server (T1111)", () => {
         },
       } as unknown as GraphNode,
       registry.get("blur"),
-      { frame, channels: evaluated.resolver },
+      testRead({ frame, channels: evaluated.resolver }),
     );
     expect(driven.get("size")?.value).toBeCloseTo(0.625, 6);
   });

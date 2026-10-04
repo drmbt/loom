@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { createComponentSystem } from "@domain/components/registry.ts";
 import { loadProject } from "@domain/project/index.ts";
-import type { GraphNode } from "@domain/types/graph.ts";
+import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { ParameterSlot } from "@domain/types/parameters.ts";
 import { listExamples } from "../../examples/catalogue.ts";
 import { exampleRegistry } from "../../examples/runner.ts";
-import { movableChannels, poseFromFacts, readCameraPoseFacts } from "./camera-pose.ts";
+import { cameraPoseAt, movableChannels, poseFromFacts, readCameraPoseFacts } from "./camera-pose.ts";
+import { createDomainBus } from "@domain/commands/index.ts";
+import { STORED_READ } from "@domain/parameters/resolve.ts";
+import { createGraphStore } from "@domain/graph/store.ts";
+import { graphChannelResolver } from "@domain/channels/graph-channels.ts";
 
 /**
  * T1314b / §B219 — THE GUARD ASKED THE WRONG QUESTION, ON THE SHIPPED CATALOGUE.
@@ -76,7 +80,7 @@ describe("T1314b — no shipped camera can be flown on a channel another mode de
     const wrong: string[] = [];
     let partlyDriven = 0;
     for (const { file, node } of cameras) {
-      const facts = readCameraPoseFacts(node, definition);
+      const facts = readCameraPoseFacts(node, definition, STORED_READ);
       const driven = ["eye", "lookAt"].flatMap((key) =>
         ["x", "y", "z"].map((axis) => storedMode(node, key, axis) !== "static"),
       );
@@ -101,7 +105,7 @@ describe("T1314b — no shipped camera can be flown on a channel another mode de
 
 describe("T1314b — the camera pose is read per channel, resolved, from the shipped documents", () => {
   it("E69 Burnish: no bare `eye` at all, so the old read invented a pose the camera never had", () => {
-    const facts = readCameraPoseFacts(cameraOf("E69-"), definition);
+    const facts = readCameraPoseFacts(cameraOf("E69-"), definition, STORED_READ);
     if (facts === null) throw new Error("E69's camera has free channels; it must offer a gizmo");
 
     // The channel that is decided elsewhere, named by the mode the inspector names it by.
@@ -123,7 +127,7 @@ describe("T1314b — the camera pose is read per channel, resolved, from the shi
   });
 
   it("E34 Lidar: a stale base tuple on exactly the channels a drag must not write", () => {
-    const facts = readCameraPoseFacts(cameraOf("E34-"), definition);
+    const facts = readCameraPoseFacts(cameraOf("E34-"), definition, STORED_READ);
     if (facts === null) throw new Error("E34's camera has a free channel; it must offer a gizmo");
     expect(movableChannels(facts.eye)).toEqual([false, true, false]);
     // Both held channels are named — a refusal that names one of two is worse than useless.
@@ -140,7 +144,7 @@ describe("T1314b — the camera pose is read per channel, resolved, from the shi
         ["eye", "lookAt"].flatMap((key) => ["x", "y", "z"].map((axis) => [`${key}.${axis}`, expression])),
       ) as GraphNode["parameters"],
     };
-    expect(readCameraPoseFacts(allDriven, definition)).toBeNull();
+    expect(readCameraPoseFacts(allDriven, definition, STORED_READ)).toBeNull();
 
     // One free channel is still a camera worth flying — the whole point of masking over
     // refusing. E69 above is that case; this is its boundary.
@@ -148,8 +152,41 @@ describe("T1314b — the camera pose is read per channel, resolved, from the shi
       ...allDriven,
       parameters: { ...allDriven.parameters, "eye.y": 1.9 } as GraphNode["parameters"],
     };
-    const facts = readCameraPoseFacts(oneFree, definition);
+    const facts = readCameraPoseFacts(oneFree, definition, STORED_READ);
     expect(facts).not.toBeNull();
     expect(movableChannels(facts?.eye ?? [])).toEqual([false, true, false]);
+  });
+});
+
+/**
+ * §T1557b / §B181's shape — THE GESTURE STARTS FROM WHERE A DRIVEN CHANNEL IS, not from its
+ * retained static. The pane used to read the pose with `{ channels }` alone: no cross-node
+ * reader, so an eye channel on `op('k1').chan.value` fell back to its static (0) while the
+ * channel put the camera at x 5 — and the free channels orbited a pivot the camera was not
+ * at. `cameraPoseAt` is what `graph-pane.tsx` calls, over the bus's read scope, wired here
+ * as the app wires it (the channel resolver; `graphChannelResolver` is its ladder's backstop).
+ */
+describe("§T1557b — a camera eye channel on op('k1').chan.value (B181's shape)", () => {
+  it("reads the channel's value for the held channel and leaves the free ones movable", () => {
+    const camera: GraphNode = {
+      id: "cam" as GraphNode["id"],
+      type: "camera",
+      label: "cam1",
+      definitionVersion: definition?.version ?? 1,
+      position: { x: 0, y: 0 },
+      parameters: {
+        eye: [0, 0.5, 3],
+        "eye.x": { mode: "expression", bindings: { static: { kind: "static", value: 0 }, expression: { kind: "expression", source: "op('k1').chan.value" } } },
+      },
+    };
+    const k1: GraphNode = { id: "k1" as GraphNode["id"], type: "constant", label: "k1", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { value: 5 } };
+    const graph: GraphDocument = { revision: 1, nodes: { cam: camera, k1 }, edges: {}, groups: {} };
+    const { bus } = createDomainBus({ store: createGraphStore({ initialGraph: graph }), registry: nodes });
+    bus.attachChannelResolver(() => graphChannelResolver(graph, nodes));
+
+    const pose = cameraPoseAt(camera, definition, { ...bus.readScope(), graph });
+    // x 5 only if the channel reached a reader; the bug left the static 0 there.
+    expect(pose?.eye).toEqual([5, 0.5, 3]);
+    expect(pose?.eyeMask).toEqual([false, true, true]);
   });
 });

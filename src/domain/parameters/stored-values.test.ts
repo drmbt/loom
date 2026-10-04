@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GraphNode } from "../types/graph.ts";
 import { createTestRegistry } from "../../nodes/registry/test-nodes.ts";
-import { resolveParameters, srgbToLinear } from "./resolve.ts";
+import { STORED_READ, resolveParameters, srgbToLinear } from "./resolve.ts";
 import { storedValues } from "./stored-values.ts";
 
 /**
@@ -25,7 +25,7 @@ function node(parameters: GraphNode["parameters"]): GraphNode {
 
 describe("storedValues — the page a re-resolving caller needs (T307)", () => {
   it("keeps a display colour ENCODED, where `values` has already decoded it", () => {
-    const resolved = resolveParameters(node({ color: [0.5, 0.5, 0.5, 1] }), solid);
+    const resolved = resolveParameters(node({ color: [0.5, 0.5, 0.5, 1] }), solid, STORED_READ);
     // The two shapes of the same number, and the whole reason both exist.
     expect(storedValues(resolved)["color"]).toEqual([0.5, 0.5, 0.5, 1]);
     expect((resolved.values["color"] as readonly number[])[0]).toBeCloseTo(MID_GREY_LINEAR, 12);
@@ -36,7 +36,7 @@ describe("storedValues — the page a re-resolving caller needs (T307)", () => {
     // node would make the non-vacuity check below pass against a broken implementation.
     const resolved = resolveParameters(
       node({ amount: 0.25, label: "hi", color: [0.5, 0.5, 0.5, 1] }),
-      solid,
+      solid, STORED_READ,
     );
     const stored = storedValues(resolved);
     expect(stored["amount"]).toBe(resolved.values["amount"]);
@@ -47,25 +47,25 @@ describe("storedValues — the page a re-resolving caller needs (T307)", () => {
   });
 
   it("is IDEMPOTENT under re-resolution, which `values` is not — the T187 property", () => {
-    const first = resolveParameters(node({ color: [0.5, 0.5, 0.5, 1] }), solid);
+    const first = resolveParameters(node({ color: [0.5, 0.5, 0.5, 1] }), solid, STORED_READ);
 
     // What flattening and parent scope actually do: write the page back onto a node's
     // parameters and resolve again.
-    const roundTripped = resolveParameters(node(storedValues(first)), solid);
+    const roundTripped = resolveParameters(node(storedValues(first)), solid, STORED_READ);
     expect(storedValues(roundTripped)).toEqual(storedValues(first));
     expect((roundTripped.values["color"] as readonly number[])[0]).toBeCloseTo(MID_GREY_LINEAR, 12);
 
     // The same round trip through the evaluation page decodes a second time. 0.5 leaves
     // as 0.2140 and arrives at 0.0376 — under a fifth of the light asked for, and dark
     // enough to read as an art-direction choice rather than a bug (B8's lesson).
-    const doubled = resolveParameters(node(first.values), solid);
+    const doubled = resolveParameters(node(first.values), solid, STORED_READ);
     const wrong = (doubled.values["color"] as readonly number[])[0] ?? 0;
     expect(wrong).toBeCloseTo(srgbToLinear(MID_GREY_LINEAR), 12);
     expect(wrong).toBeLessThan(MID_GREY_LINEAR / 5);
   });
 
   it("carries every declared key, so a page cannot silently lose a parameter", () => {
-    const resolved = resolveParameters(node({}), solid);
+    const resolved = resolveParameters(node({}), solid, STORED_READ);
     expect(Object.keys(storedValues(resolved)).sort()).toEqual(
       Object.keys(solid?.parameters ?? {}).sort(),
     );

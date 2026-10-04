@@ -16,7 +16,7 @@ import type { PortType } from "@domain/types/ports.ts";
 import type { ResolvedOutput } from "@compiler/index.ts";
 import { GraphCanvas } from "@editor/graph-canvas/index.ts";
 import { type CameraPose, createCameraGizmoStore } from "@editor/viewer/camera-gizmo-store.ts";
-import { movableChannels, poseFromFacts, readCameraPoseFacts } from "@editor/viewer/camera-pose.ts";
+import { cameraPoseAt } from "@editor/viewer/camera-pose.ts";
 import type { ControlWrite } from "@editor/controls/control-widget.tsx";
 import { useControlBodies } from "@editor/controls/control-bodies.tsx";
 import type { PhoneDoorView } from "@editor/controls/phone-door-copy.ts";
@@ -411,25 +411,15 @@ function GraphPaneInner({
    * schema default while the camera sat somewhere else entirely. `readCameraPoseFacts` asks
    * per channel and returns null only when every one of them is decided elsewhere.
    *
-   * The resolver comes off the BUS (`attachChannelResolver`, filled by `useGraphCompile`),
-   * which this pane already holds — so reading where the camera actually is needs no new
-   * prop and no new seam.
+   * §T1557b: the read comes off the BUS (`readScope`: the channel resolver, the frame on
+   * screen and the flattening, attached by the composition root), over the graph this pane
+   * shows — so `op('k1').chan.value` on an eye channel reads where the camera actually is.
    */
   const readCameraPose = useCallback(
     (nodeId: NodeId): CameraPose | null => {
       const node = graphRef.current.nodes[nodeId];
       if (node === undefined) return null;
-      const facts = readCameraPoseFacts(node, registry.get(node.type), {
-        channels: bus.channelResolver(),
-      });
-      if (facts === null) return null;
-      const { eye, lookAt } = poseFromFacts(facts);
-      return {
-        eye,
-        lookAt,
-        eyeMask: movableChannels(facts.eye),
-        lookAtMask: movableChannels(facts.lookAt),
-      };
+      return cameraPoseAt(node, registry.get(node.type), { ...bus.readScope(), graph: graphRef.current, registry });
     },
     [bus, registry],
   );

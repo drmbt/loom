@@ -1,7 +1,8 @@
-import type { ChannelResolver } from "@domain/parameters/resolve.ts";
-import { resolveParameters } from "@domain/parameters/resolve.ts";
+import { resolveParameters, type ParameterReadOptions } from "@domain/parameters/resolve.ts";
 import type { GraphNode } from "@domain/types/graph.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
+import { parameterReadOptions, type ParameterReadContext } from "@domain/parameters/node-references.ts";
+import type { CameraPose } from "./camera-gizmo-store.ts";
 import { MODE_LABELS } from "@ui/controls/parameter-slot.ts";
 import { describeLabelDrag, type LabelDragChannel } from "@ui/controls/label-drag.ts";
 
@@ -30,9 +31,10 @@ import { describeLabelDrag, type LabelDragChannel } from "@ui/controls/label-dra
  *
  * A driven channel's stored static is stale by construction: it is the retained value, not
  * where the camera is. Orbiting about a pivot derived from stale numbers would swing the
- * free channels through the wrong arc. So the pose is resolved — and the resolver is already
- * on the bus (`attachChannelResolver`, `bus.channelResolver()`), attached by
- * `use-graph-compile.ts`, which `graph-pane` already holds. No new prop, no new seam.
+ * free channels through the wrong arc. So the pose is resolved — through the bus's read scope
+ * (`bus.readScope()`: the channel resolver, the frame on screen, the flattening), which
+ * `graph-pane` already holds. §T1557b: it used to be handed `{ channels }` alone, with no
+ * cross-node reader, so an `op('k1').chan.value` channel read its static (§B181's shape).
  *
  * ## The rule, which is one control over and already written
  *
@@ -65,11 +67,6 @@ export interface CameraPoseFacts {
    * Empty when nothing is held, so the caller adds no chrome for the ordinary case.
    */
   readonly held: string;
-}
-
-export interface CameraPoseOptions {
-  /** Resolves `op('x').chan.y`. Absent = driven channels report their retained static (§V108). */
-  readonly channels?: ChannelResolver | undefined;
 }
 
 const vectorChannels = (
@@ -110,11 +107,10 @@ const asChannels = (channels: readonly CameraChannel[]): readonly LabelDragChann
 export function readCameraPoseFacts(
   node: GraphNode,
   definition: NodeDefinition | undefined,
-  options: CameraPoseOptions = {},
+  /** §T1557b: `parameterReadOptions(…)` for where the camera IS; `STORED_READ` for the document. */
+  read: ParameterReadOptions,
 ): CameraPoseFacts | null {
-  const resolved = resolveParameters(node, definition, {
-    ...(options.channels === undefined ? {} : { channels: options.channels }),
-  });
+  const resolved = resolveParameters(node, definition, read);
   const eye = vectorChannels(resolved.get("eye"), [0, 0.5, 3]);
   const lookAt = vectorChannels(resolved.get("lookAt"), [0, 0, 0]);
   const free = [...eye, ...lookAt].some((channel) => channel.drivenBy === null);
@@ -147,4 +143,16 @@ export function poseFromFacts(facts: CameraPoseFacts): {
 /** Which channels the gesture may write: the ones no other mode is deciding (`movableMask`'s rule). */
 export function movableChannels(channels: readonly CameraChannel[]): readonly boolean[] {
   return channels.map((channel) => channel.drivenBy === null);
+}
+
+/**
+ * §T1557b — THE POSE AS THE GIZMO READS IT AT GESTURE START (§V657), from the bus's read
+ * scope over the graph the pane shows: the numbers and which channels a drag may write.
+ * `graph-pane.tsx` calls exactly this, so the read a gesture starts from is the one tested.
+ */
+export function cameraPoseAt(node: GraphNode, definition: NodeDefinition | undefined, scope: ParameterReadContext): CameraPose | null {
+  const facts = readCameraPoseFacts(node, definition, parameterReadOptions(scope));
+  if (facts === null) return null;
+  const { eye, lookAt } = poseFromFacts(facts);
+  return { eye, lookAt, eyeMask: movableChannels(facts.eye), lookAtMask: movableChannels(facts.lookAt) };
 }

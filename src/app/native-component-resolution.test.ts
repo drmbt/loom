@@ -26,7 +26,7 @@ async function fixture(nested = false, type = "syphonIn") {
   }
   const second = await bus.execute("component.instantiate", { componentId: saved.output.componentId! }, invocation);
   expect(second.status).toBe("applied");
-  bus.attachFlattenedGraph(() => runtime.flattened.current().graph);
+  bus.attachFlattenedGraph(() => runtime.flattened.current());
   const inputs = Object.values(runtime.flattened.current().graph.nodes).filter(node => node.type === type);
   expect(inputs).toHaveLength(2);
   return { runtime, inputs, first: saved.output.instanceNodeId!, second: second.output.nodeId! };

@@ -4,8 +4,9 @@ import type { ParameterValue, StoredParameter } from "../types/parameters.ts";
 import type { NodeId } from "../types/ids.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { effectiveParameterSchema, resolveParameterSchema, type ChannelResolver, type ParameterMorphs } from "../parameters/resolve.ts";
+import { NO_INSTANCES, parameterReadOptions } from "../parameters/node-references.ts";
 import { nodeNames } from "../graph/names.ts";
-import { hasMorphRecords } from "../presets/morph-index.ts";
+import { NO_MORPHS, hasMorphRecords } from "../presets/morph-index.ts";
 import { hasTimelineCueLists } from "../presets/timeline-cues.ts";
 import { storedStaticValue } from "../parameters/slots.ts";
 import { defaultParameterValue } from "../parameters/validate.ts";
@@ -108,7 +109,11 @@ export function graphChannelResolver(
         const retained = storedStaticValue(stored);
         if (retained !== undefined) parameters[key] = retained;
       }
-      const resolved = resolveParameterSchema({ ...node, parameters }, schema, { frame: context.frame, morphs });
+      // §T1557b: through the factory, with NO channel resolver on purpose (said, not omitted):
+      // this IS a channel resolver, and every slot was settled to its static above, so the
+      // reader has no expression to answer — only the fold reads the frame and the morphs.
+      const read = parameterReadOptions({ graph, registry, frame: context.frame, channels: undefined, flattening: { morphs: morphs ?? NO_MORPHS, instanceChannels: NO_INSTANCES } });
+      const resolved = resolveParameterSchema({ ...node, parameters }, schema, read);
       for (const key of fading) {
         const root = key.split(".")[0] as string;
         if (resolved.get(root)?.driven === true) values[root] = resolved.values[root] as ParameterValue;

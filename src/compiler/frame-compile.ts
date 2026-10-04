@@ -246,7 +246,6 @@ function baseMismatch(built: CompileRequest, request: CompileRequest): string | 
   if (!sameSinks(built.sinks, request.sinks)) return "sinks";
   if (built.resolution?.frame !== undefined || request.resolution?.frame !== undefined) return "resolution.frame";
   if (built.resolution?.channels !== request.resolution?.channels) return "resolution.channels";
-  if (built.resolution?.nodes !== request.resolution?.nodes) return "resolution.nodes";
   return null;
 }
 
@@ -309,20 +308,14 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
     const morphs = resolution.morphs ?? retained.morphs;
     // T1485b: the instances the BASE compile read through, by the same precedence.
     const instances = resolution.instances ?? retained.instances;
-    // The same reader `validateGraph` builds (§V939): a caller's own `nodes` wins, as there.
-    const reader: ParameterResolution =
-      resolution.nodes === undefined
-        ? {
-            ...resolution,
-            ...parameterReadOptions({
-              graph: retained.graph,
-              registry: request.registry,
-              frame: resolution.frame,
-              channels: resolution.channels,
-              flattening: flatteningReadsOf({ morphs, instances }),
-            }),
-          }
-        : { ...resolution, morphs };
+    // The same reader `validateGraph` builds (§V939).
+    const reader = parameterReadOptions({
+      graph: retained.graph,
+      registry: request.registry,
+      frame: resolution.frame,
+      channels: resolution.channels,
+      flattening: flatteningReadsOf({ morphs, instances }),
+    });
     // Per-frame resolution diagnostics (a clamped expression, an unattached channel) are
     // dropped, exactly as the full per-frame compile's were by its one consumer.
     const discarded: RuntimeDiagnostic[] = [];

@@ -4,6 +4,7 @@ import { createDomainBus } from "@domain/commands/index.ts";
 import { alice, contextFor } from "@domain/commands/test-support.ts";
 import { createComponentSystem } from "@domain/components/registry.ts";
 import { createGraphStore } from "@domain/graph/store.ts";
+import { STORED_READ } from "@domain/parameters/resolve.ts";
 import { loadProject } from "@domain/project/index.ts";
 import type { GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
@@ -62,7 +63,7 @@ function burnishFixture() {
     readPose: (nodeId) => {
       const node = store.view.getGraph().nodes[nodeId];
       if (node === undefined) return null;
-      const facts = readCameraPoseFacts(node, nodes.get(node.type), {});
+      const facts = readCameraPoseFacts(node, nodes.get(node.type), STORED_READ);
       if (facts === null) return null;
       const { eye, lookAt } = poseFromFacts(facts);
       return { eye, lookAt, eyeMask: movableChannels(facts.eye), lookAtMask: movableChannels(facts.lookAt) };
@@ -138,7 +139,7 @@ describe("T1314b — flying E69 Burnish's camera leaves its driven channel untou
 
   it("names the held channel, so the gesture says what it will not do (§V830)", () => {
     const { before } = burnishFixture();
-    const facts = readCameraPoseFacts(before, nodes.get(before.type), {});
+    const facts = readCameraPoseFacts(before, nodes.get(before.type), STORED_READ);
     if (facts === null) throw new Error("E69's camera has free channels");
     expect(facts.held).toContain("x (Expression)");
     expect(facts.held).toContain("Eye");

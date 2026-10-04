@@ -17,7 +17,7 @@ import type { FlatteningReads, InstanceChannelSource, InstanceChannelSources } f
 import { NO_MORPHS, buildMorphIndex, type PublishedOrigin } from "../domain/presets/morph-index.ts";
 import { renumberedName, rewriteNodeNameReferences } from "../domain/graph/names.ts";
 import { isPreviewablePortKind } from "../domain/graph/previewable.ts";
-import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
+import { effectiveParameterSchema, STORED_READ } from "../domain/parameters/resolve.ts";
 import { isParameterSlot, storedStaticValue } from "../domain/parameters/slots.ts";
 import type { NodeRegistryView } from "../nodes/registry/registry.ts";
 import type { NodeDefinition } from "../domain/types/node-definition.ts";
@@ -771,6 +771,8 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
           publishedSchema(componentDefinition),
           node.type,
           publishedDiagnostics,
+          // §T1557b: the document, not a moment — this walk is a pure function of it (§V529).
+          STORED_READ,
         ),
         componentDefinition,
       );

@@ -10,7 +10,7 @@ import { createDomainBus } from "../commands/index.ts";
 import type { LoomBus } from "../commands/bus.ts";
 import { alice, contextFor } from "../commands/test-support.ts";
 import { NO_FLATTENING, parameterReadOptions } from "../parameters/node-references.ts";
-import { resolveParameters } from "../parameters/resolve.ts";
+import { STORED_READ, resolveParameters } from "../parameters/resolve.ts";
 import { liveClock } from "../transport/live-clock.ts";
 import { createNodeRegistry, type NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { testNodeDefinitions } from "../../nodes/registry/test-nodes.ts";
@@ -465,7 +465,7 @@ describe("the shot's own value wins over a nested one (S4, ruling 14)", () => {
     expect(run.stored("solid", "color")).toEqual([0, 1, 0, 1]);
     // Had the nested `color.r` been written, red would read 0.9 under the shot's green.
     expect(run.stored("solid", "color.r")).toBeUndefined();
-    expect(resolveParameters(run.store.view.getGraph().nodes["solid"]!, registry.get("test.solid")).values["color"]).toEqual([0, 1, 0, 1]);
+    expect(resolveParameters(run.store.view.getGraph().nodes["solid"]!, registry.get("test.solid"), STORED_READ).values["color"]).toEqual([0, 1, 0, 1]);
   });
 });
 

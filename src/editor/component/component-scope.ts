@@ -1,6 +1,5 @@
 import type { ComponentPath, ParentScope } from "@domain/types/components.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
@@ -11,7 +10,7 @@ import { resolveComponentPath } from "@domain/components/navigation.ts";
 import type { ResolvedComponentPath } from "@domain/components/navigation.ts";
 import type { ComponentRegistryView } from "@domain/components/registry.ts";
 import { storedValues } from "@domain/parameters/stored-values.ts";
-import { resolveParameters } from "@editor/inspector/parameter-resolver.ts";
+import { resolveParameters, resolveStored, type ParameterReadOptions } from "@editor/inspector/parameter-resolver.ts";
 import type { ParameterDriver, ResolvedParameters } from "@editor/inspector/parameter-resolver.ts";
 
 /**
@@ -41,7 +40,6 @@ const _driverShapesMatch: AssertDriverShape = true;
 void _driverShapesMatch;
 
 export interface ResolveInComponentOptions {
-  frame?: FrameEvaluationInput | undefined;
   /** Extra drivers (keyframes, audio...). Parent bindings win on a shared key. */
   drivers?: Readonly<Record<string, ParameterDriver>> | undefined;
 }
@@ -62,6 +60,8 @@ export function resolveComponentParameters(
   node: GraphNode,
   definition: NodeDefinition | undefined,
   scope: ParentScope | undefined,
+  /** §T1557b: `parameterReadOptions(…)` for a read at a moment, or `STORED_READ`. */
+  read: ParameterReadOptions,
   options: ResolveInComponentOptions = {},
 ): ComponentResolvedParameters {
   const diagnostics: RuntimeDiagnostic[] = [];
@@ -71,10 +71,7 @@ export function resolveComponentParameters(
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     }),
   };
-  const resolved = resolveParameters(node, definition, {
-    drivers,
-    ...(options.frame === undefined ? {} : { frame: options.frame }),
-  });
+  const resolved = resolveParameters(node, definition, { ...read, drivers });
   return { resolved, diagnostics };
 }
 
@@ -100,7 +97,7 @@ export function resolveInstanceValues(
   node: GraphNode,
   definition: NodeDefinition,
 ): Readonly<Record<string, ParameterValue>> {
-  return storedValues(resolveParameters(node, definition));
+  return storedValues(resolveStored(node, definition));
 }
 
 export interface ComponentNavigationInput {

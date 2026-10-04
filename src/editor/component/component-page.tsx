@@ -11,7 +11,7 @@ import { internalParameterOf } from "@domain/components/definition.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
 import type { ComponentRegistryView } from "@domain/components/registry.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
-import { resolveParameters } from "@editor/inspector/parameter-resolver.ts";
+import { resolveStored } from "@editor/inspector/parameter-resolver.ts";
 import { ParameterControl } from "@ui/controls/parameter-control.tsx";
 import { Button } from "@ui/primitives/button.tsx";
 import styles from "./component.module.css";
@@ -95,7 +95,7 @@ function publishedValue(
   if (target === undefined || node === undefined) {
     return defaultParameterValue(published.definition);
   }
-  const resolved = resolveParameters(node, nodes.get(node.type)).get(target.key);
+  const resolved = resolveStored(node, nodes.get(node.type)).get(target.key);
   return resolved?.value ?? defaultParameterValue(published.definition);
 }
 

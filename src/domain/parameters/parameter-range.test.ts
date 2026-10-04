@@ -5,6 +5,7 @@ import type { NumberParameter, ParameterDefinition, VectorParameter } from "../t
 import { numericRangeOf } from "./expression-range.ts";
 import { resolveParameterSchema } from "./resolve.ts";
 import { validateParameterValue } from "./validate.ts";
+import { testRead } from "./test-support.ts";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════
@@ -221,7 +222,7 @@ function resolveRoll(definition: ParameterDefinition): { value: unknown; clamped
       parameters: { r: { mode: "expression", bindings: { expression: { kind: "expression", source: "abstime * 7" } } } },
     } as never,
     { r: definition },
-    { frame: AT_100_SECONDS as never },
+    testRead({ frame: AT_100_SECONDS as never }),
   );
   return {
     value: resolved.values.r,

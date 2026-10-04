@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveParameters, srgbToLinear } from "../domain/parameters/resolve.ts";
+import { STORED_READ, resolveParameters, srgbToLinear } from "../domain/parameters/resolve.ts";
 import type { GraphDocument, GraphNode } from "../domain/types/graph.ts";
 import type { NodeId } from "../domain/types/ids.ts";
 import type { NodeDefinition } from "../domain/types/node-definition.ts";
@@ -131,7 +131,7 @@ describe("one function, two call sites (§V61)", () => {
 
       // The inspector's call site, through `src/editor/inspector/parameter-resolver.ts`,
       // which is now a re-export of the same function.
-      const inspectorValues = resolveParameters(node, solidNode).values;
+      const inspectorValues = resolveParameters(node, solidNode, STORED_READ).values;
 
       expect(compilerValues).toEqual(inspectorValues);
     });
@@ -144,7 +144,7 @@ describe("one function, two call sites (§V61)", () => {
     const node = testNode("solid" as NodeId, solidNode.type, {
       parameters: { color: [0.5, 0.5, 0.5, 1] },
     });
-    const resolved = resolveParameters(node, solidNode);
+    const resolved = resolveParameters(node, solidNode, STORED_READ);
 
     expect(resolved.get("color")?.value).toEqual([0.5, 0.5, 0.5, 1]);
     expect(resolved.values["color"]).not.toEqual([0.5, 0.5, 0.5, 1]);
