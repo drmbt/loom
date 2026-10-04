@@ -11,11 +11,18 @@
  * `app-shell.module.css` records the same failure from T145). Overlaying also matches
  * what the bar is: a statement about WHERE you are, floating over the network it
  * describes, present only when you are somewhere other than the root.
+ *
+ * VN1: the CHROME layer, not the overlay layer. The shared preview surface
+ * (`panes.module.css` `.previewSurface`) is drawn at --z-canvas-overlay in this same
+ * stacking context and comes LATER in the DOM, so at the same z it painted every node's
+ * preview tile over this bar — the naming prompt and the breadcrumb were both there and
+ * both hidden wherever a tile reached the top of the pane. --z-canvas-chrome is the layer
+ * T892 made for DOM that must stay legible over a composited tile.
  */
 .bar {
   position: absolute;
   inset: 0 0 auto 0;
-  z-index: var(--z-canvas-overlay);
+  z-index: var(--z-canvas-chrome);
   display: flex;
   flex-direction: column;
   border-bottom: var(--border-hairline);
