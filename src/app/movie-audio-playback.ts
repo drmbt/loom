@@ -416,7 +416,10 @@ export function createMovieAudioPlayback(
       if (handOver || (native && stepped.lap)) applyMediaPlayhead(controlled, stepped.transport, stepped.head, true, 0);
       else applyMediaPlayhead(controlled, stepped.transport, stepped.head, stepped.continuous, stepped.correction);
       // The one waiting is kept on the in point: after a hand-over, and when a trim moves it.
-      if (idle !== null && idle.seeking !== true
+      // B245: not a partner the end-of-file timer started — it PLAYS from the in point while
+      // the finished one plays out its last milliseconds (a continuous frame), and putting it
+      // back there was a seek on a playing element.
+      if (idle !== null && idle !== early && idle.seeking !== true
         && Math.abs(idle.currentTime - stepped.head.start) > PRIMED_PRECISION_SECONDS) {
         idle.currentTime = stepped.head.start;
       }

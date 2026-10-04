@@ -1756,6 +1756,36 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       });
 
       /*
+       * B245 — a FRAME between the end-of-file timer and the finished element's end. The
+       * partner already plays (Chrome advances its clock at once: 0.00557 s at the frame, in
+       * the headed run that caught it) while the finished one plays out its last
+       * milliseconds, so the frame is continuous and the partner is not yet the playing
+       * element. Nothing may treat it as the one WAITING on the in point and put it back
+       * there: that is a seek on a playing element, an audible micro-seek every such lap.
+       */
+      it("a frame between the end-of-file timer and the end of the file writes nothing on the partner the timer started (B245)", () => {
+        const { output } = fakeOutput(true);
+        const { first, second, shown, play, frame, wall, start, wallSeconds } = pairSession(
+          { audio: true, volume: 0.5 }, true, 1.005, { output },
+        );
+        play(1, 60);
+        expect([first.paused, second.paused]).toEqual([false, true]);
+        // The timer fires about 3 ms before the end; this frame lands after it, before the end.
+        wall(0.0035);
+        expect([first.paused, second.paused]).toEqual([false, false]);
+        expect(second.currentTime).toBeGreaterThan(0);
+        frame();
+        expect(second.writesWhilePlaying).toEqual([]);
+        expect([first.paused, second.paused]).toEqual([false, false]);
+        // The finished one reaches its end and the next frame hands over; laps go on.
+        const last = play(2.5, 60);
+        expect(shown.slice(0, 2)).toEqual([second, first]);
+        expect([first.writesWhilePlaying, second.writesWhilePlaying]).toEqual([[], []]);
+        expect(last.head.laps).toBe(3);
+        expect(Math.abs(travelled(last) - travelled(start) - wallSeconds())).toBeLessThanOrEqual(1 / 60);
+      });
+
+      /*
        * Audio OFF in the one frame between the end-of-file timer and the hand-over: the partner
        * already plays from the in point, and the finished element is a few milliseconds from
        * the end of the file, or already stopped there. Looping the finished one again would
