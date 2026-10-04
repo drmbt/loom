@@ -40,6 +40,7 @@ import { LaserSection, laserSectionParameters } from "./laser-section.tsx";
 import { WindowSection, windowSectionParameters } from "./window-section.tsx";
 import type { WindowSectionSurface } from "./window-section.tsx";
 import { ComponentSection, componentSectionParameters } from "./component-section.tsx";
+import type { FlattenedGraph } from "@compiler/index.ts";
 import { PresetBankSection, presetBankSectionParameters } from "./preset-bank-section.tsx";
 import { CueListSection, cueListSectionParameters } from "./cue-list-section.tsx";
 import { CUE_LIST_NODE_TYPE, PRESET_STATE_KEYS, bankViewOf, followsTimeline, presetCatalogueHolderFor } from "@domain/presets/index.ts";
@@ -166,6 +167,12 @@ export interface InspectorProps {
   instanceParameters?: InstanceParameters;
   /** T601: the component catalogue, so an instance's Common page offers its preview source. */
   components?: ComponentRegistryView;
+  /**
+   * T1550b: the app's ONE flattened document (`AppRuntime.flattened`), so an instance's
+   * Component section lists the files that instance READS, its overrides applied.
+   * Absent (tests, embeds): no file list.
+   */
+  flattened?: () => FlattenedGraph;
   /**
    * T434(b)/T432: the session's audio capture status, for the Audio section shown on
    * audio nodes. Absent = no session capture wiring (tests, embeds) — section hidden.
@@ -349,6 +356,7 @@ export function Inspector({
   laser,
   performWindows,
   components,
+  flattened,
   instanceParameters,
 }: InspectorProps) {
   const graph = useSyncExternalStore<GraphDocument>(
@@ -967,7 +975,14 @@ export function Inspector({
 
   const componentSection =
     showsComponentSection && components !== undefined ? (
-      <ComponentSection bus={bus} context={context} nodeId={node.id} components={components} />
+      <ComponentSection
+        bus={bus}
+        context={context}
+        nodeId={node.id}
+        components={components}
+        planNodeId={nodeIdInPlan}
+        {...(flattened === undefined ? {} : { flattened })}
+      />
     ) : null;
 
   /* T1501b: Store / Recall / Delete on the bank, and the cue table, standby and GO / BACK

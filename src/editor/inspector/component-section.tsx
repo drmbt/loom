@@ -3,11 +3,11 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ComponentRegistryView } from "@domain/components/registry.ts";
-import type { GraphComponentDefinition } from "@domain/types/components.ts";
 import type { RetainedFileSnapshot } from "@ui/files/retained-files.ts";
+import type { FlattenedGraph } from "@compiler/index.ts";
 import { readComponentInstance } from "@domain/components/instance.ts";
 import { availableUpgrade } from "@domain/components/upgrade.ts";
-import { collectComponentDependencies, externalFiles, type ExternalFile } from "@domain/components/component-file.ts";
+import { externalFiles, type ExternalFile } from "@domain/components/component-file.ts";
 import { retainedFiles } from "@ui/files/retained-files.ts";
 import { AssetField } from "@ui/controls/curve-field.tsx";
 import { parseFileReference } from "@domain/media/file-reference.ts";
@@ -40,7 +40,9 @@ import styles from "./inspector.module.css";
  *    does not open in this browser, with RELINK — the handle is stored under the
  *    reference's own identity, so the definition is not edited and the document's
  *    revision does not move. Before this the one route to a relink was entering the
- *    component, where the field's pick writes the definition.
+ *    component, where the field's pick writes the definition. T1550b: the list is read
+ *    from the FLATTENED document, so it names the file THIS instance reads — its own
+ *    override or published value where it has one, the definition's otherwise.
  */
 
 export interface ComponentSectionProps {
@@ -48,6 +50,13 @@ export interface ComponentSectionProps {
   readonly context: InvocationContext;
   readonly nodeId: NodeId;
   readonly components: ComponentRegistryView;
+  /** The instance's id in the flattened document (`<outer instance>/<id>` inside a component). */
+  readonly planNodeId?: NodeId;
+  /**
+   * T1550b: the app's ONE flattened document (`AppRuntime.flattened`, T615). Absent (an
+   * embed, a test of the layout): no file list — nothing there leases a file either.
+   */
+  readonly flattened?: () => FlattenedGraph;
 }
 
 /** T994's claim: this section presents controls for NO parameter keys. */
@@ -56,7 +65,7 @@ export function componentSectionParameters(): readonly string[] {
   return [];
 }
 
-export function ComponentSection({ bus, context, nodeId, components }: ComponentSectionProps) {
+export function ComponentSection({ bus, context, nodeId, components, planNodeId, flattened }: ComponentSectionProps) {
   // §V79: re-authoring a definition changes what an instance resolves against with
   // nothing to invalidate — this subscription is what makes the version line follow.
   const [, bump] = useReducer((n: number) => n + 1, 0);
@@ -72,7 +81,10 @@ export function ComponentSection({ bus, context, nodeId, components }: Component
   if (state === null) return null;
   const definition = components.get(state.componentId, state.version);
   const upgrade = node === undefined ? null : availableUpgrade(node, components);
-  const unopened = definition === undefined ? [] : unopenedFiles(definition, components, files.snapshot);
+  const unopened =
+    definition === undefined || flattened === undefined
+      ? []
+      : unopenedFiles(flattened(), planNodeId ?? nodeId, components, files.snapshot);
 
   const run = (command: "component.upgradeInstance" | "component.detach") => {
     setBusy(true);
@@ -153,21 +165,41 @@ export function ComponentSection({ bus, context, nodeId, components }: Component
 }
 
 /**
- * T1519b: the retained files inside `definition` and every component it nests that do not
- * open here (missing, unreadable, or waiting for access). Read from the definitions, which
- * is what an instance's internals are; the flattened graph's lease keeps each one resolved.
+ * T1519b: the retained files inside the instance `instanceId` and every component it nests
+ * that do not open here (missing, unreadable, or waiting for access).
+ *
+ * T1550b: read from the FLATTENED document, which is what the instance actually reads —
+ * the definition's graph with the instance's published values and its own overrides
+ * written on, at every nesting level (`effectiveInternalOverrides`). Read from the
+ * definitions, an instance overriding a file listed the definition's file instead. The
+ * flattened graph is also what `useFileReferences` leases, so every status asked for here
+ * has a lease behind it. Each row is NAMED as authored — the component whose graph holds
+ * the node, and the node's label there — because flattening renumbers a label that
+ * collides across instances (B41), and the person relinking knows the one they authored.
  */
 function unopenedFiles(
-  definition: GraphComponentDefinition,
+  flat: FlattenedGraph,
+  instanceId: NodeId,
   components: ComponentRegistryView,
   snapshot: (reference: string) => RetainedFileSnapshot,
 ): ExternalFile[] {
-  const collected = collectComponentDependencies(definition, components);
-  const carried = collected.ok ? collected.definitions : [definition];
-  return carried
-    .flatMap((each) => externalFiles(each.graph, each.name))
-    .filter((file) => {
+  const prefix = `${instanceId}/`;
+  const rows = new Map<string, ExternalFile>();
+  for (const flatId of Object.keys(flat.graph.nodes).sort()) {
+    const flatNode = flat.graph.nodes[flatId];
+    const source = flat.sources.get(flatId);
+    if (!flatId.startsWith(prefix) || flatNode === undefined || source === undefined) continue;
+    const holder = flat.instanceNodes.get(source.path[source.path.length - 1] ?? "");
+    const held = holder === undefined ? null : readComponentInstance(holder);
+    const definition = held === null ? undefined : components.get(held.componentId, held.version);
+    const label = definition?.graph.nodes[source.internalNodeId]?.label;
+    const authored = { ...flat.graph, nodes: { [source.internalNodeId]: { ...flatNode, ...(label === undefined ? {} : { label }) } } };
+    for (const file of externalFiles(authored, definition?.name ?? null)) {
       const status = snapshot(file.uri).kind;
-      return status === "missing" || status === "error" || status === "permission";
-    });
+      if (status !== "missing" && status !== "error" && status !== "permission") continue;
+      // Two instances of one nested component reading one file: one row; one relink fixes both.
+      rows.set(`${file.componentName ?? ""}/${file.nodeName}/${file.uri}`, file);
+    }
+  }
+  return [...rows.values()];
 }

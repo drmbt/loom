@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { flattenComponents } from "@compiler/index.ts";
 import { alice, contextFor } from "@domain/commands/test-support.ts";
 import { createDomainBus } from "@domain/commands/index.ts";
 import { registerComponentCommands } from "@domain/components/commands.ts";
@@ -9,6 +10,7 @@ import { createComponentSystem } from "@domain/components/registry.ts";
 import { graphOf, instanceNode, node } from "@domain/components/test-support.ts";
 import { createGraphStore } from "@domain/graph/store.ts";
 import { createSequentialIdFactory } from "@domain/graph/ids.ts";
+import { COMPONENT_OVERRIDES_STATE_KEY } from "@domain/components/instance.ts";
 import { createFileReference } from "@domain/media/file-reference.ts";
 import type { GraphComponentDefinition } from "@domain/types/components.ts";
 import { DEFAULT_PROJECT_SETTINGS } from "@domain/types/graph.ts";
@@ -108,6 +110,7 @@ describe("relink a file inside a component instance from the instance's inspecto
         nodeId={"show" as NodeId}
         settings={DEFAULT_PROJECT_SETTINGS}
         components={system.components.view()}
+        flattened={() => flattenComponents({ graph: bus.store.getGraph(), registry: system.nodes, components: system.components.view() })}
       />,
     );
     // Named where a person reads it: the file, the node, the component that holds it —
@@ -125,5 +128,66 @@ describe("relink a file inside a component instance from the instance's inspecto
     // And the row is gone: the file opens now.
     await waitFor(() => expect(screen.queryByRole("group", { name: '"take3.mp4" on "clip1" in "Clip"' })).toBeNull());
     lease.release();
+  });
+});
+
+describe("the instance lists the file IT reads, not the definition's (T1550b)", () => {
+  const DEFINED = createFileReference("defined-id", "video", "loop.mp4");
+  const OVERRIDDEN = createFileReference("override-id", "video", "loop-alt.mp4");
+  const loop: GraphComponentDefinition = {
+    componentId: "loop",
+    version: 1,
+    name: "Loop",
+    graph: graphOf([node("movie", "movieFileIn", { file: DEFINED }, { label: "loop1" })]),
+    inputs: [],
+    outputs: [{ externalId: "out", label: "Out", nodeId: "movie", portId: "out" }],
+    parameters: [],
+  };
+
+  it("an instance overriding the internal movie's file names the override; its sibling names the definition's", async () => {
+    // Two instances of one component; `alt` points its internal movie at another file
+    // through the instance's own override — the definition still says loop.mp4.
+    const store = createGraphStore({
+      ids: createSequentialIdFactory("d"),
+      now: () => "2026-10-04T00:00:00.000Z",
+      initialGraph: graphOf([
+        { ...instanceNode("alt" as NodeId, "loop", 1), state: { [COMPONENT_OVERRIDES_STATE_KEY]: { "movie/file": OVERRIDDEN } } },
+        instanceNode("plain" as NodeId, "loop", 1),
+      ]),
+    });
+    const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view(), [loop]);
+    const { bus } = createDomainBus({ store, registry: system.nodes });
+    const flattened = () =>
+      flattenComponents({ graph: bus.store.getGraph(), registry: system.nodes, components: system.components.view() });
+
+    // The leases `useFileReferences` holds on the flattened graph: neither file has a handle here.
+    const leases = [retainedFiles().acquire(DEFINED), retainedFiles().acquire(OVERRIDDEN)];
+    await waitFor(() => expect(retainedFiles().snapshot(DEFINED).kind).toBe("missing"));
+    await waitFor(() => expect(retainedFiles().snapshot(OVERRIDDEN).kind).toBe("missing"));
+
+    const inspect = (nodeId: string) =>
+      render(
+        <Inspector
+          bus={bus}
+          context={context}
+          nodeId={nodeId as NodeId}
+          settings={DEFAULT_PROJECT_SETTINGS}
+          components={system.components.view()}
+          flattened={flattened}
+        />,
+      );
+    const fileRows = () =>
+      screen.queryAllByRole("group").map((group) => group.getAttribute("aria-label")).filter((name) => name?.includes(" on "));
+
+    // The overriding instance plays loop-alt.mp4, so loop-alt.mp4 is the one to relink there.
+    inspect("alt");
+    expect(fileRows()).toEqual(['"loop-alt.mp4" on "loop1" in "Loop"']);
+    cleanup();
+
+    // The sibling has no override and reads the definition's file. Its node is named as
+    // authored, "loop1" — flattening renumbers the second instance's label (B41).
+    inspect("plain");
+    expect(fileRows()).toEqual(['"loop.mp4" on "loop1" in "Loop"']);
+    for (const lease of leases) lease.release();
   });
 });

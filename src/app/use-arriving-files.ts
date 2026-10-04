@@ -23,6 +23,12 @@ import type { Notice } from "./notices.tsx";
  * never repeats it. The node diagnostic (`use-file-references.ts`) stays the record; this
  * is the notice, in the strip where the app says what arrives without anybody asking.
  *
+ * T1550b: once is enough. Clearing site storage changes nothing that opens in THIS page —
+ * the broker (`retainedFiles`) keeps each handle it resolved in memory — and the next page
+ * load arrives every reference again and is checked against the emptied store. A file
+ * moved on disk shows as missing only when the broker resolves it again (the reference
+ * left the document and came back), where the node diagnostic already says so.
+ *
  * The domain only finds the references (`externalFiles`); whether one opens is a lookup in
  * this browser — IndexedDB for a handle, the page for an object URL — so it happens here.
  */

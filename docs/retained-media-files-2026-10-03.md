@@ -20,7 +20,7 @@ Chrome documents both [handle storage in IndexedDB](https://developer.chrome.com
 
 A component never carries media bytes. A movie, audio or mesh node inside a component keeps the same retained reference, so exporting, importing and pasting a component moves only the reference. When a project is opened, or a component is imported or pasted, and a reference has no handle in this profile, the notice strip warns at that moment and names the file, the node and the component. A `blob:` URL from a component file written before export refused them gets the same warning, because it can never load. The node diagnostic stays as the lasting record.
 
-Relink a file inside a component from the instance: the instance's Component section in the Inspector lists its missing files with a **relink** button. Relinking stores the new handle under the reference's existing identity, so the component definition and the document do not change. Export still refuses a component that holds a session-only `blob:` URL; the refusal says to enter the component and choose the file again with the picker.
+Relink a file inside a component from the instance: the instance's Component section in the Inspector lists the missing files that instance reads, with a **relink** button. An instance that overrides an internal file lists its override, not the component's file (T1550b). Relinking stores the new handle under the reference's existing identity, so the component definition and the document do not change. Export still refuses a component that holds a session-only `blob:` URL; the refusal says to enter the component and choose the file again with the picker.
 
 ## Limits
 

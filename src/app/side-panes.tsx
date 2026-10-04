@@ -290,7 +290,9 @@ export function InspectorPane({
   laser,
   performWindows,
 }: InspectorPaneProps) {
-  const { bus, invocation, registry, settings } = useAppRuntime();
+  const { bus, invocation, registry, settings, flattened } = useAppRuntime();
+  // T1550b: the one flattened document, so an instance lists the files it actually reads.
+  const readFlattened = useCallback(() => flattened.current(), [flattened]);
   // §V351/B67: the pane that declares a context must be able to hold focus, or clicking
   // it leaves the GRAPH holding the keys — including `delete`.
   const paneRef = useRef<HTMLDivElement | null>(null);
@@ -342,6 +344,7 @@ export function InspectorPane({
       bus={bus}
       context={invocation}
       components={components}
+      flattened={readFlattened}
       nodeId={nodeId}
       settings={settings}
       diagnostics={diagnostics}
