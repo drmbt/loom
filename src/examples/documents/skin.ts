@@ -3,9 +3,9 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
 /**
  * E63 — Skin (T1169). THE CONNECTIVITY CLAIM, PUT ON SCREEN THREE TIMES.
  *
- *   field1(noise) ─► hide1(pointsFromTexture) ─┬─► standA(pointKernel) ─► dots1(geometry: points)
- *                                              ├─► standB(pointKernel) ─► open1(geometry: surface)
- *                                              └─► standC(pointKernel) ─► seam1(pointTopology) ─► closed1(geometry: surface)
+ *   noise_field(noise) ─► texturepoints_hide(pointsFromTexture) ─┬─► standA(pointKernel) ─► geometry_dots(geometry: points)
+ *                                              ├─► standB(pointKernel) ─► geometry_open(geometry: surface)
+ *                                              └─► standC(pointKernel) ─► topology_seam(pointTopology) ─► geometry_closed(geometry: surface)
  *
  * ## Why this file exists at all
  *
@@ -22,7 +22,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *
  * ## The three panels are one pointset and three claims
  *
- * `hide1` reads the noise on a 96x96 lattice — one point per cell, its brightness pushing
+ * `texturepoints_hide` reads the noise on a 96x96 lattice — one point per cell, its brightness pushing
  * it out of the plane — and that ONE pointset feeds three kernels that differ only in
  * where they stand. Each kernel rolls the sheet into a tube: `u` runs the circumference,
  * `v` runs the height, and the sampled height becomes RADIUS. Identical geometry three
@@ -37,7 +37,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *            the tube is a rolled sheet with two free edges, and the gap between column 95
  *            and column 0 shows straight through to the inside — 997 pixels of backdrop,
  *            in an eight-pixel band, measured.
- *   RIGHT    the same points through `seam1`, one `pointTopology` node whose only job is
+ *   RIGHT    the same points through `topology_seam`, one `pointTopology` node whose only job is
  *            `wrapU: true`. That adds the SEAM CELL — the quads spanning column 95 back to
  *            column 0 — and the sheet becomes a closed tube. The points never move; only
  *            the claim changes.
@@ -47,7 +47,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *
  * ## Where the topology node is, and where it deliberately is not
  *
- * `standB` goes STRAIGHT into `open1`. Putting a redundant `pointTopology` there — grid,
+ * `standB` goes STRAIGHT into `geometry_open`. Putting a redundant `pointTopology` there — grid,
  * wrapU false, exactly what the edge already says — would have made the two surface panels
  * differ by one flag and read tidier, and it would have taught the wrong thing: that a
  * surface needs a claim node. It does not. The lattice is free from any generator that
@@ -63,13 +63,13 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * texel shares a height and the surface steps. Both failures are real and neither happens
  * here, for one reason: the field is band-limited noise whose features are many cells
  * wide, so neighbouring points sample nearly the same height and the skin stays a skin.
- * A `checker` in `field1` would shred it, and that is not a bug in surface mode.
+ * A `checker` in `noise_field` would shred it, and that is not a bug in surface mode.
  *
  * ## Motion
  *
  * Two lanes, both structural. The noise is 4D and moving, so the relief crawls under the
  * skin — the tubes are never the same shape twice. And the rim light's DIRECTION turns
- * (two LFOs in quadrature on `rim1`), which is what makes a relief read as relief: a
+ * (two LFOs in quadrature on `light_rim`), which is what makes a relief read as relief: a
  * raking light is the only thing that shows a bump. It is directional rather than a point
  * light on purpose, so all three panels are lit identically and the comparison is not
  * contaminated by which tube is nearer the lamp.
@@ -156,7 +156,7 @@ export const skinDocument = document(
           t4d: 0.63,
           speed: 0.22,
         },
-        { label: "field1" },
+        { label: "noise_field" },
       ),
       /* §T1169's ONE REAL TRAP, and it is a property of the DATA, not of the node.
          `wrapU` asserts that column 95 is adjacent to column 0; it does not make the field
@@ -168,7 +168,7 @@ export const skinDocument = document(
          is the picture telling you it is there. */
       node("fold", "mirror", [-1720, 12], {
         mirrorx: true, mirrory: false, pivot: [0.5, 0.5], keephigh: false, rotate: 0, extend: "hold",
-      }, { label: "fold1" }),
+      }, { label: "mirror_fold" }),
       /* One point per lattice cell, and the reason the whole chain works: the generator
          KNOWS the adjacency, so it publishes `grid:96x96` on the edge. Threshold 0 because
          an opaque field parks nothing. */
@@ -177,7 +177,7 @@ export const skinDocument = document(
         "pointsFromTexture",
         [-1420, 12],
         { mode: "grid", cols: SKIN_COLS, rows: SKIN_ROWS, sizeX: 2, sizeY: 2, depth: 1, threshold: 0 },
-        { label: "hide1" },
+        { label: "texturepoints_hide" },
       ),
 
       node(
@@ -192,7 +192,7 @@ export const skinDocument = document(
           offsetX: -1.42,
           ...TUBE,
         },
-        { label: "standA1" },
+        { label: "kernel_standA" },
       ),
       node(
         "standB",
@@ -206,7 +206,7 @@ export const skinDocument = document(
           offsetX: 0,
           ...TUBE,
         },
-        { label: "standB1" },
+        { label: "kernel_standB" },
       ),
       node(
         "standC",
@@ -220,7 +220,7 @@ export const skinDocument = document(
           offsetX: 1.42,
           ...TUBE,
         },
-        { label: "standC1" },
+        { label: "kernel_standC" },
       ),
 
       /* THE NODE THE OWNER WENT LOOKING FOR. It writes nothing, owns no buffer and emits no
@@ -231,7 +231,7 @@ export const skinDocument = document(
         "pointTopology",
         [-820, 332],
         { connectivity: "grid", cols: SKIN_COLS, rows: SKIN_ROWS, wrapU: true, wrapV: false },
-        { label: "seam1" },
+        { label: "topology_seam" },
       ),
 
       /* One material for all three draws, so nothing but the claim differs. No texture maps
@@ -241,36 +241,36 @@ export const skinDocument = document(
         "materialPhong",
         [-820, -508],
         { color: [0.52, 0.4, 0.35, 1], specular: [1, 0.82, 0.6, 1], shininess: 30, roughness: 0.65 },
-        { label: "hidemat1" },
+        { label: "material_hide" },
       ),
 
       node("dots", "geometry", [-520, -308], {
-        mode: "points", material: "hidemat1", scale: 0.008, soft: 0, spherical: true, blend: "opaque",
-      }, { label: "dots1" }),
-      node("open", "geometry", [-520, 12], { mode: "surface", material: "hidemat1" }, { label: "open1" }),
-      node("closed", "geometry", [-520, 332], { mode: "surface", material: "hidemat1" }, { label: "closed1" }),
+        mode: "points", material: "material_hide", scale: 0.008, soft: 0, spherical: true, blend: "opaque",
+      }, { label: "geometry_dots" }),
+      node("open", "geometry", [-520, 12], { mode: "surface", material: "material_hide" }, { label: "geometry_open" }),
+      node("closed", "geometry", [-520, 332], { mode: "surface", material: "material_hide" }, { label: "geometry_closed" }),
 
-      node("cam", "camera", [-520, -692], { eye: [0, 0.32, 4.1], lookAt: [0, 0.01, 0], fov: 46 }, { label: "cam1" }),
+      node("cam", "camera", [-520, -692], { eye: [0, 0.32, 4.1], lookAt: [0, 0.01, 0], fov: 46 }, { label: "camera1" }),
       /* Warm key, held still. */
       node("key", "light", [-220, -692], {
         kind: "directional", color: [1, 0.72, 0.42, 1], intensity: 1.0, direction: [-0.45, -0.5, -0.72],
-      }, { label: "key1" }),
+      }, { label: "light_key" }),
       /* The RAKE, and it turns. A relief is invisible under a light that faces it, so the
          two LFOs in quadrature swing the rim around the tubes and every bump takes its turn
          being edge-lit. `rakez` carries an OFFSET as well as an amplitude, which keeps z in
          [-0.2, 0.9]: the light orbits but stays mostly BEHIND, so it rakes rather than
          flooding the fronts. Directional, so all three panels get exactly the same light and
          the comparison is not contaminated by which tube is nearer a lamp. */
-      node("rakex", "lfo", [-220, -1060], { shape: "sine", frequency: 0.07, amplitude: 0.95, offset: 0, phase: 0 }, { label: "rakex1" }),
-      node("rakez", "lfo", [-220, -876], { shape: "sine", frequency: 0.07, amplitude: 0.55, offset: 0.35, phase: 0.25 }, { label: "rakez1" }),
+      node("rakex", "lfo", [-220, -1060], { shape: "sine", frequency: 0.07, amplitude: 0.95, offset: 0, phase: 0 }, { label: "lfo_rakex" }),
+      node("rakez", "lfo", [-220, -876], { shape: "sine", frequency: 0.07, amplitude: 0.55, offset: 0.35, phase: 0.25 }, { label: "lfo_rakez" }),
       node("rim", "light", [-220, -508], {
         kind: "directional", color: [0.22, 0.55, 1, 1], intensity: 1.1,
       }, {
-        label: "rim1",
+        label: "light_rim",
         parameters: {
-          "direction.x": drivenSlot("rakex1", 0.38),
+          "direction.x": drivenSlot("lfo_rakex", 0.38),
           "direction.y": -0.2,
-          "direction.z": drivenSlot("rakez1", 0.45),
+          "direction.z": drivenSlot("lfo_rakez", 0.45),
         },
       }),
 
@@ -280,10 +280,10 @@ export const skinDocument = document(
          2.52 at 720p and about 1.4 ms at 1080p. MSAA stays: the seam is eight pixels wide
          and it is the subject. */
       node("shot", "render", [-220, 12], {
-        scenes: "dots1 open1 closed1", camera: "cam1", lights: "key1 rim1",
+        scenes: "geometry_dots geometry_open geometry_closed", camera: "camera1", lights: "light_key light_rim",
         ambientColor: [0.38, 0.46, 0.68, 1], ambientIntensity: 0.055,
         background: [0, 0, 0, 0], antialias: "msaa",
-      }, { label: "shot1" }),
+      }, { label: "render_shot" }),
 
       /* The source, behind everything: the reader sees the FIELD and the three things made
          of it in one frame, and can trace a bright patch of the backdrop onto a bulge in
@@ -298,10 +298,10 @@ export const skinDocument = document(
           { position: 0.82, color: [0.2, 0.17, 0.23, 1] },
           { position: 1, color: [0.44, 0.31, 0.24, 1] },
         ],
-      }, { label: "swatch1", definitionVersion: 2 }),
-      node("bed", "lookup", [-520, 712], { channel: "red", row: 0.5, scale: 1, offset: 0 }, { label: "bed1" }),
-      node("plate", "over", [80, 12], {}, { label: "plate1" }),
-      node("out", "output", [380, 12], {}, { label: "out1" }),
+      }, { label: "ramp_swatch", definitionVersion: 2 }),
+      node("bed", "lookup", [-520, 712], { channel: "red", row: 0.5, scale: 1, offset: 0 }, { label: "lookup_bed" }),
+      node("plate", "over", [80, 12], {}, { label: "over_plate" }),
+      node("out", "output", [380, 12], {}, { label: "output1" }),
     ],
     [
       edge("e-field-fold", ["field", "out"], ["fold", "input"]),

@@ -37,10 +37,6 @@ export interface Judgement {
 }
 
 export const JUDGEMENTS: readonly Judgement[] = [
-  // ── E66, E81: bg ───────────────────────────────────────────────────────────────────────
-  { scope: "E66-Meter", kind: "solid", old: "bg1", role: "background", reason: "`bg` is background: the backdrop the onsets flash" },
-  { scope: "E81-Phone-Desk", kind: "solid", old: "bg1", role: "background", reason: "`bg` is background: the black behind the pinned quad" },
-
   // ── E75 to E78: the wall of time ───────────────────────────────────────────────────────
   { scope: "*", kind: "timegrid", old: "timewall1", role: "wall", reason: "`time` is already in the kind; E51 calls the same instance `wall`" },
 
@@ -51,10 +47,6 @@ export const JUDGEMENTS: readonly Judgement[] = [
   { scope: "E79-Crucible", kind: "tail", old: "tail380x1", role: "band380", reason: "the 380 Hz band's tail" },
   { scope: "E79-Crucible", kind: "tail", old: "tail3400x1", role: "band3400", reason: "the 3400 Hz band's tail" },
   { scope: "E79-Crucible", kind: "beat", old: "beat1300x1", role: "band1300", reason: "the 1300 Hz band's beat" },
-
-  // ── E82 Set List ───────────────────────────────────────────────────────────────────────
-  { scope: "E82-Set-List", kind: "presets", old: "fx", role: "fx", reason: "kept: two letters, and the word the set list's own cues and a performer use for this bank" },
-  { scope: "E82-Set-List", kind: "layer", old: "layerFx", role: "fx", reason: "kept: the layer that bank works on, beside `layer_grid` and `layer_rings`" },
 
   // ── on-nothing: `wh` ───────────────────────────────────────────────────────────────────
   { scope: "projects/on-nothing", kind: "mesh", old: "meshwh1", role: "warehouse", reason: "`wh` is the warehouse area in scene-facts" },

@@ -58,7 +58,7 @@ beforeAll(async () => {
 type Mutate = (graph: GraphDocument) => void;
 
 /**
- * THE CUT. `closed1` takes `standC`'s pointset directly and the `pointTopology` node is out
+ * THE CUT. `geometry_closed` takes `standC`'s pointset directly and the `pointTopology` node is out
  * of the path — the graph a reader would have built before they knew the node existed.
  */
 const cutTopology: Mutate = (graph) => {
@@ -209,7 +209,7 @@ function seeThrough(shot: Shot, plate: Shot, from: number, to: number): { count:
 
 describe("E63 — the connectivity claim is what turns dots into a surface (T1169)", () => {
   /**
-   * ⚑ THE LOAD-BEARING CLAIM. Cut `seam1` out of the graph and the frame changes.
+   * ⚑ THE LOAD-BEARING CLAIM. Cut `topology_seam` out of the graph and the frame changes.
    *
    * And it changes ONLY in the panel that node feeds, which is the second half of the same
    * statement: `pointTopology` emits no pass and owns no buffer (§V197), so it can reach
@@ -264,7 +264,7 @@ describe("E63 — the connectivity claim is what turns dots into a surface (T116
    *           cloud, spread across 244 columns of the tube. Nothing spans anything.
    *   open    the grid the GENERATOR published, seam open — 997 interior pixels, confined
    *           to an eight-pixel-wide band: the missing seam cell, and nothing else.
-   *   closed  the same points through `seam1` — EXACTLY ZERO. The skin is closed.
+   *   closed  the same points through `topology_seam` — EXACTLY ZERO. The skin is closed.
    *
    * The zero is the assertion that carries this; the other two are what stop it being
    * satisfied by an empty frame.
@@ -299,7 +299,7 @@ describe("E63 — the connectivity claim is what turns dots into a surface (T116
    * field periodic. `pointsFromTexture` reads a flat lattice, so without help, column 0 and
    * column 95 sample two unrelated parts of the noise and the seam cell bridges a cliff —
    * which renders as a dark crevice that looks exactly like the hole it was meant to close.
-   * `fold1` (a Mirror about the field's own centre) is what makes the two edges agree.
+   * `mirror_fold` (a Mirror about the field's own centre) is what makes the two edges agree.
    *
    * Asserted where the mechanism is, on the two texels the lattice's first and last columns
    * actually read — `floor(((col + 0.5) / cols) * width)`, the shader's own arithmetic, so

@@ -5,10 +5,10 @@ import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 /**
  * E81 — Phone Desk. THE LIVE CONTROLS, WIRED THE WAY A USER WIRES THEM.
  *
- *   rings1(ramp) ─► level1(level) ─► hue1(hsv) ─► pin1(cornerPin) ─► lay1(over) ─► out1(output)
+ *   ramp_rings(ramp) ─► level1(level) ─► hsv_hue(hsv) ─► cornerpin1(cornerPin) ─► over_lay(over) ─► output1(output)
  *                     ▲ brightness     ▲ hueoffset   ▲ pintr.x / pintr.y
- *                     ▲ invert         │             │               bg1(solid) ┘
- *   heat(slider)  invert(toggle)  flash(button)  warp(xyPad) ─► panel1(panel, Phone on)
+ *                     ▲ invert         │             │               solid_background(solid) ┘
+ *   slider_heat(slider)  toggle_invert(toggle)  button_flash(button)  xypad_warp(xyPad) ─► panel1(panel, Phone on)
  *        └──────────────┴──────────────┴──── out → controls, in this order ──┘
  *
  * Four widget nodes (T1388b) drive a small picture, and one Panel shows them with `remote`
@@ -22,14 +22,14 @@ import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
  * EVERY MAPPING IS THE APP'S OWN IDIOM: an expression slot reading `op('<widget>').chan.<ch>`,
  * the slot a binding from the parameter writes (T1514b's "Control from Panel" / "Drive
  * from ▸"), with the static binding retained at the widget's own default so a host with no
- * value graph renders the same picture. The widgets are named after their channels (`heat` publishes `heat`),
+ * value graph renders the same picture. The widgets are named after their channels (`slider_heat` publishes `heat`),
  * so the expression reads the same word twice and a newcomer sees where each half comes from.
  *
  * The annotate boxes explain the idiom in the network itself. They sit BESIDE the nodes they
  * describe, not behind them: §V389's layout gate (`layout.test.ts`) measures an annotation's
  * `size` like any node's box, and has no rule that lets a box contain nodes.
  *
- * `rings1` drifts on `abstime` so the card moves with nobody at the controls.
+ * `ramp_rings` drifts on `abstime` so the card moves with nobody at the controls.
  */
 
 /** T1516b — the Panel's board: eight columns, three rows. */
@@ -37,10 +37,10 @@ const PHONE_DESK_BOARD = serializePanelBoard({
   columns: 8,
   items: [
     { label: "Picture", rect: { x: 0, y: 0, w: 5, h: 1 } },
-    { member: "heat", rect: { x: 0, y: 1, w: 5, h: 1 } },
-    { member: "invert", rect: { x: 0, y: 2, w: 2, h: 1 } },
-    { member: "flash", rect: { x: 2, y: 2, w: 3, h: 1 } },
-    { member: "warp", rect: { x: 5, y: 0, w: 3, h: 3 } },
+    { member: "slider_heat", rect: { x: 0, y: 1, w: 5, h: 1 } },
+    { member: "toggle_invert", rect: { x: 0, y: 2, w: 2, h: 1 } },
+    { member: "button_flash", rect: { x: 2, y: 2, w: 3, h: 1 } },
+    { member: "xypad_warp", rect: { x: 5, y: 0, w: 3, h: 3 } },
   ],
 });
 
@@ -66,41 +66,41 @@ export const phoneDeskDocument = document(
           { position: 0.8, color: [1, 0.75, 0.2, 1] },
           { position: 1, color: [0.02, 0.03, 0.08, 1] },
         ],
-      }, { label: "rings1", parameters: { phase: expressionSlot("abstime * 0.04", 0) } }),
+      }, { label: "ramp_rings", parameters: { phase: expressionSlot("abstime * 0.04", 0) } }),
       // Each mapping is an expression slot, retained at the widget's default (T897's idiom).
       node("level", "level", [-1200, 0], {}, {
         label: "level1",
         parameters: {
-          brightness: expressionSlot("op('heat').chan.heat", 1),
-          invert: expressionSlot("op('invert').chan.invert", 0),
+          brightness: expressionSlot("op('slider_heat').chan.heat", 1),
+          invert: expressionSlot("op('toggle_invert').chan.invert", 0),
         },
       }),
       node("hue", "hsv", [-900, 0], {}, {
-        label: "hue1",
-        parameters: { hueoffset: expressionSlot("op('flash').chan.flashCount * 90", 0) },
+        label: "hsv_hue",
+        parameters: { hueoffset: expressionSlot("op('button_flash').chan.flashCount * 90", 0) },
       }),
       node("pin", "cornerPin", [-600, 0], {
         pintr: [0.82, 0.78],
         extend: "zero",
         feather: 0,
       }, {
-        label: "pin1",
+        label: "cornerpin1",
         // A vector is mapped per component (§V113): `pintr.x` and `pintr.y`, each its own slot.
         parameters: {
-          "pintr.x": expressionSlot("op('warp').chan.warpX", 0.82),
-          "pintr.y": expressionSlot("op('warp').chan.warpY", 0.78),
+          "pintr.x": expressionSlot("op('xypad_warp').chan.warpX", 0.82),
+          "pintr.y": expressionSlot("op('xypad_warp').chan.warpY", 0.78),
         },
       }),
       // Outside the pinned quad the Corner Pin is transparent; a projector shows that as black.
-      node("bg", "solid", [-300, 216], { color: [0, 0, 0, 1] }, { label: "bg1" }),
-      node("lay", "over", [-300, 0], { opacity: 1 }, { label: "lay1" }),
-      node("out", "output", [0, 0], {}, { label: "out1" }),
+      node("bg", "solid", [-300, 216], { color: [0, 0, 0, 1] }, { label: "solid_background" }),
+      node("lay", "over", [-300, 0], { opacity: 1 }, { label: "over_lay" }),
+      node("out", "output", [0, 0], {}, { label: "output1" }),
 
       // ---- the controls: value nodes, each one a channel ------------------------------
-      node("heat", "slider", [-1500, 400], { channel: "heat", caption: "Heat", value: 1, min: 0, max: 2, step: 0 }, { label: "heat" }),
-      node("invert", "toggle", [-1200, 400], { channel: "invert", caption: "Invert", on: false }, { label: "invert" }),
-      node("flash", "button", [-900, 400], { channel: "flash", caption: "Next hue", held: false, presses: 0 }, { label: "flash" }),
-      node("warp", "xyPad", [-600, 400], { channel: "warp", caption: "Top-right pin", x: 0.82, y: 0.78, min: 0, max: 1 }, { label: "warp" }),
+      node("heat", "slider", [-1500, 400], { channel: "heat", caption: "Heat", value: 1, min: 0, max: 2, step: 0 }, { label: "slider_heat" }),
+      node("invert", "toggle", [-1200, 400], { channel: "invert", caption: "Invert", on: false }, { label: "toggle_invert" }),
+      node("flash", "button", [-900, 400], { channel: "flash", caption: "Next hue", held: false, presses: 0 }, { label: "button_flash" }),
+      node("warp", "xyPad", [-600, 400], { channel: "warp", caption: "Top-right pin", x: 0.82, y: 0.78, min: 0, max: 1 }, { label: "xypad_warp" }),
 
       // ---- the surface a phone sees ---------------------------------------------------
       // T1512b: the widgets JOIN the Panel by their wires (e7–e10, below). Layout stays
@@ -116,28 +116,28 @@ export const phoneDeskDocument = document(
         body: [
           "Right-click a parameter in the Inspector → Control from Panel: it makes the control, binds it and adds it to the Panel.",
           "Drive from ▸ binds a control you already have. A bound parameter shows ← Heat.",
-          "Underneath is an expression: op('heat').chan.heat. It is maths: op('flash').chan.flashCount * 90 turns the hue a quarter per press.",
+          "Underneath is an expression: op('slider_heat').chan.heat. It is maths: op('button_flash').chan.flashCount * 90 turns the hue a quarter per press.",
         ].join("\n"),
         color: "value",
-      }, { label: "notemapping1", size: { width: 740, height: 240 } }),
+      }, { label: "note_mapping", size: { width: 740, height: 240 } }),
       node("noteSurface", "annotate", [-680, -300], {
         title: "Mapping to a surface: Corner Pin",
         body: [
-          "pin1 pins the picture's four corners onto the output.",
+          "cornerpin1 pins the picture's four corners onto the output.",
           "Drag the pins on its preview tile to fit a wall.",
-          "The top-right pin reads the pad: pintr x is op('warp').chan.warpX, y is op('warp').chan.warpY.",
+          "The top-right pin reads the pad: pintr x is op('xypad_warp').chan.warpX, y is op('xypad_warp').chan.warpY.",
         ].join("\n"),
         color: "output",
-      }, { label: "notesurface1", size: { width: 858, height: 240 } }),
+      }, { label: "note_surface", size: { width: 858, height: 240 } }),
       node("noteControls", "annotate", [-1500, NOTE_CONTROLS_Y], {
         title: "Controls",
         body: [
-          "A widget is a value node: no picture, one number you set by hand, read as op('heat').chan.heat.",
+          "A widget is a value node: no picture, one number you set by hand, read as op('slider_heat').chan.heat.",
           "Heat is brightness and Invert flips it. Next hue turns the hue a quarter. Top-right pin drags the picture's corner.",
           "Drag it on its node or on the Panel. Button adds flashCount; XY Pad publishes warpX and warpY.",
         ].join("\n"),
         color: "input",
-      }, { label: "notecontrols1", size: { width: 1078, height: 200 } }),
+      }, { label: "note_controls", size: { width: 1078, height: 200 } }),
       node("notePanel", "annotate", [240, 260], {
         title: "Panel",
         body: [
@@ -147,7 +147,7 @@ export const phoneDeskDocument = document(
           "The phone icon on its header publishes it to a paired phone.",
         ].join("\n"),
         color: "composite",
-      }, { label: "notepanel1", size: { width: NOTE_WIDTH, height: 260 } }),
+      }, { label: "note_panel", size: { width: NOTE_WIDTH, height: 260 } }),
       node("notePhone", "annotate", [240, 560], {
         title: "Phone",
         body: [
@@ -158,7 +158,7 @@ export const phoneDeskDocument = document(
           "A phone can also be a camera: in a Webcam node pick the device Phone · <name>.",
         ].join("\n"),
         color: "color",
-      }, { label: "notephone1", size: { width: NOTE_WIDTH, height: 260 } }),
+      }, { label: "note_phone", size: { width: NOTE_WIDTH, height: 260 } }),
     ],
     [
       edge("e1", ["rings", "out"], ["level", "input"]),

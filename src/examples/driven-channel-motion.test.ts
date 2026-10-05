@@ -361,15 +361,15 @@ const DELIBERATELY_STILL: Record<string, string> = {
      CLOCKLESS by definition and move only when a hand or a paired phone moves them, which
      no offline horizon does. The published control IS the thing that turns each one on,
      and `phone-desk-claims.gpu.test.ts` moves every widget and asserts the render follows. */
-  "E81-Phone-Desk.loom.json heat.heat": "Slider: moves by hand only; the claims test moves it",
-  "E81-Phone-Desk.loom.json invert.invert": "Toggle: moves by hand only; the claims test flips it",
-  "E81-Phone-Desk.loom.json flash.flashCount": "Button presses: by hand only; the claims test presses it",
-  "E81-Phone-Desk.loom.json warp.warpX": "XY Pad: moves by hand only; the claims test drags it",
-  "E81-Phone-Desk.loom.json warp.warpY": "XY Pad: moves by hand only; the claims test drags it",
+  "E81-Phone-Desk.loom.json slider_heat.heat": "Slider: moves by hand only; the claims test moves it",
+  "E81-Phone-Desk.loom.json toggle_invert.invert": "Toggle: moves by hand only; the claims test flips it",
+  "E81-Phone-Desk.loom.json button_flash.flashCount": "Button presses: by hand only; the claims test presses it",
+  "E81-Phone-Desk.loom.json xypad_warp.warpX": "XY Pad: moves by hand only; the claims test drags it",
+  "E81-Phone-Desk.loom.json xypad_warp.warpY": "XY Pad: moves by hand only; the claims test drags it",
   /* E82's two lanes are the Show desk's sliders, clockless for E81's reason;
      `set-list-claims.gpu.test.ts` moves both and asserts the render follows. */
-  "E82-Set-List.loom.json master.master": "Slider: moves by hand only; the claims test moves it",
-  "E82-Set-List.loom.json keystone.keystone": "Slider: moves by hand only; the claims test moves it",
+  "E82-Set-List.loom.json slider_master.master": "Slider: moves by hand only; the claims test moves it",
+  "E82-Set-List.loom.json slider_keystone.keystone": "Slider: moves by hand only; the claims test moves it",
   "TimeGrid.loom.json lfo_churnx.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
   "TimeGrid.loom.json lfo_churny.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
   /* ⚑ E70's TEMPO LANE, AND IT IS A DIFFERENT KIND OF ROW FROM THE FOUR ABOVE — not a knob
@@ -384,13 +384,13 @@ const DELIBERATELY_STILL: Record<string, string> = {
      picture to be the shipped picture, and a tempo term that moved the morph on the fixture
      would mean the thumbnail and the file disagreed about what the piece looks like.
 
-     The one number that turns it on is in the document: `music1.bpm`. Set it to 140 and the
-     morph runs 25% faster; drop any track into `track1` and the lane rides the real claim.
+     The one number that turns it on is in the document: `pattern_music.bpm`. Set it to 140 and the
+     morph runs 25% faster; drop any track into `audiofile_track` and the lane rides the real claim.
      `chimera-claims.gpu.test.ts` asserts BOTH halves — that the lane is inert at 112, and
      that it is genuinely live at a different tempo — so this row cannot decay into a lane
      that is dead everywhere. */
-  "E70-Chimera.loom.json source1.bpm": "T1309b: the tempo lane is 1 by arithmetic at the fixture's own 112 bpm; music1.bpm turns it on",
-  "E70-Chimera.loom.json source1.bpmConfidence": "T1309b: the pattern always claims its tempo, so the confidence gate is open and constant here; a live source on Auto publishes 0 and the term vanishes",
+  "E70-Chimera.loom.json switch_source.bpm": "T1309b: the tempo lane is 1 by arithmetic at the fixture's own 112 bpm; pattern_music.bpm turns it on",
+  "E70-Chimera.loom.json switch_source.bpmConfidence": "T1309b: the pattern always claims its tempo, so the confidence gate is open and constant here; a live source on Auto publishes 0 and the term vanishes",
 };
 
 interface Sweep {

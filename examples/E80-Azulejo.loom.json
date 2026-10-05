@@ -214,7 +214,7 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "webcam1",
         "parameters": {},
         "position": {
           "x": -1800,
@@ -225,7 +225,7 @@
       "city": {
         "definitionVersion": 1,
         "id": "city",
-        "label": "city1",
+        "label": "wgsl_city",
         "parameters": {
           "drift": 0.22,
           "lights": 1,
@@ -240,7 +240,7 @@
       "clipA": {
         "definitionVersion": 1,
         "id": "clipA",
-        "label": "clipa1",
+        "label": "movie_clipa",
         "parameters": {
           "file": "",
           "playMode": "freeRun",
@@ -255,7 +255,7 @@
       "clipB": {
         "definitionVersion": 1,
         "id": "clipB",
-        "label": "clipb1",
+        "label": "movie_clipb",
         "parameters": {
           "file": "",
           "playMode": "freeRun",
@@ -270,7 +270,7 @@
       "cut": {
         "definitionVersion": 1,
         "id": "cut",
-        "label": "cut1",
+        "label": "mask_cut",
         "parameters": {
           "apply": "alpha",
           "channel": "luminance",
@@ -285,7 +285,7 @@
       "figures": {
         "definitionVersion": 1,
         "id": "figures",
-        "label": "figures1",
+        "label": "wgsl_figures",
         "parameters": {
           "source": "struct Params {\n  sway: f32, // @default 1 How much the two figures move; 0 holds them still.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn hash2(p: vec2f) -> f32 {\n  return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453);\n}\n\nfn noise2(p: vec2f) -> f32 {\n  let i = floor(p);\n  let f = fract(p);\n  let u = f * f * (3.0 - 2.0 * f);\n  return mix(\n    mix(hash2(i), hash2(i + vec2f(1.0, 0.0)), u.x),\n    mix(hash2(i + vec2f(0.0, 1.0)), hash2(i + vec2f(1.0, 1.0)), u.x),\n    u.y,\n  );\n}\n\nfn capsule(p: vec2f, a: vec2f, b: vec2f, ra: f32, rb: f32) -> f32 {\n  let pa = p - a;\n  let ba = b - a;\n  let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);\n  return length(pa - ba * h) - mix(ra, rb, h);\n}\n\nfn smin(a: f32, b: f32, k: f32) -> f32 {\n  let h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);\n  return mix(b, a, h) - k * h * (1.0 - h);\n}\n\n/* One figure standing at feet, height H, width scale w; side is +1 when the partner is to\n   the right; hand is where the inner hand is held; swing moves the free arm; hair adds a\n   fall of hair past the shoulders. */\nfn figure(p: vec2f, feet: vec2f, H: f32, w: f32, side: f32, hand: vec2f, swing: f32, lean: f32, hair: f32) -> f32 {\n  let o = feet;\n  let hip = o + vec2f(lean * 0.6, 0.52 * H);\n  let chest = o + vec2f(lean, 0.72 * H);\n  let neck = o + vec2f(lean * 1.2, 0.85 * H);\n  let head = o + vec2f(lean * 1.4, 0.93 * H);\n  let k = 0.025 * H;\n\n  var d = length((p - head) / vec2f(0.058 * H * w, 0.07 * H)) - 1.0;\n  d = d * 0.06 * H;\n  d = smin(d, capsule(p, chest, neck, 0.03 * H, 0.028 * H), k);\n  d = smin(d, capsule(p, hip, chest, 0.085 * H * w, 0.105 * H * w), k);\n  let shoulderL = chest + vec2f(-0.12 * H * w, 0.06 * H);\n  let shoulderR = chest + vec2f(0.12 * H * w, 0.06 * H);\n  d = smin(d, capsule(p, shoulderL, shoulderR, 0.04 * H, 0.04 * H), k);\n\n  /* The inner arm reaches for the partner's hand; the outer arm hangs and swings. */\n  let innerShoulder = select(shoulderL, shoulderR, side > 0.0);\n  let outerShoulder = select(shoulderR, shoulderL, side > 0.0);\n  let innerElbow = mix(innerShoulder, hand, 0.5) + vec2f(0.0, -0.05 * H);\n  d = smin(d, capsule(p, innerShoulder, innerElbow, 0.036 * H, 0.03 * H), k);\n  d = smin(d, capsule(p, innerElbow, hand, 0.03 * H, 0.026 * H), k);\n  let outerElbow = outerShoulder + vec2f(-side * 0.035 * H + swing * 0.3, -0.17 * H);\n  let outerHand = outerElbow + vec2f(-side * 0.01 * H + swing, -0.16 * H);\n  d = smin(d, capsule(p, outerShoulder, outerElbow, 0.036 * H, 0.03 * H), k);\n  d = smin(d, capsule(p, outerElbow, outerHand, 0.03 * H, 0.026 * H), k);\n\n  /* Legs, a little apart, and small feet. */\n  for (var s = -1.0; s < 2.0; s = s + 2.0) {\n    let legHip = hip + vec2f(s * 0.05 * H * w, -0.02 * H);\n    let knee = o + vec2f(s * 0.06 * H * w + lean * 0.3, 0.28 * H);\n    let ankle = o + vec2f(s * 0.065 * H * w, 0.035 * H);\n    d = smin(d, capsule(p, legHip, knee, 0.058 * H * w, 0.045 * H * w), k);\n    d = smin(d, capsule(p, knee, ankle, 0.045 * H * w, 0.03 * H * w), k);\n    d = smin(d, capsule(p, ankle, ankle + vec2f(s * 0.02 * H, -0.03 * H), 0.03 * H, 0.025 * H), k);\n  }\n\n  /* Hair past the shoulders, when there is any. */\n  if (hair > 0.0) {\n    d = smin(d, capsule(p, head + vec2f(0.0, -0.01 * H), head + vec2f(0.0, -0.14 * H), 0.06 * H, 0.05 * H), k);\n  }\n  return d;\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let dims = vec2f(textureDimensions(inputTexture, 0));\n  let aspect = dims.x / dims.y;\n  let p = vec2f((uv.x - 0.5) * aspect, 0.5 - uv.y);\n  let t = frameU.absTime;\n  let s = params.sway;\n\n  /* The joined hands between them drift a little; everything else answers to them. */\n  let hand = vec2f(0.012 * sin(t * 0.31) * s, -0.105 + 0.012 * sin(t * 0.83) * s);\n\n  let leanA = 0.012 * sin(t * 0.47) * s;\n  let leanB = 0.012 * sin(t * 0.47 + 2.1) * s;\n  let footA = vec2f(-0.22 + 0.006 * sin(t * 0.21) * s, -0.47);\n  let footB = vec2f(0.21 + 0.006 * sin(t * 0.21 + 1.3) * s, -0.47);\n  let a = figure(p, footA, 0.86, 1.0, 1.0, hand, 0.014 * sin(t * 0.9) * s, leanA, 0.0);\n  let b = figure(p, footB, 0.79, 0.88, -1.0, hand, 0.014 * sin(t * 0.9 + 1.7) * s, leanB, 1.0);\n  let d = min(a, b);\n  let px = 1.0 / dims.y;\n  let m = 1.0 - smoothstep(-px, px, d);\n  return vec4f(m, m, m, 1.0);\n}",
           "sway": 1
@@ -299,7 +299,7 @@
       "inner": {
         "definitionVersion": 1,
         "id": "inner",
-        "label": "inner1",
+        "label": "switch_inner",
         "parameters": {
           "index": 0
         },
@@ -325,7 +325,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 0,
@@ -336,7 +336,7 @@
       "outer": {
         "definitionVersion": 1,
         "id": "outer",
-        "label": "outer1",
+        "label": "switch_outer",
         "parameters": {
           "index": 0
         },
@@ -349,7 +349,7 @@
       "seg": {
         "definitionVersion": 1,
         "id": "seg",
-        "label": "seg1",
+        "label": "personmask_seg",
         "parameters": {
           "invert": false,
           "rateLimit": 0.1
@@ -363,7 +363,7 @@
       "shape": {
         "definitionVersion": 1,
         "id": "shape",
-        "label": "shape1",
+        "label": "switch_shape",
         "parameters": {
           "index": 0
         },
@@ -376,7 +376,7 @@
       "size": {
         "definitionVersion": 1,
         "id": "size",
-        "label": "size1",
+        "label": "solid_size",
         "parameters": {
           "color": [
             0,
@@ -394,7 +394,7 @@
       "soft": {
         "definitionVersion": 1,
         "id": "soft",
-        "label": "soft1",
+        "label": "blur_soft",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -409,7 +409,7 @@
       "tiles": {
         "definitionVersion": 1,
         "id": "tiles",
-        "label": "tiles1",
+        "label": "wgsl_tiles",
         "parameters": {
           "rows": 5,
           "sheen": 0.2,
@@ -424,7 +424,7 @@
       "wall": {
         "definitionVersion": 1,
         "id": "wall",
-        "label": "wall1",
+        "label": "over_wall",
         "parameters": {
           "opacity": 1
         },
