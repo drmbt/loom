@@ -33,6 +33,11 @@ import { rewriteDocumentSource, rewritePage, rewriteTest, type NameTable, type R
  * one of them, because a file cannot be half renamed. It says what it widened to. Names of
  * every other scope are left exactly as they are, in every file.
  *
+ * `--written` says the sources on disk are already the rewritten ones (after `--write`, and
+ * after the hand work `--notes` listed). With `--build-in` it then builds from the tree as
+ * it stands and tries every document, which is how a finished batch is proved before it is
+ * regenerated.
+ *
  * `--write` is phase 2b and is not to be run before the map is approved. It writes the
  * sources, pages and tests, and the furnace and on-nothing documents themselves (those are
  * built from files this checkout does not always have, so they are renamed in place
@@ -215,14 +220,21 @@ if (only !== undefined) {
   console.log(`ONLY ${only}: ${String(asked)} scopes asked for, ${String(chosen.size)} with the ones that share a source file: ${[...chosen].sort().map((scope) => scope.replace(/^examples\//, "").replace(/\.loom\.json$/, "")).join(", ")}`);
 }
 
+/** The renames this run applies: all of them, or the batch's. */
+const applying = batch === undefined ? byScope : new Map([...byScope].filter(([scope]) => batch?.has(scope) === true));
+
 /** Which scopes a test names nodes of: the documents it spells, by file name, slug or exported constant. */
 function testScopes(path: string, text: string): Set<string> {
   const scopes = new Set<string>();
   const project = /^src\/projects\/([^/]+)\//.exec(path)?.[1];
   if (project !== undefined) scopes.add(`projects/${project}`);
   for (const example of examples) {
-    const named = text.includes(example.stem) || text.includes(`"${example.slug}"`);
-    const imported = [...sourceScopes].some(([source, built]) => built.has(example.document.path) && (exportsOf.get(source) ?? []).some((name) => new RegExp(`\\b${name}\\b`).test(text)));
+    // A starter component's file is named for the component (`Bloom`), which is also a word:
+    // it has to be spelled as a file. And a host document is not found by the constant that
+    // exports it, because the example built from the same constant is a different document.
+    const host = isComponentHost(example);
+    const named = host ? text.includes(`${example.stem}.loom.json`) : text.includes(example.stem) || text.includes(`"${example.slug}"`);
+    const imported = !host && [...sourceScopes].some(([source, built]) => built.has(example.document.path) && (exportsOf.get(source) ?? []).some((name) => new RegExp(`\\b${name}\\b`).test(text)));
     if (!named && !imported) continue;
     scopes.add(example.document.path);
     for (const scope of embeddedBy.get(example.document.path) ?? []) scopes.add(scope);
@@ -279,9 +291,12 @@ for (const path of walk("src", isTest)) {
   planned.push({ path, kind: "test", before, after: rewriteTest(path, before, tableFor(scopes)) });
 }
 // The project documents are renamed in place (see the header); listed here like any other file.
+// A batch reaches a project document it does not name when that document embeds a component
+// of the batch: a component is one definition wherever it is embedded, and stays one.
 for (const document of documents) {
-  if (!document.path.startsWith("projects/") || (batch !== undefined && !batch.has(`projects/${document.path.split("/")[1] ?? ""}`))) continue;
-  const after = applyRenameMap(document.path, document.text, byScope);
+  if (!document.path.startsWith("projects/")) continue;
+  const after = applyRenameMap(document.path, document.text, applying);
+  if (batch !== undefined && after.text === document.text) continue;
   planned.push({ path: document.path, kind: "document", before: document.text, after: { text: after.text, changed: after.applied.length, spelled: new Set(), notes: [] } });
 }
 
@@ -328,7 +343,7 @@ if (buildIn !== undefined) {
   // half rewritten by this tool and throws or builds nonsense until a person finishes it.
   // …and a file that shares a scope with such a source is not tried either, to a fixpoint:
   // a document is only built when EVERY source that builds it is used rewritten.
-  const byHand = new Set(unspelled.keys());
+  const byHand = new Set(flag("--written") ? [] : unspelled.keys());
   for (let grew = true; grew; ) {
     grew = false;
     for (const scopes of sourceScopes.values()) {
@@ -362,7 +377,7 @@ if (buildIn !== undefined) {
       untriedNames.push(example.stem);
       continue;
     }
-    const expected = applyRenameMap(example.document.path, example.document.text, byScope).text;
+    const expected = applyRenameMap(example.document.path, example.document.text, applying).text;
     const builtPath = join(built, example.document.path.replace(/^examples\//, ""));
     const actual = existsSync(builtPath) ? readFileSync(builtPath, "utf8") : "";
     if (actual === expected) same += 1;

@@ -215,14 +215,14 @@ function unresolvableIn(fileName: string, graph: GraphDocument, logical: Logical
  *
  * Three are LIVE-SOURCE reads — a person mask and a matte publish their coverage
  * through the external-channel ladder T1067 wired into `app.tsx`, and no headless walk of
- * the document can see it. The other three are COMPONENT-INTERNAL chains: `probe` and
- * `hits` are Limits whose input crosses the component boundary, so evaluated standalone
+ * the document can see it. The other three are COMPONENT-INTERNAL chains: `limit_probe` and
+ * `limit_hits` are Limits whose input crosses the component boundary, so evaluated standalone
  * they publish nothing (AudioAnalysis carries two such probes, one per output, T1230).
  */
 const UNVERIFIABLE = [
-  "AudioAnalysis.loom.json  glow.brightness  op('probe').chan.low  [valueLimit]",
-  "AudioAnalysis.loom.json  glow.contrast  op('hits').chan.kickCount  [valueLimit]",
-  "AudioLevel.loom.json  glow.brightness  op('probe').chan.low  [valueLimit]",
+  "AudioAnalysis.loom.json  glow.brightness  op('limit_probe').chan.low  [valueLimit]",
+  "AudioAnalysis.loom.json  glow.contrast  op('limit_hits').chan.kickCount  [valueLimit]",
+  "AudioLevel.loom.json  glow.brightness  op('limit_probe').chan.low  [valueLimit]",
   "E52-Presence.loom.json  wash.brightness  op('mask1').chan.coverage  [personMask]",
   "E53-Two-Cuts.loom.json  washC.brightness  op('seg1').chan.coverage  [personMask]",
   "E53-Two-Cuts.loom.json  washW.brightness  op('matte1').chan.coverage  [matte]",

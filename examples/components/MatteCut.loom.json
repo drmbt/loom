@@ -68,7 +68,7 @@
             "cut": {
               "definitionVersion": 1,
               "id": "cut",
-              "label": "cut1",
+              "label": "mask_cut",
               "parameters": {
                 "apply": "alpha",
                 "channel": "red"
@@ -82,7 +82,7 @@
             "history": {
               "definitionVersion": 1,
               "id": "history",
-              "label": "history1",
+              "label": "cache_history",
               "parameters": {
                 "frames": 24,
                 "index": {
@@ -314,7 +314,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "none"
         },
@@ -327,7 +327,7 @@
       "picture": {
         "definitionVersion": 1,
         "id": "picture",
-        "label": "picture1",
+        "label": "movie_picture",
         "parameters": {},
         "position": {
           "x": -600,

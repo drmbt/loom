@@ -433,7 +433,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('probe').chan.low"
+                "source": "op('limit_probe').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -446,7 +446,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('hits').chan.kickCount"
+                "source": "op('limit_hits').chan.kickCount"
               },
               "static": {
                 "kind": "static",
@@ -468,7 +468,7 @@
       "hits": {
         "definitionVersion": 1,
         "id": "hits",
-        "label": "hits",
+        "label": "limit_hits",
         "parameters": {
           "maximum": 1,
           "minimum": 0
@@ -503,7 +503,7 @@
       "probe": {
         "definitionVersion": 1,
         "id": "probe",
-        "label": "probe",
+        "label": "limit_probe",
         "parameters": {
           "maximum": 1,
           "minimum": 0

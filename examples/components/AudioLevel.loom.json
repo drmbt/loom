@@ -341,7 +341,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('probe').chan.low"
+                "source": "op('limit_probe').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -385,7 +385,7 @@
       "probe": {
         "definitionVersion": 1,
         "id": "probe",
-        "label": "probe",
+        "label": "limit_probe",
         "parameters": {
           "maximum": 1,
           "minimum": 0

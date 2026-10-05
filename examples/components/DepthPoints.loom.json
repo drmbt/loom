@@ -68,7 +68,7 @@
             "carve": {
               "definitionVersion": 1,
               "id": "carve",
-              "label": "carve1",
+              "label": "kernel_carve",
               "parameters": {
                 "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"depthN\",\"type\":\"f32\",\"default\":[0]}]",
                 "capacity": 36864,
@@ -140,7 +140,7 @@
             "paint": {
               "definitionVersion": 1,
               "id": "paint",
-              "label": "paint1",
+              "label": "kernel_paint",
               "parameters": {
                 "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"depthN\",\"type\":\"f32\",\"default\":[0]}]",
                 "capacity": 36864,
@@ -402,7 +402,7 @@
       "colorsrc": {
         "definitionVersion": 2,
         "id": "colorsrc",
-        "label": "colorsrc1",
+        "label": "ramp_colorsrc",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -418,7 +418,7 @@
       "depthsrc": {
         "definitionVersion": 1,
         "id": "depthsrc",
-        "label": "depthsrc1",
+        "label": "circle_depthsrc",
         "parameters": {
           "center": [
             0.5,
@@ -446,10 +446,10 @@
       "dots": {
         "definitionVersion": 1,
         "id": "dots",
-        "label": "dots1",
+        "label": "geometry_dots",
         "parameters": {
           "blend": "additive",
-          "material": "glowm1",
+          "material": "material_glowm",
           "mode": "points",
           "scale": 0.008,
           "soft": 1,
@@ -469,7 +469,7 @@
       "eye": {
         "definitionVersion": 1,
         "id": "eye",
-        "label": "eye1",
+        "label": "camera_eye",
         "parameters": {
           "eye": [
             0.9,
@@ -495,7 +495,7 @@
       "glowm": {
         "definitionVersion": 1,
         "id": "glowm",
-        "label": "glowm1",
+        "label": "material_glowm",
         "parameters": {
           "color": [
             1,
@@ -524,7 +524,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 780,
@@ -535,7 +535,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             0,
@@ -550,9 +550,9 @@
             0.02,
             1
           ],
-          "camera": "eye1",
+          "camera": "camera_eye",
           "lights": "",
-          "scenes": "dots1"
+          "scenes": "geometry_dots"
         },
         "position": {
           "x": 520,

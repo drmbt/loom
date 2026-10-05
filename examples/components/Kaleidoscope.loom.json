@@ -68,7 +68,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "op('driftx1').chan.value"
+                      "source": "op('lfo_driftx').chan.value"
                     },
                     "static": {
                       "kind": "static",
@@ -81,7 +81,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "op('drifty1').chan.value"
+                      "source": "op('lfo_drifty').chan.value"
                     },
                     "static": {
                       "kind": "static",
@@ -337,7 +337,7 @@
       "driftx": {
         "definitionVersion": 1,
         "id": "driftx",
-        "label": "driftx1",
+        "label": "lfo_driftx",
         "parameters": {
           "amplitude": 0.25,
           "frequency": 0.023,
@@ -354,7 +354,7 @@
       "drifty": {
         "definitionVersion": 1,
         "id": "drifty",
-        "label": "drifty1",
+        "label": "lfo_drifty",
         "parameters": {
           "amplitude": 0.25,
           "frequency": 0.031,

@@ -61,8 +61,8 @@ export const feedbackEchoDocument = document(
            * retrace one closed curve and the piece would repeat.
            */
           parameters: {
-            "center.x": drivenSlot("pathx1", 0.5),
-            "center.y": drivenSlot("pathy1", 0.5),
+            "center.x": drivenSlot("lfo_pathx", 0.5),
+            "center.y": drivenSlot("lfo_pathy", 0.5),
           },
         },
       ),
@@ -75,14 +75,14 @@ export const feedbackEchoDocument = document(
         "lfo",
         [-620, -160],
         { shape: "sine", frequency: 0.31, amplitude: 0.3, offset: 0.5, phase: 0 },
-        { label: "pathx1" },
+        { label: "lfo_pathx" },
       ),
       node(
         "pathy",
         "lfo",
         [-620, 40],
         { shape: "sine", frequency: 0.23, amplitude: 0.24, offset: 0.5, phase: 0.25 },
-        { label: "pathy1" },
+        { label: "lfo_pathy" },
       ),
       node("over", "over", [40, -60], { opacity: 1 }, { label: "over1" }),
       node("echo", "feedback", [40, 156], {

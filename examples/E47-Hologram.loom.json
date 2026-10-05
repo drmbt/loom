@@ -57,7 +57,7 @@
             "cut": {
               "definitionVersion": 1,
               "id": "cut",
-              "label": "cut1",
+              "label": "mask_cut",
               "parameters": {
                 "apply": "colour",
                 "channel": "red"
@@ -93,7 +93,7 @@
             "matte": {
               "definitionVersion": 1,
               "id": "matte",
-              "label": "matte1",
+              "label": "wgsl_matte",
               "parameters": {
                 "feather": 0.12,
                 "invert": 0,
@@ -265,7 +265,7 @@
             "carve": {
               "definitionVersion": 1,
               "id": "carve",
-              "label": "carve1",
+              "label": "kernel_carve",
               "parameters": {
                 "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"depthN\",\"type\":\"f32\",\"default\":[0]}]",
                 "capacity": 36864,
@@ -337,7 +337,7 @@
             "paint": {
               "definitionVersion": 1,
               "id": "paint",
-              "label": "paint1",
+              "label": "kernel_paint",
               "parameters": {
                 "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"depthN\",\"type\":\"f32\",\"default\":[0]}]",
                 "capacity": 36864,

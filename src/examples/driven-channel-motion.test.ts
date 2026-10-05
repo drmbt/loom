@@ -60,8 +60,8 @@ import { expressionSlot } from "./documents/builders.ts";
  *
  * The app runs the value graph on the flattened graph (`use-value-graph.ts`), and nothing
  * else is honest here. Component internals reference names that only exist once inlined —
- * the shipped `Kaleidoscope` component reads `driftx1` from its HOST's root graph, and
- * `AudioLevel`'s `probe` is fed across the component boundary — so a per-graph walk reports
+ * the shipped `Kaleidoscope` component reads `lfo_driftx` from its HOST's root graph, and
+ * `AudioLevel`'s `limit_probe` is fed across the component boundary — so a per-graph walk reports
  * both as unresolvable and MISSES the ten driven lanes inside `TimeGrid` entirely. Those
  * ten are not a hypothetical: they are the only place in the catalogue where a published
  * parameter (Churn) reaches its consumers through a channel, and E51 turns it up while the
@@ -331,14 +331,14 @@ function motionOf(
  * by accident, because the sweep that created this table found none.
  */
 const DELIBERATELY_STILL: Record<string, string> = {
-  "E75-Resonance.loom.json churnx1.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
-  "E75-Resonance.loom.json churny1.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
-  "E76-Verdant-Lotus.loom.json churnx1.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
-  "E76-Verdant-Lotus.loom.json churny1.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
-  "E77-Ember-Monoliths.loom.json churnx1.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
-  "E77-Ember-Monoliths.loom.json churny1.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
-  "E78-Aether-Orrery.loom.json churnx1.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
-  "E78-Aether-Orrery.loom.json churny1.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
+  "E75-Resonance.loom.json lfo_churnx.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
+  "E75-Resonance.loom.json lfo_churny.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
+  "E76-Verdant-Lotus.loom.json lfo_churnx.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
+  "E76-Verdant-Lotus.loom.json lfo_churny.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
+  "E77-Ember-Monoliths.loom.json lfo_churnx.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
+  "E77-Ember-Monoliths.loom.json lfo_churny.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
+  "E78-Aether-Orrery.loom.json lfo_churnx.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
+  "E78-Aether-Orrery.loom.json lfo_churny.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
   /* §T809 — E27's optional audio, and "optional" is a GATE here rather than a promise:
      `kick1` is a multiply whose operand ships at 0, so the whole audioPattern → bias →
      envelope → gain chain reaches `lift1.value1` as EXACTLY 0. `relief-claims.gpu.test.ts`
@@ -370,8 +370,8 @@ const DELIBERATELY_STILL: Record<string, string> = {
      `set-list-claims.gpu.test.ts` moves both and asserts the render follows. */
   "E82-Set-List.loom.json master.master": "Slider: moves by hand only; the claims test moves it",
   "E82-Set-List.loom.json keystone.keystone": "Slider: moves by hand only; the claims test moves it",
-  "TimeGrid.loom.json churnx1.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
-  "TimeGrid.loom.json churny1.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
+  "TimeGrid.loom.json lfo_churnx.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
+  "TimeGrid.loom.json lfo_churny.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
   /* ⚑ E70's TEMPO LANE, AND IT IS A DIFFERENT KIND OF ROW FROM THE FOUR ABOVE — not a knob
      at its off position, but §T1279's shape: A LANE THAT IS A NO-OP ON THE SHIPPED FIXTURE
      AND REAL ON A TRACK, which that row's owner proved byte-for-byte rather than letting it

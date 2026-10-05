@@ -235,7 +235,7 @@ const mediaGradeHost: ProjectDocument = {
  * an analyser). Every band the source publishes is normalised at once, per channel.
  *
  * It is a SOURCE component — the audioPattern is inside, so an adopter drops one node, not a
- * chain. `probe` stays outside: the cut `clamp → probe` value edge is what synthesizes the
+ * chain. `limit_probe` stays outside: the cut `clamp → probe` value edge is what synthesizes the
  * component's value OUTPUT boundary (T822), and probe driving `glow.brightness` by its own
  * channel is the runnable demonstration — the normalised low band as a pulsing level.
  *
@@ -281,7 +281,7 @@ export const audioLevelHost: ProjectDocument = {
       norm: { id: "norm", type: "valueMath", definitionVersion: 1, position: { x: 0, y: 280 }, parameters: { operation: "divide" } },
       clamp: { id: "clamp", type: "valueLimit", definitionVersion: 1, position: { x: 240, y: 280 }, parameters: { minimum: 0, maximum: 1 } },
       // Outside: the probe that reads the normalised value and drives the demo.
-      probe: { id: "probe", type: "valueLimit", definitionVersion: 1, position: { x: 480, y: 280 }, parameters: { minimum: 0, maximum: 1 }, label: "probe" },
+      probe: { id: "probe", type: "valueLimit", definitionVersion: 1, position: { x: 480, y: 280 }, parameters: { minimum: 0, maximum: 1 }, label: "limit_probe" },
       // The demonstration picture: a plate whose brightness rides the normalised low band.
       swatch: {
         id: "swatch",
@@ -300,7 +300,7 @@ export const audioLevelHost: ProjectDocument = {
           whitelevel: 1,
           gamma1: 1,
           contrast: 1,
-          brightness: drivenBy("probe:low", 1),
+          brightness: drivenBy("limit_probe:low", 1),
           opacity: 1,
         },
       },
@@ -407,8 +407,8 @@ export const audioAnalysisHost: ProjectDocument = {
       // Inside, the hits lane: the decaying pulse.
       decay: { id: "decay", type: "valueLag", definitionVersion: 1, position: { x: -480, y: 360 }, parameters: { lag: AUDIO_ANALYSIS_TUNING.hitAttack, releaseRatio: AUDIO_ANALYSIS_TUNING.hitDecay } },
       // Outside: the two probes that read the lanes and drive the demo.
-      probe: { id: "probe", type: "valueLimit", definitionVersion: 1, position: { x: 240, y: 120 }, parameters: { minimum: 0, maximum: 1 }, label: "probe" },
-      hits: { id: "hits", type: "valueLimit", definitionVersion: 1, position: { x: 240, y: 360 }, parameters: { minimum: 0, maximum: 1 }, label: "hits" },
+      probe: { id: "probe", type: "valueLimit", definitionVersion: 1, position: { x: 240, y: 120 }, parameters: { minimum: 0, maximum: 1 }, label: "limit_probe" },
+      hits: { id: "hits", type: "valueLimit", definitionVersion: 1, position: { x: 240, y: 360 }, parameters: { minimum: 0, maximum: 1 }, label: "limit_hits" },
       // The demonstration picture: brightness breathes with the low band, contrast pops on the kick.
       swatch: {
         id: "swatch",
@@ -426,8 +426,8 @@ export const audioAnalysisHost: ProjectDocument = {
           blacklevel: 0,
           whitelevel: 1,
           gamma1: 1,
-          contrast: drivenBy("hits:kickCount", 1),
-          brightness: drivenBy("probe:low", 1),
+          contrast: drivenBy("limit_hits:kickCount", 1),
+          brightness: drivenBy("limit_probe:low", 1),
           opacity: 1,
         },
       },
@@ -495,7 +495,7 @@ const depthPointsHost: ProjectDocument = {
         position: { x: -780, y: -120 },
         // A soft radial gradient reads as an inverse depth map: bright centre = close.
         parameters: { mode: "fill", center: [0.5, 0.5], radius: [0.42, 0.42], softness: 0.42, fillcolor: [1, 1, 1, 1] },
-        label: "depthsrc1",
+        label: "circle_depthsrc",
       },
       colorsrc: {
         id: "colorsrc",
@@ -503,7 +503,7 @@ const depthPointsHost: ProjectDocument = {
         definitionVersion: 2,
         position: { x: -780, y: 140 },
         parameters: { type: "horizontal", interp: "smooth", phase: 0, period: 1 },
-        label: "colorsrc1",
+        label: "ramp_colorsrc",
       },
       grid: {
         id: "grid",
@@ -532,7 +532,7 @@ const depthPointsHost: ProjectDocument = {
           far: 4,
           displace: 1,
         },
-        label: "carve1",
+        label: "kernel_carve",
       },
       paint: {
         id: "paint",
@@ -547,15 +547,15 @@ const depthPointsHost: ProjectDocument = {
           gain: 1,
           heat: 0,
         },
-        label: "paint1",
+        label: "kernel_paint",
       },
       dots: {
         id: "dots",
         type: "geometry",
         definitionVersion: 1,
         position: { x: 260, y: 0 },
-        parameters: { mode: "points", scale: 0.008, soft: 1, blend: "additive", material: "glowm1", tint: [1, 1, 1, 1] },
-        label: "dots1",
+        parameters: { mode: "points", scale: 0.008, soft: 1, blend: "additive", material: "material_glowm", tint: [1, 1, 1, 1] },
+        label: "geometry_dots",
       },
       glowm: {
         id: "glowm",
@@ -563,7 +563,7 @@ const depthPointsHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: 260, y: -180 },
         parameters: { color: [1, 1, 1, 1] },
-        label: "glowm1",
+        label: "material_glowm",
       },
       eye: {
         id: "eye",
@@ -571,7 +571,7 @@ const depthPointsHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: 260, y: 180 },
         parameters: { eye: [0.9, 0.5, 3.4], lookAt: [0, 0, 0], fov: 45, near: 0.1, far: 40, ortho: false },
-        label: "eye1",
+        label: "camera_eye",
       },
       shot: {
         id: "shot",
@@ -579,16 +579,16 @@ const depthPointsHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: 520, y: 0 },
         parameters: {
-          scenes: "dots1",
-          camera: "eye1",
+          scenes: "geometry_dots",
+          camera: "camera_eye",
           lights: "",
           ambientColor: [0, 0, 0, 1],
           ambientIntensity: 0,
           background: [0.01, 0.012, 0.02, 1],
         },
-        label: "shot1",
+        label: "render_shot",
       },
-      out: { id: "out", type: "output", definitionVersion: 1, position: { x: 780, y: 0 }, parameters: {}, label: "out1" },
+      out: { id: "out", type: "output", definitionVersion: 1, position: { x: 780, y: 0 }, parameters: {}, label: "output1" },
     },
     edges: {
       "e-depth-carve": { id: "e-depth-carve", source: { nodeId: "depthsrc", portId: "out" }, target: { nodeId: "carve", portId: "field" } },
@@ -652,7 +652,7 @@ const depthCutHost: ProjectDocument = {
         // The same hand-authored inverse-depth stand-in DepthPoints demos with: bright
         // centre = close. Any depth texture serves — that is the point.
         parameters: { mode: "fill", center: [0.5, 0.5], radius: [0.42, 0.42], softness: 0.42, fillcolor: [1, 1, 1, 1] },
-        label: "depthsrc1",
+        label: "circle_depthsrc",
       },
       picture: {
         id: "picture",
@@ -660,7 +660,7 @@ const depthCutHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: -520, y: 140 },
         parameters: { size: [8, 5], offset: [0, 0], color1: [0.1, 0.14, 0.25, 1], color2: [0.85, 0.7, 0.4, 1] },
-        label: "picture1",
+        label: "checker_picture",
       },
       matte: {
         id: "matte",
@@ -668,7 +668,7 @@ const depthCutHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: -260, y: -140 },
         parameters: { [SHADER_SOURCE_PARAMETER]: DEPTH_CUT_MATTE_WGSL, threshold: 0.5, feather: 0.12, invert: 0 },
-        label: "matte1",
+        label: "wgsl_matte",
       },
       /**
        * B189 — `apply: "colour"`, AND THAT ONE WORD IS THE WHOLE FIX.
@@ -699,9 +699,9 @@ const depthCutHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: 0, y: 0 },
         parameters: { channel: "red", apply: "colour" },
-        label: "cut1",
+        label: "mask_cut",
       },
-      out: { id: "out", type: "output", definitionVersion: 1, position: { x: 260, y: 0 }, parameters: {}, label: "out1" },
+      out: { id: "out", type: "output", definitionVersion: 1, position: { x: 260, y: 0 }, parameters: {}, label: "output1" },
     },
     edges: {
       "e-depth-matte": { id: "e-depth-matte", source: { nodeId: "depthsrc", portId: "out" }, target: { nodeId: "matte", portId: "input" } },
@@ -788,8 +788,8 @@ const churnedAxis = (channel: string) => ({
     expression: { kind: "expression" as const, source: `max(1, op('${channel}').chan.value)` },
   },
 });
-const CHURNED_COLUMNS = churnedAxis("churnx1");
-const CHURNED_ROWS = churnedAxis("churny1");
+const CHURNED_COLUMNS = churnedAxis("lfo_churnx");
+const CHURNED_ROWS = churnedAxis("lfo_churny");
 
 /**
  * ── THE CELL FIT, and it is a correctness fix rather than a look ───────────────────────
@@ -831,8 +831,8 @@ const cellFit = (numerator: string, denominator: string) => ({
     },
   },
 });
-const CELL_FIT_X = cellFit("churnx1", "churny1");
-const CELL_FIT_Y = cellFit("churny1", "churnx1");
+const CELL_FIT_X = cellFit("lfo_churnx", "lfo_churny");
+const CELL_FIT_Y = cellFit("lfo_churny", "lfo_churnx");
 
 export const timeGridHost: ProjectDocument = {
   schemaVersion: SCHEMA_VERSION,
@@ -856,7 +856,7 @@ export const timeGridHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: -1420, y: -300 },
         parameters: { shape: "sine", frequency: 0.37, amplitude: 0.34, offset: 0.5, phase: 0 },
-        label: "swingx1",
+        label: "lfo_swingx",
       },
       swingy: {
         id: "swingy",
@@ -864,7 +864,7 @@ export const timeGridHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: -1420, y: -60 },
         parameters: { shape: "sine", frequency: 0.23, amplitude: 0.3, offset: 0.5, phase: 0.25 },
-        label: "swingy1",
+        label: "lfo_swingy",
       },
       feed: {
         id: "feed",
@@ -879,10 +879,10 @@ export const timeGridHost: ProjectDocument = {
           fillcolor: [1, 0.78, 0.4, 1],
           bgcolor: [0.04, 0.05, 0.11, 1],
           aspectcorrect: true,
-          "center.x": drivenBy("swingx1", 0.5),
-          "center.y": drivenBy("swingy1", 0.5),
+          "center.x": drivenBy("lfo_swingx", 0.5),
+          "center.y": drivenBy("lfo_swingy", 0.5),
         },
-        label: "feed1",
+        label: "circle_feed",
       },
       /* The matte the wall isolates subjects with. Inside the demo host it is a luma key,
          which is the honest answer for a bright subject on a dark bed and is
@@ -895,7 +895,7 @@ export const timeGridHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: -1140, y: 160 },
         parameters: { threshold: 0.24, softness: 0.3, channel: "luminance", compare: "greater" },
-        label: "key1",
+        label: "threshold_key",
       },
       // ---- inside the boundary ----------------------------------------------------
       /*
@@ -942,7 +942,7 @@ export const timeGridHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: -1420, y: -420 },
         parameters: { shape: "noise", frequency: 0.062, amplitude: 0, offset: 3, phase: 0 },
-        label: "churnx1",
+        label: "lfo_churnx",
       },
       churny: {
         id: "churny",
@@ -950,7 +950,7 @@ export const timeGridHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: -1420, y: -180 },
         parameters: { shape: "noise", frequency: 0.041, amplitude: 0, offset: 3, phase: 0.37 },
-        label: "churny1",
+        label: "lfo_churny",
       },
       pack: {
         id: "pack",
@@ -959,7 +959,7 @@ export const timeGridHost: ProjectDocument = {
         position: { x: -860, y: -180 },
         parameters: { outr: "in1r", outg: "in1g", outb: "in1b", outa: "in2lum" },
         resolution: TIME_GRID_INTERNAL,
-        label: "pack1",
+        label: "reorder_pack",
       },
       /* Aspect, restored before anything is tiled or recorded — see CELL_FIT_X above for
          the arithmetic and the measurements. Scale only: no translate, no rotate, and the
@@ -981,7 +981,7 @@ export const timeGridHost: ProjectDocument = {
           extend: "hold",
           aspectcorrect: false,
         },
-        label: "fit1",
+        label: "transform_fit",
       },
       /* The grid, and the resolution pin the ring's whole cost depends on. `repeat` is
          ONE vec2 and the published Grid knob drives it whole: a component publishes onto a
@@ -1001,7 +1001,7 @@ export const timeGridHost: ProjectDocument = {
           mirrory: false,
         },
         resolution: TIME_GRID_INTERNAL,
-        label: "grid1",
+        label: "tile_grid",
       },
       /* The delay map. Its controls ARE its shader's `struct Params` (T880/§V805), which
          is what lets Rows, Columns, Mode, Rate and Seed be published without a node
@@ -1021,7 +1021,7 @@ export const timeGridHost: ProjectDocument = {
           rate: 1,
           seed: 7,
         },
-        label: "map1",
+        label: "wgsl_map",
       },
       scan: {
         id: "scan",
@@ -1045,7 +1045,7 @@ export const timeGridHost: ProjectDocument = {
          * be filtered, the map ADDRESSES and must not be.
          */
         parameters: { frames: 61, depth: 1, scale: 0.5 },
-        label: "scan1",
+        label: "slitscan1",
       },
       /* THE VOCABULARY. Three kinds of damage on three clocks that share no measure, at
          most one per cell per frame — the answer to "all the same all the time". The
@@ -1065,7 +1065,7 @@ export const timeGridHost: ProjectDocument = {
           rate: 1,
           seed: 7,
         },
-        label: "break1",
+        label: "wgsl_break",
       },
       /* THE SWEEP — a chromatic front that travels across the wall and passes. Separate
          from the vocabulary because it is the one GLOBAL degradation, and because a
@@ -1083,7 +1083,7 @@ export const timeGridHost: ProjectDocument = {
           amount: 0.5,
           rate: 1,
         },
-        label: "sweep1",
+        label: "wgsl_sweep",
       },
       /*
        * THE CRUSH — the owner's "thresholding, to crush the image a little bit more".
@@ -1113,7 +1113,7 @@ export const timeGridHost: ProjectDocument = {
              made Blend 0 time-varying, which cost the gate an exact claim for nothing. */
           gamma1: 1,
         },
-        label: "crush1",
+        label: "level_crush",
       },
       /*
        * THE RECOLORIZER — Ramp into Lookup, which is the standard way to put a whole wall
@@ -1178,7 +1178,7 @@ export const timeGridHost: ProjectDocument = {
           ],
         },
         resolution: { mode: "fixed", width: 256, height: 16 },
-        label: "palette1",
+        label: "ramp_palette",
       },
       /*
        * THE GUARD — one node, and it is §V833 made structural rather than hoped for.
@@ -1201,7 +1201,7 @@ export const timeGridHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: 540, y: -180 },
         parameters: { mode: "clamp", low: 0, high: 1, steps: 4 },
-        label: "guard1",
+        label: "limit_guard",
       },
       /*
        * E11's lesson, and its inverse. E11 had to STRETCH its index because a noise field's
@@ -1223,7 +1223,7 @@ export const timeGridHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: -20, y: 120 },
         parameters: { channel: "luminance", row: 0.5, offset: 0.08, scale: 0.78 },
-        label: "tone1",
+        label: "lookup_tone",
       },
       /* Colour is a MASTER TINT over the palette, and its default is white — a true
          identity, so the shipped look is the palette unmodified and the knob has its whole
@@ -1235,7 +1235,7 @@ export const timeGridHost: ProjectDocument = {
         position: { x: -20, y: 380 },
         parameters: { color: [1, 1, 1, 1] },
         resolution: { mode: "fixed", width: 512, height: 288 },
-        label: "paint1",
+        label: "solid_paint",
       },
       tint: {
         id: "tint",
@@ -1243,7 +1243,7 @@ export const timeGridHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: 260, y: 240 },
         parameters: { opacity: 1 },
-        label: "tint1",
+        label: "multiply_tint",
       },
       /* `mix` at 0 is `mix(a, b, 0)`, exactly the untinted wall, so Blend has a true
          no-op end (§V147) and the whole recolorizer can be dissolved away live. */
@@ -1253,7 +1253,7 @@ export const timeGridHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: 540, y: -60 },
         parameters: { cross: 0.55 },
-        label: "mix1",
+        label: "cross_mix",
       },
       // ---- outside again ------------------------------------------------------------
       out: {
@@ -1262,7 +1262,7 @@ export const timeGridHost: ProjectDocument = {
         definitionVersion: 1,
         position: { x: 540, y: -60 },
         parameters: {},
-        label: "out1",
+        label: "output1",
       },
     },
     edges: {
@@ -1365,12 +1365,12 @@ const antialiasHost: ProjectDocument = {
         node("grain", "noise", [0, 0], {
           type: "perlin4d", seed: 11, period: 0.25, harmon: 1, spread: 2, gain: 0.5, rough: 0.5,
           exp: 1, amp: 1, offset: 0, mono: true, aspectcorrect: true, t4d: 0.37, s4d: 1, speed: 0.2,
-        }, { label: "grain1" }),
+        }, { label: "noise_grain" }),
         node("cut", "threshold", [300, 0], {
           threshold: 0.5, softness: 0, channel: "luminance", compare: "greater",
-        }, { label: "cut1" }),
-        node("fxaa", "customWgsl", [600, 0], { [SHADER_SOURCE_PARAMETER]: FXAA_WGSL, amount: 1 }, { label: "fxaa1" }),
-        node("out", "output", [900, 0], { toneMap: "none" }, { label: "out1" }),
+        }, { label: "threshold_cut" }),
+        node("fxaa", "customWgsl", [600, 0], { [SHADER_SOURCE_PARAMETER]: FXAA_WGSL, amount: 1 }, { label: "wgsl_fxaa" }),
+        node("out", "output", [900, 0], { toneMap: "none" }, { label: "output1" }),
       ],
       [
         edge("e-grain-cut", ["grain", "out"], ["cut", "input"]),
@@ -1390,18 +1390,18 @@ export const matteCutHost: ProjectDocument = {
     settings({ randomSeed: 7 }),
     graph(
       [
-        node("picture", "movieFileIn", [-600, 0], {}, { label: "picture1" }),
+        node("picture", "movieFileIn", [-600, 0], {}, { label: "movie_picture" }),
         node("matte", "matte", [-300, -140], {
           model: MATTE_MEDIAPIPE.id, smoothing: 1,
         }, { label: "matte1" }),
         node("history", "cache", [-300, 140], {
           frames: 24, scale: 0.5, strictHistory: true,
-        }, { label: "history1", parameters: {
+        }, { label: "cache_history", parameters: {
           // ready is 0/1. Tap64 is beyond every legal history and hides the neutral mask.
           index: expressionSlot("64 + op('matte1').chan.ready * (op('matte1').chan.cacheFrames - 64)", 0),
         } }),
-        node("cut", "mask", [0, 0], { channel: "red", apply: "alpha" }, { label: "cut1" }),
-        node("out", "output", [300, 0], { toneMap: "none" }, { label: "out1" }),
+        node("cut", "mask", [0, 0], { channel: "red", apply: "alpha" }, { label: "mask_cut" }),
+        node("out", "output", [300, 0], { toneMap: "none" }, { label: "output1" }),
       ],
       [
         edge("e-picture-matte", ["picture", "out"], ["matte", "input"]),

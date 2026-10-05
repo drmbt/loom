@@ -556,7 +556,7 @@
             "break": {
               "definitionVersion": 1,
               "id": "break",
-              "label": "break1",
+              "label": "wgsl_break",
               "parameters": {
                 "amount": 0.35,
                 "grid": [
@@ -567,7 +567,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -580,7 +580,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -602,7 +602,7 @@
             "churnx": {
               "definitionVersion": 1,
               "id": "churnx",
-              "label": "churnx1",
+              "label": "lfo_churnx",
               "parameters": {
                 "amplitude": 0,
                 "frequency": 0.062,
@@ -619,7 +619,7 @@
             "churny": {
               "definitionVersion": 1,
               "id": "churny",
-              "label": "churny1",
+              "label": "lfo_churny",
               "parameters": {
                 "amplitude": 0,
                 "frequency": 0.041,
@@ -636,7 +636,7 @@
             "crush": {
               "definitionVersion": 1,
               "id": "crush",
-              "label": "crush1",
+              "label": "level_crush",
               "parameters": {
                 "blacklevel": 0.03,
                 "brightness": 1,
@@ -655,7 +655,7 @@
             "fit": {
               "definitionVersion": 1,
               "id": "fit",
-              "label": "fit1",
+              "label": "transform_fit",
               "parameters": {
                 "aspectcorrect": false,
                 "extend": "hold",
@@ -672,7 +672,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, max(1, op('churnx1').chan.value) / max(1, op('churny1').chan.value))"
+                      "source": "max(1, max(1, op('lfo_churnx').chan.value) / max(1, op('lfo_churny').chan.value))"
                     },
                     "static": {
                       "kind": "static",
@@ -685,7 +685,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, max(1, op('churny1').chan.value) / max(1, op('churnx1').chan.value))"
+                      "source": "max(1, max(1, op('lfo_churny').chan.value) / max(1, op('lfo_churnx').chan.value))"
                     },
                     "static": {
                       "kind": "static",
@@ -709,7 +709,7 @@
             "grid": {
               "definitionVersion": 1,
               "id": "grid",
-              "label": "grid1",
+              "label": "tile_grid",
               "parameters": {
                 "mirrorx": false,
                 "mirrory": false,
@@ -725,7 +725,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -738,7 +738,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -762,7 +762,7 @@
             "guard": {
               "definitionVersion": 1,
               "id": "guard",
-              "label": "guard1",
+              "label": "limit_guard",
               "parameters": {
                 "high": 1,
                 "low": 0,
@@ -800,7 +800,7 @@
             "map": {
               "definitionVersion": 1,
               "id": "map",
-              "label": "map1",
+              "label": "wgsl_map",
               "parameters": {
                 "grid": [
                   3,
@@ -810,7 +810,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -823,7 +823,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -846,7 +846,7 @@
             "mix": {
               "definitionVersion": 1,
               "id": "mix",
-              "label": "mix1",
+              "label": "cross_mix",
               "parameters": {
                 "cross": 0.55
               },
@@ -870,7 +870,7 @@
             "pack": {
               "definitionVersion": 1,
               "id": "pack",
-              "label": "pack1",
+              "label": "reorder_pack",
               "parameters": {
                 "outa": "in2lum",
                 "outb": "in1b",
@@ -891,7 +891,7 @@
             "paint": {
               "definitionVersion": 1,
               "id": "paint",
-              "label": "paint1",
+              "label": "solid_paint",
               "parameters": {
                 "color": [
                   1,
@@ -914,7 +914,7 @@
             "palette": {
               "definitionVersion": 2,
               "id": "palette",
-              "label": "palette1",
+              "label": "ramp_palette",
               "parameters": {
                 "interp": "smooth",
                 "period": 1,
@@ -1012,7 +1012,7 @@
             "scan": {
               "definitionVersion": 1,
               "id": "scan",
-              "label": "scan1",
+              "label": "slitscan1",
               "parameters": {
                 "depth": 1,
                 "frames": 61,
@@ -1027,7 +1027,7 @@
             "sweep": {
               "definitionVersion": 1,
               "id": "sweep",
-              "label": "sweep1",
+              "label": "wgsl_sweep",
               "parameters": {
                 "amount": 0.5,
                 "grid": [
@@ -1038,7 +1038,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -1051,7 +1051,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -1072,7 +1072,7 @@
             "tint": {
               "definitionVersion": 1,
               "id": "tint",
-              "label": "tint1",
+              "label": "multiply_tint",
               "parameters": {
                 "opacity": 1
               },
@@ -1085,7 +1085,7 @@
             "tone": {
               "definitionVersion": 1,
               "id": "tone",
-              "label": "tone1",
+              "label": "lookup_tone",
               "parameters": {
                 "channel": "luminance",
                 "offset": 0.08,
