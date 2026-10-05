@@ -105,7 +105,7 @@ A CPU profile of the hinged document with shadows (V8 sampling, 330 frames), as 
 
 **What the gates cannot see.** An emitter that assembles text by hand and then looks it up through the `wgsl` tag is not a wrapped generator and is not counted; it would be slow, not wrong. A scan of the 23 shipped examples with a Render found none on a values-only frame.
 
-## P2, design: one render pass per target (T1604b, not built)
+## P2, design: one render pass per target (T1604b; built, see "P2 as built" below)
 
 **The change is in the encoder, not in the plan.** A plan pass stays what it is: one draw, with its own id, shader, bindings, uniforms and node. What changes is how many DEVICE render passes the backend opens for them.
 
@@ -122,3 +122,96 @@ A CPU profile of the hinged document with shadows (V8 sampling, 330 frames), as 
 - **The pipeline inspector** reads the installed plan's passes and keeps doing so. It can show the runs as a derived fact ("these fourteen draws share one render pass") from the same function, so it describes what the device does.
 - **Gates.** The picture of every example that has a Render is unchanged (the pixel gates exist; the layer reorder moves no pixel, each layer has its own target). The device render pass count is asserted on a scene by counting `beginRenderPass`, as this profile did. A run that would cross a clear, a loop marker or a target is asserted not to form.
 - **Expected.** Encode and submit are 0.47 ms per added Geometry today, about 0.03 ms a pass; most of the GPU's 0.33 ms per added Geometry and all of an indirect draw's 0.05 ms are per pass on a tile-based GPU. To be measured, not promised.
+
+## P2 as built (T1604b)
+
+Built as designed and ruled, with two things the design did not have: a run is ONE NODE's draws, and a multisampled target is left alone.
+
+**The rule** (`renderPassRuns`, `src/runtime/backend/plan.ts`, the one definition). A run is consecutive `draw` passes of one node into one target, of which only the first may clear. An effect, a dispatch, a swap, a loop marker, another target, another node or a clearing draw ends it. The encoder opens one device render pass per run and draws each member in it. It finds a run by each draw's place in it, read off the plan as written, so a loop body's last draw never joins its own first.
+
+- **One node per run.** The design let a run mix nodes and said its span would then be shared between them. Kept to one node, the per-node GPU figure stays a measurement and only the passes inside a node share. In the eleven plans checked (both sentinel-bot tiers and nine shipped examples) the rule shortens no run.
+- **A skipped draw** (T1598b) is left out of its run. As the run's head it still clears.
+- **A multisampled target is a pass per draw.** Measured, not reasoned: with it grouped, sentinel-bot's colour (rgba16float, 4× MSAA, 640 × 360) differed from one pass per draw on 0 to 8 of 230,400 pixels a frame, each by one unit in the last place of one channel, where two mesh-instanced geometries meet. Every single-sampled target was byte-identical. The cause was not found: the stock material showed it too, and built scenes of up to 8,192 interpenetrating instanced meshes under three casting lights did not show it at all. The frame must not depend on whether someone has the performance panel open, so the rule stays on the safe side. It costs the live tier five device passes (30 instead of 25).
+
+**The Render's order.** Each G-buffer layer's draws are emitted together, after everything that draws the colour. A layer has its own target and its own depth, so no pixel moves. With no glass in the scene the backdrop, the opaque draws and the additive ones are one run. B256 changed no boundary: it took one draw out of the Depth output's run.
+
+**Timing.** A run has one GPU span, named for its head and for how many passes share it (`head+13`). `spanBasePassId` bills it to the head, which is the right node. The telemetry hub reads the name: the head's row carries the figure, the others read "shared", and a pass's own span from a moment earlier is dropped when the run takes over, so a node is not billed twice. While the performance panel is on screen it holds a demand (`demandPassDetail`) and the backend encodes one pass per draw (`setExactPassTiming`); a hidden pane holds none. The CPU half stays per draw.
+
+**Device render passes**, one per draw and grouped:
+
+| Plan | One per draw | Grouped |
+|---|---|---|
+| shadow-caster test scene, Depth and Normal read (66 plan passes, 31 draws skipped) | 35 | 6 |
+| sentinel-bot live as shipped (147 plan passes) | 122 | 30 |
+| sentinel-bot offline as shipped (427 plan passes) | 362 | 38 |
+
+Five cube shadows in the live tier are 84 draws and 5 clears: 89 passes before, 5 after.
+
+**Measured**, sentinel-bot as shipped at `c74efba8`, one robot, 1280 × 720. Apple M3 Max, Dawn on Metal, headless, the frame run as the app runs it. Medians of 240 frames; the two encodings alternated in one process, so each row is one run of the script.
+
+| Document | Encoding | Device passes | GPU per render | CPU per frame (encode, submit) | Wall, GPU drained |
+|---|---|---|---|---|---|
+| live (five casting lights) | one per draw | 122 | 15.1, 14.8 ms | 7.95, 7.74 (2.52, 1.26) | 24.7, 24.0 ms |
+| live | grouped | 30 | 13.9, 14.0 ms | 6.36, 5.98 (1.65, 0.57) | 21.5, 21.3 ms |
+| offline | one per draw | 362 | 23.8 ms | 18.2 (6.83, 3.06) | 42.8 ms |
+| offline | grouped | 38 | 17.2, 17.2 ms | 12.5, 13.1 (3.51, 1.00) | 30.2, 30.9 ms |
+| hinged claws, only the eyes cast, everything casts | one per draw | 130 | 11.7 ms | 10.9 | 23.5 ms |
+| the same | grouped | 34 | 9.4 ms | 8.7 | 19.7 ms |
+| rigid claw, only the eyes cast, everything casts | one per draw | 58 | 9.6 or 35 ms (see below) | 6.45 | 17.2 or 42 ms |
+| the same | grouped | 26 | 9.2 ms | 5.74 | 16.5 ms |
+
+The rigid document's one-per-draw run was bimodal: 91 renders near 9.6 ms and 149 near 35 ms (B251). Its row is not a clean comparison.
+
+**Where the live frame goes** (grouped; each figure is the live document against the same document with that part off):
+
+| Part | GPU | Wall |
+|---|---|---|
+| the whole frame | 13.9 ms | 21.4 ms |
+| five cube shadows | 7.0 ms (50%) | 7.8 ms (36%) |
+| the finish chain (reflections, occlusion, haze, focus, bloom, lens, grade) and the Depth and Normal layers only it reads | 3.9 ms (28%) | 4.4 ms (21%) |
+
+**One casting point light with a caster list**, live tier: a fifth of what the five cost.
+
+| | GPU | CPU | Wall |
+|---|---|---|---|
+| one pass per draw | 1.54 ms | 0.53 ms | 2.07 ms |
+| grouped | 1.39 ms | 0.24 ms | 1.56 ms |
+
+Grouping removes the passes, not the triangles: each light still draws its casters in six faces (about 3.9 million triangles a light for the hull, the rings and the claw).
+
+**Each light on its own**, grouped: the live document with that one light's Cast Shadows off, against the control (GPU 13.8, 14.1, 13.7 ms; wall 21.4, 21.9, 21.0 ms in the same run).
+
+| Shadow turned off | Casters | GPU saved | Wall saved |
+|---|---|---|---|
+| `light_eyes` | hull, ring, claw | 1.6 ms | 2.1 ms |
+| `light_lamp0` | hull, ring, claw | 1.6 ms | 1.1 ms |
+| `light_lamp1` | hull, ring, claw | 1.6 ms | 1.5 ms |
+| `light_lamp2` | hull, ring, claw | 1.2 ms | 0.8 ms |
+| `light_body` | ring, claw | 1.2 ms | 0.8 ms |
+| all but the eyes | | 5.4 ms | 5.8 ms |
+| all five | | 7.0 ms | 7.8 ms |
+
+The wall figures move by about half a millisecond between identical runs, so the lamps are not separable by them. By GPU time the two cheaper ones are the body light (no hull) and `light_lamp2`.
+
+**In the app**, one run: headless Chromium, the main checkout (before) and this branch (after) served side by side and opened in turn in one browser, the same document file.
+
+| Document | Build | Frame interval, median | Frames per second | Header GPU readings |
+|---|---|---|---|---|
+| live | before | 41.1 ms | 26.3 | 23 to 31 ms |
+| live | after | 40.7 ms | 26.2 | 26 to 31 ms |
+| live | before | 41.9 ms | 24.0 | 25 to 38 ms |
+| live | after | 33.4 ms | 28.7 | 22 to 27 ms |
+| offline | before | 58.3 ms | 17.8 | 42 to 51 ms |
+| offline | after | 49.7 ms | 21.7 | 29 to 34 ms |
+| offline | before | 66.6 ms | 15.7 | 45 to 53 ms |
+
+The offline tier is plainly faster. The live tier is not settled by this run: one "after" equals the controls and one is 8 ms better. The app's frame here is about twice the headless one and spread wide.
+
+**Gates.** `render-pass-runs.test.ts`: the rule, the exact device pass count with a device-call counter, the loop rule, the span names, the Render's own runs. `render-pass-runs.gpu.test.ts` (Dawn): grouped and one-pass-per-draw pictures byte-identical on the test scene's three outputs, with additive light, with a draw arriving mid-run, and on five shipped Render examples. `hub.test.ts`, `performance-panel.test.tsx` and `composition-wiring.test.tsx` hold the timing rule and that the panel reaches the backend through the composed app. Beyond the gates: the output, colour, Depth and Normal of both sentinel-bot tiers and seven shipped examples hashed the same before the change and after it.
+
+**Not built.**
+
+- A preview tile's synthesized passes still open a pass each.
+- The pipeline inspector does not show which draws share a device pass.
+- A counted pointset's args dispatch is emitted at its first use, which can be between the colour's draws, where it splits that run (read from the code, not measured).
+- Runs into a multisampled target, pending a cause for the one-unit difference.

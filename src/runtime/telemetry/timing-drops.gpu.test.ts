@@ -5,7 +5,7 @@ import { createComponentSystem } from "../../domain/components/registry.ts";
 import { loadProject } from "../../domain/project/index.ts";
 import { listExamples } from "../../examples/catalogue.ts";
 import { exampleRegistry } from "../../examples/runner.ts";
-import { expandLoops, spanBasePassId } from "../backend/plan.ts";
+import { expandLoops, renderPassRuns, spanBasePassId, spanSharedPasses } from "../backend/plan.ts";
 import { nodeGpuHost, probeDawn } from "../backend/vgpu/node-gpu-host.ts";
 import { createVgpuBackend } from "../backend/vgpu/vgpu-backend.ts";
 import { createFrameDriver } from "../execution/frame-driver.ts";
@@ -131,11 +131,22 @@ async function renderE47(mode: "awaited" | "back-to-back") {
     const results = new Map<number, number>();
     const drops = new Map<number, number>();
     const named = new Set<string>();
+    /* T1604b: a run of a node's draws is one device render pass with ONE span, named for its
+       head and for how many passes share it. Every pass of the run is timed by that span, so
+       all of them count as named — and the name must cover exactly the run, or a pass would
+       be timed by nothing and nobody would be told. */
+    const runByHead = new Map(renderPassRuns(plan.passes, plan.resources).map((run) => [run.passIds[0] as string, run.passIds]));
+    const miscounted: string[] = [];
     let lastArrival = performance.now();
     backend.onGpuTimings((spans, frame) => {
       const submit = frame?.submit ?? -1;
       results.set(submit, (results.get(submit) ?? 0) + 1);
-      for (const name of Object.keys(spans)) named.add(spanBasePassId(name));
+      for (const name of Object.keys(spans)) {
+        const head = spanBasePassId(name);
+        const run = runByHead.get(head) ?? [head];
+        if (run.length - 1 !== spanSharedPasses(name)) miscounted.push(name);
+        for (const passId of run) named.add(passId);
+      }
       lastArrival = performance.now();
     });
     onDropped.call(backend, (drop) => {
@@ -171,6 +182,7 @@ async function renderE47(mode: "awaited" | "back-to-back") {
       results,
       drops,
       untimed: [...timedPassIds].filter((id) => !named.has(id)),
+      miscounted,
       hubDropped: hub.snapshot().frame.droppedFrames,
     };
   } finally {
@@ -202,6 +214,7 @@ describe("T1295 — every timed frame of the export path reports or says it neve
       expect(run.drops.get(submit) ?? 0, `render ${submit} after warm-up dropped`).toBe(0);
     }
     expect(run.untimed, `timed passes no result ever named: ${run.untimed.join(", ")}`).toEqual([]);
+    expect(run.miscounted, "a span that says it covers another number of passes than its run has").toEqual([]);
 
     // (3) The frame figure carries the count.
     expect(run.hubDropped).toBe(dropped);
