@@ -293,6 +293,21 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
    * lies along the top of the node, and the field being typed in is under it.
    */
   const kindLabel = definition === undefined || isEditingName ? null : kindLabelParts(node.label, kindOf(definition));
+  /**
+   * The name AT REST, in the two parts it is made of, when it has both (ruled 2026-10-05).
+   *
+   * `camerablur_the_quick_brown_fox` does not fit a 103 px slot. Cut at the end it read
+   * `camerablur_the…`: the kind whole and the role, the part a person chose, gone. So the
+   * header draws the kind and the role as separate boxes and lets the KIND give way first,
+   * `cam…_the_quick_bro…`, exactly as the field does while the name is being edited. The
+   * element's text is still the whole name, and so is its hover.
+   *
+   * Only for a name that carries its kind AND a role. An auto-name (`blur1`) has no role to
+   * protect, and a name without its kind has no kind to elide.
+   */
+  const restKind = definition === undefined ? null : kindOf(definition);
+  const restRole = node.label === undefined || restKind === null ? null : roleOf(node.label, restKind);
+  const nameAtRest = restKind !== null && restRole !== null && restRole !== "" ? { kind: restKind, role: restRole } : null;
 
   return (
     <>
@@ -402,7 +417,7 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
           ) : (
             <>
               <span
-                className={styles.name}
+                className={cx(styles.name, nameAtRest !== null && styles.nameInParts)}
                 data-testid={`node-name-${id}`}
                 title={displayName}
                 // T415: TouchDesigner's own gesture, and the one the owner asked for —
@@ -416,7 +431,19 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
                   beginRename(id);
                 }}
               >
-                {displayName}
+                {nameAtRest === null ? (
+                  displayName
+                ) : (
+                  <>
+                    {/* A kind of four letters or fewer is already as short as an elided one
+                        (`cam…`), so it does not give way: see `.restKind`. */}
+                    <span className={styles.restKind} data-short={nameAtRest.kind.length <= 4}>
+                      {nameAtRest.kind}
+                    </span>
+                    <span className={styles.restJoin}>_</span>
+                    <span className={styles.restRole}>{nameAtRest.role}</span>
+                  </>
+                )}
               </span>
               {typeLabel === null ? null : (
                 <span

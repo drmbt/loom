@@ -729,6 +729,72 @@ describe("T603 — a component instance reads as one at a glance", () => {
 });
 
 /**
+ * T1593b (ruled 2026-10-05) — A LONG NAME AT REST GIVES UP ITS KIND FIRST.
+ *
+ * `camerablur_the_quick_brown_fox` cut at the end reads `camerablur_the…`: the kind whole
+ * and the role, the word a person chose, gone. The header draws the two parts separately so
+ * the kind can be the one that elides (`cam…_the_quick_brown`).
+ *
+ * jsdom lays nothing out, so WHICH part elides is not asserted here; it was read from a real
+ * browser (docs/node-naming-2026-10-05.md). What is held here is what makes that possible
+ * and what must not change: the name is in parts only when it has both, the join is its own
+ * part, and the element still says the whole name to a test, a screen reader and a hover.
+ */
+describe("T1593b — a name at rest is drawn as its kind and its role", () => {
+  const nameOf = (container: HTMLElement, nodeId: string) =>
+    container.querySelector<HTMLElement>(`[data-testid="node-name-${nodeId}"]`);
+  const withLabel = (type: string, label?: string): GraphDocument => {
+    const graph = graphWith(type);
+    if (label !== undefined) (graph.nodes["n1"] as { label?: string }).label = label;
+    return graph;
+  };
+  const partsOf = (element: HTMLElement | null) => [...(element?.children ?? [])].map((part) => part.textContent);
+
+  it("splits a name that carries its kind and a role into kind, join and role", () => {
+    const { container, nodeId } = mountNode("test.composite", { graph: withLabel("test.composite", "composite_lower_third") });
+    const name = nameOf(container, nodeId);
+    expect(partsOf(name)).toEqual(["composite", "_", "lower_third"]);
+  });
+
+  it("still says the whole name: as its text, and on hover", () => {
+    const { container, nodeId } = mountNode("test.composite", { graph: withLabel("test.composite", "composite_lower_third") });
+    const name = nameOf(container, nodeId);
+    expect(name?.textContent).toBe("composite_lower_third");
+    expect(name?.getAttribute("title")).toBe("composite_lower_third");
+  });
+
+  it("leaves an auto-name whole: it has no role to protect", () => {
+    const { container, nodeId } = mountNode("test.composite", { graph: withLabel("test.composite", "composite1") });
+    expect(partsOf(nameOf(container, nodeId))).toEqual([]);
+    expect(nameOf(container, nodeId)?.textContent).toBe("composite1");
+  });
+
+  it("leaves a name without its kind whole: there is no kind to elide", () => {
+    const { container, nodeId } = mountNode("test.composite", { graph: withLabel("test.composite", "lower_third") });
+    expect(partsOf(nameOf(container, nodeId))).toEqual([]);
+    expect(nameOf(container, nodeId)?.textContent).toBe("lower_third");
+  });
+
+  it("leaves an unnamed node's title whole", () => {
+    const { container, nodeId } = mountNode("test.composite", { graph: withLabel("test.composite") });
+    expect(partsOf(nameOf(container, nodeId))).toEqual([]);
+  });
+
+  /*
+   * A kind of four letters or fewer is already as short as an elided one (`cam…`), so it
+   * is marked not to give way. Without the mark it would be held to a floor wider than its
+   * own letters, which draws a gap inside `lfo_pathx` on every node where the name fits.
+   */
+  it("marks a short kind so it never elides, and a long one so it can", () => {
+    const short = mountNode("test.blur", { graph: withLabel("test.blur", "blur_diffuse") });
+    expect(nameOf(short.container, short.nodeId)?.firstElementChild?.getAttribute("data-short")).toBe("true");
+    cleanup();
+    const long = mountNode("test.composite", { graph: withLabel("test.composite", "composite_lower_third") });
+    expect(nameOf(long.container, long.nodeId)?.firstElementChild?.getAttribute("data-short")).toBe("false");
+  });
+});
+
+/**
  * T1597b — THE NODE'S HALF OF THE LOW-ZOOM KIND LABEL.
  *
  * `kind-label.test.tsx` holds what the label says at each zoom and what a zoom costs. What

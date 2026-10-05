@@ -192,6 +192,56 @@
 }
 
 /*
+  T1593b (ruled 2026-10-05) — A LONG NAME AT REST GIVES UP ITS KIND FIRST.
+
+  A name is `kind_role`. When it is too long for the header it used to be cut at the end,
+  `camerablur_the…`: the kind whole and the role, the word a person chose, lost. Drawn in
+  its two parts the header can choose what to lose, and it loses the kind first:
+  `cam…_the_quick_brown`. The same rule as the field has while the name is being edited.
+
+  HOW. The three parts are flex items. The kind shrinks a thousand times as readily as the
+  role, so in practice it takes the whole shortfall until it reaches its floor, and only
+  then does the role start to ellipsise. The floor is about three letters and the dots
+  (`cam…`): below that the header would stop saying what the node is, and the type chip
+  beside it is hidden for exactly this name. The underscore never shrinks, so what is left
+  still reads as one name with a word shortened.
+
+  A kind of four letters or fewer (`lfo`, `blur`, `mesh`) does not shrink at all. It is
+  already no longer than an elided one, and giving it the floor would hold open more room
+  than its own letters need.
+*/
+.nameInParts {
+  display: flex;
+}
+
+.restKind {
+  flex: 0 1000 auto;
+  /* Measured: at 2.6em (29 px) the floor read `ca…`; the field's own elided kind is 37 px
+     and reads `cam…`. Same floor here, so the two states show the same three letters. */
+  min-width: 3.4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.restKind[data-short="true"] {
+  flex: none;
+  min-width: 0;
+}
+
+.restJoin {
+  flex: none;
+}
+
+.restRole {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
   T416 — the node's TYPE, beside its name and behind it in every way that reads.
   Dimmed, smaller, unbolded, lowercase: the name is the heading and this is the caption.
 
