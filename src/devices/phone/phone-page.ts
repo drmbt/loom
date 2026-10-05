@@ -43,6 +43,20 @@
  * switch names its picture, a cue shows its note (in the list, and for the standby beside
  * `current ▸ next`), and the list scrolls ITSELF — never the page — to keep the standby in
  * view when Loom moves it.
+ *
+ * T1607b — SCROLL TO EVERY CONTROL WITHOUT MOVING ONE, AND PAGES
+ * (`docs/phone-panel-scrolling-design-2026-10-05.md`). A touch that lands on a control is
+ * not yet the control's. Sliders, faders, toggles and buttons are `touch-action: pan-y`, so
+ * the BROWSER scrolls a touch that goes up or down (and says so with `pointercancel`); the
+ * script takes a touch only after it has travelled `SLOP` px along the control, further
+ * than across it — past the point where the browser has decided. Touch-down never writes:
+ * a value moves by the finger's TRAVEL from where the control took it (relative), a toggle
+ * flips on release (`click`), a momentary Button is pressed on release or held once a
+ * finger has rested `PRESS_MS`. An XY pad owns both axes (`touch-action: none`), so a page
+ * that scrolls and shows one grows a rail down its right edge that only ever scrolls. A
+ * board with two or more labelled sections gets a pager above the tabs: All, and a page per
+ * label drawn so its own columns fill the width. Those rules are `PHONE_PAGE_LOGIC`, plain
+ * functions of numbers that the test runs from the same string the phone does.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -81,6 +95,9 @@ export const PHONE_NAME_STORAGE_KEY = "loom.phone.cameraName";
 /** T1517b: where the phone keeps the tab it last showed (its `localStorage`). */
 export const PHONE_TAB_STORAGE_KEY = "loom.phone.tab";
 
+/** T1607b: where the phone keeps the page it last showed of each Panel — a JSON object, tab key → page name. */
+export const PHONE_PAGE_STORAGE_KEY = "loom.phone.page";
+
 function paletteBlock(): string {
   // A path, not `new URL(…, import.meta.url)`: vite rewrites that form into an asset URL.
   const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../ui/tokens.css"), "utf8");
@@ -103,13 +120,17 @@ html, body {
   -webkit-text-size-adjust: 100%;
 }
 body {
-  /* --pad is the page gutter; --bar the bottom tab bar's height above the safe area. */
+  /* --pad is the page gutter; --bar the bottom tab bar's height above the safe area.
+     T1607b: --pager is the pager's height while a Panel has pages, --rail what the scroll
+     rail takes from the right gutter while it shows; both 0 otherwise. */
   --pad: 12px;
   --bar: 64px;
   --gap: 6px;
+  --pager: 0px;
+  --rail: 0px;
   min-height: 100vh;
-  padding: calc(var(--pad) + env(safe-area-inset-top)) calc(var(--pad) + env(safe-area-inset-right))
-    calc(var(--bar) + var(--pad) + env(safe-area-inset-bottom)) calc(var(--pad) + env(safe-area-inset-left));
+  padding: calc(var(--pad) + env(safe-area-inset-top)) calc(var(--pad) + var(--rail) + env(safe-area-inset-right))
+    calc(var(--bar) + var(--pager) + var(--pad) + env(safe-area-inset-bottom)) calc(var(--pad) + env(safe-area-inset-left));
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
@@ -132,7 +153,7 @@ body {
   position: fixed;
   left: calc(var(--pad) + env(safe-area-inset-left));
   right: calc(var(--pad) + env(safe-area-inset-right));
-  bottom: calc(var(--bar) + var(--pad) + env(safe-area-inset-bottom));
+  bottom: calc(var(--bar) + var(--pager) + var(--pad) + env(safe-area-inset-bottom));
   z-index: 4;
   padding: 14px 16px;
   border: 1px solid var(--error);
@@ -183,6 +204,71 @@ body {
 #tabs .tabname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #tabs .dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--signal); }
 #tabs .dot.live { background: var(--ok); }
+/*
+ * T1607b: the pager — the shown Panel's labelled sections as pages, directly above the tab
+ * bar so every way round the surface is under one thumb. Shown only for a board with pages.
+ */
+body.paged { --pager: 52px; }
+#pager {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--bar) + env(safe-area-inset-bottom));
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+  height: var(--pager);
+  padding: 4px calc(8px + env(safe-area-inset-right)) 4px calc(8px + env(safe-area-inset-left));
+  border-top: 1px solid var(--line);
+  background: var(--bg-panel);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#pager::-webkit-scrollbar { display: none; }
+#pager button {
+  flex: 1 0 auto;
+  min-width: 56px;
+  max-width: 200px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#pager button[aria-selected="true"] { border-color: var(--signal); background: var(--bg-raise); color: var(--text); }
+/*
+ * T1607b: the scroll rail. An XY pad owns every touch that lands on it (touch-action:
+ * none), so a page that scrolls and shows one keeps this strip at its right edge: it
+ * handles nothing, which leaves a touch on it to the browser to scroll. The thumb says
+ * where the page is. The body is inset by --rail while it shows, so no control lies under it.
+ */
+body.railed { --rail: 28px; }
+#rail {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: calc(var(--bar) + var(--pager) + env(safe-area-inset-bottom));
+  z-index: 2;
+  width: calc(32px + env(safe-area-inset-right));
+  border-left: 1px solid var(--line);
+  background: var(--bg-panel);
+  touch-action: pan-y;
+}
+#rail .railthumb {
+  position: absolute;
+  left: 13px;
+  width: 6px;
+  min-height: 24px;
+  border-radius: 3px;
+  background: var(--text-dim);
+}
 .panel { margin: 0; }
 .panel > h2 { margin: 16px 0 8px; font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
 .panel > h2:first-child { margin-top: 4px; }
@@ -195,7 +281,14 @@ body {
 .cap { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; color: var(--text-dim); }
 .cap .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cap .val { flex: none; color: var(--text); font-variant-numeric: tabular-nums; }
-.ctl { touch-action: none; user-select: none; -webkit-user-select: none; }
+/*
+ * T1607b: a touch that goes up or down from a control is the BROWSER's — it scrolls, and
+ * says so with pointercancel; one that goes along it is the control's. An XY pad is the
+ * exception: both axes are its own. .held is a control that has taken a touch.
+ */
+.ctl { touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.ctl.pad { touch-action: none; }
+.ctl.held, .fader.held { border-color: var(--signal); }
 .track {
   position: relative;
   height: 56px;
@@ -280,7 +373,7 @@ button.ctl.on .state { color: var(--text); }
   display: grid;
   gap: var(--gap);
   grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
-  grid-auto-rows: calc((100vw - 2 * var(--pad) - (var(--cols) - 1) * var(--gap)) / var(--cols));
+  grid-auto-rows: calc((100vw - 2 * var(--pad) - var(--rail) - (var(--cols) - 1) * var(--gap)) / var(--cols));
   grid-auto-rows: calc((100cqi - (var(--cols) - 1) * var(--gap)) / var(--cols));
 }
 .board .w { position: relative; display: block; min-height: 0; }
@@ -387,7 +480,7 @@ button.ctl.on .state { color: var(--text); }
   background: var(--bg-raise);
   font-size: 13px;
   overflow: hidden;
-  touch-action: none;
+  touch-action: pan-y;
 }
 .fader .lbl, .fader .val { position: relative; z-index: 1; white-space: nowrap; }
 .fader .lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-dim); }
@@ -488,12 +581,104 @@ button.ctl.on .state { color: var(--text); }
 `;
 
 /**
+ * T1607b — THE PAGE'S GESTURE AND PAGING RULES, as plain functions of numbers: no DOM, no
+ * state. They are the first thing inside the client below, and `phone-page.test.ts` runs
+ * this same string on its own, so each rule is tested as the bytes the phone runs.
+ *
+ * `SLOP` is how far a touch travels along a control before the control takes it. It is
+ * deliberately ABOVE the distance at which a browser decides a touch is a scroll (8 dp on
+ * Android, 10 pt on iOS): by the time a control moves, the browser has already had its say,
+ * so a control never starts and is then cancelled. `PRESS_MS` is iOS's own wait before a
+ * touch inside a scroll view is the content's (`delaysContentTouches`).
+ */
+export const PHONE_PAGE_LOGIC = String.raw`
+  var SLOP = 12;
+  var PRESS_MS = 150;
+
+  function tidy(v) { return parseFloat(v.toPrecision(12)); }
+
+  /*
+   * Is a touch that has travelled (dx, dy) px since it landed on a control the control's?
+   * A slider or fader ("x") takes it once it has gone SLOP along the track AND further
+   * along than across — the browser's own rule for "this is not a vertical scroll". A pad
+   * ("xy") owns both axes: any SLOP of travel.
+   */
+  function claims(axes, dx, dy) {
+    var ax = Math.abs(dx), ay = Math.abs(dy);
+    if (axes === "xy") return ax * ax + ay * ay >= SLOP * SLOP;
+    return ax >= SLOP && ax > ay;
+  }
+
+  /*
+   * RELATIVE DRAG: a value moved by a finger's travel along a track length px long that
+   * spans min..max. It stops at the ends and forgets the overshoot, so a finger that comes
+   * back moves the value at once.
+   */
+  function nudge(value, travel, length, min, max) {
+    var lo = Math.min(min, max), hi = Math.max(min, max);
+    var v = value + (travel / Math.max(length, 1)) * (max - min);
+    return v < lo ? lo : v > hi ? hi : v;
+  }
+
+  /* What a slider shows and sends for a dragged value: on its step, inside its range. */
+  function settle(v, step, min, max) {
+    if (step > 0) v = Math.round(v / step) * step;
+    var lo = Math.min(min, max), hi = Math.max(min, max);
+    return tidy(v < lo ? lo : v > hi ? hi : v);
+  }
+
+  /*
+   * A BOARD'S LABELLED SECTIONS, AS PAGES. cells is the board as drawn: { label, x, y, w, h }
+   * in whole grid cells, label a string for a label and null for a control. A control
+   * belongs to the nearest label above it that it overlaps across (the most overlap wins,
+   * then the one placed first). A page is the box round one label and its controls, and
+   * names its cells by index; pages run left to right, then down, the way sections drawn
+   * as columns read. Fewer than two labels with controls: no pages — the board is one
+   * page already.
+   */
+  function pagesOf(cells) {
+    var pages = [];
+    var byLabel = {};
+    cells.forEach(function (cell, index) {
+      if (cell.label !== null) return;
+      var best = -1, bestBottom = -1, bestOver = 0;
+      cells.forEach(function (label, at) {
+        if (label.label === null || label.label === "") return;
+        var over = Math.min(cell.x + cell.w, label.x + label.w) - Math.max(cell.x, label.x);
+        var bottom = label.y + label.h;
+        if (over <= 0 || bottom > cell.y) return;
+        if (bottom > bestBottom || (bottom === bestBottom && over > bestOver)) { best = at; bestBottom = bottom; bestOver = over; }
+      });
+      if (best < 0) return;
+      var page = byLabel[best];
+      if (!page) {
+        var head = cells[best];
+        page = byLabel[best] = { name: head.label, at: best, x: head.x, y: head.y, right: head.x + head.w, bottom: head.y + head.h, cells: [best] };
+        pages.push(page);
+      }
+      page.cells.push(index);
+      page.x = Math.min(page.x, cell.x);
+      page.y = Math.min(page.y, cell.y);
+      page.right = Math.max(page.right, cell.x + cell.w);
+      page.bottom = Math.max(page.bottom, cell.y + cell.h);
+    });
+    if (pages.length < 2) return [];
+    pages.sort(function (a, b) {
+      var p = cells[a.at], q = cells[b.at];
+      return p.x - q.x || p.y - q.y || a.at - b.at;
+    });
+    return pages.map(function (p) { return { name: p.name, x: p.x, y: p.y, w: p.right - p.x, h: p.bottom - p.y, cells: p.cells }; });
+  }
+`;
+
+/**
  * The client. Plain ES2017, no template literals, so it can sit inside `String.raw` as is.
  * `CONFIG` is declared ahead of it by `phonePageHtml` from the protocol's constants.
  */
 const CLIENT = String.raw`
 (function () {
   "use strict";
+${PHONE_PAGE_LOGIC}
   var EXPIRED = CONFIG.expired;
   var token = new URLSearchParams(location.search).get(CONFIG.param) || "";
   var query = "?" + CONFIG.param + "=" + encodeURIComponent(token);
@@ -507,7 +692,7 @@ const CLIENT = String.raw`
   var stopped = false;
   var views = {};      // handle -> { widget, el, update }
   var overrides = {};  // handle -> { values, acked }: what a finger set, shown over snapshots
-  var drags = {};      // pointerId -> { handle, last }
+  var drags = {};      // pointerId -> a touch that began on a control (T1607b, see touch())
   var wanted = {};     // handle -> latest live values, waiting for the next frame
   var frameAsked = false;
   var queue = [];      // [{ handle, live, commit }] in send order; latest value per slot only
@@ -523,7 +708,6 @@ const CLIENT = String.raw`
     var m = Math.abs(v);
     return m >= 100 ? v.toFixed(0) : m >= 10 ? v.toFixed(1) : v.toFixed(2);
   }
-  function tidy(v) { return parseFloat(v.toPrecision(12)); }
 
   /* ---------------------------------------------------------------- status and notices */
 
@@ -595,8 +779,13 @@ const CLIENT = String.raw`
     openEntry(handle).commit = values;
     pump();
   }
+  /* Does a touch HOLD this control — one the control has taken, not one that only landed on it? */
+  function holding(handle) {
+    for (var id in drags) if (drags[id].handle === handle && drags[id].live) return true;
+    return false;
+  }
   function acknowledged(handle) {
-    for (var id in drags) if (drags[id].handle === handle) return;
+    if (holding(handle)) return;
     if (pending(handle)) return;
     if (overrides[handle]) overrides[handle].acked = true;
   }
@@ -692,7 +881,7 @@ const CLIENT = String.raw`
     drawRefusal(handle);
     // What the finger drew ahead of Loom's answer is not what the document holds: back to
     // the snapshot's — unless the finger is still down, or a later write of it is on its way.
-    for (var id in drags) if (drags[id].handle === handle) return;
+    if (holding(handle)) return;
     if (pending(handle)) return;
     delete overrides[handle];
     v.update();
@@ -722,20 +911,6 @@ const CLIENT = String.raw`
     views[handle].update();
   }
   function box(node) { return node.getBoundingClientRect(); }
-
-  function sliderValue(w, x, rect) {
-    var v = w.min + clamp01((x - rect.left) / Math.max(rect.width, 1)) * (w.max - w.min);
-    if (w.step > 0) v = Math.round(v / w.step) * w.step;
-    var lo = Math.min(w.min, w.max), hi = Math.max(w.min, w.max);
-    return tidy(v < lo ? lo : v > hi ? hi : v);
-  }
-  function padValues(w, x, y, rect) {
-    var span = w.max - w.min;
-    return {
-      x: tidy(w.min + clamp01((x - rect.left) / Math.max(rect.width, 1)) * span),
-      y: tidy(w.min + clamp01(1 - (y - rect.top) / Math.max(rect.height, 1)) * span),
-    };
-  }
   function share(v, min, max) { return max === min ? 0 : clamp01((v - min) / (max - min)); }
 
   function capture(target, event) {
@@ -769,10 +944,19 @@ const CLIENT = String.raw`
       track.setAttribute("aria-valuemax", String(c.max));
       track.setAttribute("aria-valuenow", String(c.value));
     };
-    view.valuesAt = function (event) {
-      return { value: sliderValue(views[w.handle].widget, event.clientX, box(views[w.handle].target)) };
+    // T1607b: what a drag needs of a control — where it starts (unrounded), where a
+    // finger's travel takes it, and what that shows and sends.
+    view.axes = "x";
+    view.raw = function () { return { value: current(w.handle).value }; };
+    view.nudged = function (raw, dx) {
+      var c = views[w.handle].widget;
+      return { value: nudge(raw.value, dx, box(views[w.handle].target).width, c.min, c.max) };
     };
-    track.addEventListener("pointerdown", function (event) { begin(w.handle, event, track); });
+    view.shown = function (raw) {
+      var c = views[w.handle].widget;
+      return { value: settle(raw.value, c.step, c.min, c.max) };
+    };
+    track.addEventListener("pointerdown", function (event) { touch(w.handle, event, track, "drag"); });
     return view;
   }
 
@@ -796,10 +980,16 @@ const CLIENT = String.raw`
       puck.style.top = (1 - share(c.y, c.min, c.max)) * 100 + "%";
       val.textContent = format(c.x) + ", " + format(c.y);
     };
-    view.valuesAt = function (event) {
-      return padValues(views[w.handle].widget, event.clientX, event.clientY, box(views[w.handle].target));
+    view.axes = "xy";
+    view.raw = function () { var c = current(w.handle); return { x: c.x, y: c.y }; };
+    view.nudged = function (raw, dx, dy) {
+      var c = views[w.handle].widget;
+      var r = box(views[w.handle].target);
+      // y up: a finger moving up the screen raises it.
+      return { x: nudge(raw.x, dx, r.width, c.min, c.max), y: nudge(raw.y, -dy, r.height, c.min, c.max) };
     };
-    pad.addEventListener("pointerdown", function (event) { begin(w.handle, event, pad); });
+    view.shown = function (raw) { return { x: tidy(raw.x), y: tidy(raw.y) }; };
+    pad.addEventListener("pointerdown", function (event) { touch(w.handle, event, pad, "drag"); });
     return view;
   }
 
@@ -836,46 +1026,110 @@ const CLIENT = String.raw`
     b.appendChild(el("span", "name", w.caption));
     b.appendChild(state);
     root.appendChild(b);
-    var view = { widget: w, el: root, target: b, momentary: true };
+    var view = { widget: w, el: root, target: b };
     view.update = function () {
       var held = current(w.handle).held === true;
       b.classList.toggle("on", held);
       b.setAttribute("aria-pressed", held ? "true" : "false");
       state.textContent = held ? "Held" : "Press";
     };
-    view.valuesAt = function () { return { held: true }; };
-    b.addEventListener("pointerdown", function (event) { begin(w.handle, event, b); });
+    b.addEventListener("pointerdown", function (event) { touch(w.handle, event, b, "hold"); });
     b.addEventListener("contextmenu", function (event) { event.preventDefault(); });
     return view;
   }
 
-  function begin(handle, event, target) {
+  /*
+   * T1607b: A TOUCH THAT LANDS ON A CONTROL IS NOT YET THE CONTROL'S, and writes nothing.
+   * The browser may still take it for a scroll (touch-action: pan-y), and says so with
+   * pointercancel. What makes it the control's — live, below — depends on the control:
+   *
+   *  "drag" (slider, fader, XY pad): once it has travelled far enough the control's way
+   *    (claims). From THERE the value moves by the finger's travel, starting from what the
+   *    control shows: it never jumps to the finger, and a tap on it does nothing.
+   *  "hold" (momentary Button): once the finger has rested PRESS_MS. A shorter tap is a
+   *    press sent on release, inside the button; a scroll that starts first sends nothing.
+   *
+   * A touch the browser takes back after that (pointercancel) ends where it is: the value
+   * the hand moved it to stays (Android's rule for a SeekBar), a held button lets go.
+   */
+  function touch(handle, event, target, mode) {
     if (stopped) return;
     event.preventDefault();
     capture(target, event);
+    var id = event.pointerId;
+    var d = { handle: handle, target: target, mode: mode, x: event.clientX, y: event.clientY, live: false, raw: null, last: null, moved: false, timer: 0 };
+    drags[id] = d;
+    if (mode !== "hold") return;
+    d.timer = setTimeout(function () {
+      if (drags[id] !== d || stopped || !views[handle]) return;
+      take(d);
+      setLocal(handle, { held: true });
+      wantLive(handle, { held: true });
+    }, PRESS_MS);
+  }
+  function take(d) {
+    d.live = true;
     clearRefusals();
-    var values = views[handle].valuesAt(event);
-    drags[event.pointerId] = { handle: handle, last: values };
-    setLocal(handle, values);
-    wantLive(handle, values);
+    d.target.classList.add("held");
+  }
+  function same(a, b) {
+    for (var k in a) if (a[k] !== b[k]) return false;
+    return true;
+  }
+  /* The finger went on to here: move the value by that travel. True when what the control shows changed. */
+  function slide(d, v, event) {
+    d.raw = v.nudged(d.raw, event.clientX - d.x, event.clientY - d.y);
+    d.x = event.clientX;
+    d.y = event.clientY;
+    var values = v.shown(d.raw);
+    if (same(values, d.last)) return false;
+    d.last = values;
+    d.moved = true;
+    setLocal(d.handle, values);
+    return true;
   }
   window.addEventListener("pointermove", function (event) {
     var d = drags[event.pointerId];
-    if (!d || stopped || !views[d.handle] || views[d.handle].momentary) return;
-    var values = views[d.handle].valuesAt(event);
-    d.last = values;
-    setLocal(d.handle, values);
-    wantLive(d.handle, values);
+    var v = d ? views[d.handle] : null;
+    if (!d || stopped || !v || d.mode === "hold") return;
+    if (d.live) {
+      if (slide(d, v, event)) wantLive(d.handle, d.last);
+      return;
+    }
+    if (!claims(v.axes, event.clientX - d.x, event.clientY - d.y)) return;
+    take(d);
+    d.raw = v.raw();
+    d.last = v.shown(d.raw);
+    d.x = event.clientX;
+    d.y = event.clientY;
   });
+  function inside(target, event) {
+    var r = box(target);
+    return event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom;
+  }
   function end(event, cancelled) {
     var d = drags[event.pointerId];
     if (!d) return;
     delete drags[event.pointerId];
-    if (stopped || !views[d.handle]) return;
+    clearTimeout(d.timer);
+    d.target.classList.remove("held");
     var v = views[d.handle];
-    var values = v.momentary ? { held: false } : cancelled ? d.last : v.valuesAt(event);
-    setLocal(d.handle, values);
-    commit(d.handle, values);
+    if (stopped || !v) return;
+    if (d.mode === "hold") {
+      if (!d.live) {
+        // A tap. A cancel is the browser scrolling; a lift outside the button is a change of mind.
+        if (cancelled || !inside(d.target, event)) return;
+        wantLive(d.handle, { held: true });
+      }
+      setLocal(d.handle, { held: false });
+      commit(d.handle, { held: false });
+      return;
+    }
+    if (!d.live) return;
+    // A cancel carries no position: the value stays where the last move left it. A touch
+    // that never changed what the control shows wrote nothing, and has nothing to commit.
+    if (!cancelled) slide(d, v, event);
+    if (d.moved) commit(d.handle, d.last);
   }
   window.addEventListener("pointerup", function (event) { end(event, false); });
   window.addEventListener("pointercancel", function (event) { end(event, true); });
@@ -962,7 +1216,7 @@ const CLIENT = String.raw`
       fader.addEventListener("pointerdown", function (event) {
         // Driven by the document: shown, and a finger does not move it.
         if (views[w.handle].widget.opacityWritable !== true) return;
-        begin(w.handle, event, fader);
+        touch(w.handle, event, fader, "drag");
       });
     }
     var view = { widget: w, el: root, target: fader };
@@ -985,10 +1239,12 @@ const CLIENT = String.raw`
       thumb.style.left = s + "%";
       val.textContent = free ? format(c.opacity) : "driven";
     };
-    view.valuesAt = function (event) {
-      var r = box(views[w.handle].target);
-      return { opacity: tidy(clamp01((event.clientX - r.left) / Math.max(r.width, 1))) };
+    view.axes = "x";
+    view.raw = function () { return { opacity: clamp01(current(w.handle).opacity) }; };
+    view.nudged = function (raw, dx) {
+      return { opacity: nudge(raw.opacity, dx, box(views[w.handle].target).width, 0, 1) };
     };
+    view.shown = function (raw) { return { opacity: tidy(raw.opacity) }; };
     sw.addEventListener("click", function () {
       if (stopped) return;
       var next = !(current(w.handle).on === true);
@@ -1187,7 +1443,8 @@ const CLIENT = String.raw`
     var cols = whole(board.columns, 1, 64);
     var wrap = el("div", "boardwrap");
     var grid = el("div", "board");
-    grid.style.setProperty("--cols", String(cols));
+    // T1607b: what is drawn where, kept so a page can show a section of it (lay).
+    var cells = [];
     board.items.forEach(function (item) {
       var node = null;
       if (item.kind === "label") node = el("div", "label", String(item.text || ""));
@@ -1195,14 +1452,140 @@ const CLIENT = String.raw`
       if (node === null) return;
       var r = item.rect || {};
       var x = whole(r.x, 0, cols - 1);
-      var y = whole(r.y, 0, 9999);
-      node.style.gridColumn = (x + 1) + " / span " + whole(r.w, 1, cols - x);
-      node.style.gridRow = (y + 1) + " / span " + whole(r.h, 1, 9999);
+      cells.push({
+        node: node,
+        label: item.kind === "label" ? String(item.text || "").trim() : null,
+        x: x,
+        y: whole(r.y, 0, 9999),
+        w: whole(r.w, 1, cols - x),
+        h: whole(r.h, 1, 9999)
+      });
       grid.appendChild(node);
     });
     wrap.appendChild(grid);
     section.appendChild(wrap);
+    return { grid: grid, cols: cols, cells: cells, pages: pagesOf(cells) };
   }
+
+  /* ----------------------------------------------------- pages and the rail (T1607b) */
+
+  /*
+   * PAGES. A board with labelled sections (pagesOf) can be shown one section at a time:
+   * the pager above the tab bar offers All — the board as its owner drew it — and a page
+   * per label. A page is the same grid with the other cells hidden and its own moved to
+   * its top-left corner, so ITS columns fill the width; no control is built twice, and one
+   * that is held keeps its touch. The phone remembers the page per Panel (by name, like the
+   * tab: a section that is gone shows All without forgetting the choice) and, for this
+   * visit, how far every tab and page was scrolled.
+   */
+  var pagerEl = document.getElementById("pager");
+  var railEl = document.getElementById("rail");
+  var railThumb = railEl.firstChild;
+  var boards = {};     // tab key -> what drawBoard returned
+  var pageChosen = readPages();
+  var offsets = {};    // view (tab + page) -> how far it was scrolled
+  var viewShown = "";  // the view showing now
+  var tabShown = "";   // the tab showing now
+
+  function readPages() {
+    try {
+      var kept = JSON.parse(localStorage.getItem(CONFIG.pageKey) || "{}");
+      return kept && typeof kept === "object" && !Array.isArray(kept) ? kept : {};
+    } catch (x) { return {}; }
+  }
+  function keepPages() {
+    try { localStorage.setItem(CONFIG.pageKey, JSON.stringify(pageChosen)); } catch (x) { /* storage off: this visit only */ }
+  }
+  function pageOf(tab) {
+    var board = own(boards, tab);
+    var name = own(pageChosen, tab);
+    if (!board || typeof name !== "string") return null;
+    for (var i = 0; i < board.pages.length; i++) if (board.pages[i].name === name) return board.pages[i];
+    return null;
+  }
+  function lay(board, page) {
+    board.grid.style.setProperty("--cols", String(page ? page.w : board.cols));
+    board.cells.forEach(function (cell, index) {
+      var on = page === null || page.cells.indexOf(index) >= 0;
+      cell.node.hidden = !on;
+      if (!on) return;
+      cell.node.style.gridColumn = (cell.x - (page ? page.x : 0) + 1) + " / span " + cell.w;
+      cell.node.style.gridRow = (cell.y - (page ? page.y : 0) + 1) + " / span " + cell.h;
+    });
+  }
+  function showPager(tab) {
+    var board = own(boards, tab);
+    var pages = board ? board.pages : [];
+    var page = pageOf(tab);
+    pagerEl.textContent = "";
+    pagerEl.hidden = pages.length === 0;
+    document.body.classList.toggle("paged", pages.length > 0);
+    if (board) lay(board, page);
+    if (pages.length === 0) return;
+    // Chip 0 is All; chip n is pages[n - 1].
+    [null].concat(pages).forEach(function (p, index) {
+      var b = el("button", "", p ? p.name : "All");
+      b.type = "button";
+      b.setAttribute("role", "tab");
+      b.setAttribute("data-page", String(index));
+      b.setAttribute("aria-selected", p === page ? "true" : "false");
+      pagerEl.appendChild(b);
+    });
+  }
+  pagerEl.addEventListener("click", function (event) {
+    var b = event.target && event.target.closest ? event.target.closest("button[data-page]") : null;
+    var board = own(boards, tabShown);
+    if (b === null || !board) return;
+    var page = board.pages[Number(b.getAttribute("data-page")) - 1];
+    leave();
+    if (page) pageChosen[tabShown] = page.name;
+    else delete pageChosen[tabShown];
+    keepPages();
+    showTab();
+  });
+
+  /* How far the page is scrolled: remembered on the way out of a view, put back on the way in. */
+  function scroller() { return document.scrollingElement || document.documentElement; }
+  function leave() {
+    if (viewShown !== "") offsets[viewShown] = scroller().scrollTop;
+  }
+  function arrive() {
+    var page = pageOf(tabShown);
+    viewShown = tabShown + "\n" + (page ? page.name : "");
+    // Only when it differs: a redraw of the view a finger is scrolling must not touch its scroll.
+    var s = scroller();
+    var kept = own(offsets, viewShown) || 0;
+    if (s.scrollTop !== kept) s.scrollTop = kept;
+  }
+
+  /*
+   * THE RAIL. Every control but an XY pad lets a touch that goes up or down scroll the
+   * page; a pad takes every touch that lands on it. So when the view scrolls AND shows a
+   * pad, a strip at the right edge is kept clear of controls: nothing listens on it, which
+   * leaves a touch there to the browser. Whether the view scrolls is asked of the page
+   * WITHOUT the rail — the rail makes the board narrower and so shorter, and asking with
+   * it on could flip the answer back and forth.
+   */
+  function rail() {
+    document.body.classList.remove("railed");
+    var pads = panelsEl.querySelectorAll(".pad");
+    var shown = false;
+    for (var i = 0; i < pads.length; i++) if (pads[i].closest("[hidden]") === null) shown = true;
+    var s = scroller();
+    var on = shown && s.scrollHeight > s.clientHeight + 1;
+    document.body.classList.toggle("railed", on);
+    railEl.hidden = !on;
+    railMark();
+  }
+  function railMark() {
+    if (railEl.hidden) return;
+    var s = scroller();
+    var total = Math.max(s.scrollHeight, 1);
+    railThumb.style.top = (s.scrollTop / total) * 100 + "%";
+    railThumb.style.height = Math.min(1, s.clientHeight / total) * 100 + "%";
+  }
+  window.addEventListener("scroll", railMark, { passive: true });
+  window.addEventListener("resize", rail);
 
   function render() {
     var panels = snapshot.panels;
@@ -1217,7 +1600,10 @@ const CLIENT = String.raw`
       return;
     }
     signature = next;
+    // T1607b: the redraw is the same view — it comes back where it was scrolled.
+    leave();
     views = {};
+    boards = {};
     panelsEl.textContent = "";
     var list = [];
     if (panels.length === 0) {
@@ -1236,8 +1622,10 @@ const CLIENT = String.raw`
       section.setAttribute("aria-label", title);
       section.setAttribute("data-tab", key);
       var board = boardOf(p);
-      if (board) drawBoard(section, board);
-      else drawRows(section, p.rows || []);
+      if (board) {
+        boards[key] = drawBoard(section, board);
+        lay(boards[key], pageOf(key));
+      } else drawRows(section, p.rows || []);
       panelsEl.appendChild(section);
       list.push({ key: key, label: title });
     });
@@ -1303,12 +1691,19 @@ const CLIENT = String.raw`
     }
     var sections = panelsEl.querySelectorAll("section[data-tab]");
     for (var k = 0; k < sections.length; k++) sections[k].hidden = sections[k].getAttribute("data-tab") !== shown;
+    // T1607b: the shown Panel's page and pager, the rail if this view needs one, and the
+    // view back where it was scrolled — in that order, each changes what the next measures.
+    tabShown = shown;
+    showPager(shown);
+    rail();
+    arrive();
     // A list that was drawn while its tab was hidden finds its standby now.
     follow();
   }
   tabsEl.addEventListener("click", function (event) {
     var b = event.target && event.target.closest ? event.target.closest("button[data-tab]") : null;
     if (b === null) return;
+    leave();
     chosen = b.getAttribute("data-tab");
     keepTab(chosen);
     showTab();
@@ -1714,6 +2109,7 @@ export function phonePageHtml(): string {
     signal: PHONE_SIGNAL_PATH,
     nameKey: PHONE_NAME_STORAGE_KEY,
     tabKey: PHONE_TAB_STORAGE_KEY,
+    pageKey: PHONE_PAGE_STORAGE_KEY,
     nameMax: PHONE_NAME_MAX_CHARS,
     reasonMax: PHONE_REASON_MAX_CHARS,
   });
@@ -1753,6 +2149,9 @@ export function phonePageHtml(): string {
     '<button id="camGo" type="button" class="ctl">Start camera</button>',
     `<label class="field">Sends as <input id="camName" type="text" maxlength="${String(PHONE_NAME_MAX_CHARS)}" autocomplete="off" spellcheck="false"></label>`,
     "</section>",
+    // T1607b: the scroll rail (shown beside a pad on a page that scrolls) and the pager.
+    '<div id="rail" aria-hidden="true" hidden><div class="railthumb"></div></div>',
+    '<nav id="pager" role="tablist" aria-label="Pages of this panel" hidden></nav>',
     '<nav id="tabs" role="tablist" aria-label="Panels and camera"></nav>',
     '<div id="notice" role="alert" hidden></div>',
     `<script>\nvar CONFIG = ${config};\n${CLIENT}</script>`,

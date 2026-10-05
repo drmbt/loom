@@ -1,7 +1,15 @@
 import { createRequire } from "node:module";
+import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PHONE_EXPIRED_SENTENCE, PHONE_NAME_STORAGE_KEY, PHONE_TAB_STORAGE_KEY, phonePageHtml } from "./phone-page.ts";
+import {
+  PHONE_EXPIRED_SENTENCE,
+  PHONE_NAME_STORAGE_KEY,
+  PHONE_PAGE_LOGIC,
+  PHONE_PAGE_STORAGE_KEY,
+  PHONE_TAB_STORAGE_KEY,
+  phonePageHtml,
+} from "./phone-page.ts";
 import { cueListBoardLayout, layerBoardLayout, presetStripGrid } from "../../editor/controls/board-fit.ts";
 import {
   PHONE_EVENTS_PATH,
@@ -450,6 +458,18 @@ function track(page: ReturnType<typeof openPage>, caption: string): HTMLElement 
   return control;
 }
 
+/**
+ * T1607b: a slider, fader or pad takes a touch once it has travelled 12 px along it, and
+ * moves by the travel AFTER that — `grab` is a finger landing at (x, y) and going exactly
+ * that far, so the control holds the touch at (x + 12, y) with its value untouched. Every
+ * control here is a 200 px box (jsdom lays nothing out): 20 px along a slider is a tenth
+ * of its range.
+ */
+function grab(page: ReturnType<typeof openPage>, target: HTMLElement, x: number, y = 0, pointerId = 1): void {
+  page.pointer("pointerdown", target, x, y, pointerId);
+  page.pointer("pointermove", target, x + 12, y, pointerId);
+}
+
 describe("T1396b phone page — the document the helper serves", () => {
   it("is one self-contained document: nothing fetched from anywhere but its own two endpoints", () => {
     const html = phonePageHtml();
@@ -545,7 +565,7 @@ describe("T1396b phone page — the document the helper serves", () => {
     const page = openPage();
     page.snapshot(SNAPSHOT);
     const bloom = track(page, "Bloom");
-    page.pointer("pointerdown", bloom, 50);
+    grab(page, bloom, 38); // taken at x = 50, still 0.25
     page.pointer("pointermove", bloom, 60);
     page.pointer("pointermove", bloom, 80);
     expect(page.posts).toHaveLength(0); // nothing leaves between frames
@@ -575,10 +595,11 @@ describe("T1396b phone page — the document the helper serves", () => {
   it("a stepped slider snaps to its step and clamps to its range", async () => {
     const page = openPage();
     page.snapshot(SNAPSHOT);
-    const steps = track(page, "Steps");
-    page.pointer("pointerdown", steps, 110); // 5.5 → 6
+    const steps = track(page, "Steps"); // 4 of 0..10 in steps of 2: 20 px is one unit
+    grab(page, steps, 100);
+    page.pointer("pointermove", steps, 142); // 4 + 1.5 = 5.5 → 6
     page.frame();
-    page.pointer("pointerup", steps, -40); // below min → 0
+    page.pointer("pointerup", steps, -40); // far below the start → 0
     await page.drain();
     expect(page.posts.map((p) => [p.set.phase, p.set.values["value"]])).toEqual([
       ["live", 6],
@@ -586,17 +607,32 @@ describe("T1396b phone page — the document the helper serves", () => {
     ]);
   });
 
-  it("a button is held:true live on down and held:false commit on up — even a tap faster than a frame", async () => {
+  /*
+   * T1607b: a momentary Button on a page that scrolls. A touch on it may be the start of a
+   * scroll, so touch-down sends nothing. A finger that RESTS on it holds it down (the
+   * button's `held` is 1 for as long, as its node says); a quick tap is a whole press,
+   * sent when the finger lifts inside the button. Either way the document sees held:true
+   * then held:false, which is what counts a press.
+   */
+  it("a button a finger rests on is held:true once it has rested, and held:false when it lifts", async () => {
     const page = openPage();
     page.snapshot(SNAPSHOT);
     const flash = track(page, "Flash");
-    page.pointer("pointerdown", flash);
+    page.pointer("pointerdown", flash, 10, 10);
+    page.elapse(149);
+    page.frame();
+    expect(page.posts).toHaveLength(0);
+    expect(page.value("Flash")).toBe("Press");
+    page.elapse(1);
     page.frame();
     expect(page.value("Flash")).toBe("Held");
-    page.pointer("pointerup", flash);
+    expect(page.posts.map((p) => p.set)).toEqual([{ handle: "h-flash", values: { held: true }, phase: "live" }]);
+    // Held is held: where the finger lifts does not matter, and neither does a cancel.
+    page.pointer("pointerup", flash, 900, 900);
     await page.drain();
-    // A tap with no frame between down and up: the press must still reach the page.
-    page.pointer("pointerdown", flash, 0, 0, 2);
+    expect(page.value("Flash")).toBe("Press");
+    page.pointer("pointerdown", flash, 10, 10, 2);
+    page.elapse(150);
     page.pointer("pointercancel", flash, 0, 0, 2);
     await page.drain();
     expect(page.posts.map((p) => p.set)).toEqual([
@@ -605,6 +641,43 @@ describe("T1396b phone page — the document the helper serves", () => {
       { handle: "h-flash", values: { held: true }, phase: "live" },
       { handle: "h-flash", values: { held: false }, phase: "commit" },
     ]);
+  });
+
+  it("a tap on a button is one whole press, sent on release — even a tap faster than a frame", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const flash = track(page, "Flash");
+    page.pointer("pointerdown", flash, 10, 10);
+    page.frame();
+    expect(page.posts).toHaveLength(0); // touch-down sends nothing
+    page.pointer("pointerup", flash, 12, 11);
+    await page.drain();
+    expect(page.posts.map((p) => p.set)).toEqual([
+      { handle: "h-flash", values: { held: true }, phase: "live" },
+      { handle: "h-flash", values: { held: false }, phase: "commit" },
+    ]);
+    // The tap's own timer is gone with it: nothing fires later.
+    page.elapse(1000);
+    await page.drain();
+    expect(page.posts).toHaveLength(2);
+  });
+
+  it("a button under a finger that scrolls away, or lifts outside it, is never pressed", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const flash = track(page, "Flash");
+    // The browser took the touch for a scroll before the finger had rested.
+    page.pointer("pointerdown", flash, 10, 10);
+    page.elapse(60);
+    page.pointer("pointercancel", flash, 0, 0);
+    // A finger that slid off the button and lifted there.
+    page.pointer("pointerdown", flash, 10, 10, 2);
+    page.elapse(60);
+    page.pointer("pointerup", flash, 10, 260, 2);
+    page.elapse(1000);
+    await page.drain();
+    expect(page.posts).toHaveLength(0);
+    expect(page.value("Flash")).toBe("Press");
   });
 
   it("a toggle tap is exactly one commit of the flipped state", async () => {
@@ -619,10 +692,11 @@ describe("T1396b phone page — the document the helper serves", () => {
   it("an XY pad writes x and y together, y up, in its range", async () => {
     const page = openPage();
     page.snapshot(SNAPSHOT);
-    const pad = track(page, "Center");
-    page.pointer("pointerdown", pad, 150, 50);
+    const pad = track(page, "Center"); // (0, 0) of -1..1: 100 px is one unit, either way
+    grab(page, pad, 80, 100); // taken at (92, 100)
+    page.pointer("pointermove", pad, 142, 50); // 50 px right, 50 px UP the screen
     page.frame();
-    page.pointer("pointerup", pad, 0, 200);
+    page.pointer("pointerup", pad, -300, 400); // far left and down: both ends
     await page.drain();
     expect(page.posts.map((p) => p.set)).toEqual([
       { handle: "h-center", values: { x: 0.5, y: 0.5 }, phase: "live" },
@@ -634,13 +708,14 @@ describe("T1396b phone page — the document the helper serves", () => {
     const page = openPage();
     page.snapshot(SNAPSHOT);
     const bloom = track(page, "Bloom");
-    page.pointer("pointerdown", bloom, 180);
+    grab(page, bloom, 20);
+    page.pointer("pointermove", bloom, 162); // 0.25 + 130 px of 200
     page.frame();
     // The page republishes with a Bloom that is not the finger's (the live write not yet applied).
     page.snapshot(withWidget(6, "h-bloom", { value: 0.1 }));
     expect(page.value("Bloom")).toBe("0.90");
     expect(track(page, "Bloom").getAttribute("aria-valuenow")).toBe("0.9");
-    page.pointer("pointerup", bloom, 180);
+    page.pointer("pointerup", bloom, 162);
     await page.drain();
     // Acknowledged: the next snapshot is the truth again, whatever it says.
     page.snapshot(withWidget(7, "h-bloom", { value: 0.3 }));
@@ -650,7 +725,9 @@ describe("T1396b phone page — the document the helper serves", () => {
   it("the other snapshot fields still land while one control is held", () => {
     const page = openPage();
     page.snapshot(SNAPSHOT);
-    page.pointer("pointerdown", track(page, "Bloom"), 180);
+    const bloom = track(page, "Bloom");
+    grab(page, bloom, 20);
+    page.pointer("pointermove", bloom, 162);
     page.snapshot(withWidget(6, "h-steps", { value: 8 }));
     expect(page.value("Steps")).toBe("8.00");
     expect(page.value("Bloom")).toBe("0.90");
@@ -663,7 +740,10 @@ describe("T1396b phone page — the document the helper serves", () => {
     expect(page.notice()).toBe("Loom closed the phone door.");
     expect(page.source.closed).toBe(true);
     track(page, "Strobe").click();
-    page.pointer("pointerdown", track(page, "Bloom"), 100);
+    grab(page, track(page, "Bloom"), 20);
+    page.pointer("pointermove", track(page, "Bloom"), 120);
+    page.pointer("pointerdown", track(page, "Flash"), 10, 10, 2);
+    page.elapse(1000);
     page.frame();
     expect(page.posts).toHaveLength(0);
     expect(page.sources).toHaveLength(1); // no reconnect of its own
@@ -1104,7 +1184,7 @@ describe("T1517b phone page — tabs, the board, the Camera tab", () => {
     const page = openPage();
     page.snapshot(BOARD);
     const bloom = track(page, "Bloom");
-    page.pointer("pointerdown", bloom, 50);
+    grab(page, bloom, 38); // taken at x = 50, at its 0.25
     page.pointer("pointermove", bloom, 80);
     expect(page.posts).toHaveLength(0);
     page.frame();
@@ -1345,7 +1425,7 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
     const page = openPage();
     page.snapshot(show(1));
     const fader = layer(page, "fx").querySelector<HTMLElement>(".fader")!;
-    page.pointer("pointerdown", fader, 50);
+    grab(page, fader, 88); // taken at x = 100, at its 0.5
     page.pointer("pointermove", fader, 80);
     expect(page.posts).toHaveLength(0);
     page.frame();
@@ -1382,12 +1462,14 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
     layer(page, "fx").querySelector<HTMLButtonElement>(".sw")!.click();
     await page.drain();
     expect(sets(page)).toEqual([{ handle: "h-fx", values: { on: false }, phase: "commit" }]);
-    // Freed again at the desk: the fader takes the finger.
+    // Freed again at the desk: the fader takes the finger — the same drag now moves it.
     page.snapshot(show(2, { "h-fx": { opacityWritable: true, on: false } }));
-    page.pointer("pointerdown", fader.isConnected ? fader : layer(page, "fx").querySelector<HTMLElement>(".fader")!, 100);
-    page.pointer("pointerup", layer(page, "fx").querySelector<HTMLElement>(".fader")!, 100);
+    const freed = layer(page, "fx").querySelector<HTMLElement>(".fader")!;
+    page.pointer("pointerdown", freed, 50);
+    page.pointer("pointermove", freed, 150); // taken here, at its 0.5
+    page.pointer("pointerup", freed, 170);
     await page.drain();
-    expect(sets(page).at(-1)).toEqual({ handle: "h-fx", values: { opacity: 0.5 }, phase: "commit" });
+    expect(sets(page).at(-1)).toEqual({ handle: "h-fx", values: { opacity: 0.6 }, phase: "commit" });
   });
 
   it("GO and BACK are one commit each, a cue tapped in the list stands it by, and the names follow Loom's answer", async () => {
@@ -1630,7 +1712,8 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
       page.snapshot(show(1));
       const fader = layer(page, "fx").querySelector<HTMLElement>(".fader")!;
       const shown = (): string => fader.querySelector(".val")?.textContent ?? "";
-      page.pointer("pointerdown", fader, 150);
+      grab(page, fader, 88); // taken at x = 100, at its 0.5
+      page.pointer("pointermove", fader, 150);
       page.frame();
       await page.settle();
       refuse(page, "h-fx", "“fx” has its opacity driven by the document, so a phone cannot move it.");
@@ -1760,5 +1843,472 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
       part(page, '#tabs [data-tab="panel:Show"]').click();
       expect(list.scrollTop).toBe(214 - 72);
     });
+  });
+});
+
+/**
+ * T1607b — SCROLL TO EVERY CONTROL WITHOUT MOVING ONE, AND PAGES. Owner: "we can still
+ * scroll with touch on the page to get to all the controls without constantly accidentally
+ * moving sliders". What a phone user must be able to rely on: a touch that LANDS on a
+ * control changes nothing; a control moves only for a finger that travels along it, by
+ * that travel; and a board's labelled sections can be shown one at a time.
+ *
+ * Three layers. The rules are plain functions (`PHONE_PAGE_LOGIC`), run here from the very
+ * string the phone runs. What reaches the wire is asserted on the served page in jsdom.
+ * What the BROWSER does with a touch that goes up the page (it scrolls, and cancels the
+ * pointer) is not something jsdom has: that is `src/tests/e2e/phone-touch.spec.ts`.
+ */
+describe("T1607b phone page — the gesture and paging rules, as the phone runs them", () => {
+  interface Cell {
+    readonly label: string | null;
+    readonly x: number;
+    readonly y: number;
+    readonly w: number;
+    readonly h: number;
+  }
+  interface PageBox {
+    readonly name: string;
+    readonly x: number;
+    readonly y: number;
+    readonly w: number;
+    readonly h: number;
+    readonly cells: readonly number[];
+  }
+  interface Logic {
+    readonly SLOP: number;
+    claims(axes: "x" | "xy", dx: number, dy: number): boolean;
+    nudge(value: number, travel: number, length: number, min: number, max: number): number;
+    settle(value: number, step: number, min: number, max: number): number;
+    pagesOf(cells: readonly Cell[]): PageBox[];
+  }
+  const logic = runInNewContext(`${PHONE_PAGE_LOGIC}; ({ SLOP: SLOP, claims: claims, nudge: nudge, settle: settle, pagesOf: pagesOf })`) as Logic;
+  /** Pages as plain data of this realm (the functions ran in another). */
+  const pagesOf = (cells: readonly Cell[]): PageBox[] => JSON.parse(JSON.stringify(logic.pagesOf(cells))) as PageBox[];
+  const label = (name: string, x: number, y: number, w: number): Cell => ({ label: name, x, y, w, h: 1 });
+  const control = (x: number, y: number, w: number, h = 1): Cell => ({ label: null, x, y, w, h });
+
+  /*
+   * A browser decides a touch is a scroll once it has moved about 8 px (Android) or 10 px
+   * (iOS). A slider that started before that could start and THEN be cancelled — a write
+   * the hand did not mean. So the slider's own threshold must stay above both.
+   */
+  it("a slider waits longer than the browser does to decide a touch is a scroll", () => {
+    expect(logic.SLOP).toBeGreaterThan(10);
+    // ...and not so long that a deliberate drag feels dead: under a fingertip's width.
+    expect(logic.SLOP).toBeLessThanOrEqual(16);
+  });
+
+  it("a slider takes a touch that has gone along it, never one going up or down the page", () => {
+    expect(logic.claims("x", logic.SLOP - 1, 0)).toBe(false);
+    expect(logic.claims("x", logic.SLOP, 0)).toBe(true);
+    expect(logic.claims("x", -logic.SLOP, 0)).toBe(true);
+    // A flick up the page wobbles sideways; however far it wobbles, it went further up.
+    expect(logic.claims("x", 30, -200)).toBe(false);
+    expect(logic.claims("x", -60, 61)).toBe(false);
+    // A tie is the browser's: Chromium scrolls unless the travel across is the larger.
+    expect(logic.claims("x", 20, 20)).toBe(false);
+    expect(logic.claims("x", 21, -20)).toBe(true);
+  });
+
+  it("an XY pad owns both axes: any travel past the slop is its own", () => {
+    expect(logic.claims("xy", 0, logic.SLOP)).toBe(true);
+    expect(logic.claims("xy", 0, -logic.SLOP)).toBe(true);
+    expect(logic.claims("xy", 8, 8)).toBe(false); // 11.3 px
+    expect(logic.claims("xy", 9, -9)).toBe(true); // 12.7 px
+  });
+
+  it("a drag moves a value by the finger's travel over the track, and stops at the ends without remembering the overshoot", () => {
+    expect(logic.nudge(0.25, 40, 200, 0, 1)).toBeCloseTo(0.45, 12);
+    expect(logic.nudge(0.25, -40, 200, 0, 1)).toBeCloseTo(0.05, 12);
+    // A range that is not 0..1, and one that runs backwards (max on the left).
+    expect(logic.nudge(0, 50, 200, -1, 1)).toBeCloseTo(0.5, 12);
+    expect(logic.nudge(0.5, 20, 200, 1, 0)).toBeCloseTo(0.4, 12);
+    // 100 px past the top: held at 1. Coming back 20 px moves it by 20 px — at once.
+    const top = logic.nudge(0.9, 120, 200, 0, 1);
+    expect(top).toBe(1);
+    expect(logic.nudge(top, -20, 200, 0, 1)).toBeCloseTo(0.9, 12);
+  });
+
+  it("a stepped slider shows and sends only its steps, inside its range", () => {
+    expect(logic.settle(5.5, 2, 0, 10)).toBe(6);
+    expect(logic.settle(4.9, 2, 0, 10)).toBe(4);
+    expect(logic.settle(11, 2, 0, 10)).toBe(10);
+    expect(logic.settle(0.30000000000000004, 0, 0, 1)).toBe(0.3);
+  });
+
+  /*
+   * sentinel-bot's first board, in small: three columns of sections on twelve cells, one
+   * column holding a second label lower down, and a master fader above every label.
+   */
+  const DESK: readonly Cell[] = [
+    control(0, 0, 12), // 0  master: under no label
+    label("Robot", 0, 1, 4), // 1
+    control(0, 2, 4), // 2
+    control(0, 3, 4), // 3
+    label("Scene", 4, 1, 4), // 4
+    control(4, 2, 4), // 5
+    label("Camera", 4, 3, 4), // 6
+    control(4, 4, 4), // 7
+    control(4, 5, 3, 3), // 8  the pad
+    label("Lights", 8, 1, 4), // 9
+    control(8, 2, 4), // 10
+    control(8, 3, 4), // 11
+  ];
+
+  it("a board's pages are its labelled sections: each control under the nearest label above it, each page the box round one section", () => {
+    expect(pagesOf(DESK)).toEqual([
+      { name: "Robot", x: 0, y: 1, w: 4, h: 3, cells: [1, 2, 3] },
+      { name: "Scene", x: 4, y: 1, w: 4, h: 2, cells: [4, 5] },
+      { name: "Camera", x: 4, y: 3, w: 4, h: 5, cells: [6, 7, 8] },
+      { name: "Lights", x: 8, y: 1, w: 4, h: 3, cells: [9, 10, 11] },
+    ]);
+  });
+
+  it("sections stacked down one column page the same way; a control beside a label, or above every label, is on no page", () => {
+    const stacked = [label("Scene", 0, 0, 8), control(0, 1, 8), label("Camera", 0, 2, 8), control(0, 3, 8), control(2, 4, 4, 3)];
+    expect(pagesOf(stacked).map((page) => [page.name, page.y, page.h, page.cells])).toEqual([
+      ["Scene", 0, 2, [0, 1]],
+      ["Camera", 2, 5, [2, 3, 4]],
+    ]);
+    const beside = [label("A", 0, 0, 2), control(2, 0, 4), control(0, 1, 2), label("B", 0, 2, 2), control(0, 3, 2)];
+    expect(pagesOf(beside).map((page) => page.cells)).toEqual([
+      [0, 2],
+      [3, 4],
+    ]);
+  });
+
+  it("a control under two labels side by side goes with the one it overlaps most; a page grows to hold what is its own", () => {
+    const cells = [label("Left", 0, 0, 4), label("Right", 4, 0, 4), control(0, 1, 4), control(3, 2, 5)];
+    expect(pagesOf(cells)).toEqual([
+      { name: "Left", x: 0, y: 0, w: 4, h: 2, cells: [0, 2] },
+      { name: "Right", x: 3, y: 0, w: 5, h: 3, cells: [1, 3] },
+    ]);
+  });
+
+  it("a board with fewer than two sections has no pages: one label, labels with nothing under them, or none", () => {
+    expect(pagesOf([label("Look", 0, 0, 8), control(0, 1, 4), control(4, 1, 4)])).toEqual([]);
+    expect(pagesOf([label("Look", 0, 0, 8), control(0, 1, 8), label("Notes", 0, 2, 8)])).toEqual([]);
+    expect(pagesOf([control(0, 0, 8), control(0, 1, 8)])).toEqual([]);
+    expect(pagesOf([label("", 0, 0, 8), control(0, 1, 8), label("", 0, 2, 8), control(0, 3, 8)])).toEqual([]);
+  });
+});
+
+describe("T1607b phone page — a touch that lands on a control is not yet the control's", () => {
+  const sent = (page: ReturnType<typeof openPage>) => page.posts.map((post) => post.set);
+
+  it("touching a slider, tapping it, or dragging up the page from it puts NOTHING on the wire and moves nothing", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const bloom = track(page, "Bloom");
+    // A finger lands and rests.
+    page.pointer("pointerdown", bloom, 150, 100);
+    page.frame();
+    page.elapse(2000);
+    // It goes up the page, wobbling sideways; then the browser takes it for the scroll it is.
+    page.pointer("pointermove", bloom, 153, 80);
+    page.pointer("pointermove", bloom, 158, 20);
+    page.pointer("pointermove", bloom, 170, -140);
+    page.pointer("pointercancel", bloom, 0, 0);
+    // A tap, and a touch that moves less than the slop along the track before lifting.
+    page.pointer("pointerdown", bloom, 30, 100, 2);
+    page.pointer("pointerup", bloom, 30, 100, 2);
+    page.pointer("pointerdown", bloom, 30, 100, 3);
+    page.pointer("pointermove", bloom, 41, 100, 3);
+    page.pointer("pointerup", bloom, 41, 100, 3);
+    await page.drain();
+    expect(sent(page)).toEqual([]);
+    expect(page.value("Bloom")).toBe("0.25");
+    expect(bloom.classList.contains("held")).toBe(false);
+  });
+
+  /* Never jump-to-touch: where on the track the finger lands says nothing about the value. */
+  it("a slider starts from what it shows, wherever the finger lands: the same travel is the same change", async () => {
+    for (const landing of [5, 90, 170]) {
+      const page = openPage();
+      page.snapshot(SNAPSHOT);
+      const bloom = track(page, "Bloom");
+      grab(page, bloom, landing);
+      expect(page.value("Bloom"), `landing at ${String(landing)}`).toBe("0.25"); // taking it moved nothing
+      page.pointer("pointermove", bloom, landing + 12 + 40);
+      page.pointer("pointerup", bloom, landing + 12 + 40);
+      await page.drain();
+      expect(sent(page).at(-1), `landing at ${String(landing)}`).toEqual({ handle: "h-bloom", values: { value: 0.45 }, phase: "commit" });
+    }
+  });
+
+  it("a slider that has a touch keeps it when the finger strays up or down — only the travel along it counts", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const bloom = track(page, "Bloom");
+    grab(page, bloom, 20, 100);
+    page.pointer("pointermove", bloom, 52, 300); // 20 px along, 200 px down
+    page.pointer("pointerup", bloom, 72, -400);
+    await page.drain();
+    expect(sent(page).at(-1)).toEqual({ handle: "h-bloom", values: { value: 0.45 }, phase: "commit" });
+  });
+
+  /*
+   * iOS may take a touch back for a scroll after a slider has it. The hand moved the slider
+   * to where it is and saw the stage follow: the value stays (Android's rule for a SeekBar).
+   * A cancel carries no position (0, 0), so the drag must not read one from it.
+   */
+  it("a slider the browser takes the touch back from stays where the hand put it, and says so once", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const bloom = track(page, "Bloom");
+    grab(page, bloom, 20);
+    expect(bloom.classList.contains("held")).toBe(true);
+    page.pointer("pointermove", bloom, 72);
+    page.frame();
+    page.pointer("pointercancel", bloom, 0, 0);
+    await page.drain();
+    expect(sent(page)).toEqual([
+      { handle: "h-bloom", values: { value: 0.45 }, phase: "live" },
+      { handle: "h-bloom", values: { value: 0.45 }, phase: "commit" },
+    ]);
+    expect(page.value("Bloom")).toBe("0.45");
+    expect(bloom.classList.contains("held")).toBe(false);
+  });
+
+  it("a slider that took a touch and was not moved writes nothing; one moved and brought back commits where it is", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const bloom = track(page, "Bloom");
+    grab(page, bloom, 20);
+    page.pointer("pointerup", bloom, 32);
+    await page.drain();
+    expect(sent(page)).toEqual([]);
+    // Out and back before a frame passed: the document may have seen nothing, but the
+    // gesture moved the control, so it ends with one commit of where it stands.
+    grab(page, bloom, 20, 0, 2);
+    page.pointer("pointermove", bloom, 72, 0, 2);
+    page.pointer("pointerup", bloom, 32, 0, 2);
+    await page.drain();
+    expect(sent(page).at(-1)).toEqual({ handle: "h-bloom", values: { value: 0.25 }, phase: "commit" });
+  });
+
+  it("an XY pad does not jump to the finger either: it moves by the finger's travel, from where it is", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const pad = track(page, "Center");
+    page.pointer("pointerdown", pad, 190, 10); // a corner: an absolute pad would jump to (0.9, 0.9)
+    page.frame();
+    page.pointer("pointerup", pad, 190, 10);
+    await page.drain();
+    expect(sent(page)).toEqual([]);
+    expect(page.value("Center")).toBe("0.00, 0.00");
+    page.pointer("pointerdown", pad, 190, 10, 2);
+    page.pointer("pointermove", pad, 190, 22, 2); // taken, going DOWN the screen
+    page.pointer("pointermove", pad, 170, 42, 2);
+    page.pointer("pointerup", pad, 170, 42, 2);
+    await page.drain();
+    expect(sent(page).at(-1)).toEqual({ handle: "h-center", values: { x: -0.2, y: -0.2 }, phase: "commit" });
+  });
+
+  it("two fingers on two sliders are two drags, each from its own value", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const bloom = track(page, "Bloom");
+    const steps = track(page, "Steps");
+    grab(page, bloom, 20, 0, 1);
+    grab(page, steps, 100, 0, 2);
+    page.pointer("pointermove", bloom, 72, 0, 1);
+    page.pointer("pointermove", steps, 152, 0, 2);
+    page.pointer("pointerup", bloom, 72, 0, 1);
+    page.pointer("pointerup", steps, 152, 0, 2);
+    await page.drain();
+    const commits = sent(page).filter((set) => set.phase === "commit");
+    expect(commits).toEqual([
+      { handle: "h-bloom", values: { value: 0.45 }, phase: "commit" },
+      { handle: "h-steps", values: { value: 6 }, phase: "commit" },
+    ]);
+  });
+});
+
+describe("T1607b phone page — pages of a board, and the scroll rail", () => {
+  type Page = ReturnType<typeof openPage>;
+  const slider = (handle: string, caption: string) => ({ kind: "slider", handle, caption, value: 0.5, min: 0, max: 1, step: 0 }) as const;
+  /** sentinel-bot's first board in small: sections drawn as columns, and a second label lower in one. */
+  const DESK: PhoneSnapshot = {
+    seq: 3,
+    panels: [
+      {
+        title: "Sentinel",
+        rows: [],
+        board: {
+          columns: 12,
+          rows: 8,
+          items: [
+            { kind: "widget", rect: { x: 0, y: 0, w: 12, h: 1 }, widget: slider("h-master", "Master") },
+            { kind: "label", rect: { x: 0, y: 1, w: 4, h: 1 }, text: "Robot" },
+            { kind: "widget", rect: { x: 0, y: 2, w: 4, h: 1 }, widget: slider("h-speed", "Speed") },
+            { kind: "label", rect: { x: 4, y: 1, w: 4, h: 1 }, text: "Scene" },
+            { kind: "widget", rect: { x: 4, y: 2, w: 4, h: 1 }, widget: slider("h-bore", "Bore") },
+            { kind: "label", rect: { x: 4, y: 3, w: 4, h: 1 }, text: "Camera" },
+            { kind: "widget", rect: { x: 4, y: 4, w: 4, h: 1 }, widget: { kind: "toggle", handle: "h-cuts", caption: "Cuts", on: false } },
+            {
+              kind: "widget",
+              rect: { x: 4, y: 5, w: 3, h: 3 },
+              widget: { kind: "xyPad", handle: "h-view", caption: "View", x: 0, y: 0, min: -1, max: 1 },
+            },
+            { kind: "label", rect: { x: 8, y: 1, w: 4, h: 1 }, text: "Lights" },
+            { kind: "widget", rect: { x: 8, y: 2, w: 4, h: 1 }, widget: slider("h-glow", "Glow") },
+          ],
+        },
+      },
+      { title: "Plain", rows: [{ kind: "widgets", widgets: [slider("h-dim", "Dim")] }] },
+    ],
+  };
+  const pager = (page: Page): HTMLElement => page.camera("pager");
+  const chips = (page: Page): string[] => [...pager(page).querySelectorAll("[role=tab]")].map((chip) => chip.textContent ?? "");
+  const chosen = (page: Page): string[] => [...pager(page).querySelectorAll("[aria-selected=true]")].map((chip) => chip.textContent ?? "");
+  const choose = (page: Page, name: string): void => {
+    const chip = [...pager(page).querySelectorAll<HTMLElement>("[role=tab]")].find((each) => each.textContent === name);
+    if (chip === undefined) throw new Error(`no page "${name}"`);
+    chip.click();
+  };
+  const tab = (page: Page, name: string): void => {
+    const found = [...page.doc.querySelectorAll<HTMLElement>("#tabs [role=tab]")].find((each) => each.textContent === name);
+    if (found === undefined) throw new Error(`no tab "${name}"`);
+    found.click();
+  };
+  /** What the shown board draws: [what it is, grid column, grid row] of every cell not hidden, and the columns the width is divided by. */
+  const drawn = (page: Page) => {
+    const grid = page.doc.querySelector<HTMLElement>('#panels section[aria-label="Sentinel"] .board')!;
+    return {
+      columns: grid.style.getPropertyValue("--cols"),
+      cells: [...grid.children]
+        .map((child) => child as HTMLElement)
+        .filter((cell) => !cell.hidden)
+        .map((cell) => [cell.querySelector(".name")?.textContent ?? cell.textContent, cell.style.gridColumn, cell.style.gridRow]),
+    };
+  };
+
+  it("a board with labelled sections gets a pager above the tabs: All — the board as its owner drew it — and a page per label", () => {
+    const page = openPage();
+    page.snapshot(DESK);
+    expect(pager(page).hidden).toBe(false);
+    expect(pager(page).getAttribute("role")).toBe("tablist");
+    expect(chips(page)).toEqual(["All", "Robot", "Scene", "Camera", "Lights"]);
+    expect(chosen(page)).toEqual(["All"]);
+    expect(page.doc.body.classList.contains("paged")).toBe(true);
+    expect(drawn(page).columns).toBe("12");
+    expect(drawn(page).cells).toHaveLength(10);
+    expect(drawn(page).cells[7]).toEqual(["View", "5 / span 3", "6 / span 3"]);
+  });
+
+  it("a page shows its section and nothing else, moved to the top-left, on a grid of ITS columns — so its controls fill the phone's width", () => {
+    const page = openPage();
+    page.snapshot(DESK);
+    choose(page, "Camera");
+    expect(chosen(page)).toEqual(["Camera"]);
+    expect(drawn(page)).toEqual({
+      columns: "4",
+      cells: [
+        ["Camera", "1 / span 4", "1 / span 1"],
+        ["Cuts", "1 / span 4", "2 / span 1"],
+        ["View", "1 / span 3", "3 / span 3"],
+      ],
+    });
+    choose(page, "Lights");
+    expect(drawn(page).cells.map((cell) => cell[0])).toEqual(["Lights", "Glow"]);
+    // All is the whole board again, each control back at its own rect.
+    choose(page, "All");
+    expect(drawn(page).columns).toBe("12");
+    expect(drawn(page).cells[7]).toEqual(["View", "5 / span 3", "6 / span 3"]);
+    expect(drawn(page).cells[0]).toEqual(["Master", "1 / span 12", "1 / span 1"]);
+  });
+
+  it("the controls on a page are the same live controls: one still drags, and a redraw of the board keeps the page", async () => {
+    const page = openPage();
+    page.snapshot(DESK);
+    choose(page, "Robot");
+    const speed = track(page, "Speed");
+    grab(page, speed, 20);
+    page.pointer("pointermove", speed, 72);
+    page.pointer("pointerup", speed, 72);
+    await page.drain();
+    expect(page.posts.at(-1)?.set).toEqual({ handle: "h-speed", values: { value: 0.7 }, phase: "commit" });
+    // The desk adds a control to another section: a new shape, the same page.
+    const board = DESK.panels[0]!.board!;
+    const spark = { kind: "widget", rect: { x: 8, y: 3, w: 4, h: 1 }, widget: slider("h-spark", "Spark") } as const;
+    page.snapshot({ seq: 4, panels: [{ ...DESK.panels[0]!, board: { ...board, items: [...board.items, spark] } }, DESK.panels[1]!] });
+    expect(chosen(page)).toEqual(["Robot"]);
+    expect(drawn(page).cells.map((cell) => cell[0])).toEqual(["Robot", "Speed"]);
+  });
+
+  it("the pager belongs to the shown Panel: a Panel without sections, and the Camera tab, show none", () => {
+    const page = openPage();
+    page.snapshot(DESK);
+    choose(page, "Scene");
+    tab(page, "Plain");
+    expect(pager(page).hidden).toBe(true);
+    expect(chips(page)).toEqual([]);
+    expect(page.doc.body.classList.contains("paged")).toBe(false);
+    tab(page, "Camera");
+    expect(pager(page).hidden).toBe(true);
+    // Back on the Panel: its page is the one it was left on.
+    tab(page, "Sentinel");
+    expect(chosen(page)).toEqual(["Scene"]);
+    expect(drawn(page).cells.map((cell) => cell[0])).toEqual(["Scene", "Bore"]);
+  });
+
+  it("the phone remembers each Panel's page; a section that is gone shows All without forgetting the choice", () => {
+    const first = openPage();
+    first.snapshot(DESK);
+    choose(first, "Lights");
+    const kept = first.win.localStorage.getItem(PHONE_PAGE_STORAGE_KEY);
+    expect(JSON.parse(kept ?? "null")).toEqual({ "panel:Sentinel": "Lights" });
+
+    const again = openPage({ storage: { [PHONE_PAGE_STORAGE_KEY]: kept! } });
+    again.snapshot(DESK);
+    expect(chosen(again)).toEqual(["Lights"]);
+    expect(drawn(again).cells.map((cell) => cell[0])).toEqual(["Lights", "Glow"]);
+    // Choosing All forgets it.
+    choose(again, "All");
+    expect(JSON.parse(again.win.localStorage.getItem(PHONE_PAGE_STORAGE_KEY) ?? "null")).toEqual({});
+
+    const gone = openPage({ storage: { [PHONE_PAGE_STORAGE_KEY]: JSON.stringify({ "panel:Sentinel": "Encore" }) } });
+    gone.snapshot(DESK);
+    expect(chosen(gone)).toEqual(["All"]);
+    expect(drawn(gone).cells).toHaveLength(10);
+    expect(JSON.parse(gone.win.localStorage.getItem(PHONE_PAGE_STORAGE_KEY) ?? "null")).toEqual({ "panel:Sentinel": "Encore" });
+    // Storage that holds something else entirely is not a page: the board, whole.
+    const junk = openPage({ storage: { [PHONE_PAGE_STORAGE_KEY]: "[1,2" } });
+    junk.snapshot(DESK);
+    expect(chosen(junk)).toEqual(["All"]);
+  });
+
+  /*
+   * An XY pad takes every touch that lands on it, so it is the one control a scroll cannot
+   * start from. The rail is for exactly that: a view that scrolls AND shows a pad. jsdom
+   * lays nothing out, so the test says how tall the page is; that a touch on the rail really
+   * scrolls is the browser's doing, asserted in the e2e spec.
+   */
+  it("the scroll rail shows only where a pad could trap a scroll: the view scrolls and a pad is on it", () => {
+    const page = openPage();
+    let tall = true;
+    Object.defineProperty(page.doc.documentElement, "clientHeight", { configurable: true, get: () => 700 });
+    Object.defineProperty(page.doc.documentElement, "scrollHeight", { configurable: true, get: () => (tall ? 2100 : 700) });
+    const rail = page.camera("rail");
+    const railed = (): boolean[] => [!rail.hidden, page.doc.body.classList.contains("railed")];
+    expect(rail.getAttribute("aria-hidden")).toBe("true");
+    page.snapshot(DESK); // All: the pad is on it, and it is three screens tall
+    expect(railed()).toEqual([true, true]);
+    // The thumb says where the page is: the first third of it.
+    const thumb = rail.querySelector<HTMLElement>(".railthumb")!;
+    expect([thumb.style.top, parseFloat(thumb.style.height).toFixed(1)]).toEqual(["0%", "33.3"]);
+    choose(page, "Lights"); // no pad on this page: every control lets a scroll through
+    expect(railed()).toEqual([false, false]);
+    choose(page, "Camera"); // the pad's own page
+    expect(railed()).toEqual([true, true]);
+    tab(page, "Plain");
+    expect(railed()).toEqual([false, false]);
+    tab(page, "Sentinel");
+    expect(railed()).toEqual([true, true]);
+    // The phone is turned and the page now fits: nothing to scroll, no rail.
+    tall = false;
+    page.win.dispatchEvent(new page.win.Event("resize"));
+    expect(railed()).toEqual([false, false]);
   });
 });
