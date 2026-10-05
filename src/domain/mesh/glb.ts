@@ -15,7 +15,8 @@
  * accessors, morph targets, more than four influences (JOINTS_1), and any
  * `extensionsRequired` entry not on the list above. Image textures are IGNORED with a
  * warning (the factors still apply) — v1 materials are factor + vertex colour. Animation
- * clips are ignored: the file's node pose is what is read.
+ * clips are baked per joint when Mesh File In names one (T1410b); otherwise the file's
+ * node pose is what is read.
  *
  * ## What comes out
  *
