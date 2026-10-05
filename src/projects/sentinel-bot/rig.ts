@@ -91,6 +91,8 @@ export const JOINT_ATTRIBUTES = JSON.stringify([
   { name: "seed", type: "f32", default: [0] },
   // How far along its tentacle a joint is, 0 at the body to 1 at the claw: its place in the lights' colour range (surface.ts).
   { name: "along", type: "f32", default: [0] },
+  // 1 on a tentacle's rings: the material keeps them matt and dark between the lit segments (surface.ts).
+  { name: "matte", type: "f32", default: [0] },
   // What the point is (KIND): what a draw's Group picks its points by.
   { name: "kind", type: "f32", default: [-1] },
   // Metres between the claw's mouth and where the gait wants it; zero while its rung is in reach.
@@ -504,6 +506,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
     q.position = at;
     q.orient = frame;
     q.kind = ${KIND.ring}.0;
+    q.matte = 1.0;
     return q;
   }
   if (station == RINGS) {

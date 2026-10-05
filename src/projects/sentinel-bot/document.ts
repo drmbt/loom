@@ -123,7 +123,7 @@ const LIGHTS: readonly Slider[] = [
   { name: "slider_glow", caption: "Eyes", value: 9, min: 0, max: 30 },
   { name: "slider_eyehits", caption: "Eyes on drums", value: 0.6, min: 0, max: 1 },
   { name: "slider_eyesweep", caption: "Eye sweep (beat)", value: 0.25, min: 0, max: 1 },
-  { name: "slider_legs", caption: "Leg lines", value: 1, min: 0, max: 3 },
+  { name: "slider_legs", caption: "Leg lights", value: 1, min: 0, max: 3 },
   { name: "slider_meter", caption: "Leg meter (lows)", value: 0.7, min: 0, max: 1 },
   { name: "slider_chase", caption: "Leg chase (beat)", value: 0.3, min: 0, max: 2 },
   { name: "slider_spark", caption: "Leg spark (hats)", value: 0.6, min: 0, max: 2 },
@@ -334,7 +334,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
       lamps: expressionSlot(`${on("slider_lamp")} * 0.23 * (0.7 + ${LOW} * 0.8)`, 6),
       // How bright a kick's pulse is as it runs down the cores (the rig says where it is).
-      pulseGlow: expressionSlot(`2 * ${on("slider_legs")}`, 2),
+      pulseGlow: expressionSlot(`1.6 * ${on("slider_legs")}`, 1.6),
+      // At rest the segments glow low; Leg Lights at 0 puts them out.
+      coreGlow: expressionSlot(`0.07 * min(${on("slider_legs")}, 1)`, 0.07),
     }, { label: "material_hull" }),
 
     ...pieceNodes({

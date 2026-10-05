@@ -7,7 +7,7 @@ export const lampParameter = (index: number): string => `lamp${index}`;
 
 /**
  * THE ROBOT'S LIGHTS ARE ONE INSTRUMENT (the owner, 2026-10-05: "they'll be our main instrument to
- * drive audio reactivity"): the lenses of its face and the lines along its tentacles take their
+ * drive audio reactivity"): the lenses of its face and the lit segments of its tentacles take their
  * colour from one RANGE, two hues the panel names, and each light has a place in it. A hue is
  * 0 to 1 round the wheel (0 red, 1/3 green, 2/3 blue); the range runs the way it is written,
  * so From 0.95 To 1.05 crosses red.
@@ -63,15 +63,16 @@ ${MIRRORED.map((index) => `  ${lampParameter(index)}: vec3f, // @default [0, 2.2
   hat: f32, // @default 0  The hat.
   eyeSweep: f32, // @default 0  How much a band of light crossing the face takes over from the steady glow.
   sweepPhase: f32, // @default 0  Where that band is: it crosses once for each whole number. Drive it from the beat.
-  coreGlow: f32, // @default 0.01  Radiance of a tentacle's light lines at rest: barely an ember.
-  pulseGlow: f32, // @default 2  Radiance of a line fully charged.
+  coreGlow: f32, // @default 0.07  Radiance of a tentacle's light segments at rest: low, so the segmenting shows and no more.
+  pulseGlow: f32, // @default 1.6  Radiance of a segment fully charged.
 };
 
 // What each drawn piece brings of its own: the rig's point attributes of the same names (rig.ts).
 struct Instance {
-  charge: f32, // @default 0  How lit this piece's lines are by what runs along the tentacle: 0 at rest, 1 fully.
+  charge: f32, // @default 0  How lit this piece's light segment is by what runs along the tentacle: 0 at rest, 1 fully.
   seed: f32, // @default 0  Which piece it is, 0 to 1: its wear is its own.
   along: f32, // @default 0  How far along its tentacle it is, 0 at the body to 1 at the claw: its place in the colour range.
+  matte: f32, // @default 0  1 on a tentacle's rings: the dark segments between its lights.
 };
 
 ${HUE_WGSL}
@@ -110,15 +111,15 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
     ages = 0.0;
     mirrors = 0.0;
   } else if (role > 0.7) {
-    // The spine between the rings: dull dark rubber with five thin light lines let into it, lit by
-    // whatever runs along the tentacle. Lines, not the whole spine: the spine is half of a tentacle's
-    // length, and lit whole it was a row of fat red dashes (twice). Not a mirror, for the same reason.
+    // The spine between the rings is the tentacle's light: a segment of it shows between every two
+    // rings, so a tentacle is lit, dark, lit, dark all the way down (the owner, 2026-10-05: that
+    // segmenting is the look). Lit from inside by what runs along the tentacle, over a low glow at
+    // rest. Not a mirror: as one, every segment found a lamp whatever the tentacle was doing.
     albedo = vec3f(0.022, 0.02, 0.02);
     rough = 0.72;
     metal = 0.2;
-    let line = smoothstep(0.84, 0.95, cos(atan2(s.local.y, s.local.x) * 5.0));
-    o.emissive = lightColour(s.instance.along, p) * (p.coreGlow + p.pulseGlow * s.instance.charge) * line;
-    ages = 0.5;
+    o.emissive = lightColour(s.instance.along, p) * (p.coreGlow + p.pulseGlow * s.instance.charge);
+    ages = 0.3;
     mirrors = 0.0;
   } else if (role > 0.5) {
     // Red lead paint.
@@ -133,6 +134,18 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
     // Bright steel that has not been bright for years.
     albedo = vec3f(0.34, 0.345, 0.36);
     rough = 0.36;
+  }
+
+  // A tentacle's rings are the DARK segments between its lights, and must stay dark from every
+  // angle (the owner: "the not lit up segments were taking on too much light color so they did
+  // not appear as a segment"). As polished steel they mirrored the light beside them; they are
+  // matt black instead, and show no lamp.
+  if (role <= 0.1 && s.instance.matte > 0.5) {
+    albedo = vec3f(0.012, 0.012, 0.013);
+    rough = 0.88;
+    metal = 0.0;
+    ages = 0.25;
+    mirrors = 0.0;
   }
 
   // ── Age ──
