@@ -481,6 +481,33 @@ describe("the performance panel renders from the hub (T41)", () => {
     });
     expect(runtime.telemetry.snapshot().timingAvailable).toBe(false);
   });
+
+  /**
+   * T1604b — THE THIRD SIBLING: the panel being on screen reaches the backend's encoder.
+   *
+   * A run of a node's draws is one device render pass by default, with one GPU span its
+   * passes share. The performance panel shows a figure per pass, so while it is on screen it
+   * holds a demand on the hub, and the app hands the hub the backend's switch. Unwired, the
+   * panel would ask and nothing would answer: every pass of a run but its first would read
+   * "shared" for as long as anyone looked, with every hub and panel test green.
+   *
+   * Same construction as its two siblings: nothing here attaches or demands. The composed
+   * `App` mounts its own panel, and the assertion is on what the BACKEND was told.
+   */
+  it("asks the backend for one pass per draw while the performance panel is on screen (T1604b)", async () => {
+    const told: boolean[] = [];
+    const backend: LoomBackend = { ...fixtureBackend(), setExactPassTiming: (exact) => told.push(exact) };
+    const runtime = newRuntime();
+    await seedRenderable(runtime);
+    await mountApp({
+      status: { kind: "ready", capabilities: CAPABILITIES, baseline: true, backend },
+      runtime,
+    });
+    await screen.findByTestId("performance-panel");
+    await waitFor(() => {
+      expect(told.at(-1), "the composed app never told the backend that per-pass figures are on screen (T1604b)").toBe(true);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------------

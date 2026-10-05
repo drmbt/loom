@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import type { TelemetrySource } from "@runtime/telemetry/index.ts";
 import { spanBasePassId } from "@runtime/backend/plan.ts";
-import { formatMs } from "./format.ts";
+import { formatPassMs } from "./format.ts";
 import { buildPipelineDetail, missingSelectionNote } from "./pipeline-model.ts";
 import type { PipelineRequest, PipelineSelection, PipelineView } from "./pipeline-model.ts";
 import styles from "./pipeline.module.css";
@@ -87,15 +87,7 @@ export function PipelineRail({ request, view, selection, telemetry }: PipelineRa
       : null;
   // The same bucket shape the performance tab builds per row, so one formatter — and one
   // §V86 rule about absent measurements — serves both surfaces.
-  const span =
-    row === null
-      ? null
-      : formatMs({
-          availability: row.availability,
-          gpuMs: row.gpuMs,
-          passCount: 1,
-          nodeCount: row.nodeId === null ? 0 : 1,
-        });
+  const span = row === null ? null : formatPassMs(row);
 
   return (
     <aside className={styles.rail} data-testid="pipeline-rail" data-state="detail" data-detail={detail.id}>

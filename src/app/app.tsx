@@ -807,6 +807,20 @@ export function App({
     });
   }, [backend, runtime]);
 
+  /**
+   * T1604b — THE THIRD SIBLING: who is looking decides how the frame is encoded.
+   *
+   * A run of a node's draws is one device render pass by default, with one GPU span its
+   * passes share. The performance panel shows a figure per pass, so while it is open it
+   * holds a demand on the hub (`demandPassDetail`), and this is where that demand reaches
+   * the backend: one pass per draw while anyone holds one. Without this call the panel
+   * would ask and nothing would answer.
+   */
+  useEffect(() => {
+    if (backend === undefined) return;
+    return runtime.telemetry.attachPassDetailSwitch((exact) => backend.setExactPassTiming?.(exact));
+  }, [backend, runtime]);
+
   // The frame loop (T184): the only caller of `backend.loop()` in the app. Without it
   // the compiler, the backend and the renderer each pass their own suite while zero
   // frames are ever submitted — see `use-frame-loop.ts`.

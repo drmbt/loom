@@ -122,6 +122,12 @@ export interface HeadlessRenderRequest {
    */
   readonly animate?: boolean;
   /**
+   * T1604b: one device render pass PER DRAW (`backend.setExactPassTiming(true)`), the way
+   * every frame was encoded before a run of draws shared a pass. The picture must be the
+   * same either way, which is what a test renders both for.
+   */
+  readonly exactPassTiming?: boolean;
+  /**
    * T431: FEED a recorded feature track. The closure is the frame driver's `audio` seam
    * — the same one the live session's analyser fills — so a replayed render and the
    * performance it was recorded from are the same computation with the same inputs.
@@ -783,6 +789,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
   const fps = request.fps ?? projectFps(settings);
 
   const backend = createVgpuBackend({ host: request.host });
+  if (request.exactPassTiming === true) backend.setExactPassTiming(true);
   const diagnostics: RuntimeDiagnostic[] = [];
   backend.onDiagnostic((diagnostic) => diagnostics.push(diagnostic));
   try {

@@ -1,5 +1,5 @@
 import { effect, frame, frameLoop, sampler, surface, timer, uniforms } from "vgpu";
-import type { Effect, Frame, PingPongTargets, StorageBuffer, Surface, SurfaceCanvas, Target, Timer, TimerSpan } from "vgpu";
+import type { Draw, Effect, Frame, PingPongTargets, StorageBuffer, Surface, SurfaceCanvas, Target, Timer, TimerSpan } from "vgpu";
 import { nativeInputTransportSize, NATIVE_INPUT_PACK_WGSL } from "../../models/native-input-layout.ts";
 import type { RuntimeDiagnostic } from "../../../domain/types/diagnostics.ts";
 import { absTimeSecondsOf } from "../../../domain/types/frame.ts";
@@ -56,7 +56,11 @@ import {
   planSkippedDraws,
   planUniformValues,
   readExecutionPlan,
+  renderPassRuns,
+  runSpanName,
+  type DrawPassDescriptor,
   type PassDescriptor,
+  type RenderPassRun,
   type BufferBindingDescriptor,
   type TextureBindingDescriptor,
   type ResourceDescriptor,
@@ -133,6 +137,8 @@ export interface VgpuBackend extends LoomBackend {
   readonly capabilities: BackendCapabilities | undefined;
   /** Resolves once any in-flight device recovery has finished. */
   whenSettled(): Promise<void>;
+  /** T1604b: this backend has runs, so the switch is always there (optional on `LoomBackend`). */
+  setExactPassTiming(exact: boolean): void;
 }
 
 /** Intrinsic copy extent; element CSS dimensions never describe video/image pixels. */
@@ -180,6 +186,12 @@ interface Program {
    * Seeded from the plan and moved by `updateUniforms`, like a loop's count.
    */
   readonly skipped: Set<string>;
+  /**
+   * T1604b: which device render pass each draw belongs to — its run (`renderPassRuns`, read
+   * off the plan as written, so a loop marker ends one) and its place in it. Structure:
+   * built with the program and never moved by a value.
+   */
+  readonly runs: ReadonlyMap<string, { readonly run: RenderPassRun; readonly at: number }>;
   /**
    * T1583b: the dispatches a kernel region steps, by DISPATCH pass id. Read off the plan
    * whenever it is installed or its values move (`prepare` is a value).
@@ -404,6 +416,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
    * pair is worth showing.
    */
   const cpuTimingListeners = new Set<(spans: Readonly<Record<string, number>>) => void>();
+  /** T1604b: true = one device render pass per draw (`setExactPassTiming`); false = one per run. */
+  let exactPassTiming = false;
   let unsubscribeTimer: (() => void) | undefined;
   /**
    * T327 (B33): the PERSISTENT device-error net. B9's listener only lives for the
@@ -1497,18 +1511,69 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       const cpuSpans: Record<string, number> | undefined =
         cpuTimingListeners.size === 0 ? undefined : {};
       const cpuIterations = new Map<string, number>();
+      /** The CPU span name of this encode of a pass, counting it. */
+      const cpuSpanName = (passId: string): string => {
+        const seen = cpuIterations.get(passId) ?? 0;
+        cpuIterations.set(passId, seen + 1);
+        return iterationSpanName(passId, seen);
+      };
       const timed = (passId: string, run: () => void): void => {
         if (cpuSpans === undefined) {
           run();
           return;
         }
-        const seen = cpuIterations.get(passId) ?? 0;
-        cpuIterations.set(passId, seen + 1);
+        const name = cpuSpanName(passId);
         const started = performance.now();
         run();
-        cpuSpans[iterationSpanName(passId, seen)] = performance.now() - started;
+        cpuSpans[name] = performance.now() - started;
       };
-      for (const pass of passes) {
+      /**
+       * T1604b: several draws, one device render pass. What a single draw's pass does, kept
+       * exactly: the head's `clear` is the pass's; a draw whose pipeline was never built is
+       * left out (and, when it is the head, takes its clear with it, as its own pass would
+       * have); a skipped draw (T1598b) is left out and, as the head, still clears.
+       */
+      const encodeRun = (members: ReadonlyArray<DrawPassDescriptor>): void => {
+        const head = members[0] as DrawPassDescriptor;
+        const resolve = active.resources.renderTargets.get(head.id);
+        if (!resolve) return;
+        const live: Array<{ readonly id: string; readonly drawable: Draw; readonly indirect: StorageBuffer | undefined }> = [];
+        for (const member of members) {
+          const drawable = active.resources.draws.get(member.id);
+          if (!drawable || active.skipped.has(member.id)) continue;
+          live.push({
+            id: member.id,
+            drawable,
+            indirect: typeof member.instances === "object" ? active.resources.buffers.get(member.instances.indirect) : undefined,
+          });
+        }
+        const clear = active.resources.draws.has(head.id) && (head.clear ?? true);
+        if (live.length === 0 && !clear) return;
+        // One span for the run, named for its head and for how many passes share it.
+        const span = spanFor(runSpanName(head.id, members.length - 1));
+        const started = cpuSpans === undefined ? 0 : performance.now();
+        let inDraws = 0;
+        let headName: string | undefined;
+        f.pass({ target: resolve(), clear, ...(span === undefined ? {} : { timer: span }) }, (encoder) => {
+          for (const member of live) {
+            const before = cpuSpans === undefined ? 0 : performance.now();
+            encoder.draw(member.drawable, member.indirect === undefined ? undefined : { indirect: member.indirect });
+            if (cpuSpans === undefined) continue;
+            // The CPU half stays per draw: writing a draw is its own work inside the pass.
+            const took = performance.now() - before;
+            inDraws += took;
+            const name = cpuSpanName(member.id);
+            cpuSpans[name] = took;
+            if (member.id === head.id) headName = name;
+          }
+        });
+        if (cpuSpans === undefined) return;
+        // Opening and closing the pass is the head's, as it was when the pass held it alone.
+        const name = headName ?? cpuSpanName(head.id);
+        cpuSpans[name] = (cpuSpans[name] ?? 0) + (performance.now() - started - inDraws);
+      };
+      for (let index = 0; index < passes.length; index += 1) {
+        const pass = passes[index] as PassDescriptor;
         if (pass.kind === "loop") continue; // expanded away before we get here
         if (pass.kind === "swap") {
           active.resources.pingPongs.get(pass.resourceId)?.swap();
@@ -1572,6 +1637,29 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           continue;
         }
         if (pass.kind === "draw") {
+          /*
+           * T1604b — ONE DEVICE RENDER PASS PER RUN. The draws that follow this one in its
+           * run (`renderPassRuns`: the same node's, into the same target, none of them
+           * clearing) are encoded inside the pass this one opens. They are found by their
+           * place in the run, not by looking at the next pass's fields, so the encoder and
+           * every reader of `renderPassRuns` cannot disagree about where a pass ends — and a
+           * loop body's last draw never joins its own first, one iteration on.
+           */
+          let last = index;
+          const placed = exactPassTiming ? undefined : active.runs.get(pass.id);
+          if (placed !== undefined) {
+            for (;;) {
+              const next = passes[last + 1];
+              const nextPlaced = next === undefined ? undefined : active.runs.get(next.id);
+              if (nextPlaced === undefined || nextPlaced.run !== placed.run || nextPlaced.at !== placed.at + (last + 1 - index)) break;
+              last += 1;
+            }
+          }
+          if (last > index) {
+            encodeRun(passes.slice(index, last + 1) as DrawPassDescriptor[]);
+            index = last;
+            continue;
+          }
           const drawable = active.resources.draws.get(pass.id);
           const resolve = active.resources.renderTargets.get(pass.id);
           if (!drawable || !resolve) continue;
@@ -2725,6 +2813,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           ),
         ),
         skipped: planSkippedDraws(read.passes),
+        runs: new Map(renderPassRuns(read.passes, read.resources).flatMap((run) => run.passIds.map((passId, at) => [passId, { run, at }] as const))),
         stepped: steppedDispatches(read.passes),
         stepRuns: new Map(),
         compiled: { id, logical: plan },
@@ -3071,6 +3160,13 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       return () => {
         cpuTimingListeners.delete(listener);
       };
+    },
+
+    setExactPassTiming(exact) {
+      if (exact === exactPassTiming) return;
+      exactPassTiming = exact;
+      // The same plan encoded another way: the next frame must be drawn to be measured.
+      if (program) program.dirty = true;
     },
 
     loop(onFrame, settings = {}) {

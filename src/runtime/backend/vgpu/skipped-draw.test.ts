@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { FrameInputs, LogicalExecutionPlan } from "../../../domain/types/backend.ts";
 import { wgsl } from "../wgsl.ts";
+import { countDeviceCalls, during } from "./device-calls.test-support.ts";
 import { mockGpuHost } from "./mock-gpu-host.ts";
 import { createVgpuBackend } from "./vgpu-backend.ts";
 
@@ -13,9 +14,13 @@ import { createVgpuBackend } from "./vgpu-backend.ts";
  * only the encoding stops. Three things have to hold for that to be worth having, and none
  * of them shows in a picture, because a skipped draw is one that would have drawn nothing:
  *
- *  - the device is asked for no render pass and no draw call;
+ *  - the device is asked for no draw call (and, encoded one pass per draw, for no pass);
  *  - the flag moves through the values entry point, both ways, with nothing rebuilt;
  *  - a pass that owns its target's CLEAR still clears, or the frame before shows through.
+ *
+ * The three draws below are one RUN (T1604b: one node's draws into one target, only the
+ * first clearing), so by default they are one device render pass and what a skip saves is
+ * the draw call. With one pass per draw (`setExactPassTiming`) it saves the pass too.
  */
 
 const input: FrameInputs = {
@@ -48,63 +53,57 @@ function plan(skip: { near?: boolean; far?: boolean; clear?: boolean } = {}): Lo
   };
 }
 
-async function rig() {
+async function rig(exact = false) {
   const host = mockGpuHost();
   const backend = createVgpuBackend({ host });
   await backend.initialize({});
-  if (host.device === undefined) throw new Error("No mock device");
-  const seen = { passes: 0, draws: 0, pipelines: 0 };
-  const createEncoder = host.device.createCommandEncoder.bind(host.device);
-  vi.spyOn(host.device, "createCommandEncoder").mockImplementation((descriptor) => {
-    const encoder = createEncoder(descriptor);
-    const begin = encoder.beginRenderPass.bind(encoder);
-    vi.spyOn(encoder, "beginRenderPass").mockImplementation((passDescriptor) => {
-      seen.passes += 1;
-      const pass = begin(passDescriptor);
-      const drawCall = pass.draw.bind(pass);
-      vi.spyOn(pass, "draw").mockImplementation((...args) => {
-        seen.draws += 1;
-        drawCall(...args);
-      });
-      return pass;
-    });
-    return encoder;
-  });
-  const createPipeline = host.device.createRenderPipeline.bind(host.device);
-  vi.spyOn(host.device, "createRenderPipeline").mockImplementation((descriptor) => {
-    seen.pipelines += 1;
-    return createPipeline(descriptor);
-  });
+  backend.setExactPassTiming(exact);
+  const seen = countDeviceCalls(host);
   /** What one render asked of the device. */
-  const frame = (compiled: Awaited<ReturnType<typeof backend.compile>>): { passes: number; draws: number } => {
-    const before = { ...seen };
-    backend.render(compiled, input);
-    return { passes: seen.passes - before.passes, draws: seen.draws - before.draws };
+  const frame = (compiled: Awaited<ReturnType<typeof backend.compile>>): { passes: number; clears: number; draws: number } => {
+    const asked = during(seen, () => backend.render(compiled, input));
+    return { passes: asked.renderPasses, clears: asked.clears, draws: asked.draws };
   };
   return { backend, seen, frame };
 }
 
 describe("T1598b: a skipped draw is not encoded", () => {
-  it("asks the device for no pass and no draw, and the flag moves both ways as a value", async () => {
+  it("asks the device for no draw, and the flag moves both ways as a value", async () => {
     const { backend, seen, frame } = await rig();
     try {
       const spans: string[][] = [];
       backend.onCpuTimings((values) => spans.push(Object.keys(values)));
       const compiled = await backend.compile(plan({ far: true }));
-      expect(frame(compiled)).toEqual({ passes: 2, draws: 2 });
-      // The performance panel's rows are the passes that ran: the skipped one has none.
+      expect(frame(compiled)).toEqual({ passes: 1, clears: 1, draws: 2 });
+      // The performance panel's rows are the draws that ran: the skipped one has none.
       expect(spans.at(-1)).toEqual(["clear", "near"]);
 
       const built = seen.pipelines;
       backend.updateUniforms({ passId: "far", values: {}, skip: false });
-      expect(frame(compiled)).toEqual({ passes: 3, draws: 3 });
+      expect(frame(compiled)).toEqual({ passes: 1, clears: 1, draws: 3 });
       expect(spans.at(-1)).toEqual(["clear", "near", "far"]);
 
       backend.updateUniforms({ passId: "near", values: {}, skip: true });
       backend.updateUniforms({ passId: "far", values: {}, skip: true });
-      expect(frame(compiled)).toEqual({ passes: 1, draws: 1 });
+      expect(frame(compiled)).toEqual({ passes: 1, clears: 1, draws: 1 });
       // §V5: a value. Nothing was built to turn a draw off or on again.
       expect(seen.pipelines).toBe(built);
+    } finally {
+      backend.dispose();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("with one pass per draw, a skipped draw is no pass either", async () => {
+    const { backend, frame } = await rig(true);
+    try {
+      const compiled = await backend.compile(plan({ far: true }));
+      expect(frame(compiled)).toEqual({ passes: 2, clears: 1, draws: 2 });
+      backend.updateUniforms({ passId: "far", values: {}, skip: false });
+      expect(frame(compiled)).toEqual({ passes: 3, clears: 1, draws: 3 });
+      backend.updateUniforms({ passId: "near", values: {}, skip: true });
+      backend.updateUniforms({ passId: "far", values: {}, skip: true });
+      expect(frame(compiled)).toEqual({ passes: 1, clears: 1, draws: 1 });
     } finally {
       backend.dispose();
       vi.restoreAllMocks();
@@ -115,14 +114,14 @@ describe("T1598b: a skipped draw is not encoded", () => {
     const { backend, seen, frame } = await rig();
     try {
       const compiled = await backend.compile(plan({ far: true }));
-      expect(frame(compiled)).toEqual({ passes: 2, draws: 2 });
+      expect(frame(compiled)).toEqual({ passes: 1, clears: 1, draws: 2 });
       const built = seen.pipelines;
       // The structure key does not hold `skip`, so this is the values-only path (§V5).
       const again = await backend.compile(plan({ near: true }));
       expect(seen.pipelines).toBe(built);
       const spans: string[][] = [];
       backend.onCpuTimings((values) => spans.push(Object.keys(values)));
-      expect(frame(again)).toEqual({ passes: 2, draws: 2 });
+      expect(frame(again)).toEqual({ passes: 1, clears: 1, draws: 2 });
       expect(spans.at(-1)).toEqual(["clear", "far"]);
     } finally {
       backend.dispose();
@@ -130,12 +129,16 @@ describe("T1598b: a skipped draw is not encoded", () => {
     }
   });
 
-  it("still clears: a skipped pass that owns the clear opens its pass and draws nothing", async () => {
-    const { backend, frame } = await rig();
+  it.each([false, true])("still clears: a skipped draw that owns the clear opens its pass and draws nothing (one pass per draw: %s)", async (exact) => {
+    const { backend, frame } = await rig(exact);
     try {
       const compiled = await backend.compile(plan({ clear: true }));
-      // Three passes (the clear's, empty, then the two casters), two draws.
-      expect(frame(compiled)).toEqual({ passes: 3, draws: 2 });
+      // The map is cleared exactly once, and the two casters are drawn into it.
+      expect(frame(compiled)).toEqual({ passes: exact ? 3 : 1, clears: 1, draws: 2 });
+      // Every draw skipped: the clear still happens, in a pass with nothing in it.
+      backend.updateUniforms({ passId: "near", values: {}, skip: true });
+      backend.updateUniforms({ passId: "far", values: {}, skip: true });
+      expect(frame(compiled)).toEqual({ passes: 1, clears: 1, draws: 0 });
     } finally {
       backend.dispose();
       vi.restoreAllMocks();

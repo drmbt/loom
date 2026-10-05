@@ -334,6 +334,17 @@ export interface LoomBackend extends RenderBackend {
   onCpuTimings(listener: (spans: Readonly<Record<string, number>>) => void): () => void;
 
   /**
+   * T1604b: one device render pass PER DRAW again, so each draw's GPU span is its own.
+   *
+   * By default a run of a node's draws into one target is ONE device render pass
+   * (`renderPassRuns`), with one span the run's passes share. That is the cheap frame and
+   * the picture is the same either way; this is for a person measuring a pass, and whoever
+   * shows per-pass figures asks for it while they are on screen. Same plan, same picture,
+   * nothing rebuilt. Optional so a backend without runs need not stub it.
+   */
+  setExactPassTiming?(exact: boolean): void;
+
+  /**
    * Re-attempts device recovery after automatic rebuilds gave up (§V23). Resolves when
    * the attempt settles; check `status.halted` for the outcome. No-op while healthy.
    */

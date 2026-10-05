@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { UNAVAILABLE_COST } from "@runtime/telemetry/index.ts";
 import type {
   CategoryRollup,
@@ -10,9 +10,9 @@ import type {
   TelemetrySource,
 } from "@runtime/telemetry/index.ts";
 import { useStoreSelector } from "@ui/hooks/use-store-selector.ts";
-import { useVisibleSubscribe } from "@ui/hooks/use-visible-subscribe.ts";
+import { isElementVisible, useVisibleSubscribe } from "@ui/hooks/use-visible-subscribe.ts";
 import type { Subscribe } from "@ui/hooks/use-visible-subscribe.ts";
-import { formatBytes, formatCost, formatMs } from "./format.ts";
+import { formatBytes, formatCost, formatMs, formatPassMs } from "./format.ts";
 import { PerfTimeline } from "./perf-timeline.tsx";
 import type { FormattedMs } from "./format.ts";
 import styles from "./inspect.module.css";
@@ -174,6 +174,35 @@ export function PerformancePanel({
     () => (telemetry === null ? null : { subscribe, snapshot: () => telemetry.snapshot() }),
     [telemetry, subscribe],
   );
+  /*
+   * T1604b: this panel shows a GPU figure PER PASS, and by default a run of a node's draws
+   * is one device render pass with one span. So while the panel (and the timeline in it) is
+   * ON SCREEN it asks for one pass per draw; the picture is the same, and hiding the panel
+   * gives the cheaper frame back. On screen, not mounted: a dock pane stays mounted while
+   * hidden (§V96), and a demand held by a hidden tab would cost every frame for nobody.
+   * Checked on the gated subscription (which fires the instant the pane is shown) and on
+   * the hub's own tick (which is how a pane that was hidden is noticed).
+   */
+  useEffect(() => {
+    if (telemetry === null || telemetry.demandPassDetail === undefined) return;
+    let release: (() => void) | null = null;
+    const sync = (): void => {
+      const shown = root.current !== null && isElementVisible(root.current);
+      if (shown && release === null) release = telemetry.demandPassDetail?.() ?? null;
+      if (!shown && release !== null) {
+        release();
+        release = null;
+      }
+    };
+    sync();
+    const offShown = subscribe(sync);
+    const offTick = telemetry.subscribe(sync);
+    return () => {
+      offShown();
+      offTick();
+      release?.();
+    };
+  }, [telemetry, subscribe]);
 
   if (source === null) {
     return (
@@ -253,12 +282,7 @@ function PassMsCell({ source, passId }: { source: SnapshotSource; passId: string
       const row = rowIndex(snapshot).passes.get(passId);
       return row === undefined
         ? formatMs({ availability: "unavailable", gpuMs: null, passCount: 1, nodeCount: 0 })
-        : formatMs({
-            availability: row.availability,
-            gpuMs: row.gpuMs,
-            passCount: 1,
-            nodeCount: row.nodeId === null ? 0 : 1,
-          });
+        : formatPassMs(row);
     },
     sameText,
   );

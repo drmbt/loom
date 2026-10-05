@@ -2765,19 +2765,34 @@ export const renderNode: NodeDefinition = {
         ["shadow", parameters["shadowOutput"] === true ? outputs["shadow"] : undefined],
       ] as const
     ).flatMap(([layer, target]) => (target === undefined ? [] : [{ layer, target }]));
-    for (const { layer, target } of gbufferTargets) {
-      passes.push({
-        kind: "draw",
-        id: layer === "normal" ? `${nodeId}:gbuffer:clear` : `${nodeId}:gbuffer:${layer}:clear`,
-        nodeId,
-        shader: GBUFFER_CLEAR_WGSL,
-        target,
-        topology: "triangle-list",
-        instances: 1,
-        vertexCount: 6,
-        clear: true,
-      } as DrawPassDescriptor);
-    }
+    /*
+     * T1604b — EACH LAYER'S DRAWS, KEPT TOGETHER and emitted after everything that draws the
+     * colour (see where they are pushed, below the additive phase). A layer has its own
+     * target and its own depth, and nothing here reads one, so when its draws run moves no
+     * pixel; what it changes is how many device render passes the frame is. Emitted beside
+     * each geometry's lit draw, as they were, the targets alternated: lit, Normal, lit,
+     * Normal — and a run of draws ends where the target changes (`renderPassRuns`), so every
+     * one of those draws was a pass of its own. Together, the lit draws are one pass and
+     * each layer is one: its clear and then its geometries, in Scenes order as before.
+     */
+    const layerDraws = new Map<(typeof gbufferTargets)[number]["layer"], DrawPassDescriptor[]>(
+      gbufferTargets.map(({ layer, target }) => [
+        layer,
+        [
+          {
+            kind: "draw",
+            id: layer === "normal" ? `${nodeId}:gbuffer:clear` : `${nodeId}:gbuffer:${layer}:clear`,
+            nodeId,
+            shader: GBUFFER_CLEAR_WGSL,
+            target,
+            topology: "triangle-list",
+            instances: 1,
+            vertexCount: 6,
+            clear: true,
+          } as DrawPassDescriptor,
+        ],
+      ]),
+    );
     const emitGeometry = ({ payload, source }: { payload: GeometryPayload; source: string }, index: number): void => {
       /* T1414b: a shadow-only body is in the light sweeps above and in nothing the camera draws. */
       if (payload.castOnly === true) return;
@@ -3277,7 +3292,7 @@ export const renderNode: NodeDefinition = {
         if (layer === "shadow") {
           /* T1414b: the matte runs the lit draw's own shadow test — the lights and their
              maps bound, nothing else (no environment, AO or projectors). */
-          passes.push({
+          layerDraws.get(layer)?.push({
             ...litPass,
             id: `${nodeId}:gbuffer:shadow:${index}`,
             ...surface({
@@ -3297,7 +3312,7 @@ export const renderNode: NodeDefinition = {
           continue;
         }
         const lighting = /^(light\d|shadow\d|environment|projector)/;
-        passes.push({
+        layerDraws.get(layer)?.push({
           ...litPass,
           id: layer === "normal" ? `${nodeId}:gbuffer:${index}` : `${nodeId}:gbuffer:${layer}:${index}`,
           ...surface({ ...surfaceMaterialOptions, lightCount: 0, gbuffer: layer }),
@@ -3570,6 +3585,11 @@ export const renderNode: NodeDefinition = {
       if (entry.payload.material.model === "glass" || !additiveSurface(entry.payload)) return;
       emitGeometry(entry, index);
     });
+
+    /* T1604b: the layers, each whole (see `layerDraws`). After the additive phase, so that
+       with no glass in the scene the backdrop, the opaque draws and the additive ones are
+       ONE run into the colour, with nothing of another target between them. */
+    for (const draws of layerDraws.values()) passes.push(...draws);
 
     if (ssaa) {
       /* T939 — the resolve: the LAST pass, averaging each 2x2 supersampled block into

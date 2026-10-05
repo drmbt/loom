@@ -1189,17 +1189,124 @@ export function iterationSpanName(passId: string, iteration: number): string {
 /** Separator between a pass id and its substep iteration index in a timer span name. */
 export const SPAN_ITERATION_SEPARATOR = "~";
 
-/** The base pass id a span name belongs to — the inverse of `iterationSpanName`. */
-export function spanBasePassId(spanName: string): string {
+/**
+ * T1604b — WHERE THE DEVICE'S RENDER PASSES ARE.
+ *
+ * A plan pass of kind `draw` is one draw: its own id, shader, bindings, uniforms and node.
+ * The device does not need a render pass for each. Opening one costs encode and submit time
+ * on the CPU and, on a tile-based GPU, a store and a load of the target (and a resolve, when
+ * it is multisampled), so two hundred draws into twenty targets were two hundred passes.
+ *
+ * A RUN is the draws one device render pass holds: consecutive `draw` passes of ONE NODE
+ * into ONE TARGET, of which only the first may clear. Anything else ends it — an effect, a
+ * dispatch, a swap, a loop marker, another target, another node, a draw that clears. So a
+ * run is passes that were already adjacent and already drew over one another in this
+ * order: grouping them moves nothing and changes no pixel.
+ *
+ * One node, because the run has ONE GPU timer span and the per-node figure must stay a
+ * measurement: a span that covered two nodes' draws could only be divided between them by
+ * invention. Inside the node the span belongs to the run, and its passes share it
+ * (`runSpanName`); a person who wants each pass's own figure gets one pass per draw again
+ * (`LoomBackend.setExactPassTiming`).
+ *
+ * A loop marker ends a run, so a substep region keeps its boundary: read off the plan as it
+ * is written, never off the expanded order, where the body's last draw would sit next to
+ * its own first.
+ *
+ * A MULTISAMPLED target is the exception: its draws stay a pass each. MEASURED, not
+ * reasoned: with them grouped, sentinel-bot's colour (Dawn on Metal, rgba16float, 4× MSAA,
+ * 640 × 360) differed from one pass per draw on 0 to 8 of 230,400 pixels a frame, each by
+ * one unit in the last place of one channel, where two mesh-instanced geometries meet (the
+ * claws on the last rings). Every single-sampled target was byte-identical. The cause was
+ * NOT established: it did not need the document's own materials (the stock one showed it
+ * too), and a built scene of 8,192 interpenetrating instanced meshes under three casting
+ * lights did not show it at all. So this is a rule about what was seen, on the safe side of
+ * it. Nobody could see
+ * one unit in the last place; but the frame would then depend on `setExactPassTiming`,
+ * that is on whether someone had the performance panel open, and every byte-exact gate
+ * assumes it does not. Pass the plan's resources to have the rule applied; without them no
+ * target is known to be multisampled.
+ *
+ * Pure, and the ONE definition: the encoder groups by it, and anything that describes what
+ * the device does (the telemetry hub, the pipeline inspector) reads it rather than
+ * restating the rule.
+ */
+export interface RenderPassRun {
+  /** The run's passes in plan order. The first is its HEAD: its `clear` is the pass's, and its id names the span. */
+  readonly passIds: ReadonlyArray<string>;
+  readonly target: string;
+  readonly nodeId: string | undefined;
+}
+
+export function renderPassRuns(
+  passes: ReadonlyArray<PassDescriptor>,
+  resources: ReadonlyArray<ResourceDescriptor> = [],
+): ReadonlyArray<RenderPassRun> {
+  const multisampled = new Set<string>();
+  for (const resource of resources) {
+    if (resource.kind === "target" && resource.msaa === true) multisampled.add(resource.id);
+  }
+  const runs: Array<{ passIds: string[]; target: string; nodeId: string | undefined }> = [];
+  let open: (typeof runs)[number] | undefined;
+  for (const pass of passes) {
+    if (pass.kind !== "draw") {
+      open = undefined;
+      continue;
+    }
+    if (open !== undefined && pass.clear === false && pass.target === open.target && pass.nodeId === open.nodeId && !multisampled.has(pass.target)) {
+      open.passIds.push(pass.id);
+      continue;
+    }
+    open = { passIds: [pass.id], target: pass.target, nodeId: pass.nodeId };
+    runs.push(open);
+  }
+  return runs;
+}
+
+/** Separator between a run head's pass id and how many OTHER passes share its span. */
+export const SPAN_RUN_SEPARATOR = "+";
+
+/**
+ * T1604b: the timer span name of a RUN — its head's pass id and the number of passes after
+ * it that the span also covers (`head+13`). A run of one is just the pass id, so a draw on
+ * its own has the name it always had. The name says what the number is: a reader that knows
+ * nothing of runs bills it to the head (`spanBasePassId`), which is the right node, and one
+ * that does can say which passes share it (`spanSharedPasses`).
+ */
+export function runSpanName(headPassId: string, sharedPasses: number): string {
+  return sharedPasses <= 0 ? headPassId : `${headPassId}${SPAN_RUN_SEPARATOR}${sharedPasses}`;
+}
+
+/** How many passes AFTER its head a span covers: 0 for a pass's own span. Takes a name with or without its iteration suffix. */
+export function spanSharedPasses(spanName: string): number {
+  const name = withoutIteration(spanName);
+  const at = name.lastIndexOf(SPAN_RUN_SEPARATOR);
+  if (at === -1) return 0;
+  const suffix = name.slice(at + 1);
+  return suffix.length > 0 && /^\d+$/.test(suffix) ? Number(suffix) : 0;
+}
+
+function withoutIteration(spanName: string): string {
   const at = spanName.lastIndexOf(SPAN_ITERATION_SEPARATOR);
   if (at === -1) return spanName;
   // Only a trailing all-digit suffix is an iteration index. A pass id that happens to
   // contain the separator keeps its own name rather than being silently truncated onto a
   // pass that does not exist.
   const suffix = spanName.slice(at + 1);
-  if (suffix.length === 0 || !/^\d+$/.test(suffix)) return spanName;
-  return spanName.slice(0, at);
+  return suffix.length === 0 || !/^\d+$/.test(suffix) ? spanName : spanName.slice(0, at);
 }
+
+/**
+ * The base pass id a span name belongs to — the inverse of `iterationSpanName`, and of
+ * `runSpanName` (T1604b): a run's span is billed to its head.
+ */
+export function spanBasePassId(spanName: string): string {
+  const name = withoutIteration(spanName);
+  const run = name.lastIndexOf(SPAN_RUN_SEPARATOR);
+  if (run !== -1 && /^\d+$/.test(name.slice(run + 1))) return name.slice(0, run);
+  return name;
+}
+
 
 /**
  * Identity of everything that requires GPU objects to be (re)built: resources, shader
