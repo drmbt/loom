@@ -1,6 +1,7 @@
 import { wgsl } from "../../runtime/backend/wgsl.ts";
 import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
 import { ZERO_SEGMENT_SQUARED } from "../../points/curve.ts";
+import { CURVE_SEED_WGSL } from "./curve-common.wgsl.ts";
 
 /**
  * T1586b — Curve Frames: ONE INVOCATION PER STRIP WALKS ITS STRIP IN ORDER.
@@ -138,24 +139,7 @@ fn rotationBetween(a: vec3f, b: vec3f) -> vec4f {
   return q / sqrt(dot(q, q));
 }
 
-fn perpendicular(v: vec3f, axis: vec3f) -> vec3f {
-  return v - axis * dot(v, axis);
-}
-
-/* The world axis least aligned with z: X before Y before Z on a tie. */
-fn leastAligned(z: vec3f) -> vec3f {
-  let a = abs(z);
-  if (a.x <= a.y && a.x <= a.z) { return vec3f(1.0, 0.0, 0.0); }
-  if (a.y <= a.z) { return vec3f(0.0, 1.0, 0.0); }
-  return vec3f(0.0, 0.0, 1.0);
-}
-
-/* A unit normal for the direction z, leaning toward wanted. */
-fn seedNormal(z: vec3f, wanted: vec3f) -> vec3f {
-  var normal = perpendicular(wanted, z);
-  if (dot(normal, normal) < 1.0e-12) { normal = perpendicular(leastAligned(z), z); }
-  return normal / sqrt(dot(normal, normal));
-}
+${CURVE_SEED_WGSL}
 
 struct Turn {
   tangent: vec3f,

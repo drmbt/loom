@@ -1,6 +1,6 @@
 # A curve family: curves as strips of a pointset (T1586b)
 
-**Status, 2026-10-05: ruled and partly built.** Every decision in section 7.3 was ruled as recommended, and the consumer (shaderloom-f1) reviewed the design with no objection. Slices 1, 3 and 4 are built: Strips (`726cc203`), Curve Frames (`c8fd00ba`) and Resample (`dbb5c761`). Section 7.4 lists what changed from this design as they were built. Slices 2 and 5 to 8 are design only.
+**Status, 2026-10-05: ruled and partly built.** Every decision in section 7.3 was ruled as recommended, and the consumer (shaderloom-f1) reviewed the design with no objection. Slices 1, 3 and 4 are built: Strips (`726cc203`), Curve Frames (`c8fd00ba`) and Resample (`dbb5c761`), on main as `b9e63995`. Slice 2, the Curve node, is built with its authored table (`6f303252`). Section 7.4 lists what changed from this design as they were built. Beam drawing a strip (the rest of slice 5) and slices 6 to 8 are design only.
 
 The row asks for a Curve node, a Resample node and a Curve Frames node, with instancing along a curve (T1581b), sweep (T1587b), a path follower (T1590b) and rope (T1585b) as consumers. The owner's standard for it (2026-10-05): consider how TouchDesigner and Notch do this, build the right general shape and not the first consumer's minimum, no brittle or unscalable shortcuts.
 
@@ -199,7 +199,7 @@ All three are category "points" and none is stateful. A parameter marked ⓢ is 
 ### 3.1 Topology and the generators (extended)
 
 - **Topology** gains Connectivity: Strips. It reads the existing `cols` (points per strip), `rows` (strips) and `wrapU` (closed), and refuses a claim that addresses more points than the edge carries, as it does for a grid. This is how a kernel's output becomes curves, and it is TouchDesigner's "Every N Points".
-- **Line Points** and **Circle Points** each publish `strips:{count}x1`. The circle is an open strip: its generator runs the angle from 0 to a full turn inclusive, so its last point already sits on its first and the loop is closed in the data. A `:closed` claim on top would add a segment between two coincident points. A circle with one point per step and a closed claim is a change to where existing documents' points sit, so it is left as a finding (section 8).
+- **Line Points** and **Circle Points** each publish `strips:{count}x1`. The circle is an open strip: its generator runs the angle from 0 to a full turn inclusive, so its last point already sits on its first and the loop is closed in the data. A `:closed` claim on top would add a segment between two coincident points. Ruled 2026-10-05: it stays so, and no point of an existing document moves. A `closed` option that makes it one point per step with a closed claim is a follow-up row (C16).
 
 ### 3.2 Curve
 
@@ -207,13 +207,17 @@ Control points in, an interpolated strip out.
 
 **Inputs**
 
-- `in` (pointset, optional): the control strips. Each strip of the input is one curve's control points, in order. `:closed` on the input closes the curve.
+- `in` (pointset, optional, labelled Control): the control strips. Each strip of the input is one curve's control points, in order. `:closed` on the input closes the curve.
 - Unwired, the node reads its own authored table (below). This is Point Kernel's rule for its optional `in`.
+- Every slot of a control strip is a control point. A control set with a GPU live count, or one that carries `live`, is refused by name: padding repeats a strip's end, and a spline would be pulled onto the repeats. Resample by Count first.
 
 **Output**: a strips pointset with the input's `rows` and, per span, `segments` points.
 
 - Open: `(controls − 1) × segments + 1` points per strip. Closed: `controls × segments`. An unclamped B-Spline has two spans fewer.
-- `position` follows the basis. Every other float attribute the control points carry is interpolated linearly along its span, so a radius or a colour never overshoots; integer attributes take the span's first control point.
+- `position` follows the basis. Every other float attribute the control points carry is interpolated linearly along its span, so a radius or a colour never overshoots.
+- An integer attribute holds the control point at its span's start. The last point of an open strip sits on the last control point and takes that one's, so a point on a control point always carries that control point's own value.
+- A Bezier's `handleIn` and `handleOut` are not carried: they describe the control polygon and mean nothing on the curve.
+- A table publishes `position`, `roll` and `scale`.
 - It publishes no tangent and no frame. Curve Frames is the one publisher of those (D4).
 
 **Parameters**
@@ -224,22 +228,25 @@ Control points in, an interpolated strip out.
 | `segments` ⓢ | number | 16 | output points per span |
 | `tension` | number | 0 | Cardinal only: 0 is Catmull-Rom's tangent, 1 a polyline |
 | `clamped` ⓢ | boolean | on | B-Spline only: the curve reaches its end control points |
-| `arcLength` | number, Map f32 | 1 | Arc only: the span's length |
-| `arcLengthUnit` ⓢ | enum | Metres | Arc only: Metres, or Chords (1 is straight, 1.2 has a fifth of slack) |
-| `bow` | vec3, Map vec3f | 0, −1, 0 | Arc only: the side the arc bulges to |
+| `arcLength` | number, Map f32 | 1 | Arc only: the span's length. A mapped attribute is read at the span's first control point |
+| `arcLengthUnit` | enum | Metres | Arc only: Metres, or Chords (1 is straight, 1.2 has a fifth of slack). A uniform flag, not a program change |
+| `bow` | vec3, Map vec3f | 0, −1, 0 | Arc only: the side the arc bulges to. A mapped attribute is read at the span's first control point |
 | `maxTurn` | number, degrees | 360 | Arc only: the most an arc may turn; slack beyond it is not deployed |
-| `points` | list | a short line | authored control points, read only while `in` is unwired |
 | `closed` ⓢ | boolean | off | authored table only; a wired input's claim decides otherwise |
+| `points` ⓢ | JSON list | a gentle S of four points | authored control points, read only while `in` is unwired |
+
+Maps exist only with a wired control set and the Arc basis. Any other parameter in Map mode, or a map on a table, is refused by name (§V288).
 
 **The bases**
 
 - **Linear**: the polyline.
 - **Catmull-Rom**: passes through every control point, centripetal knots, so unevenly spaced control points do not loop or overshoot.
 - **Cardinal**: uniform knots with Tension, TouchDesigner's "Cardinal (Interpolating)".
-- **B-Spline**: uniform cubic, approximating.
-- **Bezier**: cubic, each control point carrying `handleIn` and `handleOut` (vec3f, relative to the point). This is Notch's per-point tangents and TouchDesigner's "Cubic Bezier With Tangents"; Notch's four tangent modes are editing behaviours over the same two vectors. A control set without the two attributes refuses by name.
+- **B-Spline**: uniform cubic, approximating. Clamped (the default), an open strip's ends are mirrored like the interpolating bases', which makes the curve start on its first control point and end on its last. Unclamped, it is the plain uniform spline: it needs four control points and refuses fewer by name.
+- **Bezier**: cubic, each control point carrying `handleIn` and `handleOut` (vec3f, relative to the point). This is Notch's per-point tangents and TouchDesigner's "Cubic Bezier With Tangents"; Notch's four tangent modes are editing behaviours over the same two vectors. A control set without the two attributes refuses by name. The table holds no handles, so a table with the Bezier basis refuses by name too.
 - **Arc**: each span is one arc of constant curvature with a given length, from its first control point to its second, bulging toward `bow` (below).
 - Ends of an open interpolating curve use a mirrored phantom point. All bases are evaluated per output point from at most four control points.
+- **Exactness.** Every blend is written "point + share × difference", and on Linear, Catmull-Rom, Cardinal and Bezier a point at a span's start or end is that control point's own words. So those bases return every control point to the bit, and collinear, evenly spaced control points give exactly the line. Catmull-Rom is Barry and Goldman's pyramid in that form.
 
 **Arc, exactly.** For a span from A to B with chord `c = |B − A|`, direction `ĉ`, requested length `ℓ` and `w` the unit part of `bow` perpendicular to `ĉ`:
 
@@ -253,19 +260,26 @@ P(s) = A + t0·sin(κs) ÷ κ + m0·(1 − cos(κs)) ÷ κ        0 ≤ s ≤ L
 ```
 
 - Output station `k` is at `s = k × L ÷ segments`. `P(L) = B` follows from the definition of φ.
-- φ is found by a fixed number of bisection steps, so the pass has no data-dependent loop.
-- With `ℓ ≤ c` the span is out of reach: the output is the straight segment of length `ℓ` from A toward B, and the end falls short. Length is kept, the target is not. A kernel that needs to know measures the gap.
-- With `bow` along the chord or zero, `w` is the world axis least aligned with the chord, made perpendicular.
+- The last point of an open strip is `P(L)` of its last span, computed, and not a copy of the control point. So an arc that cannot reach its control point ends where its length ends.
+- φ is found by 24 bisection steps, so the pass has no data-dependent loop. Each step halves an interval that starts π wide, which ends at f32's resolution of an angle.
+- `sin(κs) ÷ κ` and `(1 − cos(κs)) ÷ κ` are written as `s·sinc(κs)` and `s·sin(κs ÷ 2)·sinc(κs ÷ 2)`, so a straight arc is exact and nothing divides by a zero curvature.
+- With `ℓ ≤ c` the span is taut or out of reach: φ is exactly 0 and the output is the straight segment of length `ℓ` from A toward B, with stations at exactly `k × ℓ ÷ segments`. Out of reach, the end falls short. Length is kept, the target is not. A kernel that needs to know measures the gap.
+- A `maxTurn` of a full turn is no cap: `sinc(π)` is zero. Below it, slack the cap does not allow is not laid out, and the arc still ends on B.
+- With `bow` along the chord or zero, `w` is the world axis least aligned with the chord, made perpendicular. This is Curve Frames' seed rule, and the two shaders share one text for it (`shaders/curve-common.wgsl.ts`).
+- With no chord (A and B coincide) and a full turn allowed, the length is laid out as a circle through A whose centre is toward `bow`. With a smaller `maxTurn`, or a length in Chords, nothing can be laid and every station is A.
 - **A bow direction that sweeps through the chord flips the arc to the other side in one frame**, because only the part of `bow` square to the chord picks the side. A bow kept off the chord gives an arc that moves continuously with its ends; the node's description says so, and a test holds it (section 6).
 - Several spans are independent arcs: continuous in position, not in tangent. That is a cable through pegs with slack per span, or a festoon.
 - This is sentinel-bot's holding tentacle (`rig.ts`): one arc from socket to claw, unique up to the bow's side, so it cannot jump between solutions. `maxTurn` is twice its `BOW_LIMIT`, which is a half turn.
 
 **The authored table.** `points` is a list of control points, at most 64, each a position with an optional scale and roll, which become `scale` and `roll` attributes for a sweep or for Curve Frames. The cap is a uniform-table limit (one vec4 a point, as Ramp packs its stops), and 64 is what the consumer's review asked for: a closed 960 m tunnel as Catmull-Rom is one point per 15 m.
 
-- It is uploaded as a capped uniform table, the way Ramp's stops are (`generators.ts`, `packStops`), so moving a control point is a uniform write and never a rebuild.
+- The stored form is a JSON list, one entry per point: `[x, y, z]`, `[x, y, z, scale]` or `[x, y, z, scale, roll]`. Scale defaults to 1 and roll, in degrees, to 0.
+- The values reach the pass as uniforms: one vec4 a point (position and scale) and the rolls four to a member. A plan carries uniform values as flat lists and has no array of them, so the members are generated, `c0…` and `r0…`, and the shader reads them through a switch.
+- **The parameter is structural**, which the design did not say. The number of points sets the output's size and the shader's text, and the list is one JSON parameter. So an edit to the list recompiles the plan. When a point only moves, the new plan has the same pass id, the same shader text and the same buffers, and differs in uniform values alone; a test holds that. A move that skips the compile altogether needs the typed list parameter (C3).
 - It is one strip. Many curves come from a pointset.
-- It is what makes a curve readable on the CPU (5.3). A wired control set has no CPU copy, so a CPU reader refuses a Curve whose input is wired, by name, until the measured curve (C2) exists; more than 64 authored points is the same case, since they have to be wired.
-- The stored form in the first build is a JSON list, as Point Kernel's `attributes` is. A typed list parameter with a viewport editor, per-point handles and Notch's tangent modes is a follow-up row; the wired Bezier form covers handles until then.
+- A table over the limit, an empty one, or one with an unreadable entry is refused with the entry or the limit named. It is never truncated: a curve that stops at its 64th point is a plausible wrong curve.
+- It is what makes a curve readable on the CPU (5.3). `authoredCurve(parameters)` in `point-curve.ts` returns the points and the options the node compiles from, and `evaluateCurve` in `src/points/curve.ts` places them. A wired control set has no CPU copy, so a CPU reader refuses a Curve whose input is wired, by name, until the measured curve (C2) exists; more than 64 authored points is the same case, since they have to be wired. Whether the input is wired is a fact about the graph, so the reader checks it; `authoredCurve` answers for the table only.
+- A typed list parameter with a viewport editor, per-point handles and Notch's tangent modes is a follow-up row (C3); the wired Bezier form covers handles until then.
 
 **Arc Chain (the last slice of v1, D8).** Several arcs end to end, each with a length and a curvature, tangent-continuous by construction: the piecewise constant-curvature model of a continuum arm (Webster and Jones 2010).
 
@@ -437,7 +451,20 @@ Dawn/Metal, best of 9 runs of 200 frames, each figure the difference from the sa
 - That is the measurement D5 asked for, and it kept the walk: the alternative buys depth, which only long strips need, and cannot hold a strip over 256 points.
 - The length walk alone is one square root and one add a step: under 0.1 ms for a block of 1,024. Curve Frames' cost is its frame arithmetic, not the walk's shape.
 - The figures at 2,160 points are at the submission floor and are noise-limited.
-- Not measured: Curve, long strips (slice 6), and a chain's total.
+- Not measured: long strips (slice 6), and a chain's total.
+
+**Curve (slice 2).** The same method; strips of 16 control points at 16 segments (241 points a strip), position only.
+
+| Points | Strips | Linear | Catmull-Rom | Cardinal | B-Spline | Arc |
+|---|---|---|---|---|---|---|
+| 100,015 | 415 | under 0.05 for every basis (the submission floor) | | | | |
+| 987,136 | 4,096 | 0.13 | 0.07 | 0.09 | 0.07 | 0.17 |
+
+- A Curve is one thread per output point with no walk, so its cost follows the point count alone.
+- The Arc solves its span again for every point of it (24 bisection steps) and still costs what a plain kernel pass does: the solve reads two control points and nothing else.
+- Linear reads dearer than Catmull-Rom here, which the arithmetic cannot explain: the method's noise at this size is as large as the differences between the bases. Read the row as "about 0.1 ms, the Arc highest".
+- Bezier was not measured.
+
 - Memory: Resample owns every attribute of its output. Curve Frames owns 32 bytes a point (80 with the vectors). The scans' scratch is 4 bytes a point for Resample and 20 for long-strip frames.
 
 ### 4.6 Limits
@@ -556,6 +583,16 @@ On Dawn through the compiler and the backend, red-verified, with the wire-cut ca
 - Wire cut: with the control input cut, the authored table's curve appears and not the wired one.
 - Arc continuity: with the bow kept off the chord, halving the step by which an end moves at least halves how far every station moves (the shape of `src/projects/sentinel-bot/rig.gpu.test.ts`). The control is a bow swept through the chord, which jumps.
 
+*Built in slice 2 (`point-curve.gpu.test.ts`, 21 tests; `point-curve.test.ts`, 16; the reference's own in `src/points/curve.test.ts`). All of the above, and:*
+
+- *Catmull-Rom is centripetal: with control points at 0, 1, 5 and 14 on a line, the middle of the span from 1 to 5 is 41/15 by hand, where the uniform spline (Cardinal, on the same points) gives 2.5.*
+- *The length table of 3.5 where it is exact: Linear's measured length is the sum of its chords, 7 exactly; an Arc's stations all lie on one circle of radius `L ÷ 2φ`, for two different chords and the same length; a Catmull-Rom through the same two points is the chord.*
+- *The Arc's continuity case reads a ratio between 1.8 and 2.2 for a halved step with the bow kept off the chord, and between 0.9 and 1.1 with the bow swept through it, where the jump is also more than ten times the smooth step. These three are the family's only inequalities: the quantity is a ratio of two measured maxima, and its closed form is "2" and "1".*
+- *Every basis, open and closed, on two unlike strips in space, against `evaluateCurve`. A table against `evaluateCurve(authoredCurve(parameters))`, with `scale` and `roll` read back.*
+- *No chord: a circle on the bow's side, or the point itself when no turn can hold the length.*
+- *Seek, for Curve → Resample → Curve Frames under moving control points.*
+- *Integer attributes: `7, 7, 7, 7, 8, 8, 8, 8, 9` for control points tagged 7, 8, 9 at four segments.*
+
 **Curve Frames**
 
 - A straight line along +X, Up +Y, with `vectors` on: `tangent` (1,0,0), `normal` (0,1,0), `binormal` (0,0,1), exactly; `distance` exactly `k × spacing`; `curveLength` exact; `curvature` exactly 0.
@@ -597,16 +634,16 @@ Each is shippable, and each is a prefix of the final design: the claim, the attr
 | | Slice | Contents | What it unblocks |
 |---|---|---|---|
 | 1 | Strips | the `strips:` claim, `stripsOf`, `ctx.dim` on strips, Topology: Strips, Line and Circle claims; `src/points/curve.ts` begins | a kernel can address curves; T1585b can start against the real claim |
-| 2 | Curve | Linear, Catmull-Rom, Cardinal, B-Spline, Bezier, Arc, from a wired control set | splines; cables and bodies that only hold |
+| 2 | Curve | Linear, Catmull-Rom, Cardinal, B-Spline, Bezier, Arc, from a wired control set; built with the authored table and its CPU reference, which the design had in slice 5 | splines; cables and bodies that only hold; T1590b can read a curve |
 | 3 | Curve Frames | metrics, Minimise Twist and Fixed Up, the seeds, roll, twist, closing; strips up to `BLOCK`; the measurement that fixes the scan (D5) | instancing along a curve with `orient` |
 | 4 | Resample | Count (both spacings) and Distance, with anchor, offset, range and `live`; strips up to `BLOCK` | exact pitch, stowed rings, the tip pointset, lights along a tunnel; sentinel-bot step 1 (with slices 1 and 3) |
-| 5 | Authored curves and drawing | the authored table and the CPU reference as the Curve's second reader; Beam mode takes a strip's next point as its far end when Endpoint is empty | T1590b; a curve visible as a line with no kernel |
+| 5 | Drawing | Beam mode takes a strip's next point as its far end when Endpoint is empty (the authored table moved to slice 2) | a curve visible as a line with no kernel |
 | 6 | Long strips | the blocked scan for Curve Frames and Resample | one curve of 100k points and more |
 | 7 | Resample by curvature | the density measure | fewer points on straights |
 | 8 | Arc Chain | sections by length and curvature | sentinel-bot step 2; tails, stems, antennae |
 
 - Slices 2, 3 and 4 depend only on slice 1.
-- **Build order, from the consumer's review**: slices 1, 3 and 4 together first, because they are what removes the consumer's frame code (built); then slice 2; Arc Chain last.
+- **Build order, from the consumer's review**: slices 1, 3 and 4 together first, because they are what removes the consumer's frame code (built); then slice 2 (built); then slice 6 and Arc Chain.
 - Slice 5's Beam change is in `scene.ts`, which T1581b and T1588b are editing, so it is scheduled after the mesh-instancing slices. It has a second consumer, a debug spine for a rig. Until then a five-line kernel writes each point's successor into an attribute and Beam draws it, with no engine change.
 
 ### 7.2 Accepted limitations, as follow-up rows
@@ -628,10 +665,12 @@ Each is shippable, and each is a prefix of the final design: the claim, the attr
 | C13 | Resample: Cardinal interpolation of position; Curve: quadratic Bezier, a control-polygon Bezier layout, weights | TouchDesigner has them; a dense Curve upstream covers the first |
 | C14 | The pointset tile draws strips as lines | preview only |
 | C15 | Dead strip points cost nothing in an instanced draw | T1581b's F1 |
+| C16 | Circle Points: a `closed` option, one point per step and a closed claim | ruled 2026-10-05: the generator stays an open strip whose last point repeats its first, so no existing document's points move; the option is additive |
+| C17 | A control set that carries `live` feeds a Curve (the Curve reads each strip's live run as its control points) | the count of control points would differ per strip, and a Curve's output size is fixed at compile time; Resample by Count first |
 
 ### 7.3 Decisions, as ruled
 
-**All twelve were ruled as recommended on 2026-10-05.** Each is kept below with the alternative that was not taken. D5's measurement is in section 4.5: the walk stays, at a block of 1,024.
+**All twelve were ruled as recommended on 2026-10-05.** Each is kept below with the alternative that was not taken. D5's measurement is in section 4.5: the walk stays, and the block stays 1,024 (ruled after the measurement). Also ruled that day: the Circle generator stays an open strip (C16).
 
 - **D1. The representation.** Recommended: fixed-stride strips with the claim `strips:{cols}x{rows}[:closed]`, and a grid's rows counting as strips (R1, R2). Alternative: a per-point curve id with an info buffer, as TouchDesigner's primitives.
 - **D2. Variable length.** Recommended: padding copies plus a per-point `live` (R4), and no use of the edge's `count`. This differs from one sentence of the mesh-instancing design (2.6). Alternative: a per-strip counts buffer named in the claim.
@@ -646,9 +685,9 @@ Each is shippable, and each is a prefix of the final design: the claim, the attr
 - **D11. Names.** Node types `pointCurve`, `pointResample`, `pointCurveFrames` with titles Curve, Resample, Curve Frames; the attribute names of R3; the parameter keys of section 3. "Curve" is also the name of a 1D parameter type and of TouchDesigner's lookup-curve POP; "Spline" is Notch's word and wrong for an arc.
 - **D12. Beam draws a strip** in this row (slice 5), in `scene.ts`. Alternative: leave drawing to the kernel idiom and the preview follow-up.
 
-### 7.4 As built: what changed from this design in slices 1, 3 and 4
+### 7.4 As built: what changed from this design in slices 1 to 4
 
-Names as built: node types `pointCurveFrames` (Curve Frames) and `pointResample` (Resample); attributes `orient`, `tangent`, `normal`, `binormal`, `distance`, `curveU`, `curveLength`, `curvature`, `live`; the claim `strips:{cols}x{rows}[:closed]`. All as designed.
+Names as built: node types `pointCurve` (Curve), `pointCurveFrames` (Curve Frames) and `pointResample` (Resample); attributes `orient`, `tangent`, `normal`, `binormal`, `distance`, `curveU`, `curveLength`, `curvature`, `live`, and on a Curve's table `scale` and `roll`; a Bezier's inputs `handleIn` and `handleOut`; the claim `strips:{cols}x{rows}[:closed]`. All as designed. Kind words in `NODE_KINDS` (T1593b): `curve`, `frames`, `resample`.
 
 **Slice 1**
 
@@ -676,17 +715,35 @@ Names as built: node types `pointCurveFrames` (Curve Frames) and `pointResample`
 - The output always claims `strips`, also from a grid.
 - The node's buffer is laid out as `position`, the other attributes by name, then `live`.
 - The Method menu has Count and Distance; Curvature is appended in slice 7.
-- The whole-chain seek test runs Resample → Curve Frames over a moving kernel, since the Curve node is slice 2.
+- The whole-chain seek test runs Resample → Curve Frames over a moving kernel, since the Curve node is slice 2. Slice 2 added the same test with the Curve in the chain.
+
+**Slice 2, Curve** (section 3.2 is corrected in place; this is the list of what moved)
+
+- The authored table and its CPU reference are built here, not in slice 5, as the slice's brief asked: the reference is the oracle of the slice's Dawn tests. Slice 5 is Beam drawing a strip, alone.
+- `points` is a structural parameter. The design said a move of a control point is "a uniform write and never a rebuild". As built it recompiles the plan to a pass with the same id, text and buffers and new uniform values. The typed list parameter (C3) removes the compile.
+- The table reaches the shader as generated uniform members, not as one array: a plan has no uniform arrays.
+- The default table is a gentle S of four points, not "a short line": a default that reads as a curve when the node is placed.
+- `arcLengthUnit` is a uniform flag, not a program change.
+- A clamped B-Spline mirrors its ends. The design did not say how it clamps; a repeated end knot was the other way, and it needs a second basis at the ends.
+- An integer attribute holds the control point at its span's start, except that the last point of an open strip takes the last control point's. Found while red-verifying: the design's rule alone gave the strip's last point the tag of the control point before it.
+- A Bezier's handles are not carried to the output. A table with the Bezier basis is refused.
+- A control set with a live count or with `live` is refused (C17). The design did not consider padded control points.
+- The Arc's last point is computed at the end of its length, not copied from the control point, so an out-of-reach arc ends short there too.
+- With no chord the Arc is a circle on the bow's side, or the point itself.
+- Maps on a table, and maps other than `arcLength` and `bow`, are refused by name.
+- The seed rule (`perpendicular`, `leastAligned`, `seedNormal`) moved to `shaders/curve-common.wgsl.ts`, shared by the Arc and Curve Frames. Curve Frames' functions are the same text moved, and its exact-value Dawn tests read what they read before.
+- The design's length test asked for "the summed distance is `L × sinc(φ ÷ segments)`"; it is built so, and with the stronger statement that every station lies on the one circle of radius `L ÷ 2φ`.
 
 **Owed**
 
 - The instancing-equality test (`orient` against Aim and Up) needs T1581b's slice D.
-- Kind words for T1593b's table: `frames` for `pointCurveFrames`, `resample` for `pointResample`, and `curve` for `pointCurve` when it lands.
+- Rows for C16 and C17, which this slice added to 7.2.
+- Not built, as ruled: Beam drawing a strip (slice 5), strips over 1,024 (slice 6), Resample by curvature (slice 7), Arc Chain (slice 8).
 
 ## 8. Found on the way (not fixed, not in scope)
 
 - Line Points and Circle Points published `points` although their slots are in curve order (fixed by slice 1).
-- The Circle generator's last point repeats its first (the angle runs to a full turn inclusive), so a circle of N points has N − 1 distinct ones and draws its first point twice. One point per step and a closed claim would be the consistent form, as the Tube and the Torus already do on their wrapped axes; it moves the points of existing documents, so it needs a ruling.
+- The Circle generator's last point repeats its first (the angle runs to a full turn inclusive), so a circle of N points has N − 1 distinct ones and draws its first point twice. One point per step and a closed claim would be the consistent form, as the Tube and the Torus already do on their wrapped axes; it moves the points of existing documents. Ruled 2026-10-05: the generator stays as it is, and the consistent form is an option (C16).
 - `docs/pop-gap-analysis.md` still says the Box generator is missing; `point-generators.ts` has shipped it since T1057.
 - `quatFromFrame` is written out twice in `src/projects/sentinel-bot/rig.ts` (the joint kernel and the rib kernel). T1581b's F9, a quaternion module for kernels, is where it belongs.
 - The Topology node's `cols` and `rows` labels read "Columns" and "Rows"; under Strips they mean points per strip and strips, which the descriptions will have to say.

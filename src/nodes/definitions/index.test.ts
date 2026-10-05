@@ -40,6 +40,9 @@ describe("the code-parameter census (T492)", () => {
       "midiIn.mapping:json",
       // T1516b: a Panel's board — written by the Controls tab's edit mode, JSON like the bank.
       "panel.board:json",
+      // T1586b: a Curve's own control points — hand-editable structured data, and what a
+      // CPU reader of the curve parses.
+      "pointCurve.points:json",
       "pointKernel.attributes:json",
       "pointKernel.group:wgsl",
       "pointKernel.kernel:wgsl",
@@ -264,6 +267,7 @@ describe("core catalogue (T70, T40)", () => {
       "pointRange",
       "pointTransform",
       // T1586b: the curve family — curves are strips of a pointset.
+      "pointCurve",
       "pointCurveFrames",
       "pointResample",
       // T947: the vector-display path planner — the laser and the scope share it.

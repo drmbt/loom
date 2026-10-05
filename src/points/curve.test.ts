@@ -1,6 +1,22 @@
 import { describe, expect, it } from "vitest";
 
-import { frameStrip, quatFromFrame, resampleStations, resampleStrip, rotateByQuat, stripLengths, type Vec3 } from "./curve.ts";
+import {
+  CURVE_TABLE_LIMIT,
+  arcPoint,
+  curvePointCount,
+  curveSpans,
+  curveStations,
+  evaluateCurve,
+  frameStrip,
+  parseCurveTable,
+  quatFromFrame,
+  resampleStations,
+  resampleStrip,
+  rotateByQuat,
+  solveArc,
+  stripLengths,
+  type Vec3,
+} from "./curve.ts";
 
 /**
  * T1586b — the CPU reference, against values worked out by hand.
@@ -283,5 +299,233 @@ describe("stripLengths and resampleStations (T1586b section 3.3)", () => {
     const padded: Vec3[] = [[0, 0, 0], [0, 0, 0], [1, 0, 0], [4, 0, 0], [4, 0, 0], [4, 0, 0]];
     const result = resampleStrip(padded, { closed: false, method: "count", spacing: "length", slots: 5 });
     expect(result.positions.map((p) => p[0])).toEqual([0, 1, 2, 3, 4]);
+  });
+});
+
+/**
+ * T1586b slice 2 — the Curve reference. Every expectation is a textbook value of the
+ * basis at a parameter where it is a short sum (a span's start, its middle), or a point on
+ * a circle whose centre and radius the fixture fixes.
+ */
+describe("evaluateCurve — spans, counts and stations", () => {
+  it("an open strip of N control points has N − 1 spans, a closed one N; an unclamped B-Spline two fewer", () => {
+    expect(curveSpans(5, { closed: false, basis: "catmullRom" })).toBe(4);
+    expect(curveSpans(5, { closed: true, basis: "catmullRom" })).toBe(5);
+    expect(curveSpans(5, { closed: false, basis: "bspline", clamped: false })).toBe(2);
+    // Clamped is the default, and a closed strip has no ends to stop short of.
+    expect(curveSpans(5, { closed: false, basis: "bspline" })).toBe(4);
+    expect(curveSpans(5, { closed: true, basis: "bspline", clamped: false })).toBe(5);
+    expect(curveSpans(1, { closed: true, basis: "linear" })).toBe(0);
+    expect(curvePointCount(5, { closed: false, basis: "linear", segments: 4 })).toBe(17);
+    expect(curvePointCount(5, { closed: true, basis: "linear", segments: 4 })).toBe(20);
+    expect(curvePointCount(1, { closed: false, basis: "linear", segments: 4 })).toBe(1);
+  });
+
+  it("the last point of an open strip is the END of the last span, between the last two control points", () => {
+    const stations = curveStations(3, { closed: false, basis: "linear", segments: 2 });
+    expect(stations).toEqual([
+      { span: 0, u: 0, index: 0, next: 1 },
+      { span: 0, u: 0.5, index: 0, next: 1 },
+      { span: 1, u: 0, index: 1, next: 2 },
+      { span: 1, u: 0.5, index: 1, next: 2 },
+      { span: 1, u: 1, index: 1, next: 2 },
+    ]);
+    // A closed strip's last span runs back to control point 0.
+    expect(curveStations(3, { closed: true, basis: "linear", segments: 1 }).at(-1)).toEqual({ span: 2, u: 0, index: 2, next: 0 });
+    // An unclamped B-Spline's span s blends attributes between control points s + 1 and s + 2.
+    expect(curveStations(4, { closed: false, basis: "bspline", clamped: false, segments: 1 })).toEqual([
+      { span: 0, u: 0, index: 1, next: 2 },
+      { span: 0, u: 1, index: 1, next: 2 },
+    ]);
+  });
+});
+
+describe("evaluateCurve — the bases, at values a person can work out", () => {
+  const x = (points: ReadonlyArray<Vec3>): number[] => points.map((point) => point[0]);
+
+  it("Linear keeps the chords: (0,0,0) to (4,0,0) in four segments is 0, 1, 2, 3, 4", () => {
+    expect(x(evaluateCurve([[0, 0, 0], [4, 0, 0]], { closed: false, basis: "linear", segments: 4 }))).toEqual([0, 1, 2, 3, 4]);
+    const bent = evaluateCurve([[0, 0, 0], [2, 0, 0], [2, 4, 0]], { closed: false, basis: "linear", segments: 2 });
+    expect(bent).toEqual([[0, 0, 0], [1, 0, 0], [2, 0, 0], [2, 2, 0], [2, 4, 0]]);
+  });
+
+  /**
+   * Evenly spaced control points on a line are the case where every interpolating basis
+   * must agree with the line itself, and written "point + share × difference" they do so
+   * EXACTLY: the differences of differences are zero, not rounding noise.
+   */
+  it("Catmull-Rom and Cardinal give exactly the line through collinear, evenly spaced control points", () => {
+    const controls: Vec3[] = [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0]];
+    const expected = Array.from({ length: 13 }, (_, k) => k / 4);
+    expect(x(evaluateCurve(controls, { closed: false, basis: "catmullRom", segments: 4 }))).toEqual(expected);
+    expect(x(evaluateCurve(controls, { closed: false, basis: "cardinal", segments: 4 }))).toEqual(expected);
+  });
+
+  /**
+   * The corners of a unit square, closed: every knot gap is the same, so centripetal
+   * Catmull-Rom is the uniform one and the middle of the span from (0,0) to (1,0) is
+   * (−P0 + 9·P1 + 9·P2 − P3) ÷ 16 = (0.5, −0.125). Cardinal scales the bulge by 1 − tension.
+   */
+  it("on a unit square the middle of a span bulges out by an eighth, and Tension flattens it", () => {
+    const square: Vec3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]];
+    const middle = (options: Parameters<typeof evaluateCurve>[1]): Vec3 => evaluateCurve(square, options)[1] as Vec3;
+    expectVec(middle({ closed: true, basis: "catmullRom", segments: 2 }), [0.5, -0.125, 0]);
+    expectVec(middle({ closed: true, basis: "cardinal", segments: 2, tension: 0 }), [0.5, -0.125, 0]);
+    expectVec(middle({ closed: true, basis: "cardinal", segments: 2, tension: 0.5 }), [0.5, -0.0625, 0]);
+    expectVec(middle({ closed: true, basis: "cardinal", segments: 2, tension: 1 }), [0.5, 0, 0]);
+  });
+
+  /**
+   * WHICH Catmull-Rom it is, pinned by a value only the centripetal one takes. Control
+   * points on a line at 0, 1, 5 and 14 are 1, 4 and 9 apart, so their centripetal knot gaps
+   * (the square roots) are 1, 2 and 3. The middle of the span from 1 to 5, by Barry and
+   * Goldman's pyramid: A = 2, 3, 2; B = 8/3, 14/5; C = 8/3 + ½·(14/5 − 8/3) = 41/15.
+   * Uniform knots would give (−0 + 9 + 45 − 14) ÷ 16 = 2.5, and chordal ones 3.
+   */
+  it("Catmull-Rom is centripetal: unevenly spaced control points put a span's middle at 41/15, not 2.5 or 3", () => {
+    const controls: Vec3[] = [[0, 0, 0], [1, 0, 0], [5, 0, 0], [14, 0, 0]];
+    const curve = evaluateCurve(controls, { closed: false, basis: "catmullRom", segments: 2 });
+    expect((curve[3] as Vec3)[0]).toBeCloseTo(41 / 15, 12);
+    // Cardinal is the uniform spline: the same control points give the uniform value.
+    const uniform = evaluateCurve(controls, { closed: false, basis: "cardinal", segments: 2 });
+    expect((uniform[3] as Vec3)[0]).toBeCloseTo(2.5, 12);
+  });
+
+  it("the interpolating bases return every control point to the bit, however unevenly they are spaced", () => {
+    const controls: Vec3[] = [[0.1, 0.2, 0.3], [1.7, -0.4, 0.9], [1.9, 2.3, -1.1], [-3.3, 0.7, 0.01], [0.4, 0.4, 5.5]];
+    for (const basis of ["linear", "catmullRom", "cardinal", "arc"] as const) {
+      const curve = evaluateCurve(controls, { closed: false, basis, segments: 3, arcLength: 9 });
+      // An arc that is in reach ends ON its control point only to rounding; its start is exact.
+      const last = basis === "arc" ? 4 : 5;
+      for (let i = 0; i < last; i += 1) expect(curve[i * 3], `${basis} control ${i}`).toEqual(controls[i]);
+    }
+  });
+
+  /**
+   * A uniform cubic B-Spline at a knot is (P0 + 4·P1 + P2) ÷ 6: for (0,0), (6,0), (6,6)
+   * that is (5, 1). Clamped, the ends are mirrored, so the same sum at the first control
+   * point is (−P1 + 2·P0 … ) = P0 itself: the curve reaches both ends.
+   */
+  it("a B-Spline passes (P0 + 4·P1 + P2) ÷ 6 at a knot, and reaches its ends when clamped", () => {
+    const controls: Vec3[] = [[0, 0, 0], [6, 0, 0], [6, 6, 0]];
+    const clamped = evaluateCurve(controls, { closed: false, basis: "bspline", segments: 2 });
+    expect(clamped[0]).toEqual([0, 0, 0]);
+    expect(clamped[2]).toEqual([5, 1, 0]);
+    expect(clamped[4]).toEqual([6, 6, 0]);
+    // Unclamped it is the plain spline: four control points make one span, from one knot value to the next.
+    const four: Vec3[] = [[0, 0, 0], [6, 0, 0], [6, 6, 0], [0, 6, 0]];
+    const plain = evaluateCurve(four, { closed: false, basis: "bspline", clamped: false, segments: 2 });
+    expect(plain).toHaveLength(3);
+    expect(plain[0]).toEqual([5, 1, 0]);
+    expect(plain[2]).toEqual([5, 5, 0]);
+  });
+
+  it("a Bezier span's middle is (P1 + 3·(P1 + out) + 3·(P2 + in) + P2) ÷ 8", () => {
+    const controls: Vec3[] = [[0, 0, 0], [8, 0, 0]];
+    const curve = evaluateCurve(controls, {
+      closed: false,
+      basis: "bezier",
+      segments: 2,
+      handlesOut: [[0, 8, 0], [0, 0, 0]],
+      handlesIn: [[0, 0, 0], [0, 8, 0]],
+    });
+    // (0 + 3·(0,8) + 3·(8,8) + (8,0)) ÷ 8 = (4, 6).
+    expect(curve).toEqual([[0, 0, 0], [4, 6, 0], [8, 0, 0]]);
+  });
+});
+
+describe("solveArc — the one arc of a given length through two points", () => {
+  /**
+   * A chord of 2 and a length of π is a half circle of radius 1, because sinc(π/2) = 2/π.
+   * With the bow on +Y the arc is the upper half of the unit circle about the origin, run
+   * from (−1, 0) to (1, 0): station k of n sits at the angle π − kπ/n.
+   */
+  it("length π over a chord of 2 is a half circle of radius 1, on the bow's side", () => {
+    const arc = solveArc([-1, 0, 0], [1, 0, 0], Math.PI, [0, 1, 0]);
+    expect(arc.length).toBe(Math.PI);
+    expect(arc.halfTurn).toBeCloseTo(Math.PI / 2, 6);
+    expect(arc.curvature).toBeCloseTo(1, 6);
+    const curve = evaluateCurve([[-1, 0, 0], [1, 0, 0]], { closed: false, basis: "arc", segments: 8, arcLength: Math.PI, bow: [0, 1, 0] });
+    curve.forEach((point, k) => {
+      const angle = Math.PI - (k * Math.PI) / 8;
+      expectVec(point, [Math.cos(angle), Math.sin(angle), 0], 6);
+    });
+    // THE LENGTH IS KEPT: the arc ends on its far control point having run exactly π.
+    expectVec(arcPoint(arc, arc.length), [1, 0, 0], 6);
+  });
+
+  it("the bow picks the side: the opposite bow is the same arc mirrored through the chord", () => {
+    const options = { closed: false, basis: "arc", segments: 6, arcLength: 3 } as const;
+    const up = evaluateCurve([[0, 0, 0], [2, 0, 0]], { ...options, bow: [0, 1, 0] });
+    const down = evaluateCurve([[0, 0, 0], [2, 0, 0]], { ...options, bow: [0, -1, 0] });
+    up.forEach((point, k) => expectVec(down[k] as Vec3, [point[0], -point[1], point[2]]));
+    expect((up[3] as Vec3)[1]).toBeGreaterThan(0.9);
+    // Only the part of the bow SQUARE to the chord counts: a bow leaning along it changes nothing.
+    const leaning = evaluateCurve([[0, 0, 0], [2, 0, 0]], { ...options, bow: [5, 0.1, 0] });
+    up.forEach((point, k) => expectVec(leaning[k] as Vec3, point));
+  });
+
+  it("taut, the stations are exactly k × chord ÷ segments; out of reach, the line keeps its length and stops short", () => {
+    const taut = evaluateCurve([[0, 0, 0], [4, 0, 0]], { closed: false, basis: "arc", segments: 4, arcLength: 4, bow: [0, 1, 0] });
+    expect(taut).toEqual([[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0], [4, 0, 0]]);
+    const short = evaluateCurve([[0, 0, 0], [4, 0, 0]], { closed: false, basis: "arc", segments: 4, arcLength: 2, bow: [0, 1, 0] });
+    expect(short).toEqual([[0, 0, 0], [0.5, 0, 0], [1, 0, 0], [1.5, 0, 0], [2, 0, 0]]);
+  });
+
+  /**
+   * Max Turn caps the bow. A chord of 2 with 10 metres asked for and at most a half turn
+   * is the half circle again — π metres laid out, the rest not deployed — and the arc
+   * still ends on its far point.
+   */
+  it("Max Turn leaves slack undeployed: 10 metres asked, a half turn allowed, π laid out", () => {
+    const arc = solveArc([-1, 0, 0], [1, 0, 0], 10, [0, 1, 0], Math.PI);
+    expect(arc.length).toBeCloseTo(Math.PI, 12);
+    expectVec(arcPoint(arc, arc.length * 0.5), [0, 1, 0], 6);
+    expectVec(arcPoint(arc, arc.length), [1, 0, 0], 6);
+    // No turn allowed is a straight line of the chord's length.
+    expect(solveArc([-1, 0, 0], [1, 0, 0], 10, [0, 1, 0], 0).length).toBe(2);
+  });
+
+  it("in chords, the length follows the span: 1.5 chords over a chord of 2 is 3 metres", () => {
+    const metres = evaluateCurve([[0, 0, 0], [2, 0, 0]], { closed: false, basis: "arc", segments: 4, arcLength: 3, bow: [0, 1, 0] });
+    const chords = evaluateCurve([[0, 0, 0], [2, 0, 0]], { closed: false, basis: "arc", segments: 4, arcLength: 1.5, arcLengthUnit: "chords", bow: [0, 1, 0] });
+    expect(chords).toEqual(metres);
+  });
+
+  it("with no chord it is a circle through the point, of the length asked for", () => {
+    const arc = solveArc([2, 3, 4], [2, 3, 4], 2 * Math.PI, [0, 1, 0]);
+    expect(arc.halfTurn).toBeCloseTo(Math.PI, 6);
+    // Circumference 2π is radius 1: the far side of the circle is two radii away, on the bow's side.
+    expectVec(arcPoint(arc, Math.PI), [2, 5, 4], 5);
+    expectVec(arcPoint(arc, 2 * Math.PI), [2, 3, 4], 5);
+  });
+});
+
+describe("parseCurveTable — a Curve node's own control points", () => {
+  it("reads [x, y, z], with an optional scale and roll", () => {
+    expect(parseCurveTable("[[0, 0, 0], [1, 2, 3, 0.5], [4, 5, 6, 2, 90]]")).toEqual({
+      points: [
+        { position: [0, 0, 0], scale: 1, roll: 0 },
+        { position: [1, 2, 3], scale: 0.5, roll: 0 },
+        { position: [4, 5, 6], scale: 2, roll: 90 },
+      ],
+    });
+  });
+
+  it("refuses what it cannot read, naming the entry — and a table over the limit, never truncating it", () => {
+    const errorOf = (raw: unknown): string => {
+      const result = parseCurveTable(raw);
+      return "error" in result ? result.error : "";
+    };
+    expect(errorOf("[[0, 0, 0], [1, 2]]")).toContain("control point 1");
+    expect(errorOf('[[0, 0, 0], [1, 2, "three"]]')).toContain("control point 1");
+    expect(errorOf("[[0, 0")).toContain("not valid JSON");
+    expect(errorOf("{}")).toContain("must be a JSON list");
+    expect(errorOf("")).toContain("empty");
+    const many = JSON.stringify(Array.from({ length: CURVE_TABLE_LIMIT + 1 }, (_, i) => [i, 0, 0]));
+    expect(errorOf(many)).toContain(`${CURVE_TABLE_LIMIT + 1} control points`);
+    expect(errorOf(many)).toContain("wire a longer control set");
+    const full = parseCurveTable(JSON.stringify(Array.from({ length: CURVE_TABLE_LIMIT }, (_, i) => [i, 0, 0])));
+    expect("points" in full && full.points.length).toBe(CURVE_TABLE_LIMIT);
   });
 });

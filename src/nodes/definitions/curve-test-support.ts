@@ -17,7 +17,7 @@ import { pointRegionSlice } from "./test-support.ts";
  * T1586b — what the curve family's tests share: graphs whose points are AUTHORED EXACTLY,
  * run through the real compiler and a real device, and read back attribute by attribute.
  *
- * A fixture is an assumption written twice, so the three test files of the family (strips,
+ * A fixture is an assumption written twice, so the family's Dawn test files (strips, Curve,
  * Curve Frames, Resample) write this one once. Nothing here knows a curve node: it builds
  * graphs, renders them on Dawn, and slices a node's packed buffer with the layout the node
  * itself declares.
@@ -75,8 +75,8 @@ export function curveGraph(nodes: ReadonlyArray<GraphNode>, edges: ReadonlyArray
 /** The sink every graph needs so the compiler keeps the chain alive: points drawn to an output. */
 export function drawnTo(source: string, count: number): { nodes: GraphNode[]; edges: Array<ReturnType<typeof curveEdge>> } {
   return {
-    nodes: [curveNode("renderpoints_probe", "renderPoints", { count, sizePixels: 1 }), curveNode("output_probe", "output")],
-    edges: [curveEdge([source, "out"], ["renderpoints_probe", "points"]), curveEdge(["renderpoints_probe", "out"], ["output_probe", "input"])],
+    nodes: [curveNode("points_probe", "renderPoints", { count, sizePixels: 1 }), curveNode("output_probe", "output")],
+    edges: [curveEdge([source, "out"], ["points_probe", "points"]), curveEdge(["points_probe", "out"], ["output_probe", "input"])],
   };
 }
 

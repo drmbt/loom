@@ -5,8 +5,9 @@
  * A curve is a STRIP: a run of consecutive slots of a pointset, joined by straight
  * segments (`topology.ts`, `stripsOf`). Everything here takes one strip as an array of
  * points and answers what the GPU passes answer, by the same steps in the same order —
- * `nodes/shaders/curve.wgsl.ts` is this file in WGSL, and the Dawn tests hold the two
- * together. It is headless: no GPU, no node types, no clock.
+ * `nodes/shaders/curve.wgsl.ts`, `curve-resample.wgsl.ts` and `curve-frames.wgsl.ts` are
+ * this file in WGSL, and the Dawn tests hold the two together. It is headless: no GPU, no
+ * node types, no clock.
  *
  * ## The three rules everything below follows
  *
@@ -472,4 +473,319 @@ export function resampleStrip(points: ReadonlyArray<Vec3>, options: ResampleOpti
     }),
     live: stations.map((station) => (station.live ? 1 : 0)),
   };
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────────
+ * Curve — control points to a strip (T1586b slice 2).
+ *
+ * A control strip of N points becomes a strip of `segments` points per SPAN. A span runs
+ * from one control point to the next (the closing span of a closed strip included), and
+ * every output point is computed on its own from at most four control points, so there is
+ * no order to keep and no scan: point k of a strip does not depend on point k − 1.
+ *
+ * Which curves keep their length is the reason the Arc exists (the design's section 3.5):
+ * a spline's length is whatever its control points make it, and it changes as they move;
+ * an Arc's length is an INPUT, and Linear's is the sum of its chords.
+ * ───────────────────────────────────────────────────────────────────────────────────── */
+
+export const CURVE_BASES = ["linear", "catmullRom", "cardinal", "bspline", "bezier", "arc"] as const;
+export type CurveBasis = (typeof CURVE_BASES)[number];
+
+/**
+ * The most control points a Curve node holds in its own table. A uniform-table limit: the
+ * table reaches the shader as one vec4 a point, the way Ramp's stops do, and a longer
+ * curve is wired from a pointset instead.
+ */
+export const CURVE_TABLE_LIMIT = 64;
+
+/**
+ * Bisection steps of the arc solve. Each halves an interval that starts π wide, so after
+ * 24 it is 2e-7 wide: f32's resolution of an angle near 1, and the same count on the GPU.
+ */
+export const ARC_SOLVE_STEPS = 24;
+
+export interface CurveOptions {
+  readonly closed: boolean;
+  readonly basis: CurveBasis;
+  /** Output points per span. */
+  readonly segments: number;
+  /** Cardinal: 0 is Catmull-Rom's tangent, 1 flattens every tangent to nothing. */
+  readonly tension?: number;
+  /** B-Spline on an open strip: mirror the ends so the curve reaches its end control points. Default on. */
+  readonly clamped?: boolean;
+  /** Bezier: each control point's handles, relative to the point. */
+  readonly handlesIn?: ReadonlyArray<Vec3>;
+  readonly handlesOut?: ReadonlyArray<Vec3>;
+  /** Arc: each span's length — one for all, or one per control point, read at the span's first. */
+  readonly arcLength?: number | ReadonlyArray<number>;
+  /** Arc: the length is in metres, or in chords (1 is straight, 1.2 has a fifth of slack). */
+  readonly arcLengthUnit?: "metres" | "chords";
+  /** Arc: the side each arc bulges to — one for all, or one per control point, read at the span's first. */
+  readonly bow?: Vec3 | ReadonlyArray<Vec3>;
+  /** Arc: the most an arc may turn, radians. Slack beyond it is not deployed. Default a full turn. */
+  readonly maxTurn?: number;
+}
+
+type SpanShape = Pick<CurveOptions, "closed" | "basis" | "clamped">;
+
+/** An unclamped B-Spline on an open strip is the one curve that does not reach its ends. */
+const isUnclamped = (options: SpanShape): boolean => options.basis === "bspline" && options.clamped === false && !options.closed;
+
+/** Spans a control strip of `controls` points makes. A closed strip needs two points to close. */
+export function curveSpans(controls: number, options: SpanShape): number {
+  if (controls < 2) return 0;
+  if (options.closed) return controls;
+  if (isUnclamped(options)) return Math.max(controls - 3, 0);
+  return controls - 1;
+}
+
+/** Points per output strip: `segments` per span, and one more to end an open strip on. */
+export function curvePointCount(controls: number, options: SpanShape & Pick<CurveOptions, "segments">): number {
+  const spans = curveSpans(controls, options);
+  if (spans === 0) return 1;
+  return options.closed ? spans * options.segments : spans * options.segments + 1;
+}
+
+/** Where one output point sits: `u` of the way along `span`, between the control points `index` and `next`. */
+export interface CurveStation {
+  readonly span: number;
+  readonly u: number;
+  readonly index: number;
+  readonly next: number;
+}
+
+/**
+ * Where each output point of one strip sits. `index` and `next` are the two control points
+ * every attribute other than position is blended between, linearly, so a radius or a
+ * colour never overshoots the way a position's basis can. The last point of an open strip
+ * is the END of the last span (`u` exactly 1), not the start of a span that does not exist.
+ */
+export function curveStations(controls: number, options: SpanShape & Pick<CurveOptions, "segments">): CurveStation[] {
+  const spans = curveSpans(controls, options);
+  if (spans === 0) return [{ span: 0, u: 0, index: 0, next: 0 }];
+  const count = curvePointCount(controls, options);
+  const shift = isUnclamped(options) ? 1 : 0;
+  const stations: CurveStation[] = [];
+  for (let k = 0; k < count; k += 1) {
+    let span = Math.floor(k / options.segments);
+    let u = (k % options.segments) / options.segments;
+    if (span >= spans) {
+      span = spans - 1;
+      u = 1;
+    }
+    const index = span + shift;
+    stations.push({ span, u, index, next: options.closed ? (index + 1) % controls : index + 1 });
+  }
+  return stations;
+}
+
+/** sin(x) / x, with its series where the quotient loses its digits. */
+function sinc(x: number): number {
+  return Math.abs(x) < 1e-3 ? 1 - (x * x) / 6 : Math.sin(x) / x;
+}
+
+/** One constant-curvature arc, solved: where it starts, which way it leaves and which way it bends. */
+export interface SolvedArc {
+  readonly start: Vec3;
+  /** The length actually laid out: the length asked for, less any slack `maxTurn` would not let it bow. */
+  readonly length: number;
+  /** Half of the angle the arc turns through. 0 is a straight line. */
+  readonly halfTurn: number;
+  /** 1 / radius. */
+  readonly curvature: number;
+  /** The unit tangent at the start, and the unit direction from the start toward the centre. */
+  readonly tangent: Vec3;
+  readonly inward: Vec3;
+}
+
+/**
+ * THE ARC: the one arc of constant curvature and a given length from `a` to `b`.
+ *
+ * For a length L and a chord c there is exactly one such arc up to which side it bows to:
+ * its half turn φ solves sinc(φ) = c / L, and sinc only falls on [0, π], so φ is unique —
+ * no branch to jump between, which is what a pop is (the consumer's finding, §T1561b).
+ * `bow` picks the side, by its part SQUARE TO THE CHORD: a bow that sweeps through the
+ * chord therefore flips the arc to the other side at once, and a bow kept off the chord
+ * moves the arc continuously with its ends.
+ *
+ *  - taut or out of reach (L ≤ c): a straight line of length L from `a` toward `b`. The
+ *    length is kept; the far end is not reached.
+ *  - `maxTurn` caps the turn: slack that would bow the arc further is not laid out, so the
+ *    arc is shorter than asked and still ends on `b`.
+ *  - no chord (a = b): a circle through `a`, leaving square to `bow`.
+ */
+export function solveArc(a: Vec3, b: Vec3, wanted: number, bow: Vec3, maxTurn = 2 * Math.PI): SolvedArc {
+  const chordVector = sub(b, a);
+  const chordSquared = dot(chordVector, chordVector);
+  let chord = 0;
+  let along: Vec3;
+  let side: Vec3;
+  if (chordSquared > ZERO_SEGMENT_SQUARED) {
+    chord = Math.sqrt(chordSquared);
+    along = scale(chordVector, 1 / chord);
+    side = seedNormal(along, bow);
+  } else {
+    side = dot(bow, bow) > 1e-12 ? unit(bow) : [0, -1, 0];
+    along = seedNormal(side, leastAligned(side));
+  }
+  const maxHalf = Math.min(Math.max(maxTurn / 2, 0), Math.PI);
+  let laid = Math.max(wanted, 0);
+  // A full turn is no cap at all: sinc(π) is zero, and a chord divided by it is not a length.
+  if (maxHalf < Math.PI - 1e-6) laid = Math.min(laid, chord / sinc(maxHalf));
+  let halfTurn = 0;
+  if (laid > 0 && chord < laid) {
+    const share = chord / laid;
+    let low = 0;
+    let high = Math.PI;
+    for (let step = 0; step < ARC_SOLVE_STEPS; step += 1) {
+      const mid = (low + high) * 0.5;
+      if (sinc(mid) > share) low = mid;
+      else high = mid;
+    }
+    halfTurn = (low + high) * 0.5;
+  }
+  const cos = Math.cos(halfTurn);
+  const sin = Math.sin(halfTurn);
+  return {
+    start: a,
+    length: laid,
+    halfTurn,
+    curvature: laid > 0 ? (2 * halfTurn) / laid : 0,
+    tangent: add(scale(along, cos), scale(side, sin)),
+    inward: sub(scale(along, sin), scale(side, cos)),
+  };
+}
+
+/** The point `s` metres along a solved arc. */
+export function arcPoint(arc: SolvedArc, s: number): Vec3 {
+  const angle = arc.curvature * s;
+  // sin(κs)/κ and (1 − cos(κs))/κ, written so a straight arc (κ = 0) is exact.
+  const forward = s * sinc(angle);
+  const across = s * Math.sin(angle * 0.5) * sinc(angle * 0.5);
+  return add(arc.start, add(scale(arc.tangent, forward), scale(arc.inward, across)));
+}
+
+/**
+ * One strip of control points to one strip of curve points (positions only; every other
+ * attribute is a linear blend at `curveStations`).
+ *
+ * The interpolating bases return a control point TO THE BIT where a span starts on one,
+ * and every blend is written "point + share × difference", so repeated control points
+ * cancel nothing and a straight, evenly spaced control strip gives exactly the line.
+ */
+export function evaluateCurve(controls: ReadonlyArray<Vec3>, options: CurveOptions): Vec3[] {
+  const count = controls.length;
+  const { closed, basis } = options;
+  const spans = curveSpans(count, options);
+  const at = (i: number): Vec3 => {
+    if (closed) return controls[((i % count) + count) % count] as Vec3;
+    // Past an open end: the neighbour mirrored through the end point.
+    if (i < 0) return count < 2 ? (controls[0] as Vec3) : sub(scale(controls[0] as Vec3, 2), controls[1] as Vec3);
+    if (i >= count) return count < 2 ? (controls[count - 1] as Vec3) : sub(scale(controls[count - 1] as Vec3, 2), controls[count - 2] as Vec3);
+    return controls[i] as Vec3;
+  };
+  const tension = options.tension ?? 0;
+  const arcLength = options.arcLength ?? 1;
+  const bow = options.bow ?? ([0, -1, 0] as Vec3);
+  const arcLengthAt = (i: number): number => (typeof arcLength === "number" ? arcLength : (arcLength[i] as number));
+  const bowAt = (i: number): Vec3 => (typeof bow[0] === "number" ? (bow as Vec3) : ((bow as ReadonlyArray<Vec3>)[i] as Vec3));
+
+  return curveStations(count, options).map(({ u, index, next }) => {
+    const p1 = at(index);
+    if (spans === 0) return p1;
+    const p2 = at(next);
+    if (basis === "arc") {
+      const wanted = arcLengthAt(index) * (options.arcLengthUnit === "chords" ? length(sub(p2, p1)) : 1);
+      const arc = solveArc(p1, p2, wanted, bowAt(index), options.maxTurn);
+      return arcPoint(arc, u * arc.length);
+    }
+    if (basis === "bspline") {
+      const p0 = at(index - 1);
+      const p3 = at(index + 2);
+      const v = 1 - u;
+      const w0 = v * v * v;
+      const w1 = 3 * u * u * u - 6 * u * u + 4;
+      const w2 = -3 * u * u * u + 3 * u * u + 3 * u + 1;
+      const w3 = u * u * u;
+      return scale(add(add(scale(p0, w0), scale(p1, w1)), add(scale(p2, w2), scale(p3, w3))), 1 / 6);
+    }
+    if (u === 0) return p1;
+    if (u === 1) return p2;
+    if (basis === "linear") return add(p1, scale(sub(p2, p1), u));
+    if (basis === "bezier") {
+      const b1 = add(p1, options.handlesOut?.[index] ?? [0, 0, 0]);
+      const b2 = add(p2, options.handlesIn?.[next] ?? [0, 0, 0]);
+      const v = 1 - u;
+      return add(add(scale(p1, v * v * v), scale(b1, 3 * v * v * u)), add(scale(b2, 3 * v * u * u), scale(p2, u * u * u)));
+    }
+    const p0 = at(index - 1);
+    const p3 = at(index + 2);
+    if (basis === "cardinal") {
+      const m1 = scale(sub(p2, p0), (1 - tension) * 0.5);
+      const m2 = scale(sub(p3, p1), (1 - tension) * 0.5);
+      const h10 = u * u * u - 2 * u * u + u;
+      const h01 = 3 * u * u - 2 * u * u * u;
+      const h11 = u * u * u - u * u;
+      return add(add(p1, scale(m1, h10)), add(scale(sub(p2, p1), h01), scale(m2, h11)));
+    }
+    // Catmull-Rom with centripetal knots (Barry and Goldman's pyramid): a knot gap is the
+    // square root of the distance it spans, so unevenly spaced control points do not loop.
+    const gap = (from: Vec3, to: Vec3): number => Math.max(Math.sqrt(length(sub(to, from))), 1e-12);
+    const g01 = gap(p0, p1);
+    const g12 = gap(p1, p2);
+    const g23 = gap(p2, p3);
+    const t = u * g12; // measured from the span's own start
+    const a1 = add(p1, scale(sub(p1, p0), t / g01));
+    const a2 = add(p1, scale(sub(p2, p1), t / g12));
+    const a3 = add(p2, scale(sub(p3, p2), (t - g12) / g23));
+    const b1 = add(a1, scale(sub(a2, a1), (t + g01) / (g01 + g12)));
+    const b2 = add(a2, scale(sub(a3, a2), t / (g12 + g23)));
+    return add(b1, scale(sub(b2, b1), t / g12));
+  });
+}
+
+/** One row of a Curve node's own table: a control point, and what a sweep or a frame reads off it. */
+export interface CurveTablePoint {
+  readonly position: Vec3;
+  /** Published as the `scale` attribute. Default 1. */
+  readonly scale: number;
+  /** Published as the `roll` attribute, in degrees. Default 0. */
+  readonly roll: number;
+}
+
+/**
+ * A Curve node's authored table, from its stored form: a JSON list with one entry per
+ * control point — `[x, y, z]`, `[x, y, z, scale]` or `[x, y, z, scale, roll]`.
+ *
+ * Here and not in the node, because a CPU reader (the path follower, §T1590b) parses the
+ * same parameter and must read the same points. A table it cannot read is refused with the
+ * entry named; one over the limit is refused with the limit and the way round it, never
+ * truncated — a curve that stops at its 64th point is a plausible wrong curve.
+ */
+export function parseCurveTable(raw: unknown): { readonly points: ReadonlyArray<CurveTablePoint> } | { readonly error: string } {
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw.trim() === "" ? "[]" : raw);
+    } catch (failure) {
+      return { error: `the control points are not valid JSON (${failure instanceof Error ? failure.message : String(failure)})` };
+    }
+  }
+  if (!Array.isArray(parsed)) return { error: "the control points must be a JSON list, one entry per point: [[x, y, z], …]" };
+  if (parsed.length === 0) return { error: "the control point list is empty; a curve needs at least one point" };
+  if (parsed.length > CURVE_TABLE_LIMIT) {
+    return {
+      error: `the table holds ${parsed.length} control points and the node carries ${CURVE_TABLE_LIMIT}; wire a longer control set in as a pointset instead`,
+    };
+  }
+  const points: CurveTablePoint[] = [];
+  for (const [at, entry] of parsed.entries()) {
+    const numbers = Array.isArray(entry) ? (entry as unknown[]) : [];
+    if (numbers.length < 3 || numbers.length > 5 || !numbers.every((value) => typeof value === "number" && Number.isFinite(value))) {
+      return { error: `control point ${at} must be [x, y, z], [x, y, z, scale] or [x, y, z, scale, roll] with finite numbers` };
+    }
+    const [x, y, z, pointScale, roll] = numbers as number[];
+    points.push({ position: [x as number, y as number, z as number], scale: pointScale ?? 1, roll: roll ?? 0 });
+  }
+  return { points };
 }

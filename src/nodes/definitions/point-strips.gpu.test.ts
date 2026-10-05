@@ -104,13 +104,13 @@ describe("a strips claim is not a sheet (T1586b R2)", () => {
       [
         source.node,
         curveNode("topology_claim", "pointTopology", claim),
-        curveNode("rendersurface_skin", "renderSurface"),
+        curveNode("surface_skin", "renderSurface"),
         curveNode("output_probe", "output"),
       ],
       [
         curveEdge(["kernel_source", "out"], ["topology_claim", "points"]),
-        curveEdge(["topology_claim", "out"], ["rendersurface_skin", "points"]),
-        curveEdge(["rendersurface_skin", "out"], ["output_probe", "input"]),
+        curveEdge(["topology_claim", "out"], ["surface_skin", "points"]),
+        curveEdge(["surface_skin", "out"], ["output_probe", "input"]),
       ],
     );
   };

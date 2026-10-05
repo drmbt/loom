@@ -217,6 +217,7 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   pointRange: "none",
   pointTransform: "none",
   // T1586b: the curve family measures and re-places points in GPU buffers; nothing leaves.
+  pointCurve: "none",
   pointCurveFrames: "none",
   pointResample: "none",
   /*

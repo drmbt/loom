@@ -294,6 +294,7 @@ export const NODE_KINDS: Readonly<Record<string, string>> = {
   pointRay: "ray",
   textureToAttribute: "texattr",
   pointTopology: "topology",
+  pointCurve: "curve",
   pointCurveFrames: "frames",
   pointResample: "resample",
   pointGather: "gather",

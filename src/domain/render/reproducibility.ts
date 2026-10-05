@@ -292,6 +292,11 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   // order, fixed by the loop and never by the scheduler; strips share no slot, so no two
   // invocations write the same word (no atomics, §V74). No clock, no RNG, no state.
   pointCurveFrames: "pure",
+  // T1586b. PURE: one thread per OUTPUT point, each from at most four control points of
+  // its own span, so no point depends on another and there is no order to keep. The
+  // Arc's solve is a fixed number of bisection steps — its length reads nothing. Control
+  // points come from an input buffer or from this node's own uniforms. No clock, no RNG.
+  pointCurve: "pure",
   // T1586b. PURE: a length walk per strip (the same left-to-right sum as Curve Frames),
   // then one thread per OUTPUT slot that computes its own station from its slot number —
   // a multiplication, never a running sum — and binary-searches its strip. Every output
