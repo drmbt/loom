@@ -13,7 +13,7 @@ import { effectiveParameterSchema, resolveStored, type ParameterMorphStep, type 
 import { componentAddressedDefinition, isParameterSlot, parseComponentKey, storedStaticValue } from "../parameters/slots.ts";
 import { defaultParameterValue } from "../parameters/validate.ts";
 import { parsePresetBank, type MorphCurve } from "./bank.ts";
-import { bankOf, isPresetsNode, type BankCatalogue } from "./bank-view.ts";
+import { bankOf, type BankCatalogue } from "./bank-view.ts";
 import { notABank, presetMorph, presetRecallEnd } from "./commands.ts";
 import { CUE_FOLLOW_TIMELINE, CUE_LIST_NODE_TYPE, cueReachFrame, parseCueList, type CueList } from "./cue-list.ts";
 import { easeMorph } from "./morph.ts";
@@ -425,25 +425,31 @@ export function timelineCueWarnings(document: GraphDocument, registry: NodeRegis
   return planTimelineCues(document, registry, components).warnings.filter((warning) => warning.list === listId);
 }
 
+/** The codes this module files itself: what a following list cannot do as it is written. */
+const CUE_TIMELINE_CODES = "cue.timeline.";
+
 /**
- * §T1559b (2) — THE TIMELINE WARNING THE DOCUMENT'S PROBLEMS CARRY: what `compileGraph` adds
- * to its diagnostics, so the Problems list, the bank's badge and `get_diagnostics` say it in
- * both composition roots.
+ * §T1559b (2) — THE TIMELINE WARNINGS THE DOCUMENT'S PROBLEMS CARRY: what ends up in
+ * `compileGraph`'s diagnostics, so the Problems list, a node's badge and `get_diagnostics` say
+ * them in both composition roots. Every `cue.timeline.*` warning of the plan, as the plan
+ * filed it (its node, its text): a timed list that cannot fire as written is a problem its
+ * author should see without opening the list's inspector (lead's ruling, 2026-10-05).
  *
- * Only the driven bank setting. Every other warning of the plan is about the list's own cues
- * and is said where the list is edited (its inspector section, `cue.list`); this one is about
- * a parameter of ANOTHER node, whose author may never open the list.
+ * NOT the recall planner's own skips a cue passes on (`preset.*`: a target that is gone, a
+ * shot that recalls itself). One of those is an ERROR, and an error among the compile's
+ * diagnostics fails the compile (`hasError`), which holds the picture on the previous plan
+ * (§V9) — where the timeline only skips that cue. They stay on the list's own surfaces.
  *
- * The planner runs only when a root bank holds a driven Morph or Curve: an instance bank
- * never warns (`planTimelineCues`), so without such a bank there is nothing to say, and the
- * compile of every other timed document pays one walk of its nodes for the question.
+ * WHEN THE PLANNER RUNS FOR THIS: only when a list follows the timeline — a document with
+ * none pays one walk of its nodes (`hasTimelineCueLists`) — and then once per FLATTENING
+ * (`flattenComponents` asks, beside the morph index), not once per compile: a frame or a
+ * timeline segment compiled over that flattening reads `flattened.diagnostics`. A compile
+ * handed no catalogue has no flattening and asks for itself.
  */
 export function timelineCueProblems(input: MorphIndexInput): readonly RuntimeDiagnostic[] {
   if (!hasTimelineCueLists(input.document)) return [];
-  const drivenBank = (node: GraphNode): boolean => isPresetsNode(node) && BANK_MORPH_KEYS.some((key) => drivenMode(node.parameters[key]) !== null);
-  if (!Object.values(input.document.nodes).some(drivenBank)) return [];
   return planTimelineCues(input.document, plannerRegistry(input), input.components)
-    .warnings.filter((warning) => warning.diagnostic.code === CUE_TIMELINE_DRIVEN_MORPH)
+    .warnings.filter((warning) => warning.diagnostic.code.startsWith(CUE_TIMELINE_CODES))
     .map((warning) => warning.diagnostic);
 }
 

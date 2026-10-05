@@ -927,9 +927,11 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
   // T1485b: and the instances `op('<instance>').chan` can name, by the same precedence.
   const instances = request.resolution?.instances ?? flattened?.instanceChannels;
   const reading: ParameterResolution = { ...(request.resolution ?? {}), morphs, ...(instances === undefined ? {} : { instances }) };
-  // §T1559b (2): a cue list that follows the timeline reads its bank's Morph and Curve as the
-  // document stores them. A driven one is said here, on the bank, where both roots read problems.
-  diagnostics.push(...timelineCueProblems({ document: request.graph, registry: request.registry, components: request.components, flattened }));
+  // §T1559b (2): what a cue list that follows the timeline cannot do as written (every
+  // `cue.timeline.*` warning of its plan), where both roots read problems. A flattening
+  // already carries them (`flattened.diagnostics`, above: once per flattening, not per frame
+  // or segment compiled over it); with no catalogue there is none, and they are asked for here.
+  if (flattened === undefined) diagnostics.push(...timelineCueProblems({ document: request.graph, registry: request.registry }));
 
   /**
    * T350 (§V285) / T447 (§V373): a SOURCE REFERENCE synthesizes the exact edge the wired

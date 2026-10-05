@@ -182,13 +182,15 @@ describe("T1555b — the Problems list through the mounted app", () => {
   }, 30_000);
 
   /**
-   * §T1559b (2) — a cue list that follows the timeline reads its bank's Morph as the document
-   * stores it, and a DRIVEN Morph is said by the compile (`timelineCueProblems`). The other
-   * timeline warnings stay on the list's own inspector section; this one is about the bank,
-   * so it has to arrive HERE, in the list the person and the agent read, on the bank's id.
-   * The fade's stored seconds are `compiler/timeline-cue-problems.test.ts`.
+   * §T1559b (2) — what a cue list that follows the timeline cannot do as written is in the
+   * compile's diagnostics (`timelineCueProblems`), so it has to arrive HERE, in the list the
+   * person and the agent read: a DRIVEN bank Morph on the bank's id (its timed cues read the
+   * Morph as stored), and the list's own warnings — a cue with no At — on the list's id. The
+   * list's inspector section shows the same sentences from its own read of the plan, and
+   * that must not put a second copy in this list. Each of the six older warnings through
+   * the compile, and the fade's stored seconds, are `compiler/timeline-cue-problems.test.ts`.
    */
-  it("§T1559b (2): says a timed cue list's bank has a driven Morph, on the bank, with the stored seconds", async () => {
+  it("§T1559b (2): says a timed cue list's problems — a driven bank Morph on the bank, a cue with no At on the list — once each, with the list's inspector open", async () => {
     const { backend } = refusingBackend();
     const runtime = await mount({ kind: "ready", capabilities: CAPABILITIES, baseline: true, backend });
     await act(async () => {
@@ -217,7 +219,16 @@ describe("T1555b — the Problems list through the mounted app", () => {
               type: "cueList",
               label: "show",
               position: { x: 0, y: 400 },
-              parameters: { follow: "timeline", cues: serializeCueList({ version: 1, cues: [{ name: "A", bank: "looks", preset: "bright", at: 1 }] }) },
+              parameters: {
+                follow: "timeline",
+                cues: serializeCueList({
+                  version: 1,
+                  cues: [
+                    { name: "A", bank: "looks", preset: "bright", at: 1 },
+                    { name: "B", bank: "looks", preset: "bright" },
+                  ],
+                }),
+              },
             },
           ],
         },
@@ -227,13 +238,38 @@ describe("T1555b — the Problems list through the mounted app", () => {
     });
     await settle();
 
-    const bank = Object.values(runtime.bus.store.getGraph().nodes).find((node) => node.label === "looks");
-    const said = (await problems(runtime)).filter((entry) => entry.code.startsWith("cue."));
-    expect(said.map((entry) => [entry.severity, entry.code, entry.nodeId])).toEqual([["warning", "cue.timeline.drivenMorph", bank?.id]]);
+    const labelled = (label: string) => Object.values(runtime.bus.store.getGraph().nodes).find((node) => node.label === label);
+    const bank = labelled("looks");
+    const list = labelled("show");
+    const UNTIMED = 'Cue "B" (show) has no At time, so the timeline skips it.';
+    const cueProblems = async () => (await problems(runtime)).filter((entry) => entry.code.startsWith("cue."));
+    const expected = [
+      ["warning", "cue.timeline.drivenMorph", bank?.id],
+      ["warning", "cue.timeline.untimed", list?.id],
+    ];
+    const said = await cueProblems();
+    expect(said.map((entry) => [entry.severity, entry.code, entry.nodeId])).toEqual(expected);
     expect(said[0]?.message).toContain('Cue list "show" follows the timeline and fires bank "looks", whose Morph is driven (expression)');
     expect(said[0]?.message).toContain("the stored value, 2 s");
-    // The person's pane renders the same entry.
-    expect(within(screen.getByLabelText("Problems")).getByText("cue.timeline.drivenMorph")).toBeDefined();
+    expect(said[1]?.message).toBe(UNTIMED);
+    // The person's pane renders the same entries, one row each.
+    const pane = within(screen.getByLabelText("Problems"));
+    expect(pane.getAllByText("cue.timeline.drivenMorph")).toHaveLength(1);
+    expect(pane.getAllByText("cue.timeline.untimed")).toHaveLength(1);
+
+    // Open the list's inspector: its own section says the same two sentences…
+    await act(async () => {
+      const selected = await runtime.bus.execute("graph.selectNodes", { nodeIds: [list?.id ?? ""] }, runtime.invocation);
+      expect(selected.status).toBe("applied");
+    });
+    await settle();
+    const section = document.querySelector("[data-timeline-warnings]");
+    expect(section?.textContent).toContain(UNTIMED);
+    expect(section?.textContent).toContain('fires bank "looks", whose Morph is driven (expression)');
+    // …and the Problems list still holds each once.
+    expect((await cueProblems()).map((entry) => [entry.severity, entry.code, entry.nodeId])).toEqual(expected);
+    expect(pane.getAllByText("cue.timeline.drivenMorph")).toHaveLength(1);
+    expect(pane.getAllByText("cue.timeline.untimed")).toHaveLength(1);
     runtime.dispose();
   }, 30_000);
 });

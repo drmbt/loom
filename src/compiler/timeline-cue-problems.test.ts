@@ -7,6 +7,7 @@ import type { Preset } from "../domain/presets/bank.ts";
 import { serializeCueList, type Cue } from "../domain/presets/cue-list.ts";
 import { easeMorph } from "../domain/presets/morph.ts";
 import { presetBankNode } from "../domain/presets/test-support.ts";
+import { timelineCueWarnings } from "../domain/presets/timeline-cues.ts";
 import type { GraphComponentDefinition } from "../domain/types/components.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
 import type { FrameEvaluationInput } from "../domain/types/frame.ts";
@@ -37,6 +38,11 @@ import type { CompiledGraph, CompileRequest } from "./types.ts";
  * THE SHOW: white Solid → Level (brightness 0.2) → Output; bank `looks` takes it to 0.8,
  * Curve linear; cue A at 1.0 s carries no morph, so the bank's Morph is its fade. The driver
  * reads a Constant holding 0.5, and the slot's stored value is 2 — a 2 s fade and a 0.5 s fade.
+ *
+ * AND (lead's ruling, same day) EVERY `cue.timeline.*` WARNING REACHES THE COMPILE: a timed
+ * list that cannot fire as written is a problem to see without opening the list's
+ * inspector. The last two blocks hold each of the six older warnings in the compile's
+ * diagnostics, with the node and the sentence the list's own surfaces show, once.
  */
 
 const registry = createNodeRegistry(allNodeDefinitions).view();
@@ -79,6 +85,8 @@ interface ShowOptions {
   readonly presets?: readonly Preset[];
   readonly cues?: readonly Cue[];
   readonly follow?: "live" | "timeline";
+  /** The cue list nodes, in place of the one list `show` (which `cues` and `follow` describe). */
+  readonly lists?: readonly GraphNode[];
 }
 
 function show(options: ShowOptions = {}): GraphDocument {
@@ -88,7 +96,7 @@ function show(options: ShowOptions = {}): GraphDocument {
     node("out", "output", "out1"),
     node("k1", "constant", "k1", { value: 0.5 }),
     presetBankNode("looks", "looks", "level1", options.presets ?? [BRIGHT], { morph: options.morph ?? 2, curve: options.curve ?? "linear" }),
-    cueList(options.cues ?? [CUE_A], options.follow ?? "timeline"),
+    ...(options.lists ?? [cueList(options.cues ?? [CUE_A], options.follow ?? "timeline")]),
   ];
   return {
     revision: 1,
@@ -257,10 +265,6 @@ describe("§T1559b (2) — what the warning must not swallow", () => {
         follow: "timeline",
         cues: serializeCueList({ version: 1, cues: [{ name: "A", bank: "city", preset: "bright", at: 1 }] }),
       }),
-      // A ROOT bank with a driven Morph that no list fires: the document is one the planner is
-      // asked about, so it is the instance rule, and not the absence of any driven bank, that
-      // keeps this quiet.
-      presetBankNode("desk", "desk", "city", [], { morph: driven("time", 2) }),
     ];
     const graph: GraphDocument = {
       revision: 1,
@@ -275,5 +279,199 @@ describe("§T1559b (2) — what the warning must not swallow", () => {
     const plan = compileGraph({ ...request, resolution: { frame: frame(30) } });
     const pass = plan.passes.find((each) => "nodeId" in each && each.nodeId === "city/grade" && "uniforms" in each);
     expect(pass !== undefined && "uniforms" in pass ? pass.uniforms?.["brightness"] : undefined).toBe(0.8);
+  });
+});
+
+/**
+ * The cue problems of a compile, by every way a compile comes by them: asked for itself (no
+ * catalogue), off the flattening it makes (a catalogue), off a flattening it is handed (the
+ * app's, one per revision), and off that flattening at a playhead. The same list each time —
+ * so nothing is said twice where the flattening's diagnostics and the compile's own meet.
+ */
+function said(graph: GraphDocument): RuntimeDiagnostic[] {
+  const system = createComponentSystem(registry, []);
+  const components = system.components.view();
+  const bare = cueProblems(compileGraph(requestFor(graph)));
+  const catalogued = requestFor(graph, { registry: system.nodes, components });
+  expect(cueProblems(compileGraph(catalogued))).toEqual(bare);
+  const flattened = flattenComponents({ graph, registry: system.nodes, components });
+  expect(cueProblems(compileGraph({ ...catalogued, flattened }))).toEqual(bare);
+  expect(cueProblems(compileGraph({ ...catalogued, flattened, resolution: { frame: frame(45) } }))).toEqual(bare);
+  return bare;
+}
+
+describe("§T1559b (2) — every cue.timeline warning of a following list is in the compile's diagnostics", () => {
+  it("untimed: a cue with no At, on the list, in the list's own words — and the timed cue still plays", () => {
+    const graph = show({ cues: [CUE_A, { name: "C", bank: "looks", preset: "bright" }] });
+    expect(said(graph)).toEqual([
+      {
+        severity: "warning",
+        code: "cue.timeline.untimed",
+        message: 'Cue "C" (show) has no At time, so the timeline skips it.',
+        nodeId: "show",
+        suggestion: "Give it a time, or run it from a second list that stays Live.",
+      },
+    ]);
+    expect(brightnessAt(graph, 45)).toBe(mix(0.2, 0.8, 0.25));
+  });
+
+  it("bank: a cue naming a bank that is not there", () => {
+    expect(said(show({ cues: [{ name: "A", bank: "nope", preset: "bright", at: 1 }] }))).toEqual([
+      {
+        severity: "warning",
+        code: "cue.timeline.bank",
+        message: 'Cue "A" (show): "nope" is not a Presets bank in this document; the timeline skips it.',
+        nodeId: "show",
+      },
+    ]);
+  });
+
+  it("preset: a cue naming a preset its bank does not hold", () => {
+    expect(said(show({ cues: [{ name: "A", bank: "looks", preset: "gone", at: 1 }] }))).toEqual([
+      {
+        severity: "warning",
+        code: "cue.timeline.preset",
+        message: 'Cue "A" (show): bank "looks" has no preset "gone" it can read; the timeline skips it.',
+        nodeId: "show",
+      },
+    ]);
+  });
+
+  it("malformed: a following list whose Cues cannot be read", () => {
+    const broken = node("show", "cueList", "show", { follow: "timeline", cues: "not a cue list" });
+    const problems = said(show({ lists: [broken] }));
+    expect(problems.map((each) => [each.severity, each.code, each.nodeId, each.suggestion])).toEqual([
+      ["warning", "cue.timeline.malformed", "show", "Fix the Cues field."],
+    ]);
+    expect(problems[0]?.message).toMatch(/^Cue list "show" follows the timeline, but .+; it drives nothing\.$/);
+  });
+
+  it("overlap: two following lists on one key, said on each of them", () => {
+    const first = node("la", "cueList", "a", { follow: "timeline", cues: serializeCueList({ version: 1, cues: [{ ...CUE_A, name: "1" }] }) });
+    const second = node("lb", "cueList", "b", { follow: "timeline", cues: serializeCueList({ version: 1, cues: [{ ...CUE_A, name: "2", at: 4 }] }) });
+    const overlap = {
+      severity: "warning",
+      code: "cue.timeline.overlap",
+      message: 'Cue lists "a" and "b" both follow the timeline and both set "level1.brightness"; their cues run as one sequence, in time order.',
+      suggestion: "Let one list set each value, or switch one of them to Live.",
+    };
+    // One row per list, each selecting its own list: the plan says it on both, and so does the compile.
+    expect(said(show({ lists: [first, second] }))).toEqual([
+      { ...overlap, nodeId: "la" },
+      { ...overlap, nodeId: "lb" },
+    ]);
+  });
+
+  /** A Layer inside a component, its Blend published as `mode` — a compile-time key on the instance's page. */
+  const stack = {
+    componentId: "stack",
+    version: 1,
+    name: "Stack",
+    graph: {
+      revision: 1,
+      groups: {},
+      nodes: {
+        solid: node("solid", "solid", "solid", { color: [1, 0, 0, 1] }),
+        layer: node("layer", "layer", "layer", { opacity: 0.5, blend: "over", picture: "solid" }),
+      },
+      edges: {},
+    },
+    inputs: [{ externalId: "below", label: "Below", nodeId: "layer", portId: "below" }],
+    outputs: [{ externalId: "out", label: "Out", nodeId: "layer", portId: "out" }],
+    parameters: [
+      {
+        key: "mode",
+        definition: {
+          type: "enum",
+          label: "Mode",
+          default: "over",
+          options: [
+            { value: "over", label: "Over" },
+            { value: "add", label: "Add" },
+          ],
+          compileTime: true,
+        },
+        targets: [{ nodeId: "layer", key: "blend" }],
+      },
+    ],
+  } as unknown as GraphComponentDefinition;
+
+  it("a document the flattening INLINES (a component instance in it) carries them the same way, once", () => {
+    const system = createComponentSystem(registry, [stack]);
+    const components = system.components.view();
+    const base = show({ cues: [CUE_A, { name: "C", bank: "looks", preset: "bright" }] });
+    const graph: GraphDocument = { ...base, nodes: { ...base.nodes, inst: node("inst", componentNodeType("stack", 1), "stack1", { mode: "over" }) } };
+    const flattened = flattenComponents({ graph, registry: system.nodes, components });
+    // The inlining walk, not the identity fast path the instance-free documents above take.
+    expect(flattened.changed).toBe(true);
+    const request = requestFor(graph, { registry: system.nodes, components });
+    for (const plan of [compileGraph(request), compileGraph({ ...request, flattened }), compileGraph({ ...request, flattened, resolution: { frame: frame(45) } })]) {
+      expect(cueProblems(plan).map((each) => [each.code, each.nodeId, each.message])).toEqual([
+        ["cue.timeline.untimed", "show", 'Cue "C" (show) has no At time, so the timeline skips it.'],
+      ]);
+    }
+  });
+
+  it("structural: a key that changes what is compiled inside a component this compile cannot read", () => {
+    const system = createComponentSystem(registry, [stack]);
+    const nodes = [
+      node("inst", componentNodeType("stack", 1), "stack1", { mode: "over" }),
+      presetBankNode("stage", "stage", "stack1", [{ name: "add", values: { stack1: { mode: "add" } } }]),
+      node("show", "cueList", "show", {
+        follow: "timeline",
+        cues: serializeCueList({ version: 1, cues: [{ name: "swap", bank: "stage", preset: "add", at: 1 }] }),
+      }),
+    ];
+    const graph: GraphDocument = { revision: 1, groups: {}, nodes: Object.fromEntries(nodes.map((each) => [each.id, each])), edges: {} };
+    // The component-AWARE registry and NO catalogue: the instance's page says the key is
+    // structural, and there is no definition to follow its fan-out through.
+    expect(cueProblems(compileGraph(requestFor(graph, { registry: system.nodes })))).toEqual([
+      {
+        severity: "warning",
+        code: "cue.timeline.structural",
+        message:
+          'Cue "swap" (show) sets "stack1.mode", which changes what is compiled inside a component whose definition cannot be read here; the timeline cannot follow its published parameter, so it is skipped.',
+        nodeId: "show",
+        suggestion: "Set it in the document, or change it from a live list.",
+      },
+    ]);
+    // With the catalogue the fan-out is followed (§T1544b), and there is nothing to say.
+    expect(cueProblems(compileGraph(requestFor(graph, { registry: system.nodes, components: system.components.view() })))).toEqual([]);
+  });
+
+  it("with the driven Morph beside them: one list of problems, each once, in the plan's order", () => {
+    const graph = show({ morph: driven("op('k1').par.value", 2), cues: [CUE_A, { name: "C", bank: "looks", preset: "bright" }] });
+    expect(said(graph).map((each) => [each.code, each.nodeId])).toEqual([
+      [DRIVEN, "looks"],
+      ["cue.timeline.untimed", "show"],
+    ]);
+  });
+});
+
+describe("§T1559b (2) — what carrying them must not do", () => {
+  it("a LIVE list is not planned at all: no At on any cue and a bank that is gone say nothing (E82's shape)", () => {
+    const graph = show({
+      follow: "live",
+      cues: [
+        { name: "A", bank: "looks", preset: "bright" },
+        { name: "B", bank: "nope", preset: "gone" },
+      ],
+    });
+    expect(said(graph)).toEqual([]);
+  });
+
+  it("never fails the compile: a cue whose shot recalls itself is skipped by the timeline, and the picture still compiles", () => {
+    const loop: Preset = { name: "loop", values: { level1: { brightness: 0.8 } }, recalls: [{ bank: "looks", preset: "loop" }] };
+    const graph = show({ presets: [loop], cues: [{ name: "A", bank: "looks", preset: "loop", at: 1 }] });
+    // The recall planner refuses it with an ERROR, which the list's own surfaces show…
+    const planned = timelineCueWarnings(graph, registry, "show").map((warning) => [warning.diagnostic.severity, warning.diagnostic.code]);
+    expect(planned).toEqual([["error", "preset.recall.cycle"]]);
+    // …and which is NOT a compile error: an error among the compile's diagnostics holds the
+    // picture on the previous plan (§V9), where the timeline only skips the cue.
+    const plan = compileGraph(requestFor(graph, { resolution: { frame: frame(45) } }));
+    expect(plan.ok).toBe(true);
+    expect(plan.diagnostics.filter((each) => each.severity === "error")).toEqual([]);
+    expect(said(graph)).toEqual([]);
+    expect(brightnessAt(graph, 45)).toBe(0.2);
   });
 });
