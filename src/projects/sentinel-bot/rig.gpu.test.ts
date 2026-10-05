@@ -6,7 +6,8 @@ import { renderHeadless } from "../../tests/headless/render-harness.ts";
 import { edge, graph, node, settings } from "../../examples/documents/builders.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 import { pathAt } from "./path.ts";
-import { JOINT_ATTRIBUTES, RIB_BLOCKS, RIB_COUNT, RIB_KERNEL, jointCount, jointKernel, stationsPerTentacle } from "./rig.ts";
+import { JOINT_ATTRIBUTES, jointCount, jointKernel, stationsPerTentacle } from "./rig.ts";
+import { BORE_ATTRIBUTES, BORE_KERNEL } from "./tunnel.ts";
 
 /**
  * T1561b — the sentinel's rig, read off the JOINT BUFFER on a real GPU.
@@ -174,40 +175,47 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     expect(shortfall).toBeGreaterThan(0.5);
   }, 120_000);
 
-  it("stands on the same centreline the CPU reads: the tunnel's rings are centred on pathAt", async () => {
-    // The WGSL path against its float64 definition, through a consumer: each ring of blocks
-    // is laid around the centreline at its own distance, so the mean of a ring IS that point.
-    const ribs = node("ribs", "pointKernel", [0, 0], { capacity: RIB_COUNT * RIB_BLOCKS, attributes: JOINT_ATTRIBUTES, kernel: RIB_KERNEL, travel: 333 });
+  it("stands on the same centreline the CPU reads: a plain bore's rings are centred on pathAt", async () => {
+    // The WGSL path against its float64 definition, through a consumer: with no relief and no
+    // deck every row of the bore is a circle round the centreline at its own distance, so the
+    // mean of a row IS that point.
+    const COLS = 33;
+    const ROWS = 48;
+    const bore = node("kernel_bore", "pointKernel", [0, 0], { capacity: COLS * ROWS, attributes: BORE_ATTRIBUTES, kernel: BORE_KERNEL, travel: 333, relief: 0, deck: 2 });
     const result = await renderHeadless({
       host: nodeGpuHost(),
       graph: graph(
         [
-          ribs,
+          node("grid_bore", "pointGrid", [0, 0], { cols: COLS, rows: ROWS, count: COLS * ROWS, sizeX: 2, sizeY: 2 }),
+          bore,
           node("mat", "materialUnlit", [0, 0], {}, { label: "mat1" }),
-          node("geo", "geometry", [0, 0], { mode: "points", material: "mat1" }, { label: "geo1" }),
+          node("geo", "geometry", [0, 0], { mode: "surface", material: "mat1" }, { label: "geo1" }),
           node("cam", "camera", [0, 0], {}, { label: "cam1" }),
           node("shot", "render", [0, 0], { scenes: "geo1", camera: "cam1", lights: "" }),
           node("out", "output", [0, 0], {}),
         ],
-        [edge("ribs-geo", ["ribs", "out"], ["geo", "points"]), edge("shot-out", ["shot", "out"], ["out", "input"])],
+        [edge("grid-bore", ["grid_bore", "out"], ["kernel_bore", "in"]), edge("bore-geo", ["kernel_bore", "out"], ["geo", "points"]), edge("shot-out", ["shot", "out"], ["out", "input"])],
       ),
       settings: settings({ outputResolution: { width: 64, height: 64 } }),
       frames: 1,
       outputNodeId: "out",
-      probeBuffers: [pointStorageId("ribs")],
+      probeBuffers: [pointStorageId("kernel_bore")],
     });
-    const packed = (result.buffers ?? {})[pointStorageId("ribs")];
+    const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+    if (errors.length > 0) throw new Error(errors.map((diagnostic) => diagnostic.message).join("; "));
+    const packed = (result.buffers ?? {})[pointStorageId("kernel_bore")];
     if (packed === undefined) throw new Error("probe buffers missing");
-    const floats = kernelRegionSlice(ribs as never, packed, "position").floats;
-    const stride = floats.length / (RIB_COUNT * RIB_BLOCKS);
-    for (let rib = 0; rib < RIB_COUNT; rib += 1) {
+    const floats = kernelRegionSlice(bore as never, packed, "position").floats;
+    const stride = floats.length / (COLS * ROWS);
+    for (let row = 0; row < ROWS; row += 1) {
       const mean: Vec = [0, 0, 0];
-      for (let block = 0; block < RIB_BLOCKS; block += 1) {
-        const base = (rib * RIB_BLOCKS + block) * stride;
-        for (let axis = 0; axis < 3; axis += 1) mean[axis] = (mean[axis] as number) + (floats[base + axis] as number) / RIB_BLOCKS;
+      // The last column repeats the first (the seam), so a turn is the first COLS − 1.
+      for (let column = 0; column < COLS - 1; column += 1) {
+        const base = (row * COLS + column) * stride;
+        for (let axis = 0; axis < 3; axis += 1) mean[axis] = (mean[axis] as number) + (floats[base + axis] as number) / (COLS - 1);
       }
       const expected = pathAt(mean[2]);
-      // At z ≈ 333 m a float resolves 3e-5 m; the mean of 24 such readings is good to that.
+      // At z ≈ 333 m a float resolves 3e-5 m; the mean of 32 such readings is good to that.
       expect(Math.abs(mean[0] - expected[0])).toBeLessThan(1e-4);
       expect(Math.abs(mean[1] - expected[1])).toBeLessThan(1e-4);
     }

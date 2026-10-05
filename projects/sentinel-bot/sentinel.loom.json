@@ -3,6 +3,142 @@
   "createdAt": "2026-10-05T00:00:00.000Z",
   "graph": {
     "edges": {
+      "bloom-down1": {
+        "id": "bloom-down1",
+        "source": {
+          "nodeId": "wgsl_bright",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bloomdown1",
+          "portId": "input"
+        }
+      },
+      "bloom-down2": {
+        "id": "bloom-down2",
+        "source": {
+          "nodeId": "wgsl_bloomdown1",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bloomdown2",
+          "portId": "input"
+        }
+      },
+      "bloom-down3": {
+        "id": "bloom-down3",
+        "source": {
+          "nodeId": "wgsl_bloomdown2",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bloomdown3",
+          "portId": "input"
+        }
+      },
+      "bloom-down4": {
+        "id": "bloom-down4",
+        "source": {
+          "nodeId": "wgsl_bloomdown3",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bloomdown4",
+          "portId": "input"
+        }
+      },
+      "bloom-up0-lower": {
+        "id": "bloom-up0-lower",
+        "source": {
+          "nodeId": "wgsl_bloomup1",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bloomup0",
+          "portId": "input"
+        }
+      },
+      "bloom-up0-own": {
+        "id": "bloom-up0-own",
+        "order": 0,
+        "source": {
+          "nodeId": "wgsl_bright",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bloomup0",
+          "portId": "more"
+        }
+      },
+      "bloom-up1-lower": {
+        "id": "bloom-up1-lower",
+        "source": {
+          "nodeId": "wgsl_bloomup2",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bloomup1",
+          "portId": "input"
+        }
+      },
+      "bloom-up1-own": {
+        "id": "bloom-up1-own",
+        "order": 0,
+        "source": {
+          "nodeId": "wgsl_bloomdown1",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bloomup1",
+          "portId": "more"
+        }
+      },
+      "bloom-up2-lower": {
+        "id": "bloom-up2-lower",
+        "source": {
+          "nodeId": "wgsl_bloomup3",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bloomup2",
+          "portId": "input"
+        }
+      },
+      "bloom-up2-own": {
+        "id": "bloom-up2-own",
+        "order": 0,
+        "source": {
+          "nodeId": "wgsl_bloomdown2",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bloomup2",
+          "portId": "more"
+        }
+      },
+      "bloom-up3-lower": {
+        "id": "bloom-up3-lower",
+        "source": {
+          "nodeId": "wgsl_bloomdown4",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bloomup3",
+          "portId": "input"
+        }
+      },
+      "bloom-up3-own": {
+        "id": "bloom-up3-own",
+        "order": 0,
+        "source": {
+          "nodeId": "wgsl_bloomdown3",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bloomup3",
+          "portId": "more"
+        }
+      },
       "body-geo0": {
         "id": "body-geo0",
         "source": {
@@ -11,6 +147,17 @@
         },
         "target": {
           "nodeId": "bodyGeo0",
+          "portId": "points"
+        }
+      },
+      "bore-geo": {
+        "id": "bore-geo",
+        "source": {
+          "nodeId": "kernel_bore",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "geometry_bore",
           "portId": "points"
         }
       },
@@ -36,6 +183,18 @@
           "portId": "in"
         }
       },
+      "depth-haze": {
+        "id": "depth-haze",
+        "order": 0,
+        "source": {
+          "nodeId": "shot",
+          "portId": "depth"
+        },
+        "target": {
+          "nodeId": "wgsl_haze",
+          "portId": "more"
+        }
+      },
       "ease-travel": {
         "id": "ease-travel",
         "source": {
@@ -45,6 +204,61 @@
         "target": {
           "nodeId": "travel",
           "portId": "in"
+        }
+      },
+      "glow-back": {
+        "id": "glow-back",
+        "source": {
+          "nodeId": "wgsl_haze",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "add_glow",
+          "portId": "in2"
+        }
+      },
+      "glow-front": {
+        "id": "glow-front",
+        "source": {
+          "nodeId": "wgsl_bloomup0",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "add_glow",
+          "portId": "in1"
+        }
+      },
+      "glow-out": {
+        "id": "glow-out",
+        "source": {
+          "nodeId": "add_glow",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "out",
+          "portId": "input"
+        }
+      },
+      "grid-bore": {
+        "id": "grid-bore",
+        "source": {
+          "nodeId": "grid_bore",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "kernel_bore",
+          "portId": "in"
+        }
+      },
+      "haze-bright": {
+        "id": "haze-bright",
+        "source": {
+          "nodeId": "wgsl_haze",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bright",
+          "portId": "input"
         }
       },
       "hits-lag": {
@@ -188,7 +402,7 @@
       },
       "panel-perch": {
         "id": "panel-perch",
-        "order": 12,
+        "order": 13,
         "source": {
           "nodeId": "perch",
           "portId": "out"
@@ -203,6 +417,18 @@
         "order": 11,
         "source": {
           "nodeId": "react",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-slider_haze": {
+        "id": "panel-slider_haze",
+        "order": 12,
+        "source": {
+          "nodeId": "slider_haze",
           "portId": "out"
         },
         "target": {
@@ -248,7 +474,7 @@
       },
       "panel-view": {
         "id": "panel-view",
-        "order": 13,
+        "order": 14,
         "source": {
           "nodeId": "view",
           "portId": "out"
@@ -292,17 +518,6 @@
           "portId": "in"
         }
       },
-      "ribs-geo": {
-        "id": "ribs-geo",
-        "source": {
-          "nodeId": "ribs",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "ribGeo",
-          "portId": "points"
-        }
-      },
       "robot-body0": {
         "id": "robot-body0",
         "source": {
@@ -314,14 +529,14 @@
           "portId": "in"
         }
       },
-      "shot-out": {
-        "id": "shot-out",
+      "shot-haze": {
+        "id": "shot-haze",
         "source": {
           "nodeId": "shot",
           "portId": "out"
         },
         "target": {
-          "nodeId": "out",
+          "nodeId": "wgsl_haze",
           "portId": "input"
         }
       },
@@ -350,83 +565,21 @@
     },
     "groups": {},
     "nodes": {
-      "beam": {
+      "add_glow": {
         "definitionVersion": 1,
-        "id": "beam",
-        "label": "beam1",
+        "id": "add_glow",
+        "label": "add_glow",
         "parameters": {
-          "color": [
-            0.55,
-            0.8,
-            1,
-            1
-          ],
-          "falloff": "inverseSquare",
-          "intensity": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('lamp').chan.lamp * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.8)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 26
-              }
-            },
-            "mode": "expression"
-          },
-          "kind": "point",
-          "position": [
-            0,
-            1.6,
-            7
-          ],
-          "position.x": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('travel1').chan.value + 7)) + 0.4) + 5.0 * sin(0.085084801 * ((op('travel1').chan.value + 7)) + 1.9)) + 0"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "position.y": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('travel1').chan.value + 7)) + 2.2) + 2.5 * sin(0.0719948316 * ((op('travel1').chan.value + 7)) + 0.7)) + 1.6"
-              },
-              "static": {
-                "kind": "static",
-                "value": 1.6
-              }
-            },
-            "mode": "expression"
-          },
-          "position.z": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(op('travel1').chan.value + 7)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 7
-              }
-            },
-            "mode": "expression"
-          },
-          "range": 40
+          "opacity": 0.4
         },
         "position": {
-          "x": -1500,
-          "y": -150
+          "x": 300,
+          "y": 0
         },
-        "type": "light"
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "add"
       },
       "body0": {
         "definitionVersion": 1,
@@ -809,7 +962,10 @@
             },
             "mode": "expression"
           },
-          "range": 14
+          "range": 14,
+          "shadowExtent": 14,
+          "shadowSoftness": 1,
+          "shadows": true
         },
         "position": {
           "x": -1500,
@@ -835,6 +991,38 @@
         },
         "type": "slider"
       },
+      "geometry_bore": {
+        "definitionVersion": 1,
+        "id": "geometry_bore",
+        "label": "geometry_bore",
+        "parameters": {
+          "material": "material_bore",
+          "mode": "surface",
+          "tint": {
+            "bindings": {
+              "map": {
+                "attribute": "tint",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            },
+            "mode": "map"
+          }
+        },
+        "position": {
+          "x": -1800,
+          "y": 1200
+        },
+        "type": "geometry"
+      },
       "glow": {
         "definitionVersion": 1,
         "id": "glow",
@@ -852,6 +1040,23 @@
           "y": 2000
         },
         "type": "slider"
+      },
+      "grid_bore": {
+        "definitionVersion": 1,
+        "id": "grid_bore",
+        "label": "grid_bore",
+        "parameters": {
+          "cols": 256,
+          "count": 196608,
+          "rows": 768,
+          "sizeX": 2,
+          "sizeY": 2
+        },
+        "position": {
+          "x": -2400,
+          "y": 1200
+        },
+        "type": "pointGrid"
       },
       "grip": {
         "definitionVersion": 1,
@@ -1110,30 +1315,46 @@
         },
         "type": "pointKernel"
       },
-      "key": {
+      "kernel_bore": {
         "definitionVersion": 1,
-        "id": "key",
-        "label": "key1",
+        "id": "kernel_bore",
+        "label": "kernel_bore",
         "parameters": {
-          "color": [
-            0.6,
-            0.78,
-            1,
-            1
-          ],
-          "direction": [
-            -0.3,
-            -0.8,
-            0.5
-          ],
-          "intensity": 1.4,
-          "kind": "directional"
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0,0,0,0]}]",
+          "bore": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('bore').chan.bore"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.6
+              }
+            },
+            "mode": "expression"
+          },
+          "capacity": 196608,
+          "kernel": "// T1561b — the tunnel's bore (src/projects/sentinel-bot/tunnel.ts).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the tunnel, metres.\n  bore: f32, // @default 2.6  Radius the claws plant on, metres: the ribs' crests.\n  relief: f32, // @default 1  How much of the ribs, pipes and plates stands off the liner: 0 is a plain pipe.\n  deck: f32, // @default 0.74  How far below the axis the flat deck lies, as a share of the radius; 1 or more is no deck.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\nconst ROW: f32 = 0.15000;\nconst RIB: f32 = 1.60000;\nconst RUNS: u32 = 9u;\nconst RUN = array<vec3f, 9>(vec3f(0.4200, 0.0750, 0.1300), vec3f(0.6200, 0.0350, 0.0700), vec3f(0.7000, 0.0350, 0.0700), vec3f(2.5000, 0.0900, 0.1500), vec3f(2.7400, 0.0300, 0.0600), vec3f(1.1800, 0.0280, 0.0550), vec3f(1.9800, 0.0280, 0.0550), vec3f(3.5500, 0.0500, 0.1000), vec3f(5.8500, 0.0500, 0.1000));\n\nfn plate(a: u32, b: u32) -> f32 {\n  let x = (a * 747796405u) ^ (b * 2891336453u);\n  let w = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;\n  return f32((w >> 22u) ^ w) / 4294967295.0;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  // Rows stand at whole multiples of the row spacing, so the wall holds still while the window slides along it.\n  let z = (floor(ctx.params.travel / ROW) + f32(ctx.dim.j) - 180.0) * ROW;\n  // The seam is under the deck: the first and last column are the same line.\n  let around = f32(ctx.dim.i) / f32(ctx.dim.cols - 1u);\n  let theta = (around - 0.25) * 6.2831853;\n  let wall = pathFrame(z);\n  let radial = wall.right * cos(theta) + wall.up * sin(theta);\n\n  let liner = ctx.params.bore + 0.05;\n  var radius = liner;\n  var what = 0.0;\n  // Plates: a panel every rib bay and every eighth of a turn, set a little in or out.\n  let bay = floor(z / RIB);\n  let panel = plate(u32(bay - floor(bay / 600.0) * 600.0), u32(around * 8.0));\n  radius = radius - (panel - 0.5) * 0.05 * ctx.params.relief;\n  // Pipes and cable runs along the wall.\n  let angle = theta - 6.2831853 * floor(theta / 6.2831853);\n  for (var i = 0u; i < RUNS; i = i + 1u) {\n    let across = abs(angle - RUN[i].x) / RUN[i].y;\n    if (across < 1.0) {\n      radius = min(radius, liner - RUN[i].z * sqrt(1.0 - across * across) * ctx.params.relief);\n      what = 2.0;\n    }\n  }\n  // Ribs: a ring that stands in to the radius the claws plant on.\n  let alongBay = abs(z - (bay + 0.5) * RIB);\n  let rib = 1.0 - smoothstep(0.08, 0.17, alongBay);\n  if (rib > 0.0) {\n    radius = min(radius, mix(radius, ctx.params.bore - 0.12, rib * ctx.params.relief));\n    what = mix(what, 1.0, step(0.5, rib));\n  }\n  // The deck: nothing hangs below it.\n  let floorAt = ctx.params.bore * ctx.params.deck;\n  if (sin(theta) < 0.0 && radius * -sin(theta) > floorAt) {\n    radius = floorAt / -sin(theta);\n    what = 3.0;\n  }\n  q.position = wall.origin + radial * radius;\n  q.tint = vec4f(what, panel, around, z);\n  return q;\n}",
+          "travel": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('travel1').chan.value"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
         },
         "position": {
-          "x": -1500,
-          "y": -450
+          "x": -2100,
+          "y": 1200
         },
-        "type": "light"
+        "type": "pointKernel"
       },
       "lamp": {
         "definitionVersion": 1,
@@ -1167,6 +1388,270 @@
         },
         "type": "valueLag"
       },
+      "light_lamp0": {
+        "definitionVersion": 1,
+        "id": "light_lamp0",
+        "label": "light_lamp0",
+        "parameters": {
+          "color": [
+            0.62,
+            0.84,
+            1,
+            1
+          ],
+          "falloff": "inverseSquare",
+          "intensity": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('lamp').chan.lamp * clamp(1.5 - abs(((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8) - op('travel1').chan.value) / 12.8, 0, 1) * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "kind": "point",
+          "position": [
+            0,
+            2.25,
+            -6.4
+          ],
+          "position.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "position.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "position.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": -6.4
+              }
+            },
+            "mode": "expression"
+          },
+          "range": 30
+        },
+        "position": {
+          "x": -1500,
+          "y": -150
+        },
+        "type": "light"
+      },
+      "light_lamp1": {
+        "definitionVersion": 1,
+        "id": "light_lamp1",
+        "label": "light_lamp1",
+        "parameters": {
+          "color": [
+            0.62,
+            0.84,
+            1,
+            1
+          ],
+          "falloff": "inverseSquare",
+          "intensity": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('lamp').chan.lamp * clamp(1.5 - abs(((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8) - op('travel1').chan.value) / 12.8, 0, 1) * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 26
+              }
+            },
+            "mode": "expression"
+          },
+          "kind": "point",
+          "position": [
+            0,
+            2.25,
+            6.4
+          ],
+          "position.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "position.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "position.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 6.4
+              }
+            },
+            "mode": "expression"
+          },
+          "range": 30,
+          "shadowExtent": 30,
+          "shadowSoftness": 1,
+          "shadows": true
+        },
+        "position": {
+          "x": -1500,
+          "y": 0
+        },
+        "type": "light"
+      },
+      "light_lamp2": {
+        "definitionVersion": 1,
+        "id": "light_lamp2",
+        "label": "light_lamp2",
+        "parameters": {
+          "color": [
+            0.62,
+            0.84,
+            1,
+            1
+          ],
+          "falloff": "inverseSquare",
+          "intensity": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('lamp').chan.lamp * clamp(1.5 - abs(((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8) - op('travel1').chan.value) / 12.8, 0, 1) * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "kind": "point",
+          "position": [
+            0,
+            2.25,
+            19.200000000000003
+          ],
+          "position.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "position.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "position.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 19.200000000000003
+              }
+            },
+            "mode": "expression"
+          },
+          "range": 30
+        },
+        "position": {
+          "x": -1500,
+          "y": 150
+        },
+        "type": "light"
+      },
+      "material_bore": {
+        "definitionVersion": 1,
+        "id": "material_bore",
+        "label": "material_bore",
+        "parameters": {
+          "lamp": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('lamp').chan.lamp * 0.55 * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 14
+              }
+            },
+            "mode": "expression"
+          },
+          "model": "pbr",
+          "source": "// @use surface-detail\nstruct Params {\n  wet: f32, // @default 0.7  How much of the wall carries a film of water.\n  grime: f32, // @default 0.6  Rust and soot in the recesses.\n  lamp: f32, // @default 14  Radiance of the lamp plates in the crown.\n  lampColor: vec3f, // @default [0.62, 0.84, 1]  Their colour.\n};\n\nconst LAMP: f32 = 12.80000;\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let what = s.tint.r;\n  let around = s.tint.b;\n  let along = s.tint.a;\n  let coarse = detailFbm(s.world * 1.7, 4, s.footprint);\n  let fine = detailFbm(s.world * 13.0, 3, s.footprint);\n  // Water runs down from the crown in streaks and pools on the deck.\n  let streak = detailFbm(vec3f(around * 90.0, along * 0.6, 3.0), 3, s.footprint).value;\n  let film = clamp(p.wet * (0.35 + 0.9 * smoothstep(0.42, 0.7, streak) + 0.5 * step(2.5, what)), 0.0, 1.0);\n  let recess = smoothstep(0.35, 0.75, coarse.value);\n\n  var albedo = vec3f(0.035, 0.038, 0.042);\n  var rough = 0.72;\n  var metal = 0.0;\n  if (what > 2.5) {\n    // The deck: plate steel.\n    albedo = vec3f(0.03, 0.031, 0.033);\n    rough = 0.5;\n    metal = 0.85;\n  } else if (what > 1.5) {\n    // Pipes and cable runs: painted, chipped.\n    albedo = mix(vec3f(0.05, 0.055, 0.06), vec3f(0.07, 0.03, 0.02), step(0.55, s.tint.g));\n    rough = 0.45;\n    metal = 0.4;\n  } else if (what > 0.5) {\n    // Ribs: bare steel.\n    albedo = vec3f(0.045, 0.046, 0.05);\n    rough = 0.4;\n    metal = 0.9;\n  }\n  let rust = recess * p.grime;\n  albedo = mix(albedo, vec3f(0.07, 0.028, 0.012), rust * 0.6) * (1.0 - 0.45 * rust);\n  rough = mix(rough + 0.2 * rust, 0.07, film);\n\n  o.albedo = vec4f(albedo, 1.0);\n  o.roughness = clamp(rough, 0.05, 1.0);\n  o.metallic = metal;\n  o.normal = detailBump(s.normal, coarse.gradient * 1.7 + fine.gradient * 13.0 * 0.25, 0.05 * (1.0 - 0.7 * film));\n\n  // A lamp plate in the crown at every lamp station; each has its own steadiness.\n  let station = floor(along / LAMP);\n  let onPlate = (1.0 - smoothstep(0.3, 0.36, abs(along - (station + 0.5) * LAMP))) * (1.0 - smoothstep(0.012, 0.016, abs(around - 0.5)));\n  let nerve = fract(sin(station * 12.9898) * 43758.5453);\n  let flicker = 1.0 - step(0.82, nerve) * step(0.6, fract(sin(floor(s.absTime * 11.0) * 78.233 + station) * 43758.5453)) * 0.8;\n  o.emissive = o.emissive + p.lampColor * p.lamp * onPlate * flicker;\n  return o;\n}"
+        },
+        "position": {
+          "x": -2100,
+          "y": 1400
+        },
+        "type": "materialWgsl"
+      },
       "out": {
         "definitionVersion": 1,
         "id": "out",
@@ -1175,7 +1660,7 @@
           "toneMap": "filmic"
         },
         "position": {
-          "x": -900,
+          "x": 600,
           "y": 0
         },
         "type": "output"
@@ -1185,7 +1670,7 @@
         "id": "panel",
         "label": "panel1",
         "parameters": {
-          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":6,\"h\":1}},\n    {\"member\":\"perch\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":6,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"bore\",\"rect\":{\"x\":6,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"lamp\",\"rect\":{\"x\":6,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"glow\",\"rect\":{\"x\":6,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"distance\",\"rect\":{\"x\":6,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"react\",\"rect\":{\"x\":6,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"view\",\"rect\":{\"x\":6,\"y\":6,\"w\":3,\"h\":3}}\n  ]\n}",
+          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":6,\"h\":1}},\n    {\"member\":\"perch\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":6,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"bore\",\"rect\":{\"x\":6,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"lamp\",\"rect\":{\"x\":6,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"glow\",\"rect\":{\"x\":6,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"distance\",\"rect\":{\"x\":6,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"react\",\"rect\":{\"x\":6,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":6,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"view\",\"rect\":{\"x\":6,\"y\":7,\"w\":3,\"h\":3}}\n  ]\n}",
           "title": "Sentinel"
         },
         "position": {
@@ -1291,99 +1776,6 @@
         },
         "type": "slider"
       },
-      "ribGeo": {
-        "definitionVersion": 1,
-        "id": "ribGeo",
-        "label": "ribgeo1",
-        "parameters": {
-          "material": "steel1",
-          "mode": "instances",
-          "orient": {
-            "bindings": {
-              "map": {
-                "attribute": "orient",
-                "kind": "map"
-              },
-              "static": {
-                "kind": "static",
-                "value": [
-                  0,
-                  0,
-                  0,
-                  1
-                ]
-              }
-            },
-            "mode": "map"
-          },
-          "scale": 0.42,
-          "shape": "box",
-          "tint": {
-            "bindings": {
-              "map": {
-                "attribute": "tint",
-                "kind": "map"
-              },
-              "static": {
-                "kind": "static",
-                "value": [
-                  1,
-                  1,
-                  1,
-                  1
-                ]
-              }
-            },
-            "mode": "map"
-          }
-        },
-        "position": {
-          "x": -1800,
-          "y": 1200
-        },
-        "type": "geometry"
-      },
-      "ribs": {
-        "definitionVersion": 1,
-        "id": "ribs",
-        "label": "ribs1",
-        "parameters": {
-          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"orient\",\"type\":\"vec4f\",\"qualifier\":\"quaternion\",\"default\":[0,0,0,1]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"kind\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"slip\",\"type\":\"f32\",\"default\":[0]}]",
-          "bore": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('bore').chan.bore"
-              },
-              "static": {
-                "kind": "static",
-                "value": 2.6
-              }
-            },
-            "mode": "expression"
-          },
-          "capacity": 1536,
-          "kernel": "// T1561b — stand-in tunnel ribs (src/projects/sentinel-bot/rig.ts).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the tunnel, metres.\n  bore: f32, // @default 2.6  Radius of the wall, metres.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\nconst RIB: f32 = 1.60000;\nconst AROUND: u32 = 24u;\n\nfn ribFrame(x: vec3f, y: vec3f, z: vec3f) -> vec4f {\n  // x, y, z orthonormal and right-handed, y the largest diagonal term for a block facing the axis from below; the general form is in the joint kernel.\n  let trace = x.x + y.y + z.z;\n  if (trace > 0.0) {\n    let s = sqrt(trace + 1.0) * 2.0;\n    return vec4f((y.z - z.y) / s, (z.x - x.z) / s, (x.y - y.x) / s, 0.25 * s);\n  }\n  if (x.x > y.y && x.x > z.z) {\n    let s = sqrt(1.0 + x.x - y.y - z.z) * 2.0;\n    return vec4f(0.25 * s, (y.x + x.y) / s, (z.x + x.z) / s, (y.z - z.y) / s);\n  }\n  if (y.y > z.z) {\n    let s = sqrt(1.0 + y.y - x.x - z.z) * 2.0;\n    return vec4f((y.x + x.y) / s, 0.25 * s, (z.y + y.z) / s, (z.x - x.z) / s);\n  }\n  let s = sqrt(1.0 + z.z - x.x - y.y) * 2.0;\n  return vec4f((z.x + x.z) / s, (z.y + y.z) / s, 0.25 * s, (x.y - y.x) / s);\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let rib = ctx.index / AROUND;\n  let z = (floor(ctx.params.travel / RIB) + f32(rib) - 14.0) * RIB;\n  let wall = pathFrame(z);\n  let theta = (f32(ctx.index % AROUND) + 0.5) / f32(AROUND) * 6.2831853;\n  let radial = wall.right * cos(theta) + wall.up * sin(theta);\n  q.position = wall.origin + radial * (ctx.params.bore + 0.2);\n  q.orient = ribFrame(cross(radial, wall.forward), radial, wall.forward);\n  q.tint = vec4f(vec3f(0.22, 0.24, 0.27), 1.0);\n  return q;\n}",
-          "travel": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('travel1').chan.value"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          }
-        },
-        "position": {
-          "x": -2100,
-          "y": 1200
-        },
-        "type": "pointKernel"
-      },
       "rings": {
         "definitionVersion": 1,
         "id": "rings",
@@ -1478,23 +1870,42 @@
             0.8,
             1
           ],
-          "ambientIntensity": 0.12,
+          "ambientIntensity": 0.015,
           "antialias": "msaa",
           "background": [
-            0.004,
-            0.006,
-            0.01,
+            0,
+            0,
+            0,
             1
           ],
           "camera": "cam1",
-          "lights": "key1 eyes1 beam1",
-          "scenes": "bodygeo0_1 rings1 hubs1 claws1 ribgeo1"
+          "depthOutput": true,
+          "lights": "eyes1 light_lamp0 light_lamp1 light_lamp2",
+          "scenes": "bodygeo0_1 rings1 hubs1 claws1 geometry_bore"
         },
         "position": {
           "x": -1200,
           "y": 0
         },
         "type": "render"
+      },
+      "slider_haze": {
+        "definitionVersion": 1,
+        "id": "slider_haze",
+        "label": "slider_haze",
+        "parameters": {
+          "caption": "Haze",
+          "channel": "haze",
+          "max": 0.12,
+          "min": 0,
+          "step": 0,
+          "value": 0.035
+        },
+        "position": {
+          "x": -3600,
+          "y": 2250
+        },
+        "type": "slider"
       },
       "smooth": {
         "definitionVersion": 1,
@@ -1662,6 +2073,199 @@
           "y": 1750
         },
         "type": "slider"
+      },
+      "wgsl_bloomdown1": {
+        "definitionVersion": 1,
+        "id": "wgsl_bloomdown1",
+        "label": "wgsl_bloomdown1",
+        "parameters": {
+          "clampLuma": 1,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -300,
+          "y": 300
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "wgsl_bloomdown2": {
+        "definitionVersion": 1,
+        "id": "wgsl_bloomdown2",
+        "label": "wgsl_bloomdown2",
+        "parameters": {
+          "clampLuma": 0,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -300,
+          "y": 450
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "wgsl_bloomdown3": {
+        "definitionVersion": 1,
+        "id": "wgsl_bloomdown3",
+        "label": "wgsl_bloomdown3",
+        "parameters": {
+          "clampLuma": 0,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -300,
+          "y": 600
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "wgsl_bloomdown4": {
+        "definitionVersion": 1,
+        "id": "wgsl_bloomdown4",
+        "label": "wgsl_bloomdown4",
+        "parameters": {
+          "clampLuma": 0,
+          "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+        },
+        "position": {
+          "x": -300,
+          "y": 750
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "wgsl_bloomup0": {
+        "definitionVersion": 1,
+        "id": "wgsl_bloomup0",
+        "label": "wgsl_bloomup0",
+        "parameters": {
+          "lower": 1,
+          "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+        },
+        "position": {
+          "x": 0,
+          "y": 150
+        },
+        "resolution": {
+          "factor": 2,
+          "mode": "scale"
+        },
+        "type": "customWgslMulti"
+      },
+      "wgsl_bloomup1": {
+        "definitionVersion": 1,
+        "id": "wgsl_bloomup1",
+        "label": "wgsl_bloomup1",
+        "parameters": {
+          "lower": 1,
+          "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+        },
+        "position": {
+          "x": 0,
+          "y": 300
+        },
+        "resolution": {
+          "factor": 2,
+          "mode": "scale"
+        },
+        "type": "customWgslMulti"
+      },
+      "wgsl_bloomup2": {
+        "definitionVersion": 1,
+        "id": "wgsl_bloomup2",
+        "label": "wgsl_bloomup2",
+        "parameters": {
+          "lower": 1,
+          "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+        },
+        "position": {
+          "x": 0,
+          "y": 450
+        },
+        "resolution": {
+          "factor": 2,
+          "mode": "scale"
+        },
+        "type": "customWgslMulti"
+      },
+      "wgsl_bloomup3": {
+        "definitionVersion": 1,
+        "id": "wgsl_bloomup3",
+        "label": "wgsl_bloomup3",
+        "parameters": {
+          "lower": 1,
+          "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+        },
+        "position": {
+          "x": 0,
+          "y": 600
+        },
+        "resolution": {
+          "factor": 2,
+          "mode": "scale"
+        },
+        "type": "customWgslMulti"
+      },
+      "wgsl_bright": {
+        "definitionVersion": 1,
+        "id": "wgsl_bright",
+        "label": "wgsl_bright",
+        "parameters": {
+          "knee": 1,
+          "source": "struct Params {\n  threshold: f32, // @default 1.2  Linear radiance where bloom starts.\n  knee: f32, // @default 0.8  Softness of the threshold.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n  let brightness = max(color.r, max(color.g, color.b));\n  let soft = clamp(brightness - params.threshold + params.knee, 0.0, 2.0 * params.knee);\n  let weight = max(soft * soft / (4.0 * params.knee + 1e-4), brightness - params.threshold) / max(brightness, 1e-4);\n  return vec4f(color * weight, 1.0);\n}",
+          "threshold": 1.4
+        },
+        "position": {
+          "x": -600,
+          "y": 300
+        },
+        "resolution": {
+          "factor": 0.5,
+          "mode": "scale"
+        },
+        "type": "customWgsl"
+      },
+      "wgsl_haze": {
+        "definitionVersion": 1,
+        "id": "wgsl_haze",
+        "label": "wgsl_haze",
+        "parameters": {
+          "density": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_haze').chan.haze"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.035
+              }
+            },
+            "mode": "expression"
+          },
+          "far": 240,
+          "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\nstruct Params {\n  density: f32, // @default 0.035  How fast the air closes in, per metre.\n  color: vec3f, // @default [0.012, 0.022, 0.034]  What the far end of the tunnel fades to.\n  far: f32, // @default 240  The camera's far plane (depth arrives as distance ÷ far).\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let lit = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let size = vec2f(textureDimensions(inputTexture1));\n  let depth = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).r;\n  // Nothing drawn here: the tunnel's own dark, all haze.\n  let distance = select(depth * params.far, params.far, depth <= 0.0 || depth >= 0.9999);\n  let clear = exp(-distance * params.density);\n  return vec4f(mix(params.color, lit.rgb, clear), lit.a);\n}"
+        },
+        "position": {
+          "x": -900,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgslMulti"
       }
     },
     "revision": 1

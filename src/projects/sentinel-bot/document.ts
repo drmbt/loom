@@ -6,8 +6,10 @@ import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from 
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import type { KitFacts, Vec3 } from "./kit.ts";
 import { PATH, pathExpression } from "./path.ts";
-import { BODY_ATTRIBUTES, BODY_KERNEL, JOINT_ATTRIBUTES, RIB_BLOCKS, RIB_COUNT, RIB_KERNEL, jointCount, jointKernel } from "./rig.ts";
+import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
+import { BODY_ATTRIBUTES, BODY_KERNEL, JOINT_ATTRIBUTES, jointCount, jointKernel } from "./rig.ts";
 import { HULL_SURFACE_WGSL } from "./surface.ts";
+import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMP_SPACING } from "./tunnel.ts";
 
 /**
  * T1561b — THE SENTINEL DOCUMENT: a robot walking, swimming and perching in the tunnel, played
@@ -19,8 +21,12 @@ import { HULL_SURFACE_WGSL } from "./surface.ts";
  * Perch — and every one of them reaches a parameter as an ordinary expression, where the
  * track's lanes are mixed in.
  *
- * What is NOT here yet is the look: the joints are drawn as boxes and the tunnel as rings of
- * blocks until a mesh can be instanced (§T1581b).
+ * The tunnel is a lit surface inside the Render (tunnel.ts), with a lamp plate in its crown
+ * every 12.8 m; the three lamps nearest the robot are real lights and fade in and out with
+ * distance, so the set can change without a pop. Air and bloom follow.
+ *
+ * What is NOT here yet: the joints are drawn as boxes until a mesh can be instanced (§T1581b),
+ * and three lamps are all a forward Render affords (§T1589b).
  */
 
 export interface SentinelDocumentOptions {
@@ -64,10 +70,11 @@ const SCENE: readonly Slider[] = [
   { name: "glow", caption: "Eyes", value: 9, min: 0, max: 30 },
   { name: "distance", caption: "Camera distance", value: 7.5, min: -9, max: 12 },
   { name: "react", caption: "Listen", value: 1, min: 0, max: 2 },
+  { name: "slider_haze", caption: "Haze", value: 0.035, min: 0, max: 0.12 },
 ];
 
-/** A control's value: the widget named `name` publishes a channel of the same name. */
-const on = (name: string): string => `op('${name}').chan.${name}`;
+/** A control's value. A widget publishes a channel named for its role: `speed`, or `haze` for `slider_haze` (§T1593b names nodes kind_role). */
+const on = (name: string): string => `op('${name}').chan.${name.slice(name.indexOf("_") + 1)}`;
 const LISTEN = on("react");
 const LOW = `(op('levels1').chan.low * ${LISTEN})`;
 const HIGH = `(op('levels1').chan.high * ${LISTEN})`;
@@ -89,7 +96,17 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const eye = onPath(`(0 - ${on("distance")})`, "op('view').chan.viewX", "op('view').chan.viewY", [1.1, 0.6, -7.5]);
   const aim = onPath("0.6", "0", "0", [0, 0, 0.6]);
   const glow = onPath("0.9", "0", "0", [0, 0, 0.9]);
-  const lamp = onPath("7", "0", "1.6", [0, 1.6, 7]);
+  /** The lamp station `step` stations from the one the robot is under: where it hangs, and how much of it is lit (1 within half a spacing, 0 a spacing and a half away, so the three in use trade places unseen). */
+  const lampAt = (step: number): { position: Record<"x" | "y" | "z", StoredParameter>; near: string } => {
+    const z = `((floor(${TRAVEL} / ${LAMP_SPACING}) + ${step + 0.5}) * ${LAMP_SPACING})`;
+    const at = pathExpression(z);
+    const rest = (step + 0.5) * LAMP_SPACING;
+    return {
+      position: { x: expressionSlot(at.x, 0), y: expressionSlot(`${at.y} + ${on("bore")} - 0.35`, 2.25), z: expressionSlot(z, rest) },
+      near: `clamp(1.5 - abs(${z} - ${TRAVEL}) / ${LAMP_SPACING}, 0, 1)`,
+    };
+  };
+  const lamps = [-1, 0, 1].map(lampAt);
   const boxes = (id: string, kind: number, scale: number, position: readonly [number, number]): GraphNode =>
     node(id, "geometry", position, {
       mode: "instances",
@@ -103,7 +120,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
 
   const sliders = [...ROBOT, ...SCENE];
   const controls: GraphNode[] = [
-    ...sliders.map((slider, index) => node(slider.name, "slider", [-3600 + (index % 4) * 300, 1500 + Math.floor(index / 4) * 250], { channel: slider.name, caption: slider.caption, value: slider.value, min: slider.min, max: slider.max, step: 0 }, { label: slider.name })),
+    ...sliders.map((slider, index) => node(slider.name, "slider", [-3600 + (index % 4) * 300, 1500 + Math.floor(index / 4) * 250], { channel: slider.name.slice(slider.name.indexOf("_") + 1), caption: slider.caption, value: slider.value, min: slider.min, max: slider.max, step: 0 }, { label: slider.name })),
     node("perch", "toggle", [-3600, 2250], { channel: "perch", caption: "Perch", on: false }, { label: "perch" }),
     node("view", "xyPad", [-3300, 2250], { channel: "view", caption: "Camera side / height", x: 1.1, y: 0.6, min: -2, max: 2 }, { label: "view" }),
   ];
@@ -181,26 +198,49 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     boxes("hubs", 1, 0.085, [-1800, 450]),
     boxes("claws", 2, 0.085, [-1800, 600]),
 
-    // ── The tunnel, standing in: blocks on the ribs ──
-    node("ribs", "pointKernel", [-2100, 1200], { capacity: RIB_COUNT * RIB_BLOCKS, attributes: JOINT_ATTRIBUTES, kernel: RIB_KERNEL, travel, bore: expressionSlot(on("bore"), 2.6) }, { label: "ribs1" }),
-    node("ribGeo", "geometry", [-1800, 1200], { mode: "instances", shape: "box", material: "steel1", scale: 0.42, orient: map("orient", [0, 0, 0, 1]), tint: map("tint", [1, 1, 1, 1]) }, { label: "ribgeo1" }),
+    // ── The tunnel: one grid bent into the bore, a window of it riding with the robot ──
+    node("grid_bore", "pointGrid", [-2400, 1200], { cols: BORE_COLUMNS, rows: BORE_ROWS, count: BORE_COLUMNS * BORE_ROWS, sizeX: 2, sizeY: 2 }, { label: "grid_bore" }),
+    node("kernel_bore", "pointKernel", [-2100, 1200], { capacity: BORE_COLUMNS * BORE_ROWS, attributes: BORE_ATTRIBUTES, kernel: BORE_KERNEL, travel, bore: expressionSlot(on("bore"), 2.6) }, { label: "kernel_bore" }),
+    node("material_bore", "materialWgsl", [-2100, 1400], { model: "pbr", source: BORE_SURFACE_WGSL, lamp: expressionSlot(`${on("lamp")} * 0.55 * (0.7 + ${LOW} * 0.8)`, 14) }, { label: "material_bore" }),
+    node("geometry_bore", "geometry", [-1800, 1200], { mode: "surface", material: "material_bore", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bore" }),
 
     // ── Camera and light ──
     node("cam", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 0.6], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: 55, near: 0.05, far: 240 }, { label: "cam1" }),
-    node("key", "light", [-1500, -450], { kind: "directional", direction: [-0.3, -0.8, 0.5], color: [0.6, 0.78, 1, 1], intensity: 1.4 }, { label: "key1" }),
-    node("eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.12, 0.06, 1], intensity: expressionSlot(`${on("glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14 }, { label: "eyes1" }),
-    // The lamp ahead breathes with the low end.
-    node("beam", "light", [-1500, -150], { kind: "point", color: [0.55, 0.8, 1, 1], intensity: expressionSlot(`${on("lamp")} * (0.7 + ${LOW} * 0.8)`, 26), position: [0, 1.6, 7], "position.x": lamp.x, "position.y": lamp.y, "position.z": lamp.z, falloff: "inverseSquare", range: 40 }, { label: "beam1" }),
+    // The eyes throw the tentacles' shadows down the walls.
+    node("eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.12, 0.06, 1], intensity: expressionSlot(`${on("glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, shadows: true, shadowExtent: 14, shadowSoftness: 1 }, { label: "eyes1" }),
+    // The three lamp plates nearest the robot, as lights; they breathe with the low end.
+    ...lamps.map((lamp, index) =>
+      node(`light_lamp${index}`, "light", [-1500, -150 + index * 150], {
+        kind: "point",
+        color: [0.62, 0.84, 1, 1],
+        intensity: expressionSlot(`${on("lamp")} * ${lamp.near} * (0.7 + ${LOW} * 0.8)`, index === 1 ? 26 : 0),
+        position: [0, 2.25, (index - 0.5) * LAMP_SPACING],
+        "position.x": lamp.position.x,
+        "position.y": lamp.position.y,
+        "position.z": lamp.position.z,
+        falloff: "inverseSquare",
+        range: 30,
+        // Only the lamp overhead casts: a cube shadow is six more passes of the whole scene.
+        ...(index === 1 ? { shadows: true, shadowExtent: 30, shadowSoftness: 1 } : {}),
+      }, { label: `light_lamp${index}` }),
+    ),
     node("shot", "render", [-1200, 0], {
-      scenes: [...robots.map((_, index) => `bodygeo${index}_1`), "rings1", "hubs1", "claws1", "ribgeo1"].join(" "),
+      scenes: [...robots.map((_, index) => `bodygeo${index}_1`), "rings1", "hubs1", "claws1", "geometry_bore"].join(" "),
       camera: "cam1",
-      lights: "key1 eyes1 beam1",
+      lights: ["eyes1", ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.5, 0.62, 0.8, 1],
-      ambientIntensity: 0.12,
-      background: [0.004, 0.006, 0.01, 1],
+      ambientIntensity: 0.015,
+      background: [0, 0, 0, 1],
       antialias: "msaa",
+      depthOutput: true,
     }, { label: "shot1" }),
-    node("out", "output", [-900, 0], { toneMap: "filmic" }, { label: "out1" }),
+    // ── Air, then bloom: a bright pass and a four-level pyramid (the furnace's, until a stock one exists, T1402b) ──
+    node("wgsl_haze", "customWgslMulti", [-900, 0], { source: HAZE_WGSL, density: expressionSlot(on("slider_haze"), 0.035), far: 240 }, { label: "wgsl_haze", resolution: { mode: "project" } }),
+    node("wgsl_bright", "customWgsl", [-600, 300], { source: BRIGHT_PASS_WGSL, threshold: 1.4, knee: 1 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } }),
+    ...[1, 2, 3, 4].map((level) => node(`wgsl_bloomdown${level}`, "customWgsl", [-300, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `wgsl_bloomdown${level}`, resolution: { mode: "scale", factor: 0.5 } })),
+    ...[0, 1, 2, 3].map((level) => node(`wgsl_bloomup${level}`, "customWgslMulti", [0, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { label: `wgsl_bloomup${level}`, resolution: { mode: "scale", factor: 2 } })),
+    node("add_glow", "add", [300, 0], { opacity: 0.4 }, { label: "add_glow", resolution: { mode: "project" } }),
+    node("out", "output", [600, 0], { toneMap: "filmic" }, { label: "out1" }),
 
     // ── The panel: the piece's own words ──
     ...controls,
@@ -224,18 +264,22 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("joints-rings", ["joints", "out"], ["rings", "points"]),
     edge("joints-hubs", ["joints", "out"], ["hubs", "points"]),
     edge("joints-claws", ["joints", "out"], ["claws", "points"]),
-    edge("ribs-geo", ["ribs", "out"], ["ribGeo", "points"]),
-    edge("shot-out", ["shot", "out"], ["out", "input"]),
+    edge("grid-bore", ["grid_bore", "out"], ["kernel_bore", "in"]),
+    edge("bore-geo", ["kernel_bore", "out"], ["geometry_bore", "points"]),
+    edge("shot-haze", ["shot", "out"], ["wgsl_haze", "input"]),
+    edge("depth-haze", ["shot", "depth"], ["wgsl_haze", "more"], 0),
+    edge("haze-bright", ["wgsl_haze", "out"], ["wgsl_bright", "input"]),
+    ...[1, 2, 3, 4].map((level) => edge(`bloom-down${level}`, [level === 1 ? "wgsl_bright" : `wgsl_bloomdown${level - 1}`, "out"], [`wgsl_bloomdown${level}`, "input"])),
+    ...[0, 1, 2, 3].flatMap((level) => [
+      edge(`bloom-up${level}-lower`, [level === 3 ? "wgsl_bloomdown4" : `wgsl_bloomup${level + 1}`, "out"], [`wgsl_bloomup${level}`, "input"]),
+      edge(`bloom-up${level}-own`, [level === 0 ? "wgsl_bright" : `wgsl_bloomdown${level}`, "out"], [`wgsl_bloomup${level}`, "more"], 0),
+    ]),
+    // The bloom is the FRONT layer: Add's opacity scales in1.
+    edge("glow-front", ["wgsl_bloomup0", "out"], ["add_glow", "in1"]),
+    edge("glow-back", ["wgsl_haze", "out"], ["add_glow", "in2"]),
+    edge("glow-out", ["add_glow", "out"], ["out", "input"]),
     ...controls.map((control, index) => edge(`panel-${control.id}`, [control.id, "out"], ["panel", "controls"], index)),
   ];
-
-  // `graph` keys nodes by id, so a second node with an id silently replaces the first (a slider
-  // named like a light took the light's place once): refuse it here, by name.
-  const seen = new Set<string>();
-  for (const entry of nodes) {
-    if (seen.has(entry.id)) throw new Error(`sentinelDocument: two nodes are called "${entry.id}".`);
-    seen.add(entry.id);
-  }
 
   return {
     schemaVersion: SCHEMA_VERSION,

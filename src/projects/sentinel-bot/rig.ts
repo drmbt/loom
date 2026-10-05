@@ -55,10 +55,8 @@ export function jointCount(facts: KitFacts): number {
   return facts.sockets.length * stationsPerTentacle(facts);
 }
 
-/** Metres between the rungs a claw may plant on; divides the path's period, so the wrap lands on one. */
+/** Metres between the rungs a claw may plant on; divides the path's period, so the wrap lands on one. Every fourth is a rib of the tunnel (tunnel.ts). */
 export const RUNG_SPACING = 0.4;
-/** Metres between the stand-in tunnel's rings of blocks: every fourth rung. */
-const RIB_SPACING = 1.6;
 /** How far past its joint the hub's cone reaches: the curve ends at the claw's mouth, not its wrist. */
 const CLAW_REACH = 0.19;
 
@@ -423,53 +421,3 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   return q;
 }`;
 }
-
-/** How far the stand-in ribs reach behind and ahead of the body. */
-const RIBS_BEHIND = 14;
-export const RIB_COUNT = 64;
-export const RIB_BLOCKS = 24;
-
-/**
- * A STAND-IN for the tunnel until its modules can be instanced (§T1581b): a ring of blocks on
- * every rib the claws plant on, so a render shows what the gait is holding.
- */
-export const RIB_KERNEL = `// T1561b — stand-in tunnel ribs (src/projects/sentinel-bot/rig.ts).
-struct Params {
-  travel: f32, // @default 0  Distance travelled along the tunnel, metres.
-  bore: f32, // @default 2.6  Radius of the wall, metres.
-};
-${pathWgsl()}
-const RIB: f32 = ${RIB_SPACING.toFixed(5)};
-const AROUND: u32 = ${RIB_BLOCKS}u;
-
-fn ribFrame(x: vec3f, y: vec3f, z: vec3f) -> vec4f {
-  // x, y, z orthonormal and right-handed, y the largest diagonal term for a block facing the axis from below; the general form is in the joint kernel.
-  let trace = x.x + y.y + z.z;
-  if (trace > 0.0) {
-    let s = sqrt(trace + 1.0) * 2.0;
-    return vec4f((y.z - z.y) / s, (z.x - x.z) / s, (x.y - y.x) / s, 0.25 * s);
-  }
-  if (x.x > y.y && x.x > z.z) {
-    let s = sqrt(1.0 + x.x - y.y - z.z) * 2.0;
-    return vec4f(0.25 * s, (y.x + x.y) / s, (z.x + x.z) / s, (y.z - z.y) / s);
-  }
-  if (y.y > z.z) {
-    let s = sqrt(1.0 + y.y - x.x - z.z) * 2.0;
-    return vec4f((y.x + x.y) / s, 0.25 * s, (z.y + y.z) / s, (z.x - x.z) / s);
-  }
-  let s = sqrt(1.0 + z.z - x.x - y.y) * 2.0;
-  return vec4f((z.x + x.z) / s, (z.y + y.z) / s, 0.25 * s, (x.y - y.x) / s);
-}
-
-fn process(p: Point, ctx: PointCtx) -> Point {
-  var q = p;
-  let rib = ctx.index / AROUND;
-  let z = (floor(ctx.params.travel / RIB) + f32(rib) - ${RIBS_BEHIND}.0) * RIB;
-  let wall = pathFrame(z);
-  let theta = (f32(ctx.index % AROUND) + 0.5) / f32(AROUND) * 6.2831853;
-  let radial = wall.right * cos(theta) + wall.up * sin(theta);
-  q.position = wall.origin + radial * (ctx.params.bore + 0.2);
-  q.orient = ribFrame(cross(radial, wall.forward), radial, wall.forward);
-  q.tint = vec4f(vec3f(0.22, 0.24, 0.27), 1.0);
-  return q;
-}`;
