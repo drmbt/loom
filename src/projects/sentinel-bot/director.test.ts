@@ -111,11 +111,11 @@ async function run(follow: boolean, heard: boolean): Promise<Run> {
       if (typeof value !== "number") throw new Error(`no channel ${address}`);
       return value;
     };
-    rate.push(read("rate1:value"));
+    rate.push(read("constant_rate:value"));
     energy.push(read("constant_energy:value"));
     swim.push(read("lag_swim:value"));
     perch.push(read("constant_perch:value"));
-    last = read("travel1:value");
+    last = read("speed_travel:value");
     if (index === 0) first = last;
   }
   return { rate, energy, swim, perch, distance: last - first };

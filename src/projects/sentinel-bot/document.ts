@@ -94,33 +94,33 @@ interface Slider {
 
 /** The panel's sliders. A slider is named after its channel, so `op('speed').chan.speed` reads the same word twice. */
 const ROBOT: readonly Slider[] = [
-  { name: "speed", caption: "Speed", value: 3.2, min: 0, max: 9 },
-  { name: "crawl", caption: "Crawl", value: 1, min: 0, max: 1 },
-  { name: "swim", caption: "Swim", value: 0, min: 0, max: 1 },
-  { name: "stride", caption: "Stride", value: 3.2, min: 1.6, max: 4.4 },
-  { name: "flare", caption: "Flare", value: 0.25, min: 0, max: 1 },
-  { name: "wave", caption: "Wave", value: 0.05, min: 0, max: 0.3 },
-  { name: "grip", caption: "Grip", value: 1, min: 0, max: 1 },
+  { name: "slider_speed", caption: "Speed", value: 3.2, min: 0, max: 9 },
+  { name: "slider_crawl", caption: "Crawl", value: 1, min: 0, max: 1 },
+  { name: "slider_swim", caption: "Swim", value: 0, min: 0, max: 1 },
+  { name: "slider_stride", caption: "Stride", value: 3.2, min: 1.6, max: 4.4 },
+  { name: "slider_flare", caption: "Flare", value: 0.25, min: 0, max: 1 },
+  { name: "slider_wave", caption: "Wave", value: 0.05, min: 0, max: 0.3 },
+  { name: "slider_grip", caption: "Grip", value: 1, min: 0, max: 1 },
   { name: "slider_gesture", caption: "Gesture", value: 0.6, min: 0, max: 1 },
 ];
 const SCENE: readonly Slider[] = [
-  { name: "bore", caption: "Tunnel", value: 2.6, min: 2.2, max: 3.4 },
-  { name: "lamp", caption: "Lamp", value: 26, min: 0, max: 80 },
-  { name: "glow", caption: "Eyes", value: 9, min: 0, max: 30 },
-  { name: "distance", caption: "Camera distance", value: 7.5, min: -9, max: 12 },
-  { name: "react", caption: "Listen", value: 1, min: 0, max: 2 },
+  { name: "slider_bore", caption: "Tunnel", value: 2.6, min: 2.2, max: 3.4 },
+  { name: "slider_lamp", caption: "Lamp", value: 26, min: 0, max: 80 },
+  { name: "slider_glow", caption: "Eyes", value: 9, min: 0, max: 30 },
+  { name: "slider_distance", caption: "Camera distance", value: 7.5, min: -9, max: 12 },
+  { name: "slider_react", caption: "Listen", value: 1, min: 0, max: 2 },
   { name: "slider_haze", caption: "Haze", value: 0.035, min: 0, max: 0.12 },
 ];
 
-/** A control's value. A widget publishes a channel named for its role: `speed`, or `haze` for `slider_haze` (§T1593b names nodes kind_role). */
+/** A control's value. A widget is named kind_role (§T1593b) and publishes a channel named for the role alone: `speed` for `slider_speed`. */
 const on = (name: string): string => `op('${name}').chan.${name.slice(name.indexOf("_") + 1)}`;
-const LISTEN = on("react");
-const LOW = `(op('levels1').chan.low * ${LISTEN})`;
-const HIGH = `(op('levels1').chan.high * ${LISTEN})`;
-const KICK = `(op('hits1').chan.kickCount * ${LISTEN})`;
-const HAT = `(op('hits1').chan.hatCount * ${LISTEN})`;
-const TRAVEL = "op('travel1').chan.value";
-const STROKE = "op('stroke1').chan.value";
+const LISTEN = on("slider_react");
+const LOW = `(op('lag_levels').chan.low * ${LISTEN})`;
+const HIGH = `(op('lag_levels').chan.high * ${LISTEN})`;
+const KICK = `(op('lag_hits').chan.kickCount * ${LISTEN})`;
+const HAT = `(op('lag_hits').chan.hatCount * ${LISTEN})`;
+const TRAVEL = "op('speed_travel').chan.value";
+const STROKE = "op('speed_stroke').chan.value";
 // What the track is doing (director.ts), and whether the piece is following it.
 const ENERGY = "op('constant_energy').chan.value";
 const LIFT = "op('constant_lift').chan.value";
@@ -160,7 +160,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     const at = pathExpression(z);
     const rest = (step + 0.5) * LAMP_SPACING;
     return {
-      position: { x: expressionSlot(at.x, 0), y: expressionSlot(`${at.y} + ${on("bore")} - 0.35`, 2.25), z: expressionSlot(z, rest) },
+      position: { x: expressionSlot(at.x, 0), y: expressionSlot(`${at.y} + ${on("slider_bore")} - 0.35`, 2.25), z: expressionSlot(z, rest) },
       near: `clamp(1.5 - abs(${z} - ${TRAVEL}) / ${LAMP_SPACING}, 0, 1)`,
       // The light is the colour of the plate it hangs under (tunnel.ts, LAMP_TONES).
       tone: lampToneExpression(station),
@@ -198,7 +198,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       node(`geometry_${piece.role}`, "geometry", [-1800, index * 150], {
         mode: "instances",
         shape: "mesh",
-        material: "hull1",
+        material: "material_hull",
         orient: map("orient", [0, 0, 0, 1]),
         // A ring still stowed in the body is not drawn.
         ...(piece.stows === true ? { group: "p.kind > -0.5" } : {}),
@@ -208,8 +208,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const sliders = [...ROBOT, ...SCENE];
   const controls: GraphNode[] = [
     ...sliders.map((slider, index) => node(slider.name, "slider", [-3600 + (index % 4) * 300, 1500 + Math.floor(index / 4) * 250], { channel: slider.name.slice(slider.name.indexOf("_") + 1), caption: slider.caption, value: slider.value, min: slider.min, max: slider.max, step: 0 }, { label: slider.name })),
-    node("perch", "toggle", [-3600, 2250], { channel: "perch", caption: "Perch", on: false }, { label: "perch" }),
-    node("view", "xyPad", [-3300, 2250], { channel: "view", caption: "Chase side / height", x: 1.1, y: 0.6, min: -2, max: 2 }, { label: "view" }),
+    node("toggle_perch", "toggle", [-3600, 2250], { channel: "perch", caption: "Perch", on: false }, { label: "toggle_perch" }),
+    node("xypad_view", "xyPad", [-3300, 2250], { channel: "view", caption: "Chase side / height", x: 1.1, y: 0.6, min: -2, max: 2 }, { label: "xypad_view" }),
     node("slider_shot", "slider", [-3000, 2250], { channel: "shot", caption: `Shot (${SHOTS.join(", ")})`, value: 0, min: 0, max: SHOTS.length - 1, step: 1 }, { label: "slider_shot" }),
     node("toggle_cuts", "toggle", [-2700, 2250], { channel: "cuts", caption: "Cut on the bars", on: true }, { label: "toggle_cuts" }),
     node("toggle_follow", "toggle", [-2400, 2500], { channel: "follow", caption: "Follow the track", on: true }, { label: "toggle_follow" }),
@@ -219,32 +219,32 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     items: [
       { label: "Robot", rect: { x: 0, y: 0, w: 6, h: 1 } },
       ...ROBOT.map((slider, index) => ({ member: slider.name, rect: { x: 0, y: 1 + index, w: 6, h: 1 } })),
-      { member: "perch", rect: { x: 0, y: 1 + ROBOT.length, w: 6, h: 1 } },
+      { member: "toggle_perch", rect: { x: 0, y: 1 + ROBOT.length, w: 6, h: 1 } },
       { member: "toggle_follow", rect: { x: 0, y: 2 + ROBOT.length, w: 6, h: 1 } },
       { label: "Camera", rect: { x: 0, y: 3 + ROBOT.length, w: 6, h: 1 } },
       { member: "slider_shot", rect: { x: 0, y: 4 + ROBOT.length, w: 6, h: 1 } },
       { member: "toggle_cuts", rect: { x: 0, y: 5 + ROBOT.length, w: 6, h: 1 } },
       { label: "Scene", rect: { x: 6, y: 0, w: 6, h: 1 } },
       ...SCENE.map((slider, index) => ({ member: slider.name, rect: { x: 6, y: 1 + index, w: 6, h: 1 } })),
-      { member: "view", rect: { x: 6, y: 1 + SCENE.length, w: 3, h: 3 } },
+      { member: "xypad_view", rect: { x: 6, y: 1 + SCENE.length, w: 3, h: 3 } },
     ],
   });
 
   const nodes: GraphNode[] = [
     // ── The track, and the lanes the piece listens to ──
-    node("clip", "audioFileIn", [-3600, 600], {
+    node("audiofile_track", "audioFileIn", [-3600, 600], {
       file: SHOWCASE_BEAT_FILE, playMode: "timeline", play: true, speed: 1, cue: false, cuePoint: 0,
       trimStart: 0, trimEnd: 0, extend: "loop", volume: 1, monitor: true,
       tempoMode: "declared", bpm: SHOWCASE_BEAT.bpm, beatsPerBar: SHOWCASE_BEAT.beatsPerBar,
       beatOffset: Math.round(SHOWCASE_BEAT_OFFSET_SECONDS * 1000) / 1000,
-    }, { label: "clip1" }),
-    node("pickLevels", "valueSelect", [-3300, 500], { channels: "level low high" }, { label: "picklevels1" }),
-    node("smooth", "valueLag", [-3000, 500], { lag: 0.02, releaseRatio: 4 }, { label: "smooth1" }),
-    node("rank", "valueNormalize", [-2700, 500], { window: 16 }, { label: "rank1" }),
+    }, { label: "audiofile_track" }),
+    node("select_levels", "valueSelect", [-3300, 500], { channels: "level low high" }, { label: "select_levels" }),
+    node("lag_smooth", "valueLag", [-3000, 500], { lag: 0.02, releaseRatio: 4 }, { label: "lag_smooth" }),
+    node("normalize_levels", "valueNormalize", [-2700, 500], { window: 16 }, { label: "normalize_levels" }),
     // Fast attack, slow release: a level that rises late reads as the picture lagging the music.
-    node("levels", "valueLag", [-2400, 500], { lag: 0.03, releaseRatio: 5 }, { label: "levels1" }),
-    node("pickHits", "valueSelect", [-3300, 750], { channels: "kickCount snareCount hatCount" }, { label: "pickhits1" }),
-    node("hits", "valueLag", [-3000, 750], { lag: 0.001, releaseRatio: 250 }, { label: "hits1" }),
+    node("lag_levels", "valueLag", [-2400, 500], { lag: 0.03, releaseRatio: 5 }, { label: "lag_levels" }),
+    node("select_hits", "valueSelect", [-3300, 750], { channels: "kickCount snareCount hatCount" }, { label: "select_hits" }),
+    node("lag_hits", "valueLag", [-3000, 750], { lag: 0.001, releaseRatio: 250 }, { label: "lag_hits" }),
     // What the track is doing (director.ts): this passage's loudness against what it has
     // usually been lately (slow to fall), and against the quietest it has lately been (falls at
     // once, slow to rise). The level is the clip's own, not the ranked one: a rank has no silence.
@@ -262,60 +262,60 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // Perch stops it (the panel's, or a breakdown gone nearly silent: director.ts); a kick shoves it. (The lunge of a swimming stroke is the rig's own, on the
     // GPU: the rate cannot read how far it has come without the value graph closing a loop,
     // and a loop there is dropped whole.)
-    node("rate", "constant", [-2400, 1000], {
-      value: expressionSlot(`${on("speed")} * (1 - op('constant_perch').chan.value) * (1 + ${KICK} * 0.6) * ${pace(FOLLOW, ENERGY)}`, 3.2),
-    }, { label: "rate1" }),
-    node("ease", "valueLag", [-2100, 1000], { lag: 0.25, releaseRatio: 1.6 }, { label: "ease1" }),
+    node("constant_rate", "constant", [-2400, 1000], {
+      value: expressionSlot(`${on("slider_speed")} * (1 - op('constant_perch').chan.value) * (1 + ${KICK} * 0.6) * ${pace(FOLLOW, ENERGY)}`, 3.2),
+    }, { label: "constant_rate" }),
+    node("lag_rate", "valueLag", [-2100, 1000], { lag: 0.25, releaseRatio: 1.6 }, { label: "lag_rate" }),
     // Perch, eased: how perched it is, 0 to 1, for the head and the tentacles it frees.
     // How much it swims: the panel's Swim, or the track coming back in (director.ts). Eased, so
     // letting go of the wall and taking hold again each take a moment.
-    node("constant_swim", "constant", [-1500, 725], { value: expressionSlot(`max(${on("swim")}, ${surge(FOLLOW, LIFT)})`, 0) }, { label: "constant_swim" }),
+    node("constant_swim", "constant", [-1500, 725], { value: expressionSlot(`max(${on("slider_swim")}, ${surge(FOLLOW, LIFT)})`, 0) }, { label: "constant_swim" }),
     node("lag_swim", "valueLag", [-1200, 725], { lag: 0.35, releaseRatio: 2 }, { label: "lag_swim" }),
-    node("constant_perch", "constant", [-2400, 1125], { value: expressionSlot(`max(${on("perch")}, ${rest(FOLLOW, ENERGY)})`, 0) }, { label: "constant_perch" }),
+    node("constant_perch", "constant", [-2400, 1125], { value: expressionSlot(`max(${on("toggle_perch")}, ${rest(FOLLOW, ENERGY)})`, 0) }, { label: "constant_perch" }),
     node("lag_perched", "valueLag", [-2100, 1125], { lag: 0.6, releaseRatio: 1 }, { label: "lag_perched" }),
-    node("travel", "valueSpeed", [-1800, 1000], { minimum: 0, maximum: PATH.period, limit: "loop" }, { label: "travel1" }),
+    node("speed_travel", "valueSpeed", [-1800, 1000], { minimum: 0, maximum: PATH.period, limit: "loop" }, { label: "speed_travel" }),
     // The swimming beat: one stroke per bar of the track.
-    node("strokeRate", "constant", [-2400, 1250], { value: SHOWCASE_BEAT.bpm / 60 / SHOWCASE_BEAT.beatsPerBar }, { label: "strokerate1" }),
-    node("stroke", "valueSpeed", [-2100, 1250], { minimum: 0, maximum: 1, limit: "loop" }, { label: "stroke1" }),
+    node("constant_stroke", "constant", [-2400, 1250], { value: SHOWCASE_BEAT.bpm / 60 / SHOWCASE_BEAT.beatsPerBar }, { label: "constant_stroke" }),
+    node("speed_stroke", "valueSpeed", [-2100, 1250], { minimum: 0, maximum: 1, limit: "loop" }, { label: "speed_stroke" }),
 
     // ── The robot: for each piece a mesh of the kit, the rig's points of that piece, and the draw (T1581b) ──
-    node("hull", "materialWgsl", [-1800, 150], {
+    node("material_hull", "materialWgsl", [-1800, 150], {
       model: "pbr",
       source: HULL_SURFACE_WGSL,
       // The eyes flicker with the hats and swell with the top of the track.
-      eyeGlow: expressionSlot(`${on("glow")} * (0.75 + ${HIGH} * 0.6 + ${HAT} * 0.9)`, 9),
+      eyeGlow: expressionSlot(`${on("slider_glow")} * (0.75 + ${HIGH} * 0.6 + ${HAT} * 0.9)`, 9),
       // What the steel has to reflect (tunnel.ts): the lamps round the robot, each where its light would hang.
       // They breathe as the lights do.
       ...Object.fromEntries(mirrored.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp.position[axis]]))),
       station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
-      lamps: expressionSlot(`${on("lamp")} * 0.23 * (0.7 + ${LOW} * 0.8)`, 6),
+      lamps: expressionSlot(`${on("slider_lamp")} * 0.23 * (0.7 + ${LOW} * 0.8)`, 6),
       // How bright a kick's pulse is as it runs down the cores (the rig says where it is).
       pulseGlow: expressionSlot(`3 * ${LISTEN}`, 3),
-    }, { label: "hull1" }),
+    }, { label: "material_hull" }),
 
     ...pieceNodes({
       travel,
       ...look,
       // Perched, the last three tentacles to take the wall let go of it and feel about.
-      crawl: expressionSlot(`${on("crawl")} * (1 - 0.3 * ${PERCHED})`, 1),
+      crawl: expressionSlot(`${on("slider_crawl")} * (1 - 0.3 * ${PERCHED})`, 1),
       gesture: expressionSlot(`${on("slider_gesture")} * (0.5 + 0.5 * ${PERCHED}) * (0.7 + ${LOW} * 0.6)`, 0.3),
       // A hat clacks the idle claws.
       snap: expressionSlot(HAT, 0),
       // Every kick sends a pulse down the cores.
       pulse: expressionSlot("op('count_kick').chan.kickCountSince", 100),
       ...swimming,
-      stride: expressionSlot(on("stride"), 3.2),
-      flare: expressionSlot(on("flare"), 0.25),
+      stride: expressionSlot(on("slider_stride"), 3.2),
+      flare: expressionSlot(on("slider_flare"), 0.25),
       // The low end runs down the tentacles.
-      wave: expressionSlot(`${on("wave")} + ${LOW} * 0.08`, 0.05),
-      grip: expressionSlot(on("grip"), 1),
-      bore: expressionSlot(on("bore"), 2.6),
+      wave: expressionSlot(`${on("slider_wave")} + ${LOW} * 0.08`, 0.05),
+      grip: expressionSlot(on("slider_grip"), 1),
+      bore: expressionSlot(on("slider_bore"), 2.6),
     }),
 
     // ── The tunnel: one grid bent into the bore, a window of it riding with the robot ──
     node("grid_bore", "pointGrid", [-2400, 1200], { cols: BORE_COLUMNS, rows: BORE_ROWS, count: BORE_COLUMNS * BORE_ROWS, sizeX: 2, sizeY: 2 }, { label: "grid_bore" }),
-    node("kernel_bore", "pointKernel", [-2100, 1200], { capacity: BORE_COLUMNS * BORE_ROWS, attributes: BORE_ATTRIBUTES, kernel: BORE_KERNEL, travel, bore: expressionSlot(on("bore"), 2.6) }, { label: "kernel_bore" }),
-    node("material_bore", "materialWgsl", [-2100, 1400], { model: "pbr", source: BORE_SURFACE_WGSL, lamp: expressionSlot(`${on("lamp")} * 0.55 * (0.7 + ${LOW} * 0.8)`, 14) }, { label: "material_bore" }),
+    node("kernel_bore", "pointKernel", [-2100, 1200], { capacity: BORE_COLUMNS * BORE_ROWS, attributes: BORE_ATTRIBUTES, kernel: BORE_KERNEL, travel, bore: expressionSlot(on("slider_bore"), 2.6) }, { label: "kernel_bore" }),
+    node("material_bore", "materialWgsl", [-2100, 1400], { model: "pbr", source: BORE_SURFACE_WGSL, lamp: expressionSlot(`${on("slider_lamp")} * 0.55 * (0.7 + ${LOW} * 0.8)`, 14) }, { label: "material_bore" }),
     node("geometry_bore", "geometry", [-1800, 1200], { mode: "surface", material: "material_bore", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bore" }),
 
     // ── Air: dust that the lamps and the eyes light on its way to a wall ──
@@ -324,9 +324,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       attributes: MOTE_ATTRIBUTES,
       kernel: MOTE_KERNEL,
       travel,
-      bore: expressionSlot(on("bore"), 2.6),
-      lamp: expressionSlot(`${on("lamp")} * (0.7 + ${LOW} * 0.8)`, 26),
-      eyes: expressionSlot(`${on("glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6),
+      bore: expressionSlot(on("slider_bore"), 2.6),
+      lamp: expressionSlot(`${on("slider_lamp")} * (0.7 + ${LOW} * 0.8)`, 26),
+      eyes: expressionSlot(`${on("slider_glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6),
     }, { label: "kernel_motes" }),
     node("material_motes", "materialUnlit", [-2100, 1800], { color: [1, 1, 1, 1] }, { label: "material_motes" }),
     node("geometry_motes", "geometry", [-1800, 1600], { mode: "points", material: "material_motes", blend: "additive", soft: 1, scale: map("tint", 0.016, "w"), tint: map("tint", [0, 0, 0, 1]) }, { label: "geometry_motes" }),
@@ -334,9 +334,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // ── Camera and light ──
     node("expression_camera", "valueExpression", [-1800, -600], { expressions: CAMERA_STATEMENTS, defaults: CAMERA_DEFAULTS }, { label: "expression_camera" }),
     // A kick punches the lens in.
-    node("cam", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} - ${KICK} * 2.5`, 55), near: 0.05, far: 240 }, { label: "cam1" }),
+    node("camera_rig", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} - ${KICK} * 2.5`, 55), near: 0.05, far: 240 }, { label: "camera_rig" }),
     // Offline, the eyes throw the tentacles' shadows down the walls; live, no light casts (see `tier`).
-    node("eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.12, 0.06, 1], intensity: expressionSlot(`${on("glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, ...(shadows ? { shadows: true, shadowExtent: 14, shadowSoftness: 1 } : {}) }, { label: "eyes1" }),
+    node("light_eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.12, 0.06, 1], intensity: expressionSlot(`${on("slider_glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, ...(shadows ? { shadows: true, shadowExtent: 14, shadowSoftness: 1 } : {}) }, { label: "light_eyes" }),
     // The three lamp plates nearest the robot, as lights; they breathe with the low end.
     ...lamps.map((lamp, index) =>
       node(`light_lamp${index}`, "light", [-1500, -150 + index * 150], {
@@ -345,7 +345,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         "color.r": expressionSlot(lamp.tone[0], 0.62),
         "color.g": expressionSlot(lamp.tone[1], 0.84),
         "color.b": expressionSlot(lamp.tone[2], 1),
-        intensity: expressionSlot(`${on("lamp")} * ${lamp.near} * (0.7 + ${LOW} * 0.8)`, index === 1 ? 26 : 0),
+        intensity: expressionSlot(`${on("slider_lamp")} * ${lamp.near} * (0.7 + ${LOW} * 0.8)`, index === 1 ? 26 : 0),
         position: [0, 2.25, (index - 0.5) * LAMP_SPACING],
         "position.x": lamp.position.x,
         "position.y": lamp.position.y,
@@ -356,25 +356,25 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         ...(shadows && index === 1 ? { shadows: true, shadowExtent: 30, shadowSoftness: 1 } : {}),
       }, { label: `light_lamp${index}` }),
     ),
-    node("shot", "render", [-1200, 0], {
+    node("render_shot", "render", [-1200, 0], {
       scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_motes"].join(" "),
-      camera: "cam1",
-      lights: ["eyes1", ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
+      camera: "camera_rig",
+      lights: ["light_eyes", ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.5, 0.62, 0.8, 1],
       ambientIntensity: 0.015,
       background: [0, 0, 0, 1],
       antialias: "msaa",
       depthOutput: true,
       normalOutput: true,
-    }, { label: "shot1" }),
+    }, { label: "render_shot" }),
     // ── Reflections: the wet deck and the wet streaks mirror the eyes and the lamps (the furnace's
     // screen-space pass, until a stock one exists, T1372b). It reads the camera off the camera node. ──
     node("wgsl_reflect", "customWgslMulti", [-1050, 0], {
       source: SSR_WGSL,
       eye: [1.1, 0.6, -7.5],
       aim: [0, 0, 3.3],
-      ...Object.fromEntries((["x", "y", "z"] as const).flatMap((axis) => [[`eye.${axis}`, expressionSlot(`op('cam1').par.eye.${axis}`, 0)], [`aim.${axis}`, expressionSlot(`op('cam1').par.lookAt.${axis}`, 0)]])),
-      fov: expressionSlot("op('cam1').par.fov", 55),
+      ...Object.fromEntries((["x", "y", "z"] as const).flatMap((axis) => [[`eye.${axis}`, expressionSlot(`op('camera_rig').par.eye.${axis}`, 0)], [`aim.${axis}`, expressionSlot(`op('camera_rig').par.lookAt.${axis}`, 0)]])),
+      fov: expressionSlot("op('camera_rig').par.fov", 55),
       far: 240,
       roll: 0,
       // Only the wettest surfaces mirror, and not at full strength: the pass is jittered and
@@ -390,7 +390,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     ...[1, 2, 3, 4].map((level) => node(`wgsl_bloomdown${level}`, "customWgsl", [-300, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `wgsl_bloomdown${level}`, resolution: { mode: "scale", factor: 0.5 } })),
     ...[0, 1, 2, 3].map((level) => node(`wgsl_bloomup${level}`, "customWgslMulti", [0, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { label: `wgsl_bloomup${level}`, resolution: { mode: "scale", factor: 2 } })),
     node("add_glow", "add", [300, 0], { opacity: 0.4 }, { label: "add_glow", resolution: { mode: "project" } }),
-    node("out", "output", [600, 0], { toneMap: "filmic" }, { label: "out1" }),
+    node("output_frame", "output", [600, 0], { toneMap: "filmic" }, { label: "output_frame" }),
 
     // ── The panel: the piece's own words ──
     ...controls,
@@ -398,25 +398,25 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   ];
 
   const edges: GraphEdge[] = [
-    edge("clip-levels", ["clip", "out"], ["pickLevels", "in"]),
-    edge("levels-smooth", ["pickLevels", "out"], ["smooth", "in"]),
-    edge("smooth-rank", ["smooth", "out"], ["rank", "in"]),
-    edge("rank-levels", ["rank", "out"], ["levels", "in"]),
-    edge("clip-hits", ["clip", "out"], ["pickHits", "in"]),
-    edge("hits-lag", ["pickHits", "out"], ["hits", "in"]),
-    edge("smooth-loud", ["smooth", "out"], ["select_loud", "in"]),
+    edge("clip-levels", ["audiofile_track", "out"], ["select_levels", "in"]),
+    edge("levels-smooth", ["select_levels", "out"], ["lag_smooth", "in"]),
+    edge("smooth-rank", ["lag_smooth", "out"], ["normalize_levels", "in"]),
+    edge("rank-levels", ["normalize_levels", "out"], ["lag_levels", "in"]),
+    edge("clip-hits", ["audiofile_track", "out"], ["select_hits", "in"]),
+    edge("hits-lag", ["select_hits", "out"], ["lag_hits", "in"]),
+    edge("smooth-loud", ["lag_smooth", "out"], ["select_loud", "in"]),
     edge("loud-lag", ["select_loud", "out"], ["lag_loud", "in"]),
     edge("loud-usual", ["lag_loud", "out"], ["lag_usual", "in"]),
     edge("loud-floor", ["lag_loud", "out"], ["lag_floor", "in"]),
     edge("swim-ease", ["constant_swim", "out"], ["lag_swim", "in"]),
-    edge("clip-kick", ["clip", "out"], ["select_kick", "in"]),
+    edge("clip-kick", ["audiofile_track", "out"], ["select_kick", "in"]),
     edge("kick-count", ["select_kick", "out"], ["count_kick", "in"]),
-    edge("rate-ease", ["rate", "out"], ["ease", "in"]),
-    edge("ease-travel", ["ease", "out"], ["travel", "in"]),
+    edge("rate-ease", ["constant_rate", "out"], ["lag_rate", "in"]),
+    edge("ease-travel", ["lag_rate", "out"], ["speed_travel", "in"]),
     edge("perch-ease", ["constant_perch", "out"], ["lag_perched", "in"]),
-    edge("stroke-rate", ["strokeRate", "out"], ["stroke", "in"]),
+    edge("stroke-rate", ["constant_stroke", "out"], ["speed_stroke", "in"]),
     // What the camera rig reads: how far the robot has come, the track's bars, and the panel.
-    ...["travel", "clip", "slider_shot", "toggle_cuts", "distance", "view"].map((source, index) => edge(`camera-${source}`, [source, "out"], ["expression_camera", "in"], index)),
+    ...["speed_travel", "audiofile_track", "slider_shot", "toggle_cuts", "slider_distance", "xypad_view"].map((source, index) => edge(`camera-${source}`, [source, "out"], ["expression_camera", "in"], index)),
     ...pieces.flatMap((piece) => [
       edge(`${piece.role}-shape`, [`mesh_${piece.role}`, "out"], [`geometry_${piece.role}`, "mesh"]),
       edge(`${piece.role}-points`, [`kernel_${piece.role}`, "out"], [`geometry_${piece.role}`, "points"]),
@@ -424,11 +424,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("grid-bore", ["grid_bore", "out"], ["kernel_bore", "in"]),
     edge("bore-geo", ["kernel_bore", "out"], ["geometry_bore", "points"]),
     edge("motes-geo", ["kernel_motes", "out"], ["geometry_motes", "points"]),
-    edge("shot-reflect", ["shot", "out"], ["wgsl_reflect", "input"]),
-    edge("depth-reflect", ["shot", "depth"], ["wgsl_reflect", "more"], 0),
-    edge("normal-reflect", ["shot", "normal"], ["wgsl_reflect", "more"], 1),
+    edge("shot-reflect", ["render_shot", "out"], ["wgsl_reflect", "input"]),
+    edge("depth-reflect", ["render_shot", "depth"], ["wgsl_reflect", "more"], 0),
+    edge("normal-reflect", ["render_shot", "normal"], ["wgsl_reflect", "more"], 1),
     edge("reflect-haze", ["wgsl_reflect", "out"], ["wgsl_haze", "input"]),
-    edge("depth-haze", ["shot", "depth"], ["wgsl_haze", "more"], 0),
+    edge("depth-haze", ["render_shot", "depth"], ["wgsl_haze", "more"], 0),
     edge("haze-bright", ["wgsl_haze", "out"], ["wgsl_bright", "input"]),
     ...[1, 2, 3, 4].map((level) => edge(`bloom-down${level}`, [level === 1 ? "wgsl_bright" : `wgsl_bloomdown${level - 1}`, "out"], [`wgsl_bloomdown${level}`, "input"])),
     ...[0, 1, 2, 3].flatMap((level) => [
@@ -438,7 +438,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // The bloom is the FRONT layer: Add's opacity scales in1.
     edge("glow-front", ["wgsl_bloomup0", "out"], ["add_glow", "in1"]),
     edge("glow-back", ["wgsl_haze", "out"], ["add_glow", "in2"]),
-    edge("glow-out", ["add_glow", "out"], ["out", "input"]),
+    edge("glow-out", ["add_glow", "out"], ["output_frame", "input"]),
     ...controls.map((control, index) => edge(`panel-${control.id}`, [control.id, "out"], ["panel", "controls"], index)),
   ];
 

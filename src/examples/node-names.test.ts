@@ -158,7 +158,6 @@ export const NOT_YET_RENAMED: Readonly<Record<string, number>> = {
   "projects/on-nothing/wheel.loom.json": 70,
   "projects/on-nothing/wide.loom.json": 77,
   "projects/on-nothing/zoom.loom.json": 77,
-  "projects/sentinel-bot/sentinel.loom.json": 31,
 };
 
 interface ShippedFile {

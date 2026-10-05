@@ -53,28 +53,28 @@ async function walk(instants: number, parameters: Record<string, number | number
   const step = SPAN / instants;
   const robots = Array.from({ length: instants }, (_, index) => [0, 0, index * step] as const);
   // No wave: it is a deliberate departure from the arc, measured on its own below.
-  const joints = node("joints", "pointKernel", [0, 0], { capacity: PER_ROBOT * instants, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(FACTS, robots, SPINE), variety: 0, wave: 0, ...parameters });
+  const joints = node("kernel_joints", "pointKernel", [0, 0], { capacity: PER_ROBOT * instants, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(FACTS, robots, SPINE), variety: 0, wave: 0, ...parameters });
   const result = await renderHeadless({
     host: nodeGpuHost(),
     graph: graph(
       [
         joints,
-        node("mat", "materialUnlit", [0, 0], {}, { label: "mat1" }),
-        node("geo", "geometry", [0, 0], { mode: "points", material: "mat1" }, { label: "geo1" }),
-        node("cam", "camera", [0, 0], {}, { label: "cam1" }),
-        node("shot", "render", [0, 0], { scenes: "geo1", camera: "cam1", lights: "" }),
-        node("out", "output", [0, 0], {}),
+        node("material_dot", "materialUnlit", [0, 0], {}, { label: "material_dot" }),
+        node("geometry_joints", "geometry", [0, 0], { mode: "points", material: "material_dot" }, { label: "geometry_joints" }),
+        node("camera_any", "camera", [0, 0], {}, { label: "camera_any" }),
+        node("render_shot", "render", [0, 0], { scenes: "geometry_joints", camera: "camera_any", lights: "" }, { label: "render_shot" }),
+        node("output_frame", "output", [0, 0], {}, { label: "output_frame" }),
       ],
-      [edge("joints-geo", ["joints", "out"], ["geo", "points"]), edge("shot-out", ["shot", "out"], ["out", "input"])],
+      [edge("joints-geo", ["kernel_joints", "out"], ["geometry_joints", "points"]), edge("shot-out", ["render_shot", "out"], ["output_frame", "input"])],
     ),
     settings: settings({ outputResolution: { width: 64, height: 64 } }),
     frames: 1,
-    outputNodeId: "out",
-    probeBuffers: [pointStorageId("joints")],
+    outputNodeId: "output_frame",
+    probeBuffers: [pointStorageId("kernel_joints")],
   });
   const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
   if (errors.length > 0) throw new Error(errors.map((diagnostic) => diagnostic.message).join("; "));
-  const packed = (result.buffers ?? {})[pointStorageId("joints")];
+  const packed = (result.buffers ?? {})[pointStorageId("kernel_joints")];
   if (packed === undefined) throw new Error("probe buffers missing");
   const count = PER_ROBOT * instants;
   const read = (attribute: string): { floats: Float32Array; stride: number } => {
@@ -194,17 +194,17 @@ describe("the sentinel's rig — every joint, across two strides", () => {
         [
           node("grid_bore", "pointGrid", [0, 0], { cols: COLS, rows: ROWS, count: COLS * ROWS, sizeX: 2, sizeY: 2 }),
           bore,
-          node("mat", "materialUnlit", [0, 0], {}, { label: "mat1" }),
-          node("geo", "geometry", [0, 0], { mode: "surface", material: "mat1" }, { label: "geo1" }),
-          node("cam", "camera", [0, 0], {}, { label: "cam1" }),
-          node("shot", "render", [0, 0], { scenes: "geo1", camera: "cam1", lights: "" }),
-          node("out", "output", [0, 0], {}),
+          node("material_dot", "materialUnlit", [0, 0], {}, { label: "material_dot" }),
+          node("geometry_wall", "geometry", [0, 0], { mode: "surface", material: "material_dot" }, { label: "geometry_wall" }),
+          node("camera_any", "camera", [0, 0], {}, { label: "camera_any" }),
+          node("render_shot", "render", [0, 0], { scenes: "geometry_wall", camera: "camera_any", lights: "" }, { label: "render_shot" }),
+          node("output_frame", "output", [0, 0], {}, { label: "output_frame" }),
         ],
-        [edge("grid-bore", ["grid_bore", "out"], ["kernel_bore", "in"]), edge("bore-geo", ["kernel_bore", "out"], ["geo", "points"]), edge("shot-out", ["shot", "out"], ["out", "input"])],
+        [edge("grid-bore", ["grid_bore", "out"], ["kernel_bore", "in"]), edge("bore-geo", ["kernel_bore", "out"], ["geometry_wall", "points"]), edge("shot-out", ["render_shot", "out"], ["output_frame", "input"])],
       ),
       settings: settings({ outputResolution: { width: 64, height: 64 } }),
       frames: 1,
-      outputNodeId: "out",
+      outputNodeId: "output_frame",
       probeBuffers: [pointStorageId("kernel_bore")],
     });
     const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error");

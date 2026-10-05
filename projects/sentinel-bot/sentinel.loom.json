@@ -150,11 +150,11 @@
           "portId": "points"
         }
       },
-      "camera-clip": {
-        "id": "camera-clip",
+      "camera-audiofile_track": {
+        "id": "camera-audiofile_track",
         "order": 1,
         "source": {
-          "nodeId": "clip",
+          "nodeId": "audiofile_track",
           "portId": "out"
         },
         "target": {
@@ -162,11 +162,11 @@
           "portId": "in"
         }
       },
-      "camera-distance": {
-        "id": "camera-distance",
+      "camera-slider_distance": {
+        "id": "camera-slider_distance",
         "order": 4,
         "source": {
-          "nodeId": "distance",
+          "nodeId": "slider_distance",
           "portId": "out"
         },
         "target": {
@@ -186,6 +186,18 @@
           "portId": "in"
         }
       },
+      "camera-speed_travel": {
+        "id": "camera-speed_travel",
+        "order": 0,
+        "source": {
+          "nodeId": "speed_travel",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_camera",
+          "portId": "in"
+        }
+      },
       "camera-toggle_cuts": {
         "id": "camera-toggle_cuts",
         "order": 3,
@@ -198,23 +210,11 @@
           "portId": "in"
         }
       },
-      "camera-travel": {
-        "id": "camera-travel",
-        "order": 0,
-        "source": {
-          "nodeId": "travel",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "expression_camera",
-          "portId": "in"
-        }
-      },
-      "camera-view": {
-        "id": "camera-view",
+      "camera-xypad_view": {
+        "id": "camera-xypad_view",
         "order": 5,
         "source": {
-          "nodeId": "view",
+          "nodeId": "xypad_view",
           "portId": "out"
         },
         "target": {
@@ -247,18 +247,18 @@
       "clip-hits": {
         "id": "clip-hits",
         "source": {
-          "nodeId": "clip",
+          "nodeId": "audiofile_track",
           "portId": "out"
         },
         "target": {
-          "nodeId": "pickHits",
+          "nodeId": "select_hits",
           "portId": "in"
         }
       },
       "clip-kick": {
         "id": "clip-kick",
         "source": {
-          "nodeId": "clip",
+          "nodeId": "audiofile_track",
           "portId": "out"
         },
         "target": {
@@ -269,11 +269,11 @@
       "clip-levels": {
         "id": "clip-levels",
         "source": {
-          "nodeId": "clip",
+          "nodeId": "audiofile_track",
           "portId": "out"
         },
         "target": {
-          "nodeId": "pickLevels",
+          "nodeId": "select_levels",
           "portId": "in"
         }
       },
@@ -281,7 +281,7 @@
         "id": "depth-haze",
         "order": 0,
         "source": {
-          "nodeId": "shot",
+          "nodeId": "render_shot",
           "portId": "depth"
         },
         "target": {
@@ -293,7 +293,7 @@
         "id": "depth-reflect",
         "order": 0,
         "source": {
-          "nodeId": "shot",
+          "nodeId": "render_shot",
           "portId": "depth"
         },
         "target": {
@@ -304,11 +304,11 @@
       "ease-travel": {
         "id": "ease-travel",
         "source": {
-          "nodeId": "ease",
+          "nodeId": "lag_rate",
           "portId": "out"
         },
         "target": {
-          "nodeId": "travel",
+          "nodeId": "speed_travel",
           "portId": "in"
         }
       },
@@ -341,7 +341,7 @@
           "portId": "out"
         },
         "target": {
-          "nodeId": "out",
+          "nodeId": "output_frame",
           "portId": "input"
         }
       },
@@ -370,11 +370,11 @@
       "hits-lag": {
         "id": "hits-lag",
         "source": {
-          "nodeId": "pickHits",
+          "nodeId": "select_hits",
           "portId": "out"
         },
         "target": {
-          "nodeId": "hits",
+          "nodeId": "lag_hits",
           "portId": "in"
         }
       },
@@ -414,11 +414,11 @@
       "levels-smooth": {
         "id": "levels-smooth",
         "source": {
-          "nodeId": "pickLevels",
+          "nodeId": "select_levels",
           "portId": "out"
         },
         "target": {
-          "nodeId": "smooth",
+          "nodeId": "lag_smooth",
           "portId": "in"
         }
       },
@@ -470,7 +470,7 @@
         "id": "normal-reflect",
         "order": 1,
         "source": {
-          "nodeId": "shot",
+          "nodeId": "render_shot",
           "portId": "normal"
         },
         "target": {
@@ -478,11 +478,11 @@
           "portId": "more"
         }
       },
-      "panel-bore": {
-        "id": "panel-bore",
+      "panel-slider_bore": {
+        "id": "panel-slider_bore",
         "order": 8,
         "source": {
-          "nodeId": "bore",
+          "nodeId": "slider_bore",
           "portId": "out"
         },
         "target": {
@@ -490,11 +490,11 @@
           "portId": "controls"
         }
       },
-      "panel-crawl": {
-        "id": "panel-crawl",
+      "panel-slider_crawl": {
+        "id": "panel-slider_crawl",
         "order": 1,
         "source": {
-          "nodeId": "crawl",
+          "nodeId": "slider_crawl",
           "portId": "out"
         },
         "target": {
@@ -502,11 +502,11 @@
           "portId": "controls"
         }
       },
-      "panel-distance": {
-        "id": "panel-distance",
+      "panel-slider_distance": {
+        "id": "panel-slider_distance",
         "order": 11,
         "source": {
-          "nodeId": "distance",
+          "nodeId": "slider_distance",
           "portId": "out"
         },
         "target": {
@@ -514,71 +514,11 @@
           "portId": "controls"
         }
       },
-      "panel-flare": {
-        "id": "panel-flare",
+      "panel-slider_flare": {
+        "id": "panel-slider_flare",
         "order": 4,
         "source": {
-          "nodeId": "flare",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-glow": {
-        "id": "panel-glow",
-        "order": 10,
-        "source": {
-          "nodeId": "glow",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-grip": {
-        "id": "panel-grip",
-        "order": 6,
-        "source": {
-          "nodeId": "grip",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-lamp": {
-        "id": "panel-lamp",
-        "order": 9,
-        "source": {
-          "nodeId": "lamp",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-perch": {
-        "id": "panel-perch",
-        "order": 14,
-        "source": {
-          "nodeId": "perch",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-react": {
-        "id": "panel-react",
-        "order": 12,
-        "source": {
-          "nodeId": "react",
+          "nodeId": "slider_flare",
           "portId": "out"
         },
         "target": {
@@ -598,11 +538,59 @@
           "portId": "controls"
         }
       },
+      "panel-slider_glow": {
+        "id": "panel-slider_glow",
+        "order": 10,
+        "source": {
+          "nodeId": "slider_glow",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-slider_grip": {
+        "id": "panel-slider_grip",
+        "order": 6,
+        "source": {
+          "nodeId": "slider_grip",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
       "panel-slider_haze": {
         "id": "panel-slider_haze",
         "order": 13,
         "source": {
           "nodeId": "slider_haze",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-slider_lamp": {
+        "id": "panel-slider_lamp",
+        "order": 9,
+        "source": {
+          "nodeId": "slider_lamp",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-slider_react": {
+        "id": "panel-slider_react",
+        "order": 12,
+        "source": {
+          "nodeId": "slider_react",
           "portId": "out"
         },
         "target": {
@@ -622,11 +610,11 @@
           "portId": "controls"
         }
       },
-      "panel-speed": {
-        "id": "panel-speed",
+      "panel-slider_speed": {
+        "id": "panel-slider_speed",
         "order": 0,
         "source": {
-          "nodeId": "speed",
+          "nodeId": "slider_speed",
           "portId": "out"
         },
         "target": {
@@ -634,11 +622,11 @@
           "portId": "controls"
         }
       },
-      "panel-stride": {
-        "id": "panel-stride",
+      "panel-slider_stride": {
+        "id": "panel-slider_stride",
         "order": 3,
         "source": {
-          "nodeId": "stride",
+          "nodeId": "slider_stride",
           "portId": "out"
         },
         "target": {
@@ -646,11 +634,23 @@
           "portId": "controls"
         }
       },
-      "panel-swim": {
-        "id": "panel-swim",
+      "panel-slider_swim": {
+        "id": "panel-slider_swim",
         "order": 2,
         "source": {
-          "nodeId": "swim",
+          "nodeId": "slider_swim",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-slider_wave": {
+        "id": "panel-slider_wave",
+        "order": 5,
+        "source": {
+          "nodeId": "slider_wave",
           "portId": "out"
         },
         "target": {
@@ -682,11 +682,11 @@
           "portId": "controls"
         }
       },
-      "panel-view": {
-        "id": "panel-view",
-        "order": 15,
+      "panel-toggle_perch": {
+        "id": "panel-toggle_perch",
+        "order": 14,
         "source": {
-          "nodeId": "view",
+          "nodeId": "toggle_perch",
           "portId": "out"
         },
         "target": {
@@ -694,11 +694,11 @@
           "portId": "controls"
         }
       },
-      "panel-wave": {
-        "id": "panel-wave",
-        "order": 5,
+      "panel-xypad_view": {
+        "id": "panel-xypad_view",
+        "order": 15,
         "source": {
-          "nodeId": "wave",
+          "nodeId": "xypad_view",
           "portId": "out"
         },
         "target": {
@@ -720,22 +720,22 @@
       "rank-levels": {
         "id": "rank-levels",
         "source": {
-          "nodeId": "rank",
+          "nodeId": "normalize_levels",
           "portId": "out"
         },
         "target": {
-          "nodeId": "levels",
+          "nodeId": "lag_levels",
           "portId": "in"
         }
       },
       "rate-ease": {
         "id": "rate-ease",
         "source": {
-          "nodeId": "rate",
+          "nodeId": "constant_rate",
           "portId": "out"
         },
         "target": {
-          "nodeId": "ease",
+          "nodeId": "lag_rate",
           "portId": "in"
         }
       },
@@ -775,7 +775,7 @@
       "shot-reflect": {
         "id": "shot-reflect",
         "source": {
-          "nodeId": "shot",
+          "nodeId": "render_shot",
           "portId": "out"
         },
         "target": {
@@ -786,7 +786,7 @@
       "smooth-loud": {
         "id": "smooth-loud",
         "source": {
-          "nodeId": "smooth",
+          "nodeId": "lag_smooth",
           "portId": "out"
         },
         "target": {
@@ -797,22 +797,22 @@
       "smooth-rank": {
         "id": "smooth-rank",
         "source": {
-          "nodeId": "smooth",
+          "nodeId": "lag_smooth",
           "portId": "out"
         },
         "target": {
-          "nodeId": "rank",
+          "nodeId": "normalize_levels",
           "portId": "in"
         }
       },
       "stroke-rate": {
         "id": "stroke-rate",
         "source": {
-          "nodeId": "strokeRate",
+          "nodeId": "constant_stroke",
           "portId": "out"
         },
         "target": {
-          "nodeId": "stroke",
+          "nodeId": "speed_stroke",
           "portId": "in"
         }
       },
@@ -846,143 +846,10 @@
         },
         "type": "add"
       },
-      "bore": {
+      "audiofile_track": {
         "definitionVersion": 1,
-        "id": "bore",
-        "label": "bore",
-        "parameters": {
-          "caption": "Tunnel",
-          "channel": "bore",
-          "max": 3.4,
-          "min": 2.2,
-          "step": 0,
-          "value": 2.6
-        },
-        "position": {
-          "x": -3600,
-          "y": 2000
-        },
-        "type": "slider"
-      },
-      "cam": {
-        "definitionVersion": 1,
-        "id": "cam",
-        "label": "cam1",
-        "parameters": {
-          "eye": [
-            1.1,
-            0.6,
-            -7.5
-          ],
-          "eye.x": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('travel1').chan.value + op('expression_camera').chan.ahead)) + 0.4) + 5.0 * sin(0.085084801 * ((op('travel1').chan.value + op('expression_camera').chan.ahead)) + 1.9)) + op('expression_camera').chan.right + 0.02 * sin(abstime * 2.3)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 1.1
-              }
-            },
-            "mode": "expression"
-          },
-          "eye.y": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('travel1').chan.value + op('expression_camera').chan.ahead)) + 2.2) + 2.5 * sin(0.0719948316 * ((op('travel1').chan.value + op('expression_camera').chan.ahead)) + 0.7)) + op('expression_camera').chan.up + 0.015 * sin(abstime * 1.7 + 1)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0.6
-              }
-            },
-            "mode": "expression"
-          },
-          "eye.z": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(op('travel1').chan.value + op('expression_camera').chan.ahead)"
-              },
-              "static": {
-                "kind": "static",
-                "value": -7.5
-              }
-            },
-            "mode": "expression"
-          },
-          "far": 240,
-          "fov": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('expression_camera').chan.lens - (op('hits1').chan.kickCount * op('react').chan.react) * 2.5"
-              },
-              "static": {
-                "kind": "static",
-                "value": 55
-              }
-            },
-            "mode": "expression"
-          },
-          "lookAt": [
-            0,
-            0,
-            3.3
-          ],
-          "lookAt.x": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('travel1').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))) + 0.4) + 5.0 * sin(0.085084801 * ((op('travel1').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))) + 1.9)) + 0"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "lookAt.y": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('travel1').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('travel1').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))) + 0.7)) + 0"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "lookAt.z": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(op('travel1').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))"
-              },
-              "static": {
-                "kind": "static",
-                "value": 3.3
-              }
-            },
-            "mode": "expression"
-          },
-          "near": 0.05
-        },
-        "position": {
-          "x": -1500,
-          "y": -600
-        },
-        "type": "camera"
-      },
-      "clip": {
-        "definitionVersion": 1,
-        "id": "clip",
-        "label": "clip1",
+        "id": "audiofile_track",
+        "label": "audiofile_track",
         "parameters": {
           "beatOffset": 0.484,
           "beatsPerBar": 4,
@@ -1005,6 +872,121 @@
           "y": 600
         },
         "type": "audioFileIn"
+      },
+      "camera_rig": {
+        "definitionVersion": 1,
+        "id": "camera_rig",
+        "label": "camera_rig",
+        "parameters": {
+          "eye": [
+            1.1,
+            0.6,
+            -7.5
+          ],
+          "eye.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + op('expression_camera').chan.ahead)) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + op('expression_camera').chan.ahead)) + 1.9)) + op('expression_camera').chan.right + 0.02 * sin(abstime * 2.3)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.1
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + op('expression_camera').chan.ahead)) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + op('expression_camera').chan.ahead)) + 0.7)) + op('expression_camera').chan.up + 0.015 * sin(abstime * 1.7 + 1)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.6
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + op('expression_camera').chan.ahead)"
+              },
+              "static": {
+                "kind": "static",
+                "value": -7.5
+              }
+            },
+            "mode": "expression"
+          },
+          "far": 240,
+          "fov": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('expression_camera').chan.lens - (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * 2.5"
+              },
+              "static": {
+                "kind": "static",
+                "value": 55
+              }
+            },
+            "mode": "expression"
+          },
+          "lookAt": [
+            0,
+            0,
+            3.3
+          ],
+          "lookAt.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))) + 1.9)) + 0"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lookAt.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))) + 0.7)) + 0"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lookAt.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 3.3
+              }
+            },
+            "mode": "expression"
+          },
+          "near": 0.05
+        },
+        "position": {
+          "x": -1500,
+          "y": -600
+        },
+        "type": "camera"
       },
       "constant_energy": {
         "definitionVersion": 1,
@@ -1065,7 +1047,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('perch').chan.perch, (op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * (1 - smoothstep(0.12, 0.3, op('constant_energy').chan.value))))"
+                "source": "max(op('toggle_perch').chan.perch, (op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * (1 - smoothstep(0.12, 0.3, op('constant_energy').chan.value))))"
               },
               "static": {
                 "kind": "static",
@@ -1081,6 +1063,44 @@
         },
         "type": "constant"
       },
+      "constant_rate": {
+        "definitionVersion": 1,
+        "id": "constant_rate",
+        "label": "constant_rate",
+        "parameters": {
+          "value": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_speed').chan.speed * (1 - op('constant_perch').chan.value) * (1 + (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * 0.6) * (1 + op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * clamp((op('constant_energy').chan.value - 1) * 1.5, -0.5, 0.6))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 3.2
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -2400,
+          "y": 1000
+        },
+        "type": "constant"
+      },
+      "constant_stroke": {
+        "definitionVersion": 1,
+        "id": "constant_stroke",
+        "label": "constant_stroke",
+        "parameters": {
+          "value": 0.5166666666666667
+        },
+        "position": {
+          "x": -2400,
+          "y": 1250
+        },
+        "type": "constant"
+      },
       "constant_swim": {
         "definitionVersion": 1,
         "id": "constant_swim",
@@ -1090,7 +1110,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('swim').chan.swim, (op('toggle_follow').chan.follow * smoothstep(1.5, 2.2, op('constant_lift').chan.value)))"
+                "source": "max(op('slider_swim').chan.swim, (op('toggle_follow').chan.follow * smoothstep(1.5, 2.2, op('constant_lift').chan.value)))"
               },
               "static": {
                 "kind": "static",
@@ -1120,56 +1140,6 @@
         },
         "type": "valueCount"
       },
-      "crawl": {
-        "definitionVersion": 1,
-        "id": "crawl",
-        "label": "crawl",
-        "parameters": {
-          "caption": "Crawl",
-          "channel": "crawl",
-          "max": 1,
-          "min": 0,
-          "step": 0,
-          "value": 1
-        },
-        "position": {
-          "x": -3300,
-          "y": 1500
-        },
-        "type": "slider"
-      },
-      "distance": {
-        "definitionVersion": 1,
-        "id": "distance",
-        "label": "distance",
-        "parameters": {
-          "caption": "Camera distance",
-          "channel": "distance",
-          "max": 12,
-          "min": -9,
-          "step": 0,
-          "value": 7.5
-        },
-        "position": {
-          "x": -2700,
-          "y": 2000
-        },
-        "type": "slider"
-      },
-      "ease": {
-        "definitionVersion": 1,
-        "id": "ease",
-        "label": "ease1",
-        "parameters": {
-          "lag": 0.25,
-          "releaseRatio": 1.6
-        },
-        "position": {
-          "x": -2100,
-          "y": 1000
-        },
-        "type": "valueLag"
-      },
       "expression_camera": {
         "definitionVersion": 1,
         "id": "expression_camera",
@@ -1183,102 +1153,6 @@
           "y": -600
         },
         "type": "valueExpression"
-      },
-      "eyes": {
-        "definitionVersion": 1,
-        "id": "eyes",
-        "label": "eyes1",
-        "parameters": {
-          "color": [
-            1,
-            0.12,
-            0.06,
-            1
-          ],
-          "falloff": "inverseSquare",
-          "intensity": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('glow').chan.glow * 0.18 * (0.75 + (op('hits1').chan.hatCount * op('react').chan.react) * 0.9)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 1.6
-              }
-            },
-            "mode": "expression"
-          },
-          "kind": "point",
-          "position": [
-            0,
-            0,
-            0.9
-          ],
-          "position.x": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('travel1').chan.value + 0.9)) + 0.4) + 5.0 * sin(0.085084801 * ((op('travel1').chan.value + 0.9)) + 1.9)) + 0"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "position.y": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('travel1').chan.value + 0.9)) + 2.2) + 2.5 * sin(0.0719948316 * ((op('travel1').chan.value + 0.9)) + 0.7)) + 0"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "position.z": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(op('travel1').chan.value + 0.9)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0.9
-              }
-            },
-            "mode": "expression"
-          },
-          "range": 14
-        },
-        "position": {
-          "x": -1500,
-          "y": -300
-        },
-        "type": "light"
-      },
-      "flare": {
-        "definitionVersion": 1,
-        "id": "flare",
-        "label": "flare",
-        "parameters": {
-          "caption": "Flare",
-          "channel": "flare",
-          "max": 1,
-          "min": 0,
-          "step": 0,
-          "value": 0.25
-        },
-        "position": {
-          "x": -3600,
-          "y": 1750
-        },
-        "type": "slider"
       },
       "geometry_bore": {
         "definitionVersion": 1,
@@ -1317,7 +1191,7 @@
         "id": "geometry_claw",
         "label": "geometry_claw",
         "parameters": {
-          "material": "hull1",
+          "material": "material_hull",
           "mode": "instances",
           "orient": {
             "bindings": {
@@ -1350,7 +1224,7 @@
         "id": "geometry_hull",
         "label": "geometry_hull",
         "parameters": {
-          "material": "hull1",
+          "material": "material_hull",
           "mode": "instances",
           "orient": {
             "bindings": {
@@ -1432,7 +1306,7 @@
         "label": "geometry_ring",
         "parameters": {
           "group": "p.kind > -0.5",
-          "material": "hull1",
+          "material": "material_hull",
           "mode": "instances",
           "orient": {
             "bindings": {
@@ -1460,24 +1334,6 @@
         },
         "type": "geometry"
       },
-      "glow": {
-        "definitionVersion": 1,
-        "id": "glow",
-        "label": "glow",
-        "parameters": {
-          "caption": "Eyes",
-          "channel": "glow",
-          "max": 30,
-          "min": 0,
-          "step": 0,
-          "value": 9
-        },
-        "position": {
-          "x": -3000,
-          "y": 2000
-        },
-        "type": "slider"
-      },
       "grid_bore": {
         "definitionVersion": 1,
         "id": "grid_bore",
@@ -1495,299 +1351,6 @@
         },
         "type": "pointGrid"
       },
-      "grip": {
-        "definitionVersion": 1,
-        "id": "grip",
-        "label": "grip",
-        "parameters": {
-          "caption": "Grip",
-          "channel": "grip",
-          "max": 1,
-          "min": 0,
-          "step": 0,
-          "value": 1
-        },
-        "position": {
-          "x": -3000,
-          "y": 1750
-        },
-        "type": "slider"
-      },
-      "hits": {
-        "definitionVersion": 1,
-        "id": "hits",
-        "label": "hits1",
-        "parameters": {
-          "lag": 0.001,
-          "releaseRatio": 250
-        },
-        "position": {
-          "x": -3000,
-          "y": 750
-        },
-        "type": "valueLag"
-      },
-      "hull": {
-        "definitionVersion": 1,
-        "id": "hull",
-        "label": "hull1",
-        "parameters": {
-          "eyeGlow": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('glow').chan.glow * (0.75 + (op('levels1').chan.high * op('react').chan.react) * 0.6 + (op('hits1').chan.hatCount * op('react').chan.react) * 0.9)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 9
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp0.x": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + -1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + -1.5) * 12.8)) + 1.9))"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp0.y": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + -1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + -1.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
-              },
-              "static": {
-                "kind": "static",
-                "value": 2.25
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp0.z": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "((floor(op('travel1').chan.value / 12.8) + -1.5) * 12.8)"
-              },
-              "static": {
-                "kind": "static",
-                "value": -19.200000000000003
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp1.x": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 1.9))"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp1.y": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
-              },
-              "static": {
-                "kind": "static",
-                "value": 2.25
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp1.z": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)"
-              },
-              "static": {
-                "kind": "static",
-                "value": -6.4
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp2.x": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 1.9))"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp2.y": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
-              },
-              "static": {
-                "kind": "static",
-                "value": 2.25
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp2.z": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 6.4
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp3.x": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 1.9))"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp3.y": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
-              },
-              "static": {
-                "kind": "static",
-                "value": 2.25
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp3.z": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 19.200000000000003
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp4.x": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + 2.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + 2.5) * 12.8)) + 1.9))"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp4.y": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + 2.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + 2.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
-              },
-              "static": {
-                "kind": "static",
-                "value": 2.25
-              }
-            },
-            "mode": "expression"
-          },
-          "lamp4.z": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "((floor(op('travel1').chan.value / 12.8) + 2.5) * 12.8)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 32
-              }
-            },
-            "mode": "expression"
-          },
-          "lamps": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('lamp').chan.lamp * 0.23 * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.8)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 6
-              }
-            },
-            "mode": "expression"
-          },
-          "model": "pbr",
-          "pulseGlow": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "3 * op('react').chan.react"
-              },
-              "static": {
-                "kind": "static",
-                "value": 3
-              }
-            },
-            "mode": "expression"
-          },
-          "source": "struct Params {\n  lamp0: vec3f, // @default [0, 2.25, -19.2]  Where the lamp -2 stations on from the robot's own hangs.\n  lamp1: vec3f, // @default [0, 2.25, -6.4]  Where the lamp -1 stations on from the robot's own hangs.\n  lamp2: vec3f, // @default [0, 2.25, 6.4]  Where the lamp 0 stations on from the robot's own hangs.\n  lamp3: vec3f, // @default [0, 2.25, 19.2]  Where the lamp 1 stations on from the robot's own hangs.\n  lamp4: vec3f, // @default [0, 2.25, 32.0]  Where the lamp 2 stations on from the robot's own hangs.\n  station: f32, // @default 37  The station the robot is under: which lamp is which tone.\n  lamps: f32, // @default 6  Radiance of a lamp plate, as the steel reflects it.\n  pool: f32, // @default 0.05  Radiance of the lit liner round a plate, as a share of the plate's.\n  deck: f32, // @default 0.2  How much of all that the wet deck throws back up.\n  gloss: f32, // @default 0.2  Roughness of the black shell: lower is wetter.\n  steel: f32, // @default 0.3  How much of what it faces the shell throws back: 0.04 is enamel, 0.6 bare steel.\n  eyeGlow: f32, // @default 9  Radiance of the eye lenses.\n  eyeColor: vec3f, // @default [1, 0.06, 0.03]  Their colour.\n  coreGlow: f32, // @default 0.02  Radiance of a red core at rest: an ember, so a tentacle in the dark is still there.\n  pulseGlow: f32, // @default 3  Radiance of a core under the crest of a pulse.\n};\n\n// What each drawn piece brings of its own: the rig's point attribute of the same name (rig.ts).\nstruct Instance {\n  charge: f32, // @default 0  How much of a pulse is on this piece: 0 at rest, 1 under a fresh crest.\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\nconst LAMP: f32 = 12.80000;\n// The tone of the lamp at a station (tunnel.ts, LAMP_TONES): cold in the bore, sodium in a hall, every fifteenth an alarm.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP)));\n}\n\n// What a ray going up (d.y > 0) from `here` sees of the lamp of `station` hanging at `lampAt`, in the level\n// plane it hangs in. `pool` is the lit liner round the plate as a share of the plate's radiance; `soft`\n// widens the plate's edge, metres (a rough mirror).\nfn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft: f32) -> vec3f {\n  let lamp = lampAt - here;\n  // The tunnel climbs and falls: a lamp below this height is round a bend of it.\n  if (lamp.y < 0.3) { return vec3f(0.0); }\n  let hit = d * (lamp.y / d.y);\n  let across = hit.x - lamp.x;\n  let along = hit.z - lamp.z;\n  let plate = (1.0 - smoothstep(0.2, 0.26 + soft, abs(across))) * (1.0 - smoothstep(0.3, 0.36 + soft, abs(along)));\n  let lit = exp(-(across * across + along * along) / 3.0) * pool;\n  // Air between: a far lamp is a dim one.\n  return lampTone(station) * (plate + lit) * exp(-length(hit) * 0.035);\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let role = s.attr.z;\n  if (role > 0.9) {\n    // A lens: black glass over a lamp, brightest where it faces the viewer.\n    let facing = max(dot(normalize(s.eye - s.world), s.normal), 0.0);\n    // Each lens has a nerve of its own: the eyes are a hand's breadth apart in the robot's frame, so a coarse cell of it names one.\n    let lens = floor(s.local * 7.0);\n    let nerve = fract(sin(dot(lens, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);\n    let life = 0.8 + 0.2 * sin(s.absTime * (1.5 + nerve * 4.0) + nerve * 40.0);\n    o.albedo = vec4f(0.01, 0.0, 0.0, 1.0);\n    o.roughness = 0.08;\n    o.metallic = 0.0;\n    o.emissive = p.eyeColor * p.eyeGlow * (0.35 + 0.65 * facing * facing) * life;\n  } else if (role > 0.7) {\n    // The spine between the rings: red mirror, as the reference has it. In the dark it is dark, and red only\n    // where a lamp finds it or a pulse is passing.\n    o.albedo = vec4f(0.55, 0.012, 0.008, 1.0);\n    o.roughness = 0.2;\n    o.metallic = 1.0;\n    o.emissive = p.eyeColor * (p.coreGlow + p.pulseGlow * s.instance.charge);\n  } else if (role > 0.5) {\n    o.albedo = vec4f(0.22, 0.012, 0.01, 1.0);\n    o.roughness = 0.38;\n    o.metallic = 0.6;\n  } else if (role > 0.3) {\n    o.albedo = vec4f(0.5, 0.36, 0.16, 1.0);\n    o.roughness = 0.34;\n    o.metallic = 1.0;\n  } else if (role > 0.1) {\n    o.albedo = vec4f(0.62, 0.64, 0.67, 1.0);\n    o.roughness = 0.22;\n    o.metallic = 1.0;\n  } else {\n    // Blackened steel: no diffuse at all, so it is only ever what it reflects — a lamp, the lit liner\n    // round one, the wet deck (tunnel.ts, the environment).\n    o.albedo = vec4f(p.steel * 0.92, p.steel * 0.96, p.steel * 1.05, 1.0);\n    o.roughness = p.gloss;\n    o.metallic = 1.0;\n  }\n  // A mirror shows what is along its mirror direction: the lamps overhead, and their smear in the wet deck\n  // below (tunnel.ts). Metal only; a rougher one shows a softer plate.\n  let view = normalize(s.world - s.eye);\n  let mirror = reflect(view, s.normal);\n  let soft = o.roughness * 0.6;\n  // Looking down, it is the deck's own mirror image of the same lamps, dimmer.\n  let up = vec3f(mirror.x, max(abs(mirror.y), 0.02), mirror.z);\n  var seen = vec3f(0.0);\n  seen = seen + lampSeen(up, s.world, p.lamp0, p.station + -2.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp1, p.station + -1.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp2, p.station + 0.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp3, p.station + 1.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp4, p.station + 2.0, p.pool, soft);\n  seen = seen * select(p.deck, 1.0, mirror.y > 0.0);\n  // Schlick: at a grazing angle any metal is a full mirror.\n  let graze = pow(1.0 - max(dot(-view, s.normal), 0.0), 5.0);\n  o.emissive = o.emissive + seen * p.lamps * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * (1.0 - o.roughness);\n  return o;\n}",
-          "station": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "floor(op('travel1').chan.value / 12.8)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 37
-              }
-            },
-            "mode": "expression"
-          }
-        },
-        "position": {
-          "x": -1800,
-          "y": 150
-        },
-        "type": "materialWgsl"
-      },
       "kernel_bore": {
         "definitionVersion": 1,
         "id": "kernel_bore",
@@ -1798,7 +1361,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('bore').chan.bore"
+                "source": "op('slider_bore').chan.bore"
               },
               "static": {
                 "kind": "static",
@@ -1813,7 +1376,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('travel1').chan.value"
+                "source": "op('speed_travel').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1839,7 +1402,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('bore').chan.bore"
+                "source": "op('slider_bore').chan.bore"
               },
               "static": {
                 "kind": "static",
@@ -1853,7 +1416,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('crawl').chan.crawl * (1 - 0.3 * op('lag_perched').chan.value)"
+                "source": "op('slider_crawl').chan.crawl * (1 - 0.3 * op('lag_perched').chan.value)"
               },
               "static": {
                 "kind": "static",
@@ -1866,7 +1429,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('flare').chan.flare"
+                "source": "op('slider_flare').chan.flare"
               },
               "static": {
                 "kind": "static",
@@ -1879,7 +1442,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_gesture').chan.gesture * (0.5 + 0.5 * op('lag_perched').chan.value) * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.6)"
+                "source": "op('slider_gesture').chan.gesture * (0.5 + 0.5 * op('lag_perched').chan.value) * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.6)"
               },
               "static": {
                 "kind": "static",
@@ -1892,7 +1455,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('grip').chan.grip"
+                "source": "op('slider_grip').chan.grip"
               },
               "static": {
                 "kind": "static",
@@ -1949,7 +1512,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(op('hits1').chan.hatCount * op('react').chan.react)"
+                "source": "(op('lag_hits').chan.hatCount * op('slider_react').chan.react)"
               },
               "static": {
                 "kind": "static",
@@ -1962,7 +1525,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('stride').chan.stride"
+                "source": "op('slider_stride').chan.stride"
               },
               "static": {
                 "kind": "static",
@@ -1975,7 +1538,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('stroke1').chan.value"
+                "source": "op('speed_stroke').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -2001,7 +1564,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('travel1').chan.value"
+                "source": "op('speed_travel').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -2014,7 +1577,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('wave').chan.wave + (op('levels1').chan.low * op('react').chan.react) * 0.08"
+                "source": "op('slider_wave').chan.wave + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.08"
               },
               "static": {
                 "kind": "static",
@@ -2040,7 +1603,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('bore').chan.bore"
+                "source": "op('slider_bore').chan.bore"
               },
               "static": {
                 "kind": "static",
@@ -2054,7 +1617,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('crawl').chan.crawl * (1 - 0.3 * op('lag_perched').chan.value)"
+                "source": "op('slider_crawl').chan.crawl * (1 - 0.3 * op('lag_perched').chan.value)"
               },
               "static": {
                 "kind": "static",
@@ -2067,7 +1630,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('flare').chan.flare"
+                "source": "op('slider_flare').chan.flare"
               },
               "static": {
                 "kind": "static",
@@ -2080,7 +1643,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_gesture').chan.gesture * (0.5 + 0.5 * op('lag_perched').chan.value) * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.6)"
+                "source": "op('slider_gesture').chan.gesture * (0.5 + 0.5 * op('lag_perched').chan.value) * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.6)"
               },
               "static": {
                 "kind": "static",
@@ -2093,7 +1656,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('grip').chan.grip"
+                "source": "op('slider_grip').chan.grip"
               },
               "static": {
                 "kind": "static",
@@ -2150,7 +1713,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(op('hits1').chan.hatCount * op('react').chan.react)"
+                "source": "(op('lag_hits').chan.hatCount * op('slider_react').chan.react)"
               },
               "static": {
                 "kind": "static",
@@ -2163,7 +1726,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('stride').chan.stride"
+                "source": "op('slider_stride').chan.stride"
               },
               "static": {
                 "kind": "static",
@@ -2176,7 +1739,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('stroke1').chan.value"
+                "source": "op('speed_stroke').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -2202,7 +1765,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('travel1').chan.value"
+                "source": "op('speed_travel').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -2215,7 +1778,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('wave').chan.wave + (op('levels1').chan.low * op('react').chan.react) * 0.08"
+                "source": "op('slider_wave').chan.wave + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.08"
               },
               "static": {
                 "kind": "static",
@@ -2241,7 +1804,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('bore').chan.bore"
+                "source": "op('slider_bore').chan.bore"
               },
               "static": {
                 "kind": "static",
@@ -2255,7 +1818,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('glow').chan.glow * 0.18 * (0.75 + (op('hits1').chan.hatCount * op('react').chan.react) * 0.9)"
+                "source": "op('slider_glow').chan.glow * 0.18 * (0.75 + (op('lag_hits').chan.hatCount * op('slider_react').chan.react) * 0.9)"
               },
               "static": {
                 "kind": "static",
@@ -2269,7 +1832,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('lamp').chan.lamp * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.8)"
+                "source": "op('slider_lamp').chan.lamp * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8)"
               },
               "static": {
                 "kind": "static",
@@ -2282,7 +1845,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('travel1').chan.value"
+                "source": "op('speed_travel').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -2308,7 +1871,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('bore').chan.bore"
+                "source": "op('slider_bore').chan.bore"
               },
               "static": {
                 "kind": "static",
@@ -2322,7 +1885,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('crawl').chan.crawl * (1 - 0.3 * op('lag_perched').chan.value)"
+                "source": "op('slider_crawl').chan.crawl * (1 - 0.3 * op('lag_perched').chan.value)"
               },
               "static": {
                 "kind": "static",
@@ -2335,7 +1898,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('flare').chan.flare"
+                "source": "op('slider_flare').chan.flare"
               },
               "static": {
                 "kind": "static",
@@ -2348,7 +1911,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_gesture').chan.gesture * (0.5 + 0.5 * op('lag_perched').chan.value) * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.6)"
+                "source": "op('slider_gesture').chan.gesture * (0.5 + 0.5 * op('lag_perched').chan.value) * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.6)"
               },
               "static": {
                 "kind": "static",
@@ -2361,7 +1924,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('grip').chan.grip"
+                "source": "op('slider_grip').chan.grip"
               },
               "static": {
                 "kind": "static",
@@ -2418,7 +1981,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(op('hits1').chan.hatCount * op('react').chan.react)"
+                "source": "(op('lag_hits').chan.hatCount * op('slider_react').chan.react)"
               },
               "static": {
                 "kind": "static",
@@ -2431,7 +1994,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('stride').chan.stride"
+                "source": "op('slider_stride').chan.stride"
               },
               "static": {
                 "kind": "static",
@@ -2444,7 +2007,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('stroke1').chan.value"
+                "source": "op('speed_stroke').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -2470,7 +2033,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('travel1').chan.value"
+                "source": "op('speed_travel').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -2483,7 +2046,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('wave').chan.wave + (op('levels1').chan.low * op('react').chan.react) * 0.08"
+                "source": "op('slider_wave').chan.wave + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.08"
               },
               "static": {
                 "kind": "static",
@@ -2510,6 +2073,34 @@
         "position": {
           "x": -2100,
           "y": 725
+        },
+        "type": "valueLag"
+      },
+      "lag_hits": {
+        "definitionVersion": 1,
+        "id": "lag_hits",
+        "label": "lag_hits",
+        "parameters": {
+          "lag": 0.001,
+          "releaseRatio": 250
+        },
+        "position": {
+          "x": -3000,
+          "y": 750
+        },
+        "type": "valueLag"
+      },
+      "lag_levels": {
+        "definitionVersion": 1,
+        "id": "lag_levels",
+        "label": "lag_levels",
+        "parameters": {
+          "lag": 0.03,
+          "releaseRatio": 5
+        },
+        "position": {
+          "x": -2400,
+          "y": 500
         },
         "type": "valueLag"
       },
@@ -2541,6 +2132,34 @@
         },
         "type": "valueLag"
       },
+      "lag_rate": {
+        "definitionVersion": 1,
+        "id": "lag_rate",
+        "label": "lag_rate",
+        "parameters": {
+          "lag": 0.25,
+          "releaseRatio": 1.6
+        },
+        "position": {
+          "x": -2100,
+          "y": 1000
+        },
+        "type": "valueLag"
+      },
+      "lag_smooth": {
+        "definitionVersion": 1,
+        "id": "lag_smooth",
+        "label": "lag_smooth",
+        "parameters": {
+          "lag": 0.02,
+          "releaseRatio": 4
+        },
+        "position": {
+          "x": -3000,
+          "y": 500
+        },
+        "type": "valueLag"
+      },
       "lag_swim": {
         "definitionVersion": 1,
         "id": "lag_swim",
@@ -2569,37 +2188,83 @@
         },
         "type": "valueLag"
       },
-      "lamp": {
+      "light_eyes": {
         "definitionVersion": 1,
-        "id": "lamp",
-        "label": "lamp",
+        "id": "light_eyes",
+        "label": "light_eyes",
         "parameters": {
-          "caption": "Lamp",
-          "channel": "lamp",
-          "max": 80,
-          "min": 0,
-          "step": 0,
-          "value": 26
+          "color": [
+            1,
+            0.12,
+            0.06,
+            1
+          ],
+          "falloff": "inverseSquare",
+          "intensity": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_glow').chan.glow * 0.18 * (0.75 + (op('lag_hits').chan.hatCount * op('slider_react').chan.react) * 0.9)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.6
+              }
+            },
+            "mode": "expression"
+          },
+          "kind": "point",
+          "position": [
+            0,
+            0,
+            0.9
+          ],
+          "position.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + 0.9)) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + 0.9)) + 1.9)) + 0"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "position.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + 0.9)) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + 0.9)) + 0.7)) + 0"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "position.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + 0.9)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.9
+              }
+            },
+            "mode": "expression"
+          },
+          "range": 14
         },
         "position": {
-          "x": -3300,
-          "y": 2000
+          "x": -1500,
+          "y": -300
         },
-        "type": "slider"
-      },
-      "levels": {
-        "definitionVersion": 1,
-        "id": "levels",
-        "label": "levels1",
-        "parameters": {
-          "lag": 0.03,
-          "releaseRatio": 5
-        },
-        "position": {
-          "x": -2400,
-          "y": 500
-        },
-        "type": "valueLag"
+        "type": "light"
       },
       "light_lamp0": {
         "definitionVersion": 1,
@@ -2616,7 +2281,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((mod((floor(op('travel1').chan.value / 12.8) + -1), 15) == 7) * 0.06 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + -1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.28 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 1))"
+                "source": "((mod((floor(op('speed_travel').chan.value / 12.8) + -1), 15) == 7) * 0.06 + (1 - (mod((floor(op('speed_travel').chan.value / 12.8) + -1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.28 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 1))"
               },
               "static": {
                 "kind": "static",
@@ -2629,7 +2294,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((mod((floor(op('travel1').chan.value / 12.8) + -1), 15) == 7) * 0.1 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + -1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.62 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.84))"
+                "source": "((mod((floor(op('speed_travel').chan.value / 12.8) + -1), 15) == 7) * 0.1 + (1 - (mod((floor(op('speed_travel').chan.value / 12.8) + -1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.62 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.84))"
               },
               "static": {
                 "kind": "static",
@@ -2642,7 +2307,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((mod((floor(op('travel1').chan.value / 12.8) + -1), 15) == 7) * 1 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + -1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 1 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.62))"
+                "source": "((mod((floor(op('speed_travel').chan.value / 12.8) + -1), 15) == 7) * 1 + (1 - (mod((floor(op('speed_travel').chan.value / 12.8) + -1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 1 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.62))"
               },
               "static": {
                 "kind": "static",
@@ -2656,7 +2321,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('lamp').chan.lamp * clamp(1.5 - abs(((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8) - op('travel1').chan.value) / 12.8, 0, 1) * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.8)"
+                "source": "op('slider_lamp').chan.lamp * clamp(1.5 - abs(((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8) - op('speed_travel').chan.value) / 12.8, 0, 1) * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8)"
               },
               "static": {
                 "kind": "static",
@@ -2675,7 +2340,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 1.9))"
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 1.9))"
               },
               "static": {
                 "kind": "static",
@@ -2688,7 +2353,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore - 0.35"
               },
               "static": {
                 "kind": "static",
@@ -2701,7 +2366,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)"
+                "source": "((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)"
               },
               "static": {
                 "kind": "static",
@@ -2733,7 +2398,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((mod((floor(op('travel1').chan.value / 12.8) + 0), 15) == 7) * 0.06 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + 0), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.28 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 1))"
+                "source": "((mod((floor(op('speed_travel').chan.value / 12.8) + 0), 15) == 7) * 0.06 + (1 - (mod((floor(op('speed_travel').chan.value / 12.8) + 0), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.28 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 1))"
               },
               "static": {
                 "kind": "static",
@@ -2746,7 +2411,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((mod((floor(op('travel1').chan.value / 12.8) + 0), 15) == 7) * 0.1 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + 0), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.62 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.84))"
+                "source": "((mod((floor(op('speed_travel').chan.value / 12.8) + 0), 15) == 7) * 0.1 + (1 - (mod((floor(op('speed_travel').chan.value / 12.8) + 0), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.62 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.84))"
               },
               "static": {
                 "kind": "static",
@@ -2759,7 +2424,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((mod((floor(op('travel1').chan.value / 12.8) + 0), 15) == 7) * 1 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + 0), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 1 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.62))"
+                "source": "((mod((floor(op('speed_travel').chan.value / 12.8) + 0), 15) == 7) * 1 + (1 - (mod((floor(op('speed_travel').chan.value / 12.8) + 0), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 1 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.62))"
               },
               "static": {
                 "kind": "static",
@@ -2773,7 +2438,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('lamp').chan.lamp * clamp(1.5 - abs(((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8) - op('travel1').chan.value) / 12.8, 0, 1) * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.8)"
+                "source": "op('slider_lamp').chan.lamp * clamp(1.5 - abs(((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8) - op('speed_travel').chan.value) / 12.8, 0, 1) * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8)"
               },
               "static": {
                 "kind": "static",
@@ -2792,7 +2457,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 1.9))"
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 1.9))"
               },
               "static": {
                 "kind": "static",
@@ -2805,7 +2470,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore - 0.35"
               },
               "static": {
                 "kind": "static",
@@ -2818,7 +2483,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)"
+                "source": "((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)"
               },
               "static": {
                 "kind": "static",
@@ -2850,7 +2515,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((mod((floor(op('travel1').chan.value / 12.8) + 1), 15) == 7) * 0.06 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + 1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.28 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 1))"
+                "source": "((mod((floor(op('speed_travel').chan.value / 12.8) + 1), 15) == 7) * 0.06 + (1 - (mod((floor(op('speed_travel').chan.value / 12.8) + 1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.28 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 1))"
               },
               "static": {
                 "kind": "static",
@@ -2863,7 +2528,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((mod((floor(op('travel1').chan.value / 12.8) + 1), 15) == 7) * 0.1 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + 1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.62 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.84))"
+                "source": "((mod((floor(op('speed_travel').chan.value / 12.8) + 1), 15) == 7) * 0.1 + (1 - (mod((floor(op('speed_travel').chan.value / 12.8) + 1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.62 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.84))"
               },
               "static": {
                 "kind": "static",
@@ -2876,7 +2541,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((mod((floor(op('travel1').chan.value / 12.8) + 1), 15) == 7) * 1 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + 1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 1 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.62))"
+                "source": "((mod((floor(op('speed_travel').chan.value / 12.8) + 1), 15) == 7) * 1 + (1 - (mod((floor(op('speed_travel').chan.value / 12.8) + 1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 1 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('speed_travel').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.62))"
               },
               "static": {
                 "kind": "static",
@@ -2890,7 +2555,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('lamp').chan.lamp * clamp(1.5 - abs(((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8) - op('travel1').chan.value) / 12.8, 0, 1) * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.8)"
+                "source": "op('slider_lamp').chan.lamp * clamp(1.5 - abs(((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8) - op('speed_travel').chan.value) / 12.8, 0, 1) * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8)"
               },
               "static": {
                 "kind": "static",
@@ -2909,7 +2574,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 1.9))"
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 1.9))"
               },
               "static": {
                 "kind": "static",
@@ -2922,7 +2587,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore - 0.35"
               },
               "static": {
                 "kind": "static",
@@ -2935,7 +2600,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)"
+                "source": "((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)"
               },
               "static": {
                 "kind": "static",
@@ -2961,7 +2626,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('lamp').chan.lamp * 0.55 * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.8)"
+                "source": "op('slider_lamp').chan.lamp * 0.55 * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8)"
               },
               "static": {
                 "kind": "static",
@@ -2976,6 +2641,267 @@
         "position": {
           "x": -2100,
           "y": 1400
+        },
+        "type": "materialWgsl"
+      },
+      "material_hull": {
+        "definitionVersion": 1,
+        "id": "material_hull",
+        "label": "material_hull",
+        "parameters": {
+          "eyeGlow": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_glow').chan.glow * (0.75 + (op('lag_levels').chan.high * op('slider_react').chan.react) * 0.6 + (op('lag_hits').chan.hatCount * op('slider_react').chan.react) * 0.9)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 9
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp0.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp0.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp0.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": -19.200000000000003
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp1.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp1.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp1.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": -6.4
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp2.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp2.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp2.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 6.4
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp3.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp3.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp3.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 19.200000000000003
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp4.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp4.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp4.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 32
+              }
+            },
+            "mode": "expression"
+          },
+          "lamps": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_lamp').chan.lamp * 0.23 * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 6
+              }
+            },
+            "mode": "expression"
+          },
+          "model": "pbr",
+          "pulseGlow": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "3 * op('slider_react').chan.react"
+              },
+              "static": {
+                "kind": "static",
+                "value": 3
+              }
+            },
+            "mode": "expression"
+          },
+          "source": "struct Params {\n  lamp0: vec3f, // @default [0, 2.25, -19.2]  Where the lamp -2 stations on from the robot's own hangs.\n  lamp1: vec3f, // @default [0, 2.25, -6.4]  Where the lamp -1 stations on from the robot's own hangs.\n  lamp2: vec3f, // @default [0, 2.25, 6.4]  Where the lamp 0 stations on from the robot's own hangs.\n  lamp3: vec3f, // @default [0, 2.25, 19.2]  Where the lamp 1 stations on from the robot's own hangs.\n  lamp4: vec3f, // @default [0, 2.25, 32.0]  Where the lamp 2 stations on from the robot's own hangs.\n  station: f32, // @default 37  The station the robot is under: which lamp is which tone.\n  lamps: f32, // @default 6  Radiance of a lamp plate, as the steel reflects it.\n  pool: f32, // @default 0.05  Radiance of the lit liner round a plate, as a share of the plate's.\n  deck: f32, // @default 0.2  How much of all that the wet deck throws back up.\n  gloss: f32, // @default 0.2  Roughness of the black shell: lower is wetter.\n  steel: f32, // @default 0.3  How much of what it faces the shell throws back: 0.04 is enamel, 0.6 bare steel.\n  eyeGlow: f32, // @default 9  Radiance of the eye lenses.\n  eyeColor: vec3f, // @default [1, 0.06, 0.03]  Their colour.\n  coreGlow: f32, // @default 0.02  Radiance of a red core at rest: an ember, so a tentacle in the dark is still there.\n  pulseGlow: f32, // @default 3  Radiance of a core under the crest of a pulse.\n};\n\n// What each drawn piece brings of its own: the rig's point attribute of the same name (rig.ts).\nstruct Instance {\n  charge: f32, // @default 0  How much of a pulse is on this piece: 0 at rest, 1 under a fresh crest.\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\nconst LAMP: f32 = 12.80000;\n// The tone of the lamp at a station (tunnel.ts, LAMP_TONES): cold in the bore, sodium in a hall, every fifteenth an alarm.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP)));\n}\n\n// What a ray going up (d.y > 0) from `here` sees of the lamp of `station` hanging at `lampAt`, in the level\n// plane it hangs in. `pool` is the lit liner round the plate as a share of the plate's radiance; `soft`\n// widens the plate's edge, metres (a rough mirror).\nfn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft: f32) -> vec3f {\n  let lamp = lampAt - here;\n  // The tunnel climbs and falls: a lamp below this height is round a bend of it.\n  if (lamp.y < 0.3) { return vec3f(0.0); }\n  let hit = d * (lamp.y / d.y);\n  let across = hit.x - lamp.x;\n  let along = hit.z - lamp.z;\n  let plate = (1.0 - smoothstep(0.2, 0.26 + soft, abs(across))) * (1.0 - smoothstep(0.3, 0.36 + soft, abs(along)));\n  let lit = exp(-(across * across + along * along) / 3.0) * pool;\n  // Air between: a far lamp is a dim one.\n  return lampTone(station) * (plate + lit) * exp(-length(hit) * 0.035);\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let role = s.attr.z;\n  if (role > 0.9) {\n    // A lens: black glass over a lamp, brightest where it faces the viewer.\n    let facing = max(dot(normalize(s.eye - s.world), s.normal), 0.0);\n    // Each lens has a nerve of its own: the eyes are a hand's breadth apart in the robot's frame, so a coarse cell of it names one.\n    let lens = floor(s.local * 7.0);\n    let nerve = fract(sin(dot(lens, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);\n    let life = 0.8 + 0.2 * sin(s.absTime * (1.5 + nerve * 4.0) + nerve * 40.0);\n    o.albedo = vec4f(0.01, 0.0, 0.0, 1.0);\n    o.roughness = 0.08;\n    o.metallic = 0.0;\n    o.emissive = p.eyeColor * p.eyeGlow * (0.35 + 0.65 * facing * facing) * life;\n  } else if (role > 0.7) {\n    // The spine between the rings: red mirror, as the reference has it. In the dark it is dark, and red only\n    // where a lamp finds it or a pulse is passing.\n    o.albedo = vec4f(0.55, 0.012, 0.008, 1.0);\n    o.roughness = 0.2;\n    o.metallic = 1.0;\n    o.emissive = p.eyeColor * (p.coreGlow + p.pulseGlow * s.instance.charge);\n  } else if (role > 0.5) {\n    o.albedo = vec4f(0.22, 0.012, 0.01, 1.0);\n    o.roughness = 0.38;\n    o.metallic = 0.6;\n  } else if (role > 0.3) {\n    o.albedo = vec4f(0.5, 0.36, 0.16, 1.0);\n    o.roughness = 0.34;\n    o.metallic = 1.0;\n  } else if (role > 0.1) {\n    o.albedo = vec4f(0.62, 0.64, 0.67, 1.0);\n    o.roughness = 0.22;\n    o.metallic = 1.0;\n  } else {\n    // Blackened steel: no diffuse at all, so it is only ever what it reflects — a lamp, the lit liner\n    // round one, the wet deck (tunnel.ts, the environment).\n    o.albedo = vec4f(p.steel * 0.92, p.steel * 0.96, p.steel * 1.05, 1.0);\n    o.roughness = p.gloss;\n    o.metallic = 1.0;\n  }\n  // A mirror shows what is along its mirror direction: the lamps overhead, and their smear in the wet deck\n  // below (tunnel.ts). Metal only; a rougher one shows a softer plate.\n  let view = normalize(s.world - s.eye);\n  let mirror = reflect(view, s.normal);\n  let soft = o.roughness * 0.6;\n  // Looking down, it is the deck's own mirror image of the same lamps, dimmer.\n  let up = vec3f(mirror.x, max(abs(mirror.y), 0.02), mirror.z);\n  var seen = vec3f(0.0);\n  seen = seen + lampSeen(up, s.world, p.lamp0, p.station + -2.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp1, p.station + -1.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp2, p.station + 0.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp3, p.station + 1.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp4, p.station + 2.0, p.pool, soft);\n  seen = seen * select(p.deck, 1.0, mirror.y > 0.0);\n  // Schlick: at a grazing angle any metal is a full mirror.\n  let graze = pow(1.0 - max(dot(-view, s.normal), 0.0), 5.0);\n  o.emissive = o.emissive + seen * p.lamps * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * (1.0 - o.roughness);\n  return o;\n}",
+          "station": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "floor(op('speed_travel').chan.value / 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 37
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -1800,
+          "y": 150
         },
         "type": "materialWgsl"
       },
@@ -3048,10 +2974,23 @@
         },
         "type": "meshFileIn"
       },
-      "out": {
+      "normalize_levels": {
         "definitionVersion": 1,
-        "id": "out",
-        "label": "out1",
+        "id": "normalize_levels",
+        "label": "normalize_levels",
+        "parameters": {
+          "window": 16
+        },
+        "position": {
+          "x": -2700,
+          "y": 500
+        },
+        "type": "valueNormalize"
+      },
+      "output_frame": {
+        "definitionVersion": 1,
+        "id": "output_frame",
+        "label": "output_frame",
         "parameters": {
           "toneMap": "filmic"
         },
@@ -3066,7 +3005,7 @@
         "id": "panel",
         "label": "panel1",
         "parameters": {
-          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"member\":\"perch\",\"rect\":{\"x\":0,\"y\":9,\"w\":6,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":10,\"w\":6,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":11,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":12,\"w\":6,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":13,\"w\":6,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":6,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"bore\",\"rect\":{\"x\":6,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"lamp\",\"rect\":{\"x\":6,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"glow\",\"rect\":{\"x\":6,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"distance\",\"rect\":{\"x\":6,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"react\",\"rect\":{\"x\":6,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":6,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"view\",\"rect\":{\"x\":6,\"y\":7,\"w\":3,\"h\":3}}\n  ]\n}",
+          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"member\":\"toggle_perch\",\"rect\":{\"x\":0,\"y\":9,\"w\":6,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":10,\"w\":6,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":11,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":12,\"w\":6,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":13,\"w\":6,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":6,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":6,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":6,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":6,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":6,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":6,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":6,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":6,\"y\":7,\"w\":3,\"h\":3}}\n  ]\n}",
           "title": "Sentinel"
         },
         "position": {
@@ -3075,25 +3014,41 @@
         },
         "type": "panel"
       },
-      "perch": {
+      "render_shot": {
         "definitionVersion": 1,
-        "id": "perch",
-        "label": "perch",
+        "id": "render_shot",
+        "label": "render_shot",
         "parameters": {
-          "caption": "Perch",
-          "channel": "perch",
-          "on": false
+          "ambientColor": [
+            0.5,
+            0.62,
+            0.8,
+            1
+          ],
+          "ambientIntensity": 0.015,
+          "antialias": "msaa",
+          "background": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "camera": "camera_rig",
+          "depthOutput": true,
+          "lights": "light_eyes light_lamp0 light_lamp1 light_lamp2",
+          "normalOutput": true,
+          "scenes": "geometry_hull geometry_ring geometry_claw geometry_bore geometry_motes"
         },
         "position": {
-          "x": -3600,
-          "y": 2250
+          "x": -1200,
+          "y": 0
         },
-        "type": "toggle"
+        "type": "render"
       },
-      "pickHits": {
+      "select_hits": {
         "definitionVersion": 1,
-        "id": "pickHits",
-        "label": "pickhits1",
+        "id": "select_hits",
+        "label": "select_hits",
         "parameters": {
           "channels": "kickCount snareCount hatCount"
         },
@@ -3102,75 +3057,6 @@
           "y": 750
         },
         "type": "valueSelect"
-      },
-      "pickLevels": {
-        "definitionVersion": 1,
-        "id": "pickLevels",
-        "label": "picklevels1",
-        "parameters": {
-          "channels": "level low high"
-        },
-        "position": {
-          "x": -3300,
-          "y": 500
-        },
-        "type": "valueSelect"
-      },
-      "rank": {
-        "definitionVersion": 1,
-        "id": "rank",
-        "label": "rank1",
-        "parameters": {
-          "window": 16
-        },
-        "position": {
-          "x": -2700,
-          "y": 500
-        },
-        "type": "valueNormalize"
-      },
-      "rate": {
-        "definitionVersion": 1,
-        "id": "rate",
-        "label": "rate1",
-        "parameters": {
-          "value": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('speed').chan.speed * (1 - op('constant_perch').chan.value) * (1 + (op('hits1').chan.kickCount * op('react').chan.react) * 0.6) * (1 + op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * clamp((op('constant_energy').chan.value - 1) * 1.5, -0.5, 0.6))"
-              },
-              "static": {
-                "kind": "static",
-                "value": 3.2
-              }
-            },
-            "mode": "expression"
-          }
-        },
-        "position": {
-          "x": -2400,
-          "y": 1000
-        },
-        "type": "constant"
-      },
-      "react": {
-        "definitionVersion": 1,
-        "id": "react",
-        "label": "react",
-        "parameters": {
-          "caption": "Listen",
-          "channel": "react",
-          "max": 2,
-          "min": 0,
-          "step": 0,
-          "value": 1
-        },
-        "position": {
-          "x": -3600,
-          "y": 2250
-        },
-        "type": "slider"
       },
       "select_kick": {
         "definitionVersion": 1,
@@ -3182,6 +3068,19 @@
         "position": {
           "x": -3300,
           "y": 900
+        },
+        "type": "valueSelect"
+      },
+      "select_levels": {
+        "definitionVersion": 1,
+        "id": "select_levels",
+        "label": "select_levels",
+        "parameters": {
+          "channels": "level low high"
+        },
+        "position": {
+          "x": -3300,
+          "y": 500
         },
         "type": "valueSelect"
       },
@@ -3198,36 +3097,77 @@
         },
         "type": "valueSelect"
       },
-      "shot": {
+      "slider_bore": {
         "definitionVersion": 1,
-        "id": "shot",
-        "label": "shot1",
+        "id": "slider_bore",
+        "label": "slider_bore",
         "parameters": {
-          "ambientColor": [
-            0.5,
-            0.62,
-            0.8,
-            1
-          ],
-          "ambientIntensity": 0.015,
-          "antialias": "msaa",
-          "background": [
-            0,
-            0,
-            0,
-            1
-          ],
-          "camera": "cam1",
-          "depthOutput": true,
-          "lights": "eyes1 light_lamp0 light_lamp1 light_lamp2",
-          "normalOutput": true,
-          "scenes": "geometry_hull geometry_ring geometry_claw geometry_bore geometry_motes"
+          "caption": "Tunnel",
+          "channel": "bore",
+          "max": 3.4,
+          "min": 2.2,
+          "step": 0,
+          "value": 2.6
         },
         "position": {
-          "x": -1200,
-          "y": 0
+          "x": -3600,
+          "y": 2000
         },
-        "type": "render"
+        "type": "slider"
+      },
+      "slider_crawl": {
+        "definitionVersion": 1,
+        "id": "slider_crawl",
+        "label": "slider_crawl",
+        "parameters": {
+          "caption": "Crawl",
+          "channel": "crawl",
+          "max": 1,
+          "min": 0,
+          "step": 0,
+          "value": 1
+        },
+        "position": {
+          "x": -3300,
+          "y": 1500
+        },
+        "type": "slider"
+      },
+      "slider_distance": {
+        "definitionVersion": 1,
+        "id": "slider_distance",
+        "label": "slider_distance",
+        "parameters": {
+          "caption": "Camera distance",
+          "channel": "distance",
+          "max": 12,
+          "min": -9,
+          "step": 0,
+          "value": 7.5
+        },
+        "position": {
+          "x": -2700,
+          "y": 2000
+        },
+        "type": "slider"
+      },
+      "slider_flare": {
+        "definitionVersion": 1,
+        "id": "slider_flare",
+        "label": "slider_flare",
+        "parameters": {
+          "caption": "Flare",
+          "channel": "flare",
+          "max": 1,
+          "min": 0,
+          "step": 0,
+          "value": 0.25
+        },
+        "position": {
+          "x": -3600,
+          "y": 1750
+        },
+        "type": "slider"
       },
       "slider_gesture": {
         "definitionVersion": 1,
@@ -3243,6 +3183,42 @@
         },
         "position": {
           "x": -2700,
+          "y": 1750
+        },
+        "type": "slider"
+      },
+      "slider_glow": {
+        "definitionVersion": 1,
+        "id": "slider_glow",
+        "label": "slider_glow",
+        "parameters": {
+          "caption": "Eyes",
+          "channel": "glow",
+          "max": 30,
+          "min": 0,
+          "step": 0,
+          "value": 9
+        },
+        "position": {
+          "x": -3000,
+          "y": 2000
+        },
+        "type": "slider"
+      },
+      "slider_grip": {
+        "definitionVersion": 1,
+        "id": "slider_grip",
+        "label": "slider_grip",
+        "parameters": {
+          "caption": "Grip",
+          "channel": "grip",
+          "max": 1,
+          "min": 0,
+          "step": 0,
+          "value": 1
+        },
+        "position": {
+          "x": -3000,
           "y": 1750
         },
         "type": "slider"
@@ -3265,6 +3241,42 @@
         },
         "type": "slider"
       },
+      "slider_lamp": {
+        "definitionVersion": 1,
+        "id": "slider_lamp",
+        "label": "slider_lamp",
+        "parameters": {
+          "caption": "Lamp",
+          "channel": "lamp",
+          "max": 80,
+          "min": 0,
+          "step": 0,
+          "value": 26
+        },
+        "position": {
+          "x": -3300,
+          "y": 2000
+        },
+        "type": "slider"
+      },
+      "slider_react": {
+        "definitionVersion": 1,
+        "id": "slider_react",
+        "label": "slider_react",
+        "parameters": {
+          "caption": "Listen",
+          "channel": "react",
+          "max": 2,
+          "min": 0,
+          "step": 0,
+          "value": 1
+        },
+        "position": {
+          "x": -3600,
+          "y": 2250
+        },
+        "type": "slider"
+      },
       "slider_shot": {
         "definitionVersion": 1,
         "id": "slider_shot",
@@ -3283,24 +3295,10 @@
         },
         "type": "slider"
       },
-      "smooth": {
+      "slider_speed": {
         "definitionVersion": 1,
-        "id": "smooth",
-        "label": "smooth1",
-        "parameters": {
-          "lag": 0.02,
-          "releaseRatio": 4
-        },
-        "position": {
-          "x": -3000,
-          "y": 500
-        },
-        "type": "valueLag"
-      },
-      "speed": {
-        "definitionVersion": 1,
-        "id": "speed",
-        "label": "speed",
+        "id": "slider_speed",
+        "label": "slider_speed",
         "parameters": {
           "caption": "Speed",
           "channel": "speed",
@@ -3315,10 +3313,10 @@
         },
         "type": "slider"
       },
-      "stride": {
+      "slider_stride": {
         "definitionVersion": 1,
-        "id": "stride",
-        "label": "stride",
+        "id": "slider_stride",
+        "label": "slider_stride",
         "parameters": {
           "caption": "Stride",
           "channel": "stride",
@@ -3333,38 +3331,10 @@
         },
         "type": "slider"
       },
-      "stroke": {
+      "slider_swim": {
         "definitionVersion": 1,
-        "id": "stroke",
-        "label": "stroke1",
-        "parameters": {
-          "limit": "loop",
-          "maximum": 1,
-          "minimum": 0
-        },
-        "position": {
-          "x": -2100,
-          "y": 1250
-        },
-        "type": "valueSpeed"
-      },
-      "strokeRate": {
-        "definitionVersion": 1,
-        "id": "strokeRate",
-        "label": "strokerate1",
-        "parameters": {
-          "value": 0.5166666666666667
-        },
-        "position": {
-          "x": -2400,
-          "y": 1250
-        },
-        "type": "constant"
-      },
-      "swim": {
-        "definitionVersion": 1,
-        "id": "swim",
-        "label": "swim",
+        "id": "slider_swim",
+        "label": "slider_swim",
         "parameters": {
           "caption": "Swim",
           "channel": "swim",
@@ -3378,6 +3348,54 @@
           "y": 1500
         },
         "type": "slider"
+      },
+      "slider_wave": {
+        "definitionVersion": 1,
+        "id": "slider_wave",
+        "label": "slider_wave",
+        "parameters": {
+          "caption": "Wave",
+          "channel": "wave",
+          "max": 0.3,
+          "min": 0,
+          "step": 0,
+          "value": 0.05
+        },
+        "position": {
+          "x": -3300,
+          "y": 1750
+        },
+        "type": "slider"
+      },
+      "speed_stroke": {
+        "definitionVersion": 1,
+        "id": "speed_stroke",
+        "label": "speed_stroke",
+        "parameters": {
+          "limit": "loop",
+          "maximum": 1,
+          "minimum": 0
+        },
+        "position": {
+          "x": -2100,
+          "y": 1250
+        },
+        "type": "valueSpeed"
+      },
+      "speed_travel": {
+        "definitionVersion": 1,
+        "id": "speed_travel",
+        "label": "speed_travel",
+        "parameters": {
+          "limit": "loop",
+          "maximum": 960,
+          "minimum": 0
+        },
+        "position": {
+          "x": -1800,
+          "y": 1000
+        },
+        "type": "valueSpeed"
       },
       "toggle_cuts": {
         "definitionVersion": 1,
@@ -3409,56 +3427,20 @@
         },
         "type": "toggle"
       },
-      "travel": {
+      "toggle_perch": {
         "definitionVersion": 1,
-        "id": "travel",
-        "label": "travel1",
+        "id": "toggle_perch",
+        "label": "toggle_perch",
         "parameters": {
-          "limit": "loop",
-          "maximum": 960,
-          "minimum": 0
+          "caption": "Perch",
+          "channel": "perch",
+          "on": false
         },
         "position": {
-          "x": -1800,
-          "y": 1000
-        },
-        "type": "valueSpeed"
-      },
-      "view": {
-        "definitionVersion": 1,
-        "id": "view",
-        "label": "view",
-        "parameters": {
-          "caption": "Chase side / height",
-          "channel": "view",
-          "max": 2,
-          "min": -2,
-          "x": 1.1,
-          "y": 0.6
-        },
-        "position": {
-          "x": -3300,
+          "x": -3600,
           "y": 2250
         },
-        "type": "xyPad"
-      },
-      "wave": {
-        "definitionVersion": 1,
-        "id": "wave",
-        "label": "wave",
-        "parameters": {
-          "caption": "Wave",
-          "channel": "wave",
-          "max": 0.3,
-          "min": 0,
-          "step": 0,
-          "value": 0.05
-        },
-        "position": {
-          "x": -3300,
-          "y": 1750
-        },
-        "type": "slider"
+        "type": "toggle"
       },
       "wgsl_bloomdown1": {
         "definitionVersion": 1,
@@ -3667,7 +3649,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.x"
+                "source": "op('camera_rig').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -3680,7 +3662,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.y"
+                "source": "op('camera_rig').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -3693,7 +3675,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.z"
+                "source": "op('camera_rig').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -3711,7 +3693,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.x"
+                "source": "op('camera_rig').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -3724,7 +3706,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.y"
+                "source": "op('camera_rig').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -3737,7 +3719,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.z"
+                "source": "op('camera_rig').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -3751,7 +3733,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.fov"
+                "source": "op('camera_rig').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -3775,6 +3757,24 @@
           "mode": "project"
         },
         "type": "customWgslMulti"
+      },
+      "xypad_view": {
+        "definitionVersion": 1,
+        "id": "xypad_view",
+        "label": "xypad_view",
+        "parameters": {
+          "caption": "Chase side / height",
+          "channel": "view",
+          "max": 2,
+          "min": -2,
+          "x": 1.1,
+          "y": 0.6
+        },
+        "position": {
+          "x": -3300,
+          "y": 2250
+        },
+        "type": "xyPad"
       }
     },
     "revision": 1

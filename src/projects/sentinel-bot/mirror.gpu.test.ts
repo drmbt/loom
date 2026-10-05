@@ -63,23 +63,23 @@ async function middlePixel(overrides: Record<string, unknown> = {}): Promise<num
   if (dawnError !== undefined) throw new Error(`Dawn unavailable: ${dawnError}`);
   const lamps = Object.fromEntries(Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, index) => [lampParameter(index), index === LAMPS_MIRRORED ? OVERHEAD : AWAY]));
   const nodes = [
-    node("mesh", "meshFileIn", { vertices: FACTS.vertices, triangles: FACTS.triangles, parts: FACTS.parts }, "mesh1"),
-    node("mat", "materialWgsl", { model: "pbr", source: HULL_SURFACE_WGSL, ...lamps, station: COLD_STATION, lamps: LAMPS, pool: POOL, deck: 0.2, gloss: GLOSS, steel: STEEL, ...overrides }, "mat1"),
-    node("geo", "geometry", { mode: "surface", material: "mat1" }, "geo1"),
-    node("cam", "camera", { eye: [0, MET[1] + 2, -2], lookAt: [...MET] }, "cam1"),
-    node("shot", "render", { scenes: "geo1", camera: "cam1", lights: "", ambientColor: [1, 1, 1, 1], ambientIntensity: 0 }, "shot1"),
-    node("out", "output", {}, "out1"),
+    node("mesh_cube", "meshFileIn", { vertices: FACTS.vertices, triangles: FACTS.triangles, parts: FACTS.parts }, "mesh_cube"),
+    node("material_hull", "materialWgsl", { model: "pbr", source: HULL_SURFACE_WGSL, ...lamps, station: COLD_STATION, lamps: LAMPS, pool: POOL, deck: 0.2, gloss: GLOSS, steel: STEEL, ...overrides }, "material_hull"),
+    node("geometry_mirror", "geometry", { mode: "surface", material: "material_hull" }, "geometry_mirror"),
+    node("camera_above", "camera", { eye: [0, MET[1] + 2, -2], lookAt: [...MET] }, "camera_above"),
+    node("render_shot", "render", { scenes: "geometry_mirror", camera: "camera_above", lights: "", ambientColor: [1, 1, 1, 1], ambientIntensity: 0 }, "render_shot"),
+    node("output_frame", "output", {}, "output_frame"),
   ];
   const document = {
     revision: 1,
     nodes: Object.fromEntries(nodes.map((entry) => [entry.id, entry])),
     edges: {
-      e1: { id: "e1", source: { nodeId: "mesh", portId: "out" }, target: { nodeId: "geo", portId: "points" } },
-      e2: { id: "e2", source: { nodeId: "shot", portId: "out" }, target: { nodeId: "out", portId: "input" } },
+      e1: { id: "e1", source: { nodeId: "mesh_cube", portId: "out" }, target: { nodeId: "geometry_mirror", portId: "points" } },
+      e2: { id: "e2", source: { nodeId: "render_shot", portId: "out" }, target: { nodeId: "output_frame", portId: "input" } },
     },
     groups: {},
   } as never as GraphDocument;
-  const result = await renderHeadless({ host: nodeGpuHost(), graph: document, settings: SETTINGS, frames: 2, outputNodeId: "shot", outputPortId: "out", meshes: { mesh: GLB } });
+  const result = await renderHeadless({ host: nodeGpuHost(), graph: document, settings: SETTINGS, frames: 2, outputNodeId: "render_shot", outputPortId: "out", meshes: { mesh_cube: GLB } });
   expect(result.diagnostics.filter((entry) => entry.severity === "error").map((entry) => entry.message)).toEqual([]);
   const frame = result.frames[result.frames.length - 1];
   if (frame === undefined) throw new Error("no frame captured");
