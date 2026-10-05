@@ -694,7 +694,7 @@ describe("a rename carries a fade in flight (§V128, §V320)", () => {
     run.frames(5);
     await recall(run, "bright", LINEAR_1S);
     run.frames(20);
-    const renamed = await run.bus.execute("node.rename", { nodeId: "level", label: "grade" }, contextFor(alice));
+    const renamed = await run.bus.execute("node.rename", { nodeId: "level", label: "grade", exact: true }, contextFor(alice));
     expect(renamed.status).toBe("applied");
     const [record] = run.records();
     if (record === undefined) throw new Error("no record");

@@ -171,7 +171,7 @@ describe("an edit inside a component changes the COMPONENT, not the parent graph
     await act(async () => {
       await handle.editing.bus.execute(
         "node.rename",
-        { nodeId: internalId, label: "renamed_inside" },
+        { nodeId: internalId, label: "renamed_inside", exact: true },
         runtime.invocation,
       );
     });
@@ -387,7 +387,7 @@ describe("save selection as a component, from the canvas (§V307)", () => {
     await act(async () => {
       await handle.editing.bus.execute(
         "node.rename",
-        { nodeId: internalId, label: "touched" },
+        { nodeId: internalId, label: "touched", exact: true },
         runtime.invocation,
       );
     });

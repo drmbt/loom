@@ -113,6 +113,13 @@ describe("MIDI learning uses one document patch and the existing value graph", (
     expect(nodes(runtime, "valueCount")).toHaveLength(1);
     expect(nodes(runtime, "valueCount")[0]?.parameters).toMatchObject({ holdoff: 0, threshold: 0.5 });
     expect(Object.keys(graph(runtime).edges)).toHaveLength(1);
+    // T1593b: the two nodes a learn makes are named for what they ARE, and the button reads
+    // them by exactly those names. A name minted one way and read another would resolve to
+    // nothing, and the counts below would never move.
+    expect(nodes(runtime, "midiIn").map((node) => node.label)).toEqual(["midiin1"]);
+    expect(nodes(runtime, "valueCount").map((node) => node.label)).toEqual(["count_midi"]);
+    expect(JSON.stringify(named(runtime, "fire").parameters["held"])).toContain("op('midiin1').chan.");
+    expect(JSON.stringify(named(runtime, "fire").parameters["presses"])).toContain("op('count_midi').chan.");
     const read = readings(runtime, "fire");
     expect(read()).toEqual({ value: 0, valueCount: 5 });
     expect(read(cc(63))).toEqual({ value: 0, valueCount: 5 });

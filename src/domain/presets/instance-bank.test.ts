@@ -235,7 +235,7 @@ describe("a cue, a shot and a rename name the instance", () => {
 
   it("renaming cityA rewrites the cue, and GO still fires it", async () => {
     const doc = documentWith([...twoLooks(), list()]);
-    const renamed = await doc.bus.execute("node.rename", { nodeId: "a", label: "downtown" }, ctx);
+    const renamed = await doc.bus.execute("node.rename", { nodeId: "a", label: "downtown", exact: true }, ctx);
     expect(renamed.status).toBe("applied");
     expect(param(doc, "list", "cues")).toBe(serializeCueList({ version: 1, cues: [{ ...SET[0] as Cue, bank: "downtown" }] }));
     const go = await doc.bus.execute("cue.go", { nodeId: "list" }, ctx);
@@ -399,14 +399,14 @@ describe("refused by name", () => {
     };
     try {
       // The session's own writes keep it current: an edit, and a host command.
-      await session.bus.execute("node.rename", { nodeId: "solid", label: "base" }, ctx);
+      await session.bus.execute("node.rename", { nodeId: "solid", label: "base", exact: true }, ctx);
       const published = await session.bus.execute(
         "component.publishParameter",
         { key: "inner_radius", definition: { type: "number", label: "R", default: 4, min: 0, max: 64 }, targets: [{ nodeId: "blurA", key: "radius" }] },
         ctx,
       );
       expect(published.status, codes(published).join()).toBe("applied");
-      await session.bus.execute("node.rename", { nodeId: "inner", label: "inner2" }, ctx);
+      await session.bus.execute("node.rename", { nodeId: "inner", label: "inner2", exact: true }, ctx);
       expect(doc.components.get("city", 1)?.graph.nodes["inner"]?.label).toBe("inner2");
       expect(stale).toEqual([]);
 
@@ -415,7 +415,7 @@ describe("refused by name", () => {
       expect(stale).toEqual([COMPONENT_SESSION_STALE_CODE]);
 
       // The stale session's next commit — nothing to do with the bank — is not written.
-      await session.bus.execute("node.rename", { nodeId: "blurA", label: "softened" }, ctx);
+      await session.bus.execute("node.rename", { nodeId: "blurA", label: "softened", exact: true }, ctx);
       expect(refused).toEqual([COMPONENT_SESSION_STALE_CODE]);
       expect(presetNames()).toEqual(["calm", "riot"]);
       expect(doc.components.get("city", 1)?.graph.nodes["blurA"]?.label).toBe("blurA");
@@ -460,7 +460,7 @@ describe("the presets travel with the component", () => {
     const imported = await target.bus.execute("component.import", { text: written[0]?.text ?? "" }, ctx);
     expect(imported.status, codes(imported).join()).toBe("applied");
     const placed = imported.output.nodeId as NodeId;
-    await target.bus.execute("node.rename", { nodeId: placed, label: "newCity" }, ctx);
+    await target.bus.execute("node.rename", { nodeId: placed, label: "newCity", exact: true }, ctx);
     const recalled = await target.bus.execute("preset.recall", { nodeId: placed, name: "riot" }, ctx);
     expect(recalled.status, codes(recalled).join()).toBe("applied");
     expect(target.graph().nodes[placed]?.parameters["blur"]).toBe(44);

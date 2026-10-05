@@ -219,8 +219,61 @@
 */
 .nameEdit {
   position: relative;
+  display: flex;
+  align-items: stretch;
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/*
+  T1593b — the KIND, fixed in front of the name being typed (`slider_` then `lamp`).
+
+  It is drawn as the left end of the SAME field: one border, one ground, no gap, so the
+  two parts read as the one name they will be stored as. Dimmer than the role, because it
+  is the part the person is not typing.
+
+  It gives up its room before the input does (`flex: 0 1 auto` against the input's
+  `1 1`), and never more than half the slot: on a 178px node a long kind ellipsises
+  instead of leaving nowhere to type. The whole word is in its hover text (§V90).
+
+  Off, it stays where it was, struck through: the state is shown by the thing that was
+  switched, and one click puts it back.
+*/
+.nameKind {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+  padding: 0 0 0 var(--space-1);
+  border: var(--hairline) solid var(--line-hot);
+  border-right: 0;
+  border-radius: var(--radius) 0 0 var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: var(--weight-header);
+  font-stretch: var(--width-header);
+  letter-spacing: var(--tracking-display);
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.nameKind[aria-pressed="false"] {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.nameKind + .nameInput {
+  flex: 1 1 0;
+  width: auto;
+  padding-left: 0;
+  border-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 .nameInput {

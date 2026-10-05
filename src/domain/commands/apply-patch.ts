@@ -21,12 +21,12 @@ import { arePortsCompatible, describePortType } from "../graph/port-compat.ts";
 import { compareEdgeOrder } from "../graph/edge-order.ts";
 import {
   countNodeNameReferences,
-  nameBaseFor,
   nodeNames,
   resolveRename,
   rewriteNodeNameReferences,
   uniqueNodeName,
 } from "../graph/names.ts";
+import { kindOfType } from "../graph/node-kinds.ts";
 import { sourceReferenceForInput } from "../graph/source-references.ts";
 import { defaultParameters, validateParameters } from "../parameters/validate.ts";
 import { bindCycleDiagnostics } from "../parameters/bind-cycles.ts";
@@ -459,7 +459,9 @@ function executeOperation(
         parameters: { ...defaultParameters(creationSchema), ...provided },
         // §V129: the label is the NAME — unique per graph, auto-numbered at creation
         // (`noise1`, `noise2`), which is what makes `op('name')` references resolvable.
-        label: requested ?? uniqueNodeName(draft, nameBaseFor(definition.type)),
+        // T1593b: numbered under the type's KIND, so an unrenamed node already carries it
+        // (`kernel1` for a Point Kernel). An explicit label is stored exactly as given.
+        label: requested ?? uniqueNodeName(draft, kindOfType(definition.type)),
       };
       // The new node arrives with a name and, optionally, expressions of its own — both
       // halves a loop needs. The name is the surprising half: numbering reuses a name a

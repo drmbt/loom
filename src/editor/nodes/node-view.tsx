@@ -10,7 +10,15 @@ import { useStore } from "zustand";
 import { cx } from "@ui/cx.ts";
 import { portFamilyColor } from "@ui/ports.ts";
 import { describePortType } from "@domain/graph/port-compat.ts";
-import { nameBaseFor } from "@domain/graph/names.ts";
+import {
+  conformsToKind,
+  kindBindsName,
+  kindOfType,
+  nameInKind,
+  roleFromText,
+  roleOf,
+  roleWhileTyping,
+} from "@domain/graph/node-kinds.ts";
 import { isNameOnlyInput } from "@domain/graph/source-references.ts";
 import { isComponentInputBoundary, isComponentOutputBoundary } from "@nodes/definitions/index.ts";
 import { isOneSocketInput } from "@nodes/definitions/controls.ts";
@@ -235,13 +243,19 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
    * because "blur1  Blur" is the same word twice in the most crowded row in the app, which
    * is precisely what §V90 forbids.
    *
-   * The test is derived from `nameBaseFor`, the same function that MINTS those names, so
-   * it cannot drift from the naming rule (§V316). It is a display decision only: nothing
-   * here reads back into the document.
+   * T1593b: a name now carries its kind after a rename too (`blur_diffuse`), so the test
+   * is `conformsToKind`, the one function that decides it, asked about the same kind that
+   * MINTS the auto-names. It cannot drift from the naming rule (§V316), and "blur_diffuse
+   * Blur" never shows. It is a display decision only: nothing here reads back into the
+   * document.
    */
-  const nameCarriesType =
-    definition === undefined ||
-    new RegExp(`^${nameBaseFor(node.type)}\\d+$`, "i").test(displayName);
+  const nameCarriesType = definition === undefined || conformsToKind(displayName, kindOfType(node.type));
+  /**
+   * The kind the title editor keeps in front of the name, or `null` where the convention
+   * does not bind: an unknown type has no kind worth insisting on, and a component's In
+   * and Out are named for the socket they publish.
+   */
+  const nameKind = definition === undefined || !kindBindsName(node.type) ? null : kindOfType(node.type);
   /*
    * T639(d)/T640: an instance's synthesized definition title is the COMPONENT'S OWN
    * NAME (a component the owner called "animated" labelled its nodes "animated"), so
@@ -331,7 +345,9 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
           {isEditingName ? (
             <NameEditor
               nodeId={id}
-              initial={displayName}
+              name={node.label}
+              shown={displayName}
+              kind={nameKind}
               onCommit={renameNode}
               onClose={() => renameSession.end(id)}
             />
@@ -590,9 +606,14 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
 
 interface NameEditorProps {
   nodeId: string;
-  /** The name as shown, which is what the field opens holding. */
-  initial: string;
-  onCommit: (nodeId: string, label: string) => Promise<CommandResult<"node.rename">>;
+  /** The name the node holds; `undefined` for an unnamed node. */
+  name: string | undefined;
+  /** The name as shown (the definition title when unnamed). The field opens on it when there is no kind. */
+  shown: string;
+  /** The kind kept in front of the name, or `null` where the convention does not bind. */
+  kind: string | null;
+  /** `exact` is true when the person switched the kind off: the name is stored as typed. */
+  onCommit: (nodeId: string, label: string, exact: boolean) => Promise<CommandResult<"node.rename">>;
   onClose: () => void;
 }
 
@@ -605,11 +626,43 @@ interface NameEditorProps {
  * the name is one short word, the node is on screen, and a modal to type one word puts a
  * scrim over the graph you are naming a node IN.
  *
+ * ## The kind stays in front, and the person types the role (T1593b)
+ *
+ * A name is `kind_role`. The field is drawn as two parts that read as one: the kind and
+ * its underscore as fixed text (`slider_`), then the input, which holds the role alone
+ * (`lamp`). So what is on screen is the name that will be stored, and the part that says
+ * what the node IS cannot be lost by typing over it.
+ *
+ *  - It opens on the role: `lamp` for `slider_lamp`, empty for an auto-name (`blur1` has
+ *    no role yet), and the whole cleaned name for one that does not carry its kind.
+ *  - A space becomes an underscore AS IT IS TYPED, so the change is seen, not discovered.
+ *  - Typing a name that already carries the kind (`slider_lamp`, `slider2`) is taken as it
+ *    is: nothing is prefixed twice.
+ *  - With no role typed there is nothing to rename to, and the name stays.
+ *
+ * ## Removing the kind is possible, and deliberate
+ *
+ * The fixed part is a toggle. Backspace with the caret at the very start of the role (a
+ * fresh press, not a held key running into it) switches it off, and so does a click on it.
+ * It stays on screen, struck through, and the name is then stored exactly as typed. A
+ * click brings it back.
+ *
+ * Why this and not a modifier on Enter: a modifier is invisible until it is known, and the
+ * field would show one name while storing another. And why Backspace: it is the key
+ * someone presses when they want what is left of the caret gone, so the gesture already
+ * means this. A held Backspace that empties the role stops at the kind, because clearing
+ * the role and discarding the kind are different intentions.
+ *
  * ## Keys
  *
  * Enter commits, Escape cancels and restores, blur commits — the same three the number
  * fields in project settings already have, so a control does not behave differently from
  * its neighbour for reasons only its author knows.
+ *
+ * One difference between Enter and blur, and only for a name that does not carry its kind
+ * yet: Enter on the untouched field gives it the kind that is on screen (`dye1` on a
+ * Feedback becomes `feedback_dye1`); leaving the untouched field renames nothing. Opening
+ * a field and clicking away is not an edit (§V33), while Enter is an answer.
  *
  * Typing here cannot reach a graph binding, and §V53 is what makes that structural rather
  * than a promise: the keymap derives the `text` context from the EVENT TARGET, so a focused
@@ -629,90 +682,165 @@ interface NameEditorProps {
  * they typed, says which name is taken, and takes focus back — silently reverting their
  * typing, or silently accepting a name they did not choose, are the two worse answers.
  */
-function NameEditor({ nodeId, initial, onCommit, onClose }: NameEditorProps) {
+function NameEditor({ nodeId, name, shown, kind, onCommit, onClose }: NameEditorProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [draft, setDraft] = useState(initial);
+  const [draft, setDraft] = useState(() =>
+    kind === null ? shown : name === undefined ? "" : (roleOf(name, kind) ?? roleFromText(name)),
+  );
+  const [kindKept, setKindKept] = useState(kind !== null);
   const [error, setError] = useState<string | null>(null);
   // Enter commits and then blurs, which would commit again. One settle per session.
   const settling = useRef(false);
+  // Has the person changed anything? Leaving an untouched field renames nothing.
+  const touched = useRef(false);
+  // Where the caret belongs after a keystroke was cleaned into something else.
+  const caret = useRef<number | null>(null);
 
   useEffect(() => {
     const input = inputRef.current;
     if (input === null) return;
     input.focus();
-    // Selected, not just focused: renaming usually REPLACES the auto-name rather than
+    // Selected, not just focused: renaming usually REPLACES the role rather than
     // editing it, and this is the only chance to say so without the user pressing ⌘A.
     input.select();
   }, []);
 
-  const commit = useCallback(async () => {
-    if (settling.current) return;
-    const next = draft.trim();
-    if (next === initial) {
-      // Nothing to say: closing without a command means no revision and no undo entry
-      // for an edit that did not happen (§V33).
-      onClose();
-      return;
-    }
-    settling.current = true;
-    const result = await onCommit(nodeId, next);
-    if (result.status === "applied") {
-      onClose();
-      return;
-    }
-    // §V288 — the refusal NAMES the problem, on the node, where the attempt was made.
-    settling.current = false;
-    const diagnostic = result.diagnostics.find((entry) => entry.severity !== "info");
-    setError(
-      [diagnostic?.message, diagnostic?.suggestion].filter((part) => part !== undefined).join(" ") ||
-        "That name was refused.",
-    );
-    const input = inputRef.current;
-    if (input !== null) {
-      input.focus();
-      input.select();
-    }
-  }, [draft, initial, nodeId, onClose, onCommit]);
+  // A controlled input whose value was rewritten loses its caret to the end of the field.
+  useLayoutEffect(() => {
+    if (caret.current === null) return;
+    inputRef.current?.setSelectionRange(caret.current, caret.current);
+    caret.current = null;
+  });
+
+  const commit = useCallback(
+    async (reason: "enter" | "blur") => {
+      if (settling.current) return;
+      const typed = draft.trim();
+      let label: string | null = typed;
+      // The kind is kept and no role was typed: there is no name to rename to.
+      if (kind !== null && kindKept) label = typed === "" ? null : nameInKind(typed, kind).name;
+      const unchanged = label === (kind === null ? shown : name);
+      if (label === null || unchanged || (reason === "blur" && !touched.current)) {
+        // Nothing to say: closing without a command means no revision and no undo entry
+        // for an edit that did not happen (§V33).
+        onClose();
+        return;
+      }
+      settling.current = true;
+      const result = await onCommit(nodeId, label, !(kind !== null && kindKept));
+      if (result.status === "applied") {
+        onClose();
+        return;
+      }
+      // §V288 — the refusal NAMES the problem, on the node, where the attempt was made.
+      settling.current = false;
+      const diagnostic = result.diagnostics.find((entry) => entry.severity !== "info");
+      setError(
+        [diagnostic?.message, diagnostic?.suggestion].filter((part) => part !== undefined).join(" ") ||
+          "That name was refused.",
+      );
+      const input = inputRef.current;
+      if (input !== null) {
+        input.focus();
+        input.select();
+      }
+    },
+    [draft, kind, kindKept, name, nodeId, onClose, onCommit, shown],
+  );
+
+  const keepKind = useCallback((keep: boolean) => {
+    touched.current = true;
+    setError(null);
+    setKindKept(keep);
+    // Back under the kind, the text is a role again and is cleaned like one.
+    if (keep) setDraft((text) => roleWhileTyping(text));
+    inputRef.current?.focus();
+  }, []);
 
   const onKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
       if (event.key === "Enter") {
         event.preventDefault();
         event.stopPropagation();
-        void commit();
+        void commit("enter");
       } else if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
         settling.current = true;
         onClose();
+      } else if (
+        event.key === "Backspace" &&
+        kind !== null &&
+        kindKept &&
+        // A held key that has just emptied the role must not run on into the kind.
+        !event.repeat &&
+        event.currentTarget.selectionStart === 0 &&
+        event.currentTarget.selectionEnd === 0
+      ) {
+        event.preventDefault();
+        keepKind(false);
       }
     },
-    [commit, onClose],
+    [commit, keepKind, kind, kindKept, onClose],
   );
 
   return (
     <span className={cx(styles.nameEdit, "nodrag", "nopan")}>
+      {kind === null ? null : (
+        <button
+          type="button"
+          // Not a tab stop: Tab out of the name must leave the field, not land on its prefix.
+          tabIndex={-1}
+          className={styles.nameKind}
+          data-testid={`node-name-kind-${nodeId}`}
+          aria-pressed={kindKept}
+          aria-label={`Keep the kind ${kind} in front of the name`}
+          title={
+            kindKept
+              ? `This node's kind, kept in front of its name. Backspace at the start of the name, or a click here, names the node without it.`
+              : `The kind is off: the name is stored exactly as typed. Click to keep ${kind}_ in front.`
+          }
+          onPointerDown={(event) => event.stopPropagation()}
+          // preventDefault keeps the focus in the input: a blur would commit the rename.
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onDoubleClick={(event) => event.stopPropagation()}
+          onClick={() => keepKind(!kindKept)}
+        >
+          {kind}_
+        </button>
+      )}
       <input
         ref={inputRef}
         className={styles.nameInput}
         data-testid={`node-name-input-${nodeId}`}
         type="text"
-        aria-label="Node name"
+        aria-label={kind !== null && kindKept ? `Node name, after ${kind}_` : "Node name"}
         aria-invalid={error !== null}
         value={draft}
-        maxLength={120}
+        placeholder={kind !== null && kindKept ? "name" : undefined}
+        maxLength={kind !== null && kindKept ? 120 - kind.length - 1 : 120}
         // §V20 — the press belongs to the field, not to the node under it: without this,
         // dragging to select the text drags the node across the canvas.
         onPointerDown={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
         onDoubleClick={(event) => event.stopPropagation()}
         onChange={(event) => {
-          setDraft(event.target.value);
+          const raw = event.target.value;
+          const next = kind !== null && kindKept ? roleWhileTyping(raw) : raw;
+          if (next !== raw) {
+            const at = event.target.selectionStart ?? raw.length;
+            caret.current = Math.max(0, at - (raw.length - next.length));
+          }
+          touched.current = true;
+          setDraft(next);
           setError(null);
         }}
         onKeyDown={onKeyDown}
         onBlur={() => {
-          void commit();
+          void commit("blur");
         }}
       />
       {error === null ? null : (

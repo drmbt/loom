@@ -9,6 +9,7 @@ import { parseMorphRecords, serializeMorphRecords, type MorphRecord } from "../p
 import { CUE_LIST_NODE_TYPE, parseCueList, serializeCueList } from "../presets/cue-list.ts";
 import type { StoredParameter } from "../types/parameters.ts";
 import { parsePanelBoard, serializePanelBoard } from "../../nodes/definitions/controls.ts";
+import { kindOfType, roleFromText, withKind } from "./node-kinds.ts";
 
 /**
  * Node names as identifiers (T221/T222, §V127-§V129).
@@ -32,15 +33,13 @@ export function nodeName(node: GraphNode): string | undefined {
   return node.label;
 }
 
-/**
- * The numbering base a node type creates under: the last dotted segment of the type,
- * lowercased, stripped to word characters — `core.noise` names `noise1`, `noise2`.
+/*
+ * T1593b: what a new node is numbered under is its KIND (`kindOfType`, `node-kinds.ts`),
+ * which is this base for most types and a declared short word for the long ones
+ * (`pointKernel` names `kernel1`). `nameBaseFor` moved there with it and is the fallback
+ * for a type the kind table does not hold.
  */
-export function nameBaseFor(type: string): string {
-  const segment = type.split(".").at(-1) ?? type;
-  const base = segment.toLowerCase().replace(/[^a-z0-9_]/g, "");
-  return base.length > 0 ? base : "node";
-}
+export { nameBaseFor } from "./node-kinds.ts";
 
 /** name → node id, for every named node. Later duplicates (legacy documents) lose. */
 export function nodeNames(graph: GraphDocument): Map<string, NodeId> {
@@ -378,4 +377,14 @@ export function renumberedName(label: string, taken: (candidate: string) => bool
     const candidate = `${base}${ordinal}`;
     if (!taken(candidate)) return candidate;
   }
+}
+
+/**
+ * A free `kind_role` name for a node the APP creates for a stated purpose (T1593b): the
+ * slider "Control from Panel" makes for `brightness` is `slider_brightness`. Numbered by
+ * the one rule above when taken. `role` is free text and is cleaned into a role.
+ */
+export function freeRoleName(type: string, role: string, taken: (candidate: string) => boolean): string {
+  const name = withKind(kindOfType(type), roleFromText(role));
+  return taken(name) ? renumberedName(name, taken) : name;
 }

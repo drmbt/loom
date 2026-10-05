@@ -85,8 +85,11 @@ export interface GraphCanvasContextValue {
    * an agent use (§V29, §V61). The node header supplies the argument nothing supplied
    * before (B60); it does not own a second rename, so §V128's reference rewrite and the
    * §V325 collision refusal happen in the one place they already happen.
+   *
+   * T1593b: `exact` is the command's own flag. The title editor passes it when the person
+   * switched the kind prefix off, so the name is stored as typed.
    */
-  renameNode: (nodeId: NodeId, label: string) => Promise<CommandResult<"node.rename">>;
+  renameNode: (nodeId: NodeId, label: string, exact?: boolean) => Promise<CommandResult<"node.rename">>;
   /**
    * T599: brings the problems pane to the front — the node's "+N more" chip, when a
    * node carries more diagnostics than its one message line can show.

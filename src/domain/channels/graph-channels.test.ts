@@ -295,7 +295,7 @@ function scene(definitions: GraphComponentDefinition[] = []): ChannelScene {
       return (result.output as { createdIds: Record<string, string> }).createdIds;
     },
     async rename(nodeId, label) {
-      const result = await bus.execute("node.rename", { nodeId, label }, contextFor(alice));
+      const result = await bus.execute("node.rename", { nodeId, label, exact: true }, contextFor(alice));
       expect(result.status).toBe("applied");
     },
     sizeOf(nodeId) {

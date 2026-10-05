@@ -762,7 +762,8 @@ export function GraphCanvas({
     [bus, invocation],
   );
   const renameNode = useCallback(
-    (nodeId: NodeId, label: string) => bus.execute("node.rename", { nodeId, label }, invocation),
+    (nodeId: NodeId, label: string, exact?: boolean) =>
+      bus.execute("node.rename", { nodeId, label, ...(exact === true ? { exact: true } : {}) }, invocation),
     [bus, invocation],
   );
 

@@ -264,7 +264,7 @@ describe("paste with colliding names rewrites the bank's names (§V320, T1496b)"
       bank("blur1, solid1.amount"),
     ]);
     await bus.execute("preset.store", { nodeId: "bank", name: "p" }, contextFor(alice));
-    await bus.execute("node.rename", { nodeId: "blurA", label: "glow" }, contextFor(alice));
+    await bus.execute("node.rename", { nodeId: "blurA", label: "glow", exact: true }, contextFor(alice));
     expect(value(store, "bank", "targets")).toBe("glow, solid1.amount");
     const preset = presetsOf(store)[0]!;
     expect(Object.keys(preset.values)).toEqual(["glow", "solid1"]);
