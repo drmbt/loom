@@ -1,9 +1,9 @@
-import { LAMPS_MIRRORED, LAMP_SEEN_WGSL, LAMP_SPACING } from "./tunnel.ts";
+import { LAMPS_MIRRORED, LAMP_PARAMS_WGSL, LAMP_SEEN_WGSL, lampParameter } from "./tunnel.ts";
+
+export { lampParameter };
 
 /** The lamps the steel can show: the station the robot is under and `LAMPS_MIRRORED` either side. */
 const MIRRORED = Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, index) => index);
-/** The material parameter that carries where lamp `index` of those hangs (document.ts drives it). */
-export const lampParameter = (index: number): string => `lamp${index}`;
 
 /**
  * THE ROBOT'S LIGHTS ARE ONE INSTRUMENT (the owner, 2026-10-05: "they'll be our main instrument to
@@ -44,8 +44,7 @@ export function hueColour(hue: number): [number, number, number] {
  */
 export const HULL_SURFACE_WGSL = `// @use surface-detail
 struct Params {
-${MIRRORED.map((index) => `  ${lampParameter(index)}: vec3f, // @default [0, 2.25, ${((index - LAMPS_MIRRORED + 0.5) * LAMP_SPACING).toFixed(1)}]  Where the lamp ${index - LAMPS_MIRRORED} stations on from the robot's own hangs.`).join("\n")}
-  station: f32, // @default 37  The station the robot is under: which lamp is which tone.
+${LAMP_PARAMS_WGSL}
   lamps: f32, // @default 6  Radiance of a lamp plate, as the steel reflects it.
   pool: f32, // @default 0.05  Radiance of the lit liner round a plate, as a share of the plate's.
   deck: f32, // @default 0.2  How much of all that the wet deck throws back up.

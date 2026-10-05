@@ -1,4 +1,5 @@
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
+import { CAMERA_PARAMS, VIEW } from "../furnace/screen-space.ts";
 import { PATH, chamberAt, chamberExpression, chamberWgsl, pathWgsl } from "./path.ts";
 
 /**
@@ -263,8 +264,15 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   return o;
 }`;
 
-/** How many lamp stations either side of the robot's own a mirror on it can show: five lamps, 64 m of tunnel. */
+/** How many lamp stations either side of the robot's own a mirror on it can show, and the air can glow round: five lamps, 64 m of tunnel. */
 export const LAMPS_MIRRORED = 2;
+/** The lamps a pass is handed: the station the robot is under and `LAMPS_MIRRORED` either side. */
+const NEAR_LAMPS = Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, index) => index);
+/** The parameter that carries where lamp `index` of those hangs (document.ts drives it from the lights' own expression). */
+export const lampParameter = (index: number): string => `lamp${index}`;
+/** Those parameters, as lines of a WGSL Params struct. */
+export const LAMP_PARAMS_WGSL = `${NEAR_LAMPS.map((index) => `  ${lampParameter(index)}: vec3f, // @default [0, 2.25, ${((index - LAMPS_MIRRORED + 0.5) * LAMP_SPACING).toFixed(1)}]  Where the lamp ${index - LAMPS_MIRRORED} stations on from the robot's own hangs.`).join("\n")}
+  station: f32, // @default 37  The station the robot is under: which lamp is which tone.`;
 
 /**
  * THE TUNNEL AS A GLOSSY THING IN IT SEES IT. Blackened steel has no diffuse, so between two
@@ -305,15 +313,31 @@ fn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft:
 `;
 
 /**
- * Air: the far wall goes into a cold haze. Custom WGSL · Multi over the lit frame and the
- * Render's Depth (view distance ÷ far). Until a stock haze exists (§T1402b) this is the
- * piece's own.
+ * AIR. Two things, in one pass over the lit frame and the Render's Depth:
+ *
+ *   haze   the far wall goes into a cold murk that is never quite black, so what stands in
+ *          front of it has an outline;
+ *   glow   the air itself is lit round every lamp and round the robot's face: what each pixel's
+ *          ray picks up on its way to the wall from a point light in even air, which has a
+ *          closed form (the integral of 1/d² along a line is an arctangent), so it costs two
+ *          arctangents a light and no marching. No shadows in it: a halo and a cone of lit air,
+ *          not shafts between the ribs.
+ *
+ * (The owner, 2026-10-05: "volumetric light or an approximation could be neat"; "we still
+ * missing some haze or something. it looks too clean".) Until a stock haze exists (§T1402b)
+ * this is the piece's own; the view helpers are the furnace's.
  */
 export const HAZE_WGSL = `${SHARED_UNIFORMS_WGSL}
 struct Params {
-  density: f32, // @default 0.035  How fast the air closes in, per metre.
-  color: vec3f, // @default [0.016, 0.04, 0.044]  What the far end of the tunnel fades to: never black, so what stands in front of it has an outline.
-  far: f32, // @default 240  The camera's far plane (depth arrives as distance ÷ far).
+${CAMERA_PARAMS}
+  density: f32, // @default 0.05  How fast the air closes in, per metre.
+  color: vec3f, // @default [0.016, 0.04, 0.044]  What the far end of the tunnel fades to: never black.
+  glow: f32, // @default 0.012  How much of a light the air between throws at the lens.
+${LAMP_PARAMS_WGSL}
+  lamp: f32, // @default 26  The lamps' intensity, as their lights have it.
+  eyesAt: vec3f, // @default [0, 0, 0.9]  Where the robot's face is.
+  eyeColor: vec3f, // @default [1, 0.04, 0.04]  Its light's colour.
+  eyes: f32, // @default 1.6  …and intensity, as its light has it.
 };
 
 @group(0) @binding(0) var inputSampler: sampler;
@@ -321,16 +345,31 @@ struct Params {
 @group(0) @binding(2) var<uniform> frameU: SharedFrame;
 @group(0) @binding(3) var<uniform> params: Params;
 @group(0) @binding(4) var inputTexture1: texture_2d<f32>;
+${VIEW}
+${chamberWgsl()}${LAMP_TONE_WGSL}
+// How much of a point light at \`light\` the air along a ray throws back, per unit of the light and of the air's
+// own share: the integral of 1/d² from the lens out to \`reach\` metres, dimmed by the air it then crosses.
+fn airlight(origin: vec3f, ray: vec3f, reach: f32, light: vec3f) -> f32 {
+  let q = origin - light;
+  let b = dot(ray, q);
+  // No nearer than a lamp is wide: a ray through the lamp itself is a bright core, not infinity.
+  let c = sqrt(max(dot(q, q) - b * b, 0.03));
+  let nearest = clamp(-b, 0.0, reach);
+  return (atan((reach + b) / c) - atan(b / c)) / c * exp(-nearest * params.density);
+}
 
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let lit = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
-  let size = vec2f(textureDimensions(inputTexture1));
-  let depth = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).r;
+  let view = makeView();
+  let ray = rayAt(view, uv);
+  let z = viewDepth(uv);
   // Nothing drawn here: the tunnel's own dark, all haze.
-  let distance = select(depth * params.far, params.far, depth <= 0.0 || depth >= 0.9999);
-  let clear = exp(-distance * params.density);
-  return vec4f(mix(params.color, lit.rgb, clear), lit.a);
+  let reach = select(z / max(dot(ray, view.forward), 1e-4), params.far, z < 0.0);
+  let clear = exp(-reach * params.density);
+  var air = params.eyeColor * params.eyes * airlight(params.eye, ray, reach, params.eyesAt);
+${NEAR_LAMPS.map((index) => `  air = air + lampTone(params.station + ${(index - LAMPS_MIRRORED).toFixed(1)}) * params.lamp * airlight(params.eye, ray, reach, params.${lampParameter(index)});`).join("\n")}
+  return vec4f(mix(params.color, lit.rgb, clear) + air * params.glow, lit.a);
 }`;
 
 /** Dust in the air: how many motes, and how long a stretch of tunnel they fill round the robot. */

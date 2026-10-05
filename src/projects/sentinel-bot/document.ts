@@ -9,8 +9,8 @@ import { against, pace, rest, surge } from "./director.ts";
 import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
 import { PATH, chamberExpression, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
-import { SSR_WGSL } from "../furnace/screen-space.ts";
-import { JOINT_ATTRIBUTES, adriftExpression, jointCount, jointKernel, type Pick } from "./rig.ts";
+import { DOF_WGSL, GTAO_WGSL, SSR_WGSL } from "../furnace/screen-space.ts";
+import { JOINT_ATTRIBUTES, adriftAheadExpression, adriftExpression, jointCount, jointKernel, type Pick } from "./rig.ts";
 import { HULL_SURFACE_WGSL, hueExpression, lampParameter } from "./surface.ts";
 import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMPS_MIRRORED, LAMP_SPACING, MOTE_ATTRIBUTES, MOTE_COUNT, MOTE_KERNEL, lampToneExpression } from "./tunnel.ts";
 
@@ -109,7 +109,9 @@ const SCENE: readonly Slider[] = [
   { name: "slider_lamp", caption: "Lamp", value: 26, min: 0, max: 80 },
   { name: "slider_distance", caption: "Camera distance", value: 7.5, min: -9, max: 12 },
   { name: "slider_react", caption: "Listen", value: 1, min: 0, max: 2 },
-  { name: "slider_haze", caption: "Haze", value: 0.035, min: 0, max: 0.12 },
+  { name: "slider_haze", caption: "Haze", value: 0.04, min: 0, max: 0.12 },
+  { name: "slider_focus", caption: "Depth of field", value: 0.5, min: 0, max: 1.5 },
+  { name: "slider_grain", caption: "Grain", value: 0.06, min: 0, max: 0.2 },
 ];
 
 // THE ROBOT'S LIGHTS, the piece's main instrument (surface.ts): the lenses of its face and the lines along its
@@ -180,7 +182,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   // From behind it looks down the tunnel past the robot; from anywhere else at the robot, wherever it has wandered.
   const near = `(${RIG("aim")} < 1)`;
   const aim = onPath(RIG("aim"), `${near} * ${wander.x}`, `${near} * ${wander.y}`, [0, 0, 3.3]);
-  const glow = onPath("0.9", "0", "0", [0, 0, 0.9]);
+  // The face goes where the robot goes: off the axis and along it when it is adrift.
+  // (Along it: the slow drift, and the lunge of each swimming stroke — rig.ts, robotZ.)
+  const glow = onPath(`(0.9 + ${adrift} * (${adriftAheadExpression} + 0.5 * sin(6.2831853 * (${STROKE} - 0.125))))`, wander.x, wander.y, [0, 0, 0.9]);
   /** The lamp station `step` stations from the one the robot is under: where it hangs, and how much of it is lit (1 within half a spacing, 0 a spacing and a half away, so the three in use trade places unseen). */
   const lampAt = (step: number): { position: Record<"x" | "y" | "z", StoredParameter>; near: string; tone: readonly [string, string, string] } => {
     const station = `(floor(${TRAVEL} / ${LAMP_SPACING}) + ${step})`;
@@ -193,6 +197,15 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       // The light is the colour of the plate it hangs under (tunnel.ts, LAMP_TONES).
       tone: lampToneExpression(station),
     };
+  };
+  /** What every screen-space pass needs of the camera to turn a pixel back into a ray: read off the camera node itself. */
+  const lens: Record<string, StoredParameter> = {
+    eye: [1.1, 0.6, -7.5],
+    aim: [0, 0, 3.3],
+    ...Object.fromEntries((["x", "y", "z"] as const).flatMap((axis) => [[`eye.${axis}`, expressionSlot(`op('camera_rig').par.eye.${axis}`, 0)], [`aim.${axis}`, expressionSlot(`op('camera_rig').par.lookAt.${axis}`, 0)]])),
+    fov: expressionSlot("op('camera_rig').par.fov", 55),
+    far: 240,
+    roll: 0,
   };
   const lamps = [-1, 0, 1].map(lampAt);
   /** What the face throws on the walls: the middle of its colour range. */
@@ -412,7 +425,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       }, { label: `light_lamp${index}` }),
     ),
     node("render_shot", "render", [-1200, 0], {
-      scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_motes"].join(" "),
+      // The dust motes are NOT in the picture for now: an additive draw still lands in the Render's Depth output,
+      // so the haze, the glow and the focus took each mote for a wall and it showed as a dark disc. Their nodes stay
+      // (kernel_motes, geometry_motes) for the day the Depth output leaves additive draws out.
+      scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore"].join(" "),
       camera: "camera_rig",
       lights: ["light_eyes", ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.3, 0.62, 0.66, 1],
@@ -425,14 +441,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     }, { label: "render_shot" }),
     // ── Reflections: the wet deck and the wet streaks mirror the eyes and the lamps (the furnace's
     // screen-space pass, until a stock one exists, T1372b). It reads the camera off the camera node. ──
+    // ── THE FINISH: mirror the wet, darken the creases, fill the air, focus, bloom, a lens, film ──
+    // (the screen-space passes and the bloom are the furnace's until stock ones exist, §T1402b)
     node("wgsl_reflect", "customWgslMulti", [-1050, 0], {
       source: SSR_WGSL,
-      eye: [1.1, 0.6, -7.5],
-      aim: [0, 0, 3.3],
-      ...Object.fromEntries((["x", "y", "z"] as const).flatMap((axis) => [[`eye.${axis}`, expressionSlot(`op('camera_rig').par.eye.${axis}`, 0)], [`aim.${axis}`, expressionSlot(`op('camera_rig').par.lookAt.${axis}`, 0)]])),
-      fov: expressionSlot("op('camera_rig').par.fov", 55),
-      far: 240,
-      roll: 0,
+      ...lens,
       // Only the wettest surfaces mirror, and not at full strength: the pass is jittered and
       // has no temporal filter here, so anything more reads as sparkle.
       strength: 0.6,
@@ -440,13 +453,52 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       thickness: 0.5,
       roughnessCutoff: 0.26,
     }, { label: "wgsl_reflect", resolution: { mode: "project" } }),
-    // ── Air, then bloom: a bright pass and a four-level pyramid (the furnace's, until a stock one exists, T1402b) ──
-    node("wgsl_haze", "customWgslMulti", [-900, 0], { source: HAZE_WGSL, density: expressionSlot(on("slider_haze"), 0.035), far: 240 }, { label: "wgsl_haze", resolution: { mode: "project" } }),
+    // Contact: where a claw meets the wall, under a pipe, in every crease, the frame is darker. The
+    // Render's own occlusion touches only the ambient term, and there is next to none of that here.
+    node("wgsl_occlusion", "customWgslMulti", [-975, 150], { source: GTAO_WGSL, ...lens, radius: 0.8, strength: 0.85, power: 1.5 }, { label: "wgsl_occlusion", resolution: { mode: "project" } }),
+    // Air: haze, and the glow of lit air round each lamp and round the face (tunnel.ts).
+    node("wgsl_haze", "customWgslMulti", [-900, 0], {
+      source: HAZE_WGSL,
+      ...lens,
+      density: expressionSlot(on("slider_haze"), 0.04),
+      // More air, more of it lit.
+      glow: expressionSlot(`${on("slider_haze")} * 0.075`, 0.003),
+      ...Object.fromEntries(mirrored.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp.position[axis]]))),
+      station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
+      lamp: expressionSlot(`${on("slider_lamp")} * (0.7 + ${LOW} * 0.8)`, 26),
+      eyesAt: [0, 0, 0.9],
+      "eyesAt.x": glow.x,
+      "eyesAt.y": glow.y,
+      "eyesAt.z": glow.z,
+      eyeColor: [1, 0.04, 0.04],
+      "eyeColor.x": expressionSlot(eyeTone[0], 1),
+      "eyeColor.y": expressionSlot(eyeTone[1], 0.04),
+      "eyeColor.z": expressionSlot(eyeTone[2], 0.04),
+      // The face is a small light close to the lens: the air shows it more than its reach on the walls would say.
+      eyes: expressionSlot(`${on("slider_glow")} * 0.7 * (0.75 + ${HAT} * 0.9)`, 6),
+    }, { label: "wgsl_haze", resolution: { mode: "project" } }),
+    // Focus: on the robot, wherever the shot stands; what is nearer or further goes soft, and a long lens softer.
+    node("wgsl_focus", "customWgslMulti", [-750, 0], {
+      source: DOF_WGSL,
+      ...lens,
+      focusDistance: expressionSlot(`max(((${RIG("ahead")} - 0.4) * (${RIG("ahead")} - 0.4) + ${RIG("right")} * ${RIG("right")} + ${RIG("up")} * ${RIG("up")}) ^ 0.5, 0.6)`, 7.5),
+      aperture: expressionSlot(`${on("slider_focus")} * 55 / ${RIG("lens")}`, 0.5),
+      maxRadius: 14,
+    }, { label: "wgsl_focus", resolution: { mode: "project" } }),
     node("wgsl_bright", "customWgsl", [-600, 300], { source: BRIGHT_PASS_WGSL, threshold: 1.4, knee: 1 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } }),
     ...[1, 2, 3, 4].map((level) => node(`wgsl_bloomdown${level}`, "customWgsl", [-300, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `wgsl_bloomdown${level}`, resolution: { mode: "scale", factor: 0.5 } })),
     ...[0, 1, 2, 3].map((level) => node(`wgsl_bloomup${level}`, "customWgslMulti", [0, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { label: `wgsl_bloomup${level}`, resolution: { mode: "scale", factor: 2 } })),
     node("add_glow", "add", [300, 0], { opacity: 0.4 }, { label: "add_glow", resolution: { mode: "project" } }),
-    node("output_frame", "output", [600, 0], { toneMap: "filmic" }, { label: "output_frame" }),
+    // A lens that is not perfect, and film: a little barrel, soft fringed edges, a vignette; then the
+    // grade (a filmic curve, crushed blacks, green in the shadows as the film has it) and grain.
+    node("lens_glass", "lens", [450, 0], { distortion: 0.035, edgeBlur: 0.008, swirl: 0.3, aberration: 0.0012, vignette: 0.6, vignetteRound: 0.8 }, { label: "lens_glass", resolution: { mode: "project" } }),
+    node("filmgrade_finish", "filmGrade", [600, 0], {
+      exposure: 0.3, black: 0.03, contrast: 1.2, saturation: 0.92, keepWarm: 1, bleach: 0.2,
+      shadowTint: [0.78, 1, 0.9, 1], highlightTint: [1, 0.97, 0.92, 1], split: 0.55,
+      grain: expressionSlot(on("slider_grain"), 0.06), grainSize: 1.5,
+    }, { label: "filmgrade_finish", resolution: { mode: "project" } }),
+    // The grade has already tone mapped.
+    node("output_frame", "output", [750, 0], { toneMap: "none" }, { label: "output_frame" }),
 
     // ── The panel: the piece's own words ──
     ...controls,
@@ -483,9 +535,14 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("shot-reflect", ["render_shot", "out"], ["wgsl_reflect", "input"]),
     edge("depth-reflect", ["render_shot", "depth"], ["wgsl_reflect", "more"], 0),
     edge("normal-reflect", ["render_shot", "normal"], ["wgsl_reflect", "more"], 1),
-    edge("reflect-haze", ["wgsl_reflect", "out"], ["wgsl_haze", "input"]),
+    edge("reflect-occlusion", ["wgsl_reflect", "out"], ["wgsl_occlusion", "input"]),
+    edge("depth-occlusion", ["render_shot", "depth"], ["wgsl_occlusion", "more"], 0),
+    edge("normal-occlusion", ["render_shot", "normal"], ["wgsl_occlusion", "more"], 1),
+    edge("occlusion-haze", ["wgsl_occlusion", "out"], ["wgsl_haze", "input"]),
     edge("depth-haze", ["render_shot", "depth"], ["wgsl_haze", "more"], 0),
-    edge("haze-bright", ["wgsl_haze", "out"], ["wgsl_bright", "input"]),
+    edge("haze-focus", ["wgsl_haze", "out"], ["wgsl_focus", "input"]),
+    edge("depth-focus", ["render_shot", "depth"], ["wgsl_focus", "more"], 0),
+    edge("focus-bright", ["wgsl_focus", "out"], ["wgsl_bright", "input"]),
     ...[1, 2, 3, 4].map((level) => edge(`bloom-down${level}`, [level === 1 ? "wgsl_bright" : `wgsl_bloomdown${level - 1}`, "out"], [`wgsl_bloomdown${level}`, "input"])),
     ...[0, 1, 2, 3].flatMap((level) => [
       edge(`bloom-up${level}-lower`, [level === 3 ? "wgsl_bloomdown4" : `wgsl_bloomup${level + 1}`, "out"], [`wgsl_bloomup${level}`, "input"]),
@@ -493,8 +550,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     ]),
     // The bloom is the FRONT layer: Add's opacity scales in1.
     edge("glow-front", ["wgsl_bloomup0", "out"], ["add_glow", "in1"]),
-    edge("glow-back", ["wgsl_haze", "out"], ["add_glow", "in2"]),
-    edge("glow-out", ["add_glow", "out"], ["output_frame", "input"]),
+    edge("glow-back", ["wgsl_focus", "out"], ["add_glow", "in2"]),
+    edge("glow-lens", ["add_glow", "out"], ["lens_glass", "input"]),
+    edge("lens-grade", ["lens_glass", "out"], ["filmgrade_finish", "input"]),
+    edge("grade-out", ["filmgrade_finish", "out"], ["output_frame", "input"]),
     ...controls.map((control, index) => edge(`panel-${control.id}`, [control.id, "out"], ["panel", "controls"], index)),
   ];
 

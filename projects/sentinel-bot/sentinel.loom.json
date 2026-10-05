@@ -277,6 +277,18 @@
           "portId": "in"
         }
       },
+      "depth-focus": {
+        "id": "depth-focus",
+        "order": 0,
+        "source": {
+          "nodeId": "render_shot",
+          "portId": "depth"
+        },
+        "target": {
+          "nodeId": "wgsl_focus",
+          "portId": "more"
+        }
+      },
       "depth-haze": {
         "id": "depth-haze",
         "order": 0,
@@ -286,6 +298,18 @@
         },
         "target": {
           "nodeId": "wgsl_haze",
+          "portId": "more"
+        }
+      },
+      "depth-occlusion": {
+        "id": "depth-occlusion",
+        "order": 0,
+        "source": {
+          "nodeId": "render_shot",
+          "portId": "depth"
+        },
+        "target": {
+          "nodeId": "wgsl_occlusion",
           "portId": "more"
         }
       },
@@ -312,10 +336,21 @@
           "portId": "in"
         }
       },
+      "focus-bright": {
+        "id": "focus-bright",
+        "source": {
+          "nodeId": "wgsl_focus",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_bright",
+          "portId": "input"
+        }
+      },
       "glow-back": {
         "id": "glow-back",
         "source": {
-          "nodeId": "wgsl_haze",
+          "nodeId": "wgsl_focus",
           "portId": "out"
         },
         "target": {
@@ -334,10 +369,21 @@
           "portId": "in1"
         }
       },
-      "glow-out": {
-        "id": "glow-out",
+      "glow-lens": {
+        "id": "glow-lens",
         "source": {
           "nodeId": "add_glow",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lens_glass",
+          "portId": "input"
+        }
+      },
+      "grade-out": {
+        "id": "grade-out",
+        "source": {
+          "nodeId": "filmgrade_finish",
           "portId": "out"
         },
         "target": {
@@ -356,14 +402,14 @@
           "portId": "in"
         }
       },
-      "haze-bright": {
-        "id": "haze-bright",
+      "haze-focus": {
+        "id": "haze-focus",
         "source": {
           "nodeId": "wgsl_haze",
           "portId": "out"
         },
         "target": {
-          "nodeId": "wgsl_bright",
+          "nodeId": "wgsl_focus",
           "portId": "input"
         }
       },
@@ -409,6 +455,17 @@
         "target": {
           "nodeId": "count_kick",
           "portId": "in"
+        }
+      },
+      "lens-grade": {
+        "id": "lens-grade",
+        "source": {
+          "nodeId": "lens_glass",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "filmgrade_finish",
+          "portId": "input"
         }
       },
       "levels-smooth": {
@@ -466,6 +523,18 @@
           "portId": "points"
         }
       },
+      "normal-occlusion": {
+        "id": "normal-occlusion",
+        "order": 1,
+        "source": {
+          "nodeId": "render_shot",
+          "portId": "normal"
+        },
+        "target": {
+          "nodeId": "wgsl_occlusion",
+          "portId": "more"
+        }
+      },
       "normal-reflect": {
         "id": "normal-reflect",
         "order": 1,
@@ -476,6 +545,17 @@
         "target": {
           "nodeId": "wgsl_reflect",
           "portId": "more"
+        }
+      },
+      "occlusion-haze": {
+        "id": "occlusion-haze",
+        "source": {
+          "nodeId": "wgsl_occlusion",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_haze",
+          "portId": "input"
         }
       },
       "panel-slider_bore": {
@@ -492,7 +572,7 @@
       },
       "panel-slider_chase": {
         "id": "panel-slider_chase",
-        "order": 22,
+        "order": 24,
         "source": {
           "nodeId": "slider_chase",
           "portId": "out"
@@ -528,7 +608,7 @@
       },
       "panel-slider_eyehits": {
         "id": "panel-slider_eyehits",
-        "order": 18,
+        "order": 20,
         "source": {
           "nodeId": "slider_eyehits",
           "portId": "out"
@@ -540,7 +620,7 @@
       },
       "panel-slider_eyesweep": {
         "id": "panel-slider_eyesweep",
-        "order": 19,
+        "order": 21,
         "source": {
           "nodeId": "slider_eyesweep",
           "portId": "out"
@@ -562,6 +642,18 @@
           "portId": "controls"
         }
       },
+      "panel-slider_focus": {
+        "id": "panel-slider_focus",
+        "order": 13,
+        "source": {
+          "nodeId": "slider_focus",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
       "panel-slider_gesture": {
         "id": "panel-slider_gesture",
         "order": 7,
@@ -576,9 +668,21 @@
       },
       "panel-slider_glow": {
         "id": "panel-slider_glow",
-        "order": 17,
+        "order": 19,
         "source": {
           "nodeId": "slider_glow",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-slider_grain": {
+        "id": "panel-slider_grain",
+        "order": 14,
+        "source": {
+          "nodeId": "slider_grain",
           "portId": "out"
         },
         "target": {
@@ -612,7 +716,7 @@
       },
       "panel-slider_huefrom": {
         "id": "panel-slider_huefrom",
-        "order": 13,
+        "order": 15,
         "source": {
           "nodeId": "slider_huefrom",
           "portId": "out"
@@ -624,7 +728,7 @@
       },
       "panel-slider_hueshift": {
         "id": "panel-slider_hueshift",
-        "order": 16,
+        "order": 18,
         "source": {
           "nodeId": "slider_hueshift",
           "portId": "out"
@@ -636,7 +740,7 @@
       },
       "panel-slider_hueto": {
         "id": "panel-slider_hueto",
-        "order": 14,
+        "order": 16,
         "source": {
           "nodeId": "slider_hueto",
           "portId": "out"
@@ -660,7 +764,7 @@
       },
       "panel-slider_legs": {
         "id": "panel-slider_legs",
-        "order": 20,
+        "order": 22,
         "source": {
           "nodeId": "slider_legs",
           "portId": "out"
@@ -672,7 +776,7 @@
       },
       "panel-slider_meter": {
         "id": "panel-slider_meter",
-        "order": 21,
+        "order": 23,
         "source": {
           "nodeId": "slider_meter",
           "portId": "out"
@@ -696,7 +800,7 @@
       },
       "panel-slider_shot": {
         "id": "panel-slider_shot",
-        "order": 26,
+        "order": 28,
         "source": {
           "nodeId": "slider_shot",
           "portId": "out"
@@ -708,7 +812,7 @@
       },
       "panel-slider_spark": {
         "id": "panel-slider_spark",
-        "order": 23,
+        "order": 25,
         "source": {
           "nodeId": "slider_spark",
           "portId": "out"
@@ -732,7 +836,7 @@
       },
       "panel-slider_spread": {
         "id": "panel-slider_spread",
-        "order": 15,
+        "order": 17,
         "source": {
           "nodeId": "slider_spread",
           "portId": "out"
@@ -780,7 +884,7 @@
       },
       "panel-toggle_cuts": {
         "id": "panel-toggle_cuts",
-        "order": 27,
+        "order": 29,
         "source": {
           "nodeId": "toggle_cuts",
           "portId": "out"
@@ -792,7 +896,7 @@
       },
       "panel-toggle_follow": {
         "id": "panel-toggle_follow",
-        "order": 28,
+        "order": 30,
         "source": {
           "nodeId": "toggle_follow",
           "portId": "out"
@@ -804,7 +908,7 @@
       },
       "panel-toggle_perch": {
         "id": "panel-toggle_perch",
-        "order": 24,
+        "order": 26,
         "source": {
           "nodeId": "toggle_perch",
           "portId": "out"
@@ -816,7 +920,7 @@
       },
       "panel-xypad_view": {
         "id": "panel-xypad_view",
-        "order": 25,
+        "order": 27,
         "source": {
           "nodeId": "xypad_view",
           "portId": "out"
@@ -859,14 +963,14 @@
           "portId": "in"
         }
       },
-      "reflect-haze": {
-        "id": "reflect-haze",
+      "reflect-occlusion": {
+        "id": "reflect-occlusion",
         "source": {
           "nodeId": "wgsl_reflect",
           "portId": "out"
         },
         "target": {
-          "nodeId": "wgsl_haze",
+          "nodeId": "wgsl_occlusion",
           "portId": "input"
         }
       },
@@ -1273,6 +1377,54 @@
           "y": -600
         },
         "type": "valueExpression"
+      },
+      "filmgrade_finish": {
+        "definitionVersion": 1,
+        "id": "filmgrade_finish",
+        "label": "filmgrade_finish",
+        "parameters": {
+          "black": 0.03,
+          "bleach": 0.2,
+          "contrast": 1.2,
+          "exposure": 0.3,
+          "grain": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_grain').chan.grain"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.06
+              }
+            },
+            "mode": "expression"
+          },
+          "grainSize": 1.5,
+          "highlightTint": [
+            1,
+            0.97,
+            0.92,
+            1
+          ],
+          "keepWarm": 1,
+          "saturation": 0.92,
+          "shadowTint": [
+            0.78,
+            1,
+            0.9,
+            1
+          ],
+          "split": 0.55
+        },
+        "position": {
+          "x": 600,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "filmGrade"
       },
       "geometry_bore": {
         "definitionVersion": 1,
@@ -2509,6 +2661,27 @@
         },
         "type": "valueLag"
       },
+      "lens_glass": {
+        "definitionVersion": 1,
+        "id": "lens_glass",
+        "label": "lens_glass",
+        "parameters": {
+          "aberration": 0.0012,
+          "distortion": 0.035,
+          "edgeBlur": 0.008,
+          "swirl": 0.3,
+          "vignette": 0.6,
+          "vignetteRound": 0.8
+        },
+        "position": {
+          "x": 450,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "lens"
+      },
       "light_eyes": {
         "definitionVersion": 1,
         "id": "light_eyes",
@@ -2583,7 +2756,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + 0.9)) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + 0.9)) + 1.9)) + 0"
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (0.9 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (0.9 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))) + 1.9)) + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (0.5 * sin(abstime * 0.31 + 0) + 0.22 * sin(abstime * 0.73 + 1.3))"
               },
               "static": {
                 "kind": "static",
@@ -2596,7 +2769,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + 0.9)) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + 0.9)) + 0.7)) + 0"
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (0.9 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (0.9 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))) + 0.7)) + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (0.38 * sin(abstime * 0.23 + 2) + 0.18 * sin(abstime * 0.57 + 0))"
               },
               "static": {
                 "kind": "static",
@@ -2609,7 +2782,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(op('speed_travel').chan.value + 0.9)"
+                "source": "(op('speed_travel').chan.value + (0.9 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))"
               },
               "static": {
                 "kind": "static",
@@ -3495,10 +3668,10 @@
         "id": "output_frame",
         "label": "output_frame",
         "parameters": {
-          "toneMap": "filmic"
+          "toneMap": "none"
         },
         "position": {
-          "x": 600,
+          "x": 750,
           "y": 0
         },
         "type": "output"
@@ -3508,7 +3681,7 @@
         "id": "panel",
         "label": "panel1",
         "parameters": {
-          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":8,\"w\":4,\"h\":1}},\n    {\"member\":\"toggle_perch\",\"rect\":{\"x\":0,\"y\":9,\"w\":4,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":10,\"w\":4,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":4,\"y\":0,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":4,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":4,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":4,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":4,\"y\":4,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":4,\"y\":5,\"w\":4,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":4,\"y\":6,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":4,\"y\":7,\"w\":4,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":4,\"y\":8,\"w\":4,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":4,\"y\":9,\"w\":3,\"h\":3}},\n    {\"label\":\"Lights\",\"rect\":{\"x\":8,\"y\":0,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":8,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":8,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":8,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":8,\"y\":4,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":8,\"y\":5,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":8,\"y\":6,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":8,\"y\":7,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":8,\"y\":8,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":8,\"y\":9,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":8,\"y\":10,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":8,\"y\":11,\"w\":4,\"h\":1}}\n  ]\n}",
+          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":8,\"w\":4,\"h\":1}},\n    {\"member\":\"toggle_perch\",\"rect\":{\"x\":0,\"y\":9,\"w\":4,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":10,\"w\":4,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":4,\"y\":0,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":4,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":4,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":4,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":4,\"y\":4,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":4,\"y\":5,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":4,\"y\":6,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":4,\"y\":7,\"w\":4,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":4,\"y\":8,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":4,\"y\":9,\"w\":4,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":4,\"y\":10,\"w\":4,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":4,\"y\":11,\"w\":3,\"h\":3}},\n    {\"label\":\"Lights\",\"rect\":{\"x\":8,\"y\":0,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":8,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":8,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":8,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":8,\"y\":4,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":8,\"y\":5,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":8,\"y\":6,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":8,\"y\":7,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":8,\"y\":8,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":8,\"y\":9,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":8,\"y\":10,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":8,\"y\":11,\"w\":4,\"h\":1}}\n  ]\n}",
           "title": "Sentinel"
         },
         "position": {
@@ -3540,7 +3713,7 @@
           "depthOutput": true,
           "lights": "light_eyes light_lamp0 light_lamp1 light_lamp2",
           "normalOutput": true,
-          "scenes": "geometry_hull geometry_ring geometry_claw geometry_bore geometry_motes"
+          "scenes": "geometry_hull geometry_ring geometry_claw geometry_bore"
         },
         "position": {
           "x": -1200,
@@ -3631,8 +3804,8 @@
           "value": 0.3
         },
         "position": {
-          "x": -3000,
-          "y": 2750
+          "x": -3600,
+          "y": 3000
         },
         "type": "slider"
       },
@@ -3685,8 +3858,8 @@
           "value": 0.6
         },
         "position": {
-          "x": -3000,
-          "y": 2500
+          "x": -3600,
+          "y": 2750
         },
         "type": "slider"
       },
@@ -3703,8 +3876,8 @@
           "value": 0.25
         },
         "position": {
-          "x": -2700,
-          "y": 2500
+          "x": -3300,
+          "y": 2750
         },
         "type": "slider"
       },
@@ -3723,6 +3896,24 @@
         "position": {
           "x": -3600,
           "y": 1750
+        },
+        "type": "slider"
+      },
+      "slider_focus": {
+        "definitionVersion": 1,
+        "id": "slider_focus",
+        "label": "slider_focus",
+        "parameters": {
+          "caption": "Depth of field",
+          "channel": "focus",
+          "max": 1.5,
+          "min": 0,
+          "step": 0,
+          "value": 0.5
+        },
+        "position": {
+          "x": -3300,
+          "y": 2250
         },
         "type": "slider"
       },
@@ -3757,8 +3948,26 @@
           "value": 9
         },
         "position": {
-          "x": -3300,
+          "x": -2700,
           "y": 2500
+        },
+        "type": "slider"
+      },
+      "slider_grain": {
+        "definitionVersion": 1,
+        "id": "slider_grain",
+        "label": "slider_grain",
+        "parameters": {
+          "caption": "Grain",
+          "channel": "grain",
+          "max": 0.2,
+          "min": 0,
+          "step": 0,
+          "value": 0.06
+        },
+        "position": {
+          "x": -3000,
+          "y": 2250
         },
         "type": "slider"
       },
@@ -3790,7 +3999,7 @@
           "max": 0.12,
           "min": 0,
           "step": 0,
-          "value": 0.035
+          "value": 0.04
         },
         "position": {
           "x": -3600,
@@ -3811,7 +4020,7 @@
           "value": 0
         },
         "position": {
-          "x": -3300,
+          "x": -2700,
           "y": 2250
         },
         "type": "slider"
@@ -3829,7 +4038,7 @@
           "value": 0.4
         },
         "position": {
-          "x": -3600,
+          "x": -3000,
           "y": 2500
         },
         "type": "slider"
@@ -3847,8 +4056,8 @@
           "value": 0.03
         },
         "position": {
-          "x": -3000,
-          "y": 2250
+          "x": -3600,
+          "y": 2500
         },
         "type": "slider"
       },
@@ -3883,7 +4092,7 @@
           "value": 1
         },
         "position": {
-          "x": -3600,
+          "x": -3000,
           "y": 2750
         },
         "type": "slider"
@@ -3901,7 +4110,7 @@
           "value": 0.7
         },
         "position": {
-          "x": -3300,
+          "x": -2700,
           "y": 2750
         },
         "type": "slider"
@@ -3955,8 +4164,8 @@
           "value": 0.6
         },
         "position": {
-          "x": -2700,
-          "y": 2750
+          "x": -3300,
+          "y": 3000
         },
         "type": "slider"
       },
@@ -3991,8 +4200,8 @@
           "value": 0.6
         },
         "position": {
-          "x": -2700,
-          "y": 2250
+          "x": -3300,
+          "y": 2500
         },
         "type": "slider"
       },
@@ -4288,11 +4497,201 @@
         },
         "type": "customWgsl"
       },
+      "wgsl_focus": {
+        "definitionVersion": 1,
+        "id": "wgsl_focus",
+        "label": "wgsl_focus",
+        "parameters": {
+          "aim": [
+            0,
+            0,
+            3.3
+          ],
+          "aim.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.lookAt.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.lookAt.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.lookAt.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "aperture": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_focus').chan.focus * 55 / op('expression_camera').chan.lens"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.5
+              }
+            },
+            "mode": "expression"
+          },
+          "eye": [
+            1.1,
+            0.6,
+            -7.5
+          ],
+          "eye.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.eye.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.eye.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.eye.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "far": 240,
+          "focusDistance": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "max(((op('expression_camera').chan.ahead - 0.4) * (op('expression_camera').chan.ahead - 0.4) + op('expression_camera').chan.right * op('expression_camera').chan.right + op('expression_camera').chan.up * op('expression_camera').chan.up) ^ 0.5, 0.6)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 7.5
+              }
+            },
+            "mode": "expression"
+          },
+          "fov": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.fov"
+              },
+              "static": {
+                "kind": "static",
+                "value": 55
+              }
+            },
+            "mode": "expression"
+          },
+          "maxRadius": 14,
+          "roll": 0,
+          "source": "struct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  focusDistance: f32, // @default 0  Distance in focus, metres; 0 focuses on whatever is at the frame's centre.\n  aperture: f32, // @default 0.8  Blur strength: circle radius in pixels per unit of defocus.\n  maxRadius: f32, // @default 14  Largest circle of confusion, pixels.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues, right-handed about the camera's +z: the angle is negated about forward),\n// exactly as camera.ts guardedRolledUp builds the render's view (T1433b).\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(-rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\nconst TAPS: u32 = 48u;\n\nfn focusAt() -> f32 {\n  if (params.focusDistance > 0.0) { return params.focusDistance; }\n  let centre = viewDepth(vec2f(0.5));\n  return select(centre, 30.0, centre < 0.0);\n}\n\nfn circleAt(z: f32, focus: f32) -> f32 {\n  if (z < 0.0) { return params.maxRadius; }\n  let defocus = abs(1.0 / max(focus, 0.1) - 1.0 / max(z, 0.1)) * focus;\n  return clamp(defocus * params.aperture * 10.0, 0.0, params.maxRadius);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let centre = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let z = viewDepth(uv);\n  let focus = focusAt();\n  let coc = circleAt(z, focus);\n  if (coc < 0.5) { return centre; }\n  let texel = 1.0 / frameU.resolution;\n  var sum = centre.rgb;\n  var weight = 1.0;\n  for (var i = 1u; i < TAPS; i = i + 1u) {\n    let radius = sqrt(f32(i) / f32(TAPS)) * coc;\n    let angle = f32(i) * 2.39996323;\n    let offset = vec2f(cos(angle), sin(angle)) * radius * texel;\n    let tapZ = viewDepth(uv + offset);\n    let tapCoc = circleAt(tapZ, focus);\n    // A tap contributes if ITS blur reaches this pixel (so an in-focus foreground stays out).\n    let w = smoothstep(radius - 1.0, radius + 1.0, max(tapCoc, select(coc, 0.0, tapZ >= 0.0 && tapZ < z - 1.0)));\n    sum = sum + textureSampleLevel(inputTexture, inputSampler, uv + offset, 0.0).rgb * w;\n    weight = weight + w;\n  }\n  return vec4f(sum / weight, centre.a);\n}"
+        },
+        "position": {
+          "x": -750,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgslMulti"
+      },
       "wgsl_haze": {
         "definitionVersion": 1,
         "id": "wgsl_haze",
         "label": "wgsl_haze",
         "parameters": {
+          "aim": [
+            0,
+            0,
+            3.3
+          ],
+          "aim.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.lookAt.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.lookAt.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.lookAt.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
           "density": {
             "bindings": {
               "expression": {
@@ -4301,17 +4700,532 @@
               },
               "static": {
                 "kind": "static",
-                "value": 0.035
+                "value": 0.04
+              }
+            },
+            "mode": "expression"
+          },
+          "eye": [
+            1.1,
+            0.6,
+            -7.5
+          ],
+          "eye.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.eye.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.eye.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.eye.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eyeColor": [
+            1,
+            0.04,
+            0.04
+          ],
+          "eyeColor.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(clamp(abs(fract((op('slider_huefrom').chan.huefrom + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.5 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.000000) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "eyeColor.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(clamp(abs(fract((op('slider_huefrom').chan.huefrom + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.5 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.666667) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.04
+              }
+            },
+            "mode": "expression"
+          },
+          "eyeColor.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(clamp(abs(fract((op('slider_huefrom').chan.huefrom + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.5 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.333333) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.04
+              }
+            },
+            "mode": "expression"
+          },
+          "eyes": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_glow').chan.glow * 0.7 * (0.75 + (op('lag_hits').chan.hatCount * op('slider_react').chan.react) * 0.9)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 6
+              }
+            },
+            "mode": "expression"
+          },
+          "eyesAt": [
+            0,
+            0,
+            0.9
+          ],
+          "eyesAt.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (0.9 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (0.9 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))) + 1.9)) + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (0.5 * sin(abstime * 0.31 + 0) + 0.22 * sin(abstime * 0.73 + 1.3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eyesAt.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (0.9 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (0.9 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))) + 0.7)) + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (0.38 * sin(abstime * 0.23 + 2) + 0.18 * sin(abstime * 0.57 + 0))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eyesAt.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + (0.9 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.9
               }
             },
             "mode": "expression"
           },
           "far": 240,
-          "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\nstruct Params {\n  density: f32, // @default 0.035  How fast the air closes in, per metre.\n  color: vec3f, // @default [0.016, 0.04, 0.044]  What the far end of the tunnel fades to: never black, so what stands in front of it has an outline.\n  far: f32, // @default 240  The camera's far plane (depth arrives as distance ÷ far).\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let lit = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let size = vec2f(textureDimensions(inputTexture1));\n  let depth = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).r;\n  // Nothing drawn here: the tunnel's own dark, all haze.\n  let distance = select(depth * params.far, params.far, depth <= 0.0 || depth >= 0.9999);\n  let clear = exp(-distance * params.density);\n  return vec4f(mix(params.color, lit.rgb, clear), lit.a);\n}"
+          "fov": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.fov"
+              },
+              "static": {
+                "kind": "static",
+                "value": 55
+              }
+            },
+            "mode": "expression"
+          },
+          "glow": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_haze').chan.haze * 0.075"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.003
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_lamp').chan.lamp * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 26
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp0.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp0.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp0.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": -19.200000000000003
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp1.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp1.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp1.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": -6.4
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp2.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp2.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp2.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 6.4
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp3.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp3.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp3.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 19.200000000000003
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp4.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp4.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp4.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 32
+              }
+            },
+            "mode": "expression"
+          },
+          "roll": 0,
+          "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\nstruct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  density: f32, // @default 0.05  How fast the air closes in, per metre.\n  color: vec3f, // @default [0.016, 0.04, 0.044]  What the far end of the tunnel fades to: never black.\n  glow: f32, // @default 0.012  How much of a light the air between throws at the lens.\n  lamp0: vec3f, // @default [0, 2.25, -19.2]  Where the lamp -2 stations on from the robot's own hangs.\n  lamp1: vec3f, // @default [0, 2.25, -6.4]  Where the lamp -1 stations on from the robot's own hangs.\n  lamp2: vec3f, // @default [0, 2.25, 6.4]  Where the lamp 0 stations on from the robot's own hangs.\n  lamp3: vec3f, // @default [0, 2.25, 19.2]  Where the lamp 1 stations on from the robot's own hangs.\n  lamp4: vec3f, // @default [0, 2.25, 32.0]  Where the lamp 2 stations on from the robot's own hangs.\n  station: f32, // @default 37  The station the robot is under: which lamp is which tone.\n  lamp: f32, // @default 26  The lamps' intensity, as their lights have it.\n  eyesAt: vec3f, // @default [0, 0, 0.9]  Where the robot's face is.\n  eyeColor: vec3f, // @default [1, 0.04, 0.04]  Its light's colour.\n  eyes: f32, // @default 1.6  …and intensity, as its light has it.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues, right-handed about the camera's +z: the angle is negated about forward),\n// exactly as camera.ts guardedRolledUp builds the render's view (T1433b).\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(-rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\nconst LAMP: f32 = 12.80000;\nconst LAMP_GAIN = array<f32, 15>(1.00, 0.20, 1.00, 1.00, 0.06, 0.40, 1.00, 1.00, 0.20, 0.06, 0.40, 1.00, 1.00, 0.20, 0.40);\n// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,\n// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, 14.5))];\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;\n}\n\n// How much of a point light at `light` the air along a ray throws back, per unit of the light and of the air's\n// own share: the integral of 1/d² from the lens out to `reach` metres, dimmed by the air it then crosses.\nfn airlight(origin: vec3f, ray: vec3f, reach: f32, light: vec3f) -> f32 {\n  let q = origin - light;\n  let b = dot(ray, q);\n  // No nearer than a lamp is wide: a ray through the lamp itself is a bright core, not infinity.\n  let c = sqrt(max(dot(q, q) - b * b, 0.03));\n  let nearest = clamp(-b, 0.0, reach);\n  return (atan((reach + b) / c) - atan(b / c)) / c * exp(-nearest * params.density);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let lit = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let view = makeView();\n  let ray = rayAt(view, uv);\n  let z = viewDepth(uv);\n  // Nothing drawn here: the tunnel's own dark, all haze.\n  let reach = select(z / max(dot(ray, view.forward), 1e-4), params.far, z < 0.0);\n  let clear = exp(-reach * params.density);\n  var air = params.eyeColor * params.eyes * airlight(params.eye, ray, reach, params.eyesAt);\n  air = air + lampTone(params.station + -2.0) * params.lamp * airlight(params.eye, ray, reach, params.lamp0);\n  air = air + lampTone(params.station + -1.0) * params.lamp * airlight(params.eye, ray, reach, params.lamp1);\n  air = air + lampTone(params.station + 0.0) * params.lamp * airlight(params.eye, ray, reach, params.lamp2);\n  air = air + lampTone(params.station + 1.0) * params.lamp * airlight(params.eye, ray, reach, params.lamp3);\n  air = air + lampTone(params.station + 2.0) * params.lamp * airlight(params.eye, ray, reach, params.lamp4);\n  return vec4f(mix(params.color, lit.rgb, clear) + air * params.glow, lit.a);\n}",
+          "station": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "floor(op('speed_travel').chan.value / 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 37
+              }
+            },
+            "mode": "expression"
+          }
         },
         "position": {
           "x": -900,
           "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgslMulti"
+      },
+      "wgsl_occlusion": {
+        "definitionVersion": 1,
+        "id": "wgsl_occlusion",
+        "label": "wgsl_occlusion",
+        "parameters": {
+          "aim": [
+            0,
+            0,
+            3.3
+          ],
+          "aim.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.lookAt.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.lookAt.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.lookAt.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eye": [
+            1.1,
+            0.6,
+            -7.5
+          ],
+          "eye.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.eye.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.eye.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.eye.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "far": 240,
+          "fov": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('camera_rig').par.fov"
+              },
+              "static": {
+                "kind": "static",
+                "value": 55
+              }
+            },
+            "mode": "expression"
+          },
+          "power": 1.5,
+          "radius": 0.8,
+          "roll": 0,
+          "source": "struct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  radius: f32, // @default 1.2  World radius of the occlusion search, metres.\n  strength: f32, // @default 0.75  How much of the occlusion darkens the frame.\n  power: f32, // @default 1.4  Contrast of the occlusion.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n@group(0) @binding(5) var inputTexture2: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues, right-handed about the camera's +z: the angle is negated about forward),\n// exactly as camera.ts guardedRolledUp builds the render's view (T1433b).\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(-rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\nconst DIRECTIONS: u32 = 8u;\nconst STEPS: u32 = 6u;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let v = makeView();\n  let z = viewDepth(uv);\n  let encoded = textureLoad(inputTexture2, depthTexel(uv), 0);\n  if (z < 0.0 || encoded.a <= 0.0) { return color; }\n  let n = normalize(encoded.rgb * 2.0 - 1.0);\n  let p = worldAt(v, uv, z);\n  let helper = select(vec3f(0.0, 1.0, 0.0), vec3f(1.0, 0.0, 0.0), abs(n.y) > 0.9);\n  let t = normalize(cross(n, helper));\n  let b = cross(n, t);\n  let spin = ignHash(uv * frameU.resolution) * 6.2831853;\n  var occlusion = 0.0;\n  for (var i = 0u; i < DIRECTIONS; i = i + 1u) {\n    let angle = spin + f32(i) * 6.2831853 / f32(DIRECTIONS);\n    let dir = t * cos(angle) + b * sin(angle);\n    var best = 0.0;\n    for (var s = 1u; s <= STEPS; s = s + 1u) {\n      let distance = params.radius * (f32(s) / f32(STEPS)) * (f32(s) / f32(STEPS));\n      let probe = project(v, p + dir * distance);\n      if (probe.z <= 0.0 || any(probe.xy < vec2f(0.0)) || any(probe.xy > vec2f(1.0))) { break; }\n      let sz = viewDepth(probe.xy);\n      if (sz < 0.0) { continue; }\n      let sp = worldAt(v, probe.xy, sz);\n      let toSample = sp - p;\n      let length2 = dot(toSample, toSample);\n      let elevation = dot(n, toSample) * inverseSqrt(max(length2, 1e-6));\n      let falloff = 1.0 - smoothstep(params.radius * params.radius * 0.5, params.radius * params.radius * 2.0, length2);\n      best = max(best, (elevation - 0.08) * falloff);\n    }\n    occlusion = occlusion + clamp(best, 0.0, 1.0);\n  }\n  let ao = pow(clamp(1.0 - occlusion / f32(DIRECTIONS), 0.0, 1.0), params.power);\n  return vec4f(color.rgb * mix(1.0, ao, params.strength), color.a);\n}",
+          "strength": 0.85
+        },
+        "position": {
+          "x": -975,
+          "y": 150
         },
         "resolution": {
           "mode": "project"

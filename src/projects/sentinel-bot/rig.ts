@@ -117,6 +117,10 @@ const ADRIFT: Readonly<Record<"x" | "y", ReadonlyArray<readonly [number, number,
   x: [[0.5, 0.31, 1, 0], [0.22, 0.73, 1.7, 1.3]],
   y: [[0.38, 0.23, 0.6, 2.0], [0.18, 0.57, 1, 0]],
 };
+/** …and along the tunnel: it gains and loses this many metres on this slow a count (radians a second). */
+const ADRIFT_AHEAD = [0.7, 0.21] as const;
+/** How far ahead of its place the leader has drifted, fully adrift: metres, as an expression. */
+export const adriftAheadExpression = `(${ADRIFT_AHEAD[0]} * sin(abstime * ${ADRIFT_AHEAD[1]}))`;
 const adriftWgsl = (axis: "x" | "y"): string => ADRIFT[axis].map(([metres, rate, own, phase]) => `${metres} * sin(time * ${rate} + own * ${own} + ${phase})`).join(" + ");
 /** Where the pack's leader (no place of its own off the pack's) has wandered to, fully adrift: metres right or up, as an expression. */
 export const adriftExpression = (axis: "x" | "y"): string => `(${ADRIFT[axis].map(([metres, rate, , phase]) => `${metres} * sin(abstime * ${rate} + ${phase})`).join(" + ")})`;
@@ -137,7 +141,7 @@ fn robotZ(travel: f32, offset: vec3f, swim: f32, stroke: f32) -> f32 {
 
 // Adrift it does not keep its distance either: it gains and loses most of a metre on a slow count.
 fn adriftZ(time: f32, offset: vec3f) -> f32 {
-  return 0.7 * sin(time * 0.21 + offset.z * 0.9 + offset.x * 1.7);
+  return ${ADRIFT_AHEAD[0]} * sin(time * ${ADRIFT_AHEAD[1]} + offset.z * 0.9 + offset.x * 1.7);
 }
 
 // The robot's own frame: on the tunnel's frame at its distance, facing a little way ahead so it
