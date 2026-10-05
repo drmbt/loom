@@ -1,6 +1,6 @@
 import { wgsl } from "../../runtime/backend/wgsl.ts";
 import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
-import { ARC_SOLVE_STEPS, ZERO_SEGMENT_SQUARED, type CurveBasis } from "../../points/curve.ts";
+import { ARC_CHAIN_SECTIONS, ARC_SOLVE_STEPS, ZERO_SEGMENT_SQUARED, type CurveBasis } from "../../points/curve.ts";
 import { CURVE_SEED_WGSL } from "./curve-common.wgsl.ts";
 
 /**
@@ -39,6 +39,19 @@ import { CURVE_SEED_WGSL } from "./curve-common.wgsl.ts";
  *
  * The Arc solves its span again for every point of it (24 bisection steps) and is still
  * the price of a plain kernel pass: the solve reads two control points and nothing else.
+ *
+ * ## The Arc Chain is the one basis that reads further back
+ *
+ * A point of an Arc Chain depends on every SECTION before its own: each turns the frame the
+ * next one leaves with. It is still one thread per point and still no scan, because a strip
+ * holds at most `ARC_CHAIN_SECTIONS` of them and a thread composes them itself, in a loop
+ * whose length is the section it is in.
+ *
+ * Measured by the method above with sixteen sections a strip at 16 segments (257 points a
+ * strip), lengths and bends mapped: under 0.05 ms at 99,973 points, and 0.24 ms at 999,987
+ * — against 0.12 for Catmull-Rom and 0.13 for the Arc over the same control points. A
+ * point of the chain's last section composes fifteen sections before it, and the whole
+ * strip still costs twice a spline.
  */
 
 /** One attribute carried from a wired control set to the output, as the pass addresses it. */
@@ -80,9 +93,12 @@ export interface CurveShaderOptions {
         /** Bezier: the two handle attributes (vec3f, relative to their point). */
         readonly handleIn?: CurveControlRegion;
         readonly handleOut?: CurveControlRegion;
-        /** Arc: a per-control-point length (the component of its attribute to read) and bow. */
+        /** Arc and Arc Chain: a per-control-point length (the component of its attribute to read). Arc: a bow. */
         readonly arcLength?: CurveControlRegion & { readonly strideWords: number; readonly component: number };
         readonly bow?: CurveControlRegion;
+        /** Arc Chain: a per-section bend (vec2f), and the frame each strip's first control point leaves with (vec4f). */
+        readonly bend?: CurveControlRegion;
+        readonly startOrient?: CurveControlRegion;
       }
     | {
         readonly kind: "table";
@@ -131,7 +147,7 @@ function wiredVec3(name: string, region: CurveControlRegion): string {
 }`;
 }
 
-const BASIS_WGSL: Readonly<Record<Exclude<CurveBasis, "arc" | "bezier">, string>> = {
+const BASIS_WGSL: Readonly<Record<Exclude<CurveBasis, "arc" | "arcChain" | "bezier">, string>> = {
   linear: `fn curvePoint(strip: u32, index: u32, next: u32, u: f32) -> vec3f {
   let p1 = controlPosition(strip, index);
   if (u == 0.0) { return p1; }
@@ -265,6 +281,58 @@ fn curvePoint(strip: u32, index: u32, next: u32, u: f32) -> vec3f {
 }`;
 }
 
+/**
+ * The Arc Chain: arcs end to end, each with a length and a bend, each leaving the way the
+ * one before it arrived (`arcChainSections` in the reference). A point walks the sections
+ * before its own — where each ends, and the frame it ends with — and then goes its own
+ * distance along its own. No solve: the chain is a plain function of its numbers.
+ */
+function arcChainWgsl(lengthAt: (section: string) => string, bendAt: (section: string) => string, startAt: string): string {
+  return `fn sinc(x: f32) -> f32 {
+  if (abs(x) < 1.0e-3) { return 1.0 - x * x / 6.0; }
+  return sin(x) / x;
+}
+
+fn qrot(q: vec4f, v: vec3f) -> vec3f {
+  return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
+}
+
+/* a, then b in the frame a has reached. */
+fn qmul(a: vec4f, b: vec4f) -> vec4f {
+  return vec4f(a.w * b.xyz + b.w * a.xyz + cross(a.xyz, b.xyz), a.w * b.w - dot(a.xyz, b.xyz));
+}
+
+/* s metres along one section that starts at origin with the frame given. The frame's +Z
+   is the way it leaves; bend is its turn per metre about the frame's X and about its Y, so
+   it curls toward (bend.y, -bend.x): its axis crossed with its tangent. Written like the
+   Arc's point, so a section with no bend is a straight line, exactly. */
+fn sectionPoint(origin: vec3f, frame: vec4f, bend: vec2f, s: f32) -> vec3f {
+  let curvature = sqrt(dot(bend, bend));
+  let tangent = qrot(frame, vec3f(0.0, 0.0, 1.0));
+  var inward = vec3f(0.0);
+  if (curvature > 0.0) { inward = qrot(frame, vec3f(bend.y, -bend.x, 0.0) / curvature); }
+  let angle = curvature * s;
+  return origin + (tangent * (s * sinc(angle)) + inward * (s * sin(angle * 0.5) * sinc(angle * 0.5)));
+}
+
+fn curvePoint(strip: u32, index: u32, next: u32, u: f32) -> vec3f {
+  var origin = controlPosition(strip, 0u);
+  var frame = ${startAt};
+  /* The sections before this one: at most ${ARC_CHAIN_SECTIONS} of them, by the node's own limit. */
+  for (var section = 0u; section < index; section = section + 1u) {
+    let laid = max(${lengthAt("section")}, 0.0);
+    let bend = ${bendAt("section")};
+    origin = sectionPoint(origin, frame, bend, laid);
+    let curvature = sqrt(dot(bend, bend));
+    let turned = curvature * laid;
+    if (turned > 0.0) {
+      frame = qmul(frame, vec4f(vec3f(bend, 0.0) / curvature * sin(turned * 0.5), cos(turned * 0.5)));
+    }
+  }
+  return sectionPoint(origin, frame, ${bendAt("index")}, u * max(${lengthAt("index")}, 0.0));
+}`;
+}
+
 export function curveWgsl(options: CurveShaderOptions): EmittedWgsl {
   const { source, basis } = options;
   const wired = source.kind === "wired";
@@ -285,6 +353,21 @@ export function curveWgsl(options: CurveShaderOptions): EmittedWgsl {
   return bitcast<f32>(pk_${region.group}[${region.word}u + (strip * params.colsIn + i) * ${region.strideWords}u + ${region.component}u]);
 }`);
     }
+    if (source.bend !== undefined) {
+      const region = source.bend;
+      accessors.push(`fn controlBend(strip: u32, i: u32) -> vec2f {
+  let o = ${region.word}u + (strip * params.colsIn + i) * 2u;
+  return bitcast<vec2f>(vec2u(pk_${region.group}[o], pk_${region.group}[o + 1u]));
+}`);
+    }
+    if (source.startOrient !== undefined) {
+      const region = source.startOrient;
+      accessors.push(`/* The frame a strip's first control point leaves with. */
+fn controlStart(strip: u32) -> vec4f {
+  let o = ${region.word}u + strip * params.colsIn * 4u;
+  return bitcast<vec4f>(vec4u(pk_${region.group}[o], pk_${region.group}[o + 1u], pk_${region.group}[o + 2u], pk_${region.group}[o + 3u]));
+}`);
+    }
   } else {
     accessors.push(tableWgsl(source.count));
   }
@@ -295,9 +378,22 @@ export function curveWgsl(options: CurveShaderOptions): EmittedWgsl {
           wired && source.arcLength !== undefined ? "controlArcLength(strip, index)" : "params.arcLength",
           wired && source.bow !== undefined ? "controlBow(strip, index)" : "params.bow",
         )
-      : basis === "bezier"
-        ? BEZIER_WGSL
-        : BASIS_WGSL[basis];
+      : basis === "arcChain"
+        ? arcChainWgsl(
+            (section) => (wired && source.arcLength !== undefined ? `controlArcLength(strip, ${section})` : "params.arcLength"),
+            (section) => (wired && source.bend !== undefined ? `controlBend(strip, ${section})` : "params.bend"),
+            wired && source.startOrient !== undefined ? "controlStart(strip)" : "vec4f(0.0, 0.0, 0.0, 1.0)",
+          )
+        : basis === "bezier"
+          ? BEZIER_WGSL
+          : BASIS_WGSL[basis];
+  /* The control point an attribute blends toward. A chain's control points are sections:
+     the last one has no section after it, and holds its own. */
+  const nextIndex =
+    basis === "arcChain"
+      ? "    next = min(index + 1u, params.colsIn - 1u);"
+      : `    next = index + 1u;
+    if (params.closed == 1u) { next = next % params.colsIn; }`;
 
   const carried = wired
     ? source.attributes
@@ -379,8 +475,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let index = span + ${options.unclamped ? 1 : 0}u;
   var next = index;
   if (params.spans > 0u) {
-    next = index + 1u;
-    if (params.closed == 1u) { next = next % params.colsIn; }
+${nextIndex}
   }
   /* An integer attribute cannot blend: a point holds its span's first control point's, and
      the far one's only where the strip ENDS on it — so a point on a control point always

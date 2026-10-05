@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import type { PointAttributeType } from "../../points/attributes.ts";
-import { curvePointCount, evaluateCurve, type CurveBasis, type CurveOptions, type Vec3 } from "../../points/curve.ts";
+import {
+  curvePointCount,
+  evaluateCurve,
+  quatFromFrame,
+  solveArc,
+  type CurveBasis,
+  type CurveOptions,
+  type Vec2,
+  type Vec3,
+} from "../../points/curve.ts";
 import {
   authoredPoints,
   curveEdge,
@@ -641,4 +650,300 @@ describe("Curve on Dawn — the reference, and the node's own table (T1586b D7)"
     // The control: the control points really moved between frame 0 and frame 5.
     expect(still).not.toEqual(direct);
   }, 60_000);
+});
+
+/**
+ * T1586b slice 8 — THE ARC CHAIN on a real device: arcs end to end, each control point a
+ * section with a length and a bend.
+ *
+ * The evidence is a circle's: a section of length L and bend κ is an arc of radius 1 ÷ κ
+ * that turns the chain by κL, so quarter circles land on whole numbers and a straight chain
+ * lands on its lengths exactly. What the chain is FOR is held too: its length is an input
+ * whatever its shape, and it moves without a pop as its numbers are blended.
+ */
+describe("Curve on Dawn — the Arc Chain: a control point is a section (T1586b slice 8)", () => {
+  const ORIGIN: Vec3 = [0, 0, 0];
+  const cross = (a: readonly number[], b: readonly number[]): Vec3 => [a[1]! * b[2]! - a[2]! * b[1]!, a[2]! * b[0]! - a[0]! * b[2]!, a[0]! * b[1]! - a[1]! * b[0]!];
+
+  /**
+   * No bend and no frame named: the chain leaves the first control point along +Z, and a
+   * station is the start plus the lengths before it — dyadic sums, so exactly. The other
+   * control points are SECTIONS: where they sit is not read.
+   */
+  it("with no bend it is a straight line of exactly its sections' lengths, from the first control point", async () => {
+    const out = await curve(
+      [[1, 2, 3], [9, 9, 9], [-5, 0, 7]],
+      { cols: 3, rows: 1 },
+      { basis: "arcChain", segments: 4, arcLength: mappedTo("reach", 1) },
+      [{ name: "reach", type: "f32", values: [1, 2, 0.5] }],
+    );
+    expect(out.position).toEqual([3, 3.25, 3.5, 3.75, 4, 4.5, 5, 5.5, 6, 6.125, 6.25, 6.375, 6.5].map((z) => [1, 2, z]));
+  }, 60_000);
+
+  /**
+   * A quarter circle about +Y, one about the frame's +X, one about its +Y again. The first
+   * curls from +Z toward +X and ends at (1, 0, 1) heading +X; its frame has turned with it,
+   * X now along −Z. The second, about that X, curls toward −Y and ends at (2, −1, 1)
+   * heading −Y, with the frame's Y along +X. The third, about that Y, curls toward −Z and
+   * ends at (2, −2, 0). Each turn is taken in the frame the chain has REACHED — about the
+   * world's axes the third would end elsewhere.
+   */
+  it("three quarter circles, by hand: each leaves the way the one before it arrived", async () => {
+    const quarter = Math.PI / 2;
+    const out = await curve(
+      [ORIGIN, ORIGIN, ORIGIN],
+      { cols: 3, rows: 1 },
+      { basis: "arcChain", segments: 4, arcLength: quarter, bend: mappedTo("curl", [0, 0]) },
+      [{ name: "curl", type: "vec2f", values: [[0, 1], [1, 0], [0, 1]] }],
+    );
+    for (let k = 0; k <= 4; k += 1) {
+      const turned = (k * quarter) / 4;
+      close(out.position[k]!, [1 - Math.cos(turned), 0, Math.sin(turned)], `first quarter, station ${k}`);
+      close(out.position[4 + k]!, [1 + Math.sin(turned), -(1 - Math.cos(turned)), 1], `second quarter, station ${k}`);
+      close(out.position[8 + k]!, [2, -1 - Math.sin(turned), 1 - (1 - Math.cos(turned))], `third quarter, station ${k}`);
+    }
+    expect(out.position[0]).toEqual([0, 0, 0]);
+  }, 60_000);
+
+  /**
+   * The Start Frame is a quaternion on each strip's first control point. (½, ½, ½, ½)
+   * carries +Z onto +X, so a straight chain runs along +X, exactly; the second strip's is
+   * the identity and runs along +Z. Clear the name and both leave along +Z: the frame came
+   * through the attribute and from nowhere else.
+   */
+  it("each strip leaves along its own Start Frame; clear the name and both leave along +Z", async () => {
+    const controls: Vec3[] = [ORIGIN, ORIGIN, [0, 5, 0], [0, 5, 0]];
+    const frames: AuthoredAttribute = { name: "orient", type: "vec4f", values: [[0.5, 0.5, 0.5, 0.5], [0, 0, 0, 1], [0, 0, 0, 1], [0, 0, 0, 1]] };
+    const framed = await curve(controls, { cols: 2, rows: 2 }, { basis: "arcChain", segments: 2, arcLength: 1, startOrient: "orient" }, [frames]);
+    expect(framed.position.slice(0, 5)).toEqual([[0, 0, 0], [0.5, 0, 0], [1, 0, 0], [1.5, 0, 0], [2, 0, 0]]);
+    expect(framed.position.slice(5)).toEqual([[0, 5, 0], [0, 5, 0.5], [0, 5, 1], [0, 5, 1.5], [0, 5, 2]]);
+    const unframed = await curve(controls, { cols: 2, rows: 2 }, { basis: "arcChain", segments: 2, arcLength: 1 }, [frames]);
+    expect(unframed.position.slice(0, 5)).toEqual([[0, 0, 0], [0, 0, 0.5], [0, 0, 1], [0, 0, 1.5], [0, 0, 2]]);
+  }, 60_000);
+
+  /**
+   * Arc Length and Bend in Map mode give each SECTION its own. Two strips of two sections:
+   * one straight and two metres long, one two quarter circles. Cut the maps and both take
+   * the node's own numbers — a metre a section, no bend.
+   */
+  it("Arc Length and Bend in Map mode give each section its own; cut the maps and every section takes the node's", async () => {
+    const quarter = Math.PI / 2;
+    const controls: Vec3[] = [ORIGIN, ORIGIN, [0, 5, 0], [0, 5, 0]];
+    const extras: AuthoredAttribute[] = [
+      { name: "reach", type: "f32", values: [0.5, 1.5, quarter, quarter] },
+      { name: "curl", type: "vec2f", values: [[0, 0], [0, 0], [0, 1], [0, -1]] },
+    ];
+    const mapped = await curve(
+      controls,
+      { cols: 2, rows: 2 },
+      { basis: "arcChain", segments: 2, arcLength: mappedTo("reach", 1), bend: mappedTo("curl", [0, 0]) },
+      extras,
+    );
+    expect(mapped.position.slice(0, 5)).toEqual([[0, 0, 0], [0, 0, 0.25], [0, 0, 0.5], [0, 0, 1.25], [0, 0, 2]]);
+    // A quarter circle toward +X, then one back the other way: an S that ends at (2, 5, 2) heading +Z.
+    close(mapped.position[7]!, [1, 5, 1], "the second strip's joint");
+    close(mapped.position[9]!, [2, 5, 2], "the second strip's end");
+    const cut = await curve(controls, { cols: 2, rows: 2 }, { basis: "arcChain", segments: 2, arcLength: 1, bend: [0, 0] }, extras);
+    expect(cut.position.slice(0, 5)).toEqual([[0, 0, 0], [0, 0, 0.5], [0, 0, 1], [0, 0, 1.5], [0, 0, 2]]);
+    expect(cut.position.slice(5)).toEqual([[0, 5, 0], [0, 5, 0.5], [0, 5, 1], [0, 5, 1.5], [0, 5, 2]]);
+  }, 60_000);
+
+  /**
+   * What a section carries rides its points: a float blends toward the NEXT section's, so a
+   * radius tapers along the chain, and the last section — which has none after it — holds
+   * its own. An integer holds its section's.
+   */
+  it("a float blends toward the next section and the last holds its own; an integer holds its section's", async () => {
+    const out = await curve(
+      [ORIGIN, ORIGIN, ORIGIN],
+      { cols: 3, rows: 1 },
+      { basis: "arcChain", segments: 4, arcLength: 1 },
+      [
+        { name: "radius", type: "f32", values: [1, 2, 4] },
+        { name: "tag", type: "u32", values: [7, 8, 9] },
+      ],
+      async (curved) => ({
+        radius: Array.from((await curved.read("radius")).floats),
+        tag: Array.from((await curved.read("tag")).words),
+      }),
+    );
+    expect(out.radius).toEqual([1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 4, 4, 4, 4]);
+    expect(out.tag).toEqual([7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9, 9]);
+  }, 60_000);
+
+  /**
+   * THE LENGTH TABLE, extended (the design's section 3.5), measured by Curve Frames rather
+   * than taken from the node's own arithmetic. An Arc Chain's length is the SUM OF ITS
+   * SECTIONS' LENGTHS, whatever their bends:
+   *
+   *  - a section of 3 m bent (0.3, −0.4) has curvature 0.5; one of 2 m bent (0, 1.25) has
+   *    1.25. Curve Frames reads exactly those at the stations inside each;
+   *  - the first section's stations all sit on the circle of radius 2 whose centre is two
+   *    metres from the start toward (−0.8, −0.6, 0);
+   *  - the polyline through n stations of an arc of L metres at curvature κ is n equal
+   *    chords, L·sinc(κL ÷ 2n). The measured length is that, section by section — for this
+   *    chain, and for one with the same lengths bent twice as hard, which is NO LONGER
+   *    AND NO SHORTER in arc, only in the chords drawn across it.
+   */
+  it("an Arc Chain lays out the sum of its sections' lengths, whatever their bends", async () => {
+    const SEGMENTS = 16;
+    const lengths = [3, 2];
+    const measured = async (bends: ReadonlyArray<Vec2>) => {
+      const source = authoredPoints("kernel_control", [ORIGIN, ORIGIN], [
+        { name: "reach", type: "f32", values: lengths },
+        { name: "curl", type: "vec2f", values: bends },
+      ]);
+      const capacity = 2 * SEGMENTS + 1;
+      const sink = drawnTo("frames_spine", capacity);
+      const graph = curveGraph(
+        [
+          source.node,
+          curveNode("topology_strips", "pointTopology", { connectivity: "strips", cols: 2, rows: 1 }),
+          curveNode("curve_spine", "pointCurve", { basis: "arcChain", segments: SEGMENTS, arcLength: mappedTo("reach", 1), bend: mappedTo("curl", [0, 0]) }),
+          curveNode("frames_spine", "pointCurveFrames"),
+          ...sink.nodes,
+        ],
+        [
+          curveEdge(["kernel_control", "out"], ["topology_strips", "points"]),
+          curveEdge(["topology_strips", "out"], ["curve_spine", "in"]),
+          curveEdge(["curve_spine", "out"], ["frames_spine", "points"]),
+          ...sink.edges,
+        ],
+      );
+      const frames = curveFramesAttributes({ frame: true, vectors: false, metrics: true });
+      const chainSchema = curveAttributes(source.schema.map((entry) => ({ name: entry.name, type: entry.type as PointAttributeType })), "arcChain");
+      return onDawn(graph, async (session) => ({
+        position: (await session.read("curve_spine", chainSchema, capacity, "position")).floats,
+        length: (await session.read("frames_spine", frames, capacity, "curveLength")).floats[0]!,
+        curvature: Array.from((await session.read("frames_spine", frames, capacity, "curvature")).floats),
+      }));
+    };
+    const chords = (bends: ReadonlyArray<Vec2>): number =>
+      lengths.reduce((sum, length, k) => {
+        const half = (Math.hypot(...bends[k]!) * length) / (2 * SEGMENTS);
+        return sum + (length * Math.sin(half)) / half;
+      }, 0);
+
+    const gentle: Vec2[] = [[0.3, -0.4], [0, 1.25]];
+    const m = await measured(gentle);
+    for (let k = 0; k <= SEGMENTS; k += 1) {
+      expect(norm(minus(vecAt(m.position, k), [-1.6, -1.2, 0])), `station ${k} is on the first section's circle`).toBeCloseTo(2, 5);
+    }
+    for (let k = 1; k < SEGMENTS; k += 1) {
+      expect(m.curvature[k], `first section, station ${k}`).toBeCloseTo(0.5, 4);
+      expect(m.curvature[SEGMENTS + k], `second section, station ${k}`).toBeCloseTo(1.25, 4);
+    }
+    expect(m.length).toBeCloseTo(chords(gentle), 5);
+
+    const hard: Vec2[] = [[0.6, -0.8], [0, 2.5]];
+    const tight = await measured(hard);
+    expect(tight.length).toBeCloseTo(chords(hard), 5);
+    // Both are five metres of arc. The chords across the tighter one fall shorter, by what a
+    // chord is — within a centimetre and a half of five, at sixteen to a section.
+    expect(5 - m.length).toBeCloseTo(5 - chords(gentle), 5);
+    expect(5 - tight.length).toBeLessThan(0.015);
+    expect(tight.length).toBeLessThan(m.length);
+  }, 60_000);
+
+  /**
+   * The single Arc is the case of one section. The Arc's solve finds a curvature and a way
+   * to leave; hand a one-section chain that frame and that curvature, and the device lays
+   * the same arc to the same far point.
+   */
+  it("one section with the solved Arc's curvature and frame is that Arc", async () => {
+    const from: Vec3 = [0.5, 1, -2];
+    const to: Vec3 = [2.5, 2, -1];
+    const arc = await curve([from, to], { cols: 2, rows: 1 }, { basis: "arc", segments: 8, arcLength: 4, bow: [0.2, 1, 0.3] });
+    const solved = solveArc(from, to, 4, [0.2, 1, 0.3]);
+    // A frame whose Z is the way the arc leaves and whose X is the side it curls to.
+    const orient = quatFromFrame(solved.inward, cross(solved.tangent, solved.inward), solved.tangent);
+    const section = await curve(
+      [from],
+      { cols: 1, rows: 1 },
+      { basis: "arcChain", segments: 8, arcLength: 4, bend: [0, solved.curvature], startOrient: "orient" },
+      [{ name: "orient", type: "vec4f", values: [[...orient]] }],
+    );
+    arc.position.forEach((point, k) => close(section.position[k]!, point, `station ${k}`));
+    close(section.position[8]!, to, "the chain's end is the Arc's far control point", 4);
+  }, 60_000);
+
+  /** Irregular sections on two strips, each from its own frame: the device places what the CPU reference places. */
+  it("agrees with the CPU reference on two unlike strips of five sections", async () => {
+    const lengths = [0.8, 1.3, 0.4, 2.1, 0.9, 1.1, 0.7, 1.9, 0.3, 1.6];
+    const bends: Vec2[] = [[0.6, 0.2], [-1.1, 0.4], [0, 0], [0.3, -0.9], [2, 1], [-0.5, -0.5], [1.4, 0], [0, -0.8], [3, -2], [0.2, 0.7]];
+    const s = Math.SQRT1_2;
+    const starts: Array<readonly [number, number, number, number]> = [[0.5, 0.5, 0.5, 0.5], [0, s, 0, s]];
+    const controls: Vec3[] = Array.from({ length: 10 }, (_, i) => (i < 5 ? [1, 2, 3] : [-2, 0, 4]));
+    const out = await curve(
+      controls,
+      { cols: 5, rows: 2 },
+      { basis: "arcChain", segments: 6, arcLength: mappedTo("reach", 1), bend: mappedTo("curl", [0, 0]), startOrient: "orient" },
+      [
+        { name: "reach", type: "f32", values: lengths },
+        { name: "curl", type: "vec2f", values: bends },
+        { name: "orient", type: "vec4f", values: controls.map((_, i) => [...starts[i < 5 ? 0 : 1]!]) },
+      ],
+    );
+    expect(out.cols).toBe(31);
+    for (const strip of [0, 1]) {
+      const expected = evaluateCurve(controls.slice(strip * 5, strip * 5 + 5), {
+        closed: false,
+        basis: "arcChain",
+        segments: 6,
+        arcLength: lengths.slice(strip * 5, strip * 5 + 5),
+        bend: bends.slice(strip * 5, strip * 5 + 5),
+        startOrient: starts[strip]!,
+      });
+      expected.forEach((point, k) => close(out.position[strip * 31 + k]!, point, `strip ${strip} station ${k}`));
+    }
+  }, 60_000);
+
+  /**
+   * WHY A BODY THAT CHANGES POSE IS A CHAIN (the shape of `rig.gpu.test.ts`). One frame
+   * holds a whole motion: every strip is one instant of a blend between two poses — a
+   * holding one and a trailing one, three sections each, one of whose bends passes through
+   * nothing on the way. A pose is its lengths and bends, the blend is a blend of those
+   * numbers, and the chain is a plain function of them with no solve in it. So halving the
+   * step halves the largest move of any station: there is nothing here that can jump.
+   */
+  it("blending two poses moves the chain without a pop: halve the step and the largest move halves", async () => {
+    const SEGMENTS = 8;
+    const holding = { lengths: [1, 1.5, 0.8], bends: [[0.8, 0], [0.5, 0.6], [-0.2, 1.1]] as Vec2[] };
+    const trailing = { lengths: [1.2, 1.1, 1], bends: [[-0.8, 0], [0.1, -0.7], [0.9, 0.2]] as Vec2[] };
+    const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
+    const motion = async (instants: number): Promise<{ largest: number; travelled: number }> => {
+      const reach: number[] = [];
+      const curl: number[][] = [];
+      for (let i = 0; i < instants; i += 1) {
+        const t = i / (instants - 1);
+        for (let k = 0; k < 3; k += 1) {
+          reach.push(mix(holding.lengths[k]!, trailing.lengths[k]!, t));
+          curl.push([mix(holding.bends[k]![0], trailing.bends[k]![0], t), mix(holding.bends[k]![1], trailing.bends[k]![1], t)]);
+        }
+      }
+      const out = await curve(
+        Array.from({ length: instants * 3 }, () => ORIGIN),
+        { cols: 3, rows: instants },
+        { basis: "arcChain", segments: SEGMENTS, arcLength: mappedTo("reach", 1), bend: mappedTo("curl", [0, 0]) },
+        [
+          { name: "reach", type: "f32", values: reach },
+          { name: "curl", type: "vec2f", values: curl },
+        ],
+      );
+      let largest = 0;
+      for (let i = 0; i + 1 < instants; i += 1) {
+        for (let k = 0; k < out.cols; k += 1) {
+          largest = Math.max(largest, norm(minus(out.position[(i + 1) * out.cols + k]!, out.position[i * out.cols + k]!)));
+        }
+      }
+      const tip = out.cols - 1;
+      return { largest, travelled: norm(minus(out.position[(instants - 1) * out.cols + tip]!, out.position[tip]!)) };
+    };
+    const coarse = await motion(61);
+    const fine = await motion(121);
+    expect(coarse.largest / fine.largest).toBeGreaterThan(1.8);
+    expect(coarse.largest / fine.largest).toBeLessThan(2.2);
+    // The control: the two poses are far apart, so there was a motion to be smooth through.
+    expect(coarse.travelled).toBeGreaterThan(1);
+  }, 120_000);
 });

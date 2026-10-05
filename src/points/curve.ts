@@ -820,9 +820,14 @@ export function resampleStrip(points: ReadonlyArray<Vec3>, options: ResampleOpti
  * Which curves keep their length is the reason the Arc exists (the design's section 3.5):
  * a spline's length is whatever its control points make it, and it changes as they move;
  * an Arc's length is an INPUT, and Linear's is the sum of its chords.
+ *
+ * The Arc Chain (slice 8) is the one basis whose control points are not points to pass
+ * through: each is a SECTION with a length and a bend, and a point of the chain depends on
+ * every section before its own (`arcChainSections`). Its length is the sum of its
+ * sections', and nothing in it is solved for.
  * ───────────────────────────────────────────────────────────────────────────────────── */
 
-export const CURVE_BASES = ["linear", "catmullRom", "cardinal", "bspline", "bezier", "arc"] as const;
+export const CURVE_BASES = ["linear", "catmullRom", "cardinal", "bspline", "bezier", "arc", "arcChain"] as const;
 export type CurveBasis = (typeof CURVE_BASES)[number];
 
 /**
@@ -837,6 +842,15 @@ export const CURVE_TABLE_LIMIT = 64;
  * 24 it is 2e-7 wide: f32's resolution of an angle near 1, and the same count on the GPU.
  */
 export const ARC_SOLVE_STEPS = 24;
+
+/**
+ * The most sections one strip of an Arc Chain holds. Every point of the chain composes the
+ * sections before its own, one at a time, so the work per point grows with this number;
+ * sixteen is a spine, a tail or an arm with room to spare.
+ */
+export const ARC_CHAIN_SECTIONS = 16;
+
+export type Vec2 = readonly [number, number];
 
 export interface CurveOptions {
   readonly closed: boolean;
@@ -858,6 +872,13 @@ export interface CurveOptions {
   readonly bow?: Vec3 | ReadonlyArray<Vec3>;
   /** Arc: the most an arc may turn, radians. Slack beyond it is not deployed. Default a full turn. */
   readonly maxTurn?: number;
+  /**
+   * Arc Chain: each section's bend — its curvature about the frame's X and about its Y, per
+   * metre. One for all, or one per control point (a control point IS a section).
+   */
+  readonly bend?: Vec2 | ReadonlyArray<Vec2>;
+  /** Arc Chain: the frame the chain leaves its first control point with: +Z along it, +Y up. Default the identity. */
+  readonly startOrient?: Quat;
 }
 
 type SpanShape = Pick<CurveOptions, "closed" | "basis" | "clamped">;
@@ -865,8 +886,12 @@ type SpanShape = Pick<CurveOptions, "closed" | "basis" | "clamped">;
 /** An unclamped B-Spline on an open strip is the one curve that does not reach its ends. */
 const isUnclamped = (options: SpanShape): boolean => options.basis === "bspline" && options.clamped === false && !options.closed;
 
+/** An Arc Chain's control points are SECTIONS, not points to pass through: one span each, and never closed. */
+const isChain = (options: Pick<CurveOptions, "basis">): boolean => options.basis === "arcChain";
+
 /** Spans a control strip of `controls` points makes. A closed strip needs two points to close. */
 export function curveSpans(controls: number, options: SpanShape): number {
+  if (isChain(options)) return controls;
   if (controls < 2) return 0;
   if (options.closed) return controls;
   if (isUnclamped(options)) return Math.max(controls - 3, 0);
@@ -877,7 +902,7 @@ export function curveSpans(controls: number, options: SpanShape): number {
 export function curvePointCount(controls: number, options: SpanShape & Pick<CurveOptions, "segments">): number {
   const spans = curveSpans(controls, options);
   if (spans === 0) return 1;
-  return options.closed ? spans * options.segments : spans * options.segments + 1;
+  return options.closed && !isChain(options) ? spans * options.segments : spans * options.segments + 1;
 }
 
 /** Where one output point sits: `u` of the way along `span`, between the control points `index` and `next`. */
@@ -908,7 +933,9 @@ export function curveStations(controls: number, options: SpanShape & Pick<CurveO
       u = 1;
     }
     const index = span + shift;
-    stations.push({ span, u, index, next: options.closed ? (index + 1) % controls : index + 1 });
+    // A chain's last section has no section after it to blend toward: it holds its own.
+    const next = isChain(options) ? Math.min(index + 1, controls - 1) : options.closed ? (index + 1) % controls : index + 1;
+    stations.push({ span, u, index, next });
   }
   return stations;
 }
@@ -999,6 +1026,68 @@ export function arcPoint(arc: SolvedArc, s: number): Vec3 {
   return add(arc.start, add(scale(arc.tangent, forward), scale(arc.inward, across)));
 }
 
+/** The rotation by `angle` about the unit `axis`, as a quaternion. */
+function quatAxisAngle(axis: Vec3, angle: number): Quat {
+  const s = Math.sin(angle * 0.5);
+  return [axis[0] * s, axis[1] * s, axis[2] * s, Math.cos(angle * 0.5)];
+}
+
+/** `a` then-in-its-own-frame `b`: the rotation `b` applied in the frame `a` has reached. */
+function quatMultiply(a: Quat, b: Quat): Quat {
+  return [
+    a[3] * b[0] + b[3] * a[0] + (a[1] * b[2] - a[2] * b[1]),
+    a[3] * b[1] + b[3] * a[1] + (a[2] * b[0] - a[0] * b[2]),
+    a[3] * b[2] + b[3] * a[2] + (a[0] * b[1] - a[1] * b[0]),
+    a[3] * b[3] - (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]),
+  ];
+}
+
+/**
+ * THE ARC CHAIN: arcs laid end to end, each with a LENGTH and a BEND, each leaving the way
+ * the one before it arrived (the piecewise constant-curvature model of a continuum arm;
+ * Webster and Jones, 2010).
+ *
+ * It runs FORWARD only. The chain starts at a point with a frame — +Z along it, +Y up, the
+ * family's convention — and each section turns that frame about an axis in the frame's own
+ * XY plane: `bend` is the turn per metre about X and about Y, so its size is the section's
+ * curvature and the section is an arc of radius 1 ÷ |bend|. By the right-hand rule a bend
+ * about +Y curls the chain toward the frame's +X, and one about +X toward its −Y. A bend of
+ * nothing is a straight section.
+ *
+ * Why it exists (the design's section 3.5): its length is an INPUT — the sum of its
+ * sections' — whatever shape it takes, so a body laid along it cannot stretch; it is
+ * tangent-continuous by construction; and it is a plain function of its numbers with no
+ * solve in it, so blending two poses is blending their lengths and bends, and nothing can
+ * jump. The single Arc is the case of one section whose bend a solve picked to reach a
+ * point; reaching a point with SEVERAL arcs has more than one answer and is not offered.
+ *
+ * Each section comes back placed — where it starts, which way it leaves, which way it
+ * curls — as the arc `arcPoint` walks.
+ */
+export function arcChainSections(start: Vec3, startOrient: Quat, lengths: ReadonlyArray<number>, bends: ReadonlyArray<Vec2>): SolvedArc[] {
+  const sections: SolvedArc[] = [];
+  let at = start;
+  let frame = startOrient;
+  for (let k = 0; k < lengths.length; k += 1) {
+    const span = Math.max(lengths[k] as number, 0);
+    const [aboutX, aboutY] = bends[k] as Vec2;
+    const curvature = Math.sqrt(aboutX * aboutX + aboutY * aboutY);
+    const section: SolvedArc = {
+      start: at,
+      length: span,
+      halfTurn: (curvature * span) / 2,
+      curvature,
+      tangent: rotateByQuat(frame, [0, 0, 1]),
+      // The side it curls to is its axis crossed with its tangent: (aboutY, −aboutX), in the frame.
+      inward: curvature > 0 ? rotateByQuat(frame, [aboutY / curvature, -aboutX / curvature, 0]) : [0, 0, 0],
+    };
+    sections.push(section);
+    at = arcPoint(section, span);
+    if (curvature * span > 0) frame = quatMultiply(frame, quatAxisAngle([aboutX / curvature, aboutY / curvature, 0], curvature * span));
+  }
+  return sections;
+}
+
 /**
  * One strip of control points to one strip of curve points (positions only; every other
  * attribute is a linear blend at `curveStations`).
@@ -1023,6 +1112,23 @@ export function evaluateCurve(controls: ReadonlyArray<Vec3>, options: CurveOptio
   const bow = options.bow ?? ([0, -1, 0] as Vec3);
   const arcLengthAt = (i: number): number => (typeof arcLength === "number" ? arcLength : (arcLength[i] as number));
   const bowAt = (i: number): Vec3 => (typeof bow[0] === "number" ? (bow as Vec3) : ((bow as ReadonlyArray<Vec3>)[i] as Vec3));
+
+  if (basis === "arcChain") {
+    // Every control point is a section; only the first one's position is read, as the start.
+    if (count === 0) return [];
+    const bend = options.bend ?? ([0, 0] as Vec2);
+    const bendAt = (i: number): Vec2 => (typeof bend[0] === "number" ? (bend as Vec2) : ((bend as ReadonlyArray<Vec2>)[i] as Vec2));
+    const sections = arcChainSections(
+      controls[0] as Vec3,
+      options.startOrient ?? [0, 0, 0, 1],
+      controls.map((_, i) => arcLengthAt(i)),
+      controls.map((_, i) => bendAt(i)),
+    );
+    return curveStations(count, options).map(({ u, index }) => {
+      const section = sections[index] as SolvedArc;
+      return arcPoint(section, u * section.length);
+    });
+  }
 
   return curveStations(count, options).map(({ u, index, next }) => {
     const p1 = at(index);

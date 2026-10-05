@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CURVE_TABLE_LIMIT, evaluateCurve } from "../../points/curve.ts";
+import { ARC_CHAIN_SECTIONS, CURVE_TABLE_LIMIT, evaluateCurve } from "../../points/curve.ts";
 import { authoredCurve, curveAttributes, pointCurveNode } from "./point-curve.ts";
 import { pointStorageId } from "./point-storage.ts";
 import { compileContext, fixturePairs } from "./test-support.ts";
@@ -283,10 +283,112 @@ describe("Curve — refusals, each by name (§V288)", () => {
   });
 
   it("a map it cannot honour: on another basis, on a table, or on a parameter that maps nothing", () => {
-    expect(errorOf(wired("strips:6x5", { basis: "linear" }, { maps: { arcLength: { attribute: "radius" } } })).message).toContain("only the Arc basis maps anything");
-    expect(errorOf(wired("strips:6x5", { basis: "arc" }, { maps: { maxTurn: { attribute: "radius" } } })).message).toContain('maps only "arcLength" and "bow"');
+    expect(errorOf(wired("strips:6x5", { basis: "linear" }, { maps: { arcLength: { attribute: "radius" } } })).message).toContain('only the Arc ("arcLength" and "bow") and the Arc Chain ("arcLength" and "bend") map anything');
+    expect(errorOf(wired("strips:6x5", { basis: "arc" }, { maps: { maxTurn: { attribute: "radius" } } })).message).toContain('an Arc maps only "arcLength" and "bow"');
     expect(errorOf(table({ basis: "arc" }, { bow: { attribute: "side" } })).message).toContain("no control pointset wired to map from");
     expect(errorOf(wired("strips:6x5", { basis: "arc" }, { maps: { bow: { attribute: "radius" } } })).message).toContain("bow needs a vec3f attribute");
     expect(errorOf(wired("strips:6x5", { basis: "arc" }, { maps: { bow: { attribute: "missing" } } })).suggestion).toContain("It provides:");
+  });
+});
+
+/**
+ * T1586b slice 8 — the Arc Chain at the fixture level: what it publishes, how its sections
+ * reach the pass, and every sentence it refuses with. The points it writes are asserted on
+ * Dawn in `point-curve.gpu.test.ts`.
+ */
+describe("Curve — the Arc Chain: a control point is a section (T1586b slice 8)", () => {
+  const SECTIONS = fixturePairs(
+    "kernel_control",
+    [
+      { name: "position", type: "vec3f" },
+      { name: "reach", type: "f32" },
+      { name: "curl", type: "vec2f" },
+      { name: "orient", type: "vec4f" },
+      { name: "side", type: "vec3f" },
+      { name: "tag", type: "u32" },
+    ],
+    30,
+  );
+  const chain = (
+    topology: string,
+    parameters: Record<string, unknown> = {},
+    maps?: Record<string, { attribute: string; channel?: string }>,
+  ) => wired(topology, { basis: "arcChain", ...parameters }, { pairs: SECTIONS, ...(maps === undefined ? {} : { maps }) });
+
+  it("makes Segments points per SECTION and one more to end on, and its strips are open", () => {
+    const result = chain("strips:5x6", { segments: 4 });
+    expect(result.diagnostics ?? []).toEqual([]);
+    // Five sections of four points and the chain's end: 21 a strip. Not four spans, as five
+    // control points to pass through would make.
+    expect(result.pointsets?.["out"]?.topology).toBe("strips:21x6");
+    expect(result.pointsets?.["out"]?.capacity).toBe(126);
+    expect((result.passes[0] as Pass).uniforms).toMatchObject({ colsIn: 5, rows: 6, closed: 0, colsOut: 21, segments: 4, spans: 5 });
+    // One section is a chain.
+    const one = fixturePairs("kernel_control", [{ name: "position", type: "vec3f" }], 30);
+    expect(wired("strips:1x30", { basis: "arcChain", segments: 8 }, { pairs: one }).pointsets?.["out"]?.topology).toBe("strips:9x30");
+  });
+
+  it("carries every attribute of its sections, the ones its lengths and bends are mapped from included", () => {
+    const out = chain("strips:5x6", {}, { arcLength: { attribute: "reach" }, bend: { attribute: "curl" } }).pointsets?.["out"];
+    expect(Object.keys(out?.pairs ?? {}).sort()).toEqual(["curl", "orient", "position", "reach", "side", "tag"]);
+    for (const ref of Object.values(out?.pairs ?? {})) expect(ref.buffer).toBe(pointStorageId("curve_spine"));
+  });
+
+  it("Arc Length and Bend reach the pass as values, or per section from the control set when mapped", () => {
+    const plain = chain("strips:5x6", { arcLength: 0.75, bend: [0.5, -2] }).passes[0] as Pass;
+    expect(plain.uniforms["arcLength"]).toBe(0.75);
+    expect(plain.uniforms["bend"]).toEqual([0.5, -2]);
+    expect(plain.shader).toContain("params.bend");
+    expect(plain.shader).not.toContain("controlBend");
+    // No frame named: the chain leaves along +Z with +Y up.
+    expect(plain.shader).toContain("var frame = vec4f(0.0, 0.0, 0.0, 1.0);");
+    const mapped = chain("strips:5x6", { startOrient: "orient" }, { arcLength: { attribute: "reach" }, bend: { attribute: "curl" } }).passes[0] as Pass;
+    expect(mapped.shader).toContain("controlArcLength(strip, section)");
+    expect(mapped.shader).toContain("controlBend(strip, section)");
+    expect(mapped.shader).toContain("var frame = controlStart(strip);");
+    // The Arc's own knobs are not this basis's: no bow, no chord to measure against, no cap.
+    for (const pass of [plain, mapped]) expect(Object.keys(pass.uniforms)).toEqual(["colsIn", "rows", "closed", "colsOut", "segments", "spans", "arcLength", "bend"]);
+  });
+
+  it("sets exactly the uniforms its shader declares, mapped or not", () => {
+    for (const result of [chain("strips:5x6"), chain("strips:5x6", { startOrient: "orient" }, { arcLength: { attribute: "reach" }, bend: { attribute: "curl" } })]) {
+      expect(result.diagnostics ?? []).toEqual([]);
+      const pass = result.passes[0] as Pass;
+      expect(declaredMembers(pass.shader)).toEqual(Object.keys(pass.uniforms));
+    }
+  });
+
+  it("refuses what a chain cannot be: typed into the node, closed, or longer than its sections allow", () => {
+    const typed = errorOf(table({ basis: "arcChain" }));
+    expect(typed.code).toBe("node.points.curve");
+    expect(typed.message).toContain("an Arc Chain is made of sections");
+    expect(typed.message).toContain("map Arc Length and Bend");
+    const closed = errorOf(chain("strips:5x6:closed"));
+    expect(closed.message).toContain("nothing brings its end back to its start");
+    expect(closed.suggestion).toContain("Wrap U");
+    const long = errorOf(chain(`strips:${ARC_CHAIN_SECTIONS + 1}x1`));
+    expect(long.message).toContain(`${ARC_CHAIN_SECTIONS + 1} points`);
+    expect(long.message).toContain(`at most ${ARC_CHAIN_SECTIONS}`);
+    expect(long.suggestion).toContain("Segments");
+    // The limit is the number itself, not one below it.
+    expect(chain(`strips:${ARC_CHAIN_SECTIONS}x1`).diagnostics ?? []).toEqual([]);
+  });
+
+  it("refuses a Start Frame it cannot read, by name, rather than leaving along +Z", () => {
+    const missing = errorOf(chain("strips:5x6", { startOrient: "socket" }));
+    expect(missing.message).toContain('the Start Frame reads attribute "socket"');
+    expect(missing.suggestion).toContain("orient");
+    expect(missing.suggestion).toContain("Clear Start Frame");
+    expect(errorOf(chain("strips:5x6", { startOrient: "side" })).message).toContain("a frame is a vec4f quaternion");
+    // Another basis never reads it, so a stale name cannot refuse a spline.
+    expect(wired("strips:5x6", { basis: "linear", startOrient: "socket" }, { pairs: SECTIONS }).diagnostics ?? []).toEqual([]);
+  });
+
+  it("refuses a map it cannot honour: a bend that is not a vec2f, and each arc basis's knob on the other", () => {
+    expect(errorOf(chain("strips:5x6", {}, { bend: { attribute: "reach" } })).message).toContain("bend needs a vec2f attribute");
+    expect(errorOf(chain("strips:5x6", {}, { bend: { attribute: "missing" } })).suggestion).toContain("It provides:");
+    expect(errorOf(chain("strips:5x6", {}, { bend: { attribute: "curl", channel: "x" } })).message).toContain("a channel belongs on a component");
+    expect(errorOf(chain("strips:5x6", {}, { bow: { attribute: "side" } })).message).toContain('an Arc Chain maps only "arcLength" and "bend"');
+    expect(errorOf(wired("strips:5x6", { basis: "arc" }, { pairs: SECTIONS, maps: { bend: { attribute: "curl" } } })).message).toContain('an Arc maps only "arcLength" and "bow"');
   });
 });

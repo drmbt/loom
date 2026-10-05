@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CURVE_TABLE_LIMIT,
+  arcChainSections,
   arcPoint,
   curvePointCount,
   curveSpans,
@@ -15,6 +16,7 @@ import {
   rotateByQuat,
   solveArc,
   stripLengths,
+  type Vec2,
   type Vec3,
 } from "./curve.ts";
 
@@ -703,6 +705,167 @@ describe("solveArc — the one arc of a given length through two points", () => 
     // Circumference 2π is radius 1: the far side of the circle is two radii away, on the bow's side.
     expectVec(arcPoint(arc, Math.PI), [2, 5, 4], 5);
     expectVec(arcPoint(arc, 2 * Math.PI), [2, 3, 4], 5);
+  });
+});
+
+/**
+ * T1586b slice 8 — THE ARC CHAIN: arcs end to end, each with a length and a bend.
+ *
+ * Every expectation follows from the definition and a circle: a section of length L and
+ * bend κ is an arc of radius 1 ÷ κ that turns the chain by κL; a bend about the frame's +Y
+ * curls toward its +X, and one about +X toward its −Y (the right-hand rule).
+ */
+describe("the Arc Chain — sections by length and bend (T1586b slice 8)", () => {
+  const chain = { closed: false, basis: "arcChain", segments: 4 } as const;
+  const ORIGIN: Vec3 = [0, 0, 0];
+  const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const scale = (a: Vec3, s: number): Vec3 => [a[0] * s, a[1] * s, a[2] * s];
+  const distance = (a: Vec3, b: Vec3): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+  it("every control point is a section: one span each, and one more point to end the chain", () => {
+    expect(curveSpans(3, chain)).toBe(3);
+    expect(curveSpans(1, chain)).toBe(1);
+    expect(curvePointCount(3, chain)).toBe(13);
+    // A chain has a start and an end: a closed claim cannot close it.
+    expect(curvePointCount(3, { ...chain, closed: true })).toBe(13);
+    const stations = curveStations(3, chain);
+    expect(stations.map((station) => station.index)).toEqual([0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2]);
+    // Attributes blend toward the NEXT section; the last one has none and holds its own.
+    expect(stations.map((station) => station.next)).toEqual([1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
+    expect(stations[12]).toMatchObject({ span: 2, u: 1 });
+  });
+
+  /**
+   * No bend, the identity frame: the chain runs along +Z, and a station is its start plus
+   * the lengths before it — sums of dyadic numbers, so exactly.
+   */
+  it("with no bend it is a straight line of exactly the lengths given, from the first control point", () => {
+    const controls: Vec3[] = [[1, 2, 3], [9, 9, 9], [9, 9, 9]];
+    const line = evaluateCurve(controls, { ...chain, arcLength: [1, 2, 0.5], bend: [0, 0] });
+    expect(line.map((point) => point[2])).toEqual([3, 3.25, 3.5, 3.75, 4, 4.5, 5, 5.5, 6, 6.125, 6.25, 6.375, 6.5]);
+    for (const point of line) expect(point.slice(0, 2)).toEqual([1, 2]);
+  });
+
+  /**
+   * A quarter circle about +Y, then a quarter circle about the frame's +X. The first curls
+   * from +Z toward +X on a circle of radius 1 about (1, 0, 0), and ends at (1, 0, 1)
+   * heading +X. Its frame has turned with it: the frame's X now points along −Z, its Y is
+   * still +Y. So the second, about that X, curls toward −Y on a circle about (1, −1, 1),
+   * and ends at (2, −1, 1) heading −Y. Now the frame's Y points along +X and its X still
+   * along −Z, so the third, about that Y, curls toward −Z and ends at (2, −2, 0). Each turn
+   * is taken in the frame the chain has REACHED, which is what the third one shows: turned
+   * about the world's axes instead, it would end somewhere else.
+   */
+  it("three quarter circles, by hand: each leaves the way the one before it arrived", () => {
+    const quarter = Math.PI / 2;
+    const points = evaluateCurve([ORIGIN, ORIGIN, ORIGIN], { ...chain, arcLength: quarter, bend: [[0, 1], [1, 0], [0, 1]] });
+    points.slice(0, 5).forEach((point, k) => {
+      const turned = (k * quarter) / 4;
+      expectVec(point, [1 - Math.cos(turned), 0, Math.sin(turned)]);
+    });
+    points.slice(4, 9).forEach((point, k) => {
+      const turned = (k * quarter) / 4;
+      expectVec(point, [1 + Math.sin(turned), -(1 - Math.cos(turned)), 1]);
+    });
+    points.slice(8).forEach((point, k) => {
+      const turned = (k * quarter) / 4;
+      expectVec(point, [2, -1 - Math.sin(turned), 1 - (1 - Math.cos(turned))]);
+    });
+    expectVec(points[12]!, [2, -2, 0]);
+  });
+
+  /**
+   * THE LENGTH IS AN INPUT. A section of length 3 with a bend of (0.3, −0.4) has curvature
+   * 0.5: it is 1.5 radians of a circle of radius 2, whose centre is two metres from the
+   * start toward (−0.8, −0.6, 0) — the axis crossed with the tangent. Every station is on
+   * that circle and the same chord from the last, and the chords add to 3·sinc(1.5 ÷ 8),
+   * the length of four chords across 1.5 radians: nothing about the shape changed how much
+   * curve was laid.
+   */
+  it("a section lies on its circle and lays out exactly its length", () => {
+    const points = evaluateCurve([ORIGIN], { ...chain, arcLength: 3, bend: [0.3, -0.4] });
+    expect(points).toHaveLength(5);
+    const centre: Vec3 = [-1.6, -1.2, 0];
+    for (const point of points) expect(distance(point, centre)).toBeCloseTo(2, 12);
+    const chords = points.slice(1).map((point, k) => distance(point, points[k]!));
+    for (const chord of chords) expect(chord).toBeCloseTo(4 * Math.sin(1.5 / 8), 12);
+    expect(chords.reduce((sum, chord) => sum + chord, 0)).toBeCloseTo((3 * Math.sin(1.5 / 8)) / (1.5 / 8), 12);
+    // And the arc it is: the last station is 1.5 radians round from the first.
+    const first = add(points[0]!, scale(centre, -1));
+    const last = add(points[4]!, scale(centre, -1));
+    expect(Math.acos(dot(first, last) / 4)).toBeCloseTo(1.5, 12);
+  });
+
+  it("a joint is continuous in position and in direction", () => {
+    const lengths = [1.2, 0.7, 2];
+    const bends: Vec2[] = [[0.6, 0.2], [-1.1, 0.4], [0.1, -0.9]];
+    const sections = arcChainSections([1, 2, 3], [0, 0, 0, 1], lengths, bends);
+    for (let k = 0; k + 1 < sections.length; k += 1) {
+      const here = sections[k]!;
+      const turned = here.curvature * here.length;
+      expectVec(sections[k + 1]!.start, arcPoint(here, here.length));
+      // An arc leaves along its tangent and, a turn later, along tangent·cos + inward·sin.
+      expectVec(sections[k + 1]!.tangent, add(scale(here.tangent, Math.cos(turned)), scale(here.inward, Math.sin(turned))));
+    }
+  });
+
+  /**
+   * The single Arc is the case of one section. The Arc's solve finds a curvature and a way
+   * to leave; hand a one-section chain that frame and that curvature, and it is the same arc
+   * to the same far point — so whatever holds for the chain's sections holds for the Arc.
+   */
+  it("one section with the solved Arc's curvature and frame is that Arc", () => {
+    const from: Vec3 = [0.5, 1, -2];
+    const to: Vec3 = [2.5, 2, -1];
+    const solved = solveArc(from, to, 4, [0.2, 1, 0.3]);
+    const arc = evaluateCurve([from, to], { closed: false, basis: "arc", segments: 8, arcLength: 4, bow: [0.2, 1, 0.3] });
+    // A frame whose Z is the way the arc leaves and whose X is the side it curls to.
+    const startOrient = quatFromFrame(solved.inward, cross(solved.tangent, solved.inward), solved.tangent);
+    const section = evaluateCurve([from], { closed: false, basis: "arcChain", segments: 8, arcLength: 4, bend: [0, solved.curvature], startOrient });
+    section.forEach((point, k) => expectVec(point, arc[k]!, 10));
+    expectVec(section[8]!, to, 6);
+  });
+
+  it("the start frame turns the whole chain: (½, ½, ½, ½) carries +Z onto +X", () => {
+    const line = evaluateCurve([ORIGIN, ORIGIN], { ...chain, arcLength: 2, bend: [0, 0], startOrient: [0.5, 0.5, 0.5, 0.5] });
+    expect(line).toEqual(Array.from({ length: 9 }, (_, k) => [k * 0.5, 0, 0]));
+    // That frame's Y is +Z and its X is +Y, so a bend about its Y curls from +X toward +Y.
+    const curled = evaluateCurve([ORIGIN], { ...chain, arcLength: Math.PI / 2, bend: [0, 1], startOrient: [0.5, 0.5, 0.5, 0.5] });
+    expectVec(curled[4]!, [1, 1, 0]);
+  });
+
+  /**
+   * WHY A BODY THAT BLENDS BETWEEN TWO POSES IS A CHAIN: a pose is its lengths and bends, a
+   * blend of two poses is a blend of those numbers, and the chain is a plain function of
+   * them — there is no solve to change its mind. So the chain moves continuously through
+   * the blend, a bend passing through nothing included: halve the step and the largest
+   * move of any station halves with it.
+   */
+  it("blending two poses moves the chain continuously: halve the step and the largest move halves", () => {
+    const holding = { lengths: [1, 1.5, 0.8], bends: [[0.8, 0], [0.5, 0.6], [-0.2, 1.1]] as Vec2[] };
+    const trailing = { lengths: [1.2, 1.1, 1], bends: [[-0.8, 0.3], [0.1, -0.7], [0.9, 0.2]] as Vec2[] };
+    const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
+    const pose = (t: number): Vec3[] =>
+      evaluateCurve([ORIGIN, ORIGIN, ORIGIN], {
+        ...chain,
+        arcLength: holding.lengths.map((length, k) => mix(length, trailing.lengths[k]!, t)),
+        bend: holding.bends.map((bend, k) => [mix(bend[0], trailing.bends[k]![0], t), mix(bend[1], trailing.bends[k]![1], t)] as Vec2),
+      });
+    const largestMove = (instants: number): number => {
+      let largest = 0;
+      for (let i = 0; i + 1 < instants; i += 1) {
+        const here = pose(i / (instants - 1));
+        const there = pose((i + 1) / (instants - 1));
+        here.forEach((point, k) => (largest = Math.max(largest, distance(point, there[k]!))));
+      }
+      return largest;
+    };
+    const coarse = largestMove(61);
+    const fine = largestMove(121);
+    expect(coarse / fine).toBeGreaterThan(1.9);
+    expect(coarse / fine).toBeLessThan(2.1);
+    // The control: the two poses are far apart, so there was something to move through.
+    expect(distance(pose(0)[12]!, pose(1)[12]!)).toBeGreaterThan(1);
   });
 });
 

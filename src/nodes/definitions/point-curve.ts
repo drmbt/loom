@@ -9,6 +9,7 @@ import {
   type PointAttributeType,
 } from "../../points/attributes.ts";
 import {
+  ARC_CHAIN_SECTIONS,
   CURVE_BASES,
   CURVE_TABLE_LIMIT,
   curvePointCount,
@@ -58,6 +59,14 @@ import { resolveScalarMap } from "./points.ts";
  * side it bows to, so it has no second solution to jump to. Linear keeps the sum of its
  * chords. The others are for paths whose length is free.
  *
+ * ⚑ THE ARC CHAIN IS THE BODY THAT CHANGES POSE (slice 8). Several arcs end to end, each
+ * with a length and a bend, each leaving the way the one before it arrived. Here a control
+ * point is not a point to pass through: it is a SECTION, and only the first one's position
+ * is read, as where the chain starts. Its length is the sum of its sections', whatever
+ * shape it takes, and it is a plain function of its numbers with no solve in it — so
+ * blending two poses is blending their lengths and bends, and nothing can jump. That is
+ * what a tentacle that both holds and trails needs, and what one Arc cannot give it.
+ *
  * ⚑ IT PUBLISHES NO TANGENT AND NO FRAME (D4): Curve Frames is the one node that measures a
  * strip. Every float attribute the control points carry is interpolated LINEARLY along its
  * span — a radius or a colour must not overshoot the way a position's basis can — and an
@@ -79,6 +88,7 @@ const BASIS_OPTIONS: ReadonlyArray<{ readonly value: CurveBasis; readonly label:
   { value: "bspline", label: "B-Spline" },
   { value: "bezier", label: "Bezier" },
   { value: "arc", label: "Arc" },
+  { value: "arcChain", label: "Arc Chain" },
 ];
 
 /** A gentle S: a default that reads as a curve the moment the node is placed. */
@@ -125,6 +135,7 @@ const basisOf = (parameters: Readonly<Record<string, unknown>>): CurveBasis =>
 /** The curve's shape as its parameters state it — the one reading the node and a CPU reader share. */
 function curveOptionsOf(parameters: Params, closed: boolean): CurveOptions {
   const bow = readVector(parameters, "bow", [0, -1, 0]);
+  const bend = readVector(parameters, "bend", [0, 0]);
   return {
     closed,
     basis: basisOf(parameters),
@@ -134,6 +145,7 @@ function curveOptionsOf(parameters: Params, closed: boolean): CurveOptions {
     arcLength: Math.max(0, readNumber(parameters, "arcLength", 1)),
     arcLengthUnit: parameters["arcLengthUnit"] === "chords" ? "chords" : "metres",
     bow: [bow[0] as number, bow[1] as number, bow[2] as number],
+    bend: [bend[0] as number, bend[1] as number],
     maxTurn: Math.min(360, Math.max(0, readNumber(parameters, "maxTurn", 360))) * DEGREES_TO_RADIANS,
   };
 }
@@ -157,11 +169,17 @@ export function authoredCurve(
   if (options.basis === "bezier") {
     return { error: "the table holds no Bezier handles; wire control points that carry handleIn and handleOut, or pick another basis" };
   }
+  if (options.basis === "arcChain") {
+    return {
+      error:
+        "an Arc Chain is made of sections, and the table holds control points; wire a pointset with one point per section and map Arc Length and Bend from it, or pick another basis",
+    };
+  }
   return { points: table.points, options };
 }
 
-const notBasis = (basis: CurveBasis, why: string) => (values: Readonly<Record<string, unknown>>): string | null =>
-  basisOf(values) === basis ? null : why;
+const notBasis = (basis: CurveBasis | ReadonlyArray<CurveBasis>, why: string) => (values: Readonly<Record<string, unknown>>): string | null =>
+  (typeof basis === "string" ? [basis] : basis).includes(basisOf(values)) ? null : why;
 
 export const pointCurveNode: NodeDefinition = {
   type: "pointCurve",
@@ -169,7 +187,7 @@ export const pointCurveNode: NodeDefinition = {
   title: "Curve",
   category: "points",
   description:
-    "Turns control points into a curve: Segments points per span, as a strip. Wire a pointset to Control (each of its strips is one curve's control points), or leave it unwired and type the points into the node. Linear joins them with straight segments. Catmull-Rom, Cardinal, B-Spline and Bezier are splines, whose length is whatever the points make it. Arc is one arc of constant curvature per span with a GIVEN length, bowing to the Bow side — for a tentacle, a cable or a spine, which must not stretch; a bow direction that sweeps through the chord flips the arc's side in one frame. Follow it with Resample and Curve Frames.",
+    "Turns control points into a curve: Segments points per span, as a strip. Wire a pointset to Control (each of its strips is one curve's control points), or leave it unwired and type the points into the node. Linear joins them with straight segments. Catmull-Rom, Cardinal, B-Spline and Bezier are splines, whose length is whatever the points make it. Arc is one arc of constant curvature per span with a GIVEN length, bowing to the Bow side — for a tentacle, a cable or a spine, which must not stretch; a bow direction that sweeps through the chord flips the arc's side in one frame. Arc Chain is several such arcs end to end, each control point a section with its own Arc Length and Bend, leaving the first control point along its Start Frame — a body that changes pose without stretching, with nothing to solve and so nothing to jump. Follow it with Resample and Curve Frames.",
   tags: ["points", "curve", "spline", "strips", "bezier", "catmull-rom", "b-spline", "arc", "line", "path", "interpolate"],
   inputs: [
     {
@@ -196,10 +214,10 @@ export const pointCurveNode: NodeDefinition = {
       label: "Basis",
       default: "catmullRom",
       compileTime: true,
-      // §V831: APPEND only — Arc Chain (§T1586b slice 8) takes the next row.
+      // §V831: APPEND only.
       options: [...BASIS_OPTIONS],
       description:
-        "Linear: straight spans. Catmull-Rom: a smooth curve THROUGH every control point (centripetal, so uneven spacing does not loop). Cardinal: the same with a Tension. B-Spline: smoother still, passing near its control points rather than through them. Bezier: through every point, shaped by each point's handleIn and handleOut attributes. Arc: one arc of constant curvature per span with a given length.",
+        "Linear: straight spans. Catmull-Rom: a smooth curve THROUGH every control point (centripetal, so uneven spacing does not loop). Cardinal: the same with a Tension. B-Spline: smoother still, passing near its control points rather than through them. Bezier: through every point, shaped by each point's handleIn and handleOut attributes. Arc: one arc of constant curvature per span with a given length. Arc Chain: arcs end to end, one per control point, each with its own length and bend; only the first control point's position is read, as the start.",
     },
     segments: {
       type: "number",
@@ -210,7 +228,7 @@ export const pointCurveNode: NodeDefinition = {
       range: "bounded",
       step: 1,
       compileTime: true,
-      description: "Output points per span (from one control point to the next). Changing it reallocates.",
+      description: "Output points per span (from one control point to the next; per section of an Arc Chain). Changing it reallocates.",
     },
     tension: {
       type: "number",
@@ -239,9 +257,9 @@ export const pointCurveNode: NodeDefinition = {
       min: 0,
       range: "floor",
       step: 0.01,
-      inactiveWhen: notBasis("arc", "Only the Arc basis has a length to keep."),
+      inactiveWhen: notBasis(["arc", "arcChain"], "Only the Arc and the Arc Chain have a length to keep."),
       description:
-        "The length of each span's arc. Longer than the span's chord, the arc bows; equal or shorter, it is a straight line of that length toward the next control point and stops short of it. In Map mode an f32 attribute (or one channel of a float vector) gives each span its own, read at the span's first control point.",
+        "Arc: the length of each span's arc. Longer than the span's chord, the arc bows; equal or shorter, it is a straight line of that length toward the next control point and stops short of it. Arc Chain: the length of each section, in metres. In Map mode an f32 attribute (or one channel of a float vector) gives each span or section its own, read at its control point.",
     },
     arcLengthUnit: {
       type: "enum",
@@ -251,7 +269,7 @@ export const pointCurveNode: NodeDefinition = {
         { value: "metres", label: "Metres" },
         { value: "chords", label: "Chords" },
       ],
-      inactiveWhen: notBasis("arc", "Only the Arc basis has a length."),
+      inactiveWhen: notBasis("arc", "Only the Arc measures its length against a chord; an Arc Chain's sections are in metres."),
       description:
         "Metres: the arc's own length, kept as the ends move — a body. Chords: a multiple of the span's chord (1 is straight, 1.2 has a fifth of slack) — a festoon that keeps its droop as the ends move.",
     },
@@ -275,6 +293,24 @@ export const pointCurveNode: NodeDefinition = {
       inactiveWhen: notBasis("arc", "Only an arc turns."),
       description:
         "The most one arc may turn. Slack that would bow it further is not laid out: the arc is shorter than asked and still ends on its control point. Past 180 a bow swells beyond its own ends.",
+    },
+    bend: {
+      type: "vector",
+      size: 2,
+      label: "Bend",
+      default: [0, 0],
+      inactiveWhen: notBasis("arcChain", "Only an Arc Chain's sections bend by a number; an Arc's bend comes from its length."),
+      description:
+        "Arc Chain: how sharply each section curls, as its turn per metre about the chain's own X and about its Y — the chain leaves along its Z. The size is the curvature (1 is a circle of radius 1 metre; 0, 0 is straight). About +Y curls toward the frame's +X, about +X toward its −Y. In Map mode a vec2f attribute gives each section its own.",
+    },
+    startOrient: {
+      type: "string",
+      label: "Start Frame",
+      default: "",
+      compileTime: true,
+      inactiveWhen: notBasis("arcChain", "Only an Arc Chain starts from a frame; the other bases follow their control points."),
+      description:
+        "Arc Chain: the name of a vec4f quaternion attribute, read at each strip's first control point: the chain leaves along its +Z, with its +X and +Y as the axes the first section bends about — a socket's own orientation. Empty: the chain leaves along +Z, with +Y up. The same attribute can seed Curve Frames afterwards.",
     },
     closed: {
       type: "boolean",
@@ -310,14 +346,16 @@ export const pointCurveNode: NodeDefinition = {
     }
 
     // §V288: a map this node cannot honour refuses BY NAME rather than reading the static.
-    const mappable = wired && basis === "arc" ? ["arcLength", "bow"] : [];
+    const mappable = !wired ? [] : basis === "arc" ? ["arcLength", "bow"] : basis === "arcChain" ? ["arcLength", "bend"] : [];
     const unhonoured = Object.keys(parameterMaps).filter((key) => !mappable.includes(key)).sort();
     if (unhonoured.length > 0) {
       const why = !wired
         ? "there is no control pointset wired to map from"
         : basis === "arc"
-          ? 'a Curve maps only "arcLength" and "bow"'
-          : 'only the Arc basis maps anything ("arcLength" and "bow")';
+          ? 'an Arc maps only "arcLength" and "bow"'
+          : basis === "arcChain"
+            ? 'an Arc Chain maps only "arcLength" and "bend"'
+            : 'only the Arc ("arcLength" and "bow") and the Arc Chain ("arcLength" and "bend") map anything';
       return refuse(
         `${unhonoured.join(", ")} ${unhonoured.length === 1 ? "is" : "are"} in map mode, but ${why}.`,
         "Switch it back to Constant, or drive it through the value graph instead.",
@@ -350,6 +388,22 @@ export const pointCurveNode: NodeDefinition = {
       colsIn = claimed.strips.cols;
       rows = claimed.strips.rows;
       closed = claimed.strips.closed;
+      if (basis === "arcChain") {
+        /* A chain runs forward from a start: it has an end, and nothing brings that end
+           back to the start. A closed claim is one this basis cannot honour (§V288). */
+        if (closed) {
+          return refuse(
+            "the control strips are closed, and an Arc Chain runs forward from its first section to its last: nothing brings its end back to its start.",
+            "Open the claim (a Topology node's Wrap U), or pick a basis that passes through its control points.",
+          );
+        }
+        if (colsIn > ARC_CHAIN_SECTIONS) {
+          return refuse(
+            `each control strip has ${colsIn} points, and an Arc Chain takes one SECTION per control point, at most ${ARC_CHAIN_SECTIONS}: every point of the chain composes the sections before its own.`,
+            `Use ${ARC_CHAIN_SECTIONS} sections or fewer per strip; Segments, not sections, is what makes the chain smooth.`,
+          );
+        }
+      }
     } else {
       const authored = authoredCurve(parameters);
       if ("error" in authored) return refuse(`${authored.error}.`);
@@ -394,6 +448,12 @@ export const pointCurveNode: NodeDefinition = {
         { name: "arcChords", type: "u32", value: options.arcLengthUnit === "chords" ? 1 : 0 },
         { name: "maxHalfTurn", type: "f32", value: Math.min(Math.PI, (options.maxTurn ?? 2 * Math.PI) / 2) },
         { name: "bow", type: "vec3f", value: options.bow as Vec3 },
+      );
+    }
+    if (basis === "arcChain") {
+      members.push(
+        { name: "arcLength", type: "f32", value: options.arcLength as number },
+        { name: "bend", type: "vec2f", value: options.bend as readonly [number, number] },
       );
     }
 
@@ -463,7 +523,43 @@ export const pointCurveNode: NodeDefinition = {
 
       let arcLengthRegion: (CurveShaderOptions["source"] & { kind: "wired" })["arcLength"];
       let bowRegion: { group: number; word: number } | undefined;
-      if (basis === "arc") {
+      let bendRegion: { group: number; word: number } | undefined;
+      let startRegion: { group: number; word: number } | undefined;
+      if (basis === "arcChain") {
+        const bendBinding = parameterMaps["bend"];
+        if (bendBinding !== undefined) {
+          const bendAttribute = byName.get(bendBinding.attribute);
+          if (bendBinding.channel !== undefined) {
+            return refuse(`bend maps both turns at once; a channel belongs on a component ("bend.x"), not the head.`, undefined, "node.parameter.map");
+          }
+          if (bendAttribute === undefined || bendAttribute.type !== "vec2f") {
+            return refuse(
+              bendAttribute === undefined
+                ? `bend maps attribute "${bendBinding.attribute}", which the control pointset does not carry.`
+                : `bend needs a vec2f attribute (the turn per metre about X and about Y); "${bendBinding.attribute}" is ${bendAttribute.type}.`,
+              `It provides: ${available.join(", ")}.`,
+              "node.parameter.map",
+            );
+          }
+          bendRegion = regionOf(bendAttribute.ref);
+        }
+        /* The start frame, by name — a constant quaternion would mean nothing here, and a
+           name that is not on the edge is refused rather than read as "no frame" (§V288). */
+        const startName = typeof parameters["startOrient"] === "string" ? parameters["startOrient"].trim() : "";
+        if (startName !== "") {
+          const startAttribute = byName.get(startName);
+          if (startAttribute === undefined || startAttribute.type !== "vec4f") {
+            return refuse(
+              startAttribute === undefined
+                ? `the Start Frame reads attribute "${startName}", which the control pointset does not carry.`
+                : `the Start Frame reads "${startName}", which is ${startAttribute.type}; a frame is a vec4f quaternion.`,
+              `It provides: ${available.join(", ")}. Clear Start Frame to leave along +Z.`,
+            );
+          }
+          startRegion = regionOf(startAttribute.ref);
+        }
+      }
+      if (basis === "arc" || basis === "arcChain") {
         const resolvedLength = resolveScalarMap(nodeId, parameterMaps["arcLength"], upstream, "in", "arcLength");
         if ("refusal" in resolvedLength) return resolvedLength.refusal;
         if (resolvedLength.map !== undefined) {
@@ -474,7 +570,7 @@ export const pointCurveNode: NodeDefinition = {
             component: map.channel === undefined ? 0 : ["x", "y", "z", "w"].indexOf(map.channel),
           };
         }
-        const bowBinding = parameterMaps["bow"];
+        const bowBinding = basis === "arc" ? parameterMaps["bow"] : undefined;
         if (bowBinding !== undefined) {
           const bowAttribute = byName.get(bowBinding.attribute);
           if (bowBinding.channel !== undefined) {
@@ -517,6 +613,8 @@ export const pointCurveNode: NodeDefinition = {
         ...(handles === undefined ? {} : handles),
         ...(arcLengthRegion === undefined ? {} : { arcLength: arcLengthRegion }),
         ...(bowRegion === undefined ? {} : { bow: bowRegion }),
+        ...(bendRegion === undefined ? {} : { bend: bendRegion }),
+        ...(startRegion === undefined ? {} : { startOrient: startRegion }),
       };
     }
 
