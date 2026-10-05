@@ -2718,6 +2718,127 @@
         },
         "type": "lens"
       },
+      "light_body": {
+        "definitionVersion": 1,
+        "id": "light_body",
+        "label": "light_body",
+        "parameters": {
+          "color": [
+            1,
+            0.04,
+            0.04,
+            1
+          ],
+          "color.b": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(clamp(abs(fract((op('slider_huefrom').chan.huefrom + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.5 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.333333) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.04
+              }
+            },
+            "mode": "expression"
+          },
+          "color.g": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(clamp(abs(fract((op('slider_huefrom').chan.huefrom + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.5 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.666667) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.04
+              }
+            },
+            "mode": "expression"
+          },
+          "color.r": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(clamp(abs(fract((op('slider_huefrom').chan.huefrom + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.5 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.000000) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "falloff": "inverseSquare",
+          "intensity": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_legs').chan.legs * (2.2 + (op('lag_levels').chan.level * op('slider_react').chan.react) * 3)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.2
+              }
+            },
+            "mode": "expression"
+          },
+          "kind": "point",
+          "position": [
+            0,
+            0,
+            -0.3
+          ],
+          "position.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-0.3 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-0.3 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))) + 1.9)) + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (0.5 * sin(abstime * 0.31 + 0) + 0.22 * sin(abstime * 0.73 + 1.3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "position.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-0.3 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-0.3 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))) + 0.7)) + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (0.38 * sin(abstime * 0.23 + 2) + 0.18 * sin(abstime * 0.57 + 0))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "position.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + (-0.3 + max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * ((0.7 * sin(abstime * 0.21)) + 0.5 * sin(6.2831853 * (op('speed_stroke').chan.value - 0.125)))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": -0.3
+              }
+            },
+            "mode": "expression"
+          },
+          "range": 12,
+          "shadowCasters": "geometry_ring geometry_claw",
+          "shadowExtent": 12,
+          "shadowSoftness": 1.5,
+          "shadows": true
+        },
+        "position": {
+          "x": -1500,
+          "y": -450
+        },
+        "type": "light"
+      },
       "light_eyes": {
         "definitionVersion": 1,
         "id": "light_eyes",
@@ -2773,11 +2894,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_glow').chan.glow * 0.18 * (0.75 + (op('lag_hits').chan.hatCount * op('slider_react').chan.react) * 0.9)"
+                "source": "op('slider_glow').chan.glow * 0.9 * (0.75 + (op('lag_hits').chan.hatCount * op('slider_react').chan.react) * 0.5)"
               },
               "static": {
                 "kind": "static",
-                "value": 1.6
+                "value": 8
               }
             },
             "mode": "expression"
@@ -2827,9 +2948,9 @@
             },
             "mode": "expression"
           },
-          "range": 14,
-          "shadowCasters": "geometry_hull geometry_ring",
-          "shadowExtent": 14,
+          "range": 16,
+          "shadowCasters": "geometry_hull geometry_ring geometry_claw",
+          "shadowExtent": 16,
           "shadowSoftness": 1,
           "shadows": true
         },
@@ -2948,7 +3069,11 @@
             },
             "mode": "expression"
           },
-          "range": 30
+          "range": 30,
+          "shadowCasters": "geometry_hull geometry_ring geometry_claw",
+          "shadowExtent": 30,
+          "shadowSoftness": 1,
+          "shadows": true
         },
         "position": {
           "x": -1500,
@@ -3066,7 +3191,7 @@
             "mode": "expression"
           },
           "range": 30,
-          "shadowCasters": "geometry_hull geometry_ring",
+          "shadowCasters": "geometry_hull geometry_ring geometry_claw",
           "shadowExtent": 30,
           "shadowSoftness": 1,
           "shadows": true
@@ -3186,7 +3311,11 @@
             },
             "mode": "expression"
           },
-          "range": 30
+          "range": 30,
+          "shadowCasters": "geometry_hull geometry_ring geometry_claw",
+          "shadowExtent": 30,
+          "shadowSoftness": 1,
+          "shadows": true
         },
         "position": {
           "x": -1500,
@@ -3796,7 +3925,7 @@
           ],
           "camera": "camera_rig",
           "depthOutput": true,
-          "lights": "light_eyes light_lamp0 light_lamp1 light_lamp2",
+          "lights": "light_eyes light_body light_lamp0 light_lamp1 light_lamp2",
           "normalOutput": true,
           "scenes": "geometry_hull geometry_ring geometry_claw geometry_bore"
         },
@@ -4882,7 +5011,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_glow').chan.glow * 0.7 * (0.75 + (op('lag_hits').chan.hatCount * op('slider_react').chan.react) * 0.9)"
+                "source": "op('slider_glow').chan.glow * 0.7 * (0.75 + (op('lag_hits').chan.hatCount * op('slider_react').chan.react) * 0.5)"
               },
               "static": {
                 "kind": "static",

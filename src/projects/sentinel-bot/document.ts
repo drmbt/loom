@@ -218,6 +218,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   // The face goes where the robot goes: off the axis and along it when it is adrift.
   // (Along it: the slow drift, and the lunge of each swimming stroke — rig.ts, robotZ.)
   const glow = onPath(`(${face.toFixed(3)} + ${adrift} * (${adriftAheadExpression} + 0.5 * sin(6.2831853 * (${STROKE} - 0.125))))`, wander.x, wander.y, [0, 0, face]);
+  // The middle of the body, between the sockets: where the light of its own tentacles is.
+  const core = onPath(`(-0.3 + ${adrift} * (${adriftAheadExpression} + 0.5 * sin(6.2831853 * (${STROKE} - 0.125))))`, wander.x, wander.y, [0, 0, -0.3]);
   /** The lamp station `step` stations from the one the robot is under: where it hangs, and how much of it is lit (1 within half a spacing, 0 a spacing and a half away, so the three in use trade places unseen). */
   const lampAt = (step: number): { position: Record<"x" | "y" | "z", StoredParameter>; near: string; tone: readonly [string, string, string] } => {
     const station = `(floor(${TRAVEL} / ${LAMP_SPACING}) + ${step})`;
@@ -274,7 +276,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
    * the ribs and pipes shadow the wall too. The owner noticed its absence: "shadow seems to not
    * really working for the robot on the environment".
    */
-  const robotCasts: Record<string, StoredParameter> = shadows ? {} : { shadowCasters: "geometry_hull geometry_ring" };
+  const robotCasts: Record<string, StoredParameter> = shadows ? {} : { shadowCasters: `geometry_hull geometry_ring ${hingedClaws ? "geometry_hub" : "geometry_claw"}` };
   const pieceNodes = (rig: Record<string, StoredParameter>): GraphNode[] =>
     pieces.flatMap((piece, index) => [
       node(`mesh_${piece.role}`, "meshFileIn", [-2700, index * 150], { file: facts.glbUrl, select: piece.shape.select, vertices: piece.shape.vertices, triangles: piece.shape.triangles, parts: piece.shape.parts }, { label: `mesh_${piece.role}` }),
@@ -479,7 +481,18 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // A kick punches the lens in.
     node("camera_rig", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} - ${KICK} * 2.5`, 55), near: 0.05, far: 240 }, { label: "camera_rig" }),
     // The eyes throw the tentacles' shadows down the walls (which of the scene casts them: see `robotCasts`).
-    node("light_eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04), intensity: expressionSlot(`${on("slider_glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, shadows: true, shadowExtent: 14, shadowSoftness: 1, ...robotCasts }, { label: "light_eyes" }),
+    node("light_eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04), intensity: expressionSlot(`${on("slider_glow")} * 0.9 * (0.75 + ${HAT} * 0.5)`, 8), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 16, shadows: true, shadowExtent: 16, shadowSoftness: 1, ...robotCasts }, { label: "light_eyes" }),
+    // The light of its own tentacles, from the middle of the body. It lights the bore round the robot wherever
+    // the robot is, lamp or no lamp, and throws each tentacle's shadow out along the wall to meet the claw that
+    // holds it: that meeting is what says the robot is IN the tunnel. (The owner, 2026-10-05: without it "a very
+    // bad composite".) The hull does not cast for it: the light is inside the hull.
+    node("light_body", "light", [-1500, -450], {
+      kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04),
+      intensity: expressionSlot(`${on("slider_legs")} * (2.2 + ${LEVEL} * 3)`, 2.2),
+      position: [0, 0, -0.3], "position.x": core.x, "position.y": core.y, "position.z": core.z,
+      falloff: "inverseSquare", range: 12, shadows: true, shadowExtent: 12, shadowSoftness: 1.5,
+      shadowCasters: hingedClaws ? "geometry_ring geometry_hub" : "geometry_ring geometry_claw",
+    }, { label: "light_body" }),
     // The three lamp plates nearest the robot, as lights; they breathe with the low end.
     ...lamps.map((lamp, index) =>
       node(`light_lamp${index}`, "light", [-1500, -150 + index * 150], {
@@ -495,9 +508,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         "position.z": lamp.position.z,
         falloff: "inverseSquare",
         range: 30,
-        // Offline, the lamp overhead casts too.
-        // The lamp overhead throws the robot's shadow on the deck and the wall; offline, everything's.
-        ...(index === 1 ? { shadows: true, shadowExtent: 30, shadowSoftness: 1, ...robotCasts } : {}),
+        // Every lamp in use throws the robot's shadow on the deck and the wall; offline, everything's.
+        shadows: true,
+        shadowExtent: 30,
+        shadowSoftness: 1,
+        ...robotCasts,
       }, { label: `light_lamp${index}` }),
     ),
     node("render_shot", "render", [-1200, 0], {
@@ -506,7 +521,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       // (kernel_motes, geometry_motes) for the day the Depth output leaves additive draws out.
       scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore"].join(" "),
       camera: "camera_rig",
-      lights: ["light_eyes", ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
+      lights: ["light_eyes", "light_body", ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.3, 0.62, 0.66, 1],
       // A little cold fill and no more: an unlit stretch may be black (the owner, 2026-10-05).
       ambientIntensity: 0.1,
@@ -551,7 +566,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       "eyeColor.y": expressionSlot(eyeTone[1], 0.04),
       "eyeColor.z": expressionSlot(eyeTone[2], 0.04),
       // The face is a small light close to the lens: the air shows it more than its reach on the walls would say.
-      eyes: expressionSlot(`${on("slider_glow")} * 0.7 * (0.75 + ${HAT} * 0.9)`, 6),
+      eyes: expressionSlot(`${on("slider_glow")} * 0.7 * (0.75 + ${HAT} * 0.5)`, 6),
     }, { label: "wgsl_haze", resolution: { mode: "project" } }),
     // Focus: on the robot, wherever the shot stands; what is nearer or further goes soft, and a long lens softer.
     node("wgsl_focus", "customWgslMulti", [-750, 0], {
