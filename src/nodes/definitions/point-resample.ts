@@ -89,7 +89,7 @@ export const pointResampleNode: NodeDefinition = {
   title: "Resample",
   category: "points",
   description:
-    "Places new points along every strip of a pointset: by Count (so many, evenly by length or by the input's own points) or by Distance (one every so many metres, into Max Points slots per strip). Offset slides them along the curve and Range uses part of it — that is the trim. By Distance a strip can be shorter than its slots: the spare slots repeat the nearest point and the live attribute is 0 there, so draw instances with Group p.live > 0.5. Every attribute is interpolated. Put Curve Frames after it.",
+    "Places new points along every strip of a pointset: by Count (so many, at Even Length along the curve or at Even Parameter, the same number between each pair of the input's own points) or by Distance (one every so many metres, into Max Points slots per strip). Offset slides them along the curve and Range uses part of it — that is the trim. By Distance a strip can be shorter than its slots: the spare slots repeat the nearest point and the live attribute is 0 there, so draw instances with Group p.live > 0.5. Every attribute is interpolated. Put Curve Frames after it.",
   tags: ["points", "curve", "strips", "resample", "spacing", "distance", "trim", "line", "spline", "cloner"],
   inputs: [
     {
