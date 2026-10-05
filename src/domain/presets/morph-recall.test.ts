@@ -681,10 +681,10 @@ describe("the value graph reads the same fade (§V61)", () => {
     const frame = run.frames(30);
     const graph = run.store.view.getGraph();
     const values = createValueGraphSession(registry);
-    const fading = values.evaluate(graph, frame, { morphs: buildMorphIndex({ document: graph, registry }) });
+    const fading = values.evaluate(flatDocument(graph), frame, { morphs: buildMorphIndex({ document: graph, registry }) });
     expect(fading.byName.get("constant1")?.["value"]).toBe(blend(0, 1, record, frame));
     // Cut the wire: without the index the same frame publishes the destination.
-    expect(values.evaluate(graph, frame).byName.get("constant1")?.["value"]).toBe(1);
+    expect(values.evaluate(flatDocument(graph), frame).byName.get("constant1")?.["value"]).toBe(1);
   });
 });
 

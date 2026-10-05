@@ -1,4 +1,4 @@
-import { authoredGraph, type GraphDocument } from "../types/graph.ts";
+import type { FlatGraph, GraphDocument } from "../types/graph.ts";
 import type { NodeId, PortId } from "../types/ids.ts";
 import type { AudioFeatures, FrameEvaluationInput } from "../types/frame.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
@@ -103,7 +103,11 @@ export interface ValueGraphResult {
 
 export interface ValueGraphSession {
   evaluate(
-    graph: GraphDocument,
+    /**
+     * §T1552b/§T1559b: the FLATTENING (`runtime.flattened.current().graph`). A component's
+     * value nodes exist only there (T615), so the authored document is a type error here.
+     */
+    graph: FlatGraph,
     frame: FrameEvaluationInput,
     extras?: {
       pointer?: { x: number; y: number; buttons: number };
@@ -255,10 +259,7 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
         if (valueNames.has(name)) return resolver(channel, context);
         return extras.channels?.(channel);
       };
-      // §T1551b/§T1552b (migrated by the lead when `createParameterReadOptions` was removed):
-      // `evaluate` still takes a plain `GraphDocument`, so the graph is labelled authored here;
-      // the frame path hands it the flattening — type `evaluate` as `FlatGraph` when this lands.
-      const readOptions = parameterReadOptions({ graph: authoredGraph(graph), registry, channels, frame,
+      const readOptions = parameterReadOptions({ graph, registry, channels, frame,
         flattening: { ...NO_FLATTENING, ...(extras.morphs === undefined ? {} : { morphs: extras.morphs }) },
       });
       /** Publishes a node's bag. A node that never calls this is SILENT (see the note). */

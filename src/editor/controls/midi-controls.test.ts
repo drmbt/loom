@@ -6,8 +6,8 @@ import { isParameterSlot } from "@domain/parameters/slots.ts";
 import { decodeMidiMessage, midiChannelName, parseMidiMapping, serialiseMidiMapping, type MidiSource } from "@domain/midi/midi-mapping.ts";
 import { boxesOverlap, nodeBox } from "@domain/graph/node-box.ts";
 import { resolveParameters } from "@domain/parameters/resolve.ts";
-import { NO_FLATTENING, parameterReadOptions } from "@domain/parameters/node-references.ts";
-import { authoredGraph, type GraphNode } from "@domain/types/graph.ts";
+import { parameterReadOptions } from "@domain/parameters/node-references.ts";
+import type { GraphNode } from "@domain/types/graph.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { StoredParameter } from "@domain/types/parameters.ts";
 import { controlMidiBinding, learnControlMidiPlan, unlearnControlMidiPlan } from "./midi-controls.ts";
@@ -18,6 +18,8 @@ const PORT = "controller-a";
 const runtimes: AppRuntime[] = [];
 afterEach(() => { for (const runtime of runtimes.splice(0)) runtime.dispose(); });
 const graph = (runtime: AppRuntime) => runtime.bus.store.getGraph();
+/** What the app's value graph evaluates (`use-value-graph.ts`): the runtime's own flattening. */
+const flat = (runtime: AppRuntime) => runtime.flattened.current().graph;
 const named = (runtime: AppRuntime, label: string): GraphNode => {
   const node = Object.values(graph(runtime).nodes).find((each) => each.label === label);
   if (node === undefined) throw new Error(`Missing node "${label}".`);
@@ -50,7 +52,7 @@ function readings(runtime: AppRuntime, label: string) {
   return (data?: readonly number[], port = PORT) => {
     const message = data === undefined ? null : decodeMidiMessage(Uint8Array.from(data));
     const frame = { timeSeconds: index / 60, deltaSeconds: 1 / 60, frameIndex: index++, mode: "realtime", randomSeed: 1 } as const;
-    const values = session.evaluate(graph(runtime), frame, { channels: (name) => message !== null && name === midiChannelName(port, message.source) ? message.raw : undefined });
+    const values = session.evaluate(flat(runtime), frame, { channels: (name) => message !== null && name === midiChannelName(port, message.source) ? message.raw : undefined });
     expect(values.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
     return values.byId.get(named(runtime, label).id);
   };
@@ -85,9 +87,11 @@ describe("MIDI learning uses one document patch and the existing value graph", (
     await learn(runtime, "heat", "value");
     const session = createValueGraphSession(runtime.registry);
     const frame = { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "realtime", randomSeed: 1 } as const;
-    const values = session.evaluate(graph(runtime), frame, { channels: (name) => name === midiChannelName(PORT, CC) ? 127 : undefined });
+    const values = session.evaluate(flat(runtime), frame, { channels: (name) => name === midiChannelName(PORT, CC) ? 127 : undefined });
     const target = named(runtime, "picture");
-    const options = parameterReadOptions({ graph: authoredGraph(graph(runtime)), registry: runtime.registry, channels: values.resolver, frame, flattening: NO_FLATTENING });
+    // The downstream read is the plan's per-frame one: the same flattening, whole.
+    const flattened = runtime.flattened.current();
+    const options = parameterReadOptions({ graph: flattened.graph, registry: runtime.registry, channels: values.resolver, frame, flattening: flattened });
     expect(resolveParameters(target, runtime.registry.get(target.type), options).values["opacity"]).toBe(1);
   });
 

@@ -4,6 +4,7 @@ import { liveClock } from "./live-clock.ts";
 import { componentNodeType, createComponentSystem } from "../components/index.ts";
 import { flattenComponents } from "../../compiler/flatten.ts";
 import { createValueGraphSession } from "../channels/value-graph.ts";
+import { flatDocument } from "../../compiler/test-support.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import type { GraphDocument } from "../types/graph.ts";
@@ -831,11 +832,11 @@ describe("T615 — a free-running node inside a COMPONENT laps like one at the r
     const clock = liveClock({ fps: 60, now: () => 0 });
     const series: number[] = [];
     for (let index = 0; index < LAP_AT; index += 1) {
-      series.push(session.evaluate(graph, clock.next(), { pointer: POINTER }).byId.get(nodeId)?.["value"] as number);
+      series.push(session.evaluate(flatDocument(graph), clock.next(), { pointer: POINTER }).byId.get(nodeId)?.["value"] as number);
     }
     clock.wrapTo?.(0);
     for (let index = 0; index < AFTER_LAP; index += 1) {
-      series.push(session.evaluate(graph, clock.next(), { pointer: POINTER }).byId.get(nodeId)?.["value"] as number);
+      series.push(session.evaluate(flatDocument(graph), clock.next(), { pointer: POINTER }).byId.get(nodeId)?.["value"] as number);
     }
     return series;
   }

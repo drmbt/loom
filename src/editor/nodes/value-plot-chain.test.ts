@@ -8,6 +8,7 @@ import { resolveValuePlotChain, sampleValueChain } from "./value-plot-chain.ts";
 import { stickyRange } from "./plot-range.ts";
 import type { PlotRange } from "./plot-range.ts";
 import { createValueGraphSession } from "@domain/channels/value-graph.ts";
+import { flatDocument } from "@compiler/test-support.ts";
 
 /**
  * T735 — the value plot's axis stops refitting once a period fits the window.
@@ -85,7 +86,7 @@ function runChannel(graph: GraphDocument, frames: number): number[] {
   const out: number[] = [];
   for (let index = 0; index < frames; index += 1) {
     const timeSeconds = index / FPS;
-    const result = session.evaluate(graph, {
+    const result = session.evaluate(flatDocument(graph), {
       timeSeconds,
       deltaSeconds: 1 / FPS,
       frameIndex: index,
@@ -259,7 +260,7 @@ describe("T735 — the cliff: refits stop once a period fits the window", () => 
     const session = createValueGraphSession(registry);
     for (let index = 0; index < 8; index += 1) {
       const timeSeconds = (index * chain.periodSeconds) / 8;
-      const result = session.evaluate(graph, {
+      const result = session.evaluate(flatDocument(graph), {
         timeSeconds,
         deltaSeconds: chain.periodSeconds / 8,
         frameIndex: index,

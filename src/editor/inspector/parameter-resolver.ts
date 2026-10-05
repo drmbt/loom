@@ -28,7 +28,6 @@ export type {
   ParameterReadOptions,
   ParameterDriverContext,
   ParameterSource,
-  ResolveParametersOptions,
   ResolvedParameter,
   ResolvedParameters,
 } from "@domain/parameters/resolve.ts";

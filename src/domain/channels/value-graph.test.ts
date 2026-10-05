@@ -6,6 +6,7 @@ import type { FrameEvaluationInput } from "../types/frame.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createValueGraphSession } from "./value-graph.ts";
+import { flatDocument } from "../../compiler/test-support.ts";
 import { valueFilterNode, valueLagNode } from "../../nodes/definitions/value-graph-nodes.ts";
 import { controlSliderNode } from "../../nodes/definitions/controls.ts";
 import * as parameterDependencyModule from "../graph/parameter-dependencies.ts";
@@ -62,7 +63,7 @@ describe("same-frame value parameter dependencies", () => {
     };
     const document = graphOf([node("a-widget", "slider", { parameters: { value } }),
       node("z-source", "slider", { label: "knob", parameters: { value: 0.75 } })], []);
-    const result = createValueGraphSession(registry).evaluate(document, frameAt(0));
+    const result = createValueGraphSession(registry).evaluate(flatDocument(document), frameAt(0));
     expect(result.byId.get("a-widget")).toEqual({ value: 0.75 });
     expect(result.diagnostics).toEqual([]);
   });
@@ -81,14 +82,14 @@ describe("same-frame value parameter dependencies", () => {
     const dependencies = vi.spyOn(parameterDependencyModule, "parameterDependencies");
     try {
       const session = createValueGraphSession(definitions);
-      const first = session.evaluate(document, frameAt(0));
-      const second = session.evaluate(document, frameAt(1 / 60));
+      const first = session.evaluate(flatDocument(document), frameAt(0));
+      const second = session.evaluate(flatDocument(document), frameAt(1 / 60));
       expect(first.byId.get("a-widget")).toEqual({ value: 0.1 });
       expect(second.byId.get("a-widget")).toEqual({ value: 0.2 });
       expect(second.byId.get("b-widget")).toEqual({ value: 0.8 });
       expect(evaluateSource).toHaveBeenCalledTimes(2);
       expect(dependencies).toHaveBeenCalledTimes(1);
-      session.evaluate({ ...document, revision: 2 }, frameAt(2 / 60));
+      session.evaluate(flatDocument({ ...document, revision: 2 }), frameAt(2 / 60));
       expect(dependencies).toHaveBeenCalledTimes(2);
     } finally { dependencies.mockRestore(); }
   });
@@ -96,7 +97,7 @@ describe("same-frame value parameter dependencies", () => {
   it("reports a cycle combining a parameter reference and a value wire", () => {
     const document = graphOf([node("a", "slider", { parameters: { value: expression("op('b').chan.value") } }),
       node("b", "valueMath")], [["a", "out", "b", "a"]]);
-    const result = createValueGraphSession(registry).evaluate(document, frameAt(0));
+    const result = createValueGraphSession(registry).evaluate(flatDocument(document), frameAt(0));
     expect(result.diagnostics.map(d => d.code)).toContain("valueGraph.cycle");
     expect(result.byId.size).toBe(0);
   });
@@ -107,7 +108,7 @@ describe("same-frame value parameter dependencies", () => {
       node("b-grade", "level", { label: "grade", parameters: { brightness: expression("op('knob').chan.value") } }),
       node("z-source", "slider", { label: "knob", parameters: { value: 0.75 } }),
     ], []);
-    const result = createValueGraphSession(registry).evaluate(document, frameAt(0));
+    const result = createValueGraphSession(registry).evaluate(flatDocument(document), frameAt(0));
     expect(result.byId.get("a-widget")).toEqual({ value: 0.75 });
     expect(result.byId.has("b-grade")).toBe(false);
     expect(result.diagnostics).toEqual([]);
@@ -117,7 +118,7 @@ describe("same-frame value parameter dependencies", () => {
     const document = graphOf([node("a-widget", "slider", { parameters: { value: expression("op('knob').chan.value") } }),
       node("b-widget", "slider", { parameters: { value: expression("op('meter').chan.mean") } }),
       node("knob", "slider", { ui: { muted: true } }), node("meter", "analyze")], []);
-    const result = createValueGraphSession(registry).evaluate(document, frameAt(0), { channels: () => 0.75 });
+    const result = createValueGraphSession(registry).evaluate(flatDocument(document), frameAt(0), { channels: () => 0.75 });
     expect(result.byId.get("a-widget")).toEqual({ value: 0.125 });
     expect(result.byId.get("b-widget")).toEqual({ value: 0.75 });
     expect(result.byId.has("knob")).toBe(false);
@@ -139,7 +140,7 @@ describe("value graph evaluation (T273/T274)", () => {
       ],
     );
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(graph, frameAt(0), { pointer: { x: 0.3, y: 0.9, buttons: 1 } });
+    const result = session.evaluate(flatDocument(graph), frameAt(0), { pointer: { x: 0.3, y: 0.9, buttons: 1 } });
 
     expect(result.diagnostics).toEqual([]);
     expect(result.byName.get("mouse1")).toEqual({ x: 0.3, y: 0.9, buttons: 1 });
@@ -155,7 +156,7 @@ describe("value graph evaluation (T273/T274)", () => {
   it("keeps the trio addressable as the degenerate case — an LFO is a one-channel bag", () => {
     const graph = graphOf([node("lfo1", "lfo", { parameters: { shape: "sine", frequency: 1, amplitude: 1, offset: 0, phase: 0 } })], []);
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(graph, frameAt(0.25));
+    const result = session.evaluate(flatDocument(graph), frameAt(0.25));
     expect(result.resolver("lfo1", {} as never)).toBeCloseTo(1, 10);
     expect(result.resolver("lfo1:value", {} as never)).toBeCloseTo(1, 10);
   });
@@ -169,7 +170,7 @@ describe("value graph evaluation (T273/T274)", () => {
       ],
     );
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(graph, frameAt(0));
+    const result = session.evaluate(flatDocument(graph), frameAt(0));
     expect(result.diagnostics.some((d) => d.code === "valueGraph.cycle")).toBe(true);
     expect(result.byName.get("m1")).toBeUndefined();
   });
@@ -196,7 +197,7 @@ describe("a shadowed channel says so (T509)", () => {
         ["lfoB", "out", "lag1", "in"],
       ],
     );
-    const result = session.evaluate(graph, frameAt(0));
+    const result = session.evaluate(flatDocument(graph), frameAt(0));
     const shadowed = result.diagnostics.filter((d) => d.code === "valueGraph.channelShadowed");
     expect(shadowed).toHaveLength(1);
     expect(shadowed[0]?.severity).toBe("warning");
@@ -216,7 +217,7 @@ describe("a shadowed channel says so (T509)", () => {
       [node("lfoA", "lfo"), node("lag1", "valueLag")],
       [["lfoA", "out", "lag1", "in"]],
     );
-    const result = session.evaluate(graph, frameAt(0));
+    const result = session.evaluate(flatDocument(graph), frameAt(0));
     expect(result.diagnostics.filter((d) => d.code === "valueGraph.channelShadowed")).toEqual([]);
   });
 });
@@ -229,7 +230,7 @@ describe("stateful stages (T276/T277, §V181)", () => {
     );
     const session = createValueGraphSession(registry);
     const at = (t: number, x: number) =>
-      session.evaluate(graph, frameAt(t), { pointer: { x, y: 0, buttons: 0 } }).byName.get("lag1")?.["x"] ?? NaN;
+      session.evaluate(flatDocument(graph), frameAt(t), { pointer: { x, y: 0, buttons: 0 } }).byName.get("lag1")?.["x"] ?? NaN;
 
     expect(at(0, 0)).toBe(0); // first sight starts ON the input — no swoop-in
     const step1 = at(1 / 60, 1); // input jumps to 1; the lag chases
@@ -255,7 +256,7 @@ describe("stateful stages (T276/T277, §V181)", () => {
       ],
     );
     const session = createValueGraphSession(registry);
-    const step = (t: number, x: number) => session.evaluate(graph, frameAt(t), { pointer: { x, y: 0, buttons: 0 } });
+    const step = (t: number, x: number) => session.evaluate(flatDocument(graph), frameAt(t), { pointer: { x, y: 0, buttons: 0 } });
 
     step(0, 0);
     const rising = step(1 / 60, 0.6);
@@ -271,13 +272,13 @@ describe("stateful stages (T276/T277, §V181)", () => {
       [["mouse1", "out", "lag1", "in"]],
     );
     const session = createValueGraphSession(registry);
-    session.evaluate(withLag, frameAt(0), { pointer: { x: 1, y: 0, buttons: 0 } });
+    session.evaluate(flatDocument(withLag), frameAt(0), { pointer: { x: 1, y: 0, buttons: 0 } });
 
     const without = graphOf([node("mouse1", "mouse")], []);
-    session.evaluate(without, frameAt(1 / 60), { pointer: { x: 0, y: 0, buttons: 0 } });
+    session.evaluate(flatDocument(without), frameAt(1 / 60), { pointer: { x: 0, y: 0, buttons: 0 } });
 
     // lag1 comes back: fresh state, first sight is ON the new input, not the old 1.0.
-    const returned = session.evaluate(withLag, frameAt(2 / 60), { pointer: { x: 0, y: 0, buttons: 0 } });
+    const returned = session.evaluate(flatDocument(withLag), frameAt(2 / 60), { pointer: { x: 0, y: 0, buttons: 0 } });
     expect(returned.byName.get("lag1")?.["x"]).toBe(0);
   });
 });
@@ -339,7 +340,7 @@ describe("channelIn (T654, §V615) — the external crossing", () => {
       [["in1", "out", "math1", "a"]],
     );
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(graph, frameAt(0), {
+    const result = session.evaluate(flatDocument(graph), frameAt(0), {
       channels: (name) => (name === "meter1" ? 0.25 : undefined),
     });
     expect(result.diagnostics).toEqual([]);
@@ -353,16 +354,16 @@ describe("channelIn (T654, §V615) — the external crossing", () => {
     const session = createValueGraphSession(registry);
 
     // No extras.channels at all: a headless evaluate that wired nothing.
-    expect(session.evaluate(doc({ channel: "meter1", fallback: 0.7 }), frameAt(0)).byName.get("in1")).toEqual({ value: 0.7 });
+    expect(session.evaluate(flatDocument(doc({ channel: "meter1", fallback: 0.7 })), frameAt(0)).byName.get("in1")).toEqual({ value: 0.7 });
 
     // A resolver that does not know the name.
     expect(
-      session.evaluate(doc({ channel: "ghost", fallback: -1 }), frameAt(0), { channels: () => undefined }).byName.get("in1"),
+      session.evaluate(flatDocument(doc({ channel: "ghost", fallback: -1 })), frameAt(0), { channels: () => undefined }).byName.get("in1"),
     ).toEqual({ value: -1 });
 
     // A blank name never queries the resolver — an unconfigured node is fallback, not a lookup of "".
     let asked = 0;
-    const result = session.evaluate(doc({ channel: "  ", fallback: 3 }), frameAt(0), {
+    const result = session.evaluate(flatDocument(doc({ channel: "  ", fallback: 3 })), frameAt(0), {
       channels: () => {
         asked += 1;
         return 9;
@@ -384,7 +385,7 @@ describe("channelIn (T654, §V615) — the external crossing", () => {
       [],
     );
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(graph, frameAt(0.25), { channels: () => undefined });
+    const result = session.evaluate(flatDocument(graph), frameAt(0.25), { channels: () => undefined });
     expect(result.byName.get("in1")).toEqual({ value: 42 });
   });
 });
@@ -420,7 +421,7 @@ describe("T814 — asymmetric release and the high-pass tap", () => {
     const session = createValueGraphSession(registry);
     return xs.map((x, index) => {
       const frame = frameAt(clock[index] ?? 0, DT);
-      const bag = session.evaluate(graph, frame, { pointer: { x, y: 0, buttons: 0 } }).byName.get("stage");
+      const bag = session.evaluate(flatDocument(graph), frame, { pointer: { x, y: 0, buttons: 0 } }).byName.get("stage");
       return bag?.["x"] ?? NaN;
     });
   }
@@ -550,7 +551,7 @@ describe("T814 — asymmetric release and the high-pass tap", () => {
       ],
     );
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(graph, frameAt(0), { pointer: { x: 0, y: 0, buttons: 0 } });
+    const result = session.evaluate(flatDocument(graph), frameAt(0), { pointer: { x: 0, y: 0, buttons: 0 } });
 
     expect(result.diagnostics).toEqual([]);
     // The input boundary hands the constant through untouched…

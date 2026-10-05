@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createNodeRegistry } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
+import { flatDocument } from "../compiler/test-support.ts";
 import { resolveParameters } from "../domain/parameters/index.ts";
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import type { GraphDocument, GraphNode } from "../domain/types/graph.ts";
@@ -261,7 +262,7 @@ describe("GATE 1 — an OSC message drives a parameter, end to end", () => {
       mode: "realtime",
       randomSeed: 1,
     };
-    const evaluated = session.evaluate(graph, frame, {
+    const evaluated = session.evaluate(flatDocument(graph), frame, {
       pointer: { x: 0, y: 0, buttons: 0 },
       // The session's OWN resolver shape: `osc:` names, exactly as `app.tsx` merges it.
       channels: (name) => device.readings.get(name),
@@ -434,7 +435,7 @@ describe("GATE 3 — an unreachable bridge degrades with a STATED reason (§V359
     );
     // NO `channels` at all — the shape a session with no device attachment has.
     const evaluated = session.evaluate(
-      graph,
+      flatDocument(graph),
       { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "realtime", randomSeed: 1 },
       { pointer: { x: 0, y: 0, buttons: 0 } },
     );
@@ -716,7 +717,7 @@ describe("GATE 5 — devices with no agent server (T1111)", () => {
       mode: "realtime",
       randomSeed: 1,
     };
-    const evaluated = session.evaluate(graph, frame, {
+    const evaluated = session.evaluate(flatDocument(graph), frame, {
       pointer: { x: 0, y: 0, buttons: 0 },
       channels: (name) => device.readings.get(name),
     });

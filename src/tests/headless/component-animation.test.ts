@@ -90,7 +90,7 @@ describe("T615 — a component's own animation runs, per instance", () => {
     const { raw, flat, registry } = fixture();
 
     // The control: on the raw document the component's internals do not exist at all.
-    const dead = runValueGraph(raw, registry, 16);
+    const dead = runValueGraph(raw as FlatGraph, registry, 16); // §T1552b: the defect, forced past the brand
     expect([...dead.byId.keys()]).toEqual([]);
 
     const live = runValueGraph(flat.graph, registry, 16);

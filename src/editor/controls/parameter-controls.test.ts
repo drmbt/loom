@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createAppRuntime, type AppRuntime } from "../../app/app-runtime.ts";
 import { createValueGraphSession } from "@domain/channels/value-graph.ts";
+import { flatDocument } from "@compiler/test-support.ts";
 import { resolveParameters } from "@domain/parameters/resolve.ts";
 import { NO_FLATTENING, parameterReadOptions } from "@domain/parameters/node-references.ts";
 import { boxesOverlap, nodeBox } from "@domain/graph/node-box.ts";
@@ -39,7 +40,7 @@ const frame = { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "offl
 /** What the parameter resolves to this frame, channels from the real value session. */
 function resolved(runtime: AppRuntime, label: string, key: string): ParameterValue | undefined {
   const document = graph(runtime);
-  const channels = createValueGraphSession(runtime.registry).evaluate(document, frame).resolver;
+  const channels = createValueGraphSession(runtime.registry).evaluate(flatDocument(document), frame).resolver;
   const node = named(runtime, label);
   const options = parameterReadOptions({ graph: authoredGraph(document), registry: runtime.registry, channels, frame, flattening: NO_FLATTENING });
   return resolveParameters(node, runtime.registry.get(node.type), options).values[key];

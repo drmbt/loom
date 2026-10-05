@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { GraphDocument } from "../../domain/types/graph.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
+import { flatDocument } from "../../compiler/test-support.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
 
@@ -41,7 +42,7 @@ function run(parameters: Record<string, unknown>, signal: readonly number[], del
   const session = createValueGraphSession(registry);
   return signal.map((value, index) => {
     (doc.nodes["src"]!.parameters as Record<string, unknown>)["value"] = value;
-    const result = session.evaluate(doc, frameAt(index, deltaSeconds));
+    const result = session.evaluate(flatDocument(doc), frameAt(index, deltaSeconds));
     expect(result.diagnostics).toEqual([]);
     return result.byName.get("beat1")!["value"]!;
   });

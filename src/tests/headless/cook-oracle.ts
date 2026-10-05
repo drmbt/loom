@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { createUniformAnimator } from "../../app/animate-parameters.ts";
 import { compileGraph } from "../../compiler/compile.ts";
-import { flattenComponents } from "../../compiler/flatten.ts";
+import { compiledWithoutCatalogue, flattenComponents } from "../../compiler/flatten.ts";
 import type { CompiledGraph } from "../../compiler/types.ts";
 import type { ParameterResolution } from "../../compiler/validate.ts";
 import { createGraphStore } from "../../domain/graph/store.ts";
@@ -11,7 +11,7 @@ import type { GraphPatchOperation } from "../../domain/types/patch.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import type { ComponentRegistryView } from "../../domain/components/index.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
-import type { GraphDocument, ProjectSettings } from "../../domain/types/graph.ts";
+import type { FlatGraph, GraphDocument, ProjectSettings } from "../../domain/types/graph.ts";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { InvocationContext } from "../../domain/types/commands.ts";
 import type { CookPolicy, LoomBackend } from "../../runtime/backend/backend-types.ts";
@@ -341,8 +341,11 @@ export async function renderUnderPolicy(request: OracleRunRequest): Promise<stri
             components: request.components,
           });
     let flattened = flattenNow();
-    /** What the value graph reads: §V437, the raw document is not it. */
-    const logicalGraph = (): GraphDocument => flattened?.graph ?? store.view.getGraph();
+    /**
+     * What the value graph reads: §V437, the raw document is not it. With no catalogue it is
+     * the graph the compile below evaluates (`compiledWithoutCatalogue`, as `renderHeadless`).
+     */
+    const logicalGraph = (): FlatGraph => flattened?.graph ?? compiledWithoutCatalogue(store.view.getGraph());
 
     const compileNow = (resolution?: ParameterResolution) =>
       compileGraph({

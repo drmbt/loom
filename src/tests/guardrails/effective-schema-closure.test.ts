@@ -507,8 +507,8 @@ function programOf(configPath: string): { program: ts.Program; checker: ts.TypeC
 }
 
 /**
- * ONE program for the repo, shared by both closures in this file: building it is the whole
- * cost of this gate (~8 s), and `test:gates` runs before every commit.
+ * ONE program for the repo, built once: it is the whole cost of this gate (~8 s), and
+ * `test:gates` runs before every commit.
  */
 let repoProgram: { program: ts.Program; checker: ts.TypeChecker } | undefined;
 const repo = (): { program: ts.Program; checker: ts.TypeChecker } =>
@@ -623,135 +623,45 @@ describe("§T903 — nothing reads a node's parameter schema outside the funnel"
  * §T1557b — NO PARAMETER READ IS BUILT WITHOUT ITS INPUTS
  * ═══════════════════════════════════════════════════════════════════════════════════
  *
- * `resolveParameters` and `resolveParameterSchema` take a `ParameterRead`: a branded value
- * only `parameterReadOptions` (every input required) or `STORED_READ` (the document, said
- * by name) can produce. An options literal — `{ channels }` with no reader, §B181's shape
- * and the fifth recurrence of §B8's — no longer typechecks against that signature.
+ * `resolveParameters`, `resolveParameterSchema` and `resolveParameter` take a `ParameterRead`:
+ * a branded value only `parameterReadOptions` (every input required) or `STORED_READ` (the
+ * document, said by name) can produce. An options literal — `{ channels }` with no reader,
+ * §B181's shape and the fifth recurrence of §B8's — does not typecheck, and neither does
+ * leaving the read out.
  *
- * Except through ONE door left open on purpose: a `@deprecated` overload taking the old
- * optional options, kept only because the callers below are owned by other sessions right
- * now. A call that lands on it compiles, so THIS is what holds the line until the overload
- * is deleted: it asks the checker which declaration every call resolved to, and fails on
- * any caller of the deprecated one that is not named here. When the list is empty, delete
- * the overload (`resolve.ts`) and this block with it — the type then does the whole job.
- *
- * §T1559b: `resolveParameters`' overload is GONE (the media callers moved: the transport
- * runner to `parameterReadOptions`, the Text raster and the free-run classification to
- * `resolveStored`), so an options literal there is a type error — the last case below holds
- * that. `resolveParameterSchema`'s stays for `value-graph.ts` alone.
+ * §T1559b: the `@deprecated` optional-options overloads are deleted (the last caller,
+ * `value-graph.ts`, reads through `parameterReadOptions`), and the ledger that held the line
+ * while they lived went with them. What stays is the CHECKER'S OWN ANSWER, so a loose
+ * signature cannot come back on any of the three readers without this failing.
  */
-// Empty since the Panel MIDI work landed (`01b2ab30`): the value graph reads through
-// `parameterReadOptions`. Deleting the overload and this block is §T1559b's last step.
-const LEGACY_READ_CALLERS: Readonly<Record<string, { readonly reason: string; readonly calls: readonly string[] }>> = {};
-
-const LEGACY_READ_NAMES = new Set(["resolveParameters", "resolveParameterSchema"]);
-const RESOLVER = path.join(REPO_ROOT, "src/domain/parameters/resolve.ts");
-
-/** Every call, under `root`, that resolved to a `@deprecated` overload of the two readers. */
-function collectLegacyReads(program: ts.Program, checker: ts.TypeChecker, root: string): { file: string; read: string }[] {
-  const found: { file: string; read: string }[] = [];
-  for (const source of program.getSourceFiles()) {
-    if (source.isDeclarationFile || !source.fileName.startsWith(root)) continue;
-    const file = path.relative(REPO_ROOT, source.fileName).replaceAll("\\", "/");
-    const visit = (node: ts.Node): void => {
-      if (ts.isCallExpression(node)) {
-        const callee = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
-        if (ts.isIdentifier(callee) && LEGACY_READ_NAMES.has(callee.text)) {
-          const declaration = checker.getResolvedSignature(node)?.declaration;
-          if (
-            declaration !== undefined &&
-            ts.isFunctionDeclaration(declaration) &&
-            path.resolve(declaration.getSourceFile().fileName) === RESOLVER &&
-            ts.getJSDocDeprecatedTag(declaration) !== undefined
-          ) {
-            found.push({ file, read: callee.text });
-          }
-        }
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(source);
-  }
-  return found;
-}
-
-describe("§T1557b — no parameter read lands on the optional-options overload", () => {
-  const actual = tally(collectLegacyReads(repo().program, repo().checker, path.join(REPO_ROOT, "src")));
-  const allowed = tally(
-    Object.entries(LEGACY_READ_CALLERS).flatMap(([file, entry]) => entry.calls.map((read) => ({ file, read }))),
-  );
-
-  it("finds no caller of the deprecated form that is not named and reasoned", () => {
-    const unlisted = [...actual]
-      .filter(([key, count]) => count > (allowed.get(key) ?? 0))
-      .map(([key, count]) => `${key} (found ${count}, allowed ${allowed.get(key) ?? 0})`)
-      .sort();
-    expect(
-      unlisted,
-      "a parameter read passes options the resolver cannot vouch for — an object literal, or " +
-        "nothing — so whatever it left out (the reader, the frame, the morphs, the instances) " +
-        "falls back silently to the stored value. That is §B181's shape. FIX: an evaluation read " +
-        "passes `parameterReadOptions({ graph, registry, frame, channels, flattening })` (a command: " +
-        "`context.readScope()`); a read of the document calls `resolveStored` / passes `STORED_READ`.",
-    ).toEqual([]);
-  }, 180_000);
-
-  it("keeps no ledger entry for a caller that has migrated (§V458)", () => {
-    const stale = [...allowed]
-      .filter(([key, count]) => count > (actual.get(key) ?? 0))
-      .map(([key, count]) => `${key} (allowed ${count}, found ${actual.get(key) ?? 0})`)
-      .sort();
-    expect(stale, "LEGACY_READ_CALLERS names a call that is gone — strike it, and when the list is empty delete the overload.").toEqual([]);
-  }, 180_000);
-
-  it("catches an options literal without a reader, in a file it has never seen", () => {
-    const directory = mkdtempSync(path.join(tmpdir(), "shaderloom-legacy-read-"));
+describe("§T1557b — a parameter read cannot be built without its inputs", () => {
+  it("refuses an options literal and a missing read on every reader, and accepts the named storage read", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "shaderloom-parameter-read-"));
     try {
       const resolve = path.join(REPO_ROOT, "src/domain/parameters/resolve.ts");
       const graph = path.join(REPO_ROOT, "src/domain/types/graph.ts");
       const nodeDefinition = path.join(REPO_ROOT, "src/domain/types/node-definition.ts");
-      const file = path.join(directory, "b181.ts");
-      writeFileSync(
-        file,
-        [
-          `import { resolveParameterSchema, STORED_READ, type ChannelResolver } from ${JSON.stringify(resolve)};`,
-          `import type { GraphNode } from ${JSON.stringify(graph)};`,
-          `import type { NodeDefinition } from ${JSON.stringify(nodeDefinition)};`,
-          "",
-          "export function settings(node: GraphNode, definition: NodeDefinition, channels: ChannelResolver) {",
-          "  const stored = resolveParameterSchema(node, definition.parameters, STORED_READ);",
-          "  return [stored, resolveParameterSchema(node, definition.parameters, { channels })];",
-          "}",
-          "",
-        ].join("\n"),
-        "utf8",
-      );
-      const config = ts.readConfigFile(path.join(REPO_ROOT, "tsconfig.app.json"), ts.sys.readFile);
-      const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, REPO_ROOT);
-      const program = ts.createProgram([file], parsed.options);
-      // Exactly the literal: the branded storage read beside it is the legitimate case the
-      // collector must not swallow.
-      expect(collectLegacyReads(program, program.getTypeChecker(), directory).map((entry) => entry.read)).toEqual(["resolveParameterSchema"]);
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  }, 180_000);
-
-  it("§T1559b — `resolveParameters` has no loose overload left: an options literal is a type error", () => {
-    const directory = mkdtempSync(path.join(tmpdir(), "shaderloom-legacy-read-"));
-    try {
-      const resolve = path.join(REPO_ROOT, "src/domain/parameters/resolve.ts");
-      const graph = path.join(REPO_ROOT, "src/domain/types/graph.ts");
-      const nodeDefinition = path.join(REPO_ROOT, "src/domain/types/node-definition.ts");
+      const parameters = path.join(REPO_ROOT, "src/domain/types/parameters.ts");
       const file = path.join(directory, "b181.ts");
       const lines = [
-        `import { resolveParameters, STORED_READ, type ChannelResolver } from ${JSON.stringify(resolve)};`,
+        `import { resolveParameter, resolveParameters, resolveParameterSchema, STORED_READ, type ChannelResolver } from ${JSON.stringify(resolve)};`,
         `import type { GraphNode } from ${JSON.stringify(graph)};`,
         `import type { NodeDefinition } from ${JSON.stringify(nodeDefinition)};`,
+        `import type { ParameterDefinition } from ${JSON.stringify(parameters)};`,
         "",
-        "export function settings(node: GraphNode, definition: NodeDefinition, channels: ChannelResolver) {",
-        "  const stored = resolveParameters(node, definition, STORED_READ);",
-        "  return [stored, resolveParameters(node, definition, { channels })];",
+        "export function settings(node: GraphNode, definition: NodeDefinition, one: ParameterDefinition, channels: ChannelResolver) {",
+        "  return [",
+        // The legitimate case a refusal must not swallow: the branded storage read.
+        "    resolveParameters(node, definition, STORED_READ),",
+        "    resolveParameterSchema(node, definition.parameters, STORED_READ),",
+        "    resolveParameter(node, 'key', one, STORED_READ),",
+        "    resolveParameters(node, definition, { channels }), // REFUSED",
+        "    resolveParameterSchema(node, definition.parameters, { channels }), // REFUSED",
+        "    resolveParameter(node, 'key', one, { channels }), // REFUSED",
+        "    resolveParameters(node, definition), // REFUSED",
+        "    resolveParameterSchema(node, definition.parameters), // REFUSED",
+        "    resolveParameter(node, 'key', one), // REFUSED",
+        "  ];",
         "}",
         "",
       ];
@@ -761,11 +671,18 @@ describe("§T1557b — no parameter read lands on the optional-options overload"
       const program = ts.createProgram([file], parsed.options);
       const source = program.getSourceFile(file);
       if (source === undefined) throw new Error("the probe file did not load");
-      // Errors only on the literal's line; the branded storage read beside it typechecks.
-      const errorLines = program.getSemanticDiagnostics(source)
-        .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error && diagnostic.start !== undefined)
-        .map((diagnostic) => source.getLineAndCharacterOfPosition(diagnostic.start as number).line);
-      expect([...new Set(errorLines)]).toEqual([lines.findIndex((line) => line.includes("{ channels }"))]);
+      const errorLines = [
+        ...new Set(
+          program
+            .getSemanticDiagnostics(source)
+            .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error && diagnostic.start !== undefined)
+            .map((diagnostic) => source.getLineAndCharacterOfPosition(diagnostic.start as number).line),
+        ),
+      ].sort((a, b) => a - b);
+      // Exactly the marked lines: the three storage reads above them typecheck.
+      const refused = lines.flatMap((line, index) => (line.includes("// REFUSED") ? [index] : []));
+      expect(refused).toHaveLength(6);
+      expect(errorLines).toEqual(refused);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

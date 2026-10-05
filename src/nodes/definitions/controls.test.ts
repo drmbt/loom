@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { GraphDocument } from "../../domain/types/graph.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
+import { flatDocument } from "../../compiler/test-support.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
 import { parsePanelLayout } from "./controls.ts";
@@ -25,7 +26,7 @@ function evaluate(nodes: Record<string, { type: string; label: string; parameter
       Object.entries(nodes).map(([id, n]) => [id, { id, type: n.type, definitionVersion: 1, position: { x: 0, y: 0 }, label: n.label, parameters: n.parameters }]),
     ),
   } as unknown as GraphDocument;
-  const result = createValueGraphSession(registry).evaluate(doc, frame);
+  const result = createValueGraphSession(registry).evaluate(flatDocument(doc), frame);
   expect(result.diagnostics).toEqual([]);
   return result.byName as Map<string, Record<string, number>>;
 }

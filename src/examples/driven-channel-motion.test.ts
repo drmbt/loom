@@ -258,7 +258,7 @@ function motionOf(
       const name = colon < 0 ? address : address.slice(0, colon);
       return seams.has(name) ? stimulusAt(frameIndex) : undefined;
     };
-    const evaluated = session.evaluate(graph, frame, {
+    const evaluated = session.evaluate(flatDocument(graph), frame, {
       // §V182: the pointer the shaders read. Moving, for the same reason the seams move.
       pointer: {
         x: 0.5 + 0.3 * Math.sin(frameIndex * 0.021),

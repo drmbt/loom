@@ -5,6 +5,7 @@ import { BYTES_PER_PIXEL } from "../runtime/export/pixel-format.ts";
 import type { GraphDocument } from "../domain/types/graph.ts";
 import type { FrameEvaluationInput } from "../domain/types/frame.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
+import { flatDocument } from "../compiler/test-support.ts";
 import { createNodeRegistry } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
 import { renderHeadless } from "../tests/headless/render-harness.ts";
@@ -969,7 +970,7 @@ describe("E57 Forest — claims", () => {
           mode: "offline",
           randomSeed: 57,
         };
-        const evaluated = session.evaluate(subject, frame, {
+        const evaluated = session.evaluate(flatDocument(subject), frame, {
           pointer: { x: 0.5, y: 0.5, buttons: 0 },
           channels: () => undefined,
         });
@@ -1141,7 +1142,7 @@ describe("E57 Forest — claims", () => {
     const series: number[] = [];
     for (let frameIndex = 0; frameIndex < 1200; frameIndex += 1) {
       const evaluated = session.evaluate(
-        graph,
+        flatDocument(graph),
         { timeSeconds: frameIndex / 60, deltaSeconds: 1 / 60, frameIndex, mode: "offline", randomSeed: 57 },
         { pointer: { x: 0.5, y: 0.5, buttons: 0 }, channels: () => undefined },
       );

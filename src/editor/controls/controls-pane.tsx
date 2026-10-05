@@ -111,7 +111,7 @@ export function ControlsPane({ graph, registry, bus, invocation, phone, midi, ch
     const definition = registry.get(node.type);
     if (definition === undefined) throw new Error(`No definition for control "${node.type}".`);
     const frame = latestFrame?.()?.frame;
-    // §T1551b/§T1552b (migrated by the lead): the stored document, no fade — as before.
+    // Authored and no fade, on purpose: the pane lists authored widgets (none inside a component, §T1143), and mid-morph a control shows its document value (§T1525b).
     return resolveParameters(node, definition, parameterReadOptions({ graph: authoredGraph(current), registry, channels,
       frame, flattening: NO_FLATTENING })).values;
   } }), [bus, registry, channels, latestFrame]);

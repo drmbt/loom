@@ -1258,20 +1258,8 @@ function resolveOne(
  * instance's parameter page is the component's PUBLISHED definitions, which exist
  * before any node manifest does (§V80) — and one resolver is the point.
  */
-export function resolveParameterSchema(node: GraphNode, schema: ParameterSchema, read: ParameterRead): ResolvedParameters;
-/**
- * @deprecated §T1557b — the optional-options form, kept ONLY for `value-graph.ts` (another
- * session's uncommitted work; `effective-schema-closure.test.ts`'s `LEGACY_READ_CALLERS`).
- * §T1559b: `resolveParameters`' twin is gone. Pass `parameterReadOptions(…)`, or
- * `STORED_READ` for a read of the document itself.
- */
-export function resolveParameterSchema(node: GraphNode, schema: ParameterSchema, options?: ResolveParametersOptions): ResolvedParameters;
-export function resolveParameterSchema(
-  node: GraphNode,
-  schema: ParameterSchema,
-  options: ResolveParametersOptions = {},
-): ResolvedParameters {
-  return resolveSchemaWith(node, schema, options);
+export function resolveParameterSchema(node: GraphNode, schema: ParameterSchema, read: ParameterRead): ResolvedParameters {
+  return resolveSchemaWith(node, schema, read);
 }
 
 /**

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { flattenComponents } from "../compiler/flatten.ts";
+import { compiledWithoutCatalogue, flattenComponents } from "../compiler/flatten.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
 import { componentNodeType, createComponentSystem } from "../domain/components/index.ts";
 import { NO_INSTANCES, nodeReferenceMembers, type InstanceChannelSources } from "../domain/parameters/node-references.ts";
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
-import type { GraphDocument, GraphNode } from "../domain/types/graph.ts";
+import type { FlatGraph, GraphDocument, GraphNode } from "../domain/types/graph.ts";
 import type { FrameEvaluationInput } from "../domain/types/frame.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../nodes/registry/registry.ts";
@@ -104,7 +104,7 @@ const nodeByLabel = (graph: GraphDocument, label: string): GraphNode | undefined
   Object.values(graph.nodes).find((node) => node.label === label);
 
 /** The union of channel names each label publishes, over the frames above. */
-function publishedChannels(graph: GraphDocument): Map<string, Set<string>> {
+function publishedChannels(graph: FlatGraph): Map<string, Set<string>> {
   const session = createValueGraphSession(registry);
   const published = new Map<string, Set<string>>();
   for (const frame of FRAMES) {
@@ -121,13 +121,14 @@ const EXAMPLE_PATHS = new Set(listExamples().map((file) => file.path));
 
 /** What the app evaluates: the flat graph, and the instances `op()` can still name in it. */
 interface Logical {
-  readonly graph: GraphDocument;
+  readonly graph: FlatGraph;
   readonly instanceChannels: InstanceChannelSources;
 }
 
 /** The graph the app evaluates for `file`: flattened for an example, raw for a component file. */
 function logicalGraphOf(file: ExampleFile, graph: GraphDocument): Logical {
-  const raw = { graph, instanceChannels: NO_INSTANCES };
+  // Walked raw means walked with NO catalogue: the document as it is, an instance whole.
+  const raw = { graph: compiledWithoutCatalogue(graph), instanceChannels: NO_INSTANCES };
   if (!EXAMPLE_PATHS.has(file.path)) return raw;
   const { document, result } = requireExample(file);
   if (result.components === undefined || result.nodes === undefined) return raw;

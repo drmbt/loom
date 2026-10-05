@@ -443,7 +443,8 @@ function flat(graph: GraphDocument): FlatGraph {
  * §T1552b — the graph a compile reads when it was handed NO catalogue: the document as it
  * is. Not a flattening — an instance in it stays an instance and meets the manifest's
  * `component.notFlattened` tripwire — but it is the graph that compile evaluates, so it is
- * named here rather than cast at the compile.
+ * named here rather than cast at the compile. §T1559b: the node-body plot's cut-out
+ * (`value-plot-chain.ts`) is named the same way: no catalogue, and no instance in it.
  */
 export function compiledWithoutCatalogue(graph: GraphDocument): FlatGraph {
   return flat(graph);

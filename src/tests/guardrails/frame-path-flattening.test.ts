@@ -133,6 +133,14 @@ const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
   },
 ];
 
+/**
+ * §T1559b: every consumer these three hand the graph to is typed `FlatGraph` now — the value
+ * graph's `evaluate` was the last (the probe at the foot of this file asks the checker). The
+ * zero-raw-reads half below stays all the same, because a type sees only a HAND-OFF: a path
+ * that walks `store.getGraph().nodes` itself (say, to skip the evaluation when the document
+ * holds no value node) reaches no typed consumer, and is T615 again for every value node
+ * inside a component. Here such a read cannot even be declared with a reason.
+ */
 const DECLARED_FRAME_PATHS: ReadonlyArray<{ file: string; what: string }> = [
   { file: "app/use-value-graph.ts", what: "the per-frame value-graph evaluation and its zero-frame twin" },
   { file: "app/pulse-firing.ts", what: "the expression-fired pulse watcher's step" },
@@ -244,8 +252,9 @@ describe("the raw document is unreachable from a per-frame path (T615, §V437)",
  *
  * The scan above catches a raw read in the frame-path tree by its SPELLING. The brand
  * catches the mistake by its TYPE, wherever it is written: a consumer that needs the
- * flattening takes `FlatGraph` (the pulse watcher, the OSC pump, the media transport, the
- * Analyze/vision/inference readers, the file and device doors, the compiler past flatten),
+ * flattening takes `FlatGraph` (the value graph, the pulse watcher, the OSC pump, the media
+ * transport, the Analyze/vision/inference readers, the file and device doors, the compiler
+ * past flatten),
  * and every parameter evaluation (`parameterReadOptions`, `validateGraph`) takes
  * `FlatGraph | AuthoredGraph`, so the inspector and a command's read scope say
  * `authoredGraph(…)` by name. Two halves hold it: the cast that would forge a brand is
@@ -278,20 +287,28 @@ describe("§T1552b — a FlatGraph is minted only by the flattener", () => {
     try {
       const graph = join(SRC, "domain/types/graph.ts");
       const nodeRefs = join(SRC, "domain/parameters/node-references.ts");
+      const valueGraph = join(SRC, "domain/channels/value-graph.ts");
+      const frame = join(SRC, "domain/types/frame.ts");
       const file = join(directory, "brand.ts");
       const lines = [
         `import { authoredGraph, type FlatGraph, type GraphDocument } from ${JSON.stringify(graph)};`,
         `import { NO_FLATTENING, parameterReadOptions } from ${JSON.stringify(nodeRefs)};`,
+        `import type { ValueGraphSession } from ${JSON.stringify(valueGraph)};`,
+        `import { ZERO_FRAME } from ${JSON.stringify(frame)};`,
         "declare const stored: GraphDocument;",
         "declare const flat: FlatGraph;",
+        "declare const session: ValueGraphSession;",
         "declare function needsFlat(graph: FlatGraph): void;",
         "const registry = { get: () => undefined };",
         "needsFlat(flat);",
+        "session.evaluate(flat, ZERO_FRAME);",
         "parameterReadOptions({ graph: flat, registry, frame: undefined, channels: undefined, flattening: NO_FLATTENING });",
         "parameterReadOptions({ graph: authoredGraph(stored), registry, frame: undefined, channels: undefined, flattening: NO_FLATTENING });",
         "needsFlat(stored); // REFUSED: the store's document where the flattening is needed",
         "parameterReadOptions({ graph: stored, registry, frame: undefined, channels: undefined, flattening: NO_FLATTENING }); // REFUSED: no side said",
         "authoredGraph(flat); // REFUSED: a flattening is not the document",
+        "session.evaluate(stored, ZERO_FRAME); // REFUSED: §T1559b — the value graph evaluates the flattening",
+        "session.evaluate(authoredGraph(stored), ZERO_FRAME); // REFUSED: and saying `authored` does not make it one",
         "",
       ];
       writeFileSync(file, lines.join("\n"), "utf8");
@@ -308,9 +325,9 @@ describe("§T1552b — a FlatGraph is minted only by the flattener", () => {
             .map((diagnostic) => source.getLineAndCharacterOfPosition(diagnostic.start as number).line),
         ),
       ].sort((a, b) => a - b);
-      // Exactly the three marked lines; the legitimate reads beside them typecheck.
+      // Exactly the five marked lines; the legitimate reads beside them typecheck.
       const refused = lines.flatMap((line, index) => (line.includes("// REFUSED") ? [index] : []));
-      expect(refused).toHaveLength(3);
+      expect(refused).toHaveLength(5);
       expect(errorLines).toEqual(refused);
     } finally {
       rmSync(directory, { recursive: true, force: true });
