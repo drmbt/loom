@@ -12,6 +12,8 @@ import { pointStorageId } from "./point-storage.ts";
 import { packAttributes } from "../../points/packing.ts";
 import { compileContext, fixturePairs } from "./test-support.ts";
 import { pointKernelAdvancedNode } from "./point-kernel-advanced.ts";
+import { feedbackNode } from "./feedback.ts";
+import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
 
 /** T1076: the u32 words one half of a default-schema point buffer occupies. */
 function packedWords(capacity: number): number {
@@ -100,6 +102,70 @@ describe("pointKernel — manifest and emission (T121)", () => {
     );
     expect(badKernel.passes).toEqual([]);
     expect(badKernel.diagnostics?.[0]?.code).toBe("node.points.kernel");
+  });
+});
+
+/**
+ * T1583b — KERNEL STEPS at the node. The node itself repeats nothing: it declares which
+ * two parameters carry the counts, and reserves the step uniforms when its kernel reads
+ * them. Everything that happens with them is the compiler's and the backend's
+ * (`compiler/kernel-steps.test.ts`, `vgpu/kernel-steps.gpu.test.ts`).
+ */
+describe("pointKernel — kernel steps (T1583b)", () => {
+  const STEP_UNIFORMS = ["substep", "substeps", "iteration", "iterations"];
+  const uniformsOf = (kernel: string, extra: Record<string, unknown> = {}): Record<string, unknown> => {
+    const result = pointKernelNode.compile(
+      compileContext({ nodeId: "sim", outputs: [], parameters: { capacity: 4, kernel, ...extra } }),
+    );
+    expect(result.diagnostics ?? []).toEqual([]);
+    return (result.passes[0] as { uniforms: Record<string, unknown> }).uniforms;
+  };
+
+  // The schema a placed node has, through the one funnel every surface reads it by (§T903).
+  const kernelSchema = effectiveParameterSchema(pointKernelNode, {});
+
+  it("declares the two count parameters, and neither is compileTime (§V358)", () => {
+    expect(pointKernelNode.steps).toEqual({ substeps: "substeps", iterations: "iterations" });
+    for (const key of ["substeps", "iterations"]) {
+      const parameter = kernelSchema[key];
+      // A compileTime count would make "drive substeps from 1 to 3" a rebuild, and the
+      // values-only frame path would refuse the document outright.
+      expect(parameter?.compileTime, key).toBeUndefined();
+      expect(parameter, key).toMatchObject({ type: "number", default: 1, min: 1, range: "bounded", step: 1 });
+    }
+    expect(kernelSchema["substeps"]).toMatchObject({ max: 64 });
+    expect(kernelSchema["iterations"]).toMatchObject({ max: 256 });
+    // The lifecycle kernel does not step, and does not pretend to.
+    expect(pointKernelAdvancedNode.steps).toBeUndefined();
+    expect(effectiveParameterSchema(pointKernelAdvancedNode, {})["substeps"]).toBeUndefined();
+  });
+
+  it("the two descriptions say which Substeps divides the delta and which does not", () => {
+    // One word, two meanings, on two nodes a user will have open side by side.
+    const feedback = effectiveParameterSchema(feedbackNode, {});
+    expect(kernelSchema["substeps"]?.description).toContain("ctx.delta DIVIDED by it");
+    expect(kernelSchema["substeps"]?.description).toContain("Feedback's Substeps repeats its loop");
+    expect(kernelSchema["iterations"]?.description).toContain("at the same ctx.delta");
+    expect(feedback["substeps"]?.description).toContain("read the same frame delta");
+    expect(feedback["substeps"]?.description).toContain("Point Kernel's Substeps divides ctx.delta");
+  });
+
+  it("reserves the four step uniforms exactly when the kernel reads one, as run 0 of 1", () => {
+    const stepping = uniformsOf(
+      "fn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  q.position.x = f32(ctx.iteration & 1u);\n  return q;\n}",
+    );
+    // The values a kernel reads when nothing steps it — a refused processor, say.
+    expect(STEP_UNIFORMS.map((name) => stepping[name])).toEqual([0, 1, 0, 1]);
+    const plain = uniformsOf("fn process(p: Point, ctx: PointCtx) -> Point {\n  return p;\n}");
+    expect(STEP_UNIFORMS.filter((name) => Object.hasOwn(plain, name))).toEqual([]);
+  });
+
+  it("the count parameters reach NO uniform and no shader text: the same pass at 1 and at 8", () => {
+    const kernel = "fn process(p: Point, ctx: PointCtx) -> Point {\n  return p;\n}";
+    const at = (extra: Record<string, unknown>): unknown =>
+      pointKernelNode.compile(compileContext({ nodeId: "sim", outputs: [], parameters: { capacity: 4, kernel, ...extra } }))
+        .passes[0];
+    expect(at({ substeps: 8, iterations: 4 })).toEqual(at({}));
   });
 });
 

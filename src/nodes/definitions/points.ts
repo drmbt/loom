@@ -2,6 +2,7 @@ import type { RuntimeDiagnostic } from "../../domain/types/diagnostics.ts";
 import type { CompiledNodeDescription, NodeDefinition, PointsetAttributeRef } from "../../domain/types/node-definition.ts";
 import type { ParameterSchema, ParameterValue } from "../../domain/types/parameters.ts";
 import type { DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
+import { MAX_KERNEL_STEPS, MAX_KERNEL_SUBSTEPS } from "../../runtime/backend/plan.ts";
 import type { AuthoredSpan, WgslSourceMap } from "../../runtime/backend/wgsl-source-map.ts";
 import { endOf, placed, placedAroundCut } from "../../runtime/backend/wgsl-source-map.ts";
 import {
@@ -452,6 +453,41 @@ export const pointKernelNode: NodeDefinition = {
       step: 1,
       description: "Feeds pointRand(seed, pointId, frame) — same seed, same motion (§V74).",
     },
+    /**
+     * T1583b — KERNEL STEPS. Two counts, the pair Notch's Physics Root and TouchDesigner's
+     * Flex Solver expose, and the kernel runs their product per displayed frame.
+     *
+     * Neither is `compileTime`, and neither may become it (§V358): the plan carries the
+     * region at count 1 so that an expression driving either is a value write. That is
+     * what makes Notch's RATE form expressible without a second parameter set —
+     * `clamp(ceil(delta * 240), 1, 16)` holds the step near 1/240 s when a frame drops,
+     * where a bare count would let the step double exactly when stability matters.
+     *
+     * The name is Feedback's and the meaning is not, which both descriptions say: that
+     * node repeats a LOOP of nodes and changes no shader's delta; this one divides it.
+     */
+    substeps: {
+      type: "number",
+      label: "Substeps",
+      default: 1,
+      min: 1,
+      max: MAX_KERNEL_SUBSTEPS,
+      range: "bounded",
+      step: 1,
+      description:
+        "Runs the kernel this many times per displayed frame, each run reading what the one before wrote, with ctx.delta DIVIDED by it — the frame covers the same time in smaller steps, which is what keeps stiff springs and fast points stable. (Feedback's Substeps repeats its loop and leaves every shader's delta alone; this one divides it.) A per-frame value, so it can hold a step size instead of a count: clamp(ceil(delta * 240), 1, 16). The kernel reads ctx.substep (0 to ctx.substeps-1). Costs that many dispatches. A kernel wired as a processor whose every attribute comes from the incoming point set has nothing to carry between runs and stays at one.",
+    },
+    iterations: {
+      type: "number",
+      label: "Iterations",
+      default: 1,
+      min: 1,
+      max: MAX_KERNEL_STEPS,
+      range: "bounded",
+      step: 1,
+      description:
+        `Runs per SUBSTEP, at the same ctx.delta — the passes a constraint solver relaxes with. Dispatches per frame are Substeps × Iterations, at most ${MAX_KERNEL_STEPS}. The kernel reads ctx.iteration (0 to ctx.iterations-1): integrate when it is 0, solve on every one, and alternate halves of a chain with ctx.iteration & 1u so neighbours do not correct each other in the same run. pointAt reads the previous run.`,
+    },
     attributes: {
       type: "code",
       language: "json",
@@ -506,6 +542,9 @@ export const pointKernelNode: NodeDefinition = {
     });
   },
   stateful: { reset: true, deterministicReplay: true, checkpoint: false, randomAccess: false },
+  // T1583b: the compiler wraps this node's one dispatch in a loop region and reads the
+  // region's count from these two — nothing in `compile` below repeats anything.
+  steps: { substeps: "substeps", iterations: "iterations" },
   contractVersion: POINT_KERNEL_CONTRACT_VERSION,
   compile(context): CompiledNodeDescription {
     const { nodeId, parameters, inputs } = readCompileInputs(context);
@@ -693,6 +732,10 @@ export const pointKernelNode: NodeDefinition = {
         // every frame from the numbers the shared block gets, so a kernel and a shader
         // cannot disagree about how long the show has run (§V182).
         ...(module.usesAbsClock ? { absTimeSeconds: 0, absFrameIndex: 0 } : {}),
+        // T1583b: the four step members, reserved exactly when the module declared them.
+        // The backend overwrites them for every run of a stepped frame; these values are
+        // what a kernel that is NOT stepped reads, and they say so — run 0 of 1.
+        ...(module.usesSteps ? { substep: 0, substeps: 1, iteration: 0, iterations: 1 } : {}),
       },
       // T477: exactly when the module declared the texture (§V288's mirror hazard —
       // vgpu binds by name, and a declared texture with no binding fails loudly).

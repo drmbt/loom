@@ -12,7 +12,9 @@ import { pointKernelAdvancedNode, pointKernelNode } from "./index.ts";
 import { reflectParamsStruct as reflectFromNode } from "./custom-wgsl.ts";
 import { reflectParamsStruct, extractParamsStruct } from "./params-reflection.ts";
 import { compileContext } from "./test-support.ts";
+import { pointStorageId } from "./point-storage.ts";
 import type { ParameterValue } from "../../domain/types/parameters.ts";
+import type { PassDescriptor } from "../../runtime/backend/plan.ts";
 
 /**
  * T900 — POINT KERNELS ON THE REFLECTION, NOT ON THE FIXED SLOTS.
@@ -512,17 +514,35 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
 
 const POINT_KERNEL_TYPES = new Set(["pointKernel", "pointKernelAdvanced"]);
 
+/**
+ * T1583b: shipped Point Kernels whose dispatch reads its own pair — the ones with a region.
+ * Counted off the plans when steps landed: 128 plain kernel dispatches ship, 67 of them
+ * with state of their own and 61 pure processors; this file sees the 126 kernels that are
+ * in a document's own graph, which leaves out E47's (inside a component) and two regions.
+ */
+const SHIPPED_STEP_REGIONS = 65;
+
 describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
   const digests = new Map<string, string>();
+  /** T1583b: the loop markers the kernels' dispatches sit between, per loom. */
+  const stepMarkers = new Map<string, PassDescriptor[]>();
   let kernelCount = 0;
   for (const file of listExamples()) {
     const result = runExample(file);
     const graph = result.document?.graph;
     if (graph === undefined) continue;
-    const passes = (result.read?.passes ?? []).filter((pass) => {
+    const owned = (result.read?.passes ?? []).filter((pass) => {
       const nodeId = (pass as { nodeId?: string }).nodeId;
       return nodeId !== undefined && POINT_KERNEL_TYPES.has(graph.nodes[nodeId]?.type ?? "");
     });
+    /* T1583b: a Point Kernel's dispatch now sits between two loop markers that carry its
+       node id (§V358: the region exists at count 1). They are held OUT of the digest and
+       pinned field by field in their own case below, so what the digest covers is what it
+       always covered — the dispatch and the passes beside it. Every digest in the table
+       survived that row unchanged, which is the proof that no shipped kernel's shader
+       text, bindings, workgroups or uniform values moved when steps arrived. */
+    const passes = owned.filter((pass) => pass.kind !== "loop");
+    stepMarkers.set(file.fileName, owned.filter((pass) => pass.kind === "loop"));
     if (passes.length === 0) continue;
     kernelCount += Object.values(graph.nodes).filter((node) => POINT_KERNEL_TYPES.has(node.type)).length;
     // T1523b: a pass's `sourceMap` says where the author's lines sit in its shader, for error
@@ -545,5 +565,38 @@ describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
 
   it.each(Object.keys(FRAME_ZERO_DIGESTS))("%s is unchanged at frame 0", (fileName) => {
     expect(digests.get(fileName)).toBe(FRAME_ZERO_DIGESTS[fileName]);
+  });
+
+  /*
+   * T1583b — what the digest no longer hashes, asserted exactly instead. A region that
+   * came out at any other count would run a shipped kernel more than once a frame, and a
+   * `prepare` above 1 would allocate uniform blocks for kernels nobody steps.
+   */
+  it("every shipped Point Kernel region is one run per frame, with nothing prepared beyond it", () => {
+    let regions = 0;
+    for (const [fileName, markers] of stepMarkers) {
+      for (const marker of markers) {
+        if (marker.kind !== "loop" || marker.edge !== "begin") continue;
+        regions += 1;
+        const pair = marker.loopId;
+        expect(marker, `${fileName} ${marker.id}`).toEqual({
+          kind: "loop",
+          id: `${pair}#loop:begin`,
+          edge: "begin",
+          loopId: pair,
+          count: 1,
+          nodeId: marker.nodeId,
+          steps: { pair, iterations: 1, prepare: 1 },
+        });
+        expect(pair, fileName).toBe(pointStorageId(marker.nodeId ?? ""));
+      }
+      expect(markers.filter((marker) => marker.kind === "loop" && marker.edge === "end").length, fileName).toBe(
+        markers.filter((marker) => marker.kind === "loop" && marker.edge === "begin").length,
+      );
+    }
+    // The plain Point Kernels holding state of their own. The rest are advanced kernels,
+    // which do not step, and processors whose whole schema the incoming point set
+    // provides, which have nothing to carry from run to run.
+    expect(regions).toBe(SHIPPED_STEP_REGIONS);
   });
 });

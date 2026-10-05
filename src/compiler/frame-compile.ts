@@ -12,7 +12,7 @@ import { passStructureKey, readPass } from "../runtime/backend/plan.ts";
 import { compileGraphRetaining, descriptionStructureKey, normalizePass } from "./compile.ts";
 import type { CompileGraphResult, RetainedCompile, RetainedNodeCompile } from "./compile.ts";
 import { isParameterPolicy } from "./resolution.ts";
-import { substepCount } from "./substeps.ts";
+import { kernelStepCounts, substepCount } from "./substeps.ts";
 import { flatteningReadsOf, resolveNodeParameters } from "./validate.ts";
 import { scaleOutputPixels } from "./pixel-scale.ts";
 import { timeProbeFor } from "./time-probe.ts";
@@ -289,9 +289,16 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
   for (const entry of base.passSignatures) basePassKeys.set(entry.id, entry.signature);
   /** Loop-begin markers, with the parameter whose value sets their count. */
   const loopCounts = new Map<string, { nodeId: NodeId; key: string }>();
+  /** T1583b: kernel regions, whose count is two parameters' product. */
+  const kernelSteps = new Map<string, { nodeId: NodeId; substeps: string; iterations: string }>();
   for (const pass of base.passes) {
     if (pass.kind !== "loop" || pass.edge !== "begin" || pass.nodeId === undefined) continue;
-    const key = retained.nodes.get(pass.nodeId)?.definition.temporal?.substeps;
+    const definition = retained.nodes.get(pass.nodeId)?.definition;
+    if (pass.steps !== undefined) {
+      if (definition?.steps !== undefined) kernelSteps.set(pass.id, { nodeId: pass.nodeId, ...definition.steps });
+      continue;
+    }
+    const key = definition?.temporal?.substeps;
     if (key !== undefined) loopCounts.set(pass.id, { nodeId: pass.nodeId, key });
   }
 
@@ -387,6 +394,16 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
       const replacement = replacements.get(pass.id);
       if (replacement !== undefined) return replacement;
       if (pass.kind !== "loop" || pass.edge !== "begin") return pass;
+      const stepped = kernelSteps.get(pass.id);
+      if (stepped !== undefined && pass.steps !== undefined) {
+        const node = values.get(stepped.nodeId);
+        if (node === undefined) return pass;
+        // The same function the full compile's region came from, so the two cannot disagree.
+        const { count, iterations } = kernelStepCounts(node.parameters[stepped.substeps], node.parameters[stepped.iterations]);
+        return count === pass.count && iterations === pass.steps.iterations
+          ? pass
+          : { ...pass, count, steps: { ...pass.steps, iterations } };
+      }
       const loop = loopCounts.get(pass.id);
       const owner = loop === undefined ? undefined : values.get(loop.nodeId);
       if (loop === undefined || owner === undefined) return pass;

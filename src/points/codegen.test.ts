@@ -897,6 +897,152 @@ describe("ctx.firstRun (T510, §V309)", () => {
   });
 });
 
+/**
+ * T1583b — `ctx.substep` / `ctx.substeps` / `ctx.iteration` / `ctx.iterations`: which run
+ * of the kernel this is, when the node runs it several times per frame.
+ *
+ * Codegen repeats nothing — the plan's region and the encoder do — so the whole of the
+ * feature here is four optional members, and the claims are the family's usual two: they
+ * appear for a kernel that names one, and a kernel that names none generates the text it
+ * always did (§V309). That second claim is also held across every shipped kernel by the
+ * frame-zero digests in `point-kernel-params.test.ts`, none of which moved.
+ *
+ * The third claim is about what is NOT refused. The lifecycle kernel and the spawn hook do
+ * not step, and say so by name — but only for a read off a `PointCtx`, because `iterations`
+ * is an ordinary word and a working advanced kernel may well own one.
+ */
+describe("kernel steps in PointCtx (T1583b, §V309/§V288)", () => {
+  const base = {
+    attributes: SCHEMA,
+    reads: ["position", "velocity", "id"],
+    writes: ["position"],
+  };
+  const kernelReading = (expression: string): string =>
+    `fn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  q.position.x = f32(${expression});\n  return q;\n}`;
+  const LIFECYCLE = {
+    attributes: [...SCHEMA, { name: "flags", type: "u32" as const, default: [0] }],
+    reads: ["position", "velocity", "id"],
+    writes: ["position", "flags"],
+    lifecycle: { flagsAttribute: "flags" },
+  };
+
+  it.each(["ctx.substep", "ctx.substeps", "ctx.iteration", "ctx.iterations", "ctx . iteration & 1u"])(
+    "naming %s declares all four members, after everything that was there before",
+    (expression) => {
+      const module = kernelModule({ ...base, kernel: kernelReading(expression) });
+      if (!module.ok) throw new Error(module.errors.join(", "));
+      expect(module.usesSteps).toBe(true);
+      // The block: the four u32, last, so no member that existed before them moved.
+      expect(module.wgsl).toContain("  count: u32,\n  substep: u32,\n  substeps: u32,\n  iteration: u32,\n  iterations: u32,\n};");
+      expect(module.wgsl).toMatch(/ {2}frameIndex: u32,\n {2}\/\* T1583b[^]*?\*\/\n {2}substep: u32,\n {2}substeps: u32,\n {2}iteration: u32,\n {2}iterations: u32,\n};/);
+      expect(module.wgsl).toContain(
+        "kernelFrame.frameIndex, kernelFrame.substep, kernelFrame.substeps, kernelFrame.iteration, kernelFrame.iterations);",
+      );
+    },
+  );
+
+  it("generates EXACTLY the pre-T1583b text for a kernel that names none (§V309)", () => {
+    const module = kernelModule({ ...base, kernel: GRAVITY_KERNEL });
+    if (!module.ok) throw new Error(module.errors.join(", "));
+    expect(module.usesSteps).toBe(false);
+    expect(module.wgsl).not.toMatch(/substep|iteration/);
+    // The verbatim spelling, as the pointer's case pins it: "not.toMatch" alone would
+    // pass while a stray blank line rewrote every kernel ever saved.
+    expect(module.wgsl).toContain(`struct KernelFrame {
+  timeSeconds: f32,
+  deltaSeconds: f32,
+  frameIndex: u32,
+  seed: u32,
+  count: u32,
+};`);
+    expect(module.wgsl).toContain(`struct PointCtx {
+  /* Slot in the buffers — addressing, never identity (§V73). */
+  index: u32,
+  count: u32,
+  time: f32,
+  delta: f32,
+  frameIndex: u32,
+};`);
+    expect(module.wgsl).toContain(
+      "  let ctx = PointCtx(index, kernelFrame.count, kernelFrame.timeSeconds, kernelFrame.deltaSeconds, kernelFrame.frameIndex);",
+    );
+  });
+
+  it("stacks after the reflected params without moving them", () => {
+    const module = kernelModule({
+      ...base,
+      kernel: kernelReading("ctx.substep") ,
+      params: { declaration: "struct Params {\n  gain: f32,\n}", fields: [{ name: "gain", wgsl: "f32" }] },
+    });
+    if (!module.ok) throw new Error(module.errors.join(", "));
+    expect(module.wgsl).toContain("  count: u32,\n  p_gain: f32,\n  substep: u32,");
+    expect(module.wgsl).toContain("Params(kernelFrame.p_gain), kernelFrame.substep,");
+  });
+
+  it("an author's own `iterations` knob, read through ctx.params, is not a step member", () => {
+    const module = kernelModule({
+      ...base,
+      kernel: kernelReading("ctx.params.iterations"),
+      params: { declaration: "struct Params {\n  iterations: f32,\n}", fields: [{ name: "iterations", wgsl: "f32" }] },
+    });
+    if (!module.ok) throw new Error(module.errors.join(", "));
+    expect(module.usesSteps).toBe(false);
+    expect(module.wgsl).not.toContain("substep");
+    // The knob itself is there, under its prefixed wire name.
+    expect(module.wgsl).toContain("p_iterations: f32,");
+  });
+
+  it("a GROUP predicate over the run brings the members in on its own", () => {
+    const module = kernelModule({ ...base, kernel: GRAVITY_KERNEL, group: "ctx.iteration == 0u" });
+    if (!module.ok) throw new Error(module.errors.join(", "));
+    expect(module.usesSteps).toBe(true);
+  });
+
+  it("REFUSES on a lifecycle kernel by name — that node does not step", () => {
+    const module = kernelModule({ ...LIFECYCLE, kernel: kernelReading("ctx.substep") });
+    expect(module.ok).toBe(false);
+    if (module.ok) return;
+    expect(module.errors.join(" ")).toContain("ctx.substep / ctx.iteration");
+    expect(module.errors.join(" ")).toContain("Step a plain Point Kernel");
+    // Whatever the author called the context.
+    const renamed = kernelModule({
+      ...LIFECYCLE,
+      kernel: "fn process(p: Point, c: PointCtx) -> Point {\n  var q = p;\n  q.position.x = f32(c.iterations);\n  return q;\n}",
+    });
+    expect(renamed.ok).toBe(false);
+  });
+
+  it("does NOT refuse a lifecycle kernel that owns a struct with an `iterations` field", () => {
+    const module = kernelModule({
+      ...LIFECYCLE,
+      kernel: `struct Solver { iterations: u32 }
+fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  let solver = Solver(4u);
+  q.position.x = f32(solver.iterations);
+  return q;
+}`,
+    });
+    if (!module.ok) throw new Error(module.errors.join(", "));
+    // Neither refused nor handed members nothing on that node would fill.
+    expect(module.usesSteps).toBe(false);
+    expect(module.wgsl).not.toContain("substep");
+  });
+
+  it("REFUSES in a SPAWN HOOK by name, and leaves a hook's own `iterations` alone", () => {
+    const hook = (body: string): ReturnType<typeof spawnHookModule> =>
+      spawnHookModule({
+        attributes: [...SCHEMA, { name: "flags", type: "u32", default: [0] }],
+        flagsAttribute: "flags",
+        hook: `struct Solver { iterations: u32 }\nfn spawn(child: Point, ctx: PointCtx) -> Point {\n  var q = child;\n  ${body}\n  return q;\n}`,
+      });
+    const refused = hook("q.position.x = f32(ctx.iteration);");
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.errors.join(" ")).toContain("kernel steps are a plain Point Kernel's");
+    expect(hook("q.position.x = f32(Solver(4u).iterations);").ok).toBe(true);
+  });
+});
+
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════

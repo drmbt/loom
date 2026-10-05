@@ -44,6 +44,7 @@ import {
 import { createFrameGuard } from "../frame-guard.ts";
 import { createPacedGate } from "../frame-pacing.ts";
 import {
+  MAX_KERNEL_STEPS,
   bytesPerPixelFor,
   estimateResourceBytes,
   expandLoops,
@@ -59,7 +60,8 @@ import {
   type ResourceDescriptor,
   type UniformValues,
 } from "../plan.ts";
-import { dispatchFrameUniforms, sharedUniformsFromFrame } from "../shared-uniforms.ts";
+import { dispatchFrameUniforms, dispatchStepUniforms, sharedUniformsFromFrame } from "../shared-uniforms.ts";
+import type { DispatchStep } from "../shared-uniforms.ts";
 import { authoredPosition, type AuthoredPosition, type WgslSourceMap } from "../wgsl-source-map.ts";
 import { describeCapabilities, meetsBaseline } from "./capabilities.ts";
 import { browserGpuHost, type GpuHost, type GpuSession } from "./gpu-host.ts";
@@ -169,6 +171,19 @@ interface Program {
    * encoder re-expands when a count changes — a substep count is a VALUE.
    */
   readonly loopCounts: Map<string, number>;
+  /** T1583b: a kernel region's live iterations per substep, by loopId, beside its count. */
+  readonly loopIterations: Map<string, number>;
+  /**
+   * T1583b: the dispatches a kernel region steps, by DISPATCH pass id. Read off the plan
+   * whenever it is installed or its values move (`prepare` is a value).
+   */
+  stepped: ReadonlyMap<string, SteppedDispatch>;
+  /**
+   * T1583b: what each stepped dispatch runs THIS render and how far it has got. Decided
+   * once per render, where the per-run uniforms are written, and read by the encoder — so
+   * the number of blocks written and the number of runs encoded cannot disagree.
+   */
+  readonly stepRuns: Map<string, { readonly total: number; done: number }>;
   readonly compiled: CompiledExecutionPlan;
   /** Latest uniform values per pass, including live updates. Survives a device rebuild. */
   readonly liveUniforms: Map<string, UniformValues>;
@@ -192,6 +207,68 @@ interface Program {
   /** Something changed since the last encoded frame: uniforms, a compile, a reset. */
   dirty: boolean;
 }
+
+/** T1583b: one dispatch a kernel region steps — see `KernelStepsDescriptor` in plan.ts. */
+interface SteppedDispatch {
+  readonly loopId: string;
+  /** The pair swapped between runs. */
+  readonly pair: string;
+  /** Runs to keep uniform slots ready for, whatever the live count is. */
+  readonly prepare: number;
+  /** Where each run's own uniform block binds; absent, the runs share the pass's values. */
+  readonly uniformBinding: string | undefined;
+  /** The node a diagnostic about these runs names. */
+  readonly nodeId: string | undefined;
+}
+
+function steppedDispatches(passes: ReadonlyArray<PassDescriptor>): Map<string, SteppedDispatch> {
+  const out = new Map<string, SteppedDispatch>();
+  passes.forEach((pass, index) => {
+    if (pass.kind !== "loop" || pass.edge !== "begin" || pass.steps === undefined) return;
+    // `readExecutionPlan` refused every other shape: the body is one dispatch.
+    const body = passes[index + 1];
+    if (body === undefined || body.kind !== "dispatch") return;
+    out.set(body.id, {
+      loopId: pass.loopId,
+      pair: pass.steps.pair,
+      prepare: pass.steps.prepare,
+      uniformBinding: body.uniformBinding,
+      nodeId: body.nodeId,
+    });
+  });
+  return out;
+}
+
+/**
+ * T1583b — ONE UNIFORM BLOCK PER RUN of a stepped dispatch (assessment risk 2).
+ *
+ * The runs of one frame differ only in uniform values: the run index, `firstRun`, the seed.
+ * With ONE block rewritten between dispatches, what each run reads depends on vgpu
+ * submitting every `dispatch()` as its own command buffer the moment it is called — true
+ * today and not promised: under one encoder per frame the writes would all land before the
+ * first dispatch, and every run would read the last index. So each run binds a block of its
+ * own, every block is written BEFORE the first dispatch is encoded, and the order things
+ * reach the queue in stops mattering.
+ *
+ * Separate blocks, not one buffer read at dynamic offsets: vgpu's bind path passes no
+ * offsets (`set-core.js` hands `setBindGroup` an empty list) and its uniform packer is
+ * private, so dynamic offsets would cost a new patch to vgpu and a second copy of its
+ * packing rules here. A block per run needs neither.
+ *
+ * Run 0 is the pass's own block, so a kernel run once per frame owns nothing here. Keyed by
+ * the compute pipeline because that is the true owner — a block adopts that pipeline's
+ * `KernelFrame` layout and lives in its bind groups — which also makes carry-over free: a
+ * carried pipeline arrives with its slots, a replaced one takes them with it
+ * (`releaseResourcesExcept`).
+ */
+interface StepSlots {
+  /** Run `r >= 1` reads `blocks[r - 1]`. */
+  readonly blocks: Array<{ set(values: Record<string, unknown>): void }>;
+  /** The run whose block the pipeline's uniform binding points at now. */
+  bound: number;
+}
+
+const stepSlotsOf = new WeakMap<object, StepSlots>();
 
 type BindingConsumers<T> = ReadonlyMap<string, ReadonlyMap<string, ReadonlyArray<T>>>;
 
@@ -1144,6 +1221,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     fitSurfacesToLayout();
     reconcileExternalTextureExtents();
     flushRings(); // T321: archive last frame's ring writes before anything binds a tap.
+    if (program) prepareStepSlots(program); // T1583b: a block is a buffer; made here, not in the frame.
     const previous = currentFrame;
     currentFrame = f;
     try {
@@ -1230,6 +1308,123 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     active.loopCounts.set(loopId, count);
     active.encodePasses = undefined;
     active.encodeSegments = undefined;
+  }
+
+  /**
+   * T1583b: gives every stepped dispatch a uniform block for each run it may be asked for.
+   *
+   * Called at FRAME ENTRY on both paths, before anything is encoded, because a block is a
+   * buffer and §V8 keeps buffers out of the frame. That one seam covers a fresh plan, a
+   * values-only compile, a count pushed between direct renders and a rebuilt device. The
+   * one case it cannot see is a count pushed INSIDE the frame (the animator, on the loop
+   * path), which is what `prepare` is for: the compiler states how far a count that moves
+   * per frame can go, and that many are made here up front. Never shrinks.
+   */
+  function prepareStepSlots(active: Program): void {
+    if (active.stepped.size === 0 || !session) return;
+    for (const [passId, stepping] of active.stepped) {
+      const pipeline = active.resources.computes.get(passId);
+      const own = active.resources.passUniforms.get(passId);
+      if (pipeline === undefined || own === undefined || stepping.uniformBinding === undefined) continue;
+      const wanted = Math.max(stepping.prepare, liveStepCount(active, stepping)) - 1;
+      let slots = stepSlotsOf.get(pipeline);
+      if ((slots?.blocks.length ?? 0) >= wanted) continue;
+      guard.assertOutsideFrame("kernel step uniform block");
+      if (slots === undefined) {
+        slots = { blocks: [], bound: 0 };
+        stepSlotsOf.set(pipeline, slots);
+      }
+      const values = toMutable(active.liveUniforms.get(passId) ?? {});
+      while (slots.blocks.length < wanted) {
+        const block = uniforms<Record<string, unknown>>(session.gpu, values);
+        // vgpu creates a block's buffer when a pipeline first binds it, so bind it now.
+        pipeline.set({ [stepping.uniformBinding]: block });
+        slots.blocks.push(block);
+      }
+      pipeline.set({ [stepping.uniformBinding]: own });
+      slots.bound = 0;
+    }
+  }
+
+  /** T1583b: the dispatches a kernel region's live count asks for, inside the plan's bounds. */
+  function liveStepCount(active: Program, stepping: SteppedDispatch): number {
+    const live = active.loopCounts.get(stepping.loopId) ?? 1;
+    return Math.min(MAX_KERNEL_STEPS, Math.max(1, Math.round(live)));
+  }
+
+  /**
+   * T1583b: how one stepped dispatch divides THIS render — substeps × iterations runs.
+   *
+   * The live count is the region's (`expandLoops` clamps it the same way); iterations is
+   * how many of those runs make one substep. A count the blocks are not ready for can only
+   * arrive inside a frame, past what the plan said to prepare. It is not run short in
+   * silence: the frame runs what it has blocks for, with the step it divides by matching
+   * what it runs, and the shortfall is reported by name. Frame entry then makes the rest.
+   */
+  function resolveStepRuns(
+    active: Program,
+    passId: string,
+    stepping: SteppedDispatch,
+  ): { substeps: number; iterations: number; total: number } {
+    const asked = liveStepCount(active, stepping);
+    let iterations = Math.min(asked, Math.max(1, Math.round(active.loopIterations.get(stepping.loopId) ?? 1)));
+    let substeps = Math.max(1, Math.floor(asked / iterations));
+    const pipeline = active.resources.computes.get(passId);
+    const ready =
+      stepping.uniformBinding === undefined
+        ? asked
+        : 1 + (pipeline === undefined ? 0 : (stepSlotsOf.get(pipeline)?.blocks.length ?? 0));
+    if (substeps * iterations > ready) {
+      iterations = Math.min(iterations, ready);
+      substeps = Math.max(1, Math.floor(ready / iterations));
+      hub.report(
+        backendDiagnostic(
+          "warning",
+          BackendDiagnosticCode.resourceLimit,
+          `Node "${stepping.nodeId ?? passId}" was asked for ${asked} kernel steps inside a frame, with uniform blocks ready for ${ready}; this frame ran ${substeps * iterations}.`,
+          {
+            ...(stepping.nodeId === undefined ? {} : { nodeId: stepping.nodeId }),
+            suggestion: "Blocks are created between frames (§V8); the next frame runs the full count.",
+          },
+        ),
+      );
+    }
+    return { substeps, iterations, total: substeps * iterations };
+  }
+
+  /**
+   * T1583b: readies a stepped dispatch for its next run this render; false when it has
+   * none left.
+   *
+   * Run 0 is the dispatch exactly as an unstepped one. Before each later run the pair
+   * swaps, so the run reads what the one before it wrote, and every binding of the pair
+   * moves with it — this dispatch's own two and each downstream consumer's. That rebind is
+   * what leaves consumers on the half the LAST run wrote (assessment risk 1); the pair's
+   * own swap pass, after its last consumer, then hands that half to the next frame.
+   */
+  function beginStepRun(active: Program, passId: string, stepping: SteppedDispatch): boolean {
+    let runs = active.stepRuns.get(passId);
+    if (runs === undefined) {
+      // Encoded outside `render()`, which is what divides a frame: one run, as unstepped.
+      runs = { total: 1, done: 0 };
+      active.stepRuns.set(passId, runs);
+    }
+    const run = runs.done;
+    if (run >= runs.total) return false;
+    runs.done = run + 1;
+    if (run > 0) {
+      active.resources.bufferPairs.get(stepping.pair)?.swap();
+      rebindResource(active, stepping.pair);
+    }
+    const pipeline = active.resources.computes.get(passId);
+    const slots = pipeline === undefined ? undefined : stepSlotsOf.get(pipeline);
+    if (pipeline === undefined || slots === undefined || stepping.uniformBinding === undefined) return true;
+    if (slots.bound === run) return true;
+    const block = run === 0 ? active.resources.passUniforms.get(passId) : slots.blocks[run - 1];
+    if (block === undefined) return true;
+    pipeline.set({ [stepping.uniformBinding]: block });
+    slots.bound = run;
+    return true;
   }
 
   function encode(
@@ -1324,6 +1519,10 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           // frame of latency, which §V144 embraces. The no-open-frame path
           // (`encodeSegmented`) honours plan order exactly.
           //
+          // T1583b: a kernel region's dispatch arrives here once per run. Each run after
+          // the first swaps the pair and binds its own uniform block first.
+          const stepping = active.stepped.get(pass.id);
+          if (stepping !== undefined && !beginStepRun(active, pass.id, stepping)) continue;
           // T1247: the GPU span rides on THIS frame, keyed exactly like a render pass's
           // (same `spanFor`, same substep numbering), so the compute lands in both the
           // per-pass column and the frame extent instead of being invisible to both.
@@ -2332,8 +2531,11 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         for (const pass of read.passes) {
           if (pass.kind === "loop" && pass.edge === "begin") {
             setLoopCount(program, pass.loopId, pass.count ?? 1);
+            // T1583b: a kernel region's other two values move with its count.
+            if (pass.steps !== undefined) program.loopIterations.set(pass.loopId, pass.steps.iterations);
           }
         }
+        program.stepped = steppedDispatches(read.passes);
         program.dirty = true; // values moved; the next frame must draw them (§V159)
         stale = false;
         return program.compiled;
@@ -2471,6 +2673,13 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             pass.kind === "loop" && pass.edge === "begin" ? [[pass.loopId, pass.count ?? 1] as const] : [],
           ),
         ),
+        loopIterations: new Map(
+          read.passes.flatMap((pass) =>
+            pass.kind === "loop" && pass.steps !== undefined ? [[pass.loopId, pass.steps.iterations] as const] : [],
+          ),
+        ),
+        stepped: steppedDispatches(read.passes),
+        stepRuns: new Map(),
         compiled: { id, logical: plan },
         liveUniforms: new Map(planUniformValues(read.passes)),
         resources,
@@ -2531,6 +2740,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         fitSurfacesToLayout(); // T1329b, same seam: outside the frame, before anything encodes.
         reconcileExternalTextureExtents();
         flushRings(); // T321: same reasoning, same seam.
+        prepareStepSlots(program); // T1583b: same seam — see the function.
       }
       if (compiled.id !== program.id) {
         hub.report(
@@ -2556,6 +2766,15 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // disagree about either. Supply only fields declared in the pass's initial uniform
       // contract: vgpu 0.5 rejects unknown fields instead of silently ignoring them.
       let dispatchValues: Array<[string, UniformValues[string]]> | undefined;
+      // T1583b: how each stepped kernel divides this render, decided before anything is
+      // written so the blocks below and the encoder's runs come from one answer.
+      active.stepRuns.clear();
+      const stepsOf = new Map<string, DispatchStep>();
+      for (const [passId, stepping] of active.stepped) {
+        const { substeps, iterations, total } = resolveStepRuns(active, passId, stepping);
+        active.stepRuns.set(passId, { total, done: 0 });
+        stepsOf.set(passId, { run: 0, substeps, iterations });
+      }
       for (const pass of active.passes) {
         if (pass.kind === "dispatch" && pass.uniformBinding !== undefined) {
           // T510: firstRun = 1u exactly when this pass's storage was created or cleared
@@ -2566,15 +2785,44 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             (pass.buffers ?? []).some((binding) =>
               active.resources.freshStorage.has(binding.resourceId),
             );
+          const declared = pass.uniforms ?? {};
           const values: Record<string, UniformValues[string]> = {};
           dispatchValues ??= Object.entries(dispatchFrameUniforms(frameInputs.frame, shared));
           for (const [name, value] of dispatchValues) {
-            if (pass.uniforms !== undefined && Object.hasOwn(pass.uniforms, name)) values[name] = value;
+            if (Object.hasOwn(declared, name)) values[name] = value;
           }
-          if (pass.uniforms !== undefined && Object.hasOwn(pass.uniforms, "firstRun")) {
+          if (Object.hasOwn(declared, "firstRun")) {
             values["firstRun"] = firstRun ? 1 : 0;
           }
+          // T1583b: run 0 of a stepped kernel. At one step per frame this writes the
+          // numbers above again — the delta over 1, the same `firstRun` — so a kernel
+          // that is not stepped reads exactly what it read before steps existed.
+          const steps = stepsOf.get(pass.id);
+          const stepFrame = { deltaSeconds: frameInputs.frame.deltaSeconds, firstRun };
+          if (steps !== undefined) {
+            for (const [name, value] of Object.entries(dispatchStepUniforms(steps, stepFrame))) {
+              if (Object.hasOwn(declared, name)) values[name] = value;
+            }
+          }
           if (Object.keys(values).length > 0) applyUniforms(active, pass.id, values);
+          // T1583b: runs 1..N-1, each into its OWN block and all of them now, before any
+          // dispatch is encoded (see `StepSlots`). The seed is folded per run from the
+          // live one, which never holds a folded value itself: run 0 folds to identity.
+          const total = active.stepRuns.get(pass.id)?.total ?? 1;
+          if (steps !== undefined && total > 1) {
+            const pipeline = active.resources.computes.get(pass.id);
+            const blocks = pipeline === undefined ? undefined : stepSlotsOf.get(pipeline)?.blocks;
+            const live = active.liveUniforms.get(pass.id) ?? {};
+            const seed = typeof live["seed"] === "number" ? live["seed"] : undefined;
+            for (let run = 1; run < total; run += 1) {
+              const merged: Record<string, unknown> = { ...live };
+              const perRun = dispatchStepUniforms({ ...steps, run }, seed === undefined ? stepFrame : { ...stepFrame, seed });
+              for (const [name, value] of Object.entries(perRun)) {
+                if (Object.hasOwn(declared, name)) merged[name] = value;
+              }
+              blocks?.[run - 1]?.set(merged);
+            }
+          }
         }
       }
       // T321: passes reading a ring as an ARRAY need to know where "now" is. The
@@ -2826,6 +3074,11 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         const requested = update.values["count"];
         if (typeof requested === "number" && Number.isFinite(requested)) {
           setLoopCount(program, loopBegin.loopId, requested);
+        }
+        // T1583b: a kernel region's second value — how many of those runs are one substep.
+        const iterations = update.values["iterations"];
+        if (loopBegin.steps !== undefined && typeof iterations === "number" && Number.isFinite(iterations)) {
+          program.loopIterations.set(loopBegin.loopId, iterations);
         }
         return;
       }
@@ -3599,7 +3852,11 @@ function releaseResourcesExcept(previous: ResourceSet, next?: ResourceSet): void
     if (next?.effects.get(id) !== item) evictBindGroups(item);
   }
   for (const [id, item] of previous.computes) {
-    if (next?.computes.get(id) !== item) evictBindGroups(item);
+    if (next?.computes.get(id) === item) continue;
+    evictBindGroups(item);
+    // T1583b: a stepped kernel's per-run uniform blocks belong to its pipeline and go with it.
+    for (const block of stepSlotsOf.get(item)?.blocks ?? []) destroy(block);
+    stepSlotsOf.delete(item);
   }
   for (const [id, item] of previous.draws) {
     if (next?.draws.get(id) !== item) evictBindGroups(item);

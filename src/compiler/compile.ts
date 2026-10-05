@@ -78,7 +78,8 @@ import {
 import { cameraPayloadMatrix, viewProjection , projectorMatrix } from "../domain/geometry/camera.ts";
 import type { Mat4 } from "../domain/geometry/camera.ts";
 import { DEFAULT_MATERIAL } from "../domain/types/scene.ts";
-import { applySubstepLoops, planSubstepLoops } from "./substeps.ts";
+import { applyKernelSteps, applySubstepLoops, planSubstepLoops } from "./substeps.ts";
+import { isParameterSlot } from "../domain/parameters/slots.ts";
 import { scaleOutputPixels } from "./pixel-scale.ts";
 import { timeProbeFor } from "./time-probe.ts";
 import type { TimeProbe } from "./time-probe.ts";
@@ -2380,6 +2381,35 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
     const reordered = applySubstepLoops(passes, substeps.loops, feeders, diagnostics);
     passes.length = 0;
     passes.push(...(reordered as ReadonlyArray<Record<string, unknown>>));
+  }
+
+  /*
+   * 6c. KERNEL STEPS (T1583b). A node that declares `steps` has its one dispatch wrapped
+   * in a loop region where it stands — at count 1 too (§V358). After 6b on purpose: a
+   * kernel inside a region a feedback loop iterates is refused by name there instead of
+   * being nested in it.
+   */
+  const stepped = applyKernelSteps(
+    passes,
+    {
+      nodes: validated.nodes,
+      pairs: new Set(
+        resources.flatMap((resource) =>
+          resource["kind"] === "bufferPair" && typeof resource["id"] === "string" ? [resource["id"]] : [],
+        ),
+      ),
+      // A slot in any mode but static can read the frame; a morph fades a plain value.
+      moves: (nodeId, key) => {
+        const stored = validated.nodes.get(nodeId)?.node.parameters[key];
+        return (isParameterSlot(stored) && stored.mode !== "static") || morphs.keysOf(nodeId)?.has(key) === true;
+      },
+    },
+    diagnostics,
+  );
+  if (stepped !== passes) {
+    const wrapped = [...(stepped as ReadonlyArray<Record<string, unknown>>)];
+    passes.length = 0;
+    passes.push(...wrapped);
   }
 
   // One shared sampler for the plan. Emitted whenever anything renders: deciding per-plan

@@ -64,8 +64,14 @@ function blocksOf(plan: CompiledGraph): Map<string, UniformValues> {
   for (const pass of plan.passes) {
     // T425: a loop-begin's count is its one animatable value — surfaced as a block so
     // a driven substeps parameter diffs and pushes exactly like a uniform (§V5).
+    // T1583b: a kernel region has a second one, how many of those runs are one substep.
     if (pass.kind === "loop") {
-      if (pass.edge === "begin") blocks.set(pass.id, { count: pass.count ?? 1 });
+      if (pass.edge === "begin") {
+        blocks.set(pass.id, {
+          count: pass.count ?? 1,
+          ...(pass.steps === undefined ? {} : { iterations: pass.steps.iterations }),
+        });
+      }
       continue;
     }
     const uniforms = "uniforms" in pass ? pass.uniforms : undefined;

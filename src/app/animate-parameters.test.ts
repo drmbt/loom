@@ -140,5 +140,36 @@ describe("a driven substeps parameter animates like a uniform (T425)", () => {
     // Unchanged again: nothing rewritten.
     expect(animator.push(backend, base, loopPlan(12))).toBe(0);
   });
+
+  /*
+   * T1583b: a kernel region has TWO values, and the second cannot be read off the first —
+   * 12 runs is 12 substeps, or 4 substeps of 3 iterations, and they divide the frame's
+   * time differently. So `iterations` rides in the same block, and a change to it alone
+   * (the count standing still) is still a push.
+   */
+  it("pushes a kernel region's iterations beside its count, and when it alone moves", () => {
+    const kernelPlan = (count: number, iterations: number): CompiledGraph => {
+      const base = loopPlan(count);
+      return {
+        ...base,
+        passes: base.passes.map((pass) =>
+          pass.kind === "loop" && pass.edge === "begin"
+            ? { ...pass, steps: { pair: "state", iterations, prepare: 256 } }
+            : pass,
+        ),
+      } as unknown as CompiledGraph;
+    };
+    const { backend, writes } = recordingBackend();
+    const animator = createUniformAnimator();
+    const base = kernelPlan(1, 1);
+
+    expect(animator.push(backend, base, kernelPlan(12, 3))).toBe(1);
+    expect(animator.push(backend, base, kernelPlan(12, 4))).toBe(1);
+    expect(animator.push(backend, base, kernelPlan(12, 4))).toBe(0);
+    expect(writes).toEqual([
+      { passId: "state#loop:begin", values: { count: 12, iterations: 3 } },
+      { passId: "state#loop:begin", values: { count: 12, iterations: 4 } },
+    ]);
+  });
 });
 

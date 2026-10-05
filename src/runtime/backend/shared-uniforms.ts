@@ -132,3 +132,65 @@ export function dispatchFrameUniforms(
     absFrameIndex: shared.absFrame,
   };
 }
+
+/** One run of a stepped dispatch (T1583b): which it is, and how the frame is divided. */
+export interface DispatchStep {
+  /** 0-based, in `[0, substeps × iterations)`. */
+  readonly run: number;
+  readonly substeps: number;
+  readonly iterations: number;
+}
+
+/**
+ * What ONE RUN of a stepped dispatch reads differently from the frame's values (T1583b).
+ *
+ * A kernel the plan steps several times per frame runs the same pass object N times, and
+ * these are the only numbers that tell one run from another. Beside
+ * `dispatchFrameUniforms` for its reason: one answer to "what is a run", and the backend
+ * selects from this candidate bag only the members the pass declared, exactly as it does
+ * from that one.
+ *
+ *  - `deltaSeconds` is the frame's step over the SUBSTEP count, for every run. Iterations
+ *    do not divide it: they repeat inside a substep at the same step.
+ *  - `substep` / `iteration` count within the frame and within the substep.
+ *  - `firstRun` is the frame's on run 0 and 0 after it: storage that run 0 wrote is not
+ *    fresh, and a kernel that seeds on it would re-seed N times per frame.
+ *  - `seed` is folded with the run (`stepSeed`), absent when the pass carries none.
+ */
+export function dispatchStepUniforms(
+  step: DispatchStep,
+  frame: { readonly deltaSeconds: number; readonly firstRun: boolean; readonly seed?: number },
+): UniformValues {
+  return {
+    deltaSeconds: frame.deltaSeconds / step.substeps,
+    substep: Math.floor(step.run / step.iterations),
+    substeps: step.substeps,
+    iteration: step.run % step.iterations,
+    iterations: step.iterations,
+    firstRun: frame.firstRun && step.run === 0 ? 1 : 0,
+    ...(frame.seed === undefined ? {} : { seed: stepSeed(frame.seed, step.run) }),
+  };
+}
+
+/**
+ * The seed run `run` of a stepped kernel hashes with (T1583b, §V73).
+ *
+ * A kernel's random draw is `hash(seed ^ pointId, frameIndex, salt)`, and every run of one
+ * frame shares all three — so without this each run would repeat the first one's draws.
+ * The run cannot go into the generated text: a kernel that names no step member generates
+ * the WGSL it always did (§V309). It goes into the VALUE the text already reads.
+ *
+ * It is XORed into the seed with its bits REVERSED, so run 1 sets bit 31, run 2 bit 30, and
+ * the 256 runs a frame may hold occupy the top eight bits. The seed meets the point id by
+ * XOR, so (point, run) pairs are distinct hash inputs for every point id below 2^24 — far
+ * above the largest point set (one million) — and two runs can never trade streams with
+ * each other or with another point. Run 0 leaves the seed untouched, which is what keeps a
+ * kernel run once per frame on exactly the stream it has always had.
+ *
+ * `pointHashReference` (`src/points/rng.ts`) mirrors it on the CPU.
+ */
+export function stepSeed(seed: number, run: number): number {
+  let reversed = 0;
+  for (let bit = 0; bit < 32; bit += 1) reversed |= ((run >>> bit) & 1) << (31 - bit);
+  return (seed ^ reversed) >>> 0;
+}

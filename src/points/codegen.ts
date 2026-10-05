@@ -62,6 +62,13 @@ import { advance, endOf } from "../runtime/backend/wgsl-source-map.ts";
  * were given the absolute pair at T461 and the shared frame block at T468; this channel was
  * missed both rounds (§V437). Same detection, same zero cost when unused, same determinism
  * — a frame COUNT at the timeline rate, never a wall clock (§V44, T467).
+ *
+ * `ctx.substep` / `ctx.substeps` / `ctx.iteration` / `ctx.iterations` (T1583b) are the
+ * sixth: WHICH run of the kernel this is, when the node runs it several times per frame.
+ * Nothing in this file repeats anything — the plan's loop region and the encoder do — so
+ * the whole of the feature here is four numbers a kernel may read, detected like the rest.
+ * `ctx.delta` needs no member: the backend writes the frame's step divided by the substep
+ * count into the `deltaSeconds` every kernel already reads. See `STEP_REFERENCE`.
  */
 
 /** Bumped when the generated Point/PointCtx/process signature changes shape (§V77). */
@@ -271,6 +278,12 @@ export interface KernelModule {
   /** T510: the module names `ctx.firstRun`; the pass must reserve the uniform member. */
   readonly usesFirstRun: boolean;
   /**
+   * T1583b: the module names a step member, so its `KernelFrame` carries all four. The
+   * emitting node MUST reserve `substep`, `substeps`, `iteration` and `iterations` in the
+   * pass's `uniforms` record exactly when this is true — same by-name hazard as above.
+   */
+  readonly usesSteps: boolean;
+  /**
    * T477: the kernel samples `fieldAt(...)` and a field is wired. The emitting node
    * MUST bind the texture as `fieldTexture` exactly when this is true — vgpu matches
    * by name, and a declared texture with no binding fails loudly at pass build.
@@ -367,6 +380,10 @@ const FIELD_REFERENCE = /\bfieldAt\s*\(/;
  * reproducible, no atomics and no read-write hazard by construction. A helper reading
  * `out_*` would have been Gauss-Seidel with a scheduling-dependent answer, i.e. §V44's
  * determinism lost to a name that looked more current.
+ *
+ * T1583b: "last frame" is the one-run case. A kernel the node steps several times per
+ * frame reads the PREVIOUS RUN's values here — still one half for every reader, so still
+ * Jacobi and still order-independent, with the correction visible one run later.
  *
  * COSTS NOTHING BY EXISTING (§V309): no uniform member, no binding, no `PointCtx` change —
  * it is sugar over storage the wrapper had already bound, so a kernel that never names it
@@ -592,6 +609,57 @@ function wrappingClockNotice(
 const FIRST_RUN_REFERENCE = /\.\s*firstRun\b/;
 
 /**
+ * T1583b (§V309) — KERNEL STEPS: which run of the kernel this is.
+ *
+ * A Point Kernel node can run its kernel several times per displayed frame (its Substeps
+ * and Iterations parameters), each run reading what the run before it wrote. Two counts,
+ * because they mean different things:
+ *
+ *   - a SUBSTEP advances time: `ctx.delta` is the frame's step divided by `ctx.substeps`,
+ *     so `position += velocity * ctx.delta` covers the same frame in smaller pieces;
+ *   - an ITERATION repeats inside one substep at the same `ctx.delta` — the passes a
+ *     constraint solver relaxes with. Red/black ordering is `ctx.iteration & 1u`, and
+ *     "integrate on the first pass of the substep" is `ctx.iteration == 0u`.
+ *
+ * `ctx.substep` counts 0..substeps-1 and `ctx.iteration` 0..iterations-1 within it; the
+ * run number in the frame is `ctx.substep * ctx.iterations + ctx.iteration`.
+ *
+ * ONE detection for all four, as the absolute clock is one for its pair: a kernel that
+ * reads the index wants the count beside it, and four u32 in a padded block cost nothing
+ * against `ctx.iteration` compiling while `ctx.iterations` does not. A kernel naming none
+ * generates the text it generated before (§V309) — and still STEPS, because the count, the
+ * divided delta and the per-run random stream all arrive as uniform VALUES, never as text.
+ *
+ * `pointAt` under steps: it reads the half the previous RUN wrote, so a coupled update is
+ * Jacobi within a run and sees its neighbours' corrections on the next one.
+ *
+ * NOT `ctx.params.iterations`: `iterations` is a natural name for an author's own knob, and
+ * a reflected param is always read through `params.` — so that spelling is left alone.
+ */
+const STEP_REFERENCE = /(?<!\bparams\s*)\.\s*(?:substeps?|iterations?)\b/;
+
+/** The four `KernelFrame` members a stepping kernel reads, in declaration order. */
+export const KERNEL_STEP_UNIFORMS = ["substep", "substeps", "iteration", "iterations"] as const;
+
+/**
+ * A step member read off a `PointCtx` — the PRECISE form, used only to refuse.
+ *
+ * Declaring the members on the loose access above over-detects harmlessly (a member a
+ * kernel may not read). REFUSING on it would not be harmless: the lifecycle kernel and the
+ * spawn hook do not step, and `solver.iterations` on an author's own struct in a working
+ * advanced kernel must keep compiling. So a refusal needs the access to be on a name the
+ * text itself declares as `PointCtx` (`extra` adds the generated wrapper's own `ctx`).
+ * What this misses — a step member read through an alias — arrives as Dawn's "no member
+ * named", on the author's line (T1523b).
+ */
+function readsStepMemberOfCtx(code: string, extra: ReadonlyArray<string> = []): boolean {
+  const names = new Set<string>(extra);
+  for (const match of code.matchAll(/(\w+)\s*:\s*PointCtx\b/g)) names.add(match[1] as string);
+  if (names.size === 0) return false;
+  return new RegExp(`\\b(?:${[...names].join("|")})\\s*\\.\\s*(?:substeps?|iterations?)\\b`).test(code);
+}
+
+/**
  * T479: how many live value-graph slots a point kernel can reach. Four is a judgement,
  * and it is stated rather than defaulted: one (the `customWgsl` precedent) is a wall for
  * anything with more than a single knob, and a dozen is inspector clutter on every kernel
@@ -770,6 +838,21 @@ export function generateKernelModule(request: KernelModuleRequest): KernelModule
         "packed flags word is write-only by construction (§V588), so another slot's alive and " +
         "spawnCount cannot be read, only invented (T1070). Read neighbours in a plain Point " +
         "Kernel, and carry what the population needs in an ordinary attribute.",
+    );
+  }
+
+  /* T1583b: the step members on a LIFECYCLE kernel are refused BY NAME (§V288). That node
+     does not step — its kernel, scan, scatter, spawn and hook passes would have to repeat
+     as a unit, and births would multiply against the per-parent cap — so the members could
+     only ever read "run 0 of 1", which is a number that looks like an answer. It never
+     DECLARES them either: nothing on that node would mirror the uniforms. */
+  const usesSteps =
+    lifecycle === undefined && (STEP_REFERENCE.test(kernelCode) || STEP_REFERENCE.test(groupCode));
+  if (lifecycle !== undefined && (readsStepMemberOfCtx(kernelCode) || readsStepMemberOfCtx(groupCode, ["ctx"]))) {
+    errors.push(
+      "kernel reads ctx.substep / ctx.iteration, which the advanced (lifecycle) kernel does not " +
+        "offer — it runs once per frame, because its lifecycle passes would have to repeat with " +
+        "it (T1583b). Step a plain Point Kernel, which has Substeps and Iterations.",
     );
   }
 
@@ -1105,6 +1188,17 @@ ${touched.map((attribute) => `  n.${attribute.name} = ${loadName(attribute.name)
       ? ""
       : `, Params(${paramFields.map((field) => `kernelFrame.${kernelParamUniformKey(field.name)}`).join(", ")})`;
 
+  /* T1583b: the step members, appended after the params — the new last, for the reason
+     every member before them was appended last. Unprefixed and safe: an author's fields
+     ride under `kernelParamUniformKey`, so `struct Params { iterations: f32 }` cannot
+     collide with these in the block. */
+  const frameSteps = usesSteps ? KERNEL_STEP_UNIFORMS.map((name) => `\n  ${name}: u32,`).join("") : "";
+  const ctxSteps = usesSteps
+    ? "\n  /* T1583b: which run of the kernel this is. A SUBSTEP advances time — `delta` above is\n     the frame's step divided by `substeps`. An ITERATION repeats inside a substep at the\n     same `delta`. `substep` counts 0..substeps-1, `iteration` 0..iterations-1 within it. */" +
+      KERNEL_STEP_UNIFORMS.map((name) => `\n  ${name}: u32,`).join("")
+    : "";
+  const stepArguments = usesSteps ? KERNEL_STEP_UNIFORMS.map((name) => `, kernelFrame.${name}`).join("") : "";
+
   const frameAbs = usesAbsClock ? "\n  absTimeSeconds: f32,\n  absFrameIndex: u32," : "";
   const ctxAbs = usesAbsClock
     ? "\n  /* T489: the clock that does NOT wrap at a timeline lap — `time` above restarts at\n     the in point, this keeps counting (T461). A frame COUNT at the timeline rate, never\n     a wall reading, so an offline take reproduces (§V44, T467).\n\n     B119 — THE ONE ASYMMETRY, said here because this is where it bites. `absFrame` is\n     u32 in THIS struct and f32 in a texture shader's `frameU` block. Each matches the\n     `frameIndex` beside it (u32 here, f32 there — that block is f32 throughout), so\n     neither side is wrong on its own and the two do not agree with each other. Float\n     maths on it wants `f32(ctx.absFrame)`; shader arithmetic pasted in unconverted is\n     what Dawn answers with \"no matching overload\". `absTime` is f32 on both sides. */\n  absTime: f32,\n  absFrame: u32,"
@@ -1125,7 +1219,7 @@ struct KernelFrame {
   deltaSeconds: f32,
   frameIndex: u32,
   seed: u32,
-  count: u32,${framePointer}${frameValues}${frameAbs}${frameFirstRun}${frameParams}
+  count: u32,${framePointer}${frameValues}${frameAbs}${frameFirstRun}${frameParams}${frameSteps}
 };
 
 @group(0) @binding(0) var<uniform> kernelFrame: KernelFrame;
@@ -1145,7 +1239,7 @@ ${dimStruct}struct PointCtx {
   count: u32,
   time: f32,
   delta: f32,
-  frameIndex: u32,${ctxPointer}${ctxDim}${ctxValues}${ctxAbs}${ctxFirstRun}${ctxParams}
+  frameIndex: u32,${ctxPointer}${ctxDim}${ctxValues}${ctxAbs}${ctxFirstRun}${ctxParams}${ctxSteps}
 };
 
 ${RNG_WGSL}
@@ -1159,7 +1253,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 ${guard}
   var p: Point;
 ${loads}
-  let ctx = PointCtx(index, ${lifecycle === undefined ? "kernelFrame.count" : "live"}, kernelFrame.timeSeconds, kernelFrame.deltaSeconds, kernelFrame.frameIndex${usesPointer ? ", kernelFrame.pointer" : ""}${dimArgument}${valueArguments}${absArguments}${firstRunArgument}${paramsArgument});
+  let ctx = PointCtx(index, ${lifecycle === undefined ? "kernelFrame.count" : "live"}, kernelFrame.timeSeconds, kernelFrame.deltaSeconds, kernelFrame.frameIndex${usesPointer ? ", kernelFrame.pointer" : ""}${dimArgument}${valueArguments}${absArguments}${firstRunArgument}${paramsArgument}${stepArguments});
 ${invoke}
 ${stores}
 }
@@ -1176,6 +1270,7 @@ ${stores}
     usesAbsClock,
     usesField: usesField && request.field === true,
     usesFirstRun,
+    usesSteps,
     usesParams: paramFields,
     /* T587: the GROUP predicate is scanned with the kernel because it compiles against the
        same `PointCtx` — a predicate gating on `ctx.time` wraps exactly as loudly. */
@@ -1277,6 +1372,14 @@ export function generateSpawnHookModule(request: SpawnHookRequest): KernelModule
       "spawn hook calls fieldAt(...), but the field input reaches the kernel only (T744) — " +
         "sample it in the kernel that decides the birth and stash what the child needs in an " +
         "attribute; the child arrives as its parent's copy.",
+    );
+  }
+  /* T1583b: the hook belongs to the lifecycle kernel, which does not step — refused HERE by
+     name, like `ctx.dim` above, rather than left to Dawn's "no member named 'substep'". */
+  if (readsStepMemberOfCtx(hookCode)) {
+    errors.push(
+      "spawn hook reads ctx.substep / ctx.iteration, but the advanced (lifecycle) kernel runs " +
+        "once per frame — kernel steps are a plain Point Kernel's (T1583b).",
     );
   }
   /* T479: the hook is a second pass on the SAME node, so it reaches the same four slots —
@@ -1434,6 +1537,7 @@ ${shaped.map((attribute) => `  pointStore_${attribute.name}(index, q.${attribute
     usesAbsClock,
     usesField: false,
     usesFirstRun: false,
+    usesSteps: false,
     usesParams: hookParamFields,
     /* T587: the hook is the surface where this matters MOST — "born with a phase off the
        clock" is the natural thing to write there, and on the wrapping one every generation

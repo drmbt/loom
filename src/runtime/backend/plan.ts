@@ -317,6 +317,44 @@ export interface LoopPassDescriptor {
   /** On `begin`: how many times the enclosed passes run. Integer in [1, MAX_SUBSTEPS]. */
   readonly count?: number;
   readonly nodeId?: NodeId;
+  /** T1583b: on `begin`, this region is a kernel stepping its own buffer pair. */
+  readonly steps?: KernelStepsDescriptor;
+}
+
+/**
+ * KERNEL STEPS (T1583b): a loop region whose body is ONE dispatch that reads the read half
+ * of its own buffer pair and writes the write half, run `count` times inside one displayed
+ * frame, each run reading what the run before it wrote.
+ *
+ * `count` on the marker is the number of dispatches: substeps × iterations. A SUBSTEP
+ * divides the frame's time (the pass's `deltaSeconds` is the frame's divided by the substep
+ * count); an ITERATION repeats inside a substep at the same time step, which is what a
+ * constraint solver relaxes with. That is the Flex / Blender XPBD pair, and TouchDesigner's
+ * GLSL POP `Passes` when iterations is all that is turned up.
+ *
+ * WHY THE SWAP IS NOT IN THE PASS LIST. A texture feedback loop's region holds its own swap
+ * pass, because its consumers read the READ half. A kernel's consumers bind the WRITE half
+ * (the edge payload names it, §V231), so a `[dispatch, swap] × N` region would leave them
+ * on the half written by run N−2. The encoder therefore swaps `pair` BETWEEN runs only, and
+ * the pair's one swap pass stays where §V22 put it, after the last consumer. It also keeps
+ * the direct path's segmenting unchanged: N dispatches in a row are one segment.
+ */
+export interface KernelStepsDescriptor {
+  /** STRUCTURE: the buffer pair the region's dispatch steps. Part of the structure key. */
+  readonly pair: string;
+  /**
+   * VALUE: runs per substep, in [1, count]; `count` is a whole multiple of it. Per frame
+   * like `count`, and written the same way (`updateUniforms` on the `begin` pass).
+   */
+  readonly iterations: number;
+  /**
+   * VALUE, per compile and never per frame: how many runs to have uniform slots ready for.
+   * Every run reads its own uniform block, and a block is a buffer, which may not be
+   * created while a frame is being encoded (§V8). A count that an expression drives arrives
+   * INSIDE the frame, so the compiler says here how far it can go and the backend allocates
+   * that many when the plan is installed. At least `count`.
+   */
+  readonly prepare: number;
 }
 
 /**
@@ -328,6 +366,20 @@ export interface LoopPassDescriptor {
  * inside it and the substep cost stays MEASURABLE, which is the point of the feature.
  */
 export const MAX_SUBSTEPS = 256;
+
+/**
+ * T1583b: the most dispatches one kernel runs per displayed frame, substeps × iterations.
+ * The loop ceiling, because a kernel's region IS a loop region and the encoder clamps
+ * every region to it. One kernel at the ceiling is an eighth of the timer's 2048 spans.
+ */
+export const MAX_KERNEL_STEPS = MAX_SUBSTEPS;
+
+/**
+ * T1583b: the most SUBSTEPS a kernel may ask for. Lower than the dispatch ceiling on
+ * purpose: at 60 fps, 64 substeps is a 1/3840 s step, and the room above it belongs to
+ * iterations (64 substeps × 4 iterations is the ceiling).
+ */
+export const MAX_KERNEL_SUBSTEPS = 64;
 
 /**
  * Compute dispatch. Declared now so scheduling, pruning and resource assignment are
@@ -632,6 +684,11 @@ export function readPass(value: unknown): PassDescriptor | undefined {
         return undefined;
       }
     }
+    // T1583b: like the count, the step facts are stated once, on the `begin`.
+    const rawSteps = value["steps"];
+    if (edge === "end" && rawSteps !== undefined) return undefined;
+    const steps = rawSteps === undefined ? undefined : readKernelSteps(rawSteps, count as number);
+    if (rawSteps !== undefined && steps === undefined) return undefined;
     return {
       kind: "loop",
       id,
@@ -639,6 +696,7 @@ export function readPass(value: unknown): PassDescriptor | undefined {
       loopId,
       ...(edge === "begin" ? { count: count as number } : {}),
       ...(typeof nodeId === "string" ? { nodeId: nodeId as NodeId } : {}),
+      ...(steps === undefined ? {} : { steps }),
     };
   }
 
@@ -687,6 +745,24 @@ export function readPass(value: unknown): PassDescriptor | undefined {
     ...(typeof label === "string" ? { label } : {}),
     ...(sourceMap === undefined ? {} : { sourceMap }),
   };
+}
+
+/**
+ * T1583b: a kernel region's step facts, or `undefined` when they contradict the count —
+ * `count` is substeps × iterations, so iterations must divide it, and slots prepared for
+ * fewer runs than the plan itself asks for would be a plan that cannot run as written.
+ */
+function readKernelSteps(value: unknown, count: number): KernelStepsDescriptor | undefined {
+  if (!isRecord(value)) return undefined;
+  const { pair, iterations, prepare } = value;
+  if (typeof pair !== "string" || pair.length === 0) return undefined;
+  if (!Number.isInteger(iterations) || (iterations as number) < 1 || count % (iterations as number) !== 0) {
+    return undefined;
+  }
+  if (!Number.isInteger(prepare) || (prepare as number) < count || (prepare as number) > MAX_KERNEL_STEPS) {
+    return undefined;
+  }
+  return { pair, iterations: iterations as number, prepare: prepare as number };
 }
 
 function readBufferBindings(value: unknown): ReadonlyArray<BufferBindingDescriptor> | undefined {
@@ -893,8 +969,9 @@ export function readExecutionPlan(plan: LogicalExecutionPlan): PlanReadResult {
       case "swap":
         return [pass.resourceId];
       // T387: a loop marker names no resource — it delimits passes that name their own.
+      // T1583b: except a kernel region's, which names the pair the encoder swaps.
       case "loop":
-        return [];
+        return pass.steps === undefined ? [] : [pass.steps.pair];
       case "effect":
         return [
           pass.target,
@@ -939,6 +1016,7 @@ export function readExecutionPlan(plan: LogicalExecutionPlan): PlanReadResult {
   }
 
   diagnostics.push(...loopStructureDiagnostics(passes));
+  diagnostics.push(...kernelStepsDiagnostics(passes, resources));
 
   const ok = diagnostics.every((diagnostic) => diagnostic.severity !== "error");
   return { resources, passes, diagnostics, ok };
@@ -990,6 +1068,42 @@ function loopStructureDiagnostics(passes: ReadonlyArray<PassDescriptor>): Runtim
       ),
     );
   }
+  return out;
+}
+
+/**
+ * T1583b: a kernel region is ONE dispatch that reads and writes the pair it names.
+ *
+ * The encoder swaps that pair between runs and nothing else. A region holding a second
+ * pass would run it N times against halves it does not expect, and a dispatch that does
+ * not read the pair's read half would compute the same thing N times — both render a
+ * plausible picture (§V147), so both are refused here.
+ */
+function kernelStepsDiagnostics(
+  passes: ReadonlyArray<PassDescriptor>,
+  resources: ReadonlyArray<ResourceDescriptor>,
+): RuntimeDiagnostic[] {
+  const out: RuntimeDiagnostic[] = [];
+  const pairs = new Set(resources.filter((resource) => resource.kind === "bufferPair").map((resource) => resource.id));
+  passes.forEach((pass, index) => {
+    if (pass.kind !== "loop" || pass.edge !== "begin" || pass.steps === undefined) return;
+    const pair = pass.steps.pair;
+    const body = passes[index + 1];
+    const closing = passes[index + 2];
+    const closed = closing !== undefined && closing.kind === "loop" && closing.edge === "end" && closing.loopId === pass.loopId;
+    const halves = body !== undefined && body.kind === "dispatch"
+      ? new Set((body.buffers ?? []).filter((binding) => binding.resourceId === pair).map((binding) => binding.half ?? "read"))
+      : new Set<string>();
+    if (closed && pairs.has(pair) && halves.has("read") && halves.has("write")) return;
+    out.push(
+      backendDiagnostic(
+        "error",
+        BackendDiagnosticCode.planInvalid,
+        `Kernel steps "${pass.loopId}" must enclose exactly one dispatch that binds both halves of the buffer pair "${pair}".`,
+        pass.nodeId === undefined ? {} : { nodeId: pass.nodeId },
+      ),
+    );
+  });
   return out;
 }
 
@@ -1220,8 +1334,12 @@ function passKeyParts(pass: PassDescriptor): unknown[] {
       // writes per frame (an audio band driving substeps is the case that forced it).
       // The loop REGION — that the markers exist, where they sit, what they enclose —
       // stays structural.
+      // T1583b: so is WHICH pair a kernel region steps, appended only when there is one,
+      // so a texture loop's key is the one it had. `iterations` and `prepare` are values.
       case "loop":
-        return ["loop", pass.id, pass.edge, pass.loopId];
+        return pass.steps === undefined
+          ? ["loop", pass.id, pass.edge, pass.loopId]
+          : ["loop", pass.id, pass.edge, pass.loopId, pass.steps.pair];
       case "effect":
         return [
           "effect",

@@ -57,11 +57,33 @@ export interface TemporalDefinition {
    * Naming the key here is what lets the compiler read it without guessing, and what makes
    * a node that has no such parameter structurally incapable of claiming substeps.
    *
-   * The key it names MUST be `compileTime: true`: the count is a plan STRUCTURE fact
-   * (§V5) — it changes how many times the region is encoded, and no uniform write can
-   * express that.
+   * The key it names is a per-frame VALUE since T425 (it was `compileTime` under T387):
+   * the loop REGION is plan structure, the count is read live by the encoder (§V358).
    */
   substeps?: string;
+}
+
+/**
+ * T1583b — KERNEL STEPS: this node's one dispatch may run several times per displayed
+ * frame over its own buffer pair, each run reading what the run before it wrote.
+ *
+ * Two parameter keys, named here for the reason `TemporalDefinition.substeps` gives: the
+ * compiler reads numbers out of a node whose parameters are otherwise its own business.
+ *
+ *  - `substeps` DIVIDES TIME: the dispatch's `deltaSeconds` is the frame's divided by it.
+ *  - `iterations` repeats inside one substep at the same time step.
+ *
+ * Dispatches per frame = substeps × iterations. Both are per-frame VALUES and must NOT be
+ * `compileTime` (§V358): the compiler emits the region at count 1 so that driving either
+ * from 1 to 3 is a value write, never a rebuild.
+ *
+ * Not `temporal.substeps`, though both end as a loop region. That key says "iterate the
+ * feedback LOOP this node closes" — a cycle of several nodes, found on the graph, with the
+ * pair's swap inside it. This says "iterate this node's own pass", and it divides time.
+ */
+export interface KernelStepsDeclaration {
+  readonly substeps: string;
+  readonly iterations: string;
 }
 
 export interface CapabilityRequirement {
@@ -400,6 +422,8 @@ export interface NodeDefinition {
   resolutionPolicy?: ResolutionPolicy;
   formatPolicy?: FormatPolicy;
   temporal?: TemporalDefinition;
+  /** T1583b: this node's dispatch may step several times per frame — see the type. */
+  steps?: KernelStepsDeclaration;
   stateful?: StatefulDeclaration;
   /**
    * T949: does this node ACT ON THE WORLD? Absent means `"none"` — see `SideEffect` above
