@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { auditedGraphs } from "../node-name-audit.ts";
 import { applyRenameMap } from "./apply-rename-map.ts";
 import { auditRenameMap, buildRenameMap, renamesByScope, scopeOf, shippedDocuments, type ShippedDocument } from "./rename-map.ts";
-import { rewriteDocumentSource, rewritePage, rewriteTest, type NameTable, type Rewritten } from "./source-rewrite.ts";
+import { renameInComments, rewriteDocumentSource, rewritePage, rewriteTest, type NameTable, type Rewritten } from "./source-rewrite.ts";
 
 /**
  * THE APPLY TOOL for the naming sweep (T1593b). It rewrites the text that builds and
@@ -81,6 +81,15 @@ for (const document of documents) {
 /** The scopes of this batch, or `undefined` for all of them. Set once the sources are known. */
 let batch: ReadonlySet<string> | undefined;
 
+/** The names one shipped document renames in this run, by its file name: its root graph's. */
+function ofDocument(fileName: string): ReadonlyMap<string, string> | undefined {
+  const document = documents.find((candidate) => candidate.path.endsWith(`/${fileName}`));
+  if (document === undefined) return undefined;
+  const scope = document.path.startsWith("projects/") ? `projects/${document.path.split("/")[1] ?? ""}` : document.path;
+  if (batch !== undefined && !batch.has(scope)) return new Map();
+  return new Map(map.entries.filter((entry) => entry.scope === scope).map((entry) => [entry.old, entry.new]));
+}
+
 function tableFor(scopes: Iterable<string>): NameTable {
   const seen = new Map<string, Set<string>>();
   const seenTyped = new Map<string, Set<string>>();
@@ -110,7 +119,7 @@ function tableFor(scopes: Iterable<string>): NameTable {
   }
   const typed = new Map([...seenTyped].flatMap(([key, news]) => (news.size === 1 && !outside.has(key) ? [[key, [...news][0] ?? ""] as const] : [])));
   for (const scopeIds of idsIn.values()) for (const id of scopeIds) ids.add(id);
-  return { names, typed, clash, idsToo: new Set([...names.keys()].filter((name) => ids.has(name))) };
+  return { names, typed, clash, idsToo: new Set([...names.keys()].filter((name) => ids.has(name))), ofDocument };
 }
 
 // ── the files ──────────────────────────────────────────────────────────────────────────────
@@ -388,13 +397,28 @@ if (buildIn !== undefined) {
     const builtPath = join(built, example.document.path.replace(/^examples\//, ""));
     const actual = existsSync(builtPath) ? readFileSync(builtPath, "utf8") : "";
     if (actual === expected) same += 1;
-    else if (withoutNotes(actual) === withoutNotes(expected)) notesOnly.push(example.document.path);
+    else if (withoutNotes(actual) === withoutNotes(commentsRenamed(example, expected))) notesOnly.push(example.document.path);
     else different.push(`${example.document.path}: ${firstDifference(withoutNotes(expected), withoutNotes(actual))}`);
   }
   console.log(`BUILT FROM THE REWRITTEN SOURCES: ${String(same)} of ${String(examples.length - untriedNames.length)} documents tried are byte for byte the renamed document.`);
   console.log(`  ${String(untriedNames.length)} not tried, because a source that builds them makes names in code: ${untriedNames.join(", ")}`);
-  if (notesOnly.length > 0) console.log(`  ${String(notesOnly.length)} more are the same but for the text of a note, which the rewritten source updates and a rename in memory does not: ${notesOnly.join(", ")}`);
+  if (notesOnly.length > 0) console.log(`  ${String(notesOnly.length)} more are the same but for prose (a note's text, a shader's comments), which the rewritten source updates and a rename in memory does not: ${notesOnly.join(", ")}`);
   for (const line of different) console.log(`  differs  ${line}`);
+}
+
+/**
+ * The renamed document with its shader COMMENTS renamed too, as the rewritten source has
+ * them. Every string parameter of every node of the root graph, by the root's own names.
+ */
+function commentsRenamed(example: Example, expected: string): string {
+  const names = tableFor([example.document.path]).names;
+  const file = JSON.parse(expected) as { graph?: { nodes?: Record<string, { parameters?: Record<string, unknown> }> } };
+  for (const node of Object.values(file.graph?.nodes ?? {})) {
+    for (const [key, value] of Object.entries(node.parameters ?? {})) {
+      if (typeof value === "string" && node.parameters !== undefined) node.parameters[key] = renameInComments(value, names).text;
+    }
+  }
+  return JSON.stringify(file);
 }
 
 /** A document without the text of its notes. A note is prose: it is compared by eye, not by byte. */

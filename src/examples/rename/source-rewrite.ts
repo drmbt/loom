@@ -44,6 +44,12 @@ export interface NameTable {
    * to borrow the word for an id as for a name.
    */
   readonly idsToo: ReadonlySet<string>;
+  /**
+   * The names of ONE shipped document, by its file name. A test that covers every example
+   * keys its lists by document (`"E27-Relief.loom.json kick1.low"`), and there the document
+   * says whose `kick1` it is, where the file's own table only knows that several have one.
+   */
+  readonly ofDocument?: (fileName: string) => ReadonlyMap<string, string> | undefined;
 }
 
 export interface Rewritten {
@@ -77,6 +83,33 @@ const PROSE = /op\(\s*(\\?['"])([^'"\\]+)\1\s*\)|`([\p{L}\p{N}_]+)((?:[.:][\p{L}
 
 /** A name no sentence would contain by accident: it has a digit, an underscore or an inner capital. */
 const distinctive = (name: string): boolean => /[0-9_]/.test(name) || /[a-z][A-Z]/.test(name);
+
+const PROGRAM_COMMENT = /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
+
+/**
+ * The names inside the COMMENTS of program text: a kernel written as a string says, in its
+ * own block comments, which nodes feed it (`value1 is swell1's level`). Those words ship, inside
+ * the shader a person opens in the editor, and after the rename they name nothing. Only
+ * comments are touched, and only a distinctive name or one in backticks: the code around
+ * them is somebody's program, and `out` is also a variable.
+ *
+ * Exported because the apply tool's proof needs the same thing: a document renamed in
+ * memory still has the old words in its shader comments, and one built from the rewritten
+ * source does not.
+ */
+export function renameInComments(text: string, names: ReadonlyMap<string, string>): { text: string; changed: number } {
+  let changed = 0;
+  const next = text.replace(PROGRAM_COMMENT, (comment) =>
+    comment.replace(/`([\p{L}\p{N}_]+)`|(?<![\p{L}\p{N}_.-])([\p{L}\p{N}_]+)(?![\p{L}\p{N}_-])/gu, (whole: string, ticked: string | undefined, bare: string | undefined) => {
+      const name = ticked ?? bare ?? "";
+      const renamed = names.get(name);
+      if (renamed === undefined || !distinctive(name)) return whole;
+      changed += 1;
+      return ticked === undefined ? renamed : `\`${renamed}\``;
+    }),
+  );
+  return { text: next, changed };
+}
 
 /** Parameters that hold names, per node type, and all of them together for a type that is not spelled. */
 const REFERENCE_KEYS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
@@ -113,10 +146,15 @@ class Session {
     this.edits.push({ start, end, text: next });
   }
 
-  /** `op('old')` anywhere in this stretch of text. */
-  ops(start: number, end: number): void {
+  /**
+   * `op('old')` anywhere in this stretch of text; and, with `comments`, the names inside
+   * the comments of program text the stretch holds (a kernel's block comments). One replacement
+   * of the stretch for both, because two edits of one stretch would each start from the
+   * original.
+   */
+  ops(start: number, end: number, comments = false): void {
     const raw = this.text.slice(start, end);
-    const next = raw.replace(OP, (whole, quote: string, name: string) => {
+    let next = raw.replace(OP, (whole, quote: string, name: string) => {
       if (this.table.clash.has(name)) this.note(start, `op('${name}') is renamed differently in two documents this file builds`);
       const renamed = this.table.names.get(name);
       if (renamed === undefined) return whole;
@@ -124,6 +162,11 @@ class Session {
       this.spelled.add(name);
       return `op(${quote}${renamed}${quote})`;
     });
+    if (comments) {
+      const inComments = renameInComments(next, this.table.names);
+      next = inComments.text;
+      this.changed += inComments.changed;
+    }
     this.replace(start, end, next);
   }
 
@@ -318,6 +361,20 @@ function rewriteTypeScript(path: string, text: string, table: NameTable, byPosit
       if (table.names.has(raw) || table.clash.has(raw)) session.note(start, `"${raw}" is written as a node's ID here, and is a node's name elsewhere: an id is never moved`);
       return;
     }
+    const keyed = /^(\S+\.loom\.json)(\s+)(\S.*)$/.exec(raw);
+    const documentNames = keyed === null ? undefined : table.ofDocument?.(keyed[1] ?? "");
+    if (keyed !== null && documentNames !== undefined && NAME_LIST.test(keyed[3] ?? "")) {
+      // `"<File>.loom.json name.channel"`: the names after the file are that document's.
+      const rest = (keyed[3] ?? "").split(/([\s,]+)/).map((piece) => {
+        const head = piece.split(/[.:]/)[0] ?? "";
+        const renamed = documentNames.get(head);
+        if (renamed === undefined) return piece;
+        session.changed += 1;
+        return `${renamed}${piece.slice(head.length)}`;
+      }).join("");
+      session.replace(start, end, `${keyed[1] ?? ""}${keyed[2] ?? ""}${rest}`);
+      return;
+    }
     if (!byPosition) {
       // A test: any literal that is a name of the documents it tests. A word that is also
       // a node's id could be either, so it is shown and not moved.
@@ -344,10 +401,12 @@ function rewriteTypeScript(path: string, text: string, table: NameTable, byPosit
       else if (!(isLabel ? session.label(start, end, labelType(node)) : session.names(start, end))) session.ops(start, end);
       return;
     }
-    session.ops(start, end);
-    // A sentence for a person (a note's body): the names in it are mentions.
+    session.ops(start, end, true);
+    // A sentence for a person (a note's body): the names in it are mentions. What stood in a
+    // program comment has just been moved; this is the rest.
+    const outside = raw.replace(PROGRAM_COMMENT, (comment) => " ".repeat(comment.length));
     if (/\s/.test(raw) && raw.length > 24) {
-      for (const match of raw.matchAll(/(?<![\p{L}\p{N}_.'"])[\p{L}\p{N}_]+(?![\p{L}\p{N}_'"])/gu)) {
+      for (const match of outside.matchAll(/(?<![\p{L}\p{N}_.'"])[\p{L}\p{N}_]+(?![\p{L}\p{N}_'"])/gu)) {
         if (table.names.has(match[0]) && distinctive(match[0])) session.note(start, `a sentence mentions "${match[0]}" (it becomes "${table.names.get(match[0]) ?? ""}")`);
       }
     }
@@ -358,10 +417,10 @@ function rewriteTypeScript(path: string, text: string, table: NameTable, byPosit
     if (byPosition && ts.isIdentifier(node) && nameKey(node)) session.names(node.getStart(source), node.getEnd());
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) literal(node);
     else if (ts.isTemplateExpression(node)) {
-      session.ops(node.head.getStart(source) + 1, node.head.getEnd() - 2);
+      session.ops(node.head.getStart(source) + 1, node.head.getEnd() - 2, byPosition);
       for (const span of node.templateSpans) {
         const tail = ts.isTemplateTail(span.literal);
-        session.ops(span.literal.getStart(source) + 1, span.literal.getEnd() - (tail ? 1 : 2));
+        session.ops(span.literal.getStart(source) + 1, span.literal.getEnd() - (tail ? 1 : 2), byPosition);
       }
       // Said only where a name certainly goes (a label, a reference parameter): a template
       // handed to some function is usually an expression or a shader.
@@ -403,64 +462,136 @@ export function rewriteTest(path: string, text: string, table: NameTable): Rewri
 
 /** Box-drawing and arrows. A fence that has one is a DIAGRAM, and its columns mean something. */
 const DIAGRAM = /[─│┌┐└┘├┤┬┴┼╭╮╰╯►◄▲▼┄]/;
-/** What a diagram is padded with: a run of these can be made longer without saying anything else. */
+/** What a diagram is padded with: more of these says nothing different. */
 const FILLER: ReadonlySet<string> = new Set([" ", "─", "┄"]);
-const JOINT = /[│┌┐└┘├┤┬┴┼╭╮╰╯►◄▲▼]/;
+/** What stands in a column for a reason: a corner, a tee, a vertical, an arrow up or down. */
+const JOINT = /[│┌┐└┘├┤┬┴┼╭╮╰╯▲▼]/;
 /** Joints with an arm to the LEFT: one is reached by a line, so it is pushed along by more line. */
 const REACHED_FROM_LEFT = /[┐┘┤┬┴┼╮╯]/;
 
 /**
- * A diagram's lines with their names replaced, RE-LAID OUT so its columns still line up.
+ * A diagram's lines with their names replaced, RE-LAID OUT so that what stood in one column
+ * still does.
  *
  * A name that gets longer pushes everything after it on its line to the right, and a
- * junction drawn across two lines (`─┐` above `─┴─►`) stops meeting. Nothing checks that:
- * the page still parses, and reads as a broken drawing. `doc-drift.test.ts` says as much
- * about why its notation was never migrated.
+ * junction drawn across two lines (`─┐` above `─┴─►`) only meets because both ends stand in
+ * one column. Nothing checks that: the page still parses, and reads as a broken drawing.
+ * `doc-drift.test.ts` says as much about why its notation was never migrated.
  *
- * So every line is padded to the line that grew the most. At each original column the
- * block has grown by some amount on its widest line; a line that has grown less is padded
- * up to that amount at the next stretch of filler (spaces, or a run of `─` or `┄`), which
- * is the one place a diagram can be made longer without saying anything different. A
- * junction that stands directly against text (`…Advanced)└─►`, `add(add)◄┘`) has no filler
- * to stretch, so it is given some: spaces in front of a joint nothing reaches from the
- * left, line in front of one something does.
+ * Three things are kept, and nothing else on a line is moved, so a drawing only grows
+ * where it must:
+ *
+ *  - two JOINTS that stood one above the other on neighbouring lines still do. They are
+ *    grouped down the lines they connect (a column apart still counts: authors drew some
+ *    of these one off, and they stay one off) and each group goes where its furthest
+ *    member lands;
+ *  - a joint that points AT A WORD (`▼` over a node's name) stays on the word;
+ *  - a CAPTION, a word that starts after a gap exactly under the start of a word on the
+ *    line above (`famine > 0.45` under `points_scout(…)`), still starts under it.
+ *
+ * The padding goes directly in front of what it moves, as more of what is already there:
+ * spaces, or line in front of a joint that a line reaches.
  */
 export function relayout(lines: readonly string[], changes: ReadonlyArray<readonly Change[]>): string[] {
-  const grownBy = (line: number, column: number): number =>
-    (changes[line] ?? []).reduce((sum, change) => (change.end <= column ? sum + change.text.length - (change.end - change.at) : sum), 0);
-  const width = Math.max(0, ...lines.map((line) => line.length));
-  const want: number[] = [];
-  for (let column = 0; column <= width; column += 1) {
-    want.push(Math.max(want[column - 1] ?? 0, ...lines.map((_line, index) => grownBy(index, column))));
+  interface Anchor {
+    readonly line: number;
+    readonly column: number;
+    readonly joint: boolean;
+    group: number;
+    pad: number;
   }
+  const inChange = (line: number, column: number): Change | undefined =>
+    (changes[line] ?? []).find((change) => change.at <= column && column < change.end);
+  const startsWord = (line: number, column: number): boolean => {
+    const text = lines[line] ?? "";
+    const here = text.charAt(column);
+    return here !== "" && here !== " " && (column === 0 || text.charAt(column - 1) === " ");
+  };
+  const anchors: Anchor[] = [];
+  lines.forEach((line, index) => {
+    for (let column = 0; column < line.length; column += 1) {
+      const here = line.charAt(column);
+      if (JOINT.test(here) && inChange(index, column) === undefined) {
+        anchors.push({ line: index, column, joint: true, group: anchors.length, pad: 0 });
+      } else if (index > 0 && startsWord(index, column) && startsWord(index - 1, column) && (line.slice(0, column).trim() === "" || line.slice(column - 2, column) === "  ")) {
+        // A caption: it starts after a gap, exactly under the start of a word on the line above.
+        anchors.push({ line: index, column, joint: false, group: anchors.length, pad: 0 });
+      }
+    }
+  });
+  // Joints on neighbouring lines, in one column or one apart, are one junction.
+  const groupOf = (anchor: Anchor): number => {
+    let at = anchor.group;
+    while (anchors[at]?.group !== at) at = anchors[at]?.group ?? at;
+    return at;
+  };
+  for (const upper of anchors) {
+    for (const lower of anchors) {
+      if (!upper.joint || !lower.joint || lower.line !== upper.line + 1 || Math.abs(lower.column - upper.column) > 1) continue;
+      const one = groupOf(upper);
+      const other = groupOf(lower);
+      const root = anchors[Math.max(one, other)];
+      if (one !== other && root !== undefined) root.group = Math.min(one, other);
+    }
+  }
+  const grownBefore = (line: number, column: number): number =>
+    (changes[line] ?? []).reduce((sum, change) => (change.end <= column ? sum + change.text.length - (change.end - change.at) : sum), 0);
+  /** Where an ORIGINAL column of a line ends up: after the names before it, and the padding. */
+  const lands = (line: number, column: number): number => {
+    const inside = inChange(line, column);
+    const from = inside === undefined ? column : inside.at;
+    const padded = anchors.reduce((sum, other) => (other.line === line && other.column <= from ? sum + other.pad : sum), 0);
+    const within = inside === undefined ? 0 : Math.min(column - inside.at, inside.text.length - 1);
+    return from + grownBefore(line, from) + padded + within;
+  };
+  /** How far the thing an anchor is tied to has moved: the word a joint points at, the word a caption sits under. */
+  const tiedTo = (anchor: Anchor): number => {
+    if (!anchor.joint) return lands(anchor.line - 1, anchor.column) - anchor.column;
+    let furthest = -Infinity;
+    for (const beside of [anchor.line - 1, anchor.line + 1]) {
+      const there = (lines[beside] ?? "").charAt(anchor.column);
+      if (there === "" || FILLER.has(there) || JOINT.test(there) || there === "►" || there === "◄") continue;
+      furthest = Math.max(furthest, lands(beside, anchor.column) - anchor.column);
+    }
+    return furthest;
+  };
+  // Every group to where its furthest member lands. Padding one anchor moves the ones after
+  // it on its line, and what is tied to them, so this is repeated until nothing moves.
+  for (let round = 0; round < 64; round += 1) {
+    let moved = false;
+    const shifts = new Map<number, number>();
+    for (const anchor of anchors) {
+      const group = groupOf(anchor);
+      shifts.set(group, Math.max(shifts.get(group) ?? -Infinity, lands(anchor.line, anchor.column) - anchor.column, tiedTo(anchor)));
+    }
+    for (const anchor of anchors) {
+      const owed = (shifts.get(groupOf(anchor)) ?? 0) - (lands(anchor.line, anchor.column) - anchor.column);
+      if (owed > 0) {
+        anchor.pad += owed;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+
   return lines.map((line, index) => {
     const mine = [...(changes[index] ?? [])].sort((left, right) => left.at - right.at);
     let out = "";
-    let have = 0;
     let next = 0;
     for (let column = 0; column < line.length; ) {
       const change = mine[next];
+      const anchor = anchors.find((candidate) => candidate.line === index && candidate.column === column);
+      if (anchor !== undefined && anchor.pad > 0) {
+        const before = line.charAt(column - 1);
+        out += (!anchor.joint ? " " : FILLER.has(before) ? before : REACHED_FROM_LEFT.test(line.charAt(column)) ? "─" : " ").repeat(anchor.pad);
+      }
       if (change !== undefined && change.at === column) {
         out += change.text;
-        have += change.text.length - (change.end - change.at);
         column = change.end;
         next += 1;
         continue;
       }
-      const here = line.charAt(column);
-      const after = line.charAt(column + 1);
-      const stretch = FILLER.has(here) && (after === here || line.charAt(column - 1) === here || JOINT.test(after));
-      const owed = (want[column] ?? 0) - have;
-      const before = line.charAt(column - 1);
-      const againstText = JOINT.test(here) && here !== "►" && here !== "◄" && column > 0 && !FILLER.has(before);
-      if (stretch && owed > 0) {
-        out += here.repeat(owed);
-        have += owed;
-      } else if (againstText && owed > 0) {
-        out += (REACHED_FROM_LEFT.test(here) ? "─" : " ").repeat(owed);
-        have += owed;
-      }
-      out += here;
+      out += line.charAt(column);
       column += 1;
     }
     return out;

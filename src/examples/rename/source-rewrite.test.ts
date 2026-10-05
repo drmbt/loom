@@ -89,6 +89,18 @@ describe("a document's source", () => {
     // The comment is prose about the nodes, so it follows them. The id is an address.
     expect(done.text).toBe(`edge("e-rd1-rd2", ["rd", "out"], ["rd2", "input"]); // wgsl_reaction1 feeds wgsl_reaction2`);
   });
+
+  /*
+   * A kernel is a string in the source and a shader in the document, and its comments say
+   * which nodes feed it. Those words ship: a person reads them in the shader editor. After
+   * the rename they would name nodes that are not there. The CODE beside them must not
+   * move by a character: `swell1` is also a perfectly good variable.
+   */
+  it("moves a node named in a kernel's comment, and not the same word in the kernel's code", () => {
+    const source = "const KERNEL = `\n/* value1 is swell1's level, eased by damp1. */\nfn process(p: Point) -> Point {\n  let swell1 = p.value1; // not the node\n  return p;\n}`;";
+    const done = rewriteDocumentSource("x.ts", source, table({ swell1: "math_swell", damp1: "lag_damp" }));
+    expect(done.text).toBe("const KERNEL = `\n/* value1 is math_swell's level, eased by lag_damp. */\nfn process(p: Point) -> Point {\n  let swell1 = p.value1; // not the node\n  return p;\n}`;");
+  });
 });
 
 describe("a test that names nodes", () => {
@@ -118,6 +130,18 @@ describe("a test that names nodes", () => {
     // The four ids are what they were. The one string that asks for the NAME moved.
     expect(done.text).toBe(`${fixture}\nexpect(byLabel("mask_cut")).toBeDefined();`);
     expect(done.notes).toEqual([1, 2, 3, 4].map((line) => `line ${String(line)}: "cut1" is written as a node's ID here, and is a node's name elsewhere: an id is never moved`));
+  });
+
+  /*
+   * A gate over every example keeps its exceptions keyed by document. Two examples have a
+   * `kick1`, renamed differently (or one of them not yet), so the file's own table can say
+   * nothing about the word. The key says whose it is.
+   */
+  it("reads a list keyed by document with that document's own names", () => {
+    const source = `const STILL = { "E27-Relief.loom.json kick1.low": "ships at gain 0", "E30-Nave.loom.json kick1.low": "another node" };`;
+    const names = { ...table({}, { clash: ["kick1"] }), ofDocument: (file: string) => (file === "E27-Relief.loom.json" ? new Map([["kick1", "math_kick"]]) : new Map<string, string>()) };
+    const done = rewriteTest("x.test.ts", source, names);
+    expect(done.text).toBe(`const STILL = { "E27-Relief.loom.json math_kick.low": "ships at gain 0", "E30-Nave.loom.json kick1.low": "another node" };`);
   });
 });
 
@@ -162,6 +186,38 @@ describe("the page beside an example", () => {
     // Padded with what was already there, and nothing else: a line of spaces stays spaces.
     expect(bar.trim()).toBe("│");
     expect(last).toMatch(/^lfo_c\(lfo\) ─+┘$/);
+  });
+
+  /*
+   * The other two things a reader's eye follows down a drawing: an arrow to the node it
+   * points at, and a caption under the node it is about. Three nodes side by side, each
+   * with an arrow above and a line of text below, is the commonest shape there is.
+   */
+  it("keeps an arrow on the word it points at, and a caption under the word it sits under", () => {
+    const page = [
+      "```",
+      "   ┌────────────┬────────────┐",
+      "   ▼            ▼            ▼",
+      "scout1(a)    graze1(a)    find1(a)",
+      "blue         amber        cyan",
+      "```",
+    ].join("\n");
+    const done = rewritePage(page, table({ scout1: "points_scout", graze1: "points_graze", find1: "points_find" }));
+    const [, tee = "", arrows = "", names = "", captions = ""] = done.text.split("\n");
+    for (const [name, caption] of [["points_scout", "blue"], ["points_graze", "amber"], ["points_find", "cyan"]] as const) {
+      // The caption starts where the name starts…
+      expect(captions.indexOf(caption)).toBe(names.indexOf(name));
+    }
+    // …each arrow is over a letter of its own node's name, in the order they were drawn…
+    const over = [...arrows].flatMap((char, column) => (char === "▼" ? [column] : []));
+    expect(over).toHaveLength(3);
+    ["points_scout", "points_graze", "points_find"].forEach((name, index) => {
+      const column = over[index] ?? -1;
+      expect(column).toBeGreaterThanOrEqual(names.indexOf(name));
+      expect(column).toBeLessThan(names.indexOf(name) + name.length);
+    });
+    // …and the bar they hang from still meets all three.
+    expect([tee.indexOf("┌"), tee.indexOf("┬"), tee.indexOf("┐")]).toEqual(over);
   });
 
   it("leaves a fence that is not a diagram exactly as long as its names make it", () => {
