@@ -72,6 +72,30 @@ export const PARAMETER_MODES =
   "`driven` is RETIRED and refused here — a channel read is an expression, `op('lfo1').chan.value`.";
 
 /**
+ * T1593b — HOW A NODE IS NAMED, in the one place an agent reads it.
+ *
+ * A model over stdio has the `instructions` and the tool descriptions and nothing else, so
+ * the naming convention lives here as a sentence and is imported by both, the way
+ * `PARAMETER_MODES` is: one string, so the tool that prefixes a label and the instructions
+ * that explain why cannot drift apart.
+ *
+ * What it has to carry is what an agent gets WRONG without it: it writes `op('lamp')`
+ * against a node it asked to be called `lamp`, and the node is `slider_lamp`. So the
+ * sentence says which doors add the kind, that they report the name they stored, and that
+ * a label inside a patch is stored exactly as written.
+ */
+export const NODE_NAMES =
+  "A node's name is `kind_role`: its kind word, an underscore, then what the node is for " +
+  "(`slider_lamp`, `blur_diffuse`, `lfo_pathx`), and `op('slider_lamp')` reads it by that name. " +
+  "The kind is per node type and `list_node_definitions` gives it (`pointKernel` is `kernel`, " +
+  "a component instance is `comp`). A new node with no label is auto-named kind plus a number " +
+  "(`blur1`), which already conforms. `add_node` with a `label`, and `rename_node`, put the kind " +
+  "in front of a label that lacks it and report the name they stored: read it from the result " +
+  "before writing an `op('…')` against it. A `label` inside `apply_graph_patch` is stored exactly " +
+  "as written, so write it in full there. A component's In and Out are the exception: their name " +
+  "is the socket's label and takes no kind.";
+
+/**
  * T1208 — `driven` IS REFUSED AT THIS BOUNDARY, and the owner's question is why it needed
  * to be: *"we should have absolutely and totally removed that. How can the agent still do
  * that?"*
@@ -257,7 +281,30 @@ export const addNodeInput = z
       .strict()
       .optional(),
     parameters: parameters.optional(),
+    /**
+     * T1593b: the node's name. Absent, it is auto-named kind plus a number. Given without
+     * the kind, the kind goes in front (`lamp` on a slider is stored `slider_lamp`) and the
+     * result names what was stored.
+     */
+    label: z.string().min(1).max(120).optional(),
+    /** Store `label` exactly as written, kind or no kind. */
+    exactLabel: z.boolean().optional(),
     baseRevision,
+    dryRun,
+  })
+  .strict();
+
+/**
+ * T1593b: rename by the same door a person's title editor uses (`node.rename`), so an
+ * agent's rename keeps the kind for the same reason and by the same rule. `label: null`
+ * clears the name.
+ */
+export const renameNodeInput = z
+  .object({
+    nodeId: z.string().min(1),
+    label: z.string().min(1).max(120).nullable(),
+    /** Store `label` exactly as written, kind or no kind. */
+    exact: z.boolean().optional(),
     dryRun,
   })
   .strict();
@@ -404,6 +451,7 @@ export type ListExamplesInput = z.infer<typeof listExamplesInput>;
 export type GetExampleInput = z.infer<typeof getExampleInput>;
 export type GetDiagnosticsInput = z.infer<typeof getDiagnosticsInput>;
 export type AddNodeInput = z.infer<typeof addNodeInput>;
+export type RenameNodeInput = z.infer<typeof renameNodeInput>;
 export type DescribeOutputInput = z.infer<typeof describeOutputInput>;
 export type LayoutGraphInput = z.infer<typeof layoutGraphInput>;
 export type RemoveNodesInput = z.infer<typeof removeNodesInput>;

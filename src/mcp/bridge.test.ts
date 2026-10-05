@@ -1249,6 +1249,44 @@ describe("the parameter modes reach an MCP client (T1207)", () => {
 });
 
 /**
+ * T1593b — how a node is NAMED reaches the same two surfaces, off the same round trip.
+ *
+ * The mistake this prevents is one an agent makes silently: it asks for a slider called
+ * `lamp`, writes `op('lamp')`, and the node is `slider_lamp`. Nothing errors loudly, the
+ * parameter sits on its retained value. So the client has to be told the form, which
+ * tools add the kind, and where the stored name comes back.
+ */
+describe("the naming convention reaches an MCP client (T1593b)", () => {
+  it("states kind_role, and where the stored name is read, in the initialize instructions", async () => {
+    const harness = await bridgedServer();
+    const instructions = String((await harness.request("initialize", {}, 1)).result?.["instructions"]);
+
+    expect(instructions).toContain("A node's name is `kind_role`");
+    expect(instructions).toContain("`op('slider_lamp')` reads it by that name");
+    // The two facts that stop the dangling reference: which doors prefix, and that a patch does not.
+    expect(instructions).toContain("report the name they stored");
+    expect(instructions).toContain("A `label` inside `apply_graph_patch` is stored exactly as written");
+  });
+
+  it("publishes a rename tool and says on both naming tools that data.name is the stored name", async () => {
+    const harness = await bridgedServer();
+    const tools = (await harness.request("tools/list", {}, 1)).result?.["tools"] as Array<Record<string, unknown>>;
+    const described = (name: string) => String(tools.find((tool) => tool["name"] === name)?.["description"] ?? "");
+
+    expect(described("rename_node")).toContain("kind_role");
+    expect(described("rename_node")).toContain("data.name is the name that was stored");
+    expect(described("add_node")).toContain("kind_role");
+    expect(described("add_node")).toContain("data.name is the name that was stored");
+    expect(described("apply_graph_patch")).toContain("stored exactly as written and never prefixed");
+    // And the two inputs that carry the rule are on the published schemas.
+    const properties = (name: string) =>
+      Object.keys((tools.find((tool) => tool["name"] === name)?.["inputSchema"] as { properties?: object })?.properties ?? {});
+    expect(properties("add_node")).toEqual(expect.arrayContaining(["label", "exactLabel"]));
+    expect(properties("rename_node")).toEqual(expect.arrayContaining(["nodeId", "label", "exact"]));
+  });
+});
+
+/**
  * T1211 — THE POINTER, AND THE ASSEMBLIES.
  *
  * The owner's report was that an agent repeatedly could not get a Mouse node to do anything,
