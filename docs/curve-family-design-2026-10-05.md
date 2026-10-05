@@ -1,6 +1,6 @@
 # A curve family: curves as strips of a pointset (T1586b)
 
-**Status, 2026-10-05: ruled and partly built.** Every decision in section 7.3 was ruled as recommended, and the consumer (shaderloom-f1) reviewed the design with no objection. Slices 1, 3 and 4 are built: Strips (`726cc203`), Curve Frames (`c8fd00ba`) and Resample (`dbb5c761`), on main as `b9e63995`. Slice 2, the Curve node, is built with its authored table (`6f303252`, on main as `a4a4c0fb`). Slice 6, strips longer than 1,024 points, is built (`fe489f4d`). Section 7.4 lists what changed from this design as they were built. Beam drawing a strip (the rest of slice 5) and slices 7 and 8 are design only.
+**Status, 2026-10-05: ruled and partly built.** Every decision in section 7.3 was ruled as recommended, and the consumer (shaderloom-f1) reviewed the design with no objection. Slices 1, 3 and 4 are built: Strips (`726cc203`), Curve Frames (`c8fd00ba`) and Resample (`dbb5c761`), on main as `b9e63995`. Slice 2, the Curve node, is built with its authored table (`6f303252`, on main as `a4a4c0fb`). Slice 6, strips longer than 1,024 points, is built (`fe489f4d`), and so is slice 8, the Arc Chain (`bac160bf`). Section 7.4 lists what changed from this design as they were built. Beam drawing a strip (the rest of slice 5) and slice 7, Resample by curvature, are design only.
 
 The row asks for a Curve node, a Resample node and a Curve Frames node, with instancing along a curve (T1581b), sweep (T1587b), a path follower (T1590b) and rope (T1585b) as consumers. The owner's standard for it (2026-10-05): consider how TouchDesigner and Notch do this, build the right general shape and not the first consumer's minimum, no brittle or unscalable shortcuts.
 
@@ -224,18 +224,20 @@ Control points in, an interpolated strip out.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `basis` ⓢ | enum | Catmull-Rom | Linear, Catmull-Rom, Cardinal, B-Spline, Bezier, Arc; Arc Chain in slice 8 |
-| `segments` ⓢ | number | 16 | output points per span |
+| `basis` ⓢ | enum | Catmull-Rom | Linear, Catmull-Rom, Cardinal, B-Spline, Bezier, Arc, Arc Chain |
+| `segments` ⓢ | number | 16 | output points per span; per section of an Arc Chain |
 | `tension` | number | 0 | Cardinal only: 0 is Catmull-Rom's tangent, 1 a polyline |
 | `clamped` ⓢ | boolean | on | B-Spline only: the curve reaches its end control points |
-| `arcLength` | number, Map f32 | 1 | Arc only: the span's length. A mapped attribute is read at the span's first control point |
+| `arcLength` | number, Map f32 | 1 | Arc: the span's length. Arc Chain: the section's length, in metres. A mapped attribute is read at the span's first control point, or at the section's own |
 | `arcLengthUnit` | enum | Metres | Arc only: Metres, or Chords (1 is straight, 1.2 has a fifth of slack). A uniform flag, not a program change |
 | `bow` | vec3, Map vec3f | 0, −1, 0 | Arc only: the side the arc bulges to. A mapped attribute is read at the span's first control point |
 | `maxTurn` | number, degrees | 360 | Arc only: the most an arc may turn; slack beyond it is not deployed |
+| `bend` | vec2, Map vec2f | 0, 0 | Arc Chain only: a section's turn per metre about the chain's own X and about its Y |
+| `startOrient` ⓢ | attribute name | empty | Arc Chain only: a quaternion read at each strip's first control point, the frame the chain leaves with. Empty: along +Z, +Y up |
 | `closed` ⓢ | boolean | off | authored table only; a wired input's claim decides otherwise |
 | `points` ⓢ | JSON list | a gentle S of four points | authored control points, read only while `in` is unwired |
 
-Maps exist only with a wired control set and the Arc basis. Any other parameter in Map mode, or a map on a table, is refused by name (§V288).
+Maps exist only with a wired control set: `arcLength` and `bow` under the Arc, `arcLength` and `bend` under the Arc Chain. Any other parameter in Map mode, or a map on a table, is refused by name (§V288).
 
 **The bases**
 
@@ -281,11 +283,27 @@ P(s) = A + t0·sin(κs) ÷ κ + m0·(1 − cos(κs)) ÷ κ        0 ≤ s ≤ L
 - It is what makes a curve readable on the CPU (5.3). `authoredCurve(parameters)` in `point-curve.ts` returns the points and the options the node compiles from, and `evaluateCurve` in `src/points/curve.ts` places them. A wired control set has no CPU copy, so a CPU reader refuses a Curve whose input is wired, by name, until the measured curve (C2) exists; more than 64 authored points is the same case, since they have to be wired. Whether the input is wired is a fact about the graph, so the reader checks it; `authoredCurve` answers for the table only.
 - A typed list parameter with a viewport editor, per-point handles and Notch's tangent modes is a follow-up row (C3); the wired Bezier form covers handles until then.
 
-**Arc Chain (the last slice of v1, D8).** Several arcs end to end, each with a length and a curvature, tangent-continuous by construction: the piecewise constant-curvature model of a continuum arm (Webster and Jones 2010).
+**Arc Chain (built, slice 8; D8).** Several arcs end to end, each with a length and a bend, each leaving the way the one before it arrived: the piecewise constant-curvature model of a continuum arm (Webster and Jones 2010).
 
-- Each control point is a section: `arcLength` (f32) and `bend` (vec2f: curvature about the frame's X and Y, per metre). The first carries the start `position` and a start direction and up.
-- A point at distance `d` composes the rotations of the sections before it, so it is one pass with a loop bounded by the section count (at most 16), and its length is exact because length is an input.
-- The single Arc is the case of one section whose curvature comes from the solve above.
+- **A control point is a section**, not a point to pass through. A strip of `N` control points is a chain of `N` sections and `N × segments + 1` points. Only the first control point's `position` is read, as where the chain starts.
+- **`arcLength` and `bend` are parameters, per section in Map mode.** The design named them as attributes; they follow the Arc's `arcLength` and `bow` instead, which is T1581b's D7 idiom, so the control set names its attributes as it likes.
+- **`bend`** is the section's turn per metre about the chain's own X and about its Y. The chain leaves along its Z. The size of `bend` is the curvature: 1 is a circle of radius 1 m, and `(0, 0)` is straight. By the right-hand rule a bend about +Y curls toward the frame's +X and one about +X toward its −Y. These are a rod's two material curvatures.
+- **The start frame** is a quaternion attribute at each strip's first control point, named by `startOrient`: +Z the way the chain leaves, +Y up, the family's convention (R5). Empty, the chain leaves along +Z with +Y up. A name the control set does not carry, or one that is not a vec4f, is refused: it is not read as "no frame". The same attribute seeds Curve Frames after it, so the bend frame and the instancing frame are one statement.
+- **Forward only.** With `ω = (bend.x, bend.y, 0)`, `κ = |ω|` and `m = (bend.y, −bend.x, 0) ÷ κ` in the frame `R_k` the section starts with:
+
+```
+P_k(s) = p_k + R_k·( ẑ·sin(κs) ÷ κ + m·(1 − cos(κs)) ÷ κ )        0 ≤ s ≤ L_k
+p_{k+1} = P_k(L_k)
+R_{k+1} = R_k · rotation(ω ÷ κ, κ·L_k)          the turn is taken in the frame the chain has reached
+```
+
+- It is the Arc's point written twice over, with the same exact forms: a section with no bend is a straight line of exactly its length.
+- **One pass, no scan.** A thread composes the sections before its own in a loop, which is why a strip holds at most 16 sections; more are refused with the limit named. Sixteen sections is a spine, a tail or an arm; `segments` is what makes the chain smooth.
+- **Its length is the sum of its sections' lengths**, whatever their bends, and it is tangent-continuous by construction.
+- **There is nothing to solve, so nothing can jump.** A pose is its lengths and bends, a blend of two poses is a blend of those numbers, and the chain is a plain function of them. The test holds it in the shape of the Arc's: halve the step and the largest move halves, through a bend that passes through nothing.
+- **The single Arc is the case of one section** whose curvature and frame the Arc's solve picked. A test hands a one-section chain the solved Arc's frame and curvature and reads back the Arc.
+- **Attributes.** A float blends from its section toward the next section's, so a radius tapers along the chain; the last section has none after it and holds its own. An integer holds its section's. The attributes `arcLength` and `bend` are mapped from are ordinary attributes and ride along, as the Arc's do.
+- **What it refuses**: the node's own table (the table holds control points, not sections; a CPU reader has no Arc Chain to follow), a closed control strip (a chain has an end, and nothing brings it back to its start), more than 16 sections, a Start Frame it cannot read, a `bend` map that is not a whole vec2f.
 - sentinel-bot's trailing tentacle is two sections (neck and arm), and its blend between holding and trailing is a blend of these numbers. Without Arc Chain that state stays in its kernel.
 - The inverse problem with several arcs (pass through given points with given lengths) has branches; the consumer's two-arc solve "jumped branches". It is not offered as a stock mode.
 
@@ -366,7 +384,8 @@ A tentacle, a cable or a spine has a fixed length. The consumer's finding (shade
 
 | Curve | Its length | Stations by distance |
 |---|---|---|
-| Arc, Arc Chain | an input, exact | closed form, no scan; neighbouring stations are equal chords |
+| Arc | an input, exact | closed form, no scan; neighbouring stations are equal chords |
+| Arc Chain | the sum of its sections' lengths, each an input, exact | closed form per section, no scan; equal chords within a section |
 | Linear | the sum of the chords, exact | exact to the float sum |
 | Catmull-Rom, Cardinal, B-Spline, Bezier | whatever the control points make it; it changes as they move | even after Resample, but the count or the pitch has to give |
 | A rope's output (T1585b) | held by the solver, to its stretch limit | Curve Frames measures it |
@@ -492,6 +511,7 @@ Dawn/Metal, best of 9 runs of 200 frames, each figure the difference from the sa
 - The Arc solves its span again for every point of it (24 bisection steps) and still costs what a plain kernel pass does: the solve reads two control points and nothing else.
 - Linear reads dearer than Catmull-Rom here, which the arithmetic cannot explain: the method's noise at this size is as large as the differences between the bases. Read the row as "about 0.1 ms, the Arc highest".
 - Bezier was not measured.
+- **Arc Chain (slice 8)**, sixteen sections a strip at 16 segments (257 points a strip), lengths and bends mapped: under 0.05 ms at 99,973 points and 0.24 ms at 999,987, where Catmull-Rom took 0.12 and the Arc 0.13 over the same control points that day. A point of the last section composes fifteen sections before it, and the strip still costs twice a spline.
 
 - Memory: Resample owns every attribute of its output. Curve Frames owns 32 bytes a point (80 with the vectors). Resample's scratch is 4 bytes an input point, and 4 a block for a long strip. Curve Frames' scratch exists for long strips only: 224 bytes a block and 16 a strip, so 219 KB for one strip of a million points.
 
@@ -585,7 +605,7 @@ What Sweep reads, all of it already on the edge: the strips (`cols`, `rows`, `cl
 **What the family takes over, in the order the pieces land:**
 
 1. **Frames** (slices 1, 3 and 4). The kernel writes positions for the rings and the hub only, 55 stations a strip. A Topology node claims `strips:55x{tentacles}`. Curve Frames writes `orient`, with Up mapped from the bend plane's direction at each strip's first point and Roll 90 for the kit's axes (R5). The kernel marks its stowed rings by writing `live` itself, under the same contract (R4). The hub is Resample with a count of 1 at the end of each strip: one point per tentacle carrying the end frame. `quatFromFrame` and the per-station frame arithmetic leave the kernel.
-2. **Stations** (slice 8, Arc Chain). The holding arc and the trailing pair of arcs are each two sections' curvatures and a start frame, and the blend is a blend of those numbers. The kernel writes them once per tentacle. Curve places the curve; Resample by Distance (pitch 0.06, 54 slots, anchored at End) puts the rings on it and pads the stowed ones at the socket. `arcAt`, `along`, `turned` and the stow test leave the kernel.
+2. **Stations** (slice 8, Arc Chain, built). The holding arc and the trailing pair of arcs are each two sections' curvatures and a start frame, and the blend is a blend of those numbers. The kernel writes them once per tentacle: two control points a strip, each with a length and a `bend` (any names, mapped onto `arcLength` and `bend`), and the socket's frame as a quaternion on the first, named in `startOrient`. Curve places the curve; Resample by Distance (pitch 0.06, 54 slots, anchored at End) puts the rings on it and pads the stowed ones at the socket. `arcAt`, `along`, `turned` and the stow test leave the kernel.
 
 **What it does not take over:**
 
@@ -620,6 +640,16 @@ On Dawn through the compiler and the backend, red-verified, with the wire-cut ca
 - *No chord: a circle on the bow's side, or the point itself when no turn can hold the length.*
 - *Seek, for Curve → Resample → Curve Frames under moving control points.*
 - *Integer attributes: `7, 7, 7, 7, 8, 8, 8, 8, 9` for control points tagged 7, 8, 9 at four segments.*
+
+*Built in slice 8, the Arc Chain (nine Dawn tests, seven definition tests, eight on the reference):*
+
+- *A straight chain lands on its sections' lengths exactly, from the first control point, with the other control points' positions unread.*
+- *Three quarter circles by hand, ending at (2, −2, 0): the third shows each turn is taken in the frame the chain has reached, not about the world's axes.*
+- *The length table of 3.5, extended: Curve Frames reads each section's own curvature at the stations inside it; a section's stations lie on its circle; the measured length is `L·sinc(κL ÷ 2n)` summed over the sections, for a chain and for the same lengths bent twice as hard.*
+- *One section with the solved Arc's curvature and frame is that Arc, on the device and in the reference.*
+- *Each strip leaves along its own Start Frame, with the name cleared as the wire cut; Arc Length and Bend mapped per section, with the maps cut.*
+- *Blending two poses: halve the step and the largest move halves (a ratio between 1.8 and 2.2), with one bend passing through nothing on the way.*
+- *The reference on two unlike strips of five sections; attributes: `1, 1.25, …, 4, 4, 4, 4, 4` and `7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9, 9`.*
 
 **Curve Frames**
 
@@ -679,10 +709,10 @@ Each is shippable, and each is a prefix of the final design: the claim, the attr
 | 5 | Drawing | Beam mode takes a strip's next point as its far end when Endpoint is empty (the authored table moved to slice 2) | a curve visible as a line with no kernel |
 | 6 | Long strips | the blocked walk for Curve Frames and Resample (built); the Topology node's Columns and Rows limited by the edge and no longer by 4,096 | one curve of 100k points and more |
 | 7 | Resample by curvature | the density measure | fewer points on straights |
-| 8 | Arc Chain | sections by length and curvature | sentinel-bot step 2; tails, stems, antennae |
+| 8 | Arc Chain | sections by length and curvature (built) | sentinel-bot step 2; tails, stems, antennae |
 
 - Slices 2, 3 and 4 depend only on slice 1.
-- **Build order, from the consumer's review**: slices 1, 3 and 4 together first, because they are what removes the consumer's frame code (built); then slice 2 (built); then slice 6 (built) and Arc Chain.
+- **Build order, from the consumer's review**: slices 1, 3 and 4 together first, because they are what removes the consumer's frame code (built); then slice 2 (built); then slice 6 (built) and Arc Chain (built).
 - Slice 5's Beam change is in `scene.ts`, which T1581b and T1588b are editing, so it is scheduled after the mesh-instancing slices. It has a second consumer, a debug spine for a rig. Until then a five-line kernel writes each point's successor into an attribute and Beam draws it, with no engine change.
 
 ### 7.2 Accepted limitations, as follow-up rows
@@ -706,6 +736,9 @@ Each is shippable, and each is a prefix of the final design: the claim, the attr
 | C15 | Dead strip points cost nothing in an instanced draw | T1581b's F1 |
 | C16 | Circle Points: a `closed` option, one point per step and a closed claim | ruled 2026-10-05: the generator stays an open strip whose last point repeats its first, so no existing document's points move; the option is additive |
 | C17 | A control set that carries `live` feeds a Curve (the Curve reads each strip's live run as its control points) | the count of control points would differ per strip, and a Curve's output size is fixed at compile time; Resample by Count first |
+| C18 | An Arc Chain of more than 16 sections | every point composes the sections before it in a loop; past sixteen that wants the sections' frames from a scan over the control strip, which is one more pass |
+| C19 | An Arc Chain typed into the node, and readable by a CPU follower | the table holds control points with a scale and a roll, not sections; a second table shape, and no follower asks for it |
+| C20 | A section that also twists about its own axis (a helix per section) | `bend` is the two curvatures of the design; a third number is a twist per metre, and the closed form exists. No consumer yet |
 
 ### 7.3 Decisions, as ruled
 
@@ -773,6 +806,15 @@ Names as built: node types `pointCurve` (Curve), `pointCurveFrames` (Curve Frame
 - The seed rule (`perpendicular`, `leastAligned`, `seedNormal`) moved to `shaders/curve-common.wgsl.ts`, shared by the Arc and Curve Frames. Curve Frames' functions are the same text moved, and its exact-value Dawn tests read what they read before.
 - The design's length test asked for "the summed distance is `L × sinc(φ ÷ segments)`"; it is built so, and with the stronger statement that every station lies on the one circle of radius `L ÷ 2φ`.
 
+**Slice 8, Arc Chain** (section 3.2's paragraph is rewritten as built; this is the list of what moved)
+
+- Lengths and bends are parameters with Map mode, not fixed attribute names: the Arc's idiom.
+- The start direction and up are one quaternion attribute, named by `startOrient`, with the identity when no name is given. The design said "a start direction and up" without saying how.
+- A float attribute blends toward the next section's and the last section holds its own. The design did not say; the other bases blend between a span's two control points, and a section is one control point.
+- The table and a closed control strip are refused. The design did not say.
+- `arcLengthUnit`, `bow` and `maxTurn` are the Arc's alone; an Arc Chain's lengths are in metres.
+- The description of `arcLength` now covers both bases, and the node's description names the Arc Chain (the catalogue's rule that every mode is named).
+
 **Slice 6, long strips** (section 4.3 is rewritten as built; this is the list of what moved)
 
 - The third pass is per block, not per point: every block walks again from the state the fold left it. The design had a pass per point over a quaternion and a distance stored per point. Walking twice needs no per-point scratch and is the short walk's own code.
@@ -789,6 +831,7 @@ Names as built: node types `pointCurve` (Curve), `pointCurveFrames` (Curve Frame
 
 - The instancing-equality test (`orient` against Aim and Up) needs T1581b's slice D.
 - A fold of folds, if one strip of a million points has to cost less than 3 ms (4.5).
+- Rows for C18, C19 and C20, which slice 8 added to 7.2.
 - Not built, as ruled: Beam drawing a strip (slice 5), Resample by curvature (slice 7).
 
 ## 8. Found on the way (not fixed, not in scope)
