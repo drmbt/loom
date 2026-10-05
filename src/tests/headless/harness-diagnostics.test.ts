@@ -106,3 +106,40 @@ describe("T791 — a per-frame compile error fails the render", () => {
     ).rejects.toThrow(/Per-frame compile produced errors[\s\S]*frame \d/);
   });
 });
+
+describe("B252 — a value-graph error fails the render instead of blacking it out", () => {
+  /*
+   * The harness evaluated the value graph every frame and never read what it reported — the
+   * sixth reader-that-cannot-see in this file's history. A loop through `op()` references
+   * makes every member emit nothing (`valueGraph.cycle`, severity error), so a rate that
+   * read its own output rendered black with no diagnostic reaching the script that printed
+   * them (sentinel-bot, 2026-10-05). The app shows the same error in its Problems list.
+   */
+  it("throws, naming the frame and the members, on a loop closed through a wire and an op() reference", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+
+    const doc: GraphDocument = { revision: 1, nodes: {}, edges: {}, groups: {} };
+    const reads = (name: string) => ({
+      mode: "expression",
+      bindings: { static: { kind: "static", value: 0 }, expression: { kind: "expression", source: `op('${name}').chan.value` } },
+    });
+    const add = (id: string, type: string, parameters: Record<string, unknown>, label?: string): void => {
+      doc.nodes[id] = { id, type, definitionVersion: 1, position: { x: 0, y: 0 }, parameters, ...(label === undefined ? {} : { label }) } as never;
+    };
+    // The loop a rate that depends on its own output makes: `a` reads `b` by NAME, and `b`
+    // takes `a` on a WIRE. A loop of references alone is refused at compile ("Parameter
+    // reference chain is circular"); this one only the value graph's ordering can see.
+    add("a", "lfo", { shape: "sine", frequency: 1, amplitude: 1, offset: reads("lag_b"), phase: 0 }, "lfo_a");
+    add("b", "valueLag", { lag: 0.2 }, "lag_b");
+    add("solid", "solid", { color: [0.25, 0.5, 0.75, 1] });
+    add("level", "level", { brightness: reads("lfo_a") }, "level_out");
+    add("out", "output", {});
+    doc.edges["v0"] = { id: "v0", source: { nodeId: "a", portId: "out" }, target: { nodeId: "b", portId: "in" } } as never;
+    doc.edges["e0"] = { id: "e0", source: { nodeId: "solid", portId: "out" }, target: { nodeId: "level", portId: "input" } } as never;
+    doc.edges["e1"] = { id: "e1", source: { nodeId: "level", portId: "out" }, target: { nodeId: "out", portId: "input" } } as never;
+
+    await expect(
+      renderHeadless({ host: dawnGpuHost(), graph: doc, frames: 3, animate: true }),
+    ).rejects.toThrow(/frame 0: valueGraph\.cycle: Value graph cycle: a, b depend on each other/);
+  });
+});

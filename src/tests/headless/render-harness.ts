@@ -1019,6 +1019,8 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
     const pointerSource = createPointerSource();
     /** T791: per-frame compile errors, deduped, with the first frame each appeared on. */
     const perFrameErrors = new Map<string, { frameIndex: number; diagnostic: RuntimeDiagnostic }>();
+    /** B252: the value graph's warnings, deduped; they join the result's diagnostics. */
+    const valueWarnings = new Map<string, RuntimeDiagnostic>();
     const driver = createFrameDriver({
       backend,
       ...(audioSeam === undefined ? {} : { audio: audioSeam }),
@@ -1057,6 +1059,21 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
                       },
                     }),
               });
+              /*
+               * B252 — the value graph's diagnostics are READ. A loop that closes through a
+               * wire and an `op()` reference makes every member emit nothing
+               * (`valueGraph.cycle`); nobody looked, so the render went black in silence.
+               * Errors fail the render like a per-frame compile error (T791), naming the
+               * first frame; warnings travel with the result's diagnostics, once each.
+               */
+              for (const diagnostic of evaluated.diagnostics) {
+                const key = `${diagnostic.code}|${diagnostic.nodeId ?? ""}|${diagnostic.message}`;
+                if (diagnostic.severity === "error") {
+                  if (!perFrameErrors.has(key)) perFrameErrors.set(key, { frameIndex: inputs.frame.frameIndex, diagnostic });
+                } else if (!valueWarnings.has(key)) {
+                  valueWarnings.set(key, diagnostic);
+                }
+              }
               // Analyze FIRST, exactly as the app merges its resolvers: a measured
               // channel outranks a value-graph channel of the same name.
               const channels: ChannelResolver =
@@ -1180,7 +1197,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
       const lines = [...perFrameErrors.values()].map(
         (entry) => `frame ${entry.frameIndex}: ${entry.diagnostic.code}: ${entry.diagnostic.message}`,
       );
-      throw new Error(`Per-frame compile produced errors:\n${lines.join("\n")}`);
+      throw new Error(`Per-frame compile produced errors (the value graph's included):\n${lines.join("\n")}`);
     }
 
     const probed: Record<string, ArrayBuffer> = {};
@@ -1198,7 +1215,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
       // Compiler diagnostics FIRST: they are about the plan the render ran, and the
       // errors among them already threw above — what travels here is the warnings,
       // which are exactly what a byte-identical-but-wrong render hides (T630).
-      diagnostics: [...plan.diagnostics, ...diagnostics],
+      diagnostics: [...plan.diagnostics, ...diagnostics, ...valueWarnings.values()],
     };
   } finally {
     backend.dispose();
