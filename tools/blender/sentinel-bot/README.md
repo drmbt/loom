@@ -1,8 +1,9 @@
 # Sentinel kit (Blender side of the sentinel-bot project, T1561b)
 
 `build.py` cuts the reference sentinel FBX into the GLB kit that loom's `meshFileIn` imports.
-The FBX is a third-party reference asset with an unknown licence. It is **not** in the repository and
-neither is the kit built from it: the kit goes to `public/media/sentinel-bot/`, which is gitignored.
+The FBX is a free model from CGTrader under its royalty-free licence. It is **not** in the repository
+and neither is the kit built from it (the owner's decision): the kit goes to
+`public/media/sentinel-bot/`, which is gitignored.
 
 ## Run
 
