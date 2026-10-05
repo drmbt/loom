@@ -177,7 +177,7 @@ const where = (scopes: readonly string[]): string =>
   scopes.length <= 4 ? scopes.join(", ") : `${scopes.slice(0, 3).join(", ")} and ${String(scopes.length - 3)} more`;
 
 /** Shipped names that land on a kind word a reader might not guess, for the owner's look at the table. */
-const KINDS_TO_SHOW: readonly string[] = ["texattr", "texpoints", "audiofile", "generator", "pattern", "note"];
+const KINDS_TO_SHOW: readonly string[] = ["sample", "texturepoints", "audiofile", "generator", "pattern", "note"];
 
 /** The page a person reviews. */
 export function renameMapPage(map: RenameMap, documents: readonly ShippedDocument[]): string {
@@ -226,7 +226,7 @@ export function renameMapPage(map: RenameMap, documents: readonly ShippedDocumen
   say(
     `## Decided by hand (${String(judged.length)} names)`,
     "",
-    "Where the rules left one or two characters, the node got a word for what it is FOR in that document, read from the example's source and its wiring. Its whole chain was renamed with it, so a row of three does not mix two spellings. **?** marks the ones the proposer could not tell.",
+    `Where the rules left one or two characters, the node got a word for what it is FOR in that document, read from the example's source and its wiring. Its whole chain was renamed with it, so a row of three does not mix two spellings.${judged.some((entry) => entry.unsure === true) ? " **?** marks the ones the proposer could not tell." : ""}`,
     "",
   );
   for (const scope of [...new Set(judged.map((entry) => entry.scope))]) {

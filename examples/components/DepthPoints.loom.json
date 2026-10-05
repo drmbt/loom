@@ -513,6 +513,7 @@
       "nd_depthPoints1": {
         "definitionVersion": 1,
         "id": "nd_depthPoints1",
+        "label": "depthpoints1",
         "parameters": {},
         "position": {
           "x": -260,

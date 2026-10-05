@@ -61,7 +61,7 @@ export const NOT_YET_RENAMED: Readonly<Record<string, number>> = {
   "examples/E14-Self-Regulating-Bloom.loom.json": 5,
   "examples/E16-Murmuration.loom.json": 4,
   "examples/E2-Reaction-Diffusion.loom.json": 10,
-  "examples/E20-Gooeyball.loom.json": 14,
+  "examples/E20-Gooeyball.loom.json": 13,
   "examples/E24-Audio-Reaction-Diffusion.loom.json": 50,
   "examples/E25-Stage.loom.json": 21,
   "examples/E26-Interference.loom.json": 10,

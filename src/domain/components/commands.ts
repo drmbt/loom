@@ -798,20 +798,12 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
             definitionVersion: version,
             position: built.position,
             parameters: defaultPublishedValues(built.definition),
-            /*
-             * T1593b phase 2: THIS INSTANCE IS NOT NAMED YET, and it is the one door that
-             * is not. An instance made from the library, by an import or by an `addNode`
-             * is named for its component (`bloom1`); this one should be too, with
-             * `label: uniqueNodeName(draft, kindFromName(built.definition.name))`.
-             *
-             * It waits because every shipped starter component is AUTHORED THROUGH THIS
-             * COMMAND (`starter-components.ts`), and the shipped file is the host document
-             * it leaves behind. Naming the instance here adds one line, `"label":
-             * "mattecut1"`, to the root graph of each of the 12 files under
-             * `examples/components/`, and `component-sync.test.ts` holds those bytes.
-             * Phase 1b may not change a shipped byte; the sweep regenerates all 12 anyway,
-             * and that is where this line and those files change together.
-             */
+            // T1593b: named for its component, like an instance from the library, an import
+            // or an `addNode` (`mattecut1`). The selection is already out of the draft, so a
+            // node it held cannot be what the number is counted against. Every shipped
+            // starter component is authored through this command, which is why the 12 files
+            // under `examples/components/` each carry this label on their root instance.
+            label: uniqueNodeName(draft, kindFromName(built.definition.name)),
           };
 
           for (const wiring of built.inputWiring) {

@@ -371,6 +371,7 @@
       "nd_kaleidoscope1": {
         "definitionVersion": 1,
         "id": "nd_kaleidoscope1",
+        "label": "kaleidoscope1",
         "parameters": {},
         "position": {
           "x": -240,

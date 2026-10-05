@@ -285,14 +285,16 @@ export const NODE_KINDS: Readonly<Record<string, string>> = {
   pointTube: "tube",
   pointTorus: "torus",
   pointBox: "box",
-  pointsFromTexture: "texpoints",
+  // Spelled out on the owner's ruling (2026-10-05): `texpoints` did not say what it was.
+  pointsFromTexture: "texturepoints",
   meshFileIn: "mesh",
 
   // points: operators
   pointKernel: "kernel",
   pointKernelAdvanced: "kernel",
   pointRay: "ray",
-  textureToAttribute: "texattr",
+  // The same ruling: it SAMPLES a texture onto an attribute, and `texattr` said neither half.
+  textureToAttribute: "sample",
   pointTopology: "topology",
   pointCurve: "curve",
   pointCurveFrames: "frames",

@@ -47,8 +47,8 @@ export const JUDGEMENTS: readonly Judgement[] = [
   // ── E25, E45: a scene's letter is its name ─────────────────────────────────────────────
   { scope: "E25-Stage", kind: "camera", old: "cama1", role: "a", reason: "scene A's camera: kept, the letter is the scene's name here (`render_shota`, `light_keya`)" },
   { scope: "E25-Stage", kind: "camera", old: "camb1", role: "b", reason: "scene B's camera: kept, as above" },
-  { scope: "E25-Stage", kind: "geometry", old: "geoa1", role: "a", reason: "scene A's only geometry: kept, as above", unsure: true },
-  { scope: "E25-Stage", kind: "material", old: "mata1", role: "a", reason: "scene A's only material: kept, as above", unsure: true },
+  { scope: "E25-Stage", kind: "geometry", old: "geoa1", role: "a", reason: "scene A's only geometry: kept, as above (the lead's ruling, 2026-10-05)" },
+  { scope: "E25-Stage", kind: "material", old: "mata1", role: "a", reason: "scene A's only material: kept, as above (the lead's ruling, 2026-10-05)" },
   { scope: "E45-Pulse", kind: "camera", old: "camA1", role: "A", reason: "shot A's camera: kept, the letter is the shot's name (`render_shotA`)" },
   { scope: "E45-Pulse", kind: "camera", old: "camB1", role: "B", reason: "shot B's camera: kept, as above" },
 

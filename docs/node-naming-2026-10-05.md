@@ -80,7 +80,7 @@ The second group is TouchDesigner's own model: a Transform TOP and a Transform S
   - **The kind is not in the type.** A saved component's id is minted (`cmp_7`), so the type `component:cmp_7@2` holds nothing a person can read. The name is on the component's definition, which the registry hands out as the instance's title. So `kindOf(definition)` answers for every node, and `kindOfType(type)` refuses an instance type by name rather than answer with a wrong word.
   - **A component may share a word with a built-in kind.** One called "Blur" makes instances of kind `blur`. To the reader it is that kind of thing. The two are numbered in one sequence (`blur1`, `blur2`), so names stay unique.
   - **Renaming a component renames no node.** Instances made under the old name keep it, and every reference to them still resolves. They stop carrying the kind, so the canvas shows their type again and the title editor offers the new kind at the next rename. Tested.
-  - **A new instance is named**, where it used to be left unnamed and so was the one new node `op('…')` could not address. Three of the four doors do it now: the library, an import, and an `addNode`. **Save as component does not yet**, and that is a decision for the lead (open question 1): every shipped starter component is authored through that command and ships the document it leaves behind, so naming the instance there adds one line (`"label": "mattecut1"`) to each of the 12 files under `examples/components/`. Phase 1b may not change a shipped byte. `pnpm test:gates` caught it (`component-sync.test.ts`); no shipped file was written.
+  - **A new instance is named**, where it used to be left unnamed and so was the one new node `op('…')` could not address. All four doors do it: the library, an import, an `addNode`, and save as component. The last waited for the sweep, because every shipped starter component is authored through that command and ships the document it leaves behind: naming the instance there added one line (`"label": "mattecut1"`) to each of the 12 files under `examples/components/`, which is the sweep's step 0.
 - A component's **In and Out** are not bound by the convention. Their name is the label of the socket the component shows from outside (`boundary-ports.ts`), so `in_depth` would put the direction on the socket twice. They are auto-named with their kind (`in1`, `out1`), never prefixed on a rename, and the gate does not ask them to conform.
 
 A type the table does not hold (a test fixture, a definition registered at runtime) falls back to the old base, `nameBaseFor(type)`.
@@ -98,7 +98,7 @@ A type the table does not hold (a test fixture, a definition registered at runti
 | MIDI learn | `midiin1`, and `count_midi` for the press counter. |
 | Paste, duplicate, detach, flatten | The copied name, renumbered when taken (`slider_lamp` → `slider_lamp1`). Still conforming. |
 | A new component instance (library, import, or an `addNode`) | Named for its component: `bloom1`. |
-| The instance a saved selection becomes (save as component) | Unnamed still. It follows with the sweep, because it changes the 12 shipped starter component files (section 3). |
+| The instance a saved selection becomes (save as component) | Named for the component it was saved as (`doubleblur1`), counted against the names the graph still holds. Since the sweep's step 0. |
 
 **Where the rule lives: in the command, not in each surface.** `node.rename` is the one door the title editor and an agent's rename both use (§V78), so the rule is stated once there. The patch operation underneath stays exact. The convention belongs to the act of naming, never to the replay of one.
 
@@ -284,7 +284,7 @@ Each of these could reasonably go the other way.
 | Point shapes | `grid`, `line`, `sphere`, `tube`, `torus`, `box` | keep `pointgrid` … | The ruling's own example drops `point` (`kernel`, not `pointkernel`). These are TouchDesigner's POP names. |
 | `renderPoints` / `renderInstances` / `renderSurface` | `points`, `instances`, `surface` | one family `render` | Named for what they draw; distinct. `surface` may be confused with a surface material in the projects. |
 | `pointGenerator` | `generator` | `points` (taken by Render Points) | |
-| `textureToAttribute`, `pointsFromTexture` | `texattr`, `texpoints` | `sample`, `fromtexture` | Abbreviated from the titles, as TouchDesigner does (`topto`, `hsvadj`). The least natural words in the table. |
+| `textureToAttribute`, `pointsFromTexture` | `sample`, `texturepoints` | `texattr`, `texpoints` | The owner's ruling, 2026-10-05: spell them out. `texattr` and `texpoints` were abbreviated from the titles, as TouchDesigner does (`topto`, `hsvadj`), and were the least natural words in the table. |
 | `audioPattern` | `pattern` | `audiopattern` (12 letters) | Too long. Cost: loses the `audio…` family with `audioin`, `audiofile`. |
 | `audioFileIn` | `audiofile` | `audio` | `audio` alone would not say which of three audio sources. |
 | `annotate` | `note` | `annotation` | Every shipped one is already named `note…`. |
@@ -385,7 +385,7 @@ Plus 86 generated documents under `examples/`, regenerated and not written by th
 
 In its own worktree, never the shared tree.
 
-0. **Save as component names its instance** (`commands.ts`, the line marked phase 2; `instance-names.test.ts` pins the old behaviour and flips with it). Each of the 12 starter component files gains `"label": "<component>1"` on its root instance. Regenerate them one at a time, `--only Antialias` and so on. Gates: `component-sync.test.ts`, `only-flag.test.ts`, `component-port-names.test.ts`, `instance-names.test.ts`.
+0. **Done.** The two kinds the owner spelled out (`sample`, `texturepoints`), and save as component names its instance (`commands.ts`; `instance-names.test.ts`). Each of the 12 starter component files gained `"label": "<component>1"` on its root instance and nothing else, regenerated one at a time, `--only Antialias` and so on. Gates: `component-sync.test.ts`, `only-flag.test.ts`, `component-port-names.test.ts`, `instance-names.test.ts`.
 1. `build-rename-map.ts --check`, then `check-rename-equivalence.ts`. Both must be green on the tree as it is that day; the map is rebuilt from the bytes, so a document another session changed since is picked up, or refused.
 2. **One batch at a time**: `apply-rename.ts --only <batch> --write`. A batch is widened to every scope that shares a source file, and says so. Then `--only <batch> --build-in <dir>` until every document of the batch is byte for byte the renamed one, finishing by hand what `--notes` lists. Then regenerate, one `--only E<n>` at a time, reading the list each run prints.
 
@@ -408,7 +408,7 @@ Ruled on 2026-10-05 and no longer open: collisions stay refused; the cross-paylo
 
 Still open:
 
-1. **The map.** The 70 hand decisions, the 25 kind-only and 162 restated pairs, and the six kind words it shows the shipped names on (`texattr`, `texpoints`, `audiofile`, `generator`, `pattern`, `note`).
+1. **The map.** The 70 hand decisions, the 25 kind-only and 162 restated pairs, and the six kind words it shows the shipped names on (`sample`, `texturepoints`, `audiofile`, `generator`, `pattern`, `note`).
 2. **Projects** (10.4): rename the on-nothing and furnace documents in place and leave their sources to their own sessions, as sentinel-bot's are, or do the sources in 2b?
 3. **Kaleidoscope reads two LFOs that are not in it** (10.3). The sweep keeps that as it is. Should the component own them?
 4. **Three-letter abbreviations** the authors wrote are kept (`src`, `lvl`, `env`, `fig`, `cyc`, `occ`, `dof`, `taa`); the map lists them. Spell any out?
@@ -504,7 +504,7 @@ Generated from `NODE_KINDS`. The code is the source; this is a snapshot of 2026-
 | **points** | | | | | |
 | `pointKernel` | Point Kernel | `kernel` | `kernel1` | `pointkernel1` | family |
 | `pointRay` | Ray | `ray` | `ray1` | `pointray1` |  |
-| `textureToAttribute` | Texture To Attribute | `texattr` | `texattr1` | `texturetoattribute1` |  |
+| `textureToAttribute` | Texture To Attribute | `sample` | `sample1` | `texturetoattribute1` |  |
 | `renderPoints` | Render Points | `points` | `points1` | `renderpoints1` |  |
 | `pointGenerator` | Point Generator | `generator` | `generator1` | `pointgenerator1` |  |
 | `pointGrid` | Grid Points | `grid` | `grid1` | `pointgrid1` |  |
@@ -514,7 +514,7 @@ Generated from `NODE_KINDS`. The code is the source; this is a snapshot of 2026-
 | `pointTube` | Tube Points | `tube` | `tube1` | `pointtube1` |  |
 | `pointTorus` | Torus Points | `torus` | `torus1` | `pointtorus1` |  |
 | `pointBox` | Box Points | `box` | `box1` | `pointbox1` |  |
-| `pointsFromTexture` | Points From Texture | `texpoints` | `texpoints1` | `pointsfromtexture1` |  |
+| `pointsFromTexture` | Points From Texture | `texturepoints` | `texturepoints1` | `pointsfromtexture1` |  |
 | `renderInstances` | Render Instances | `instances` | `instances1` | `renderinstances1` |  |
 | `renderSurface` | Render Surface | `surface` | `surface1` | `rendersurface1` |  |
 | `pointTopology` | Topology | `topology` | `topology1` | `pointtopology1` |  |

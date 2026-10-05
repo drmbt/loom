@@ -97,21 +97,20 @@ describe("a new component instance is named for its component", () => {
   });
 
   /*
-   * THE ONE DOOR NOT YET NAMED, pinned so that it is a known gap and not a forgotten one
-   * (T1593b phase 2). The instance a saved selection becomes should be `doubleblur1`.
-   *
-   * It is not, because every shipped starter component is authored through this command
-   * and ships the host document it leaves behind: naming the instance here adds a line to
-   * each of the 12 files under `examples/components/` (`component-sync.test.ts` holds their
-   * bytes), and phase 1b may not change a shipped byte. The sweep regenerates those files;
-   * the line in `commands.ts` and this expectation change with them, to "doubleblur1".
+   * The last door. Saving a selection as a component leaves an instance where the selection
+   * stood, and that instance is a new node like any other: unnamed, nothing could read it
+   * by `op('…')` until somebody renamed it. Every shipped starter component is authored
+   * through this command, so this is also what the host documents under
+   * `examples/components/` show a person who opens one.
    */
-  it("does not yet name the instance a saved selection becomes: that waits for the sweep", async () => {
+  it("names the instance a saved selection becomes for the component it was saved as", async () => {
     const harness = createComponentHarness(
       "t",
       graphOf([
         node("b1", "test.blur", { radius: 2 }, { position: { x: 100, y: 0 } }),
         node("b2", "test.blur", { radius: 8 }, { position: { x: 200, y: 0 } }),
+        // Stays outside the selection, and already holds the name the instance would take.
+        node("other", "test.blur", { radius: 1 }, { position: { x: 300, y: 0 }, label: "doubleblur1" }),
       ]),
     );
 
@@ -122,10 +121,9 @@ describe("a new component instance is named for its component", () => {
     );
 
     expect(saved.status).toBe("applied");
-    const nodes = Object.values(harness.store.view.getGraph().nodes);
-    // The selection is gone and one instance stands where it was.
-    expect(nodes.map((each) => each.type.startsWith("component:"))).toEqual([true]);
-    expect(nodes[0]?.label).toBeUndefined();
+    const instance = Object.values(harness.store.view.getGraph().nodes).find((each) => each.type.startsWith("component:"));
+    // Two nodes never share a name: the one that stayed keeps `doubleblur1`.
+    expect(instance?.label).toBe("doubleblur2");
   });
 
   /*

@@ -7,16 +7,16 @@
   "counts": {
     "documents": 111,
     "scopes": 88,
-    "entries": 2143,
-    "nodes": 3130,
+    "entries": 2142,
+    "nodes": 3129,
     "byRule": {
       "habit": {
         "entries": 1665,
         "nodes": 2406
       },
       "number": {
-        "entries": 67,
-        "nodes": 83
+        "entries": 66,
+        "nodes": 82
       },
       "series": {
         "entries": 13,
@@ -921,9 +921,9 @@
         },
         {
           "type": "textureToAttribute",
-          "kind": "texattr",
+          "kind": "sample",
           "old": "wallskin1",
-          "new": "texattr_wallskin",
+          "new": "sample_wallskin",
           "rule": "habit",
           "nodeIds": [
             "wallskin"
@@ -1305,17 +1305,6 @@
           "rule": "habit",
           "nodeIds": [
             "paint"
-          ],
-          "nodes": 1
-        },
-        {
-          "type": "textureToAttribute",
-          "kind": "texattr",
-          "old": "sample1",
-          "new": "texattr_sample",
-          "rule": "number",
-          "nodeIds": [
-            "bridge"
           ],
           "nodes": 1
         },
@@ -1976,8 +1965,7 @@
           "old": "geoa1",
           "new": "geometry_a",
           "rule": "judged",
-          "reason": "scene A's only geometry: kept, as above",
-          "unsure": true,
+          "reason": "scene A's only geometry: kept, as above (the lead's ruling, 2026-10-05)",
           "nodeIds": [
             "geoA"
           ],
@@ -2011,8 +1999,7 @@
           "old": "mata1",
           "new": "material_a",
           "rule": "judged",
-          "reason": "scene A's only material: kept, as above",
-          "unsure": true,
+          "reason": "scene A's only material: kept, as above (the lead's ruling, 2026-10-05)",
           "nodeIds": [
             "matA"
           ],
@@ -2316,9 +2303,9 @@
         },
         {
           "type": "textureToAttribute",
-          "kind": "texattr",
+          "kind": "sample",
           "old": "bridge1",
-          "new": "texattr_bridge",
+          "new": "sample_bridge",
           "rule": "habit",
           "nodeIds": [
             "bridge"
@@ -3219,9 +3206,9 @@
         },
         {
           "type": "textureToAttribute",
-          "kind": "texattr",
+          "kind": "sample",
           "old": "bridge1",
-          "new": "texattr_bridge",
+          "new": "sample_bridge",
           "rule": "habit",
           "nodeIds": [
             "bridge"
@@ -5491,9 +5478,9 @@
         },
         {
           "type": "textureToAttribute",
-          "kind": "texattr",
+          "kind": "sample",
           "old": "probe1",
-          "new": "texattr_probe",
+          "new": "sample_probe",
           "rule": "habit",
           "nodeIds": [
             "probe"
@@ -7901,9 +7888,9 @@
         },
         {
           "type": "pointsFromTexture",
-          "kind": "texpoints",
+          "kind": "texturepoints",
           "old": "cloud1",
-          "new": "texpoints_cloud",
+          "new": "texturepoints_cloud",
           "rule": "habit",
           "nodeIds": [
             "cloud"
@@ -8023,9 +8010,9 @@
         },
         {
           "type": "textureToAttribute",
-          "kind": "texattr",
+          "kind": "sample",
           "old": "tint1",
-          "new": "texattr_tint",
+          "new": "sample_tint",
           "rule": "habit",
           "nodeIds": [
             "tint"
@@ -9021,9 +9008,9 @@
         },
         {
           "type": "pointsFromTexture",
-          "kind": "texpoints",
+          "kind": "texturepoints",
           "old": "joints1",
-          "new": "texpoints_joints",
+          "new": "texturepoints_joints",
           "rule": "habit",
           "nodeIds": [
             "joints"
@@ -11575,9 +11562,9 @@
         },
         {
           "type": "pointsFromTexture",
-          "kind": "texpoints",
+          "kind": "texturepoints",
           "old": "hide1",
-          "new": "texpoints_hide",
+          "new": "texturepoints_hide",
           "rule": "habit",
           "nodeIds": [
             "hide"

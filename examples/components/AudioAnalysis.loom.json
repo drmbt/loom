@@ -482,6 +482,7 @@
       "nd_audioAnalysis1": {
         "definitionVersion": 1,
         "id": "nd_audioAnalysis1",
+        "label": "audioanalysis1",
         "parameters": {},
         "position": {
           "x": -440,

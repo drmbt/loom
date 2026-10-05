@@ -138,15 +138,10 @@ function judgementFor(scope: string, kind: string, old: string, used: Set<Judgem
 export function buildRenameMap(documents: readonly ShippedDocument[]): RenameMap {
   const pending = new Map<string, Pending>();
   const namesIn = new Map<string, Set<string>>();
-  const seenComponentIn = new Map<string, string>();
 
   for (const document of documents) {
     for (const graph of auditedGraphs(document.text)) {
       const scope = scopeOf(document.path, graph);
-      // A component's graph is the same bytes wherever it is embedded: count it where it is
-      // first seen, so `occurrences` is nodes and not nodes times embeddings.
-      const first = graph.component === null ? document.path : (seenComponentIn.get(scope) ?? document.path);
-      if (graph.component !== null) seenComponentIn.set(scope, first);
       for (const node of graph.nodes) {
         if (node.name === undefined) continue;
         // A run is counted among nodes of ONE kind: `drift1` on a Kernel and `drift2` on an
@@ -158,8 +153,12 @@ export function buildRenameMap(documents: readonly ShippedDocument[]): RenameMap
         const key = `${scope}\n${node.type}\n${node.name}`;
         const entry = pending.get(key) ?? { scope, type: node.type, kind: node.kind, old: node.name, occurrences: [] };
         pending.set(key, entry);
-        if (first === document.path) entry.occurrences.push({ path: document.path, nodeId: node.id });
-        else if (!entry.occurrences.some((occurrence) => occurrence.path === document.path)) entry.occurrences.push({ path: document.path, nodeId: "" });
+        // A component's graph is the same node wherever it is embedded: it is counted once,
+        // by its id, so `occurrences` is nodes and not nodes times embeddings. By ID and not
+        // by which file came first: once a batch has renamed the component in the examples,
+        // the files that still hold the old name are no longer the first ones read.
+        const again = graph.component !== null && entry.occurrences.some((occurrence) => occurrence.nodeId === node.id);
+        entry.occurrences.push({ path: document.path, nodeId: again ? "" : node.id });
       }
     }
   }

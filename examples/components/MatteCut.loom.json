@@ -303,6 +303,7 @@
       "nd_matteCut1": {
         "definitionVersion": 1,
         "id": "nd_matteCut1",
+        "label": "mattecut1",
         "parameters": {},
         "position": {
           "x": -200,

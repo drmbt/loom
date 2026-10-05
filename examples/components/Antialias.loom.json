@@ -198,6 +198,7 @@
       "nd_antialias1": {
         "definitionVersion": 1,
         "id": "nd_antialias1",
+        "label": "antialias1",
         "parameters": {},
         "position": {
           "x": 600,
