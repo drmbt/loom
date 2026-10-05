@@ -1317,7 +1317,6 @@
         "id": "geometry_claw",
         "label": "geometry_claw",
         "parameters": {
-          "group": "p.kind > -0.5",
           "material": "hull1",
           "mode": "instances",
           "orient": {
@@ -1351,7 +1350,6 @@
         "id": "geometry_hull",
         "label": "geometry_hull",
         "parameters": {
-          "group": "p.kind > -0.5",
           "material": "hull1",
           "mode": "instances",
           "orient": {

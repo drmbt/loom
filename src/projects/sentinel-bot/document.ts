@@ -174,12 +174,18 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
    * The robot's pieces: each a mesh from the kit, and the points of the rig it is drawn on.
    * The kit holds every piece at the origin in its own joint frame (the hull in the robot's),
    * so the file's world IS the shape's frame and Frame stays at World. Each piece has a
-   * kernel of its own writing exactly its points (rig.ts, Pick); a Group predicate over one
-   * shared pointset would hand every draw every point.
+   * kernel of its own writing exactly its points (rig.ts, Pick), so a draw takes every point
+   * it is handed and needs no Group. Only the rings do: the rig stows the first of them in
+   * the body (kind −1) while a tentacle has slack, and a stowed ring is in no draw.
+   *
+   * A Group is not free where it rejects nothing (§T1581b F1, 091bebe2): a geometry with one
+   * compacts its instances and draws indirect in every pass, about 0.05 ms of GPU a pass
+   * more than a literal count. Measured by the lead on these documents, shadows on: the
+   * hinged robot 18.5 ms with a Group on all eleven draws, 11.1 ms with none.
    */
-  const pieces: ReadonlyArray<{ readonly role: string; readonly shape: MeshSelectionFacts; readonly pick: Pick }> = [
+  const pieces: ReadonlyArray<{ readonly role: string; readonly shape: MeshSelectionFacts; readonly pick: Pick; readonly stows?: boolean }> = [
     { role: "hull", shape: facts.robot, pick: "body" },
-    { role: "ring", shape: facts.ring, pick: { first: 0, count: facts.ringCount } },
+    { role: "ring", shape: facts.ring, pick: { first: 0, count: facts.ringCount }, stows: true },
     // The claw: live, one rigid piece on the wrist; offline, its cone and eight phalanges, each hinged (see `tier`).
     ...(hingedClaws
       ? [{ role: "hub", shape: facts.hub, pick: { first: facts.ringCount, count: 1 } }, ...facts.phalanxMeshes.map((shape, which) => ({ role: `phalanx${which}`, shape, pick: { first: facts.ringCount + 1 + which, count: 1 } }))]
@@ -195,7 +201,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         material: "hull1",
         orient: map("orient", [0, 0, 0, 1]),
         // A ring still stowed in the body is not drawn.
-        group: "p.kind > -0.5",
+        ...(piece.stows === true ? { group: "p.kind > -0.5" } : {}),
       }, { label: `geometry_${piece.role}` }),
     ]);
 
