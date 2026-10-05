@@ -14,6 +14,50 @@
           "portId": "points"
         }
       },
+      "clip-hits": {
+        "id": "clip-hits",
+        "source": {
+          "nodeId": "clip",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "pickHits",
+          "portId": "in"
+        }
+      },
+      "clip-levels": {
+        "id": "clip-levels",
+        "source": {
+          "nodeId": "clip",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "pickLevels",
+          "portId": "in"
+        }
+      },
+      "ease-travel": {
+        "id": "ease-travel",
+        "source": {
+          "nodeId": "ease",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "travel",
+          "portId": "in"
+        }
+      },
+      "hits-lag": {
+        "id": "hits-lag",
+        "source": {
+          "nodeId": "pickHits",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "hits",
+          "portId": "in"
+        }
+      },
       "joints-claws": {
         "id": "joints-claws",
         "source": {
@@ -45,6 +89,207 @@
         "target": {
           "nodeId": "rings",
           "portId": "points"
+        }
+      },
+      "levels-smooth": {
+        "id": "levels-smooth",
+        "source": {
+          "nodeId": "pickLevels",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "smooth",
+          "portId": "in"
+        }
+      },
+      "panel-bore": {
+        "id": "panel-bore",
+        "order": 7,
+        "source": {
+          "nodeId": "bore",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-crawl": {
+        "id": "panel-crawl",
+        "order": 1,
+        "source": {
+          "nodeId": "crawl",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-distance": {
+        "id": "panel-distance",
+        "order": 10,
+        "source": {
+          "nodeId": "distance",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-flare": {
+        "id": "panel-flare",
+        "order": 4,
+        "source": {
+          "nodeId": "flare",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-glow": {
+        "id": "panel-glow",
+        "order": 9,
+        "source": {
+          "nodeId": "glow",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-grip": {
+        "id": "panel-grip",
+        "order": 6,
+        "source": {
+          "nodeId": "grip",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-lamp": {
+        "id": "panel-lamp",
+        "order": 8,
+        "source": {
+          "nodeId": "lamp",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-perch": {
+        "id": "panel-perch",
+        "order": 12,
+        "source": {
+          "nodeId": "perch",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-react": {
+        "id": "panel-react",
+        "order": 11,
+        "source": {
+          "nodeId": "react",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-speed": {
+        "id": "panel-speed",
+        "order": 0,
+        "source": {
+          "nodeId": "speed",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-stride": {
+        "id": "panel-stride",
+        "order": 3,
+        "source": {
+          "nodeId": "stride",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-swim": {
+        "id": "panel-swim",
+        "order": 2,
+        "source": {
+          "nodeId": "swim",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-view": {
+        "id": "panel-view",
+        "order": 13,
+        "source": {
+          "nodeId": "view",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-wave": {
+        "id": "panel-wave",
+        "order": 5,
+        "source": {
+          "nodeId": "wave",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "rank-levels": {
+        "id": "rank-levels",
+        "source": {
+          "nodeId": "rank",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "levels",
+          "portId": "in"
+        }
+      },
+      "rate-ease": {
+        "id": "rate-ease",
+        "source": {
+          "nodeId": "rate",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "ease",
+          "portId": "in"
         }
       },
       "ribs-geo": {
@@ -80,20 +325,109 @@
           "portId": "input"
         }
       },
-      "speed-travel": {
-        "id": "speed-travel",
+      "smooth-rank": {
+        "id": "smooth-rank",
         "source": {
-          "nodeId": "speed",
+          "nodeId": "smooth",
           "portId": "out"
         },
         "target": {
-          "nodeId": "travel",
+          "nodeId": "rank",
+          "portId": "in"
+        }
+      },
+      "stroke-rate": {
+        "id": "stroke-rate",
+        "source": {
+          "nodeId": "strokeRate",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "stroke",
           "portId": "in"
         }
       }
     },
     "groups": {},
     "nodes": {
+      "beam": {
+        "definitionVersion": 1,
+        "id": "beam",
+        "label": "beam1",
+        "parameters": {
+          "color": [
+            0.55,
+            0.8,
+            1,
+            1
+          ],
+          "falloff": "inverseSquare",
+          "intensity": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('lamp').chan.lamp * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 26
+              }
+            },
+            "mode": "expression"
+          },
+          "kind": "point",
+          "position": [
+            0,
+            1.6,
+            7
+          ],
+          "position.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('travel1').chan.value + 7)) + 0.4) + 5.0 * sin(0.085084801 * ((op('travel1').chan.value + 7)) + 1.9)) + 0"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "position.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('travel1').chan.value + 7)) + 2.2) + 2.5 * sin(0.0719948316 * ((op('travel1').chan.value + 7)) + 0.7)) + 1.6"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.6
+              }
+            },
+            "mode": "expression"
+          },
+          "position.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('travel1').chan.value + 7)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 7
+              }
+            },
+            "mode": "expression"
+          },
+          "range": 40
+        },
+        "position": {
+          "x": -1500,
+          "y": -150
+        },
+        "type": "light"
+      },
       "body0": {
         "definitionVersion": 1,
         "id": "body0",
@@ -101,7 +435,7 @@
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"normal\",\"type\":\"vec3f\",\"qualifier\":\"direction\",\"default\":[0,1,0]},{\"name\":\"uv\",\"type\":\"vec2f\",\"default\":[0,0]},{\"name\":\"color\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"surface\",\"type\":\"vec4f\",\"default\":[1,0,0,0]},{\"name\":\"emissive\",\"type\":\"vec3f\",\"qualifier\":\"color\",\"default\":[0,0,0]}]",
           "capacity": 152490,
-          "kernel": "// T1561b — the sentinel's body: the kit's robot frame, set down in the tunnel.\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the tunnel, metres.\n  offset: vec3f, // @default 0  The robot's place off the tunnel's axis: right, up, ahead (metres).\n  roll: f32, // @default 0  Roll about its own heading, radians.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\n// The robot's own frame: on the tunnel's frame at its distance, facing a little way ahead so it\n// turns into a bend before it reaches it.\nfn robotFrame(travel: f32, offset: vec3f, roll: f32) -> Frame {\n  let z = travel + offset.z;\n  let tunnel = pathFrame(z);\n  var frame: Frame;\n  frame.origin = tunnel.origin + tunnel.right * offset.x + tunnel.up * offset.y;\n  frame.forward = pathTangent(z + 1.2);\n  let right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  let up = cross(frame.forward, right);\n  frame.right = right * cos(roll) + up * sin(roll);\n  frame.up = up * cos(roll) - right * sin(roll);\n  return frame;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let frame = robotFrame(ctx.params.travel, ctx.params.offset, ctx.params.roll);\n  q.position = frame.origin + frame.right * p.position.x + frame.up * p.position.y + frame.forward * p.position.z;\n  q.normal = normalize(frame.right * p.normal.x + frame.up * p.normal.y + frame.forward * p.normal.z);\n  return q;\n}",
+          "kernel": "// T1561b — the sentinel's body: the kit's robot frame, set down in the tunnel.\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the tunnel, metres.\n  offset: vec3f, // @default 0  The robot's place off the tunnel's axis: right, up, ahead (metres).\n  roll: f32, // @default 0  Roll about its own heading, radians.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\n// The robot's own frame: on the tunnel's frame at its distance, facing a little way ahead so it\n// turns into a bend before it reaches it, banking into the bend, and never hanging dead still.\nfn robotFrame(travel: f32, offset: vec3f, roll: f32, time: f32) -> Frame {\n  let z = travel + offset.z;\n  let tunnel = pathFrame(z);\n  var frame: Frame;\n  let drift = vec2f(sin(time * 0.9 + offset.z), sin(time * 1.3 + offset.z * 1.7)) * 0.05;\n  frame.origin = tunnel.origin + tunnel.right * (offset.x + drift.x) + tunnel.up * (offset.y + drift.y);\n  frame.forward = pathTangent(z + 1.2);\n  let right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  let up = cross(frame.forward, right);\n  // How fast the heading swings, measured a couple of metres either side: the inside of the turn drops.\n  let bank = roll - 1.5 * (pathTangent(z + 2.0).x - pathTangent(z - 2.0).x);\n  frame.right = right * cos(bank) + up * sin(bank);\n  frame.up = up * cos(bank) - right * sin(bank);\n  return frame;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let frame = robotFrame(ctx.params.travel, ctx.params.offset, ctx.params.roll, ctx.absTime);\n  q.position = frame.origin + frame.right * p.position.x + frame.up * p.position.y + frame.forward * p.position.z;\n  q.normal = normalize(frame.right * p.normal.x + frame.up * p.normal.y + frame.forward * p.normal.z);\n  return q;\n}",
           "offset": [
             0,
             0,
@@ -141,6 +475,24 @@
         },
         "type": "geometry"
       },
+      "bore": {
+        "definitionVersion": 1,
+        "id": "bore",
+        "label": "bore",
+        "parameters": {
+          "caption": "Tunnel",
+          "channel": "bore",
+          "max": 3.4,
+          "min": 2.2,
+          "step": 0,
+          "value": 2.6
+        },
+        "position": {
+          "x": -2700,
+          "y": 1750
+        },
+        "type": "slider"
+      },
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
@@ -155,7 +507,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('travel1').chan.value + -7.5)) + 0.4) + 5.0 * sin(0.085084801 * ((op('travel1').chan.value + -7.5)) + 1.9)) + 1.1"
+                "source": "(14.0 * sin(0.0327249235 * ((op('travel1').chan.value + (0 - op('distance').chan.distance))) + 0.4) + 5.0 * sin(0.085084801 * ((op('travel1').chan.value + (0 - op('distance').chan.distance))) + 1.9)) + op('view').chan.viewX"
               },
               "static": {
                 "kind": "static",
@@ -168,7 +520,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('travel1').chan.value + -7.5)) + 2.2) + 2.5 * sin(0.0719948316 * ((op('travel1').chan.value + -7.5)) + 0.7)) + 0.6"
+                "source": "(6.0 * sin(0.0261799388 * ((op('travel1').chan.value + (0 - op('distance').chan.distance))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('travel1').chan.value + (0 - op('distance').chan.distance))) + 0.7)) + op('view').chan.viewY"
               },
               "static": {
                 "kind": "static",
@@ -181,7 +533,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(op('travel1').chan.value + -7.5)"
+                "source": "(op('travel1').chan.value + (0 - op('distance').chan.distance))"
               },
               "static": {
                 "kind": "static",
@@ -310,6 +662,83 @@
         },
         "type": "geometry"
       },
+      "clip": {
+        "definitionVersion": 1,
+        "id": "clip",
+        "label": "clip1",
+        "parameters": {
+          "beatOffset": 0.484,
+          "beatsPerBar": 4,
+          "bpm": 124,
+          "cue": false,
+          "cuePoint": 0,
+          "extend": "loop",
+          "file": "media/showcase-beat.m4a",
+          "monitor": true,
+          "play": true,
+          "playMode": "timeline",
+          "speed": 1,
+          "tempoMode": "declared",
+          "trimEnd": 0,
+          "trimStart": 0,
+          "volume": 1
+        },
+        "position": {
+          "x": -3600,
+          "y": 600
+        },
+        "type": "audioFileIn"
+      },
+      "crawl": {
+        "definitionVersion": 1,
+        "id": "crawl",
+        "label": "crawl",
+        "parameters": {
+          "caption": "Crawl",
+          "channel": "crawl",
+          "max": 1,
+          "min": 0,
+          "step": 0,
+          "value": 1
+        },
+        "position": {
+          "x": -3300,
+          "y": 1500
+        },
+        "type": "slider"
+      },
+      "distance": {
+        "definitionVersion": 1,
+        "id": "distance",
+        "label": "distance",
+        "parameters": {
+          "caption": "Camera distance",
+          "channel": "distance",
+          "max": 12,
+          "min": -9,
+          "step": 0,
+          "value": 7.5
+        },
+        "position": {
+          "x": -3000,
+          "y": 2000
+        },
+        "type": "slider"
+      },
+      "ease": {
+        "definitionVersion": 1,
+        "id": "ease",
+        "label": "ease1",
+        "parameters": {
+          "lag": 0.25,
+          "releaseRatio": 1.6
+        },
+        "position": {
+          "x": -2100,
+          "y": 1000
+        },
+        "type": "valueLag"
+      },
       "eyes": {
         "definitionVersion": 1,
         "id": "eyes",
@@ -322,7 +751,19 @@
             1
           ],
           "falloff": "inverseSquare",
-          "intensity": 1.6,
+          "intensity": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('glow').chan.glow * 0.18 * (0.75 + (op('hits1').chan.hatCount * op('react').chan.react) * 0.9)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.6
+              }
+            },
+            "mode": "expression"
+          },
           "kind": "point",
           "position": [
             0,
@@ -375,6 +816,74 @@
           "y": -300
         },
         "type": "light"
+      },
+      "flare": {
+        "definitionVersion": 1,
+        "id": "flare",
+        "label": "flare",
+        "parameters": {
+          "caption": "Flare",
+          "channel": "flare",
+          "max": 1,
+          "min": 0,
+          "step": 0,
+          "value": 0.25
+        },
+        "position": {
+          "x": -3600,
+          "y": 1750
+        },
+        "type": "slider"
+      },
+      "glow": {
+        "definitionVersion": 1,
+        "id": "glow",
+        "label": "glow",
+        "parameters": {
+          "caption": "Eyes",
+          "channel": "glow",
+          "max": 30,
+          "min": 0,
+          "step": 0,
+          "value": 9
+        },
+        "position": {
+          "x": -3300,
+          "y": 2000
+        },
+        "type": "slider"
+      },
+      "grip": {
+        "definitionVersion": 1,
+        "id": "grip",
+        "label": "grip",
+        "parameters": {
+          "caption": "Grip",
+          "channel": "grip",
+          "max": 1,
+          "min": 0,
+          "step": 0,
+          "value": 1
+        },
+        "position": {
+          "x": -3000,
+          "y": 1750
+        },
+        "type": "slider"
+      },
+      "hits": {
+        "definitionVersion": 1,
+        "id": "hits",
+        "label": "hits1",
+        "parameters": {
+          "lag": 0.001,
+          "releaseRatio": 250
+        },
+        "position": {
+          "x": -3000,
+          "y": 750
+        },
+        "type": "valueLag"
       },
       "hubs": {
         "definitionVersion": 1,
@@ -447,6 +956,19 @@
         "id": "hull",
         "label": "hull1",
         "parameters": {
+          "eyeGlow": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('glow').chan.glow * (0.75 + (op('levels1').chan.high * op('react').chan.react) * 0.6 + (op('hits1').chan.hatCount * op('react').chan.react) * 0.9)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 9
+              }
+            },
+            "mode": "expression"
+          },
           "model": "pbr",
           "source": "struct Params {\n  gloss: f32, // @default 0.2  Roughness of the black shell: lower is wetter.\n  eyeGlow: f32, // @default 9  Radiance of the eye lenses.\n  eyeColor: vec3f, // @default [1, 0.06, 0.03]  Their colour.\n  coreGlow: f32, // @default 1.5  Radiance of the red cores.\n};\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let role = s.attr.z;\n  if (role > 0.9) {\n    // A lens: black glass over a lamp, brightest where it faces the viewer.\n    let facing = max(dot(normalize(s.eye - s.world), s.normal), 0.0);\n    o.albedo = vec4f(0.01, 0.0, 0.0, 1.0);\n    o.roughness = 0.08;\n    o.metallic = 0.0;\n    o.emissive = p.eyeColor * p.eyeGlow * (0.35 + 0.65 * facing * facing);\n  } else if (role > 0.7) {\n    o.albedo = vec4f(0.12, 0.004, 0.003, 1.0);\n    o.roughness = 0.45;\n    o.metallic = 0.0;\n    o.emissive = p.eyeColor * p.coreGlow;\n  } else if (role > 0.5) {\n    o.albedo = vec4f(0.22, 0.012, 0.01, 1.0);\n    o.roughness = 0.38;\n    o.metallic = 0.6;\n  } else if (role > 0.3) {\n    o.albedo = vec4f(0.5, 0.36, 0.16, 1.0);\n    o.roughness = 0.34;\n    o.metallic = 1.0;\n  } else if (role > 0.1) {\n    o.albedo = vec4f(0.62, 0.64, 0.67, 1.0);\n    o.roughness = 0.22;\n    o.metallic = 1.0;\n  } else {\n    o.albedo = vec4f(0.018, 0.019, 0.022, 1.0);\n    o.roughness = p.gloss;\n    o.metallic = 0.0;\n  }\n  return o;\n}"
         },
@@ -462,8 +984,99 @@
         "label": "joints1",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"orient\",\"type\":\"vec4f\",\"qualifier\":\"quaternion\",\"default\":[0,0,0,1]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"kind\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"slip\",\"type\":\"f32\",\"default\":[0]}]",
+          "bore": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('bore').chan.bore"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.6
+              }
+            },
+            "mode": "expression"
+          },
           "capacity": 630,
-          "kernel": "// T1561b — the sentinel's joints (generated by src/projects/sentinel-bot/rig.ts from the kit).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the tunnel, metres.\n  offset: vec3f, // @default 0  The robot's place off the tunnel's axis: right, up, ahead (metres).\n  roll: f32, // @default 0  Roll about its own heading, radians.\n  crawl: f32, // @default 1  How many of the tentacles walk the wall: 0 none (all trail behind), 1 every one.\n  stride: f32, // @default 3.2  Metres the body travels per step of a tentacle.\n  duty: f32, // @default 0.7  Share of a step the claw stays planted.\n  lead: f32, // @default 0.75  Metres ahead of the body a claw plants.\n  lift: f32, // @default 0.35  How far a swinging claw pulls in off the wall, as a share of the way to the axis.\n  bore: f32, // @default 2.6  Radius of the wall the claws plant on, metres.\n  flare: f32, // @default 0.25  How far the trailing tentacles splay outward.\n  wave: f32, // @default 0.05  Amplitude of the wave travelling down a tentacle, metres.\n  waveRate: f32, // @default 1.2  Its speed, radians per second.\n  grip: f32, // @default 1  How far a planted claw closes: 0 open, 1 shut.\n  variety: f32, // @default 1  How differently the robots of a pack step: 0 in unison, 1 each on its own count.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\n// The robot's own frame: on the tunnel's frame at its distance, facing a little way ahead so it\n// turns into a bend before it reaches it.\nfn robotFrame(travel: f32, offset: vec3f, roll: f32) -> Frame {\n  let z = travel + offset.z;\n  let tunnel = pathFrame(z);\n  var frame: Frame;\n  frame.origin = tunnel.origin + tunnel.right * offset.x + tunnel.up * offset.y;\n  frame.forward = pathTangent(z + 1.2);\n  let right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  let up = cross(frame.forward, right);\n  frame.right = right * cos(roll) + up * sin(roll);\n  frame.up = up * cos(roll) - right * sin(roll);\n  return frame;\n}\n\nconst ROBOTS: u32 = 1u;\nconst ROBOT_OFFSET = array<vec3f, 1>(vec3f(0.00000, 0.00000, 0.00000));\nconst TENTACLES: u32 = 10u;\nconst RINGS: u32 = 54u;\nconst STATIONS: u32 = 63u;\nconst RING_START: f32 = 0.00000;\nconst RING_PITCH: f32 = 0.06000;\nconst HUB_DISTANCE: f32 = 3.18000;\nconst LENGTH: f32 = 3.37000;\nconst RUNG: f32 = 0.40000;\nconst SOCKET = array<vec3f, 10>(vec3f(0.37341, 0.17407, -0.37004), vec3f(-0.31631, 0.27334, -0.37004), vec3f(0.04589, 0.28548, -0.37004), vec3f(0.50918, -0.06339, -0.37004), vec3f(0.18540, -0.01679, -0.42806), vec3f(-0.16974, 0.03432, -0.42806), vec3f(-0.48252, 0.06333, -0.35957), vec3f(-0.36158, -0.18351, -0.35957), vec3f(0.33123, -0.26871, -0.35957), vec3f(-0.02248, -0.28645, -0.35957));\nconst WALL_ANGLE = array<f32, 10>(0.81545, 2.07209, 1.44377, -0.44119, 0.18713, 2.70041, 3.32872, -2.32614, -1.06950, -1.69782);\nconst STEP_PHASE = array<f32, 10>(0.63600, 0.59440, 0.03520, 0.51760, 0.07680, 0.15360, 0.55280, 0.00000, 0.11840, 0.55920);\nconst ENGAGE = array<f32, 10>(0.00000, 2.00000, 6.00000, 8.00000, 4.00000, 8.00000, 4.00000, 0.00000, 2.00000, 6.00000);\n// The claw, from the kit: each phalanx's joint on its carrier, its rest orientation there, its hinge and the range the reference performance turns it through.\nconst PHALANX_JOINT = array<vec3f, 8>(vec3f(-0.00033, -0.07282, 0.17068), vec3f(-0.00000, -0.00000, 0.16136), vec3f(0.00075, 0.07987, 0.17073), vec3f(-0.00000, 0.00000, 0.16136), vec3f(0.07702, 0.00302, 0.17070), vec3f(-0.00000, -0.00000, 0.16136), vec3f(-0.07641, 0.00417, 0.17071), vec3f(-0.00000, -0.00000, 0.16136));\nconst PHALANX_REST = array<vec4f, 8>(vec4f(0.435863, -0.000056, 0.000015, 0.900013), vec4f(-0.183395, 0.001291, 0.000883, 0.983038), vec4f(-0.000021, -0.435864, -0.900012, 0.000013), vec4f(-0.183394, 0.001291, 0.000883, 0.983038), vec4f(0.308202, 0.308203, 0.636407, 0.636403), vec4f(-0.183393, 0.001293, 0.000884, 0.983038), vec4f(0.308206, -0.308205, -0.636402, 0.636404), vec4f(-0.183394, 0.001291, 0.000883, 0.983038));\nconst PHALANX_AXIS = array<vec3f, 8>(vec3f(0.99994, -0.00372, -0.01059), vec3f(-0.99991, -0.01271, -0.00390), vec3f(-0.99994, 0.00372, -0.01062), vec3f(-0.99991, -0.01271, -0.00390), vec3f(0.00374, 0.99994, -0.01065), vec3f(-0.99993, -0.01142, -0.00332), vec3f(-0.00374, -0.99994, -0.01066), vec3f(-0.99991, -0.01271, -0.00390));\nconst PHALANX_RANGE = array<vec2f, 8>(vec2f(-0.99080, 0.92286), vec2f(-0.43802, 1.66583), vec2f(-0.99080, 0.92285), vec2f(-0.43802, 1.66583), vec2f(-0.99080, 0.92286), vec2f(-0.43775, 1.66585), vec2f(-0.99080, 0.92285), vec2f(-0.43802, 1.66584));\n\nfn axisAngle(axis: vec3f, angle: f32) -> vec4f {\n  return vec4f(normalize(axis) * sin(angle * 0.5), cos(angle * 0.5));\n}\n\n// Hamilton product (a ⊗ b): b first, then a — the draw's active, right-handed convention.\nfn qmul(a: vec4f, b: vec4f) -> vec4f {\n  return vec4f(a.w * b.xyz + b.w * a.xyz + cross(a.xyz, b.xyz), a.w * b.w - dot(a.xyz, b.xyz));\n}\n\nfn qrot(q: vec4f, v: vec3f) -> vec3f {\n  return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);\n}\n\n// The rotation whose columns are x, y, z (an orthonormal, right-handed frame).\nfn quatFromFrame(x: vec3f, y: vec3f, z: vec3f) -> vec4f {\n  let trace = x.x + y.y + z.z;\n  if (trace > 0.0) {\n    let s = sqrt(trace + 1.0) * 2.0;\n    return vec4f((y.z - z.y) / s, (z.x - x.z) / s, (x.y - y.x) / s, 0.25 * s);\n  }\n  if (x.x > y.y && x.x > z.z) {\n    let s = sqrt(1.0 + x.x - y.y - z.z) * 2.0;\n    return vec4f(0.25 * s, (y.x + x.y) / s, (z.x + x.z) / s, (y.z - z.y) / s);\n  }\n  if (y.y > z.z) {\n    let s = sqrt(1.0 + y.y - x.x - z.z) * 2.0;\n    return vec4f((y.x + x.y) / s, 0.25 * s, (z.y + y.z) / s, (z.x - x.z) / s);\n  }\n  let s = sqrt(1.0 + z.z - x.x - y.y) * 2.0;\n  return vec4f((z.x + x.z) / s, (z.y + y.z) / s, 0.25 * s, (x.y - y.x) / s);\n}\n\n// Integer hashes: a plant must be the same rung on every driver, which fract(sin(x)) does not promise.\nfn mix32(v: u32) -> u32 {\n  let x = v * 747796405u + 2891336453u;\n  let w = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;\n  return (w >> 22u) ^ w;\n}\n\nfn chance(a: u32, b: u32, c: u32) -> f32 {\n  return f32(mix32(a ^ mix32(b ^ mix32(c)))) / 4294967295.0;\n}\n\n// ── The tentacle: arcs of constant curvature ──\nconst NECK: f32 = LENGTH * 0.4;\nconst ARM: f32 = LENGTH - NECK;\n// The half-turn at which slack starts to stow: past a quarter circle each side a bow swells beyond its own ends, by 5 cm here.\nconst BOW_LIMIT: f32 = 1.9;\n\nfn sinc(x: f32) -> f32 {\n  if (abs(x) < 1e-3) { return 1.0 - x * x / 6.0; }\n  return sin(x) / x;\n}\n\n// The half-turn of an arc whose chord is that share of its length: sinc inverted on [0, π], where it only falls.\nfn halfTurn(share: f32) -> f32 {\n  var low = 0.0;\n  var high = 3.14159265;\n  for (var i = 0u; i < 20u; i = i + 1u) {\n    let mid = (low + high) * 0.5;\n    if (sinc(mid) > share) { low = mid; } else { high = mid; }\n  }\n  return (low + high) * 0.5;\n}\n\n// Where an arc of curvature k has got to after s metres, in its own plane: x along its start, y the way it bends.\nfn arcAt(k: f32, s: f32) -> vec2f {\n  let a = k * s;\n  if (abs(a) < 1e-3) { return vec2f(s * (1.0 - a * a / 6.0), s * a * 0.5); }\n  return vec2f(sin(a) / k, (1.0 - cos(a)) / k);\n}\n\nfn turned(v: vec2f, angle: f32) -> vec2f {\n  return vec2f(v.x * cos(angle) - v.y * sin(angle), v.x * sin(angle) + v.y * cos(angle));\n}\n\n// A neck's and an arm's curvature.\nstruct Bend {\n  neck: f32,\n  arm: f32,\n};\n\n// A point d metres along a tentacle bent so, and its heading there, in the tentacle's plane.\nfn along(bend: Bend, d: f32) -> vec3f {\n  if (d <= NECK) { return vec3f(arcAt(bend.neck, d), bend.neck * d); }\n  let turn = bend.neck * NECK;\n  return vec3f(arcAt(bend.neck, NECK) + turned(arcAt(bend.arm, d - NECK), turn), turn + bend.arm * (d - NECK));\n}\n\n// Where tentacle t plants on step number step: a rung ahead of where the body was when it let go.\nfn plant(tentacle: u32, step: f32, stride: f32, bodyZ: f32, own: f32, seed: u32, params: Params) -> vec3f {\n  let steps = round(PATH_PERIOD / stride);\n  let wrapped = u32(step - floor(step / steps) * steps + 0.5);\n  var z = (step - STEP_PHASE[tentacle] - own) * stride + params.lead + (chance(tentacle, wrapped, seed) - 0.5) * 0.4;\n  z = round(z / RUNG) * RUNG;\n  // The same rung from whichever side of the path's wrap the body is on.\n  z = z - round((z - bodyZ) / PATH_PERIOD) * PATH_PERIOD;\n  let theta = WALL_ANGLE[tentacle] + (chance(tentacle, wrapped, seed + 1u) - 0.5) * 0.45;\n  let wall = pathFrame(z);\n  return wall.origin + (wall.right * cos(theta) + wall.up * sin(theta)) * params.bore;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let robot = ctx.index / (TENTACLES * STATIONS);\n  if (robot >= ROBOTS) {\n    q.kind = -1.0;\n    return q;\n  }\n  let tentacle = (ctx.index / STATIONS) % TENTACLES;\n  let station = ctx.index % STATIONS;\n  let params = ctx.params;\n  let offset = params.offset + ROBOT_OFFSET[robot];\n  let body = robotFrame(params.travel, offset, params.roll);\n  let bodyZ = params.travel + offset.z;\n  let socket = SOCKET[tentacle];\n  let root = body.origin + body.right * socket.x + body.up * socket.y + body.forward * socket.z;\n  let radial = normalize(body.right * socket.x + body.up * socket.y);\n\n  // ── Walking: stance on one rib, then a swing to the next ──\n  let stride = PATH_PERIOD / round(PATH_PERIOD / max(params.stride, 0.5));\n  let own = f32(robot) * 0.37 * params.variety;\n  let cycle = bodyZ / stride + STEP_PHASE[tentacle] + own;\n  let step = floor(cycle);\n  let swing = smoothstep(0.0, 1.0, clamp((cycle - step - params.duty) / max(1.0 - params.duty, 1e-3), 0.0, 1.0));\n  // A pack in unison plants on the same ribs; with variety each robot draws its own.\n  let seed = 1u + u32(f32(robot) * params.variety + 0.5) * 16u;\n  let rib = plant(tentacle, step, stride, bodyZ, own, seed, params);\n  let next = plant(tentacle, step + 1.0, stride, bodyZ, own, seed, params);\n  var walking = mix(rib, next, swing);\n  let aloft = sin(swing * 3.14159265);\n  walking = mix(walking, pathAt(walking.z), params.lift * aloft);\n\n  let grab = smoothstep(0.0, 1.0, clamp(params.crawl * f32(TENTACLES) - ENGAGE[tentacle], 0.0, 1.0));\n  let leave = normalize(body.forward * -0.6 + radial * 0.8);\n\n  // ── Trailing: the neck curls back into the wake (less with Flare), the arm sways, the plane rocks ──\n  let wake = -body.forward;\n  let toWake = normalize(wake - leave * dot(wake, leave));\n  let side = cross(leave, toWake);\n  let rock = sin(ctx.absTime * 0.6 + f32(tentacle) * 1.3) * 0.5;\n  let loosePlane = toWake * cos(rock) + side * sin(rock);\n  let loose = Bend(\n    acos(clamp(dot(leave, wake), -1.0, 1.0)) * (1.0 - params.flare) / NECK,\n    sin(ctx.absTime * 0.9 + f32(tentacle) * 2.1) * 0.35 / ARM,\n  );\n\n  // ── Holding: the one arc from socket to claw, bowing the way the socket faces ──\n  let span = walking - root;\n  let far = max(length(span), 1e-4);\n  let chord = span / far;\n  let deployed = min(LENGTH, far / sinc(BOW_LIMIT));\n  let half = halfTurn(min(far / deployed, 1.0));\n  let lean = leave - chord * dot(leave, chord);\n  let bow = select(toWake, normalize(lean), length(lean) > 1e-4);\n  let holdLeave = chord * cos(half) + bow * sin(half);\n  let holdPlane = chord * sin(half) - bow * cos(half);\n  let holdBend = 2.0 * half / deployed;\n\n  // Between the two the socket's direction, the plane and the curvatures all blend.\n  let out = normalize(mix(leave, holdLeave, grab));\n  let blended = mix(loosePlane, holdPlane, grab);\n  let plane = normalize(blended - out * dot(blended, out));\n  let bend = Bend(mix(loose.neck, holdBend, grab), mix(loose.arm, holdBend, grab));\n  let run = mix(LENGTH, deployed, grab);\n\n  // ── This joint's place along it ──\n  let ring = station < RINGS;\n  // Metres from the socket along what is deployed; under zero the joint is still stowed in the body.\n  let d = select(HUB_DISTANCE, RING_START + f32(station) * RING_PITCH, ring) - (LENGTH - run);\n  if (d < 0.0) {\n    q.position = root;\n    q.kind = -1.0;\n    q.slip = 0.0;\n    return q;\n  }\n  let here = along(bend, d);\n  var at = root + out * here.x + plane * here.y;\n  let tangent = out * cos(here.z) + plane * sin(here.z);\n  let normal = plane * cos(here.z) - out * sin(here.z);\n  let binormal = cross(tangent, normal);\n  // A wave runs root to tip; it dies at both ends, and a planted tentacle carries less of it.\n  let planted = grab * (1.0 - aloft);\n  let ripple = d * 3.0 - ctx.absTime * params.waveRate + f32(tentacle) * 1.7;\n  at = at + (normal * cos(ripple) + binormal * sin(ripple)) * (params.wave * sin(3.14159265 * d / run) * (1.0 - 0.6 * planted));\n  let frame = quatFromFrame(normal, binormal, tangent);\n  // How far the claw's mouth is from where the gait wants it: zero while its rung is in reach.\n  let mouth = along(bend, run);\n  q.slip = grab * distance(root + out * mouth.x + plane * mouth.y, walking);\n\n  let shade = 0.5 + 0.5 * chance(tentacle, 7u, 3u);\n  if (ring) {\n    q.position = at;\n    q.orient = frame;\n    q.tint = vec4f(vec3f(0.5, 0.52, 0.56) * shade, 1.0);\n    q.kind = 0.0;\n    return q;\n  }\n  if (station == RINGS) {\n    q.position = at;\n    q.orient = frame;\n    q.tint = vec4f(0.6, 0.62, 0.66, 2.0);\n    q.kind = 1.0;\n    return q;\n  }\n  // ── The claw: each phalanx on its carrier, turned about its hinge ──\n  let which = station - RINGS - 1u;\n  let knuckle = which - which % 2u;\n  let closed = params.grip * planted;\n  let knuckleFrame = qmul(qmul(frame, axisAngle(PHALANX_AXIS[knuckle], mix(PHALANX_RANGE[knuckle].x, PHALANX_RANGE[knuckle].y, closed))), PHALANX_REST[knuckle]);\n  let knuckleAt = at + qrot(frame, PHALANX_JOINT[knuckle]);\n  var jointFrame = knuckleFrame;\n  var jointAt = knuckleAt;\n  if (which % 2u == 1u) {\n    jointFrame = qmul(qmul(knuckleFrame, axisAngle(PHALANX_AXIS[which], mix(PHALANX_RANGE[which].x, PHALANX_RANGE[which].y, closed))), PHALANX_REST[which]);\n    jointAt = knuckleAt + qrot(knuckleFrame, PHALANX_JOINT[which]);\n  }\n  q.position = jointAt;\n  q.orient = jointFrame;\n  q.tint = vec4f(0.8, 0.82, 0.86, 0.7);\n  q.kind = 2.0;\n  return q;\n}",
+          "crawl": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('crawl').chan.crawl"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "flare": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('flare').chan.flare"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.25
+              }
+            },
+            "mode": "expression"
+          },
+          "grip": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('grip').chan.grip"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "kernel": "// T1561b — the sentinel's joints (generated by src/projects/sentinel-bot/rig.ts from the kit).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the tunnel, metres.\n  offset: vec3f, // @default 0  The robot's place off the tunnel's axis: right, up, ahead (metres).\n  roll: f32, // @default 0  Roll about its own heading, radians.\n  crawl: f32, // @default 1  How many of the tentacles walk the wall: 0 none (all trail behind), 1 every one.\n  stride: f32, // @default 3.2  Metres the body travels per step of a tentacle.\n  duty: f32, // @default 0.7  Share of a step the claw stays planted.\n  lead: f32, // @default 0.75  Metres ahead of the body a claw plants.\n  lift: f32, // @default 0.35  How far a swinging claw pulls in off the wall, as a share of the way to the axis.\n  bore: f32, // @default 2.6  Radius of the wall the claws plant on, metres.\n  flare: f32, // @default 0.25  How far the trailing tentacles splay outward.\n  wave: f32, // @default 0.05  Amplitude of the wave travelling down a tentacle, metres.\n  waveRate: f32, // @default 1.2  Its speed, radians per second.\n  grip: f32, // @default 1  How far a planted claw closes: 0 open, 1 shut.\n  variety: f32, // @default 1  How differently the robots of a pack step: 0 in unison, 1 each on its own count.\n  swim: f32, // @default 0  Let go of the wall and beat the tentacles together like a squid: 0 walking, 1 swimming.\n  stroke: f32, // @default 0  Where the beat is, 0 to 1: flung open at 0, snapped shut by a quarter, drifting open again.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\n// The robot's own frame: on the tunnel's frame at its distance, facing a little way ahead so it\n// turns into a bend before it reaches it, banking into the bend, and never hanging dead still.\nfn robotFrame(travel: f32, offset: vec3f, roll: f32, time: f32) -> Frame {\n  let z = travel + offset.z;\n  let tunnel = pathFrame(z);\n  var frame: Frame;\n  let drift = vec2f(sin(time * 0.9 + offset.z), sin(time * 1.3 + offset.z * 1.7)) * 0.05;\n  frame.origin = tunnel.origin + tunnel.right * (offset.x + drift.x) + tunnel.up * (offset.y + drift.y);\n  frame.forward = pathTangent(z + 1.2);\n  let right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  let up = cross(frame.forward, right);\n  // How fast the heading swings, measured a couple of metres either side: the inside of the turn drops.\n  let bank = roll - 1.5 * (pathTangent(z + 2.0).x - pathTangent(z - 2.0).x);\n  frame.right = right * cos(bank) + up * sin(bank);\n  frame.up = up * cos(bank) - right * sin(bank);\n  return frame;\n}\n\nconst ROBOTS: u32 = 1u;\nconst ROBOT_OFFSET = array<vec3f, 1>(vec3f(0.00000, 0.00000, 0.00000));\nconst TENTACLES: u32 = 10u;\nconst RINGS: u32 = 54u;\nconst STATIONS: u32 = 63u;\nconst RING_START: f32 = 0.00000;\nconst RING_PITCH: f32 = 0.06000;\nconst HUB_DISTANCE: f32 = 3.18000;\nconst LENGTH: f32 = 3.37000;\nconst RUNG: f32 = 0.40000;\nconst SOCKET = array<vec3f, 10>(vec3f(0.37341, 0.17407, -0.37004), vec3f(-0.31631, 0.27334, -0.37004), vec3f(0.04589, 0.28548, -0.37004), vec3f(0.50918, -0.06339, -0.37004), vec3f(0.18540, -0.01679, -0.42806), vec3f(-0.16974, 0.03432, -0.42806), vec3f(-0.48252, 0.06333, -0.35957), vec3f(-0.36158, -0.18351, -0.35957), vec3f(0.33123, -0.26871, -0.35957), vec3f(-0.02248, -0.28645, -0.35957));\nconst WALL_ANGLE = array<f32, 10>(0.81545, 2.07209, 1.44377, -0.44119, 0.18713, 2.70041, 3.32872, -2.32614, -1.06950, -1.69782);\nconst STEP_PHASE = array<f32, 10>(0.63600, 0.59440, 0.03520, 0.51760, 0.07680, 0.15360, 0.55280, 0.00000, 0.11840, 0.55920);\nconst ENGAGE = array<f32, 10>(0.00000, 2.00000, 6.00000, 8.00000, 4.00000, 8.00000, 4.00000, 0.00000, 2.00000, 6.00000);\n// The claw, from the kit: each phalanx's joint on its carrier, its rest orientation there, its hinge and the range the reference performance turns it through.\nconst PHALANX_JOINT = array<vec3f, 8>(vec3f(-0.00033, -0.07282, 0.17068), vec3f(-0.00000, -0.00000, 0.16136), vec3f(0.00075, 0.07987, 0.17073), vec3f(-0.00000, 0.00000, 0.16136), vec3f(0.07702, 0.00302, 0.17070), vec3f(-0.00000, -0.00000, 0.16136), vec3f(-0.07641, 0.00417, 0.17071), vec3f(-0.00000, -0.00000, 0.16136));\nconst PHALANX_REST = array<vec4f, 8>(vec4f(0.435863, -0.000056, 0.000015, 0.900013), vec4f(-0.183395, 0.001291, 0.000883, 0.983038), vec4f(-0.000021, -0.435864, -0.900012, 0.000013), vec4f(-0.183394, 0.001291, 0.000883, 0.983038), vec4f(0.308202, 0.308203, 0.636407, 0.636403), vec4f(-0.183393, 0.001293, 0.000884, 0.983038), vec4f(0.308206, -0.308205, -0.636402, 0.636404), vec4f(-0.183394, 0.001291, 0.000883, 0.983038));\nconst PHALANX_AXIS = array<vec3f, 8>(vec3f(0.99994, -0.00372, -0.01059), vec3f(-0.99991, -0.01271, -0.00390), vec3f(-0.99994, 0.00372, -0.01062), vec3f(-0.99991, -0.01271, -0.00390), vec3f(0.00374, 0.99994, -0.01065), vec3f(-0.99993, -0.01142, -0.00332), vec3f(-0.00374, -0.99994, -0.01066), vec3f(-0.99991, -0.01271, -0.00390));\nconst PHALANX_RANGE = array<vec2f, 8>(vec2f(-0.99080, 0.92286), vec2f(-0.43802, 1.66583), vec2f(-0.99080, 0.92285), vec2f(-0.43802, 1.66583), vec2f(-0.99080, 0.92286), vec2f(-0.43775, 1.66585), vec2f(-0.99080, 0.92285), vec2f(-0.43802, 1.66584));\n\nfn axisAngle(axis: vec3f, angle: f32) -> vec4f {\n  return vec4f(normalize(axis) * sin(angle * 0.5), cos(angle * 0.5));\n}\n\n// Hamilton product (a ⊗ b): b first, then a — the draw's active, right-handed convention.\nfn qmul(a: vec4f, b: vec4f) -> vec4f {\n  return vec4f(a.w * b.xyz + b.w * a.xyz + cross(a.xyz, b.xyz), a.w * b.w - dot(a.xyz, b.xyz));\n}\n\nfn qrot(q: vec4f, v: vec3f) -> vec3f {\n  return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);\n}\n\n// The rotation whose columns are x, y, z (an orthonormal, right-handed frame).\nfn quatFromFrame(x: vec3f, y: vec3f, z: vec3f) -> vec4f {\n  let trace = x.x + y.y + z.z;\n  if (trace > 0.0) {\n    let s = sqrt(trace + 1.0) * 2.0;\n    return vec4f((y.z - z.y) / s, (z.x - x.z) / s, (x.y - y.x) / s, 0.25 * s);\n  }\n  if (x.x > y.y && x.x > z.z) {\n    let s = sqrt(1.0 + x.x - y.y - z.z) * 2.0;\n    return vec4f(0.25 * s, (y.x + x.y) / s, (z.x + x.z) / s, (y.z - z.y) / s);\n  }\n  if (y.y > z.z) {\n    let s = sqrt(1.0 + y.y - x.x - z.z) * 2.0;\n    return vec4f((y.x + x.y) / s, 0.25 * s, (z.y + y.z) / s, (z.x - x.z) / s);\n  }\n  let s = sqrt(1.0 + z.z - x.x - y.y) * 2.0;\n  return vec4f((z.x + x.z) / s, (z.y + y.z) / s, 0.25 * s, (x.y - y.x) / s);\n}\n\n// Integer hashes: a plant must be the same rung on every driver, which fract(sin(x)) does not promise.\nfn mix32(v: u32) -> u32 {\n  let x = v * 747796405u + 2891336453u;\n  let w = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;\n  return (w >> 22u) ^ w;\n}\n\nfn chance(a: u32, b: u32, c: u32) -> f32 {\n  return f32(mix32(a ^ mix32(b ^ mix32(c)))) / 4294967295.0;\n}\n\n// ── The tentacle: arcs of constant curvature ──\nconst NECK: f32 = LENGTH * 0.4;\nconst ARM: f32 = LENGTH - NECK;\n// The half-turn at which slack starts to stow: past a quarter circle each side a bow swells beyond its own ends, by 5 cm here.\nconst BOW_LIMIT: f32 = 1.9;\n\nfn sinc(x: f32) -> f32 {\n  if (abs(x) < 1e-3) { return 1.0 - x * x / 6.0; }\n  return sin(x) / x;\n}\n\n// The half-turn of an arc whose chord is that share of its length: sinc inverted on [0, π], where it only falls.\nfn halfTurn(share: f32) -> f32 {\n  var low = 0.0;\n  var high = 3.14159265;\n  for (var i = 0u; i < 20u; i = i + 1u) {\n    let mid = (low + high) * 0.5;\n    if (sinc(mid) > share) { low = mid; } else { high = mid; }\n  }\n  return (low + high) * 0.5;\n}\n\n// Where an arc of curvature k has got to after s metres, in its own plane: x along its start, y the way it bends.\nfn arcAt(k: f32, s: f32) -> vec2f {\n  let a = k * s;\n  if (abs(a) < 1e-3) { return vec2f(s * (1.0 - a * a / 6.0), s * a * 0.5); }\n  return vec2f(sin(a) / k, (1.0 - cos(a)) / k);\n}\n\nfn turned(v: vec2f, angle: f32) -> vec2f {\n  return vec2f(v.x * cos(angle) - v.y * sin(angle), v.x * sin(angle) + v.y * cos(angle));\n}\n\n// A neck's and an arm's curvature.\nstruct Bend {\n  neck: f32,\n  arm: f32,\n};\n\n// A point d metres along a tentacle bent so, and its heading there, in the tentacle's plane.\nfn along(bend: Bend, d: f32) -> vec3f {\n  if (d <= NECK) { return vec3f(arcAt(bend.neck, d), bend.neck * d); }\n  let turn = bend.neck * NECK;\n  return vec3f(arcAt(bend.neck, NECK) + turned(arcAt(bend.arm, d - NECK), turn), turn + bend.arm * (d - NECK));\n}\n\n// Where tentacle t plants on step number step: a rung ahead of where the body was when it let go.\nfn plant(tentacle: u32, step: f32, stride: f32, bodyZ: f32, own: f32, seed: u32, params: Params) -> vec3f {\n  let steps = round(PATH_PERIOD / stride);\n  let wrapped = u32(step - floor(step / steps) * steps + 0.5);\n  var z = (step - STEP_PHASE[tentacle] - own) * stride + params.lead + (chance(tentacle, wrapped, seed) - 0.5) * 0.4;\n  z = round(z / RUNG) * RUNG;\n  // The same rung from whichever side of the path's wrap the body is on.\n  z = z - round((z - bodyZ) / PATH_PERIOD) * PATH_PERIOD;\n  let theta = WALL_ANGLE[tentacle] + (chance(tentacle, wrapped, seed + 1u) - 0.5) * 0.45;\n  let wall = pathFrame(z);\n  return wall.origin + (wall.right * cos(theta) + wall.up * sin(theta)) * params.bore;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let robot = ctx.index / (TENTACLES * STATIONS);\n  if (robot >= ROBOTS) {\n    q.kind = -1.0;\n    return q;\n  }\n  let tentacle = (ctx.index / STATIONS) % TENTACLES;\n  let station = ctx.index % STATIONS;\n  let params = ctx.params;\n  let offset = params.offset + ROBOT_OFFSET[robot];\n  let body = robotFrame(params.travel, offset, params.roll, ctx.absTime);\n  let bodyZ = params.travel + offset.z;\n  let socket = SOCKET[tentacle];\n  let root = body.origin + body.right * socket.x + body.up * socket.y + body.forward * socket.z;\n  let radial = normalize(body.right * socket.x + body.up * socket.y);\n\n  // ── Walking: stance on one rib, then a swing to the next ──\n  let stride = PATH_PERIOD / round(PATH_PERIOD / max(params.stride, 0.5));\n  let own = f32(robot) * 0.37 * params.variety;\n  let cycle = bodyZ / stride + STEP_PHASE[tentacle] + own;\n  let step = floor(cycle);\n  let swing = smoothstep(0.0, 1.0, clamp((cycle - step - params.duty) / max(1.0 - params.duty, 1e-3), 0.0, 1.0));\n  // A pack in unison plants on the same ribs; with variety each robot draws its own.\n  let seed = 1u + u32(f32(robot) * params.variety + 0.5) * 16u;\n  let rib = plant(tentacle, step, stride, bodyZ, own, seed, params);\n  let next = plant(tentacle, step + 1.0, stride, bodyZ, own, seed, params);\n  var walking = mix(rib, next, swing);\n  let aloft = sin(swing * 3.14159265);\n  walking = mix(walking, pathAt(walking.z), params.lift * aloft);\n\n  let grab = smoothstep(0.0, 1.0, clamp(params.crawl * f32(TENTACLES) - ENGAGE[tentacle], 0.0, 1.0)) * (1.0 - clamp(params.swim, 0.0, 1.0));\n  let leave = normalize(body.forward * -0.6 + radial * 0.8);\n\n  // ── Trailing: the neck curls back into the wake (less with Flare), the arm sways, the plane rocks ──\n  let wake = -body.forward;\n  let toWake = normalize(wake - leave * dot(wake, leave));\n  let side = cross(leave, toWake);\n  let rock = sin(ctx.absTime * 0.6 + f32(tentacle) * 1.3) * 0.5;\n  let loosePlane = toWake * cos(rock) + side * sin(rock);\n  // Swimming opens and shuts them together: splayed wide at the top of the beat, streamlined after the snap.\n  let open = select(smoothstep(0.25, 1.0, params.stroke), 1.0 - smoothstep(0.0, 0.25, params.stroke), params.stroke < 0.25);\n  let splay = clamp(params.flare + params.swim * (open * 1.1 - 0.15), -0.2, 1.2);\n  let loose = Bend(\n    acos(clamp(dot(leave, wake), -1.0, 1.0)) * (1.0 - splay) / NECK,\n    (sin(ctx.absTime * 0.9 + f32(tentacle) * 2.1) * 0.35 - params.swim * open * 0.6) / ARM,\n  );\n\n  // ── Holding: the one arc from socket to claw, bowing the way the socket faces ──\n  let span = walking - root;\n  let far = max(length(span), 1e-4);\n  let chord = span / far;\n  let deployed = min(LENGTH, far / sinc(BOW_LIMIT));\n  let half = halfTurn(min(far / deployed, 1.0));\n  let lean = leave - chord * dot(leave, chord);\n  let bow = select(toWake, normalize(lean), length(lean) > 1e-4);\n  let holdLeave = chord * cos(half) + bow * sin(half);\n  let holdPlane = chord * sin(half) - bow * cos(half);\n  let holdBend = 2.0 * half / deployed;\n\n  // Between the two the socket's direction, the plane and the curvatures all blend.\n  let out = normalize(mix(leave, holdLeave, grab));\n  let blended = mix(loosePlane, holdPlane, grab);\n  let plane = normalize(blended - out * dot(blended, out));\n  let bend = Bend(mix(loose.neck, holdBend, grab), mix(loose.arm, holdBend, grab));\n  let run = mix(LENGTH, deployed, grab);\n\n  // ── This joint's place along it ──\n  let ring = station < RINGS;\n  // Metres from the socket along what is deployed; under zero the joint is still stowed in the body.\n  let d = select(HUB_DISTANCE, RING_START + f32(station) * RING_PITCH, ring) - (LENGTH - run);\n  if (d < 0.0) {\n    q.position = root;\n    q.kind = -1.0;\n    q.slip = 0.0;\n    return q;\n  }\n  let here = along(bend, d);\n  var at = root + out * here.x + plane * here.y;\n  let tangent = out * cos(here.z) + plane * sin(here.z);\n  let normal = plane * cos(here.z) - out * sin(here.z);\n  let binormal = cross(tangent, normal);\n  // A wave runs root to tip; it dies at both ends, and a planted tentacle carries less of it.\n  let planted = grab * (1.0 - aloft);\n  let ripple = d * 3.0 - ctx.absTime * params.waveRate + f32(tentacle) * 1.7;\n  at = at + (normal * cos(ripple) + binormal * sin(ripple)) * (params.wave * sin(3.14159265 * d / run) * (1.0 - 0.6 * planted));\n  let frame = quatFromFrame(normal, binormal, tangent);\n  // How far the claw's mouth is from where the gait wants it: zero while its rung is in reach.\n  let mouth = along(bend, run);\n  q.slip = grab * distance(root + out * mouth.x + plane * mouth.y, walking);\n\n  let shade = 0.5 + 0.5 * chance(tentacle, 7u, 3u);\n  if (ring) {\n    q.position = at;\n    q.orient = frame;\n    q.tint = vec4f(vec3f(0.5, 0.52, 0.56) * shade, 1.0);\n    q.kind = 0.0;\n    return q;\n  }\n  if (station == RINGS) {\n    q.position = at;\n    q.orient = frame;\n    q.tint = vec4f(0.6, 0.62, 0.66, 2.0);\n    q.kind = 1.0;\n    return q;\n  }\n  // ── The claw: each phalanx on its carrier, turned about its hinge ──\n  let which = station - RINGS - 1u;\n  let knuckle = which - which % 2u;\n  let closed = params.grip * planted;\n  let knuckleFrame = qmul(qmul(frame, axisAngle(PHALANX_AXIS[knuckle], mix(PHALANX_RANGE[knuckle].x, PHALANX_RANGE[knuckle].y, closed))), PHALANX_REST[knuckle]);\n  let knuckleAt = at + qrot(frame, PHALANX_JOINT[knuckle]);\n  var jointFrame = knuckleFrame;\n  var jointAt = knuckleAt;\n  if (which % 2u == 1u) {\n    jointFrame = qmul(qmul(knuckleFrame, axisAngle(PHALANX_AXIS[which], mix(PHALANX_RANGE[which].x, PHALANX_RANGE[which].y, closed))), PHALANX_REST[which]);\n    jointAt = knuckleAt + qrot(knuckleFrame, PHALANX_JOINT[which]);\n  }\n  q.position = jointAt;\n  q.orient = jointFrame;\n  q.tint = vec4f(0.8, 0.82, 0.86, 0.7);\n  q.kind = 2.0;\n  return q;\n}",
+          "stride": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('stride').chan.stride"
+              },
+              "static": {
+                "kind": "static",
+                "value": 3.2
+              }
+            },
+            "mode": "expression"
+          },
+          "stroke": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('stroke1').chan.value"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "swim": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('swim').chan.swim"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
           "travel": {
             "bindings": {
               "expression": {
@@ -473,6 +1086,19 @@
               "static": {
                 "kind": "static",
                 "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "wave": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('wave').chan.wave + (op('levels1').chan.low * op('react').chan.react) * 0.08"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.05
               }
             },
             "mode": "expression"
@@ -512,68 +1138,34 @@
       "lamp": {
         "definitionVersion": 1,
         "id": "lamp",
-        "label": "lamp1",
+        "label": "lamp",
         "parameters": {
-          "color": [
-            0.55,
-            0.8,
-            1,
-            1
-          ],
-          "falloff": "inverseSquare",
-          "intensity": 26,
-          "kind": "point",
-          "position": [
-            0,
-            1.6,
-            7
-          ],
-          "position.x": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('travel1').chan.value + 7)) + 0.4) + 5.0 * sin(0.085084801 * ((op('travel1').chan.value + 7)) + 1.9)) + 0"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "position.y": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('travel1').chan.value + 7)) + 2.2) + 2.5 * sin(0.0719948316 * ((op('travel1').chan.value + 7)) + 0.7)) + 1.6"
-              },
-              "static": {
-                "kind": "static",
-                "value": 1.6
-              }
-            },
-            "mode": "expression"
-          },
-          "position.z": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(op('travel1').chan.value + 7)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 7
-              }
-            },
-            "mode": "expression"
-          },
-          "range": 40
+          "caption": "Lamp",
+          "channel": "lamp",
+          "max": 80,
+          "min": 0,
+          "step": 0,
+          "value": 26
         },
         "position": {
-          "x": -1500,
-          "y": -150
+          "x": -3600,
+          "y": 2000
         },
-        "type": "light"
+        "type": "slider"
+      },
+      "levels": {
+        "definitionVersion": 1,
+        "id": "levels",
+        "label": "levels1",
+        "parameters": {
+          "lag": 0.03,
+          "releaseRatio": 5
+        },
+        "position": {
+          "x": -2400,
+          "y": 500
+        },
+        "type": "valueLag"
       },
       "out": {
         "definitionVersion": 1,
@@ -587,6 +1179,117 @@
           "y": 0
         },
         "type": "output"
+      },
+      "panel": {
+        "definitionVersion": 1,
+        "id": "panel",
+        "label": "panel1",
+        "parameters": {
+          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":6,\"h\":1}},\n    {\"member\":\"perch\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":6,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"bore\",\"rect\":{\"x\":6,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"lamp\",\"rect\":{\"x\":6,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"glow\",\"rect\":{\"x\":6,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"distance\",\"rect\":{\"x\":6,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"react\",\"rect\":{\"x\":6,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"view\",\"rect\":{\"x\":6,\"y\":6,\"w\":3,\"h\":3}}\n  ]\n}",
+          "title": "Sentinel"
+        },
+        "position": {
+          "x": -2400,
+          "y": 2250
+        },
+        "type": "panel"
+      },
+      "perch": {
+        "definitionVersion": 1,
+        "id": "perch",
+        "label": "perch",
+        "parameters": {
+          "caption": "Perch",
+          "channel": "perch",
+          "on": false
+        },
+        "position": {
+          "x": -3600,
+          "y": 2250
+        },
+        "type": "toggle"
+      },
+      "pickHits": {
+        "definitionVersion": 1,
+        "id": "pickHits",
+        "label": "pickhits1",
+        "parameters": {
+          "channels": "kickCount snareCount hatCount"
+        },
+        "position": {
+          "x": -3300,
+          "y": 750
+        },
+        "type": "valueSelect"
+      },
+      "pickLevels": {
+        "definitionVersion": 1,
+        "id": "pickLevels",
+        "label": "picklevels1",
+        "parameters": {
+          "channels": "level low high"
+        },
+        "position": {
+          "x": -3300,
+          "y": 500
+        },
+        "type": "valueSelect"
+      },
+      "rank": {
+        "definitionVersion": 1,
+        "id": "rank",
+        "label": "rank1",
+        "parameters": {
+          "window": 16
+        },
+        "position": {
+          "x": -2700,
+          "y": 500
+        },
+        "type": "valueNormalize"
+      },
+      "rate": {
+        "definitionVersion": 1,
+        "id": "rate",
+        "label": "rate1",
+        "parameters": {
+          "value": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('speed').chan.speed * (1 - op('perch').chan.perch) * (1 + (op('hits1').chan.kickCount * op('react').chan.react) * 0.6) * (1 + op('swim').chan.swim * (sin(clamp(op('stroke1').chan.value / 0.25, 0, 1) * 3.14159265) * 1.4 - 0.3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 3.2
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -2400,
+          "y": 1000
+        },
+        "type": "constant"
+      },
+      "react": {
+        "definitionVersion": 1,
+        "id": "react",
+        "label": "react",
+        "parameters": {
+          "caption": "Listen",
+          "channel": "react",
+          "max": 2,
+          "min": 0,
+          "step": 0,
+          "value": 1
+        },
+        "position": {
+          "x": -2700,
+          "y": 2000
+        },
+        "type": "slider"
       },
       "ribGeo": {
         "definitionVersion": 1,
@@ -646,6 +1349,19 @@
         "label": "ribs1",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"orient\",\"type\":\"vec4f\",\"qualifier\":\"quaternion\",\"default\":[0,0,0,1]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"kind\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"slip\",\"type\":\"f32\",\"default\":[0]}]",
+          "bore": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('bore').chan.bore"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.6
+              }
+            },
+            "mode": "expression"
+          },
           "capacity": 1536,
           "kernel": "// T1561b — stand-in tunnel ribs (src/projects/sentinel-bot/rig.ts).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the tunnel, metres.\n  bore: f32, // @default 2.6  Radius of the wall, metres.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\nconst RIB: f32 = 1.60000;\nconst AROUND: u32 = 24u;\n\nfn ribFrame(x: vec3f, y: vec3f, z: vec3f) -> vec4f {\n  // x, y, z orthonormal and right-handed, y the largest diagonal term for a block facing the axis from below; the general form is in the joint kernel.\n  let trace = x.x + y.y + z.z;\n  if (trace > 0.0) {\n    let s = sqrt(trace + 1.0) * 2.0;\n    return vec4f((y.z - z.y) / s, (z.x - x.z) / s, (x.y - y.x) / s, 0.25 * s);\n  }\n  if (x.x > y.y && x.x > z.z) {\n    let s = sqrt(1.0 + x.x - y.y - z.z) * 2.0;\n    return vec4f(0.25 * s, (y.x + x.y) / s, (z.x + x.z) / s, (y.z - z.y) / s);\n  }\n  if (y.y > z.z) {\n    let s = sqrt(1.0 + y.y - x.x - z.z) * 2.0;\n    return vec4f((y.x + x.y) / s, 0.25 * s, (z.y + y.z) / s, (z.x - x.z) / s);\n  }\n  let s = sqrt(1.0 + z.z - x.x - y.y) * 2.0;\n  return vec4f((z.x + x.z) / s, (z.y + y.z) / s, 0.25 * s, (x.y - y.x) / s);\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let rib = ctx.index / AROUND;\n  let z = (floor(ctx.params.travel / RIB) + f32(rib) - 14.0) * RIB;\n  let wall = pathFrame(z);\n  let theta = (f32(ctx.index % AROUND) + 0.5) / f32(AROUND) * 6.2831853;\n  let radial = wall.right * cos(theta) + wall.up * sin(theta);\n  q.position = wall.origin + radial * (ctx.params.bore + 0.2);\n  q.orient = ribFrame(cross(radial, wall.forward), radial, wall.forward);\n  q.tint = vec4f(vec3f(0.22, 0.24, 0.27), 1.0);\n  return q;\n}",
           "travel": {
@@ -771,7 +1487,7 @@
             1
           ],
           "camera": "cam1",
-          "lights": "key1 eyes1 lamp1",
+          "lights": "key1 eyes1 beam1",
           "scenes": "bodygeo0_1 rings1 hubs1 claws1 ribgeo1"
         },
         "position": {
@@ -780,18 +1496,37 @@
         },
         "type": "render"
       },
+      "smooth": {
+        "definitionVersion": 1,
+        "id": "smooth",
+        "label": "smooth1",
+        "parameters": {
+          "lag": 0.02,
+          "releaseRatio": 4
+        },
+        "position": {
+          "x": -3000,
+          "y": 500
+        },
+        "type": "valueLag"
+      },
       "speed": {
         "definitionVersion": 1,
         "id": "speed",
-        "label": "speed1",
+        "label": "speed",
         "parameters": {
+          "caption": "Speed",
+          "channel": "speed",
+          "max": 9,
+          "min": 0,
+          "step": 0,
           "value": 3.2
         },
         "position": {
-          "x": -2400,
-          "y": 600
+          "x": -3600,
+          "y": 1500
         },
-        "type": "constant"
+        "type": "slider"
       },
       "steel": {
         "definitionVersion": 1,
@@ -813,6 +1548,70 @@
         },
         "type": "materialPbr"
       },
+      "stride": {
+        "definitionVersion": 1,
+        "id": "stride",
+        "label": "stride",
+        "parameters": {
+          "caption": "Stride",
+          "channel": "stride",
+          "max": 4.4,
+          "min": 1.6,
+          "step": 0,
+          "value": 3.2
+        },
+        "position": {
+          "x": -2700,
+          "y": 1500
+        },
+        "type": "slider"
+      },
+      "stroke": {
+        "definitionVersion": 1,
+        "id": "stroke",
+        "label": "stroke1",
+        "parameters": {
+          "limit": "loop",
+          "maximum": 1,
+          "minimum": 0
+        },
+        "position": {
+          "x": -2100,
+          "y": 1250
+        },
+        "type": "valueSpeed"
+      },
+      "strokeRate": {
+        "definitionVersion": 1,
+        "id": "strokeRate",
+        "label": "strokerate1",
+        "parameters": {
+          "value": 0.5166666666666667
+        },
+        "position": {
+          "x": -2400,
+          "y": 1250
+        },
+        "type": "constant"
+      },
+      "swim": {
+        "definitionVersion": 1,
+        "id": "swim",
+        "label": "swim",
+        "parameters": {
+          "caption": "Swim",
+          "channel": "swim",
+          "max": 1,
+          "min": 0,
+          "step": 0,
+          "value": 0
+        },
+        "position": {
+          "x": -3000,
+          "y": 1500
+        },
+        "type": "slider"
+      },
       "travel": {
         "definitionVersion": 1,
         "id": "travel",
@@ -823,10 +1622,46 @@
           "minimum": 0
         },
         "position": {
-          "x": -2100,
-          "y": 600
+          "x": -1800,
+          "y": 1000
         },
         "type": "valueSpeed"
+      },
+      "view": {
+        "definitionVersion": 1,
+        "id": "view",
+        "label": "view",
+        "parameters": {
+          "caption": "Camera side / height",
+          "channel": "view",
+          "max": 2,
+          "min": -2,
+          "x": 1.1,
+          "y": 0.6
+        },
+        "position": {
+          "x": -3300,
+          "y": 2250
+        },
+        "type": "xyPad"
+      },
+      "wave": {
+        "definitionVersion": 1,
+        "id": "wave",
+        "label": "wave",
+        "parameters": {
+          "caption": "Wave",
+          "channel": "wave",
+          "max": 0.3,
+          "min": 0,
+          "step": 0,
+          "value": 0.05
+        },
+        "position": {
+          "x": -3300,
+          "y": 1750
+        },
+        "type": "slider"
       }
     },
     "revision": 1

@@ -90,17 +90,20 @@ const PLACE_PARAMS = `  travel: f32, // @default 0  Distance travelled along the
 
 const ROBOT_FRAME = `${pathWgsl()}
 // The robot's own frame: on the tunnel's frame at its distance, facing a little way ahead so it
-// turns into a bend before it reaches it.
-fn robotFrame(travel: f32, offset: vec3f, roll: f32) -> Frame {
+// turns into a bend before it reaches it, banking into the bend, and never hanging dead still.
+fn robotFrame(travel: f32, offset: vec3f, roll: f32, time: f32) -> Frame {
   let z = travel + offset.z;
   let tunnel = pathFrame(z);
   var frame: Frame;
-  frame.origin = tunnel.origin + tunnel.right * offset.x + tunnel.up * offset.y;
+  let drift = vec2f(sin(time * 0.9 + offset.z), sin(time * 1.3 + offset.z * 1.7)) * 0.05;
+  frame.origin = tunnel.origin + tunnel.right * (offset.x + drift.x) + tunnel.up * (offset.y + drift.y);
   frame.forward = pathTangent(z + 1.2);
   let right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));
   let up = cross(frame.forward, right);
-  frame.right = right * cos(roll) + up * sin(roll);
-  frame.up = up * cos(roll) - right * sin(roll);
+  // How fast the heading swings, measured a couple of metres either side: the inside of the turn drops.
+  let bank = roll - 1.5 * (pathTangent(z + 2.0).x - pathTangent(z - 2.0).x);
+  frame.right = right * cos(bank) + up * sin(bank);
+  frame.up = up * cos(bank) - right * sin(bank);
   return frame;
 }
 `;
@@ -113,7 +116,7 @@ ${PLACE_PARAMS}
 ${ROBOT_FRAME}
 fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
-  let frame = robotFrame(ctx.params.travel, ctx.params.offset, ctx.params.roll);
+  let frame = robotFrame(ctx.params.travel, ctx.params.offset, ctx.params.roll, ctx.absTime);
   q.position = frame.origin + frame.right * p.position.x + frame.up * p.position.y + frame.forward * p.position.z;
   q.normal = normalize(frame.right * p.normal.x + frame.up * p.normal.y + frame.forward * p.normal.z);
   return q;
@@ -169,6 +172,8 @@ ${PLACE_PARAMS}
   waveRate: f32, // @default 1.2  Its speed, radians per second.
   grip: f32, // @default 1  How far a planted claw closes: 0 open, 1 shut.
   variety: f32, // @default 1  How differently the robots of a pack step: 0 in unison, 1 each on its own count.
+  swim: f32, // @default 0  Let go of the wall and beat the tentacles together like a squid: 0 walking, 1 swimming.
+  stroke: f32, // @default 0  Where the beat is, 0 to 1: flung open at 0, snapped shut by a quarter, drifting open again.
 };
 ${ROBOT_FRAME}
 const ROBOTS: u32 = ${robots.length}u;
@@ -304,7 +309,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let station = ctx.index % STATIONS;
   let params = ctx.params;
   let offset = params.offset + ROBOT_OFFSET[robot];
-  let body = robotFrame(params.travel, offset, params.roll);
+  let body = robotFrame(params.travel, offset, params.roll, ctx.absTime);
   let bodyZ = params.travel + offset.z;
   let socket = SOCKET[tentacle];
   let root = body.origin + body.right * socket.x + body.up * socket.y + body.forward * socket.z;
@@ -324,7 +329,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let aloft = sin(swing * 3.14159265);
   walking = mix(walking, pathAt(walking.z), params.lift * aloft);
 
-  let grab = smoothstep(0.0, 1.0, clamp(params.crawl * f32(TENTACLES) - ENGAGE[tentacle], 0.0, 1.0));
+  let grab = smoothstep(0.0, 1.0, clamp(params.crawl * f32(TENTACLES) - ENGAGE[tentacle], 0.0, 1.0)) * (1.0 - clamp(params.swim, 0.0, 1.0));
   let leave = normalize(body.forward * -0.6 + radial * 0.8);
 
   // ── Trailing: the neck curls back into the wake (less with Flare), the arm sways, the plane rocks ──
@@ -333,9 +338,12 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let side = cross(leave, toWake);
   let rock = sin(ctx.absTime * 0.6 + f32(tentacle) * 1.3) * 0.5;
   let loosePlane = toWake * cos(rock) + side * sin(rock);
+  // Swimming opens and shuts them together: splayed wide at the top of the beat, streamlined after the snap.
+  let open = select(smoothstep(0.25, 1.0, params.stroke), 1.0 - smoothstep(0.0, 0.25, params.stroke), params.stroke < 0.25);
+  let splay = clamp(params.flare + params.swim * (open * 1.1 - 0.15), -0.2, 1.2);
   let loose = Bend(
-    acos(clamp(dot(leave, wake), -1.0, 1.0)) * (1.0 - params.flare) / NECK,
-    sin(ctx.absTime * 0.9 + f32(tentacle) * 2.1) * 0.35 / ARM,
+    acos(clamp(dot(leave, wake), -1.0, 1.0)) * (1.0 - splay) / NECK,
+    (sin(ctx.absTime * 0.9 + f32(tentacle) * 2.1) * 0.35 - params.swim * open * 0.6) / ARM,
   );
 
   // ── Holding: the one arc from socket to claw, bowing the way the socket faces ──

@@ -213,6 +213,34 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     }
   }, 120_000);
 
+  it("swims: every claw lets go and trails behind its socket, flung wide at the top of the beat and drawn in after the snap", async () => {
+    /** How far behind its socket each claw trails (metres), and how far off the tunnel's axis the claws stand on average. */
+    const trailing = async (stroke: number): Promise<{ behind: number[]; spread: number }> => {
+      const pose = await walk(1, { swim: 1, stroke });
+      const behind: number[] = [];
+      let spread = 0;
+      for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) {
+        // Ring 0's joint is the socket (the kit's ring_start is 0); the hub is the claw's wrist.
+        const socket = pose.at(0, tentacle, 0);
+        const claw = pose.at(0, tentacle, FACTS.ringCount);
+        if (socket === undefined || claw === undefined) throw new Error("a swimming tentacle is stowed");
+        // Nothing is planted, so nothing can be off its rung.
+        expect(pose.slip(0, tentacle, FACTS.ringCount)).toBe(0);
+        behind.push(socket[2] - claw[2]);
+        const axis = pathAt(claw[2]);
+        spread += Math.hypot(claw[0] - axis[0], claw[1] - axis[1]) / TENTACLES;
+      }
+      return { behind, spread };
+    };
+    const open = await trailing(0);
+    const shut = await trailing(0.3);
+    // A 3.18 m tentacle streaming aft: every wrist is well over a metre behind its socket once drawn in, and still behind it when flung open.
+    expect(Math.min(...shut.behind)).toBeGreaterThan(1.5);
+    expect(Math.min(...open.behind)).toBeGreaterThan(0);
+    // The beat is the difference: cut `stroke` and the two poses are one. Open, the claws stand at least a metre further off the axis.
+    expect(open.spread - shut.spread).toBeGreaterThan(1);
+  }, 120_000);
+
   it("moves without a pop: halve the step and the largest move halves with it", async () => {
     // A continuous motion's largest move shrinks with the step it is sampled at; a pop does
     // not, it is the same jump however finely you look. So the ratio is 2 for a smooth rig
