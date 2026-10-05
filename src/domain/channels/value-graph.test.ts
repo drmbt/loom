@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
@@ -7,6 +7,9 @@ import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createValueGraphSession } from "./value-graph.ts";
 import { valueFilterNode, valueLagNode } from "../../nodes/definitions/value-graph-nodes.ts";
+import { controlSliderNode } from "../../nodes/definitions/controls.ts";
+import * as parameterDependencyModule from "../graph/parameter-dependencies.ts";
+import type { ParameterSlot } from "../types/parameters.ts";
 
 /**
  * The value graph (T273-T277, §V179): `mouse1 → lag1 → parameter` as a GRAPH — ordered,
@@ -46,6 +49,79 @@ const frameAt = (timeSeconds: number, deltaSeconds = 1 / 60): FrameEvaluationInp
   frameIndex: Math.round(timeSeconds * 60),
   mode: "realtime",
   randomSeed: 7,
+});
+
+describe("same-frame value parameter dependencies", () => {
+  const expression = (source: string): ParameterSlot => ({ mode: "expression", bindings: {
+    static: { kind: "static", value: 0.125 }, expression: { kind: "expression", source },
+  } });
+
+  it.each(["expression", "driven"] as const)("orders an unwired %s widget after its source, regardless of IDs", mode => {
+    const value: ParameterSlot = mode === "expression" ? expression("op('knob').chan.value") : {
+      mode: "driven", bindings: { static: { kind: "static", value: 0.125 }, driven: { kind: "driven", channel: "knob:value" } },
+    };
+    const document = graphOf([node("a-widget", "slider", { parameters: { value } }),
+      node("z-source", "slider", { label: "knob", parameters: { value: 0.75 } })], []);
+    const result = createValueGraphSession(registry).evaluate(document, frameAt(0));
+    expect(result.byId.get("a-widget")).toEqual({ value: 0.75 });
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("evaluates a stateful source once, shares current-frame channels, and caches dependencies by graph identity", () => {
+    const evaluateSource = vi.fn(({ state }: Parameters<NonNullable<typeof controlSliderNode.valueEvaluate>>[0]) => {
+      const count = Number(state["count"] ?? 0) + 1; state["count"] = count;
+      return { value: count / 10 };
+    });
+    const definitions = createNodeRegistry([...allNodeDefinitions,
+      { ...controlSliderNode, type: "test-count-source", valueEvaluate: evaluateSource }]).view();
+    const document = graphOf([node("a-widget", "slider", { parameters: { value: expression("op('knob').chan.value") } }),
+      node("b-widget", "slider", { parameters: { value: expression("op('knob').par.value") } }),
+      node("z-source", "test-count-source", { label: "knob", parameters: { value: expression("op('driver').chan.value") } }),
+      node("y-driver", "slider", { label: "driver", parameters: { value: 0.8 } })], []);
+    const dependencies = vi.spyOn(parameterDependencyModule, "parameterDependencies");
+    try {
+      const session = createValueGraphSession(definitions);
+      const first = session.evaluate(document, frameAt(0));
+      const second = session.evaluate(document, frameAt(1 / 60));
+      expect(first.byId.get("a-widget")).toEqual({ value: 0.1 });
+      expect(second.byId.get("a-widget")).toEqual({ value: 0.2 });
+      expect(second.byId.get("b-widget")).toEqual({ value: 0.8 });
+      expect(evaluateSource).toHaveBeenCalledTimes(2);
+      expect(dependencies).toHaveBeenCalledTimes(1);
+      session.evaluate({ ...document, revision: 2 }, frameAt(2 / 60));
+      expect(dependencies).toHaveBeenCalledTimes(2);
+    } finally { dependencies.mockRestore(); }
+  });
+
+  it("reports a cycle combining a parameter reference and a value wire", () => {
+    const document = graphOf([node("a", "slider", { parameters: { value: expression("op('b').chan.value") } }),
+      node("b", "valueMath")], [["a", "out", "b", "a"]]);
+    const result = createValueGraphSession(registry).evaluate(document, frameAt(0));
+    expect(result.diagnostics.map(d => d.code)).toContain("valueGraph.cycle");
+    expect(result.byId.size).toBe(0);
+  });
+
+  it("orders channels used through a nonvalue node's parameter reference", () => {
+    const document = graphOf([
+      node("a-widget", "slider", { parameters: { value: expression("op('grade').par.brightness") } }),
+      node("b-grade", "level", { label: "grade", parameters: { brightness: expression("op('knob').chan.value") } }),
+      node("z-source", "slider", { label: "knob", parameters: { value: 0.75 } }),
+    ], []);
+    const result = createValueGraphSession(registry).evaluate(document, frameAt(0));
+    expect(result.byId.get("a-widget")).toEqual({ value: 0.75 });
+    expect(result.byId.has("b-grade")).toBe(false);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reads external reference channels without replacing a muted value node's silence", () => {
+    const document = graphOf([node("a-widget", "slider", { parameters: { value: expression("op('knob').chan.value") } }),
+      node("b-widget", "slider", { parameters: { value: expression("op('meter').chan.mean") } }),
+      node("knob", "slider", { ui: { muted: true } }), node("meter", "analyze")], []);
+    const result = createValueGraphSession(registry).evaluate(document, frameAt(0), { channels: () => 0.75 });
+    expect(result.byId.get("a-widget")).toEqual({ value: 0.125 });
+    expect(result.byId.get("b-widget")).toEqual({ value: 0.75 });
+    expect(result.byId.has("knob")).toBe(false);
+  });
 });
 
 describe("value graph evaluation (T273/T274)", () => {

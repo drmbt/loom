@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import { authoredGraph, type GraphDocument, type GraphNode } from "@domain/types/graph.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
+import type { FrameInputs } from "@domain/types/backend.ts";
+import { resolveParameters, type ChannelResolver } from "@domain/parameters/resolve.ts";
+import { NO_FLATTENING, parameterReadOptions } from "@domain/parameters/node-references.ts";
 import { CONTROL_WIDGET_TYPES, LAYER_NODE_TYPE, panelBoard, panelTitle } from "@nodes/definitions/controls.ts";
 import { isRemotePanel } from "@devices/phone/phone-snapshot.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
@@ -15,6 +18,8 @@ import { LayersView } from "./layers-view.tsx";
 import { PanelRows } from "./panel-surface.tsx";
 import { PhoneDoorButton } from "./phone-door.tsx";
 import { PANEL_EMPTY_HINT, type PhoneDoorView } from "./phone-door-copy.ts";
+import { ControlValuesContext } from "./control-values-context.ts";
+import { useControlMidiLearn, type ControlMidiSurface } from "./control-midi-learn.tsx";
 import styles from "./controls-pane.module.css";
 import surface from "./panel-surface.module.css";
 
@@ -60,9 +65,12 @@ export interface ControlsPaneProps {
   readonly invocation: InvocationContext;
   /** T1396b — the phone door; absent where no device attachment exists (tests, headless). */
   readonly phone?: PhoneDoorView;
+  readonly midi?: ControlMidiSurface;
+  readonly channels?: ChannelResolver;
+  readonly latestFrame?: () => FrameInputs | null;
 }
 
-export function ControlsPane({ graph, registry, bus, invocation, phone }: ControlsPaneProps) {
+export function ControlsPane({ graph, registry, bus, invocation, phone, midi, channels, latestFrame }: ControlsPaneProps) {
   const editor = useMemo(() => createParameterEditor({ bus, context: invocation }), [bus, invocation]);
   useEffect(() => () => editor.dispose(), [editor]);
   const write = useMemo<ControlWrite>(() => (nodeId, entries, phase) => editor.setStored(nodeId, entries, phase), [editor]);
@@ -94,6 +102,19 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
   const showLayers = layersChosen && layers;
   const panel = panels.find((candidate) => candidate.id === chosen) ?? panels[0];
   const board = panel === undefined ? null : panelBoard(graph, panel);
+  const midiLearn = useControlMidiLearn(bus, invocation, midi, showLayers ? "layers" : panel?.id ?? "all", !editing);
+  const controlValues = useMemo(() => channels === undefined ? null : ({ read: (nodeId: string) => {
+    const current = bus.store.getGraph();
+    const node = current.nodes[nodeId];
+    // A removed widget can have one outstanding display sample before React unmounts it.
+    if (node === undefined) return {};
+    const definition = registry.get(node.type);
+    if (definition === undefined) throw new Error(`No definition for control "${node.type}".`);
+    const frame = latestFrame?.()?.frame;
+    // §T1551b/§T1552b (migrated by the lead): the stored document, no fade — as before.
+    return resolveParameters(node, definition, parameterReadOptions({ graph: authoredGraph(current), registry, channels,
+      frame, flattening: NO_FLATTENING })).values;
+  } }), [bus, registry, channels, latestFrame]);
 
   const apply = (operations: GraphPatchOperation[], label: string): void => {
     if (operations.length === 0) return;
@@ -165,7 +186,10 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
     );
 
   return tabs(
-    <div className={styles.pane} data-controls-pane data-editing={editing && board !== null ? true : undefined}>
+    <ControlValuesContext.Provider value={controlValues}>
+    <div className={styles.pane} data-controls-pane data-midi-learning={midiLearn.active || undefined}
+      onPointerDownCapture={midiLearn.capture} onClickCapture={midiLearn.captureClick}
+      data-editing={editing && board !== null ? true : undefined}>
       <header className={styles.header}>
         <h2 className={styles.title}>{panel === undefined ? "All controls" : panelTitle(panel)}</h2>
         {board === null ? null : (
@@ -174,6 +198,7 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
             className={`${styles.iconButton} ${editing ? styles.active : ""}`}
             aria-label="Edit board"
             aria-pressed={editing}
+            disabled={midiLearn.active}
             title={editing ? "Done arranging" : "Arrange the board"}
             onClick={() => setEditing(!editing)}
           >
@@ -195,6 +220,7 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
           />
         )}
       </header>
+      {midiLearn.toolbar}
       {panel === undefined ? (
         <div className={surface.grid} data-panel-row>
           {widgets.map((widget) => (
@@ -214,5 +240,6 @@ export function ControlsPane({ graph, registry, bus, invocation, phone }: Contro
         <PanelBoardGrid board={board} write={write} bus={bus} invocation={invocation} variant="tab" />
       )}
     </div>
+    </ControlValuesContext.Provider>
   );
 }

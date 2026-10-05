@@ -1,8 +1,10 @@
-import { useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { EditPhase } from "@ui/controls/types.ts";
-import { controlCaption, formatControlValue as format, isDrivenParameter as isDriven } from "./board-fit.ts";
+import { isParameterSlot, storedStaticValue } from "@domain/parameters/slots.ts";
+import { controlCaption, formatControlValue as format } from "./board-fit.ts";
+import { ControlValuesContext, type ControlValuesReader } from "./control-values-context.ts";
 import styles from "./control-widget.module.css";
 
 /**
@@ -48,6 +50,46 @@ export interface ControlWidgetProps {
 }
 
 const num = (value: unknown, fallback: number): number => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
+const isDriven = (value: unknown): boolean => isParameterSlot(value) && value.mode !== "static";
+const VALUE_KEYS: Readonly<Record<string, readonly string[]>> = {
+  slider: ["value"], toggle: ["on"], button: ["held", "presses"], xyPad: ["x", "y"],
+};
+const NO_VALUE_KEYS: readonly string[] = [];
+
+interface LiveValues {
+  readonly reader: ControlValuesReader;
+  readonly nodeId: NodeId;
+  readonly values: Readonly<Record<string, unknown>>;
+}
+
+function useControlValues({ nodeId, type, parameters }: ControlWidgetProps) {
+  const reader = useContext(ControlValuesContext);
+  const keys = VALUE_KEYS[type] ?? NO_VALUE_KEYS;
+  const active = reader !== null && keys.some((key) => isDriven(parameters[key]));
+  const [sample, setSample] = useState<LiveValues | null>(null);
+  const retained = useMemo(() => Object.fromEntries(Object.entries(parameters).map(([key, value]) =>
+    [key, isParameterSlot(value) ? storedStaticValue(value) : value])), [parameters]);
+  useEffect(() => {
+    if (!active || reader === null) {
+      setSample(null);
+      return;
+    }
+    const tick = () => {
+      const resolved = reader.read(nodeId);
+      // Keep primitive value samples: a reader may reuse its record between frames.
+      const values = Object.fromEntries(keys.map((key) => [key, resolved[key]]));
+      setSample((previous) => previous?.reader === reader && previous.nodeId === nodeId
+        && keys.every((key) => Object.is(previous.values[key], values[key]))
+        ? previous : { reader, nodeId, values });
+    };
+    tick();
+    const timer = setInterval(tick, 100);
+    return () => clearInterval(timer);
+  }, [active, reader, nodeId, keys, parameters]);
+  const live = active && sample?.reader === reader && sample.nodeId === nodeId ? sample.values : null;
+  return { values: live === null ? retained : { ...retained, ...live }, live: live !== null };
+}
+
 function snap(value: number, step: number): number {
   return step > 0 ? Math.round(value / step) * step : value;
 }
@@ -65,6 +107,7 @@ function useDrag(onMove: (x: number, y: number, phase: EditPhase) => void) {
   return {
     ref: element,
     onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
       event.currentTarget.setPointerCapture(event.pointerId);
       const [x, y] = at(event);
       onMove(x, y, "live");
@@ -75,6 +118,7 @@ function useDrag(onMove: (x: number, y: number, phase: EditPhase) => void) {
       onMove(x, y, "live");
     },
     onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
       if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
       event.currentTarget.releasePointerCapture(event.pointerId);
       const [x, y] = at(event);
@@ -86,6 +130,8 @@ function useDrag(onMove: (x: number, y: number, phase: EditPhase) => void) {
 interface WidgetProps extends ControlWidgetProps {
   readonly caption: string;
   readonly className: string;
+  readonly values: Readonly<Record<string, unknown>>;
+  readonly live: boolean;
 }
 
 /** Caption left, value right, on one row — the value never takes a row of its own. `null`: no room for it (T1518b). */
@@ -98,17 +144,17 @@ function Head({ caption, value }: { caption: string; value: string | null }) {
   );
 }
 
-function Slider({ nodeId, parameters, write, caption, className, size, showValue }: WidgetProps) {
-  const min = num(parameters["min"], 0);
-  const max = num(parameters["max"], 1);
-  const step = num(parameters["step"], 0);
+function Slider({ nodeId, parameters, values, live, write, caption, className, size, showValue }: WidgetProps) {
+  const min = num(values["min"], 0);
+  const max = num(values["max"], 1);
+  const step = num(values["step"], 0);
   const driven = isDriven(parameters["value"]);
-  const value = num(parameters["value"], min);
+  const value = num(values["value"], min);
   const share = max === min ? 0 : Math.min(1, Math.max(0, (value - min) / (max - min)));
   const drag = useDrag((x, _y, phase) => {
     if (!driven) write(nodeId, { value: snap(min + x * (max - min), step) }, phase);
   });
-  const head = <Head caption={caption} value={showValue === false ? null : driven ? "driven" : format(value)} />;
+  const head = <Head caption={caption} value={showValue === false ? null : driven && !live ? "driven" : format(value)} />;
   // On a board the caption and value sit INSIDE the bar, so a one-row slider is one row.
   const board = size === "board";
   return (
@@ -131,16 +177,18 @@ function Slider({ nodeId, parameters, write, caption, className, size, showValue
   );
 }
 
-function Toggle({ nodeId, parameters, write, caption, className, showValue }: WidgetProps) {
-  const on = parameters["on"] === true;
+function Toggle({ nodeId, parameters, values, write, caption, className, showValue }: WidgetProps) {
+  const on = values["on"] === true;
+  const driven = isDriven(parameters["on"]);
   return (
     <div className={className} data-control="toggle" data-control-node={nodeId}>
       <button
         type="button"
         role="switch"
         aria-checked={on}
+        aria-readonly={driven}
         className={`${styles.toggle} ${on ? styles.on : ""} ${showValue === false ? styles.mini : ""}`}
-        onClick={() => write(nodeId, { on: !on }, "commit")}
+        onClick={() => { if (!driven) write(nodeId, { on: !on }, "commit"); }}
       >
         <span className={styles.caption} title={caption}>{caption}</span>
         <span className={styles.switch} aria-hidden="true">
@@ -152,16 +200,18 @@ function Toggle({ nodeId, parameters, write, caption, className, showValue }: Wi
   );
 }
 
-function Button({ nodeId, parameters, write, caption, className, showValue }: WidgetProps) {
-  const held = parameters["held"] === true;
-  const presses = num(parameters["presses"], 0);
+function Button({ nodeId, parameters, values, write, caption, className, showValue }: WidgetProps) {
+  const held = values["held"] === true;
+  const presses = num(values["presses"], 0);
+  const driven = isDriven(parameters["held"]) || isDriven(parameters["presses"]);
   // Pressed from the pointer's own edge, not only from the document's echo of it.
   const [pressing, setPressing] = useState(false);
-  const pressed = held || pressing;
+  const pressed = held || (!driven && pressing);
   // The count this press wrote on its way down. The release writes the SAME number: the
   // press's live write re-renders this widget with the count already raised, and adding
   // one again on release counted every press twice (T1513b, found by its test).
   const count = useRef(presses);
+  const pointer = useRef<number | null>(null);
   return (
     <div className={className} data-control="button" data-control-node={nodeId}>
       <button
@@ -169,14 +219,30 @@ function Button({ nodeId, parameters, write, caption, className, showValue }: Wi
         aria-pressed={pressed}
         className={`${styles.button} ${pressed ? styles.pressed : ""}`}
         onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          if (driven) return;
+          if (pointer.current !== null) return;
           event.currentTarget.setPointerCapture(event.pointerId);
+          pointer.current = event.pointerId;
           setPressing(true);
           count.current = presses + 1;
           write(nodeId, { held: true, presses: count.current }, "live");
         }}
         onPointerUp={(event) => {
+          if (event.button !== 0) return;
+          // Learn consumes pointerdown before this widget: that release owns no write.
+          if (pointer.current !== event.pointerId) return;
+          pointer.current = null;
           event.currentTarget.releasePointerCapture(event.pointerId);
           setPressing(false);
+          if (driven) return;
+          write(nodeId, { held: false, presses: count.current }, "commit");
+        }}
+        onLostPointerCapture={(event) => {
+          if (pointer.current !== event.pointerId) return;
+          pointer.current = null;
+          setPressing(false);
+          if (driven) return;
           write(nodeId, { held: false, presses: count.current }, "commit");
         }}
       >
@@ -187,17 +253,20 @@ function Button({ nodeId, parameters, write, caption, className, showValue }: Wi
   );
 }
 
-function XYPad({ nodeId, parameters, write, caption, className, size, showValue }: WidgetProps) {
-  const min = num(parameters["min"], 0);
-  const max = num(parameters["max"], 1);
-  const x = num(parameters["x"], 0.5);
-  const y = num(parameters["y"], 0.5);
-  const driven = isDriven(parameters["x"]) || isDriven(parameters["y"]);
+function XYPad({ nodeId, parameters, values, live, write, caption, className, size, showValue }: WidgetProps) {
+  const min = num(values["min"], 0);
+  const max = num(values["max"], 1);
+  const x = num(values["x"], 0.5);
+  const y = num(values["y"], 0.5);
+  const drivenX = isDriven(parameters["x"]);
+  const drivenY = isDriven(parameters["y"]);
+  const driven = drivenX || drivenY;
   const span = max - min || 1;
   const drag = useDrag((u, v, phase) => {
-    if (!driven) write(nodeId, { x: min + u * span, y: min + v * span }, phase);
+    if (drivenX && drivenY) return;
+    write(nodeId, { ...(drivenX ? {} : { x: min + u * span }), ...(drivenY ? {} : { y: min + v * span }) }, phase);
   });
-  const head = <Head caption={caption} value={showValue === false ? null : driven ? "driven" : `${format(x)}, ${format(y)}`} />;
+  const head = <Head caption={caption} value={showValue === false ? null : driven && !live ? "driven" : `${format(x)}, ${format(y)}`} />;
   // On a board the pad fills its rect and the header is laid over its top edge.
   const board = size === "board";
   return (
@@ -219,9 +288,10 @@ const WIDGETS: Readonly<Record<string, (props: WidgetProps) => ReturnType<typeof
 };
 
 export function ControlWidget(props: ControlWidgetProps) {
+  const display = useControlValues(props);
   const Widget = WIDGETS[props.type];
   if (Widget === undefined) return null;
-  const caption = controlCaption(props.parameters);
+  const caption = controlCaption(display.values);
   const className = `${styles.widget} ${props.size === "panel" ? styles.panel : props.size === "board" ? styles.board : styles.node}`;
-  return <Widget {...props} caption={caption} className={className} />;
+  return <Widget {...props} values={display.values} live={display.live} caption={caption} className={className} />;
 }

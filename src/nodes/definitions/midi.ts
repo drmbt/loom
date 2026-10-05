@@ -110,7 +110,7 @@ export const midiInNode: NodeDefinition = {
   },
   valueEvaluate: ({ values, channels, state }) => {
     const { bindings } = parseMidiMapping(values["mapping"]);
-    const device = typeof values["device"] === "string" ? (values["device"] as string).trim() : "";
+    const device = typeof values["device"] === "string" ? values["device"] : "";
     const bag: Record<string, number> = {};
     for (const binding of bindings) {
       const raw = binding.source === null ? undefined : channels?.(midiChannelName(device, binding.source));

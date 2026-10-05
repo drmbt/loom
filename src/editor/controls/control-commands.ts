@@ -3,8 +3,10 @@ import type { CommandContext, CommandOutcome } from "@domain/commands/bus.ts";
 import { applyGraphPatch, patchRejectionOutput } from "@domain/commands/apply-patch.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchResult } from "@domain/types/patch.ts";
+import type { MidiSource } from "@domain/midi/midi-mapping.ts";
 import { presetCatalogueHolderFor } from "@domain/presets/bank-view.ts";
 import { bindParameterPlan, boundControls, controlFromParameterPlan, unbindOperations, type ControlPlan } from "./parameter-controls.ts";
+import { learnControlMidiPlan, unlearnControlMidiPlan } from "./midi-controls.ts";
 import { z } from "zod";
 import { idInput } from "@domain/commands/input-schema.ts";
 
@@ -37,6 +39,11 @@ export interface BindControlInput extends ControlParameterRef {
   readonly channel?: string | undefined;
 }
 
+export interface LearnControlMidiInput extends ControlParameterRef {
+  readonly source: MidiSource;
+  readonly portId: string;
+}
+
 declare module "@domain/types/commands.ts" {
   interface CommandMap {
     /** Make the fitting control for a parameter, bind it and put it on a Panel — one patch. */
@@ -45,12 +52,23 @@ declare module "@domain/types/commands.ts" {
     "control.bindParameter": { input: BindControlInput; output: GraphPatchResult };
     /** Let go of the control a parameter reads; it keeps the value it retained. */
     "control.unbindParameter": { input: ControlParameterRef; output: GraphPatchResult };
+    /** Learn hardware onto a panel control without changing its downstream targets. */
+    "control.learnMidi": { input: LearnControlMidiInput; output: GraphPatchResult & { readonly keepSelection?: true } };
+    /** Restore the control's retained manual value. */
+    "control.unlearnMidi": { input: ControlParameterRef; output: GraphPatchResult };
   }
 }
 
 export const CONTROL_FROM_PARAMETER_COMMAND = "control.fromParameter";
 export const BIND_CONTROL_COMMAND = "control.bindParameter";
 export const UNBIND_CONTROL_COMMAND = "control.unbindParameter";
+
+// T1556b (added by the lead when the bus began parsing input): the learned hardware control.
+const midiSourceInput = z.object({
+  kind: z.enum(["cc", "pitchBend"]),
+  channel: z.number().int().min(1).max(16),
+  number: z.number().int().min(0).max(127).optional(),
+}).strict();
 
 const rejected = (context: CommandContext, code: string, message: string, nodeId?: NodeId): CommandOutcome<GraphPatchResult> => {
   const diagnostics = [{ severity: "error" as const, code, message, ...(nodeId === undefined ? {} : { nodeId }) }];
@@ -107,6 +125,26 @@ export function registerControlCommands(bus: LoomBus): void {
       const operations = unbindOperations(context.graph, context.registry, input.nodeId, keys);
       return applyGraphPatch({ baseRevision: context.store.getRevision(), label: `Unlink ${input.parameterKey}`, operations }, context);
     },
+    rejectionOutput: patchRejectionOutput,
+  });
+
+  bus.registerCommand({
+    name: "control.learnMidi",
+    inputSchema: z.object({ nodeId: idInput, parameterKey: idInput, source: midiSourceInput, portId: z.string().min(1) }).strict(),
+    description: "Learn a MIDI controller onto a panel control or XY axis in one undo step.",
+    handler: (input, context) => {
+      const outcome = run(context, learnControlMidiPlan(context.graph, context.registry,
+        input.nodeId, input.parameterKey, input.source, input.portId), input.nodeId);
+      return { ...outcome, output: { ...outcome.output, keepSelection: true } };
+    },
+    rejectionOutput: patchRejectionOutput,
+  });
+  bus.registerCommand({
+    name: "control.unlearnMidi",
+    inputSchema: z.object({ nodeId: idInput, parameterKey: idInput }).strict(),
+    description: "Unlink a panel control from MIDI and restore its retained manual value.",
+    handler: (input, context) => run(context, unlearnControlMidiPlan(context.graph, context.registry,
+      input.nodeId, input.parameterKey), input.nodeId),
     rejectionOutput: patchRejectionOutput,
   });
 }

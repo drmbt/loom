@@ -2300,7 +2300,8 @@ export function App({
           terminal={terminalPane}
           controls={
             <ErrorBoundary name="Controls">
-              <ControlsPane graph={compile.graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation} phone={phoneView} />
+              <ControlsPane graph={compile.graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation}
+                phone={phoneView} midi={midi} channels={compile.channels} latestFrame={frameLoop.latestFrame} />
             </ErrorBoundary>
           }
         />

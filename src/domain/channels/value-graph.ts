@@ -1,4 +1,4 @@
-import type { GraphDocument } from "../types/graph.ts";
+import { authoredGraph, type GraphDocument } from "../types/graph.ts";
 import type { NodeId, PortId } from "../types/ids.ts";
 import type { AudioFeatures, FrameEvaluationInput } from "../types/frame.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
@@ -7,6 +7,8 @@ import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import type { ChannelResolver, ParameterMorphs } from "../parameters/resolve.ts";
 import { resolveParameterSchema, effectiveParameterSchema } from "../parameters/resolve.ts";
 import { bypassPassthroughPorts } from "../graph/bypass.ts";
+import { parameterDependencies } from "../graph/parameter-dependencies.ts";
+import { NO_FLATTENING, parameterReadOptions } from "../parameters/node-references.ts";
 
 /**
  * The value graph (T273/T274, §V179): TD's CHOP layer, CPU-side, evaluated once per
@@ -18,7 +20,8 @@ import { bypassPassthroughPorts } from "../graph/bypass.ts";
  * why that is safe — these are SCALARS — and why the reasoning must not be generalised
  * to pixels.
  *
- * Evaluation is topological over the value edges (Kahn, sorted, deterministic). A
+ * Evaluation is topological over value wires and active parameter dependencies (Kahn,
+ * sorted, deterministic). Only actual wires contribute input channel bags. A
  * cycle is reported and its members emit empty bags — the command-time rejection
  * (§V152) is the real gate; this is the runtime backstop. Each node produces a channel
  * BAG (`{ x, y }`, `{ value }`), addressed downstream as `name` or `name:channel`
@@ -26,10 +29,9 @@ import { bypassPassthroughPorts } from "../graph/bypass.ts";
  * frames (§V181), cleared on `reset()` — which is what ties them to §V170's seek
  * rules: their output is not a function of frame index alone.
  *
- * A node's own parameters resolve with the frame but WITHOUT channels — a value
- * node's parameter driven by another value node is the value graph's own wiring
- * question (connect them instead); resolving it through the resolver here would be
- * recursion through the seam this module implements.
+ * Parameters read channel bags already published in this evaluation. Reference ordering
+ * makes those bags current without recursively evaluating a node or advancing its state
+ * twice. External names use the caller's channel source; muted value nodes remain silent.
  *
  * ## MUTE and BYPASS (T541/B114)
  *
@@ -130,6 +132,8 @@ const valuePortIds = (definition: NodeDefinition): ReadonlySet<PortId> =>
 export function createValueGraphSession(registry: NodeRegistryView): ValueGraphSession {
   /** nodeId → persistent state bag. Survives frames; dies on reset() or node removal. */
   const states = new Map<NodeId, Record<string, unknown>>();
+  // Authored reference parsing belongs to graph changes, never the frame path.
+  const dependenciesByGraph = new WeakMap<GraphDocument, ReadonlyMap<NodeId, ReadonlySet<NodeId>>>();
 
   return {
     reset() {
@@ -157,9 +161,16 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
 
       /** Value edges between members, target input port → sorted upstream sources. */
       const incoming = new Map<NodeId, Array<{ edgeId: string; source: NodeId; port: PortId }>>();
-      const dependents = new Map<NodeId, NodeId[]>();
+      const dependents = new Map<NodeId, Set<NodeId>>();
       const indegree = new Map<NodeId, number>();
       for (const nodeId of members.keys()) indegree.set(nodeId, 0);
+      const orderAfter = (source: NodeId, target: NodeId): void => {
+        const dependentList = dependents.get(source) ?? new Set<NodeId>();
+        if (dependentList.has(target)) return;
+        dependentList.add(target);
+        dependents.set(source, dependentList);
+        indegree.set(target, (indegree.get(target) ?? 0) + 1);
+      };
       for (const edgeId of Object.keys(graph.edges).sort()) {
         const edge = graph.edges[edgeId];
         if (edge === undefined) continue;
@@ -170,10 +181,35 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
         const list = incoming.get(edge.target.nodeId) ?? [];
         list.push({ edgeId, source: edge.source.nodeId, port: edge.target.portId });
         incoming.set(edge.target.nodeId, list);
-        const dependentList = dependents.get(edge.source.nodeId) ?? [];
-        dependentList.push(edge.target.nodeId);
-        dependents.set(edge.source.nodeId, dependentList);
-        indegree.set(edge.target.nodeId, (indegree.get(edge.target.nodeId) ?? 0) + 1);
+        orderAfter(edge.source.nodeId, edge.target.nodeId);
+      }
+      let dependencies = dependenciesByGraph.get(graph);
+      if (dependencies === undefined) {
+        const authored = parameterDependencies(graph);
+        const compiled = new Map<NodeId, Set<NodeId>>();
+        for (const target of members.keys()) {
+          const sources = new Set<NodeId>();
+          const visited = new Set<NodeId>();
+          const pending = [target];
+          while (pending.length > 0) {
+            const owner = pending.pop()!;
+            if (visited.has(owner)) continue;
+            visited.add(owner);
+            for (const reference of authored.get(owner) ?? []) {
+              if (reference.kind !== "reference" && reference.kind !== "driven") continue;
+              if (members.has(reference.to)) sources.add(reference.to);
+              // A nonvalue parameter owner may itself read a value channel. Walk that
+              // chain once when the graph changes, without evaluating any node's state.
+              else pending.push(reference.to);
+            }
+          }
+          if (sources.size > 0) compiled.set(target, sources);
+        }
+        dependencies = compiled;
+        dependenciesByGraph.set(graph, dependencies);
+      }
+      for (const [target, sources] of dependencies) {
+        for (const source of sources) orderAfter(source, target);
       }
 
       // Kahn, deterministic: the ready set stays sorted.
@@ -203,6 +239,28 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
 
       const byId = new Map<NodeId, ValueChannels>();
       const byName = new Map<string, ValueChannels>();
+      const valueNames = new Set([...members.keys()].map(nodeId => graph.nodes[nodeId]?.label));
+      const resolver: ChannelResolver = (channel) => {
+        const colon = channel.indexOf(":");
+        const name = colon < 0 ? channel : channel.slice(0, colon);
+        const bag = byName.get(name);
+        if (bag === undefined) return undefined;
+        if (colon >= 0) return bag[channel.slice(colon + 1)];
+        if (bag["value"] !== undefined) return bag["value"];
+        const keys = Object.keys(bag);
+        return keys.length === 1 ? bag[keys[0] as string] : undefined;
+      };
+      const channels: ChannelResolver = (channel, context) => {
+        const name = channel.split(":", 1)[0]!;
+        if (valueNames.has(name)) return resolver(channel, context);
+        return extras.channels?.(channel);
+      };
+      // §T1551b/§T1552b (migrated by the lead when `createParameterReadOptions` was removed):
+      // `evaluate` still takes a plain `GraphDocument`, so the graph is labelled authored here;
+      // the frame path hands it the flattening — type `evaluate` as `FlatGraph` when this lands.
+      const readOptions = parameterReadOptions({ graph: authoredGraph(graph), registry, channels, frame,
+        flattening: { ...NO_FLATTENING, ...(extras.morphs === undefined ? {} : { morphs: extras.morphs }) },
+      });
       /** Publishes a node's bag. A node that never calls this is SILENT (see the note). */
       const publish = (nodeId: NodeId, bag: ValueChannels): void => {
         // Non-finite numbers never leave a stage: downstream math on NaN is a graph
@@ -283,11 +341,7 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
           continue;
         }
 
-        // Frame-scoped, channel-free parameter resolution (see the module note).
-        const resolved = resolveParameterSchema(node, effectiveParameterSchema(member.definition, node.parameters), {
-          frame,
-          ...(extras.morphs === undefined ? {} : { morphs: extras.morphs }),
-        });
+        const resolved = resolveParameterSchema(node, effectiveParameterSchema(member.definition, node.parameters), readOptions);
         const state = states.get(nodeId) ?? {};
         states.set(nodeId, state);
 
@@ -316,17 +370,6 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
         }
         publish(nodeId, channels);
       }
-
-      const resolver: ChannelResolver = (channel) => {
-        const colon = channel.indexOf(":");
-        const name = colon < 0 ? channel : channel.slice(0, colon);
-        const bag = byName.get(name);
-        if (bag === undefined) return undefined;
-        if (colon >= 0) return bag[channel.slice(colon + 1)];
-        if (bag["value"] !== undefined) return bag["value"];
-        const keys = Object.keys(bag);
-        return keys.length === 1 ? bag[keys[0] as string] : undefined;
-      };
 
       return { byName, byId, diagnostics, resolver };
     },
