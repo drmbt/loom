@@ -234,6 +234,13 @@ export interface GeometryPayload {
   /** T917: additive light — the draw blends additively and stops writing depth. */
   readonly blend?: "additive";
   /**
+   * B256: the Geometry's In Depth Output, read for ADDITIVE geometry only (an opaque one is
+   * a body in every sweep whatever this says). Absent, additive geometry is in no depth sweep
+   * at all; present, its own depth is written to the camera's Depth output, and it is still
+   * in no light's sweep and no occlusion prepass.
+   */
+  readonly ownDepth?: true;
+  /**
    * T1414b: a SHADOW-ONLY body — it draws into every light's shadow sweep (and a
    * projector's occlusion) and into nothing the camera sees: no colour, depth, normal,
    * albedo or shadow matte, no ambient occlusion.

@@ -223,7 +223,7 @@ function crucibleDocumentBuild(): ProjectDocument {
       node(grid, "pointGrid", [-2200, y], { cols: SWARM_COLUMNS, rows: SWARM_ROWS * SWARM_BODIES, count: SWARM_CAPACITY, sizeX: 2, sizeY: 2 }, { label: `${id}grid1` }),
       node(form, "pointKernel", [-1900, y], { capacity: SWARM_CAPACITY, attributes: SWARM_ATTRIBUTES, kernel: SWARM_KERNEL, slot: index, bodies: SWARM_BODIES, ...tierParameters, drift: expressionSlot(LANES[swarm.lane], 0.3), burst: expressionSlot(BEAT, 0.1) }, { label: `${id}form1` }),
       node(mesh, "geometry", [-1600, y], { mode: "surface", material: "hullpaint1", tint: mappedTint }, { label: `${id}mesh1` }),
-      node(glow, "geometry", [-1300, y], { mode: "beam", endpoint: "end", material: "seamglow1", tint: mappedEmission, scale: 0.045, soft: 0.6, blend: "additive", group: "p.seam > 0.5" }, { label: `${id}glow1` }),
+      node(glow, "geometry", [-1300, y], { mode: "beam", endpoint: "end", material: "seamglow1", tint: mappedEmission, scale: 0.045, soft: 0.6, blend: "additive", inDepthOutput: true, group: "p.seam > 0.5" }, { label: `${id}glow1` }),
     );
     edges.push(edge(`${id}-grid`, [grid, "out"], [form, "in"]), edge(`${id}-mesh`, [form, "out"], [mesh, "points"]), edge(`${id}-glow`, [form, "out"], [glow, "points"]));
     scenes.push(`${id}mesh1`, `${id}glow1`);

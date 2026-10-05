@@ -4346,6 +4346,7 @@
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
+          "inDepthOutput": true,
           "material": "aetherglow1",
           "mode": "beam",
           "scale": 0.012,
@@ -4397,6 +4398,7 @@
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
+          "inDepthOutput": true,
           "material": "aetherglow1",
           "mode": "beam",
           "scale": 0.012,

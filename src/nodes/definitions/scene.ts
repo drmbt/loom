@@ -696,7 +696,16 @@ const GEOMETRY_PARAMETERS: ParameterSchema = {
       { value: "additive", label: "Additive" },
     ],
     description:
-      "Additive adds this geometry's colour onto what is already drawn — light on light — and stops writing depth so overlapping light sums instead of occluding. A Surface drawn additively (T1411b) comes after every opaque and glass geometry, still hides behind what is in front of it, and leaves the Render's Depth, Normal and Albedo outputs and its shadows to what it glows over.",
+      "Additive adds this geometry's colour onto what is already drawn — light on light — and stops writing depth so overlapping light sums instead of occluding. In every mode it is light, not a body: it still hides behind what is in front of it, and it leaves the Render's Depth output, its shadows and its ambient occlusion to what it glows over (In Depth Output brings back the first). A Surface drawn additively (T1411b) also comes after every opaque and glass geometry and writes no Normal or Albedo; points, beams and primitive instances draw in Scenes order, so list them after what they glow over.",
+  },
+  inDepthOutput: {
+    type: "boolean",
+    label: "In Depth Output",
+    default: false,
+    compileTime: true,
+    description:
+      "B256, additive geometry only. Off: the Render's Depth output holds what this light glows over, which is what haze, focus and screen-space occlusion want of dust, sparks and glows. On: its own depth is written there, though it still hides nothing and casts nothing — for a light-only Render whose depth a later pass composites by (a beam placed in front of or behind a raymarched room).",
+    inactiveWhen: (values) => (values["blend"] === "additive" ? null : "An opaque geometry is always in the Depth output."),
   },
   shape: {
     type: "enum",
@@ -846,7 +855,7 @@ export const geometryNode: NodeDefinition = {
    * for on every call, for all 107 nodes.
    */
   description:
-    "Binds a point set and a material into one nameable renderable object — a Render lists geometries by name. Mode decides what the points become: Surface skins them into a mesh over their grid topology; INSTANCES draws one primitive at every point — N copies of one shape from ONE node, never N nodes — a quad, box or octahedron, or with Shape: Mesh ANY MESH wired to Shape Mesh (a Mesh File In with Frame: Object), lit, shadowed and Material · WGSL-shaded as a Surface is; Size, Orient, Tint and Instance Translate take per-point values in Map mode; Points draws a camera-facing billboard per point; Beam draws a quad spanning position to the Endpoint attribute, for streaks and rays. Tint multiplies the material's base colour per object (1,1,1,1 = inherit, visibly). Translate, Rotate, Scale and Pivot move a Surface or mesh instances as ONE OBJECT — a matrix on every draw (colour, G-buffer, shadows), never a kernel rewriting its vertices; primitive instances, points and beams ignore them.",
+    "Binds a point set and a material into one renderable object a Render lists by name. Mode decides what the points become: Surface skins them into a mesh over their grid topology; INSTANCES draws one primitive at every point — N copies of one shape from ONE node, never N nodes — a quad, box or octahedron, or with Shape: Mesh ANY MESH wired to Shape Mesh (a Mesh File In with Frame: Object), lit, shadowed and Material · WGSL-shaded as a Surface is; Size, Orient, Tint and Instance Translate take per-point values in Map mode; Points draws a camera-facing billboard per point; Beam draws a quad spanning position to the Endpoint attribute, for streaks and rays. Tint multiplies the material's base colour per object (1,1,1,1 = inherit, visibly). Translate, Rotate, Scale and Pivot move a Surface or mesh instances as ONE OBJECT: a matrix on every draw (colour, G-buffer, shadows), not a kernel; primitives, points and beams ignore them. Blend: Opaque is a body; Additive is light: no depth, no shadow.",
   // T1214: the tags named one of the four modes. A library search for "instances" or
   // "beam" found Render Instances and nothing else — this node does both.
   tags: ["3d", "scene", "geometry", "material", "surface", "instances", "points", "beam"],
@@ -1393,6 +1402,7 @@ export const geometryNode: NodeDefinition = {
           }
         : {}),
       ...(parameters["blend"] === "additive" ? { blend: "additive" as const } : {}),
+      ...(parameters["inDepthOutput"] === true ? { ownDepth: true as const } : {}),
       ...(parameters["shadowOnly"] === true ? { castOnly: true as const } : {}),
       ...(endpointPair === undefined ? {} : { endpoint: endpointPair }),
       /* T1581b: a mesh instance's tint, size, turn and group are already in its records
@@ -2080,8 +2090,15 @@ export const renderNode: NodeDefinition = {
         if (position === undefined) return; // the lit loop refuses this by name
         /* T1411b: an ADDITIVE surface is light laid over the picture, not a body — it
            occludes nothing, so it casts no shadow, encloses no AO, blocks no projector,
-           and the exported depth is the depth of what it glows over. */
-        if (additiveSurface(payload)) return;
+           and the exported depth is the depth of what it glows over.
+           B256: and so is additive geometry of EVERY kind. The rule stopped at surfaces, so
+           an additive billboard, beam or primitive instance still went into the camera's
+           sweep (6,000 dust motes read as walls by everything that read the Depth output),
+           and a lit additive instance into the lights' and the occlusion prepass's.
+           The one way back in is asked for: `ownDepth`, and only into the Depth OUTPUT (the
+           one sweep that states visibility rather than occlusion) — a light-only Render
+           whose depth a later pass composites by needs to know where the light is. */
+        if (additiveLight(payload) && !(options.visibility === true && payload.ownDepth === true)) return;
         if (options.fromCamera === true && payload.castOnly === true) return;
         /* T647: a points-mode billboard casts NO shadow, deliberately — a camera-facing
            card has no light-facing geometry, so a shadow from it would be a lie (and
@@ -3614,7 +3631,16 @@ const envLit = (model: string): boolean => model === "phong" || model === "pbr";
  * modes keep T917's own additive rules; glass has its own phase.
  */
 const additiveSurface = (payload: GeometryPayload): boolean =>
-  (payload.mode === "surface" || payload.instanceMesh !== undefined) && payload.blend === "additive" && payload.material.model !== "glass";
+  (payload.mode === "surface" || payload.instanceMesh !== undefined) && additiveLight(payload);
+
+/**
+ * B256 — geometry of ANY mode drawn with Blend: Additive: light laid over the picture, not
+ * a body. One predicate for every depth sweep, so a new mode cannot be a body by omission.
+ * Glass keeps its own path (it refracts what is behind it, and its Blend is not read).
+ */
+function additiveLight(payload: GeometryPayload): boolean {
+  return payload.blend === "additive" && payload.material.model !== "glass";
+}
 
 function materialCompile(model: MaterialPayload["model"]) {
   return (context: Parameters<NodeDefinition["compile"]>[0]): CompiledNodeDescription => {

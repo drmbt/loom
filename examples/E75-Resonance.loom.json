@@ -2682,6 +2682,7 @@
         "parameters": {
           "blend": "additive",
           "group": "p.size < 0.025",
+          "inDepthOutput": true,
           "material": "dustmat1",
           "mode": "points",
           "scale": {
@@ -3455,6 +3456,7 @@
           "blend": "additive",
           "endpoint": "end",
           "group": "p.seam > 0.5",
+          "inDepthOutput": true,
           "material": "dustmat1",
           "mode": "beam",
           "scale": {
@@ -3520,6 +3522,7 @@
           "blend": "additive",
           "endpoint": "end",
           "group": "p.seam > 0.5",
+          "inDepthOutput": true,
           "material": "dustmat1",
           "mode": "beam",
           "scale": {
@@ -4613,6 +4616,7 @@
           "blend": "additive",
           "endpoint": "end",
           "group": "p.seam > 0.5",
+          "inDepthOutput": true,
           "material": "dustmat1",
           "mode": "beam",
           "scale": {
@@ -4678,6 +4682,7 @@
           "blend": "additive",
           "endpoint": "end",
           "group": "p.seam > 0.5",
+          "inDepthOutput": true,
           "material": "dustmat1",
           "mode": "beam",
           "scale": {
