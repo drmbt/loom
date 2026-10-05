@@ -26,7 +26,7 @@ import {
   rewriteNodeNameReferences,
   uniqueNodeName,
 } from "../graph/names.ts";
-import { kindOfType } from "../graph/node-kinds.ts";
+import { kindOf } from "../graph/node-kinds.ts";
 import { sourceReferenceForInput } from "../graph/source-references.ts";
 import { defaultParameters, validateParameters } from "../parameters/validate.ts";
 import { bindCycleDiagnostics } from "../parameters/bind-cycles.ts";
@@ -460,8 +460,9 @@ function executeOperation(
         // §V129: the label is the NAME — unique per graph, auto-numbered at creation
         // (`noise1`, `noise2`), which is what makes `op('name')` references resolvable.
         // T1593b: numbered under the type's KIND, so an unrenamed node already carries it
-        // (`kernel1` for a Point Kernel). An explicit label is stored exactly as given.
-        label: requested ?? uniqueNodeName(draft, kindOfType(definition.type)),
+        // (`kernel1` for a Point Kernel; `bloom1` for an instance of the component Bloom,
+        // whose kind is the component's own name). An explicit label is stored exactly as given.
+        label: requested ?? uniqueNodeName(draft, kindOf(definition)),
       };
       // The new node arrives with a name and, optionally, expressions of its own — both
       // halves a loop needs. The name is the surprising half: numbering reuses a name a

@@ -15,7 +15,8 @@ import { idInput, nodeIdsInput, pointInput } from "../commands/input-schema.ts";
 import { parameterValueSchema } from "../types/schemas.ts";
 import { parameterDefinitionSchema } from "./schemas.ts";
 import { attachClipboardComponents } from "../commands/loom-clipboard.ts";
-import { renumberedName, rewriteNodeNameReferences } from "../graph/names.ts";
+import { renumberedName, rewriteNodeNameReferences, uniqueNodeName } from "../graph/names.ts";
+import { kindFromName } from "../graph/node-kinds.ts";
 import { withBoundaryPorts } from "./boundary-ports.ts";
 import { componentClipboard } from "./component-clipboard.ts";
 import { componentNodeType } from "./component-type.ts";
@@ -797,6 +798,20 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
             definitionVersion: version,
             position: built.position,
             parameters: defaultPublishedValues(built.definition),
+            /*
+             * T1593b phase 2: THIS INSTANCE IS NOT NAMED YET, and it is the one door that
+             * is not. An instance made from the library, by an import or by an `addNode`
+             * is named for its component (`bloom1`); this one should be too, with
+             * `label: uniqueNodeName(draft, kindFromName(built.definition.name))`.
+             *
+             * It waits because every shipped starter component is AUTHORED THROUGH THIS
+             * COMMAND (`starter-components.ts`), and the shipped file is the host document
+             * it leaves behind. Naming the instance here adds one line, `"label":
+             * "mattecut1"`, to the root graph of each of the 12 files under
+             * `examples/components/`, and `component-sync.test.ts` holds those bytes.
+             * Phase 1b may not change a shipped byte; the sweep regenerates all 12 anyway,
+             * and that is where this line and those files change together.
+             */
           };
 
           for (const wiring of built.inputWiring) {
@@ -954,6 +969,10 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
             definitionVersion: definition.version,
             position,
             parameters: defaultPublishedValues(definition),
+            // T1593b (ruled 2026-10-05): a new instance is NAMED, for its component —
+            // `bloom1`, then `bloom2`. It used to be left unnamed, which made it the one
+            // new node `op('…')` could not address until someone renamed it.
+            label: uniqueNodeName(draft, kindFromName(definition.name)),
           };
         },
       });

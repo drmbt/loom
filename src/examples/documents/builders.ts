@@ -8,7 +8,7 @@ import type {
 import type { ParameterSlot, ParameterValue } from "../../domain/types/parameters.ts";
 import { channelExpression } from "../../domain/parameters/slots.ts";
 import { parseComponentNodeType } from "../../domain/components/component-type.ts";
-import { conformsToKind, kindBindsName, kindOfType, withKind } from "../../domain/graph/node-kinds.ts";
+import { conformsToKind, kindBindsName, kindFromName, kindOfType, withKind } from "../../domain/graph/node-kinds.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { SCHEMA_VERSION } from "../../domain/types/schemas.ts";
 
@@ -170,7 +170,9 @@ export function node(
  *  - a role that already carries the kind (`named("blur_soft", "blur")` would be
  *    `blur_blur_soft`): write the role alone;
  *  - `label` in `extra`: that is a second name;
- *  - a component's In or Out: its name is the socket's label, not a role. Use `node()`.
+ *  - a component's In or Out: its name is the socket's label, not a role. Use `node()`;
+ *  - a component INSTANCE: its kind is its component's own name, which the type string
+ *    does not carry. Use `namedInstance()`.
  */
 export function named(
   role: string,
@@ -179,9 +181,9 @@ export function named(
   parameters: Record<string, ParameterValue> = {},
   extra: Partial<GraphNode> = {},
 ): GraphNode {
-  if (extra.label !== undefined) {
+  if (parseComponentNodeType(type) !== null) {
     throw new Error(
-      `named("${role}", "${type}"): extra.label "${extra.label}" is a second name. named() makes the name from the role; use node() to name a node by hand.`,
+      `named("${role}", "${type}"): a component instance is named for its component, and the type does not carry the component's name. Use namedInstance("${role}", "<Component name>", "${type}", …).`,
     );
   }
   if (!kindBindsName(type)) {
@@ -189,7 +191,49 @@ export function named(
       `named("${role}", "${type}"): a component's In and Out are named for the socket they publish, not by kind_role. Use node("${role}", "${type}", …, { label: "<socket name>" }).`,
     );
   }
-  const kind = kindOfType(type);
+  return namedUnder(kindOfType(type), role, type, position, parameters, extra);
+}
+
+/**
+ * `named()` for an INSTANCE OF A COMPONENT, whose kind is the component's own name.
+ *
+ *     namedInstance("holo", "Depth Points", "component:depthPoints@1", [0, 0])   // `depthpoints_holo`
+ *
+ * The name is written here because nothing else at this call site knows it: the type
+ * carries the component's id, and an id is not a name. It is not taken on trust. The
+ * shipped file embeds the component's definition, and `node-names.test.ts` judges the
+ * instance's name against the name THAT definition holds, so a name misspelled here fails
+ * the gate by the name it should have had.
+ */
+export function namedInstance(
+  role: string,
+  componentName: string,
+  type: string,
+  position: readonly [number, number],
+  parameters: Record<string, ParameterValue> = {},
+  extra: Partial<GraphNode> = {},
+): GraphNode {
+  if (parseComponentNodeType(type) === null) {
+    throw new Error(
+      `namedInstance("${role}", "${componentName}", "${type}"): "${type}" is not a component instance type (component:<id>@<version>). Use named() for a built-in node.`,
+    );
+  }
+  return namedUnder(kindFromName(componentName), role, type, position, parameters, extra);
+}
+
+function namedUnder(
+  kind: string,
+  role: string,
+  type: string,
+  position: readonly [number, number],
+  parameters: Record<string, ParameterValue>,
+  extra: Partial<GraphNode>,
+): GraphNode {
+  if (extra.label !== undefined) {
+    throw new Error(
+      `named("${role}", "${type}"): extra.label "${extra.label}" is a second name. named() makes the name from the role; use node() to name a node by hand.`,
+    );
+  }
   if (role === "" || conformsToKind(role, kind)) {
     throw new Error(
       `named("${role}", "${type}"): the role is what the node is FOR, without its kind. "${role}" would be named "${withKind(kind, role)}"; write the role alone (named("lamp", "slider") is "slider_lamp").`,

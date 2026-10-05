@@ -642,8 +642,11 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
         return patchThrough(context, "Clear name", [{ op: "setNodeLabel", nodeId: input.nodeId, label: null }]);
       }
       const node = context.graph.nodes[input.nodeId];
+      // The DEFINITION, not the type: a component instance's kind is its component's name.
+      // A node whose type is not installed has no kind to insist on and is named as typed.
+      const definition = node === undefined ? undefined : context.registry.get(node.type);
       const name =
-        input.exact === true || node === undefined ? input.label : conventionalName(input.label, node.type).name;
+        input.exact === true || definition === undefined ? input.label : conventionalName(input.label, definition).name;
       const outcome = patchThrough(context, "Rename", [{ op: "setNodeLabel", nodeId: input.nodeId, label: name }]);
       if (name === input.label.trim() || (outcome.status !== "applied" && outcome.status !== "validated")) return outcome;
       const diagnostics: RuntimeDiagnostic[] = [

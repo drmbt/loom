@@ -414,8 +414,15 @@ describe("the node title is an editable field (T415, B60)", () => {
       expect(errorOf(container, second)).not.toBeNull();
     });
     // The name it would have stored, and the free neighbour, both spelled with the kind.
-    expect(errorOf(container, second)?.textContent).toContain(`"solid_sky" is already in use`);
-    expect(errorOf(container, second)?.textContent).toContain(`"solid_sky2" is free`);
+    //
+    // The WHOLE sentence, exactly. A real browser showed this card reading
+    // `Operation 0 (setNodeLabel): the name …` — the patch's own bookkeeping, to someone
+    // who typed a name and wrote no patch. `toContain` on the name had passed over it since
+    // the editor was built.
+    expect(errorOf(container, second)?.textContent).toBe(`The name "solid_sky" is already in use. "solid_sky2" is free.`);
+    // The red edge is on the whole field, so the kind is inside it and not left grey beside it.
+    expect(kindOf(container, second)?.parentElement?.getAttribute("data-invalid")).toBe("true");
+    expect(inputOf(container, second)?.parentElement).toBe(kindOf(container, second)?.parentElement);
     // Not renamed, and NOT silently minted as `solid_sky2` either.
     expect(runtime.bus.store.getGraph().nodes[second]?.label).toBe("solid2");
     expect(inputOf(container, second)?.value).toBe("sky");

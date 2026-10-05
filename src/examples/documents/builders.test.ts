@@ -6,7 +6,7 @@ import { componentNodeType } from "../../domain/components/component-type.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { conformsToKind, kindOfType } from "../../domain/graph/node-kinds.ts";
-import { document, edge, graph, named, node, settings } from "./builders.ts";
+import { document, edge, graph, named, namedInstance, node, settings } from "./builders.ts";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════
@@ -221,5 +221,38 @@ describe("named() names a node kind_role from the role alone (T1593b)", () => {
 
   it("refuses a component's In and Out, whose name is the socket's label", () => {
     expect(() => named("depth", "componentIn", [0, 0])).toThrow(/named for the socket they publish/);
+  });
+
+  /*
+   * RULED 2026-10-05: an instance of a component is named for THE COMPONENT (`bloom_glow`),
+   * and the type string carries the component's id, not its name. So named() cannot know
+   * the kind and says so, and namedInstance() is told the name at the call site.
+   */
+  it("refuses a component instance, and points at namedInstance()", () => {
+    expect(() => named("holo", "component:depthPoints@1", [0, 0])).toThrow(
+      `named("holo", "component:depthPoints@1"): a component instance is named for its component, and the type does not carry the component's name. Use namedInstance("holo", "<Component name>", "component:depthPoints@1", …).`,
+    );
+  });
+});
+
+describe("namedInstance() names an instance for its component (T1593b)", () => {
+  it("makes the kind from the component's name and the name from the role", () => {
+    const holo = namedInstance("holo", "DepthPoints", "component:depthPoints@1", [0, 0]);
+    expect(holo.label).toBe("depthpoints_holo");
+    expect(holo.id).toBe("depthpoints_holo");
+    expect(holo.type).toBe("component:depthPoints@1");
+    expect(holo.definitionVersion).toBe(1);
+    // A name with a space in it is the same component to a reader.
+    expect(namedInstance("holo", "Depth Points", "component:depthPoints@1", [0, 0]).label).toBe("depthpoints_holo");
+  });
+
+  it("keeps a shipped instance's id, and refuses the same mistakes named() does", () => {
+    expect(namedInstance("holo", "DepthPoints", "component:depthPoints@1", [0, 0], {}, { id: "holo" }).id).toBe("holo");
+    expect(() => namedInstance("depthpoints_holo", "DepthPoints", "component:depthPoints@1", [0, 0])).toThrow(/write the role alone/);
+    expect(() => namedInstance("my holo", "DepthPoints", "component:depthPoints@1", [0, 0])).toThrow(/is not a name/);
+  });
+
+  it("refuses a built-in type, which named() names", () => {
+    expect(() => namedInstance("soft", "Blur", "blur", [0, 0])).toThrow(/is not a component instance type/);
   });
 });

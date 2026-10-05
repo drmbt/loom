@@ -1,6 +1,6 @@
 # Node names carry their kind: `kind_role`
 
-T1593b. Owner's ruling, 2026-10-05. Phase 1 is built; phase 2 (the sweep of shipped names) is planned in section 10 and not started.
+T1593b and T1597b. Owner's ruling, 2026-10-05, and the lead's rulings on phase 1's open questions the same day. Phases 1 and 1b are built, including the low-zoom kind label (section 8). Phase 2, the sweep of shipped names, is planned in section 10 and not started.
 
 The owner's reason: "it's pretty damn hard that we need to zoom in and figure out, ah okay, this is this kind of operator". A new node is auto-named from its type (`blur1`), and then nearly every shipped node was renamed to a bare role (`dye1`, `lamp`, `pathx1`), which throws the identification away. TouchDesigner practice keeps the operator type in the name (`null_out`, `constant_color`), so a node says what it is on the canvas and inside every `op('…')`.
 
@@ -16,7 +16,7 @@ A node's name is its **kind**, one underscore, then its **role**.
 | `lfo_pathx` | `lfo` | the LFO driving path x |
 | `kernel_joints` | `pointKernel` | the point kernel for the joints |
 | `mesh_car01` | `meshFileIn` | the mesh file for car 01 |
-| `comp_holo` | a component instance | the component used as the hologram |
+| `depthpoints_holo` | an instance of the component DepthPoints | the Depth Points used as the hologram |
 
 Three forms conform, and no others:
 
@@ -76,7 +76,11 @@ The second group is TouchDesigner's own model: a Transform TOP and a Transform S
 
 **Two special cases.**
 
-- A **component instance** is `comp`, whatever the component (`comp_holo`). The canvas already labels an instance "component" rather than repeating the component's own name (T639/T640), and a component's id is the user's own word, which could collide with a built-in kind.
+- A **component instance is named for its component** (ruled 2026-10-05). An instance of Bloom is `bloom1`, then `bloom_glow`. Its kind is the component's own name, lowercased, letters only (`Depth Points` → `depthpoints`), or `component` when the name holds no letter a kind can hold. It is not `comp`: that says only that the node is a component, which the stacked card on the canvas already says.
+  - **The kind is not in the type.** A saved component's id is minted (`cmp_7`), so the type `component:cmp_7@2` holds nothing a person can read. The name is on the component's definition, which the registry hands out as the instance's title. So `kindOf(definition)` answers for every node, and `kindOfType(type)` refuses an instance type by name rather than answer with a wrong word.
+  - **A component may share a word with a built-in kind.** One called "Blur" makes instances of kind `blur`. To the reader it is that kind of thing. The two are numbered in one sequence (`blur1`, `blur2`), so names stay unique.
+  - **Renaming a component renames no node.** Instances made under the old name keep it, and every reference to them still resolves. They stop carrying the kind, so the canvas shows their type again and the title editor offers the new kind at the next rename. Tested.
+  - **A new instance is named**, where it used to be left unnamed and so was the one new node `op('…')` could not address. Three of the four doors do it now: the library, an import, and an `addNode`. **Save as component does not yet**, and that is a decision for the lead (open question 1): every shipped starter component is authored through that command and ships the document it leaves behind, so naming the instance there adds one line (`"label": "mattecut1"`) to each of the 12 files under `examples/components/`. Phase 1b may not change a shipped byte. `pnpm test:gates` caught it (`component-sync.test.ts`); no shipped file was written.
 - A component's **In and Out** are not bound by the convention. Their name is the label of the socket the component shows from outside (`boundary-ports.ts`), so `in_depth` would put the direction on the socket twice. They are auto-named with their kind (`in1`, `out1`), never prefixed on a rename, and the gate does not ask them to conform.
 
 A type the table does not hold (a test fixture, a definition registered at runtime) falls back to the old base, `nameBaseFor(type)`.
@@ -89,11 +93,12 @@ A type the table does not hold (a test fixture, a definition registered at runti
 | `node.rename` (the command) | The kind goes in front of a name that lacks it, and the result says so (`node.name.kind`). `exact: true` stores the name as given. `label: null` clears it. |
 | The title editor | Calls `node.rename`. Section 6. |
 | Agent `add_node` with `label`, and `rename_node` | Same rule. `data.name` in the result is the name that was stored. `exactLabel` / `exact` opt out. |
-| A patch (`addNode.label`, `setNodeLabel`) | **Exactly what it carries.** A patch is replayable and its references were written against its own labels (§V324, §V325). |
+| A patch (`addNode.label`, `setNodeLabel`) | **Exactly what it carries.** A patch is replayable and its references were written against its own labels (§V324, §V325). Through the agent tool `apply_graph_patch` a label without its kind is still stored, and the result carries a warning (`node.name.kindMissing`) and `data.unconformingLabels`, each label beside its conforming form (ruled). |
 | "Control from Panel" | `slider_brightness`, `toggle_flipU`, `xypad_pinTopRight`. The channel it publishes stays the bare word. |
 | MIDI learn | `midiin1`, and `count_midi` for the press counter. |
 | Paste, duplicate, detach, flatten | The copied name, renumbered when taken (`slider_lamp` → `slider_lamp1`). Still conforming. |
-| A new component instance | Unnamed, as before. Open question 4. |
+| A new component instance (library, import, or an `addNode`) | Named for its component: `bloom1`. |
+| The instance a saved selection becomes (save as component) | Unnamed still. It follows with the sweep, because it changes the 12 shipped starter component files (section 3). |
 
 **Where the rule lives: in the command, not in each surface.** `node.rename` is the one door the title editor and an agent's rename both use (§V78), so the rule is stated once there. The patch operation underneath stays exact. The convention belongs to the act of naming, never to the replay of one.
 
@@ -103,9 +108,16 @@ A type the table does not hold (a test fixture, a definition registered at runti
 - text that conforms once cleaned is cleaned and not prefixed twice (`blur soft`, `Blur_soft` → `blur_soft`);
 - anything else gets the kind in front (`soft` → `blur_soft`, `Bloom pass` → `blur_Bloom_pass`).
 
-**Collisions.** The brief says a collision auto-numbers (§V129). The code has refused an explicit name that is taken since §V325, suggesting the free neighbour, and the existing tests hold that. I kept it: the refusal now reads `the name "slider_lamp" is already in use. "slider_lamp2" is free.` Auto-numbering still applies to names the app mints. Open question 1.
+**Collisions (ruled).** An explicit name that is taken is refused, with the free neighbour suggested (§V325 stands): `The name "slider_lamp" is already in use. "slider_lamp2" is free.` Auto-numbering applies to the names the app mints.
 
 **References.** A rename still rewrites every stored reference in the same patch (§V128), now to the prefixed name. Tested through the real bus: `op('slider1')` becomes `op('slider_lamp')`.
+
+**What a performance surface calls a node: the role (ruled).** A Panel board, the Controls tab, the Layers list and the phone caption a Presets bank, a Layer, a Cue List and an untitled Panel by the role of the name. `presets_looks` reads `looks`; `layer_graphic` reads `graphic`. The surface already draws a bank as a bank, so the kind in front would be the same fact twice in the one place where every character is read from across a room.
+
+- One rule for all of them, `surfaceNameOf`: the role when the name carries its kind and has one, otherwise the name as it is. `presets1`, `looks` and anything saved before the rule are shown whole. Nothing is cut from a name the rule did not make.
+- A look's instance is a bank from outside. It is captioned against its component's name, read from the catalogue; without one its name is shown whole.
+- It is a caption, never an address. A board stores its members under the full name, and a phone writes to a node id.
+- Not switched, on purpose. The board editor's "+ Add…" list and the "Driven by" hover name the node in full, because there the name identifies a node. A Layer's picture and a layer stack's title name another node, whose kind the surface does not draw (open question 2).
 
 ## 5. Stored names never move
 
@@ -119,7 +131,7 @@ No migration, no schema bump, and no shipped example's bytes change in phase 1: 
 
 The only place a person types a node name is the title on the canvas (double-click, `n`, or Rename… in the menu, which all open the same field). **The inspector has no name field** and the palette has no rename prompt; both show or open the title editor. If an inspector field is added later it must call `node.rename` and should reuse this field.
 
-**What I chose.** The field is two parts that read as one: the kind and its underscore as fixed text (`slider_`), then the input, which holds the role alone (`lamp`). One border, one background.
+**What I chose.** The field is two parts that read as one: the kind and its underscore as fixed text (`slider_`), then the input, which holds the role alone (`lamp`). One border, one background, one focus ring.
 
 - It opens on the role: `lamp` for `slider_lamp`; empty for an auto-name, because `blur1` has no role yet; the whole cleaned name for one that does not carry its kind.
 - A space becomes an underscore **as it is typed**, so the field shows the name that will be stored.
@@ -140,7 +152,22 @@ The only place a person types a node name is the title on the canvas (double-cli
 
 **Enter and blur differ in one case.** For a name that does not carry its kind yet (`dye1` on a Feedback), the field opens showing `feedback_` in front of `dye1`. Enter is an answer and gives it the kind. Leaving the untouched field renames nothing: opening a field and clicking away is not an edit, and must not rewrite references (§V33). Everywhere else Enter and blur both commit, as before.
 
-**Not verified in a browser.** jsdom paints nothing. The tests hold the behaviour (25 cases in `node-rename.test.tsx`), not the look. The kind is styled to give up its room before the input and never take more than half the name slot, and that claim needs a look in a real browser on a 178 px node, with a long kind such as `camerablur_`.
+### Looked at in a real browser
+
+Headless Chromium, a Camera Blur at 100 % zoom (a 178 px node, kind `camerablur`, 11 letters). The name slot is 103 px wide: the status dot and the three toggles take the rest of the header. Four things were wrong that the jsdom tests could not see, and all four are fixed.
+
+| What the browser showed | Now |
+| --- | --- |
+| The focus ring was drawn round the input only. It cut the field in two between `camer…` and what was being typed, so the kind read as a separate grey tag. | The border, the ground, the ring and the refusal's red edge are on the field as a whole. |
+| The kind took exactly half the slot and elided as `camer…`, losing the underscore. The role was left 50 px, about seven letters. | The kind takes at most 45 %. Its word elides and the join does not: `cam…_soft`. The role has 55.5 px. The start of the word is kept because that is what identifies a kind. |
+| Opening on a 25-letter role showed its END (`…ox_jumps`): selecting the text had scrolled the field 111 px. | It opens on the start of the role. |
+| A refused name showed `Operation 0 (setNodeLabel): the name "lfo_pathx" is already in use. "lfo_pathx2" is free.` in a card 103 px wide, over five lines, covering the node. | `The name "lfo_pathx" is already in use. "lfo_pathx2" is free.` in two lines, 222 px wide. The prefix is the patch's own bookkeeping and comes off at this surface only. |
+
+Confirmed working as designed: a space typed in the middle of a word becomes an underscore and the caret stays after it (`key_light`, caret at 4); a click on the kind switches it without committing the rename; Backspace at the start switches it off, struck through at 60 % opacity, focus kept; a very long role scrolls inside the field and never widens the node.
+
+There is only a dark theme (`color-scheme: dark`, no theme switch), so nothing was checked in light.
+
+Left as it is: at rest a long name ends in an ellipsis (`camerablur_the…`), so there the kind survives and the role is cut. Open question 3.
 
 ## 7. The gate and its ledger
 
@@ -177,19 +204,69 @@ Red-verified on the real set by editing: one ledger line raised, one lowered, on
 
 ## 8. The canvas
 
-**Built: the type label hides when the name carries its kind.** T416 shows the type beside the name once a rename has spent the identification. It used to hide only for `kind<digits>`. It now asks `conformsToKind`, so `blur_diffuse  Blur` never shows the same word twice, and a name without its kind (`Bloom pass`) still gets the label. A small change: one line, the one function. The setting that hides the label entirely is unchanged.
+### 8.1 The type chip beside the name (T416)
 
-For a family kind the label also hides (`material_floor` no longer shows "Material · PBR"). The variant stays on hover and in the inspector's type badge. If the variant matters at a glance, the fix is to show the label when the kind is shared and the titles in the family differ; I did not build that.
+T416 shows the type beside the name once a rename has spent the identification. It now asks `conformsToKind`, so `blur_diffuse  Blur` never shows the same word twice, and a name without its kind (`Bloom pass`) still gets the chip. The setting that hides the chip entirely is unchanged. Two more cases follow from phase 1b:
 
-**Not built: reading a node at low zoom.** This is the owner's actual complaint, and the name convention does not solve it alone. Measured from the CSS: a node is 178 px wide and its header text is 11 px (`--fs-meta`), the type label 10 px. At 50 % zoom the name is 5.5 px tall; at 25 % it is under 3 px. Below roughly 70 % nothing in the header can be read, whatever it says. The canvas zooms out to 5 %.
+- **An unnamed node gets no chip.** It shows its definition's title as its name, so the chip was that word again (`Blur  blur`).
+- **For a component instance the chip is the component's name** (`holo1  DepthPoints`), not the word "component". T639/T640 chose "component" because an instance then showed its component's name as its own and the chip repeated it. With the component's name as the kind, that repetition cannot happen (no chip when the name carries the kind, none when unnamed), and the chip is free to say what kind of thing the node is. That it is a component at all is said by the stacked card and the version chip.
 
-What would help most, in order:
+For a family kind the chip also hides (`material_floor` no longer shows "Material · PBR"). The variant stays on hover and in the inspector's type badge.
 
-1. **A kind label that does not shrink.** Below a zoom threshold, draw the kind over the node's header band at a constant on-screen size. Mechanism: the canvas writes its zoom into one CSS variable on its container (one write per zoom change, no per-node React render, §V16), and the label's size is `calc(11px / var(--canvas-zoom))`. It is an overlay, so no node box changes (§V389). Two tiers: kind alone when far out, `kind_role` closer in.
-2. **The kind in a heavier weight inside the name** (`**blur**_diffuse`), at every zoom. Cheap, but it only helps where text is already legible.
-3. **Colour by kind family.** T712 already washes the body by payload family; that is what reads at 10 % zoom, and it could be strengthened at low zoom.
+### 8.2 The kind stays legible at low zoom (T1597b, built)
 
-I implemented none of these. Each is a visual judgement that needs a real browser and the owner's eye, and item 1 touches how every node renders.
+**The problem, measured.** A node is 178 px wide and its header text is 11 px. At 60 % zoom that is 6.6 px, at 35 % under 4. And E79 Crucible, 79 nodes, **opens at 15 %** in a 1600 px window: a node is 27 px wide and its name is 1.65 px tall. This is where the owner's "we need to zoom in and figure out … this is this kind of operator" comes from. A better name does not help someone who cannot read the name.
+
+**What was built.** Below 70 % every node carries one label along its top edge: its kind in bold, then the rest of its name, at a size that does not shrink with the canvas (11 px text on screen at every zoom).
+
+| Zoom | The label | Example |
+| --- | --- | --- |
+| 70 % and above | none: the header is readable | |
+| 45 % to 70 % | kind, then the rest of the name | **geometry** swarm2geo1, **kernel**_joints |
+| 9 % to 45 % | the kind alone | **geometry**, **kernel**, **wgsl** |
+| below 9 % | none: a node is under 16 px wide and no word fits | |
+
+The kind comes from the node's **type**, not from its name. So the label is right for every node today, including the 3,297 shipped ones still named `dye1` or `lamp`. A name that carries its kind is split where the kind ends (`kernel` + `_joints`); a name that does not follows the kind as a word of its own (`feedback dye1`).
+
+**One calm line, and no pile-up, by construction.** The label lies inside its own node and is clipped to the node's box. Nodes do not overlap (§V389 gates the shipped ones), so two labels cannot overlap either, at any zoom. There is no collision test and nothing to tune. As the node gets narrower on screen the label simply shows less, and the last eighth of the width fades instead of slicing a letter.
+
+**No layout cost.** The label is absolutely positioned. Measured: all 79 node boxes are identical with the labels on and off.
+
+**No React work while the canvas moves.** A label that does not shrink has to be told the zoom. Three ways were measured on E79 (79 nodes, 1,802 elements under them), as the cost of one zoom change with style and layout brought up to date:
+
+| How the labels learn the zoom | Per zoom step |
+| --- | --- |
+| a custom property on the nodes' common ancestor | 4.23 ms |
+| the property written on each label element | 0.35 ms (0.77 ms on the finished labels) |
+| a property on a separate layer holding only the labels | 0.12 ms |
+
+The first is the obvious way and it is the expensive one: a custom property is inherited, so changing it on an ancestor restyles every element under every node on every frame of a zoom. **Chosen: the second.** One subscription to the canvas's transform compares one number per event; a pan changes no number and does nothing. On a zoom it writes one property on each label. Above 70 % it writes nothing at all: the tier is one attribute on the canvas root, written only when a threshold is crossed. No component re-renders at any point.
+
+Observed in the browser, as DOM mutations under the nodes: a pan, none; a zoom at working zoom, none; a zoom inside the label range, the labels' own `style` and nothing else (474 writes for six wheel steps on 79 labels).
+
+**Rejected.**
+
+- *The inherited property*: twelve times the cost, and it grows with everything inside a node.
+- *A separate label layer*: cheapest to update, but its labels would have to be positioned from the canvas's node list (React work on every frame of a drag), would paint above every node instead of with their own, and would not be culled with them.
+- *A label above or below the node, outside its box*: it does not cover the preview, but it needs the gutter. At 35 % a 13 px label needs 37 flow px and the layout gate guarantees 36, so stacked nodes would start to touch exactly where the label matters. Inside the box there is nothing to collide with.
+- *Fading the kind out below a second threshold near 30 %* (the brief's suggestion): E79 opens at 15 %, so the label would be gone at the zoom the complaint is about. Clipping to the node keeps it calm without removing it. It goes only when no word fits (below 9 %).
+- *An ellipsis*: at 27 px it would take one of four letters.
+- *An earlier version of this design* clipped the label with a `max-width` that followed the zoom. The browser measured it re-laying out every label on every step (1.16 ms). The clip is now a separate box that never changes, and only the label's transform does.
+
+**What the screenshots show** (E79 Crucible, headless Chromium, 1600 × 1000; no GPU there, so previews read "no signal"):
+
+- **100 %**: unchanged. No label; the header's own name and type chip.
+- **60 %**: every node reads `geometry swarm2geo…`, `kernel swarm2…`: the kind bold, the name dim after it, cut at the node's edge with a short fade. 79 of 79 shown, 26 cut at the edge.
+- **35 %**: the kind alone, whole: `kernel`, `geometry`, `wgsl`, `light`, `material`. One of 79 is cut at the edge (a node is 63 px wide there; the example's longest kind, `audioanalysis`, is the only one that needs more). Before, this zoom showed `swarm0…` and a 4 px type chip.
+- **15 %** (where the example opens): `grid`, `kern`, `geo`, `rend`, `reor`, `mas`, `wgs`, `blur`, `add`, `lag`, `tail`, `beat`, `light`, `mat`, `cam`. Three to five letters each, 73 of 79 cut at the edge. The patch reads left to right as audio, select, range, lag, grid, kernel, geometry, render, wgsl, output. Before, nothing on the canvas could be read at all.
+
+No label reaches outside its node at any of the three zooms (0 px), and no two overlap (0 pairs).
+
+**What the browser showed that was fixed.** At 35 % a short label (`wgsl`) left the rest of the header visible beside it: the same name and type at 4 px, as a grey smear. While the label is showing, the header's own name and type are not drawn.
+
+**Held by** `kind-label.test.tsx` (the tiers, what the label says, and what a pan and a zoom write), `node-view.test.tsx` (a real node renders it and joins its canvas) and `src/tests/e2e/kind-label.spec.ts`, which measures the real page: the label's height is the same at 60 %, 35 % and 15 % to a tenth of a pixel; nothing leaves its node; node boxes do not change; a pan mutates nothing. The spec was broken on purpose twice (the scale removed, the clip removed) and failed each time.
+
+**Not checked.** How it looks over real previews: the headless browser has no GPU, so every preview is dark. The label sits on a plate of the node's own surface for that reason, and it wants one look in the running app. Open question 4 is about 15 %.
 
 ## 9. Judgement calls in the kind table
 
@@ -200,7 +277,7 @@ Each of these could reasonably go the other way.
 | Same title on another payload | shared kind (`limit`, `slope`, `switch`, `range`, `transform`, `circle`) | invent a word (`clamp`, `ring`, `xform`) | The kind should be the word the library shows. TouchDesigner shares these names. Cost: the name alone does not say texture or value; the node's wash does. |
 | The five materials | one family, `material` | `unlit`, `phong`, `pbr`, `glass` (TouchDesigner's MAT names) | Their titles are "Material · X". A look moved from Phong to PBR keeps its name. Cost: the name does not say the shading model. |
 | `customWgsl` and its multi-input form | one family, `wgsl` | `wgsl` and `wgslmulti` (TouchDesigner has `glsl` and `glslmulti`) | Same reasoning as materials. |
-| Component instance | `comp` | the component's own name (`depthpoints_holo`) | Short, stable, cannot collide with a built-in kind. Cost: the name does not say which component. |
+| Component instance | the component's own name (`depthpoints_holo`), **ruled** | `comp` | To a reader an instance of Bloom is "a bloom". Cost: the kind is not in the type string, so it is read from the definition; a non-Latin name gives `component`. |
 | `geometry` | full word | `geo` (TouchDesigner's default) | The ruling asks for the full kind word. It is the most common scene node (342 shipped). |
 | `output` / component `out` | `output` and `out` | `out` for both | Different things. Every shipped Output is named `out1` today; phase 2 makes it `output1`. |
 | `pointCircle` | `circle`, shared with the texture Circle | `ring` | Same shape on points. |
@@ -273,7 +350,7 @@ R2 needs a small table of the words authors used for each kind (`geo`, `mat`, `c
 - **Authors' own type words that are now another kind**: `surf1` on a Material · WGSL (19) → `material_surf`, while `surface` is the kind of Render Surface.
 - **Names with an inner underscore already**: `mesh_car01`, `lens_dof1`, `place_car11`. The first conforms once the trailing `1` goes (`mesh_car0`).
 - **The trailing digit that is part of the word**: `streak01` is id `streak0` plus the habit's `1`, so `wgsl_streak0`; `key11` is `key1` + `1`. R1 handles these because it reads the id, but a name whose id is not its label needs a look.
-- **Component instances**: `holo1` → `comp_holo`, `analysis1` → `comp_analysis`.
+- **Component instances** take their component's name: `holo1` on DepthPoints → `depthpoints_holo`; `timewall1` on TimeGrid → `timegrid_wall`; `analysis1` on AudioAnalysis → `audioanalysis1`, because that role only repeats the kind.
 - **Unnamed nodes** (81 in the root graphs, 249 counting the component graphs files embed, most of them a component's In and Out): leave them. The gate does not count them.
 
 ### 10.3 Order
@@ -281,7 +358,7 @@ R2 needs a small table of the words authors used for each kind (`geo`, `mat`, `c
 One example at a time, per CLAUDE.md, because an unscoped regeneration sweeps other sessions' work.
 
 1. Land the sweep tool and its review table. No document changes. The owner or lead reads the R2 rows.
-2. **Starter components first** (12 files, `--only <ComponentName>`). Examples embed copies of them, so they must be settled before the examples that carry them.
+2. **Starter components first** (12 files, `--only <ComponentName>`). Examples embed copies of them, so they must be settled before the examples that carry them. This is also where `component.saveSelection` starts naming the instance it leaves (one line in `commands.ts`, marked T1593b phase 2): each of the 12 files then gains `"label": "<component>1"` on its root instance, which conforms, in the same commit that regenerates it.
 3. **Examples that embed a component**, each: edit the source, regenerate `--only E<n>`, fix its `.md` claims, run its own tests by name, lower or remove its ledger line, commit source, JSON, `.md` and ledger together.
 4. **The remaining examples**, the same way, in batches by owning track so no batch crosses a session's in-flight document.
 5. **Projects**, through each project's own `build.ts`: furnace (1 document), on-nothing (25 documents from one source tree, so one edit moves 25 ledger lines), sentinel-bot (owned by another session; coordinate).
@@ -302,18 +379,21 @@ Per example the proof is: `sync.test.ts` (bytes match source), `doc-drift.test.t
 
 ## 11. Open questions
 
-1. **Collisions.** The brief says auto-number; the code refuses an explicit name that is taken and suggests the free one (§V325). I kept the refusal. Is that right, or should the title editor take the suggestion on a second Enter?
-2. **The six cross-payload families** (`limit`, `slope`, `switch`, `range`, `transform`, `circle`). Shared as in TouchDesigner, or distinct words?
-3. **`material` as one family**, or a kind per shading model?
-4. **Component instances.** `comp`, or the component's own name? And should a new instance be auto-named (`comp1`) instead of staying unnamed, so it can be addressed by `op('…')` from the start?
-5. **In and Out.** Exempt as built, or `in_depth` with the socket label taken from the role? The second changes how sockets are labelled and must not move a published socket name.
-6. **Performance surfaces show node names.** A Presets bank, a Layer and a Cue List are captioned by their node name on a Panel board and on the phone, and the Layers view titles each layer the same way (`controlNameOf`). After the sweep they read `presets_looks`, `layer_graphic`, `cuelist_set` on stage. I recommend those surfaces show the role (`looks`, `graphic`, `set`). Sliders, toggles, buttons and pads are not affected: they show their Caption, or else their channel.
-7. **Starter component versions.** Renaming a shipped component's internal nodes changes its definition but nothing addressable from outside. Bump the version or not? I would not.
-8. **`apply_graph_patch`.** A label in a patch is stored exactly. Should the agent tool add a warning when one does not conform? Not built.
-9. **The low-zoom kind label** (section 8). Wanted?
-10. **The kind words in section 9**, especially `texattr`, `texpoints`, `pattern`, `geometry`, `points`.
-11. **The R2 word table and the single-letter leftovers** (section 10.2) need a person.
-12. **sentinel-bot.** Its ledger line (43) will move when that session's in-flight document change lands; the gate will say so and name the new number.
+Ruled on 2026-10-05 and no longer open: collisions stay refused; the cross-payload families and `material` stay shared; a component instance is named for its component and is auto-named; In and Out stay exempt; surfaces caption by the role; starter component versions do not bump at the sweep; `apply_graph_patch` warns.
+
+Still open:
+
+1. **Save as component does not name its instance yet** (section 3). Doing it changes one line in each of the 12 shipped starter component files. I stopped there, because phase 1b may not change a shipped byte. Flip it now and regenerate the 12 files one at a time, or with the sweep? I planned it with the sweep (10.3, step 2).
+2. **A Layer's picture and a layer stack's title.** Both show the name of another node (`graphic · movie_clip`, a stack titled `output_main`). I left them whole: the surface does not draw what kind of node that other one is, so the kind is information there. Role instead?
+3. **A long name at rest.** It ends in an ellipsis (`camerablur_the…`): the kind survives and the role is cut. In the editor the kind elides first. Should it at rest too? It would cost the kind at 100 %, which is where the type chip is already hidden.
+4. **15 % zoom.** A 27 px node shows three or four letters of its kind (`geo`, `kern`, `wgs`). Enough? The options are a narrower face at that tier, a declared abbreviation per kind, or leaving it.
+5. **The three thresholds** (70 %, 45 %, 9 %) come from measurements on one example in a headless browser. They want the owner's eye in the running app, over real previews.
+6. **The kind words** in section 9, especially `texattr`, `texpoints`, `pattern`, `geometry`, `points`.
+7. **The R2 word table and the single-letter leftovers** (section 10.2) need a person.
+8. **A component whose name has no Latin letter** makes instances of kind `component`. Acceptable, or should a kind take letters of any script, as a role does?
+9. **The review preview of an agent's `add_node`** on a component instance shows the label as asked; the run stores it with the kind and reports it. The preview has no registry to read the component's name from.
+10. **A family's variant** (`material_floor` on a PBR) is no longer on the canvas chip. Show the chip when a kind is shared and the titles differ?
+11. **sentinel-bot.** Its ledger line moves when that session's work lands; the gate names the new number.
 
 ## 12. TouchDesigner: what was checked and what was not
 

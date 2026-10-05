@@ -6,7 +6,7 @@ import type { StoredParameter } from "@domain/types/parameters.ts";
 import type { PortDefinition, PortType } from "@domain/types/ports.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
-import { kindOfType } from "@domain/graph/node-kinds.ts";
+import { kindOf } from "@domain/graph/node-kinds.ts";
 
 import {
   emptyInput,
@@ -206,7 +206,7 @@ function definitionSummary(
 ): NodeDefinitionSummary {
   return {
     type: definition.type,
-    kind: kindOfType(definition.type),
+    kind: kindOf(definition),
     version: definition.version,
     title: definition.title,
     category: definition.category,

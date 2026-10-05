@@ -34,6 +34,7 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import { NodeView } from "@editor/nodes/node-view.tsx";
 import { AnnotationNode } from "@editor/nodes/annotation-node.tsx";
 import { registerRenameSessionCommand } from "@editor/nodes/rename-session.ts";
+import { createKindLabelRegistry } from "@editor/nodes/kind-label.ts";
 import { SignalEdge } from "@editor/edges/signal-edge.tsx";
 import {
   EDGE_HIT_TOLERANCE_PX,
@@ -55,6 +56,7 @@ import {
 import { resolveMenuTarget } from "@editor/menus/target.ts";
 import { parameterDependencies } from "@domain/graph/parameter-dependencies.ts";
 import { GraphGrid } from "./graph-grid.tsx";
+import { KindLabelDriver } from "./kind-label-driver.tsx";
 import { GraphMinimap } from "./graph-minimap.tsx";
 import { registerMinimapCommand } from "./minimap-command.ts";
 import { GraphCanvasContext } from "./canvas-context.ts";
@@ -768,6 +770,13 @@ export function GraphCanvas({
   );
 
   /**
+   * T1597b — the low-zoom kind labels of THIS canvas. One registry per canvas, because a
+   * zoom is a property of a canvas and two canvases on one document zoom apart (§V97).
+   * Every node's label joins it; `KindLabelDriver` below tells it the zoom.
+   */
+  const kindLabels = useMemo(() => createKindLabelRegistry(), []);
+
+  /**
    * T709 — the node browser, and the double-click that opens it.
    *
    * State is the GRAPH position only. The client anchor is derived from it at render
@@ -889,6 +898,7 @@ export function GraphCanvas({
       renameSession,
       beginRename,
       renameNode,
+      kindLabels,
       renderPreview,
       renderControls,
       renderHeaderControls,
@@ -911,6 +921,7 @@ export function GraphCanvas({
       renameSession,
       beginRename,
       renameNode,
+      kindLabels,
       renderPreview,
       renderControls,
       renderHeaderControls,
@@ -976,6 +987,8 @@ export function GraphCanvas({
             reason it is not one adaptive gap live in `graph-grid.tsx`.
           */}
           <GraphGrid />
+          {/* T1597b: hands the zoom to the low-zoom kind labels. Renders nothing, and re-renders nothing. */}
+          <KindLabelDriver registry={kindLabels} />
           {underlay}
           <ReferenceLines dependencies={dependencies} />
           {showMinimap ? <GraphMinimap host={minimapHost} /> : null}

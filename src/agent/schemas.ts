@@ -87,13 +87,15 @@ export const PARAMETER_MODES =
 export const NODE_NAMES =
   "A node's name is `kind_role`: its kind word, an underscore, then what the node is for " +
   "(`slider_lamp`, `blur_diffuse`, `lfo_pathx`), and `op('slider_lamp')` reads it by that name. " +
-  "The kind is per node type and `list_node_definitions` gives it (`pointKernel` is `kernel`, " +
-  "a component instance is `comp`). A new node with no label is auto-named kind plus a number " +
+  "The kind is per node type and `list_node_definitions` gives it (`pointKernel` is `kernel`). " +
+  "An instance of a component is named for the component: one of Bloom is `bloom1`, then `bloom_glow`; " +
+  "`get_node` gives its kind. A new node with no label is auto-named kind plus a number " +
   "(`blur1`), which already conforms. `add_node` with a `label`, and `rename_node`, put the kind " +
   "in front of a label that lacks it and report the name they stored: read it from the result " +
   "before writing an `op('…')` against it. A `label` inside `apply_graph_patch` is stored exactly " +
-  "as written, so write it in full there. A component's In and Out are the exception: their name " +
-  "is the socket's label and takes no kind.";
+  "as written, so write it in full there; one without its kind is still stored, with a warning and " +
+  "its conforming form in `data.unconformingLabels`. A component's In and Out are the exception: " +
+  "their name is the socket's label and takes no kind.";
 
 /**
  * T1208 — `driven` IS REFUSED AT THIS BOUNDARY, and the owner's question is why it needed

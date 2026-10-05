@@ -13,7 +13,7 @@ import { describePortType } from "@domain/graph/port-compat.ts";
 import {
   conformsToKind,
   kindBindsName,
-  kindOfType,
+  kindOf,
   nameInKind,
   roleFromText,
   roleOf,
@@ -43,6 +43,7 @@ import type { NodeRunStatus } from "@editor/graph-canvas/node-runtime.ts";
 import { ShaderStatusBadge } from "@editor/shader-editor/shader-status-badge.tsx";
 import { NodeTimingOverlay } from "./node-timing-overlay.tsx";
 import { nodeTypeLabelStore } from "./node-type-labels.ts";
+import { kindLabelParts } from "./kind-label.ts";
 import { AGENT_LABEL, AGENT_TOKEN, STATUS_LABEL, STATUS_TOKEN } from "./status.ts";
 import styles from "./node-view.module.css";
 
@@ -76,6 +77,7 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
     renameSession,
     beginRename,
     renameNode,
+    kindLabels,
     renderPreview,
     renderControls,
     renderHeaderControls,
@@ -115,6 +117,14 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
   );
   const typeLabels = nodeTypeLabelStore();
   const showTypeLabel = useSyncExternalStore(typeLabels.subscribe, typeLabels.get);
+
+  /**
+   * T1597b — this node's low-zoom kind label joins its canvas's registry when it mounts
+   * and leaves when it unmounts (React 19: the function a ref callback returns is its
+   * cleanup). The registry tells the element the zoom; this component never learns it,
+   * which is what keeps a zoom from re-rendering a single node (§V16).
+   */
+  const joinKindLabels = useCallback((label: HTMLSpanElement) => kindLabels.register(label), [kindLabels]);
 
   /**
    * §V101 — a badge press acts on the whole selection when this node is IN it, and on
@@ -248,23 +258,41 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
    * MINTS the auto-names. It cannot drift from the naming rule (§V316), and "blur_diffuse
    * Blur" never shows. It is a display decision only: nothing here reads back into the
    * document.
+   *
+   * AN UNNAMED NODE SHOWS ITS DEFINITION'S TITLE AS ITS NAME, so the title beside it would
+   * be that same word again ("Blur  blur", and for an instance of Bloom "Bloom  bloom",
+   * which is the repetition T639(d)/T640 was filed about). It has no name that could have
+   * lost the kind, so it gets no chip.
    */
-  const nameCarriesType = definition === undefined || conformsToKind(displayName, kindOfType(node.type));
+  const nameCarriesType =
+    definition === undefined || node.label === undefined || conformsToKind(node.label, kindOf(definition));
   /**
    * The kind the title editor keeps in front of the name, or `null` where the convention
    * does not bind: an unknown type has no kind worth insisting on, and a component's In
    * and Out are named for the socket they publish.
    */
-  const nameKind = definition === undefined || !kindBindsName(node.type) ? null : kindOfType(node.type);
+  const nameKind = definition === undefined || !kindBindsName(node.type) ? null : kindOf(definition);
   /*
-   * T639(d)/T640: an instance's synthesized definition title is the COMPONENT'S OWN
-   * NAME (a component the owner called "animated" labelled its nodes "animated"), so
-   * the label repeated the name and said nothing about what the node IS. The kind is
-   * the useful fact, so the kind is the label.
+   * What the chip says is the definition's TITLE, and for a component instance that is the
+   * component's own name: `holo1  DepthPoints`.
+   *
+   * T639(d)/T640 made it the literal word "component", because an instance then showed its
+   * component's name AS its name and the chip repeated it. T1593b (ruled 2026-10-05) makes
+   * the component's name the instance's KIND, which changes both halves: the repetition
+   * cannot happen any more (the chip is hidden whenever the name carries the kind, and for
+   * an unnamed node, above), and the fact the chip exists to give back, what KIND of thing
+   * this is, is now exactly that name. That it is a component at all is said by the
+   * stacked card and the version chip beside the name, at any zoom.
    */
-  const typeLabel = showTypeLabel && !nameCarriesType
-    ? (isComponentNodeType(node.type) ? "component" : (definition?.title ?? null))
-    : null;
+  const typeLabel = showTypeLabel && !nameCarriesType ? (definition?.title ?? null) : null;
+  /**
+   * T1597b — what this node says at low zoom: its kind, then the rest of its name.
+   *
+   * From the TYPE, so it is right whatever the node is called. Not for a node whose type
+   * is not installed (it has no kind), and not while its title is being edited: the label
+   * lies along the top of the node, and the field being typed in is under it.
+   */
+  const kindLabel = definition === undefined || isEditingName ? null : kindLabelParts(node.label, kindOf(definition));
 
   return (
     <>
@@ -329,6 +357,26 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
           still wakes on every 10 Hz sample even while it draws nothing (§V836).
         */}
         {showTimingOverlay ? <NodeTimingOverlay nodeId={id as NodeId} /> : null}
+        {/*
+          T1597b — the KIND, at a size that does not shrink with the canvas. Always in the
+          DOM and hidden by the stylesheet until the canvas is zoomed out past the point
+          where the header can be read (`kind-label.ts`), so crossing that point renders
+          nothing. Hidden from assistive technology: it repeats the name beside it.
+        */}
+        {kindLabel === null ? null : (
+          // Two boxes: the outer is the node's own box and clips; the inner is the one the
+          // canvas tells the zoom, and only its transform ever changes (see `.kindLabelClip`).
+          <span className={styles.kindLabelClip} aria-hidden="true">
+            <span ref={joinKindLabels} className={styles.kindLabel} data-testid={`node-kind-label-${id}`}>
+              <span className={styles.kindLabelKind}>{kindLabel.kind}</span>
+              {kindLabel.rest === "" ? null : (
+                <span className={styles.kindLabelRest} data-joined={kindLabel.joined}>
+                  {kindLabel.rest}
+                </span>
+              )}
+            </span>
+          </span>
+        )}
         <header className={styles.title}>
           <span
             className={styles.dot}
@@ -604,6 +652,23 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
   );
 });
 
+/**
+ * A refusal as a person reads it on the node.
+ *
+ * `applyGraphPatch` prefixes every refusal with the operation it came from —
+ * `Operation 0 (setNodeLabel): the name "lfo_pathx" is already in use.` — which is what
+ * makes a rejected BATCH fixable and is noise on a one-operation rename: there is no
+ * other operation it could be, and the person typed a name, not a `setNodeLabel`. Seen in
+ * the browser as the first two lines of the card. So the prefix comes off here, at the one
+ * surface that shows this sentence to someone who did not write a patch, and the sentence
+ * starts with a capital.
+ */
+function refusalSentence(message: string | undefined): string | undefined {
+  if (message === undefined) return undefined;
+  const sentence = message.replace(/^Operation \d+ \([A-Za-z]+\): /, "");
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
 interface NameEditorProps {
   nodeId: string;
   /** The name the node holds; `undefined` for an unnamed node. */
@@ -703,6 +768,10 @@ function NameEditor({ nodeId, name, shown, kind, onCommit, onClose }: NameEditor
     // Selected, not just focused: renaming usually REPLACES the role rather than
     // editing it, and this is the only chance to say so without the user pressing ⌘A.
     input.select();
+    // Selecting scrolls a field to the END of its text (measured in Chromium: a 25-letter
+    // role opened showing only `…ox_jumps`). The start of the role is what tells one node
+    // from its neighbour, so the field opens on it.
+    input.scrollLeft = 0;
   }, []);
 
   // A controlled input whose value was rewritten loses its caret to the end of the field.
@@ -736,7 +805,7 @@ function NameEditor({ nodeId, name, shown, kind, onCommit, onClose }: NameEditor
       settling.current = false;
       const diagnostic = result.diagnostics.find((entry) => entry.severity !== "info");
       setError(
-        [diagnostic?.message, diagnostic?.suggestion].filter((part) => part !== undefined).join(" ") ||
+        [refusalSentence(diagnostic?.message), diagnostic?.suggestion].filter((part) => part !== undefined).join(" ") ||
           "That name was refused.",
       );
       const input = inputRef.current;
@@ -785,7 +854,8 @@ function NameEditor({ nodeId, name, shown, kind, onCommit, onClose }: NameEditor
   );
 
   return (
-    <span className={cx(styles.nameEdit, "nodrag", "nopan")}>
+    // `data-invalid` puts the refusal's red edge on the whole field, the kind included.
+    <span className={cx(styles.nameEdit, "nodrag", "nopan")} data-invalid={error !== null}>
       {kind === null ? null : (
         <button
           type="button"
@@ -811,7 +881,10 @@ function NameEditor({ nodeId, name, shown, kind, onCommit, onClose }: NameEditor
           onDoubleClick={(event) => event.stopPropagation()}
           onClick={() => keepKind(!kindKept)}
         >
-          {kind}_
+          {/* Two parts, so a long kind elides in its WORD and the join survives:
+              `camer…_soft` still reads as one name (see `.nameKind`). */}
+          <span className={styles.nameKindWord}>{kind}</span>
+          <span className={styles.nameKindJoin}>_</span>
         </button>
       )}
       <input

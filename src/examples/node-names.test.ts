@@ -338,16 +338,44 @@ describe("the gate fails for each disagreement, with the instruction that fixes 
     ]);
   });
 
+  /** A file that embeds the component "Glow Stack" under a minted id, with one instance of it. */
+  const embedding = (instanceLabel: string, innerLabel: string, embedded = true): ShippedFile => ({
+    path: "examples/E902-Embeds.loom.json",
+    text: JSON.stringify({
+      graph: { nodes: { inst: { type: "component:cmp_7@2", label: instanceLabel } } },
+      componentLibrary: {
+        components: embedded
+          ? [{ componentId: "cmp_7", version: 2, name: "Glow Stack", graph: { nodes: { inner: { type: "blur", label: innerLabel } } } }]
+          : [],
+      },
+    }),
+  });
+
   it("reads a component graph embedded in the file, not only the root", () => {
-    const embedding: ShippedFile = {
-      path: "examples/E902-Embeds.loom.json",
-      text: JSON.stringify({
-        graph: { nodes: { inst: { type: "component:glow@1", label: "comp_glow" } } },
-        componentLibrary: { components: [{ componentId: "glow", graph: { nodes: { inner: { type: "blur", label: "soften1" } } } }] },
-      }),
-    };
-    const [problem] = nameProblems([embedding], {});
-    expect(problem).toContain(`"soften1" (blur, component glow) wants "blur_…"`);
+    expect(nameProblems([embedding("glowstack_main", "soften1")], {})).toEqual([
+      expect.stringContaining(`has 1 node name(s) that do not carry their kind: "soften1" (blur, component cmp_7) wants "blur_…"`),
+    ]);
+  });
+
+  /*
+   * RULED 2026-10-05: an instance is named for ITS COMPONENT. The kind is not in the type
+   * (the id there is minted), so it is read from the definition the file itself embeds:
+   * the one this file would open with.
+   */
+  it("judges a component instance against the name its embedded definition holds", () => {
+    expect(nameProblems([embedding("glowstack_main", "blur_soften")], {})).toEqual([]);
+    expect(nameProblems([embedding("glowstack1", "blur_soften")], {})).toEqual([]);
+    // Not the old universal word, and not the id in its type.
+    for (const wrong of ["comp_main", "cmp_main", "main1"]) {
+      const [problem, ...rest] = nameProblems([embedding(wrong, "blur_soften")], {});
+      expect(rest).toEqual([]);
+      expect(problem).toContain(`"${wrong}" (component:cmp_7@2, root) wants "glowstack_…"`);
+    }
+  });
+
+  it("fails an instance whose definition the file does not embed, instead of passing it unexamined", () => {
+    const [problem] = nameProblems([embedding("glowstack_main", "blur_soften", false)], {});
+    expect(problem).toContain(`"glowstack_main" (component:cmp_7@2, root) wants "component_…"`);
   });
 
   it("does not ask an unnamed node, or a component's In and Out, to conform", () => {

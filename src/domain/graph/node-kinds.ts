@@ -59,8 +59,54 @@ import { isComponentNodeType } from "../components/component-type.ts";
  * a kind can be looked up by typing it.
  */
 
-/** The kind of every component instance. TouchDesigner's own word for a component. */
-export const COMPONENT_KIND = "comp";
+/**
+ * ## A COMPONENT INSTANCE IS NAMED FOR ITS COMPONENT (ruled 2026-10-05, phase 1b)
+ *
+ * An instance of Bloom is `bloom1`, then `bloom_glow`. Its kind is THE COMPONENT'S OWN
+ * NAME, lowercased to the kind character set (`kindFromName`): to a reader an instance of
+ * Bloom is "a bloom", exactly as a Blur is "a blur". It is not `comp`: that would say only
+ * that the node is a component, which the stacked card on the canvas already says.
+ *
+ * So an instance's kind is NOT a function of its type string. The type carries the
+ * component's id (`component:cmp_7@2`), and an id is opaque: a saved component's id is
+ * minted, not spelled from its name. The name lives on the component's definition, which
+ * the registry hands out as the instance's `title`. `kindOf` takes that pair; `kindOfType`
+ * refuses an instance type by name rather than answer with a word that is wrong.
+ *
+ * Two consequences, both deliberate:
+ *
+ *  - A component MAY share a word with a built-in kind. One called "Blur" makes instances
+ *    of kind `blur`, numbered in the same sequence as Blur nodes (`blur1`, `blur2`), so
+ *    names stay unique. To the reader it is that kind of thing, and conformance is a
+ *    question about a name and a kind, never about which type holds the kind.
+ *  - RENAMING A COMPONENT RENAMES NO NODE. A kind is read when a name is minted or
+ *    checked, so instances made under the old name keep it and every reference to them
+ *    still resolves. They simply stop carrying the (new) kind: the canvas shows their type
+ *    again, and the title editor offers the new kind the next time one is renamed.
+ */
+
+/** What an instance is called when its component's name holds no ASCII letter at all (`2×2`, `光`). */
+export const COMPONENT_KIND = "component";
+
+/**
+ * A component's name as a kind: lowercased, and everything but `a`–`z` dropped, because a
+ * kind holds nothing else (that is what makes `kind_role` parse one way). `Depth Points`
+ * → `depthpoints`, `Bloom 2` → `bloom`.
+ */
+export function kindFromName(name: string): string {
+  const kind = name.toLowerCase().replace(/[^a-z]/g, "");
+  return kind.length > 0 ? kind : COMPONENT_KIND;
+}
+
+/**
+ * What `kindOf` needs to know about a node's definition. For a built-in type the type is
+ * enough; for a component instance the kind is in the `title`, which the component
+ * registry sets to the component's own name (`componentNodeDefinition`).
+ */
+export interface KindSource {
+  readonly type: string;
+  readonly title: string;
+}
 
 /**
  * node type → kind. Total over the registered built-in types (gated).
@@ -318,10 +364,26 @@ export function nameBaseFor(type: string): string {
   return base.length > 0 ? base : "node";
 }
 
-/** The kind word a node of this type is named with. Total: every type string has one. */
+/**
+ * The kind word a node of this BUILT-IN type is named with: the table's row, or the old
+ * base for a type the table does not hold.
+ *
+ * A component instance's type is refused, by name. Its kind is its component's name, which
+ * a type string does not carry, and a quiet `component` here would be a wrong word minted
+ * into a document. Ask `kindOf` with the definition instead.
+ */
 export function kindOfType(type: string): string {
-  if (isComponentNodeType(type)) return COMPONENT_KIND;
+  if (isComponentNodeType(type)) {
+    throw new Error(
+      `kindOfType("${type}"): a component instance is named for its component, and the type does not carry the component's name. Use kindOf(definition), or kindFromName(<the component's name>).`,
+    );
+  }
   return Object.hasOwn(NODE_KINDS, type) ? (NODE_KINDS[type] as string) : nameBaseFor(type);
+}
+
+/** The kind a node with this definition is named with. Total: every definition has one. */
+export function kindOf(definition: KindSource): string {
+  return isComponentNodeType(definition.type) ? kindFromName(definition.title) : kindOfType(definition.type);
 }
 
 /** False for the types whose name is a published label (`SOCKET_NAMED_TYPES`). */
@@ -412,7 +474,42 @@ export function nameInKind(typed: string, kind: string): ConventionalName {
   return { name: withKind(kind, cleaned), prefixed: true };
 }
 
-/** `nameInKind` for a node of this type. A socket-named type's name comes back unchanged. */
-export function conventionalName(typed: string, type: string): ConventionalName {
-  return kindBindsName(type) ? nameInKind(typed, kindOfType(type)) : { name: typed, prefixed: false };
+/**
+ * `nameInKind` for a node with this definition. A socket-named type's name comes back
+ * unchanged. The definition, not the type, because a component instance's kind is its
+ * component's name.
+ */
+export function conventionalName(typed: string, definition: KindSource): ConventionalName {
+  return kindBindsName(definition.type) ? nameInKind(typed, kindOf(definition)) : { name: typed, prefixed: false };
+}
+
+/**
+ * What a surface with room for ONE WORD shows for a node (a Panel board, the phone, the
+ * Layers list): the role when the name carries its kind and has one, else the name as it
+ * is (ruled 2026-10-05).
+ *
+ * `presets_looks` is `looks` on stage: the board already draws a bank as a bank, so the
+ * kind in front would be the same fact twice, in the one place where every character is
+ * read from across a room. A name with no role (`presets1`) and a name that does not carry
+ * its kind (`looks`, anything saved before the rule) are shown whole; nothing is cut from
+ * a name the rule did not make.
+ */
+export function roleOrName(name: string, kind: string): string {
+  const role = roleOf(name, kind);
+  return role === null || role === "" ? name : role;
+}
+
+/**
+ * The conforming form of an explicit label that does NOT conform (`lamp` on a slider →
+ * `slider_lamp`). `null` when the label already conforms, when the convention does not
+ * bind this definition, or when no name can be made from the text.
+ *
+ * For the one door that stores a label exactly and so can only WARN: a patch.
+ */
+export function conformingFormOf(label: string, definition: KindSource): string | null {
+  if (!kindBindsName(definition.type)) return null;
+  const kind = kindOf(definition);
+  if (conformsToKind(label.trim(), kind)) return null;
+  const named = nameInKind(label, kind);
+  return conformsToKind(named.name, kind) ? named.name : null;
 }

@@ -6,7 +6,8 @@ import { flatDocument } from "../../compiler/test-support.ts";
 import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
-import { parsePanelLayout } from "./controls.ts";
+import type { GraphNode } from "../../domain/types/graph.ts";
+import { controlNameOf, panelTitle, parsePanelLayout, surfaceNameOf } from "./controls.ts";
 
 /**
  * T1388b — a live control publishes what it shows under the name it was given, and that
@@ -62,5 +63,58 @@ describe("T1388b — live controls publish under the name they were given", () =
       { kind: "heading", text: "Camera" },
       { kind: "widgets", names: ["pad1"] },
     ]);
+  });
+});
+
+/**
+ * T1593b (ruled 2026-10-05) — WHAT A SURFACE CALLS A BANK, A LAYER, A CUE LIST OR A PANEL:
+ * the role of its name. One rule, read by the desk's board, the Controls tab, the Layers
+ * list and the phone, so they cannot caption one node two ways.
+ */
+describe("surfaceNameOf — the caption a one-word surface shows", () => {
+  const node = (type: string, label?: string): GraphNode =>
+    ({ id: "n1", type, definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {}, ...(label === undefined ? {} : { label }) }) as GraphNode;
+
+  it("is the role of a name that carries its kind", () => {
+    expect(surfaceNameOf(node("presets", "presets_looks"))).toBe("looks");
+    expect(surfaceNameOf(node("layer", "layer_lower_third"))).toBe("lower_third");
+    expect(surfaceNameOf(node("cueList", "cuelist_set"))).toBe("set");
+  });
+
+  it("is the whole name when the rule did not make it: no role, no kind, or no name at all", () => {
+    expect(surfaceNameOf(node("presets", "presets1"))).toBe("presets1");
+    expect(surfaceNameOf(node("presets", "looks"))).toBe("looks");
+    expect(surfaceNameOf(node("layer", "My Layer"))).toBe("My Layer");
+    // Unnamed: the id, as `controlNameOf` gives it.
+    expect(surfaceNameOf(node("layer"))).toBe("n1");
+  });
+
+  it("never changes the node's NAME: the board still stores and finds a member by it", () => {
+    expect(controlNameOf(node("presets", "presets_looks"))).toBe("presets_looks");
+  });
+
+  /*
+   * A look's instance is a bank from outside, and its kind is its component's own name,
+   * which only the catalogue holds. With it, `city_downtown` is `downtown`; without it the
+   * name is shown whole rather than cut on a guess.
+   */
+  it("reads a look instance's kind from its component's name, and guesses nothing without the catalogue", () => {
+    const instance = node("component:cmp_7@2", "city_downtown");
+    const catalogue = { get: (id: string, version: number) => (id === "cmp_7" && version === 2 ? { name: "City" } : undefined) };
+
+    expect(surfaceNameOf(instance, catalogue)).toBe("downtown");
+    expect(surfaceNameOf(instance)).toBe("city_downtown");
+    // Pinned to a version the catalogue does not hold: the same, whole.
+    expect(surfaceNameOf(node("component:cmp_7@9", "city_downtown"), catalogue)).toBe("city_downtown");
+    // Named for something else: it does not carry the kind, so it is shown as it is.
+    expect(surfaceNameOf(node("component:cmp_7@2", "comp_downtown"), catalogue)).toBe("comp_downtown");
+  });
+
+  it("titles a Panel by its Title, and an untitled one by the role of its name", () => {
+    const panel = (label: string, title: string): GraphNode => ({ ...node("panel", label), parameters: { title } }) as GraphNode;
+    expect(panelTitle(panel("panel_desk", "Front of house"))).toBe("Front of house");
+    expect(panelTitle(panel("panel_desk", ""))).toBe("desk");
+    expect(panelTitle(panel("panel1", ""))).toBe("panel1");
+    expect(panelTitle(panel("desk", ""))).toBe("desk");
   });
 });

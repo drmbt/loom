@@ -5,14 +5,24 @@ import {
   KIND_FAMILIES,
   NODE_KINDS,
   SOCKET_NAMED_TYPES,
+  conformingFormOf,
   conformsToKind,
   conventionalName,
   kindBindsName,
+  kindFromName,
+  kindOf,
   kindOfType,
   roleFromText,
   roleOf,
+  roleOrName,
   withKind,
+  type KindSource,
 } from "./node-kinds.ts";
+
+/** A built-in type's definition, as far as naming needs it: the title plays no part. */
+const of = (type: string): KindSource => ({ type, title: "" });
+/** An instance of a component: the registry hands its definition the component's own name as title. */
+const instanceOf = (name: string, id = "cmp_7", version = 1): KindSource => ({ type: `component:${id}@${version}`, title: name });
 
 /**
  * `kind_role` (T1593b). The owner's reason is the test of every case below: a name has to
@@ -112,41 +122,155 @@ describe("roleFromText: free text as a role", () => {
 
 describe("conventionalName: what a typed name becomes, for every door", () => {
   it("puts the kind in front of a bare role", () => {
-    expect(conventionalName("lamp", "slider")).toEqual({ name: "slider_lamp", prefixed: true });
-    expect(conventionalName("joints", "pointKernel")).toEqual({ name: "kernel_joints", prefixed: true });
-    expect(conventionalName("Bloom pass", "blur")).toEqual({ name: "blur_Bloom_pass", prefixed: true });
+    expect(conventionalName("lamp", of("slider"))).toEqual({ name: "slider_lamp", prefixed: true });
+    expect(conventionalName("joints", of("pointKernel"))).toEqual({ name: "kernel_joints", prefixed: true });
+    expect(conventionalName("Bloom pass", of("blur"))).toEqual({ name: "blur_Bloom_pass", prefixed: true });
   });
 
   it("takes a name that already carries the kind exactly as typed", () => {
-    expect(conventionalName("slider_lamp", "slider")).toEqual({ name: "slider_lamp", prefixed: false });
-    expect(conventionalName("blur2", "blur")).toEqual({ name: "blur2", prefixed: false });
-    expect(conventionalName("blur", "blur")).toEqual({ name: "blur", prefixed: false });
+    expect(conventionalName("slider_lamp", of("slider"))).toEqual({ name: "slider_lamp", prefixed: false });
+    expect(conventionalName("blur2", of("blur"))).toEqual({ name: "blur2", prefixed: false });
+    expect(conventionalName("blur", of("blur"))).toEqual({ name: "blur", prefixed: false });
   });
 
   it("does not prefix twice when the typed text carries the kind in a looser spelling", () => {
-    expect(conventionalName("blur soft", "blur")).toEqual({ name: "blur_soft", prefixed: false });
-    expect(conventionalName("Blur_soft", "blur")).toEqual({ name: "blur_soft", prefixed: false });
-    expect(conventionalName("BLUR2", "blur")).toEqual({ name: "blur2", prefixed: false });
+    expect(conventionalName("blur soft", of("blur"))).toEqual({ name: "blur_soft", prefixed: false });
+    expect(conventionalName("Blur_soft", of("blur"))).toEqual({ name: "blur_soft", prefixed: false });
+    expect(conventionalName("BLUR2", of("blur"))).toEqual({ name: "blur2", prefixed: false });
   });
 
   it("still prefixes a word that only begins like the kind", () => {
-    expect(conventionalName("blurry", "blur")).toEqual({ name: "blur_blurry", prefixed: true });
-    expect(conventionalName("lighthouse", "light")).toEqual({ name: "light_lighthouse", prefixed: true });
+    expect(conventionalName("blurry", of("blur"))).toEqual({ name: "blur_blurry", prefixed: true });
+    expect(conventionalName("lighthouse", of("light"))).toEqual({ name: "light_lighthouse", prefixed: true });
   });
 
   it("trims, and hands blank or unusable text back untouched for the caller to refuse", () => {
-    expect(conventionalName("  lamp  ", "slider")).toEqual({ name: "slider_lamp", prefixed: true });
-    expect(conventionalName("   ", "slider")).toEqual({ name: "   ", prefixed: false });
-    expect(conventionalName("!!!", "slider")).toEqual({ name: "!!!", prefixed: false });
+    expect(conventionalName("  lamp  ", of("slider"))).toEqual({ name: "slider_lamp", prefixed: true });
+    expect(conventionalName("   ", of("slider"))).toEqual({ name: "   ", prefixed: false });
+    expect(conventionalName("!!!", of("slider"))).toEqual({ name: "!!!", prefixed: false });
   });
 
   it("leaves a component's In and Out alone: their name is the socket's label", () => {
-    expect(conventionalName("depth", "componentIn")).toEqual({ name: "depth", prefixed: false });
-    expect(conventionalName("picture", "componentOutValue")).toEqual({ name: "picture", prefixed: false });
+    expect(conventionalName("depth", of("componentIn"))).toEqual({ name: "depth", prefixed: false });
+    expect(conventionalName("picture", of("componentOutValue"))).toEqual({ name: "picture", prefixed: false });
   });
 
-  it("names a component instance with the component kind", () => {
-    expect(conventionalName("hall", "component:bloom@2")).toEqual({ name: "comp_hall", prefixed: true });
+  it("names a component instance for its component", () => {
+    expect(conventionalName("glow", instanceOf("Bloom"))).toEqual({ name: "bloom_glow", prefixed: true });
+    expect(conventionalName("bloom_glow", instanceOf("Bloom"))).toEqual({ name: "bloom_glow", prefixed: false });
+    expect(conventionalName("holo", instanceOf("Depth Points"))).toEqual({ name: "depthpoints_holo", prefixed: true });
+  });
+});
+
+/**
+ * RULED 2026-10-05: an instance of Bloom is `bloom_glow`, not `comp_glow`. To a reader it
+ * is "a bloom" the way a Blur is "a blur". The kind is the component's own NAME, and the
+ * tests below are about the three things that follow from a kind that is not in the type.
+ */
+describe("a component instance is named for its component", () => {
+  it("makes the kind from the component's name, lowercased to the kind character set", () => {
+    expect(kindFromName("Bloom")).toBe("bloom");
+    expect(kindFromName("Depth Points")).toBe("depthpoints");
+    expect(kindFromName("DepthPoints")).toBe("depthpoints");
+    expect(kindFromName("Bloom 2")).toBe("bloom");
+    expect(kindFromName("lo-fi_grade")).toBe("lofigrade");
+  });
+
+  it("is a kind like any other: letters only, so the name still parses one way", () => {
+    for (const name of ["Bloom", "Depth Points", "Bloom 2", "lo-fi_grade", "3D Glow"]) {
+      expect(/^[a-z]+$/.test(kindFromName(name)), name).toBe(true);
+    }
+  });
+
+  it("falls back to `component` when the name holds no letter a kind can hold", () => {
+    expect(COMPONENT_KIND).toBe("component");
+    expect(kindFromName("2×2")).toBe("component");
+    expect(kindFromName("光")).toBe("component");
+    expect(kindFromName("")).toBe("component");
+  });
+
+  it("reads the kind from the definition's title, never from the opaque id in the type", () => {
+    // A saved component's id is minted (`cmp_7`), not spelled from its name.
+    expect(kindOf(instanceOf("Bloom", "cmp_7"))).toBe("bloom");
+    expect(kindOf(instanceOf("Bloom", "zzz"))).toBe("bloom");
+    expect(kindOf(of("pointKernel"))).toBe("kernel");
+    // A built-in type's title plays no part.
+    expect(kindOf({ type: "blur", title: "Anything At All" })).toBe("blur");
+  });
+
+  /*
+   * The type string cannot answer, so it REFUSES rather than answer wrong. A quiet
+   * `component` here is how an instance of Bloom would get named `component1` by a caller
+   * that forgot it needed the definition.
+   */
+  it("refuses to name an instance from its type alone", () => {
+    expect(() => kindOfType("component:bloom@1")).toThrow(/named for its component.*Use kindOf\(definition\)/);
+  });
+
+  it("lets a component share a word with a built-in kind: to the reader it is that kind of thing", () => {
+    expect(kindOf(instanceOf("Blur"))).toBe("blur");
+    expect(kindOf(of("blur"))).toBe("blur");
+    expect(conformsToKind("blur_soft", kindOf(instanceOf("Blur")))).toBe(true);
+  });
+
+  /*
+   * STORED NAMES NEVER MOVE. Renaming the component changes the kind the NEXT name is made
+   * under; a name made under the old one is still that name. It no longer carries the
+   * kind, which is all that happens to it.
+   */
+  it("when the component is renamed, an old instance's name is untouched and simply stops conforming", () => {
+    const stored = conventionalName("glow", instanceOf("Bloom")).name;
+    expect(stored).toBe("bloom_glow");
+    const renamed = instanceOf("Glow Stack");
+    expect(conformsToKind(stored, kindOf(renamed))).toBe(false);
+    expect(roleOf(stored, kindOf(renamed))).toBeNull();
+    // And the next name made is under the new one.
+    expect(conventionalName("hall", renamed)).toEqual({ name: "glowstack_hall", prefixed: true });
+  });
+});
+
+/**
+ * RULED 2026-10-05: a Panel board and the phone caption a bank, a Layer and a Cue List by
+ * the ROLE. On stage `presets_looks` reads `looks`.
+ */
+describe("roleOrName: what a one-word surface shows", () => {
+  it("shows the role of a name that carries its kind", () => {
+    expect(roleOrName("presets_looks", "presets")).toBe("looks");
+    expect(roleOrName("layer_graphic", "layer")).toBe("graphic");
+    expect(roleOrName("cuelist_set", "cuelist")).toBe("set");
+    expect(roleOrName("layer_lower_third", "layer")).toBe("lower_third");
+  });
+
+  it("shows a name with no role whole: an auto-name is all the name there is", () => {
+    expect(roleOrName("presets1", "presets")).toBe("presets1");
+    expect(roleOrName("layer", "layer")).toBe("layer");
+  });
+
+  it("shows a name that does not carry its kind exactly as it is, cutting nothing", () => {
+    expect(roleOrName("looks", "presets")).toBe("looks");
+    expect(roleOrName("My Looks", "presets")).toBe("My Looks");
+    // Begins with the letters of the kind, but is not `kind_role`: nothing is stripped.
+    expect(roleOrName("layers_main", "layer")).toBe("layers_main");
+    expect(roleOrName("presetsA", "presets")).toBe("presetsA");
+  });
+});
+
+describe("conformingFormOf: the advice a patch's warning carries", () => {
+  it("names the conforming form of a label that lacks its kind", () => {
+    expect(conformingFormOf("lamp", of("slider"))).toBe("slider_lamp");
+    expect(conformingFormOf("  Bloom pass ", of("blur"))).toBe("blur_Bloom_pass");
+    expect(conformingFormOf("glow", instanceOf("Bloom"))).toBe("bloom_glow");
+  });
+
+  it("has nothing to say about a label that conforms", () => {
+    expect(conformingFormOf("slider_lamp", of("slider"))).toBeNull();
+    expect(conformingFormOf("slider2", of("slider"))).toBeNull();
+    expect(conformingFormOf(" slider_lamp ", of("slider"))).toBeNull();
+  });
+
+  it("has nothing to say where the convention does not bind, or no name can be made", () => {
+    expect(conformingFormOf("depth", of("componentIn"))).toBeNull();
+    expect(conformingFormOf("!!!", of("slider"))).toBeNull();
   });
 });
 
@@ -161,11 +285,6 @@ describe("the kind table", () => {
     expect(kindOfType("slider")).toBe("slider");
     expect(kindOfType("light")).toBe("light");
     expect(kindOfType("lfo")).toBe("lfo");
-  });
-
-  it("names every component instance `comp`, whatever the component", () => {
-    expect(kindOfType("component:bloom@1")).toBe(COMPONENT_KIND);
-    expect(kindOfType("component:depthPoints@3")).toBe("comp");
   });
 
   it("falls back to the old base for a type it does not hold, and is not fooled by Object's own keys", () => {

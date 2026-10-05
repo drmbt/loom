@@ -211,11 +211,123 @@
   text-transform: lowercase;
 }
 
+/* ---- the kind at low zoom (T1597b) ------------------------------------ */
+
+/*
+  The node's KIND, and then the rest of its name, at a size that does not shrink with the
+  canvas. Why, the tiers and the measurements are in `kind-label.ts`; this is the drawing.
+
+  Two boxes, because two different things have to be true and only one of them depends on
+  the zoom.
+
+  THE CLIP is the node's own box, exactly, in the node's own coordinates. It is what keeps
+  a label inside its node: whatever does not fit is cut at the node's edge, and the last
+  eighth of the width fades out rather than slicing a letter, so a kind too long for a
+  27 px node reads `geom` and not `geo` with half an `m`. Nodes do not overlap, so labels
+  clipped to their nodes cannot overlap either, at any zoom, with nothing to compute. It
+  never changes with the zoom and nothing is written to it.
+
+  THE LABEL inside it is the part that must not shrink. `--kind-label-zoom` is the
+  canvas's zoom, written on this element alone (never inherited, see `kind-label.ts`), and
+  `scale(1 / zoom)` from its top left corner undoes exactly what the canvas did. Its 11 px
+  text is 11 px on screen at any zoom. Only its TRANSFORM changes as the canvas zooms, so
+  a zoom step lays nothing out: an earlier version clipped with a `max-width` that
+  followed the zoom, and the browser measured it re-laying out every label on every step.
+
+  HIDDEN until the canvas root carries `data-kind-labels`, which the canvas writes only
+  when it is zoomed out past the point where the header can be read. At working zoom this
+  is `display: none` and costs nothing.
+
+  NO LAYOUT COST: both boxes are absolutely positioned, so the node's own box, the layout
+  model and every authored position are exactly what they were (§V389; measured, 79 of 79
+  node boxes identical with the labels on and off).
+
+  The clip starts just under the status hairline on the top edge, which stays visible. The
+  label is on a plate of the node's own surface, so it reads over the top of a bright
+  preview and keeps the family tint that says texture, points or value (T712).
+  `pointer-events: none`: it is a picture of the name, and a press on it is a press on the
+  node.
+*/
+.kindLabelClip {
+  display: none;
+  position: absolute;
+  inset: var(--hairline) 0 0 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(to right, currentColor 87.5%, transparent);
+}
+
+[data-kind-labels] .kindLabelClip {
+  display: block;
+}
+
+.kindLabel {
+  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 1px var(--space-2) 1px var(--space-1);
+  border-bottom-right-radius: var(--radius);
+  background: var(--node-surface, var(--bg-raise));
+  color: var(--text);
+  font-size: var(--fs-meta);
+  line-height: 1.25;
+  white-space: nowrap;
+  transform: scale(calc(1 / var(--kind-label-zoom, 1)));
+  transform-origin: 0 0;
+}
+
+/* The kind is the answer to the question that was asked, so it is the heavy part. */
+.kindLabelKind {
+  flex: none;
+  font-weight: var(--weight-header);
+  font-stretch: var(--width-header);
+  letter-spacing: var(--tracking-display);
+}
+
+.kindLabelRest {
+  flex: none;
+  color: var(--text-dim);
+}
+
+/* A name that does not carry its kind follows it as a word of its own: `feedback dye1`. */
+.kindLabelRest[data-joined="false"] {
+  margin-left: 0.4em;
+}
+
+/* Further out there is room for the kind alone. */
+[data-kind-labels="kind"] .kindLabelRest {
+  display: none;
+}
+
+/*
+  While the label is showing, the header's own name and type are not drawn under it.
+
+  Seen in the browser at 35 %: a short label (`wgsl`) left the rest of the header visible
+  beside it, the same name and its type at 4 px, as a grey smear after the word. They are
+  the same facts the label states, at a size nobody can read.
+
+  `opacity`, not `visibility` and not `display`: the header keeps its layout, so nothing
+  moves when the tier changes, and the name still takes the double-click that renames it.
+*/
+[data-kind-labels] .name,
+[data-kind-labels] .typeLabel {
+  opacity: 0;
+}
+
 /* ---- inline rename (T415) --------------------------------------------- */
 
 /*
   The editor takes the NAME's slot and nothing else — same row, same width, no reflow of
   the toggles beside it, so the title does not jump when the field opens.
+
+  T1593b, after a look in a real browser: THE FIELD IS THIS BOX. The border, the ground,
+  the focus ring and the refusal's red edge are drawn here, around the kind and the input
+  together. They used to be drawn on the input alone, and the browser showed what jsdom
+  could not: a ring around the right half only, cutting the name in two between `camer…`
+  and what was being typed, so the kind read as a separate grey tag and not as the front
+  of the name.
 */
 .nameEdit {
   position: relative;
@@ -223,35 +335,52 @@
   align-items: stretch;
   flex: 1 1 auto;
   min-width: 0;
+  border: var(--hairline) solid var(--line-hot);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+/* `:focus-within`, as the number fields do it (`controls.module.css`): the ring belongs
+   to the field, and the field is more than the element that holds the caret. */
+.nameEdit:focus-within {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.nameEdit[data-invalid="true"] {
+  border-color: var(--error);
 }
 
 /*
   T1593b — the KIND, fixed in front of the name being typed (`slider_` then `lamp`).
 
-  It is drawn as the left end of the SAME field: one border, one ground, no gap, so the
-  two parts read as the one name they will be stored as. Dimmer than the role, because it
-  is the part the person is not typing.
+  The left end of the SAME field, dimmer than the role because it is the part the person
+  is not typing. Two parts of its own: the WORD, and the underscore that joins it to the
+  role.
 
-  It gives up its room before the input does (`flex: 0 1 auto` against the input's
-  `1 1`), and never more than half the slot: on a 178px node a long kind ellipsises
-  instead of leaving nowhere to type. The whole word is in its hover text (§V90).
+  The word gives up its room before the input does, and the kind never takes more than
+  45 % of the slot. Measured on a 178 px node: the slot is 103 px, `camerablur_` wants 72,
+  and at an even split the role was left 50 px, about seven characters. THE ROLE IS WHAT
+  IS BEING TYPED, so it keeps the larger share and the kind elides.
+
+  It elides in the MIDDLE of the name, not at the join: the word ellipsises (`camer…`) and
+  the underscore after it never does, so the field still reads `camer…_soft`, one name
+  with a long word shortened. With the join elided too it read as two things side by side.
+  The START of the word is what is kept because it is what identifies the kind (`mater…`,
+  `geome…`); the whole word is in the hover text (§V90).
 
   Off, it stays where it was, struck through: the state is shown by the thing that was
   switched, and one click puts it back.
 */
 .nameKind {
+  display: flex;
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 50%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 45%;
   margin: 0;
   padding: 0 0 0 var(--space-1);
-  border: var(--hairline) solid var(--line-hot);
-  border-right: 0;
-  border-radius: var(--radius) 0 0 var(--radius);
-  background: var(--bg-sunken);
+  border: 0;
+  background: none;
   color: var(--text-dim);
   font-family: inherit;
   font-size: inherit;
@@ -262,27 +391,32 @@
   cursor: pointer;
 }
 
+.nameKindWord {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nameKindJoin {
+  flex: none;
+}
+
 .nameKind[aria-pressed="false"] {
   text-decoration: line-through;
   opacity: 0.6;
 }
 
-.nameKind + .nameInput {
-  flex: 1 1 0;
-  width: auto;
-  padding-left: 0;
-  border-left: 0;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-}
-
 .nameInput {
+  flex: 1 1 0;
   width: 100%;
   min-width: 0;
   padding: 0 var(--space-1);
-  border: var(--hairline) solid var(--line-hot);
-  border-radius: var(--radius);
-  background: var(--bg-sunken);
+  border: 0;
+  /* The ring is the field's (`.nameEdit:focus-within`), so the input draws none of its own. */
+  outline: none;
+  background: none;
   color: var(--text);
   /* The field reads as the name it is replacing: same family, weight and tracking. */
   font-family: inherit;
@@ -293,25 +427,27 @@
   line-height: inherit;
 }
 
-.nameInput:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring);
-  outline-offset: var(--focus-ring-offset);
-}
-
-.nameInput[aria-invalid="true"] {
-  border-color: var(--error);
+/* The role starts where the join ends: no gap inside one name. */
+.nameKind + .nameInput {
+  padding-left: 0;
 }
 
 /*
   The refusal (§V288/§V325). Absolutely positioned so a name that is already taken cannot
   resize the node it is refused on, and only ever on screen while an edit is in flight —
   §V90 bars AMBIENT text in the chrome, not the answer to what the user just did.
+
+  `width: max-content` is what lets `max-width` mean anything. An absolutely positioned
+  box with only `left` set is as wide as its containing block has room for, and that is the
+  103 px name slot: the browser showed the sentence broken over five lines in a column,
+  covering the node's body, while the 220 px it was allowed went unused.
 */
 .nameError {
   position: absolute;
   top: calc(100% + var(--space-1));
   left: 0;
   z-index: 1;
+  width: max-content;
   min-width: 100%;
   max-width: 220px;
   padding: var(--space-1) var(--space-2);

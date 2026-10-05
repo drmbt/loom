@@ -134,14 +134,17 @@ Path aliases: `@domain @compiler @runtime @editor @nodes @ui @agent @devices` �
 
 ## Node names are `kind_role` (T1593b)
 
-A node's name carries its kind as a prefix: `slider_lamp`, `light_lamp`, `blur_diffuse`, `kernel_joints`. The kind is one lowercase word per node type, declared in ONE table, `NODE_KINDS` in `src/domain/graph/node-kinds.ts` (`pointKernel` is `kernel`, `movieFileIn` is `movie`, a component instance is `comp`); then one underscore; then the role, which holds letters, digits and underscores only. A new node is auto-named kind plus a number (`blur1`), which already conforms. Full rule, the table and the phase 2 plan: `docs/node-naming-2026-10-05.md`.
+A node's name carries its kind as a prefix: `slider_lamp`, `light_lamp`, `blur_diffuse`, `kernel_joints`. The kind is one lowercase word per node type, declared in ONE table, `NODE_KINDS` in `src/domain/graph/node-kinds.ts` (`pointKernel` is `kernel`, `movieFileIn` is `movie`); then one underscore; then the role, which holds letters, digits and underscores only. A new node is auto-named kind plus a number (`blur1`), which already conforms. Full rule, the table and the phase 2 plan: `docs/node-naming-2026-10-05.md`.
 
 - `conformsToKind(name, kind)` is the one answer to whether a name conforms. Do not write a second regex.
-- In a document source, `named(role, type, …)` (`src/examples/documents/builders.ts`) writes the name from the role alone. New examples, projects, tests and fixtures use `kind_role`.
+- A component instance is named for its COMPONENT: an instance of Bloom is `bloom1`, then `bloom_glow`. Its kind is the component's own name, lowercased, letters only, and it is not in the type string (a component's id is minted), so ask `kindOf(definition)`; `kindOfType(type)` refuses an instance type. A new instance is auto-named (from the library, an import or an `addNode`; the one a saved selection becomes follows with the phase 2 sweep, because it changes the shipped starter component files). Renaming a component renames no node.
+- In a document source, `named(role, type, …)` (`src/examples/documents/builders.ts`) writes the name from the role alone, and `namedInstance(role, componentName, type, …)` does it for a component instance. New examples, projects, tests and fixtures use `kind_role`.
 - A new node type needs a row in `NODE_KINDS`; sharing a kind with another type needs an entry in `KIND_FAMILIES`.
-- `node.rename` puts the kind in front of a name that lacks it and says so; `exact: true` stores a name as given. A `label` inside a patch (`addNode`, `setNodeLabel`) is always stored exactly: write it in full.
+- `node.rename` puts the kind in front of a name that lacks it and says so; `exact: true` stores a name as given. A `label` inside a patch (`addNode`, `setNodeLabel`) is always stored exactly: write it in full. The agent tool `apply_graph_patch` stores it and WARNS when it lacks its kind (`data.unconformingLabels` gives the conforming form).
 - Stored names never move. Changing a kind renames nothing in any document.
 - `src/examples/node-names.test.ts` (on `test:gates`) fails a shipped node whose name lacks its kind. Files written before the rule are in its `NOT_YET_RENAMED` ledger with the exact count each still owes; the count must match, so it can only go down. A component's In and Out are exempt: their name is the socket's label.
+- A surface with room for one word (a Panel board, the Layers list, the phone) captions a Presets bank, a Layer, a Cue List and an untitled Panel by the ROLE of the name: `presets_looks` reads `looks`. Use `surfaceNameOf(node, catalogue)` (`src/nodes/definitions/controls.ts`); it is a caption, never an address, and a name that does not carry its kind is shown whole.
+- Below 70 % zoom every node carries a label, its kind and then the rest of its name, that does not shrink with the canvas (T1597b, `src/editor/nodes/kind-label.ts`). The canvas writes the zoom on each label element; never put it on an ancestor of the nodes as an inherited custom property (measured: twelve times the cost).
 
 ## Testing bar (enforced in review)
 

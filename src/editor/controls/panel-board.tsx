@@ -5,12 +5,14 @@ import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
+import type { BankCatalogue } from "@domain/presets/bank-view.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import {
   BOARD_MAX_COLUMNS,
   boardNamesMember,
   CONTROL_WIDGET_TYPES,
   controlNameOf,
+  surfaceNameOf,
   panelLacks,
   type BoardRect,
   type PanelBoard,
@@ -121,10 +123,14 @@ const itemStyle = (item: PanelBoardItem, fit: BoardFit): CSSProperties => ({ ...
 
 const rectAttr = (rect: BoardRect): string => `${String(rect.x)},${String(rect.y)},${String(rect.w)},${String(rect.h)}`;
 
-/** What a board item is called in an accessible name. */
-function boardItemName(item: PanelBoardItem): string {
+/**
+ * What a board item is called, in its accessible name and as the title of its inspector.
+ * T1593b: a bank, a layer or a cue list by its ROLE, as the board itself captions it
+ * (`surfaceNameOf`); the catalogue is what reads a look instance's kind.
+ */
+function boardItemName(item: PanelBoardItem, catalogue: BankCatalogue | undefined): string {
   if (item.kind === "label") return item.text === "" ? "label" : item.text;
-  if (boardNamesMember(item.node)) return controlNameOf(item.node);
+  if (boardNamesMember(item.node)) return surfaceNameOf(item.node, catalogue);
   return controlCaption(item.node.parameters as Record<string, unknown>);
 }
 
@@ -354,7 +360,7 @@ export function PanelBoardEditor({ graph, panelId, board, write, bus, invocation
             <div key={`slot-${rectAttr(slot)}`} className={styles.slot} style={placement(slot)} aria-hidden="true" />
           ))}
           {board.items.map((item) => {
-            const name = boardItemName(item);
+            const name = boardItemName(item, catalogue);
             const fit = fitOf(item, TAB_CELLS);
             return (
               <div
@@ -403,7 +409,7 @@ export function PanelBoardEditor({ graph, panelId, board, write, bus, invocation
             <p className={styles.hint}>Nothing selected</p>
           ) : chosen.kind === "widget" ? (
             <>
-              <h3 className={styles.inspectTitle}>{boardItemName(chosen)}</h3>
+              <h3 className={styles.inspectTitle}>{boardItemName(chosen, catalogue)}</h3>
               {/* T1501b: a bank, a layer or a cue list publishes no channel, so it drives nothing to list. */}
               {CONTROL_WIDGET_TYPES.has(chosen.node.type) ? (
                 <>

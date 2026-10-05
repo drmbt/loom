@@ -7,7 +7,8 @@ import { overridingWire, sourceReferencesOf } from "../../domain/graph/source-re
 import { isParameterSlot, staticBindingValue } from "../../domain/parameters/slots.ts";
 import { PRESETS_NODE_TYPE, parsePresetBank } from "../../domain/presets/bank.ts";
 import { bankViewOf, type BankCatalogue } from "../../domain/presets/bank-view.ts";
-import { isComponentNodeType } from "../../domain/components/component-type.ts";
+import { isComponentNodeType, parseComponentNodeType } from "../../domain/components/component-type.ts";
+import { kindFromName, kindOfType, roleOrName } from "../../domain/graph/node-kinds.ts";
 import { CUE_LIST_NODE_TYPE } from "../../domain/presets/cue-list.ts";
 import { VALUE_PORT } from "./common-ports.ts";
 
@@ -293,8 +294,45 @@ function plainValue(stored: StoredParameter | undefined): unknown {
   return stored.mode === "static" ? staticBindingValue(stored) : undefined;
 }
 
-/** What a widget or Panel is called on a surface: the node's label, or its id. */
+/**
+ * A node's NAME: its label, or its id. This is the IDENTITY a board stores a member under,
+ * a preset target names and `op('…')` reads. What a surface SHOWS for a bank, a Layer, a
+ * Cue List or a Panel is `surfaceNameOf` below, which is not always the same string.
+ */
 export const controlNameOf = (node: GraphNode): string => node.label ?? node.id;
+
+/**
+ * What a Presets bank, a Layer, a Cue List or a Panel is CALLED on a surface with room for
+ * one word: the ROLE of its name (T1593b, ruled 2026-10-05).
+ *
+ * A name is `kind_role`, so on stage a bank would read `presets_looks`, a layer
+ * `layer_graphic`, a cue list `cuelist_set`. The board already DRAWS each as what it is (a
+ * strip of presets, a switch and a fader, GO and BACK), so the kind in front is the same
+ * fact a second time, in the one place where every character is read from across a room.
+ * The board shows `looks`, `graphic`, `set`.
+ *
+ * ONE RULE FOR EVERY SUCH SURFACE (the desk's board, the Controls tab, the phone, the
+ * Layers list), so they cannot caption one node two ways: `roleOrName`. A name with no
+ * role (`presets1`) and a name that does not carry its kind (`looks`, anything saved
+ * before the rule) are shown whole. Nothing is cut from a name the rule did not make.
+ *
+ * `catalogue` is for the one member that is not a built-in node: a look's INSTANCE, which
+ * is a bank from outside (§T1505b). Its kind is its component's own name, which only the
+ * catalogue knows; without one its name is shown whole rather than guessed at.
+ *
+ * It is a CAPTION and never an address. A board stores its members under `controlNameOf`,
+ * and a phone's write names a node by id.
+ */
+export function surfaceNameOf(
+  node: GraphNode,
+  catalogue?: { get(componentId: string, version: number): { readonly name: string } | undefined },
+): string {
+  const name = controlNameOf(node);
+  const instance = parseComponentNodeType(node.type);
+  if (instance === null) return roleOrName(name, kindOfType(node.type));
+  const component = catalogue?.get(instance.componentId, instance.version);
+  return component === undefined ? name : roleOrName(name, kindFromName(component.name));
+}
 
 /** What a wired picture is called on a Layer's item: the wire wins over the name (§B233). */
 const WIRED_PICTURE = "wired";
@@ -314,10 +352,13 @@ export function layerPicture(graph: Pick<GraphDocument, "nodes" | "edges">, node
   return typeof stored === "string" ? stored.trim() : "";
 }
 
-/** A Panel's title as every surface shows it: its Title, or the node's name. */
+/**
+ * A Panel's title as every surface shows it: its Title, or the role of the node's name
+ * (`desk` for `panel_desk`, T1593b; `surfaceNameOf`).
+ */
 export function panelTitle(panel: GraphNode): string {
   const title = plainValue(panel.parameters["title"]);
-  return typeof title === "string" && title !== "" ? title : controlNameOf(panel);
+  return typeof title === "string" && title !== "" ? title : surfaceNameOf(panel);
 }
 
 /**
