@@ -161,7 +161,19 @@ export interface GeometryPayload {
     readonly pairs: Readonly<Record<string, ScenePairRef>>;
     readonly triangles: number;
     readonly indexBuffer: string;
-    readonly records: { readonly buffer: string; readonly m0: number; readonly m1: number; readonly m2: number; readonly tint?: number };
+    readonly records: {
+      readonly buffer: string;
+      readonly m0: number;
+      readonly m1: number;
+      readonly m2: number;
+      readonly tint?: number;
+      /**
+       * The material's `struct Instance` fields this geometry BOUND to a point attribute,
+       * by field name: where the resolve pass copied each one, and its type. A field that
+       * is not here reads its declared default.
+       */
+      readonly fields?: Readonly<Record<string, { readonly offset: number; readonly type: string }>>;
+    };
   };
   /** How this object renders. */
   readonly mode: "surface" | "instances" | "points" | "beam";
@@ -313,6 +325,14 @@ export interface MaterialPayload {
     readonly paramsDeclaration: string;
     readonly fields: ReadonlyArray<{ readonly name: string; readonly wgsl: string }>;
     readonly uniforms: Readonly<Record<string, number | readonly number[]>>;
+    /**
+     * T1581b: the source's `struct Instance` — what the material reads PER INSTANCE as
+     * `s.instance.<name>`, in declared order. A mesh-instancing Geometry binds each to a
+     * point attribute by name; on every other draw, and for a field it does not bind, the
+     * value is `default` (the field's `// @default`, zero when it declares none). Absent
+     * when the source declares no such struct. Structural, as `code` is.
+     */
+    readonly instance?: ReadonlyArray<{ readonly name: string; readonly wgsl: string; readonly default?: readonly number[] }>;
     /**
      * T1535b: where the author's `source` sits in `code` and in `paramsDeclaration`, each
      * counted from that text's own first character, every span naming the material node.

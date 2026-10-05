@@ -265,9 +265,29 @@ export function reflectParamsStruct(source: string): readonly ReflectedField[] {
 /** The fields are `readonly`, so a cached array is safe to hand to every caller. */
 const reflectedFieldsBySource = new Map<string, readonly ReflectedField[]>();
 
+const INSTANCE_STRUCT = /struct\s+Instance\s*\{([^}]*)\}/;
+
+/**
+ * T1581b: the fields a Material · WGSL's `struct Instance { … }` declares — what the
+ * material asks of each INSTANCE it is drawn on. The same scan as `struct Params`, so a
+ * field's `// @default` and its sentence are read the same way (§V349); what differs is
+ * where the value comes from: a point attribute per instance, not a control.
+ */
+export function reflectInstanceStruct(source: string): readonly ReflectedField[] {
+  const hit = instanceFieldsBySource.get(source);
+  if (hit !== undefined) return hit;
+  return remember(instanceFieldsBySource, source, scanStruct(source, INSTANCE_STRUCT));
+}
+
+const instanceFieldsBySource = new Map<string, readonly ReflectedField[]>();
+
 function scanParamsStruct(source: string): readonly ReflectedField[] {
+  return scanStruct(source, PARAMS_STRUCT);
+}
+
+function scanStruct(source: string, pattern: RegExp): readonly ReflectedField[] {
   const masked = maskComments(source);
-  const match = PARAMS_STRUCT.exec(masked);
+  const match = pattern.exec(masked);
   if (match === null) return [];
   const body = match[1] ?? "";
   /*
@@ -275,7 +295,7 @@ function scanParamsStruct(source: string): readonly ReflectedField[] {
    * length as the source (that is the whole reason it blanks rather than deletes), so an index
    * into one is an index into the other — which is what lets the field be FOUND in the masked
    * text, where a `//` cannot lie about a declaration, and its note READ from the original,
-   * where the comment still exists. `match[0]` is `struct Params {` + body + `}`, so the body
+   * where the comment still exists. `match[0]` is `struct <Name> {` + body + `}`, so the body
    * ends exactly one character before the match does.
    */
   const bodyStart = match.index + match[0].length - 1 - body.length;

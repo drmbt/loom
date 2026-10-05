@@ -9,7 +9,7 @@ import type { CameraPayload, GeometryPayload, LightPayload, MaterialPayload, Pro
 import { resolveGroupPredicate } from "./points.ts";
 import { DEFAULT_MATERIAL } from "../../domain/types/scene.ts";
 import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, pointShadowFaceMatrices, projectorMatrix } from "../../domain/geometry/camera.ts";
-import { identityMatrix, isIdentityMatrix, normalMatrix, objectMatrix } from "../../domain/geometry/transform.ts";
+import { identityMatrix, normalMatrix, objectMatrix } from "../../domain/geometry/transform.ts";
 import { gridCellCounts, gridPointCount, parseTopology } from "../../points/topology.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { DATA_TEXTURE, RGBA_TEXTURE } from "./common-ports.ts";
@@ -19,6 +19,7 @@ import { countedDrawSupport, resolveColorMap, resolveScalarMap } from "./points.
 import { attributeBinding } from "./point-storage.ts";
 import { instanceRecordStorage, isPackedType, packedGroups } from "./instance-records.ts";
 import { instanceResolveWgsl, RESOLVE_RECORDS_BINDING, RESOLVE_SOURCE_PREFIX, type InstanceResolveOptions } from "../shaders/instance-resolve.wgsl.ts";
+import { bindInstanceAttributes } from "./instance-attributes.ts";
 import { applyMaterialOverrides } from "./material-overrides.ts";
 import {
   GLASS_BLIT_WGSL,
@@ -462,13 +463,19 @@ const meshInstances = (values: Readonly<Record<string, unknown>>): boolean => va
 
 /**
  * T1588b, §V146: which geometries the object Transform reaches. A Surface draws by the
- * model matrix; the per-point modes draw through a generator that has none yet, and the
- * compile refuses a non-identity Transform there by name.
+ * model matrix and a mesh instance by its record; primitive instances, points and beams
+ * draw through generators that have no matrix until slice G of T1588b.
+ *
+ * There the four rows are INACTIVE AND IGNORED, and never a refusal. A refusal would be
+ * decided by a VALUE, and a value never decides the plan's structure (§V453): an object
+ * whose Translate is driven would leave the values-only frame path on the first frame it
+ * left the identity, and stop drawing. The row says it is ignored; the draw is the
+ * identity's.
  */
 const transformInactive = (values: Readonly<Record<string, unknown>>): string | null =>
   values["mode"] === undefined || values["mode"] === "surface" || meshInstances(values)
     ? null
-    : "The Transform moves a Surface or mesh instances; primitive instances, points and beams do not take it yet.";
+    : "Ignored here: the Transform moves a Surface or mesh instances. Primitive instances, points and beams do not take it yet and draw as if it were not set.";
 
 /**
  * The Geometry's DECLARED parameters, hoisted (T1581b) so `parametersFor` can derive the
@@ -513,7 +520,8 @@ const GEOMETRY_PARAMETERS: ParameterSchema = {
     group: "Transform",
     default: [0, 0, 0],
     inactiveWhen: transformInactive,
-    description: "Moves the whole object, in scene units, after its scale and its turn. Drive it to fly a hull through the shot: the vertices are not rewritten, the draw takes a matrix.",
+    description:
+      "Moves the whole object, in scene units, after its scale and its turn. Drive it to fly a hull through the shot: the vertices are not rewritten, the draw takes a matrix. The four Transform rows move a Surface and mesh instances; primitive instances, points and beams IGNORE them (the rows show as inactive) and draw as if they were not set.",
   },
   rotate: {
     type: "vector",
@@ -718,13 +726,37 @@ const GEOMETRY_PARAMETERS: ParameterSchema = {
     description:
       "Multiplier on the material's base colour: per object as a value, PER POINT in Map mode (a vec4f attribute — T478). White = inherit, either way.",
   },
+  /*
+   * T1581b (D9) — CUSTOM INSTANCE ATTRIBUTES. The material says what it reads per instance
+   * (`struct Instance`); the points say what they carry; the two meet BY NAME. This text is
+   * only for the cases a name does not settle — another attribute, or one channel of one.
+   * Structural: which attributes a draw reads is its bindings.
+   */
+  instanceAttributes: {
+    type: "string",
+    label: "Instance Attributes",
+    default: "",
+    compileTime: true,
+    inactiveWhen: (values) => (meshInstances(values) ? null : "Only mesh instances hand the material per-instance values; on any other geometry its Instance fields read their defaults."),
+    description:
+      "Mesh instances under a Material · WGSL that declares `struct Instance`: each field already takes the points' attribute of the SAME NAME and type, so most scenes leave this empty. One `field = attribute` per line (or `;`) binds another attribute, and `field = attribute.x` takes one channel of a float vector into an f32 field. A field nothing binds reads its `// @default`. A field the material does not declare, an attribute the points do not carry, a type that does not match, and a field with neither attribute nor default each refuse by name.",
+  },
+  /*
+   * The last two sentences of the description are a COST, said where the choice is made.
+   * A rejected mesh instance is a zero record: no pixel, but the draw still runs the whole
+   * mesh's vertex stage for it. Measured by the first consumer: one 152,490-vertex hull
+   * behind a predicate keeping 1 of 631 points was 400 ms a frame, and 5 ms on a pointset
+   * of its own. F1 (docs/mesh-instancing-design-2026-10-05.md, section 8: compaction of the
+   * accepted instances into the draw's instance count) removes the cost; landing it deletes
+   * those sentences and the test that pins them.
+   */
   group: {
     type: "string",
     label: "Group",
     default: "",
     compileTime: true,
     description:
-      "T642/T333: draw only matching points — a WGSL predicate over p.<attribute>, e.g. p.hit > 0.5. Instances, Points and Beam modes; referenced attributes bind on demand from the edge. Empty = all. On mesh instances it is decided once per instance (not per vertex), and two Geometries over one pointset with complementary predicates draw two shapes.",
+      "T642/T333: draw only matching points — a WGSL predicate over p.<attribute>, e.g. p.hit > 0.5. Instances, Points and Beam modes; referenced attributes bind on demand from the edge. Empty = all. On mesh instances it is decided once per instance (not per vertex), and two Geometries over one pointset with complementary predicates draw two shapes. A rejected mesh instance is not drawn, but its vertices are still processed: the cost is the mesh times ALL the points, not times the ones kept. A big mesh that keeps a few of many points belongs on a pointset of its own.",
   },
 };
 
@@ -757,7 +789,7 @@ export const geometryNode: NodeDefinition = {
    * for on every call, for all 107 nodes.
    */
   description:
-    "Binds a point set and a material into one nameable renderable object — a Render lists geometries by name. Mode decides what the points become: Surface skins them into a mesh over their grid topology; INSTANCES draws one primitive at every point — N copies of one shape from ONE node, never N nodes — a quad, box or octahedron, or with Shape: Mesh ANY MESH wired to Shape Mesh (a Mesh File In with Frame: Object), lit, shadowed and Material · WGSL-shaded as a Surface is; Size, Orient, Tint and Instance Translate take per-point values in Map mode; Points draws a camera-facing billboard per point; Beam draws a quad spanning position to the Endpoint attribute, for streaks and rays. Tint multiplies the material's base colour per object (1,1,1,1 = inherit, visibly). Translate, Rotate, Scale and Pivot move a Surface as ONE OBJECT — a matrix on every draw (colour, G-buffer, shadows), never a kernel rewriting its vertices.",
+    "Binds a point set and a material into one nameable renderable object — a Render lists geometries by name. Mode decides what the points become: Surface skins them into a mesh over their grid topology; INSTANCES draws one primitive at every point — N copies of one shape from ONE node, never N nodes — a quad, box or octahedron, or with Shape: Mesh ANY MESH wired to Shape Mesh (a Mesh File In with Frame: Object), lit, shadowed and Material · WGSL-shaded as a Surface is; Size, Orient, Tint and Instance Translate take per-point values in Map mode; Points draws a camera-facing billboard per point; Beam draws a quad spanning position to the Endpoint attribute, for streaks and rays. Tint multiplies the material's base colour per object (1,1,1,1 = inherit, visibly). Translate, Rotate, Scale and Pivot move a Surface or mesh instances as ONE OBJECT — a matrix on every draw (colour, G-buffer, shadows), never a kernel rewriting its vertices; primitive instances, points and beams ignore them.",
   // T1214: the tags named one of the four modes. A library search for "instances" or
   // "beam" found Render Instances and nothing else — this node does both.
   tags: ["3d", "scene", "geometry", "material", "surface", "instances", "points", "beam"],
@@ -1133,22 +1165,10 @@ export const geometryNode: NodeDefinition = {
       scale: vec3(parameters, "objectScale", [1, 1, 1]),
       pivot: vec3(parameters, "pivot", [0, 0, 0]),
     });
-    /* The per-point modes draw through a generator that takes no object matrix yet, so a
-       transform there could only be dropped — refused by name instead (§V288, §V624). */
-    if (perPoint && !meshShape && !isIdentityMatrix(transform)) {
-      return {
-        passes: [],
-        diagnostics: [
-          {
-            severity: "error",
-            code: "node.scene.transform",
-            message: `Node "${nodeId}": the Transform (Translate, Rotate, Scale, Pivot) moves a Surface or mesh instances; ${mode === "instances" ? "a geometry drawing primitive instances" : `a ${mode} geometry`} does not take it yet, so it would be ignored.`,
-            nodeId,
-            suggestion: "Move the points themselves with a Transform node upstream, or set the Transform back to its defaults.",
-          },
-        ],
-      };
-    }
+    /* Primitive instances, points and beams draw through generators that take no matrix
+       until T1588b's slice G: only a surface draw and the mesh-instance resolve read
+       `transform`. The rows are inactive there and say so (§V146). Never a refusal: see
+       `transformInactive`. */
     /*
      * T1581b — MESH INSTANCES. The shape arrives on the Shape Mesh input; each instance's
      * transform is RESOLVED ONCE A FRAME, here, by one compute pass this node owns, into a
@@ -1189,7 +1209,18 @@ export const geometryNode: NodeDefinition = {
       if ("refusal" in resolvedPlace) return resolvedPlace.refusal;
       const place = resolvedPlace.map ?? pointset.pairs["position"];
       if (place === undefined) return { passes: [], diagnostics: [missingCompileResource(nodeId, "the points' position attribute")] };
-      const records = instanceRecordStorage(nodeId, pointset.capacity, { tint: tintMap !== undefined });
+      /* D9: the material's `struct Instance` fields, bound to the points by name. */
+      const custom = bindInstanceAttributes(
+        nodeId,
+        typeof parameters["instanceAttributes"] === "string" ? (parameters["instanceAttributes"] as string) : "",
+        material.custom?.instance ?? [],
+        pointset.pairs,
+      );
+      if ("diagnostics" in custom) return { passes: [], diagnostics: custom.diagnostics };
+      const records = instanceRecordStorage(nodeId, pointset.capacity, {
+        tint: tintMap !== undefined,
+        fields: custom.bound.map((field) => ({ name: field.name, type: field.type })),
+      });
       if (!records.ok) return refuseShape(records.errors.join(" "), "Lower the point capacity.");
       const sources = packedGroups();
       const unreadable = [
@@ -1214,6 +1245,9 @@ export const geometryNode: NodeDefinition = {
                 binds: resolvedGroup.binds.flatMap((bind) => (isPackedType(bind.type) ? [{ attribute: bind.attribute, read: sources.read(bind, bind.type) }] : [])),
               },
             }),
+        ...(custom.bound.length === 0
+          ? {}
+          : { fields: custom.bound.map((field) => ({ name: field.name, read: sources.read(field.source, field.sourceType), ...(field.channel === undefined ? {} : { channel: field.channel }) })) }),
         record: records.offsets,
         groups: 0,
       };
@@ -1328,8 +1362,12 @@ function meshInstanceStorage(
     ...typed("surface", "vec4f"),
     ...typed("emissive", "vec3f"),
   };
-  const { buffer, ...offsets } = mesh.records;
-  const record = { group: groups.whole(buffer), ...offsets };
+  const { buffer, fields, ...offsets } = mesh.records;
+  /* The fields only where something shades: a depth sweep reads the matrix alone. */
+  const bound = shading
+    ? Object.fromEntries(Object.entries(fields ?? {}).flatMap(([name, field]) => (isPackedType(field.type) ? [[name, { offset: field.offset, type: field.type }] as const] : [])))
+    : {};
+  const record = { group: groups.whole(buffer), ...offsets, ...(Object.keys(bound).length === 0 ? {} : { fields: bound }) };
   return {
     option: { ...shape, record, groups: groups.count },
     buffers: [...groups.bindings(INSTANCED_BINDING_PREFIX), { binding: "meshIndices", resourceId: mesh.indexBuffer }],
@@ -2935,6 +2973,18 @@ export const renderNode: NodeDefinition = {
         ...(material.maps.albedo === undefined ? {} : { albedo: true }),
         ...(material.maps.roughness === undefined ? {} : { roughness: true }),
       };
+      /* The author's surface, as the generator takes it: one object for every variant below. */
+      const customOption =
+        material.custom === undefined
+          ? {}
+          : {
+              custom: {
+                code: material.custom.code,
+                paramsDeclaration: material.custom.paramsDeclaration,
+                fields: material.custom.fields,
+                ...(material.custom.instance === undefined ? {} : { instance: material.custom.instance }),
+              },
+            };
       const surfaceMaterialOptions = {
         model: model as "unlit" | "lambert" | "phong" | "pbr",
         maps,
@@ -2943,9 +2993,7 @@ export const renderNode: NodeDefinition = {
         ...(meshTopology === undefined
           ? {}
           : { mesh: { uv: meshUv !== undefined, surface: meshSurfacePair !== undefined, emissive: meshEmissive !== undefined } }),
-        ...(material.custom === undefined
-          ? {}
-          : { custom: { code: material.custom.code, paramsDeclaration: material.custom.paramsDeclaration, fields: material.custom.fields } }),
+        ...customOption,
       };
       /* T1411b: an additive surface sums onto what is drawn and stops writing depth (it
          still tests — a wall in front still hides it). */
@@ -2977,9 +3025,7 @@ export const renderNode: NodeDefinition = {
           ...(meshTopology === undefined
             ? {}
             : { mesh: { uv: meshUv !== undefined, surface: meshSurfacePair !== undefined, emissive: meshEmissive !== undefined } }),
-          ...(material.custom === undefined
-            ? {}
-            : { custom: { code: material.custom.code, paramsDeclaration: material.custom.paramsDeclaration, fields: material.custom.fields } }),
+          ...customOption,
         }),
         ...(material.custom === undefined ? {} : { sharedBinding: CUSTOM_SURFACE_FRAME_BINDING }),
         target,

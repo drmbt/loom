@@ -67,15 +67,6 @@ export function objectMatrix(transform: ObjectTransform): number[] {
   return out.map((value) => value + 0);
 }
 
-/** True when the matrix is the identity exactly. */
-export function isIdentityMatrix(matrix: ArrayLike<number>): boolean {
-  const identity = identityMatrix();
-  for (let index = 0; index < 16; index += 1) {
-    if ((matrix[index] ?? 0) !== identity[index]) return false;
-  }
-  return true;
-}
-
 /**
  * What turns a NORMAL when `matrix` turns a position: the DIRECTION of the inverse transpose
  * of its upper 3×3. Built as the cofactor (columns c1×c2, c2×c0, c0×c1 — the inverse

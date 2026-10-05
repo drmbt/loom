@@ -4,9 +4,11 @@ import type { ParameterSchema } from "../../domain/types/parameters.ts";
 import { SHADER_SOURCE_PARAMETER } from "../../domain/commands/apply-patch.ts";
 import { codeParametersLast } from "../../domain/parameters/code.ts";
 import { declaredNames, resolveSharedModules, SHARED_WGSL_MODULES } from "../shaders/shared-modules.ts";
-import { SURFACE_RESERVED_NAMES } from "../shaders/scene-render.wgsl.ts";
+import { instanceFieldAccessor, SURFACE_RESERVED_NAMES } from "../shaders/scene-render.wgsl.ts";
+import { isPackedType } from "./instance-records.ts";
 import {
   extractParamsStruct,
+  reflectInstanceStruct,
   reflectParamsStruct,
   reflectedParamCollisions,
   reflectedParamSchema,
@@ -36,7 +38,9 @@ import { endOf, placed, placedAroundCut } from "../../runtime/backend/wgsl-sourc
  *              local, localNormal (T1588b: the vertex and its normal in the shape's OWN
  *              frame, before the Geometry's Transform and before an instance's own —
  *              detail painted by them moves with the object and sticks to each
- *              instance), instanceId (the instance's slot; 0 on a surface).
+ *              instance), instanceId (the instance's slot; 0 on a surface),
+ *              instance (T1581b: the source's own `struct Instance`, when it declares
+ *              one — see PER-INSTANCE VALUES below).
  *   SurfaceOut albedo, roughness, metallic, normal, emissive.
  *   surfaceDefaults(s) → the SurfaceOut the stock material would have produced.
  *   `frameU` (SharedFrame) is readable for the other clocks.
@@ -44,6 +48,15 @@ import { endOf, placed, placedAroundCut } from "../../runtime/backend/wgsl-sourc
  * Knobs: the source's own `struct Params` is reflected into drivable controls exactly as
  * Custom WGSL and the point kernels reflect theirs (one reflector, §V349) — a uniform write,
  * never a rebuild (§V5). `// @use hash` / `grid` pull the shared modules in.
+ *
+ * PER-INSTANCE VALUES (T1581b, docs/mesh-instancing-design-2026-10-05.md D9): a source may
+ * declare `struct Instance { heat: f32, // @default 0 … }` beside `struct Params`, and read
+ * `s.instance.heat`. A mesh-instancing Geometry binds each field BY NAME to an attribute of
+ * its points (same name and type; its Instance Attributes text renames or takes a channel),
+ * so a kernel that writes `heat` per point lights each instance differently with no second
+ * node agreeing on a slot number. On a surface, and for a field nothing binds, the value is
+ * the field's `@default`. Fields are f32, vec2f, vec3f, vec4f, u32 or vec4u: the types a
+ * point attribute has.
  *
  * SURFACE draws and MESH INSTANCES (T1581b: a Geometry in Instances mode with Shape: Mesh,
  * where `local` is the vertex in the mesh's own frame and `instanceId` the instance's slot).
@@ -138,7 +151,7 @@ export const materialWgslNode: NodeDefinition = {
   title: "Material · WGSL",
   category: "render",
   description:
-    "A material whose surface is code: fn surface(s: SurfaceIn, p: Params) -> SurfaceOut runs per pixel before lighting and returns albedo, roughness, metallic, normal and emissive, which the chosen Model then lights. Color, Metallic and Roughness are the base values it receives. Its struct Params becomes drivable controls. s.local and s.localNormal are the surface in its own frame, before the Geometry's Transform and before an instance's, so detail painted by them moves with the object and sticks to each instance; s.instanceId is the instance's slot. Surface geometry (grid or mesh) and mesh instances.",
+    "A material whose surface is code: fn surface(s: SurfaceIn, p: Params) -> SurfaceOut runs per pixel before lighting and returns albedo, roughness, metallic, normal and emissive, which the chosen Model then lights. Color, Metallic and Roughness are the base values it receives. Its struct Params becomes drivable controls. s.local and s.localNormal are the surface in its own frame, before the Geometry's Transform and before an instance's, so detail painted by them moves with the object and sticks to each instance; s.instanceId is the instance's slot. A `struct Instance` in the source is read as s.instance.<field>: on mesh instances each field takes the points' attribute of the same name (a kernel's glow, id or phase, per instance), elsewhere its // @default. Surface geometry (grid or mesh) and mesh instances.",
   tags: ["3d", "material", "wgsl", "shader", "custom", "glsl mat", "scene"],
   inputs: [],
   outputs: [{ id: "out", label: "Out", type: { kind: "material", model: "custom" } }],
@@ -166,7 +179,7 @@ export const materialWgslNode: NodeDefinition = {
       default: MATERIAL_WGSL_DEFAULT_SOURCE,
       compileTime: true,
       description:
-        "fn surface(s: SurfaceIn, p: Params) -> SurfaceOut, run per pixel before lighting. Its struct Params fields (with // @default and a describing comment) become this node's controls, read as p.<name>. `// @use hash` or `grid` pulls in shared helpers.",
+        "fn surface(s: SurfaceIn, p: Params) -> SurfaceOut, run per pixel before lighting. Its struct Params fields (with // @default and a describing comment) become this node's controls, read as p.<name>. `// @use hash` or `grid` pulls in shared helpers. A `struct Instance { glow: f32, // @default 0 }` is what the material reads PER INSTANCE, as s.instance.glow: on a mesh-instancing Geometry each field is the points' attribute of that name and type (the Geometry's Instance Attributes renames one or takes a channel), and on any other draw its @default.",
     },
   }),
   parametersFor(stored) {
@@ -212,7 +225,22 @@ export const materialWgslNode: NodeDefinition = {
     }
     /* The generator owns the names around the author's code; one declared twice is a WGSL
        error at best and a silently shadowed helper at worst, so it is named here instead. */
-    const clashes = own.filter((name) => SURFACE_RESERVED_NAMES.has(name));
+    /* T1581b: the per-instance fields, and the one accessor the generator declares for each. */
+    const instanceFields = reflectInstanceStruct(source);
+    const unreadable = instanceFields.filter((field) => !isPackedType(field.wgsl));
+    if (unreadable.length > 0) {
+      return {
+        passes: [],
+        diagnostics: unreadable.map((field) => ({
+          severity: "error" as const,
+          code: MATERIAL_WGSL_SOURCE_CODE,
+          message: `Node "${nodeId}": \`struct Instance\` field "${field.name}" is ${field.wgsl}; an instance field is read from a point attribute, so it is f32, vec2f, vec3f, vec4f, u32 or vec4u.`,
+          nodeId,
+        })),
+      };
+    }
+    const accessors = new Set(instanceFields.map((field) => instanceFieldAccessor(field.name)));
+    const clashes = own.filter((name) => SURFACE_RESERVED_NAMES.has(name) || accessors.has(name));
     if (clashes.length > 0) {
       return {
         passes: [],
@@ -241,6 +269,15 @@ export const materialWgslNode: NodeDefinition = {
         paramsDeclaration: declaration,
         fields: fields.map((field) => ({ name: field.name, wgsl: field.wgsl })),
         uniforms: reflectedUniforms(fields, parameters),
+        ...(instanceFields.length === 0
+          ? {}
+          : {
+              instance: instanceFields.map((field) => ({
+                name: field.name,
+                wgsl: field.wgsl,
+                ...(field.declaredDefault === undefined ? {} : { default: typeof field.declaredDefault === "number" ? [field.declaredDefault] : field.declaredDefault }),
+              })),
+            }),
         sourceMap: materialSourceMap(nodeId, source, shared.prelude, declaration, start),
       },
     };

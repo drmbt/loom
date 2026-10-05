@@ -167,6 +167,30 @@ export interface SceneCustomSurface {
   /** The author's `struct Params` declaration, verbatim, or "" when none. */
   readonly paramsDeclaration: string;
   readonly fields: ReadonlyArray<{ readonly name: string; readonly wgsl: string }>;
+  /**
+   * T1581b: the fields of the author's `struct Instance` (declared in `code`), in declared
+   * order. `SurfaceIn` then carries `instance: Instance`. On an instanced draw a field the
+   * geometry bound (`instanced.record.fields`) is read from the instance's record at the
+   * fragment's slot; every other field, and every field on any other draw, is its
+   * `default` (zero when the author declared none) — so one material compiles everywhere.
+   */
+  readonly instance?: ReadonlyArray<{ readonly name: string; readonly wgsl: string; readonly default?: readonly number[] }>;
+}
+
+/** T1581b: the accessor a bound `struct Instance` field is read through, by field name. */
+export function instanceFieldAccessor(name: string): string {
+  return `instanceField_${name}`;
+}
+
+/** A `struct Instance` field's default as a WGSL constructor of its own type. */
+function instanceDefaultWgsl(type: string, values: readonly number[] | undefined): string {
+  const components = type === "vec2f" ? 2 : type === "vec3f" ? 3 : type === "vec4f" || type === "vec4u" ? 4 : 1;
+  const numbers = Array.from({ length: components }, (_, index) => values?.[index] ?? 0);
+  const unsigned = (value: number): string => `${Math.max(0, Math.trunc(value))}u`;
+  if (type === "u32") return unsigned(numbers[0] ?? 0);
+  if (type === "vec4u") return `vec4u(${numbers.map(unsigned).join(", ")})`;
+  if (type === "f32") return biasLiteral(numbers[0] ?? 0);
+  return `${type}(${numbers.map(biasLiteral).join(", ")})`;
 }
 
 /** T1355b: the uniform member a Material · WGSL field is carried under. */
@@ -177,7 +201,7 @@ export function materialParamUniformKey(name: string): string {
 /** T1355b: the binding the shared frame block rides on a custom-material draw. */
 export const CUSTOM_SURFACE_FRAME_BINDING = "frameU";
 
-const CUSTOM_SURFACE_PRELUDE = `struct SurfaceIn {
+const customSurfacePrelude = (instanceMember: string): string => `struct SurfaceIn {
   world: vec3f,
   normal: vec3f,
   uv: vec2f,
@@ -200,7 +224,7 @@ const CUSTOM_SURFACE_PRELUDE = `struct SurfaceIn {
   local: vec3f,
   localNormal: vec3f,
   instanceId: u32,
-};
+${instanceMember}};
 
 struct SurfaceOut {
   albedo: vec4f,
@@ -216,7 +240,17 @@ fn surfaceDefaults(s: SurfaceIn) -> SurfaceOut {
 `;
 
 /** T1535b: everything a custom surface's text puts in front of the author's `struct Params`. */
-const CUSTOM_SURFACE_HEAD = `${SHARED_UNIFORMS_WGSL}\n@group(0) @binding(120) var<uniform> ${CUSTOM_SURFACE_FRAME_BINDING}: SharedFrame;\n\n${CUSTOM_SURFACE_PRELUDE}\n`;
+const customSurfaceHead = (instanceMember: string): string =>
+  `${SHARED_UNIFORMS_WGSL}\n@group(0) @binding(120) var<uniform> ${CUSTOM_SURFACE_FRAME_BINDING}: SharedFrame;\n\n${customSurfacePrelude(instanceMember)}\n`;
+const CUSTOM_SURFACE_HEAD = customSurfaceHead("");
+/**
+ * T1581b: the head for a source that declares `struct Instance`. The struct itself stays
+ * where the author wrote it, in their code below: a module-scope declaration is in scope
+ * for the whole module, so `SurfaceIn` may name it from above.
+ */
+const CUSTOM_SURFACE_HEAD_WITH_INSTANCE = customSurfaceHead(
+  "  // T1581b: the material's own `struct Instance`: one value per instance on a mesh-instance\n  // draw (bound by name to the points' attributes), its declared defaults on any other.\n  instance: Instance,\n",
+);
 
 /** T1353b: which per-vertex attributes an indexed surface binds. */
 export interface SceneMeshOption {
@@ -1057,7 +1091,7 @@ ${RECORD_PLACE_WGSL}
 }`;
 }
 
-/** T1438b: a light's Shadow Bias (world units) as a WGSL float literal. */
+/** A number as a WGSL float literal: a light's Shadow Bias in world units (T1438b), an instance field's default (T1581b). */
 function biasLiteral(metres: number): string {
   const text = String(metres);
   return /[.e]/.test(text) ? text : `${text}.0`;
@@ -1418,8 +1452,30 @@ ${Array.from({ length: lightCount }, (_, index) => perVertex(lightBlock(index)))
       : custom.fields.map((field) => `  ${materialParamUniformKey(field.name)}: ${field.wgsl},\n`).join("");
   const customParamsDeclaration =
     custom === undefined ? "" : custom.paramsDeclaration === "" ? "struct Params {\n  unused: f32,\n};" : custom.paramsDeclaration;
-  const customDeclarations =
-    custom === undefined ? "" : `${CUSTOM_SURFACE_HEAD}${customParamsDeclaration}\n\n${custom.code}\n`;
+  const customHead = custom?.instance === undefined ? CUSTOM_SURFACE_HEAD : CUSTOM_SURFACE_HEAD_WITH_INSTANCE;
+  const customDeclarations = custom === undefined ? "" : `${customHead}${customParamsDeclaration}\n\n${custom.code}\n`;
+  /* T1581b (D9): the material's `struct Instance`, filled per fragment. A field the geometry
+     bound is read from the instance's record at the slot the vertex stage passed down (one
+     flat u32, so the field count is not an inter-stage budget); the rest are constants. */
+  const boundFields = instanced?.record.fields ?? {};
+  const instanceFields = custom?.instance ?? [];
+  const instanceAccessors =
+    instanced === undefined
+      ? ""
+      : instanceFields
+          .flatMap((field) => {
+            const stored = boundFields[field.name];
+            return stored === undefined
+              ? []
+              : [`${packedAccessorWgsl(instanceFieldAccessor(field.name), INSTANCED_BINDING_PREFIX, { group: instanced.record.group, offset: stored.offset, type: stored.type })}\n`];
+          })
+          .join("");
+  const instanceFill =
+    custom?.instance === undefined
+      ? ""
+      : `  surfaceIn.instance = Instance(${instanceFields
+          .map((field) => (instanced !== undefined && boundFields[field.name] !== undefined ? `${instanceFieldAccessor(field.name)}(input.slot)` : instanceDefaultWgsl(field.wgsl, field.default)))
+          .join(", ")});\n`;
   const customParams =
     custom === undefined || custom.fields.length === 0
       ? "Params(0.0)"
@@ -1459,7 +1515,7 @@ ${unlitModel ? "" : `  let roughness = ${roughnessExpr};\n  _ = roughness;\n`}`
   surfaceIn.local = input.local;
   surfaceIn.localNormal = select(vec3f(0.0, 0.0, 1.0), input.localNormal / max(localLength, 1e-6), localLength > 1e-6);
   surfaceIn.instanceId = ${instanced === undefined ? "0u" : "input.slot"};
-  let shaded = surface(surfaceIn, ${customParams});
+${instanceFill}  let shaded = surface(surfaceIn, ${customParams});
   let shadedLength = length(shaded.normal);
   let normal = select(geometryNormal, shaded.normal / max(shadedLength, 1e-6), shadedLength > 1e-6);
   _ = normal;
@@ -1518,7 +1574,7 @@ ${shadowFactor(index)}    matte.${"xyz"[channel]} = 1.0 - shadow;
       ? `@group(0) @binding(1) var<storage, read> positions: array<vec3f>;\n${pointColor ? "@group(0) @binding(2) var<storage, read> pointColors: array<vec4f>;\n" : ""}`
       : "";
   const meshDeclarations =
-    options.mesh === undefined ? "" : instanced === undefined ? meshBindingsWgsl(options.mesh) : `${instancedStorageWgsl(instanced)}${FACE_VIEWER_WGSL}`;
+    options.mesh === undefined ? "" : instanced === undefined ? meshBindingsWgsl(options.mesh) : `${instancedStorageWgsl(instanced)}${instanceAccessors}${FACE_VIEWER_WGSL}`;
   const vertexStage =
     options.mesh === undefined
       ? surfaceMeshWgsl(pointColor, custom !== undefined)
@@ -1545,7 +1601,7 @@ fn fs(input: VertexOut) -> @location(0) vec4f {
 ${fragmentHead}${gbufferWrite ?? `${surfaceLocals}${shading}`}
 }`;
   if (custom === undefined) return { wgsl: text, placed: {} };
-  const params = advance(endOf(top), CUSTOM_SURFACE_HEAD);
+  const params = advance(endOf(top), customHead);
   return {
     wgsl: text,
     placed: {

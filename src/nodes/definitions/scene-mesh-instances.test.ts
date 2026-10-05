@@ -11,6 +11,7 @@ import { prepareMesh } from "../../points/mesh.ts";
 import { SURFACE_RESERVED_NAMES } from "../shaders/scene-render.wgsl.ts";
 import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
 import type { DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
+import { authoredPosition } from "../../runtime/backend/wgsl-source-map.ts";
 
 /**
  * T1581b — mesh instancing at the definition (no GPU): what the Geometry says about itself,
@@ -140,6 +141,11 @@ describe("a Geometry drawing a mesh at every point (T1581b)", () => {
       expect([key, parameters[key]?.inactiveWhen?.(mesh)]).toEqual([key, null]);
       expect([key, typeof parameters[key]?.inactiveWhen?.(box)]).toEqual([key, "string"]);
     }
+    // Group says what a rejected mesh instance still COSTS, where the choice is made: the
+    // zero record draws no pixel and still runs the whole mesh's vertex stage. (F1, the
+    // compaction of accepted instances, removes the cost, this sentence and this line.)
+    expect(parameters["group"]?.description).toContain("A rejected mesh instance is not drawn, but its vertices are still processed");
+    expect(parameters["group"]?.description).toContain("belongs on a pointset of its own");
     // Mesh is a Shape, and the shape arrives on a second pointset input AFTER points (§V306).
     const shape = parameters["shape"] as { options: ReadonlyArray<{ value: string }> };
     expect(shape.options.map((option) => option.value)).toEqual(["quad", "box", "octahedron", "mesh"]);
@@ -210,9 +216,12 @@ describe("a Geometry drawing a mesh at every point (T1581b)", () => {
     expect(refusal({ shape: "none", geometry: { shape: "box", instanceTranslate: mapped("place", [0, 0, 0]) } }, "node.parameter.map")).toContain("this geometry is box instances and would ignore it");
     // Its constant value there is inactive, not a refusal: a value never decides the plan's structure (§V453).
     expect(errors(compile(graph({ shape: "none", geometry: { shape: "box", instanceTranslate: [1, 0, 0] } })))).toEqual([]);
-    // The object Transform still refuses on a primitive, and is taken by a mesh instance.
-    expect(refusal({ shape: "none", geometry: { shape: "box", translate: [1, 0, 0] } }, "node.scene.transform")).toContain("a geometry drawing primitive instances does not take it yet");
-    expect(errors(compile(graph({ geometry: { translate: [1, 0, 0], rotate: [0, 0, 90] } })))).toEqual([]);
+    // The object Transform is taken by a mesh instance: it is in the resolve pass's uniforms …
+    const moved = compile(graph({ geometry: { translate: [1, 2, 3], objectScale: [2, 1, 1] } }));
+    expect(errors(moved)).toEqual([]);
+    expect(passesOf(moved).find((pass) => pass.id === "geo:instances:resolve")?.uniforms?.["object0"]).toEqual([2, 0, 0, 1]);
+    // … and ignored by a primitive, never refused (scene-transform.test.ts says why and how exactly).
+    expect(errors(compile(graph({ shape: "none", geometry: { shape: "box", translate: [1, 0, 0] } })))).toEqual([]);
     // Glass on mesh instances is not built: said, not drawn as a box.
     expect(refusal({ material: { type: "materialGlass", parameters: {} } }, "node.scene.glass")).toContain("wears glass as mesh instances, which is not built yet");
   });
@@ -225,6 +234,93 @@ describe("a Geometry drawing a mesh at every point (T1581b)", () => {
       compile(graph({ material: { type: "materialWgsl", parameters: { source: "fn instanceSlot(i: u32) -> u32 { return i; }\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut { return surfaceDefaults(s); }" } } })),
     );
     expect(clash.map((d) => d.message).join(" ")).toContain('"instanceSlot" is declared by the surface generator');
+  });
+});
+
+/**
+ * T1581b slice E (D9) — the material's `struct Instance`, at the definition: what the plan
+ * carries for it and what refuses. The binding rule itself is `instance-attributes.test.ts`;
+ * the painted value is `mesh-instances.gpu.test.ts`.
+ */
+describe("custom instance attributes on a mesh-instancing Geometry (T1581b)", () => {
+  const SURFACE = "fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  o.albedo = vec4f(s.instance.size, s.instance.keep, s.instance.glow, 1.0);\n  return o;\n}";
+  const wearing = (instance: string, surface = SURFACE) => ({ type: "materialWgsl", parameters: { source: `struct Instance {\n${instance}\n};\n\n${surface}` } });
+  /** The points carry `size` and `keep` (f32) and no `glow`. */
+  const MATERIAL = wearing("  size: f32, // @default 1\n  keep: f32,\n  glow: f32, // @default 0.5");
+  const litShader = (compiled: { passes: ReadonlyArray<unknown> }) => String((passesOf(compiled).find((pass) => pass.id === "shot0:scene:0") as DrawPassDescriptor).shader);
+
+  it("reads a bound field from the instance's record and the rest as constants, with no binding more", () => {
+    const compiled = compile(graph({ material: MATERIAL }));
+    expect(errors(compiled)).toEqual([]);
+    // Declared order; `size` and `keep` from the record at the fragment's slot, `glow` its default.
+    expect(litShader(compiled)).toContain("surfaceIn.instance = Instance(instanceField_size(input.slot), instanceField_keep(input.slot), 0.5);");
+    const draws = passesOf(compiled).filter((pass): pass is DrawPassDescriptor => pass.kind === "draw" && /^shot0:(scene|gbuffer|shadow:0):0$/.test(pass.id));
+    for (const draw of draws) {
+      // Still a buffer per producer (§V588): the fields are regions of the records the draw already binds.
+      expect([draw.id, draw.buffers?.map((buffer) => buffer.binding)]).toEqual([draw.id, ["packed0", "packed1", "meshIndices"]]);
+    }
+    // A depth sweep shades nothing and reads no field.
+    expect(String(draws.find((pass) => pass.id === "shot0:shadow:0:0")?.shader)).not.toContain("instanceField_");
+    // The points are bound by the resolve pass alone, which copies the two fields across.
+    const resolve = passesOf(compiled).find((pass) => pass.id === "geo:instances:resolve");
+    expect(resolve?.buffers?.map((buffer) => buffer.binding)).toEqual(["records", "source0"]);
+  });
+
+  it("gives every field its default where nothing binds it", () => {
+    // `keep` renamed away from the points, with a default: nothing left to bind but `size`.
+    const compiled = compile(graph({ material: wearing("  size: f32, // @default 1\n  kept: f32, // @default 0.25\n  glow: vec3f, // @default [0, 0.5, 1]", SURFACE.replace("s.instance.keep", "s.instance.kept").replace("s.instance.glow", "s.instance.glow.z")) }));
+    expect(errors(compiled)).toEqual([]);
+    expect(litShader(compiled)).toContain("surfaceIn.instance = Instance(instanceField_size(input.slot), 0.25, vec3f(0.0, 0.5, 1.0));");
+  });
+
+  it("takes a line of Instance Attributes, and refuses one that names nothing (§V288)", () => {
+    const renamed = compile(graph({ material: MATERIAL, geometry: { instanceAttributes: "glow = tint.y" } }));
+    expect(errors(renamed)).toEqual([]);
+    expect(litShader(renamed)).toContain("Instance(instanceField_size(input.slot), instanceField_keep(input.slot), instanceField_glow(input.slot));");
+
+    const refused = (geometry: Record<string, unknown>, material = MATERIAL): string[] => errors(compile(graph({ material, geometry }))).filter((d) => d.code === "node.scene.instanceAttribute").map((d) => d.message);
+    expect(refused({ instanceAttributes: "glow = nowhere" }).join(" ")).toContain('binds "glow" to "nowhere", but the points carry no such attribute');
+    expect(refused({ instanceAttributes: "heat = size" }).join(" ")).toContain('binds "heat", but the material\'s `struct Instance` has no such field');
+    // No attribute and no default: `glow` here declares none.
+    expect(refused({}, wearing("  size: f32,\n  keep: f32,\n  glow: f32,")).join(" ")).toContain('instance field "glow" finds no attribute "glow" on the points and declares no default');
+    // A field whose name the points carry in another type: `tint` is vec4f.
+    expect(refused({}, wearing("  size: f32,\n  keep: f32,\n  glow: f32, // @default 0\n  tint: f32, // @default 0")).join(" ")).toContain('instance field "tint" is f32, but the points\' attribute "tint" is vec4f');
+  });
+
+  it("refuses, at the material, a field no point attribute could fill and a name the generator declares", () => {
+    const said = (material: ReturnType<typeof wearing>): string => errors(compile(graph({ material }))).filter((d) => d.code === "node.materialWgsl.source").map((d) => d.message).join(" ");
+    expect(said(wearing("  size: f32,\n  frame: mat3x3f,"))).toContain('`struct Instance` field "frame" is mat3x3f; an instance field is read from a point attribute, so it is f32, vec2f, vec3f, vec4f, u32 or vec4u.');
+    expect(said(wearing("  size: f32, // @default 1\n  keep: f32, // @default 0\n  glow: f32, // @default 0", `fn instanceField_size(slot: u32) -> f32 { return 0.0; }\n${SURFACE}`))).toContain('"instanceField_size" is declared by the surface generator');
+  });
+
+  it("still sends a device error in the material's code to the author's line", () => {
+    // `SurfaceIn` is one member longer for this material, so everything after it moved down.
+    const pass = passesOf(compile(graph({ material: MATERIAL }))).find((entry) => entry.id === "shot0:scene:0") as DrawPassDescriptor;
+    const source = String(MATERIAL.parameters.source).split("\n");
+    const generated = String(pass.shader).split("\n");
+    for (const text of ["o.albedo = vec4f(s.instance.size", "glow: f32, // @default 0.5", "fn surface("]) {
+      const line = generated.findIndex((entry) => entry.includes(text)) + 1;
+      const authored = source.findIndex((entry) => entry.includes(text)) + 1;
+      const column = (lines: string[], at: number) => lines[at - 1]!.indexOf(text) + 1;
+      expect([text, line > 0, authoredPosition(pass.sourceMap ?? [], { line, column: column(generated, line) })]).toEqual([
+        text,
+        true,
+        { parameter: "source", line: authored, column: column(source, authored), nodeId: "mat" },
+      ]);
+    }
+  });
+
+  it("is a mesh instance's row: inactive, and ignored, on every other geometry (§V146)", () => {
+    const row = effectiveParameterSchema(geometryNode, {})["instanceAttributes"];
+    expect(row?.inactiveWhen?.({ mode: "instances", shape: "mesh" })).toBeNull();
+    for (const values of [{ mode: "instances", shape: "box" }, { mode: "surface" }, { mode: "points" }, { mode: "beam" }]) {
+      expect([values, typeof row?.inactiveWhen?.(values)]).toEqual([values, "string"]);
+    }
+    // Which attributes a draw reads is its bindings: structural.
+    expect(row?.compileTime).toBe(true);
+    // A primitive under a stock material with the text left set draws as it did.
+    const boxes = (geometry: Record<string, unknown>) => passesOf(compile(graph({ shape: "none", geometry: { shape: "box", ...geometry } })));
+    expect(boxes({ instanceAttributes: "glow = tint.y" })).toEqual(boxes({}));
   });
 });
 

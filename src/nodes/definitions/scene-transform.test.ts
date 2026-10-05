@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { compileGraph } from "../../compiler/index.ts";
+import { prepareFrameCompiler } from "../../compiler/frame-compile.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
 import { geometryNode } from "./scene.ts";
@@ -11,7 +12,7 @@ import type { DrawPassDescriptor } from "../../runtime/backend/plan.ts";
 
 /**
  * T1588b — the object Transform on a Geometry, at the definition (no GPU): what it says
- * about itself, where it refuses, and that ONE matrix reaches every pass a Render emits.
+ * about itself, where it is ignored, and that ONE matrix reaches every pass a Render emits.
  * What the matrix does to a picture is `object-transform.gpu.test.ts`'s claim, on Dawn.
  */
 
@@ -58,14 +59,24 @@ function graph(geometry: Record<string, unknown>): GraphDocument {
   } as never;
 }
 
-const compile = (document: GraphDocument) =>
-  compileGraph({
+const requestFor = (document: GraphDocument, extra: Record<string, unknown> = {}) =>
+  ({
     graph: document,
     settings: SETTINGS,
     registry,
     capabilities: CAPABILITIES,
     sinks: ["normal", "albedo", "shadow", "depth"].map((portId) => ({ nodeId: "shot", portId, kind: "preview" as const })),
-  } as never);
+    ...extra,
+  }) as never;
+
+const compile = (document: GraphDocument) => compileGraph(requestFor(document));
+
+/** A parameter driven by an expression: `from` before frame 1, `to` from it on. */
+const stepped = (from: number, to: number) => ({
+  mode: "expression",
+  bindings: { expression: { kind: "expression", source: `${from} + (${to} - ${from}) * (frame >= 1)` }, static: { kind: "static", value: from } },
+});
+const frameAt = (frameIndex: number) => ({ frame: { timeSeconds: frameIndex / 60, deltaSeconds: 1 / 60, frameIndex, mode: "offline" as const, randomSeed: 7 } });
 
 /** The plan's draws, each under the id its node gave it (the plan prefixes `<node>#`). */
 const drawsOf = (compiled: { passes: ReadonlyArray<unknown> }): DrawPassDescriptor[] =>
@@ -129,14 +140,46 @@ describe("the object Transform on a Geometry (T1588b)", () => {
     expect(lit?.uniforms?.["modelNormal"]).toEqual(identityMatrix());
   });
 
-  it.each(["instances", "points", "beam"])("refuses a Transform on a %s geometry by name, rather than dropping it", (mode) => {
-    const compiled = compile(graph({ mode, ...(mode === "beam" ? { endpoint: "position" } : {}), translate: [1, 0, 0] }));
-    const refusal = compiled.diagnostics.find((d) => d.code === "node.scene.transform");
-    expect(refusal?.severity).toBe("error");
-    expect(refusal?.message).toContain(`${mode === "instances" ? "a geometry drawing primitive instances" : `a ${mode} geometry`} does not take it yet`);
-    // The same geometry with the Transform at its defaults compiles as it always did.
-    const plain = compile(graph({ mode, ...(mode === "beam" ? { endpoint: "position" } : {}) }));
-    expect(plain.diagnostics.some((d) => d.code === "node.scene.transform")).toBe(false);
+  /*
+   * Primitive instances, points and beams have no matrix in their generators until slice G.
+   * Until then the Transform is IGNORED there, not refused: a refusal decided by a value
+   * takes an object whose Translate is driven off the values-only frame path on the frame
+   * it leaves the identity (§V453), and the picture stops.
+   */
+  const PER_POINT = ["instances", "points", "beam"] as const;
+  const perPoint = (mode: string, extra: Record<string, unknown> = {}) => graph({ mode, ...(mode === "beam" ? { endpoint: "position" } : {}), ...extra });
+
+  it.each(PER_POINT)("ignores a Transform on a %s geometry: the plan is the untransformed one", (mode) => {
+    const moved = compile(perPoint(mode, TRANSFORM));
+    expect(moved.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    // Every pass, uniform for uniform: it draws as if the Transform were not set.
+    expect(moved.passes).toEqual(compile(perPoint(mode)).passes);
+    expect(moved.passes.length).toBeGreaterThan(0);
+  });
+
+  it.each(PER_POINT)("keeps an ANIMATED Transform on a %s geometry on the values-only frame path", (mode) => {
+    const driven = perPoint(mode, { "translate.x": stepped(0, 2), "rotate.z": stepped(0, 45), "objectScale.y": stepped(1, 3) });
+    const prepared = prepareFrameCompiler(requestFor(driven));
+    expect(prepared.uniformOnly, prepared.reason ?? "").toBe(true);
+    // Frame 1 is the frame the Transform leaves the identity. The fast path still answers …
+    const spliced = prepared.compileFrame(frameAt(1));
+    expect(spliced, prepared.reason ?? "").not.toBeNull();
+    // … with exactly what the full compile says at that frame, which is no refusal …
+    const full = compileGraph(requestFor(driven, { resolution: frameAt(1) }));
+    expect(full.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(spliced?.passes).toEqual(full.passes);
+    // … and exactly what the geometry draws with no Transform at all.
+    expect(spliced?.passes).toEqual(compileGraph(requestFor(perPoint(mode), { resolution: frameAt(1) })).passes);
+  });
+
+  it("still MOVES a Surface under the same driven Transform: ignoring is per mode, not for all", () => {
+    // The legitimate case the rule above could swallow.
+    const driven = graph({ mode: "surface", "translate.x": stepped(0, 2) });
+    const prepared = prepareFrameCompiler(requestFor(driven));
+    expect(prepared.uniformOnly, prepared.reason ?? "").toBe(true);
+    const model = (plan: { passes: ReadonlyArray<unknown> } | null) => drawsOf(plan ?? { passes: [] }).find((pass) => pass.id === "shot:scene:0")?.uniforms?.["model"];
+    expect(model(prepared.compileFrame(frameAt(0)))).toEqual(identityMatrix());
+    expect(model(prepared.compileFrame(frameAt(1)))).toEqual(objectMatrix({ translate: [2, 0, 0], rotate: [0, 0, 0], scale: [1, 1, 1], pivot: [0, 0, 0] }));
   });
 
   it("says where the Transform applies, and keeps Size apart from the object's Scale (§V146)", () => {
@@ -146,8 +189,9 @@ describe("the object Transform on a Geometry (T1588b)", () => {
       const definition = parameters[key];
       expect([key, definition?.group]).toEqual([key, "Transform"]);
       expect([key, definition?.inactiveWhen?.({ mode: "surface" })]).toEqual([key, null]);
+      // … and says it is IGNORED on the modes that do not take it, where a person reads it.
       for (const mode of ["instances", "points", "beam"]) {
-        expect([key, mode, typeof definition?.inactiveWhen?.({ mode })]).toEqual([key, mode, "string"]);
+        expect([key, mode, String(definition?.inactiveWhen?.({ mode })).startsWith("Ignored here")]).toEqual([key, mode, true]);
       }
     }
     // Two different things, two different labels: the object's per-axis Scale, and the Size of one instance.

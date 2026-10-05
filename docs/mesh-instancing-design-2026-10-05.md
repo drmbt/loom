@@ -241,7 +241,7 @@ normal  = normalize(sign(det M) · cofactor(M) · n)       M = the 3×3 of Objec
   - an instanced draw takes nothing: the resolve pass (D8) has already multiplied it in.
 - **`model` is always present on a Render's surface draws**, not only when the transform is non-identity. Presence that depended on the values would recompile the shader the frame an object starts to move. This changes the generated text of every surface draw and no pixel (D5's last point).
 - `s.local` and `s.localNormal` (D10) are the vertex before `Object`, so procedural detail sticks to a moving hull as well as to an instance.
-- **Per-point primitives, Points and Beam** take the object transform in a later slice (section 7); until then a non-identity Transform on them refuses by name.
+- **Per-point primitives, Points and Beam** take the object transform in a later slice (section 7); until then the Transform is inactive and ignored on them. It is not a refusal: section 13 says why.
 - **Authored Orient stays refused** (T723). Its sentence now points at Rotate and Forward, which do its job with numbers a person can type.
 
 ### D7. Instance mapping: every target is named
@@ -384,7 +384,6 @@ The engine has none for any geometry (T1371b is open). When that row lands, an o
 - A Map on a new instance target with another shape or mode; a Map with `port: "mesh"`; `shapeAttribute` naming an attribute the points do not carry.
 - `instanceAttributes` naming a field the material does not declare, an attribute the points do not carry, or a mismatched type; an `Instance` field with no attribute and no declared default.
 - A non-identity authored Orient (as today, with the new pointer to Rotate and Forward).
-- A non-identity Transform on per-point primitives, Points or Beam, until that slice lands.
 - `parent` or `lookAt` naming a node that publishes no transform or position.
 - Glass on a mesh instance (F11).
 - More than eight storage bindings on a pass (the existing budget diagnostic).
@@ -520,7 +519,7 @@ Slices A and B are most of the work. None of it is sized by measurement.
 
 | | Row | Why it is not in these two |
 |---|---|---|
-| F1 | Compute cull and compaction for instanced draws, feeding the indirect args | additive; needs the shape's bounds on the edge; own measurements |
+| F1 | Compute cull and compaction for instanced draws, feeding the indirect args | additive; needs the shape's bounds on the edge; own measurements. **Moved to the front after the first consumer's numbers (section 13, "What the first consumer measured")**; its compaction half needs no bounds |
 | F2 | Several shapes on one Geometry by the shape index; LOD by distance | bucketed form of F1 |
 | F3 | Indexed draws for mesh topology (surfaces and instances) | plan IR and backend change for all mesh draws |
 | F4 | Normal, albedo and matte in one multiple-render-target pass | not specific to instances |
@@ -611,7 +610,7 @@ Where the build differs from, or adds to, the sections above. The rulings on sec
 - **The matrix is composed in `domain/geometry/transform.ts`** (`objectMatrix`, `normalMatrix`) and carried as `GeometryPayload.objectMatrix`. The Render hands it to each surface draw as `model`, and to the draws that shade as `modelNormal` too, from one helper; the depth sweeps take `model` alone.
 - **The normal matrix is normalised on the CPU** (divided by its longest column), so an object scaled to a thousandth does not hand the fragment stage a normal it would treat as zero. Not in the design text.
 - **`SurfaceIn` gained `local`, `localNormal` and `instanceId`** in this slice (`instanceId` is 0 on a surface). `localNormal` is the shape's own normal, not turned toward the viewer. The two inter-stage members exist only on a draw that wears a Material · WGSL.
-- **Instances, points and beams refuse a non-identity Transform by name** (`node.scene.transform`) and mark the four rows inactive, until their slices.
+- **Primitive instances, points and beams ignore the Transform until slice G.** The four rows are inactive there and say "Ignored here". Slice A first refused a non-identity Transform by name; the lead ruled against it, and the refusal is gone. It was decided by a value, and a value never decides the plan's structure (§V453): an object whose Translate was driven left the values-only frame path on the frame it left the identity, and the full compile then refused. `scene-transform.test.ts` holds a driven Transform on each of the three modes on the fast path, equal to the untransformed plan.
 - **The preview tile draws by the identity**, as D16 says, and now draws a mesh-topology Surface at all (B247).
 - **Look At, Forward, Parent and the Null node are slice C**, not built.
 
@@ -655,14 +654,72 @@ Mesh File In: `frame` (`world` | `object` | `part`), and the measured `frameOrig
 - **The Shape Mesh port requires `position` of its edge and nothing more**, as `points` does. A kernel between the file and the port declares no more than that, so the triangles and the normal are checked by the Geometry, with a sentence each.
 - **O3 landed through `parametersFor`**: a Geometry stored with `mode: instances, shape: mesh` carries a schema whose `scale` defaults to 1, and every reader gets it through the one funnel (`effective-schema-closure.test.ts` passes unchanged). The parameter block is hoisted to `GEOMETRY_PARAMETERS` for it, which is why that block shows as moved in the diff.
 - **A Map that names `port: "mesh"` refuses in the Geometry**, before the shared resolvers, whose sentence was left as it is.
-- **Instance Translate's constant value on a primitive is inactive, not refused**; only its Map refuses there. The T1182 gate (`frame-compile.test.ts`, §V453: a parameter that is not compile-time never changes the plan's structure) fails a refusal that depends on a value. The object Transform's refusal on primitive instances, points and beams (slice A, O13) is the same kind of refusal and is still by value: it passes that gate because the gate's fixture is a Surface. An animated Transform on such a geometry leaves the values-only frame path on the frame it leaves the identity, and the full compile then refuses. It goes away with slice G; whether it should be inactive-and-ignored until then is a ruling.
+- **Instance Translate's constant value on a primitive is inactive, not refused**; only its Map refuses there. The T1182 gate (`frame-compile.test.ts`, §V453: a parameter that is not compile-time never changes the plan's structure) fails a refusal that depends on a value. The object Transform on primitives, points and beams was the same kind of refusal and passed that gate only because the gate's fixture is a Surface; it is now ignored too (slice A, above).
 - **Reserved names** cover the functions an instanced draw declares (`instanceSlot`, `recordM0…`, `meshPositionAt…`). Binding variables (`packed0`) are not reserved, as `positions` never was: `declaredNames` reads `fn` and `struct` only.
 
 **Open, and a gate is red on it.** The Shape Mesh socket makes every Geometry node one port row (16 px) taller. In E13 Prism the Geometries `shaft` and `fan` then stand 20 px apart where the §V389 layout gate wants 36 (`examples/layout.test.ts`, the one failure of 176). It is not fixed in this slice because each way out is a decision: (a) move `shaft` 16 px up in E13's source and regenerate E13, which changes that one shipped file's bytes; (b) a socket that is shown only while it applies (Shape: Mesh), which no input has today and which touches the node box, the canvas and connect; (c) name the shape as the material is named, with no socket, which puts pointset data on a name where §V372 says a wire.
 
 **Reached by the surface branch but not yet under a test of their own**: texture maps on a mesh instance (by the mesh's uv), Shadow Only, Blend: Additive, ambient occlusion, projectors, the environment, MSAA and SSAA. Glass on mesh instances refuses by name.
 
-**Not built (their slices)**: Look At, Forward, Parent, Null (C); Scale XYZ, instance Pivot, Aim and Up, UV, the preview tile, which shows the backdrop alone for a mesh instance (D); `struct Instance` and `instanceAttributes` (E); the shape index and its kill (F); the object transform on primitives, points and beams (G).
+**Not built (their slices)**: Look At, Forward, Parent, Null (C); Scale XYZ, instance Pivot, Aim and Up, UV, the preview tile, which shows the backdrop alone for a mesh instance (D); the shape index and its kill (F); the object transform on primitives, points and beams (G).
+
+### What the first consumer measured, and the order it changes
+
+The consumer's own figures, from its first scene on slice B (reported by the lead, not measured here):
+
+- **A rejected instance still costs the whole mesh.** All pieces drawn off one 631-point pointset with a Group each: a 152,490-vertex hull with 630 of 631 instances rejected was 400 ms a frame, and 5 ms once each piece had a pointset of its own. D13 said this cost was "nothing at the consumer's size"; that was wrong for a large mesh behind a predicate that keeps few. The zero record removes the pixels and none of the vertex work.
+- **A point light's cube shadow** redraws every caster six times; one such light cost about 15 fps at 1280×720 in the app (T1598b).
+- **Piece count costs as much as triangles.** Eight small instanced Geometries (3,440 triangles × 10 instances in all) were worth about 5 fps with shadows on while the GPU figure did not move: per-Geometry pass and submit overhead.
+
+So the order after slice E is performance first: F1's compaction, T1598b, and a profile of what one more instanced Geometry costs per frame; then D, C, F and G. Until F1 lands, the Group parameter's description says the cost where the choice is made, and a test pins the sentence.
+
+### F1: what it needs from the record layout (plan, not built)
+
+- **Nothing in the record moves.** `m0`, `m1`, `m2`, `tint` and the `field_<name>` regions stay indexed by the point's SLOT. `s.instanceId` and the flat slot the fragment stage reads slice E's fields by stay the point's slot, so a field is still read where the resolve pass wrote it and an id still names the same point every frame. Compacting the records themselves would change what `instanceId` means and move every region; it is not the plan.
+- **One region more: `visible`, a u32 per slot.** The slots of the accepted instances, dense, in slot order. Regions are independent (D8), so adding it moves no offset. It lives in the record buffer, so a draw binds no buffer more (§V588).
+- **One function body.** `instanceSlot(drawn)` becomes `visible[drawn]`. The lit and the depth generators both place by it already, and the vertex stage already hands the fragment stage the slot it returns.
+- **The count goes to an indirect buffer the Geometry owns** (`vertexCount`, accepted count, 0, 0), written by the same pass. Every draw of that geometry in every Render draws indirect off it. The live count of a counted pointset becomes one more reason to reject (`slot >= live`), and the per-Render args dispatch that exists for counted sets is no longer needed for mesh instances.
+- **Accepted means**: live, kept by the Group predicate, and (slice F) the shape index. All three are decided in the resolve pass, once.
+- **No pass more per Geometry**, which matters given the third figure above. The resolve becomes ONE dispatch of ONE workgroup: 256 invocations, each walking its share of the slots. It resolves and counts its accepted slots into `var<workgroup>` storage, `workgroupBarrier()`, takes the sum of the shares before its own, and writes its slots into `visible` from there. Ranges are disjoint, the order is the slot order, there are no atomics, and the result is the same every run. `points.wgsl.ts` and `laser-path.wgsl.ts` already use both constructs. To measure before trusting it: the cost at 100,000 slots, where an invocation walks 391 of them twice. The fallback is the scan and scatter of `points/lifecycle.ts`, three dispatches more.
+- **A rejected slot's record need not be written.** Nothing reads it once draws go through `visible`. Whether the zero record stays (the preview tile, when it draws mesh instances, could read the list too) is decided with slice D's tile.
+- **Per-view lists come later and fit the same way.** A camera frustum cull, or T1598b's per-light caster list, is another `visible_<view>` region and another count. F1's first step is the view-independent list, which is what the 400 ms figure needs.
+
+### Slice E — custom instance attributes (T1581b, built)
+
+**What a consumer writes**
+
+```wgsl
+// Material · WGSL
+struct Instance {
+  tentacle: f32, // @default 0
+  ring: u32,     // @default 0
+  glow: f32,     // @default 0  How hot this ring is.
+};
+fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
+  var o = surfaceDefaults(s);
+  o.emissive += vec3f(1.0, 0.4, 0.1) * s.instance.glow;
+  return o;
+}
+```
+
+The points' kernel writes attributes named `tentacle`, `ring` and `glow` of those types, and nothing else is needed: each field takes the attribute of its own name. Geometry's `instanceAttributes` text is for the other cases, one per line or `;`: `glow = heat` binds another attribute, `glow = pick.z` takes one channel (x y z w or r g b a) of a float vector into an f32 field.
+
+**Built as designed (D9)**
+
+- Bound by name and type; a field nothing binds reads its `// @default`.
+- Refused by name, each with what the two sides have (`node.scene.instanceAttribute`): a line that is not `field = attribute`, a line naming a field the material does not declare, an attribute the points do not carry, a type that does not match, a channel that cannot be taken, and a field with neither an attribute nor a declared default. Every fault is said at once.
+- The resolve pass copies each bound attribute into a region of the record; the fragment stage reads it at the flat slot the vertex stage already passes. A draw binds no buffer more (§V588), and a depth sweep reads no field.
+
+**Where the build differs from D9 and D10**
+
+- **`s.instance` exists when the source declares `struct Instance`, and not otherwise.** D10 put the member on every draw. A material that declares no such struct has nothing to read, and its generated text is what it was.
+- **The struct stays where the author wrote it.** `struct Params` is hoisted because the uniform block is built from it; `struct Instance` is only named by `SurfaceIn`, and a module-scope declaration is in scope for the whole module.
+- **Field types are the point attribute types**: f32, vec2f, vec3f, vec4f, u32, vec4u. Another type refuses at the material, by name. There is no i32 because no attribute is one.
+- **An attribute of the field's name in another type refuses.** It does not fall back to the default: the author meant that attribute.
+- **Only bound fields are in the record.** A field on its default is a constant in the shader text, so the record is as wide as what the points actually feed.
+- **A field with no declared default is zero on a draw with no instances** (a Surface wearing the same material). The refusal for a missing default is the mesh-instance draw's, where a value was expected and none arrived.
+- **Instance Attributes is inactive and ignored on any other geometry.** It is structural (`compileTime`): which attributes a draw reads is its bindings.
+- **The Geometry's preview tile runs no Material · WGSL**, as before this slice; nothing there reads a field.
 
 ### The `quat` module, and `// @use` in a kernel (F9, built)
 
@@ -688,3 +745,18 @@ Apple M3 Max, Dawn on Metal, 1920×1080, `rgba16float`. 4,000 instances of a 716
 - **The point-light case is over the 6 ms line the lead set, so F1 (cull and compaction) moves up.** Each of the six faces sweeps all 4,000 instances and sees about a sixth of them; a per-view cull is what that costs.
 - The consumer's own load (630 instances a robot, 3 to 5 robots, about 3,150 instances and 2.3 M triangles per pass) is 0.79 of this one; by proportion about 7 ms and 10 ms for the two point-light rows. Not measured at that count.
 - This is one machine, one layout and one resolution. It is not a browser measurement.
+
+### Measured again after slice E
+
+The same probe, the same machine, the same day as slice E landed. Three materials on the 4,000 rings: the stock default (the rows above, re-taken), a Material · WGSL that glows from constants, and the same material reading three f32 `struct Instance` fields (`tentacle`, `ring`, `glow`) that a kernel writes per point. Median of 40 frames; the WGSL rows were taken twice.
+
+| Passes | Stock, slice B | Stock, re-taken | Material · WGSL | + three instance fields |
+|---|---|---|---|---|
+| colour, no shadow | 2.9 ms | 2.9 ms | 3.0 ms (4.1) | 3.2 ms (4.7) |
+| colour + Depth + Normal + Albedo + one directional shadow | 7.1 ms | 7.2 ms | 7.2 ms (7.3) | 7.3 ms (7.3) |
+| colour + one point-light shadow | 9.1 ms | 9.1 ms | 9.0 ms (9.2) | 9.2 ms (9.2) |
+| colour + Depth + Normal + Albedo + one point-light shadow | 12.5 ms | 12.3 ms | 12.3 ms (12.6) | 12.6 ms (12.8) |
+
+- In brackets is the other of the two runs. The colour-only WGSL rows of the first run had frames between 3.1 and 8.2 ms on a machine other sessions were using; the second run's were between 2.8 and 3.6 ms. The other rows agree to 0.3 ms between runs.
+- **Three custom fields cost about 0.1 to 0.2 ms on the lit draw and nothing measurable elsewhere.** The record is 12 bytes an instance wider; the resolve pass still does not register; the depth sweeps do not read the fields.
+- The frame is still over the 6 ms line with a point-light shadow, for the reason slice B gave: six sweeps of every instance.

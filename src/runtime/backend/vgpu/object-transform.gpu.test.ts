@@ -369,4 +369,22 @@ describe("a geometry's object transform is the draw's model matrix (T1588b, §V1
     const moving = scene({ geometry: { "translate.x": expressionSlot("abstime * 60", 0) } });
     expect(box(await render(moving, "out", 2))).toEqual({ cols: [20, 27], rows: [12, 19], count: 64 });
   }, 120_000);
+
+  it("is ignored by primitive instances: a driven Transform there still draws, as if it were not set", async () => {
+    await requireDawn();
+    // Boxes at the cube's 24 vertices. Until slice G they take no object matrix, and a
+    // Transform on them is inactive — NOT a refusal, which a driven value would walk into
+    // on the frame it left the identity, and the picture would stop.
+    const primitives = { mode: "instances", shape: "box", scale: 0.25 };
+    const plain = await render(scene({ geometry: primitives }), "out", 2);
+    // The eight corners of a unit cube, seen from the front: four half-unit boxes.
+    expect(box(plain)).toEqual({ cols: [10, 21], rows: [10, 21], count: 64 });
+    const driven = scene({
+      geometry: { ...primitives, "translate.x": expressionSlot("abstime * 60", 0), "rotate.z": expressionSlot("abstime * 2700", 0), "objectScale.y": expressionSlot("1 + abstime * 120", 1) },
+    });
+    // The captured frame is the second: Translate 1, Rotate 45°, Scale 3. Byte for byte the plain picture.
+    expect(Array.from(await render(driven, "out", 2))).toEqual(Array.from(plain));
+    // And set outright, with nothing driving it.
+    expect(Array.from(await render(scene({ geometry: { ...primitives, translate: [1, 0, 0], rotate: [0, 0, 45], objectScale: [1, 3, 1] } }), "out", 2))).toEqual(Array.from(plain));
+  }, 120_000);
 });

@@ -61,6 +61,8 @@ export interface InstanceRecordOffsets {
   readonly m2: number;
   /** Present when Tint is mapped: the instance's own tint. */
   readonly tint?: number;
+  /** The material's `struct Instance` fields the geometry bound, by field name (D9). */
+  readonly fields?: Readonly<Record<string, { readonly offset: number; readonly type: PointAttributeType }>>;
 }
 
 export interface InstanceResolveOptions {
@@ -76,6 +78,12 @@ export interface InstanceResolveOptions {
   readonly tint?: PackedRead;
   /** The Group predicate: an instance it rejects is written as the zero record. */
   readonly group?: { readonly expression: string; readonly binds: ReadonlyArray<{ readonly attribute: string; readonly read: PackedRead }> };
+  /**
+   * The material's `struct Instance` fields this geometry bound (D9): each is COPIED from
+   * its point attribute (or one channel of it) into the record's region of that name, so the
+   * fragment stage reads it at the instance's slot and no draw binds the points.
+   */
+  readonly fields?: ReadonlyArray<{ readonly name: string; readonly read: PackedRead; readonly channel?: string }>;
   readonly record: InstanceRecordOffsets;
 }
 
@@ -85,6 +93,12 @@ export const RESOLVE_SOURCE_PREFIX = "source";
 
 export function instanceResolveWgsl(options: InstanceResolveOptions): EmittedWgsl {
   const row = (offset: number, name: string): string => regionStoreWgsl(name, RESOLVE_RECORDS_BINDING, { type: "vec4f", offset, stride: 16 });
+  /* A bound field with no region in the record has nowhere to go: the two lists are built
+     from one binding (the Geometry's), so this only drops what a caller mis-assembled. */
+  const fields = (options.fields ?? []).flatMap((field) => {
+    const stored = options.record.fields?.[field.name];
+    return stored === undefined ? [] : [{ ...field, stored }];
+  });
   const accessors = [
     packedAccessorWgsl("translateAt", RESOLVE_SOURCE_PREFIX, options.translate),
     ...(options.orient === undefined ? [] : [packedAccessorWgsl("orientAt", RESOLVE_SOURCE_PREFIX, options.orient)]),
@@ -95,7 +109,12 @@ export function instanceResolveWgsl(options: InstanceResolveOptions): EmittedWgs
     row(options.record.m1, "storeM1"),
     row(options.record.m2, "storeM2"),
     ...(options.record.tint === undefined ? [] : [row(options.record.tint, "storeTint")]),
+    ...fields.flatMap((field, index) => [
+      packedAccessorWgsl(`fieldAt${index}`, RESOLVE_SOURCE_PREFIX, field.read),
+      regionStoreWgsl(`storeField${index}`, RESOLVE_RECORDS_BINDING, { type: field.stored.type, offset: field.stored.offset, stride: ATTRIBUTE_STRIDES[field.stored.type] }),
+    ]),
   ].join("\n\n");
+  const copyFields = fields.map((field, index) => `\n  storeField${index}(slot, fieldAt${index}(slot)${field.channel === undefined ? "" : `.${field.channel}`});`).join("");
   const group = options.group;
   const groupDeclarations =
     group === undefined
@@ -180,6 +199,6 @@ ${axes}
   let place = translateAt(slot) + params.translate.xyz;
   storeM0(slot, recordRow(params.object0, cx, cy, cz, place));
   storeM1(slot, recordRow(params.object1, cx, cy, cz, place));
-  storeM2(slot, recordRow(params.object2, cx, cy, cz, place));${options.record.tint === undefined ? "" : `\n  storeTint(slot, ${options.tint === undefined ? "vec4f(1.0)" : "tintAt(slot)"});`}
+  storeM2(slot, recordRow(params.object2, cx, cy, cz, place));${options.record.tint === undefined ? "" : `\n  storeTint(slot, ${options.tint === undefined ? "vec4f(1.0)" : "tintAt(slot)"});`}${copyFields}
 }`;
 }

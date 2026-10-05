@@ -93,7 +93,7 @@ const ATTRIBUTES = JSON.stringify([
 ]);
 
 /** `body` assigns q.<attribute> from `i` (the slot, a u32) and `f` (the same, as f32). `head` goes above the kernel. */
-const points = (capacity: number, body: string, head = "") =>
+const points = (capacity: number, body: string, head = "", attributes = ATTRIBUTES) =>
   node(
     "pts",
     "pointKernel",
@@ -101,7 +101,7 @@ const points = (capacity: number, body: string, head = "") =>
       capacity,
       seed: 1,
       group: "",
-      attributes: ATTRIBUTES,
+      attributes,
       kernel: `${head}fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
   let i = ctx.index;
@@ -605,4 +605,99 @@ fn spawn(child: Point, ctx: PointCtx) -> Point {
     // The wire cut: with no hook the child is its parent's copy, and the two are one cube.
     expect(mask(await render(scene({ source: sim(""), geometry: { scale: 0.5 } }), "out", 4))).toEqual(cubes([[2, 0]], 0.5));
   }, 120_000);
+});
+
+/**
+ * T1581b slice E (D9) — CUSTOM INSTANCE ATTRIBUTES. A Material · WGSL declares what it reads
+ * per instance as `struct Instance`; a mesh-instancing Geometry binds each field to the
+ * points' attribute of the same name. What is asserted is the colour each instance is
+ * painted, which is the only place the value is for: an unlit material writes its fields
+ * straight to the picture, in fifths, so every expected byte is a whole number.
+ */
+describe("a material's struct Instance, bound to the points by name (T1581b, §V147)", () => {
+  /** red: glow. green: ring / 5. blue: shade.z. Defaults 0.4, 3 and 0.2 → 102, 153, 51. */
+  const PAINT = {
+    type: "materialWgsl",
+    parameters: {
+      model: "unlit",
+      source: `struct Instance {
+  glow: f32,    // @default 0.4  How hot this instance is.
+  ring: u32,    // @default 3
+  shade: vec3f, // @default [0, 0, 0.2]
+};
+
+fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
+  var o = surfaceDefaults(s);
+  o.albedo = vec4f(s.instance.glow, f32(s.instance.ring) * 0.2, s.instance.shade.z, 1.0);
+  return o;
+}`,
+    },
+  };
+
+  const CARRIED = [
+    { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
+    { name: "glow", type: "f32", default: [0] },
+    { name: "ring", type: "u32", default: [0] },
+    { name: "shade", type: "vec3f", default: [0, 0, 0] },
+    { name: "heat", type: "f32", default: [0] },
+    { name: "pick", type: "vec4f", default: [0, 0, 0, 0] },
+  ];
+  /** Three instances; glow 0.2, 0.4, 0.6 — ring 0, 1, 2 — shade.z 1, 0.8, 0.6 — heat 1, 0.8, 0.6 — pick.z 0.8, 0.6, 0.4. */
+  const WRITES = `${THREE}
+  q.glow = f * 0.2 + 0.2;
+  q.ring = i;
+  q.shade = vec3f(0.5, 0.5, 1.0 - f * 0.2);
+  q.heat = 1.0 - f * 0.2;
+  q.pick = vec4f(0.0, 0.0, 0.8 - f * 0.2, 0.0);`;
+  const carrying = (names: readonly string[]) => JSON.stringify(CARRIED.filter((attribute) => names.includes(attribute.name)));
+  const ALL = CARRIED.map((attribute) => attribute.name);
+  /** The kernel lines that write an attribute the pointset does not carry are dropped with it. */
+  const source = (names: readonly string[] = ALL) =>
+    points(3, WRITES.split("\n").filter((line) => !/^ {2}q\.(\w+) =/.test(line) || names.includes(/^ {2}q\.(\w+) =/.exec(line)![1]!)).join("\n"), "", carrying(names));
+  const painted = (names: readonly string[] = ALL, geometry: Parameters = {}) => scene({ source: source(names), material: PAINT, geometry });
+  const colours = (bytes: Uint8Array): number[][] => THREE_AT.map(([x, y]) => at(bytes, x, y).slice(0, 3));
+
+  it("hands each instance its own values: the field takes the attribute of its name", async () => {
+    await requireDawn();
+    const drawn = await render(painted());
+    expect(colours(drawn)).toEqual([[51, 0, 255], [102, 51, 204], [153, 102, 153]]);
+    // Still three cubes where the points are: the fields changed the paint and nothing else.
+    expect(mask(drawn, (red) => red > 25)).toEqual(cubes(THREE_AT));
+  }, 120_000);
+
+  it("reads a field's @default where the points carry no such attribute", async () => {
+    await requireDawn();
+    // The wire cut, field by field: without `glow` every instance is the declared 0.4 …
+    expect(colours(await render(painted(ALL.filter((name) => name !== "glow"))))).toEqual([[102, 0, 255], [102, 51, 204], [102, 102, 153]]);
+    // … without `ring` the declared 3, without `shade` the declared (0, 0, 0.2).
+    expect(colours(await render(painted(["position", "glow"])))).toEqual([[51, 153, 51], [102, 153, 51], [153, 153, 51]]);
+  }, 120_000);
+
+  it("binds another attribute, or one channel of one, by a line of Instance Attributes", async () => {
+    await requireDawn();
+    // glow from `heat` (1, 0.8, 0.6) in place of the attribute of its own name.
+    expect(colours(await render(painted(ALL, { instanceAttributes: "glow = heat" })))).toEqual([[255, 0, 255], [204, 51, 204], [153, 102, 153]]);
+    // glow from the third channel of the vec4f `pick` (0.8, 0.6, 0.4).
+    expect(colours(await render(painted(ALL, { instanceAttributes: "glow = pick.z" })))).toEqual([[204, 0, 255], [153, 51, 204], [102, 102, 153]]);
+  }, 120_000);
+
+  it("is the same value in the Albedo output, and the defaults on a Surface wearing the same material", async () => {
+    await requireDawn();
+    // The G-buffer's albedo layer runs the material too: the same three colours.
+    const albedo = await render(scene({ source: source(), material: PAINT, render: { albedoOutput: true } }), "albedo");
+    expect(colours(albedo)).toEqual([[51, 0, 255], [102, 51, 204], [153, 102, 153]]);
+    // A Surface has no instances: every field is its default, and the one material compiles for both.
+    const both = scene({
+      source: source(),
+      material: PAINT,
+      extra: {
+        nodes: [meshNode("hull", "cube"), node("skin", "geometry", { mode: "surface", material: "material_surface", translate: [-2, -2, 0] }, "geometry_hull")],
+        edges: [edge("e9", "hull", "skin", "points")],
+      },
+      render: { scenes: "geometry_instances geometry_hull" },
+    });
+    const drawn = await render(both);
+    expect(at(drawn, -2, -2).slice(0, 3)).toEqual([102, 153, 51]);
+    expect(colours(drawn)).toEqual([[51, 0, 255], [102, 51, 204], [153, 102, 153]]);
+  }, 180_000);
 });
