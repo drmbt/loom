@@ -462,7 +462,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       ...lens,
       density: expressionSlot(on("slider_haze"), 0.04),
       // More air, more of it lit.
-      glow: expressionSlot(`${on("slider_haze")} * 0.075`, 0.003),
+      glow: expressionSlot(`${on("slider_haze")} * 0.05`, 0.002),
       ...Object.fromEntries(mirrored.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp.position[axis]]))),
       station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
       lamp: expressionSlot(`${on("slider_lamp")} * (0.7 + ${LOW} * 0.8)`, 26),

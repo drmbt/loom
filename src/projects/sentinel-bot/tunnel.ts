@@ -330,9 +330,9 @@ fn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft:
 export const HAZE_WGSL = `${SHARED_UNIFORMS_WGSL}
 struct Params {
 ${CAMERA_PARAMS}
-  density: f32, // @default 0.05  How fast the air closes in, per metre.
+  density: f32, // @default 0.04  How fast the air closes in, per metre.
   color: vec3f, // @default [0.016, 0.04, 0.044]  What the far end of the tunnel fades to: never black.
-  glow: f32, // @default 0.012  How much of a light the air between throws at the lens.
+  glow: f32, // @default 0.002  How much of a light the air between throws at the lens.
 ${LAMP_PARAMS_WGSL}
   lamp: f32, // @default 26  The lamps' intensity, as their lights have it.
   eyesAt: vec3f, // @default [0, 0, 0.9]  Where the robot's face is.
