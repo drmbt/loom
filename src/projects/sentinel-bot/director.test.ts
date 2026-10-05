@@ -7,7 +7,7 @@ import { SHOWCASE_BEAT, showcaseBarStart } from "../../examples/build-showcase-b
 import { shippedClipAudio } from "../../examples/shipped-clip-audio.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
-import { PHRASE_BARS, against, pace, phraseDraw, phrasePerch, phraseSwim, rest, stride, surge } from "./director.ts";
+import { PHRASE_BARS, against, pace, phraseAttack, phraseDraw, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
 import { sentinelDocument } from "./document.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 
@@ -73,6 +73,14 @@ describe("the sentinel follows the track", () => {
     // The pace: 0.65 at the quietest of the last minute, 1 in the middle, 1.35 at the loudest.
     expect([0, 0.5, 1].map((intensity) => read(stride("follow", "intensity"), { follow: 1, intensity }))).toEqual([0.65, 1, 1.35]);
     expect(read(stride("follow", "intensity"), { follow: 0, intensity: 1 })).toBe(1);
+    // The attack: only at the very top, three phrases in ten. The corkscrew: only in the middle, a phrase in four.
+    expect(read(phraseAttack("follow", "intensity", "draw"), { follow: 1, intensity: 0.9, draw: 0.2 })).toBe(1);
+    expect(read(phraseAttack("follow", "intensity", "draw"), { follow: 1, intensity: 0.9, draw: 0.4 })).toBe(0);
+    expect(read(phraseAttack("follow", "intensity", "draw"), { follow: 1, intensity: 0.8, draw: 0 })).toBe(0);
+    expect(read(phraseSpiral("follow", "intensity", "draw"), { follow: 1, intensity: 0.6, draw: 0.2 })).toBe(1);
+    expect(read(phraseSpiral("follow", "intensity", "draw"), { follow: 1, intensity: 0.6, draw: 0.3 })).toBe(0);
+    expect([0.4, 0.85].map((intensity) => read(phraseSpiral("follow", "intensity", "draw"), { follow: 1, intensity, draw: 0 }))).toEqual([0, 0]);
+    expect(read(phraseAttack("follow", "intensity", "draw"), { follow: 0, intensity: 1, draw: 0 }) + read(phraseSpiral("follow", "intensity", "draw"), { follow: 0, intensity: 0.6, draw: 0 })).toBe(0);
   });
 
   it("follows nothing in silence: a host with no track behaves as the panel says", () => {
@@ -107,6 +115,8 @@ interface Run {
   readonly swim: number[];
   /** How much it perches, per frame, before the easing the rig reads it through. */
   readonly perch: number[];
+  /** How much it is attacking, per frame, eased: what the rig and the pace read. */
+  readonly attack: number[];
   /** Metres travelled by the last frame. */
   readonly distance: number;
 }
@@ -128,6 +138,7 @@ async function run(follow: boolean, heard: boolean): Promise<Run> {
   const swimAsked: number[] = [];
   const swim: number[] = [];
   const perch: number[] = [];
+  const attack: number[] = [];
   let first = Number.NaN;
   let last = Number.NaN;
   for (let index = 0; index < FRAMES; index += 1) {
@@ -151,10 +162,11 @@ async function run(follow: boolean, heard: boolean): Promise<Run> {
     swimAsked.push(read("constant_swim:value"));
     swim.push(read("lag_swim:value"));
     perch.push(read("constant_perch:value"));
+    attack.push(read("lag_attack:value"));
     last = read("speed_travel:value");
     if (index === 0) first = last;
   }
-  return { rate, energy, lift, intensity, bar, swimAsked, swim, perch, distance: last - first };
+  return { rate, energy, lift, intensity, bar, swimAsked, swim, perch, attack, distance: last - first };
 }
 
 /** The frames of a stretch of the clip, in seconds. */
@@ -181,9 +193,10 @@ describe("the sentinel follows its own clip, through the document's value graph"
     expect(followed.intensity).toEqual(panel.intensity);
     // Every frame: the pace is the panel's own, times what the energy says, times what the long view says, less what it perches.
     const ratio = followed.rate.map((value, index) => value / panel.rate[index]!);
-    const sounding = ratio.map((value, index) => ({ ratio: value, energy: followed.energy[index]!, intensity: followed.intensity[index]!, perch: followed.perch[index]! })).filter((frame) => frame.energy > 0);
+    const sounding = ratio.map((value, index) => ({ ratio: value, energy: followed.energy[index]!, intensity: followed.intensity[index]!, perch: followed.perch[index]!, attack: followed.attack[index]! })).filter((frame) => frame.energy > 0);
     expect(sounding.length).toBeGreaterThan(FRAMES * 0.95);
-    for (const frame of sounding) expect(frame.ratio).toBeCloseTo(Math.min(1.6, Math.max(0.5, 1 + (frame.energy - 1) * 1.5)) * (1 + (frame.intensity - 0.5) * 0.7) * (1 - frame.perch), 9);
+    // …and it goes at four tenths of that while it attacks.
+    for (const frame of sounding) expect(frame.ratio).toBeCloseTo(Math.min(1.6, Math.max(0.5, 1 + (frame.energy - 1) * 1.5)) * (1 + (frame.intensity - 0.5) * 0.7) * (1 - frame.perch) * (1 - 0.6 * frame.attack), 9);
     // The breakdown, as measured on the clip: perched and standing still from three seconds into the silent
     // bars until the track is back.
     expect(during(followed.perch, SILENT.from + 3, SILENT.to).every((value) => value === 1)).toBe(true);
@@ -205,8 +218,9 @@ describe("the sentinel follows its own clip, through the document's value graph"
       if (Math.abs(margin) < 1e-9) continue;
       const byPhrase = margin > 0 ? 1 : 0;
       swimPhrases += byPhrase;
-      // Told to swim: the track coming back in (lift), or this phrase's turn at this intensity.
-      expect(followed.swimAsked[index]).toBeCloseTo(Math.max(smooth(1.5, 2.2, followed.lift[index]!), byPhrase), 9);
+      // Told to swim: the track coming back in (lift), or this phrase's turn at this intensity; never in a phrase it attacks.
+      const attacking = followed.intensity[index]! > 0.85 && drawOf(followed.bar[index]!, 3) < 0.3 ? 1 : 0;
+      expect(followed.swimAsked[index]).toBeCloseTo(Math.max(smooth(1.5, 2.2, followed.lift[index]!), byPhrase) * (1 - attacking), 9);
       // Perched: a breakdown gone nearly silent, or this phrase's turn at a low intensity; never for no track.
       const low = followed.intensity[index]! < 0.42 && drawOf(followed.bar[index]!, 2) < 0.5 && sounding ? 1 : 0;
       const silent = sounding ? 1 - smooth(0.12, 0.3, followed.energy[index]!) : 0;

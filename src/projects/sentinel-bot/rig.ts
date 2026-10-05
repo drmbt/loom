@@ -243,6 +243,9 @@ ${PLACE_PARAMS}
   chasePhase: f32, // @default 0  Where those bands are: they move one band's spacing out for each whole number. Drive it from the beat.
   bands: f32, // @default 3  How many bands a tentacle carries at once.
   spark: f32, // @default 0  Brightness of single cores flashing at random. Drive it from a hat.
+  spiral: f32, // @default 0  It walks a corkscrew round the bore: turns per 16 m of tunnel. 0 walks straight.
+  spiralTurn: f32, // @default 0  How far round it has got, in turns. Drive it from an integrator of Spiral x speed, so the rungs it holds stay put.
+  attack: f32, // @default 0  The attack: every other tentacle lets go of the wall, coils by the face and strikes forward, again and again; the rest hold. 0 to 1.
 };
 ${ROBOT_FRAME}
 const ROBOTS: u32 = ${robots.length}u;
@@ -264,6 +267,9 @@ const SOCKET = array<vec3f, ${tentacles}>(${facts.sockets.map(wgslVec3).join(", 
 const WALL_ANGLE = array<f32, ${tentacles}>(${list(angle)});
 const STEP_PHASE = array<f32, ${tentacles}>(${list(phase)});
 const ENGAGE = array<f32, ${tentacles}>(${list(engage)});
+// Which tentacles strike in an attack (1) and which hold the wall for it (0): every other one round the body.
+const STRIKER = array<f32, ${tentacles}>(${list(rank.map((place) => place % 2))});
+const SPIRAL_PITCH: f32 = 16.0;
 // The claw, from the kit: each phalanx's joint on its carrier, its rest orientation there, its hinge and the range the reference performance turns it through.
 const PHALANX_JOINT = array<vec3f, ${phalanges}>(${facts.phalanges.map((phalanx) => wgslVec3(phalanx.joint)).join(", ")});
 const PHALANX_REST = array<vec4f, ${phalanges}>(${facts.phalanges.map((phalanx) => wgslVec4(phalanx.rest)).join(", ")});
@@ -327,6 +333,13 @@ fn along(bend: Bend, d: f32) -> vec3f {
   return vec3f(arcAt(bend.neck, NECK) + turned(arcAt(bend.arm, d - NECK), turn), turn + bend.arm * (d - NECK));
 }
 
+// How far round the bore the corkscrew has everything at z, radians. A function of the place along the
+// tunnel, so a rung that is held does not move: the turn the robot has reached (an integrator's) and how
+// much further round the walk goes for each metre beyond the leader's place.
+fn spiralAt(z: f32, params: Params) -> f32 {
+  return 6.2831853 * (params.spiralTurn + params.spiral * (z - params.travel) / SPIRAL_PITCH);
+}
+
 // Where tentacle t plants on step number step: a rung ahead of where the body was when it let go.
 fn plant(tentacle: u32, step: f32, stride: f32, bodyZ: f32, own: f32, seed: u32, params: Params) -> vec3f {
   let steps = round(PATH_PERIOD / stride);
@@ -335,7 +348,7 @@ fn plant(tentacle: u32, step: f32, stride: f32, bodyZ: f32, own: f32, seed: u32,
   z = round(z / RUNG) * RUNG;
   // The same rung from whichever side of the path's wrap the body is on.
   z = z - round((z - bodyZ) / PATH_PERIOD) * PATH_PERIOD;
-  let theta = WALL_ANGLE[tentacle] + (chance(tentacle, wrapped, seed + 1u) - 0.5) * 0.45;
+  let theta = WALL_ANGLE[tentacle] + (chance(tentacle, wrapped, seed + 1u) - 0.5) * 0.45 + spiralAt(z, params);
   let wall = pathFrame(z);
   // A hall's wall stands further off; the rung is on it all the same (whether the claw can reach it is the gait's business).
   return wall.origin + (wall.right * cos(theta) + wall.up * sin(theta)) * (params.bore * (1.0 + CHAMBER_SWELL * chamberAt(z)));
@@ -436,6 +449,12 @@ fn grabbing(tentacle: u32, crawl: f32, bodyZ: f32) -> f32 {
   return held * held * held * (held * (held * 6.0 - 15.0) + 10.0);
 }
 
+// Whether tentacle t holds the wall: its turn round the body says, unless it is attacking, when every other
+// tentacle holds and the ones between strike.
+fn takesHold(tentacle: u32, bodyZ: f32, params: Params) -> f32 {
+  return mix(grabbing(tentacle, params.crawl, bodyZ), 1.0 - STRIKER[tentacle], clamp(params.attack, 0.0, 1.0));
+}
+
 // One tentacle's gait: how far through its step it is.
 fn swingOf(tentacle: u32, bodyZ: f32, stride: f32, count: f32, duty: f32) -> f32 {
   let cycle = bodyZ / stride + STEP_PHASE[tentacle] + count;
@@ -450,7 +469,7 @@ fn carried(bodyZ: f32, stride: f32, count: f32, seed: u32, params: Params) -> ve
   var holding = 0.0;
   for (var t = 0u; t < TENTACLES; t = t + 1u) {
     let swing = swingOf(t, bodyZ, stride, count, params.duty);
-    let hold = grabbing(t, params.crawl, bodyZ) * (1.0 - sin(swing * 3.14159265));
+    let hold = takesHold(t, bodyZ, params) * (1.0 - sin(swing * 3.14159265));
     let step = floor(bodyZ / stride + STEP_PHASE[t] + count);
     let held = mix(plant(t, step, stride, bodyZ, count, seed, params), plant(t, step + 1.0, stride, bodyZ, count, seed, params), swing) - tunnel.origin;
     let across = vec2f(dot(held, tunnel.right), dot(held, tunnel.up));
@@ -495,7 +514,13 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let sway = vec3f(hang.xy * 0.55, 0.0) * afoot;
   let adrift = swimming * params.carry;
   let frameZ = bodyZ + adrift * adriftZ(ctx.absTime, offset);
-  let body = robotFrame(frameZ, offset + sway, params.roll - hang.x * 0.18 * afoot, params.look + vec2f(hang.x * 0.08 * afoot, 0.0), ctx.absTime, adrift);
+  // Walking a corkscrew, the body turns with the rungs it holds and rides a little toward the wall its back is to.
+  let winding = spiralAt(bodyZ, params);
+  let wound = clamp(params.spiral * 3.0, 0.0, 1.0) * (1.0 - swimming);
+  let riding = vec3f(-sin(winding), cos(winding), 0.0) * 0.32 * wound;
+  // Attacking it rears: nose up a little, to strike over what it holds.
+  let rearing = clamp(params.attack, 0.0, 1.0) * (1.0 - swimming);
+  let body = robotFrame(frameZ, offset + sway + riding, params.roll + winding - hang.x * 0.18 * afoot, params.look + vec2f(hang.x * 0.08 * afoot, 0.14 * rearing), ctx.absTime, adrift);
   if (PICK_BODY) {
     // The robot's own point: where its body is and how it is turned (the kit's robot frame: +Z forward, +Y up).
     q.position = body.origin;
@@ -516,7 +541,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let aloft = sin(swing * 3.14159265);
   walking = mix(walking, pathAt(walking.z), params.lift * aloft);
 
-  let grab = grabbing(tentacle, params.crawl, bodyZ) * (1.0 - swimming);
+  let grab = takesHold(tentacle, bodyZ, params) * (1.0 - swimming);
   let leave = normalize(body.forward * -0.6 + radial * 0.8);
 
   // ── Trailing: the neck curls back into the wake (less with Flare), the arm sways, the plane rocks ──
@@ -605,6 +630,25 @@ fn process(p: Point, ctx: PointCtx) -> Point {
     normal = mix(normal, outward, loosely);
     normal = normalize(normal - tangent * dot(normal, tangent));
   }
+  // ── The strike: coiled by the face, thrown straight ahead, drawn back, each striker on its own count ──
+  let striking = rearing * STRIKER[tentacle];
+  var struck = 0.0;
+  if (striking > 0.0) {
+    let beat = ctx.absTime * 2.1 + f32(tentacle) * 1.9 + f32(robot) * 0.7 * params.variety;
+    // Out fast, back slower: most of the count it is coiled.
+    let thrust = pow(0.5 + 0.5 * sin(beat), 3.0);
+    struck = thrust;
+    let strikeOut = normalize(body.forward * 0.8 + radial * 0.6);
+    let inward = normalize(-radial - strikeOut * dot(-radial, strikeOut));
+    let coil = Bend(0.5 / NECK, mix(2.4, 0.2, thrust) / ARM);
+    let there = along(coil, d);
+    let strikeTangent = strikeOut * cos(there.z) + inward * sin(there.z);
+    let strikeNormal = inward * cos(there.z) - strikeOut * sin(there.z);
+    at = mix(at, root + strikeOut * there.x + inward * there.y, striking);
+    tangent = normalize(mix(tangent, strikeTangent, striking));
+    normal = mix(normal, strikeNormal, striking);
+    normal = normalize(normal - tangent * dot(normal, tangent));
+  }
   let binormal = cross(tangent, normal);
   // A wave runs root to tip; it dies at both ends, and a planted tentacle carries less of it.
   let planted = grab * (1.0 - aloft);
@@ -649,7 +693,8 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let knuckle = which - which % 2u;
   // A planted claw grips; one that holds nothing hangs open, shuts on Snap, and works idly while it feels about.
   let idle = clamp(params.snap + reaching * (0.5 + 0.5 * sin(ctx.absTime * 2.6 + own)) * 0.6, 0.0, 1.0);
-  let closed = mix(idle * (1.0 - grab), params.grip, planted);
+  // A striking claw is open as it goes out and shuts at the end of the throw.
+  let closed = max(mix(idle * (1.0 - grab), params.grip, planted), striking * smoothstep(0.7, 0.95, struck));
   let knuckleFrame = quatMul(quatMul(frame, quatAxisAngle(PHALANX_AXIS[knuckle], mix(PHALANX_RANGE[knuckle].x, PHALANX_RANGE[knuckle].y, closed))), PHALANX_REST[knuckle]);
   let knuckleAt = at + quatRotate(frame, PHALANX_JOINT[knuckle]);
   var jointFrame = knuckleFrame;

@@ -394,7 +394,7 @@ struct Params {
   travel: f32, // @default 0  Distance travelled along the tunnel, metres.
   bore: f32, // @default 2.6  The tunnel's radius, metres.
   lamp: f32, // @default 26  The lamps' intensity, as their lights have it.
-  eyes: f32, // @default 1.6  The eyes' light, as its light has it.
+  eyes: f32, // @default 8  The eyes' light, as its light has it.
   eyeColor: vec3f, // @default [1, 0.04, 0.04]  Its colour.
   amount: f32, // @default 1  How much of the dust shows: 0 none.
 };
@@ -429,7 +429,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let toLamp = lampAt.origin + lampAt.up * (ctx.params.bore - 0.35) - q.position;
   let eyesAt = pathAt(ctx.params.travel + 0.9);
   let toEyes = eyesAt - q.position;
-  let lit = lampTone(station) * ctx.params.lamp / (1.0 + dot(toLamp, toLamp)) + ctx.params.eyeColor * ctx.params.eyes * 6.0 / (0.3 + dot(toEyes, toEyes));
+  let lit = lampTone(station) * ctx.params.lamp / (1.0 + dot(toLamp, toLamp)) + ctx.params.eyeColor * ctx.params.eyes / (0.3 + dot(toEyes, toEyes));
   let twinkle = 0.55 + 0.45 * sin(ctx.absTime * (0.8 + nerve * 2.5) + nerve * 60.0);
   q.tint = vec4f(lit * (0.006 * ctx.params.amount * twinkle), 0.5 + nerve);
   return q;

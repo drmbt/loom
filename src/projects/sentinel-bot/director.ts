@@ -82,3 +82,19 @@ export function stride(follow: string, intensity: string): string {
   return `(1 + ${follow} * (${intensity} - 0.5) * 0.7)`;
 }
 
+/**
+ * Two more behaviours a phrase can be (the owner, 2026-10-05: "walking in a spiral could be an
+ * interesting addition to the repertoire, as well as an attack posture with a bunch of tentacles
+ * attacking forwards").
+ */
+
+/** Whether it attacks this phrase: only at the very top of the intensity, and then three phrases in ten. It does not swim while it does. */
+export function phraseAttack(follow: string, intensity: string, draw: string): string {
+  return `(${follow} * (${intensity} > 0.85) * (${draw} < 0.3))`;
+}
+
+/** Whether it walks a corkscrew this phrase: in the middle of the intensity, where it is walking, a phrase in four. */
+export function phraseSpiral(follow: string, intensity: string, draw: string): string {
+  return `(${follow} * (${intensity} > 0.45) * (${intensity} < 0.8) * (${draw} < 0.25))`;
+}
+

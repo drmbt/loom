@@ -5,7 +5,7 @@ import { edge, expressionSlot, graph, node as buildNode, settings } from "../../
 import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from "../../examples/build-showcase-beat.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS } from "./camera.ts";
-import { against, pace, phraseDraw, phrasePerch, phraseSwim, rest, stride, surge } from "./director.ts";
+import { against, pace, phraseAttack, phraseDraw, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
 import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
 import { PATH, chamberExpression, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
@@ -129,6 +129,9 @@ const ROBOT: readonly Slider[] = [
   { name: "slider_wave", caption: "Wave", value: 0.05, min: 0, max: 0.3 },
   { name: "slider_grip", caption: "Grip", value: 1, min: 0, max: 1 },
   { name: "slider_gesture", caption: "Gesture", value: 0.6, min: 0, max: 1 },
+  // Two moves of the repertoire, by hand; Follow the Track takes each a phrase at a time as well (director.ts).
+  { name: "slider_spiral", caption: "Spiral (turns / 16 m)", value: 0, min: 0, max: 1.5 },
+  { name: "slider_attack", caption: "Attack", value: 0, min: 0, max: 1 },
 ];
 const SCENE: readonly Slider[] = [
   { name: "slider_bore", caption: "Tunnel", value: 2.6, min: 2.2, max: 3.4 },
@@ -178,6 +181,9 @@ const LIFT = "op('constant_lift').chan.value";
 // The long view (director.ts): where this passage stands among the last minute's, and which bar the track is in.
 const INTENSITY = "op('lag_intensity').chan.level";
 const BAR = "op('audiofile_track').chan.bar";
+// The moves, eased: how much it is attacking, and how tight a corkscrew it walks.
+const ATTACK = "op('lag_attack').chan.value";
+const SPIRAL = "op('lag_spiral').chan.value";
 const FOLLOW = on("toggle_follow");
 // How much it swims: one channel every piece's kernel reads (`lag_swim`, below).
 const SWIM = "op('lag_swim').chan.value";
@@ -243,8 +249,22 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     roll: 0,
   };
   const lamps = [-1, 0, 1].map(lampAt);
-  /** What the face throws on the walls: the middle of its colour range. */
-  const eyeTone = hueExpression(hueAt(0.5));
+  /**
+   * WHAT THE ROBOT THROWS ON THE TUNNEL IS WHAT ITS LIGHTS ARE DOING (the owner, 2026-10-05: the light on
+   * the environment was "always … red", whatever the face was doing). The face: a third of the lenses each
+   * answer kick, snare and hat (surface.ts), and a lens's place in the colour range is the same number that
+   * puts it in a third, so the three thirds sit at a sixth, a half and five sixths of the range. The light is
+   * their sum: its colour is the lit thirds' colours weighed by how bright each is now, its strength their mean.
+   */
+  const struck = (drum: string): string => `(1 + ${on("slider_eyehits")} * (2.6 * ${drum} - 0.75))`;
+  const thirds = [{ lit: struck(KICK), tone: hueExpression(hueAt(1 / 6)) }, { lit: struck(SNARE), tone: hueExpression(hueAt(0.5)) }, { lit: struck(HAT), tone: hueExpression(hueAt(5 / 6)) }];
+  const faceLit = `(${thirds.map((third) => third.lit).join(" + ")})`;
+  const eyeTone = ([0, 1, 2] as const).map((channel) => `((${thirds.map((third) => `${third.lit} * ${third.tone[channel]}`).join(" + ")}) / max(${faceLit}, 0.001))`) as [string, string, string];
+  /** How bright the face is now against its steady glow: 1 with Eyes on Drums at 0. */
+  const faceLevel = `(${faceLit} / 3)`;
+  /** The legs' light: a tentacle's colours run the whole range, so it throws the range's two halves mixed; brighter with the lows (the meter) and on a kick (the pulse). */
+  const legTone = ([0, 1, 2] as const).map((channel) => `((${hueExpression(hueAt(0.25))[channel]} + ${hueExpression(hueAt(0.75))[channel]}) / 2)`) as [string, string, string];
+  const legLevel = `(${on("slider_legs")} * (0.5 + 2.4 * ${on("slider_meter")} * ${LOW} + 1.6 * ${KICK}))`;
   /** The lamps the robot's steel can show a reflection of (surface.ts). */
   const mirrored = Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, index) => lampAt(index - LAMPS_MIRRORED));
   const swimming: Record<string, StoredParameter> = { swim: expressionSlot(SWIM, 0), stroke: expressionSlot(STROKE, 0) };
@@ -380,13 +400,23 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // GPU: the rate cannot read how far it has come without the value graph closing a loop,
     // and a loop there is dropped whole.)
     node("constant_rate", "constant", [-2400, 1000], {
-      value: expressionSlot(`${on("slider_speed")} * (1 - op('constant_perch').chan.value) * ${pace(FOLLOW, ENERGY)} * ${stride(`(${FOLLOW} * (${ENERGY} > 0))`, INTENSITY)}`, 3.2),
+      value: expressionSlot(`${on("slider_speed")} * (1 - op('constant_perch').chan.value) * ${pace(FOLLOW, ENERGY)} * ${stride(`(${FOLLOW} * (${ENERGY} > 0))`, INTENSITY)} * (1 - 0.6 * ${ATTACK})`, 3.2),
     }, { label: "constant_rate" }),
     node("lag_rate", "valueLag", [-2100, 1000], { lag: 0.25, releaseRatio: 1.6 }, { label: "lag_rate" }),
     // Perch, eased: how perched it is, 0 to 1, for the head and the tentacles it frees.
     // How much it swims: the panel's Swim, or the track coming back in (director.ts). Eased, so
     // letting go of the wall and taking hold again each take a moment.
-    node("constant_swim", "constant", [-1500, 725], { value: expressionSlot(`max(${on("slider_swim")}, max(${surge(FOLLOW, LIFT)}, ${phraseSwim(FOLLOW, INTENSITY, phraseDraw(BAR, 1))}))`, 0) }, { label: "constant_swim" }),
+    node("constant_swim", "constant", [-1500, 725], { value: expressionSlot(`max(${on("slider_swim")}, max(${surge(FOLLOW, LIFT)}, ${phraseSwim(FOLLOW, INTENSITY, phraseDraw(BAR, 1))}) * (1 - ${phraseAttack(FOLLOW, INTENSITY, phraseDraw(BAR, 3))}))`, 0) }, { label: "constant_swim" }),
+    // The attack and the corkscrew: the panel's, or the phrase's. The attack comes on in under a second; the
+    // corkscrew winds up over several, because while it changes, the rungs a claw holds go round under it.
+    node("constant_attack", "constant", [-1500, 975], { value: expressionSlot(`max(${on("slider_attack")}, ${phraseAttack(FOLLOW, INTENSITY, phraseDraw(BAR, 3))} * (${ENERGY} > 0))`, 0) }, { label: "constant_attack" }),
+    node("lag_attack", "valueLag", [-1200, 975], { lag: 0.7, releaseRatio: 1.4 }, { label: "lag_attack" }),
+    node("constant_spiral", "constant", [-1500, 1100], { value: expressionSlot(`max(${on("slider_spiral")}, 0.5 * ${phraseSpiral(FOLLOW, INTENSITY, phraseDraw(BAR, 4))} * (${ENERGY} > 0))`, 0) }, { label: "constant_spiral" }),
+    node("lag_spiral", "valueLag", [-1200, 1100], { lag: 5, releaseRatio: 1 }, { label: "lag_spiral" }),
+    // How far round it has got, in turns: the corkscrew's tightness times the distance it covers, summed. (An
+    // integrator starts at the middle of its range; the half turn is taken off where it is read.)
+    node("constant_winding", "constant", [-900, 1100], { value: expressionSlot(`${SPIRAL} * op('lag_rate').chan.value / 16`, 0) }, { label: "constant_winding" }),
+    node("speed_winding", "valueSpeed", [-600, 1100], { minimum: 0, maximum: 1, limit: "loop" }, { label: "speed_winding" }),
     node("lag_swim", "valueLag", [-1200, 725], { lag: 0.8, releaseRatio: 1.5 }, { label: "lag_swim" }),
     // The long view: the passage's loudness ranked against the last minute's, eased.
     node("normalize_intensity", "valueNormalize", [-2100, 850], { window: 60 }, { label: "normalize_intensity" }),
@@ -403,7 +433,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       model: "pbr",
       source: HULL_SURFACE_WGSL,
       // The eyes flicker with the hats and swell with the top of the track.
-      eyeGlow: expressionSlot(`${on("slider_glow")} * (0.75 + ${HIGH} * 0.6)`, 9),
+      eyeGlow: expressionSlot(`${on("slider_glow")} * (0.75 + ${HIGH} * 0.6) * (1 + 0.8 * ${ATTACK})`, 9),
       // One colour range for every light on it; the level moves them along it.
       hueFrom: expressionSlot(on("slider_huefrom"), 0),
       hueTo: expressionSlot(on("slider_hueto"), 0.03),
@@ -440,6 +470,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       // Every kick sends a pulse down the cores; the lows fill them like a meter; bands run out on the beat
       // (dimly even in silence: it is never quite dark); the hats spark single cores.
       pulse: expressionSlot("op('count_kick').chan.kickCountSince", 100),
+      attack: expressionSlot(ATTACK, 0),
+      spiral: expressionSlot(SPIRAL, 0),
+      spiralTurn: expressionSlot("op('speed_winding').chan.value - 0.5", 0),
       meter: expressionSlot(`${on("slider_meter")} * ${LOW}`, 0),
       chase: expressionSlot(`${on("slider_chase")} * (0.1 + ${HIGH} * 0.9)`, 0.05),
       chasePhase: expressionSlot(`${STROKE} * ${track.beatsPerBar}`, 0),
@@ -467,7 +500,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       travel,
       bore: expressionSlot(on("slider_bore"), 2.6),
       lamp: expressionSlot(`${on("slider_lamp")} * (0.7 + ${LOW} * 0.8)`, 26),
-      eyes: expressionSlot(`${on("slider_glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6),
+      eyes: expressionSlot(`${on("slider_glow")} * 0.9 * (0.75 + ${HIGH} * 0.6) * ${faceLevel}`, 8),
       eyeColor: [1, 0.04, 0.04],
       "eyeColor.x": expressionSlot(eyeTone[0], 1),
       "eyeColor.y": expressionSlot(eyeTone[1], 0.04),
@@ -481,14 +514,14 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // A kick punches the lens in.
     node("camera_rig", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} - ${KICK} * 2.5`, 55), near: 0.05, far: 240 }, { label: "camera_rig" }),
     // The eyes throw the tentacles' shadows down the walls (which of the scene casts them: see `robotCasts`).
-    node("light_eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04), intensity: expressionSlot(`${on("slider_glow")} * 0.9 * (0.75 + ${HAT} * 0.5)`, 8), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 16, shadows: true, shadowExtent: 16, shadowSoftness: 1, ...robotCasts }, { label: "light_eyes" }),
+    node("light_eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04), intensity: expressionSlot(`${on("slider_glow")} * 0.9 * (0.75 + ${HIGH} * 0.6) * ${faceLevel}`, 8), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 16, shadows: true, shadowExtent: 16, shadowSoftness: 1, ...robotCasts }, { label: "light_eyes" }),
     // The light of its own tentacles, from the middle of the body. It lights the bore round the robot wherever
     // the robot is, lamp or no lamp, and throws each tentacle's shadow out along the wall to meet the claw that
     // holds it: that meeting is what says the robot is IN the tunnel. (The owner, 2026-10-05: without it "a very
     // bad composite".) The hull does not cast for it: the light is inside the hull.
     node("light_body", "light", [-1500, -450], {
-      kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04),
-      intensity: expressionSlot(`${on("slider_legs")} * (2.2 + ${LEVEL} * 3)`, 2.2),
+      kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(legTone[0], 1), "color.g": expressionSlot(legTone[1], 0.04), "color.b": expressionSlot(legTone[2], 0.04),
+      intensity: expressionSlot(`${legLevel} * 2.6`, 1.3),
       position: [0, 0, -0.3], "position.x": core.x, "position.y": core.y, "position.z": core.z,
       falloff: "inverseSquare", range: 12, shadows: true, shadowExtent: 12, shadowSoftness: 1.5,
       shadowCasters: hingedClaws ? "geometry_ring geometry_hub" : "geometry_ring geometry_claw",
@@ -516,10 +549,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       }, { label: `light_lamp${index}` }),
     ),
     node("render_shot", "render", [-1200, 0], {
-      // The dust motes are NOT in the picture for now: an additive draw still lands in the Render's Depth output,
-      // so the haze, the glow and the focus took each mote for a wall and it showed as a dark disc. Their nodes stay
-      // (kernel_motes, geometry_motes) for the day the Depth output leaves additive draws out.
-      scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore"].join(" "),
+      // The dust is last: additive geometry is light, drawn over what it glows on (and out of the Depth output since B256).
+      scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_motes"].join(" "),
       camera: "camera_rig",
       lights: ["light_eyes", "light_body", ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.3, 0.62, 0.66, 1],
@@ -566,7 +597,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       "eyeColor.y": expressionSlot(eyeTone[1], 0.04),
       "eyeColor.z": expressionSlot(eyeTone[2], 0.04),
       // The face is a small light close to the lens: the air shows it more than its reach on the walls would say.
-      eyes: expressionSlot(`${on("slider_glow")} * 0.7 * (0.75 + ${HAT} * 0.5)`, 6),
+      eyes: expressionSlot(`${on("slider_glow")} * 0.7 * (0.75 + ${HIGH} * 0.6) * ${faceLevel}`, 6),
     }, { label: "wgsl_haze", resolution: { mode: "project" } }),
     // Focus: on the robot, wherever the shot stands; what is nearer or further goes soft, and a long lens softer.
     node("wgsl_focus", "customWgslMulti", [-750, 0], {
@@ -607,6 +638,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("loud-lag", ["select_loud", "out"], ["lag_loud", "in"]),
     edge("loud-usual", ["lag_loud", "out"], ["lag_usual", "in"]),
     edge("loud-floor", ["lag_loud", "out"], ["lag_floor", "in"]),
+    edge("attack-ease", ["constant_attack", "out"], ["lag_attack", "in"]),
+    edge("spiral-ease", ["constant_spiral", "out"], ["lag_spiral", "in"]),
+    edge("winding-sum", ["constant_winding", "out"], ["speed_winding", "in"]),
     edge("loud-intensity", ["lag_loud", "out"], ["normalize_intensity", "in"]),
     edge("intensity-ease", ["normalize_intensity", "out"], ["lag_intensity", "in"]),
     edge("swim-ease", ["constant_swim", "out"], ["lag_swim", "in"]),

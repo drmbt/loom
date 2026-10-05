@@ -440,5 +440,65 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     // Measured: 27 cm against 13.6 cm, a ratio of 1.99.
     expect(handingOver / handingOverFine).toBeGreaterThan(1.7);
     expect(handingOver / handingOverFine).toBeLessThan(2.3);
-  }, 240_000);
+    // And walking a corkscrew, and attacking (the strikers' throw is on the clock, so along a walk only the holders and the body move).
+    for (const move of [{ spiral: 0.5 }, { attack: 1 }]) {
+      const ratio = largestMove(await walk(240, move)) / largestMove(await walk(480, move));
+      expect(ratio).toBeGreaterThan(1.7);
+      expect(ratio).toBeLessThan(2.3);
+    }
+  }, 360_000);
+
+  it("walks a corkscrew: the body turns about the tunnel's axis as it goes, by the turns asked, and the claws it has planted stay on their rungs", async () => {
+    // Half a turn in 16 m: over the walk's 6.4 m the body turns 0.2 of a turn, 72 degrees.
+    const INSTANTS = 32;
+    const spiral = await walk(INSTANTS, { spiral: 0.5 });
+    const straight = await walk(INSTANTS, {});
+    /** Which way the first socket stands off the middle of the ten, as an angle about the tunnel (which runs along z near enough over 6.4 m). */
+    const bearing = (pose: Walk, instant: number): number => {
+      const sockets = Array.from({ length: TENTACLES }, (_, tentacle) => pose.socket(instant, tentacle));
+      const middle = sockets.reduce<Vec>((sum, socket) => [sum[0] + socket[0] / TENTACLES, sum[1] + socket[1] / TENTACLES, sum[2] + socket[2] / TENTACLES], [0, 0, 0]);
+      const first = sockets[0] as Vec;
+      return Math.atan2(first[1] - middle[1], first[0] - middle[0]);
+    };
+    const unwrap = (angle: number): number => angle - 2 * Math.PI * Math.round(angle / (2 * Math.PI));
+    const last = INSTANTS - 1;
+    const turned = unwrap(bearing(spiral, last) - bearing(spiral, 0)) - unwrap(bearing(straight, last) - bearing(straight, 0));
+    // 0.5 turns per 16 m over the 31 steps between the first and the last instant.
+    const asked = 2 * Math.PI * 0.5 * ((SPAN * last) / INSTANTS) / 16;
+    // Measured: 1.2209 rad turned against 1.2174 asked.
+    expect(Math.abs(unwrap(turned - asked))).toBeLessThan(0.08);
+    let worst = 0;
+    for (let instant = 0; instant < INSTANTS; instant += 1) for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) worst = Math.max(worst, spiral.slip(instant, tentacle, FACTS.ringCount));
+    // Measured: 2.4 micrometres at worst. The rungs go round with the walk, so a held one does not move.
+    expect(worst).toBeLessThan(0.02);
+  }, 180_000);
+
+  it("attacks: every other tentacle strikes out ahead of the face while the ones between hold the wall", async () => {
+    const pose = await walk(1, { attack: 1 });
+    const rest = await walk(1, {});
+    const offAxis = (point: Vec): number => Math.hypot(point[0] - pathAt(point[2])[0], point[1] - pathAt(point[2])[1]);
+    let ahead = 0;
+    let held = 0;
+    let furthest = -Infinity;
+    for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) {
+      const socket = pose.socket(0, tentacle);
+      const wrist = pose.at(0, tentacle, FACTS.ringCount);
+      if (wrist === undefined) throw new Error("a wrist is stowed");
+      // A striker's wrist is ahead of its socket and well inside the bore; a holder's is on the wall, on its rung.
+      if (wrist[2] - socket[2] > 0.3 && offAxis(wrist) < 1.8) ahead += 1;
+      if (pose.slip(0, tentacle, FACTS.ringCount) < 0.02 && offAxis(wrist) > 2.2) held += 1;
+      furthest = Math.max(furthest, wrist[2] - socket[2]);
+    }
+    // Measured: the furthest wrist 3.0 m ahead of its socket.
+    expect(furthest).toBeGreaterThan(2);
+    expect(ahead).toBe(TENTACLES / 2);
+    expect(held).toBe(TENTACLES / 2);
+    // Without the attack every one of them is on the wall.
+    let walking = 0;
+    for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) {
+      const wrist = rest.at(0, tentacle, FACTS.ringCount);
+      if (wrist !== undefined && offAxis(wrist) > 2.2) walking += 1;
+    }
+    expect(walking).toBe(TENTACLES);
+  }, 120_000);
 });
