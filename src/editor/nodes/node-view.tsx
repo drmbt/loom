@@ -290,7 +290,7 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
    *
    * From the TYPE, so it is right whatever the node is called. Not for a node whose type
    * is not installed (it has no kind), and not while its title is being edited: the label
-   * lies along the top of the node, and the field being typed in is under it.
+   * stands on the header band (B258), and the field being typed in is under it.
    */
   const kindLabel = definition === undefined || isEditingName ? null : kindLabelParts(node.label, kindOf(definition));
   /**
@@ -379,8 +379,9 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
           nothing. Hidden from assistive technology: it repeats the name beside it.
         */}
         {kindLabel === null ? null : (
-          // Two boxes: the outer is the node's own box and clips; the inner is the one the
-          // canvas tells the zoom, and only its transform ever changes (see `.kindLabelClip`).
+          // Two boxes: the outer is the band a label may use (the node's width, from the line
+          // under the header upward, B258) and clips; the inner is the one the canvas tells
+          // the zoom, and only its transform ever changes (see `.kindLabelClip`).
           <span className={styles.kindLabelClip} aria-hidden="true">
             <span ref={joinKindLabels} className={styles.kindLabel} data-testid={`node-kind-label-${id}`}>
               <span className={styles.kindLabelKind}>{kindLabel.kind}</span>

@@ -207,26 +207,46 @@
   still reads as one name with a word shortened.
 
   A kind of four letters or fewer (`lfo`, `blur`, `mesh`) does not shrink at all. It is
-  already no longer than an elided one, and giving it the floor would hold open more room
-  than its own letters need.
+  already no longer than an elided one.
+
+  B258 — THE FLOOR IS THE SMALLER OF 3.4em AND THE WORD ITSELF, NEVER MORE THAN THE WORD.
+  The owner: "there seems to be a space after all the prefixes in labels before the
+  underscore". It was `min-width: 3.4em` here. A floor is a minimum WIDTH, so a kind
+  narrower than it was held open to it, and the join was drawn after the empty room:
+  `slider _master` (6.8 px of nothing), `layer _fx` (9.9), `level _dim` (11.3), on every
+  node, with all the room in the world. The four-letter mark below was written against
+  exactly this and guessed the width from the letter count; `slider` is six letters and
+  30.5 px.
+
+  So the floor is no longer a number that can exceed the word. On a flex item
+  `min-width: auto` is the smaller of its `width` and its content, which is the sentence
+  above. Three declarations make that apply, and each one is load-bearing:
+   - `width: 3.4em` is the 3.4em half. It is NOT the box's size: the basis below is.
+   - `flex-basis: max-content` sizes the box to the word, so `width` only ever acts as
+     the floor's upper bound.
+   - `overflow: clip`, not `hidden`: `min-width: auto` is zero on a scroll container, and
+     `hidden` makes one. `clip` cuts the same and still takes the ellipsis.
+  Held in a real browser by `kind-label.spec.ts`: the join starts where the kind's last
+  letter ends, for every name on the canvas.
 */
 .nameInParts {
   display: flex;
 }
 
 .restKind {
-  flex: 0 1000 auto;
+  flex: 0 1000 max-content;
   /* Measured: at 2.6em (29 px) the floor read `ca…`; the field's own elided kind is 37 px
      and reads `cam…`. Same floor here, so the two states show the same three letters. */
-  min-width: 3.4em;
-  overflow: hidden;
+  width: 3.4em;
+  min-width: auto;
+  overflow: clip;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .restKind[data-short="true"] {
   flex: none;
-  min-width: 0;
+  width: auto;
 }
 
 .restJoin {
@@ -267,22 +287,34 @@
   The node's KIND, and then the rest of its name, at a size that does not shrink with the
   canvas. Why, the tiers and the measurements are in `kind-label.ts`; this is the drawing.
 
+  WHERE IT STANDS (B258): ON THE LINE UNDER THE HEADER, GROWING UP. Below that line is
+  what the node shows (a value, a plot, a picture, a Panel's controls) and the label never
+  crosses it. It takes the header band, whose name it replaces, and whatever does not fit
+  there goes up, out of the box, into the gutter above the node. A label that grew DOWN
+  from the top edge, as this first did, landed on a value node's readout and, on a node
+  with a picture, under the picture: a live preview is painted by a canvas over the whole
+  pane (`.previewSurface`, `app/panes.module.css`), above everything inside any node, so
+  nothing in a node can ever be drawn over a tile. The rule, the measurements and what was
+  rejected are in `kind-label.ts` and docs/node-naming-2026-10-05.md §8.2.
+
   Two boxes, because two different things have to be true and only one of them depends on
   the zoom.
 
-  THE CLIP is the node's own box, exactly, in the node's own coordinates. It is what keeps
-  a label inside its node: whatever does not fit is cut at the node's edge, and the last
-  eighth of the width fades out rather than slicing a letter, so a kind too long for a
-  27 px node reads `geom` and not `geo` with half an `m`. Nodes do not overlap, so labels
-  clipped to their nodes cannot overlap either, at any zoom, with nothing to compute. It
-  never changes with the zoom and nothing is written to it.
+  THE CLIP is the band a label may use: the node's own WIDTH, from the line under the
+  header up to `--kind-label-reach` above it. It is what keeps a label from running over
+  its neighbours to the right: whatever does not fit is cut at the node's edge, and the
+  last eighth of the width fades out rather than slicing a letter, so a kind too long for
+  a 27 px node reads `geom` and not `geo` with half an `m`. Its bottom edge is the rule
+  above, as geometry: nothing of the label can be drawn below it. It never changes with
+  the zoom and nothing is written to it.
 
   THE LABEL inside it is the part that must not shrink. `--kind-label-zoom` is the
   canvas's zoom, written on this element alone (never inherited, see `kind-label.ts`), and
-  `scale(1 / zoom)` from its top left corner undoes exactly what the canvas did. Its 11 px
-  text is 11 px on screen at any zoom. Only its TRANSFORM changes as the canvas zooms, so
-  a zoom step lays nothing out: an earlier version clipped with a `max-width` that
-  followed the zoom, and the browser measured it re-laying out every label on every step.
+  `scale(1 / zoom)` from its BOTTOM left corner undoes exactly what the canvas did. Its
+  11 px text is 11 px on screen at any zoom. Only its TRANSFORM changes as the canvas
+  zooms, so a zoom step lays nothing out: an earlier version clipped with a `max-width`
+  that followed the zoom, and the browser measured it re-laying out every label on every
+  step.
 
   HIDDEN until the canvas root carries `data-kind-labels`, which the canvas writes only
   when it is zoomed out past the point where the header can be read. At working zoom this
@@ -292,17 +324,29 @@
   model and every authored position are exactly what they were (§V389; measured, 79 of 79
   node boxes identical with the labels on and off).
 
-  The clip starts just under the status hairline on the top edge, which stays visible. The
-  label is on a plate of the node's own surface, so it reads over the top of a bright
-  preview and keeps the family tint that says texture, points or value (T712).
-  `pointer-events: none`: it is a picture of the name, and a press on it is a press on the
-  node.
+  The label is on a plate of the node's own surface, so above the node it reads as a tab
+  on the node's top edge, covers the wires that cross the gutter behind it, and keeps the
+  family tint that says texture, points or value (T712). `pointer-events: none`: it is a
+  picture of the name, and a press on it is a press on what is under it.
 */
+.node {
+  /* The label's height on screen: its 11 px text on a 1.2 line. The timing readout above
+     the node reads it too, to stand clear (`node-timing-overlay.module.css`). */
+  --kind-label-height: calc(var(--fs-meta) * 1.2);
+  /* How far above the header's line the clip reaches, in the node's own px. The label is
+     drawn down to 9 % zoom (`KIND_LABEL_NONE_ZOOM`), where its 13.2 px are 147 of these. */
+  --kind-label-reach: 160px;
+}
+
 .kindLabelClip {
   display: none;
   position: absolute;
-  inset: var(--hairline) 0 0 0;
+  right: 0;
+  /* The header's own hairline stays visible under the label: it is the line it stands on. */
+  bottom: calc(100% - var(--pane-header-h) + var(--hairline));
+  left: 0;
   z-index: 1;
+  height: var(--kind-label-reach);
   overflow: hidden;
   pointer-events: none;
   mask-image: linear-gradient(to right, currentColor 87.5%, transparent);
@@ -315,17 +359,17 @@
 .kindLabel {
   display: flex;
   position: absolute;
-  top: 0;
+  bottom: 0;
   left: 0;
-  padding: 1px var(--space-2) 1px var(--space-1);
-  border-bottom-right-radius: var(--radius);
+  padding: 0 var(--space-2) 0 var(--space-1);
+  border-radius: var(--radius) var(--radius) 0 0;
   background: var(--node-surface, var(--bg-raise));
   color: var(--text);
   font-size: var(--fs-meta);
-  line-height: 1.25;
+  line-height: var(--kind-label-height);
   white-space: nowrap;
   transform: scale(calc(1 / var(--kind-label-zoom, 1)));
-  transform-origin: 0 0;
+  transform-origin: 0 100%;
 }
 
 /* The kind is the answer to the question that was asked, so it is the heavy part. */

@@ -782,8 +782,13 @@ describe("T1593b — a name at rest is drawn as its kind and its role", () => {
 
   /*
    * A kind of four letters or fewer is already as short as an elided one (`cam…`), so it
-   * is marked not to give way. Without the mark it would be held to a floor wider than its
-   * own letters, which draws a gap inside `lfo_pathx` on every node where the name fits.
+   * is marked not to give way.
+   *
+   * The mark used to be all that kept the elision floor from holding a short kind's box
+   * open and drawing a gap inside `lfo_pathx`. It guessed a width from a letter count, and
+   * `slider_master` (six letters, narrower than the floor) got the gap anyway (B258). The
+   * floor itself can no longer exceed the word; that is a measurement, and it is taken in
+   * a real browser (`kind-label.spec.ts`).
    */
   it("marks a short kind so it never elides, and a long one so it can", () => {
     const short = mountNode("test.blur", { graph: withLabel("test.blur", "blur_diffuse") });
@@ -838,8 +843,9 @@ describe("T1597b — a node carries its kind for low zoom", () => {
 
   /*
    * The label is the one element its canvas writes the zoom on, and it sits in a clip box
-   * that is NOT written to: the clip is what keeps it inside its node, and it must not
-   * depend on the zoom or every zoom step lays it out again (measured, `kind-label.ts`).
+   * that is NOT written to: the clip is what keeps it to its node's width and above the
+   * line under the header (B258), and it must not depend on the zoom or every zoom step
+   * lays it out again (measured, `kind-label.ts`).
    */
   it("sits inside a clip box of its own, which the canvas never writes to", () => {
     const { container, nodeId, kindLabels } = mountNode("test.blur", { graph: named("test.blur", "blur_diffuse") });

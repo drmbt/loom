@@ -19,6 +19,7 @@ import {
 import { CanvasFixture } from "@editor/graph-canvas/canvas-fixture.tsx";
 import type { NodeRuntimeStore } from "@editor/graph-canvas/node-runtime.ts";
 import { NodeView } from "./node-view.tsx";
+import { KIND_LABEL_ZOOM_PROPERTY } from "./kind-label.ts";
 import { costTier } from "./node-timing.ts";
 
 /**
@@ -103,7 +104,7 @@ function mountPair() {
       <NodeView {...nodeProps("dear")} />
     </CanvasFixture>,
   );
-  return { ...view, runtime, timingOverlay, timingScale, renders: counter };
+  return { ...view, runtime, timingOverlay, timingScale, renders: counter, kindLabels: value.kindLabels };
 }
 
 async function publish(
@@ -179,6 +180,39 @@ describe("placement — outside the header, attached to the node", () => {
     const value = screen.getByTestId("node-timing-value-cheap");
     expect(children.indexOf(bar.parentElement as Element)).toBeLessThan(children.indexOf(value));
     expect(bar.contains(value)).toBe(false);
+  });
+
+  /*
+   * B258 — below 70 % zoom the node's kind label stands on the line under the header and
+   * grows UP, out of the top of the node, which is the room this readout stands in. Its
+   * stylesheet moves it up by what the label takes, and that takes the zoom, which no
+   * component is ever told (§V16): the canvas writes it on the element, as it does on the
+   * label. jsdom lays nothing out, so that the two do not overlap is measured in a real
+   * browser (`kind-label.spec.ts`). Held here is the half that goes missing silently: a
+   * readout the canvas never tells does its arithmetic at zoom 1, moves nowhere, and lies
+   * under the label's plate from the end its bar fills from.
+   */
+  it("is told the canvas's zoom while the kind labels show, like the label it stands on", async () => {
+    const { timingOverlay, kindLabels, container } = mountPair();
+    await act(async () => {
+      timingOverlay.set(true);
+    });
+    const overlay = screen.getByTestId("node-timing-cheap");
+    kindLabels.attach(container);
+
+    // At working zoom there is no label to stand clear of, and nothing is written.
+    kindLabels.apply(1);
+    expect(overlay.style.getPropertyValue(KIND_LABEL_ZOOM_PROPERTY)).toBe("");
+
+    kindLabels.apply(0.35);
+    expect(overlay.style.getPropertyValue(KIND_LABEL_ZOOM_PROPERTY)).toBe("0.35");
+
+    // Switched off is unmounted (§V836), and an unmounted readout has left the canvas's list.
+    await act(async () => {
+      timingOverlay.set(false);
+    });
+    kindLabels.apply(0.2);
+    expect(overlay.style.getPropertyValue(KIND_LABEL_ZOOM_PROPERTY)).toBe("0.35");
   });
 });
 

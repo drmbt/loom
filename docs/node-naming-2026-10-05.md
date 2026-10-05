@@ -215,11 +215,11 @@ T416 shows the type beside the name once a rename has spent the identification. 
 
 For a family kind the chip also hides (`material_floor` no longer shows "Material · PBR"). The variant stays on hover and in the inspector's type badge.
 
-### 8.2 The kind stays legible at low zoom (T1597b, built)
+### 8.2 The kind stays legible at low zoom (T1597b, built; where it stands, B258)
 
 **The problem, measured.** A node is 178 px wide and its header text is 11 px. At 60 % zoom that is 6.6 px, at 35 % under 4. And E79 Crucible, 79 nodes, **opens at 15 %** in a 1600 px window: a node is 27 px wide and its name is 1.65 px tall. This is where the owner's "we need to zoom in and figure out … this is this kind of operator" comes from. A better name does not help someone who cannot read the name.
 
-**What was built.** Below 70 % every node carries one label along its top edge: its kind in bold, then the rest of its name, at a size that does not shrink with the canvas (11 px text on screen at every zoom).
+**What was built.** Below 70 % every node carries one label: its kind in bold, then the rest of its name, at a size that does not shrink with the canvas (11 px text on screen at every zoom). It stands on the line under the node's header and grows upward (see "Where the label stands" below; the first version lay inside the node and that was B258).
 
 | Zoom | The label | Example |
 | --- | --- | --- |
@@ -230,9 +230,9 @@ For a family kind the chip also hides (`material_floor` no longer shows "Materia
 
 The kind comes from the node's **type**, not from its name. So the label is right for every node today, including the 3,297 shipped ones still named `dye1` or `lamp`. A name that carries its kind is split where the kind ends (`kernel` + `_joints`); a name that does not follows the kind as a word of its own (`feedback dye1`).
 
-**One calm line, and no pile-up, by construction.** The label lies inside its own node and is clipped to the node's box. Nodes do not overlap (§V389 gates the shipped ones), so two labels cannot overlap either, at any zoom. There is no collision test and nothing to tune. As the node gets narrower on screen the label simply shows less, and the last eighth of the width fades instead of slicing a letter.
+**One calm line, and no pile-up, by construction.** The label is clipped to its own node's width, so it cannot run over a neighbour beside it. As the node gets narrower on screen the label simply shows less, and the last eighth of the width fades instead of slicing a letter. There is no collision test and nothing to tune. Upward it has the room the layout rule keeps above every node (below).
 
-**No layout cost.** The label is absolutely positioned. Measured: all 79 node boxes are identical with the labels on and off.
+**No layout cost.** The label is absolutely positioned, inside the box and above it. Measured: all 79 node boxes are identical with the labels on and off.
 
 **No React work while the canvas moves.** A label that does not shrink has to be told the zoom. Three ways were measured on E79 (79 nodes, 1,802 elements under them), as the cost of one zoom change with style and layout brought up to date:
 
@@ -250,8 +250,8 @@ Observed in the browser, as DOM mutations under the nodes: a pan, none; a zoom a
 
 - *The inherited property*: twelve times the cost, and it grows with everything inside a node.
 - *A separate label layer*: cheapest to update, but its labels would have to be positioned from the canvas's node list (React work on every frame of a drag), would paint above every node instead of with their own, and would not be culled with them.
-- *A label above or below the node, outside its box*: it does not cover the preview, but it needs the gutter. At 35 % a 13 px label needs 37 flow px and the layout gate guarantees 36, so stacked nodes would start to touch exactly where the label matters. Inside the box there is nothing to collide with.
-- *Fading the kind out below a second threshold near 30 %* (the brief's suggestion): E79 opens at 15 %, so the label would be gone at the zoom the complaint is about. Clipping to the node keeps it calm without removing it. It goes only when no word fits (below 9 %).
+- *A label above or below the node, outside its box*: rejected in the first build because it needs the gutter (at 35 % a 13 px label needs 37 flow px and the layout gate guarantees 36), on the reasoning that inside the box there is nothing to collide with. That reasoning was wrong: inside the box is the node's content. B258 moved the label out; see "Where the label stands".
+- *Fading the kind out below a second threshold near 30 %* (the brief's suggestion): E79 opens at 15 %, so the label would be gone at the zoom the complaint is about. Clipping to the node's width keeps it calm without removing it. It goes only when no word fits (below 9 %).
 - *An ellipsis*: at 27 px it would take one of four letters.
 - *An earlier version of this design* clipped the label with a `max-width` that followed the zoom. The browser measured it re-laying out every label on every step (1.16 ms). The clip is now a separate box that never changes, and only the label's transform does.
 
@@ -262,13 +262,94 @@ Observed in the browser, as DOM mutations under the nodes: a pan, none; a zoom a
 - **35 %**: the kind alone, whole: `kernel`, `geometry`, `wgsl`, `light`, `material`. One of 79 is cut at the edge (a node is 63 px wide there; the example's longest kind, `audioanalysis`, is the only one that needs more). Before, this zoom showed `swarm0…` and a 4 px type chip.
 - **15 %** (where the example opens): `grid`, `kern`, `geo`, `rend`, `reor`, `mas`, `wgs`, `blur`, `add`, `lag`, `tail`, `beat`, `light`, `mat`, `cam`. Three to five letters each, 73 of 79 cut at the edge. The patch reads left to right as audio, select, range, lag, grid, kernel, geometry, render, wgsl, output. Before, nothing on the canvas could be read at all.
 
-No label reaches outside its node at any of the three zooms (0 px), and no two overlap (0 pairs).
+That look had no GPU, and it is what hid B258: with every preview dark, a label lying on a picture's slot looked fine.
 
 **What the browser showed that was fixed.** At 35 % a short label (`wgsl`) left the rest of the header visible beside it: the same name and type at 4 px, as a grey smear. While the label is showing, the header's own name and type are not drawn.
 
-**Held by** `kind-label.test.tsx` (the tiers, what the label says, and what a pan and a zoom write), `node-view.test.tsx` (a real node renders it and joins its canvas) and `src/tests/e2e/kind-label.spec.ts`, which measures the real page: the label's height is the same at 60 %, 35 % and 15 % to a tenth of a pixel; nothing leaves its node; node boxes do not change; a pan mutates nothing. The spec was broken on purpose twice (the scale removed, the clip removed) and failed each time.
+#### Where the label stands (B258, 2026-10-06)
 
-**Not checked.** How it looks over real previews: the headless browser has no GPU, so every preview is dark. The label sits on a plate of the node's own surface for that reason, and it wants one look in the running app. Open question 4 is about 15 %.
+The owner, on the first build: "the enlarging labels on the nodes now cover the content weirdly on some and on others they get covered. like value operators get covered by the label while previews overlap the thing. both is not great."
+
+**Looked at with real previews.** Headless Chromium, 1600 × 1000 at 2×, with a Metal adapter this time (the full Chromium build in its headless mode, `channel: "chromium"`, with `--enable-unsafe-webgpu --use-angle=metal`; the default headless shell resolves none, §V895). E79 Crucible and E82 Set List (two sliders, sixteen pictures, a Panel and seven notes), at 60 %, 35 % and 15 %. The first build grew the label down from the node's top edge, inside the node:
+
+| Zoom | On a value node | On a node with a picture |
+| --- | --- | --- |
+| 60 % | the label's last 2 px lie on the first row of the readout | the same 2 px are under the tile |
+| 35 % | the label covers the first row: the channel's name and the start of its bar | the tile cuts the label's lower half off |
+| 15 % | the label covers the upper 70 % of the node, readout and plot | the label is gone under every live tile: counted on the E79 screenshot, 42 of the 53 picture nodes in view show no word at all, and the other 11 had no live tile |
+
+Both halves have one cause, the label lying on the node's content, and they differ because the two kinds of content are drawn by different things. A value's readout is DOM in the node, under the label. **A live preview is not in the node.** One canvas over the whole pane paints every tile, above everything any node draws (`.previewSurface`, `app/panes.module.css`; the camera toggle moved out of the node for the same reason, T892). Nothing drawn inside a node can be put on top of a tile.
+
+**The rule: the label stands on the line under the header and grows upward. It never enters what the node shows.** It takes the header band, whose name it replaces, and what does not fit there goes up, out of the box, into the gutter above the node. One rule for every node: a value node, a node with a picture, a Panel, a node with ports alone.
+
+- At 60 % the header band is 14.4 px and the label is 13.2: it sits where the name was.
+- At 35 % the band is 8.4 px: the label rises 4.7 px above the top edge, as a tab on the node's corner.
+- At 15 % the band is 3.6 px: the label rises 9.6 px, and reads as a caption over the picture.
+
+**The room.** In the node's own px the band is 23 above the header's hairline and the layout rule keeps 36 clear above every node (§V389): 59 × zoom on screen, for a label 13.2 px tall. So down to **22.4 %** a label reaches no other node and no other label in any layout that passes the rule. The shipped layouts have far more above a node (the tightest stack in E79 has 86 px, in E82 70), and a label needs 65 at 15 %.
+
+Measured over every label, with the tiles live:
+
+| | E79, 79 labels | E82, 23 labels |
+| --- | --- | --- |
+| labels that overlap another label, at 60 / 35 / 15 % | 0 / 0 / 0 | 0 / 0 / 0 |
+| labels on a node that is not their own | 0 / 0 / 0 | 0 / 0 / 0 |
+| labels in a picture's or a plot's slot, their own or another's | 0 / 0 / 0 (was every label in view: 73 of 73 at 15 %) | 0 / 0 / 0 (was every node that has a slot: 18 of 23 at 15 %) |
+| labels that cross the line under their header | 0 / 0 / 0 | 0 / 0 / 0 |
+
+**When the label is taller than the room.** Below 22.4 %, in a layout packed to the rule's minimum, the top of a label reaches into the bottom of the node above it: at 15 % by 29 of the node's px (4.4 on screen), which is that node's port row (23 px at the least) and under 1 px of what is over it. The label is not shrunk to prevent this and is not cut. What would fit at 15 % is 7.4 px text, and under 7.7 px is the size at which the header was judged unreadable and the label takes over. Cutting it at the gutter would slice the tops off the letters. A diagnostic row on the node above uses the same gutter (it is why the gutter is 36), so in a layout at the minimum, under a node that is showing a two-line error, the label can lie on the end of that message as soon as it leaves its own box, below 57 %.
+
+**Rejected.**
+
+- *The label as it was, on top, with its plate* ("the content under it is unreadable at that zoom anyway"). Not available: a tile is painted over everything in a node, so on a node with a picture this is the build the owner rejected. It would take a label layer above the tile canvas, placed from the canvas's node list, which was already rejected for React work on every frame of a drag. And it is false for pictures, which read well at 35 %.
+- *The label inside the header band only*, limited to the band's height: 6 px text at 35 % and under 3 px at 15 %.
+- *The label wholly above the top edge.* It never covers the header's toggles, but it needs its whole height from the gutter: 36 × zoom, so a layout at the minimum runs out at 37 %, not 22 %, and at 15 % on E79 46 of 79 labels of the first build's height would lie on the node above. It also leaves an empty title bar under a floating name at 60 %. Standing on the header's line uses the band the label has emptied anyway.
+- *Shrinking toward a floor size* and *fading below a threshold*: both give up legibility at 15 %, which is where E79 opens and where the label is wanted.
+
+**What it stands next to.**
+
+- *Notes.* A note is a region behind the nodes, and a label over it is drawn like the node's own body over it. On E82 at 15 % four labels reach the empty bottom strip of the note above them, none reaches a note's words.
+- *A selected node.* The outline and three of the four resize handles are clear; the label's plate covers the top edge along its own width and half of the top-left handle. The handle still takes the press: the label takes no pointer.
+- *The debug timing readout* (T1010) stands above the node, which is now the label's room. With both on, the readout moves up by exactly what the label takes above the top edge and stands on the label: bar, number, label, node. It is told the zoom the same way the label is. Measured at 35 % and 15 %: 0 of 23 readouts overlap their label.
+- *The status hairline* on the node's top edge is under the label's plate along the label's width once the label rises past it (below 57 %). It shows on the rest of the edge. At 15 % it is 0.15 px and was not visible before either. Open question 9.
+- *The map, Frame all and the layout rule* read node boxes, and the label is in none of them.
+
+**Held by** `kind-label.test.tsx` (the tiers, what the label says, and what a pan and a zoom write), `node-view.test.tsx` (a real node renders it and joins its canvas), `node-timing-overlay.test.tsx` (the readout is told the zoom) and `src/tests/e2e/kind-label.spec.ts`, which measures the real page:
+
+- the label's height is the same at 60 %, 35 % and 15 % to a tenth of a pixel; node boxes do not change; a pan mutates nothing;
+- on E79, at all three zooms, no label runs past its node's side, crosses the line under its header, lies in a slot, lies on another node or overlaps another label;
+- on E82, for a value node, a picture node and the Panel in the same pane: at nine points of every label's own rectangle the label is what is on top (`elementsFromPoint`, with hit testing switched on for the reading); at twelve points just under each header line no label is on top; and no label lies in any slot. That last one is geometry because a tile is not an element in a node. The test first checks its premise, that the tile canvas is over everything in the nodes;
+- with the timing readout on, no readout shares rows with its label.
+
+Broken on purpose, each failed for its reason: against the first build (the label 2.1 px over the header line at 60 %, 6 of the value nodes' probe points under a label); with the clip's stacking lowered (the label under its own node); with the readout's move removed (23 of 23 overlapping).
+
+**Not checked.** The three thresholds, by the owner's eye in the running app (open question 4). The headless lane the spec runs in still has no GPU; the claims about live tiles above come from the look described here, not from a test that reads pixels.
+
+### 8.3 The join reads as one name (B258)
+
+The owner, in the same message: "there seems to be a space after all the prefixes in labels before the underscore".
+
+It was not in the low-zoom label. It was in the header at rest, at working zoom. A name is drawn there as kind, join and role so that a long name can give up its kind first (ruled 2026-10-05), and the kind had a floor of 3.4em so it would not elide past `cam…`. A floor is a minimum width, so a kind NARROWER than 3.4em (37.4 px) was held open to it and the join was drawn after the empty room. Measured on E82, 11 of the 21 names in parts:
+
+| Name | Empty before the `_` |
+| --- | --- |
+| `level_dim` | 11.3 px |
+| `solid_black` | 10.9 px |
+| `layer_fx`, `layer_grid`, `layer_rings` | 9.9 px |
+| `slider_master`, `slider_keystone` | 6.8 px |
+| `noise_source`, `noise_tear` | 6.8 px |
+| `panel_desk` | 6.4 px |
+| `cuelist_set` | 0.3 px |
+
+Kinds of four letters or fewer were already exempt, by a mark that guessed the width from the letter count. `slider` is six letters and 30.5 px.
+
+**Fixed in the stylesheet, at the cause.** The floor is now the smaller of 3.4em and the word itself, which is what `min-width: auto` means on a flex item when its `width` is 3.4em, its basis is its content and it is not a scroll container (`overflow: clip`, not `hidden`). All three are needed and the stylesheet says why. After: 0 of 21, and `panel_desk`, which was drawn `panel _d…`, fits whole.
+
+**Held by** the same spec: every name at rest that is in parts, and every low-zoom label that continues its kind, starts the part after the kind where ONE span of the same text and style would start it, within half a pixel. A second test renames a Transform to a 35-letter name through the real field and checks that the kind still elides to the 3.4em floor and no further. Broken on purpose: against the old floor (`level_dim`, 11.36 px off); with a 3 px margin put on the label's second part (3.02 px off); with the floor's `width` removed (the kind no longer gives way).
+
+**Checked and found clean.** The low-zoom label draws the kind at weight 600 and 112 % width and the rest at 400 and 100 %. The parts are adjacent boxes, 0.00 px apart. The underscore's own left side bearing in Archivo is 0.00 px in both styles, so the change of weight and width opens no air either: what stands between the last letter's ink and the underscore is that letter's own right bearing (0.03 to 0.75 px) less the kind's tracking, the same as in one span. The kind's letter-spacing is negative (−0.01em), so it was never the cause.
+
+**Left as it is.** In a name too long for the header the kind is cut to its floor and ends in dots, and the dots follow the last whole letter, so up to a letter's width of the floor is empty after them: `tran… _the_quic…`. That is how an ellipsis is cut and it was so before. Open question 10.
 
 ## 9. Judgement calls in the kind table
 
@@ -441,6 +522,8 @@ Still open:
 4. **The three thresholds** (70 %, 45 %, 9 %) come from measurements on one example in a headless browser. They want the owner's eye in the running app, over real previews.
 5. **A component whose name has no Latin letter** makes instances of kind `component`. Acceptable, or should a kind take letters of any script, as a role does?
 6. **A family's variant** (`material_floor` on a PBR) is no longer on the canvas chip. Show the chip when a kind is shared and the titles differ?
+7. **A node's status at overview zoom** (8.2). Below 57 % the label's plate lies over the status hairline along the label's width, and at 15 % the hairline is 0.15 px whatever is on it. Should the label carry the status, for example an erroring node's kind in the error colour, so a failing node can be found without zooming in?
+8. **The room after an elided kind's dots** (8.3): `tran… _the_quic…` on a name too long for the header. A fade in place of the dots would close it; the ruling chose dots.
 
 ## 12. TouchDesigner: what was checked and what was not
 

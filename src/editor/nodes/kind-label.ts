@@ -12,12 +12,39 @@ import { roleOf } from "@domain/graph/node-kinds.ts";
  * So below a zoom threshold every node carries one small label, its kind and then the
  * rest of its name, drawn at a size that does not shrink with the canvas.
  *
+ * ## Where it stands: on the line under the header, growing up (B258)
+ *
+ * ONE RULE FOR EVERY NODE: the label never enters what the node shows. Below the header
+ * is a value's readout, a plot, a picture, a Panel's controls; the label stands on the
+ * line between the two and grows UPWARD. It takes the header band, whose name it
+ * replaces, and what does not fit there goes out of the box, into the gutter above.
+ *
+ * The first version grew DOWN from the top edge, inside the node, and the owner saw both
+ * halves of what that does: "value operators get covered by the label while previews
+ * overlap the thing". A value node's readout is DOM right under the header, so the label
+ * lay on it. A live preview is not in the node at all: one canvas over the whole pane
+ * paints every tile (`.previewSurface`), above everything inside any node, so the tile
+ * cut the label off, and at 15 % hid it completely under every live tile. Nothing drawn
+ * in a node can be put on top of a tile, so "always on top" was never available: the
+ * only place a label is neither covering nor covered is where there is no content.
+ *
+ * Room, in the node's own px: the header band is 23 above the hairline the label stands
+ * on, and the layout rule keeps 36 clear above every node (§V389). That is 59 × zoom on
+ * screen and the label is 13.2 px tall, so down to 22.4 % it reaches no other node in ANY
+ * layout that passes the rule. The shipped ones have far more (the tightest stack in E79
+ * has 86 px above a node, in E82 70) and nothing touches at 15 % either: measured, 0 of
+ * 79 and 0 of 23. Below 22.4 %, in a layout packed to the minimum, the top of a label
+ * reaches into the bottom of the node above: at 15 % by 29 of its px (4.4 on screen),
+ * which is that node's port row and under 1 px of what is over it. The label is NOT
+ * shrunk to prevent that. What would fit at 15 % is 7.4 px text, and under 7.7 px is the
+ * size at which the header was judged unreadable and this label was built to replace it.
+ *
  * ## One calm line, and no pile-up, by construction
  *
- * The label lies INSIDE its own node, along the top edge, and is clipped to the node's
- * width. Nodes do not overlap (§V389 gates the shipped ones), so two labels cannot
- * overlap either, at any zoom, with no collision test and nothing to tune. As the node
- * gets narrower on screen the label shows less:
+ * Sideways the label is clipped to its node's WIDTH, so it cannot run over a neighbour
+ * beside it. Upward it has the room above: the same arithmetic keeps two labels apart
+ * down to the same 22.4 %. No collision test, nothing to tune. As the node gets narrower
+ * on screen the label shows less:
  *
  *     zoom >= 0.70          off    the header is readable; nothing is added
  *     0.45 <= zoom < 0.70   name   kernel_joints        kind, then the rest of the name
@@ -34,8 +61,9 @@ import { roleOf } from "@domain/graph/node-kinds.ts";
  *
  * ## No layout cost
  *
- * The label is absolutely positioned and takes no part in the node's box. The node-box
- * model, the layout gate (§V389) and every authored position are unaffected.
+ * The label is absolutely positioned and takes no part in the node's box, inside it or
+ * above it. The node-box model, the layout gate (§V389) and every authored position are
+ * unaffected.
  *
  * ## No React work while the canvas moves, and why the zoom is WRITTEN, not inherited
  *
@@ -106,7 +134,13 @@ export function kindLabelParts(name: string | undefined, kind: string): KindLabe
 }
 
 export interface KindLabelRegistry {
-  /** A label element joins the canvas; the function returned takes it out again. */
+  /**
+   * A label element joins the canvas; the function returned takes it out again.
+   *
+   * B258: the timing readout above a node joins too. The label now rises out of the top
+   * of the node, which is where the readout stands, so it has to be told the same zoom to
+   * move clear by the same amount (`node-timing-overlay.module.css`).
+   */
   register(label: HTMLElement): () => void;
   /** The canvas root the tier attribute is written on, or `null` when the canvas is gone. */
   attach(root: HTMLElement | null): void;
