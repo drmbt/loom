@@ -446,6 +446,17 @@
           "portId": "mesh"
         }
       },
+      "intensity-ease": {
+        "id": "intensity-ease",
+        "source": {
+          "nodeId": "normalize_intensity",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lag_intensity",
+          "portId": "in"
+        }
+      },
       "kick-count": {
         "id": "kick-count",
         "source": {
@@ -487,6 +498,17 @@
         },
         "target": {
           "nodeId": "lag_floor",
+          "portId": "in"
+        }
+      },
+      "loud-intensity": {
+        "id": "loud-intensity",
+        "source": {
+          "nodeId": "lag_loud",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "normalize_intensity",
           "portId": "in"
         }
       },
@@ -1271,7 +1293,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('toggle_perch').chan.perch, (op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * (1 - smoothstep(0.12, 0.3, op('constant_energy').chan.value))))"
+                "source": "max(op('toggle_perch').chan.perch, max((op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * (1 - smoothstep(0.12, 0.3, op('constant_energy').chan.value))), (op('toggle_follow').chan.follow * (op('lag_intensity').chan.level < 0.42) * (fract(sin((floor(op('audiofile_track').chan.bar / 4) + 2) * 12.9898) * 43758.5453) < 0.5)) * (op('constant_energy').chan.value > 0)))"
               },
               "static": {
                 "kind": "static",
@@ -1296,7 +1318,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_speed').chan.speed * (1 - op('constant_perch').chan.value) * (1 + op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * clamp((op('constant_energy').chan.value - 1) * 1.5, -0.5, 0.6))"
+                "source": "op('slider_speed').chan.speed * (1 - op('constant_perch').chan.value) * (1 + op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * clamp((op('constant_energy').chan.value - 1) * 1.5, -0.5, 0.6)) * (1 + (op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0)) * (op('lag_intensity').chan.level - 0.5) * 0.7)"
               },
               "static": {
                 "kind": "static",
@@ -1334,7 +1356,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('slider_swim').chan.swim, (op('toggle_follow').chan.follow * smoothstep(1.5, 2.2, op('constant_lift').chan.value)))"
+                "source": "max(op('slider_swim').chan.swim, max((op('toggle_follow').chan.follow * smoothstep(1.5, 2.2, op('constant_lift').chan.value)), (op('toggle_follow').chan.follow * (fract(sin((floor(op('audiofile_track').chan.bar / 4) + 1) * 12.9898) * 43758.5453) < (op('lag_intensity').chan.level - 0.7) * 2.2))))"
               },
               "static": {
                 "kind": "static",
@@ -2563,6 +2585,20 @@
         },
         "type": "valueLag"
       },
+      "lag_intensity": {
+        "definitionVersion": 1,
+        "id": "lag_intensity",
+        "label": "lag_intensity",
+        "parameters": {
+          "lag": 2,
+          "releaseRatio": 1
+        },
+        "position": {
+          "x": -1800,
+          "y": 850
+        },
+        "type": "valueLag"
+      },
       "lag_levels": {
         "definitionVersion": 1,
         "id": "lag_levels",
@@ -2638,8 +2674,8 @@
         "id": "lag_swim",
         "label": "lag_swim",
         "parameters": {
-          "lag": 0.35,
-          "releaseRatio": 2
+          "lag": 0.8,
+          "releaseRatio": 1.5
         },
         "position": {
           "x": -1200,
@@ -3657,6 +3693,19 @@
           "y": 150
         },
         "type": "meshFileIn"
+      },
+      "normalize_intensity": {
+        "definitionVersion": 1,
+        "id": "normalize_intensity",
+        "label": "normalize_intensity",
+        "parameters": {
+          "window": 60
+        },
+        "position": {
+          "x": -2100,
+          "y": 850
+        },
+        "type": "valueNormalize"
       },
       "normalize_levels": {
         "definitionVersion": 1,

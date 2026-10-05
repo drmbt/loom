@@ -5,7 +5,7 @@ import { nodeGpuHost } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { encodePng } from "../../runtime/export/png.ts";
 import { toRgba8At } from "../../runtime/export/image.ts";
 import { walkTrack } from "../furnace/load-audio.ts";
-import { PACK, sentinelDocument } from "./document.ts";
+import { PACK, sentinelDocument, type SentinelTrack } from "./document.ts";
 import { loadKit } from "./load-kit.ts";
 
 /**
@@ -17,6 +17,8 @@ import { loadKit } from "./load-kit.ts";
  *     [--strip 4,8,0.25]            8 stills from 4 s, 0.25 s apart (a motion strip)
  *     [--clip 2,20]                 an MP4 of 20 s from 2 s in (needs ffmpeg)
  *     [--audio track.wav]           the track the piece hears, muxed into a clip; without it every lane rests
+ *     [--bpm 134 --offset 0 --beats 4]   that track's tempo, when it is not the shipped beat: the camera cuts on its bars
+ *     [--bitrate 14M]               a clip's video bitrate (default 40M: a long clip wants less)
  *     [--set kernel_ring.crawl=0.5,slider_speed.value=6]   parameter overrides by node id
  *     [--cam=-7.5,1.1,0.6]          the chase shot, placed: metres ahead of the robot, right, up
  *     [--robots 3]                  the first N of the pack (document.ts, PACK); default the leader alone
@@ -53,7 +55,9 @@ const overrides = (flag("set") ?? "").split(",").filter((entry) => entry !== "")
 
 const { facts, glb } = loadKit(glbPath, "media/sentinel-bot/sentinel.glb");
 const camera = flag("cam")?.split(",").map(Number);
-const built = sentinelDocument(facts, { width, height, robots: PACK.slice(0, Number(flag("robots") ?? 1)), tier: flag("tier") === "offline" ? "offline" : "live", ...(flag("shadows") === undefined ? {} : { shadows: flag("shadows") === "on" }), ...(flag("claws") === undefined ? {} : { hingedClaws: flag("claws") === "hinged" }) });
+// A track other than the shipped beat brings its own tempo (the file's address does not matter here: a headless render hears --audio).
+const tempo: SentinelTrack | undefined = flag("bpm") === undefined ? undefined : { file: "media/sentinel-bot/track", bpm: Number(flag("bpm")), beatsPerBar: Number(flag("beats") ?? 4), beatOffset: Number(flag("offset") ?? 0) };
+const built = sentinelDocument(facts, { width, height, ...(tempo === undefined ? {} : { track: tempo }), robots: PACK.slice(0, Number(flag("robots") ?? 1)), tier: flag("tier") === "offline" ? "offline" : "live", ...(flag("shadows") === undefined ? {} : { shadows: flag("shadows") === "on" }), ...(flag("claws") === undefined ? {} : { hingedClaws: flag("claws") === "hinged" }) });
 // The camera's place is the panel's: the chase shot held, its distance (metres behind) and its side / height pad.
 if (camera !== undefined) overrides.push({ nodeId: "toggle_cuts", parameter: "on", value: false }, { nodeId: "slider_shot", parameter: "value", value: 0 }, { nodeId: "slider_distance", parameter: "value", value: -(camera[0] ?? 0) }, { nodeId: "xypad_view", parameter: "x", value: camera[1] ?? 0 }, { nodeId: "xypad_view", parameter: "y", value: camera[2] ?? 0 });
 const shot = flag("shot");
@@ -83,7 +87,7 @@ const encoder =
         // The track loops in the document (its clip node's At End is Loop), so it loops under the picture too.
         ...(audioPath === undefined ? [] : ["-stream_loop", "-1", "-ss", String(clipStart / fps), "-i", audioPath]),
         // The hardware encoder: x264 on the CPU competes with the renderer for the cores.
-        "-c:v", "h264_videotoolbox", "-b:v", "40M", "-pix_fmt", "yuv420p", "-profile:v", "high",
+        "-c:v", "h264_videotoolbox", "-b:v", flag("bitrate") ?? "40M", "-pix_fmt", "yuv420p", "-profile:v", "high",
         ...(audioPath === undefined ? [] : ["-c:a", "aac", "-b:a", "256k", "-shortest"]),
         clipPath,
       ], { stdio: ["pipe", "inherit", "inherit"] });

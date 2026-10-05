@@ -5,7 +5,7 @@ import { edge, expressionSlot, graph, node as buildNode, settings } from "../../
 import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from "../../examples/build-showcase-beat.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS } from "./camera.ts";
-import { against, pace, rest, surge } from "./director.ts";
+import { against, pace, phraseDraw, phrasePerch, phraseSwim, rest, stride, surge } from "./director.ts";
 import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
 import { PATH, chamberExpression, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
@@ -34,6 +34,26 @@ import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGS
  * What is NOT here yet: three lamps are all a forward Render affords (§T1589b).
  */
 
+/**
+ * A track: where the app fetches it (a path under public/) and its tempo, which the piece
+ * needs declared, because the camera cuts on its bars and the lights step on its beats.
+ */
+export interface SentinelTrack {
+  readonly file: string;
+  readonly bpm: number;
+  readonly beatsPerBar: number;
+  /** Seconds into the file where beat one falls. */
+  readonly beatOffset: number;
+}
+
+/** The shipped beat: generated in code, so a headless render and a test hear exactly what the app plays. */
+export const SHIPPED_TRACK: SentinelTrack = {
+  file: SHOWCASE_BEAT_FILE,
+  bpm: SHOWCASE_BEAT.bpm,
+  beatsPerBar: SHOWCASE_BEAT.beatsPerBar,
+  beatOffset: Math.round(SHOWCASE_BEAT_OFFSET_SECONDS * 1000) / 1000,
+};
+
 export interface SentinelDocumentOptions {
   readonly width?: number;
   readonly height?: number;
@@ -55,6 +75,8 @@ export interface SentinelDocumentOptions {
    * what bring the shadow and the articulated claw back to the live tier.
    */
   readonly tier?: "live" | "offline";
+  /** The track it plays to. Default: the shipped beat, which is what the committed project and the tests hear. */
+  readonly track?: SentinelTrack;
   /**
    * The two things a tier decides, each on its own, for measuring one without the other. Unset, the tier decides.
    * `shadows`: whether EVERYTHING casts (the wall's ribs and pipes too). Off, the robot's body and tentacles
@@ -153,6 +175,9 @@ const STROKE = "op('speed_stroke').chan.value";
 // What the track is doing (director.ts), and whether the piece is following it.
 const ENERGY = "op('constant_energy').chan.value";
 const LIFT = "op('constant_lift').chan.value";
+// The long view (director.ts): where this passage stands among the last minute's, and which bar the track is in.
+const INTENSITY = "op('lag_intensity').chan.level";
+const BAR = "op('audiofile_track').chan.bar";
 const FOLLOW = on("toggle_follow");
 // How much it swims: one channel every piece's kernel reads (`lag_swim`, below).
 const SWIM = "op('lag_swim').chan.value";
@@ -163,6 +188,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const offline = options.tier === "offline";
   const shadows = options.shadows ?? offline;
   const hingedClaws = options.hingedClaws ?? offline;
+  const track = options.track ?? SHIPPED_TRACK;
   // Perched, it eases to a stop (below) and its head scans the tunnel on two slow counts, so the sweep never repeats on the bar.
   const PERCHED = "op('lag_perched').chan.value";
   const look: Record<string, StoredParameter> = {
@@ -293,10 +319,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const nodes: GraphNode[] = [
     // ── The track, and the lanes the piece listens to ──
     node("audiofile_track", "audioFileIn", [-3600, 600], {
-      file: SHOWCASE_BEAT_FILE, playMode: "timeline", play: true, speed: 1, cue: false, cuePoint: 0,
+      file: track.file, playMode: "timeline", play: true, speed: 1, cue: false, cuePoint: 0,
       trimStart: 0, trimEnd: 0, extend: "loop", volume: 1, monitor: true,
-      tempoMode: "declared", bpm: SHOWCASE_BEAT.bpm, beatsPerBar: SHOWCASE_BEAT.beatsPerBar,
-      beatOffset: Math.round(SHOWCASE_BEAT_OFFSET_SECONDS * 1000) / 1000,
+      tempoMode: "declared", bpm: track.bpm, beatsPerBar: track.beatsPerBar,
+      beatOffset: track.beatOffset,
     }, { label: "audiofile_track" }),
     node("select_levels", "valueSelect", [-3300, 500], { channels: "level low high" }, { label: "select_levels" }),
     node("lag_smooth", "valueLag", [-3000, 500], { lag: 0.02, releaseRatio: 4 }, { label: "lag_smooth" }),
@@ -324,19 +350,22 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // GPU: the rate cannot read how far it has come without the value graph closing a loop,
     // and a loop there is dropped whole.)
     node("constant_rate", "constant", [-2400, 1000], {
-      value: expressionSlot(`${on("slider_speed")} * (1 - op('constant_perch').chan.value) * ${pace(FOLLOW, ENERGY)}`, 3.2),
+      value: expressionSlot(`${on("slider_speed")} * (1 - op('constant_perch').chan.value) * ${pace(FOLLOW, ENERGY)} * ${stride(`(${FOLLOW} * (${ENERGY} > 0))`, INTENSITY)}`, 3.2),
     }, { label: "constant_rate" }),
     node("lag_rate", "valueLag", [-2100, 1000], { lag: 0.25, releaseRatio: 1.6 }, { label: "lag_rate" }),
     // Perch, eased: how perched it is, 0 to 1, for the head and the tentacles it frees.
     // How much it swims: the panel's Swim, or the track coming back in (director.ts). Eased, so
     // letting go of the wall and taking hold again each take a moment.
-    node("constant_swim", "constant", [-1500, 725], { value: expressionSlot(`max(${on("slider_swim")}, ${surge(FOLLOW, LIFT)})`, 0) }, { label: "constant_swim" }),
-    node("lag_swim", "valueLag", [-1200, 725], { lag: 0.35, releaseRatio: 2 }, { label: "lag_swim" }),
-    node("constant_perch", "constant", [-2400, 1125], { value: expressionSlot(`max(${on("toggle_perch")}, ${rest(FOLLOW, ENERGY)})`, 0) }, { label: "constant_perch" }),
+    node("constant_swim", "constant", [-1500, 725], { value: expressionSlot(`max(${on("slider_swim")}, max(${surge(FOLLOW, LIFT)}, ${phraseSwim(FOLLOW, INTENSITY, phraseDraw(BAR, 1))}))`, 0) }, { label: "constant_swim" }),
+    node("lag_swim", "valueLag", [-1200, 725], { lag: 0.8, releaseRatio: 1.5 }, { label: "lag_swim" }),
+    // The long view: the passage's loudness ranked against the last minute's, eased.
+    node("normalize_intensity", "valueNormalize", [-2100, 850], { window: 60 }, { label: "normalize_intensity" }),
+    node("lag_intensity", "valueLag", [-1800, 850], { lag: 2, releaseRatio: 1 }, { label: "lag_intensity" }),
+    node("constant_perch", "constant", [-2400, 1125], { value: expressionSlot(`max(${on("toggle_perch")}, max(${rest(FOLLOW, ENERGY)}, ${phrasePerch(FOLLOW, INTENSITY, phraseDraw(BAR, 2))} * (${ENERGY} > 0)))`, 0) }, { label: "constant_perch" }),
     node("lag_perched", "valueLag", [-2100, 1125], { lag: 0.6, releaseRatio: 1 }, { label: "lag_perched" }),
     node("speed_travel", "valueSpeed", [-1800, 1000], { minimum: 0, maximum: PATH.period, limit: "loop" }, { label: "speed_travel" }),
     // The swimming beat: one stroke per bar of the track.
-    node("constant_stroke", "constant", [-2400, 1250], { value: SHOWCASE_BEAT.bpm / 60 / SHOWCASE_BEAT.beatsPerBar }, { label: "constant_stroke" }),
+    node("constant_stroke", "constant", [-2400, 1250], { value: track.bpm / 60 / track.beatsPerBar }, { label: "constant_stroke" }),
     node("speed_stroke", "valueSpeed", [-2100, 1250], { minimum: 0, maximum: 1, limit: "loop" }, { label: "speed_stroke" }),
 
     // ── The robot: for each piece a mesh of the kit, the rig's points of that piece, and the draw (T1581b) ──
@@ -356,7 +385,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       snare: expressionSlot(SNARE, 0),
       hat: expressionSlot(HAT, 0),
       eyeSweep: expressionSlot(on("slider_eyesweep"), 0.25),
-      sweepPhase: expressionSlot(`${STROKE} * ${SHOWCASE_BEAT.beatsPerBar}`, 0),
+      sweepPhase: expressionSlot(`${STROKE} * ${track.beatsPerBar}`, 0),
       // What the steel has to reflect (tunnel.ts): the lamps round the robot, each where its light would hang.
       // They breathe as the lights do.
       ...Object.fromEntries(mirrored.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp.position[axis]]))),
@@ -383,7 +412,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       pulse: expressionSlot("op('count_kick').chan.kickCountSince", 100),
       meter: expressionSlot(`${on("slider_meter")} * ${LOW}`, 0),
       chase: expressionSlot(`${on("slider_chase")} * (0.1 + ${HIGH} * 0.9)`, 0.05),
-      chasePhase: expressionSlot(`${STROKE} * ${SHOWCASE_BEAT.beatsPerBar}`, 0),
+      chasePhase: expressionSlot(`${STROKE} * ${track.beatsPerBar}`, 0),
       spark: expressionSlot(`${on("slider_spark")} * ${HAT}`, 0),
       ...swimming,
       stride: expressionSlot(on("slider_stride"), 3.2),
@@ -535,6 +564,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("loud-lag", ["select_loud", "out"], ["lag_loud", "in"]),
     edge("loud-usual", ["lag_loud", "out"], ["lag_usual", "in"]),
     edge("loud-floor", ["lag_loud", "out"], ["lag_floor", "in"]),
+    edge("loud-intensity", ["lag_loud", "out"], ["normalize_intensity", "in"]),
+    edge("intensity-ease", ["normalize_intensity", "out"], ["lag_intensity", "in"]),
     edge("swim-ease", ["constant_swim", "out"], ["lag_swim", "in"]),
     edge("clip-kick", ["audiofile_track", "out"], ["select_kick", "in"]),
     edge("kick-count", ["select_kick", "out"], ["count_kick", "in"]),

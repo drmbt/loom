@@ -94,3 +94,5 @@ public/media/on-nothing/
 public/media/sentinel-bot/
 # T1561b: the owner's reference stills (film frames, a third-party model's render); not ours to distribute
 projects/sentinel-bot/inspo/
+# T1561b: the sentinel built to a track of somebody's own (build.ts --track --out); the committed project plays the shipped beat
+projects/sentinel-bot/local/
