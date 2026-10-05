@@ -1574,41 +1574,27 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
               ? active.resources.buffers.get(pass.instances.indirect)
               : undefined;
           const span = spanFor(pass.id);
-          if (indirect) {
-            // Indirect counts come from the GPU-written args buffer through the draw's
-            // OWN pass — `Draw.draw()` builds and submits its own command buffer, so it
-            // never reaches `f.pass` and still has no clear knob (T180 note).
-            // T1247: it does now carry a GPU span, billed to the open frame like a
-            // dispatch's — a GPU-driven draw of a million points was invisible to both
-            // the per-pass column and the frame extent for exactly the same reason a
-            // kernel was.
-            timed(pass.id, () =>
-              drawable.draw({
+          // Every draw encodes through f.pass, which is what gives it a clear knob (T180 —
+          // clear:false is the trails pattern), a GPU timer span (T181 — span name = pass
+          // id, like effects) and ITS PLACE IN THE FRAME.
+          //
+          // An INDIRECT draw (the GPU reads the counts from the args buffer) used to go
+          // through `Draw.draw()`, which builds and submits its own command buffer and
+          // clears its target. So a counted geometry in a Render erased the backdrop and
+          // every geometry before it on the direct path, and on the loop path ran ahead of
+          // the frame's own passes and was erased by them. vgpu's pass takes the same
+          // `indirect` option, so it is one pass of the frame like any other draw: plan
+          // order, the pass's own clear, the frame's submit. Gate: indirect-draw-order.gpu.test.ts.
+          timed(pass.id, () =>
+            f.pass(
+              {
                 target: resolve(),
-                indirect,
-                ...(span === undefined ? {} : { timer: span, frame: f }),
-              }),
-            );
-            // Indirect draws submit immediately; a later preprocess reads this render.
-            if (dispatchGates.size > 0) active.textureFrames.set(pass.target, {
-              renderIndex: framesSubmitted + 1, frameIndex: input.frameIndex,
-              timeSeconds: absTimeSecondsOf(input),
-            });
-          } else {
-            // Literal draws encode through f.pass, which is what gives them a clear
-            // knob (T180 - clear:false is the trails pattern) and a GPU timer span
-            // (T181 - span name = pass id, like effects).
-            timed(pass.id, () =>
-              f.pass(
-                {
-                  target: resolve(),
-                  clear: pass.clear ?? true,
-                  ...(span === undefined ? {} : { timer: span }),
-                },
-                drawable,
-              ),
-            );
-          }
+                clear: pass.clear ?? true,
+                ...(span === undefined ? {} : { timer: span }),
+              },
+              indirect === undefined ? drawable : (encoder) => encoder.draw(drawable, { indirect }),
+            ),
+          );
           continue;
         }
         // counter is reserved for the scan/compact convenience ops; the lifecycle
