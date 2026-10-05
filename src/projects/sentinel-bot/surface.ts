@@ -17,15 +17,20 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   if (role > 0.9) {
     // A lens: black glass over a lamp, brightest where it faces the viewer.
     let facing = max(dot(normalize(s.eye - s.world), s.normal), 0.0);
+    // Each lens has a nerve of its own: the eyes are a hand's breadth apart in the robot's frame, so a coarse cell of it names one.
+    let lens = floor(s.local * 7.0);
+    let nerve = fract(sin(dot(lens, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);
+    let life = 0.8 + 0.2 * sin(s.absTime * (1.5 + nerve * 4.0) + nerve * 40.0);
     o.albedo = vec4f(0.01, 0.0, 0.0, 1.0);
     o.roughness = 0.08;
     o.metallic = 0.0;
-    o.emissive = p.eyeColor * p.eyeGlow * (0.35 + 0.65 * facing * facing);
+    o.emissive = p.eyeColor * p.eyeGlow * (0.35 + 0.65 * facing * facing) * life;
   } else if (role > 0.7) {
     o.albedo = vec4f(0.12, 0.004, 0.003, 1.0);
     o.roughness = 0.45;
     o.metallic = 0.0;
-    o.emissive = p.eyeColor * p.coreGlow;
+    // The draw's tint alpha is how hard this piece's core is driven (rig.ts): a pulse running down a tentacle.
+    o.emissive = p.eyeColor * p.coreGlow * s.tint.a;
   } else if (role > 0.5) {
     o.albedo = vec4f(0.22, 0.012, 0.01, 1.0);
     o.roughness = 0.38;

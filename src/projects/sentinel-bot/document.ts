@@ -186,6 +186,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         shape: "mesh",
         material: "hull1",
         orient: map("orient", [0, 0, 0, 1]),
+        // The rig's tint: its alpha drives the piece's red core (a pulse down the tentacle).
+        tint: map("tint", [1, 1, 1, 1]),
         // A ring still stowed in the body is not drawn.
         group: "p.kind > -0.5",
       }, { label: `geometry_${piece.role}` }),
@@ -229,6 +231,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("levels", "valueLag", [-2400, 500], { lag: 0.03, releaseRatio: 5 }, { label: "levels1" }),
     node("pickHits", "valueSelect", [-3300, 750], { channels: "kickCount snareCount hatCount" }, { label: "pickhits1" }),
     node("hits", "valueLag", [-3000, 750], { lag: 0.001, releaseRatio: 250 }, { label: "hits1" }),
+    // Seconds since the last kick: what times a pulse down the tentacles.
+    node("select_kick", "valueSelect", [-3300, 900], { channels: "kickCount" }, { label: "select_kick" }),
+    node("count_kick", "valueCount", [-3000, 900], { threshold: 0.5, holdoff: 0.1 }, { label: "count_kick" }),
 
     // ── How far it has come: a rate, eased, integrated, wrapping where the path does ──
     // Perch stops it; a kick shoves it. (The lunge of a swimming stroke is the rig's own, on the
@@ -262,6 +267,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       gesture: expressionSlot(`${on("slider_gesture")} * (0.5 + 0.5 * ${PERCHED}) * (0.7 + ${LOW} * 0.6)`, 0.3),
       // A hat clacks the idle claws.
       snap: expressionSlot(HAT, 0),
+      // Every kick sends a pulse down the cores.
+      pulse: expressionSlot("op('count_kick').chan.kickCountSince", 100),
+      pulseGlow: expressionSlot(`10 * ${LISTEN}`, 10),
       ...swimming,
       stride: expressionSlot(on("stride"), 3.2),
       flare: expressionSlot(on("flare"), 0.25),
@@ -350,6 +358,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("rank-levels", ["rank", "out"], ["levels", "in"]),
     edge("clip-hits", ["clip", "out"], ["pickHits", "in"]),
     edge("hits-lag", ["pickHits", "out"], ["hits", "in"]),
+    edge("clip-kick", ["clip", "out"], ["select_kick", "in"]),
+    edge("kick-count", ["select_kick", "out"], ["count_kick", "in"]),
     edge("rate-ease", ["rate", "out"], ["ease", "in"]),
     edge("ease-travel", ["ease", "out"], ["travel", "in"]),
     edge("perch-ease", ["constant_perch", "out"], ["lag_perched", "in"]),
