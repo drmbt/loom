@@ -276,6 +276,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       source: HULL_SURFACE_WGSL,
       // The eyes flicker with the hats and swell with the top of the track.
       eyeGlow: expressionSlot(`${on("glow")} * (0.75 + ${HIGH} * 0.6 + ${HAT} * 0.9)`, 9),
+      // How bright a kick's pulse is as it runs down the cores (the rig says where it is).
+      pulseGlow: expressionSlot(`3 * ${LISTEN}`, 3),
     }, { label: "hull1" }),
 
     ...pieceNodes({
@@ -288,7 +290,6 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       snap: expressionSlot(HAT, 0),
       // Every kick sends a pulse down the cores.
       pulse: expressionSlot("op('count_kick').chan.kickCountSince", 100),
-      pulseGlow: expressionSlot(`10 * ${LISTEN}`, 10),
       ...swimming,
       stride: expressionSlot(on("stride"), 3.2),
       flare: expressionSlot(on("flare"), 0.25),

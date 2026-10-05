@@ -8,12 +8,13 @@ export const HULL_SURFACE_WGSL = `struct Params {
   gloss: f32, // @default 0.16  Roughness of the black shell: lower is wetter.
   eyeGlow: f32, // @default 9  Radiance of the eye lenses.
   eyeColor: vec3f, // @default [1, 0.06, 0.03]  Their colour.
-  coreGlow: f32, // @default 0.4  Radiance of the red cores: a dull glow between the rings, not a neon tube.
+  coreGlow: f32, // @default 0.02  Radiance of a red core at rest: an ember, so a tentacle in the dark is still there.
+  pulseGlow: f32, // @default 3  Radiance of a core under the crest of a pulse.
 };
 
 // What each drawn piece brings of its own: the rig's point attribute of the same name (rig.ts).
 struct Instance {
-  glow: f32, // @default 1  How hard this piece's core is driven: a pulse running down a tentacle.
+  charge: f32, // @default 0  How much of a pulse is on this piece: 0 at rest, 1 under a fresh crest.
 };
 
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
@@ -31,10 +32,12 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
     o.metallic = 0.0;
     o.emissive = p.eyeColor * p.eyeGlow * (0.35 + 0.65 * facing * facing) * life;
   } else if (role > 0.7) {
-    o.albedo = vec4f(0.12, 0.004, 0.003, 1.0);
-    o.roughness = 0.45;
-    o.metallic = 0.0;
-    o.emissive = p.eyeColor * p.coreGlow * s.instance.glow;
+    // The spine between the rings: red mirror, as the reference has it. In the dark it is dark, and red only
+    // where a lamp finds it or a pulse is passing.
+    o.albedo = vec4f(0.55, 0.012, 0.008, 1.0);
+    o.roughness = 0.2;
+    o.metallic = 1.0;
+    o.emissive = p.eyeColor * (p.coreGlow + p.pulseGlow * s.instance.charge);
   } else if (role > 0.5) {
     o.albedo = vec4f(0.22, 0.012, 0.01, 1.0);
     o.roughness = 0.38;

@@ -84,8 +84,9 @@ const CLAW_REACH = 0.19;
 export const JOINT_ATTRIBUTES = JSON.stringify([
   { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
   { name: "orient", type: "vec4f", qualifier: "quaternion", default: [0, 0, 0, 1] },
-  // How brightly the piece's red core glows, 1 at rest: the material's instance field of the same name reads it (surface.ts).
-  { name: "glow", type: "f32", default: [1] },
+  // How much of a pulse is on the piece: 0 at rest, 1 under a crest that has just left the body. The material's
+  // instance field of the same name reads it and says how bright that is (surface.ts).
+  { name: "charge", type: "f32", default: [0] },
   // What the point is (KIND): what a draw's Group picks its points by.
   { name: "kind", type: "f32", default: [-1] },
   // Metres between the claw's mouth and where the gait wants it; zero while its rung is in reach.
@@ -192,7 +193,6 @@ ${PLACE_PARAMS}
   gesture: f32, // @default 0  What a tentacle with no rung to hold does: 0 trails behind, 1 reaches out and feels about.
   snap: f32, // @default 0  Shuts the claws of the tentacles that hold nothing: 0 open, 1 shut. A hat on it and they clack.
   pulse: f32, // @default 100  Seconds since the last pulse left the body: it runs down every tentacle's core and fades. Drive it from a kick.
-  pulseGlow: f32, // @default 6  How much brighter than rest a core is at the crest of a pulse.
 };
 ${ROBOT_FRAME}
 const ROBOTS: u32 = ${robots.length}u;
@@ -294,7 +294,7 @@ fn plant(tentacle: u32, step: f32, stride: f32, bodyZ: f32, own: f32, seed: u32,
 fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
   q.slip = 0.0;
-  q.glow = 1.0;
+  q.charge = 0.0;
   let robot = ctx.index / ROBOT_POINTS;
   if (robot >= ROBOTS) {
     q.kind = -1.0;
@@ -401,7 +401,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let frame = quatFromFrame(-binormal, normal, tangent);
   // A pulse leaves the body and runs to the claw at 9 metres a second, a hand's width long, fading as it goes.
   let crest = d - 9.0 * params.pulse;
-  q.glow = 1.0 + params.pulseGlow * exp(-crest * crest / 0.12) * exp(-params.pulse * 1.2);
+  q.charge = exp(-crest * crest / 0.12) * exp(-params.pulse * 1.2);
   // How far the claw's mouth is from where the gait wants it: zero while its rung is in reach.
   let mouth = along(bend, run);
   q.slip = grab * distance(root + out * mouth.x + plane * mouth.y, walking);

@@ -45,8 +45,8 @@ interface Walk {
   /** A joint's place; undefined while it is stowed in the body. */
   at(instant: number, tentacle: number, station: number): Vec | undefined;
   slip(instant: number, tentacle: number, station: number): number;
-  /** How hard the joint's core is driven, 1 at rest. */
-  glow(instant: number, tentacle: number, station: number): number;
+  /** How much of a pulse is on the joint: 0 at rest. */
+  charge(instant: number, tentacle: number, station: number): number;
 }
 
 async function walk(instants: number, parameters: Record<string, number | number[]> = {}): Promise<Walk> {
@@ -84,7 +84,7 @@ async function walk(instants: number, parameters: Record<string, number | number
   const position = read("position");
   const kind = read("kind");
   const slip = read("slip");
-  const glow = read("glow");
+  const charge = read("charge");
   const slot = (instant: number, tentacle: number, station: number): number => instant * PER_ROBOT + tentacle * STATIONS + station;
   return {
     instants,
@@ -96,7 +96,7 @@ async function walk(instants: number, parameters: Record<string, number | number
       return [position.floats[base] as number, position.floats[base + 1] as number, position.floats[base + 2] as number];
     },
     slip: (instant, tentacle, station) => slip.floats[slot(instant, tentacle, station) * slip.stride] as number,
-    glow: (instant, tentacle, station) => glow.floats[slot(instant, tentacle, station) * glow.stride] as number,
+    charge: (instant, tentacle, station) => charge.floats[slot(instant, tentacle, station) * charge.stride] as number,
   };
 }
 
@@ -289,16 +289,16 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     // 0.2 s after a kick the crest is 9 m/s × 0.2 s = 1.8 m along: ring 30 at a 0.06 m pitch.
     const SINCE = 0.2;
     const reached = Math.round((9 * SINCE) / FACTS.ringPitch);
-    const lit = await walk(1, { crawl: 0, pulse: SINCE, pulseGlow: 6 });
-    const rest = await walk(1, { crawl: 0, pulse: 100, pulseGlow: 6 });
+    const lit = await walk(1, { crawl: 0, pulse: SINCE });
+    const rest = await walk(1, { crawl: 0, pulse: 100 });
     for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) {
-      const glows = Array.from({ length: FACTS.ringCount }, (_, ring) => lit.glow(0, tentacle, ring));
-      expect(glows.indexOf(Math.max(...glows))).toBe(reached);
-      // At the crest: 1 + 6 × e^(−1.2 × 0.2), the fade it has had so far. Three rings either side it is back near rest.
-      expect(Math.abs((glows[reached] as number) - (1 + 6 * Math.exp(-1.2 * SINCE)))).toBeLessThan(1e-3);
-      expect(glows[0] as number).toBeLessThan(1.001);
-      // Cut the pulse and every core sits at exactly 1: the material's multiply leaves the kit's own glow alone.
-      for (let ring = 0; ring < FACTS.ringCount; ring += 1) expect(rest.glow(0, tentacle, ring)).toBe(1);
+      const charges = Array.from({ length: FACTS.ringCount }, (_, ring) => lit.charge(0, tentacle, ring));
+      expect(charges.indexOf(Math.max(...charges))).toBe(reached);
+      // At the crest: e^(−1.2 × 0.2), the fade it has had so far. At the socket, 1.8 m behind it, nothing.
+      expect(Math.abs((charges[reached] as number) - Math.exp(-1.2 * SINCE))).toBeLessThan(1e-3);
+      expect(charges[0] as number).toBeLessThan(0.001);
+      // Cut the pulse and every core carries exactly none: the material adds nothing to the ember.
+      for (let ring = 0; ring < FACTS.ringCount; ring += 1) expect(rest.charge(0, tentacle, ring)).toBe(0);
     }
   }, 120_000);
 
