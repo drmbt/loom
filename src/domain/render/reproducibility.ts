@@ -302,6 +302,10 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   // a multiplication, never a running sum — and binary-searches its strip. Every output
   // word is written by exactly one invocation. No clock, no RNG, no state.
   pointResample: "pure",
+  // T1587b. PURE: one thread per VERTEX of the swept grid, each from one path point and one
+  // profile point of its own, so no vertex depends on another and there is no order to
+  // keep. Every output word is written by exactly one invocation. No clock, no RNG, no state.
+  pointSweep: "pure",
   // T947. PURE, and the frame clock is the reason that needs saying: the scan-window
   // cursor reads the SHARED FRAME TIME (timeSeconds/deltaSeconds through the T172
   // uniform merge), which is timeline state, not a wall clock — the same frame inputs

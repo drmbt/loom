@@ -250,9 +250,18 @@ export function minimalGraphFor(
        catalogue's producer of an adjacency is Proximity, over a grid. */
     const wantsAdjacency =
       port.type.kind === "pointset" && (port.type.requires ?? []).some((entry) => entry.name === "neighbor");
+    /* T1587b: a Sweep's Path asks for ONE strip that carries a frame, and says so only in
+       its refusals: a port's `requires` is matched against what the producer's port
+       DECLARES, and Curve Frames declares no `orient` because a switch decides it. So the
+       stand-in is named here: a one-row grid behind a Curve Frames. */
+    const wantsFramedPath = definition.type === "pointSweep" && port.id === "points";
     if (wantsAdjacency) {
       nodes[`${feedId}src`] = mk(`${feedId}src`, "pointGrid");
       nodes[feedId] = mk(feedId, "pointProximity", { neighbors: 2, radius: 1 });
+      edges[`${feedId}link`] = mkEdge(`${feedId}link`, [`${feedId}src`, "out"], [feedId, "points"]);
+    } else if (wantsFramedPath) {
+      nodes[`${feedId}src`] = mk(`${feedId}src`, "pointGrid", { cols: 8, rows: 1, count: 8 });
+      nodes[feedId] = mk(feedId, "pointCurveFrames");
       edges[`${feedId}link`] = mkEdge(`${feedId}link`, [`${feedId}src`, "out"], [feedId, "points"]);
     } else if (port.type.kind === "value") {
       // T1512b: the Panel's `controls` input takes VALUE wires (widget nodes). A checker

@@ -81,8 +81,20 @@ export function drawnTo(source: string, count: number): { nodes: GraphNode[]; ed
   };
 }
 
-export const compileCurveGraph = (graph: GraphDocument, size = SIZE) =>
-  compileGraph({ graph, settings: settingsAt(size), registry: CURVE_TEST_REGISTRY, capabilities: CAPABILITIES });
+/** An output the graph does not wire on: a Render's Normal or Depth, read as the editor's preview would. */
+export interface ReadPort {
+  readonly nodeId: string;
+  readonly portId: string;
+}
+
+export const compileCurveGraph = (graph: GraphDocument, size = SIZE, ports: ReadonlyArray<ReadPort> = []) =>
+  compileGraph({
+    graph,
+    settings: settingsAt(size),
+    registry: CURVE_TEST_REGISTRY,
+    capabilities: CAPABILITIES,
+    ...(ports.length === 0 ? {} : { sinks: ports.map((port) => ({ ...port, kind: "preview" as const })) }),
+  });
 
 const literal = (value: number): string => (Number.isInteger(value) ? `${value}.0` : String(value));
 const vec = (values: readonly number[]): string => `vec${values.length}f(${values.map(literal).join(", ")})`;
@@ -183,6 +195,8 @@ export interface CurveSession {
   /** One of a node's scratch buffers, whole, as f32 words — for the few tests that hold a pass's intermediate. */
   readScratch(nodeId: string, key: string): Promise<Float32Array>;
   readOutput(): Promise<{ bytes: Uint8Array; width: number; height: number; rowStride: number }>;
+  /** One of the ports the session was opened with (`ports`), by node and port. */
+  readPort(nodeId: string, portId: string): Promise<{ bytes: Uint8Array; width: number; height: number; rowStride: number }>;
 }
 
 /**
@@ -196,10 +210,11 @@ export async function onDawn<T>(
   body: (session: CurveSession) => Promise<T>,
   size = SIZE,
   firstFrame = 0,
+  ports: ReadonlyArray<ReadPort> = [],
 ): Promise<T> {
   const probe = await probeDawn();
   if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
-  const plan = compileCurveGraph(graph, size);
+  const plan = compileCurveGraph(graph, size, ports);
   const refused = plan.diagnostics.filter((entry) => entry.severity === "error").map((entry) => entry.message);
   if (refused.length > 0) throw new Error(`the graph did not compile: ${refused.join(" | ")}`);
   const backend = createVgpuBackend({ host: nodeGpuHost() });
@@ -229,6 +244,13 @@ export async function onDawn<T>(
       readOutput: async () => {
         const frame = plan.outputs.find((output) => output.nodeId === "output_probe") ?? plan.outputs[0];
         return backend.readOutput(frame?.resourceId ?? "");
+      },
+      readPort: async (nodeId, portId) => {
+        const port = plan.outputs.find((output) => output.nodeId === nodeId && output.portId === portId);
+        if (port === undefined) {
+          throw new Error(`no output for ${nodeId}:${portId}; the plan has ${plan.outputs.map((output) => `${output.nodeId}:${output.portId}`).join(", ")}`);
+        }
+        return backend.readOutput(port.resourceId);
       },
     });
   } finally {
