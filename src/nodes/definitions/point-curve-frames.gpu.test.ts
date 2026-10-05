@@ -7,11 +7,14 @@ import {
   curveGraph,
   curveNode,
   drawnTo,
+  formulaPoints,
   mappedTo,
   onDawn,
   vecAt,
   type AuthoredAttribute,
+  type CurveSession,
 } from "./curve-test-support.ts";
+import { curveFramesHandedAt } from "../shaders/curve-frames-blocked.wgsl.ts";
 import { curveFramesAttributes } from "./point-curve-frames.ts";
 
 /**
@@ -45,6 +48,8 @@ const UP_Y: Vec3 = [0, 1, 0];
 const H = Math.SQRT1_2;
 
 interface Measured {
+  /** The points that were measured, as the device holds them. */
+  readonly position: Vec3[];
   readonly tangent: number[][];
   readonly normal: number[][];
   readonly binormal: number[][];
@@ -55,17 +60,13 @@ interface Measured {
   readonly curvature: number[];
 }
 
-/** authored points → Topology (Strips) → Curve Frames, every output on; one frame on Dawn. */
-async function measure(
-  positions: ReadonlyArray<Vec3>,
-  strips: { readonly cols: number; readonly rows: number; readonly closed?: boolean },
-  parameters: Record<string, unknown> = {},
-  extras: ReadonlyArray<AuthoredAttribute> = [],
-): Promise<Measured> {
-  const count = positions.length;
-  const source = authoredPoints("kernel_source", positions, extras);
+type Strips = { readonly cols: number; readonly rows: number; readonly closed?: boolean };
+type Source = ReturnType<typeof authoredPoints>;
+
+/** source → Topology (Strips) → Curve Frames, every output on. */
+function framesGraph(source: Source, count: number, strips: Strips, parameters: Record<string, unknown>) {
   const sink = drawnTo("frames_spine", count);
-  const graph = curveGraph(
+  return curveGraph(
     [
       source.node,
       curveNode("topology_strips", "pointTopology", { connectivity: "strips", cols: strips.cols, rows: strips.rows, wrapU: strips.closed === true }),
@@ -74,25 +75,41 @@ async function measure(
     ],
     [curveEdge(["kernel_source", "out"], ["topology_strips", "points"]), curveEdge(["topology_strips", "out"], ["frames_spine", "points"]), ...sink.edges],
   );
-  const schema = curveFramesAttributes(ALL);
-  return onDawn(graph, async (session) => {
-    const read = async (name: string) => (await session.read("frames_spine", schema, count, name)).floats;
-    const vectors = async (name: string, size: 3 | 4 = 3) => {
-      const floats = await read(name);
-      return Array.from({ length: count }, (_, index) => vecAt(floats, index, size));
-    };
-    return {
-      tangent: await vectors("tangent"),
-      normal: await vectors("normal"),
-      binormal: await vectors("binormal"),
-      orient: await vectors("orient", 4),
-      distance: Array.from(await read("distance")),
-      curveU: Array.from(await read("curveU")),
-      curveLength: Array.from(await read("curveLength")),
-      curvature: Array.from(await read("curvature")),
-    };
-  });
 }
+
+/** Everything Curve Frames wrote, and the points it measured, off a rendered session. */
+async function readMeasured(session: CurveSession, source: Source, count: number): Promise<Measured> {
+  const schema = curveFramesAttributes(ALL);
+  const read = async (name: string) => (await session.read("frames_spine", schema, count, name)).floats;
+  const vectors = async (name: string, size: 3 | 4 = 3) => {
+    const floats = await read(name);
+    return Array.from({ length: count }, (_, index) => vecAt(floats, index, size));
+  };
+  const positions = (await session.read("kernel_source", source.schema, count, "position")).floats;
+  return {
+    position: Array.from({ length: count }, (_, index) => vecAt(positions, index) as unknown as Vec3),
+    tangent: await vectors("tangent"),
+    normal: await vectors("normal"),
+    binormal: await vectors("binormal"),
+    orient: await vectors("orient", 4),
+    distance: Array.from(await read("distance")),
+    curveU: Array.from(await read("curveU")),
+    curveLength: Array.from(await read("curveLength")),
+    curvature: Array.from(await read("curvature")),
+  };
+}
+
+/** One frame on Dawn of `source` measured as `strips`. */
+const measureFrom = (source: Source, count: number, strips: Strips, parameters: Record<string, unknown> = {}): Promise<Measured> =>
+  onDawn(framesGraph(source, count, strips, parameters), (session) => readMeasured(session, source, count));
+
+/** authored points → Topology (Strips) → Curve Frames, every output on; one frame on Dawn. */
+const measure = (
+  positions: ReadonlyArray<Vec3>,
+  strips: Strips,
+  parameters: Record<string, unknown> = {},
+  extras: ReadonlyArray<AuthoredAttribute> = [],
+): Promise<Measured> => measureFrom(authoredPoints("kernel_source", positions, extras), positions.length, strips, parameters);
 
 const close = (actual: readonly number[], expected: readonly number[], what: string, digits = 5): void => {
   expected.forEach((value, at) => expect(actual[at], `${what}, component ${at} of [${actual.join(", ")}]`).toBeCloseTo(value, digits));
@@ -471,4 +488,419 @@ describe("Curve Frames on Dawn — orient reaches an instanced draw (T1586b 5.1)
     // A 0.4 quad at 5 to 7 units through a 40° lens on 64 pixels is some 6 pixels across.
     expect(turned).toBeGreaterThan(20);
   }, 60_000);
+});
+
+/**
+ * T1586b slice 6 — STRIPS LONGER THAN ONE BLOCK.
+ *
+ * A strip of more than 1,024 points is cut into blocks and walked by many invocations at
+ * once (`nodes/shaders/curve-frames-blocked.wgsl.ts`). Every test here crosses a seam, and
+ * the evidence is of the same three kinds as above:
+ *
+ *  1. EXACT values on fixtures whose numbers are exact in f32, seams included — a straight
+ *     line, a polygon in a plane. A block's start is added to a distance and a block's turn
+ *     is applied to a normal; on these fixtures neither rounds, so a wrong start or a wrong
+ *     turn has nowhere to hide;
+ *  2. CLOSED FORMS that owe nothing to the implementation — a helix's lag per point, the
+ *     turn a closed curve comes back with — on curves that wind for thousands of points;
+ *  3. the CPU reference in its blocked order, on curves with no symmetry, with padding laid
+ *     across the seams. The points are placed on the device by a formula (too many to
+ *     author one by one), so they are read BACK and the reference is run on those.
+ *
+ * And one that only a long strip can have: the points of its first block read back the
+ * BYTES they read when those points are a short strip of their own, because a block is
+ * walked from the state the whole walk would have arrived with.
+ *
+ * Reference comparisons here are at four digits where the short strips' are at five: a
+ * frame at point 3,000 is the product of three thousand single-precision turns.
+ */
+describe("Curve Frames on Dawn — strips longer than one block (T1586b slice 6)", () => {
+  const METHODS = ["minimiseTwist", "fixedUp"] as const;
+  type Expected = ReturnType<typeof frameStrip>;
+
+  /** One strip of the device's frames against the reference's, attribute by attribute. */
+  const agree = (m: Measured, expected: Expected, first: number, what: string, digits = 4): void => {
+    expected.tangent.forEach((_, i) => {
+      const slot = first + i;
+      const at = `${what}, point ${i}`;
+      close(m.tangent[slot]!, expected.tangent[i]!, `${at} tangent`, digits);
+      close(m.normal[slot]!, expected.normal[i]!, `${at} normal`, digits);
+      close(m.binormal[slot]!, expected.binormal[i]!, `${at} binormal`, digits);
+      // One rotation has two quaternions; either is the frame.
+      expect(Math.abs(m.orient[slot]!.reduce((sum, value, axis) => sum + value * expected.orient[i]![axis]!, 0)), `${at} orient`).toBeCloseTo(1, digits);
+      expect(m.distance[slot]! / Math.max(expected.distance[i]!, 1), `${at} distance`).toBeCloseTo(expected.distance[i]! / Math.max(expected.distance[i]!, 1), digits);
+      expect(m.curveU[slot], `${at} curveU`).toBeCloseTo(expected.curveU[i]!, digits);
+      expect(m.curvature[slot], `${at} curvature`).toBeCloseTo(expected.curvature[i]!, digits - 1);
+    });
+    expect(m.curveLength[first]! / expected.curveLength, `${what} length`).toBeCloseTo(1, digits);
+  };
+
+  /**
+   * Half-unit steps along +X for 2,500 points: three blocks, the last one short. Every
+   * distance is a multiple of a half below 2²⁴, so a block's sum, a block's start and
+   * their sum are all exact — and so is a frame that never turns.
+   */
+  it("a straight line of 2,500 points: distance k × 0.5 and an unturned frame, exactly, across both seams", async () => {
+    const line = formulaPoints("kernel_source", 2500, "  q.position = vec3f(f32(i) * 0.5, 0.0, 0.0);");
+    for (const method of METHODS) {
+      const m = await measureFrom(line, 2500, { cols: 2500, rows: 1 }, { method });
+      expect(m.distance, method).toEqual(Array.from({ length: 2500 }, (_, k) => k * 0.5));
+      expect(m.tangent, method).toEqual(Array.from({ length: 2500 }, () => [1, 0, 0]));
+      expect(m.normal, method).toEqual(Array.from({ length: 2500 }, () => [0, 1, 0]));
+      expect(m.binormal, method).toEqual(Array.from({ length: 2500 }, () => [0, 0, 1]));
+      expect(m.curvature, method).toEqual(Array.from({ length: 2500 }, () => 0));
+      expect(m.curveLength, method).toEqual(Array.from({ length: 2500 }, () => 1249.5));
+      expect(m.curveU[0]).toBe(0);
+      expect(m.curveU[2499]).toBe(1);
+      expect(m.curveU[1024]).toBeCloseTo(512 / 1249.5, 6);
+    }
+  }, 120_000);
+
+  /**
+   * Sixteen blocks, and a strip a Topology node could not claim before this slice: its
+   * Columns stopped at 4,096, and the compiler refused a larger number by name — so a
+   * kernel's strip of 16,384 points could not become a curve at all. The limit on a claim
+   * is the points the edge carries, which the node already checks.
+   */
+  it("a kernel's strip of 16,384 points is claimed whole and measured to its last point", async () => {
+    const line = formulaPoints("kernel_source", 16_384, "  q.position = vec3f(f32(i) * 0.5, 0.0, 0.0);");
+    const m = await measureFrom(line, 16_384, { cols: 16_384, rows: 1 });
+    expect(m.distance).toEqual(Array.from({ length: 16_384 }, (_, k) => k * 0.5));
+    expect(m.curveLength[16_383]).toBe(8191.5);
+    expect(m.tangent[16_383]).toEqual([1, 0, 0]);
+    expect(m.normal[16_383]).toEqual([0, 1, 0]);
+    expect(m.curveU[16_383]).toBe(1);
+  }, 120_000);
+
+  /**
+   * A regular twelve-gon of radius 2, traced two hundred times: 2,400 points, closed. It is
+   * the planar case above with seams in it — every rotation's axis is the plane's own
+   * normal, so the normal is (0, 0, 1) to the bit at every point of every block, the lap
+   * closes with nothing to spread, and every corner sits on a circle of radius 2.
+   */
+  it("a twelve-gon traced 200 times, closed: the normal exact at all 2,400 points, the curvature one half", async () => {
+    const polygon = formulaPoints(
+      "kernel_source",
+      2400,
+      "  let a = f32(i % 12u) * 0.5235987755982988;\n  q.position = vec3f(2.0 * cos(a), 2.0 * sin(a), 0.0);",
+    );
+    const on = await measureFrom(polygon, 2400, { cols: 2400, rows: 1, closed: true }, { up: [0, 0, 1] });
+    const off = await measureFrom(polygon, 2400, { cols: 2400, rows: 1, closed: true }, { up: [0, 0, 1], closeTwist: false });
+    expect(on.normal).toEqual(Array.from({ length: 2400 }, () => [0, 0, 1]));
+    expect(off.orient).toEqual(on.orient);
+    const side = 4 * Math.sin(Math.PI / 12);
+    for (const k of [0, 1, 500, 1023, 1024, 1025, 2047, 2048, 2399]) {
+      const a = ((k % 12) * Math.PI) / 6;
+      // A corner's tangent is the bisector of its two sides: square to its radius.
+      close(on.tangent[k]!, [-Math.sin(a), Math.cos(a), 0], `corner ${k} tangent`, 5);
+      expect(on.curvature[k], `corner ${k} curvature`).toBeCloseTo(0.5, 5);
+      expect(on.distance[k]! / Math.max(k * side, 1), `corner ${k} distance`).toBeCloseTo(k === 0 ? 0 : 1, 5);
+      expect(on.curveU[k], `corner ${k} curveU`).toBeCloseTo(k / 2400, 5);
+    }
+    expect(on.curveLength[0]! / (2400 * side)).toBeCloseTo(1, 5);
+  }, 120_000);
+
+  /**
+   * The closed, non-planar polygon of the short test, traced 301 times: 1,204 points. One
+   * lap turns the carried frame by −π/3 (the area its directions enclose on the sphere), so
+   * 301 laps turn it by −301π/3, which is −π/3 again. The lap is now a fold over two
+   * blocks' summaries, and the angle it finds must still be that one: Close Twist on and
+   * off differ, point by point, by −π/3 times the point's share of the length.
+   */
+  it("a closed space polygon traced 301 times still comes back turned by −π/3", async () => {
+    const corners = formulaPoints(
+      "kernel_source",
+      1204,
+      "  let c = i % 4u;\n  q.position = vec3f(select(2.0, 0.0, c == 0u), select(2.0, 0.0, c < 2u), select(0.0, 2.0, c == 3u));",
+    );
+    const raw = await measureFrom(corners, 1204, { cols: 1204, rows: 1, closed: true }, { closeTwist: false });
+    const closed = await measureFrom(corners, 1204, { cols: 1204, rows: 1, closed: true });
+    expect(raw.position.slice(0, 4)).toEqual([[0, 0, 0], [2, 0, 0], [2, 2, 0], [2, 2, 2]]);
+    const closing = -Math.PI / 3;
+    for (let i = 0; i < 1204; i += 1) {
+      const turned = angleAbout(raw.normal[i]!, closed.normal[i]!, raw.tangent[i]!);
+      expect(wrapped(turned + closing * raw.curveU[i]!), `point ${i}`).toBeCloseTo(0, 3);
+    }
+    expect(closed.normal[0]).toEqual(raw.normal[0]);
+    // And lap by lap the raw frame really does turn: a lap on, the same corner leans −π/3 further.
+    for (const i of [1, 501, 1021, 1101]) {
+      expect(wrapped(angleAbout(raw.normal[i]!, raw.normal[i + 4]!, raw.tangent[i]!) - closing), `corner ${i} a lap on`).toBeCloseTo(0, 3);
+    }
+  }, 120_000);
+
+  /**
+   * THE CLOSED FORM, across seams. The helix of the short test, 3,000 points long: at every
+   * point — the ones either side of 1,024 and 2,048 like any other — the carried normal
+   * falls behind the helix's own inward normal by the same 2·atan(cos β · tan(h/2)).
+   */
+  it("a helix of 3,000 points: the same lag per point on both sides of every seam", async () => {
+    const h = 0.3;
+    const pitch = 0.05;
+    const count = 3000;
+    const helix = formulaPoints(
+      "kernel_source",
+      count,
+      `  let a = f32(i) * ${h};\n  q.position = vec3f(cos(a), sin(a), ${pitch} * (a - ${(count * h) / 2}));`,
+    );
+    const m = await measureFrom(helix, count, { cols: count, rows: 1 }, { up: [0, 0, 1] });
+    const chord = Math.hypot(2 * Math.sin(h / 2), pitch * h);
+    const alpha = 2 * Math.atan(((pitch * h) / chord) * Math.tan(h / 2));
+    const lag = (i: number): number => angleAbout([-Math.cos(i * h), -Math.sin(i * h), 0], m.normal[i]!, m.tangent[i]!);
+    for (let i = 1; i < count - 2; i += 1) {
+      expect(wrapped(lag(i + 1) - lag(i)), `point ${i}`).toBeCloseTo(-alpha, 3);
+    }
+    for (const i of [2, 1023, 1024, 2047, 2048, 2998]) expect(m.curvature[i], `curvature ${i}`).toBeCloseTo(m.curvature[1]!, 3);
+    expect(m.distance[count - 1]! / ((count - 1) * chord)).toBeCloseTo(1, 5);
+  }, 120_000);
+
+  /**
+   * A curve with no symmetry, 3,500 points a strip, with padding where the seams are: a run
+   * of coincident points across the seam at 1,024, a run that fills the whole third block
+   * and spills over both its edges, and a padded tail. Two strips, so a block's record is
+   * found by strip as well as by block.
+   */
+  const WANDER = `  let j = i / 3500u;
+  var s = i % 3500u;
+  if (s >= 1020u) { s = 1020u; }
+  if (i % 3500u >= 1030u) { s = i % 3500u - 10u; }
+  if (i % 3500u >= 2040u) { s = 2030u; }
+  if (i % 3500u >= 3080u) { s = i % 3500u - 1050u; }
+  if (i % 3500u >= 3300u) { s = 2250u; }
+  let t = f32(s) * 0.013 + f32(j) * 1.7;
+  q.position = vec3f(cos(t) * (1.0 + 0.3 * sin(t * 2.7)), sin(t * 1.3) * 0.8 + 0.2 * cos(t * 3.1), sin(t * 0.7) + f32(s) * 0.001);`;
+
+  it("agrees with the blocked reference on two unlike strips with padding across the seams, open and closed", async () => {
+    const wander = formulaPoints("kernel_source", 7000, WANDER);
+    for (const closed of [false, true]) {
+      const m = await measureFrom(wander, 7000, { cols: 3500, rows: 2, closed }, { roll: 20, twist: 75, up: [0.2, 1, -0.3] });
+      for (const strip of [0, 1]) {
+        const points = m.position.slice(strip * 3500, (strip + 1) * 3500);
+        const expected = frameStrip(points, { closed, method: "minimiseTwist", up: [0.2, 1, -0.3], roll: (20 * Math.PI) / 180, twist: (75 * Math.PI) / 180 });
+        agree(m, expected, strip * 3500, `${closed ? "closed" : "open"} strip ${strip}`);
+      }
+      // The points of one run share ONE frame and one distance, to the bit, across the seam
+      // at 1,024 and through the whole padded block.
+      for (const [from, to] of [[1020, 1029], [2040, 3079], [3300, 3499]] as const) {
+        for (let i = from; i < to; i += 1) {
+          expect(m.orient[i + 1], `orient ${i + 1}`).toEqual(m.orient[i]);
+          expect(m.distance[i + 1], `distance ${i + 1}`).toBe(m.distance[i]);
+          expect(m.curvature[i + 1], `curvature ${i + 1}`).toBe(m.curvature[i]);
+        }
+      }
+    }
+  }, 240_000);
+
+  it("Fixed Up agrees with the blocked reference on the same strips", async () => {
+    const wander = formulaPoints("kernel_source", 7000, WANDER);
+    const m = await measureFrom(wander, 7000, { cols: 3500, rows: 2 }, { method: "fixedUp", up: [0.2, 1, -0.3], twist: 40 });
+    for (const strip of [0, 1]) {
+      const points = m.position.slice(strip * 3500, (strip + 1) * 3500);
+      agree(m, frameStrip(points, { closed: false, method: "fixedUp", up: [0.2, 1, -0.3], twist: (40 * Math.PI) / 180 }), strip * 3500, `strip ${strip}`);
+    }
+  }, 240_000);
+
+  /**
+   * A curve doubling straight back has no smallest rotation: the frame turns about its own
+   * normal, which keeps the normal and turns the direction round. That mirrors the angle a
+   * block's reference is carried at, and a block must say so. Here the curve wanders first,
+   * so the frame that reaches the second block is not the one the block would pick for
+   * itself; then, inside that block, it runs out along +X in quarter steps and exactly back.
+   */
+  it("an exact reversal inside a later block: the frame on the far side is the reference's", async () => {
+    const doubled = formulaPoints(
+      "kernel_source",
+      2200,
+      `  let t = f32(min(i, 1099u)) * 0.013;
+  q.position = vec3f(cos(t) * (1.0 + 0.3 * sin(t * 2.7)), sin(t * 1.3), sin(t * 0.7) + t * 0.1);
+  if (i >= 1100u) { q.position = vec3f(3.0 + f32(min(i, 1300u) - 1100u) * 0.25, 1.0, 0.5); }
+  if (i > 1300u) { q.position.x = 53.0 - f32(min(i, 1400u) - 1300u) * 0.25; }
+  if (i > 1400u) {
+    let w = f32(i - 1400u) * 0.02;
+    q.position = vec3f(28.0 - w, 1.0 + sin(w), 0.5 + (1.0 - cos(w * 1.7)));
+  }`,
+    );
+    const m = await measureFrom(doubled, 2200, { cols: 2200, rows: 1 }, { up: [0.3, 1, 0.2] });
+    // The reversal is exact: out along +X, back along −X.
+    close(m.tangent[1200]!, [1, 0, 0], "outward", 6);
+    close(m.tangent[1350]!, [-1, 0, 0], "and back", 6);
+    agree(m, frameStrip(m.position, { closed: false, method: "minimiseTwist", up: [0.3, 1, 0.2] }), 0, "the whole strip");
+  }, 120_000);
+
+  /**
+   * WHAT A BLOCK IS: the whole walk, started where the block starts. So the first block of
+   * a long strip is walked as those 1,024 points are walked when they are a strip of their
+   * own, and all but the last of them — which is an end there and a middle here — read back
+   * the same frame at the THOUSANDTH point as at the tenth: to the last digit of single
+   * precision, with nothing accumulated. (Not `toEqual`: the two are different programs,
+   * and a device may fuse a multiply and an add in one and not in the other. Measured here,
+   * tangent, distance and curvature are the same bytes and a normal differs by at most one
+   * unit in its last place. No twist: a twist is spread over the strip's whole length,
+   * which the two strips do not share.)
+   */
+  it("the first block of a long strip is the short strip its points make, to the last digit", async () => {
+    const body = "  let t = f32(i) * 0.013;\n  q.position = vec3f(cos(t) * (1.0 + 0.3 * sin(t * 2.7)), sin(t * 1.3), sin(t * 0.7) + t * 0.1);";
+    for (const method of METHODS) {
+      const whole = await measureFrom(formulaPoints("kernel_source", 1024, body), 1024, { cols: 1024, rows: 1 }, { method, roll: 15 });
+      const long = await measureFrom(formulaPoints("kernel_source", 1500, body), 1500, { cols: 1500, rows: 1 }, { method, roll: 15 });
+      expect(long.position.slice(0, 1024)).toEqual(whole.position);
+      for (let i = 0; i < 1023; i += 1) {
+        for (const name of ["tangent", "normal", "binormal", "orient"] as const) close(long[name][i]!, whole[name][i]!, `${method} ${name} ${i}`, 6);
+        expect(long.distance[i], `${method} distance ${i}`).toBeCloseTo(whole.distance[i]!, 5);
+        expect(long.curvature[i], `${method} curvature ${i}`).toBeCloseTo(whole.curvature[i]!, 5);
+      }
+      // The control: the 1,024th point is the short strip's end and the long strip's middle.
+      expect(long.tangent[1023]).not.toEqual(whole.tangent[1023]);
+    }
+  }, 120_000);
+
+  /**
+   * Fixed Up where the curve runs straight along Up for 2,600 points — longer than two
+   * blocks. No point of the run can lean toward Up, so each takes the normal of the point
+   * before it, and whole blocks hand on what they were handed.
+   *
+   * Up is (½, 1, 1) and the run goes along (1, 2, 2) in steps of exactly 3, off every axis
+   * so that a block's map of the handed normal has no zero in it to hide a mistake. By
+   * hand: before the run the curve goes along +X and leans (0, 1, 1)/√2. The corner into
+   * the run has the tangent (2, 1, 1)/√6, where Up made square is (−1, 1, 1)/√3. That,
+   * pressed square to (1, 2, 2)/3, is (−4, 1, 1)/(3√2) — and so is every point of the run.
+   */
+  it("Fixed Up through a run along Up longer than two blocks hands the normal across every seam", async () => {
+    const shaft = formulaPoints(
+      "kernel_source",
+      2700,
+      `  let s = f32(i);
+  if (i < 5u) { q.position = vec3f(s, 0.0, 0.0); }
+  else if (i < 2605u) { q.position = vec3f(s, 2.0 * (s - 4.0), 2.0 * (s - 4.0)); }
+  else { q.position = vec3f(s, 5200.0, 5200.0); }`,
+    );
+    const corner = [-1 / Math.sqrt(3), 1 / Math.sqrt(3), 1 / Math.sqrt(3)];
+    const handed = [-4 / (3 * Math.SQRT2), 1 / (3 * Math.SQRT2), 1 / (3 * Math.SQRT2)];
+    await onDawn(framesGraph(shaft, 2700, { cols: 2700, rows: 1 }, { method: "fixedUp", up: [0.5, 1, 1] }), async (session) => {
+      const m = await readMeasured(session, shaft, 2700);
+      close(m.normal[3]!, [0, H, H], "before the run", 6);
+      close(m.normal[4]!, corner, "the corner into the run");
+      for (let i = 5; i < 2604; i += 1) {
+        close(m.tangent[i]!, [1 / 3, 2 / 3, 2 / 3], `tangent ${i}`, 6);
+        close(m.normal[i]!, handed, `normal ${i}`);
+      }
+      close(m.normal[2604]!, corner, "the corner out of the run");
+      close(m.normal[2650]!, [0, H, H], "after the run", 6);
+      // Four unit steps, 2,600 steps of 3, and 95 unit steps: every sum exact.
+      expect(m.distance[2699]).toBe(4 + 2600 * 3 + 95);
+
+      /* THE COST, which no point's value shows. The second block holds no point that can
+         decide a normal, so what it hands the third is its MAP of what it was handed. If
+         the fold got that map wrong, or did not trust it, the write pass would still be
+         right — by walking the run again, as deep as the run is long. So the fold itself is
+         held here: it hands both later blocks the run's normal, and says it knows it. */
+      const walk = await session.readScratch("frames_spine", "walk");
+      for (const block of [1, 2]) {
+        const entry = curveFramesHandedAt(walk, 1, 3, 0, block);
+        expect(entry.known, `block ${block}`).toBe(true);
+        close(entry.normal, handed, `the normal handed to block ${block}`);
+      }
+    });
+  }, 120_000);
+
+  /**
+   * The corner a block's summary cannot hold, on the device. Up is mapped to the curve's own
+   * tangent from the third point on, so no point can decide its normal and whole blocks
+   * only hand one on. At point 1,500, inside the second block, the curve doubles straight
+   * back: the tangent there swings onto the handed normal, which is pressed to nothing and
+   * restarts from a world axis. The fold sees only that the handed normal has vanished and
+   * marks the third block's as not known; the third block walks forward from the second.
+   */
+  it("Fixed Up: a handed normal that collapses inside a block is followed into the next", async () => {
+    const count = 2600;
+    const source = formulaPoints(
+      "kernel_source",
+      count,
+      `  let back = f32(max(i, 1501u) - 1501u);
+  var x = f32(min(i, 1500u)) * 0.01;
+  if (i > 1500u) { x = 14.99 - back * 0.004; }
+  q.position = vec3f(x, sin(back * 0.01) * 0.5, (1.0 - cos(back * 0.013)) * 0.5);`,
+    );
+    const leanSchema = [
+      { name: "position", type: "vec3f" as const },
+      { name: "lean", type: "vec3f" as const },
+      { name: "tangent", type: "vec3f" as const },
+    ];
+    const sink = drawnTo("frames_spine", count);
+    const graph = curveGraph(
+      [
+        source.node,
+        curveNode("topology_strips", "pointTopology", { connectivity: "strips", cols: count, rows: 1 }),
+        // The curve's own tangents, to hand back as Up: carried from a +Z seed, as below.
+        curveNode("frames_first", "pointCurveFrames", { vectors: true, up: [0, 0, 1] }),
+        curveNode("kernel_lean", "pointKernel", {
+          capacity: count,
+          seed: 7,
+          attributes: JSON.stringify(leanSchema.map((entry) => ({ ...entry, ...(entry.name === "position" ? { semantic: "position" } : {}), default: [0, 0, 0] }))),
+          kernel: `fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  q.lean = p.tangent;
+  if (ctx.index == 0u) { q.lean = vec3f(0.0, 0.0, 1.0); }
+  if (ctx.index == 1u) { q.lean = vec3f(0.0, 1.0, 0.0); }
+  return q;
+}`,
+        }),
+        curveNode("frames_spine", "pointCurveFrames", { vectors: true, method: "fixedUp", up: mappedTo("lean", [0, 1, 0]) }),
+        ...sink.nodes,
+      ],
+      [
+        curveEdge(["kernel_source", "out"], ["topology_strips", "points"]),
+        curveEdge(["topology_strips", "out"], ["frames_first", "points"]),
+        curveEdge(["frames_first", "out"], ["kernel_lean", "in"]),
+        curveEdge(["kernel_lean", "out"], ["frames_spine", "points"]),
+        ...sink.edges,
+      ],
+    );
+    await onDawn(graph, async (session) => {
+      const m = await readMeasured(session, source, count);
+      const leanFloats = (await session.read("kernel_lean", leanSchema, count, "lean")).floats;
+      const up = Array.from({ length: count }, (_, index) => vecAt(leanFloats, index) as unknown as Vec3);
+      // The collapse is real: into the reversal the handed normal is +Y, and there the tangent is +Y.
+      close(m.normal[1499]!, [0, 1, 0], "the handed normal before the reversal", 6);
+      close(m.tangent[1500]!, [0, 1, 0], "the tangent at the reversal", 6);
+      close(m.normal[1500]!, [1, 0, 0], "restarted from the world axis least aligned with it", 6);
+      agree(m, frameStrip(m.position, { closed: false, method: "fixedUp", up }), 0, "the whole strip");
+      // And this is the path it took: the fold knew what to hand the second block, not the third.
+      const walk = await session.readScratch("frames_spine", "walk");
+      expect(curveFramesHandedAt(walk, 1, 3, 0, 1).known).toBe(true);
+      expect(curveFramesHandedAt(walk, 1, 3, 0, 2).known).toBe(false);
+    });
+  }, 120_000);
+
+  /**
+   * §V170, with scratch in it: the walk's summaries live in a buffer that outlasts the
+   * frame, and every word a pass reads must have been written by a pass of the SAME frame.
+   * So frame 5 rendered on its own is frame 5 after frames 0 to 4, byte for byte, while the
+   * curve moves under it.
+   */
+  it("seek: under a moving long curve, frame 5 rendered directly is frame 5 after frames 0 to 4", async () => {
+    const moving = formulaPoints(
+      "kernel_source",
+      3000,
+      // timeline-anchored: the fixture's position in the piece is the point of the test.
+      "  let t = f32(i % 1500u) * 0.01;\n  q.position = vec3f(t * 2.0, sin(ctx.time * 3.0 + t), cos(t * 1.3 + ctx.time) + f32(i / 1500u));",
+    );
+    const schema = curveFramesAttributes(ALL);
+    for (const method of METHODS) {
+      const graph = framesGraph(moving, 3000, { cols: 1500, rows: 2, closed: true }, { method, twist: 90 });
+      const snapshot = async (session: CurveSession): Promise<number[]> => [
+        ...(await session.read("frames_spine", schema, 3000, "orient")).words,
+        ...(await session.read("frames_spine", schema, 3000, "distance")).words,
+        ...(await session.read("frames_spine", schema, 3000, "curveU")).words,
+      ];
+      const direct = await onDawn(graph, snapshot, 16, 5);
+      const played = await onDawn(graph, async (session) => {
+        for (let frame = 1; frame <= 5; frame += 1) session.renderFrame(frame);
+        return snapshot(session);
+      });
+      const still = await onDawn(graph, snapshot);
+      expect(played, method).toEqual(direct);
+      // The control: the curve really moved between frame 0 and frame 5.
+      expect(still, method).not.toEqual(direct);
+    }
+  }, 240_000);
 });

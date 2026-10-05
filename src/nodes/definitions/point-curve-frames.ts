@@ -1,12 +1,24 @@
 import type { CompiledNodeDescription, NodeDefinition, PointsetAttributeRef } from "../../domain/types/node-definition.ts";
-import type { DispatchPassDescriptor } from "../../runtime/backend/plan.ts";
+import type { BufferBindingDescriptor, DispatchPassDescriptor } from "../../runtime/backend/plan.ts";
+import { scratchResourceId } from "../../compiler/resources.ts";
 import type { PointAttributeSchema } from "../../points/attributes.ts";
+import { STRIP_WALK_BLOCK } from "../../points/curve.ts";
 import { regionStoreWgsl } from "../../points/packing.ts";
-import { curveFramesWgsl } from "../shaders/curve-frames.wgsl.ts";
+import { curveFramesWgsl, type CurveFramesShaderOptions } from "../shaders/curve-frames.wgsl.ts";
+import {
+  curveFramesBlockWgsl,
+  curveFramesBlocks,
+  curveFramesChainFoldWgsl,
+  curveFramesChainWgsl,
+  curveFramesFoldWgsl,
+  curveFramesWalkWords,
+  curveFramesWriteWgsl,
+  type CurveFramesBlockedPass,
+} from "../shaders/curve-frames-blocked.wgsl.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { readFlag, readNumber, readVector } from "./parameter-readers.ts";
 import { attributeBinding, packedPointStorage } from "./point-storage.ts";
-import { longStripRefusal, stripsOnEdge } from "./point-strips.ts";
+import { stripsOnEdge } from "./point-strips.ts";
 import { resolveScalarMap } from "./points.ts";
 
 /**
@@ -44,6 +56,12 @@ import { resolveScalarMap } from "./points.ts";
  * parameters, so there is nothing to reset on a seek and nothing to diverge (§V170). The
  * walk — one invocation per strip, in order, strips in parallel — is described where it is
  * written, `nodes/shaders/curve-frames.wgsl.ts`.
+ *
+ * ⚑ A STRIP OF ANY LENGTH (slice 6). One walk is right up to `STRIP_WALK_BLOCK` points; its
+ * cost is its depth. A longer strip is cut into blocks that are walked at once, with one
+ * pass per strip between two passes per block to hand each block the state it starts from
+ * (`nodes/shaders/curve-frames-blocked.wgsl.ts`). A strip that fits one block is walked by
+ * the program it always was, so no curve that shipped reads back a different byte.
  */
 
 /** What the node may publish, in the order its packed buffer lays them out. */
@@ -252,8 +270,6 @@ export const pointCurveFramesNode: NodeDefinition = {
     const claimed = stripsOnEdge(nodeId, "Curve Frames", upstream);
     if ("refusal" in claimed) return claimed.refusal;
     const strips = claimed.strips;
-    const tooLong = longStripRefusal(nodeId, "Curve Frames", strips);
-    if (tooLong !== undefined) return tooLong;
 
     // §V288: a map this node cannot honour refuses BY NAME rather than reading the static.
     const unhonoured = Object.keys(parameterMaps).filter((key) => key !== "up" && key !== "roll").sort();
@@ -349,13 +365,20 @@ export const pointCurveFramesNode: NodeDefinition = {
         ? undefined
         : { type: rollMap.type as string, component: rollMap.channel === undefined ? "" : `.${rollMap.channel}` };
 
-    const pass: DispatchPassDescriptor = {
-      kind: "dispatch",
-      /* Everything here changes the program's text or its bindings (§V62b): the method and
-         the seed pick the walk, the maps bind a buffer each, the switches decide which
-         regions exist, and the capacity moves every region's offset. */
-      id: [
-        `${nodeId}:frames:${method}`,
+    const shaderOptions: CurveFramesShaderOptions = {
+      method,
+      upMapped: upPair !== undefined,
+      seedOrient: seedPair !== undefined,
+      ...(rollShape === undefined ? {} : { rollMap: rollShape }),
+      storeFunctions,
+      storeStatements,
+    };
+    /* Everything here changes the program's text or its bindings (§V62b): the method and
+       the seed pick the walk, the maps bind a buffer each, the switches decide which
+       regions exist, and the capacity moves every region's offset. */
+    const programId = (stage: string): string =>
+      [
+        `${nodeId}:${stage}:${method}`,
         seedPair === undefined ? "" : "seed",
         upPair === undefined ? "" : "up",
         rollShape === undefined ? "" : `roll:${rollShape.type}${rollShape.component}`,
@@ -363,54 +386,100 @@ export const pointCurveFramesNode: NodeDefinition = {
         String(capacity),
       ]
         .filter((part) => part !== "")
-        .join(":"),
-      shader: curveFramesWgsl({
-        method,
-        upMapped: upPair !== undefined,
-        seedOrient: seedPair !== undefined,
-        ...(rollShape === undefined ? {} : { rollMap: rollShape }),
-        storeFunctions,
-        storeStatements,
-      }),
+        .join(":");
+    const positionBinding = attributeBinding("in_position", position);
+    /* The strip's lean: at most one of the two, since a seed quaternion replaces Up. */
+    const leanBindings = [
+      ...(upPair === undefined ? [] : [attributeBinding("in_up", upPair)]),
+      ...(seedPair === undefined ? [] : [attributeBinding("in_seed", seedPair)]),
+    ];
+    const rollBindings = rollMap === undefined ? [] : [attributeBinding("in_roll", rollMap)];
+    // The WHOLE packed buffer: the walk writes every region by offset (T1076).
+    const outBinding = { binding: "out_points", resourceId: storage.resourceId, half: "write" as const };
+    const uniformValues = {
+      up: readVector(parameters, "up", [0, 1, 0]),
+      cols: strips.cols,
+      rows: strips.rows,
+      closed: strips.closed ? 1 : 0,
+      closeTwist: readFlag(parameters, "closeTwist", true),
+      // Authored in degrees, because that is what a person types (the Transform node's rule).
+      roll: readNumber(parameters, "roll", 0) * DEGREES_TO_RADIANS,
+      twist: readNumber(parameters, "twist", 0) * DEGREES_TO_RADIANS,
+    };
+    const pointsets = {
+      out: {
+        /* §V883/§V197: the source republished by reference with the measurements on top,
+           so whoever reads a frame is reading the points it was measured over. */
+        pairs: { ...upstream.pairs, ...storage.pairs },
+        capacity,
+        // Measuring moves no slot, so the claim and a live count survive.
+        ...(upstream.topology === undefined ? {} : { topology: upstream.topology }),
+        ...(upstream.count === undefined ? {} : { count: upstream.count }),
+      },
+    };
+
+    if (strips.cols > STRIP_WALK_BLOCK) {
+      /* ── A strip longer than one block: many walks at once (the design's section 4.3) ──
+         A walk's cost is its depth, so a strip is cut into blocks of STRIP_WALK_BLOCK
+         points: every block is summarised on its own, one pass per strip folds the
+         summaries into the state each block is entered with, and every block is walked
+         again from that state and writes its points. Fixed Up hands a second thing from
+         point to point (the normal a point takes where its tangent runs along Up) and has
+         a summary and a fold of its own for it. The passes are in
+         `nodes/shaders/curve-frames-blocked.wgsl.ts`. */
+      const blocks = curveFramesBlocks(strips.cols);
+      const walkId = scratchResourceId(nodeId, "walk");
+      const walkBinding = { binding: "walk", resourceId: walkId };
+      const blockedValues = { ...uniformValues, blocks };
+      const perBlock: [number, number, number] = [Math.ceil((strips.rows * blocks) / 64), 1, 1];
+      const perStrip: [number, number, number] = [Math.ceil(strips.rows / 64), 1, 1];
+      const stage = (
+        name: string,
+        emitted: CurveFramesBlockedPass,
+        workgroups: [number, number, number],
+        buffers: ReadonlyArray<BufferBindingDescriptor>,
+      ): DispatchPassDescriptor => ({
+        kind: "dispatch",
+        id: programId(`frames:${name}`),
+        shader: emitted.shader,
+        entryPoint: "main",
+        workgroups,
+        buffers,
+        // The same list the shader's struct was written from: declared and set, both or neither.
+        uniforms: Object.fromEntries(emitted.uniforms.map((member) => [member, blockedValues[member]])),
+        uniformBinding: "params",
+        nodeId,
+      });
+      return {
+        passes: [
+          stage("block", curveFramesBlockWgsl(shaderOptions), perBlock, [positionBinding, ...leanBindings, walkBinding]),
+          stage("fold", curveFramesFoldWgsl(shaderOptions), perStrip, [...leanBindings, walkBinding]),
+          ...(method === "fixedUp"
+            ? [
+                stage("chain", curveFramesChainWgsl(shaderOptions), perBlock, [positionBinding, ...leanBindings, walkBinding]),
+                stage("chainFold", curveFramesChainFoldWgsl(), perStrip, [walkBinding]),
+              ]
+            : []),
+          stage("write", curveFramesWriteWgsl(shaderOptions), perBlock, [positionBinding, ...leanBindings, ...rollBindings, walkBinding, outBinding]),
+        ],
+        scratch: [{ key: "walk", kind: "buffer" as const, stride: 4, capacity: curveFramesWalkWords(strips.rows, blocks) }, storage.scratch],
+        pointsets,
+      };
+    }
+
+    const pass: DispatchPassDescriptor = {
+      kind: "dispatch",
+      id: programId("frames"),
+      shader: curveFramesWgsl(shaderOptions),
       entryPoint: "main",
       // One invocation per STRIP: each walks its own strip, in order.
       workgroups: [Math.ceil(strips.rows / 64), 1, 1],
-      buffers: [
-        attributeBinding("in_position", position),
-        ...(upPair === undefined ? [] : [attributeBinding("in_up", upPair)]),
-        ...(seedPair === undefined ? [] : [attributeBinding("in_seed", seedPair)]),
-        ...(rollMap === undefined ? [] : [attributeBinding("in_roll", rollMap)]),
-        // The WHOLE packed buffer: the walk writes every region by offset (T1076).
-        { binding: "out_points", resourceId: storage.resourceId, half: "write" as const },
-      ],
-      uniforms: {
-        up: readVector(parameters, "up", [0, 1, 0]),
-        cols: strips.cols,
-        rows: strips.rows,
-        closed: strips.closed ? 1 : 0,
-        closeTwist: readFlag(parameters, "closeTwist", true),
-        // Authored in degrees, because that is what a person types (the Transform node's rule).
-        roll: readNumber(parameters, "roll", 0) * DEGREES_TO_RADIANS,
-        twist: readNumber(parameters, "twist", 0) * DEGREES_TO_RADIANS,
-      },
+      buffers: [positionBinding, ...leanBindings, ...rollBindings, outBinding],
+      uniforms: uniformValues,
       uniformBinding: "params",
       nodeId,
     };
 
-    return {
-      passes: [pass],
-      scratch: [storage.scratch],
-      pointsets: {
-        out: {
-          /* §V883/§V197: the source republished by reference with the measurements on top,
-             so whoever reads a frame is reading the points it was measured over. */
-          pairs: { ...upstream.pairs, ...storage.pairs },
-          capacity,
-          // Measuring moves no slot, so the claim and a live count survive.
-          ...(upstream.topology === undefined ? {} : { topology: upstream.topology }),
-          ...(upstream.count === undefined ? {} : { count: upstream.count }),
-        },
-      },
-    };
+    return { passes: [pass], scratch: [storage.scratch], pointsets };
   },
 };

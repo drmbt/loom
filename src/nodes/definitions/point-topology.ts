@@ -3,6 +3,9 @@ import { formatTopology, gridPointCount, stripsPointCount, type PointTopology } 
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { readFlag, readNumber } from "./parameter-readers.ts";
 
+/** The engine's pointset ceiling, as every producer's Capacity states it. */
+const MAX_POINTS = 1_000_000;
+
 /**
  * PointTopology (T302): the topology HALF of TD's kernel/topology split. TD deprecated
  * the combined Create POP because generation and connectivity are different authorship
@@ -26,6 +29,11 @@ import { readFlag, readNumber } from "./parameter-readers.ts";
  * The capacity check is the honesty line: a topology addressing more points than the
  * edge carries is refused HERE, where the claim is authored, with the same diagnostic
  * code consumers use — not downstream where the user would have to trace it back.
+ *
+ * That check is also the only limit on Columns and Rows (T1586b slice 6). They stopped at
+ * 4,096 each, which is a Grid generator's own limit and was never a claim's: a kernel's
+ * strip of 16,384 points could not be claimed at all. A claim may name as many points per
+ * strip, and as many strips, as the edge carries — a pointset holds a million.
  */
 export const pointTopologyNode: NodeDefinition = {
   type: "pointTopology",
@@ -69,7 +77,7 @@ export const pointTopologyNode: NodeDefinition = {
       label: "Columns",
       default: 64,
       min: 1,
-      max: 4096,
+      max: MAX_POINTS,
       range: "bounded",
       step: 1,
       compileTime: true,
@@ -81,7 +89,7 @@ export const pointTopologyNode: NodeDefinition = {
       label: "Rows",
       default: 64,
       min: 1,
-      max: 4096,
+      max: MAX_POINTS,
       range: "bounded",
       step: 1,
       compileTime: true,

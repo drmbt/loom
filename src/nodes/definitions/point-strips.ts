@@ -1,5 +1,4 @@
 import type { CompiledNodeDescription } from "../../domain/types/node-definition.ts";
-import { STRIP_WALK_BLOCK } from "../../points/curve.ts";
 import { parseTopology, stripsOf, stripsPointCount, type StripSet } from "../../points/topology.ts";
 
 /**
@@ -41,25 +40,4 @@ export function stripsOnEdge(
     );
   }
   return { strips };
-}
-
-/**
- * The walk's limit, refused by name until the blocked form lands. A strip of at most
- * `STRIP_WALK_BLOCK` points is walked whole by one invocation; a longer one is cut into
- * blocks, which changes its rounding — so it must not be accepted now and re-rounded later.
- */
-export function longStripRefusal(nodeId: string, title: string, strips: StripSet): CompiledNodeDescription | undefined {
-  if (strips.cols <= STRIP_WALK_BLOCK) return undefined;
-  return {
-    passes: [],
-    diagnostics: [
-      {
-        severity: "error",
-        code: STRIPS_REFUSAL_CODE,
-        message: `Node "${nodeId}": ${title} walks each strip in one pass up to ${STRIP_WALK_BLOCK} points, and these strips have ${strips.cols}. Longer strips are §T1586b's slice 6.`,
-        nodeId,
-        suggestion: `Resample to ${STRIP_WALK_BLOCK} points or fewer per strip first (Resample, Count, Even Parameter has no such limit), or split the curve across strips.`,
-      },
-    ],
-  };
 }

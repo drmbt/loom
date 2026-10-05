@@ -1,6 +1,6 @@
 import { wgsl } from "../../runtime/backend/wgsl.ts";
 import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
-import { RESAMPLE_END_TOLERANCE, ZERO_SEGMENT_SQUARED } from "../../points/curve.ts";
+import { RESAMPLE_END_TOLERANCE, STRIP_WALK_BLOCK, ZERO_SEGMENT_SQUARED } from "../../points/curve.ts";
 
 /**
  * T1586b — Resample: a LENGTH WALK, then ONE THREAD PER OUTPUT POINT that finds its place.
@@ -14,7 +14,9 @@ import { RESAMPLE_END_TOLERANCE, ZERO_SEGMENT_SQUARED } from "../../points/curve
  *    distance from the strip's first point, and the strip's total. It is the same running
  *    sum Curve Frames publishes as `distance`, by the same expression in the same order, so
  *    "how far along is this point" has one answer in the family. Even Parameter spacing
- *    needs no lengths, and the pass is then not emitted at all.
+ *    needs no lengths, and the pass is then not emitted at all. A strip longer than one
+ *    block has its lengths taken by three lighter passes instead (`resampleBlockLengthsWgsl`
+ *    below), which leave the same two buffers.
  * 2. EMIT — every output slot computes its OWN station from its slot number (a
  *    multiplication, never a running sum, so slot k does not depend on the slots before
  *    it), binary-searches its strip's cumulative lengths for the segment that holds it, and
@@ -104,6 +106,131 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     }
   }
   totals[strip] = travelled;
+}`;
+}
+
+/**
+ * T1586b slice 6 — THE LENGTHS OF A STRIP LONGER THAN ONE BLOCK, in three passes.
+ *
+ * A walk's cost is its depth, so a strip of more than `STRIP_WALK_BLOCK` points is not
+ * walked by one invocation. It is `stripLengths`' blocked order (`src/points/curve.ts`):
+ *
+ *   1. BLOCK   one invocation per block sums its own segments from zero, and leaves each
+ *              point its distance INSIDE the block and the block its sum;
+ *   2. FOLD    one invocation per strip adds the blocks' sums left to right: each block's
+ *              start, and the strip's total;
+ *   3. ADD     one thread per point adds its block's start to its distance inside it.
+ *
+ * What the emit pass then reads is what it reads for a short strip — one distance per
+ * point and one total per strip — so that pass does not know a strip was long. The sums
+ * are taken in the order Curve Frames' blocked walk takes them, so "how far along is this
+ * point" still has one answer in the family.
+ *
+ * A strip that fits one block never comes here: its one walk (`resampleLengthsWgsl`) is the
+ * program it always was.
+ *
+ * Measured by the method above, a position-only strip resampled to its own point count by
+ * Even Length: 0.08 ms for one strip of 1,024 points (the one walk), 0.14 for one of 4,096,
+ * 0.15 for one of 16,384; at a million points 0.44 as 976 strips of 1,024, 0.56 as 61 of
+ * 16,384 and 0.66 as one strip.
+ */
+export function resampleBlockLengthsWgsl(): EmittedWgsl {
+  return wgsl`struct ResampleBlockParams {
+  cols: u32,
+  rows: u32,
+  closed: u32,
+  blocks: u32,
+};
+
+@group(0) @binding(0) var<uniform> params: ResampleBlockParams;
+@group(0) @binding(1) var<storage, read> in_position: array<vec3f>;
+@group(0) @binding(2) var<storage, read_write> cumulative: array<f32>;
+@group(0) @binding(3) var<storage, read_write> blockStarts: array<f32>;
+
+/* A segment at or below this squared length has none and adds no distance. */
+const ZERO_SEGMENT_SQUARED: f32 = ${ZERO_SEGMENT_SQUARED};
+/* A strip is cut into blocks of this many points; the last may be shorter. */
+const BLOCK: u32 = ${STRIP_WALK_BLOCK}u;
+
+/* One invocation per BLOCK, summing from zero: nothing here depends on the blocks before. */
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+  if (gid.x >= params.rows * params.blocks) {
+    return;
+  }
+  let strip = gid.x / params.blocks;
+  let blockIndex = gid.x % params.blocks;
+  let cols = params.cols;
+  let base = strip * cols;
+  var segments = cols - 1u;
+  if (params.closed == 1u) { segments = cols; }
+  let first = blockIndex * BLOCK;
+  let last = min(first + BLOCK, cols);
+  var travelled = 0.0;
+  for (var k = first; k < last; k = k + 1u) {
+    cumulative[base + k] = travelled;
+    if (k < segments) {
+      let seg = in_position[base + (k + 1u) % cols] - in_position[base + k];
+      let squared = dot(seg, seg);
+      if (squared > ZERO_SEGMENT_SQUARED) { travelled = travelled + sqrt(squared); }
+    }
+  }
+  /* The block's sum, until the fold replaces it with the block's start. */
+  blockStarts[gid.x] = travelled;
+}`;
+}
+
+export function resampleBlockFoldWgsl(): EmittedWgsl {
+  return wgsl`struct ResampleFoldParams {
+  rows: u32,
+  blocks: u32,
+};
+
+@group(0) @binding(0) var<uniform> params: ResampleFoldParams;
+@group(0) @binding(1) var<storage, read_write> blockStarts: array<f32>;
+@group(0) @binding(2) var<storage, read_write> totals: array<f32>;
+
+/* One invocation per STRIP, over its blocks: each block's sum becomes its start. */
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+  let strip = gid.x;
+  if (strip >= params.rows) {
+    return;
+  }
+  var running = 0.0;
+  for (var b = 0u; b < params.blocks; b = b + 1u) {
+    let at = strip * params.blocks + b;
+    let span = blockStarts[at];
+    blockStarts[at] = running;
+    running = running + span;
+  }
+  totals[strip] = running;
+}`;
+}
+
+export function resampleBlockAddWgsl(): EmittedWgsl {
+  return wgsl`struct ResampleAddParams {
+  cols: u32,
+  rows: u32,
+  blocks: u32,
+};
+
+@group(0) @binding(0) var<uniform> params: ResampleAddParams;
+@group(0) @binding(1) var<storage, read> blockStarts: array<f32>;
+@group(0) @binding(2) var<storage, read_write> cumulative: array<f32>;
+
+const BLOCK: u32 = ${STRIP_WALK_BLOCK}u;
+
+/* One thread per POINT: its block's start plus its distance inside the block. */
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+  let slot = gid.x;
+  if (slot >= params.cols * params.rows) {
+    return;
+  }
+  let strip = slot / params.cols;
+  let k = slot % params.cols;
+  cumulative[slot] = blockStarts[strip * params.blocks + k / BLOCK] + cumulative[slot];
 }`;
 }
 

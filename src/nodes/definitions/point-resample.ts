@@ -8,12 +8,20 @@ import {
   type PointAttributeSchema,
   type PointAttributeType,
 } from "../../points/attributes.ts";
+import { STRIP_WALK_BLOCK } from "../../points/curve.ts";
 import { formatTopology } from "../../points/topology.ts";
-import { resampleEmitWgsl, resampleLengthsWgsl, type ResampleCarriedAttribute } from "../shaders/curve-resample.wgsl.ts";
+import {
+  resampleBlockAddWgsl,
+  resampleBlockFoldWgsl,
+  resampleBlockLengthsWgsl,
+  resampleEmitWgsl,
+  resampleLengthsWgsl,
+  type ResampleCarriedAttribute,
+} from "../shaders/curve-resample.wgsl.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { readNumber } from "./parameter-readers.ts";
 import { attributeBinding, packedPointStorage } from "./point-storage.ts";
-import { longStripRefusal, stripsOnEdge } from "./point-strips.ts";
+import { stripsOnEdge } from "./point-strips.ts";
 
 /**
  * Resample (T1586b) — THE SAME CURVE, ITS POINTS PLACED BY RULE.
@@ -48,7 +56,9 @@ import { longStripRefusal, stripsOnEdge } from "./point-strips.ts";
  * the other reason frames are measured after a resample and not before.
  *
  * STATELESS and clock-free, like the rest of the family: nothing to reset on a seek (§V170).
- * The two passes are described where they are written, `nodes/shaders/curve-resample.wgsl.ts`.
+ * The passes are described where they are written, `nodes/shaders/curve-resample.wgsl.ts`:
+ * a length walk and an emit, and for an input strip longer than one block the walk is three
+ * lighter passes that many blocks run at once (slice 6).
  */
 
 const CODE = "node.points.resample";
@@ -271,10 +281,7 @@ export const pointResampleNode: NodeDefinition = {
     const spacing = method === "count" && parameters["spacing"] === "parameter" ? "parameter" : "length";
     const anchor = method === "distance" && parameters["anchor"] === "end" ? "end" : "start";
     const walksLength = !(method === "count" && spacing === "parameter");
-    if (walksLength) {
-      const tooLong = longStripRefusal(nodeId, "Resample", strips);
-      if (tooLong !== undefined) return tooLong;
-    } else if (upstream.pairs[LIVE_ATTRIBUTE.name] !== undefined) {
+    if (!walksLength && upstream.pairs[LIVE_ATTRIBUTE.name] !== undefined) {
       /* Even in the input's POINTS — and some of those points are padding. The stations
          would land on the repeats and come out stacked, every one of them flagged live. */
       return refuse(
@@ -392,8 +399,56 @@ export const pointResampleNode: NodeDefinition = {
       nodeId,
     };
 
+    /* ── A strip longer than one block: its lengths by many walks at once ──
+       A walk's cost is its depth, so past STRIP_WALK_BLOCK points the one walk becomes
+       three passes: every block sums itself, one pass per strip turns the sums into each
+       block's start, and every point adds its block's start (the design's section 4.3).
+       The emit pass reads the same two buffers either way and does not know. */
+    const blocks = Math.ceil(strips.cols / STRIP_WALK_BLOCK);
+    const blocked = walksLength && strips.cols > STRIP_WALK_BLOCK;
+    const startsBinding: BufferBindingDescriptor = { binding: "blockStarts", resourceId: scratchResourceId(nodeId, "blockStarts") };
+    const blockedLengths: DispatchPassDescriptor[] = blocked
+      ? [
+          {
+            kind: "dispatch",
+            id: `${nodeId}:resample:lengths:block`,
+            shader: resampleBlockLengthsWgsl(),
+            entryPoint: "main",
+            // One invocation per BLOCK.
+            workgroups: [Math.ceil((strips.rows * blocks) / 64), 1, 1],
+            buffers: [attributeBinding("in_position", position), { binding: "cumulative", resourceId: cumulativeId }, startsBinding],
+            uniforms: { cols: strips.cols, rows: strips.rows, closed, blocks },
+            uniformBinding: "params",
+            nodeId,
+          },
+          {
+            kind: "dispatch",
+            id: `${nodeId}:resample:lengths:fold`,
+            shader: resampleBlockFoldWgsl(),
+            entryPoint: "main",
+            workgroups: [Math.ceil(strips.rows / 64), 1, 1],
+            buffers: [startsBinding, { binding: "totals", resourceId: totalsId }],
+            uniforms: { rows: strips.rows, blocks },
+            uniformBinding: "params",
+            nodeId,
+          },
+          {
+            kind: "dispatch",
+            id: `${nodeId}:resample:lengths:add`,
+            shader: resampleBlockAddWgsl(),
+            entryPoint: "main",
+            // One thread per input POINT.
+            workgroups: [Math.ceil((strips.cols * strips.rows) / 64), 1, 1],
+            buffers: [startsBinding, { binding: "cumulative", resourceId: cumulativeId }],
+            uniforms: { cols: strips.cols, rows: strips.rows, blocks },
+            uniformBinding: "params",
+            nodeId,
+          },
+        ]
+      : [];
+
     return {
-      passes: walksLength ? [lengths, emit] : [emit],
+      passes: !walksLength ? [emit] : blocked ? [...blockedLengths, emit] : [lengths, emit],
       scratch: [
         ...(walksLength
           ? ([
@@ -401,6 +456,7 @@ export const pointResampleNode: NodeDefinition = {
               { key: "totals", kind: "buffer" as const, stride: 4, capacity: strips.rows },
             ] as const)
           : []),
+        ...(blocked ? [{ key: "blockStarts", kind: "buffer" as const, stride: 4, capacity: strips.rows * blocks }] : []),
         storage.scratch,
       ],
       pointsets: {

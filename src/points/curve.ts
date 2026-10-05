@@ -5,9 +5,9 @@
  * A curve is a STRIP: a run of consecutive slots of a pointset, joined by straight
  * segments (`topology.ts`, `stripsOf`). Everything here takes one strip as an array of
  * points and answers what the GPU passes answer, by the same steps in the same order —
- * `nodes/shaders/curve.wgsl.ts`, `curve-resample.wgsl.ts` and `curve-frames.wgsl.ts` are
- * this file in WGSL, and the Dawn tests hold the two together. It is headless: no GPU, no
- * node types, no clock.
+ * `nodes/shaders/curve.wgsl.ts`, `curve-resample.wgsl.ts`, `curve-frames.wgsl.ts` and
+ * `curve-frames-blocked.wgsl.ts` are this file in WGSL, and the Dawn tests hold the two
+ * together. It is headless: no GPU, no node types, no clock.
  *
  * ## The three rules everything below follows
  *
@@ -17,7 +17,9 @@
  *    there. The points of such a run share one frame and one distance.
  * 2. THE ORDER IS LEFT TO RIGHT. Distance is the running sum of segment lengths from the
  *    strip's first point, and a frame is carried from one segment to the next. One order,
- *    the same on every device, and the same loop here and on the GPU.
+ *    the same on every device, and the same loop here and on the GPU. A strip longer than
+ *    `STRIP_WALK_BLOCK` points is taken a block at a time, in ONE blocked order that is
+ *    just as fixed (`stripLengths`, `frameStripBlocked`).
  * 3. A FRAME IS TWO VECTORS, NOT A QUATERNION, WHILE IT IS CARRIED. The walk carries the
  *    segment's direction and its normal and re-squares them at every point; the quaternion
  *    is made once per point at the end. A straight continuation then turns nothing at all,
@@ -156,19 +158,35 @@ export interface StripLengths {
   readonly total: number;
 }
 
-/** Rule 2: the running sum of segment lengths, left to right, zero-length segments skipped. */
-export function stripLengths(points: ReadonlyArray<Vec3>, closed: boolean): StripLengths {
-  const cumulative: number[] = [];
-  let distance = 0;
-  const segments = segmentCount(points.length, closed);
-  for (let k = 0; k < points.length; k += 1) {
-    cumulative.push(distance);
-    if (k >= segments) continue;
-    const segment = segmentOf(points, k);
-    const squared = dot(segment, segment);
-    if (squared > ZERO_SEGMENT_SQUARED) distance += Math.sqrt(squared);
+/**
+ * Rule 2: the running sum of segment lengths, left to right, zero-length segments skipped.
+ *
+ * THE BLOCKED ORDER (the design's section 4.3). A strip longer than one block is summed a
+ * block at a time: each block sums its own segments from zero, the blocks' sums are added
+ * left to right to give each block its start, and a point's distance is its block's start
+ * plus its distance inside the block. That is what lets many walks measure one long strip
+ * at once on the GPU, and it is why a long strip rounds differently from the same points
+ * walked whole. A strip of one block is the case of one block: its start is zero, and zero
+ * plus a number is that number, so nothing about a short strip changes.
+ */
+export function stripLengths(points: ReadonlyArray<Vec3>, closed: boolean, block = STRIP_WALK_BLOCK): StripLengths {
+  const cols = points.length;
+  const segments = segmentCount(cols, closed);
+  const cumulative = new Array<number>(cols);
+  let start = 0;
+  for (let first = 0; first < cols; first += block) {
+    const last = Math.min(first + block, cols);
+    let inside = 0;
+    for (let k = first; k < last; k += 1) {
+      cumulative[k] = start + inside;
+      if (k >= segments) continue;
+      const segment = segmentOf(points, k);
+      const squared = dot(segment, segment);
+      if (squared > ZERO_SEGMENT_SQUARED) inside += Math.sqrt(squared);
+    }
+    start += inside;
   }
-  return { cumulative, total: distance };
+  return { cumulative, total: start };
 }
 
 export interface StripFrameOptions {
@@ -204,21 +222,87 @@ export interface StripFrames {
 
 const isPerPoint = (up: Vec3 | ReadonlyArray<Vec3>): up is ReadonlyArray<Vec3> => Array.isArray(up[0]);
 
+const directionOf = (segment: Vec3): Vec3 => scale(segment, 1 / Math.sqrt(dot(segment, segment)));
+
+/** Fixed Up: the normal one point hands the next, for where the next cannot decide its own. */
+interface Handed {
+  normal: Vec3 | undefined;
+}
+
+/**
+ * The per-point half of a walk: what a RUN of coincident points is written with. Shared by
+ * the whole walk and the blocked one, so a point's frame is one expression however its
+ * strip was walked.
+ */
+function frameSink(cols: number, options: StripFrameOptions, total: number, closing: number) {
+  const carried = options.method === "minimiseTwist";
+  const upAt = (index: number): Vec3 => (isPerPoint(options.up) ? (options.up[index] as Vec3) : options.up);
+  const roll = options.roll ?? 0;
+  const twist = options.twist ?? 0;
+  const tangent: Vec3[] = new Array<Vec3>(cols);
+  const normal: Vec3[] = new Array<Vec3>(cols);
+  const binormal: Vec3[] = new Array<Vec3>(cols);
+  const orient: Quat[] = new Array<Quat>(cols);
+  const distance: number[] = new Array<number>(cols);
+  const curveU: number[] = new Array<number>(cols);
+  const curvature: number[] = new Array<number>(cols);
+
+  /** `emit` false walks the run for what it hands on and writes nothing (the blocked form's catch-up). */
+  const write = (from: number, to: number, runTangent: Vec3, runNormal: Vec3, at: number, bend: number, handed: Handed, emit = true): void => {
+    for (let index = from; index <= to; index += 1) {
+      let own = runNormal;
+      if (!carried) {
+        // Fixed Up: up made square to the tangent; where the tangent runs along up, the
+        // point before it decides, and a world axis if there was none.
+        let leaning = perpendicular(upAt(index), runTangent);
+        if (dot(leaning, leaning) < 1e-12 && handed.normal !== undefined) leaning = perpendicular(handed.normal, runTangent);
+        if (dot(leaning, leaning) < 1e-12) leaning = perpendicular(leastAligned(runTangent), runTangent);
+        own = unit(leaning);
+        handed.normal = own;
+      }
+      if (!emit) continue;
+      const u = total > 0 ? at / total : 0;
+      const angle = roll + (options.rollPerPoint?.[index] ?? 0) + (twist - closing) * u;
+      const across = cross(runTangent, own);
+      // A right-handed turn about the tangent: the normal swings toward the binormal.
+      const turned: Vec3 = angle === 0 ? own : add(scale(own, Math.cos(angle)), scale(across, Math.sin(angle)));
+      tangent[index] = runTangent;
+      normal[index] = turned;
+      binormal[index] = cross(runTangent, turned);
+      orient[index] = quatFromFrame(cross(turned, runTangent), turned, runTangent);
+      distance[index] = at;
+      curveU[index] = u;
+      curvature[index] = bend;
+    }
+  };
+  return { tangent, normal, binormal, orient, distance, curveU, curvature, write, upAt };
+}
+
 /**
  * What Curve Frames publishes for one strip: distance, curvature and a frame per point.
  *
- * Two walks, as on the GPU. The first finds what every point needs before it can be
- * written: the strip's length, its first and last real segments, and (closed, Minimise
- * Twist) how far the frame has turned after one lap. The second writes the points, one RUN
- * of coincident points at a time.
+ * A strip of at most one block is walked WHOLE, by `frameStripWhole`. A longer one is cut
+ * into blocks and walked by `frameStripBlocked` — the same answer up to rounding, in the
+ * order the GPU's blocked passes use. `block` is a parameter so the tests can cut a strip
+ * of eleven points into blocks of four; a node always uses `STRIP_WALK_BLOCK`.
  */
-export function frameStrip(points: ReadonlyArray<Vec3>, options: StripFrameOptions): StripFrames {
+export function frameStrip(points: ReadonlyArray<Vec3>, options: StripFrameOptions, block = STRIP_WALK_BLOCK): StripFrames {
+  return points.length > block ? frameStripBlocked(points, options, block) : frameStripWhole(points, options);
+}
+
+/**
+ * The whole walk: two passes over the strip, as on the GPU. The first finds what every
+ * point needs before it can be written: the strip's length, its first and last real
+ * segments, and (closed, Minimise Twist) how far the frame has turned after one lap. The
+ * second writes the points, one RUN of coincident points at a time.
+ */
+function frameStripWhole(points: ReadonlyArray<Vec3>, options: StripFrameOptions): StripFrames {
   const cols = points.length;
   const { closed, method } = options;
   const segments = segmentCount(cols, closed);
-  const upAt = (index: number): Vec3 => (isPerPoint(options.up) ? (options.up[index] as Vec3) : options.up);
   const carried = method === "minimiseTwist";
-  const seedWanted: Vec3 = carried && options.seedOrient !== undefined ? rotateByQuat(options.seedOrient, [0, 1, 0]) : upAt(0);
+  const firstUp: Vec3 = isPerPoint(options.up) ? (options.up[0] as Vec3) : options.up;
+  const seedWanted: Vec3 = carried && options.seedOrient !== undefined ? rotateByQuat(options.seedOrient, [0, 1, 0]) : firstUp;
 
   // ── Walk 1: the totals ──
   let total = 0;
@@ -247,55 +331,19 @@ export function frameStrip(points: ReadonlyArray<Vec3>, options: StripFrameOptio
     lastSegment = segment;
   }
 
-  const tangent: Vec3[] = new Array<Vec3>(cols);
-  const normal: Vec3[] = new Array<Vec3>(cols);
-  const binormal: Vec3[] = new Array<Vec3>(cols);
-  const orient: Quat[] = new Array<Quat>(cols);
-  const distance: number[] = new Array<number>(cols);
-  const curveU: number[] = new Array<number>(cols);
-  const curvature: number[] = new Array<number>(cols);
-
   let closingAngle = 0;
   if (firstDirection !== undefined && closed && carried) {
     const lapped = turn(lastDirection, firstDirection, lapNormal).next;
     closingAngle = Math.atan2(dot(cross(seed, lapped), firstDirection), dot(seed, lapped));
   }
-  const closing = options.closeTwist === false ? 0 : closingAngle;
-  const roll = options.roll ?? 0;
-  const twist = options.twist ?? 0;
-
-  let previousNormal: Vec3 | undefined;
-  const write = (from: number, to: number, runTangent: Vec3, runNormal: Vec3, at: number, bend: number): void => {
-    for (let index = from; index <= to; index += 1) {
-      let own = runNormal;
-      if (!carried) {
-        // Fixed Up: up made square to the tangent; where the tangent runs along up, the
-        // point before it decides, and a world axis if there was none.
-        let leaning = perpendicular(upAt(index), runTangent);
-        if (dot(leaning, leaning) < 1e-12 && previousNormal !== undefined) leaning = perpendicular(previousNormal, runTangent);
-        if (dot(leaning, leaning) < 1e-12) leaning = perpendicular(leastAligned(runTangent), runTangent);
-        own = unit(leaning);
-        previousNormal = own;
-      }
-      const u = total > 0 ? at / total : 0;
-      const angle = roll + (options.rollPerPoint?.[index] ?? 0) + (twist - closing) * u;
-      const across = cross(runTangent, own);
-      // A right-handed turn about the tangent: the normal swings toward the binormal.
-      const turned: Vec3 = angle === 0 ? own : add(scale(own, Math.cos(angle)), scale(across, Math.sin(angle)));
-      tangent[index] = runTangent;
-      normal[index] = turned;
-      binormal[index] = cross(runTangent, turned);
-      orient[index] = quatFromFrame(cross(turned, runTangent), turned, runTangent);
-      distance[index] = at;
-      curveU[index] = u;
-      curvature[index] = bend;
-    }
-  };
+  const sink = frameSink(cols, options, total, options.closeTwist === false ? 0 : closingAngle);
+  const handed: Handed = { normal: undefined };
+  const { tangent, normal, binormal, orient, distance, curveU, curvature } = sink;
 
   if (firstDirection === undefined) {
     // A strip of no length has no direction: its frame is the seed's and its metrics are zero.
     const z: Vec3 = carried && options.seedOrient !== undefined ? rotateByQuat(options.seedOrient, [0, 0, 1]) : [0, 0, 1];
-    write(0, cols - 1, z, seedNormal(z, seedWanted), 0, 0);
+    sink.write(0, cols - 1, z, seedNormal(z, seedWanted), 0, 0, handed);
     return { tangent, normal, binormal, orient, distance, curveU, curveLength: 0, curvature, closingAngle: 0 };
   }
 
@@ -315,12 +363,12 @@ export function frameStrip(points: ReadonlyArray<Vec3>, options: StripFrameOptio
     const size = Math.sqrt(squared);
     const direction = scale(segment, 1 / size);
     if (!started) {
-      write(runStart, k, direction, seed, travelled, 0);
+      sink.write(runStart, k, direction, seed, travelled, 0, handed);
       carriedNormal = seed;
       started = true;
     } else {
       const crossing = turn(previousDirection, direction, carriedNormal);
-      write(runStart, k, crossing.tangent, crossing.normal, travelled, turningCurvature(previousSegment, segment));
+      sink.write(runStart, k, crossing.tangent, crossing.normal, travelled, turningCurvature(previousSegment, segment), handed);
       carriedNormal = crossing.next;
     }
     travelled += size;
@@ -332,9 +380,295 @@ export function frameStrip(points: ReadonlyArray<Vec3>, options: StripFrameOptio
     if (closed) {
       // The closing segment had no length: these points sit on the first one, a lap later.
       const crossing = turn(previousDirection, firstDirection, carriedNormal);
-      write(runStart, cols - 1, crossing.tangent, crossing.normal, travelled, turningCurvature(previousSegment, firstSegment));
+      sink.write(runStart, cols - 1, crossing.tangent, crossing.normal, travelled, turningCurvature(previousSegment, firstSegment), handed);
     } else {
-      write(runStart, cols - 1, previousDirection, carriedNormal, travelled, 0);
+      sink.write(runStart, cols - 1, previousDirection, carriedNormal, travelled, 0, handed);
+    }
+  }
+  return { tangent, normal, binormal, orient, distance, curveU, curveLength: total, curvature, closingAngle };
+}
+
+/** Pass 1: what one block is on its own — nothing here depends on the blocks before it. */
+interface BlockSummary {
+  /** The sum of its segments' lengths, from zero. */
+  readonly length: number;
+  /** Whether it has a segment with a length at all. A block of padding has none. */
+  readonly has: boolean;
+  readonly firstSegment: Vec3;
+  readonly lastSegment: Vec3;
+  /** A reference normal, seeded on its first segment and carried to its last. */
+  readonly reference: Vec3;
+  /** An odd number of exact reversals inside it: the carried side of the reference is mirrored. */
+  readonly flipped: boolean;
+}
+
+/** Fold 1: the walk's state where a block begins, and what the points after its last segment are written with. */
+interface BlockEntry {
+  readonly started: boolean;
+  readonly previousSegment: Vec3;
+  readonly carried: Vec3;
+  readonly travelled: number;
+  tail: { readonly tangent: Vec3; readonly normal: Vec3; readonly bend: number; readonly travelled: number };
+}
+
+/**
+ * THE BLOCKED WALK (the design's section 4.3): a strip longer than one block, in the order
+ * the GPU's passes take it. The answer is `frameStripWhole`'s up to rounding; the tests
+ * hold the two together on strips cut into blocks of a few points.
+ *
+ * A frame depends on everything before it, and so does a distance. But what a BLOCK does to
+ * them does not depend on what came before the block: it adds its own length, and it turns
+ * whatever normal it is handed by its own rotation. So:
+ *
+ *  1. every block is summarised on its own (many walks at once): its length, its first and
+ *     last real segments, and a reference normal carried from the first to the last;
+ *  2. ONE pass per strip walks the summaries in order — a few steps, not thousands — and
+ *     writes, per block, the state the whole walk would have had on arriving there. It
+ *     also finds the strip's length and its closing angle;
+ *  3. every block is walked again from that state and writes its points (many walks at
+ *     once). This is `frameStripWhole`'s second walk, started in the middle.
+ *
+ * ⚑ A BLOCK'S TURN IS ONE ANGLE. Carrying a normal across a point is a rotation, so two
+ * normals carried through the same block keep the angle between them. The block carries a
+ * reference of its own choosing; the normal it is handed sits at some angle to that
+ * reference about the first segment, and leaves at the same angle to the carried reference
+ * about the last. An exact reversal keeps the normal and turns the direction round, which
+ * mirrors that angle — hence `flipped`.
+ *
+ * ⚑ A RUN OF COINCIDENT POINTS CAN CROSS A BLOCK'S EDGE, and padding can fill whole blocks.
+ * A run is written with the turn at the segment that ENDS it, which may be blocks away. So
+ * step 2 also walks the blocks backward and hands each one the turn that ends its trailing
+ * run (`tail`), and every block writes only its own points: a strip that is mostly padding
+ * is still written by all its blocks at once, and the points of one run still share one
+ * frame to the bit.
+ *
+ * ⚑ FIXED UP HAS A SECOND THING HANDED ALONG: where a tangent runs along Up the point takes
+ * the normal of the point before it. That chain is cut at every point that CAN decide its
+ * own normal, so a block that holds such a point hands on a normal that owes nothing to the
+ * blocks before it. A block with none (a straight run along Up, longer than a block) hands
+ * on what it was handed, pressed square to each of its tangents in turn — a linear map,
+ * which is summarised as the three vectors it sends the axes to (pass 2b) and applied in a
+ * second fold. The one thing a linear map cannot say is the chain collapsing inside such a
+ * block (the handed normal landing along a tangent, which restarts it from a world axis):
+ * the fold sees that it MAY have happened, because the mapped normal has all but vanished,
+ * marks what follows as not known, and the write pass walks forward from the last block
+ * whose handed normal is known. Never on a real curve; exact when it happens.
+ */
+function frameStripBlocked(points: ReadonlyArray<Vec3>, options: StripFrameOptions, block: number): StripFrames {
+  const cols = points.length;
+  const { closed, method } = options;
+  const segments = segmentCount(cols, closed);
+  const carried = method === "minimiseTwist";
+  const firstUp: Vec3 = isPerPoint(options.up) ? (options.up[0] as Vec3) : options.up;
+  const seedWanted: Vec3 = carried && options.seedOrient !== undefined ? rotateByQuat(options.seedOrient, [0, 1, 0]) : firstUp;
+  const blocks = Math.ceil(cols / block);
+  const firstOf = (b: number): number => b * block;
+  const endOf = (b: number): number => Math.min((b + 1) * block, cols);
+
+  // ── Pass 1: every block on its own ──
+  const summaries: BlockSummary[] = [];
+  for (let b = 0; b < blocks; b += 1) {
+    let length = 0;
+    let has = false;
+    let firstSegment: Vec3 = [0, 0, 0];
+    let lastSegment: Vec3 = [0, 0, 0];
+    let lastDirection: Vec3 = [0, 0, 1];
+    let reference: Vec3 = [0, 1, 0];
+    let flipped = false;
+    for (let k = firstOf(b); k < endOf(b) && k < segments; k += 1) {
+      const segment = segmentOf(points, k);
+      const squared = dot(segment, segment);
+      if (squared <= ZERO_SEGMENT_SQUARED) continue;
+      const size = Math.sqrt(squared);
+      const direction = scale(segment, 1 / size);
+      length += size;
+      if (!has) {
+        has = true;
+        firstSegment = segment;
+        reference = seedNormal(direction, seedWanted);
+      } else {
+        if (dot(lastDirection, direction) < -0.999999) flipped = !flipped;
+        reference = turn(lastDirection, direction, reference).next;
+      }
+      lastDirection = direction;
+      lastSegment = segment;
+    }
+    summaries.push({ length, has, firstSegment, lastSegment, reference, flipped });
+  }
+
+  /** A block's own turn, applied to the normal `onFirst` of its first segment: the normal of its last. */
+  const through = (summary: BlockSummary, onFirst: Vec3): Vec3 => {
+    const incoming = directionOf(summary.firstSegment);
+    const outgoing = directionOf(summary.lastSegment);
+    const start = seedNormal(incoming, seedWanted);
+    const along = dot(onFirst, start);
+    const across = dot(onFirst, cross(incoming, start)) * (summary.flipped ? -1 : 1);
+    return unit(perpendicular(add(scale(summary.reference, along), scale(cross(outgoing, summary.reference), across)), outgoing));
+  };
+
+  // ── Fold 1: the strip's totals, then the state each block is entered with ──
+  let total = 0;
+  const starts: number[] = [];
+  let firstReal: BlockSummary | undefined;
+  let lastReal: BlockSummary | undefined;
+  for (const summary of summaries) {
+    starts.push(total);
+    total += summary.length;
+    if (summary.has) {
+      firstReal ??= summary;
+      lastReal = summary;
+    }
+  }
+
+  const entries: BlockEntry[] = [];
+  let closingAngle = 0;
+  if (firstReal === undefined || lastReal === undefined) {
+    // A strip of no length has no direction: its frame is the seed's and its metrics are zero.
+    const z: Vec3 = carried && options.seedOrient !== undefined ? rotateByQuat(options.seedOrient, [0, 0, 1]) : [0, 0, 1];
+    const tail = { tangent: z, normal: seedNormal(z, seedWanted), bend: 0, travelled: 0 };
+    for (let b = 0; b < blocks; b += 1) entries.push({ started: false, previousSegment: [0, 0, 0], carried: tail.normal, travelled: 0, tail });
+  } else {
+    const firstDirection = directionOf(firstReal.firstSegment);
+    const lastDirection = directionOf(lastReal.lastSegment);
+    const seed = seedNormal(firstDirection, seedWanted);
+    if (closed && carried) {
+      // One lap from the seed: how far the carried frame has turned on coming back.
+      let lap = seed;
+      let lapDirection = firstDirection;
+      let entered = false;
+      for (const summary of summaries) {
+        if (!summary.has) continue;
+        lap = through(summary, entered ? turn(lapDirection, directionOf(summary.firstSegment), lap).next : seed);
+        lapDirection = directionOf(summary.lastSegment);
+        entered = true;
+      }
+      const lapped = turn(lastDirection, firstDirection, lap).next;
+      closingAngle = Math.atan2(dot(cross(seed, lapped), firstDirection), dot(seed, lapped));
+    }
+
+    let started = closed;
+    let previousSegment: Vec3 = lastReal.lastSegment;
+    let normal: Vec3 = closed && carried ? turn(firstDirection, lastDirection, seed).next : seed;
+    for (let b = 0; b < blocks; b += 1) {
+      const summary = summaries[b] as BlockSummary;
+      entries.push({ started, previousSegment, carried: normal, travelled: starts[b] as number, tail: { tangent: firstDirection, normal: seed, bend: 0, travelled: 0 } });
+      if (!summary.has) continue;
+      normal = through(summary, started ? turn(directionOf(previousSegment), directionOf(summary.firstSegment), normal).next : seed);
+      previousSegment = summary.lastSegment;
+      started = true;
+    }
+
+    // Backward: the turn that ends each block's trailing run is the one that opens the next
+    // block with a real segment — or the strip's own end.
+    const endDirection = directionOf(previousSegment);
+    let tail: BlockEntry["tail"];
+    if (closed) {
+      const crossing = turn(endDirection, firstDirection, normal);
+      tail = { tangent: crossing.tangent, normal: crossing.normal, bend: turningCurvature(previousSegment, firstReal.firstSegment), travelled: total };
+    } else {
+      tail = { tangent: endDirection, normal, bend: 0, travelled: total };
+    }
+    for (let b = blocks - 1; b >= 0; b -= 1) {
+      const summary = summaries[b] as BlockSummary;
+      const entry = entries[b] as BlockEntry;
+      entry.tail = tail;
+      if (!summary.has) continue;
+      const opening = directionOf(summary.firstSegment);
+      if (entry.started) {
+        const crossing = turn(directionOf(entry.previousSegment), opening, entry.carried);
+        tail = { tangent: crossing.tangent, normal: crossing.normal, bend: turningCurvature(entry.previousSegment, summary.firstSegment), travelled: entry.travelled };
+      } else {
+        tail = { tangent: opening, normal: seed, bend: 0, travelled: entry.travelled };
+      }
+    }
+  }
+
+  /** One block's runs, in order: `frameStripWhole`'s second walk, started from the block's entry. */
+  const walkBlock = (b: number, run: (from: number, to: number, runTangent: Vec3, runNormal: Vec3, at: number, bend: number) => void): void => {
+    const entry = entries[b] as BlockEntry;
+    let started = entry.started;
+    let previousSegment = entry.previousSegment;
+    let previousDirection: Vec3 = started ? directionOf(previousSegment) : [0, 0, 1];
+    let carriedNormal = entry.carried;
+    let runStart = firstOf(b);
+    let inside = 0;
+    for (let k = firstOf(b); k < endOf(b) && k < segments; k += 1) {
+      const segment = segmentOf(points, k);
+      const squared = dot(segment, segment);
+      if (squared <= ZERO_SEGMENT_SQUARED) continue;
+      const size = Math.sqrt(squared);
+      const direction = scale(segment, 1 / size);
+      if (!started) {
+        const seed = seedNormal(direction, seedWanted);
+        run(runStart, k, direction, seed, entry.travelled + inside, 0);
+        carriedNormal = seed;
+        started = true;
+      } else {
+        const crossing = turn(previousDirection, direction, carriedNormal);
+        run(runStart, k, crossing.tangent, crossing.normal, entry.travelled + inside, turningCurvature(previousSegment, segment));
+        carriedNormal = crossing.next;
+      }
+      inside += size;
+      previousDirection = direction;
+      previousSegment = segment;
+      runStart = k + 1;
+    }
+    if (runStart < endOf(b)) run(runStart, endOf(b) - 1, entry.tail.tangent, entry.tail.normal, entry.tail.travelled, entry.tail.bend);
+  };
+
+  const sink = frameSink(cols, options, total, options.closeTwist === false ? 0 : closingAngle);
+  const { tangent, normal, binormal, orient, distance, curveU, curvature } = sink;
+
+  // ── Fixed Up only. Pass 2b: what each block does to the handed normal; fold 2: what each is handed ──
+  const handedIn: Array<{ normal: Vec3 | undefined; known: boolean }> = [];
+  if (!carried) {
+    let handed: Vec3 | undefined;
+    let known = true;
+    for (let b = 0; b < blocks; b += 1) {
+      handedIn.push({ normal: handed, known });
+      // The chain inside the block: its own normal once a point has decided one, and until
+      // then the map it applies to whatever it was handed.
+      let seen = b > 0;
+      let decided = false;
+      let own: Vec3 = [0, 0, 0];
+      const axes: [Vec3, Vec3, Vec3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+      walkBlock(b, (from, to, runTangent) => {
+        for (let index = from; index <= to; index += 1) {
+          let leaning = perpendicular(sink.upAt(index), runTangent);
+          if (dot(leaning, leaning) < 1e-12) {
+            if (decided) {
+              leaning = perpendicular(own, runTangent);
+            } else if (seen) {
+              for (let axis = 0; axis < 3; axis += 1) axes[axis] = perpendicular(axes[axis] as Vec3, runTangent);
+              continue;
+            }
+          }
+          if (dot(leaning, leaning) < 1e-12) leaning = perpendicular(leastAligned(runTangent), runTangent);
+          own = unit(leaning);
+          decided = true;
+          seen = true;
+        }
+      });
+      if (decided) {
+        handed = own;
+        known = true;
+      } else if (known && handed !== undefined) {
+        const mapped = add(add(scale(axes[0], handed[0]), scale(axes[1], handed[1])), scale(axes[2], handed[2]));
+        // Every pressing can only shorten it. Still a millionth of its length: no single
+        // pressing can have collapsed it, so the chain inside ran unbroken and this is it.
+        if (dot(mapped, mapped) >= 1e-12) handed = unit(mapped);
+        else known = false;
+      }
+    }
+  }
+
+  // ── Pass 3: every block writes its own points ──
+  for (let b = 0; b < blocks; b += 1) {
+    let from = b;
+    if (!carried) while (!(handedIn[from] as { known: boolean }).known) from -= 1;
+    const handed: Handed = { normal: carried ? undefined : (handedIn[from] as { normal: Vec3 | undefined }).normal };
+    for (let c = from; c <= b; c += 1) {
+      walkBlock(c, (first, last, runTangent, runNormal, at, bend) => sink.write(first, last, runTangent, runNormal, at, bend, handed, c === b));
     }
   }
   return { tangent, normal, binormal, orient, distance, curveU, curveLength: total, curvature, closingAngle };

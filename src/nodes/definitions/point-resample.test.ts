@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { scratchResourceId } from "../../compiler/resources.ts";
 import { pointResampleNode, resampleAttributes } from "./point-resample.ts";
 import { pointStorageId } from "./point-storage.ts";
-import { compileContext, fixturePairs } from "./test-support.ts";
+import { compileContext, fixturePairs, planFingerprint } from "./test-support.ts";
 
 /**
  * Resample at the fixture level (T1586b): what it publishes on the edge, how its passes
@@ -147,6 +147,91 @@ describe("Resample — what it publishes (T1586b)", () => {
   });
 });
 
+/**
+ * T1586b slice 6 — A STRIP OF ONE BLOCK KEEPS ITS PROGRAM, TO THE BYTE. The reason and the
+ * rule are in `point-curve-frames.test.ts`; these are Resample's programs for input strips
+ * of at most 1,024 points, recorded from main before the blocked form was written
+ * (7437b9f4).
+ */
+describe("Resample — a strip of one block keeps its program, to the byte (T1586b slice 6)", () => {
+  const BLOCK = fixturePairs(
+    "kernel_source",
+    [
+      { name: "position", type: "vec3f" },
+      { name: "weight", type: "f32" },
+      { name: "tag", type: "u32" },
+    ],
+    2048,
+  );
+  const frozen: ReadonlyArray<readonly [string, number, string, Record<string, unknown>]> = [
+    ["d6d7402cbf9d0dcf", 2, "strips:1024x2", { method: "count", count: 300 }],
+    ["dfa720d578ff46ed", 2, "strips:1024x2:closed", { method: "count", count: 300, offset: 0.25 }],
+    ["5a0412abf02c3b36", 2, "strips:1024x2", { method: "distance", distance: 0.05, maxPoints: 512 }],
+    ["da899a69c0907acd", 2, "strips:1024x2", { method: "distance", distance: 0.05, maxPoints: 512, anchor: "end", rangeStart: 0.1, rangeEnd: 0.9 }],
+    ["da46dd28fb92c05b", 1, "strips:1024x2", { method: "count", spacing: "parameter", count: 300 }],
+    ["16bd5d57c8644f0c", 2, "strips:54x30", { method: "distance", distance: 0.06, maxPoints: 54 }],
+  ];
+
+  for (const [fingerprint, passes, topology, parameters] of frozen) {
+    it(`${topology} ${JSON.stringify(parameters)}`, () => {
+      const result = compile(topology, parameters, { capacity: 2048, pairs: BLOCK });
+      expect(result.diagnostics ?? []).toEqual([]);
+      expect(result.passes).toHaveLength(passes);
+      expect(planFingerprint(result)).toBe(fingerprint);
+    });
+  }
+});
+
+/**
+ * T1586b slice 6 — an input strip LONGER than one block has its lengths taken by many
+ * walks at once. What they compute is asserted on Dawn; this is their shape.
+ */
+describe("Resample — an input strip longer than one block (T1586b slice 6)", () => {
+  const LONG = fixturePairs("kernel_source", [{ name: "position", type: "vec3f" }, { name: "weight", type: "f32" }], 7500);
+  const long = (topology: string, parameters: Record<string, unknown>) => compile(topology, parameters, { capacity: 7500, pairs: LONG });
+  /** The members a pass's uniform struct declares, read off its text. */
+  const declared = (shader: string): string[] => {
+    const body = shader.slice(shader.indexOf("struct "), shader.indexOf("};"));
+    return [...body.matchAll(/^\s+(\w+):/gm)].map((match) => match[1] as string);
+  };
+
+  it("1,024 points are one length walk; 1,025 are a block pass, a fold and an add, then the same emit", () => {
+    const short = long("strips:1024x3", { method: "count", count: 100 });
+    expect((short.passes as Pass[]).map((pass) => pass.id.split(":").slice(2).join(":"))).toEqual(["lengths", "emit:count:length:start:100x3"]);
+    const result = long("strips:1025x3", { method: "count", count: 100 });
+    expect(result.diagnostics ?? []).toEqual([]);
+    const passes = result.passes as Pass[];
+    expect(passes.map((pass) => pass.id.split(":").slice(2).join(":"))).toEqual([
+      "lengths:block",
+      "lengths:fold",
+      "lengths:add",
+      "emit:count:length:start:100x3",
+    ]);
+    // Six blocks, three strips, 3,075 input points, 300 output slots.
+    expect(passes.map((pass) => pass.workgroups[0])).toEqual([1, 1, 49, 5]);
+    expect(passes[0]!.buffers.map((entry) => entry.binding)).toEqual(["in_position", "cumulative", "blockStarts"]);
+    expect(passes[1]!.buffers.map((entry) => entry.binding)).toEqual(["blockStarts", "totals"]);
+    expect(passes[2]!.buffers.map((entry) => entry.binding)).toEqual(["blockStarts", "cumulative"]);
+    // The emit pass does not know its input was long: the text it runs is a short strip's.
+    expect(passes[3]!.shader).toBe((short.passes as Pass[])[1]!.shader);
+    expect(passes[3]!.buffers.map((entry) => entry.binding)).toEqual(["pk_0", "cumulative", "totals", "out_points"]);
+    expect((result.scratch ?? []).map((entry) => (entry as { key: string }).key)).toEqual(["cumulative", "totals", "blockStarts", "@points"]);
+    expect(((result.scratch ?? [])[2] as { capacity: number }).capacity).toBe(6);
+  });
+
+  it("every length pass sets exactly the uniforms its shader declares", () => {
+    for (const pass of long("strips:2500x3:closed", { method: "distance", maxPoints: 64 }).passes as Pass[]) {
+      expect(declared(pass.shader), pass.id).toEqual(Object.keys(pass.uniforms));
+    }
+  });
+
+  it("Even Parameter walks nothing, so a long strip is still its one pass", () => {
+    const result = long("strips:7500x1", { method: "count", spacing: "parameter" });
+    expect(result.diagnostics ?? []).toEqual([]);
+    expect(result.passes).toHaveLength(1);
+  });
+});
+
 describe("Resample — refusals, each by name (§V288)", () => {
   it("an edge with no strips (D10)", () => {
     const refused = errorOf(compile("points"));
@@ -159,14 +244,6 @@ describe("Resample — refusals, each by name (§V288)", () => {
     const refused = errorOf(compile("strips:6x10", {}, { count: { buffer: "scratch:kernel_source:counts" } }));
     expect(refused.code).toBe("node.points.resample");
     expect(refused.message).toContain("GPU live count");
-  });
-
-  it("a strip too long to walk by length — while Even Parameter, which walks nothing, takes it", () => {
-    const long = fixturePairs("kernel_source", [{ name: "position", type: "vec3f" }], 2048);
-    const refused = errorOf(compile("strips:1025x1", { method: "count", spacing: "length" }, { capacity: 2048, pairs: long }));
-    expect(refused.code).toBe("node.points.strips");
-    expect(refused.message).toContain("1025");
-    expect(compile("strips:1025x1", { method: "count", spacing: "parameter" }, { capacity: 2048, pairs: long }).diagnostics ?? []).toEqual([]);
   });
 
   it("Even Parameter over a padded input, whose padding it would count as points", () => {

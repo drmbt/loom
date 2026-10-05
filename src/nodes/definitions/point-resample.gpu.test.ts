@@ -1,18 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import type { PointAttributeType } from "../../points/attributes.ts";
-import { resampleStrip, type ResampleOptions, type Vec3 } from "../../points/curve.ts";
+import { frameStrip, resampleStrip, type ResampleOptions, type Vec3 } from "../../points/curve.ts";
 import {
   authoredPoints,
   curveEdge,
   curveGraph,
   curveNode,
   drawnTo,
+  formulaPoints,
   onDawn,
   vecAt,
   type AuthoredAttribute,
   type CurveSession,
 } from "./curve-test-support.ts";
+import { curveAttributes } from "./point-curve.ts";
 import { curveFramesAttributes } from "./point-curve-frames.ts";
 import { resampleAttributes } from "./point-resample.ts";
 
@@ -34,21 +36,33 @@ import { resampleAttributes } from "./point-resample.ts";
 const LINE_OF_FOUR: Vec3[] = [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0], [4, 0, 0]];
 
 interface Resampled {
+  /** The input points, as the device holds them. */
+  readonly source: Vec3[];
   readonly position: number[][];
   readonly x: number[];
   readonly live: number[] | undefined;
   readonly floats: (name: string) => Promise<Float32Array>;
 }
 
+type Strips = { readonly cols: number; readonly rows: number; readonly closed?: boolean };
+type Also<T> = (read: (name: string) => Promise<{ floats: Float32Array; words: Uint32Array }>, result: Resampled) => Promise<T>;
+
 /** authored points → Topology (Strips) → Resample; one frame on Dawn; the output read back. */
-async function resample<T = Resampled>(
+const resample = <T = Resampled>(
   positions: ReadonlyArray<Vec3>,
-  strips: { readonly cols: number; readonly rows: number; readonly closed?: boolean },
+  strips: Strips,
   parameters: Record<string, unknown>,
   extras: ReadonlyArray<AuthoredAttribute> = [],
-  also?: (read: (name: string) => Promise<{ floats: Float32Array; words: Uint32Array }>, result: Resampled) => Promise<T>,
+  also?: Also<T>,
+): Promise<T> => resampleFrom(authoredPoints("kernel_source", positions, extras), strips, parameters, also);
+
+/** A source of `strips` → Topology (Strips) → Resample; one frame on Dawn; the output read back. */
+async function resampleFrom<T = Resampled>(
+  source: ReturnType<typeof authoredPoints>,
+  strips: Strips,
+  parameters: Record<string, unknown>,
+  also?: Also<T>,
 ): Promise<T> {
-  const source = authoredPoints("kernel_source", positions, extras);
   const byDistance = parameters["method"] === "distance";
   const colsOut = Number(byDistance ? (parameters["maxPoints"] ?? 256) : (parameters["count"] ?? 64));
   const capacity = colsOut * strips.rows;
@@ -70,7 +84,10 @@ async function resample<T = Resampled>(
     const read = (name: string) => session.read("resample_rings", schema, capacity, name);
     const floats = (await read("position")).floats;
     const position = Array.from({ length: capacity }, (_, index) => vecAt(floats, index));
+    const count = strips.cols * strips.rows;
+    const input = (await session.read("kernel_source", source.schema, count, "position")).floats;
     const result: Resampled = {
+      source: Array.from({ length: count }, (_, index) => vecAt(input, index) as unknown as Vec3),
       position,
       x: position.map((point) => point[0] as number),
       live: byDistance ? Array.from((await read("live")).floats) : undefined,
@@ -351,4 +368,158 @@ describe("Resample on Dawn — padding in, the reference, and the chain (T1586b)
     // The control: the source really moved between frame 0 and frame 5.
     expect(still).not.toEqual(direct);
   }, 60_000);
+});
+
+/**
+ * T1586b slice 6 — INPUT STRIPS LONGER THAN ONE BLOCK.
+ *
+ * Past 1,024 points a strip's lengths are taken by many walks at once: every block sums
+ * itself, one pass per strip turns the sums into each block's start, and every point adds
+ * its block's start (`nodes/shaders/curve-resample.wgsl.ts`). The emit pass reads the same
+ * distances either way. So what is held here is that a station which falls in a later
+ * block is found where it belongs: exactly, on a line whose numbers are exact, and against
+ * the reference in its blocked order on curves with padding laid across the seams.
+ */
+describe("Resample on Dawn — input strips longer than one block (T1586b slice 6)", () => {
+  /**
+   * Half-unit steps along +X for 2,500 points, 1,249.5 long: three blocks. Every length is
+   * a multiple of a half below 2²⁴, so each block's sum, each block's start (512, 1,024)
+   * and their sums with a point's distance inside its block are all exact, and a station at
+   * a multiple of 2.5 lands ON an input point and copies it.
+   */
+  it("a point every 2.5 along 2,500 points of line: 500 stations, exactly, through both seams", async () => {
+    const line = formulaPoints("kernel_source", 2500, "  q.position = vec3f(f32(i) * 0.5, 0.0, 0.0);");
+    const out = await resampleFrom(line, { cols: 2500, rows: 1 }, { method: "distance", distance: 2.5, maxPoints: 512 });
+    expect(out.x).toEqual(Array.from({ length: 512 }, (_, k) => Math.min(k, 499) * 2.5));
+    expect(out.live).toEqual(Array.from({ length: 512 }, (_, k) => (k < 500 ? 1 : 0)));
+    // By Count, five points at the quarters of the length: between input points, in three blocks.
+    const quarters = await resampleFrom(line, { cols: 2500, rows: 1 }, { method: "count", count: 5 });
+    expect(quarters.position).toEqual([[0, 0, 0], [312.375, 0, 0], [624.75, 0, 0], [937.125, 0, 0], [1249.5, 0, 0]]);
+  }, 120_000);
+
+  /**
+   * A curve with no symmetry, 3,500 points a strip, with padding where the seams are: a run
+   * of coincident points across the seam at 1,024, a run that fills the whole third block,
+   * and a padded tail. Two strips, so a block's start is found by strip as well as by block.
+   */
+  const WANDER = `  let j = i / 3500u;
+  var s = i % 3500u;
+  if (s >= 1020u) { s = 1020u; }
+  if (i % 3500u >= 1030u) { s = i % 3500u - 10u; }
+  if (i % 3500u >= 2040u) { s = 2030u; }
+  if (i % 3500u >= 3080u) { s = i % 3500u - 1050u; }
+  if (i % 3500u >= 3300u) { s = 2250u; }
+  let t = f32(s) * 0.013 + f32(j) * 1.7;
+  q.position = vec3f(cos(t) * (1.0 + 0.3 * sin(t * 2.7)), sin(t * 1.3) * 0.8 + 0.2 * cos(t * 3.1), sin(t * 0.7) + f32(s) * 0.001);`;
+
+  it("agrees with the blocked reference on two unlike strips with padding across the seams", async () => {
+    const wander = formulaPoints("kernel_source", 7000, WANDER);
+    const cases: Array<{ parameters: Record<string, unknown>; options: Omit<ResampleOptions, "closed"> }> = [
+      { parameters: { method: "count", count: 300 }, options: { method: "count", spacing: "length", slots: 300 } },
+      {
+        parameters: { method: "distance", distance: 0.07, maxPoints: 900, anchor: "end", offset: 0.02, rangeStart: 0.1, rangeEnd: 0.95 },
+        options: { method: "distance", slots: 900, distance: 0.07, anchor: "end", offset: 0.02, rangeStart: 0.1, rangeEnd: 0.95 },
+      },
+    ];
+    for (const entry of cases) {
+      for (const closed of [false, true]) {
+        const out = await resampleFrom(wander, { cols: 3500, rows: 2, closed }, entry.parameters);
+        const cols = entry.options.slots;
+        for (const strip of [0, 1]) {
+          const expected = resampleStrip(out.source.slice(strip * 3500, (strip + 1) * 3500), { ...entry.options, closed });
+          expected.positions.forEach((point, k) => {
+            point.forEach((value, axis) =>
+              expect(out.position[strip * cols + k]![axis], `${JSON.stringify(entry.parameters)} ${closed ? "closed" : "open"} strip ${strip} slot ${k} axis ${axis}`).toBeCloseTo(value, 4),
+            );
+          });
+          if (out.live !== undefined) expect(out.live.slice(strip * cols, (strip + 1) * cols)).toEqual(expected.live);
+        }
+      }
+    }
+  }, 240_000);
+
+  /**
+   * The family end to end on long strips: a Curve typed into the node (six points at 512
+   * segments: 2,561 points), resampled to a point every 5 cm into 1,500 slots, and measured.
+   * Each stage is held to the reference run on what the stage before it WROTE, so an error
+   * has one place to be.
+   */
+  it("Curve → Resample → Curve Frames with every strip longer than a block", async () => {
+    const curve = { basis: "catmullRom", segments: 512, points: "[[0, 0, 0], [3, 1, 0], [5, 4, 2], [2, 6, 3], [-1, 4, 5], [-2, 0, 6]]" };
+    const sink = drawnTo("frames_rings", 1500);
+    const graph = curveGraph(
+      [
+        curveNode("curve_path", "pointCurve", curve),
+        curveNode("resample_rings", "pointResample", { method: "distance", distance: 0.05, maxPoints: 1500 }),
+        curveNode("frames_rings", "pointCurveFrames", { vectors: true }),
+        ...sink.nodes,
+      ],
+      [curveEdge(["curve_path", "out"], ["resample_rings", "points"]), curveEdge(["resample_rings", "out"], ["frames_rings", "points"]), ...sink.edges],
+    );
+    await onDawn(graph, async (session) => {
+      const vectors = (floats: Float32Array, count: number): Vec3[] => Array.from({ length: count }, (_, index) => vecAt(floats, index) as unknown as Vec3);
+      const path = vectors((await session.read("curve_path", curveAttributes(undefined, "catmullRom"), 2561, "position")).floats, 2561);
+      const ringSchema = resampleAttributes([{ name: "position", type: "vec3f" }, { name: "roll", type: "f32" }, { name: "scale", type: "f32" }], true);
+      const rings = vectors((await session.read("resample_rings", ringSchema, 1500, "position")).floats, 1500);
+      const live = Array.from((await session.read("resample_rings", ringSchema, 1500, "live")).floats);
+      const placed = resampleStrip(path, { closed: false, method: "distance", slots: 1500, distance: 0.05 });
+      expect(live).toEqual(placed.live);
+      // A curve through its control points is at least as long as the chords between them
+      // (19.39 m), so at 5 cm it has more than 387 rings — and fewer than its 1,500 slots.
+      const ringCount = live.reduce((sum, flag) => sum + flag, 0);
+      expect(ringCount).toBeGreaterThan(387);
+      expect(ringCount).toBeLessThan(1500);
+      placed.positions.forEach((point, k) => point.forEach((value, axis) => expect(rings[k]![axis], `ring ${k} axis ${axis}`).toBeCloseTo(value, 4)));
+
+      const frameSchema = curveFramesAttributes({ frame: true, vectors: true, metrics: true });
+      const expected = frameStrip(rings, { closed: false, method: "minimiseTwist", up: [0, 1, 0] });
+      const tangent = (await session.read("frames_rings", frameSchema, 1500, "tangent")).floats;
+      const normal = (await session.read("frames_rings", frameSchema, 1500, "normal")).floats;
+      const distance = (await session.read("frames_rings", frameSchema, 1500, "distance")).floats;
+      for (let k = 0; k < 1500; k += 1) {
+        expected.tangent[k]!.forEach((value, axis) => expect(vecAt(tangent, k)[axis], `tangent ${k}`).toBeCloseTo(value, 4));
+        expected.normal[k]!.forEach((value, axis) => expect(vecAt(normal, k)[axis], `normal ${k}`).toBeCloseTo(value, 4));
+        expect(distance[k], `distance ${k}`).toBeCloseTo(expected.distance[k]!, 4);
+      }
+      // What the chain is for: the live rings are 5 cm apart along the curve.
+      expect(distance[ringCount - 1]! / ((ringCount - 1) * 0.05)).toBeCloseTo(1, 3);
+    });
+  }, 120_000);
+
+  /**
+   * §V170, with scratch in it: the blocks' starts live in a buffer that outlasts the frame.
+   * Frame 5 rendered on its own is frame 5 after frames 0 to 4, byte for byte.
+   */
+  it("seek: under a moving long curve, frame 5 rendered directly is frame 5 after frames 0 to 4", async () => {
+    const moving = formulaPoints(
+      "kernel_source",
+      3000,
+      // timeline-anchored: the fixture's position in the piece is the point of the test.
+      "  let t = f32(i % 1500u) * 0.01;\n  q.position = vec3f(t * 2.0, sin(ctx.time * 3.0 + t), cos(t * 1.3 + ctx.time) + f32(i / 1500u));",
+    );
+    const sink = drawnTo("resample_rings", 800);
+    const graph = curveGraph(
+      [
+        moving.node,
+        curveNode("topology_strips", "pointTopology", { connectivity: "strips", cols: 1500, rows: 2 }),
+        curveNode("resample_rings", "pointResample", { method: "distance", distance: 0.1, maxPoints: 400 }),
+        ...sink.nodes,
+      ],
+      [curveEdge(["kernel_source", "out"], ["topology_strips", "points"]), curveEdge(["topology_strips", "out"], ["resample_rings", "points"]), ...sink.edges],
+    );
+    const schema = resampleAttributes([{ name: "position", type: "vec3f" }], true);
+    const snapshot = async (session: CurveSession): Promise<number[]> => [
+      ...(await session.read("resample_rings", schema, 800, "position")).words,
+      ...(await session.read("resample_rings", schema, 800, "live")).words,
+    ];
+    const direct = await onDawn(graph, snapshot, 16, 5);
+    const played = await onDawn(graph, async (session) => {
+      for (let frame = 1; frame <= 5; frame += 1) session.renderFrame(frame);
+      return snapshot(session);
+    });
+    const still = await onDawn(graph, snapshot);
+    expect(played).toEqual(direct);
+    // The control: the curve really moved between frame 0 and frame 5.
+    expect(still).not.toEqual(direct);
+  }, 120_000);
 });

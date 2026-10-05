@@ -377,6 +377,28 @@ export function fixturePairs(
 }
 
 /**
+ * T1586b: a node's emitted PROGRAM as one short string — every pass's id, shader text,
+ * bindings, dispatch size and uniform values.
+ *
+ * For the tests that FREEZE a program: where a later change must not move one byte of what
+ * a shipped configuration computes, the program that computes it is pinned here, by text.
+ * A device-independent statement, unlike a hash of read-back floats, which a different GPU's
+ * square root may round another way. Two 32-bit FNV-1a passes; this is a fingerprint, not a
+ * secret.
+ */
+export function planFingerprint(description: { readonly passes: ReadonlyArray<unknown> }): string {
+  const text = JSON.stringify(description.passes);
+  let low = 0x811c9dc5;
+  let high = 0x9747b28c;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    low = Math.imul(low ^ code, 0x01000193);
+    high = Math.imul(high ^ (code + index), 0x01000193);
+  }
+  return ((low >>> 0).toString(16).padStart(8, "0") + (high >>> 0).toString(16).padStart(8, "0"));
+}
+
+/**
  * T1076: one attribute's REGION inside a node's packed point buffer, for a readback.
  *
  * `readBuffer` hands back the whole buffer (it has no range yet, T173), so a test that

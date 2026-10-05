@@ -69,63 +69,56 @@ export interface CurveFramesShaderOptions {
   readonly storeStatements: string;
 }
 
-export function curveFramesWgsl(options: CurveFramesShaderOptions): EmittedWgsl {
-  const carried = options.method === "minimiseTwist";
-  let binding = 2;
-  const declarations: string[] = [];
-  if (options.upMapped) {
-    declarations.push(`@group(0) @binding(${binding}) var<storage, read> in_up: array<vec3f>;`);
-    binding += 1;
-  }
-  if (carried && options.seedOrient) {
-    declarations.push(`@group(0) @binding(${binding}) var<storage, read> in_seed: array<vec4f>;`);
-    binding += 1;
-  }
-  if (options.rollMap !== undefined) {
-    declarations.push(`@group(0) @binding(${binding}) var<storage, read> in_roll: array<${options.rollMap.type}>;`);
-    binding += 1;
-  }
-  declarations.push(`@group(0) @binding(${binding}) var<storage, read_write> out_points: array<u32>;`);
+/** The pieces of shader text that follow from a walk's options, shared by the whole walk and the blocked one. */
+export interface CurveFramesTerms {
+  /** Minimise Twist: the frame is carried along the strip. */
+  readonly carried: boolean;
+  /** The storage bindings after `in_position`, in order: `in_up`, `in_seed`, `in_roll` as the options ask. */
+  readonly inputs: ReadonlyArray<string>;
+  /** Up at one point (`slot`), and the direction the strip's first frame leans to (`base`). */
+  readonly upAt: string;
+  readonly wanted: string;
+  /** The direction a strip of no length is given. */
+  readonly restDirection: string;
+  /** What a mapped roll adds to the angle at `slot`. */
+  readonly rollTerm: string;
+  /** The statements that decide one point's own normal inside `writeRun`. */
+  readonly ownNormal: string;
+}
 
+export function curveFramesTerms(options: CurveFramesShaderOptions): CurveFramesTerms {
+  const carried = options.method === "minimiseTwist";
+  const inputs: string[] = [];
+  if (options.upMapped) inputs.push("in_up: array<vec3f>");
+  if (carried && options.seedOrient) inputs.push("in_seed: array<vec4f>");
+  if (options.rollMap !== undefined) inputs.push(`in_roll: array<${options.rollMap.type}>`);
   const upAt = options.upMapped ? "in_up[slot]" : "params.up";
-  const wanted = carried && options.seedOrient ? "qrot(in_seed[base], vec3f(0.0, 1.0, 0.0))" : options.upMapped ? "in_up[base]" : "params.up";
-  const restDirection = carried && options.seedOrient ? "qrot(in_seed[base], vec3f(0.0, 0.0, 1.0))" : "vec3f(0.0, 0.0, 1.0)";
-  const rollTerm = options.rollMap === undefined ? "" : ` + in_roll[slot]${options.rollMap.component} * 0.017453292519943295`;
-  /* Fixed Up decides each point's normal on its own; Minimise Twist hands the run's down. */
-  const ownNormal = carried
-    ? "    let own = runNormal;"
-    : `    var leaning = perpendicular(${upAt}, tangent);
+  return {
+    carried,
+    inputs,
+    upAt,
+    wanted: carried && options.seedOrient ? "qrot(in_seed[base], vec3f(0.0, 1.0, 0.0))" : options.upMapped ? "in_up[base]" : "params.up",
+    restDirection: carried && options.seedOrient ? "qrot(in_seed[base], vec3f(0.0, 0.0, 1.0))" : "vec3f(0.0, 0.0, 1.0)",
+    rollTerm: options.rollMap === undefined ? "" : ` + in_roll[slot]${options.rollMap.component} * 0.017453292519943295`,
+    /* Fixed Up decides each point's normal on its own; Minimise Twist hands the run's down. */
+    ownNormal: carried
+      ? "    let own = runNormal;"
+      : `    var leaning = perpendicular(${upAt}, tangent);
     if (dot(leaning, leaning) < 1.0e-12 && (*seen)) { leaning = perpendicular(*previous, tangent); }
     if (dot(leaning, leaning) < 1.0e-12) { leaning = perpendicular(leastAligned(tangent), tangent); }
     let own = leaning / sqrt(dot(leaning, leaning));
     *previous = own;
-    *seen = true;`;
-  const lapStep = carried ? "      lapNormal = turn(lastDir, dir, lapNormal).next;" : "";
-  const lapClose = carried
-    ? `  if (closed && params.closeTwist == 1u) {
-    let lapped = turn(lastDir, firstDir, lapNormal).next;
-    closing = atan2(dot(cross(seed, lapped), firstDir), dot(seed, lapped));
-  }`
-    : "";
-  const closedStart = carried ? "  if (closed) { carriedNormal = turn(firstDir, lastDir, seed).next; }" : "";
+    *seen = true;`,
+  };
+}
 
-  return wgsl`struct CurveFramesParams {
-  up: vec3f,
-  cols: u32,
-  rows: u32,
-  closed: u32,
-  closeTwist: u32,
-  roll: f32,
-  twist: f32,
-};
-
-@group(0) @binding(0) var<uniform> params: CurveFramesParams;
-@group(0) @binding(1) var<storage, read> in_position: array<vec3f>;
-${declarations.join("\n")}
-
-${options.storeFunctions}
-
-/* A segment at or below this squared length has none: it adds no distance and turns no
+/**
+ * The maths every walk of a strip shares: the zero-length rule, the rotations, the seed
+ * rule, the turn at a point, the quaternion of a frame and the curvature at a point. One
+ * text, pasted into the whole walk and into each of the blocked passes, so a long strip's
+ * frame is computed by the same functions a short strip's is.
+ */
+export const FRAME_MATH_WGSL = `/* A segment at or below this squared length has none: it adds no distance and turns no
    frame, which is what makes a strip's padding harmless. */
 const ZERO_SEGMENT_SQUARED: f32 = ${ZERO_SEGMENT_SQUARED};
 
@@ -188,9 +181,15 @@ fn turningCurvature(a: vec3f, b: vec3f) -> f32 {
   if (denominator < 1.0e-20) { return 0.0; }
   let twice = cross(a, b);
   return 2.0 * sqrt(dot(twice, twice)) / denominator;
-}
+}`;
 
-/* One run of coincident points: stations first..last of the strip share a tangent, a
+/**
+ * `writeRun`: one run of coincident points, written. `gated` adds a last parameter, `emit`:
+ * with it false the run is walked for what Fixed Up hands from point to point and nothing
+ * is stored — the blocked walk's catch-up through blocks that are not its own.
+ */
+export function writeRunWgsl(terms: CurveFramesTerms, storeStatements: string, gated: boolean): string {
+  return `/* One run of coincident points: stations first..last of the strip share a tangent, a
    distance and a curvature. Roll, twist and the closing correction turn each normal about
    the tangent last, right-handed, so a positive angle swings the normal toward the binormal. */
 fn writeRun(
@@ -204,21 +203,58 @@ fn writeRun(
   closing: f32,
   bend: f32,
   previous: ptr<function, vec3f>,
-  seen: ptr<function, bool>,
+  seen: ptr<function, bool>,${gated ? "\n  emit: bool," : ""}
 ) {
   var u = 0.0;
   if (total > 0.0) { u = travelled / total; }
   for (var i = first; i <= last; i = i + 1u) {
     let slot = base + i;
-${ownNormal}
-    let angle = params.roll${rollTerm} + (params.twist - closing) * u;
+${terms.ownNormal}
+    let angle = params.roll${terms.rollTerm} + (params.twist - closing) * u;
     var normal = own;
     if (angle != 0.0) { normal = own * cos(angle) + cross(tangent, own) * sin(angle); }
     let binormal = cross(tangent, normal);
     let orient = quatFromFrame(cross(normal, tangent), normal, tangent);
-${options.storeStatements}
+${gated ? `    if (emit) {\n${storeStatements}\n    }` : storeStatements}
   }
+}`;
 }
+
+export function curveFramesWgsl(options: CurveFramesShaderOptions): EmittedWgsl {
+  const terms = curveFramesTerms(options);
+  const { carried, wanted, restDirection } = terms;
+  const declarations = [
+    ...terms.inputs.map((input, index) => `@group(0) @binding(${index + 2}) var<storage, read> ${input};`),
+    `@group(0) @binding(${terms.inputs.length + 2}) var<storage, read_write> out_points: array<u32>;`,
+  ];
+  const lapStep = carried ? "      lapNormal = turn(lastDir, dir, lapNormal).next;" : "";
+  const lapClose = carried
+    ? `  if (closed && params.closeTwist == 1u) {
+    let lapped = turn(lastDir, firstDir, lapNormal).next;
+    closing = atan2(dot(cross(seed, lapped), firstDir), dot(seed, lapped));
+  }`
+    : "";
+  const closedStart = carried ? "  if (closed) { carriedNormal = turn(firstDir, lastDir, seed).next; }" : "";
+
+  return wgsl`struct CurveFramesParams {
+  up: vec3f,
+  cols: u32,
+  rows: u32,
+  closed: u32,
+  closeTwist: u32,
+  roll: f32,
+  twist: f32,
+};
+
+@group(0) @binding(0) var<uniform> params: CurveFramesParams;
+@group(0) @binding(1) var<storage, read> in_position: array<vec3f>;
+${declarations.join("\n")}
+
+${options.storeFunctions}
+
+${FRAME_MATH_WGSL}
+
+${writeRunWgsl(terms, options.storeStatements, false)}
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3u) {

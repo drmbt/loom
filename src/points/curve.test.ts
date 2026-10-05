@@ -303,6 +303,211 @@ describe("stripLengths and resampleStations (T1586b section 3.3)", () => {
 });
 
 /**
+ * T1586b slice 6 — THE BLOCKED ORDER IS THE WHOLE WALK, CUT UP.
+ *
+ * A strip longer than one block is walked a block at a time (the design's section 4.3). The
+ * whole walk is held to hand-derived values above; here the blocked walk is held to the
+ * whole one, on strips cut into blocks of a few points so every seam is somewhere awkward:
+ * inside a run of padding, on an exact reversal, across a closing segment, in the middle of
+ * a straight run along Up. Where the fixture's numbers are exact the two agree TO THE BIT;
+ * elsewhere they agree to rounding, which is all the blocked order may change.
+ */
+describe("the blocked order — a long strip is the whole walk, cut into blocks (T1586b slice 6)", () => {
+  type Options = Parameters<typeof frameStrip>[1];
+  const close = (blocked: ReturnType<typeof frameStrip>, whole: ReturnType<typeof frameStrip>, what: string, digits = 9): void => {
+    expect(blocked.curveLength, `${what}: length`).toBeCloseTo(whole.curveLength, digits);
+    expect(blocked.closingAngle, `${what}: closing angle`).toBeCloseTo(whole.closingAngle, digits);
+    whole.tangent.forEach((_, index) => {
+      const at = `${what}, point ${index}`;
+      for (const name of ["tangent", "normal", "binormal"] as const) {
+        (whole[name][index] as Vec3).forEach((value, axis) => expect((blocked[name][index] as Vec3)[axis], `${at}: ${name}[${axis}]`).toBeCloseTo(value, digits));
+      }
+      // One rotation has two quaternions; the two walks may land either side of a branch.
+      const q = whole.orient[index]!;
+      const p = blocked.orient[index]!;
+      expect(Math.abs(q[0] * p[0] + q[1] * p[1] + q[2] * p[2] + q[3] * p[3]), `${at}: orient`).toBeCloseTo(1, digits);
+      expect(blocked.distance[index], `${at}: distance`).toBeCloseTo(whole.distance[index]!, digits);
+      expect(blocked.curveU[index], `${at}: curveU`).toBeCloseTo(whole.curveU[index]!, digits);
+      expect(blocked.curvature[index], `${at}: curvature`).toBeCloseTo(whole.curvature[index]!, digits);
+    });
+  };
+  /** A strip no walk is flattered by: irregular steps in space, from a fixed sequence. */
+  const wander = (count: number, seed: number): Vec3[] => {
+    let state = seed;
+    const next = (): number => {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      return state / 4294967296 - 0.5;
+    };
+    const points: Vec3[] = [];
+    let at: Vec3 = [0, 0, 0];
+    for (let i = 0; i < count; i += 1) {
+      points.push(at);
+      at = [at[0] + 0.6 + next(), at[1] + next(), at[2] + next()];
+    }
+    return points;
+  };
+  const METHODS: ReadonlyArray<Options["method"]> = ["minimiseTwist", "fixedUp"];
+
+  it("lengths: a block's start plus the distance inside it — exactly, where the numbers are exact", () => {
+    const steps = line(11, 0.5);
+    for (const block of [1, 2, 3, 4, 7]) {
+      expect(stripLengths(steps, false, block)).toEqual(stripLengths(steps, false));
+    }
+    const strip = wander(23, 7);
+    const whole = stripLengths(strip, true);
+    const blocked = stripLengths(strip, true, 4);
+    expect(blocked.total).toBeCloseTo(whole.total, 12);
+    whole.cumulative.forEach((value, index) => expect(blocked.cumulative[index]).toBeCloseTo(value, 12));
+    // A distance never runs backward across a seam: the search that reads it needs that.
+    for (let index = 1; index < 23; index += 1) expect(blocked.cumulative[index]!).toBeGreaterThanOrEqual(blocked.cumulative[index - 1]!);
+    expect(blocked.total).toBeGreaterThanOrEqual(blocked.cumulative[22]!);
+  });
+
+  it("a strip that fits one block is walked whole: the block size does not reach it", () => {
+    const strip = wander(9, 3);
+    const options: Options = { closed: true, method: "minimiseTwist", up: UP, twist: 1 };
+    expect(frameStrip(strip, options, 9)).toEqual(frameStrip(strip, options));
+    expect(frameStrip(strip, options, 4096)).toEqual(frameStrip(strip, options));
+  });
+
+  it("a straight line and a planar turn come out exact, seams and all", () => {
+    for (const method of METHODS) {
+      const straight = frameStrip(line(11, 0.5), { closed: false, method, up: UP }, 4);
+      expect(straight, method).toEqual(frameStrip(line(11, 0.5), { closed: false, method, up: UP }));
+      expect(straight.distance).toEqual([0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]);
+      expect(straight.tangent[7]).toEqual([1, 0, 0]);
+      expect(straight.normal[7]).toEqual([0, 1, 0]);
+    }
+    // Along +X, up +Y, up +Z, back along −X: a path in a plane whose normal is the seed.
+    const planar: Vec3[] = [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0], [3, 1, 0], [3, 2, 0], [3, 3, 0], [2, 3, 0], [1, 3, 0], [0, 3, 0]];
+    const options: Options = { closed: true, method: "minimiseTwist", up: [0, 0, 1] };
+    const blocked = frameStrip(planar, options, 3);
+    for (const normal of blocked.normal) expect(normal).toEqual([0, 0, 1]);
+    expect(blocked.closingAngle).toBe(0);
+    expect(blocked.distance).toEqual(frameStrip(planar, options).distance);
+  });
+
+  it("irregular strips in space, open and closed, by both methods, at every block size", () => {
+    for (const method of METHODS) {
+      for (const closed of [false, true]) {
+        for (const block of [1, 2, 3, 4, 5, 7]) {
+          for (const seed of [1, 2, 3]) {
+            const strip = wander(23, seed);
+            const options: Options = { closed, method, up: [0.2, 1, -0.3], roll: 0.4, twist: 2, closeTwist: seed !== 2 };
+            close(frameStrip(strip, options, block), frameStrip(strip, options), `${method} ${closed ? "closed" : "open"} block ${block} seed ${seed}`);
+          }
+        }
+      }
+    }
+  });
+
+  /**
+   * Padding is where the seams are hardest: a run of coincident points is written with the
+   * turn at the segment that ENDS it, and that segment can be blocks away. Here runs cross
+   * a seam, fill a whole block, fill the tail, and (closed) sit on the closing segment.
+   */
+  it("runs of coincident points across seams, whole blocks of padding, and a padded tail", () => {
+    const bare = wander(7, 5);
+    const repeat = (point: Vec3, times: number): Vec3[] => Array.from({ length: times }, () => point);
+    const padded: Vec3[] = [
+      ...repeat(bare[0]!, 3), // a padded head
+      bare[1]!,
+      ...repeat(bare[2]!, 4), // a run across the seam at 4 and at 8
+      bare[3]!,
+      ...repeat(bare[4]!, 9), // a whole block of padding, and more
+      bare[5]!,
+      ...repeat(bare[6]!, 6), // a padded tail over a seam
+    ];
+    for (const method of METHODS) {
+      for (const closed of [false, true]) {
+        for (const block of [1, 2, 4, 5]) {
+          const options: Options = { closed, method, up: [0.1, 1, 0.2], twist: 1.5 };
+          const blocked = frameStrip(padded, options, block);
+          close(blocked, frameStrip(padded, options), `${method} ${closed ? "closed" : "open"} block ${block}`);
+          // The points of one run share ONE frame, to the bit, whichever blocks wrote them.
+          for (let index = 9; index < 17; index += 1) expect(blocked.orient[index + 1], `orient ${index + 1}`).toEqual(blocked.orient[index]);
+          for (let index = 19; index < 24; index += 1) {
+            expect(blocked.orient[index + 1], `orient ${index + 1}`).toEqual(blocked.orient[index]);
+            expect(blocked.distance[index + 1], `distance ${index + 1}`).toBe(blocked.distance[index]);
+          }
+        }
+      }
+    }
+    const still: Vec3[] = repeat([3, 3, 3], 11);
+    expect(frameStrip(still, { closed: false, method: "minimiseTwist", up: UP }, 4)).toEqual(frameStrip(still, { closed: false, method: "minimiseTwist", up: UP }));
+  });
+
+  /**
+   * A curve doubling straight back has no smallest rotation: the frame turns about its own
+   * normal. That keeps the normal and turns the direction round, which mirrors the angle a
+   * block's reference is carried at — the one place a block's turn is not a plain rotation.
+   */
+  it("an exact reversal inside a block and on a seam", () => {
+    // Two turns in space first, so the frame that reaches the reversal is not the one a
+    // block would pick for itself; then out along +X and straight back.
+    const doubled: Vec3[] = [
+      [0, 0, 0], [0, 1, 0.5], [1, 2, 0], [2, 2, 1],
+      [3, 2, 1], [4, 2, 1], [5, 2, 1], [6, 2, 1], [7, 2, 1],
+      [6, 2, 1], [5, 2, 1], [4, 2, 1],
+      [4, 3, 1], [4, 3, 2], [5, 4, 3],
+    ];
+    for (const method of METHODS) {
+      for (const block of [2, 3, 4, 5, 6, 7]) {
+        const options: Options = { closed: false, method, up: [0.3, 1, 0.2] };
+        close(frameStrip(doubled, options, block), frameStrip(doubled, options), `${method} block ${block}`);
+      }
+    }
+  });
+
+  /**
+   * Fixed Up where the curve runs straight up for longer than a block: every point there
+   * takes the normal of the point before it, so whole blocks hand on what they were handed.
+   */
+  it("Fixed Up through a run along Up longer than a block hands the normal across every seam", () => {
+    // Up is (½, 1, 1) and the run goes along (1, 2, 2): off every axis, so a block's map of
+    // the handed normal has no zero in it to hide a mistake.
+    const shaft: Vec3[] = [
+      [0, 0, 0], [1, 0, 0], [2, 0, 0],
+      ...Array.from({ length: 13 }, (_, i) => [3 + i, 2 * (i + 1), 2 * (i + 1)] as Vec3),
+      [16, 26, 27], [17, 26, 29],
+    ];
+    const options: Options = { closed: false, method: "fixedUp", up: [0.5, 1, 1] };
+    const whole = frameStrip(shaft, options);
+    for (const block of [1, 2, 3, 4, 5]) close(frameStrip(shaft, options, block), whole, `block ${block}`);
+    // By hand: the corner into the run leans (−1, 1, 1)/√3, which pressed square to the run
+    // is (−4, 1, 1)/(3√2) — and every point of the run takes it from the one before.
+    expectVec(whole.tangent[8]!, [1 / 3, 2 / 3, 2 / 3]);
+    expectVec(whole.normal[2]!, [-1 / Math.sqrt(3), 1 / Math.sqrt(3), 1 / Math.sqrt(3)]);
+    for (let index = 3; index < 15; index += 1) expectVec(whole.normal[index]!, [-4 / (3 * Math.SQRT2), 1 / (3 * Math.SQRT2), 1 / (3 * Math.SQRT2)]);
+  });
+
+  /**
+   * The corner a summary cannot hold. Up is mapped per point to the tangent itself, so no
+   * point from the third on can decide its own normal and whole blocks only hand one on.
+   * Inside one of them the curve doubles straight back; there the tangent swings onto the
+   * handed normal, which is pressed to nothing and restarts from a world axis. The fold
+   * cannot know that from the block's summary — it sees only that the handed normal has
+   * vanished — so the blocks after it are walked forward from the last one that is known.
+   */
+  it("Fixed Up: a handed normal that collapses inside a block is followed exactly", () => {
+    // Out along +X, one step straight back, then off into space: after the collapse the
+    // handed normal keeps changing, so a block that guessed it instead of following it shows.
+    const doubled: Vec3[] = [...line(8, 1), [6, 0, 0], [5.5, 1, 0.5], [5, 1.5, 1.5], [4, 3, 2], [3, 3, 4], [2, 4, 5], [1, 4, 7]];
+    const seeded: Options = { closed: false, method: "fixedUp", up: doubled.map(() => UP) };
+    const tangents = frameStrip(doubled, { ...seeded, up: [[0, 0, 1], ...doubled.slice(1).map(() => UP)] }).tangent;
+    // Point 0 seeds the carried frame with +Z, point 1 decides +Y, and from there Up IS the tangent.
+    const up: Vec3[] = tangents.map((tangent, index) => (index === 0 ? [0, 0, 1] : index === 1 ? UP : tangent));
+    const options: Options = { closed: false, method: "fixedUp", up };
+    const whole = frameStrip(doubled, options);
+    // The collapse is real: at the reversal the tangent is the handed normal's own direction.
+    expectVec(whole.tangent[7]!, [0, 1, 0]);
+    expectVec(whole.normal[6]!, [0, 1, 0]);
+    expectVec(whole.normal[7]!, [1, 0, 0]);
+    for (const block of [2, 3, 4, 5]) close(frameStrip(doubled, options, block), whole, `block ${block}`);
+  });
+});
+
+/**
  * T1586b slice 2 — the Curve reference. Every expectation is a textbook value of the
  * basis at a parameter where it is a short sum (a span's start, its middle), or a point on
  * a circle whose centre and radius the fixture fixes.

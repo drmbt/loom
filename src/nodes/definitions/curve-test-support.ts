@@ -1,4 +1,5 @@
 import { compileGraph } from "../../compiler/index.ts";
+import { scratchResourceId } from "../../compiler/resources.ts";
 import { frameFromClock } from "../../domain/types/frame.ts";
 import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
@@ -139,6 +140,35 @@ ${extras.map((extra) => `  q.${extra.name} = AUTHORED_${extra.name}[ctx.index];`
   };
 }
 
+/**
+ * A Point Kernel that places `count` points BY A FORMULA of the slot — for strips too long
+ * to author one by one (WGSL caps a constant array at 2,047 elements, and a strip that
+ * crosses a block is longer than that). `body` is WGSL that assigns `q.position`, and any
+ * extra attribute, from `i`, the slot index.
+ *
+ * The numbers are then the DEVICE's — its own cosine, its own rounding — so a test reads
+ * the positions back and compares against what follows from those, never against the
+ * formula evaluated a second time on the CPU.
+ */
+export function formulaPoints(
+  id: string,
+  count: number,
+  body: string,
+  extras: ReadonlyArray<{ readonly name: string; readonly type: Exclude<PointAttributeType, "vec4u"> }> = [],
+): { readonly node: GraphNode; readonly schema: ReadonlyArray<PointAttributeSchema> } {
+  const schema: PointAttributeSchema[] = [
+    { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
+    ...extras.map((extra) => ({ name: extra.name, type: extra.type, default: Array<number>(COMPONENT_COUNTS[extra.type]).fill(0) })),
+  ];
+  const kernel = `fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  let i = ctx.index;
+${body}
+  return q;
+}`;
+  return { node: curveNode(id, "pointKernel", { capacity: count, seed: 7, attributes: JSON.stringify(schema), kernel }), schema };
+}
+
 export interface CurveSession {
   readonly plan: ReturnType<typeof compileCurveGraph>;
   /** Render one more frame; the first call is frame 0. */
@@ -150,6 +180,8 @@ export interface CurveSession {
     capacity: number,
     attribute: string,
   ): Promise<{ readonly floats: Float32Array; readonly words: Uint32Array }>;
+  /** One of a node's scratch buffers, whole, as f32 words — for the few tests that hold a pass's intermediate. */
+  readScratch(nodeId: string, key: string): Promise<Float32Array>;
   readOutput(): Promise<{ bytes: Uint8Array; width: number; height: number; rowStride: number }>;
 }
 
@@ -193,6 +225,7 @@ export async function onDawn<T>(
       renderFrame,
       read: async (nodeId, schema, capacity, attribute) =>
         pointRegionSlice(await backend.readBuffer(pointStorageId(nodeId)), schema, capacity, attribute),
+      readScratch: async (nodeId, key) => new Float32Array(await backend.readBuffer(scratchResourceId(nodeId, key))),
       readOutput: async () => {
         const frame = plan.outputs.find((output) => output.nodeId === "output_probe") ?? plan.outputs[0];
         return backend.readOutput(frame?.resourceId ?? "");
