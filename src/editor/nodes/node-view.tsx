@@ -795,10 +795,12 @@ function NameEditor({ nodeId, name, shown, kind, onCommit, onClose }: NameEditor
           data-testid={`node-name-kind-${nodeId}`}
           aria-pressed={kindKept}
           aria-label={`Keep the kind ${kind} in front of the name`}
+          // §V90: one short line each, on demand. Neither carries a substitution, so the
+          // copy guard reads both in full rather than skipping one.
           title={
             kindKept
-              ? `This node's kind, kept in front of its name. Backspace at the start of the name, or a click here, names the node without it.`
-              : `The kind is off: the name is stored exactly as typed. Click to keep ${kind}_ in front.`
+              ? "Backspace at the start, or a click, drops the kind"
+              : "The name is stored as typed; click to keep the kind"
           }
           onPointerDown={(event) => event.stopPropagation()}
           // preventDefault keeps the focus in the input: a blur would commit the rename.
