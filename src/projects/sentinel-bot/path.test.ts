@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { evaluateExpression } from "../../domain/expressions/evaluate.ts";
 import { CHAMBERS, PATH, chamberAt, chamberExpression, pathAt, pathExpression } from "./path.ts";
 import { LAMP_GAINS, LAMP_SPACING, LAMP_TONES, lampTone, lampToneExpression } from "./tunnel.ts";
+import { hueColour, hueExpression } from "./surface.ts";
 
 /**
  * T1561b — the tunnel's centreline has three readers (the joints and the tunnel on the GPU,
@@ -70,6 +71,22 @@ describe("the tunnel path", () => {
     // The same lamp either side of the wrap.
     expect(lampTone(-1)).toEqual(lampTone(stations - 1));
     expect(LAMP_TONES.alarmEvery).toBeGreaterThan(1);
+  });
+
+  it("a hue is the same colour to the light that throws it and to the lens that shows it", () => {
+    // The wheel's corners, a breath of white in each: 0 red, a third green, two thirds blue; and round again past 1.
+    expect(hueColour(0).map((channel) => Math.round(channel * 100) / 100)).toEqual([1, 0.04, 0.04]);
+    expect(hueColour(1 / 3).map((channel) => Math.round(channel * 100) / 100)).toEqual([0.04, 1, 0.04]);
+    expect(hueColour(2 / 3).map((channel) => Math.round(channel * 100) / 100)).toEqual([0.04, 0.04, 1]);
+    for (const hue of [0, 0.03, 0.2, 0.5, 0.77, 0.95, 1.1, 1.45]) {
+      const read = hueExpression("h").map((source) => evaluateExpression(source, { h: hue }));
+      for (const [index, channel] of read.entries()) {
+        if (!channel.ok) throw new Error(`the hue expression does not evaluate at ${hue}`);
+        expect(channel.value).toBeCloseTo(hueColour(hue)[index] as number, 12);
+      }
+      // Past 1 is the same colour as the hue less 1.
+      if (hue > 1) expect(hueColour(hue).map((channel) => Math.round(channel * 1e9))).toEqual(hueColour(hue - 1).map((channel) => Math.round(channel * 1e9)));
+    }
   });
 
   it("refuses to be a straight pipe: it wanders by metres, not millimetres", () => {

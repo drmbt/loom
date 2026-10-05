@@ -11,7 +11,7 @@ import { PATH, chamberExpression, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
 import { SSR_WGSL } from "../furnace/screen-space.ts";
 import { JOINT_ATTRIBUTES, adriftExpression, jointCount, jointKernel, type Pick } from "./rig.ts";
-import { HULL_SURFACE_WGSL, lampParameter } from "./surface.ts";
+import { HULL_SURFACE_WGSL, hueExpression, lampParameter } from "./surface.ts";
 import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMPS_MIRRORED, LAMP_SPACING, MOTE_ATTRIBUTES, MOTE_COUNT, MOTE_KERNEL, lampToneExpression } from "./tunnel.ts";
 
 /**
@@ -107,18 +107,26 @@ const ROBOT: readonly Slider[] = [
 const SCENE: readonly Slider[] = [
   { name: "slider_bore", caption: "Tunnel", value: 2.6, min: 2.2, max: 3.4 },
   { name: "slider_lamp", caption: "Lamp", value: 26, min: 0, max: 80 },
-  { name: "slider_glow", caption: "Eyes", value: 9, min: 0, max: 30 },
   { name: "slider_distance", caption: "Camera distance", value: 7.5, min: -9, max: 12 },
   { name: "slider_react", caption: "Listen", value: 1, min: 0, max: 2 },
   { name: "slider_haze", caption: "Haze", value: 0.035, min: 0, max: 0.12 },
 ];
 
-// What runs along the tentacles' cores (rig.ts): each a way the track shows on the robot itself.
-const LEGS: readonly Slider[] = [
-  { name: "slider_legs", caption: "Leg glow", value: 1, min: 0, max: 3 },
-  { name: "slider_meter", caption: "Meter (lows)", value: 0.7, min: 0, max: 1 },
-  { name: "slider_chase", caption: "Chase (beat)", value: 0.3, min: 0, max: 2 },
-  { name: "slider_spark", caption: "Spark (hats)", value: 0.6, min: 0, max: 2 },
+// THE ROBOT'S LIGHTS, the piece's main instrument (surface.ts): the lenses of its face and the lines along its
+// tentacles, in one colour range, each with its own ways of showing the track.
+const LIGHTS: readonly Slider[] = [
+  { name: "slider_huefrom", caption: "Colour from (hue)", value: 0, min: 0, max: 1 },
+  // Past 1 is round the wheel again: From 0.9 To 1.1 crosses red.
+  { name: "slider_hueto", caption: "Colour to (hue)", value: 0.03, min: 0, max: 1.5 },
+  { name: "slider_spread", caption: "Colour spread", value: 0.6, min: 0, max: 1 },
+  { name: "slider_hueshift", caption: "Colour follows level", value: 0.4, min: 0, max: 1 },
+  { name: "slider_glow", caption: "Eyes", value: 9, min: 0, max: 30 },
+  { name: "slider_eyehits", caption: "Eyes on drums", value: 0.6, min: 0, max: 1 },
+  { name: "slider_eyesweep", caption: "Eye sweep (beat)", value: 0.25, min: 0, max: 1 },
+  { name: "slider_legs", caption: "Leg lines", value: 1, min: 0, max: 3 },
+  { name: "slider_meter", caption: "Leg meter (lows)", value: 0.7, min: 0, max: 1 },
+  { name: "slider_chase", caption: "Leg chase (beat)", value: 0.3, min: 0, max: 2 },
+  { name: "slider_spark", caption: "Leg spark (hats)", value: 0.6, min: 0, max: 2 },
 ];
 
 /** A control's value. A widget is named kind_role (§T1593b) and publishes a channel named for the role alone: `speed` for `slider_speed`. */
@@ -128,6 +136,12 @@ const LOW = `(op('lag_levels').chan.low * ${LISTEN})`;
 const HIGH = `(op('lag_levels').chan.high * ${LISTEN})`;
 const KICK = `(op('lag_hits').chan.kickCount * ${LISTEN})`;
 const HAT = `(op('lag_hits').chan.hatCount * ${LISTEN})`;
+const SNARE = `(op('lag_hits').chan.snareCount * ${LISTEN})`;
+const LEVEL = `(op('lag_levels').chan.level * ${LISTEN})`;
+// The lights' colour range (surface.ts) and how far the level has moved them along it.
+const HUE_SHIFT = `(${on("slider_hueshift")} * ${LEVEL})`;
+/** The hue at a place (0 to 1) in the range: what the material's lightColour does, for a light. */
+const hueAt = (place: number): string => `(${on("slider_huefrom")} + (${on("slider_hueto")} - ${on("slider_huefrom")}) * clamp(${place} * ${on("slider_spread")} + ${HUE_SHIFT}, 0, 1))`;
 const TRAVEL = "op('speed_travel').chan.value";
 const STROKE = "op('speed_stroke').chan.value";
 // What the track is doing (director.ts), and whether the piece is following it.
@@ -181,6 +195,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     };
   };
   const lamps = [-1, 0, 1].map(lampAt);
+  /** What the face throws on the walls: the middle of its colour range. */
+  const eyeTone = hueExpression(hueAt(0.5));
   /** The lamps the robot's steel can show a reflection of (surface.ts). */
   const mirrored = Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, index) => lampAt(index - LAMPS_MIRRORED));
   const swimming: Record<string, StoredParameter> = { swim: expressionSlot(SWIM, 0), stroke: expressionSlot(STROKE, 0) };
@@ -219,7 +235,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       }, { label: `geometry_${piece.role}` }),
     ]);
 
-  const sliders = [...ROBOT, ...SCENE, ...LEGS];
+  const sliders = [...ROBOT, ...SCENE, ...LIGHTS];
   const controls: GraphNode[] = [
     ...sliders.map((slider, index) => node(slider.name, "slider", [-3600 + (index % 4) * 300, 1500 + Math.floor(index / 4) * 250], { channel: slider.name.slice(slider.name.indexOf("_") + 1), caption: slider.caption, value: slider.value, min: slider.min, max: slider.max, step: 0 }, { label: slider.name })),
     node("toggle_perch", "toggle", [-3600, 2250], { channel: "perch", caption: "Perch", on: false }, { label: "toggle_perch" }),
@@ -231,18 +247,18 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const board = serializePanelBoard({
     columns: 12,
     items: [
-      { label: "Robot", rect: { x: 0, y: 0, w: 6, h: 1 } },
-      ...ROBOT.map((slider, index) => ({ member: slider.name, rect: { x: 0, y: 1 + index, w: 6, h: 1 } })),
-      { member: "toggle_perch", rect: { x: 0, y: 1 + ROBOT.length, w: 6, h: 1 } },
-      { member: "toggle_follow", rect: { x: 0, y: 2 + ROBOT.length, w: 6, h: 1 } },
-      { label: "Camera", rect: { x: 0, y: 3 + ROBOT.length, w: 6, h: 1 } },
-      { member: "slider_shot", rect: { x: 0, y: 4 + ROBOT.length, w: 6, h: 1 } },
-      { member: "toggle_cuts", rect: { x: 0, y: 5 + ROBOT.length, w: 6, h: 1 } },
-      { label: "Scene", rect: { x: 6, y: 0, w: 6, h: 1 } },
-      ...SCENE.map((slider, index) => ({ member: slider.name, rect: { x: 6, y: 1 + index, w: 6, h: 1 } })),
-      { member: "xypad_view", rect: { x: 6, y: 1 + SCENE.length, w: 3, h: 3 } },
-      { label: "Legs", rect: { x: 6, y: 4 + SCENE.length, w: 6, h: 1 } },
-      ...LEGS.map((slider, index) => ({ member: slider.name, rect: { x: 6, y: 5 + SCENE.length + index, w: 6, h: 1 } })),
+      { label: "Robot", rect: { x: 0, y: 0, w: 4, h: 1 } },
+      ...ROBOT.map((slider, index) => ({ member: slider.name, rect: { x: 0, y: 1 + index, w: 4, h: 1 } })),
+      { member: "toggle_perch", rect: { x: 0, y: 1 + ROBOT.length, w: 4, h: 1 } },
+      { member: "toggle_follow", rect: { x: 0, y: 2 + ROBOT.length, w: 4, h: 1 } },
+      { label: "Scene", rect: { x: 4, y: 0, w: 4, h: 1 } },
+      ...SCENE.map((slider, index) => ({ member: slider.name, rect: { x: 4, y: 1 + index, w: 4, h: 1 } })),
+      { label: "Camera", rect: { x: 4, y: 1 + SCENE.length, w: 4, h: 1 } },
+      { member: "slider_shot", rect: { x: 4, y: 2 + SCENE.length, w: 4, h: 1 } },
+      { member: "toggle_cuts", rect: { x: 4, y: 3 + SCENE.length, w: 4, h: 1 } },
+      { member: "xypad_view", rect: { x: 4, y: 4 + SCENE.length, w: 3, h: 3 } },
+      { label: "Lights", rect: { x: 8, y: 0, w: 4, h: 1 } },
+      ...LIGHTS.map((slider, index) => ({ member: slider.name, rect: { x: 8, y: 1 + index, w: 4, h: 1 } })),
     ],
   });
 
@@ -299,7 +315,19 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       model: "pbr",
       source: HULL_SURFACE_WGSL,
       // The eyes flicker with the hats and swell with the top of the track.
-      eyeGlow: expressionSlot(`${on("slider_glow")} * (0.75 + ${HIGH} * 0.6 + ${HAT} * 0.9)`, 9),
+      eyeGlow: expressionSlot(`${on("slider_glow")} * (0.75 + ${HIGH} * 0.6)`, 9),
+      // One colour range for every light on it; the level moves them along it.
+      hueFrom: expressionSlot(on("slider_huefrom"), 0),
+      hueTo: expressionSlot(on("slider_hueto"), 0.03),
+      spread: expressionSlot(on("slider_spread"), 0.6),
+      shift: expressionSlot(HUE_SHIFT, 0),
+      // The face: a third of the lenses each to kick, snare and hat, and a band of light across it once a beat.
+      eyeHits: expressionSlot(on("slider_eyehits"), 0.6),
+      kick: expressionSlot(KICK, 0),
+      snare: expressionSlot(SNARE, 0),
+      hat: expressionSlot(HAT, 0),
+      eyeSweep: expressionSlot(on("slider_eyesweep"), 0.25),
+      sweepPhase: expressionSlot(`${STROKE} * ${SHOWCASE_BEAT.beatsPerBar}`, 0),
       // What the steel has to reflect (tunnel.ts): the lamps round the robot, each where its light would hang.
       // They breathe as the lights do.
       ...Object.fromEntries(mirrored.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp.position[axis]]))),
@@ -348,16 +376,20 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       bore: expressionSlot(on("slider_bore"), 2.6),
       lamp: expressionSlot(`${on("slider_lamp")} * (0.7 + ${LOW} * 0.8)`, 26),
       eyes: expressionSlot(`${on("slider_glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6),
+      eyeColor: [1, 0.04, 0.04],
+      "eyeColor.x": expressionSlot(eyeTone[0], 1),
+      "eyeColor.y": expressionSlot(eyeTone[1], 0.04),
+      "eyeColor.z": expressionSlot(eyeTone[2], 0.04),
     }, { label: "kernel_motes" }),
     node("material_motes", "materialUnlit", [-2100, 1800], { color: [1, 1, 1, 1] }, { label: "material_motes" }),
-    node("geometry_motes", "geometry", [-1800, 1600], { mode: "points", material: "material_motes", blend: "additive", soft: 1, scale: map("tint", 0.016, "w"), tint: map("tint", [0, 0, 0, 1]) }, { label: "geometry_motes" }),
+    node("geometry_motes", "geometry", [-1800, 1600], { mode: "points", material: "material_motes", blend: "additive", soft: 1, spherical: true, scale: map("tint", 0.016, "w"), tint: map("tint", [0, 0, 0, 1]) }, { label: "geometry_motes" }),
 
     // ── Camera and light ──
     node("expression_camera", "valueExpression", [-1800, -600], { expressions: CAMERA_STATEMENTS, defaults: CAMERA_DEFAULTS }, { label: "expression_camera" }),
     // A kick punches the lens in.
     node("camera_rig", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} - ${KICK} * 2.5`, 55), near: 0.05, far: 240 }, { label: "camera_rig" }),
     // Offline, the eyes throw the tentacles' shadows down the walls; live, no light casts (see `tier`).
-    node("light_eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.12, 0.06, 1], intensity: expressionSlot(`${on("slider_glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, ...(shadows ? { shadows: true, shadowExtent: 14, shadowSoftness: 1 } : {}) }, { label: "light_eyes" }),
+    node("light_eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04), intensity: expressionSlot(`${on("slider_glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, ...(shadows ? { shadows: true, shadowExtent: 14, shadowSoftness: 1 } : {}) }, { label: "light_eyes" }),
     // The three lamp plates nearest the robot, as lights; they breathe with the low end.
     ...lamps.map((lamp, index) =>
       node(`light_lamp${index}`, "light", [-1500, -150 + index * 150], {

@@ -89,6 +89,8 @@ export const JOINT_ATTRIBUTES = JSON.stringify([
   { name: "charge", type: "f32", default: [0] },
   // Which piece it is, 0 to 1: the material ages each piece in its own way (surface.ts).
   { name: "seed", type: "f32", default: [0] },
+  // How far along its tentacle a joint is, 0 at the body to 1 at the claw: its place in the lights' colour range (surface.ts).
+  { name: "along", type: "f32", default: [0] },
   // What the point is (KIND): what a draw's Group picks its points by.
   { name: "kind", type: "f32", default: [-1] },
   // Metres between the claw's mouth and where the gait wants it; zero while its rung is in reach.
@@ -493,6 +495,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   // Single cores flashing, a new draw fourteen times a second.
   charge = charge + params.spark * select(0.0, 1.0, chance(ctx.index, u32(ctx.absTime * 14.0), seed + 5u) > 0.93);
   q.charge = charge;
+  q.along = clamp(d / LENGTH, 0.0, 1.0);
   // How far the claw's mouth is from where the gait wants it: zero while its rung is in reach.
   let mouth = along(bend, run);
   q.slip = grab * distance(root + out * mouth.x + plane * mouth.y, walking);
