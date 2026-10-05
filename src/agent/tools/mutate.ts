@@ -38,7 +38,6 @@ import type {
   RenameNodeInput,
 } from "../schemas.ts";
 import { conformingFormOf, conventionalName, type KindSource } from "@domain/graph/node-kinds.ts";
-import { isComponentNodeType } from "@domain/components/component-type.ts";
 import { diagnostic, dispatchOperations, dispatchPatchCommand, failed, result, type PatchToolData } from "../tool-support.ts";
 import type { AgentTool, ToolRuntime, ToolStatus } from "../types.ts";
 
@@ -209,10 +208,10 @@ const KIND_ADDED = diagnostic(
  * The label an add stores: the caller's own, with the kind in front unless it is there or
  * `exactLabel` says otherwise.
  *
- * `definition` is what the kind is read from. It is `undefined` for a type that is not
- * installed (the add is refused anyway) and in the review preview of a component instance,
- * where no registry is in hand to say what the component is called: the label then stands
- * as written. The run always has the registry, and `data.name` is what it stored.
+ * `definition` is what the kind is read from: the registry's own, in the run AND in the
+ * review preview, so a held edit shows the reviewer the name it will store (a component
+ * instance's kind is its component's name, which only the registry knows). It is
+ * `undefined` only for a type that is not installed, and that add is refused anyway.
  */
 function labelForAdd(
   input: { label?: string | undefined; exactLabel?: boolean | undefined },
@@ -224,10 +223,6 @@ function labelForAdd(
     : conventionalName(input.label, definition).name;
 }
 
-/** A built-in type's kind needs no registry; a component instance's does (its component's name). */
-const previewKindSource = (type: string): KindSource | undefined =>
-  isComponentNodeType(type) ? undefined : { type, title: "" };
-
 export const addNode: AgentTool<AddNodeInput, NamedPatchToolData> = {
   name: "add_node",
   title: "Add node",
@@ -238,8 +233,8 @@ export const addNode: AgentTool<AddNodeInput, NamedPatchToolData> = {
   requires: { commands: ["graph.applyPatch"] },
   capabilities: [],
   mutates: true,
-  preview: (input) => [
-    operationsForAdd(input, input.position ?? { x: 0, y: 0 }, labelForAdd(input, previewKindSource(input.type))),
+  preview: (input, registry) => [
+    operationsForAdd(input, input.position ?? { x: 0, y: 0 }, labelForAdd(input, registry.get(input.type))),
   ],
   async run(input, runtime) {
     // T280: placement resolves against the CURRENT document, so an agent building a

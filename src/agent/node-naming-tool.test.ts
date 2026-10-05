@@ -33,6 +33,8 @@ const agent: Actor = { kind: "agent", id: "claude" };
 
 let store: GraphStore;
 let surface: AgentToolSurface;
+/** The same document behind a review gate: every mutation is held until approved (§V42). */
+let gated: AgentToolSurface;
 
 /** The type of an instance of the component registered below as "Bloom", under a minted id. */
 const BLOOM = componentNodeType("cmp_7", 1);
@@ -58,6 +60,7 @@ beforeEach(() => {
   });
   const { bus } = createDomainBus({ store, registry: system.nodes });
   surface = createAgentToolSurface({ bus, actor: agent, projectId: "project-1", now: () => 1_000 });
+  gated = createAgentToolSurface({ bus, actor: agent, projectId: "project-1", now: () => 1_000, requireApproval: true });
 });
 
 const data = (outcome: ToolResult): NamedPatchToolData => outcome.data as NamedPatchToolData;
@@ -353,5 +356,49 @@ describe("apply_graph_patch warns about a label that does not carry its kind", (
     ]);
     expect(outcome.status).toBe("rejected");
     expect(warning(outcome)).toBeUndefined();
+  });
+});
+
+/**
+ * RULED 2026-10-05: the review preview of an agent's `add_node` shows the name that WILL be
+ * stored, the same one the run reports. A person approving a held edit is approving what
+ * they are shown; `label: "glow"` in the preview and `bloom_glow` in the document is the
+ * review gate showing one edit and applying another.
+ *
+ * A component instance is the case that needed work: its kind is its component's name,
+ * which is not in the type string, so the preview has to be handed the registry.
+ */
+describe("a held add_node shows the reviewer the name it will store", () => {
+  const heldLabel = async (input: Record<string, unknown>) => {
+    const held = await gated.callTool("add_node", input);
+    expect(held.status).toBe("awaiting-approval");
+    const proposal = gated.pendingProposals().at(-1);
+    const operation = proposal?.operations[0];
+    return { proposal, label: operation?.op === "addNode" ? operation.label : undefined };
+  };
+
+  it("shows a built-in node's label with its kind in front", async () => {
+    expect((await heldLabel({ type: "slider", label: "lamp" })).label).toBe("slider_lamp");
+  });
+
+  it("shows a component instance's label with its COMPONENT'S NAME in front", async () => {
+    expect((await heldLabel({ type: BLOOM, label: "glow" })).label).toBe("bloom_glow");
+  });
+
+  it("shows no label for an auto-named add, and the label as written when exactLabel says so", async () => {
+    expect((await heldLabel({ type: BLOOM })).label).toBeUndefined();
+    expect((await heldLabel({ type: BLOOM, label: "glow", exactLabel: true })).label).toBe("glow");
+  });
+
+  /* The claim is not "the preview has a prefix". It is that the preview IS the edit. */
+  it("stores exactly the name it showed, once approved", async () => {
+    const { proposal, label } = await heldLabel({ type: BLOOM, label: "hall" });
+    expect(Object.keys(store.view.getGraph().nodes)).toEqual([]);
+
+    const applied = await gated.approve(proposal?.id ?? "");
+
+    expect(applied.status).toBe("ok");
+    expect(data(applied).name).toBe(label);
+    expect(stored(created(applied))).toBe("bloom_hall");
   });
 });
