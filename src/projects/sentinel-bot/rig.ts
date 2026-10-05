@@ -333,6 +333,67 @@ fn plant(tentacle: u32, step: f32, stride: f32, bodyZ: f32, own: f32, seed: u32,
   return wall.origin + (wall.right * cos(theta) + wall.up * sin(theta)) * (params.bore * (1.0 + CHAMBER_SWELL * chamberAt(z)));
 }
 
+// ── The trail: what a tentacle does that holds nothing ──
+// It streams back along the way the robot has come, as a squid's do: the bundle leaves the body
+// in the arrangement the sockets have, draws in a little, lies along the tunnel behind (so it
+// bends where the tunnel bent), squiggles more the further out, and only its ends stand apart.
+// (The owner, 2026-10-05: "legs point straight away from it instead of going a bit to the back
+// and then apart like a squid would … just the ends a bit spread out, the rest slightly
+// squiggled but oriented backwards for the most part or rather along the velocity vector".)
+// A shape, not a simulation: the kernel cannot read a neighbour, so there is no rope to solve (§T1585b).
+struct Trail {
+  z0: f32, // where along the tunnel its socket is
+  across: vec2f, // the socket's direction off the body's axis, on the body's own right and up
+  radius: f32, // how far off that axis the socket is, metres
+  right: vec3f, // the body's right and up: the bundle starts on these and settles onto the tunnel's
+  up: vec3f,
+  offset: vec2f, // the body's place off the tunnel's axis: the bundle is drawn back onto the axis behind it
+  tip: f32, // how far the ends stand apart, metres
+  begins: f32, // where along a tentacle the spreading starts, metres
+  wave: f32, // the squiggle's size, metres
+  phase: f32, // this tentacle's own count
+  time: f32,
+};
+
+// How far off the axis the trail runs s metres along, and how fast that changes.
+fn trailRadius(t: Trail, s: f32) -> vec2f {
+  let inward = clamp(s / 1.2, 0.0, 1.0);
+  let apart = clamp((s - t.begins) / max(LENGTH - t.begins, 1e-3), 0.0, 1.0);
+  let drawn = inward * inward * (3.0 - 2.0 * inward);
+  let spread = apart * apart * (3.0 - 2.0 * apart);
+  let radius = t.radius * (1.0 - 0.4 * drawn) + t.tip * spread * spread;
+  let slope = -0.4 * t.radius * 6.0 * inward * (1.0 - inward) / 1.2 + t.tip * 2.0 * spread * 6.0 * apart * (1.0 - apart) / max(LENGTH - t.begins, 1e-3);
+  return vec2f(radius, slope);
+}
+
+// A tentacle does not stretch: what it spends going outward it does not go back. The distance
+// back along the axis after s metres of tentacle (a six-step sum; the squiggle takes a little more).
+fn trailBack(t: Trail, s: f32) -> f32 {
+  var back = 0.0;
+  for (var i = 0u; i < 6u; i = i + 1u) {
+    let slope = trailRadius(t, s * (f32(i) + 0.5) / 6.0).y;
+    back = back + sqrt(max(1.0 - slope * slope, 0.04));
+  }
+  return back * s / 6.0 * 0.97;
+}
+
+fn trailShape(t: Trail, s: f32) -> vec3f {
+  let tunnel = pathFrame(t.z0 - trailBack(t, s));
+  let settle = 1.0 - exp(-s / 0.8);
+  let right = normalize(mix(t.right, tunnel.right, settle));
+  let up = normalize(mix(t.up, tunnel.up, settle));
+  let around = right * t.across.x + up * t.across.y;
+  let sideways = normalize(cross(around, tunnel.forward));
+  let reach = s / LENGTH;
+  let size = t.wave * (0.2 + 2.2 * reach * sqrt(reach));
+  let count = s * 2.4 - t.time * 1.9 + t.phase;
+  let squiggle = (sideways * sin(count) + around * 0.6 * cos(count * 0.7 + 1.0)) * size;
+  // A slow sway of the whole tail, a pendulum's: nothing at the body, most at the tip.
+  let sway = sideways * sin(t.time * 0.6 + t.phase * 1.3) * 0.22 * reach * reach;
+  let drawn = (tunnel.right * t.offset.x + tunnel.up * t.offset.y) * exp(-s / 1.5);
+  return tunnel.origin + drawn + around * trailRadius(t, s).x + squiggle + sway;
+}
+
 // How firmly tentacle t is told to take the wall. Crawl says how many do; WHICH ones moves
 // round the body as it goes (one tentacle's turn every 9 m), so no tentacle holds for ever and
 // none trails for ever. At Crawl 1 every one holds.
@@ -478,8 +539,34 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   }
   let here = along(bend, d);
   var at = root + out * here.x + plane * here.y;
-  let tangent = out * cos(here.z) + plane * sin(here.z);
-  let normal = plane * cos(here.z) - out * sin(here.z);
+  var tangent = out * cos(here.z) + plane * sin(here.z);
+  var normal = plane * cos(here.z) - out * sin(here.z);
+  // A tentacle that neither holds nor reaches trails: its place is the trail's, not an arc's.
+  let loosely = (1.0 - grab) * (1.0 - reaching);
+  if (loosely > 0.0) {
+    let axis = pathFrame(frameZ);
+    let off = body.origin - axis.origin;
+    var trail: Trail;
+    trail.z0 = frameZ + socket.z;
+    trail.radius = max(length(socket.xy), 1e-3);
+    trail.across = socket.xy / trail.radius;
+    trail.right = body.right;
+    trail.up = body.up;
+    trail.offset = vec2f(dot(off, axis.right), dot(off, axis.up));
+    // Swimming flings the ends wide at the top of the beat, from nearer the body, and draws them in after the snap.
+    trail.tip = 0.18 + 0.7 * params.flare + swimming * open * 1.3;
+    trail.begins = LENGTH * mix(0.6, 0.2, swimming * open);
+    trail.wave = params.wave * 1.6 + 0.03;
+    trail.phase = f32(tentacle) * 1.7 + f32(robot) * 0.9;
+    trail.time = ctx.absTime;
+    let trailAt = root + trailShape(trail, d) - trailShape(trail, 0.0);
+    let trailTangent = normalize(trailShape(trail, d + 0.04) - trailShape(trail, max(d - 0.04, 0.0)));
+    let outward = body.right * trail.across.x + body.up * trail.across.y;
+    at = mix(at, trailAt, loosely);
+    tangent = normalize(mix(tangent, trailTangent, loosely));
+    normal = mix(normal, outward, loosely);
+    normal = normalize(normal - tangent * dot(normal, tangent));
+  }
   let binormal = cross(tangent, normal);
   // A wave runs root to tip; it dies at both ends, and a planted tentacle carries less of it.
   let planted = grab * (1.0 - aloft);
