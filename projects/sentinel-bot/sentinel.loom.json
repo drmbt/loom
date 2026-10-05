@@ -580,375 +580,375 @@
           "portId": "input"
         }
       },
-      "panel-slider_bore": {
-        "id": "panel-slider_bore",
-        "order": 8,
-        "source": {
-          "nodeId": "slider_bore",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_chase": {
-        "id": "panel-slider_chase",
-        "order": 24,
+      "panel_lights-slider_chase": {
+        "id": "panel_lights-slider_chase",
+        "order": 9,
         "source": {
           "nodeId": "slider_chase",
           "portId": "out"
         },
         "target": {
-          "nodeId": "panel",
+          "nodeId": "panel_lights",
           "portId": "controls"
         }
       },
-      "panel-slider_crawl": {
-        "id": "panel-slider_crawl",
+      "panel_lights-slider_eyehits": {
+        "id": "panel_lights-slider_eyehits",
+        "order": 5,
+        "source": {
+          "nodeId": "slider_eyehits",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_lights",
+          "portId": "controls"
+        }
+      },
+      "panel_lights-slider_eyesweep": {
+        "id": "panel_lights-slider_eyesweep",
+        "order": 6,
+        "source": {
+          "nodeId": "slider_eyesweep",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_lights",
+          "portId": "controls"
+        }
+      },
+      "panel_lights-slider_glow": {
+        "id": "panel_lights-slider_glow",
+        "order": 4,
+        "source": {
+          "nodeId": "slider_glow",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_lights",
+          "portId": "controls"
+        }
+      },
+      "panel_lights-slider_huefrom": {
+        "id": "panel_lights-slider_huefrom",
+        "order": 0,
+        "source": {
+          "nodeId": "slider_huefrom",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_lights",
+          "portId": "controls"
+        }
+      },
+      "panel_lights-slider_hueshift": {
+        "id": "panel_lights-slider_hueshift",
+        "order": 3,
+        "source": {
+          "nodeId": "slider_hueshift",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_lights",
+          "portId": "controls"
+        }
+      },
+      "panel_lights-slider_hueto": {
+        "id": "panel_lights-slider_hueto",
+        "order": 1,
+        "source": {
+          "nodeId": "slider_hueto",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_lights",
+          "portId": "controls"
+        }
+      },
+      "panel_lights-slider_legs": {
+        "id": "panel_lights-slider_legs",
+        "order": 7,
+        "source": {
+          "nodeId": "slider_legs",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_lights",
+          "portId": "controls"
+        }
+      },
+      "panel_lights-slider_meter": {
+        "id": "panel_lights-slider_meter",
+        "order": 8,
+        "source": {
+          "nodeId": "slider_meter",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_lights",
+          "portId": "controls"
+        }
+      },
+      "panel_lights-slider_spark": {
+        "id": "panel_lights-slider_spark",
+        "order": 10,
+        "source": {
+          "nodeId": "slider_spark",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_lights",
+          "portId": "controls"
+        }
+      },
+      "panel_lights-slider_spread": {
+        "id": "panel_lights-slider_spread",
+        "order": 2,
+        "source": {
+          "nodeId": "slider_spread",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_lights",
+          "portId": "controls"
+        }
+      },
+      "panel_robot-slider_crawl": {
+        "id": "panel_robot-slider_crawl",
         "order": 1,
         "source": {
           "nodeId": "slider_crawl",
           "portId": "out"
         },
         "target": {
-          "nodeId": "panel",
+          "nodeId": "panel_robot",
           "portId": "controls"
         }
       },
-      "panel-slider_distance": {
-        "id": "panel-slider_distance",
-        "order": 10,
-        "source": {
-          "nodeId": "slider_distance",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_eyehits": {
-        "id": "panel-slider_eyehits",
-        "order": 20,
-        "source": {
-          "nodeId": "slider_eyehits",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_eyesweep": {
-        "id": "panel-slider_eyesweep",
-        "order": 21,
-        "source": {
-          "nodeId": "slider_eyesweep",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_flare": {
-        "id": "panel-slider_flare",
+      "panel_robot-slider_flare": {
+        "id": "panel_robot-slider_flare",
         "order": 4,
         "source": {
           "nodeId": "slider_flare",
           "portId": "out"
         },
         "target": {
-          "nodeId": "panel",
+          "nodeId": "panel_robot",
           "portId": "controls"
         }
       },
-      "panel-slider_focus": {
-        "id": "panel-slider_focus",
-        "order": 13,
-        "source": {
-          "nodeId": "slider_focus",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_gesture": {
-        "id": "panel-slider_gesture",
+      "panel_robot-slider_gesture": {
+        "id": "panel_robot-slider_gesture",
         "order": 7,
         "source": {
           "nodeId": "slider_gesture",
           "portId": "out"
         },
         "target": {
-          "nodeId": "panel",
+          "nodeId": "panel_robot",
           "portId": "controls"
         }
       },
-      "panel-slider_glow": {
-        "id": "panel-slider_glow",
-        "order": 19,
-        "source": {
-          "nodeId": "slider_glow",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_grain": {
-        "id": "panel-slider_grain",
-        "order": 14,
-        "source": {
-          "nodeId": "slider_grain",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_grip": {
-        "id": "panel-slider_grip",
+      "panel_robot-slider_grip": {
+        "id": "panel_robot-slider_grip",
         "order": 6,
         "source": {
           "nodeId": "slider_grip",
           "portId": "out"
         },
         "target": {
-          "nodeId": "panel",
+          "nodeId": "panel_robot",
           "portId": "controls"
         }
       },
-      "panel-slider_haze": {
-        "id": "panel-slider_haze",
-        "order": 12,
-        "source": {
-          "nodeId": "slider_haze",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_huefrom": {
-        "id": "panel-slider_huefrom",
-        "order": 15,
-        "source": {
-          "nodeId": "slider_huefrom",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_hueshift": {
-        "id": "panel-slider_hueshift",
-        "order": 18,
-        "source": {
-          "nodeId": "slider_hueshift",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_hueto": {
-        "id": "panel-slider_hueto",
-        "order": 16,
-        "source": {
-          "nodeId": "slider_hueto",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_lamp": {
-        "id": "panel-slider_lamp",
-        "order": 9,
-        "source": {
-          "nodeId": "slider_lamp",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_legs": {
-        "id": "panel-slider_legs",
-        "order": 22,
-        "source": {
-          "nodeId": "slider_legs",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_meter": {
-        "id": "panel-slider_meter",
-        "order": 23,
-        "source": {
-          "nodeId": "slider_meter",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_react": {
-        "id": "panel-slider_react",
-        "order": 11,
-        "source": {
-          "nodeId": "slider_react",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_shot": {
-        "id": "panel-slider_shot",
-        "order": 28,
-        "source": {
-          "nodeId": "slider_shot",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_spark": {
-        "id": "panel-slider_spark",
-        "order": 25,
-        "source": {
-          "nodeId": "slider_spark",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_speed": {
-        "id": "panel-slider_speed",
+      "panel_robot-slider_speed": {
+        "id": "panel_robot-slider_speed",
         "order": 0,
         "source": {
           "nodeId": "slider_speed",
           "portId": "out"
         },
         "target": {
-          "nodeId": "panel",
+          "nodeId": "panel_robot",
           "portId": "controls"
         }
       },
-      "panel-slider_spread": {
-        "id": "panel-slider_spread",
-        "order": 17,
-        "source": {
-          "nodeId": "slider_spread",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-slider_stride": {
-        "id": "panel-slider_stride",
+      "panel_robot-slider_stride": {
+        "id": "panel_robot-slider_stride",
         "order": 3,
         "source": {
           "nodeId": "slider_stride",
           "portId": "out"
         },
         "target": {
-          "nodeId": "panel",
+          "nodeId": "panel_robot",
           "portId": "controls"
         }
       },
-      "panel-slider_swim": {
-        "id": "panel-slider_swim",
+      "panel_robot-slider_swim": {
+        "id": "panel_robot-slider_swim",
         "order": 2,
         "source": {
           "nodeId": "slider_swim",
           "portId": "out"
         },
         "target": {
-          "nodeId": "panel",
+          "nodeId": "panel_robot",
           "portId": "controls"
         }
       },
-      "panel-slider_wave": {
-        "id": "panel-slider_wave",
+      "panel_robot-slider_wave": {
+        "id": "panel_robot-slider_wave",
         "order": 5,
         "source": {
           "nodeId": "slider_wave",
           "portId": "out"
         },
         "target": {
-          "nodeId": "panel",
+          "nodeId": "panel_robot",
           "portId": "controls"
         }
       },
-      "panel-toggle_cuts": {
-        "id": "panel-toggle_cuts",
-        "order": 29,
-        "source": {
-          "nodeId": "toggle_cuts",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "panel",
-          "portId": "controls"
-        }
-      },
-      "panel-toggle_follow": {
-        "id": "panel-toggle_follow",
-        "order": 30,
+      "panel_robot-toggle_follow": {
+        "id": "panel_robot-toggle_follow",
+        "order": 9,
         "source": {
           "nodeId": "toggle_follow",
           "portId": "out"
         },
         "target": {
-          "nodeId": "panel",
+          "nodeId": "panel_robot",
           "portId": "controls"
         }
       },
-      "panel-toggle_perch": {
-        "id": "panel-toggle_perch",
-        "order": 26,
+      "panel_robot-toggle_perch": {
+        "id": "panel_robot-toggle_perch",
+        "order": 8,
         "source": {
           "nodeId": "toggle_perch",
           "portId": "out"
         },
         "target": {
-          "nodeId": "panel",
+          "nodeId": "panel_robot",
           "portId": "controls"
         }
       },
-      "panel-xypad_view": {
-        "id": "panel-xypad_view",
-        "order": 27,
+      "panel_scene-slider_bore": {
+        "id": "panel_scene-slider_bore",
+        "order": 0,
+        "source": {
+          "nodeId": "slider_bore",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_scene",
+          "portId": "controls"
+        }
+      },
+      "panel_scene-slider_distance": {
+        "id": "panel_scene-slider_distance",
+        "order": 2,
+        "source": {
+          "nodeId": "slider_distance",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_scene",
+          "portId": "controls"
+        }
+      },
+      "panel_scene-slider_focus": {
+        "id": "panel_scene-slider_focus",
+        "order": 5,
+        "source": {
+          "nodeId": "slider_focus",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_scene",
+          "portId": "controls"
+        }
+      },
+      "panel_scene-slider_grain": {
+        "id": "panel_scene-slider_grain",
+        "order": 6,
+        "source": {
+          "nodeId": "slider_grain",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_scene",
+          "portId": "controls"
+        }
+      },
+      "panel_scene-slider_haze": {
+        "id": "panel_scene-slider_haze",
+        "order": 4,
+        "source": {
+          "nodeId": "slider_haze",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_scene",
+          "portId": "controls"
+        }
+      },
+      "panel_scene-slider_lamp": {
+        "id": "panel_scene-slider_lamp",
+        "order": 1,
+        "source": {
+          "nodeId": "slider_lamp",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_scene",
+          "portId": "controls"
+        }
+      },
+      "panel_scene-slider_react": {
+        "id": "panel_scene-slider_react",
+        "order": 3,
+        "source": {
+          "nodeId": "slider_react",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_scene",
+          "portId": "controls"
+        }
+      },
+      "panel_scene-slider_shot": {
+        "id": "panel_scene-slider_shot",
+        "order": 7,
+        "source": {
+          "nodeId": "slider_shot",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_scene",
+          "portId": "controls"
+        }
+      },
+      "panel_scene-toggle_cuts": {
+        "id": "panel_scene-toggle_cuts",
+        "order": 8,
+        "source": {
+          "nodeId": "toggle_cuts",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_scene",
+          "portId": "controls"
+        }
+      },
+      "panel_scene-xypad_view": {
+        "id": "panel_scene-xypad_view",
+        "order": 9,
         "source": {
           "nodeId": "xypad_view",
           "portId": "out"
         },
         "target": {
-          "nodeId": "panel",
+          "nodeId": "panel_scene",
           "portId": "controls"
         }
       },
@@ -3733,17 +3733,45 @@
         },
         "type": "output"
       },
-      "panel": {
+      "panel_lights": {
         "definitionVersion": 1,
-        "id": "panel",
-        "label": "panel1",
+        "id": "panel_lights",
+        "label": "panel_lights",
         "parameters": {
-          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":8,\"w\":4,\"h\":1}},\n    {\"member\":\"toggle_perch\",\"rect\":{\"x\":0,\"y\":9,\"w\":4,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":10,\"w\":4,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":4,\"y\":0,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":4,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":4,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":4,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":4,\"y\":4,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":4,\"y\":5,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":4,\"y\":6,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":4,\"y\":7,\"w\":4,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":4,\"y\":8,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":4,\"y\":9,\"w\":4,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":4,\"y\":10,\"w\":4,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":4,\"y\":11,\"w\":3,\"h\":3}},\n    {\"label\":\"Lights\",\"rect\":{\"x\":8,\"y\":0,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":8,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":8,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":8,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":8,\"y\":4,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":8,\"y\":5,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":8,\"y\":6,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":8,\"y\":7,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":8,\"y\":8,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":8,\"y\":9,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":8,\"y\":10,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":8,\"y\":11,\"w\":4,\"h\":1}}\n  ]\n}",
-          "title": "Sentinel"
+          "board": "{\n  \"columns\": 8,\n  \"items\": [\n    {\"label\":\"Lights\",\"rect\":{\"x\":0,\"y\":0,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}}\n  ]\n}",
+          "title": "Lights"
+        },
+        "position": {
+          "x": -1800,
+          "y": 3500
+        },
+        "type": "panel"
+      },
+      "panel_robot": {
+        "definitionVersion": 1,
+        "id": "panel_robot",
+        "label": "panel_robot",
+        "parameters": {
+          "board": "{\n  \"columns\": 8,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_perch\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}}\n  ]\n}",
+          "title": "Robot"
         },
         "position": {
           "x": -2400,
-          "y": 2250
+          "y": 3500
+        },
+        "type": "panel"
+      },
+      "panel_scene": {
+        "definitionVersion": 1,
+        "id": "panel_scene",
+        "label": "panel_scene",
+        "parameters": {
+          "board": "{\n  \"columns\": 8,\n  \"items\": [\n    {\"label\":\"Scene\",\"rect\":{\"x\":0,\"y\":0,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":2,\"y\":11,\"w\":4,\"h\":3}}\n  ]\n}",
+          "title": "Scene"
+        },
+        "position": {
+          "x": -2100,
+          "y": 3500
         },
         "type": "panel"
       },
@@ -4204,7 +4232,7 @@
         },
         "position": {
           "x": -3000,
-          "y": 2250
+          "y": 3500
         },
         "type": "slider"
       },
@@ -4357,7 +4385,7 @@
         },
         "position": {
           "x": -2700,
-          "y": 2250
+          "y": 3500
         },
         "type": "toggle"
       },
@@ -4371,8 +4399,8 @@
           "on": true
         },
         "position": {
-          "x": -2400,
-          "y": 2500
+          "x": -3600,
+          "y": 3750
         },
         "type": "toggle"
       },
@@ -4387,7 +4415,7 @@
         },
         "position": {
           "x": -3600,
-          "y": 2250
+          "y": 3500
         },
         "type": "toggle"
       },
@@ -5426,7 +5454,7 @@
         },
         "position": {
           "x": -3300,
-          "y": 2250
+          "y": 3500
         },
         "type": "xyPad"
       }

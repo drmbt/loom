@@ -292,29 +292,57 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const sliders = [...ROBOT, ...SCENE, ...LIGHTS];
   const controls: GraphNode[] = [
     ...sliders.map((slider, index) => node(slider.name, "slider", [-3600 + (index % 4) * 300, 1500 + Math.floor(index / 4) * 250], { channel: slider.name.slice(slider.name.indexOf("_") + 1), caption: slider.caption, value: slider.value, min: slider.min, max: slider.max, step: 0 }, { label: slider.name })),
-    node("toggle_perch", "toggle", [-3600, 2250], { channel: "perch", caption: "Perch", on: false }, { label: "toggle_perch" }),
-    node("xypad_view", "xyPad", [-3300, 2250], { channel: "view", caption: "Chase side / height", x: 1.1, y: 0.6, min: -2, max: 2 }, { label: "xypad_view" }),
-    node("slider_shot", "slider", [-3000, 2250], { channel: "shot", caption: `Shot (${SHOTS.join(", ")})`, value: 0, min: 0, max: SHOTS.length - 1, step: 1 }, { label: "slider_shot" }),
-    node("toggle_cuts", "toggle", [-2700, 2250], { channel: "cuts", caption: "Cut on the bars", on: true }, { label: "toggle_cuts" }),
-    node("toggle_follow", "toggle", [-2400, 2500], { channel: "follow", caption: "Follow the track", on: true }, { label: "toggle_follow" }),
+    node("toggle_perch", "toggle", [-3600, 3500], { channel: "perch", caption: "Perch", on: false }, { label: "toggle_perch" }),
+    node("xypad_view", "xyPad", [-3300, 3500], { channel: "view", caption: "Chase side / height", x: 1.1, y: 0.6, min: -2, max: 2 }, { label: "xypad_view" }),
+    node("slider_shot", "slider", [-3000, 3500], { channel: "shot", caption: `Shot (${SHOTS.join(", ")})`, value: 0, min: 0, max: SHOTS.length - 1, step: 1 }, { label: "slider_shot" }),
+    node("toggle_cuts", "toggle", [-2700, 3500], { channel: "cuts", caption: "Cut on the bars", on: true }, { label: "toggle_cuts" }),
+    node("toggle_follow", "toggle", [-3600, 3750], { channel: "follow", caption: "Follow the track", on: true }, { label: "toggle_follow" }),
   ];
-  const board = serializePanelBoard({
-    columns: 12,
-    items: [
-      { label: "Robot", rect: { x: 0, y: 0, w: 4, h: 1 } },
-      ...ROBOT.map((slider, index) => ({ member: slider.name, rect: { x: 0, y: 1 + index, w: 4, h: 1 } })),
-      { member: "toggle_perch", rect: { x: 0, y: 1 + ROBOT.length, w: 4, h: 1 } },
-      { member: "toggle_follow", rect: { x: 0, y: 2 + ROBOT.length, w: 4, h: 1 } },
-      { label: "Scene", rect: { x: 4, y: 0, w: 4, h: 1 } },
-      ...SCENE.map((slider, index) => ({ member: slider.name, rect: { x: 4, y: 1 + index, w: 4, h: 1 } })),
-      { label: "Camera", rect: { x: 4, y: 1 + SCENE.length, w: 4, h: 1 } },
-      { member: "slider_shot", rect: { x: 4, y: 2 + SCENE.length, w: 4, h: 1 } },
-      { member: "toggle_cuts", rect: { x: 4, y: 3 + SCENE.length, w: 4, h: 1 } },
-      { member: "xypad_view", rect: { x: 4, y: 4 + SCENE.length, w: 3, h: 3 } },
-      { label: "Lights", rect: { x: 8, y: 0, w: 4, h: 1 } },
-      ...LIGHTS.map((slider, index) => ({ member: slider.name, rect: { x: 8, y: 1 + index, w: 4, h: 1 } })),
-    ],
-  });
+  /**
+   * THREE PANELS, not one board: the phone draws a tab for each (§T1517b), and a board taller than
+   * the screen cannot be scrolled there without moving the sliders under the finger (§T1607b, the
+   * owner 2026-10-05). Eight columns across and every control the full width, so a row is an
+   * eighth of the phone's width tall and each panel is one screen.
+   */
+  const COLUMNS = 8;
+  const row = (member: string, y: number): { member: string; rect: { x: number; y: number; w: number; h: number } } => ({ member, rect: { x: 0, y, w: COLUMNS, h: 1 } });
+  const heading = (label: string, y: number): { label: string; rect: { x: number; y: number; w: number; h: number } } => ({ label, rect: { x: 0, y, w: COLUMNS, h: 1 } });
+  const panels: ReadonlyArray<{ id: string; title: string; members: readonly string[]; board: string }> = [
+    {
+      id: "panel_robot",
+      title: "Robot",
+      members: [...ROBOT.map((slider) => slider.name), "toggle_perch", "toggle_follow"],
+      board: serializePanelBoard({ columns: COLUMNS, items: [heading("Robot", 0), ...ROBOT.map((slider, index) => row(slider.name, 1 + index)), row("toggle_perch", 1 + ROBOT.length), row("toggle_follow", 2 + ROBOT.length)] }),
+    },
+    {
+      id: "panel_scene",
+      title: "Scene",
+      members: [...SCENE.map((slider) => slider.name), "slider_shot", "toggle_cuts", "xypad_view"],
+      board: serializePanelBoard({
+        columns: COLUMNS,
+        items: [
+          heading("Scene", 0),
+          ...SCENE.map((slider, index) => row(slider.name, 1 + index)),
+          heading("Camera", 1 + SCENE.length),
+          row("slider_shot", 2 + SCENE.length),
+          row("toggle_cuts", 3 + SCENE.length),
+          // Narrower than the screen on purpose: until §T1607b, the strips beside it are where a finger can scroll.
+          { member: "xypad_view", rect: { x: 2, y: 4 + SCENE.length, w: 4, h: 3 } },
+        ],
+      }),
+    },
+    {
+      id: "panel_lights",
+      title: "Lights",
+      members: LIGHTS.map((slider) => slider.name),
+      board: serializePanelBoard({ columns: COLUMNS, items: [heading("Lights", 0), ...LIGHTS.map((slider, index) => row(slider.name, 1 + index))] }),
+    },
+  ];
+
+  // Every control is on exactly one panel: one left off would be a slider nobody can reach from a phone.
+  const placed = panels.flatMap((panel) => panel.members);
+  const unplaced = controls.map((control) => control.id).filter((id) => !placed.includes(id));
+  if (unplaced.length > 0 || new Set(placed).size !== placed.length) throw new Error(`sentinel-bot: every control goes on exactly one panel; not placed: ${unplaced.join(", ") || "none"}; placed ${placed.length} of ${controls.length}.`);
 
   const nodes: GraphNode[] = [
     // ── The track, and the lanes the piece listens to ──
@@ -550,7 +578,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
 
     // ── The panel: the piece's own words ──
     ...controls,
-    node("panel", "panel", [-2400, 2250], { title: "Sentinel", board }, { label: "panel1" }),
+    ...panels.map((panel, index) => node(panel.id, "panel", [-2400 + index * 300, 3500], { title: panel.title, board: panel.board }, { label: panel.id })),
   ];
 
   const edges: GraphEdge[] = [
@@ -604,7 +632,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("glow-lens", ["add_glow", "out"], ["lens_glass", "input"]),
     edge("lens-grade", ["lens_glass", "out"], ["filmgrade_finish", "input"]),
     edge("grade-out", ["filmgrade_finish", "out"], ["output_frame", "input"]),
-    ...controls.map((control, index) => edge(`panel-${control.id}`, [control.id, "out"], ["panel", "controls"], index)),
+    ...panels.flatMap((panel) => panel.members.map((member, index) => edge(`${panel.id}-${member}`, [member, "out"], [panel.id, "controls"], index))),
   ];
 
   return {
