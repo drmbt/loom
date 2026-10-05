@@ -1547,6 +1547,214 @@
             },
             "mode": "expression"
           },
+          "lamp0.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + -1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + -1.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp0.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + -1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + -1.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp0.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('travel1').chan.value / 12.8) + -1.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": -19.200000000000003
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp1.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp1.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp1.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('travel1').chan.value / 12.8) + -0.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": -6.4
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp2.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp2.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp2.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('travel1').chan.value / 12.8) + 0.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 6.4
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp3.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp3.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp3.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('travel1').chan.value / 12.8) + 1.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 19.200000000000003
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp4.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * (((floor(op('travel1').chan.value / 12.8) + 2.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('travel1').chan.value / 12.8) + 2.5) * 12.8)) + 1.9))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp4.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * (((floor(op('travel1').chan.value / 12.8) + 2.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('travel1').chan.value / 12.8) + 2.5) * 12.8)) + 0.7)) + op('bore').chan.bore - 0.35"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2.25
+              }
+            },
+            "mode": "expression"
+          },
+          "lamp4.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((floor(op('travel1').chan.value / 12.8) + 2.5) * 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 32
+              }
+            },
+            "mode": "expression"
+          },
+          "lamps": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('lamp').chan.lamp * 0.23 * (0.7 + (op('levels1').chan.low * op('react').chan.react) * 0.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 6
+              }
+            },
+            "mode": "expression"
+          },
           "model": "pbr",
           "pulseGlow": {
             "bindings": {
@@ -1561,7 +1769,20 @@
             },
             "mode": "expression"
           },
-          "source": "struct Params {\n  gloss: f32, // @default 0.16  Roughness of the black shell: lower is wetter.\n  eyeGlow: f32, // @default 9  Radiance of the eye lenses.\n  eyeColor: vec3f, // @default [1, 0.06, 0.03]  Their colour.\n  coreGlow: f32, // @default 0.02  Radiance of a red core at rest: an ember, so a tentacle in the dark is still there.\n  pulseGlow: f32, // @default 3  Radiance of a core under the crest of a pulse.\n};\n\n// What each drawn piece brings of its own: the rig's point attribute of the same name (rig.ts).\nstruct Instance {\n  charge: f32, // @default 0  How much of a pulse is on this piece: 0 at rest, 1 under a fresh crest.\n};\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let role = s.attr.z;\n  if (role > 0.9) {\n    // A lens: black glass over a lamp, brightest where it faces the viewer.\n    let facing = max(dot(normalize(s.eye - s.world), s.normal), 0.0);\n    // Each lens has a nerve of its own: the eyes are a hand's breadth apart in the robot's frame, so a coarse cell of it names one.\n    let lens = floor(s.local * 7.0);\n    let nerve = fract(sin(dot(lens, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);\n    let life = 0.8 + 0.2 * sin(s.absTime * (1.5 + nerve * 4.0) + nerve * 40.0);\n    o.albedo = vec4f(0.01, 0.0, 0.0, 1.0);\n    o.roughness = 0.08;\n    o.metallic = 0.0;\n    o.emissive = p.eyeColor * p.eyeGlow * (0.35 + 0.65 * facing * facing) * life;\n  } else if (role > 0.7) {\n    // The spine between the rings: red mirror, as the reference has it. In the dark it is dark, and red only\n    // where a lamp finds it or a pulse is passing.\n    o.albedo = vec4f(0.55, 0.012, 0.008, 1.0);\n    o.roughness = 0.2;\n    o.metallic = 1.0;\n    o.emissive = p.eyeColor * (p.coreGlow + p.pulseGlow * s.instance.charge);\n  } else if (role > 0.5) {\n    o.albedo = vec4f(0.22, 0.012, 0.01, 1.0);\n    o.roughness = 0.38;\n    o.metallic = 0.6;\n  } else if (role > 0.3) {\n    o.albedo = vec4f(0.5, 0.36, 0.16, 1.0);\n    o.roughness = 0.34;\n    o.metallic = 1.0;\n  } else if (role > 0.1) {\n    o.albedo = vec4f(0.62, 0.64, 0.67, 1.0);\n    o.roughness = 0.22;\n    o.metallic = 1.0;\n  } else {\n    // Black enamel: almost no diffuse, so under a lamp it stays black and only its highlights read.\n    o.albedo = vec4f(0.006, 0.0065, 0.008, 1.0);\n    o.roughness = p.gloss;\n    o.metallic = 0.0;\n  }\n  return o;\n}"
+          "source": "struct Params {\n  lamp0: vec3f, // @default [0, 2.25, -19.2]  Where the lamp -2 stations on from the robot's own hangs.\n  lamp1: vec3f, // @default [0, 2.25, -6.4]  Where the lamp -1 stations on from the robot's own hangs.\n  lamp2: vec3f, // @default [0, 2.25, 6.4]  Where the lamp 0 stations on from the robot's own hangs.\n  lamp3: vec3f, // @default [0, 2.25, 19.2]  Where the lamp 1 stations on from the robot's own hangs.\n  lamp4: vec3f, // @default [0, 2.25, 32.0]  Where the lamp 2 stations on from the robot's own hangs.\n  station: f32, // @default 37  The station the robot is under: which lamp is which tone.\n  lamps: f32, // @default 6  Radiance of a lamp plate, as the steel reflects it.\n  pool: f32, // @default 0.05  Radiance of the lit liner round a plate, as a share of the plate's.\n  deck: f32, // @default 0.2  How much of all that the wet deck throws back up.\n  gloss: f32, // @default 0.2  Roughness of the black shell: lower is wetter.\n  steel: f32, // @default 0.3  How much of what it faces the shell throws back: 0.04 is enamel, 0.6 bare steel.\n  eyeGlow: f32, // @default 9  Radiance of the eye lenses.\n  eyeColor: vec3f, // @default [1, 0.06, 0.03]  Their colour.\n  coreGlow: f32, // @default 0.02  Radiance of a red core at rest: an ember, so a tentacle in the dark is still there.\n  pulseGlow: f32, // @default 3  Radiance of a core under the crest of a pulse.\n};\n\n// What each drawn piece brings of its own: the rig's point attribute of the same name (rig.ts).\nstruct Instance {\n  charge: f32, // @default 0  How much of a pulse is on this piece: 0 at rest, 1 under a fresh crest.\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\nconst LAMP: f32 = 12.80000;\n// The tone of the lamp at a station (tunnel.ts, LAMP_TONES): cold in the bore, sodium in a hall, every fifteenth an alarm.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP)));\n}\n\n// What a ray going up (d.y > 0) from `here` sees of the lamp of `station` hanging at `lampAt`, in the level\n// plane it hangs in. `pool` is the lit liner round the plate as a share of the plate's radiance; `soft`\n// widens the plate's edge, metres (a rough mirror).\nfn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft: f32) -> vec3f {\n  let lamp = lampAt - here;\n  // The tunnel climbs and falls: a lamp below this height is round a bend of it.\n  if (lamp.y < 0.3) { return vec3f(0.0); }\n  let hit = d * (lamp.y / d.y);\n  let across = hit.x - lamp.x;\n  let along = hit.z - lamp.z;\n  let plate = (1.0 - smoothstep(0.2, 0.26 + soft, abs(across))) * (1.0 - smoothstep(0.3, 0.36 + soft, abs(along)));\n  let lit = exp(-(across * across + along * along) / 3.0) * pool;\n  // Air between: a far lamp is a dim one.\n  return lampTone(station) * (plate + lit) * exp(-length(hit) * 0.035);\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let role = s.attr.z;\n  if (role > 0.9) {\n    // A lens: black glass over a lamp, brightest where it faces the viewer.\n    let facing = max(dot(normalize(s.eye - s.world), s.normal), 0.0);\n    // Each lens has a nerve of its own: the eyes are a hand's breadth apart in the robot's frame, so a coarse cell of it names one.\n    let lens = floor(s.local * 7.0);\n    let nerve = fract(sin(dot(lens, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);\n    let life = 0.8 + 0.2 * sin(s.absTime * (1.5 + nerve * 4.0) + nerve * 40.0);\n    o.albedo = vec4f(0.01, 0.0, 0.0, 1.0);\n    o.roughness = 0.08;\n    o.metallic = 0.0;\n    o.emissive = p.eyeColor * p.eyeGlow * (0.35 + 0.65 * facing * facing) * life;\n  } else if (role > 0.7) {\n    // The spine between the rings: red mirror, as the reference has it. In the dark it is dark, and red only\n    // where a lamp finds it or a pulse is passing.\n    o.albedo = vec4f(0.55, 0.012, 0.008, 1.0);\n    o.roughness = 0.2;\n    o.metallic = 1.0;\n    o.emissive = p.eyeColor * (p.coreGlow + p.pulseGlow * s.instance.charge);\n  } else if (role > 0.5) {\n    o.albedo = vec4f(0.22, 0.012, 0.01, 1.0);\n    o.roughness = 0.38;\n    o.metallic = 0.6;\n  } else if (role > 0.3) {\n    o.albedo = vec4f(0.5, 0.36, 0.16, 1.0);\n    o.roughness = 0.34;\n    o.metallic = 1.0;\n  } else if (role > 0.1) {\n    o.albedo = vec4f(0.62, 0.64, 0.67, 1.0);\n    o.roughness = 0.22;\n    o.metallic = 1.0;\n  } else {\n    // Blackened steel: no diffuse at all, so it is only ever what it reflects — a lamp, the lit liner\n    // round one, the wet deck (tunnel.ts, the environment).\n    o.albedo = vec4f(p.steel * 0.92, p.steel * 0.96, p.steel * 1.05, 1.0);\n    o.roughness = p.gloss;\n    o.metallic = 1.0;\n  }\n  // A mirror shows what is along its mirror direction: the lamps overhead, and their smear in the wet deck\n  // below (tunnel.ts). Metal only; a rougher one shows a softer plate.\n  let view = normalize(s.world - s.eye);\n  let mirror = reflect(view, s.normal);\n  let soft = o.roughness * 0.6;\n  // Looking down, it is the deck's own mirror image of the same lamps, dimmer.\n  let up = vec3f(mirror.x, max(abs(mirror.y), 0.02), mirror.z);\n  var seen = vec3f(0.0);\n  seen = seen + lampSeen(up, s.world, p.lamp0, p.station + -2.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp1, p.station + -1.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp2, p.station + 0.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp3, p.station + 1.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp4, p.station + 2.0, p.pool, soft);\n  seen = seen * select(p.deck, 1.0, mirror.y > 0.0);\n  // Schlick: at a grazing angle any metal is a full mirror.\n  let graze = pow(1.0 - max(dot(-view, s.normal), 0.0), 5.0);\n  o.emissive = o.emissive + seen * p.lamps * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * (1.0 - o.roughness);\n  return o;\n}",
+          "station": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "floor(op('travel1').chan.value / 12.8)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 37
+              }
+            },
+            "mode": "expression"
+          }
         },
         "position": {
           "x": -1800,
@@ -2847,7 +3068,7 @@
         "id": "panel",
         "label": "panel1",
         "parameters": {
-          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"member\":\"perch\",\"rect\":{\"x\":0,\"y\":9,\"w\":6,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":10,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":11,\"w\":6,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":12,\"w\":6,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":13,\"w\":6,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":6,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"bore\",\"rect\":{\"x\":6,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"lamp\",\"rect\":{\"x\":6,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"glow\",\"rect\":{\"x\":6,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"distance\",\"rect\":{\"x\":6,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"react\",\"rect\":{\"x\":6,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":6,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"view\",\"rect\":{\"x\":6,\"y\":7,\"w\":3,\"h\":3}}\n  ]\n}",
+          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"member\":\"perch\",\"rect\":{\"x\":0,\"y\":9,\"w\":6,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":10,\"w\":6,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":11,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":12,\"w\":6,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":13,\"w\":6,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":6,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"bore\",\"rect\":{\"x\":6,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"lamp\",\"rect\":{\"x\":6,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"glow\",\"rect\":{\"x\":6,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"distance\",\"rect\":{\"x\":6,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"react\",\"rect\":{\"x\":6,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":6,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"view\",\"rect\":{\"x\":6,\"y\":7,\"w\":3,\"h\":3}}\n  ]\n}",
           "title": "Sentinel"
         },
         "position": {

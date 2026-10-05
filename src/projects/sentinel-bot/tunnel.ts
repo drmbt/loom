@@ -220,6 +220,47 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   return o;
 }`;
 
+/** How many lamp stations either side of the robot's own a mirror on it can show: five lamps, 64 m of tunnel. */
+export const LAMPS_MIRRORED = 2;
+
+/**
+ * THE TUNNEL AS A GLOSSY THING IN IT SEES IT. Blackened steel has no diffuse, so between two
+ * lamps the robot is a hole in the picture unless something is reflected in it. This is what
+ * is there to reflect: a lamp plate at the crown, in its own tone, and the pool of lit liner
+ * round it, as a ray from a place sees them. The hull's material looks the nearest lamps up
+ * along its mirror direction (surface.ts), so as the robot travels the plates pass overhead
+ * and their highlights run along the hull.
+ *
+ * A picture of the lamps, not a second set of them: the plate's size is the wall's own
+ * (BORE_SURFACE_WGSL), and where each hangs is handed in, from the same expression that
+ * places the lights (document.ts), so the shader does no path arithmetic per pixel.
+ *
+ * Why not the Render's Environment input, which is the stock way to give a mirror something to
+ * show: tried first (an equirect of this same picture, 512×256). In the app the header's GPU
+ * time went from about 4.5 ms to about 5.6 ms a frame, the same with 8 taps, 2 taps or
+ * prefiltered, because every lit pixel of the tunnel pays for it and only the robot wanted
+ * it. (Smallest of five readings per document, four documents back to back, twice, on a
+ * machine other sessions were loading: a direction, not a number to quote.) Here only the
+ * robot's pixels pay, and each reads the lamps from where it is, not from the robot's middle.
+ */
+export const LAMP_SEEN_WGSL = `${chamberWgsl()}${LAMP_TONE_WGSL}
+// What a ray going up (d.y > 0) from \`here\` sees of the lamp of \`station\` hanging at \`lampAt\`, in the level
+// plane it hangs in. \`pool\` is the lit liner round the plate as a share of the plate's radiance; \`soft\`
+// widens the plate's edge, metres (a rough mirror).
+fn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft: f32) -> vec3f {
+  let lamp = lampAt - here;
+  // The tunnel climbs and falls: a lamp below this height is round a bend of it.
+  if (lamp.y < 0.3) { return vec3f(0.0); }
+  let hit = d * (lamp.y / d.y);
+  let across = hit.x - lamp.x;
+  let along = hit.z - lamp.z;
+  let plate = (1.0 - smoothstep(0.2, 0.26 + soft, abs(across))) * (1.0 - smoothstep(0.3, 0.36 + soft, abs(along)));
+  let lit = exp(-(across * across + along * along) / 3.0) * pool;
+  // Air between: a far lamp is a dim one.
+  return lampTone(station) * (plate + lit) * exp(-length(hit) * 0.035);
+}
+`;
+
 /**
  * Air: the far wall goes into a cold haze. Custom WGSL · Multi over the lit frame and the
  * Render's Depth (view distance ÷ far). Until a stock haze exists (§T1402b) this is the

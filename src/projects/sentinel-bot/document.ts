@@ -11,8 +11,8 @@ import { PATH, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
 import { SSR_WGSL } from "../furnace/screen-space.ts";
 import { JOINT_ATTRIBUTES, jointCount, jointKernel, type Pick } from "./rig.ts";
-import { HULL_SURFACE_WGSL } from "./surface.ts";
-import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMP_SPACING, MOTE_ATTRIBUTES, MOTE_COUNT, MOTE_KERNEL, lampToneExpression } from "./tunnel.ts";
+import { HULL_SURFACE_WGSL, lampParameter } from "./surface.ts";
+import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMPS_MIRRORED, LAMP_SPACING, MOTE_ATTRIBUTES, MOTE_COUNT, MOTE_KERNEL, lampToneExpression } from "./tunnel.ts";
 
 /**
  * T1561b — THE SENTINEL DOCUMENT: a robot walking, swimming and perching in the tunnel, played
@@ -167,6 +167,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     };
   };
   const lamps = [-1, 0, 1].map(lampAt);
+  /** The lamps the robot's steel can show a reflection of (surface.ts). */
+  const mirrored = Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, index) => lampAt(index - LAMPS_MIRRORED));
   const swimming: Record<string, StoredParameter> = { swim: expressionSlot(SWIM, 0), stroke: expressionSlot(STROKE, 0) };
   /**
    * The robot's pieces: each a mesh from the kit, and the points of the rig it is drawn on.
@@ -212,10 +214,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       { label: "Robot", rect: { x: 0, y: 0, w: 6, h: 1 } },
       ...ROBOT.map((slider, index) => ({ member: slider.name, rect: { x: 0, y: 1 + index, w: 6, h: 1 } })),
       { member: "perch", rect: { x: 0, y: 1 + ROBOT.length, w: 6, h: 1 } },
-      { label: "Camera", rect: { x: 0, y: 2 + ROBOT.length, w: 6, h: 1 } },
-      { member: "slider_shot", rect: { x: 0, y: 3 + ROBOT.length, w: 6, h: 1 } },
-      { member: "toggle_cuts", rect: { x: 0, y: 4 + ROBOT.length, w: 6, h: 1 } },
-      { member: "toggle_follow", rect: { x: 0, y: 5 + ROBOT.length, w: 6, h: 1 } },
+      { member: "toggle_follow", rect: { x: 0, y: 2 + ROBOT.length, w: 6, h: 1 } },
+      { label: "Camera", rect: { x: 0, y: 3 + ROBOT.length, w: 6, h: 1 } },
+      { member: "slider_shot", rect: { x: 0, y: 4 + ROBOT.length, w: 6, h: 1 } },
+      { member: "toggle_cuts", rect: { x: 0, y: 5 + ROBOT.length, w: 6, h: 1 } },
       { label: "Scene", rect: { x: 6, y: 0, w: 6, h: 1 } },
       ...SCENE.map((slider, index) => ({ member: slider.name, rect: { x: 6, y: 1 + index, w: 6, h: 1 } })),
       { member: "view", rect: { x: 6, y: 1 + SCENE.length, w: 3, h: 3 } },
@@ -276,6 +278,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       source: HULL_SURFACE_WGSL,
       // The eyes flicker with the hats and swell with the top of the track.
       eyeGlow: expressionSlot(`${on("glow")} * (0.75 + ${HIGH} * 0.6 + ${HAT} * 0.9)`, 9),
+      // What the steel has to reflect (tunnel.ts): the lamps round the robot, each where its light would hang.
+      // They breathe as the lights do.
+      ...Object.fromEntries(mirrored.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp.position[axis]]))),
+      station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
+      lamps: expressionSlot(`${on("lamp")} * 0.23 * (0.7 + ${LOW} * 0.8)`, 6),
       // How bright a kick's pulse is as it runs down the cores (the rig says where it is).
       pulseGlow: expressionSlot(`3 * ${LISTEN}`, 3),
     }, { label: "hull1" }),
