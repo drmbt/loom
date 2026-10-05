@@ -13,24 +13,24 @@ beautiful to travel.
 ## Graph
 
 ```
-floorpts1(pointGrid 32×24) ─► floorlay1(pointKernel: lie flat) ─► ground1(geometry: surface)
-stonepts1(pointGrid 3×1)   ─► stonelay1(pointKernel: 3 marks)  ─► stones1(geometry: box ×3)
-sunpt1(pointGrid 1×1)      ─► sunorbit1(pointKernel)           ─► sun1(geometry: octahedron)
-                                  ▲ value1 ┄ orbx1, value2 ┄ orbz1
+grid_floor(pointGrid 32×24) ─► kernel_floorlay(pointKernel: lie flat) ─► geometry_ground(geometry: surface)
+grid_stone(pointGrid 3×1)   ─► kernel_stonelay(pointKernel: 3 marks)  ─► geometry_stones(geometry: box ×3)
+grid_sunpt(pointGrid 1×1)      ─► kernel_sunorbit(pointKernel)           ─► geometry_sun(geometry: octahedron)
+                                      ▲ value1 ┄ lfo_orbx, value2 ┄ lfo_orbz
 
-sky1(ramp: dusk, 5 stops) ──► shot1.environment
-ground1 stones1 sun1 ─(names)─► shot1(render) ◄─(names)─ cam1, key1(shadows ON) ─► out1
-                                    ▲ eye.x ┄ drift1
+ramp_sky(ramp: dusk, 5 stops) ──► render_shot.environment
+geometry_ground geometry_stones geometry_sun ─(names)─► render_shot(render) ◄─(names)─ camera1, light_key(shadows ON) ─► output1
+                                                            ▲ eye.x ┄ lfo_drift
 ```
 
 | Node | Type | Doing |
 | --- | --- | --- |
-| `key1` | `light` | THE performer's light: directional, warm, low from the west, `shadows` on, `shadowExtent` 3.6 — set by hand to hug the floor (V426) |
-| `sunorbit1` | `pointKernel` | one point riding two quadrature LFOs through `ctx.value1`/`ctx.value2` (T479) — values, never rebuilds |
-| `floorlay1` | `pointKernel` | lays the grid down: xy → xz at y = 0; grid topology survives, so the surface gets analytic normals |
-| `stonelay1` | `pointKernel` | three cubes placed off-axis, so no two shadows ever agree |
-| `sky1` | `ramp` | vertical dusk gradient worn as the render's ENVIRONMENT (T482): deep blue at the zenith, a hot amber band at the horizon |
-| `drift1` | `lfo` | 0.03 Hz on the camera's eye.x — a locked-off camera reads as a screenshot |
+| `light_key` | `light` | THE performer's light: directional, warm, low from the west, `shadows` on, `shadowExtent` 3.6 — set by hand to hug the floor (V426) |
+| `kernel_sunorbit` | `pointKernel` | one point riding two quadrature LFOs through `ctx.value1`/`ctx.value2` (T479) — values, never rebuilds |
+| `kernel_floorlay` | `pointKernel` | lays the grid down: xy → xz at y = 0; grid topology survives, so the surface gets analytic normals |
+| `kernel_stonelay` | `pointKernel` | three cubes placed off-axis, so no two shadows ever agree |
+| `ramp_sky` | `ramp` | vertical dusk gradient worn as the render's ENVIRONMENT (T482): deep blue at the zenith, a hot amber band at the horizon |
+| `lfo_drift` | `lfo` | 0.03 Hz on the camera's eye.x — a locked-off camera reads as a screenshot |
 
 ## The antialiasing, and why it is supersampling (T503)
 
@@ -46,7 +46,7 @@ shader cannot recover an analytic coverage term for a triangle edge it was never
 and a shadow test is a discrete comparison — there is no `d` to take `fwidth` of. Reaching
 for `fwidth` here would have been the right tool on the wrong image.
 
-So `shot1` carries a per-node resolution override (§V50) of **1536×864** over a 768×432
+So `render_shot` carries a per-node resolution override (§V50) of **1536×864** over a 768×432
 project, and the output's blit downsamples it. At exactly 2:1 each destination pixel's sample
 lands on the corner between four source texels, so a bilinear read returns their exact mean —
 a true 4× box-filtered SSAA, not a blur that happens to soften.
@@ -98,12 +98,12 @@ rake, short enough to stay in frame.
 
 ## Regression signatures
 
-- **Stepped silhouettes and a blocky shadow edge** → `shot1` lost its resolution override,
+- **Stepped silhouettes and a blocky shadow edge** → `render_shot` lost its resolution override,
   or it stopped being an exact 2× of the project resolution, and the downsample became an
   uneven interpolation instead of a box filter.
 - **A shadow that stops halfway across the floor** → `shadowExtent` went too tight; the
   longest shadow in the orbit reaches about x = −3.5.
-- **The stones go matte and the frame flattens** → the `environment` wire came off `shot1`,
+- **The stones go matte and the frame flattens** → the `environment` wire came off `render_shot`,
   or `environmentIntensity` went to zero. The sky is only ever visible as a highlight.
 
 ## Look pass

@@ -90,7 +90,7 @@ describe.each(listExamples())("$fileName on Dawn", (file) => {
  *
  * So this measures the thing the example is named for. Park the pointer in the middle, run
  * five seconds, and count how much of the frame the dye reaches — once with the stirring
- * force on and once with `stir1.amount` at zero. Nothing else changes: same ink, same
+ * force on and once with `level_stir.amount` at zero. Nothing else changes: same ink, same
  * injection, same diffusion Blur, same fade.
  *
  * With the flow off the ink is a stationary blob that a 1.4px Blur spreads a little. With
@@ -395,18 +395,18 @@ describe("E2 is alive, and its chemistry map is doing the work", () => {
    * TASKS.
    *
    * E24 shares `GRAY_SCOTT_WGSL` verbatim, so it shares E2's band and E2's fault. It also
-   * already HAD a node in §V626's slot — `wind1`, a Transform rotating 0.02 per iteration,
+   * already HAD a node in §V626's slot — `displace_wind`, a Transform rotating 0.02 per iteration,
    * seventeen to twenty-four times a frame — and §V626 is precisely that a rotation turns a
    * lattice and leaves it a lattice. The stirring was decorative; the plate never sheared.
    *
-   * Only the MOTION half is asserted here. E24's frame is mostly black outside `bowl1`'s
+   * Only the MOTION half is asserted here. E24's frame is mostly black outside `circle_bowl`'s
    * disc, so featureSpread over the whole frame measures the vignette rather than the
    * picture — and it is measurably blind to this: with the flow removed it goes UP, from
    * 191.9 to 233.9, because a relaxed plate has cleaner tile-to-tile edges. A number that
    * moves the wrong way under the mutation is not a gate, so it is not used as one.
    *
    * Measured at frame 900, 512x512, over ten frames: 17,369 pixels moved against 3,745 with
-   * `wind1`'s weight zeroed — 4.6x. Rendered without a value graph, so `substeps` sits on
+   * `displace_wind`'s weight zeroed — 4.6x. Rendered without a value graph, so `substeps` sits on
    * its retained 14 rather than the bass-driven 17-24; that makes this deterministic and
    * understates the shipped number, which is the safe direction for a floor.
    */

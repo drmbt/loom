@@ -14,23 +14,23 @@ this is the crossing.**
 ## Graph
 
 ```
-beat1(audioPattern 120bpm) ─► swell1(lag 0.11) ─┬─► bgain1 ─► bore1(valueLimit)  ┄ value1
-                                                └─► lgain1 ─► lum1(valueLimit)   ┄ value2
-palette1(ramp, 6 stops) ──────────────────────────────┐
-                                                      ▼
-grid1(pointGrid 176×60) ─► bridge1(textureToAttribute) ─► roll1(pointKernel) ─► ribs1(geometry:
+pattern_beat(audioPattern 120bpm) ─► lag_swell(lag 0.11) ─┬─► math_bgain ─► limit_bore(valueLimit)  ┄ value1
+                                                          └─► math_lgain ─► limit_lum(valueLimit)   ┄ value2
+ramp_palette(ramp, 6 stops) ────────────────────────────────────┐
+                                                                ▼
+grid1(pointGrid 176×60) ─► sample_bridge(textureToAttribute) ─► kernel_roll(pointKernel) ─► geometry_ribs(geometry:
                                                                      instances, tint ← sample)
-                            glass1(materialUnlit) ────────────────────┘
-sway1, rise1 (lfo) ┄ eye1(camera, inside the bore) ─► shot1(render) ─┬─► halo1 ─► haze1 ─┐
-                                                                     └───────────────────┴─► burn1 ─► out1
+                            material_glass(materialUnlit) ──────────────────────────────┘
+lfo_sway, lfo_rise (lfo) ┄ camera_eye(camera, inside the bore) ─► render_shot(render) ─┬─► blur_halo ─► level_haze ─┐
+                                                                                       └────────────────────────────┴─► add_burn ─► output1
 ```
 
 | Node | Type | Doing |
 | --- | --- | --- |
-| `roll1` | `pointKernel` | turns a plane into a tunnel: x goes around the bore, y indexes the rib, `absTime` scrolls it |
-| `bridge1` | `textureToAttribute` | reads `palette1` at each point's grid position — the colour is a **gradient in the graph**, not a formula in WGSL |
-| `bore1` / `lum1` | `valueLimit` | the two fenced audio channels, into `ctx.value1` / `ctx.value2` (T479): values per frame, never a rebuild |
-| `sway1` / `rise1` | `lfo` | free-running camera drift (§V436), so it survives a lap too |
+| `kernel_roll` | `pointKernel` | turns a plane into a tunnel: x goes around the bore, y indexes the rib, `absTime` scrolls it |
+| `sample_bridge` | `textureToAttribute` | reads `ramp_palette` at each point's grid position — the colour is a **gradient in the graph**, not a formula in WGSL |
+| `limit_bore` / `limit_lum` | `valueLimit` | the two fenced audio channels, into `ctx.value1` / `ctx.value2` (T479): values per frame, never a rebuild |
+| `lfo_sway` / `lfo_rise` | `lfo` | free-running camera drift (§V436), so it survives a lap too |
 
 ## Every line of this is a decision about which clock
 
@@ -47,9 +47,9 @@ inconsistency:
 
 | | clock | why |
 | --- | --- | --- |
-| `roll1` | free-running (`absTime`) | the tunnel is "always going"; a lap must not touch it |
-| `sway1`, `rise1` | free-running | the same, for the camera drift |
-| `beat1` | timeline-anchored | it stands in for a track, so bar one lands on the in point |
+| `kernel_roll` | free-running (`absTime`) | the tunnel is "always going"; a lap must not touch it |
+| `lfo_sway`, `lfo_rise` | free-running | the same, for the camera drift |
+| `pattern_beat` | timeline-anchored | it stands in for a track, so bar one lands on the in point |
 
 ## Where the colour lives, and why it is not in the kernel
 
@@ -84,12 +84,12 @@ they face away, and the shot is a light source rather than a lit object.
 
 - **The tunnel jumps backwards once per timeline lap** → the kernel went back to `ctx.time`.
   This is the whole reason the example is written the way it is.
-- **The near ribs are chunky blocks** → the near fade term went, or `ribs1.scale` grew.
+- **The near ribs are chunky blocks** → the near fade term went, or `geometry_ribs.scale` grew.
 - **A ring flashes into existence in the middle of the frame** → the recycle point moved in
-  front of the camera; `z` must start behind `eye1`.
+  front of the camera; `z` must start behind `camera_eye`.
 - **The bore stops breathing on the kick** → `value1` lost its channel, and the retained
   0.16 is a perfectly plausible static radius, so nothing else looks wrong.
-- **One colour everywhere** → `palette1.period` moved off 1; the ramp compresses rather than
+- **One colour everywhere** → `ramp_palette.period` moved off 1; the ramp compresses rather than
   tiles, so anything above 1 collapses the shaft to a single hue.
 
 ## Look pass

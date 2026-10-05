@@ -423,6 +423,19 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
      reach a pixel. E13/E34/E54/E63 are the four with kernels among those thirteen. The
      pictures are held where they always were: `quorum-claims`, `skin-claims`, `prism.gpu`
      and `prism-trace.gpu` all green across this change. */
+  /* ⚑ T1593b RE-STAMPS A ROW WHEREVER A KERNEL'S COMMENT NAMES A NODE, AND THE MOVE IS
+     TEXT AND NOT PICTURE. The naming sweep renamed every shipped node to `kind_role`. A
+     node's name is not in a kernel's code, so the sweep moves no digest by itself: E9, E13,
+     E16, E20, E25, E28 and E30 were renamed and kept theirs. But a kernel's own comments
+     say which nodes feed it (`value1 is swell1's level`), those words ship inside the
+     shader a person opens in the editor, and the sweep moved them with the nodes they
+     name. A comment is bytes, and this digest hashes them.
+     The check that says it is only a comment, run before each of these documents was
+     regenerated: build the document from the rewritten source, take the SAME document
+     renamed in memory (which does not touch a shader), rename the node names inside its
+     shader COMMENTS and nowhere else, and the two are byte-identical
+     (`apply-rename.ts --written --build-in`, "the same but for prose").
+     Rows moved for that reason, as the batches landed: E27, E31, E32. */
   /* T1290: E69-Burnish, new in this commit rather than re-stamped. Its digest is the
      resolved passes of its four sphere kernels — one `pointGrid` folded onto a ball four
      times, differing only in where each stands. */
@@ -436,16 +449,16 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
   "E16-Murmuration.loom.json": "2b02e7a2f6ae8dc8",
   "E20-Gooeyball.loom.json": "ae38e4e6b4c4a6be",
   "E25-Stage.loom.json": "39f2763f1195dd59",
-  "E27-Relief.loom.json": "670d97efe970595c",
+  "E27-Relief.loom.json": "ea734f0522f5d94d",
   "E28-Sundial.loom.json": "fd30a6a5d8a12088",
   "E30-Nave.loom.json": "79f18c0c294ff3c0",
-  "E31-Corona.loom.json": "cdf805800334b838",
-  /* T1399b re-pinned: `herd1`'s kernel changed on purpose — four roosts (`roost()`, keyed
+  "E31-Corona.loom.json": "8072ed2da615ef10",
+  /* T1399b re-pinned: `kernel_herd`'s kernel changed on purpose — four roosts (`roost()`, keyed
      by `ctx.index % ROOSTS`), each herd seeded on its own roost, and the homing fence
      pulled in to 0.45…0.8 — and its capacity went 5 000 → 12 000, which moves the
      dispatch size. The picture is held by the example's look baseline and its .md's
      re-measured claims, not by this number. */
-  "E32-Pasture.loom.json": "13534a2ee6ac29f6",
+  "E32-Pasture.loom.json": "f3aa1a3557dbd524",
   "E33-Obol.loom.json": "68029203112b3bbc",
   /* T1053 re-pinned this one, and the module's gain is enumerable: `aim1`, `sight1`,
      `mark1` and `mark2a` each grew a `struct Params` and its uniform members, and twelve

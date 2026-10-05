@@ -10,28 +10,28 @@ surface".
 
 ```
 noise1 ──────────────────────► sample1.texture
-grid1(pointGrid) ─► ball1(pointKernel) ─► sample1(textureToAttribute) ─► goo1(pointKernel) ─► topology1(pointTopology) ─► body1(geometry) ─► shot1(render) ─► out1
+grid1(pointGrid) ─► kernel_ball(pointKernel) ─► sample1(textureToAttribute) ─► kernel_goo(pointKernel) ─► topology1(pointTopology) ─► geometry_body(geometry) ─► render_shot(render) ─► output1
 
-body1.material ◄── gooskin1(materialPhong)     shot1.camera ◄── cam1     shot1.lights ◄── key1, fill1
+geometry_body.material ◄── material_gooskin(materialPhong)     render_shot.camera ◄── camera1     render_shot.lights ◄── light_key, light_fill
 ```
 
-The last three links are NAMES, not wires (T446/T447): `body1` names its material,
-`shot1` names its camera, its lights and its scene. The editor draws them as reference
+The last three links are NAMES, not wires (T446/T447): `geometry_body` names its material,
+`render_shot` names its camera, its lights and its scene. The editor draws them as reference
 lines; the compiler synthesises the edges.
 
 | Node | Type | Doing |
 | --- | --- | --- |
 | `noise1` | `noise` | animated perlin4d — the goo's source, continuous in uv AND time |
 | `grid1` | `pointGrid` | a 64×64 index sheet; its plane positions are scaffolding |
-| `ball1` | `pointKernel` | maps each index to a UV sphere: `u = i/cols`, `v = j/(rows-1)` — both off `ctx.dim` |
+| `kernel_ball` | `pointKernel` | maps each index to a UV sphere: `u = i/cols`, `v = j/(rows-1)` — both off `ctx.dim` |
 | `sample1` | `textureToAttribute` | samples the noise at each point's position, writes `sample` |
-| `goo1` | `pointKernel` | pushes each point along the surface NORMAL by `sample.r − 0.5` |
+| `kernel_goo` | `pointKernel` | pushes each point along the surface NORMAL by `sample.r − 0.5` |
 | `topology1` | `pointTopology` | re-claims the edge as `grid:64x64:wrapU` — the seam CELL |
-| `paint1`+`goopalette1` | `lookup`+`ramp` | the SAME noise, through a palette — the albedo map |
-| `gooskin1` | `materialPhong` | the skin: palette albedo, raw-noise roughness, warm specular |
-| `body1` | `geometry` | the ball as a nameable object wearing `gooskin1` |
-| `cam1`/`key1`/`fill1` | `camera`/`light` | the stage: a still warm key and a cool point fill ORBITING on two LFOs |
-| `shot1` | `render` | draws `body1` through `cam1` under both lights, depth-tested |
+| `lookup_paint`+`ramp_goopalette` | `lookup`+`ramp` | the SAME noise, through a palette — the albedo map |
+| `material_gooskin` | `materialPhong` | the skin: palette albedo, raw-noise roughness, warm specular |
+| `geometry_body` | `geometry` | the ball as a nameable object wearing `material_gooskin` |
+| `camera1`/`light_key`/`light_fill` | `camera`/`light` | the stage: a still warm key and a cool point fill ORBITING on two LFOs |
+| `render_shot` | `render` | draws `geometry_body` through `camera1` under both lights, depth-tested |
 
 ## Why the surface survives
 
@@ -86,17 +86,17 @@ sample as an ordinary upstream-bound attribute (T401). Note the sampling is by t
 point's clip-space `xy`, so the ball's front and back share the noise mirror-fashion;
 for goo that symmetry is invisible, and it is stated here so nobody hunts for it later.
 
-**Processors chain through a bridge (T401/B57).** `ball1` is a processor on the grid;
-`goo1` is a processor on the bridge's output. `sample` is authored by `sample1` and
-bound by `goo1` from upstream, fresh every frame; positions flow `grid → ball → goo` by
+**Processors chain through a bridge (T401/B57).** `kernel_ball` is a processor on the grid;
+`kernel_goo` is a processor on the bridge's output. `sample` is authored by `sample1` and
+bound by `kernel_goo` from upstream, fresh every frame; positions flow `grid → ball → goo` by
 pair bindings. Five nodes, one buffer per attribute, zero copies.
 
 **Topology flows and is re-claimable (T296/T302).** The grid's claim rides through both
 kernels and the bridge by passthrough; `topology1` then REPLACES it with the wrapped
-claim. `body1` never learns who authored what — it reads the edge, and `shot1` draws
+claim. `geometry_body` never learns who authored what — it reads the edge, and `render_shot` draws
 whatever surface it finds there.
 
-**A kernel can read the grid it is running over (T472).** `ball1`'s WGSL contains no
+**A kernel can read the grid it is running over (T472).** `kernel_ball`'s WGSL contains no
 dimension at all: `ctx.dim` carries `cols`, `rows` and this point's cell `i`/`j`, taken
 from the topology string `grid1` publishes on the edge. Turn `grid1`'s Columns knob and
 the sphere re-parametrises correctly, which is precisely what the previous version could
@@ -109,7 +109,7 @@ that never says `ctx.dim` compiles to exactly the text it compiled to before T47
 
 - A visible vertical slit on the ball → `wrapU` stopped reaching the scene render (the
   claim is lost in passthrough, or the seam cell count regressed — T301/T302).
-- A DOUBLED column, or a hairline crease one cell wide, at the seam → `ball1`'s `u`
+- A DOUBLED column, or a hairline crease one cell wide, at the seam → `kernel_ball`'s `u`
   divisor became `cols−1` (T472: `ctx.dim` gives numbers, not a normalisation — this
   kernel divides by `cols` on purpose, targeting `topology1`'s claim).
 - The ball goes lumpy or collapses when `grid1`'s Columns/Rows change → the kernel is
@@ -118,7 +118,7 @@ that never says `ctx.dim` compiles to exactly the text it compiled to before T47
   jumps, a non-continuous noise type, or `sample` no longer binding the bridge's pair).
 - The ball deforms but the deformation never moves → the noise lost its time dimension
   (B14's shape: `speed` on a 2D type).
-- The ball drifts or turns inside out over minutes → `goo1` started integrating its
+- The ball drifts or turns inside out over minutes → `kernel_goo` started integrating its
   input instead of re-reading it (V344: a processor re-reads; the anchor cannot drift).
 - Lighting bands or shears while the silhouette still looks right → displacement stopped
   being radial; cells are folding.

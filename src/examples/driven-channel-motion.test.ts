@@ -340,14 +340,14 @@ const DELIBERATELY_STILL: Record<string, string> = {
   "E78-Aether-Orrery.loom.json lfo_churnx.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
   "E78-Aether-Orrery.loom.json lfo_churny.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
   /* §T809 — E27's optional audio, and "optional" is a GATE here rather than a promise:
-     `kick1` is a multiply whose operand ships at 0, so the whole audioPattern → bias →
-     envelope → gain chain reaches `lift1.value1` as EXACTLY 0. `relief-claims.gpu.test.ts`
+     `math_kick` is a multiply whose operand ships at 0, so the whole audioPattern → bias →
+     envelope → gain chain reaches `kernel_lift.value1` as EXACTLY 0. `relief-claims.gpu.test.ts`
      renders the file with the chain in the graph and compares BYTES against the pre-T809
-     frames, and separately proves the drive is real above zero. Raise `kick1.operand`. */
-  "E27-Relief.loom.json kick1.low": "T809: the optional audio ships at gain 0, byte-identity gated",
+     frames, and separately proves the drive is real above zero. Raise `math_kick.operand`. */
+  "E27-Relief.loom.json math_kick.low": "T809: the optional audio ships at gain 0, byte-identity gated",
   /* §T809 again, the colour half: an `lfo` at `amplitude: 0` returns `offset + 0 * wave`,
      which is exactly its offset. Same identity claim, same test, same one number to turn. */
-  "E27-Relief.loom.json cycle1.value": "T809: the optional colour rotation ships at amplitude 0",
+  "E27-Relief.loom.json lfo_cycle.value": "T809: the optional colour rotation ships at amplitude 0",
   /* The TimeGrid starter component's own HOST DEMO, at the component's default `Churn: 0`.
      The two `lfo`s are not decoration — they are how the PUBLISHED `Columns`/`Rows` knobs
      reach their five consumers at all, since §T1017 means a published parameter cannot
@@ -435,7 +435,7 @@ describe("T1145 — every driven channel in every shipped document actually move
       nodes: {
         beat: {
           id: "beat" as never, type: "audioPattern", definitionVersion: 1,
-          position: { x: 0, y: 0 }, parameters: { bpm: 112, amount: 1 }, label: "beat1",
+          position: { x: 0, y: 0 }, parameters: { bpm: 112, amount: 1 }, label: "pattern_beat",
         },
         step: {
           id: "step" as never, type: "valueStep", definitionVersion: 1,

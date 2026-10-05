@@ -14,9 +14,9 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * contain a live input at all. That is exactly why `webcam` shipped DEAD for months (B39):
  * no example used it, so nothing ever compiled its shader or bound its external texture.
  *
- * `pick1` dissolves the conflict. A Switch's branches are all rendered — it selects a
+ * `switch_pick` dissolves the conflict. A Switch's branches are all rendered — it selects a
  * RESOURCE, it does not prune a subgraph — so with `index: 0` this file opens playing its
- * own synthetic performer, AND `cam1` is in the graph, in the plan, and compiled on Dawn by
+ * own synthetic performer, AND `webcam1` is in the graph, in the plan, and compiled on Dawn by
  * `examples.gpu.test.ts`. That is the integration gate §V362 names as the only one we have,
  * and it is the gate B39 escaped. Move the index to 1 and it is your camera; nothing else
  * in the graph changes.
@@ -39,7 +39,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * ## The aspect fix lives in the kernel
  *
  * The bridge maps `position.xy * 0.5 + 0.5` to uv, so the sampling grid HAS to span
- * x,y in [-1,1] — a square. The source is 16:9. So `lift1` samples on the square and then
+ * x,y in [-1,1] — a square. The source is 16:9. So `kernel_lift` samples on the square and then
  * stretches x by 16/9 on its way out: the picture is read square and DRAWN wide, which is
  * one line of kernel and the only place the aspect appears.
  *
@@ -58,13 +58,13 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * time reseats the image without touching what was read.
  *
  * **2. THE HEIGHT CAME OUT OF THE PALETTE, so the terrain was a caricature of the
- * picture.** `lift1` took luminance off the COATED colour, and this palette's luminance
+ * picture.** `kernel_lift` took luminance off the COATED colour, and this palette's luminance
  * runs 0.02 / 0.14 / 0.28 / 0.49 / 0.95 across its five stops — monotone, yes, but wildly
  * non-linear. Four fifths of the source was squashed into the bottom half of the height
  * range and the last fifth exploded, which renders as a flat plate with one needle spike
  * in it. That is the whole of "weak".
  *
- * The fix is the reason `braid1` exists: a Reorder carries the COLOUR in rgb and the
+ * The fix is the reason `reorder_braid` exists: a Reorder carries the COLOUR in rgb and the
  * SOURCE's own luminance in alpha, so one RGBA texture crosses the one bridge carrying two
  * different fields. The kernel then reads `sample.a` for shape and `sample.rgb` for colour,
  * and the palette is free to be chosen for how it LOOKS instead of doubling as a height
@@ -75,7 +75,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * 0.40, -0.86) at a sheet whose relief is entirely in z — 86% of the view direction was
  * parallel to the displacement, so the thing the example is about barely projected. The
  * doc claimed the opposite ("face-on, a height field is just the picture again"), which is
- * how it survived review. `eye1` now sits low and off to one side, a landscape view: the
+ * how it survived review. `camera_eye` now sits low and off to one side, a landscape view: the
  * height axis is across the frame, the hills have silhouettes, and the scan lines bunch on
  * a rising slope the way a contour map's do.
  */
@@ -86,7 +86,7 @@ const RELIEF_ROWS = 220;
 const RELIEF_LIFT_KERNEL = `fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
   /* p.sample is the bridge's pair, bound from UPSTREAM (T401), and it carries TWO fields:
-     rgb is the paletted colour, alpha is the SOURCE's own luminance (braid1). Height comes
+     rgb is the paletted colour, alpha is the SOURCE's own luminance (reorder_braid). Height comes
      off alpha so the palette never doubles as a height curve — see the note above. */
   let height = p.sample.a;
   /* T676 — THE SHEET STANDS UP, 70 degrees off the floor, and ORIENTATION FOLLOWS THE
@@ -127,21 +127,21 @@ const RELIEF_LIFT_KERNEL = `fn process(p: Point, ctx: PointCtx) -> Point {
      rotation carries it. Read the mapping in points/codegen.ts rather than guessing: this
      sign is coupled to it and B105 is what guessing costs.
 
-     Baked rather than parameterised: this kernel has exactly one consumer, the 'lift1'
+     Baked rather than parameterised: this kernel has exactly one consumer, the 'kernel_lift'
      node below. A shared kernel that could only do one orientation would be the same fault
      as two hand-maintained branches — but there is nothing here to share it with.
      Sampled on a square (the mapping demands it), drawn 16:9. */
   let v = p.position.y * 1.15;
   /* T809 — THE AUDIO SCALES THE LIFT AMPLITUDE, AND NOTHING ELSE.
      ctx.value1 is the kick, rest-subtracted so silence IS zero (T479, T701). It is added
-     to the 1.05 here rather than driving norm1's white point, because the white point
+     to the 1.05 here rather than driving level_norm's white point, because the white point
      belongs to the exposure loop and a second driver on it would fight the normalisation
      T797 just gave this file (§V730: one decision, one site). Shipped at gain 0, which
      makes this term EXACTLY 1.05 + 0.0 — an f32 add of zero is exact, so the shipped
      picture is byte-identical to the pre-T809 file and relief-claims measures it. */
   let h = height * (1.05 + ctx.value1) - 0.16;
   q.position = vec3f(p.position.x * 1.7778, v * 0.9397 + h * 0.3420, -v * 0.3420 + h * 0.9397);
-  /* Alpha has done its job, so it goes back to 1 before the draw: body1 maps this same
+  /* Alpha has done its job, so it goes back to 1 before the draw: geometry_body maps this same
      attribute onto the material TINT (T478), and a tint whose alpha carried the HEIGHT
      would have made the low ground transparent as well as dark. */
   q.sample = vec4f(p.sample.rgb, 1.0);
@@ -161,7 +161,7 @@ export const reliefDocument = document(
         type: "perlin4d", seed: 41, period: 0.32, harmon: 4, spread: 2.1, gain: 0.58,
         rough: 0.55, exp: 1, amp: 1, offset: 0, mono: true, aspectcorrect: true,
         t4d: 0.37, s4d: 1, speed: 0.16, // T535: off the lattice plane
-      }, { label: "ripple1" }),
+      }, { label: "noise_ripple" }),
       node("bed", "level", [-1380, 300], {
         /* T503: the bed used to be crushed to a 0.42..1.05 sliver — a sixth of the height
            range for the entire terrain, which is most of why nothing read. It now uses its
@@ -169,7 +169,7 @@ export const reliefDocument = document(
            and the ridges separate. The DOME is still the subject; contrast is what makes
            the ground it stands on a landscape rather than a haze. */
         blacklevel: 0.12, whitelevel: 0.86, contrast: 1.25, brightness: 1, gamma1: 0.85, opacity: 1,
-      }, { label: "bed1" }),
+      }, { label: "level_bed" }),
       /* THE SWELL. A soft dome, wide and low-contrast, wandering across the sea on two
          incommensurate drifts. It is the SHAPE in the picture: without it the relief is a
          texture, and a texture in relief is E20 with extra steps. */
@@ -184,30 +184,30 @@ export const reliefDocument = document(
            summit instead of a peak. */
         fillcolor: [0.72, 0.7, 0.66, 1], bgcolor: [0, 0, 0, 0], aspectcorrect: true,
       }, {
-        label: "swell1",
+        label: "circle_swell",
         parameters: {
-          "center.x": drivenSlot("driftx1", 0.5),
-          "center.y": drivenSlot("drifty1", 0.5),
+          "center.x": drivenSlot("lfo_driftx", 0.5),
+          "center.y": drivenSlot("lfo_drifty", 0.5),
         },
       }),
       node("driftx", "lfo", [-1680, 560], {
         shape: "sine", frequency: 0.019, amplitude: 0.3, offset: 0.5, phase: 0,
-      }, { label: "driftx1" }),
+      }, { label: "lfo_driftx" }),
       node("drifty", "lfo", [-1380, 560], {
         shape: "sine", frequency: 0.013, amplitude: 0.22, offset: 0.5, phase: 0.25,
-      }, { label: "drifty1" }),
-      node("sum", "add", [-1080, 140], {}, { label: "sum1" }),
+      }, { label: "lfo_drifty" }),
+      node("sum", "add", [-1080, 140], {}, { label: "add_sum" }),
 
       /* THE REAL THING — in the graph, in the plan, compiled on Dawn, one index away. */
-      node("cam", "webcam", [-1080, 420], {}, { label: "cam1" }),
-      node("pick", "switch", [-780, 280], { index: 0 }, { label: "pick1" }),
+      node("cam", "webcam", [-1080, 420], {}, { label: "webcam1" }),
+      node("pick", "switch", [-780, 280], { index: 0 }, { label: "switch_pick" }),
 
       /* T797 — THE RELIEF IS A LUMINANCE HISTOGRAM, AND A DARK ROOM HAS NO HISTOGRAM.
          Owner: "relief when driving with camera and a rather dark image is kind a boring
          and needs to react more to darker colors and movement of these".
 
-         The mechanism is the one T503 built: `braid1` puts the SOURCE's own luminance in
-         alpha and `lift1` pushes each point out in proportion to it. That is exactly a
+         The mechanism is the one T503 built: `reorder_braid` puts the SOURCE's own luminance in
+         alpha and `kernel_lift` pushes each point out in proportion to it. That is exactly a
          luminance histogram stood on edge — so a dark room compresses every point into a
          narrow band near zero and the sheet goes FLAT. Measured on a dimmed understudy
          (x0.14, the "dark room" fixture): mean display luma 0.0159 against the lit 0.1713,
@@ -229,7 +229,7 @@ export const reliefDocument = document(
          darker is below the number being subtracted from it. A pure gain has neither
          failure — it cannot produce a value the source did not already have the sign of.
 
-         `roofsafe1` is the rail, and it is a real one: the white point is a DIVISOR, so an
+         `limit_roofsafe` is the rail, and it is a real one: the white point is a DIVISOR, so an
          unfloored channel on a frame that goes black is a divide-by-nothing. 0.06 caps the
          gain at ~17x, which is two and a half stops past the dark fixture and still short
          of amplifying sensor noise into a mountain range. §V471(3)/T544: a gain is
@@ -242,17 +242,17 @@ export const reliefDocument = document(
          one, so scrubbing is repeatable everywhere except that single frame. */
       node("roof", "analyze", [-480, 1180], {
         channel: "luminance", operation: "maximum",
-      }, { label: "roof1" }),
-      node("ceil", "channelIn", [-180, 1180], { channel: "roof1", fallback: 1 }, { label: "ceil1" }),
-      node("guard", "valueLimit", [120, 1180], { minimum: 0.06, maximum: 2 }, { label: "roofsafe1" }),
+      }, { label: "analyze_roof" }),
+      node("ceil", "channelIn", [-180, 1180], { channel: "analyze_roof", fallback: 1 }, { label: "channelin_ceil" }),
+      node("guard", "valueLimit", [120, 1180], { minimum: 0.06, maximum: 2 }, { label: "limit_roofsafe" }),
       node("norm", "level", [-1080, 700], {
         /* Black stays at 0 — see §V694 above. Everything else is identity: this node's one
            job is the exposure, and a second job here would be a transfer curve nobody
-           asked for (the mistake T503 took out of `coat1`). */
+           asked for (the mistake T503 took out of `lookup_coat`). */
         blacklevel: 0, whitelevel: 1, contrast: 1, brightness: 1, gamma1: 1, invert: 0, opacity: 1,
       }, {
-        label: "norm1",
-        parameters: { whitelevel: drivenSlot("roofsafe1", 1) },
+        label: "level_norm",
+        parameters: { whitelevel: drivenSlot("limit_roofsafe", 1) },
       }),
 
       /* T797(b) — MOTION INTO THE SAME ALPHA. E41 Cinder packs rgb = colour, alpha =
@@ -263,7 +263,7 @@ export const reliefDocument = document(
          offset), and an `add` so the height is luminance PLUS movement. Move and you stand
          further out of the sheet.
 
-         READ OFF `norm1`, NOT OFF `pick1`, AND THAT ORDER IS THE FINDING. The owner's
+         READ OFF `level_norm`, NOT OFF `switch_pick`, AND THAT ORDER IS THE FINDING. The owner's
          reading was that motion carries the frame exactly when luminance is starved. It
          does not, and the frame says so: a frame difference of a dark picture is itself
          dark by the same factor, and the motion rig alone on the dimmed fixture measures
@@ -271,10 +271,10 @@ export const reliefDocument = document(
          what gives the difference anything to be a difference OF; (a) is not one of two
          independent fixes, it is the precondition for (b).
 
-         `stir1.whitelevel` is E41's own 0.6, kept rather than re-fitted: the difference is
+         `level_stir.whitelevel` is E41's own 0.6, kept rather than re-fitted: the difference is
          taken off a source that has just been normalised to the same range in both files,
          so the number transfers. At 0.6 the motion term moves 56% of the frame's pixels
-         (mean |Δ| 18.7/255 against the same graph with `stir1` bypassed) — a contribution,
+         (mean |Δ| 18.7/255 against the same graph with `level_stir` bypassed) — a contribution,
          not a garnish — while the lit understudy still reads as the shipped picture.
 
          THE UNDERSTUDY IS AN HONEST-BUT-WEAK WITNESS FOR THIS HALF, and the md says so:
@@ -286,25 +286,25 @@ export const reliefDocument = document(
 
          BOTH SIDES OF THE DIFFERENCE COME OUT OF A RING, AND THAT IS THE FRAME-0 FIX.
          §V229 says a Cache tap reads the OLDEST SLICE WRITTEN rather than black — and it
-         does, from frame 1 onward (measured: `past1` holds frame 0's picture at frames
+         does, from frame 1 onward (measured: `cache_past` holds frame 0's picture at frames
          1..6 while the ring fills). On FRAME 0 there is no oldest slice yet and the tap
          reads black, so a difference taken against the LIVE source is `picture − black` =
-         the whole picture: `stir1` measured mean 0.935 / peak 1.72 on frame 0 against
+         the whole picture: `level_stir` measured mean 0.935 / peak 1.72 on frame 0 against
          0.015 from frame 1 on, and the sheet opened over-lifted and blown. That is §V732's
          transient exactly — the one that was baked into E41's baseline and passed — and
          §V769 says frame 0 is the thumbnail, so it is not a frame anyone may hand-wave.
          E41 could guard it with `ctx.firstRun` because the decision lived in a SPAWN HOOK;
          here the motion is already summed into alpha before any kernel sees it, so the
          guard has to be structural. Taking the near side out of a ring too makes frame 0
-         `black − black` = 0 and every later frame identical to before: `now1` at index 1
+         `black − black` = 0 and every later frame identical to before: `cache_now` at index 1
          needs a two-slice ring, which is the cheapest allocation the node allows. */
-      node("now", "cache", [-1380, 940], { frames: 2, index: 1, scale: 1 }, { label: "now1" }),
-      node("past", "cache", [-1080, 940], { frames: 8, index: 6, scale: 1 }, { label: "past1" }),
-      node("moved", "difference", [-780, 940], {}, { label: "moved1" }),
+      node("now", "cache", [-1380, 940], { frames: 2, index: 1, scale: 1 }, { label: "cache_now" }),
+      node("past", "cache", [-1080, 940], { frames: 8, index: 6, scale: 1 }, { label: "cache_past" }),
+      node("moved", "difference", [-780, 940], {}, { label: "difference_moved" }),
       node("stir", "level", [-480, 940], {
         blacklevel: 0, whitelevel: 0.6, contrast: 1, brightness: 1, gamma1: 1, invert: 0, opacity: 1,
-      }, { label: "stir1" }),
-      node("heat", "add", [-180, 940], {}, { label: "heat1" }),
+      }, { label: "level_stir" }),
+      node("heat", "add", [-180, 940], {}, { label: "add_heat" }),
 
       /* T809 — OPTIONAL AUDIO, ON THE LIFT AMPLITUDE, AND ZERO IS AN IDENTITY.
          Owner: "optional audio reactivity to drive relief in some way would be cool".
@@ -313,31 +313,31 @@ export const reliefDocument = document(
          file with the chain in place and compares BYTES against the pre-T809 frames.
 
          WHERE IT IS ALLOWED TO PUSH. The height is `luminance x exposure` since T797, and
-         the exposure loop OWNS `norm1.whitelevel` — a second driver there would be two
+         the exposure loop OWNS `level_norm.whitelevel` — a second driver there would be two
          decisions on one number, fighting the normalisation this file just gained (§V730).
          So the audio scales the kernel's LIFT AMPLITUDE instead, which is the one term
          downstream of everything the exposure decided: the sheet breathes on the kick and
          the frame's re-ranging is untouched.
 
          THE CHAIN IS BIAS-ENVELOPE-GAIN, AND THE ORDER IS THE IDENTITY. `low` rests at
-         0.713 in the analyser's dB domain (T701), so `bsub1` puts rest at zero and the
-         drive is a pure excursion. `kick1` multiplies LAST, which is what makes 0 exact: a
-         gain of zero before a bias would leave the bias behind. `env1` sits BETWEEN them,
+         0.713 in the analyser's dB domain (T701), so `math_bsub` puts rest at zero and the
+         drive is a pure excursion. `math_kick` multiplies LAST, which is what makes 0 exact: a
+         gain of zero before a bias would leave the bias behind. `lag_env` sits BETWEEN them,
          which costs the identity nothing (anything finite times zero is zero) and is where
          an envelope has to go — smoothing a signal that has already been zeroed at rest is
          the same as smoothing it before, and putting it after the gain would smooth the
          KNOB instead of the signal.
 
-         T820 — `env1` IS NOT OPTIONAL DRESSING, IT IS THE FEATURE. Owner, on the T809
+         T820 — `lag_env` IS NOT OPTIONAL DRESSING, IT IS THE FEATURE. Owner, on the T809
          chain: "relief audioreactivity is too glitchy and jumpy and jittery". They were
          right and the cause was not subtle: T809 wired a RAW per-frame band value straight
-         to the lift, so every frame's value was a height. `beat1`'s strike has an INSTANT
+         to the lift, so every frame's value was a height. `pattern_beat`'s strike has an INSTANT
          attack (`exp(-beatPhase * 7)` at phase 0), so the drive jumped its whole 0.262
          excursion in ONE 16 ms frame and then sagged to zero before the next beat — snap,
          collapse, repeat. Measured on the picture: the strike frame's per-pixel |Δ| against
          the frame before it was 0.0649 where the file's own motion floor is 0.0228.
 
-         `env1` IS AN ENVELOPE FOLLOWER, and it is one node now only because T814 gave the
+         `lag_env` IS AN ENVELOPE FOLLOWER, and it is one node now only because T814 gave the
          smoother a `releaseRatio` — before that this took a hand-built chain, which is
          exactly the per-example rebuilding T738 measured and T821 is meant to end. Lag 0.04
          is a 40 ms attack, so the strike still lands inside three frames and reads as a
@@ -345,7 +345,7 @@ export const reliefDocument = document(
          fifth by the next beat — it PUMPS and resets rather than pumping into a plateau.
          Measured at gain 1: the strike frame's audio-attributable |Δ| falls 42% and the
          frames BETWEEN strikes fall about 80%, while the peak keeps 71% of the raw
-         excursion. DO NOT "SIMPLIFY" THIS NODE AWAY — a straight `bsub1 → kick1` wire is
+         excursion. DO NOT "SIMPLIFY" THIS NODE AWAY — a straight `math_bsub → math_kick` wire is
          the shipped bug, not a shorter spelling of this.
 
          AND `low` IS THE BAND THAT DOES NOT SHOW T776'S ARRANGEMENT, deliberately. The
@@ -354,15 +354,15 @@ export const reliefDocument = document(
          2%. What this drives is therefore per-BEAT breathing, not a phrase-length dynamic,
          and the reader should not go looking for one here. A phrase-length version of this
          is `level` or `high`, and it would swing the relief once every four bars. */
-      node("beat", "audioPattern", [-1680, 1180], { bpm: 112, amount: 1 }, { label: "beat1" }),
-      node("bsub", "valueMath", [-1380, 1180], { operation: "add", operand: -0.713 }, { label: "bsub1" }),
-      node("env", "valueLag", [-1080, 1180], { lag: 0.04, releaseRatio: 8 }, { label: "env1" }),
-      node("bgain", "valueMath", [-780, 1180], { operation: "multiply", operand: 0 }, { label: "kick1" }),
+      node("beat", "audioPattern", [-1680, 1180], { bpm: 112, amount: 1 }, { label: "pattern_beat" }),
+      node("bsub", "valueMath", [-1380, 1180], { operation: "add", operand: -0.713 }, { label: "math_bsub" }),
+      node("env", "valueLag", [-1080, 1180], { lag: 0.04, releaseRatio: 8 }, { label: "lag_env" }),
+      node("bgain", "valueMath", [-780, 1180], { operation: "multiply", operand: 0 }, { label: "math_kick" }),
 
       node("palette", "ramp", [-1080, -180], {
         type: "horizontal", interp: "smooth", phase: 0, period: 1,
         /* A scan-line palette: near-black in the valleys, through a cold teal and a hot
-           magenta, to a white crest. T503 freed it from a second job — `braid1` carries the
+           magenta, to a white crest. T503 freed it from a second job — `reorder_braid` carries the
            height separately now — so these stops are chosen for CONTRAST and nothing else:
            a long dark foot so the low ground goes properly black at thumbnail size, then a
            short, violent climb through the top third so a ridge line ignites. */
@@ -374,7 +374,7 @@ export const reliefDocument = document(
           { position: 0.9, color: [1, 0.46, 0.32, 1] },
           { position: 1, color: [1, 0.97, 0.9, 1] },
         ],
-      }, { label: "palette1", definitionVersion: 2 }),
+      }, { label: "ramp_palette", definitionVersion: 2 }),
       /* T809 — THE PALETTE TRAVELS, and it is a SWEEP rather than a wrap-around cycle.
          That distinction was measured, not chosen (§V471), and the reason to write it down
          is that the wrap-around is the one that sounds right.
@@ -400,37 +400,37 @@ export const reliefDocument = document(
          Negative is the free direction; positive costs the summit's detail to the top
          stop, which is why the swing is small.
 
-         AND IT CANNOT REACH THE GEOMETRY. `braid1` carries the shape in alpha and the
+         AND IT CANNOT REACH THE GEOMETRY. `reorder_braid` carries the shape in alpha and the
          colour in rgb (T503), so this is a colour-only drive by construction — it cannot
          fight T797's exposure loop or its motion path, both of which are in alpha.
 
-         Shipped at `cycle1.amplitude = 0`. An LFO returns `offset + amplitude * wave`, so
+         Shipped at `lfo_cycle.amplitude = 0`. An LFO returns `offset + amplitude * wave`, so
          that is EXACTLY 0.0 and the frame is the one T797 left. */
       node("coat", "lookup", [-780, -20], {
         channel: "luminance", row: 0.5, scale: 1, offset: 0,
-      }, { label: "coat1", parameters: { offset: drivenSlot("cycle1", 0) } }),
+      }, { label: "lookup_coat", parameters: { offset: drivenSlot("lfo_cycle", 0) } }),
       /* 0.035 Hz is §V471(8)'s long cycle — about 29 seconds, and incommensurate with the
          sway (0.024) and both drifts (0.019, 0.013), so no two laps of the camera meet the
          same palette. Sine rather than saw: a saw would snap the colour back at the wrap,
          and a clamped sweep has no wrap to hide it in. */
       node("cycle", "lfo", [-1380, -420], {
         shape: "sine", frequency: 0.035, amplitude: 0, offset: 0, phase: 0,
-      }, { label: "cycle1" }),
+      }, { label: "lfo_cycle" }),
       /* T503 — TWO FIELDS, ONE BRIDGE. rgb is the paletted colour; ALPHA is the source's
-         own luminance, straight off `pick1` before the palette touched it. There is exactly
+         own luminance, straight off `switch_pick` before the palette touched it. There is exactly
          one texture-to-points bridge in the catalogue and it carries four channels, so the
          shape and the colour do not have to be the same number — which is what stopped the
          relief from being a caricature of the palette's transfer curve. */
       node("braid", "reorder", [-480, -20], {
         outr: "in1r", outg: "in1g", outb: "in1b", outa: "in2lum",
-      }, { label: "braid1" }),
+      }, { label: "reorder_braid" }),
 
       node("sheet", "pointGrid", [-480, 280], {
         count: RELIEF_COLS * RELIEF_ROWS, cols: RELIEF_COLS, rows: RELIEF_ROWS,
       }, { label: "grid1" }),
       node("bridge", "textureToAttribute", [-180, 140], {
         count: RELIEF_COLS * RELIEF_ROWS,
-      }, { label: "bridge1" }),
+      }, { label: "sample_bridge" }),
       node("lift", "pointKernel", [120, 140], {
         capacity: RELIEF_COLS * RELIEF_ROWS,
         seed: 41,
@@ -440,12 +440,12 @@ export const reliefDocument = document(
         ]),
         kernel: RELIEF_LIFT_KERNEL,
       }, {
-        label: "lift1",
+        label: "kernel_lift",
         /* T479: a value write per frame, never a rebuild (§V5). Retained 0 as well as
            driven 0, so a host with no channels attached renders the same picture — and so
-           a rename of `kick1` falls back to the shipped file rather than to a surprise
+           a rename of `math_kick` falls back to the shipped file rather than to a surprise
            (§V129 is the reason that matters). */
-        parameters: { value1: drivenSlot("kick1:low", 0) },
+        parameters: { value1: drivenSlot("math_kick:low", 0) },
       }),
 
       /* UNLIT, and that is the look: a phosphor does not have a diffuse response. The
@@ -453,15 +453,15 @@ export const reliefDocument = document(
          empty and nothing shades these quads. */
       node("phosphor", "materialUnlit", [120, -180], {
         color: [1, 1, 1, 1],
-      }, { label: "phosphor1" }),
+      }, { label: "material_phosphor" }),
       node("body", "geometry", [420, 140], {
         /* The quad half-extent must stay UNDER half the point spacing (3.56 world units
            across 480 columns = 0.0074), or the quads overlap into a solid slab and the
            scan lines disappear. The first build ran 0.0075 and rendered one flat sheet. */
-        mode: "instances", shape: "quad", scale: 0.0026, material: "phosphor1",
+        mode: "instances", shape: "quad", scale: 0.0026, material: "material_phosphor",
         tint: [1, 1, 1, 1],
       }, {
-        label: "body1",
+        label: "geometry_body",
         /* T478: the sampled colour multiplies the material's base colour PER POINT. White
            base means the tint IS the colour. */
         parameters: { tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "sample" } } } },
@@ -488,23 +488,23 @@ export const reliefDocument = document(
            this was a garnish; stood up it is the depth cue. */
         eye: [0, 0.13, 4.25], lookAt: [0, 0.13, 0.35], fov: 40, near: 0.1, far: 100, ortho: false,
       }, {
-        label: "eye1",
-        parameters: { "eye.x": drivenSlot("sway1", 0) },
+        label: "camera_eye",
+        parameters: { "eye.x": drivenSlot("lfo_sway", 0) },
       }),
       node("sway", "lfo", [120, -420], {
         shape: "sine", frequency: 0.024, amplitude: 1.15, offset: 0, phase: 0,
-      }, { label: "sway1" }),
+      }, { label: "lfo_sway" }),
       node("shot", "render", [720, 140], {
-        scenes: "body1", camera: "eye1", lights: "",
+        scenes: "geometry_body", camera: "camera_eye", lights: "",
         ambientColor: [1, 1, 1, 1], ambientIntensity: 0,
         background: [0.002, 0.004, 0.011, 1],
-      }, { label: "shot1" }),
+      }, { label: "render_shot" }),
 
       /* BLOOM, and on an unlit phosphor it is not decoration: it is what makes thousands of
          separate quads read as one glowing surface instead of as a dotted grid. */
-      node("halo", "blur", [1020, 300], { size: 18, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
-      node("burn", "add", [1320, 140], {}, { label: "burn1" }),
-      node("out", "output", [1620, 140], {}, { label: "out1" }),
+      node("halo", "blur", [1020, 300], { size: 18, filter: "gaussian", extend: "hold" }, { label: "blur_halo" }),
+      node("burn", "add", [1320, 140], {}, { label: "add_burn" }),
+      node("out", "output", [1620, 140], {}, { label: "output1" }),
     ],
     [
       edge("e-ripple-bed", ["ripple", "out"], ["bed", "input"]),
@@ -517,8 +517,8 @@ export const reliefDocument = document(
       edge("e-sum-pick", ["sum", "out"], ["pick", "inputs"], 0),
       edge("e-cam-pick", ["cam", "out"], ["pick", "inputs"], 1),
       // T797 — THE EXPOSURE, and it is measured off the source BEFORE the gain, which is
-      // what keeps it a measurement rather than a loop: `roof1` reads `pick1`, `norm1`
-      // applies what `roof1` said. Nothing downstream of `norm1` feeds back into it.
+      // what keeps it a measurement rather than a loop: `analyze_roof` reads `switch_pick`, `level_norm`
+      // applies what `analyze_roof` said. Nothing downstream of `level_norm` feeds back into it.
       edge("e-pick-roof", ["pick", "out"], ["roof", "input"]),
       edge("v-ceil-guard", ["ceil", "out"], ["guard", "in"]),
       edge("e-pick-norm", ["pick", "out"], ["norm", "input"]),
@@ -536,10 +536,10 @@ export const reliefDocument = document(
       edge("e-moved-stir", ["moved", "out"], ["stir", "input"]),
       edge("e-norm-heat", ["norm", "out"], ["heat", "in1"], 0),
       edge("e-stir-heat", ["stir", "out"], ["heat", "in2"], 1),
-      // T809 — the optional audio, wired but at gain zero. `kick1:low` reaches `lift1`'s
+      // T809 — the optional audio, wired but at gain zero. `math_kick:low` reaches `kernel_lift`'s
       // value slot, which is the LIFT AMPLITUDE and nothing else.
       edge("v-beat-bsub", ["beat", "out"], ["bsub", "a"]),
-      // T820: the envelope follower goes BETWEEN the bias and the gain. `bsub1 → kick1`
+      // T820: the envelope follower goes BETWEEN the bias and the gain. `math_bsub → math_kick`
       // direct is what shipped and what the owner called jittery.
       edge("v-bsub-env", ["bsub", "out"], ["env", "in"]),
       edge("v-env-bgain", ["env", "out"], ["bgain", "a"]),

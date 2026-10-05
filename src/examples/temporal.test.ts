@@ -123,7 +123,7 @@ describe("examples with a temporal loop", () => {
       // T538: the owner's own file. Its loop closes on the FINAL output (§V471.5), so the
       // trails carry the graded colour rather than a ghost of the raw render.
       "E31-Corona.loom.json",
-      // T621: E32 carries TWO loops and they are different animals. `state1` is a
+      // T621: E32 carries TWO loops and they are different animals. `feedback_state` is a
       // simulation the POINT KERNEL is inside — the herd reads the reaction and writes
       // back into it, so the compiler's substep body contains a compute dispatch and its
       // buffer pairs, which is why `substeps` is refused there and the reaction's speed

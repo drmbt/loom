@@ -12,29 +12,29 @@ it.
 ## Graph
 
 ```
-beat1(audioPattern 124bpm) ─┬─► punch1(lag 0.28) ─► zgain1 ─► zbase1 ─► zoom1(valueLimit) ┄┐
-                            └─► hit1(trigger)    ─► strike1 ─► lamp1(valueLimit) ┄┐        │
-                                                                             │  s.x/s.y│
-bore1(rectangle 0.124) ─┐                                                    │        │
-                        ├─► ring1(difference) ─► paint1(lookup) ─► lampl1(level, brightness ┄)
-core1(rectangle 0.113) ─┘                            ▲                       │
-                                          hue1(ramp) ┘                       │
-                                                                             ▼
-   loop1(feedback ← born1) ─► fall1(transform s>1, r 0.55°) ─► fade1(level γ1.12) ─► shift1(hsv +3.1°)
-                                                                                        │
-                                                            lampl1 ──► born1(add) ◄──────┘
-                                                                        │
-                            born1 ─► halo1(blur) ─► haze1(level ×0.5) ─┬─► burn1(add) ─► trim1 ─► out1
-                            born1 ────────────────────────────────────┘
+pattern_beat(audioPattern 124bpm) ─┬─► lag_punch(lag 0.28) ─► math_zgain ─► math_zbase ─► limit_zoom(valueLimit) ┄┄┄┄┄┄┄┄┐
+                                   └─► trigger_hit(trigger)    ─► math_strike ─► limit_lamp(valueLimit) ┄┄┄┄┄┄┄┄┐        │
+                                                                                                           │  s.x/s.y│
+rectangle_bore(rectangle 0.124) ─┐                                                                         │        │
+                                 ├─► difference_ring(difference) ─► lookup_paint(lookup) ─► level_lampl(level, brightness ┄)
+rectangle_core(rectangle 0.113) ─┘                                      ▲                                      │
+                                          ramp_hue(ramp)                ┘                                      │
+                                                                                                               ▼
+   feedback_loop(feedback ← add_born) ─► transform_fall(transform s>1, r 0.55°) ─► level_fade(level γ1.12) ─► hsv_shift(hsv +3.1°)
+                                                                                                                 │
+                                                            level_lampl ──► add_born(add) ◄───────────────────────┘
+                                                                                    │
+                            add_born ─► blur_halo(blur) ─► level_haze(level ×0.5) ─┬─► add_burn(add) ─► level_trim ─► output1
+                            add_born ─────────────────────────────────────────────┘
 ```
 
 | Node | Type | Doing |
 | --- | --- | --- |
-| `loop1` | `feedback` | the temporal boundary (§V4). Persistence 0.985 — the corridor's whole length, in one number |
-| `fall1` | `transform` | **scale above one** about the centre. This is the tunnel; everything else is decoration |
-| `shift1` | `hsv` | +3.1° per pass, so depth reads as colour |
-| `hit1` | `valueTrigger` | one frame per kick. The reason the loop is stable — see below |
-| `ring1` | `difference` | `\|a − b\|` over two rounded squares: an exact frame, whose width is the difference of two sizes |
+| `feedback_loop` | `feedback` | the temporal boundary (§V4). Persistence 0.985 — the corridor's whole length, in one number |
+| `transform_fall` | `transform` | **scale above one** about the centre. This is the tunnel; everything else is decoration |
+| `hsv_shift` | `hsv` | +3.1° per pass, so depth reads as colour |
+| `trigger_hit` | `valueTrigger` | one frame per kick. The reason the loop is stable — see below |
+| `difference_ring` | `difference` | `\|a − b\|` over two rounded squares: an exact frame, whose width is the difference of two sizes |
 
 ## Why this is not E1 with more knobs
 
@@ -57,7 +57,7 @@ lap like any other frame boundary (T489). An example whose animation comes from 
 than from a clock position is loop-proof by construction, which for something meant to run
 for an hour behind a set is worth more than it sounds.
 
-The one clock reader is `beat1`, and it is **timeline-anchored on purpose** (§V436): it
+The one clock reader is `pattern_beat`, and it is **timeline-anchored on purpose** (§V436): it
 stands in for a track, so bar one lands on the in point and a scrub finds the same beat.
 
 ## Three things that had to be arithmetic, not taste
@@ -67,11 +67,11 @@ Every one of these was found by the frame going solid white, and each has a diff
 **1. An expanding loop does not dim itself.** The first build assumed it did — the same
 light over more pixels. It does not: `s > 1` *divides* the sampling coordinates, so the pass
 magnifies the centre and **duplicates** its pixels. Nothing leaves the frame and nothing is
-diluted. Every bit of the decay is `loop1.persistence`, deliberately.
+diluted. Every bit of the decay is `feedback_loop.persistence`, deliberately.
 
 **2. A ring lit by an envelope is a DC term, and the loop integrates it.** With gain 0.985
 the loop sums roughly 67 frames, so a constant input of `x` settles at `x / 0.015` — sixty
-times itself. A fast Lag is still a DC term. `hit1` is a **Trigger**: 1 for the one frame the
+times itself. A fast Lag is still a DC term. `trigger_hit` is a **Trigger**: 1 for the one frame the
 kick crosses its threshold, 0 for the other twenty-eight, so the mean input is a
 twenty-ninth of the peak and the steady state lands under one *by arithmetic*. It is also
 the better picture — squares are **born on the beat**, which is why the corridor has
@@ -79,7 +79,7 @@ segments instead of being a cone.
 
 **3. Contrast inside a loop is positive feedback.** Contrast above one expands about a
 mid-grey pivot, so for anything brighter than the pivot it is a gain. At 1.05 with
-persistence 0.989 the frame went white in seven seconds. `fade1` uses **gamma 1.12**
+persistence 0.989 the frame went white in seven seconds. `level_fade` uses **gamma 1.12**
 instead: `pow(v, 1.12)` is below `v` everywhere in [0,1), so it re-sharpens the edges the
 bilinear resampling keeps softening *and* contracts at the same time.
 
@@ -91,11 +91,11 @@ nothing at all. A square turns visibly, so the shaft reads as twisting rather th
 dartboard.
 
 **The palette ends on a saturated teal, not on white.** Rotating the hue of a neutral is a
-no-op. Ending on `(1, 0.98, 0.92)` made every square white and `shift1` had nothing to turn.
+no-op. Ending on `(1, 0.98, 0.92)` made every square white and `hsv_shift` had nothing to turn.
 
 ## Where the sound goes
 
-`beat1` is the deterministic Audio Pattern, so the file **opens playing with no asset bound**
+`pattern_beat` is the deterministic Audio Pattern, so the file **opens playing with no asset bound**
 (§V363, B74) and an offline render reproduces (§V45). The kick reaches two places at two
 time constants: the **zoom** through a 0.28 s Lag, so the surge is felt as a swell, and the
 **square's brightness** through the Trigger, so a square is struck rather than faded up.
@@ -103,18 +103,18 @@ Both are fenced by a `valueLimit` (§V's two-fence pattern, E24's precedent) —
 per frame the corridor outruns the eye, at or below 1.0 the loop stops expanding and piles
 up.
 
-Swap `beat1` for an `audioFileIn`, keep the label, and every mapping downstream follows.
+Swap `pattern_beat` for an `audioFileIn`, keep the label, and every mapping downstream follows.
 
 ## Regression signatures
 
-- **A solid white frame** → the loop gain went above one. Check `fade1` for a contrast, and
-  check that `lampl1`'s brightness is driven by the Trigger and not by an envelope.
-- **A dartboard instead of a tunnel** → `fall1.r` went to zero, or the seed became a circle.
-- **One colour everywhere** → `hue1`'s last stop desaturated, or `shift1.hueoffset` went
+- **A solid white frame** → the loop gain went above one. Check `level_fade` for a contrast, and
+  check that `level_lampl`'s brightness is driven by the Trigger and not by an envelope.
+- **A dartboard instead of a tunnel** → `transform_fall.r` went to zero, or the seed became a circle.
+- **One colour everywhere** → `ramp_hue`'s last stop desaturated, or `hsv_shift.hueoffset` went
   small.
-- **The corridor is two squares deep** → `loop1.persistence` dropped; that number *is* the
+- **The corridor is two squares deep** → `feedback_loop.persistence` dropped; that number *is* the
   tunnel's length.
-- **The tunnel stops receding and piles up in the middle** → `fall1.s` fell to 1.0 or below.
+- **The tunnel stops receding and piles up in the middle** → `transform_fall.s` fell to 1.0 or below.
 
 ## Look pass
 

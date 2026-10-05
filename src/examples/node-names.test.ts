@@ -53,16 +53,6 @@ import { unconformingNames } from "./node-name-audit.ts";
  * renaming: run this test, and the failure prints the number each changed file now has.
  */
 export const NOT_YET_RENAMED: Readonly<Record<string, number>> = {
-  "examples/E20-Gooeyball.loom.json": 13,
-  "examples/E24-Audio-Reaction-Diffusion.loom.json": 50,
-  "examples/E25-Stage.loom.json": 21,
-  "examples/E26-Interference.loom.json": 10,
-  "examples/E27-Relief.loom.json": 35,
-  "examples/E28-Sundial.loom.json": 20,
-  "examples/E29-Descent.loom.json": 24,
-  "examples/E30-Nave.loom.json": 20,
-  "examples/E31-Corona.loom.json": 42,
-  "examples/E32-Pasture.loom.json": 79,
   "examples/E33-Obol.loom.json": 36,
   "examples/E34-Lidar.loom.json": 44,
   "examples/E35-Nova-Torus.loom.json": 11,

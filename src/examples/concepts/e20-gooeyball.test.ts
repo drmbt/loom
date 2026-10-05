@@ -84,7 +84,7 @@ describe("E20 Gooeyball", () => {
     const fill = document.graph.nodes["fill"] as GraphNode;
     const slot = fill.parameters["position.x"] as { mode?: string; bindings?: { expression?: { source?: string } } };
     expect(slot.mode).toBe("expression");
-    expect(channelOf(slot?.bindings?.expression?.source)).toBe("orbitx1");
+    expect(channelOf(slot?.bindings?.expression?.source)).toBe("lfo_orbitx");
   });
 
   /** B14's lesson, pinned again: animated goo needs a 4D noise with speed set. */
