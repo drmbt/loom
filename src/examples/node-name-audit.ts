@@ -39,8 +39,33 @@ export interface UnconformingName {
   readonly kind: string;
 }
 
+/** One node of a shipped graph, as the naming rule sees it. */
+export interface AuditedNode {
+  readonly id: string;
+  readonly type: string;
+  /** Its name, or `undefined` for an unnamed node. */
+  readonly name: string | undefined;
+  /** The kind its name must carry, in this file. */
+  readonly kind: string;
+  /** False for a component's In and Out, whose name is a socket's label. */
+  readonly bound: boolean;
+}
+
+/** One graph a shipped file holds: its root, or a component definition it embeds. */
+export interface AuditedGraph {
+  /** `root`, or `component <id>`. */
+  readonly graph: string;
+  /** The embedded definition this graph belongs to, or `null` for the root graph. */
+  readonly component: { readonly id: string; readonly version: number; readonly name: string } | null;
+  /** In id order, so every reader walks them the same way. */
+  readonly nodes: readonly AuditedNode[];
+  /** Wires, by node id: what the sweep reads to say what a node is FOR. */
+  readonly edges: ReadonlyArray<{ readonly from: string; readonly to: string }>;
+}
+
 interface StoredGraph {
   readonly nodes?: Readonly<Record<string, { readonly type?: unknown; readonly label?: unknown }>>;
+  readonly edges?: Readonly<Record<string, { readonly source?: { readonly nodeId?: unknown }; readonly target?: { readonly nodeId?: unknown } }>>;
 }
 
 interface StoredComponent {
@@ -53,16 +78,6 @@ interface StoredComponent {
 interface StoredFile {
   readonly graph?: StoredGraph;
   readonly componentLibrary?: { readonly components?: readonly StoredComponent[] };
-}
-
-/** Every graph a shipped file holds, root first, then its embedded components in file order. */
-function graphsOf(file: StoredFile): Array<readonly [string, StoredGraph]> {
-  const graphs: Array<readonly [string, StoredGraph]> = [];
-  if (file.graph !== undefined) graphs.push(["root", file.graph]);
-  for (const component of file.componentLibrary?.components ?? []) {
-    if (component.graph !== undefined) graphs.push([`component ${String(component.componentId)}`, component.graph]);
-  }
-  return graphs;
 }
 
 /** `<componentId>@<version>` → the name that definition holds in this file. */
@@ -82,18 +97,55 @@ function kindIn(type: string, componentNames: ReadonlyMap<string, string>): stri
   return name === undefined ? COMPONENT_KIND : kindFromName(name);
 }
 
+function audited(graph: string, component: AuditedGraph["component"], stored: StoredGraph, names: ReadonlyMap<string, string>): AuditedGraph {
+  const nodes: AuditedNode[] = [];
+  for (const id of Object.keys(stored.nodes ?? {}).sort()) {
+    const node = stored.nodes?.[id];
+    if (typeof node?.type !== "string") continue;
+    nodes.push({
+      id,
+      type: node.type,
+      name: typeof node.label === "string" ? node.label : undefined,
+      kind: kindIn(node.type, names),
+      bound: kindBindsName(node.type),
+    });
+  }
+  const edges = Object.values(stored.edges ?? {}).flatMap((edge) =>
+    typeof edge.source?.nodeId === "string" && typeof edge.target?.nodeId === "string"
+      ? [{ from: edge.source.nodeId, to: edge.target.nodeId }]
+      : [],
+  );
+  return { graph, component, nodes, edges };
+}
+
+/** Every graph a shipped file holds, root first, then its embedded components in file order. */
+export function auditedGraphs(fileText: string): AuditedGraph[] {
+  const file = JSON.parse(fileText) as StoredFile;
+  const names = componentNamesOf(file);
+  const graphs: AuditedGraph[] = [];
+  if (file.graph !== undefined) graphs.push(audited("root", null, file.graph, names));
+  for (const component of file.componentLibrary?.components ?? []) {
+    if (component.graph === undefined) continue;
+    const id = String(component.componentId);
+    graphs.push(
+      audited(
+        `component ${id}`,
+        { id, version: Number(component.version), name: typeof component.name === "string" ? component.name : id },
+        component.graph,
+        names,
+      ),
+    );
+  }
+  return graphs;
+}
+
 /** The named nodes of this file whose name does not carry their type's kind, in a stable order. */
 export function unconformingNames(fileText: string): UnconformingName[] {
-  const file = JSON.parse(fileText) as StoredFile;
-  const componentNames = componentNamesOf(file);
   const found: UnconformingName[] = [];
-  for (const [graph, stored] of graphsOf(file)) {
-    for (const nodeId of Object.keys(stored.nodes ?? {}).sort()) {
-      const node = stored.nodes?.[nodeId];
-      if (typeof node?.type !== "string" || typeof node.label !== "string") continue;
-      if (!kindBindsName(node.type)) continue;
-      const kind = kindIn(node.type, componentNames);
-      if (!conformsToKind(node.label, kind)) found.push({ graph, nodeId, type: node.type, name: node.label, kind });
+  for (const { graph, nodes } of auditedGraphs(fileText)) {
+    for (const node of nodes) {
+      if (node.name === undefined || !node.bound) continue;
+      if (!conformsToKind(node.name, node.kind)) found.push({ graph, nodeId: node.id, type: node.type, name: node.name, kind: node.kind });
     }
   }
   return found;
@@ -102,10 +154,8 @@ export function unconformingNames(fileText: string): UnconformingName[] {
 /** How many named nodes a file holds that the convention binds: the denominator, for the report. */
 export function boundNameCount(fileText: string): number {
   let count = 0;
-  for (const [, stored] of graphsOf(JSON.parse(fileText) as StoredFile)) {
-    for (const node of Object.values(stored.nodes ?? {})) {
-      if (typeof node.type === "string" && typeof node.label === "string" && kindBindsName(node.type)) count += 1;
-    }
+  for (const { nodes } of auditedGraphs(fileText)) {
+    for (const node of nodes) if (node.name !== undefined && node.bound) count += 1;
   }
   return count;
 }
