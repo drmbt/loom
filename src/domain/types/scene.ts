@@ -155,17 +155,27 @@ export interface GeometryPayload {
    * drawn (its Group predicate) holds a zero matrix. Every draw of this geometry reads the
    * records and evaluates no per-instance attribute itself, so `scaleAttribute`,
    * `orientAttribute`, `colorAttribute` and `group` below are absent on such a payload.
-   * The instance count is `capacity` (or the live `count`).
+   * The instance count is `capacity`, or on the GPU (`drawArgs`) when the geometry leaves
+   * instances out: the points its Group keeps, of the live ones.
    */
   readonly instanceMesh?: {
     readonly pairs: Readonly<Record<string, ScenePairRef>>;
     readonly triangles: number;
     readonly indexBuffer: string;
+    /**
+     * F1: present when the geometry can leave instances out (a Group, or counted points):
+     * the indirect arguments of every draw of it (vertex count, VISIBLE instances, 0, 0),
+     * written by its resolve pass. A draw runs that many instances and finds each one's
+     * record through `records.visible`. Absent: every slot is drawn, `capacity` of them.
+     */
+    readonly drawArgs?: string;
     readonly records: {
       readonly buffer: string;
       readonly m0: number;
       readonly m1: number;
       readonly m2: number;
+      /** With `drawArgs`: the slots of the instances that are drawn, dense, in slot order (one u32 a slot). */
+      readonly visible?: number;
       readonly tint?: number;
       /**
        * The material's `struct Instance` fields this geometry BOUND to a point attribute,

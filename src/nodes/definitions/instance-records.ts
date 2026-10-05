@@ -16,16 +16,27 @@ import type { InstanceRecordOffsets, PackedRead } from "../shaders/instance-reso
  * reads them. The layout is the packed-pointset layout every producer uses (T1076) —
  * independent regions, 256-aligned — so a later region (a cull's meta, last frame's
  * matrix for motion vectors) moves nothing that exists.
+ *
+ * F1: a geometry that can leave instances out (`compact`: it has a Group, or its points are
+ * counted) has one region more, `visible`, the slots of the instances that ARE drawn, dense
+ * and in slot order; and beside the records it owns four u32 of indirect arguments (the
+ * shape's vertex count and how many instances are visible). Its draws read both, so an
+ * instance its Group rejects, or a dead slot of a counted set, is in no draw. A geometry
+ * that draws every point has neither: its draws take a literal count.
  */
 
 /** The scratch key of a geometry's record buffer. */
 export const INSTANCE_RECORDS_KEY = "instanceRecords";
+/** The scratch key of a geometry's indirect arguments: (vertexCount, visible instances, 0, 0). */
+export const INSTANCE_ARGS_KEY = "instanceArgs";
 
 const ROW = (name: string): PointAttributeSchema => ({ name, type: "vec4f", default: [0, 0, 0, 0] });
 
 /** What a record holds beyond its matrix. */
 export interface InstanceRecordOptions {
   readonly tint: boolean;
+  /** F1: the geometry leaves instances out, so it lists and counts the ones it draws. */
+  readonly compact?: boolean;
   /** The material's `struct Instance` fields this geometry bound, each a region of its own type. */
   readonly fields?: ReadonlyArray<{ readonly name: string; readonly type: PointAttributeType }>;
 }
@@ -39,6 +50,7 @@ export function instanceRecordAttributes(options: InstanceRecordOptions): Readon
     ROW("m0"),
     ROW("m1"),
     ROW("m2"),
+    ...(options.compact === true ? [{ name: "visible", type: "u32" as const, default: [0] }] : []),
     ...(options.tint ? [ROW("tint")] : []),
     ...(options.fields ?? []).map((field) => ({ name: fieldRegion(field.name), type: field.type, default: new Array<number>(COMPONENT_COUNTS[field.type]).fill(0) })),
   ];
@@ -50,6 +62,11 @@ export interface InstanceRecordStorage {
   /** A plain buffer of u32 words: written by the resolve pass, read by the draws, never swapped. */
   readonly scratch: { readonly kind: "buffer"; readonly key: string; readonly stride: number; readonly capacity: number };
   readonly offsets: InstanceRecordOffsets;
+  /** F1, when compacting: the indirect arguments every draw of the geometry reads, written by the resolve pass. */
+  readonly args?: {
+    readonly resourceId: string;
+    readonly scratch: { readonly kind: "buffer"; readonly key: string; readonly stride: number; readonly capacity: number; readonly usage: "indirect" };
+  };
 }
 
 export function instanceRecordStorage(
@@ -64,10 +81,14 @@ export function instanceRecordStorage(
     ok: true,
     resourceId: scratchResourceId(nodeId, INSTANCE_RECORDS_KEY),
     scratch: { kind: "buffer", key: INSTANCE_RECORDS_KEY, stride: 4, capacity: layout.bytes / 4 },
+    ...(options.compact === true
+      ? { args: { resourceId: scratchResourceId(nodeId, INSTANCE_ARGS_KEY), scratch: { kind: "buffer" as const, key: INSTANCE_ARGS_KEY, stride: 4, capacity: 4, usage: "indirect" as const } } }
+      : {}),
     offsets: {
       m0: offset("m0"),
       m1: offset("m1"),
       m2: offset("m2"),
+      ...(options.compact === true ? { visible: offset("visible") } : {}),
       ...(options.tint ? { tint: offset("tint") } : {}),
       ...(options.fields === undefined || options.fields.length === 0
         ? {}

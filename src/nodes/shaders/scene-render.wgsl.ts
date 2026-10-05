@@ -1015,8 +1015,10 @@ const FACE_VIEWER_WGSL = "fn faceViewer(n: vec3f, toEye: vec3f) -> vec3f { retur
 /**
  * T1581b: an instanced draw's storage — the index list, the buffers bound whole, and one
  * accessor per attribute read. `instanceSlot` is the ONE place a drawn instance index
- * becomes a record slot: the identity today, a lookup into a compacted list when a cull
- * lands, and nothing else here has to know.
+ * becomes a record slot. For a geometry that leaves instances out (F1) it reads the
+ * records' `visible` list, the slots of the instances that are drawn; the draw's count is
+ * that list's length, so a rejected instance runs no vertex. For one that draws every point
+ * it is the identity. Nothing else here has to know which.
  */
 function instancedStorageWgsl(instanced: Pick<SceneInstancedOption, "groups" | "position" | "record"> & Partial<SceneInstancedOption>): string {
   const read = (name: string, attribute: PackedRead | undefined): string =>
@@ -1035,7 +1037,9 @@ function instancedStorageWgsl(instanced: Pick<SceneInstancedOption, "groups" | "
     row("recordM1", instanced.record.m1),
     row("recordM2", instanced.record.m2),
     instanced.record.tint === undefined ? "" : row("recordTint", instanced.record.tint),
-    "fn instanceSlot(drawn: u32) -> u32 { return drawn; }\n",
+    instanced.record.visible === undefined
+      ? "fn instanceSlot(drawn: u32) -> u32 { return drawn; }\n"
+      : read("instanceSlot", { group: instanced.record.group, offset: instanced.record.visible, type: "u32" }),
   ].join("");
 }
 
@@ -2850,7 +2854,7 @@ const ALL_INSTANCED_FEATURES: SceneShadingOptions = (() => {
       color: read(0),
       surface: read(0),
       emissive: { ...read(0), type: "vec3f" },
-      record: { group: 1, m0: 0, m1: 0, m2: 0, tint: 0 },
+      record: { group: 1, m0: 0, m1: 0, m2: 0, visible: 0, tint: 0 },
     },
   };
 })();

@@ -351,11 +351,11 @@ Glass on a mesh instance refuses by name in this row (F11).
 ### D13. Live count, Group, and the shape index
 
 - **Live count**: D3.
-- **Group**: the existing predicate and resolver, evaluated in the resolve pass. An excluded instance is a zero record in every pass, so it casts no shadow.
+- **Group**: the existing predicate and resolver, evaluated in the resolve pass. An excluded instance is in no draw of any pass, so it casts no shadow. (First built as a zero record; F1 compacts instead, section 13.)
 - **Shape index, in this row as a channel.** `shapeAttribute` names an attribute holding each instance's shape number; `shapeIndex` is this geometry's own number. An instance is drawn when the two are equal. Any other value is not drawn, so **a negative number is the kill**, Notch's one channel for variant and kill. K variants are K Geometry nodes over one points producer, each with its mesh and its number: a kernel that writes the attribute chooses, per instance and per frame, which shape appears or that none does.
 - **Several shapes on one Geometry is follow-up F2**, with the compute cull: one resolve, one compacted index list per shape, one indirect draw per shape, and LOD as a shape index taken from distance. The cheap version, one draw sized for the largest shape with shorter ones collapsed, defeats LOD, which is the main reason to want it.
 - **What is fixed now so F2 is not a rework**: the attribute pick (`shapeAttribute`), the kill convention, the record as independent regions (D8), and the slot indirection (D11). F2 adds a `meta` region, the lists and the draws.
-- **The cost until F1**: an instance that is not drawn still runs its vertices, with the cheap vertex stage and no predicate. At the consumer's size that is nothing. At 100k it is what F1 removes.
+- **The cost until F1**: an instance that is not drawn still ran its vertices. This line said that was nothing at the consumer's size; it was 56 ms a pass for one big mesh keeping 1 point of 631. F1 is built (section 13).
 
 ### D14. Scale: what this design does, and what it leaves
 
@@ -671,18 +671,49 @@ The consumer's own figures, from its first scene on slice B (reported by the lea
 - **A point light's cube shadow** redraws every caster six times; one such light cost about 15 fps at 1280×720 in the app (T1598b).
 - **Piece count costs as much as triangles.** Eight small instanced Geometries (3,440 triangles × 10 instances in all) were worth about 5 fps with shadows on while the GPU figure did not move: per-Geometry pass and submit overhead.
 
-So the order after slice E is performance first: F1's compaction, T1598b, and a profile of what one more instanced Geometry costs per frame; then D, C, F and G. Until F1 lands, the Group parameter's description says the cost where the choice is made, and a test pins the sentence.
+So the order after slice E is performance first: F1's compaction, T1598b, and a profile of what one more instanced Geometry costs per frame; then D, C, F and G. Until F1 landed, the Group parameter's description said the cost where the choice is made; F1 removed the cost and the sentence.
 
-### F1: what it needs from the record layout (plan, not built)
+### F1 — compaction (T1581b, built)
 
-- **Nothing in the record moves.** `m0`, `m1`, `m2`, `tint` and the `field_<name>` regions stay indexed by the point's SLOT. `s.instanceId` and the flat slot the fragment stage reads slice E's fields by stay the point's slot, so a field is still read where the resolve pass wrote it and an id still names the same point every frame. Compacting the records themselves would change what `instanceId` means and move every region; it is not the plan.
-- **One region more: `visible`, a u32 per slot.** The slots of the accepted instances, dense, in slot order. Regions are independent (D8), so adding it moves no offset. It lives in the record buffer, so a draw binds no buffer more (§V588).
-- **One function body.** `instanceSlot(drawn)` becomes `visible[drawn]`. The lit and the depth generators both place by it already, and the vertex stage already hands the fragment stage the slot it returns.
-- **The count goes to an indirect buffer the Geometry owns** (`vertexCount`, accepted count, 0, 0), written by the same pass. Every draw of that geometry in every Render draws indirect off it. The live count of a counted pointset becomes one more reason to reject (`slot >= live`), and the per-Render args dispatch that exists for counted sets is no longer needed for mesh instances.
-- **Accepted means**: live, kept by the Group predicate, and (slice F) the shape index. All three are decided in the resolve pass, once.
-- **No pass more per Geometry**, which matters given the third figure above. The resolve becomes ONE dispatch of ONE workgroup: 256 invocations, each walking its share of the slots. It resolves and counts its accepted slots into `var<workgroup>` storage, `workgroupBarrier()`, takes the sum of the shares before its own, and writes its slots into `visible` from there. Ranges are disjoint, the order is the slot order, there are no atomics, and the result is the same every run. `points.wgsl.ts` and `laser-path.wgsl.ts` already use both constructs. To measure before trusting it: the cost at 100,000 slots, where an invocation walks 391 of them twice. The fallback is the scan and scatter of `points/lifecycle.ts`, three dispatches more.
-- **A rejected slot's record need not be written.** Nothing reads it once draws go through `visible`. Whether the zero record stays (the preview tile, when it draws mesh instances, could read the list too) is decided with slice D's tile.
-- **Per-view lists come later and fit the same way.** A camera frustum cull, or T1598b's per-light caster list, is another `visible_<view>` region and another count. F1's first step is the view-independent list, which is what the 400 ms figure needs.
+**What it does.** A geometry that can leave an instance out lists the slots it draws and counts them, in its resolve pass, and every draw of it in every Render runs that many instances. A rejected instance, and a dead slot of a counted pointset, is in no draw of any pass.
+
+**As planned**
+
+- **Nothing in the record moved.** `m0`, `m1`, `m2`, `tint` and the `field_<name>` regions are indexed by the point's slot. `s.instanceId` and slice E's fields are the point's slot whatever is rejected around it (pinned on Dawn: with the middle of three points rejected the two drawn read ids 0 and 2).
+- **One region more, `visible`** (a u32 a slot, in the record buffer): the accepted slots, dense, in slot order. A draw binds no buffer more.
+- **One function body**: `instanceSlot(drawn)` reads `visible[drawn]`.
+- **The count is in an indirect buffer the Geometry owns** (`scratch:<node>:instanceArgs`: vertex count, accepted count, 0, 0). A counted pointset's live count is one more reason to reject, and the per-Render arguments dispatch that slice B used for counted mesh instances is gone.
+- **No pass more per Geometry.** One dispatch of one workgroup: each of 256 invocations resolves and counts its run of slots, they meet at a `workgroupBarrier()`, each sums the counts before its own and writes its slots into `visible` from there. Deterministic, no atomics.
+- **A rejected slot's record is not written.**
+
+**Where the build differs from the plan**
+
+- **Only a geometry that CAN leave an instance out compacts**: one with a Group, or over a counted pointset. A geometry that draws every point keeps the plain resolve (a slot an invocation, at the GPU's full width) and a literal instance count. The plan had every mesh-instance draw indirect. Measured, an indirect draw is not free: a render pass holding one costs about 0.05 ms of GPU more than the same draw with a literal count on this machine, and a Render draws a geometry in up to fifteen passes. With all 150 mesh-instance draws of the consumer's hinged document indirect, its GPU frame went from 11.1 to 18.5 ms.
+- **The device asks for `indirect-first-instance`** when the adapter offers it. Without it Dawn validates indirect arguments on the GPU, a compute pass ahead of every render pass that holds an indirect draw: the same document was 29 ms. The Node host now drops optional features one at a time when refused, so a device without this one keeps its timestamp queries; that fallback has not run on a device that refuses.
+- **An indirect draw had to become a pass of its frame first** (the backend, `encode`). It used to be handed to vgpu's `Draw.draw()`, which builds its own command buffer, clears the target and submits at once. A counted geometry in a Render erased the backdrop and every geometry before it when rendered headless, and in the app ran ahead of the frame's passes and was erased by them. It now encodes through the frame's pass like a literal draw. `indirect-draw-order.gpu.test.ts` holds both paths and both draw orders. This was a bug before F1, for counted primitives too.
+
+**The single-dispatch scan, measured** (M3 Max, Dawn on Metal; the timer's step is 0.066 ms)
+
+| Slots | Resolve pass, compacting | A point kernel over the same slots |
+|---|---|---|
+| 4,000 | 0.07 to 0.13 ms | under 0.07 ms |
+| 20,000 | 0.5 ms | under 0.07 ms |
+| 100,000 | 0.66 ms | 0.07 ms |
+| 1,000,000 | 2.6 ms | 0.26 ms |
+
+- One workgroup is 256 invocations wide where a kernel is the GPU wide, so the walk grows with the slots. The alternative, the lifecycle's scan and scatter (`points/lifecycle.ts`), is three dispatches more per Geometry at about 0.07 ms of GPU each plus their CPU cost (the profile: a pass is what is expensive). The two are about equal near 100,000 slots; under that the single dispatch is cheaper, above it the scan is.
+- **Kept: the single dispatch.** A geometry over more than about 100,000 points that also rejects would be better served by the scan; that is a follow-up, chosen by capacity, which is structural.
+
+**The gate case, measured** (the consumer's hull, 152,490 vertices and 206,990 triangles, one pointset of 631 points, a Group keeping 1; 1280×720; GPU per render, clean runs)
+
+| | Before F1 | After | One-point pointset, after |
+|---|---|---|---|
+| no shadows (2 draws) | 56.0 ms | 0.93 ms | 1.02 ms |
+| one point-light shadow (9 draws) | 306 ms | 3.2 ms | 2.0 to 3.2 ms |
+
+**What a Group costs now.** Not the rejected instances: an indirect draw in each pass. A Group that rejects nothing is worth removing. The consumer's documents carry one on every instanced Geometry (`p.kind > -0.5`, from when the pieces shared a pointset) although each kernel now writes exactly its points; with them the hinged document's GPU frame is 18.5 ms and the rigid one's 9.2, against 11.1 and 8.5 with those Groups gone.
+
+**Per-view lists** (a camera frustum cull, T1598b's per-light caster lists) are further `visible_<view>` regions and counts, as planned. Each such list is an indirect draw in the passes that read it, which is the cost to weigh there.
 
 ### Slice E — custom instance attributes (T1581b, built)
 

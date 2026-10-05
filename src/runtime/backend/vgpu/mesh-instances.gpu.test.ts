@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { GraphDocument, ProjectSettings } from "../../../domain/types/graph.ts";
 import { cubePrimitive, encodeFixtureGlb } from "../../../domain/mesh/glb.fixture.ts";
+import { instanceRecordStorage } from "../../../nodes/definitions/instance-records.ts";
 import { prepareMesh } from "../../../points/mesh.ts";
 import { renderHeadless } from "../../../tests/headless/render-harness.ts";
 import { nodeGpuHost, probeDawn } from "./node-gpu-host.ts";
@@ -154,6 +155,19 @@ function scene(options: Scene = {}): GraphDocument {
 }
 
 async function render(document: GraphDocument, port = "out", frames = 2): Promise<Uint8Array> {
+  return (await drawn(document, frames, port, [])).bytes;
+}
+
+/** The scratch a mesh-instancing geometry `geo` owns: its records and its draws' arguments. */
+const RECORDS = "scratch:geo:instanceRecords";
+const ARGS = "scratch:geo:instanceArgs";
+
+/**
+ * The picture, and what the DRAW was handed (F1): the indirect arguments the geometry's
+ * resolve pass wrote — (vertices, instances drawn, 0, 0), which is all a draw knows of how
+ * many instances there are — and the record buffer, for the list of slots it draws.
+ */
+async function drawn(document: GraphDocument, frames = 2, port = "out", probes: readonly string[] = [ARGS, RECORDS]): Promise<{ bytes: Uint8Array; args: number[]; records: Uint32Array }> {
   const result = await renderHeadless({
     host: nodeGpuHost(),
     graph: document,
@@ -164,9 +178,17 @@ async function render(document: GraphDocument, port = "out", frames = 2): Promis
     outputPortId: port,
     sinks: [{ nodeId: "shot", portId: port }],
     meshes: Object.fromEntries(Object.values(document.nodes).filter((entry) => entry.type === "meshFileIn").map((entry) => [entry.id, GLB])),
+    probeBuffers: probes,
   });
   expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
-  return result.frames[0]!.bytes;
+  return { bytes: result.frames[0]!.bytes, args: Array.from(new Uint32Array(result.buffers?.[ARGS] ?? new ArrayBuffer(0))), records: new Uint32Array(result.buffers?.[RECORDS] ?? new ArrayBuffer(0)) };
+}
+
+/** The first `count` entries of the records' `visible` list for a geometry over `capacity` points. */
+function visibleOf(records: Uint32Array, capacity: number, count: number): number[] {
+  const storage = instanceRecordStorage("geo", capacity, { tint: false, compact: true });
+  if (!storage.ok || storage.offsets.visible === undefined) throw new Error("no visible list in a compacting record");
+  return Array.from(records.subarray(storage.offsets.visible / 4, storage.offsets.visible / 4 + count));
 }
 
 /** The pixel a world point falls in. */
@@ -699,5 +721,138 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
     const drawn = await render(both);
     expect(at(drawn, -2, -2).slice(0, 3)).toEqual([102, 153, 51]);
     expect(colours(drawn)).toEqual([[51, 0, 255], [102, 51, 204], [153, 102, 153]]);
+  }, 180_000);
+});
+
+/**
+ * T1581b F1 — ONLY THE INSTANCES THAT ARE DRAWN ARE DRAWN.
+ *
+ * A rejected instance used to be a zero matrix: no pixel, and the whole mesh's vertex stage
+ * all the same, in every pass. The consumer's hull (152,490 vertices) keeping 1 of 631
+ * points cost 56 ms a pass. Now the resolve pass compacts: it writes the slots it accepts
+ * into a list and their count into the draws' indirect arguments, and every draw runs that
+ * many instances.
+ *
+ * So the claim is the COUNT THE DRAW IS HANDED, read back from the arguments buffer
+ * exactly, beside the picture. A picture alone cannot tell a zero matrix from an instance
+ * that was never drawn; the count can.
+ *
+ * Only a geometry that CAN leave instances out compacts (a Group, or counted points). One
+ * that draws every point keeps its literal count and has no arguments to read: every test
+ * above this block that sets no Group is that geometry, and they are its gate.
+ */
+describe("a rejected or dead instance is in no draw (T1581b F1, §V147)", () => {
+  const CUBE = 36; // the fixture cube's vertices: 12 triangles
+
+  it("draws ONE instance of a mesh that keeps one point of 631, and the picture is the one-point picture", async () => {
+    await requireDawn();
+    // The consumer's shape: every piece off one pointset, each Geometry keeping its own.
+    // Point 417 stands at (1, −1); the 630 others are somewhere else, and not this geometry's.
+    const many = scene({
+      capacity: 631,
+      kernel: "  q.position = select(vec3f(f * 0.01 - 3.0, 2.0, 0.0), vec3f(1.0, -1.0, 0.0), i == 417u);\n  q.keep = select(0.0, 1.0, i == 417u);",
+      geometry: { group: "p.keep > 0.5" },
+    });
+    const kept = await drawn(many);
+    // What the draw was handed: one instance. Not 631 with 630 of them collapsed.
+    expect(kept.args).toEqual([CUBE, 1, 0, 0]);
+    expect(visibleOf(kept.records, 631, 1)).toEqual([417]);
+    // … and it is the picture of a pointset that only ever held that one point.
+    const one = await drawn(scene({ capacity: 1, kernel: "  q.position = vec3f(1.0, -1.0, 0.0);\n  q.keep = 1.0;", geometry: { group: "p.keep > 0.5" } }));
+    expect(one.args).toEqual([CUBE, 1, 0, 0]);
+    expect(Array.from(kept.bytes)).toEqual(Array.from(one.bytes));
+    expect(mask(kept.bytes)).toEqual(cubes([[1, -1]]));
+    // The wire cut: a Group that keeps them all hands the draw all 631.
+    expect((await drawn(scene({ capacity: 631, kernel: "  q.position = vec3f(f * 0.01 - 3.0, 2.0, 0.0);\n  q.keep = 1.0;", geometry: { group: "p.keep > 0.5" } }))).args).toEqual([CUBE, 631, 0, 0]);
+  }, 180_000);
+
+  it("lists the accepted slots in slot order, whichever invocation found them", async () => {
+    await requireDawn();
+    // 1,000 slots over the pass's 256 invocations is four slots each (and some with none);
+    // one slot in seven is kept. The list is exactly those slots, ascending: the order the
+    // draw instances them in, the same every run.
+    const expected = Array.from({ length: 1000 }, (_, slot) => slot).filter((slot) => slot % 7 === 3);
+    const sparse = await drawn(scene({ capacity: 1000, kernel: "  q.position = vec3f(0.0);\n  q.keep = select(0.0, 1.0, i % 7u == 3u);", geometry: { group: "p.keep > 0.5", scale: 0.25 } }));
+    expect(sparse.args).toEqual([CUBE, expected.length, 0, 0]);
+    expect(visibleOf(sparse.records, 1000, expected.length)).toEqual(expected);
+    // A capacity that does not fill the last invocation's run, every slot kept.
+    const all = await drawn(scene({ capacity: 777, kernel: "  q.position = vec3f(0.0);\n  q.keep = 1.0;", geometry: { group: "p.keep > 0.5", scale: 0.25 } }));
+    expect(all.args).toEqual([CUBE, 777, 0, 0]);
+    expect(visibleOf(all.records, 777, 777)).toEqual(Array.from({ length: 777 }, (_, slot) => slot));
+  }, 180_000);
+
+  it("keeps a material's instanceId and its fields on the POINT'S slot, not on the drawn index", async () => {
+    await requireDawn();
+    // Three points; the middle one is rejected. The two that are drawn are instances 0 and 1
+    // of the draw and slots 0 and 2 of the pointset — and the material is told the slots.
+    const material = {
+      type: "materialWgsl",
+      parameters: {
+        model: "unlit",
+        source: `struct Instance {
+  size: f32, // @default 0
+};
+
+fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
+  var o = surfaceDefaults(s);
+  o.albedo = vec4f(f32(s.instanceId) * 0.2 + 0.2, s.instance.size, 0.0, 1.0);
+  return o;
+}`,
+      },
+    };
+    const kernel = `${THREE}\n  q.keep = select(1.0, 0.0, i == 1u);\n  q.size = f * 0.2 + 0.4;`;
+    const result = await drawn(scene({ kernel, material, geometry: { group: "p.keep > 0.5" } }));
+    expect(result.args).toEqual([CUBE, 2, 0, 0]);
+    // Slot 0: id 0 → 51, size 0.4 → 102. Slot 2: id 2 → 153, size 0.8 → 204.
+    expect(at(result.bytes, -2, 1).slice(0, 2)).toEqual([51, 102]);
+    expect(at(result.bytes, 2, -1).slice(0, 2)).toEqual([153, 204]);
+    expect(mask(result.bytes, (red) => red > 25)).toEqual(cubes([[-2, 1], [2, -1]]));
+  }, 120_000);
+
+  it("counts a counted pointset's LIVE slots, and the Group among those", async () => {
+    await requireDawn();
+    // Eight slots; odd ids die on the first frame, and the four survivors are compacted
+    // into the first four slots, standing at x = id − 3.5.
+    const sim = node(
+      "sim",
+      "pointKernelAdvanced",
+      {
+        capacity: 8,
+        seed: 1,
+        kernel: `fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  if (ctx.frameIndex == 0u) { q.id = ctx.index; }
+  q.position = vec3f(f32(q.id) - 3.5, 0.0, 0.0);
+  q.velocity = vec3f(0.0);
+  if (q.id % 2u == 1u) { q.alive = 0u; }
+  return q;
+}`,
+      },
+      "kernel_sim",
+    );
+    const live = await drawn(scene({ source: sim, geometry: { scale: 0.5 } }), 3);
+    expect(live.args).toEqual([CUBE, 4, 0, 0]);
+    expect(mask(live.bytes)).toEqual(cubes([[-3.5, 0], [-1.5, 0], [0.5, 0], [2.5, 0]], 0.5));
+    // The Group is asked of the live ones only: the two on the right.
+    const right = await drawn(scene({ source: sim, geometry: { scale: 0.5, group: "p.position.x > 0.0" } }), 3);
+    expect(right.args).toEqual([CUBE, 2, 0, 0]);
+    expect(mask(right.bytes)).toEqual(cubes([[0.5, 0], [2.5, 0]], 0.5));
+  }, 180_000);
+
+  it("follows the count from frame to frame, down to none", async () => {
+    await requireDawn();
+    // Frame 0 keeps all three; from frame 1 only the middle one. What was accepted on the
+    // first frame and is not on the second is not drawn on the second.
+    const fading = "  q.keep = select(0.0, 1.0, ctx.frameIndex == 0u || i == 1u);";
+    const first = await drawn(scene({ kernel: `${THREE}\n${fading}`, geometry: { group: "p.keep > 0.5" } }), 1);
+    expect(first.args).toEqual([CUBE, 3, 0, 0]);
+    expect(mask(first.bytes)).toEqual(cubes(THREE_AT));
+    const later = await drawn(scene({ kernel: `${THREE}\n${fading}`, geometry: { group: "p.keep > 0.5" } }), 3);
+    expect(later.args).toEqual([CUBE, 1, 0, 0]);
+    expect(mask(later.bytes)).toEqual(cubes([[0, 0]]));
+    // None kept: the draw runs no instance, and the frame is the backdrop.
+    const none = await drawn(scene({ kernel: `${THREE}\n  q.keep = 0.0;`, geometry: { group: "p.keep > 0.5" } }));
+    expect(none.args).toEqual([CUBE, 0, 0, 0]);
+    expect(mask(none.bytes)).toEqual(cubes([]));
   }, 180_000);
 });

@@ -141,11 +141,10 @@ describe("a Geometry drawing a mesh at every point (T1581b)", () => {
       expect([key, parameters[key]?.inactiveWhen?.(mesh)]).toEqual([key, null]);
       expect([key, typeof parameters[key]?.inactiveWhen?.(box)]).toEqual([key, "string"]);
     }
-    // Group says what a rejected mesh instance still COSTS, where the choice is made: the
-    // zero record draws no pixel and still runs the whole mesh's vertex stage. (F1, the
-    // compaction of accepted instances, removes the cost, this sentence and this line.)
-    expect(parameters["group"]?.description).toContain("A rejected mesh instance is not drawn, but its vertices are still processed");
-    expect(parameters["group"]?.description).toContain("belongs on a pointset of its own");
+    // Group says what it costs on a mesh instance, where the choice is made: nothing for the
+    // instances it rejects, an indirect draw a pass for having one at all.
+    expect(parameters["group"]?.description).toContain("A rejected mesh instance is in no draw and costs nothing");
+    expect(parameters["group"]?.description).toContain("leave it empty on a geometry that draws every point");
     // Mesh is a Shape, and the shape arrives on a second pointset input AFTER points (§V306).
     const shape = parameters["shape"] as { options: ReadonlyArray<{ value: string }> };
     expect(shape.options.map((option) => option.value)).toEqual(["quad", "box", "octahedron", "mesh"]);
@@ -158,10 +157,14 @@ describe("a Geometry drawing a mesh at every point (T1581b)", () => {
     const passes = passesOf(compiled);
     const resolves = passes.filter((pass) => pass.id.includes("instances:resolve"));
     expect(resolves.map((pass) => [pass.id, pass.kind])).toEqual([["geo:instances:resolve", "dispatch"]]);
-    // It reads the points' one packed buffer whole and writes the records: two bindings for
-    // five mapped things (place, orient, size, tint, the group's attribute).
-    expect(resolves[0]?.buffers?.map((buffer) => buffer.binding)).toEqual(["records", "source0"]);
-    expect(resolves[0]?.buffers?.[0]?.resourceId).toBe("scratch:geo:instanceRecords");
+    // It reads the points' one packed buffer whole and writes the records and the draws'
+    // arguments: three bindings for five mapped things (place, orient, size, tint, the
+    // group's attribute).
+    expect(resolves[0]?.buffers?.map((buffer) => buffer.binding)).toEqual(["records", "drawArgs", "source0"]);
+    expect(resolves[0]?.buffers?.map((buffer) => buffer.resourceId).slice(0, 2)).toEqual(["scratch:geo:instanceRecords", "scratch:geo:instanceArgs"]);
+    // F1: this geometry has a Group, so it leaves instances out: ONE dispatch of one workgroup
+    // resolves, compacts and counts — no pass more per Geometry.
+    expect((resolves[0] as DispatchPassDescriptor).workgroups).toEqual([1, 1, 1]);
     // It runs before either Render's draws.
     const firstDraw = passes.findIndex((pass) => pass.kind === "draw" && pass.id.startsWith("shot"));
     expect(passes.findIndex((pass) => pass.id === "geo:instances:resolve")).toBeLessThan(firstDraw);
@@ -170,7 +173,11 @@ describe("a Geometry drawing a mesh at every point (T1581b)", () => {
   it("draws by a buffer per PRODUCER, whatever is mapped (§V588)", () => {
     const plain = passesOf(compile(graph()));
     const loaded = passesOf(compile(graph({ geometry: { instanceTranslate: mapped("place", [0, 0, 0]), orient: mapped("orient", [0, 0, 0, 1]), scale: mapped("size", 1), tint: mapped("tint", [1, 1, 1, 1]), group: "p.keep > 0.5" } })));
-    for (const passes of [plain, loaded]) {
+    // F1: who counts the instances. The plain geometry draws every point, so the CPU knows
+    // the number and the draw is literal. The loaded one has a Group: the GPU counts what it
+    // keeps, and every pass of every Render reads that one count from the geometry's arguments.
+    const counts = [16, { indirect: "scratch:geo:instanceArgs" }] as const;
+    for (const [which, passes] of [plain, loaded].entries()) {
       // The lit draw, the Normal layer and the light's sweep of the one geometry.
       const draws = passes.filter((pass): pass is DrawPassDescriptor => pass.kind === "draw" && /^shot0:(scene|gbuffer|shadow:0):0$/.test(pass.id));
       expect(draws.map((pass) => pass.id).sort()).toEqual(["shot0:gbuffer:0", "shot0:scene:0", "shot0:shadow:0:0"]);
@@ -178,12 +185,51 @@ describe("a Geometry drawing a mesh at every point (T1581b)", () => {
         // The shape's packed buffer, the records, the index list — and nothing per attribute.
         expect([draw.id, draw.buffers?.map((buffer) => buffer.binding)]).toEqual([draw.id, ["packed0", "packed1", "meshIndices"]]);
         expect([draw.id, draw.buffers?.map((buffer) => buffer.resourceId)]).toEqual([draw.id, ["scratch:file:meshPoints", "scratch:geo:instanceRecords", "scratch:file:meshIndices"]]);
-        // One instance per point, the mesh's 12 triangles each.
-        expect([draw.id, draw.instances, draw.vertexCount]).toEqual([draw.id, 16, 36]);
+        // The mesh's 12 triangles, once per counted instance.
+        expect([draw.id, draw.instances, draw.vertexCount]).toEqual([draw.id, counts[which], 36]);
         // The object matrix is already in the records: the draw is handed no model matrix.
         expect([draw.id, draw.uniforms?.["model"]]).toEqual([draw.id, undefined]);
       }
     }
+  });
+
+  it("compacts only a geometry that can leave an instance out: an indirect draw is not free (F1)", () => {
+    const resolveOf = (geometry: Record<string, unknown>) => passesOf(compile(graph({ geometry }))).find((pass) => pass.id === "geo:instances:resolve") as DispatchPassDescriptor;
+    // Every point drawn: the plain pass, a slot an invocation, and nothing for a draw to read a count from.
+    const plain = resolveOf({ orient: mapped("orient", [0, 0, 0, 1]) });
+    expect(plain.buffers?.map((buffer) => buffer.binding)).toEqual(["records", "source0"]);
+    expect(plain.workgroups).toEqual([1, 1, 1]); // 16 slots, 64 to a workgroup
+    expect(String(plain.shader)).not.toContain("workgroupBarrier");
+    expect(String(plain.shader)).toContain("@workgroup_size(64)");
+    // A Group: the compacting pass, its list and its count.
+    const grouped = resolveOf({ group: "p.keep > 0.5" });
+    expect(grouped.buffers?.map((buffer) => buffer.binding)).toEqual(["records", "drawArgs", "source0"]);
+    expect(String(grouped.shader)).toContain("workgroupBarrier");
+    expect(String(grouped.shader)).toContain("@workgroup_size(256)");
+  });
+
+  it("hands a counted pointset's live count to the resolve pass, and asks no Render for arguments (F1)", () => {
+    // The points come from a lifecycle kernel: slots beyond the live count are dead.
+    const counted = (): GraphDocument => {
+      const document = graph({ renders: 2 });
+      const nodes = { ...document.nodes } as Record<string, GraphNode>;
+      nodes["pts"] = node("pts", "pointKernelAdvanced", { capacity: 16, seed: 1 }, "kernel_points");
+      return { ...document, nodes } as never;
+    };
+    const compiled = compile(counted());
+    expect(errors(compiled)).toEqual([]);
+    const passes = passesOf(compiled);
+    const resolve = passes.find((pass) => pass.id === "geo:instances:resolve");
+    expect(resolve?.buffers?.map((buffer) => buffer.binding)).toEqual(["records", "drawArgs", "liveCount", "source0"]);
+    // The live count is rejected with the Group's, once, by the geometry: neither Render
+    // builds arguments of its own for these draws (the per-Render dispatch a counted
+    // primitive still needs), and both draw off the geometry's.
+    expect(passes.filter((pass) => /drawArgs/.test(pass.id)).map((pass) => pass.id)).toEqual([]);
+    const lit = passes.filter((pass): pass is DrawPassDescriptor => pass.kind === "draw" && /^shot\d:scene:0$/.test(pass.id));
+    expect(lit.map((pass) => [pass.id, pass.instances])).toEqual([
+      ["shot0:scene:0", { indirect: "scratch:geo:instanceArgs" }],
+      ["shot1:scene:0", { indirect: "scratch:geo:instanceArgs" }],
+    ]);
   });
 
   it("leaves Quad, Box and Octahedron on the generator they had", () => {

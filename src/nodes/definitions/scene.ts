@@ -1,4 +1,4 @@
-import type { CompiledNodeDescription, NodeDefinition } from "../../domain/types/node-definition.ts";
+import type { CompiledNodeDescription, NodeDefinition, ScratchRequest } from "../../domain/types/node-definition.ts";
 import type { ParameterSchema } from "../../domain/types/parameters.ts";
 import { storedStaticValue } from "../../domain/parameters/slots.ts";
 import { instanceShapeIndex, parseInstanceShape } from "./render-instances.ts";
@@ -18,7 +18,7 @@ import { readColor, readNumber, readVector } from "./parameter-readers.ts";
 import { countedDrawSupport, resolveColorMap, resolveScalarMap } from "./points.ts";
 import { attributeBinding } from "./point-storage.ts";
 import { instanceRecordStorage, isPackedType, packedGroups } from "./instance-records.ts";
-import { instanceResolveWgsl, RESOLVE_RECORDS_BINDING, RESOLVE_SOURCE_PREFIX, type InstanceResolveOptions } from "../shaders/instance-resolve.wgsl.ts";
+import { instanceResolveWgsl, RESOLVE_ARGS_BINDING, RESOLVE_LIVE_BINDING, RESOLVE_RECORDS_BINDING, RESOLVE_SOURCE_PREFIX, resolveWorkgroups, type InstanceResolveOptions } from "../shaders/instance-resolve.wgsl.ts";
 import { bindInstanceAttributes } from "./instance-attributes.ts";
 import { applyMaterialOverrides } from "./material-overrides.ts";
 import {
@@ -742,13 +742,11 @@ const GEOMETRY_PARAMETERS: ParameterSchema = {
       "Mesh instances under a Material · WGSL that declares `struct Instance`: each field already takes the points' attribute of the SAME NAME and type, so most scenes leave this empty. One `field = attribute` per line (or `;`) binds another attribute, and `field = attribute.x` takes one channel of a float vector into an f32 field. A field nothing binds reads its `// @default`. A field the material does not declare, an attribute the points do not carry, a type that does not match, and a field with neither attribute nor default each refuse by name.",
   },
   /*
-   * The last two sentences of the description are a COST, said where the choice is made.
-   * A rejected mesh instance is a zero record: no pixel, but the draw still runs the whole
-   * mesh's vertex stage for it. Measured by the first consumer: one 152,490-vertex hull
-   * behind a predicate keeping 1 of 631 points was 400 ms a frame, and 5 ms on a pointset
-   * of its own. F1 (docs/mesh-instancing-design-2026-10-05.md, section 8: compaction of the
-   * accepted instances into the draw's instance count) removes the cost; landing it deletes
-   * those sentences and the test that pins them.
+   * The description's last sentence is a COST, said where the choice is made (F1): a mesh
+   * instance geometry with a Group compacts, and its draws are indirect — about 0.05 ms of
+   * GPU a pass on the machine it was measured on (docs/geometry-cost-profile-2026-10-05.md).
+   * The first consumer's documents carried a Group that rejected nothing on thirteen
+   * geometries, fifteen passes each.
    */
   group: {
     type: "string",
@@ -756,7 +754,7 @@ const GEOMETRY_PARAMETERS: ParameterSchema = {
     default: "",
     compileTime: true,
     description:
-      "T642/T333: draw only matching points — a WGSL predicate over p.<attribute>, e.g. p.hit > 0.5. Instances, Points and Beam modes; referenced attributes bind on demand from the edge. Empty = all. On mesh instances it is decided once per instance (not per vertex), and two Geometries over one pointset with complementary predicates draw two shapes. A rejected mesh instance is not drawn, but its vertices are still processed: the cost is the mesh times ALL the points, not times the ones kept. A big mesh that keeps a few of many points belongs on a pointset of its own.",
+      "T642/T333: draw only matching points — a WGSL predicate over p.<attribute>, e.g. p.hit > 0.5. Instances, Points and Beam modes; referenced attributes bind on demand from the edge. Empty = all. On mesh instances it is decided once per instance (not per vertex), and two Geometries over one pointset with complementary predicates draw two shapes. A rejected mesh instance is in no draw and costs nothing: a big mesh may keep one point of many. The Group itself is not free there: the instance count is then read on the GPU, an indirect draw in every pass, so leave it empty on a geometry that draws every point.",
   },
 };
 
@@ -1177,7 +1175,7 @@ export const geometryNode: NodeDefinition = {
      * so nothing downstream evaluates any of them again.
      */
     let instanceMesh: GeometryPayload["instanceMesh"];
-    let resolve: { pass: DispatchPassDescriptor; scratch: { kind: "buffer"; key: string; stride: number; capacity: number } } | undefined;
+    let resolve: { pass: DispatchPassDescriptor; scratch: ScratchRequest[] } | undefined;
     if (meshShape) {
       const refuseShape = (message: string, suggestion: string): CompiledNodeDescription => ({
         passes: [],
@@ -1217,8 +1215,16 @@ export const geometryNode: NodeDefinition = {
         pointset.pairs,
       );
       if ("diagnostics" in custom) return { passes: [], diagnostics: custom.diagnostics };
+      /*
+       * F1: can this geometry leave an instance out? Only then does it compact — list and
+       * count what it draws, and draw indirect. A geometry that draws every point keeps a
+       * literal count: an indirect draw is not free (instance-resolve.wgsl.ts has the figure),
+       * and a Render draws a geometry in up to fifteen passes.
+       */
+      const compact = resolvedGroup !== undefined || pointset.count !== undefined;
       const records = instanceRecordStorage(nodeId, pointset.capacity, {
         tint: tintMap !== undefined,
+        compact,
         fields: custom.bound.map((field) => ({ name: field.name, type: field.type })),
       });
       if (!records.ok) return refuseShape(records.errors.join(" "), "Lower the point capacity.");
@@ -1248,6 +1254,8 @@ export const geometryNode: NodeDefinition = {
         ...(custom.bound.length === 0
           ? {}
           : { fields: custom.bound.map((field) => ({ name: field.name, read: sources.read(field.source, field.sourceType), ...(field.channel === undefined ? {} : { channel: field.channel }) })) }),
+        /* F1: a counted pointset's dead slots are rejected here, with the Group's. */
+        ...(pointset.count === undefined ? {} : { counted: true }),
         record: records.offsets,
         groups: 0,
       };
@@ -1259,8 +1267,15 @@ export const geometryNode: NodeDefinition = {
           id: `${nodeId}:instances:resolve`,
           shader: instanceResolveWgsl({ ...reads, groups: sources.count }),
           entryPoint: "main",
-          workgroups: [Math.ceil(pointset.capacity / 64), 1, 1],
-          buffers: [{ binding: RESOLVE_RECORDS_BINDING, resourceId: records.resourceId }, ...sources.bindings(RESOLVE_SOURCE_PREFIX)],
+          /* F1: compacting, ONE workgroup — its invocations share the count of what they
+             accept, which is what lets one dispatch resolve, compact and count. */
+          workgroups: resolveWorkgroups(compact, pointset.capacity),
+          buffers: [
+            { binding: RESOLVE_RECORDS_BINDING, resourceId: records.resourceId },
+            ...(records.args === undefined ? [] : [{ binding: RESOLVE_ARGS_BINDING, resourceId: records.args.resourceId }]),
+            ...(pointset.count === undefined ? [] : [{ binding: RESOLVE_LIVE_BINDING, resourceId: pointset.count.buffer }]),
+            ...sources.bindings(RESOLVE_SOURCE_PREFIX),
+          ],
           uniforms: {
             object0: objectRow(0),
             object1: objectRow(1),
@@ -1268,16 +1283,18 @@ export const geometryNode: NodeDefinition = {
             translate: [...instanceTranslate, 0],
             scale: [readNumber(parameters, "scale", 1), 0, 0, 0],
             count: pointset.capacity,
+            vertexCount: shapeTopology.triangles * 3,
           },
           uniformBinding: "params",
           nodeId,
         },
-        scratch: records.scratch,
+        scratch: [records.scratch, ...(records.args === undefined ? [] : [records.args.scratch])],
       };
       instanceMesh = {
         pairs: shape.pairs,
         triangles: shapeTopology.triangles,
         indexBuffer: shapeTopology.indexBuffer,
+        ...(records.args === undefined ? {} : { drawArgs: records.args.resourceId }),
         records: { buffer: records.resourceId, ...records.offsets },
       };
     }
@@ -1329,11 +1346,21 @@ export const geometryNode: NodeDefinition = {
       material,
     };
     if (resolve !== undefined) {
-      return { passes: [resolve.pass], scratch: [resolve.scratch], scene: { out: payload } } as CompiledNodeDescription;
+      return { passes: [resolve.pass], scratch: resolve.scratch, scene: { out: payload } } as CompiledNodeDescription;
     }
     return { passes: [], scene: { out: payload } } as CompiledNodeDescription;
   },
 };
+
+/**
+ * F1 — how many instances a mesh-instance draw runs, in every pass of every Render: the
+ * count its geometry resolved this frame (the live points its Group keeps), read by the GPU
+ * from the geometry's own arguments; or, for a geometry that leaves nothing out, every slot.
+ */
+function meshInstanceCount(payload: GeometryPayload): DrawPassDescriptor["instances"] {
+  const drawArgs = payload.instanceMesh?.drawArgs;
+  return drawArgs === undefined ? payload.capacity : { indirect: drawArgs };
+}
 
 /**
  * T1581b — what a MESH-INSTANCE draw binds and reads: the shape's vertex attributes and the
@@ -1916,24 +1943,6 @@ export const renderNode: NodeDefinition = {
     ] as const;
 
     /*
-     * T1581b: how many instances a mesh-instance draw draws — the capacity, or, for a
-     * counted pointset, the indirect arguments off its GPU-resident live count (T478's
-     * machinery, one args buffer per geometry shared by every pass that draws it).
-     */
-    const countedInstances = (geometryIndex: number, payload: GeometryPayload, vertexCount: number): DrawPassDescriptor["instances"] => {
-      let counted = countedByIndex.get(geometryIndex);
-      if (counted === undefined) {
-        counted = countedDrawSupport(nodeId, payload, { vertexCount, maxInstances: Math.max(1, payload.capacity), argsKey: `drawArgs${geometryIndex}` });
-        if (counted !== undefined) {
-          countedByIndex.set(geometryIndex, counted);
-          passes.push(counted.argsPass);
-          scratch.push(counted.scratch);
-        }
-      }
-      return counted?.instances ?? payload.capacity;
-    };
-
-    /*
      * T1588b — THE ONE PLACE A PASS GETS ITS MODEL MATRIX: the geometry's own
      * `objectMatrix` (composed by the Geometry node) and, for the passes that light,
      * its normal matrix. Every surface draw below spreads one of these two.
@@ -2112,7 +2121,7 @@ export const renderNode: NodeDefinition = {
             shader: depthShader(shadowMeshWgsl({ ...depthOptions, instanced: storage.option })),
             target: options.target,
             topology: "triangle-list",
-            instances: countedInstances(geometryIndex, payload, vertexCount),
+            instances: meshInstanceCount(payload),
             vertexCount,
             buffers: storage.buffers,
             uniforms: {
@@ -3030,7 +3039,7 @@ export const renderNode: NodeDefinition = {
         ...(material.custom === undefined ? {} : { sharedBinding: CUSTOM_SURFACE_FRAME_BINDING }),
         target,
         topology: "triangle-list",
-        instances: instancedStorage === undefined ? 1 : countedInstances(index, payload, vertexCount),
+        instances: instanceMesh === undefined ? 1 : meshInstanceCount(payload),
         vertexCount,
         buffers:
           instancedStorage !== undefined
