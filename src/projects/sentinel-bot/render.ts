@@ -16,6 +16,7 @@ import { loadKit } from "./load-kit.ts";
  *     [--set joints.crawl=0.5,speed.value=6]   parameter overrides by node id
  *     [--cam=-7.5,1.1,0.6]          the chase shot, placed: metres ahead of the robot, right, up
  *     [--robots 3]                  the first N of the pack (document.ts, PACK); default the leader alone
+ *     [--tier offline]              shadows and hinged claws (document.ts, tier); default live, what the app runs
  *     [--shot 3]                    hold one of the rig's shots (camera.ts): 0 chase, 1 lead, 2 flank, 3 post, 4 circle
  *     [--tag name]                  file name prefix
  *
@@ -47,7 +48,7 @@ const overrides = (flag("set") ?? "").split(",").filter((entry) => entry !== "")
 
 const { facts, glb } = loadKit(glbPath, "media/sentinel-bot/sentinel.glb");
 const camera = flag("cam")?.split(",").map(Number);
-const built = sentinelDocument(facts, { width, height, robots: PACK.slice(0, Number(flag("robots") ?? 1)) });
+const built = sentinelDocument(facts, { width, height, robots: PACK.slice(0, Number(flag("robots") ?? 1)), tier: flag("tier") === "offline" ? "offline" : "live" });
 // The camera's place is the panel's: the chase shot held, its distance (metres behind) and its side / height pad.
 if (camera !== undefined) overrides.push({ nodeId: "toggle_cuts", parameter: "on", value: false }, { nodeId: "slider_shot", parameter: "value", value: 0 }, { nodeId: "distance", parameter: "value", value: -(camera[0] ?? 0) }, { nodeId: "view", parameter: "x", value: camera[1] ?? 0 }, { nodeId: "view", parameter: "y", value: camera[2] ?? 0 });
 const shot = flag("shot");
@@ -74,7 +75,8 @@ const result = await renderHeadless({
   outputNodeId: "out",
   // The value graph and the expressions (travel, camera, lights) only run when asked.
   animate: true,
-  meshes: { robot: glb },
+  // Every Mesh File In of the document reads the one kit.
+  meshes: Object.fromEntries(Object.values(document.graph.nodes).filter((entry) => entry.type === "meshFileIn").map((entry) => [entry.id, glb])),
 });
 // An ERROR is a broken graph: stop loud, before reading a picture of a robot parked on its rest pose.
 const errors = [...new Set(result.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code}: ${d.message}`))];

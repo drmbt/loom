@@ -8,7 +8,7 @@ export const HULL_SURFACE_WGSL = `struct Params {
   gloss: f32, // @default 0.16  Roughness of the black shell: lower is wetter.
   eyeGlow: f32, // @default 9  Radiance of the eye lenses.
   eyeColor: vec3f, // @default [1, 0.06, 0.03]  Their colour.
-  coreGlow: f32, // @default 1.5  Radiance of the red cores.
+  coreGlow: f32, // @default 0.4  Radiance of the red cores: a dull glow between the rings, not a neon tube.
 };
 
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {

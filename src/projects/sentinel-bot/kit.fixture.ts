@@ -7,8 +7,12 @@ import type { KitFacts } from "./kit.ts";
  */
 export const KIT_FIXTURE: KitFacts = {
   glbUrl: "media/sentinel-bot/sentinel.glb",
-  // The rig never reads the body's selection; a test that draws the body must load the kit.
+  // The rig never reads the meshes' selections; a test that draws them must load the kit.
   robot: { select: "", vertices: 0, triangles: 0, parts: "" },
+  ring: { select: "", vertices: 0, triangles: 0, parts: "" },
+  hub: { select: "", vertices: 0, triangles: 0, parts: "" },
+  claw: { select: "", vertices: 0, triangles: 0, parts: "" },
+  phalanxMeshes: [],
   sockets: [
     [0.37341, 0.17407, -0.37004],
     [-0.31631, 0.27334, -0.37004],

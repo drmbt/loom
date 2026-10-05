@@ -39,8 +39,16 @@ export interface Phalanx {
 export interface KitFacts {
   /** Where the app fetches the GLB (a path under public/). */
   readonly glbUrl: string;
-  /** Everything that rides the body rigidly: hull, eyes, lamp, front arms. */
+  /** Everything that rides the body rigidly: hull, eyes, lamp, front arms. Robot frame. */
   readonly robot: MeshSelectionFacts;
+  /** One tentacle ring, in its joint frame: the shape drawn at every ring joint. */
+  readonly ring: MeshSelectionFacts;
+  /** The claw's cone, in its joint frame. */
+  readonly hub: MeshSelectionFacts;
+  /** The whole claw as one rigid piece, fingers at rest, in the hub's joint frame. */
+  readonly claw: MeshSelectionFacts;
+  /** Each phalanx's own mesh, in its joint frame, indexed finger * 2 + link like `phalanges`. */
+  readonly phalanxMeshes: readonly MeshSelectionFacts[];
   /** Robot frame: where each tentacle leaves the body. */
   readonly sockets: readonly Vec3[];
   readonly ringCount: number;
@@ -77,8 +85,15 @@ function info(marker: DecodedMarker, key: string): number {
   return value;
 }
 
-/** `robot` is the kit decoded with `ROBOT_SELECT`; `nodes` is the GLB's own node list (the hinges ride on mesh nodes, as extras). */
-export function kitFactsFrom(glbUrl: string, robot: DecodedMesh, nodes: readonly GltfNodeLike[]): KitFacts {
+export function selectionFacts(select: string, mesh: DecodedMesh): MeshSelectionFacts {
+  return { select, vertices: mesh.vertexCount, triangles: mesh.triangleCount, parts: mesh.parts.map((part) => `${part.index}:${part.name}`).join(" ") };
+}
+
+/**
+ * `robot` is the kit decoded with `ROBOT_SELECT`; `shape` decodes one more selection (a ring,
+ * the hub, a phalanx); `nodes` is the GLB's own node list (the hinges ride on mesh nodes, as extras).
+ */
+export function kitFactsFrom(glbUrl: string, robot: DecodedMesh, shape: (select: string) => DecodedMesh, nodes: readonly GltfNodeLike[]): KitFacts {
   const markers = new Map(robot.markers.map((marker) => [marker.name, marker]));
   const kit = markers.get("kit.info");
   if (kit === undefined) throw new Error("The GLB has no kit.info marker: it is not a sentinel kit.");
@@ -111,12 +126,11 @@ export function kitFactsFrom(glbUrl: string, robot: DecodedMesh, nodes: readonly
     .map((marker) => ({ position: marker.position, radius: typeof marker.extras?.["loom_radius"] === "number" ? marker.extras["loom_radius"] : 0 }));
   return {
     glbUrl,
-    robot: {
-      select: ROBOT_SELECT,
-      vertices: robot.vertexCount,
-      triangles: robot.triangleCount,
-      parts: robot.parts.map((part) => `${part.index}:${part.name}`).join(" "),
-    },
+    robot: selectionFacts(ROBOT_SELECT, robot),
+    ring: selectionFacts("ring", shape("ring")),
+    hub: selectionFacts("hub", shape("hub")),
+    claw: selectionFacts("claw", shape("claw")),
+    phalanxMeshes: phalanges.map((phalanx) => selectionFacts(`phalanx_${phalanx.finger}_${phalanx.link}`, shape(`phalanx_${phalanx.finger}_${phalanx.link}`))),
     sockets,
     ringCount: info(kit, "ring_count"),
     ringPitch: info(kit, "ring_pitch"),

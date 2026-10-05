@@ -6,7 +6,7 @@ import { renderHeadless } from "../../tests/headless/render-harness.ts";
 import { edge, graph, node, settings } from "../../examples/documents/builders.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 import { CHAMBERS, chamberAt, pathAt } from "./path.ts";
-import { JOINT_ATTRIBUTES, jointCount, jointKernel, stationsPerTentacle } from "./rig.ts";
+import { JOINT_ATTRIBUTES, jointCount, jointKernel, spinePick } from "./rig.ts";
 import { BORE_ATTRIBUTES, BORE_KERNEL } from "./tunnel.ts";
 
 /**
@@ -28,8 +28,10 @@ beforeAll(async () => {
 
 const FACTS = KIT_FIXTURE;
 const TENTACLES = FACTS.sockets.length;
-const STATIONS = stationsPerTentacle(FACTS);
-const PER_ROBOT = jointCount(FACTS);
+/** The spine of every tentacle: its ring joints, then its hub. Station `ringCount` is the wrist. */
+const SPINE = spinePick(FACTS);
+const STATIONS = FACTS.ringCount + 1;
+const PER_ROBOT = jointCount(FACTS, SPINE);
 /** Two full strides at the default 3.2 m: every tentacle plants, holds, lets go and swings twice. */
 const SPAN = 6.4;
 
@@ -49,7 +51,7 @@ async function walk(instants: number, parameters: Record<string, number | number
   const step = SPAN / instants;
   const robots = Array.from({ length: instants }, (_, index) => [0, 0, index * step] as const);
   // No wave: it is a deliberate departure from the arc, measured on its own below.
-  const joints = node("joints", "pointKernel", [0, 0], { capacity: PER_ROBOT * instants, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(FACTS, robots), variety: 0, wave: 0, ...parameters });
+  const joints = node("joints", "pointKernel", [0, 0], { capacity: PER_ROBOT * instants, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(FACTS, robots, SPINE), variety: 0, wave: 0, ...parameters });
   const result = await renderHeadless({
     host: nodeGpuHost(),
     graph: graph(

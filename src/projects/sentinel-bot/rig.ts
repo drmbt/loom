@@ -9,11 +9,11 @@ import { PATH, pathWgsl } from "./path.ts";
  * ten tentacles), carrying a position, an orientation and what kind of joint it is. Whatever
  * draws a joint instances a mesh on its point. That is the TouchDesigner shape (a point
  * operator feeding a Geometry COMP's instancing) and the Notch shape (a cloner under
- * effectors), and it is why the rig costs 630 evaluations a frame however dense the ring
- * mesh is. Every point is the JOINT itself, in the kit's joint frame (+Z toward the tip, +Y the
+ * effectors), and it is why the rig costs 631 evaluations a frame however dense the ring
+ * mesh is. The 631st is the robot itself: one point where its body is and how it is turned,
+ * so the hull is one more instance and a pack of robots is a few more points. Every point is the JOINT itself, in the kit's joint frame (+Z toward the tip, +Y the
  * frame's normal: the curve family's convention, docs/curve-family-design-2026-10-05.md R5), which
- * is where an instanced ring, hub or phalanx has its origin. Until a mesh can be instanced
- * (§T1581b) the joints are drawn as boxes centred on them.
+ * is where an instanced ring, hub or phalanx has its origin (§T1581b).
  *
  * Every joint is CLOSED FORM: a function of the distance travelled, the clock and a few
  * knobs, with no state carried between frames. So it cannot drift or explode, a frame is
@@ -51,10 +51,30 @@ export function stationsPerTentacle(facts: KitFacts): number {
   return facts.ringCount + 1 + facts.fingers * 2;
 }
 
-/** Joints of ONE robot; a rig of several holds them robot after robot. */
-export function jointCount(facts: KitFacts): number {
-  return facts.sockets.length * stationsPerTentacle(facts);
+/**
+ * WHICH of a robot's points a kernel writes. A draw instances its mesh on every point of its
+ * pointset, and a point it does not want still costs the whole mesh in the vertex stage
+ * (nothing culls an instance yet, §T1592b), so each piece gets a pointset of exactly its own
+ * points: a run of `count` stations of every tentacle starting at `first`, or the robot's body.
+ * 631 hull instances with 630 turned away measured 400 ms a frame; one, 5.
+ */
+export type Pick = { readonly first: number; readonly count: number } | "body";
+
+/** The ring joints and the hub of every tentacle: the strip a curve would be (§T1586b). */
+export function spinePick(facts: KitFacts): Pick {
+  return { first: 0, count: facts.ringCount + 1 };
 }
+
+/** Points ONE robot has in a pick; a rig of several holds them robot after robot. */
+export function jointCount(facts: KitFacts, pick: Pick): number {
+  return pick === "body" ? 1 : facts.sockets.length * pick.count;
+}
+
+/**
+ * What a point is, as its `kind`: what each draw's Group picks its points by. A phalanx is
+ * `phalanx + finger × 2 + link`; a ring still stowed in the body is −1 and nothing draws it.
+ */
+export const KIND = { ring: 0, hub: 1, phalanx: 2, body: 10 } as const;
 
 /** Metres between the rungs a claw may plant on; divides the path's period, so the wrap lands on one. Every fourth is a rib of the tunnel (tunnel.ts). */
 export const RUNG_SPACING = 0.4;
@@ -64,25 +84,13 @@ const CLAW_REACH = 0.19;
 export const JOINT_ATTRIBUTES = JSON.stringify([
   { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
   { name: "orient", type: "vec4f", qualifier: "quaternion", default: [0, 0, 0, 1] },
-  // rgb, and the joint's size in w (the box stand-in's edge, as a multiple of the draw's Scale).
-  { name: "tint", type: "vec4f", semantic: "color", qualifier: "color", default: [1, 1, 1, 1] },
-  // 0 ring, 1 hub, 2 phalanx: what a draw's Group picks its joints by.
-  { name: "kind", type: "f32", default: [0] },
+  // What the point is (KIND): what a draw's Group picks its points by.
+  { name: "kind", type: "f32", default: [-1] },
   // Metres between the claw's mouth and where the gait wants it; zero while its rung is in reach.
   { name: "slip", type: "f32", default: [0] },
 ]);
 
-/** Every mesh attribute, so the body's material data rides through the kernel that places it. */
-export const BODY_ATTRIBUTES = JSON.stringify([
-  { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
-  { name: "normal", type: "vec3f", qualifier: "direction", default: [0, 1, 0] },
-  { name: "uv", type: "vec2f", default: [0, 0] },
-  { name: "color", type: "vec4f", semantic: "color", qualifier: "color", default: [1, 1, 1, 1] },
-  { name: "surface", type: "vec4f", default: [1, 0, 0, 0] },
-  { name: "emissive", type: "vec3f", qualifier: "color", default: [0, 0, 0] },
-]);
-
-/** The knobs that say where the robot is. Both kernels declare them first, under these names. */
+/** The knobs that say where the robot is. */
 const PLACE_PARAMS = `  travel: f32, // @default 0  Distance travelled along the tunnel, metres.
   offset: vec3f, // @default 0  The robot's place off the tunnel's axis: right, up, ahead (metres).
   roll: f32, // @default 0  Roll about its own heading, radians.
@@ -127,20 +135,6 @@ fn robotFrame(z: f32, offset: vec3f, roll: f32, look: vec2f, time: f32) -> Frame
 }
 `;
 
-/** The body, eyes and front arms ride the robot frame rigidly. */
-export const BODY_KERNEL = `// T1561b — the sentinel's body: the kit's robot frame, set down in the tunnel.
-struct Params {
-${PLACE_PARAMS}
-};
-${ROBOT_FRAME}
-fn process(p: Point, ctx: PointCtx) -> Point {
-  var q = p;
-  let frame = robotFrame(robotZ(ctx.params.travel, ctx.params.offset, ctx.params.swim, ctx.params.stroke), ctx.params.offset, ctx.params.roll, ctx.params.look, ctx.absTime);
-  q.position = frame.origin + frame.right * p.position.x + frame.up * p.position.y + frame.forward * p.position.z;
-  q.normal = normalize(frame.right * p.normal.x + frame.up * p.normal.y + frame.forward * p.normal.z);
-  return q;
-}`;
-
 /**
  * Where on the bore each tentacle plants: the sockets' own order around the body, spread
  * evenly, so neighbours on the body are neighbours on the wall and no two tentacles cross to
@@ -161,9 +155,10 @@ function wallAngles(facts: KitFacts): { angle: number[]; rank: number[] } {
 /**
  * `robots` places each robot of the pack off the pack's own place: right, up, ahead (metres).
  * A table baked into the kernel, because a kernel reads one pointset and its knobs are scalars:
- * when it can read a second pointset (§T1582b) the robots become points and this a lookup.
+ * when it can read a second pointset (§T1582b) the robots become points and this a lookup,
+ * and the kernels of the several picks one kernel whose points the others read.
  */
-export function jointKernel(facts: KitFacts, robots: readonly Vec3[] = [[0, 0, 0]]): string {
+export function jointKernel(facts: KitFacts, robots: readonly Vec3[], pick: Pick): string {
   if (robots.length === 0) throw new Error("jointKernel: a rig needs at least one robot.");
   const tentacles = facts.sockets.length;
   const stations = stationsPerTentacle(facts);
@@ -177,7 +172,8 @@ export function jointKernel(facts: KitFacts, robots: readonly Vec3[] = [[0, 0, 0
   if (Math.abs(rungs * RUNG_SPACING - PATH.period) > 1e-6) throw new Error(`jointKernel: the rung spacing ${RUNG_SPACING} m does not divide the path's ${PATH.period} m period.`);
   const list = (values: readonly number[]): string => values.map((value) => value.toFixed(5)).join(", ");
   const phalanges = facts.phalanges.length;
-  return `// T1561b — the sentinel's joints (generated by src/projects/sentinel-bot/rig.ts from the kit).
+  return `// @use quat
+// T1561b — the sentinel's joints (generated by src/projects/sentinel-bot/rig.ts from the kit).
 struct Params {
 ${PLACE_PARAMS}
   crawl: f32, // @default 1  How many of the tentacles walk the wall: 0 none (all trail behind), 1 every one.
@@ -196,6 +192,11 @@ ${PLACE_PARAMS}
 };
 ${ROBOT_FRAME}
 const ROBOTS: u32 = ${robots.length}u;
+// Which of a robot's points this kernel writes (rig.ts, Pick).
+const PICK_BODY: bool = ${pick === "body"};
+const PICK_FIRST: u32 = ${pick === "body" ? 0 : pick.first}u;
+const PICK_COUNT: u32 = ${pick === "body" ? 1 : pick.count}u;
+const ROBOT_POINTS: u32 = ${jointCount(facts, pick)}u;
 const ROBOT_OFFSET = array<vec3f, ${robots.length}>(${robots.map(wgslVec3).join(", ")});
 const TENTACLES: u32 = ${tentacles}u;
 const RINGS: u32 = ${facts.ringCount}u;
@@ -214,38 +215,6 @@ const PHALANX_JOINT = array<vec3f, ${phalanges}>(${facts.phalanges.map((phalanx)
 const PHALANX_REST = array<vec4f, ${phalanges}>(${facts.phalanges.map((phalanx) => wgslVec4(phalanx.rest)).join(", ")});
 const PHALANX_AXIS = array<vec3f, ${phalanges}>(${facts.phalanges.map((phalanx) => wgslVec3(phalanx.axis)).join(", ")});
 const PHALANX_RANGE = array<vec2f, ${phalanges}>(${facts.phalanges.map((phalanx) => `vec2f(${phalanx.range[0].toFixed(5)}, ${phalanx.range[1].toFixed(5)})`).join(", ")});
-
-fn axisAngle(axis: vec3f, angle: f32) -> vec4f {
-  return vec4f(normalize(axis) * sin(angle * 0.5), cos(angle * 0.5));
-}
-
-// Hamilton product (a ⊗ b): b first, then a — the draw's active, right-handed convention.
-fn qmul(a: vec4f, b: vec4f) -> vec4f {
-  return vec4f(a.w * b.xyz + b.w * a.xyz + cross(a.xyz, b.xyz), a.w * b.w - dot(a.xyz, b.xyz));
-}
-
-fn qrot(q: vec4f, v: vec3f) -> vec3f {
-  return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
-}
-
-// The rotation whose columns are x, y, z (an orthonormal, right-handed frame).
-fn quatFromFrame(x: vec3f, y: vec3f, z: vec3f) -> vec4f {
-  let trace = x.x + y.y + z.z;
-  if (trace > 0.0) {
-    let s = sqrt(trace + 1.0) * 2.0;
-    return vec4f((y.z - z.y) / s, (z.x - x.z) / s, (x.y - y.x) / s, 0.25 * s);
-  }
-  if (x.x > y.y && x.x > z.z) {
-    let s = sqrt(1.0 + x.x - y.y - z.z) * 2.0;
-    return vec4f(0.25 * s, (y.x + x.y) / s, (z.x + x.z) / s, (y.z - z.y) / s);
-  }
-  if (y.y > z.z) {
-    let s = sqrt(1.0 + y.y - x.x - z.z) * 2.0;
-    return vec4f((y.x + x.y) / s, 0.25 * s, (z.y + y.z) / s, (z.x - x.z) / s);
-  }
-  let s = sqrt(1.0 + z.z - x.x - y.y) * 2.0;
-  return vec4f((z.x + x.z) / s, (z.y + y.z) / s, 0.25 * s, (x.y - y.x) / s);
-}
 
 // Integer hashes: a plant must be the same rung on every driver, which fract(sin(x)) does not promise.
 fn mix32(v: u32) -> u32 {
@@ -320,18 +289,27 @@ fn plant(tentacle: u32, step: f32, stride: f32, bodyZ: f32, own: f32, seed: u32,
 
 fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
-  let robot = ctx.index / (TENTACLES * STATIONS);
+  q.slip = 0.0;
+  let robot = ctx.index / ROBOT_POINTS;
   if (robot >= ROBOTS) {
     q.kind = -1.0;
     return q;
   }
-  let tentacle = (ctx.index / STATIONS) % TENTACLES;
-  let station = ctx.index % STATIONS;
+  let place = ctx.index % ROBOT_POINTS;
+  let tentacle = place / PICK_COUNT;
+  let station = PICK_FIRST + place % PICK_COUNT;
   let params = ctx.params;
   let offset = params.offset + ROBOT_OFFSET[robot];
   let swimming = swimAt(params.swim, params.travel + offset.z);
   let bodyZ = robotZ(params.travel, offset, params.swim, params.stroke);
   let body = robotFrame(bodyZ, offset, params.roll, params.look, ctx.absTime);
+  if (PICK_BODY) {
+    // The robot's own point: where its body is and how it is turned (the kit's robot frame: +Z forward, +Y up).
+    q.position = body.origin;
+    q.orient = quatFromFrame(body.right, body.up, body.forward);
+    q.kind = ${KIND.body}.0;
+    return q;
+  }
   let socket = SOCKET[tentacle];
   let root = body.origin + body.right * socket.x + body.up * socket.y + body.forward * socket.z;
   let radial = normalize(body.right * socket.x + body.up * socket.y);
@@ -420,19 +398,16 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let mouth = along(bend, run);
   q.slip = grab * distance(root + out * mouth.x + plane * mouth.y, walking);
 
-  let shade = 0.5 + 0.5 * chance(tentacle, 7u, 3u);
   if (ring) {
     q.position = at;
     q.orient = frame;
-    q.tint = vec4f(vec3f(0.5, 0.52, 0.56) * shade, 1.0);
-    q.kind = 0.0;
+    q.kind = ${KIND.ring}.0;
     return q;
   }
   if (station == RINGS) {
     q.position = at;
     q.orient = frame;
-    q.tint = vec4f(0.6, 0.62, 0.66, 2.0);
-    q.kind = 1.0;
+    q.kind = ${KIND.hub}.0;
     return q;
   }
   // ── The claw: each phalanx on its carrier, turned about its hinge ──
@@ -441,18 +416,17 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   // A planted claw grips; one that holds nothing hangs open, shuts on Snap, and works idly while it feels about.
   let idle = clamp(params.snap + reaching * (0.5 + 0.5 * sin(ctx.absTime * 2.6 + own)) * 0.6, 0.0, 1.0);
   let closed = mix(idle * (1.0 - grab), params.grip, planted);
-  let knuckleFrame = qmul(qmul(frame, axisAngle(PHALANX_AXIS[knuckle], mix(PHALANX_RANGE[knuckle].x, PHALANX_RANGE[knuckle].y, closed))), PHALANX_REST[knuckle]);
-  let knuckleAt = at + qrot(frame, PHALANX_JOINT[knuckle]);
+  let knuckleFrame = quatMul(quatMul(frame, quatAxisAngle(PHALANX_AXIS[knuckle], mix(PHALANX_RANGE[knuckle].x, PHALANX_RANGE[knuckle].y, closed))), PHALANX_REST[knuckle]);
+  let knuckleAt = at + quatRotate(frame, PHALANX_JOINT[knuckle]);
   var jointFrame = knuckleFrame;
   var jointAt = knuckleAt;
   if (which % 2u == 1u) {
-    jointFrame = qmul(qmul(knuckleFrame, axisAngle(PHALANX_AXIS[which], mix(PHALANX_RANGE[which].x, PHALANX_RANGE[which].y, closed))), PHALANX_REST[which]);
-    jointAt = knuckleAt + qrot(knuckleFrame, PHALANX_JOINT[which]);
+    jointFrame = quatMul(quatMul(knuckleFrame, quatAxisAngle(PHALANX_AXIS[which], mix(PHALANX_RANGE[which].x, PHALANX_RANGE[which].y, closed))), PHALANX_REST[which]);
+    jointAt = knuckleAt + quatRotate(knuckleFrame, PHALANX_JOINT[which]);
   }
   q.position = jointAt;
   q.orient = jointFrame;
-  q.tint = vec4f(0.8, 0.82, 0.86, 0.7);
-  q.kind = 2.0;
+  q.kind = ${KIND.phalanx}.0 + f32(which);
   return q;
 }`;
 }

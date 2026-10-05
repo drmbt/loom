@@ -22,6 +22,8 @@ What is written:
                              reference pose, origin at its joint, `loom_parent` its carrier.
   ring                       one tentacle ring, joint frame.
   hub                        the claw's cone, joint frame.
+  claw                       the whole claw as one rigid piece, fingers at rest, in the hub's
+                             joint frame: for a draw that cannot afford nine pieces.
   phalanx_<f>_<p>            claw finger f (0–3), link p (0 = knuckle), its own joint frame.
   socket.<t>                 marker: where tentacle t leaves the body.
   eye.<i>                    marker: an eye lens (centre; extras radius).
@@ -359,7 +361,7 @@ if PREVIEW is not None:
     for name, offset, target, only in shots:
         for ob in kit:
             if ob.type != "MESH": continue
-            family = "ring" if ob.name == "ring" else "claw" if ob.name == "hub" or ob.name.startswith("phalanx") else "robot"
+            family = "ring" if ob.name == "ring" else "claw" if ob.name == "hub" or ob.name.startswith("phalanx") else "merged" if ob.name == "claw" else "robot"
             ob.hide_render = (family != only) if only is not None else (family != "robot")
         camera.location = Vector(target) + Vector(offset)
         camera.rotation_euler = (Vector(target) - camera.location).to_track_quat("-Z", "Y").to_euler()
@@ -367,6 +369,24 @@ if PREVIEW is not None:
         bpy.ops.render.render(write_still=True)
     for ob in kit: ob.hide_render = False
     bpy.data.objects.remove(camera, do_unlink=True)
+
+# The whole claw as ONE rigid piece, fingers at rest, in the hub's joint frame: what a draw
+# that cannot afford nine pieces instances (loom's live tier). Joined while the phalanges still
+# sit posed on the hub.
+bpy.context.view_layer.update()
+claw_parts = []
+for ob in kit:
+    if ob.name == "hub" or ob.name.startswith("phalanx_"):
+        copy = bpy.data.objects.new(f"claw.{ob.name}", ob.data.copy())
+        scene.collection.objects.link(copy)
+        copy.matrix_world = ob.matrix_world.copy()
+        claw_parts.append(copy)
+bpy.context.view_layer.update()
+with bpy.context.temp_override(active_object=claw_parts[0], object=claw_parts[0], selected_objects=claw_parts, selected_editable_objects=claw_parts):
+    bpy.ops.object.join()
+claw = claw_parts[0]
+claw.name = claw.data.name = "claw"
+kit.append(claw)
 
 # The phalanges were posed on the hub for the preview; the file holds each in its OWN joint
 # frame (where it sits and how it hinges are its extras), so an instancer places it unposed.

@@ -37,6 +37,7 @@ Each piece once, in the frame of the joint that carries it, right-handed, glTF a
 | `mand_<k>_<level>` | robot frame at the reference pose, origin at its joint | `loom_part`, `loom_parent`; decimated by `--mandible-ratio` |
 | `ring` | joint: origin at the joint, +Z toward the tip, +Y the frame's normal (loom's curve-frame convention) | one ring; draw it at every station |
 | `hub` | joint | the claw's cone |
+| `claw` | the hub's joint | the whole claw as one rigid piece, fingers at rest: for a draw that cannot afford nine pieces |
 | `phalanx_<f>_<p>` | its own joint | finger `f` (0–3), link `p` (0 = knuckle) |
 | `socket.<t>` | robot | marker: where tentacle `t` leaves the body |
 | `eye.<i>` | robot | marker: a lens centre; extras `loom_radius` |

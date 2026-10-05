@@ -5,11 +5,11 @@ import { edge, expressionSlot, graph, node as buildNode, settings } from "../../
 import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from "../../examples/build-showcase-beat.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS } from "./camera.ts";
-import type { KitFacts, Vec3 } from "./kit.ts";
+import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
 import { PATH, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
 import { SSR_WGSL } from "../furnace/screen-space.ts";
-import { BODY_ATTRIBUTES, BODY_KERNEL, JOINT_ATTRIBUTES, jointCount, jointKernel } from "./rig.ts";
+import { JOINT_ATTRIBUTES, jointCount, jointKernel, type Pick } from "./rig.ts";
 import { HULL_SURFACE_WGSL } from "./surface.ts";
 import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMP_SPACING, lampToneExpression } from "./tunnel.ts";
 
@@ -27,8 +27,10 @@ import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGS
  * every 12.8 m; the three lamps nearest the robot are real lights and fade in and out with
  * distance, so the set can change without a pop. Air and bloom follow.
  *
- * What is NOT here yet: the joints are drawn as boxes until a mesh can be instanced (§T1581b),
- * and three lamps are all a forward Render affords (§T1589b).
+ * The robot is the kit's meshes instanced on the rig's points (§T1581b): a ring at every ring
+ * joint, a hub and eight phalanges at every claw, the hull at each robot's own point.
+ *
+ * What is NOT here yet: three lamps are all a forward Render affords (§T1589b).
  */
 
 export interface SentinelDocumentOptions {
@@ -36,6 +38,22 @@ export interface SentinelDocumentOptions {
   readonly height?: number;
   /** Each robot's place off the pack's own: right, up, ahead (metres). Default: the leader alone. The camera follows the first. */
   readonly robots?: readonly Vec3[];
+  /**
+   * What the frame may cost. `live` (the default) is what holds 60 frames a second in the app
+   * and is what build.ts writes; `offline` spends what a render that is not watched live can.
+   *
+   * Measured in the app at 1280×720 with the kit's meshes instanced (one robot, documents
+   * back to back, the control repeated):
+   *   everything (two-phalanx fingers, the eyes' shadow, reflections)   41 to 44 fps
+   *   no shadow-casting light                                           54 to 57 fps
+   *   no shadow, and the claw one rigid piece instead of nine           60 fps   <- live
+   *   no shadow, no reflections                                         60 fps
+   *   the eyes' shadow kept, no reflections                             37 to 43 fps
+   * A point light's shadow is six more sweeps of every piece, and each piece is a draw of its
+   * own in each sweep; per-light caster lists and culled instances (§T1598b, §T1592b) are
+   * what bring the shadow and the articulated claw back to the live tier.
+   */
+  readonly tier?: "live" | "offline";
 }
 
 /**
@@ -104,6 +122,7 @@ const SWIM = on("swim");
 export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptions = {}): ProjectDocument {
   const travel = expressionSlot(TRAVEL, 0);
   const robots = options.robots ?? PACK.slice(0, 1);
+  const offline = options.tier === "offline";
   // Perched, it eases to a stop (below) and its head scans the tunnel on two slow counts, so the sweep never repeats on the bar.
   const PERCHED = "op('lag_perched').chan.value";
   const look: Record<string, StoredParameter> = {
@@ -137,18 +156,35 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     };
   };
   const lamps = [-1, 0, 1].map(lampAt);
-  // The body and the joints must agree on how much it swims and where the stroke is: the lunge is in both.
   const swimming: Record<string, StoredParameter> = { swim: expressionSlot(SWIM, 0), stroke: expressionSlot(STROKE, 0) };
-  const boxes = (id: string, kind: number, scale: number, position: readonly [number, number]): GraphNode =>
-    node(id, "geometry", position, {
-      mode: "instances",
-      shape: "box",
-      material: "steel1",
-      scale: map("tint", scale, "w"),
-      orient: map("orient", [0, 0, 0, 1]),
-      tint: map("tint", [1, 1, 1, 1]),
-      group: `p.kind > ${(kind - 0.5).toFixed(1)} && p.kind < ${(kind + 0.5).toFixed(1)}`,
-    }, { label: `${id.toLowerCase()}1` });
+  /**
+   * The robot's pieces: each a mesh from the kit, and the points of the rig it is drawn on.
+   * The kit holds every piece at the origin in its own joint frame (the hull in the robot's),
+   * so the file's world IS the shape's frame and Frame stays at World. Each piece has a
+   * kernel of its own writing exactly its points (rig.ts, Pick); a Group predicate over one
+   * shared pointset would hand every draw every point.
+   */
+  const pieces: ReadonlyArray<{ readonly role: string; readonly shape: MeshSelectionFacts; readonly pick: Pick }> = [
+    { role: "hull", shape: facts.robot, pick: "body" },
+    { role: "ring", shape: facts.ring, pick: { first: 0, count: facts.ringCount } },
+    // The claw: live, one rigid piece on the wrist; offline, its cone and eight phalanges, each hinged (see `tier`).
+    ...(offline
+      ? [{ role: "hub", shape: facts.hub, pick: { first: facts.ringCount, count: 1 } }, ...facts.phalanxMeshes.map((shape, which) => ({ role: `phalanx${which}`, shape, pick: { first: facts.ringCount + 1 + which, count: 1 } }))]
+      : [{ role: "claw", shape: facts.claw, pick: { first: facts.ringCount, count: 1 } }]),
+  ];
+  const pieceNodes = (rig: Record<string, StoredParameter>): GraphNode[] =>
+    pieces.flatMap((piece, index) => [
+      node(`mesh_${piece.role}`, "meshFileIn", [-2700, index * 150], { file: facts.glbUrl, select: piece.shape.select, vertices: piece.shape.vertices, triangles: piece.shape.triangles, parts: piece.shape.parts }, { label: `mesh_${piece.role}` }),
+      node(`kernel_${piece.role}`, "pointKernel", [-2400, index * 150], { capacity: jointCount(facts, piece.pick) * robots.length, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(facts, robots, piece.pick), ...rig }, { label: `kernel_${piece.role}` }),
+      node(`geometry_${piece.role}`, "geometry", [-1800, index * 150], {
+        mode: "instances",
+        shape: "mesh",
+        material: "hull1",
+        orient: map("orient", [0, 0, 0, 1]),
+        // A ring still stowed in the body is not drawn.
+        group: "p.kind > -0.5",
+      }, { label: `geometry_${piece.role}` }),
+    ]);
 
   const sliders = [...ROBOT, ...SCENE];
   const controls: GraphNode[] = [
@@ -205,13 +241,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("strokeRate", "constant", [-2400, 1250], { value: SHOWCASE_BEAT.bpm / 60 / SHOWCASE_BEAT.beatsPerBar }, { label: "strokerate1" }),
     node("stroke", "valueSpeed", [-2100, 1250], { minimum: 0, maximum: 1, limit: "loop" }, { label: "stroke1" }),
 
-    // ── The body ──
-    node("robot", "meshFileIn", [-2400, 0], { file: facts.glbUrl, select: facts.robot.select, vertices: facts.robot.vertices, triangles: facts.robot.triangles, parts: facts.robot.parts }, { label: "robot1" }),
-    // One kernel and one draw per robot until the body is an object with a transform (T1588b).
-    ...robots.flatMap((offset, index) => [
-      node(`body${index}`, "pointKernel", [-2100, -index * 150], { capacity: facts.robot.vertices, attributes: BODY_ATTRIBUTES, kernel: BODY_KERNEL, travel, offset: [offset[0], offset[1], offset[2]], ...look, ...swimming }, { label: `body${index}_1` }),
-      node(`bodyGeo${index}`, "geometry", [-1800, -index * 150], { mode: "surface", material: "hull1" }, { label: `bodygeo${index}_1` }),
-    ]),
+    // ── The robot: for each piece a mesh of the kit, the rig's points of that piece, and the draw (T1581b) ──
     node("hull", "materialWgsl", [-1800, 150], {
       model: "pbr",
       source: HULL_SURFACE_WGSL,
@@ -219,11 +249,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       eyeGlow: expressionSlot(`${on("glow")} * (0.75 + ${HIGH} * 0.6 + ${HAT} * 0.9)`, 9),
     }, { label: "hull1" }),
 
-    // ── The joints: one point each, drawn as boxes until a mesh can be instanced (T1581b) ──
-    node("joints", "pointKernel", [-2100, 300], {
-      capacity: jointCount(facts) * robots.length,
-      attributes: JOINT_ATTRIBUTES,
-      kernel: jointKernel(facts, robots),
+    ...pieceNodes({
       travel,
       ...look,
       // Perched, the last three tentacles to take the wall let go of it and feel about.
@@ -238,11 +264,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       wave: expressionSlot(`${on("wave")} + ${LOW} * 0.08`, 0.05),
       grip: expressionSlot(on("grip"), 1),
       bore: expressionSlot(on("bore"), 2.6),
-    }, { label: "joints1" }),
-    node("steel", "materialPbr", [-1800, 900], { color: [0.5, 0.52, 0.56, 1], metallic: 0.9, roughness: 0.3 }, { label: "steel1" }),
-    boxes("rings", 0, 0.085, [-1800, 300]),
-    boxes("hubs", 1, 0.085, [-1800, 450]),
-    boxes("claws", 2, 0.085, [-1800, 600]),
+    }),
 
     // ── The tunnel: one grid bent into the bore, a window of it riding with the robot ──
     node("grid_bore", "pointGrid", [-2400, 1200], { cols: BORE_COLUMNS, rows: BORE_ROWS, count: BORE_COLUMNS * BORE_ROWS, sizeX: 2, sizeY: 2 }, { label: "grid_bore" }),
@@ -254,8 +276,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("expression_camera", "valueExpression", [-1800, -600], { expressions: CAMERA_STATEMENTS, defaults: CAMERA_DEFAULTS }, { label: "expression_camera" }),
     // A kick punches the lens in.
     node("cam", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} - ${KICK} * 2.5`, 55), near: 0.05, far: 240 }, { label: "cam1" }),
-    // The eyes throw the tentacles' shadows down the walls: the one shadow the frame budget affords, and the one that tells.
-    node("eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.12, 0.06, 1], intensity: expressionSlot(`${on("glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, shadows: true, shadowExtent: 14, shadowSoftness: 1 }, { label: "eyes1" }),
+    // Offline, the eyes throw the tentacles' shadows down the walls; live, no light casts (see `tier`).
+    node("eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.12, 0.06, 1], intensity: expressionSlot(`${on("glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, ...(offline ? { shadows: true, shadowExtent: 14, shadowSoftness: 1 } : {}) }, { label: "eyes1" }),
     // The three lamp plates nearest the robot, as lights; they breathe with the low end.
     ...lamps.map((lamp, index) =>
       node(`light_lamp${index}`, "light", [-1500, -150 + index * 150], {
@@ -271,13 +293,12 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         "position.z": lamp.position.z,
         falloff: "inverseSquare",
         range: 30,
-        // The lamps cast no shadow: a cube shadow is six more sweeps of the whole scene, and
-        // with the eyes' it does not hold 60 frames a second (measured in the app, 1280×720:
-        // no shadows 2.2 ms of GPU, the eyes' alone 4.6 ms, both 6 to 39 ms and 55 fps).
+        // Offline, the lamp overhead casts too.
+        ...(offline && index === 1 ? { shadows: true, shadowExtent: 30, shadowSoftness: 1 } : {}),
       }, { label: `light_lamp${index}` }),
     ),
     node("shot", "render", [-1200, 0], {
-      scenes: [...robots.map((_, index) => `bodygeo${index}_1`), "rings1", "hubs1", "claws1", "geometry_bore"].join(" "),
+      scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore"].join(" "),
       camera: "cam1",
       lights: ["eyes1", ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.5, 0.62, 0.8, 1],
@@ -297,10 +318,12 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       fov: expressionSlot("op('cam1').par.fov", 55),
       far: 240,
       roll: 0,
-      strength: 1,
+      // Only the wettest surfaces mirror, and not at full strength: the pass is jittered and
+      // has no temporal filter here, so anything more reads as sparkle.
+      strength: 0.6,
       maxDistance: 30,
       thickness: 0.5,
-      roughnessCutoff: 0.4,
+      roughnessCutoff: 0.26,
     }, { label: "wgsl_reflect", resolution: { mode: "project" } }),
     // ── Air, then bloom: a bright pass and a four-level pyramid (the furnace's, until a stock one exists, T1402b) ──
     node("wgsl_haze", "customWgslMulti", [-900, 0], { source: HAZE_WGSL, density: expressionSlot(on("slider_haze"), 0.035), far: 240 }, { label: "wgsl_haze", resolution: { mode: "project" } }),
@@ -328,13 +351,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("stroke-rate", ["strokeRate", "out"], ["stroke", "in"]),
     // What the camera rig reads: how far the robot has come, the track's bars, and the panel.
     ...["travel", "clip", "slider_shot", "toggle_cuts", "distance", "view"].map((source, index) => edge(`camera-${source}`, [source, "out"], ["expression_camera", "in"], index)),
-    ...robots.flatMap((_, index) => [
-      edge(`robot-body${index}`, ["robot", "out"], [`body${index}`, "in"]),
-      edge(`body-geo${index}`, [`body${index}`, "out"], [`bodyGeo${index}`, "points"]),
+    ...pieces.flatMap((piece) => [
+      edge(`${piece.role}-shape`, [`mesh_${piece.role}`, "out"], [`geometry_${piece.role}`, "mesh"]),
+      edge(`${piece.role}-points`, [`kernel_${piece.role}`, "out"], [`geometry_${piece.role}`, "points"]),
     ]),
-    edge("joints-rings", ["joints", "out"], ["rings", "points"]),
-    edge("joints-hubs", ["joints", "out"], ["hubs", "points"]),
-    edge("joints-claws", ["joints", "out"], ["claws", "points"]),
     edge("grid-bore", ["grid_bore", "out"], ["kernel_bore", "in"]),
     edge("bore-geo", ["kernel_bore", "out"], ["geometry_bore", "points"]),
     edge("shot-reflect", ["shot", "out"], ["wgsl_reflect", "input"]),
