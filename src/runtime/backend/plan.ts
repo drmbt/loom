@@ -1237,6 +1237,30 @@ export function passStructureKey(pass: PassDescriptor): string {
 }
 
 /**
+ * T1603b: whether two passes have the same structure — exactly
+ * `passStructureKey(a) === passStructureKey(b)`, without building either key.
+ *
+ * The per-frame verifier (`frame-compile.ts`) asks this of every pass a frame re-emits,
+ * against the base plan's. The key serialises the pass, SHADER TEXT INCLUDED, so asking it
+ * by key escaped ten to twenty kilobytes per pass per frame to compare two strings that
+ * are, on a values-only frame, the same object (the generators remember their text). This
+ * walks the same parts the key is made of — one source for what "structure" means — and
+ * compares them where they stand.
+ */
+export function samePassStructure(a: PassDescriptor, b: PassDescriptor): boolean {
+  return a === b || sameKeyParts(passKeyParts(a), passKeyParts(b));
+}
+
+function sameKeyParts(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    if (!sameKeyParts(a[index], b[index])) return false;
+  }
+  return true;
+}
+
+/**
  * Field separators for the whole-plan signature (T1176).
  *
  * The per-entry keys are `JSON.stringify` output, and `JSON.stringify` NEVER emits a raw

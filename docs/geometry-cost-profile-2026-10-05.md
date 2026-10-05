@@ -1,6 +1,6 @@
 # What one more Geometry costs a frame
 
-2026-10-05. A profile, taken before any performance code was written for T1581b's F1, and a plan for what it found. Companion to `docs/mesh-instancing-design-2026-10-05.md` (section 13 has F1 as built).
+2026-10-05. A profile, taken before any performance code was written for T1581b's F1, and a plan for what it found. Companion to `docs/mesh-instancing-design-2026-10-05.md` (section 13 has F1 as built). P1 of the plan is built (T1603b, below); P2 has its design here (T1604b) and no code.
 
 ## The answer
 
@@ -60,10 +60,7 @@ A CPU profile of the hinged document with shadows (V8 sampling, 330 frames), as 
 
 ## The plan, by what it would save
 
-**P1. Do not rebuild shader text on a values-only frame.** About 5 of the 8 ms of compile at thirteen geometries with shadows, and about 0.4 of the 0.57 ms each added Geometry costs.
-- First step, small and local: remember generated modules by what they are generated from. `cubeShadowVariant` by its input string; the depth and surface generators by their options; a kernel's module by its source and schema. Each is a pure function, and the reflection memo in `params-reflection.ts` is the pattern.
-- The verifier then compares the same string object and can stop at identity.
-- A larger step, not proposed yet: a compile mode in which a node returns values without text.
+**P1. Do not rebuild shader text on a values-only frame.** About 5 of the 8 ms of compile at thirteen geometries with shadows, and about 0.4 of the 0.57 ms each added Geometry costs. **Built: see "P1 as built" below.**
 
 **P2. One render pass per target, not per draw.** The hinged document with shadows has 200 passes over about twenty targets.
 - On the CPU it is the 0.47 ms of encode and submit per added Geometry: about 0.03 ms a pass.
@@ -78,3 +75,50 @@ A CPU profile of the hinged document with shadows (V8 sampling, 330 frames), as 
 
 - **An indirect draw was not a draw of its frame.** A geometry over a counted pointset draws indirect. The backend gave that draw its own command buffer, which cleared the target and was submitted at once: headless it erased the backdrop and every geometry before it, and in the app it ran ahead of the frame's passes and was erased by them. Fixed (`indirect-draw-order.gpu.test.ts`); F1 needed it.
 - **An indirect draw is not free.** On this machine a render pass holding one indirect draw costs about 0.05 ms of GPU more than the same draw with a literal count, and about 0.12 ms when the device lacks `indirect-first-instance` (Dawn then validates the arguments in a compute pass ahead of each such render pass). Measured on the hinged document with all 150 mesh-instance draws indirect: 11.1 ms of GPU with literal draws, 18.5 ms indirect with the feature, 29 ms without it. The per-pass spans do not show it; the frame's extent and the wall time do. F1 therefore compacts only a geometry that can leave an instance out, and the device now asks for the feature.
+
+## P1 as built (T1603b)
+
+**A values-only frame builds no shader text.** Every generator that assembles a module is wrapped by `generatedOnce` (`runtime/backend/wgsl.ts`): the lit and G-buffer surface module, the three depth sweeps and `cubeShadowVariant`, the primitives' and the glass generators, the backdrop, the instance resolve pass, and the point kernels' modules (kernel, spawn hook, compaction, spawn). Called again with the same arguments, a generator returns the same result and runs nothing.
+
+- **The key is derived, not declared.** It is a walk of the arguments themselves: every property of every options object, every element of every array. An option added to a generator later is in the key the day it is added. What the walk cannot describe (a function, a class instance) it refuses by throwing.
+- **The walk is the lookup.** It descends a trie, a step per value; no key string is built. A string key was built first and cost 0.94 ms a frame on the hinged document (350 generator calls); the trie costs 0.55.
+- **Results are shared, so they are frozen** once, deeply.
+- **The verifier compares passes where they stand** (`samePassStructure`). It used to build each re-emitted pass's structure key, which serialises the shader text: 1.15 ms a frame. The comparison walks the same parts the key is made of, and a remembered text is the same string object as the base plan's.
+
+**Measured**, the per-frame values-only compile alone (no device; median of 900 frames; the value graph evaluated as the app does):
+
+| Document | Before | After |
+|---|---|---|
+| hinged, shadows on (13 geometries, 265 passes) | 8.0 ms | 2.8 ms |
+| rigid, shadows on (5, 105) | 2.8 ms | 1.1 ms |
+| hinged, shadows off (13, 119) | 4.6 ms | 1.9 ms |
+| rigid, shadows off (5, 55) | 1.7 ms | 0.8 ms |
+
+- Per added Geometry with shadows: 0.65 ms of compile before, 0.22 after.
+- With the device in the loop the same documents' whole CPU frame went from 18.9 to 12.9 ms (hinged, shadows on) and from 7.9 to 6.0 ms (rigid); the compile's share there reads 8.7 to 3.5 ms and 3.8 to 1.9 ms.
+- What is left of the 2.8 ms: the key walk (0.55), the pass comparison (0.27), and the nodes' own work of building option objects, uniforms and bindings for 265 passes. Encoding is now the larger half of the frame's CPU (7.4 of 12.9 ms): that is P2.
+
+**The two gates** (`compiler/generated-text.test.ts`):
+
+- On the consumer's hinged document and five shipped examples (E13, E33, E28, E69, E79), a values-only frame runs no generator and builds no template text, and what it splices equals a full compile done with nothing remembered, byte for byte.
+- Every structural parameter of Geometry, Render, Material · WGSL, Point Kernel, Point Kernel · Advanced and Light is changed one at a time over a scene compiled before it: every `compileTime` parameter of each definition, every name it references another node by, and every Geometry parameter in Map mode, all derived from the definitions. After each change the plan equals the one a compile with nothing remembered gives. Code parameters include an edit that keeps the text's length.
+
+**What the gates cannot see.** An emitter that assembles text by hand and then looks it up through the `wgsl` tag is not a wrapped generator and is not counted; it would be slow, not wrong. A scan of the 23 shipped examples with a Render found none on a values-only frame.
+
+## P2, design: one render pass per target (T1604b, not built)
+
+**The change is in the encoder, not in the plan.** A plan pass stays what it is: one draw, with its own id, shader, bindings, uniforms and node. What changes is how many DEVICE render passes the backend opens for them.
+
+- **A run.** Consecutive plan passes of kind `draw` with the same target, of which only the first may clear, are one run. Anything else ends a run: an effect, a dispatch, a swap, a loop marker, another target, a `clear: true`. The backend opens one render pass for a run and encodes each member as a draw inside it. One pure function over the pass list (`renderPassRuns`, in `plan.ts`) says where the runs are, and the encoder and every reader below call that one.
+- **What it does to the hinged document**, counted from its plan with that rule: 200 device render passes become 43. Each of its two cube shadows is one run of 73 draws (six faces share one atlas target), the lit draws are one run of 14, and 27 draws stay alone: the Render emits each geometry's Normal and Depth layers one after the other, so those draws alternate targets. If the Render emits a layer's draws together (all Normal, then all Depth), which nothing forbids since neither reads the other, the count is about 19. That second step is a change in the Render's emission order and is part of this row.
+- **Loops.** A run never crosses a loop marker, so a substep or kernel-step region keeps its boundary. Inside a body the rule is the same, on the expanded order the encoder already caches (`encodePasses`).
+- **Order.** Nothing moves: a run is passes that were already adjacent. On the direct path a dispatch already ends the vgpu frame; on the loop path it already runs ahead of the frame's passes. An indirect draw is a member like any other (B253).
+- **Timer spans.** A timestamp pair belongs to a device render pass, so a run has ONE span where its members had one each. This is the cost of P2 and the decision it needs:
+  - the per-node GPU row cannot be exact for members of a run. The span is billed to the run and each member node is shown as a share-holder of it, said as such; no number is invented by dividing it;
+  - while the performance panel or the perf timeline is open the backend encodes one pass per draw again, so a person measuring a node measures it. The grouped frame is the default, the exact one is on demand. Both are the same plan.
+  - the 2,048-span ceiling per frame (T1583b) stops being a concern for scenes: twenty spans, not two hundred.
+- **Uniforms and bindings** are per draw and stay so: a bind group and a draw call each. `updateUniforms({ passId })` addresses a plan pass and is unchanged, which is what the inspection orbit and the uniform animator use.
+- **Previews.** A tile's synthesized passes (backdrop, then the object) are a run of two and can take the same encoder. Their pass ids, and the orbit's `passIds`, name plan passes and do not change.
+- **The pipeline inspector** reads the installed plan's passes and keeps doing so. It can show the runs as a derived fact ("these fourteen draws share one render pass") from the same function, so it describes what the device does.
+- **Gates.** The picture of every example that has a Render is unchanged (the pixel gates exist; the layer reorder moves no pixel, each layer has its own target). The device render pass count is asserted on a scene by counting `beginRenderPass`, as this profile did. A run that would cross a clear, a loop marker or a target is asserted not to form.
+- **Expected.** Encode and submit are 0.47 ms per added Geometry today, about 0.03 ms a pass; most of the GPU's 0.33 ms per added Geometry and all of an indirect draw's 0.05 ms are per pass on a tile-based GPU. To be measured, not promised.

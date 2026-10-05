@@ -1,4 +1,4 @@
-import { wgsl } from "../../runtime/backend/wgsl.ts";
+import { generatedOnce, wgsl } from "../../runtime/backend/wgsl.ts";
 import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 import { declaredNames } from "./shared-modules.ts";
@@ -714,7 +714,8 @@ fn fs(@builtin(position) position: vec4f) -> @location(0) vec4f {
 }`;
 
 /** T1427b step 2: one level — the previous level blurred by a cone of `radius` (tangent units). */
-export function envPrefilterLevelWgsl(radius: number): EmittedWgsl {
+export const envPrefilterLevelWgsl = generatedOnce("envPrefilterLevelWgsl", buildEnvPrefilterLevelWgsl);
+function buildEnvPrefilterLevelWgsl(radius: number): EmittedWgsl {
   return wgsl`${PREFILTER_PARAMS}@group(0) @binding(1) var sourceTex: texture_2d<f32>;
 ${ENV_UV_WGSL}${ENV_DIRECTION_WGSL}${FULLSCREEN_VS}@fragment
 fn fs(@builtin(position) position: vec4f) -> @location(0) vec4f {
@@ -830,7 +831,8 @@ const IRRADIANCE_PREFILTERED_WGSL = `  let envN = normal * select(-1.0, 1.0, dot
  * degenerate: parallel rays see one point of an environment at infinity. Stated because
  * a flat sky under an ortho camera otherwise reads as a bug (§V403).
  */
-export function backdropWgsl(options: { readonly environment?: boolean } = {}): EmittedWgsl {
+export const backdropWgsl = generatedOnce("backdropWgsl", buildBackdropWgsl);
+function buildBackdropWgsl(options: { readonly environment?: boolean } = {}): EmittedWgsl {
   if (options.environment !== true) {
     return wgsl`struct Backdrop { color: vec4f };
 @group(0) @binding(0) var<uniform> backdrop: Backdrop;
@@ -1275,7 +1277,8 @@ export interface SceneSurfaceModule {
   readonly placed: { readonly params?: WgslPosition; readonly code?: WgslPosition };
 }
 
-export function sceneSurfaceModule(options: SceneShadingOptions): SceneSurfaceModule {
+export const sceneSurfaceModule = generatedOnce("sceneSurfaceModule", buildSceneSurfaceModule);
+function buildSceneSurfaceModule(options: SceneShadingOptions): SceneSurfaceModule {
   const lightCount = Math.max(0, Math.floor(options.lightCount));
   const pointColor = options.pointColor === true;
   const albedoMap = options.maps?.albedo === true;
@@ -1735,7 +1738,8 @@ ${gatedReturn}
   return { bindings, declarations, gate };
 }
 
-export function sceneInstancesWgsl(options: {
+export const sceneInstancesWgsl = generatedOnce("sceneInstancesWgsl", buildSceneInstancesWgsl);
+function buildSceneInstancesWgsl(options: {
   model: "unlit" | "lambert" | "phong" | "pbr";
   lightCount: number;
   /** Camera visibility depth uses the identical ribbon/billboard vertices and coverage. */
@@ -2162,7 +2166,8 @@ export interface DepthPassOptions {
 }
 
 /** The surface mesh from the light's view — grid arithmetic identical to the lit draw. */
-export function shadowSurfaceWgsl(options: DepthPassOptions = {}): EmittedWgsl {
+export const shadowSurfaceWgsl = generatedOnce("shadowSurfaceWgsl", buildShadowSurfaceWgsl);
+function buildShadowSurfaceWgsl(options: DepthPassOptions = {}): EmittedWgsl {
   const linear = options.linearDepth === true;
   const depthExpr = linear
     ? `dot(params.depthRow, vec4f(world, 1.0)) / max(params.depthRange.x, 1e-6)`
@@ -2230,7 +2235,8 @@ fn fs(input: VertexOut) -> @location(0) vec4f {
  * contract as `shadowSurfaceWgsl`, with positions pulled through the index list. Shares
  * the MESH_BINDINGS slot for indices, so the draw's buffer list is the lit draw's prefix.
  */
-export function shadowMeshWgsl(
+export const shadowMeshWgsl = generatedOnce("shadowMeshWgsl", buildShadowMeshWgsl);
+function buildShadowMeshWgsl(
   options: DepthPassOptions & {
     /**
      * T1581b: the mesh is drawn once per instance, placed by its record — the lit draw's
@@ -2283,7 +2289,8 @@ fn fs(input: VertexOut) -> @location(0) vec4f {
 }
 
 /** The instance primitives from the light's view — shapes identical to the lit draw. */
-export function shadowInstancesWgsl(
+export const shadowInstancesWgsl = generatedOnce("shadowInstancesWgsl", buildShadowInstancesWgsl);
+function buildShadowInstancesWgsl(
   options: DepthPassOptions & {
     group?: SceneGroupOption;
     pointScale?: { type: string; channel?: string };
@@ -2733,7 +2740,8 @@ function glassBindingsWgsl(options: GlassShaderOptions): EmittedWgsl {
 }
 
 /** The glass draw for SURFACE geometry — the lit generator's own mesh, new optics. */
-export function glassSurfaceWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
+export const glassSurfaceWgsl = generatedOnce("glassSurfaceWgsl", buildGlassSurfaceWgsl);
+function buildGlassSurfaceWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
   return wgsl`struct SceneParams {
   viewProjection: mat4x4f,
   model: mat4x4f,           // T1588b: the object transform
@@ -2759,7 +2767,8 @@ ${glassFragmentWgsl(options)}`;
  * face the camera sees as the entry face, so a file mesh's authored side needs no
  * B227 turn here.
  */
-export function glassMeshWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
+export const glassMeshWgsl = generatedOnce("glassMeshWgsl", buildGlassMeshWgsl);
+function buildGlassMeshWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
   const mesh = { uv: false, surface: false, emissive: false } as const;
   return wgsl`struct SceneParams {
   viewProjection: mat4x4f,
@@ -2780,7 +2789,8 @@ ${glassFragmentWgsl(options)}`;
 }
 
 /** The glass draw for INSTANCES geometry — plain primitives (no group/billboard/beam). */
-export function glassInstancesWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
+export const glassInstancesWgsl = generatedOnce("glassInstancesWgsl", buildGlassInstancesWgsl);
+function buildGlassInstancesWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
   return wgsl`struct SceneParams {
   viewProjection: mat4x4f,
   eye: vec4f,
@@ -2874,7 +2884,8 @@ export const SURFACE_RESERVED_NAMES: ReadonlySet<string> = new Set(
  * range (`cubeLight`), which is what the lit lookup compares. Throws if an anchor it
  * rewrites is missing, so a generator that changes shape fails here, loudly.
  */
-export function cubeShadowVariant(shader: EmittedWgsl): EmittedWgsl {
+export const cubeShadowVariant = generatedOnce("cubeShadowVariant", buildCubeShadowVariant);
+function buildCubeShadowVariant(shader: EmittedWgsl): EmittedWgsl {
   let text = String(shader);
   const swap = (from: string, to: string): void => {
     if (!text.includes(from)) throw new Error(`cubeShadowVariant: depth shader lacks "${from.slice(0, 60)}"`);

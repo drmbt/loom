@@ -8,7 +8,7 @@ import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import type { ParameterMapBinding, ParameterMorphs } from "../domain/parameters/resolve.ts";
 import { parameterReadOptions } from "../domain/parameters/node-references.ts";
 import type { PassDescriptor } from "../runtime/backend/plan.ts";
-import { passStructureKey, readPass } from "../runtime/backend/plan.ts";
+import { readPass, samePassStructure } from "../runtime/backend/plan.ts";
 import { compileGraphRetaining, descriptionStructureKey, normalizePass } from "./compile.ts";
 import type { CompileGraphResult, RetainedCompile, RetainedNodeCompile } from "./compile.ts";
 import { isParameterPolicy } from "./resolution.ts";
@@ -49,7 +49,8 @@ import type { ActiveSink, CompileRequest, CompiledGraph, CompiledInputBinding, C
  *      (camera → render), so its consumers' uniforms move when it does;
  *   3. PROVES each re-run is structure-preserving: same scratch and pointset
  *      declarations (`descriptionStructureKey`), same pass ids in the same order, and
- *      the same `passStructureKey` per pass as the base plan carries — and
+ *      the same structure per pass as the base plan's (`samePassStructure`: what
+ *      `passStructureKey` compares, without serialising the shader text to do it) — and
  *   4. splices the re-emitted passes over the base plan's, re-deriving loop-begin counts
  *      through `substepCount`, so the result's `signature` is the base's by construction.
  *
@@ -285,8 +286,10 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
     return { base, uniformOnly: false, reason: classified, compileFrame: () => null };
   }
 
-  const basePassKeys = new Map<string, string>();
-  for (const entry of base.passSignatures) basePassKeys.set(entry.id, entry.signature);
+  /* T1603b: the base's own passes, to compare a re-emitted one against where it stands
+     (`samePassStructure`) instead of serialising it, shader text and all, every frame. */
+  const basePasses = new Map<string, PassDescriptor>();
+  for (const pass of base.passes) basePasses.set(pass.id, pass);
   /** Loop-begin markers, with the parameter whose value sets their count. */
   const loopCounts = new Map<string, { nodeId: NodeId; key: string }>();
   /** T1583b: kernel regions, whose count is two parameters' product. */
@@ -382,7 +385,8 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
       }
       for (let index = 0; index < passes.length; index += 1) {
         const pass = passes[index] as PassDescriptor;
-        if (pass.id !== record.passIds[index] || passStructureKey(pass) !== basePassKeys.get(pass.id)) {
+        const basePass = basePasses.get(pass.id);
+        if (pass.id !== record.passIds[index] || basePass === undefined || !samePassStructure(pass, basePass)) {
           return degrade(`Node "${nodeId}" (${record.node.type}) emitted pass "${pass.id}" with a different structure at this frame; a value-only parameter changed structure.`);
         }
         replacements.set(pass.id, pass);

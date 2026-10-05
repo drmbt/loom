@@ -98,6 +98,9 @@ const SITE_CACHE_LIMIT = 64;
 
 const bySite = new WeakMap<TemplateStringsArray, SiteNode>();
 
+/** T1603b: how many texts `wgsl` and `emitFrom` have BUILT (a lookup that hit builds none). */
+let textsBuilt = 0;
+
 /**
  * Build WGSL, once per distinct set of interpolated values per call site.
  *
@@ -147,6 +150,7 @@ export function wgsl(strings: TemplateStringsArray, ...values: readonly WgslValu
   for (let index = 0; index < values.length; index += 1) {
     text += String(values[index]) + (strings[index + 1] ?? "");
   }
+  textsBuilt += 1;
   node.text = text as EmittedWgsl;
   return node.text;
 }
@@ -193,6 +197,7 @@ export function emitFrom(keys: readonly WgslValue[], build: () => string): Emitt
   }
   const hit = node.text;
   if (hit !== undefined) return hit;
+  textsBuilt += 1;
   node.text = build() as EmittedWgsl;
   return node.text;
 }
@@ -230,4 +235,213 @@ export function wgslFromPlan(text: string): EmittedWgsl {
  */
 export function authoredWgsl(source: string): EmittedWgsl {
   return source as EmittedWgsl;
+}
+
+/**
+ * T1603b — A WHOLE GENERATOR, remembered by EVERYTHING it was handed.
+ *
+ * ## What `wgsl` and `emitFrom` leave on the table
+ *
+ * They remember the final string. A generator that ASSEMBLES — the lit surface module,
+ * a depth sweep, a point kernel — does its work before it has a string to look up: it
+ * builds a dozen intermediate strings, and `wgsl` then hashes those fresh kilobytes to find
+ * the text it already had. Profiled on a scene of thirteen geometries with shadows, that
+ * assembly was more than half of the per-frame values-only compile (§T1603b,
+ * `docs/geometry-cost-profile-2026-10-05.md`), all of it for text a values-only frame
+ * cannot change.
+ *
+ * So this wraps the generator itself. Called again with the same arguments it returns the
+ * same result and runs nothing.
+ *
+ * ## The key is DERIVED, never declared
+ *
+ * A stale shader after a structural edit is the failure this could introduce, and it would
+ * pass every identity test perfectly. `emitFrom` makes the caller list its key, and a list
+ * is one forgotten flag away from that. Here the key is a walk of the ARGUMENTS THEMSELVES:
+ * every property of every options object, every element of every array, in order. An option
+ * added to a generator next year is in the key the day it is added, because nobody has to
+ * remember to put it there. A generator reads nothing but its arguments and module
+ * constants (it is a pure function, which is what makes this legal at all), so the walk is
+ * everything the text can depend on.
+ *
+ * What the walk cannot describe it REFUSES, by throwing: a function, a class instance, a
+ * symbol. An argument whose content the key ignored would be exactly the forgotten flag.
+ *
+ * ## The walk IS the lookup
+ *
+ * No key string is built. The walk descends a trie, one step per value: a primitive is its
+ * own step (a `Map` keys numbers, strings and booleans apart by value), an array announces
+ * its length, an object its property names and a closing mark — so two different
+ * structures cannot arrive at the same node. A key string was built first and measured at
+ * 0.94 ms a frame on that scene (350 calls), half of it flattening and hashing five hundred
+ * characters per call to find a result the walk had already identified; the trie is 0.55.
+ * A long string (a shader body) costs one hash for the life of the string object.
+ *
+ * ## The result is SHARED
+ *
+ * Every caller gets the same object back, frame after frame, so it is frozen, deeply, the
+ * one time it is made. A caller that tried to edit one would be editing every other pass's
+ * copy; now it throws instead.
+ *
+ * `src/compiler/generated-text.test.ts` holds the two halves: a values-only frame generates
+ * nothing, and every structural parameter that changes a text still changes it.
+ */
+export function generatedOnce<Args extends readonly unknown[], Result>(
+  name: string,
+  generate: (...args: Args) => Result,
+): (...args: Args) => Result {
+  const memo: GeneratorMemo = { root: {}, results: 0, generated: 0, reused: 0 };
+  generators.set(name, memo);
+  return (...args: Args): Result => {
+    let node = memo.root;
+    for (let index = 0; index < args.length; index += 1) node = descend(node, args[index]);
+    // A call with fewer arguments must not land on the node of a longer one's prefix.
+    node = step(node, END);
+    if (node.made === true) {
+      memo.reused += 1;
+      return node.result as Result;
+    }
+    const made = deepFreeze(generate(...args));
+    memo.generated += 1;
+    node.made = true;
+    node.result = made;
+    memo.results += 1;
+    if (memo.results > GENERATED_LIMIT) {
+      // Dropped whole: the next frame regenerates what it uses, once, as a first frame does.
+      memo.root = {};
+      memo.results = 0;
+    }
+    return made;
+  };
+}
+
+/**
+ * Distinct results remembered per generator. A document's working set is its distinct
+ * passes — tens to a few hundred — and each is ten to twenty kilobytes; the cap is what a
+ * shader editor's keystrokes run into, one new text per stroke per pass that wears it.
+ */
+const GENERATED_LIMIT = 1024;
+
+interface MemoNode {
+  next?: Map<unknown, MemoNode>;
+  made?: boolean;
+  result?: unknown;
+}
+
+interface GeneratorMemo {
+  root: MemoNode;
+  results: number;
+  generated: number;
+  reused: number;
+}
+
+const generators = new Map<string, GeneratorMemo>();
+
+/* Structure marks: steps no value can take, so content cannot forge a boundary. */
+const ARRAY = Symbol("array");
+const OBJECT = Symbol("object");
+const MAP = Symbol("map");
+const SET = Symbol("set");
+const END = Symbol("end");
+
+function step(node: MemoNode, token: unknown): MemoNode {
+  let next = node.next;
+  if (next === undefined) {
+    next = new Map<unknown, MemoNode>();
+    node.next = next;
+  }
+  let child = next.get(token);
+  if (child === undefined) {
+    child = {};
+    next.set(token, child);
+  }
+  return child;
+}
+
+/**
+ * One value's walk down the trie. Property order is the order the object was built in; two
+ * objects with the same content in another order arrive at different nodes, which costs a
+ * regeneration and can never return the wrong text.
+ */
+function descend(node: MemoNode, value: unknown): MemoNode {
+  if (value === null || typeof value !== "object") {
+    if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
+      throw new Error(`generatedOnce: a ${typeof value} cannot be part of a generator's key; pass plain data.`);
+    }
+    return step(node, value);
+  }
+  let at = node;
+  if (Array.isArray(value)) {
+    at = step(step(at, ARRAY), value.length);
+    for (let index = 0; index < value.length; index += 1) at = descend(at, value[index]);
+    return at;
+  }
+  if (value instanceof Map) {
+    at = step(step(at, MAP), value.size);
+    for (const [key, item] of value) at = descend(descend(at, key), item);
+    return at;
+  }
+  if (value instanceof Set) {
+    at = step(step(at, SET), value.size);
+    for (const item of value) at = descend(at, item);
+    return at;
+  }
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(`generatedOnce: a ${(prototype as { constructor?: { name?: string } }).constructor?.name ?? "non-plain"} object cannot be part of a generator's key; pass plain data.`);
+  }
+  at = step(at, OBJECT);
+  for (const name in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, name)) continue;
+    at = descend(step(at, name), (value as Record<string, unknown>)[name]);
+  }
+  return step(at, END);
+}
+
+/**
+ * How many times each wrapped generator has RUN and how many times it was answered from
+ * memory, and how many texts the template tag built, since the process started. The gate
+ * for "a values-only frame builds no shader text" reads this around a frame and expects
+ * neither `generated` nor `built` to move; the per-name form is what makes its failure say
+ * which generator ran.
+ */
+export function generatedTextCounts(): {
+  readonly generated: number;
+  readonly reused: number;
+  /** Texts the `wgsl` tag and `emitFrom` built: every emitter that is not a wrapped generator. */
+  readonly built: number;
+  readonly byGenerator: Readonly<Record<string, { readonly generated: number; readonly reused: number }>>;
+} {
+  let generated = 0;
+  let reused = 0;
+  const byGenerator: Record<string, { generated: number; reused: number }> = {};
+  for (const [name, memo] of generators) {
+    generated += memo.generated;
+    reused += memo.reused;
+    byGenerator[name] = { generated: memo.generated, reused: memo.reused };
+  }
+  return { generated, reused, built: textsBuilt, byGenerator };
+}
+
+/**
+ * Forget every remembered result: the next call of each generator runs it. For the tests
+ * that compare a remembered text with a freshly generated one — which is the only way a
+ * stale one can be seen. Nothing in the product calls it. (The template tag's own texts are
+ * not forgotten: they are keyed by every value interpolated, which is their whole input.)
+ */
+export function forgetGeneratedText(): void {
+  for (const memo of generators.values()) {
+    memo.root = {};
+    memo.results = 0;
+  }
+}
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
+  // A Map or a Set cannot be frozen into immutability; a generator that returns one is trusted
+  // as before. Plain objects and arrays, which is what every generator here returns, are.
+  if (value instanceof Map || value instanceof Set) return value;
+  Object.freeze(value);
+  for (const item of Object.values(value as object)) deepFreeze(item);
+  return value;
 }

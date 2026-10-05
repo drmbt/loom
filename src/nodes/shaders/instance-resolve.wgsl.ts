@@ -1,4 +1,4 @@
-import { wgsl } from "../../runtime/backend/wgsl.ts";
+import { generatedOnce, wgsl } from "../../runtime/backend/wgsl.ts";
 import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
 import { ATTRIBUTE_STRIDES, type PointAttributeType } from "../../points/attributes.ts";
 import { regionAccessorWgsl, regionStoreWgsl } from "../../points/packing.ts";
@@ -147,7 +147,8 @@ export function resolveWorkgroups(compact: boolean, capacity: number): readonly 
   return compact ? [1, 1, 1] : [Math.ceil(capacity / RESOLVE_PLAIN_WORKGROUP), 1, 1];
 }
 
-export function instanceResolveWgsl(options: InstanceResolveOptions): EmittedWgsl {
+export const instanceResolveWgsl = generatedOnce("instanceResolveWgsl", buildInstanceResolveWgsl);
+function buildInstanceResolveWgsl(options: InstanceResolveOptions): EmittedWgsl {
   const visible = resolveCompacts(options) ? options.record.visible : undefined;
   /* A Group or a live count with nowhere to list what it accepts would be dropped in silence. */
   if (resolveCompacts(options) && visible === undefined) {

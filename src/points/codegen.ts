@@ -9,7 +9,7 @@ import { remember } from "../nodes/definitions/params-reflection.ts";
 import { MAX_SPAWN_PER_PARENT } from "./lifecycle.ts";
 import { regionAccessorWgsl, regionStoreWgsl } from "./packing.ts";
 import type { EmittedWgsl } from "../runtime/backend/wgsl.ts";
-import { wgsl } from "../runtime/backend/wgsl.ts";
+import { generatedOnce, wgsl } from "../runtime/backend/wgsl.ts";
 import type { WgslPosition } from "../runtime/backend/wgsl-source-map.ts";
 import { advance, endOf } from "../runtime/backend/wgsl-source-map.ts";
 
@@ -758,7 +758,8 @@ fn pointRand(pointId: u32, salt: u32) -> f32 {
   return f32(pointHash(pointId, salt)) * (1.0 / 4294967296.0);
 }`;
 
-export function generateKernelModule(request: KernelModuleRequest): KernelModuleResult {
+export const generateKernelModule = generatedOnce("generateKernelModule", buildGenerateKernelModule);
+function buildGenerateKernelModule(request: KernelModuleRequest): KernelModuleResult {
   const { attributes, reads, writes, kernel } = request;
   const errors: string[] = [];
 
@@ -1333,7 +1334,8 @@ export interface SpawnHookRequest {
   readonly params?: KernelModuleRequest["params"];
 }
 
-export function generateSpawnHookModule(request: SpawnHookRequest): KernelModuleResult {
+export const generateSpawnHookModule = generatedOnce("generateSpawnHookModule", buildGenerateSpawnHookModule);
+function buildGenerateSpawnHookModule(request: SpawnHookRequest): KernelModuleResult {
   const hookCode = stripWgslComments(request.hook);
   const errors: string[] = [];
   const schemaCheck = validateAttributes(request.attributes);
