@@ -56,7 +56,7 @@ describe("E12 Fluid", () => {
   /**
    * §V6, and the reason the velocity is not one frame stale: the kernel's output is the
    * texture that closes the velocity loop AND the field the dye is displaced by, rendered
-   * once. Reading `vel1.out` instead would work and would put the dye a frame behind the
+   * once. Reading `feedback_velocity.out` instead would work and would put the dye a frame behind the
    * flow carrying it — invisible in a still, wrong in motion.
    */
   it("steers the dye with THIS frame's velocity, computed once", () => {
@@ -70,11 +70,11 @@ describe("E12 Fluid", () => {
     expect(wired.map((edge) => edge.target.nodeId).sort()).toEqual([ADVECT]);
 
     const velocity = document.graph.nodes["velocity"] as GraphNode;
-    expect(sourceReferenceName(velocity.type, velocity.parameters)).toBe("stir1");
-    expect(document.graph.nodes[STIR]?.label).toBe("stir1");
+    expect(sourceReferenceName(velocity.type, velocity.parameters)).toBe("wgsl_stir");
+    expect(document.graph.nodes[STIR]?.label).toBe("wgsl_stir");
     // And the dye loop closes the same way, on the composite that injects the ink.
     const dye = document.graph.nodes["dye"] as GraphNode;
-    expect(sourceReferenceName(dye.type, dye.parameters)).toBe("inject1");
+    expect(sourceReferenceName(dye.type, dye.parameters)).toBe("over_inject");
   });
 
   /**
@@ -95,7 +95,7 @@ describe("E12 Fluid", () => {
    * §V182 END TO END, and the assertion this example exists to make.
    *
    * The shader's vortex and the CPU's ink blob are two readers of ONE pointer. Here they
-   * are compared at the same frame: the value the Mouse node published into `ink1.center`
+   * are compared at the same frame: the value the Mouse node published into `circle_ink.center`
    * and the value the shared uniform block carries into `frameU.pointer` must be the same
    * numbers, in the same order, with v the same way up.
    *

@@ -4,7 +4,7 @@ import { settings, node, edge, graph, document, expressionSlot } from "./builder
  * E11 — Gradient Remap (T354, T270).
  *
  *   noise1(noise, 4D) ──────► lookup1.source ─┐
- *   ramp1(ramp, 6 cyclic stops) ─► .lookup ───┴─► lookup1(lookup) ─► out1(output)
+ *   ramp1(ramp, 6 cyclic stops) ─► .lookup ───┴─► lookup1(lookup) ─► output1(output)
  *            phase ← abstime                       offset -0.86, scale 2.6
  *
  * Ramp into Lookup is the standard way to recolour an image through a palette, and it is
@@ -137,7 +137,7 @@ export const gradientRemapDocument = document(
         { channel: "luminance", row: 0.5, offset: -0.86, scale: 2.6 },
         { label: "lookup1" },
       ),
-      node("out", "output", [120, 0], {}, { label: "out1" }),
+      node("out", "output", [120, 0], {}, { label: "output1" }),
     ],
     [
       edge("e-field-remap", ["field", "out"], ["remap", "source"]),

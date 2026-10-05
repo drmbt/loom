@@ -29,7 +29,7 @@ function f16(bits: number): number {
   return sign * (1 + frac / 1024) * Math.pow(2, exp - 15);
 }
 
-/** Mean linear luminance of a display-encoded rgba16float frame — what `meter1` sees. */
+/** Mean linear luminance of a display-encoded rgba16float frame — what `analyze_meter` sees. */
 function meterOf(frame: { bytes: Uint8Array }): number {
   const half = new Uint16Array(frame.bytes.buffer, frame.bytes.byteOffset, frame.bytes.length / 2);
   const lin = (v: number) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));

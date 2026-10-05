@@ -53,13 +53,6 @@ import { unconformingNames } from "./node-name-audit.ts";
  * renaming: run this test, and the failure prints the number each changed file now has.
  */
 export const NOT_YET_RENAMED: Readonly<Record<string, number>> = {
-  "examples/E10-Instanced-Torus.loom.json": 1,
-  "examples/E11-Gradient-Remap.loom.json": 1,
-  "examples/E12-Fluid.loom.json": 8,
-  "examples/E13-Prism.loom.json": 32,
-  "examples/E14-Self-Regulating-Bloom.loom.json": 5,
-  "examples/E16-Murmuration.loom.json": 4,
-  "examples/E2-Reaction-Diffusion.loom.json": 10,
   "examples/E20-Gooeyball.loom.json": 13,
   "examples/E24-Audio-Reaction-Diffusion.loom.json": 50,
   "examples/E25-Stage.loom.json": 21,
@@ -106,7 +99,6 @@ export const NOT_YET_RENAMED: Readonly<Record<string, number>> = {
   "examples/E67-Fins.loom.json": 8,
   "examples/E68-Sanctum.loom.json": 9,
   "examples/E69-Burnish.loom.json": 23,
-  "examples/E7-LFO-Dissolve.loom.json": 1,
   "examples/E70-Chimera.loom.json": 10,
   "examples/E71-Syphon-Loopback.loom.json": 10,
   "examples/E72-NDI-Loopback.loom.json": 10,
@@ -117,11 +109,9 @@ export const NOT_YET_RENAMED: Readonly<Record<string, number>> = {
   "examples/E77-Ember-Monoliths.loom.json": 110,
   "examples/E78-Aether-Orrery.loom.json": 119,
   "examples/E79-Crucible.loom.json": 76,
-  "examples/E8-Slit-Scan.loom.json": 4,
   "examples/E80-Azulejo.loom.json": 15,
   "examples/E81-Phone-Desk.loom.json": 15,
   "examples/E82-Set-List.loom.json": 30,
-  "examples/E9-Ember.loom.json": 13,
   "projects/furnace/furnace.loom.json": 101,
   "projects/on-nothing/cards.loom.json": 13,
   "projects/on-nothing/crt.loom.json": 81,

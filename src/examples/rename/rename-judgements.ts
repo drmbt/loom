@@ -11,6 +11,12 @@
  *
  * `role: ""` means the node has no role and is numbered, as auto-naming would.
  *
+ * ## This list only holds what is still to be applied
+ *
+ * A line is removed in the batch that applies it, because a judgement that matches no
+ * shipped name is refused as stale (`auditRenameMap`). All seventy, with their reasons, are
+ * in the approved record: `docs/node-rename-map-2026-10-05.md`.
+ *
  * ## Where the line was drawn
  *
  * A role is decided here when the rules leave one or two characters (`lag_s`, `math_hd`),
@@ -34,7 +40,6 @@ const REST = "takes the band's resting level off first, so silence drives exactl
 
 export const JUDGEMENTS: readonly Judgement[] = [
   // ── E2, E24, E32: the reaction step ────────────────────────────────────────────────────
-  { scope: "E2-Reaction-Diffusion", kind: "wgsl", old: "rd1", role: "reaction", reason: "`rd` is reaction-diffusion: this is the Gray-Scott step the example is named for" },
   { scope: "E24-Audio-Reaction-Diffusion", kind: "wgsl", old: "rd1", role: "reaction", reason: "the same Gray-Scott step as E2's" },
   ...[1, 2, 3, 4, 5, 6, 7, 8].map((step): Judgement => ({
     scope: "E32-Pasture", kind: "wgsl", old: `rd${String(step)}`, role: `reaction${String(step)}`,
@@ -42,7 +47,6 @@ export const JUDGEMENTS: readonly Judgement[] = [
   })),
 
   // ── E12: the node's id already spells the word ─────────────────────────────────────────
-  { scope: "E12-Fluid", kind: "feedback", old: "vel1", role: "velocity", reason: "its id is `velocity`; the label cut it short to sit beside `dye`" },
 
   // ── E25, E45: a scene's letter is its name ─────────────────────────────────────────────
   { scope: "E25-Stage", kind: "camera", old: "cama1", role: "a", reason: "scene A's camera: kept, the letter is the scene's name here (`render_shota`, `light_keya`)" },

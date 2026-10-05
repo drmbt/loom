@@ -56,7 +56,7 @@ export const instancedTorusDocument = document(
           },
         },
       ),
-      node("out", "output", [120, 0], {}, { label: "out1" }),
+      node("out", "output", [120, 0], {}, { label: "output1" }),
     ],
     [
       edge("e-points-draw", ["points", "out"], ["draw", "points"]),

@@ -356,7 +356,7 @@ describe("E2 is alive, and its chemistry map is doing the work", () => {
    * a LATE age (frame 900, fifteen seconds — well past where the old file had settled) and
    * against a CONTROL that removes exactly the mechanism and nothing else.
    *
-   * The control is `flow1`'s weight set to zero. That is a graph with the same nodes, the
+   * The control is `displace_flow`'s weight set to zero. That is a graph with the same nodes, the
    * same passes, the same twenty substeps and the same wire — it renders a plausible
    * picture, and every structural assertion in `concepts/*.test.ts` still passes on it. Only
    * these two numbers see the difference.

@@ -9,28 +9,28 @@ instead of settling.
 ## Graph
 
 ```
-broad1(noise, perlin4d) ─► warp1.source ─┐
-detail1(noise, perlin4d) ► warp1.disp ───┴─► warp1(displace) ─► shape1(level) ─► pack1.in2
-swell1(noise, perlin4d) ────────────────────────────► flow1.disp
-state(feedback, substeps 20) ─► flow1(displace) ─► rd1(customWgsl) ─► pack1(reorder) ─► state
-     ╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ source: "pack1" ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯   (a reference, T350)
-rd1 ─► tint1(lookup) ◄─ palette1(ramp, 5 stops) ─► out(output)
-                tint1.offset ← lfo1
+noise_broad(noise, perlin4d) ────────────► displace_warp.source ─┐
+noise_detail(noise, perlin4d)            ► displace_warp.disp ───┴─► displace_warp(displace) ─► level_shape(level) ─► reorder_pack.in2
+noise_swell(noise, perlin4d) ────────────────────────────────────────────► displace_flow.disp
+state(feedback, substeps 20) ─────────────────► displace_flow(displace) ─► wgsl_reaction(customWgsl) ─► reorder_pack(reorder) ─► state
+               ╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ source: "reorder_pack" ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯   (a reference, T350)
+wgsl_reaction ─► lookup_tint(lookup) ◄─ ramp_palette(ramp, 5 stops) ─► out(output)
+                                lookup_tint.offset ← lfo1
 ```
 
 | Node | Type | Doing |
 | --- | --- | --- |
-| `broad1` | `noise` | `perlin4d`, period 0.55, `speed 0.05` — the large-scale layout of the chemistry |
-| `detail1` | `noise` | `perlin4d`, period 0.13, `speed 0.09` — the field that *warps* the first one |
-| `warp1` | `displace` | drags `broad1` around by `detail1`, so the two fields interfere |
-| `shape1` | `level` | stretches and hardens the distribution into distinct regions |
-| `swell1` | `noise` | `perlin4d`, period 0.55, `speed 0.035`, **`mono: false`** — the flow field, two channels |
-| `flow1` | `displace` | advects the state along `swell1` on its way into the kernel, weight 0.00035 |
+| `noise_broad` | `noise` | `perlin4d`, period 0.55, `speed 0.05` — the large-scale layout of the chemistry |
+| `noise_detail` | `noise` | `perlin4d`, period 0.13, `speed 0.09` — the field that *warps* the first one |
+| `displace_warp` | `displace` | drags `noise_broad` around by `noise_detail`, so the two fields interfere |
+| `level_shape` | `level` | stretches and hardens the distribution into distinct regions |
+| `noise_swell` | `noise` | `perlin4d`, period 0.55, `speed 0.035`, **`mono: false`** — the flow field, two channels |
+| `displace_flow` | `displace` | advects the state along `noise_swell` on its way into the kernel, weight 0.00035 |
 | `state` | `feedback` | the simulation state, 512×512 rgba16float, **`substeps: 20`** |
-| `rd1` | `customWgsl` | the Gray-Scott step: a nine-tap Laplacian and two rate equations |
-| `pack1` | `reorder` | U and V from the kernel, the chemistry coordinate into blue, alpha kept |
-| `palette1` | `ramp` | five stops, smooth: deep navy → teal → green → amber → cream |
-| `tint1` | `lookup` | reads V as a position along the palette; `offset` driven by `lfo1` |
+| `wgsl_reaction` | `customWgsl` | the Gray-Scott step: a nine-tap Laplacian and two rate equations |
+| `reorder_pack` | `reorder` | U and V from the kernel, the chemistry coordinate into blue, alpha kept |
+| `ramp_palette` | `ramp` | five stops, smooth: deep navy → teal → green → amber → cream |
+| `lookup_tint` | `lookup` | reads V as a position along the palette; `offset` driven by `lfo1` |
 | `lfo1` | `lfo` | 0.05 Hz, ±0.06 — slides every pixel along the gradient together |
 
 ## What it proves
@@ -63,9 +63,9 @@ stopped composing. Frame-pair motion at frame 1800 was 0.018 of full scale.
 
 The cause is in the band. Gray-Scott's spot lattice is stable *because its substrate is
 stationary* — the spots sit in a fixed chemistry and have nowhere to go. So the fix is not
-to make the pattern move, it is to make the ground move underneath it. `flow1` is a Displace
-between the Feedback and the kernel, driven by `swell1`, a slow two-channel noise. The state
-slides; the chemistry map does not, because `pack1` repaints blue from the map chain *after*
+to make the pattern move, it is to make the ground move underneath it. `displace_flow` is a Displace
+between the Feedback and the kernel, driven by `noise_swell`, a slow two-channel noise. The state
+slides; the chemistry map does not, because `reorder_pack` repaints blue from the map chain *after*
 the reaction. Advection through a static parameter field shears a lattice apart. A rigid
 rotation in the same slot would turn the lattice and leave it a lattice — E24 shipped
 exactly that for two hundred tasks, and T734 replaced it with this same node.
@@ -75,7 +75,7 @@ tile CV **0.422/0.434/0.368**. The composition is still there at fifty seconds.
 
 Two details are load-bearing and both fail silently:
 
-- **`swell1.mono` is `false`.** A mono field hands every texel the same offset in x and y,
+- **`noise_swell.mono` is `false`.** A mono field hands every texel the same offset in x and y,
   which translates the picture instead of shearing it. Flipping that one flag costs 45% of
   the moved-pixel count and a third of the feature spread.
 - **The weight is a density knob with an optimum, not a ceiling.** Dark fraction rises
@@ -87,7 +87,7 @@ E32 solved the same complaint with two things: advection *and* weather, an LFO-d
 multiplied into the chemistry map so a region walks down the band and back. Weather is the
 obvious second layer, it is what the owner asked for in as many words, and on this example
 it makes the picture worse. Built as `season1`(lfo, saw 0.0125 Hz) → `front1`(radial ramp,
-dip to 0.55) → `weather1`(multiply) between `shape1` and `pack1.in2`, and measured against
+dip to 0.55) → `weather1`(multiply) between `level_shape` and `reorder_pack.in2`, and measured against
 advection alone across one full 80-second lap of its own clock:
 
 | | tile CV, lap mean | dark, lap mean swing | motion, lap mean |
@@ -110,8 +110,8 @@ file comfortably. Weather was never measured against advection alone, because ad
 alone was not a candidate. Two changes that arrive together must each be measured against
 the other alone (§V709).
 
-**A window refit was also tried and rejected, for the opposite reason.** `shape1`'s window
-is 0.28…0.72 — 0.44 wide against a `warp1` p10..p90 of 0.131–0.189, so the levels are 2.5–3.5×
+**A window refit was also tried and rejected, for the opposite reason.** `level_shape`'s window
+is 0.28…0.72 — 0.44 wide against a `displace_warp` p10..p90 of 0.131–0.189, so the levels are 2.5–3.5×
 wider than the signal in them and 3.6–12.9% of every frame sits in the dead corner above
 0.90. Narrowing the window to fit the signal does remove the dead corner, exactly as
 intended, and it costs the composition: dark falls to 9.3–20.6% and tile CV stays at
@@ -145,7 +145,7 @@ opening a shader, which is the entire difference between a compositor and a shad
 
 **A concentration is data, not light.** V is a number that lives around 0..0.4, and showing
 it in the green channel is showing a number. It goes through a five-stop Ramp and a Lookup
-instead — E11's pairing — and the LFO on `tint1.offset` slides every pixel along that
+instead — E11's pairing — and the LFO on `lookup_tint.offset` slides every pixel along that
 gradient at once, so the colour breathes while the chemistry carries on regardless.
 
 **The Reorder is load-bearing, and it is the least obvious node here.** The CustomWGSL
@@ -157,12 +157,12 @@ changing the node contract.
 
 ## What breaks here first
 
-**The blue channel.** If `pack1.outb` stops reading input 2's luminance — a swapped
+**The blue channel.** If `reorder_pack.outb` stops reading input 2's luminance — a swapped
 selector, a rewired input, a Reorder dropped from the chain — the kernel reads zero
 everywhere, runs one chemistry, and produces a perfectly beautiful uniform maze. Nothing
 errors. The concept test measures per-region feature density for exactly this reason.
 
-**The alpha channel.** `pack1.outa` must stay `in1a`. Alpha below 0.5 means "the pair was
+**The alpha channel.** `reorder_pack.outa` must stay `in1a`. Alpha below 0.5 means "the pair was
 cleared, re-seed"; writing anything else there either re-seeds the plate every frame (a
 static fizz) or never seeds it at all (an empty screen after a reset).
 
@@ -170,7 +170,7 @@ static fizz) or never seeds it at all (an empty screen after a reset).
 twenty times the loop's GPU work in the same frame, and the node's timing row says so —
 that is deliberate, because the cost is the feature.
 
-**And `flow1` is inside that loop**, which is both why it works and what it costs: twenty
+**And `displace_flow` is inside that loop**, which is both why it works and what it costs: twenty
 extra Displace passes per displayed frame, not one. It has to be inside — advecting once per
 displayed frame while the reaction runs twenty times would let the pattern re-settle between
 nudges — but the price is real and belongs in the same sentence as the mechanism. The

@@ -5,12 +5,12 @@ import { FLUID_VELOCITY_WGSL } from "../shaders/fluid-velocity.wgsl.ts";
 /**
  * E12 — Fluid (T362).
  *
- *   vel1(feedback) ─► stir1(customWgsl) ─► advect1.disp        the VELOCITY loop
- *        ╰┄┄┄┄┄┄┄┄ source: "stir1" ┄┄┄┄┄┄┄┄┄┄╯               (a reference, T350)
- *   dye1(feedback) ─► advect1(displace) ─► diffuse1(blur) ─► inject1.in2
- *   ink1(circle, centre ← mouse1) ─────────────────────────► inject1.in1
- *   inject1(over) ─► out1(output)                             the DYE loop
- *        ╰┄┄┄┄┄┄┄┄ dye1.source: "inject1" ┄┄╯
+ *   feedback_velocity(feedback) ─► wgsl_stir(customWgsl) ─► displace_advect.disp        the VELOCITY loop
+ *        ╰┄┄┄┄┄┄┄┄ source: "wgsl_stir" ┄┄┄┄┄┄┄┄┄┄╯               (a reference, T350)
+ *   feedback_dye(feedback) ─► displace_advect(displace) ─► blur_diffuse(blur) ─► over_inject.in2
+ *   circle_ink(circle, centre ← mouse1) ─────────────────────────► over_inject.in1
+ *   over_inject(over) ─► output1(output)                             the DYE loop
+ *        ╰┄┄┄┄┄┄┄┄ feedback_dye.source: "over_inject" ┄┄╯
  *
  * E2 is already a reaction-diffusion, and the difference is the whole reason this file
  * exists: a chemistry BLOOMS — the pattern is generated where it stands — while a fluid
@@ -67,9 +67,9 @@ export const fluidDocument = document(
         [-640, 204],
         // T350 (§V285): the loop is a REFERENCE. The velocity feedback NAMES the kernel
         // that produces it, so `edges` stays a DAG and the picture stops showing a cycle.
-        { persistence: 1, clearColor: [0, 0, 0, 0], reset: false, source: "stir1" },
+        { persistence: 1, clearColor: [0, 0, 0, 0], reset: false, source: "wgsl_stir" },
         {
-          label: "vel1",
+          label: "feedback_velocity",
           // The velocity loop's only ground (see the note above).
           resolution: { mode: "fixed", width: 640, height: 640 },
           format: { mode: "fixed", format: "rgba16float" },
@@ -80,14 +80,14 @@ export const fluidDocument = document(
         "customWgsl",
         [-320, 204],
         { [SHADER_SOURCE_PARAMETER]: FLUID_VELOCITY_WGSL, amount: 1 },
-        { label: "stir1" },
+        { label: "wgsl_stir" },
       ),
       node(
         "dye",
         "feedback",
         [-640, -120],
-        { persistence: 0.985, clearColor: [0, 0, 0, 0], reset: false, source: "inject1" },
-        { label: "dye1" },
+        { persistence: 0.985, clearColor: [0, 0, 0, 0], reset: false, source: "over_inject" },
+        { label: "feedback_dye" },
       ),
       node(
         "advect",
@@ -102,9 +102,9 @@ export const fluidDocument = document(
           // Nothing may smear in from outside the box.
           extend: "zero",
         },
-        { label: "advect1" },
+        { label: "displace_advect" },
       ),
-      node("diffuse", "blur", [-40, -120], { size: 1.4, filter: "gaussian", extend: "zero" }, { label: "diffuse1" }),
+      node("diffuse", "blur", [-40, -120], { size: 1.4, filter: "gaussian", extend: "zero" }, { label: "blur_diffuse" }),
       node(
         "ink",
         "circle",
@@ -118,7 +118,7 @@ export const fluidDocument = document(
           aspectcorrect: true,
         },
         {
-          label: "ink1",
+          label: "circle_ink",
           // §V113 component slots, §V182's CPU half: the blob sits where the pointer is,
           // in the same 0..1 v-down coordinate the kernel reads (§V236).
           parameters: {
@@ -127,8 +127,8 @@ export const fluidDocument = document(
           },
         },
       ),
-      node("inject", "over", [240, -60], { opacity: 1 }, { label: "inject1" }),
-      node("out", "output", [520, -60], {}, { label: "out1" }),
+      node("inject", "over", [240, -60], { opacity: 1 }, { label: "over_inject" }),
+      node("out", "output", [520, -60], {}, { label: "output1" }),
     ],
     [
       edge("e-velocity-stir", ["velocity", "out"], ["stir", "input"]),

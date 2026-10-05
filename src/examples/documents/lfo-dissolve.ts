@@ -57,7 +57,7 @@ export const lfoDissolveDocument = document(
           },
         },
       }),
-      node("out", "output", [120, -60], {}, { label: "out1" }),
+      node("out", "output", [120, -60], {}, { label: "output1" }),
     ],
     [
       edge("e-field-mix", ["field", "out"], ["mix", "in1"]),
