@@ -63,6 +63,16 @@ export function lampToneExpression(station: string): readonly [string, string, s
 
 const wgslTone = (tone: readonly number[]): string => `vec3f(${tone.map((component) => component.toFixed(4)).join(", ")})`;
 
+/** The rule as WGSL, for the wall's material and the motes. Needs `chamberAt` beside it. */
+const LAMP_TONE_WGSL = `const LAMP: f32 = ${LAMP_SPACING.toFixed(5)};
+// The tone of the lamp at a station (tunnel.ts, LAMP_TONES): cold in the bore, sodium in a hall, every fifteenth an alarm.
+fn lampTone(station: f32) -> vec3f {
+  let turn = station - ${LAMP_TONES.alarmEvery}.0 * floor(station / ${LAMP_TONES.alarmEvery}.0);
+  if (abs(turn - ${LAMP_TONES.alarmAt}.0) < 0.5) { return ${wgslTone(LAMP_TONES.alarm)}; }
+  return mix(${wgslTone(LAMP_TONES.bore)}, ${wgslTone(LAMP_TONES.hall)}, step(0.5, chamberAt((station + 0.5) * LAMP)));
+}
+`;
+
 export const BORE_ATTRIBUTES = JSON.stringify([
   { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
   // What the wall is here, for its material: r 0 liner, 1 rib, 2 pipe, 3 deck; g the plate's own random; b the angle round the bore (0 to 1); a the distance along it, metres.
@@ -159,14 +169,7 @@ struct Params {
   lamp: f32, // @default 14  Radiance of the lamp plates in the crown.
 };
 
-const LAMP: f32 = ${LAMP_SPACING.toFixed(5)};
-${chamberWgsl()}
-// The tone of the lamp at a station (tunnel.ts, LAMP_TONES): cold in the bore, sodium in a hall, every fifteenth an alarm.
-fn lampTone(station: f32) -> vec3f {
-  let turn = station - ${LAMP_TONES.alarmEvery}.0 * floor(station / ${LAMP_TONES.alarmEvery}.0);
-  if (abs(turn - ${LAMP_TONES.alarmAt}.0) < 0.5) { return ${wgslTone(LAMP_TONES.alarm)}; }
-  return mix(${wgslTone(LAMP_TONES.bore)}, ${wgslTone(LAMP_TONES.hall)}, step(0.5, chamberAt((station + 0.5) * LAMP)));
-}
+${chamberWgsl()}${LAMP_TONE_WGSL}
 
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceDefaults(s);
@@ -244,4 +247,66 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let distance = select(depth * params.far, params.far, depth <= 0.0 || depth >= 0.9999);
   let clear = exp(-distance * params.density);
   return vec4f(mix(params.color, lit.rgb, clear), lit.a);
+}`;
+
+/** Dust in the air: how many motes, and how long a stretch of tunnel they fill round the robot. */
+export const MOTE_COUNT = 6000;
+const MOTE_SPAN = 60;
+const MOTES_BEHIND = 14;
+
+export const MOTE_ATTRIBUTES = JSON.stringify([
+  { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
+  // The light a mote throws back, already multiplied out (additive, unlit); alpha is its size as a multiple of the draw's.
+  { name: "tint", type: "vec4f", semantic: "color", qualifier: "color", default: [0, 0, 0, 1] },
+]);
+
+/**
+ * AIR: motes hanging in the tunnel, each lit by the lamp it is nearest and by the robot's
+ * eyes, so the light has something to be seen in before it reaches a wall. A mote keeps its
+ * place in the tunnel while the window of them rides with the robot; it is the same wrapping
+ * the wall's rows do. Billboards, additive, unlit: the kernel does their lighting.
+ */
+export const MOTE_KERNEL = `// T1561b — dust in the tunnel's air (src/projects/sentinel-bot/tunnel.ts).
+struct Params {
+  travel: f32, // @default 0  Distance travelled along the tunnel, metres.
+  bore: f32, // @default 2.6  The tunnel's radius, metres.
+  lamp: f32, // @default 26  The lamps' intensity, as their lights have it.
+  eyes: f32, // @default 1.6  The eyes' light, as its light has it.
+  amount: f32, // @default 1  How much of the dust shows: 0 none.
+};
+${pathWgsl()}${LAMP_TONE_WGSL}
+fn moteHash(a: u32, b: u32) -> f32 {
+  let x = (a * 747796405u) ^ (b * 2891336453u + 12345u);
+  let w = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;
+  return f32((w >> 22u) ^ w) / 4294967295.0;
+}
+
+fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  let start = ctx.params.travel - ${MOTES_BEHIND}.0;
+  // Its own place along the tunnel, in whichever span of it the window is over now.
+  let home = moteHash(ctx.index, 1u) * ${MOTE_SPAN}.0;
+  let z = start + (home - start) - ${MOTE_SPAN}.0 * floor((home - start) / ${MOTE_SPAN}.0);
+  let wall = pathFrame(z);
+  let reach = ctx.params.bore * (1.0 + CHAMBER_SWELL * chamberAt(z)) * 0.9;
+  let angle = moteHash(ctx.index, 2u) * 6.2831853;
+  let radius = sqrt(moteHash(ctx.index, 3u)) * reach;
+  let nerve = moteHash(ctx.index, 4u);
+  // It hangs, and drifts a hand's width on a slow count of its own.
+  let drift = vec2f(sin(ctx.absTime * (0.11 + nerve * 0.2) + nerve * 40.0), cos(ctx.absTime * (0.09 + nerve * 0.17) + nerve * 23.0)) * 0.12;
+  var across = vec2f(cos(angle), sin(angle)) * radius + drift;
+  // Nothing hangs under the deck.
+  across.y = max(across.y, -ctx.params.bore * 0.7);
+  q.position = wall.origin + wall.right * across.x + wall.up * across.y;
+
+  // The lamp it is nearest, and the robot's eyes: inverse square, as the lights themselves fall off.
+  let station = floor(z / LAMP);
+  let lampAt = pathFrame((station + 0.5) * LAMP);
+  let toLamp = lampAt.origin + lampAt.up * (ctx.params.bore - 0.35) - q.position;
+  let eyesAt = pathAt(ctx.params.travel + 0.9);
+  let toEyes = eyesAt - q.position;
+  let lit = lampTone(station) * ctx.params.lamp / (1.0 + dot(toLamp, toLamp)) + vec3f(1.0, 0.12, 0.06) * ctx.params.eyes * 6.0 / (0.3 + dot(toEyes, toEyes));
+  let twinkle = 0.55 + 0.45 * sin(ctx.absTime * (0.8 + nerve * 2.5) + nerve * 60.0);
+  q.tint = vec4f(lit * (0.006 * ctx.params.amount * twinkle), 0.5 + nerve);
+  return q;
 }`;

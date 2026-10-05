@@ -11,7 +11,7 @@ import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/pos
 import { SSR_WGSL } from "../furnace/screen-space.ts";
 import { JOINT_ATTRIBUTES, jointCount, jointKernel, type Pick } from "./rig.ts";
 import { HULL_SURFACE_WGSL } from "./surface.ts";
-import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMP_SPACING, lampToneExpression } from "./tunnel.ts";
+import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMP_SPACING, MOTE_ATTRIBUTES, MOTE_COUNT, MOTE_KERNEL, lampToneExpression } from "./tunnel.ts";
 
 /**
  * T1561b — THE SENTINEL DOCUMENT: a robot walking, swimming and perching in the tunnel, played
@@ -285,6 +285,19 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("material_bore", "materialWgsl", [-2100, 1400], { model: "pbr", source: BORE_SURFACE_WGSL, lamp: expressionSlot(`${on("lamp")} * 0.55 * (0.7 + ${LOW} * 0.8)`, 14) }, { label: "material_bore" }),
     node("geometry_bore", "geometry", [-1800, 1200], { mode: "surface", material: "material_bore", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bore" }),
 
+    // ── Air: dust that the lamps and the eyes light on its way to a wall ──
+    node("kernel_motes", "pointKernel", [-2100, 1600], {
+      capacity: MOTE_COUNT,
+      attributes: MOTE_ATTRIBUTES,
+      kernel: MOTE_KERNEL,
+      travel,
+      bore: expressionSlot(on("bore"), 2.6),
+      lamp: expressionSlot(`${on("lamp")} * (0.7 + ${LOW} * 0.8)`, 26),
+      eyes: expressionSlot(`${on("glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6),
+    }, { label: "kernel_motes" }),
+    node("material_motes", "materialUnlit", [-2100, 1800], { color: [1, 1, 1, 1] }, { label: "material_motes" }),
+    node("geometry_motes", "geometry", [-1800, 1600], { mode: "points", material: "material_motes", blend: "additive", soft: 1, scale: map("tint", 0.016, "w"), tint: map("tint", [0, 0, 0, 1]) }, { label: "geometry_motes" }),
+
     // ── Camera and light ──
     node("expression_camera", "valueExpression", [-1800, -600], { expressions: CAMERA_STATEMENTS, defaults: CAMERA_DEFAULTS }, { label: "expression_camera" }),
     // A kick punches the lens in.
@@ -311,7 +324,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       }, { label: `light_lamp${index}` }),
     ),
     node("shot", "render", [-1200, 0], {
-      scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore"].join(" "),
+      scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_motes"].join(" "),
       camera: "cam1",
       lights: ["eyes1", ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.5, 0.62, 0.8, 1],
@@ -372,6 +385,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     ]),
     edge("grid-bore", ["grid_bore", "out"], ["kernel_bore", "in"]),
     edge("bore-geo", ["kernel_bore", "out"], ["geometry_bore", "points"]),
+    edge("motes-geo", ["kernel_motes", "out"], ["geometry_motes", "points"]),
     edge("shot-reflect", ["shot", "out"], ["wgsl_reflect", "input"]),
     edge("depth-reflect", ["shot", "depth"], ["wgsl_reflect", "more"], 0),
     edge("normal-reflect", ["shot", "normal"], ["wgsl_reflect", "more"], 1),
