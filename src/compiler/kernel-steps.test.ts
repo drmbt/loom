@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { GraphDocument, ProjectSettings } from "../domain/types/graph.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
 import type { NodeDefinition } from "../domain/types/node-definition.ts";
+import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
 import { pointStorageId } from "../nodes/definitions/point-storage.ts";
 import { createNodeRegistry } from "../nodes/registry/registry.ts";
@@ -67,6 +68,23 @@ const begins = (passes: ReadonlyArray<PassDescriptor>) =>
 const expression = (source: string) => ({
   mode: "expression",
   bindings: { expression: { kind: "expression", source }, static: { kind: "static", value: 1 } },
+});
+
+describe("kernel steps: the declaration (T1583b, §V358)", () => {
+  it("every node that declares steps names two number parameters, and neither is compileTime", () => {
+    const declarers = allNodeDefinitions.filter((definition) => definition.steps !== undefined);
+    // The row built steps for the plain Point Kernel and deliberately left the advanced one out.
+    expect(declarers.map((definition) => definition.type)).toEqual(["pointKernel"]);
+    for (const definition of declarers) {
+      const schema = effectiveParameterSchema(definition, {});
+      for (const key of [definition.steps?.substeps ?? "", definition.steps?.iterations ?? ""]) {
+        // A compileTime count would make driving it a rebuild, and would take the whole
+        // document off the values-only frame path (`structuralParameterKeys`).
+        expect(schema[key], `${definition.type}.${key}`).toMatchObject({ type: "number", default: 1, min: 1 });
+        expect(schema[key]?.compileTime, `${definition.type}.${key}`).toBeUndefined();
+      }
+    }
+  });
 });
 
 describe("kernel steps: the two counts (T1583b)", () => {

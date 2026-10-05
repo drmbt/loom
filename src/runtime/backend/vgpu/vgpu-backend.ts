@@ -45,6 +45,7 @@ import { createFrameGuard } from "../frame-guard.ts";
 import { createPacedGate } from "../frame-pacing.ts";
 import {
   MAX_KERNEL_STEPS,
+  MAX_TIMED_SPANS_PER_FRAME,
   bytesPerPixelFor,
   estimateResourceBytes,
   expandLoops,
@@ -1295,6 +1296,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     }
   }
 
+  /** T1583b: the plan whose timer shortfall has been reported — see `encode`. */
+  let untimedSpansReportedFor: Program | undefined;
+
   /** T425: this frame's expanded order — declared counts overridden by the live map. */
   function expandedPasses(active: Program): ReadonlyArray<PassDescriptor> {
     if (active.encodePasses === undefined) {
@@ -1397,10 +1401,11 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
    * none left.
    *
    * Run 0 is the dispatch exactly as an unstepped one. Before each later run the pair
-   * swaps, so the run reads what the one before it wrote, and every binding of the pair
-   * moves with it — this dispatch's own two and each downstream consumer's. That rebind is
-   * what leaves consumers on the half the LAST run wrote (assessment risk 1); the pair's
-   * own swap pass, after its last consumer, then hands that half to the next frame.
+   * swaps, so the run reads what the one before it wrote, and this dispatch's own two
+   * bindings move with it. Before the LAST run every other binding of the pair moves too —
+   * each downstream consumer's — which is what leaves consumers on the half the last run
+   * wrote (assessment risk 1) without re-pointing them once per run. The pair's own swap
+   * pass, after its last consumer, then hands that half to the next frame.
    */
   function beginStepRun(active: Program, passId: string, stepping: SteppedDispatch): boolean {
     let runs = active.stepRuns.get(passId);
@@ -1414,7 +1419,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     runs.done = run + 1;
     if (run > 0) {
       active.resources.bufferPairs.get(stepping.pair)?.swap();
-      rebindResource(active, stepping.pair);
+      rebindResource(active, stepping.pair, run === runs.total - 1 ? undefined : passId);
     }
     const pipeline = active.resources.computes.get(passId);
     const slots = pipeline === undefined ? undefined : stepSlotsOf.get(pipeline);
@@ -1446,10 +1451,34 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // loop path encodes every pass into the one open frame, the direct path may split
       // a render across several frames that then share the number.
       if (gpuTimer !== undefined) timedFrames.set(f, framesSubmitted + 1);
+      /*
+       * T1583b (assessment risk 10): the timer holds 2048 spans per frame and vgpu throws on
+       * the next one, which used to turn "more looped runs than the timer can measure" into
+       * a frame that does not render. Every pass keeps ONE span, so every node keeps a row;
+       * what gives way is REPEATS of looped passes, once the frame has no span left for
+       * them. They still run. Their node's GPU time is then a sum over fewer runs than
+       * happened, which is said by name below instead of shown as if it were whole.
+       */
+      let spansTaken = 0;
+      let untimedRepeats = 0;
+      let repeatSpans = Number.POSITIVE_INFINITY;
+      if (gpuTimer !== undefined && passes.length > MAX_TIMED_SPANS_PER_FRAME) {
+        const timed = new Set<string>();
+        for (const pass of passes) {
+          if (pass.kind === "effect" || pass.kind === "draw" || pass.kind === "dispatch") timed.add(pass.id);
+        }
+        repeatSpans = Math.max(0, MAX_TIMED_SPANS_PER_FRAME - timed.size);
+      }
       const spanFor = (passId: string): TimerSpan | undefined => {
         if (gpuTimer === undefined) return undefined;
         const seen = iterations.get(passId) ?? 0;
         iterations.set(passId, seen + 1);
+        if (spansTaken >= MAX_TIMED_SPANS_PER_FRAME || (seen > 0 && repeatSpans <= 0)) {
+          untimedRepeats += 1;
+          return undefined;
+        }
+        if (seen > 0) repeatSpans -= 1;
+        spansTaken += 1;
         return gpuTimer.span(iterationSpanName(passId, seen));
       };
       /*
@@ -1603,6 +1632,18 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         );
       }
 
+      // T1583b: once per installed plan — the condition is the plan's, and it holds every frame.
+      if (untimedRepeats > 0 && untimedSpansReportedFor !== active) {
+        untimedSpansReportedFor = active;
+        hub.report(
+          backendDiagnostic(
+            "warning",
+            BackendDiagnosticCode.timestampUnavailable,
+            `This frame encodes ${spansTaken + untimedRepeats} timed passes and the GPU timer holds ${MAX_TIMED_SPANS_PER_FRAME} per frame; ${untimedRepeats} repeats of looped passes carry no GPU time, so the GPU time of the nodes they belong to is under-reported.`,
+            { suggestion: "Lower Substeps or Iterations on the looped nodes to see their whole GPU time." },
+          ),
+        );
+      }
       if (withPresentations) encodePresentations(f);
       // Presentations are not a plan pass and get no row; publishing after them keeps the
       // emission on the same edge as the frame rather than mid-encode.
@@ -1703,8 +1744,12 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
    * the very next pass, so the halves have to move under the bindings there and then.
    * Scoped to the swapped resource because a substep loop does this on every iteration and
    * walking every binding in the plan fifty times a frame is work with no reader.
+   *
+   * T1583b: `onlyPassId` scopes it to ONE consumer. Between the runs of a stepped kernel
+   * only the kernel itself is encoded, so only its bindings need to follow each swap; the
+   * downstream consumers follow once, before the last run.
    */
-  function rebindResource(active: Program, resourceId: string): void {
+  function rebindResource(active: Program, resourceId: string, onlyPassId?: string): void {
     const pair = active.resources.pingPongs.get(resourceId);
     const ring = active.resources.rings.get(resourceId);
     const bufferPair = active.resources.bufferPairs.get(resourceId);
@@ -1717,6 +1762,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     const textureConsumers = active.textureConsumers.get(resourceId);
     if ((pair || ring) && textureConsumers !== undefined) {
       for (const [passId, matching] of textureConsumers) {
+        if (onlyPassId !== undefined && passId !== onlyPassId) continue;
         const drawable = settableFor(passId);
         if (!drawable) continue;
         const values: Record<string, unknown> = {};
@@ -1738,6 +1784,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     const bufferConsumers = active.bufferConsumers.get(resourceId);
     if (bufferPair && bufferConsumers !== undefined) {
       for (const [passId, matching] of bufferConsumers) {
+        if (onlyPassId !== undefined && passId !== onlyPassId) continue;
         const drawable = settableFor(passId);
         if (!drawable) continue;
         const values: Record<string, unknown> = {};

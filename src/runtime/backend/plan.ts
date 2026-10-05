@@ -368,6 +368,14 @@ export interface KernelStepsDescriptor {
 export const MAX_SUBSTEPS = 256;
 
 /**
+ * The spans the GPU pass timer can hold in ONE frame: WebGPU caps a query set at 4096
+ * queries and a span is a begin/end pair. vgpu throws on span 2049, so the encoder counts
+ * (T1583b): past this, repeats of looped passes run untimed and the frame says so, rather
+ * than a frame that encodes more work than the timer can measure failing to render at all.
+ */
+export const MAX_TIMED_SPANS_PER_FRAME = 2048;
+
+/**
  * T1583b: the most dispatches one kernel runs per displayed frame, substeps × iterations.
  * The loop ceiling, because a kernel's region IS a loop region and the encoder clamps
  * every region to it. One kernel at the ceiling is an eighth of the timer's 2048 spans.
