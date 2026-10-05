@@ -290,6 +290,8 @@ if (existsSync(join(root, "examples/README.md"))) {
 }
 for (const path of walk("src", isTest)) {
   if (path.startsWith("src/examples/rename/") || path.startsWith("src/projects/sentinel-bot/")) continue;
+  // The naming gate spells OLD names on purpose: its ledger's keys, and the habit it describes.
+  if (path === "src/examples/node-names.test.ts") continue;
   const before = read(path);
   const scopes = testScopes(path, before);
   if (scopes.size === 0 || !inBatch(scopes)) continue;

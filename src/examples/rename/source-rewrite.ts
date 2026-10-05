@@ -62,6 +62,13 @@ interface Edit {
   readonly text: string;
 }
 
+/** One replacement inside a line: columns `at` to `end` of the ORIGINAL become `text`. */
+export interface Change {
+  readonly at: number;
+  readonly end: number;
+  readonly text: string;
+}
+
 /** A string that is nothing but names: `dots1 links1`, `glow.radius, dim`, `lfo1:value`. */
 const NAME_LIST = /^\s*[\p{L}\p{N}_]+(?:[.:][\p{L}\p{N}_.*]+)?(?:[\s,]+[\p{L}\p{N}_]+(?:[.:][\p{L}\p{N}_.*]+)?)*\s*$/u;
 const OP = /op\(\s*(\\?['"])([^'"\\]+)\1\s*\)/g;
@@ -158,12 +165,29 @@ class Session {
    */
   prose(start: number, end: number, page: boolean): void {
     const raw = this.text.slice(start, end);
-    const next = raw.replace(PROSE, (whole: string, quote: string | undefined, read: string | undefined, ticked: string | undefined, tail: string | undefined, bare: string | undefined, offset: number) => {
+    let next = "";
+    let from = 0;
+    for (const change of this.proseChanges(start, end, page)) {
+      next += `${raw.slice(from, change.at)}${change.text}`;
+      from = change.end;
+    }
+    this.replace(start, end, `${next}${raw.slice(from)}`);
+  }
+
+  /** What `prose` would change in this stretch, as offsets into it. Counts and notes as it reads. */
+  proseChanges(start: number, end: number, page: boolean): Change[] {
+    const raw = this.text.slice(start, end);
+    const changes: Change[] = [];
+    const moved = (offset: number, whole: string, text: string): string => {
+      if (text !== whole) changes.push({ at: offset, end: offset + whole.length, text });
+      return whole;
+    };
+    raw.replace(PROSE, (whole: string, quote: string | undefined, read: string | undefined, ticked: string | undefined, tail: string | undefined, bare: string | undefined, offset: number) => {
       if (read !== undefined) {
         const renamed = this.table.names.get(read);
         if (renamed === undefined) return whole;
         this.changed += 1;
-        return `op(${quote ?? "'"}${renamed}${quote ?? "'"})`;
+        return moved(offset, whole, `op(${quote ?? "'"}${renamed}${quote ?? "'"})`);
       }
       if (ticked !== undefined) {
         const renamed = this.table.names.get(ticked);
@@ -174,7 +198,7 @@ class Session {
           return whole;
         }
         this.changed += 1;
-        return `\`${renamed}${tail ?? ""}\``;
+        return moved(offset, whole, `\`${renamed}${tail ?? ""}\``);
       }
       const name = bare ?? "";
       const renamed = this.table.names.get(name);
@@ -183,9 +207,9 @@ class Session {
       if (!distinctive(name) && !claimed) return whole;
       this.changed += 1;
       if (claimed) this.spelled.add(name);
-      return renamed;
+      return moved(offset, whole, renamed);
     });
-    this.replace(start, end, next);
+    return changes;
   }
 
   result(): Rewritten {
@@ -377,14 +401,109 @@ export function rewriteTest(path: string, text: string, table: NameTable): Rewri
   return rewriteTypeScript(path, text, table, false);
 }
 
+/** Box-drawing and arrows. A fence that has one is a DIAGRAM, and its columns mean something. */
+const DIAGRAM = /[─│┌┐└┘├┤┬┴┼╭╮╰╯►◄▲▼┄]/;
+/** What a diagram is padded with: a run of these can be made longer without saying anything else. */
+const FILLER: ReadonlySet<string> = new Set([" ", "─", "┄"]);
+const JOINT = /[│┌┐└┘├┤┬┴┼╭╮╰╯►◄▲▼]/;
+/** Joints with an arm to the LEFT: one is reached by a line, so it is pushed along by more line. */
+const REACHED_FROM_LEFT = /[┐┘┤┬┴┼╮╯]/;
+
+/**
+ * A diagram's lines with their names replaced, RE-LAID OUT so its columns still line up.
+ *
+ * A name that gets longer pushes everything after it on its line to the right, and a
+ * junction drawn across two lines (`─┐` above `─┴─►`) stops meeting. Nothing checks that:
+ * the page still parses, and reads as a broken drawing. `doc-drift.test.ts` says as much
+ * about why its notation was never migrated.
+ *
+ * So every line is padded to the line that grew the most. At each original column the
+ * block has grown by some amount on its widest line; a line that has grown less is padded
+ * up to that amount at the next stretch of filler (spaces, or a run of `─` or `┄`), which
+ * is the one place a diagram can be made longer without saying anything different. A
+ * junction that stands directly against text (`…Advanced)└─►`, `add(add)◄┘`) has no filler
+ * to stretch, so it is given some: spaces in front of a joint nothing reaches from the
+ * left, line in front of one something does.
+ */
+export function relayout(lines: readonly string[], changes: ReadonlyArray<readonly Change[]>): string[] {
+  const grownBy = (line: number, column: number): number =>
+    (changes[line] ?? []).reduce((sum, change) => (change.end <= column ? sum + change.text.length - (change.end - change.at) : sum), 0);
+  const width = Math.max(0, ...lines.map((line) => line.length));
+  const want: number[] = [];
+  for (let column = 0; column <= width; column += 1) {
+    want.push(Math.max(want[column - 1] ?? 0, ...lines.map((_line, index) => grownBy(index, column))));
+  }
+  return lines.map((line, index) => {
+    const mine = [...(changes[index] ?? [])].sort((left, right) => left.at - right.at);
+    let out = "";
+    let have = 0;
+    let next = 0;
+    for (let column = 0; column < line.length; ) {
+      const change = mine[next];
+      if (change !== undefined && change.at === column) {
+        out += change.text;
+        have += change.text.length - (change.end - change.at);
+        column = change.end;
+        next += 1;
+        continue;
+      }
+      const here = line.charAt(column);
+      const after = line.charAt(column + 1);
+      const stretch = FILLER.has(here) && (after === here || line.charAt(column - 1) === here || JOINT.test(after));
+      const owed = (want[column] ?? 0) - have;
+      const before = line.charAt(column - 1);
+      const againstText = JOINT.test(here) && here !== "►" && here !== "◄" && column > 0 && !FILLER.has(before);
+      if (stretch && owed > 0) {
+        out += here.repeat(owed);
+        have += owed;
+      } else if (againstText && owed > 0) {
+        out += (REACHED_FROM_LEFT.test(here) ? "─" : " ").repeat(owed);
+        have += owed;
+      }
+      out += here;
+      column += 1;
+    }
+    return out;
+  });
+}
+
 /**
  * A page beside an example: the `name(type)` claims `doc-drift` checks, names in
- * backticks, and `op('…')`.
+ * backticks, and `op('…')`. A fenced diagram is re-laid out so it still lines up.
  */
 export function rewritePage(text: string, table: NameTable): Rewritten {
   const starts: number[] = [0];
   for (let index = text.indexOf("\n"); index >= 0; index = text.indexOf("\n", index + 1)) starts.push(index + 1);
   const session = new Session(text, table, (position) => starts.findLastIndex((start) => start <= position) + 1);
-  session.prose(0, text.length, true);
+  let from = 0;
+  for (const fence of text.matchAll(/```[^\n]*\n([\s\S]*?)```/g)) {
+    const body = fence[1] ?? "";
+    const bodyStart = fence.index + fence[0].indexOf("\n") + 1;
+    session.prose(from, bodyStart, true);
+    from = bodyStart + body.length;
+    if (!DIAGRAM.test(body)) {
+      session.prose(bodyStart, from, true);
+      continue;
+    }
+    const lines = body.split("\n");
+    let offset = bodyStart;
+    const changes = lines.map((line) => {
+      const found = session.proseChanges(offset, offset + line.length, true);
+      offset += line.length + 1;
+      return found;
+    });
+    // One drawing at a time: a blank line ends it. Two drawings in one fence share no
+    // junction, and a long name in the second must not push the first one's columns apart.
+    const laid: string[] = [];
+    for (let first = 0; first < lines.length; ) {
+      let last = first;
+      while (last < lines.length && (lines[last] ?? "").trim() !== "") last += 1;
+      laid.push(...relayout(lines.slice(first, last), changes.slice(first, last)));
+      if (last < lines.length) laid.push(lines[last] ?? "");
+      first = last + 1;
+    }
+    session.replace(bodyStart, from, laid.join("\n"));
+  }
+  session.prose(from, text.length, true);
   return session.result();
 }

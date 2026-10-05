@@ -133,4 +133,40 @@ describe("the page beside an example", () => {
     const done = rewritePage("The set fades out. `out` is the Output, drawn as out(output).", table({ out: "output1" }));
     expect(done.text).toBe("The set fades out. `output1` is the Output, drawn as output1(output).");
   });
+
+  /*
+   * A diagram is read by its COLUMNS: `─┐` on one line meets `─┴─►` on the next because they
+   * stand in the same column. A longer name pushes one line's junction right and not the
+   * other's. Nothing fails. The page still parses and every claim in it is still true; the
+   * drawing just no longer connects.
+   */
+  it("keeps a diagram's junctions in one column when the names on its lines grow by different amounts", () => {
+    const page = [
+      "```",
+      "a1(noise) ─► warp1.source ─┐",
+      "b1(noise) ──► warp1.disp ──┴─► warp1(displace) ─► out",
+      "                           │",
+      "c1(lfo) ───────────────────┘",
+      "```",
+    ].join("\n");
+    const done = rewritePage(page, table({ a1: "noise_broad", b1: "noise_b", warp1: "displace_warp", c1: "lfo_c" }));
+    const [, first = "", second = "", bar = "", last = ""] = done.text.split("\n");
+    // Every name moved…
+    expect(first).toContain("noise_broad(noise) ─► displace_warp.source");
+    expect(second).toContain("noise_b(noise)");
+    expect(second).toContain("displace_warp(displace) ─► out");
+    expect(last).toContain("lfo_c(lfo)");
+    // …and the four ends of the junction are still one above the other.
+    const column = first.indexOf("┐");
+    expect([second.indexOf("┴"), bar.indexOf("│"), last.indexOf("┘")]).toEqual([column, column, column]);
+    // Padded with what was already there, and nothing else: a line of spaces stays spaces.
+    expect(bar.trim()).toBe("│");
+    expect(last).toMatch(/^lfo_c\(lfo\) ─+┘$/);
+  });
+
+  it("leaves a fence that is not a diagram exactly as long as its names make it", () => {
+    const page = "```\nset  beat1.amount   0.5\nset  clock1.index   1\n```";
+    const done = rewritePage(page, table({ beat1: "pattern_beat", clock1: "switch_clock" }));
+    expect(done.text).toBe("```\nset  pattern_beat.amount   0.5\nset  switch_clock.index   1\n```");
+  });
 });

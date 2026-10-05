@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { kindFromName, NODE_KINDS } from "../domain/graph/node-kinds.ts";
 import { exampleRegistry } from "./runner.ts";
 
 /**
@@ -32,6 +33,35 @@ const EXAMPLES_DIR = join(HERE, "..", "..", "examples");
 interface Claim {
   readonly name: string;
   readonly type: string;
+}
+
+/**
+ * WHAT A NODE'S NAME LOOKS LIKE IN A PAGE (T1593b).
+ *
+ * Two of the gates below find the names in a fence by their SHAPE, because a diagram does
+ * not say which of its words are nodes. The shape used to be "letters and a trailing
+ * digit", the old naming habit (`dye1`, `pathx1`), and both gates were written around it.
+ * A name is `kind_role` now (`feedback_dye`), and a gate that only knew the old shape did
+ * two things to a renamed page, neither of them loud: the reference gate stopped seeing
+ * the names at all and passed on nothing, and the driver gate picked the one old-shaped
+ * word left on the line as the driver (`mouse1 ─► lag_follow ┄drives┄► …` read as "mouse1
+ * drives").
+ *
+ * So a name is either: a word and a number (`output1`, `blur2`: what auto-naming gives, and
+ * the whole of the old habit), or `kind_role` where the kind is one the catalogue or a
+ * shipped starter component has. The kind has to be real: a fence also holds `tex_coord`.
+ */
+const NAME_KINDS: ReadonlySet<string> = new Set([
+  ...Object.values(NODE_KINDS),
+  ...readdirSync(join(EXAMPLES_DIR, "components"))
+    .filter((name) => name.endsWith(".loom.json"))
+    .map((name) => kindFromName(name.replace(/\.loom\.json$/, ""))),
+]);
+
+function nameShaped(token: string): boolean {
+  if (/^[a-z][a-zA-Z]*\d+$/.test(token)) return true;
+  const kind = /^([a-z]+)_[\p{L}\p{N}_]+$/u.exec(token)?.[1];
+  return kind !== undefined && NAME_KINDS.has(kind);
 }
 
 /** `name(type, …)` occurrences inside ``` fences, filtered to real catalogue types. */
@@ -181,18 +211,15 @@ describe("T522 — example markdown matches the document it sits beside", () => 
  * So what this gate DOES buy, exactly: a reference to a name that is NOT THERE AT ALL —
  * the other half of the class, and the half that let `E24`'s `out1` sit unread. It also
  * does not read edge DIRECTION (a diagram drawing `a1 ─► b1` where the file wires
- * `b1 ─► a1` resolves both ends and passes), and a node whose label carries no trailing
- * digit does not match the label shape and is invisible to it — precisely as an untyped
- * reference was invisible to T522.
+ * `b1 ─► a1` resolves both ends and passes), and a node whose name is not name-shaped
+ * (`nameShaped`, above: a bare word such as `dim`) is invisible to it — precisely as an
+ * untyped reference was invisible to T522.
  */
 describe("T890 — a fenced reference resolves against the document, typed or not", () => {
   const pairs = readdirSync(EXAMPLES_DIR)
     .filter((name) => name.endsWith(".md") && name.startsWith("E"))
     .map((name) => ({ md: name, loom: name.replace(/\.md$/, ".loom.json") }))
     .filter((pair) => existsSync(join(EXAMPLES_DIR, pair.loom)));
-
-  /** Lowercase, letters, trailing digit. The house convention every label follows. */
-  const LABEL_SHAPE = /^[a-z][a-zA-Z]*\d+$/;
 
   /**
    * A reference the document does not hold, kept because spelling it out costs more than
@@ -241,7 +268,7 @@ describe("T890 — a fenced reference resolves against the document, typed or no
     for (const [, block] of markdown.matchAll(/```[a-z]*\n([\s\S]*?)```/g)) {
       if (block === undefined) continue;
       for (const [, token] of block.matchAll(/(?<![\w.])([a-zA-Z_][\w-]*)(?![\w.])/g)) {
-        if (token !== undefined && LABEL_SHAPE.test(token)) found.push(token);
+        if (token !== undefined && nameShaped(token)) found.push(token);
       }
     }
     return found;
@@ -423,8 +450,6 @@ describe("T894 — the ┄ driver annotation matches the document's bindings", (
     .map((name) => ({ md: name, loom: name.replace(/\.md$/, ".loom.json") }))
     .filter((pair) => existsSync(join(EXAMPLES_DIR, pair.loom)));
 
-  const LABEL_SHAPE = /^[a-z][a-zA-Z]*\d+$/;
-
   /** The five spellings, first match wins. Order matters: A and B are more specific. */
   const FORMS: ReadonlyArray<readonly [string, RegExp]> = [
     ["A", /source:\s*"/],
@@ -495,7 +520,7 @@ describe("T894 — the ┄ driver annotation matches the document's bindings", (
 
   const labelled = (text: string): string[] =>
     (text.match(/[a-zA-Z_][\w.]*/g) ?? []).filter((token) =>
-      LABEL_SHAPE.test(token.split(".")[0] ?? ""),
+      nameShaped(token.split(".")[0] ?? ""),
     );
 
   function fencedLines(markdown: string): string[] {
@@ -573,13 +598,14 @@ describe("T894 — the ┄ driver annotation matches the document's bindings", (
 
       if (form === "C") {
         for (const [, node = "", inner = ""] of line.matchAll(
-          /([a-z][\w]*\d)\(([^)]*┄[^)]*)\)/g,
+          /([a-z]\w*)\(([^)]*┄[^)]*)\)/g,
         )) {
+          if (!nameShaped(node)) continue;
           for (const part of inner.split("┄").slice(1)) {
             const first = (part.match(/[a-zA-Z_][\w/-]*/) ?? [])[0];
             if (first === undefined) continue;
             for (const driver of expandPair(first, names)) {
-              if (!LABEL_SHAPE.test(driver)) continue;
+              if (!nameShaped(driver)) continue;
               checked += 1;
               const ok = bindings.some(
                 (binding) => binding.node === node && binding.driver === driver,
@@ -602,7 +628,7 @@ describe("T894 — the ┄ driver annotation matches the document's bindings", (
           ...(after === undefined ? [] : expandPair(after, names)),
         ]
           .map((token) => token.split(".")[0] ?? "")
-          .filter((token) => LABEL_SHAPE.test(token));
+          .filter((token) => nameShaped(token));
         if (candidates.length === 0) continue;
         checked += 1;
         if (!candidates.some((token) => drivers.has(token))) {
