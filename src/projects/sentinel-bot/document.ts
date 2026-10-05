@@ -5,6 +5,7 @@ import { edge, expressionSlot, graph, node as buildNode, settings } from "../../
 import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from "../../examples/build-showcase-beat.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS } from "./camera.ts";
+import { against, pace, surge } from "./director.ts";
 import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
 import { PATH, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
@@ -120,7 +121,12 @@ const KICK = `(op('hits1').chan.kickCount * ${LISTEN})`;
 const HAT = `(op('hits1').chan.hatCount * ${LISTEN})`;
 const TRAVEL = "op('travel1').chan.value";
 const STROKE = "op('stroke1').chan.value";
-const SWIM = on("swim");
+// What the track is doing (director.ts), and whether the piece is following it.
+const ENERGY = "op('constant_energy').chan.value";
+const LIFT = "op('constant_lift').chan.value";
+const FOLLOW = on("toggle_follow");
+// How much it swims: one channel every piece's kernel reads (`lag_swim`, below).
+const SWIM = "op('lag_swim').chan.value";
 
 export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptions = {}): ProjectDocument {
   const travel = expressionSlot(TRAVEL, 0);
@@ -200,6 +206,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("view", "xyPad", [-3300, 2250], { channel: "view", caption: "Chase side / height", x: 1.1, y: 0.6, min: -2, max: 2 }, { label: "view" }),
     node("slider_shot", "slider", [-3000, 2250], { channel: "shot", caption: `Shot (${SHOTS.join(", ")})`, value: 0, min: 0, max: SHOTS.length - 1, step: 1 }, { label: "slider_shot" }),
     node("toggle_cuts", "toggle", [-2700, 2250], { channel: "cuts", caption: "Cut on the bars", on: true }, { label: "toggle_cuts" }),
+    node("toggle_follow", "toggle", [-2400, 2500], { channel: "follow", caption: "Follow the track", on: true }, { label: "toggle_follow" }),
   ];
   const board = serializePanelBoard({
     columns: 12,
@@ -210,6 +217,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       { label: "Camera", rect: { x: 0, y: 2 + ROBOT.length, w: 6, h: 1 } },
       { member: "slider_shot", rect: { x: 0, y: 3 + ROBOT.length, w: 6, h: 1 } },
       { member: "toggle_cuts", rect: { x: 0, y: 4 + ROBOT.length, w: 6, h: 1 } },
+      { member: "toggle_follow", rect: { x: 0, y: 5 + ROBOT.length, w: 6, h: 1 } },
       { label: "Scene", rect: { x: 6, y: 0, w: 6, h: 1 } },
       ...SCENE.map((slider, index) => ({ member: slider.name, rect: { x: 6, y: 1 + index, w: 6, h: 1 } })),
       { member: "view", rect: { x: 6, y: 1 + SCENE.length, w: 3, h: 3 } },
@@ -231,6 +239,15 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("levels", "valueLag", [-2400, 500], { lag: 0.03, releaseRatio: 5 }, { label: "levels1" }),
     node("pickHits", "valueSelect", [-3300, 750], { channels: "kickCount snareCount hatCount" }, { label: "pickhits1" }),
     node("hits", "valueLag", [-3000, 750], { lag: 0.001, releaseRatio: 250 }, { label: "hits1" }),
+    // What the track is doing (director.ts): this passage's loudness against what it has
+    // usually been lately (slow to fall), and against the quietest it has lately been (falls at
+    // once, slow to rise). The level is the clip's own, not the ranked one: a rank has no silence.
+    node("select_loud", "valueSelect", [-2700, 650], { channels: "level" }, { label: "select_loud" }),
+    node("lag_loud", "valueLag", [-2400, 650], { lag: 0.8, releaseRatio: 1.5 }, { label: "lag_loud" }),
+    node("lag_usual", "valueLag", [-2100, 600], { lag: 4, releaseRatio: 4 }, { label: "lag_usual" }),
+    node("lag_floor", "valueLag", [-2100, 725], { lag: 8, releaseRatio: 0.06 }, { label: "lag_floor" }),
+    node("constant_energy", "constant", [-1800, 600], { value: expressionSlot(against("op('lag_loud').chan.level", "op('lag_usual').chan.level"), 0) }, { label: "constant_energy" }),
+    node("constant_lift", "constant", [-1800, 725], { value: expressionSlot(against("op('lag_loud').chan.level", "op('lag_floor').chan.level"), 0) }, { label: "constant_lift" }),
     // Seconds since the last kick: what times a pulse down the tentacles.
     node("select_kick", "valueSelect", [-3300, 900], { channels: "kickCount" }, { label: "select_kick" }),
     node("count_kick", "valueCount", [-3000, 900], { threshold: 0.5, holdoff: 0.1 }, { label: "count_kick" }),
@@ -240,10 +257,14 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // GPU: the rate cannot read how far it has come without the value graph closing a loop,
     // and a loop there is dropped whole.)
     node("rate", "constant", [-2400, 1000], {
-      value: expressionSlot(`${on("speed")} * (1 - ${on("perch")}) * (1 + ${KICK} * 0.6)`, 3.2),
+      value: expressionSlot(`${on("speed")} * (1 - ${on("perch")}) * (1 + ${KICK} * 0.6) * ${pace(FOLLOW, ENERGY)}`, 3.2),
     }, { label: "rate1" }),
     node("ease", "valueLag", [-2100, 1000], { lag: 0.25, releaseRatio: 1.6 }, { label: "ease1" }),
     // Perch, eased: how perched it is, 0 to 1, for the head and the tentacles it frees.
+    // How much it swims: the panel's Swim, or the track coming back in (director.ts). Eased, so
+    // letting go of the wall and taking hold again each take a moment.
+    node("constant_swim", "constant", [-1500, 725], { value: expressionSlot(`max(${on("swim")}, ${surge(FOLLOW, LIFT)})`, 0) }, { label: "constant_swim" }),
+    node("lag_swim", "valueLag", [-1200, 725], { lag: 0.35, releaseRatio: 2 }, { label: "lag_swim" }),
     node("constant_perch", "constant", [-2400, 1125], { value: expressionSlot(on("perch"), 0) }, { label: "constant_perch" }),
     node("lag_perched", "valueLag", [-2100, 1125], { lag: 0.6, releaseRatio: 1 }, { label: "lag_perched" }),
     node("travel", "valueSpeed", [-1800, 1000], { minimum: 0, maximum: PATH.period, limit: "loop" }, { label: "travel1" }),
@@ -371,6 +392,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("rank-levels", ["rank", "out"], ["levels", "in"]),
     edge("clip-hits", ["clip", "out"], ["pickHits", "in"]),
     edge("hits-lag", ["pickHits", "out"], ["hits", "in"]),
+    edge("smooth-loud", ["smooth", "out"], ["select_loud", "in"]),
+    edge("loud-lag", ["select_loud", "out"], ["lag_loud", "in"]),
+    edge("loud-usual", ["lag_loud", "out"], ["lag_usual", "in"]),
+    edge("loud-floor", ["lag_loud", "out"], ["lag_floor", "in"]),
+    edge("swim-ease", ["constant_swim", "out"], ["lag_swim", "in"]),
     edge("clip-kick", ["clip", "out"], ["select_kick", "in"]),
     edge("kick-count", ["select_kick", "out"], ["count_kick", "in"]),
     edge("rate-ease", ["rate", "out"], ["ease", "in"]),

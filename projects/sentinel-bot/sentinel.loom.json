@@ -422,6 +422,39 @@
           "portId": "in"
         }
       },
+      "loud-floor": {
+        "id": "loud-floor",
+        "source": {
+          "nodeId": "lag_loud",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lag_floor",
+          "portId": "in"
+        }
+      },
+      "loud-lag": {
+        "id": "loud-lag",
+        "source": {
+          "nodeId": "select_loud",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lag_loud",
+          "portId": "in"
+        }
+      },
+      "loud-usual": {
+        "id": "loud-usual",
+        "source": {
+          "nodeId": "lag_loud",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lag_usual",
+          "portId": "in"
+        }
+      },
       "motes-geo": {
         "id": "motes-geo",
         "source": {
@@ -637,6 +670,18 @@
           "portId": "controls"
         }
       },
+      "panel-toggle_follow": {
+        "id": "panel-toggle_follow",
+        "order": 18,
+        "source": {
+          "nodeId": "toggle_follow",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
       "panel-view": {
         "id": "panel-view",
         "order": 15,
@@ -738,6 +783,17 @@
           "portId": "input"
         }
       },
+      "smooth-loud": {
+        "id": "smooth-loud",
+        "source": {
+          "nodeId": "smooth",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "select_loud",
+          "portId": "in"
+        }
+      },
       "smooth-rank": {
         "id": "smooth-rank",
         "source": {
@@ -757,6 +813,17 @@
         },
         "target": {
           "nodeId": "stroke",
+          "portId": "in"
+        }
+      },
+      "swim-ease": {
+        "id": "swim-ease",
+        "source": {
+          "nodeId": "constant_swim",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lag_swim",
           "portId": "in"
         }
       }
@@ -939,6 +1006,56 @@
         },
         "type": "audioFileIn"
       },
+      "constant_energy": {
+        "definitionVersion": 1,
+        "id": "constant_energy",
+        "label": "constant_energy",
+        "parameters": {
+          "value": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((op('lag_loud').chan.level > 0.001) * op('lag_loud').chan.level / max(op('lag_usual').chan.level, 0.001))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -1800,
+          "y": 600
+        },
+        "type": "constant"
+      },
+      "constant_lift": {
+        "definitionVersion": 1,
+        "id": "constant_lift",
+        "label": "constant_lift",
+        "parameters": {
+          "value": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((op('lag_loud').chan.level > 0.001) * op('lag_loud').chan.level / max(op('lag_floor').chan.level, 0.001))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -1800,
+          "y": 725
+        },
+        "type": "constant"
+      },
       "constant_perch": {
         "definitionVersion": 1,
         "id": "constant_perch",
@@ -961,6 +1078,31 @@
         "position": {
           "x": -2400,
           "y": 1125
+        },
+        "type": "constant"
+      },
+      "constant_swim": {
+        "definitionVersion": 1,
+        "id": "constant_swim",
+        "label": "constant_swim",
+        "parameters": {
+          "value": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "max(op('swim').chan.swim, (op('toggle_follow').chan.follow * smoothstep(1.5, 2.2, op('constant_lift').chan.value)))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -1500,
+          "y": 725
         },
         "type": "constant"
       },
@@ -1681,7 +1823,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('swim').chan.swim"
+                "source": "op('lag_swim').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1895,7 +2037,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('swim').chan.swim"
+                "source": "op('lag_swim').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -2176,7 +2318,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('swim').chan.swim"
+                "source": "op('lag_swim').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -2218,6 +2360,34 @@
         },
         "type": "pointKernel"
       },
+      "lag_floor": {
+        "definitionVersion": 1,
+        "id": "lag_floor",
+        "label": "lag_floor",
+        "parameters": {
+          "lag": 8,
+          "releaseRatio": 0.06
+        },
+        "position": {
+          "x": -2100,
+          "y": 725
+        },
+        "type": "valueLag"
+      },
+      "lag_loud": {
+        "definitionVersion": 1,
+        "id": "lag_loud",
+        "label": "lag_loud",
+        "parameters": {
+          "lag": 0.8,
+          "releaseRatio": 1.5
+        },
+        "position": {
+          "x": -2400,
+          "y": 650
+        },
+        "type": "valueLag"
+      },
       "lag_perched": {
         "definitionVersion": 1,
         "id": "lag_perched",
@@ -2229,6 +2399,34 @@
         "position": {
           "x": -2100,
           "y": 1125
+        },
+        "type": "valueLag"
+      },
+      "lag_swim": {
+        "definitionVersion": 1,
+        "id": "lag_swim",
+        "label": "lag_swim",
+        "parameters": {
+          "lag": 0.35,
+          "releaseRatio": 2
+        },
+        "position": {
+          "x": -1200,
+          "y": 725
+        },
+        "type": "valueLag"
+      },
+      "lag_usual": {
+        "definitionVersion": 1,
+        "id": "lag_usual",
+        "label": "lag_usual",
+        "parameters": {
+          "lag": 4,
+          "releaseRatio": 4
+        },
+        "position": {
+          "x": -2100,
+          "y": 600
         },
         "type": "valueLag"
       },
@@ -2729,7 +2927,7 @@
         "id": "panel",
         "label": "panel1",
         "parameters": {
-          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"member\":\"perch\",\"rect\":{\"x\":0,\"y\":9,\"w\":6,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":10,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":11,\"w\":6,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":12,\"w\":6,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":6,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"bore\",\"rect\":{\"x\":6,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"lamp\",\"rect\":{\"x\":6,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"glow\",\"rect\":{\"x\":6,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"distance\",\"rect\":{\"x\":6,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"react\",\"rect\":{\"x\":6,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":6,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"view\",\"rect\":{\"x\":6,\"y\":7,\"w\":3,\"h\":3}}\n  ]\n}",
+          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"member\":\"perch\",\"rect\":{\"x\":0,\"y\":9,\"w\":6,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":10,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":11,\"w\":6,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":12,\"w\":6,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":13,\"w\":6,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":6,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"bore\",\"rect\":{\"x\":6,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"lamp\",\"rect\":{\"x\":6,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"glow\",\"rect\":{\"x\":6,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"distance\",\"rect\":{\"x\":6,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"react\",\"rect\":{\"x\":6,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":6,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"view\",\"rect\":{\"x\":6,\"y\":7,\"w\":3,\"h\":3}}\n  ]\n}",
           "title": "Sentinel"
         },
         "position": {
@@ -2801,7 +2999,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('speed').chan.speed * (1 - op('perch').chan.perch) * (1 + (op('hits1').chan.kickCount * op('react').chan.react) * 0.6)"
+                "source": "op('speed').chan.speed * (1 - op('perch').chan.perch) * (1 + (op('hits1').chan.kickCount * op('react').chan.react) * 0.6) * (1 + op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * clamp((op('constant_energy').chan.value - 1) * 1.5, -0.5, 0.6))"
               },
               "static": {
                 "kind": "static",
@@ -2845,6 +3043,19 @@
         "position": {
           "x": -3300,
           "y": 900
+        },
+        "type": "valueSelect"
+      },
+      "select_loud": {
+        "definitionVersion": 1,
+        "id": "select_loud",
+        "label": "select_loud",
+        "parameters": {
+          "channels": "level"
+        },
+        "position": {
+          "x": -2700,
+          "y": 650
         },
         "type": "valueSelect"
       },
@@ -3041,6 +3252,21 @@
         "position": {
           "x": -2700,
           "y": 2250
+        },
+        "type": "toggle"
+      },
+      "toggle_follow": {
+        "definitionVersion": 1,
+        "id": "toggle_follow",
+        "label": "toggle_follow",
+        "parameters": {
+          "caption": "Follow the track",
+          "channel": "follow",
+          "on": true
+        },
+        "position": {
+          "x": -2400,
+          "y": 2500
         },
         "type": "toggle"
       },
