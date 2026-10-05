@@ -353,6 +353,28 @@ const cueListClause: ReferenceClause = (node, name, rename) => {
   return 1;
 };
 
+/**
+ * Kind 8 (T1593b): a CHANNEL IN reads a published channel BY NAME, and an Analyze node
+ * publishes under its own name (§V129, `analyze-channels.ts`). So `channel: "meter1"` is a
+ * stored reference to the node `meter1`, and it was the one kind this list did not have:
+ * rename the Analyze and every Channel In that read it fell back to its Fallback value for
+ * good, with no diagnostic, because an unpublished name is a legitimate state (§V144).
+ *
+ * Found by the naming sweep's old-name-left check before the sweep ran: it would have cut
+ * the sensor out of E14's, E27's and E64's control loops, and furnace's.
+ *
+ * The parameter can also hold a name no node has (an OSC address, a MIDI channel), so only
+ * an exact match moves. It is deliberately NOT a source reference: those are compile
+ * edges, and a controller's read of its own measurement is a loop on purpose.
+ */
+const channelInClause: ReferenceClause = (node, name, rename) => {
+  if (node.type !== "channelIn") return 0;
+  const stored = node.parameters["channel"];
+  if (typeof stored !== "string" || stored.trim() !== name) return 0;
+  if (rename !== null) node.parameters["channel"] = rename;
+  return 1;
+};
+
 const REFERENCE_CLAUSES: readonly ReferenceClause[] = [
   expressionClause,
   drivenChannelClause,
@@ -360,6 +382,7 @@ const REFERENCE_CLAUSES: readonly ReferenceClause[] = [
   presetBankClause,
   panelBoardClause,
   cueListClause,
+  channelInClause,
 ];
 
 /**

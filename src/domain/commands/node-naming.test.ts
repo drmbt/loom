@@ -149,6 +149,28 @@ describe("node names carry their kind (T1593b)", () => {
       expect(result.diagnostics.some((entry) => entry.code === "node.name.referencesRewritten")).toBe(true);
     });
 
+    it("moves the Channel In that reads a renamed Analyze, and leaves one that reads something else", async () => {
+      // The literal bug: an Analyze publishes its measurement under its own NAME, a Channel
+      // In reads it by that name, and the rename moved the name out from under the reader.
+      // Nothing failed. The controller just read its Fallback from then on.
+      const sensor = await add("analyze", "analyze_meter");
+      const reader = await add("channelIn");
+      const stranger = await add("channelIn");
+      await apply([
+        { op: "setParameters", nodeId: reader, parameters: { channel: "analyze_meter" } },
+        { op: "setParameters", nodeId: stranger, parameters: { channel: "/1/fader1" } },
+      ]);
+
+      const result = await bus.execute("node.rename", { nodeId: sensor, label: "glow" }, contextFor(alice));
+
+      expect(nameOf(sensor)).toBe("analyze_glow");
+      // What the reader will ask the channel resolver for on the next frame.
+      expect(store.view.getGraph().nodes[reader]?.parameters["channel"]).toBe("analyze_glow");
+      // A name no node holds is not a reference to one.
+      expect(store.view.getGraph().nodes[stranger]?.parameters["channel"]).toBe("/1/fader1");
+      expect(result.diagnostics.some((entry) => entry.code === "node.name.referencesRewritten")).toBe(true);
+    });
+
     it("refuses a taken name by the name it would have stored, and offers the free neighbour (§V325)", async () => {
       const first = await add("slider");
       const second = await add("slider");
