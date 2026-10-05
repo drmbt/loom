@@ -93,6 +93,8 @@ const CYCLIC = [
   "lfo.phase",
   "mirror.rotate",
   "noise.r",
+  // T1586b: a curve frame's roll about its tangent — past 180 is the same frame from the other side.
+  "pointCurveFrames.roll",
   "ramp.phase",
   "renderInstances.rotate",
   "slope.angle",
@@ -116,6 +118,8 @@ const BOUNDED_DEGREES: Readonly<Record<string, string>> = {
   "crtTube.fov": "the projection matrix is singular at 0° and at 180°",
   "crtTube.pitch": "±80° off the face's normal: at 90° the camera sees the glass edge-on and the tube vanishes",
   "crtTube.yaw": "same as pitch: past ±80° the glass is edge-on, never a wrap",
+  "pointCurveFrames.twist":
+    "a twist is spread ALONG the strip from its start to its end: 720° is two turns of the frame, not the same as 0°",
 };
 
 describe("§B111 — every numeric parameter declares whether its bounds are a limit", () => {
