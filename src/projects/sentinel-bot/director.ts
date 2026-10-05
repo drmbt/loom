@@ -10,9 +10,10 @@
  *            slowly, so the moment a track comes back from a breakdown (or starts) reads well
  *            over 1, and stays there for a few bars until the memory has caught up.
  *
- * Two things follow them:
+ * Three things follow them:
  *
  *   the robot's pace   slower through a breakdown, a little faster through a loud passage;
+ *   perching           when a breakdown goes nearly silent it stops, holds the wall and looks about;
  *   swimming           when the track comes back in, it lets go of the wall and swims.
  *
  * In SILENCE nothing follows: with no track both numbers are 0, which is not a quiet
@@ -32,6 +33,11 @@ export function against(loud: string, memory: string): string {
 /** What the pace is multiplied by: half in a breakdown, 1 when the track is as loud as usual, 1.6 at most. */
 export function pace(follow: string, energy: string): string {
   return `(1 + ${follow} * (${energy} > 0) * clamp((${energy} - 1) * 1.5, -0.5, 0.6))`;
+}
+
+/** How much it perches because of the track: not at all above three tenths of the usual loudness, wholly under an eighth. */
+export function rest(follow: string, energy: string): string {
+  return `(${follow} * (${energy} > 0) * (1 - smoothstep(0.12, 0.3, ${energy})))`;
 }
 
 /**

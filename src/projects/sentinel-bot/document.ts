@@ -5,7 +5,7 @@ import { edge, expressionSlot, graph, node as buildNode, settings } from "../../
 import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from "../../examples/build-showcase-beat.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS } from "./camera.ts";
-import { against, pace, surge } from "./director.ts";
+import { against, pace, rest, surge } from "./director.ts";
 import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
 import { PATH, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
@@ -253,11 +253,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("count_kick", "valueCount", [-3000, 900], { threshold: 0.5, holdoff: 0.1 }, { label: "count_kick" }),
 
     // ── How far it has come: a rate, eased, integrated, wrapping where the path does ──
-    // Perch stops it; a kick shoves it. (The lunge of a swimming stroke is the rig's own, on the
+    // Perch stops it (the panel's, or a breakdown gone nearly silent: director.ts); a kick shoves it. (The lunge of a swimming stroke is the rig's own, on the
     // GPU: the rate cannot read how far it has come without the value graph closing a loop,
     // and a loop there is dropped whole.)
     node("rate", "constant", [-2400, 1000], {
-      value: expressionSlot(`${on("speed")} * (1 - ${on("perch")}) * (1 + ${KICK} * 0.6) * ${pace(FOLLOW, ENERGY)}`, 3.2),
+      value: expressionSlot(`${on("speed")} * (1 - op('constant_perch').chan.value) * (1 + ${KICK} * 0.6) * ${pace(FOLLOW, ENERGY)}`, 3.2),
     }, { label: "rate1" }),
     node("ease", "valueLag", [-2100, 1000], { lag: 0.25, releaseRatio: 1.6 }, { label: "ease1" }),
     // Perch, eased: how perched it is, 0 to 1, for the head and the tentacles it frees.
@@ -265,7 +265,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // letting go of the wall and taking hold again each take a moment.
     node("constant_swim", "constant", [-1500, 725], { value: expressionSlot(`max(${on("swim")}, ${surge(FOLLOW, LIFT)})`, 0) }, { label: "constant_swim" }),
     node("lag_swim", "valueLag", [-1200, 725], { lag: 0.35, releaseRatio: 2 }, { label: "lag_swim" }),
-    node("constant_perch", "constant", [-2400, 1125], { value: expressionSlot(on("perch"), 0) }, { label: "constant_perch" }),
+    node("constant_perch", "constant", [-2400, 1125], { value: expressionSlot(`max(${on("perch")}, ${rest(FOLLOW, ENERGY)})`, 0) }, { label: "constant_perch" }),
     node("lag_perched", "valueLag", [-2100, 1125], { lag: 0.6, releaseRatio: 1 }, { label: "lag_perched" }),
     node("travel", "valueSpeed", [-1800, 1000], { minimum: 0, maximum: PATH.period, limit: "loop" }, { label: "travel1" }),
     // The swimming beat: one stroke per bar of the track.

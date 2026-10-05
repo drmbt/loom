@@ -1065,7 +1065,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('perch').chan.perch"
+                "source": "max(op('perch').chan.perch, (op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * (1 - smoothstep(0.12, 0.3, op('constant_energy').chan.value))))"
               },
               "static": {
                 "kind": "static",
@@ -3140,7 +3140,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('speed').chan.speed * (1 - op('perch').chan.perch) * (1 + (op('hits1').chan.kickCount * op('react').chan.react) * 0.6) * (1 + op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * clamp((op('constant_energy').chan.value - 1) * 1.5, -0.5, 0.6))"
+                "source": "op('speed').chan.speed * (1 - op('constant_perch').chan.value) * (1 + (op('hits1').chan.kickCount * op('react').chan.react) * 0.6) * (1 + op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * clamp((op('constant_energy').chan.value - 1) * 1.5, -0.5, 0.6))"
               },
               "static": {
                 "kind": "static",

@@ -7,7 +7,7 @@ import { SHOWCASE_BEAT, showcaseBarStart } from "../../examples/build-showcase-b
 import { shippedClipAudio } from "../../examples/shipped-clip-audio.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
-import { against, pace, surge } from "./director.ts";
+import { against, pace, rest, surge } from "./director.ts";
 import { sentinelDocument } from "./document.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 
@@ -39,6 +39,13 @@ describe("the sentinel follows the track", () => {
     expect([0.1, 0.8, 1.2, 4].map((value) => read(pace("follow", "energy"), { follow: 0, energy: value }))).toEqual([1, 1, 1, 1]);
   });
 
+  it("perches only when a breakdown has gone nearly silent", () => {
+    expect(read(rest("follow", "energy"), { follow: 1, energy: 0.3 })).toBe(0);
+    expect(read(rest("follow", "energy"), { follow: 1, energy: 0.21 })).toBeCloseTo(0.5, 12);
+    expect(read(rest("follow", "energy"), { follow: 1, energy: 0.12 })).toBe(1);
+    expect(read(rest("follow", "energy"), { follow: 0, energy: 0.05 })).toBe(0);
+  });
+
   it("swims only when the track is well over the quietest it has lately been", () => {
     expect(read(surge("follow", "lift"), { follow: 1, lift: 1.5 })).toBe(0);
     expect(read(surge("follow", "lift"), { follow: 1, lift: 1.85 })).toBeCloseTo(0.5, 12);
@@ -49,6 +56,8 @@ describe("the sentinel follows the track", () => {
   it("follows nothing in silence: a host with no track behaves as the panel says", () => {
     expect(read(pace("follow", "energy"), { follow: 1, energy: 0 })).toBe(1);
     expect(read(surge("follow", "lift"), { follow: 1, lift: 0 })).toBe(0);
+    // No track is not a silent breakdown: it does not sit down either.
+    expect(read(rest("follow", "energy"), { follow: 1, energy: 0 })).toBe(0);
   });
 });
 
@@ -68,6 +77,8 @@ interface Run {
   readonly energy: number[];
   /** How much it swims, per frame: the channel every piece's kernel reads. */
   readonly swim: number[];
+  /** How much it perches, per frame, before the easing the rig reads it through. */
+  readonly perch: number[];
   /** Metres travelled by the last frame. */
   readonly distance: number;
 }
@@ -84,6 +95,7 @@ async function run(follow: boolean, heard: boolean): Promise<Run> {
   const rate: number[] = [];
   const energy: number[] = [];
   const swim: number[] = [];
+  const perch: number[] = [];
   let first = Number.NaN;
   let last = Number.NaN;
   for (let index = 0; index < FRAMES; index += 1) {
@@ -102,10 +114,11 @@ async function run(follow: boolean, heard: boolean): Promise<Run> {
     rate.push(read("rate1:value"));
     energy.push(read("constant_energy:value"));
     swim.push(read("lag_swim:value"));
+    perch.push(read("constant_perch:value"));
     last = read("travel1:value");
     if (index === 0) first = last;
   }
-  return { rate, energy, swim, distance: last - first };
+  return { rate, energy, swim, perch, distance: last - first };
 }
 
 /** The frames of a stretch of the clip, in seconds. */
@@ -114,20 +127,26 @@ function during<T>(values: readonly T[], from: number, to: number): T[] {
 }
 
 describe("the sentinel follows its own clip, through the document's value graph", () => {
-  it("walks at the pace the track's energy sets, frame for frame, and at half pace through the breakdown", async () => {
+  it("walks at the pace the track's energy sets, frame for frame, and has stopped by the end of the breakdown", async () => {
     const followed = await run(true, true);
     const panel = await run(false, true);
     // The energy is the track's and not the switch's: both runs hear the same.
     expect(followed.energy).toEqual(panel.energy);
-    // Every frame: the pace is the panel's own times what the energy says. (The kick's shove
-    // is in both, so it divides out.)
+    // Every frame: the pace is the panel's own times what the energy says, less what it perches.
+    // (The kick's shove is in both, so it divides out.)
     const ratio = followed.rate.map((value, index) => value / panel.rate[index]!);
-    const sounding = ratio.map((value, index) => ({ ratio: value, energy: followed.energy[index]! })).filter((frame) => frame.energy > 0);
+    const sounding = ratio.map((value, index) => ({ ratio: value, energy: followed.energy[index]!, perch: followed.perch[index]! })).filter((frame) => frame.energy > 0);
     expect(sounding.length).toBeGreaterThan(FRAMES * 0.95);
-    for (const frame of sounding) expect(frame.ratio).toBeCloseTo(Math.min(1.6, Math.max(0.5, 1 + (frame.energy - 1) * 1.5)), 9);
-    // The breakdown: from a second and a half into the silent bars until the track is back,
-    // it walks at half the panel's speed. With the switch off it never does.
-    for (const value of during(ratio, SILENT.from + 1.5, SILENT.to)) expect(value).toBeCloseTo(0.5, 9);
+    for (const frame of sounding) expect(frame.ratio).toBeCloseTo(Math.min(1.6, Math.max(0.5, 1 + (frame.energy - 1) * 1.5)) * (1 - frame.perch), 9);
+    // The breakdown, as measured on the clip: half pace a second into the silent bars (0.498 to
+    // 0.500 until a second and a half in), perched and standing still from three seconds in
+    // until the track is back, and let go of half a second after that.
+    for (const value of during(ratio, SILENT.from + 1, SILENT.from + 1.5)) expect(Math.abs(value - 0.5)).toBeLessThan(0.005);
+    expect(during(followed.perch, SILENT.from + 3, SILENT.to).every((value) => value === 1)).toBe(true);
+    expect(during(ratio, SILENT.from + 3, SILENT.to).every((value) => value === 0)).toBe(true);
+    expect(Math.max(...during(followed.perch, SILENT.to + 0.5, SILENT.to + 1.5))).toBe(0);
+    // With the switch off it never perches.
+    expect(Math.max(...panel.perch)).toBe(0);
     // So it ends somewhere else along the tunnel (measured on the clip: 141 m against 121 m).
     expect(Math.abs(followed.distance - panel.distance)).toBeGreaterThan(5);
   });
