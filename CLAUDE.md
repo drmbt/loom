@@ -71,11 +71,15 @@ The bare `node --experimental-strip-types src/...` form is dead and has been "fi
 
    **The list is derived, not remembered** (T1273). `gate-list.test.ts` walks `src/**` for tests that discover their subjects by `readdirSync`/`import.meta.glob`, AND (T1274) for non-GPU tests that IMPORT a document-set enumerator (`listExamples`, `EXAMPLE_DOCUMENTS`, …), and fails when one is not named in the `test:gates` script — because a hand-maintained list of the gates nothing can find is one edit away from being wrong, and was: `layout.test.ts` was off it while §V389 sat red on two freshly-landed rows. Add a gate of that class to the script, or exempt it by name with a reason. If it is not CHEAP, give it its own script instead: this one runs before every commit.
 3. **`pnpm typecheck`** — always. It is the cheapest cross-file blast-radius check you have.
-4. **`pnpm test` in full** only when the blast radius genuinely is everything: a change to a **shared abstraction, a registry, a domain type, or a generated artefact**. Moving a file counts.
+4. **`pnpm test` in full only when the owner asks for it.** It takes minutes and saturates a machine several sessions share. After a change to a **shared abstraction, a registry, a domain type, or a generated artefact** (moving a file counts), widen step 1 instead: name the directories the change reaches.
 
 `pnpm build` still gates anything touching the asset pipeline or imports — vite-only breakage passes tsc *and* vitest.
 
 `pnpm vitest related --run <changed files>` selects step 1 for you off the module graph (≈7 s for a leaf module). **It is not cheap wherever the module graph fans out through a registry** — measured at ~5 minutes under `src/examples/**` (the whole GPU claims suite, T1211) and 332 files / 219 s for a single node definition, `src/nodes/definitions/audio.ts` (T1228). A node definition reaches the registry, and the registry reaches everything. **Name the paths yourself in those directories.** It needs `assetsInclude: ["**/*.md"]` in `vitest.config.ts` — without it, import analysis reaches `example-catalogue.ts`'s `examples/*.md` glob, resolves the specifier before its `?raw` query applies, and throws on prose. **It still does not select the step-2 gates** — nothing does.
+
+## Heavy commands share one queue
+
+Several agent sessions and the owner share this machine. Run anything heavy through `tools/heavy.sh <command…>`: GPU/Dawn tests (`*.gpu.test.ts`), Playwright, `pnpm build`, `pnpm test:gates`, render and build scripts under `src/projects/**`, and any vitest run over more than about twenty files. It is a machine-wide counting semaphore (two slots by default, `LOOM_HEAVY_SLOTS` to change), shared by every session and git worktree, so six agents never render at once; the rest wait in line. `pnpm typecheck`, eslint and a few named test files do not need it.
 
 ## GPU tests (Dawn)
 
