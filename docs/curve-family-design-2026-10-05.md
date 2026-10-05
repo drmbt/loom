@@ -1,6 +1,6 @@
 # A curve family: curves as strips of a pointset (T1586b)
 
-**Status, 2026-10-05: ruled and partly built.** Every decision in section 7.3 was ruled as recommended, and the consumer (shaderloom-f1) reviewed the design with no objection. Slices 1, 3 and 4 are built: Strips (`726cc203`), Curve Frames (`c8fd00ba`) and Resample (`dbb5c761`), on main as `b9e63995`. Slice 2, the Curve node, is built with its authored table (`6f303252`, on main as `a4a4c0fb`). Slice 6, strips longer than 1,024 points, is built (`fe489f4d`), and so is slice 8, the Arc Chain (`bac160bf`). Section 7.4 lists what changed from this design as they were built. Beam drawing a strip (the rest of slice 5) and slice 7, Resample by curvature, are design only.
+**Status, 2026-10-05: ruled and partly built.** Every decision in section 7.3 was ruled as recommended, and the consumer (shaderloom-f1) reviewed the design with no objection. Slices 1, 3 and 4 are built: Strips (`726cc203`), Curve Frames (`c8fd00ba`) and Resample (`dbb5c761`), on main as `b9e63995`. Slice 2, the Curve node, is built with its authored table (`6f303252`, on main as `a4a4c0fb`). Slice 6, strips longer than 1,024 points, is built (`fe489f4d`), and so are slice 8, the Arc Chain (`bac160bf`), and slice 7, Resample by Curvature (`cfb2c429`). Section 7.4 lists what changed from this design as they were built. Beam drawing a strip (the rest of slice 5) is design only.
 
 The row asks for a Curve node, a Resample node and a Curve Frames node, with instancing along a curve (T1581b), sweep (T1587b), a path follower (T1590b) and rope (T1585b) as consumers. The owner's standard for it (2026-10-05): consider how TouchDesigner and Notch do this, build the right general shape and not the first consumer's minimum, no brittle or unscalable shortcuts.
 
@@ -322,17 +322,24 @@ A strip in, the same curve out with its points placed by rule.
 | `spacing` ⓢ | enum | Even Length | Count: Even Length, or Even Parameter (even in the input's point index: Notch's Length and Knots) |
 | `distance` | number | 0.1 | Distance: metres between points |
 | `maxPoints` ⓢ | number | 256 | Distance and Curvature: slots allocated per strip |
-| `anchor` ⓢ | enum | Start | Distance: which end the stations are measured from. With End the last point is always on the curve's end and padding collects at the head |
+| `anchor` ⓢ | enum | Start | Distance and Curvature: which end the stations are measured from. With End the last point is always on the curve's end and padding collects at the head |
 | `offset` | number | 0 | metres to slide every station along the curve |
 | `rangeStart`, `rangeEnd` | number | 0, 1 | the part of the length used, as fractions |
-| `minDistance`, `maxDistance`, `bias` | number | 0.02, 0.5, 0.5 | Curvature: TouchDesigner's three |
+| `minDistance`, `maxDistance`, `bias` | number | 0.02, 0.5, 0.5 | Curvature: TouchDesigner's three (Min Distance, Max Distance, Min Max Bias) |
+| `curvatureAttribute` ⓢ | attribute name | `curvature` | Curvature: the f32 attribute that says how sharply the strip turns at each point |
 
 **Rules**
 
 - **Count** places point `k` at `k ÷ (count − 1)` of the range (`k ÷ count` when closed). A count of 1 places its point at `rangeStart`. Every slot is live.
 - **Distance** places station `k` at `offset + k × distance` from the anchor. A station beyond either end of the range is padding (R4). A station within 1/1024 of a spacing past an end counts as the end and lands on it, so an exact fit does not flicker on rounding.
 - **Over budget, Distance never cuts the curve short.** If the range needs more than `maxPoints`, the spacing widens to the range's length `÷ (maxPoints − 1)` and the whole range is still covered. A curve that ends early is a hole in a tunnel; a coarser one is a visible, bounded degradation. An authored curve's count is computed on the CPU too, and the node warns at compile time. A measured warning for a GPU-computed curve needs the point-to-scalar reduce (follow-up).
-- **Curvature** is Distance in a stretched measure: each input segment counts for its length times a density between `1 ÷ maxDistance` and `1 ÷ minDistance`, rising with the turning at its ends by `bias`. The same scan and search, over that measure.
+- **Curvature (built, slice 7)** is Distance over another measure. The strip is measured in points rather than metres:
+  - The density at a point is `clamp(κ ÷ turn, 1 ÷ maxDistance, 1 ÷ minDistance)` points a metre, where `κ` is the curvature there and `turn` is the angle one step may carry.
+  - **`bias` is that angle.** TouchDesigner documents Min Max Bias only as "more near the minimum or more near the maximum distance". Here it is the angle tolerance every curve flattener has: a radian a step at 0, a hundredth of a radian at 1, geometrically, so the default 0.5 is a tenth of a radian: 5.7 degrees, a circle in 63 points.
+  - Along a segment the density runs straight from one end's to the other's, so the segment is worth its length times the mean of the two, and the spacing has no jump in it anywhere. A station every 1 of that measure is the whole method, and it is placed by Distance's own rule: the fixed slots, the anchor, the widening over budget, `live` and the padding.
+  - Inside a segment a station is the root of a quadratic, `size·(ρ₀t + (ρ₁ − ρ₀)t² ÷ 2) = s`, taken as `t = 2s ÷ (B + √(B² + 4As))` so that equal densities give the plain division exactly.
+  - **The Range is still a share of the length and the Offset still metres.** Both are turned into the point measure first, so a range of a half is the first half of the curve and not the first half of its points. The Offset slides the first station by that many metres; the rest follow at their own spacing.
+  - **The curvature is read, not worked out.** It is the f32 attribute Curve Frames publishes. That node is the one that measures a strip (D4), and it knows what a run of coincident points is; a second measurement here would be a second answer. So the chain is Curve Frames (Metrics) → Resample (Curvature) → Curve Frames, and a strip that carries no such attribute is refused by name with that fix. Any f32 attribute can be named instead: the points gather where it is larger, which is half of C6's "resample by an attribute".
 - **Closed strips** include the closing segment, and stations wrap. The output keeps the closed claim, so its last point joins its first. To take an open piece of a closed curve, open the claim with a Topology node before the Resample, which is what that node is for.
 - **`rangeStart`, `rangeEnd` and `offset`** are Notch's Spline Use Amount, Spline Time Min and Max, and Spline Offset. A curve that draws itself on is `rangeEnd` animated. This is the family's trim.
 - **Attributes.** Float attributes interpolate linearly between the two input points around the station; integers take the earlier one, since a blend of two ids is not an id (Gather's rule). Nothing is renormalised, because the edge does not carry an attribute's qualifier (T287 declared them; no edge publishes them). So Resample runs before Curve Frames, which is the order of every chain in section 5. A resampled `orient` is a linear blend and is refused by nothing; the follow-up that puts qualifiers on the edge makes it a proper blend.
@@ -410,7 +417,7 @@ A tentacle, a cable or a spine has a fixed length. The consumer's finding (shade
 | Curve (every basis, Arc, Arc Chain) | 1 pass, one thread per output point | the same | none |
 | Resample, Even Parameter | 1 pass, one thread per output point | the same | none |
 | Resample, Even Length and Distance | 1 walk + 1 pass per output point | block sums, a fold, an add per point, then the same pass per output point | one f32 per input point; totals per strip; long strips: one f32 per block |
-| Resample, Curvature | the same, with the density folded into the walk | the same | the same |
+| Resample, Curvature | 1 walk (metres and points together) + 1 pass per output point | block sums, a fold, an add per point, then the same pass | two f32 per input point; two totals per strip; long strips: two f32 per block |
 | Curve Frames | 1 walk | block, fold, write; Fixed Up: block, fold, chain, chain fold, write | long strips only: 56 words per block and 4 per strip |
 
 ### 4.2 The walk
@@ -499,6 +506,17 @@ Dawn/Metal, best of 9 runs of 200 frames, each figure the difference from the sa
 - **Fixed Up costs half as much again on a long strip** (1.3 ms against 1.0): it has a third walk per block, for the normal handed from point to point. On a short strip it is the cheaper method.
 - **Metrics only is dearer on a long strip than on a short one** (0.49 against 0.32): the block pass and the fold carry the frame whether or not one is published. A variant that skips it when neither Frame nor Vectors is on would save about 0.2 ms; it is not built.
 - **Resample's lengths** go from one walk to three light passes: 0.14 ms for a strip of 4,096 against 0.08 for one of 1,024.
+
+**Resample by Curvature (slice 7).** The same method, beside Distance on the same strips, into as many slots as the strip has points. The Curve Frames before it is not counted (0.3 to 0.8 ms with metrics only, above).
+
+| Points | Strips × points per strip | Distance | Curvature |
+|---|---|---|---|
+| 1,024 | 1 × 1,024 | 0.08 | 0.15 |
+| 16,384 | 1 × 16,384 | 0.15 | 0.25 |
+| 999,424 | 976 × 1,024 | 0.48 | 0.65 |
+| 999,424 | 61 × 16,384 | 0.62 | 0.78 |
+
+- A slot does three searches where Distance does one: two to take the Range into points and one for its own place.
 
 **Curve (slice 2).** The same method; strips of 16 control points at 16 segments (241 points a strip), position only.
 
@@ -676,6 +694,15 @@ On Dawn through the compiler and the backend, red-verified, with the wire-cut ca
 - Two strips of different length in one pointset resample independently: each has its own `live` run.
 - Count 1 with `rangeStart = rangeEnd = 1` after Curve Frames: one point per strip, bit-equal to the strip's last point in every attribute.
 
+*Built in slice 7, Resample by Curvature (six Dawn tests, six definition tests, eight on the reference). The method reads its curvature, so most fixtures are a straight line with a curvature written on it by hand:*
+
+- *Curvature zero is a point every Max Distance, exactly, and equal to what Distance gives; curvature too high for the Min is a point every Min, exactly.*
+- *A segment along which the density climbs from 2 to 8 points a metre: the stations sit at `t = 2s ÷ (2 + √(4 + 12s))`, a third of the way for the first and the far end for the fifth, and a second attribute reads the same place.*
+- *The Range as a share of the length (half way is x = 2, though half the points are spent by 2.56), the Offset in metres, the End anchor, and over budget.*
+- *The real chain: a 64-gon of radius 2 measured by Curve Frames gives 62 stations 0.2 m apart; pointed at an attribute that is zero, 25 stations 0.5 m apart. That is the wire cut.*
+- *The reference on two unlike strips with an irregular curvature, open and closed, from either end; and on two strips of 3,500 points with padding across the seams.*
+- *Short strips keep their programs: the six fingerprints of slice 6 did not move.*
+
 **Whole chain**
 
 - Seek: frame N rendered directly equals frame N after frames 0 to N−1, byte for byte, for Curve → Resample → Curve Frames under an animated control point.
@@ -708,7 +735,7 @@ Each is shippable, and each is a prefix of the final design: the claim, the attr
 | 4 | Resample | Count (both spacings) and Distance, with anchor, offset, range and `live`; strips up to `BLOCK` | exact pitch, stowed rings, the tip pointset, lights along a tunnel; sentinel-bot step 1 (with slices 1 and 3) |
 | 5 | Drawing | Beam mode takes a strip's next point as its far end when Endpoint is empty (the authored table moved to slice 2) | a curve visible as a line with no kernel |
 | 6 | Long strips | the blocked walk for Curve Frames and Resample (built); the Topology node's Columns and Rows limited by the edge and no longer by 4,096 | one curve of 100k points and more |
-| 7 | Resample by curvature | the density measure | fewer points on straights |
+| 7 | Resample by curvature | the density measure (built) | fewer points on straights |
 | 8 | Arc Chain | sections by length and curvature (built) | sentinel-bot step 2; tails, stems, antennae |
 
 - Slices 2, 3 and 4 depend only on slice 1.
@@ -806,6 +833,15 @@ Names as built: node types `pointCurve` (Curve), `pointCurveFrames` (Curve Frame
 - The seed rule (`perpendicular`, `leastAligned`, `seedNormal`) moved to `shaders/curve-common.wgsl.ts`, shared by the Arc and Curve Frames. Curve Frames' functions are the same text moved, and its exact-value Dawn tests read what they read before.
 - The design's length test asked for "the summed distance is `L × sinc(φ ÷ segments)`"; it is built so, and with the stronger statement that every station lies on the one circle of radius `L ÷ 2φ`.
 
+**Slice 7, Resample by Curvature** (section 3.3's rule is rewritten as built; this is the list of what moved)
+
+- **The curvature is read from an attribute; the design had the walk work it out.** The design said the density rises "with the turning at its ends" and folded it into the walk. Working it out needs Curve Frames' rule for runs of coincident points and, for long strips, its block passes over again. Reading it keeps one answer to "how sharply does it turn here", makes the walk the length walk with one more sum, and lets any attribute stand in. The price is a Curve Frames before the Resample as well as after it, which is one exception to "Resample runs before Curve Frames".
+- A new parameter, `curvatureAttribute`, names it; the default is `curvature`.
+- `bias` has a stated meaning: the turn one step may carry. The design said only that the density rises "by `bias`".
+- The density runs straight along a segment, and a station is a quadratic's root. The design said each segment "counts for its length times a density".
+- The Range and the Offset stay in length terms, converted. The design did not say.
+- Under a Min above the Max, the Max is the one spacing left.
+
 **Slice 8, Arc Chain** (section 3.2's paragraph is rewritten as built; this is the list of what moved)
 
 - Lengths and bends are parameters with Map mode, not fixed attribute names: the Arc's idiom.
@@ -831,8 +867,7 @@ Names as built: node types `pointCurve` (Curve), `pointCurveFrames` (Curve Frame
 
 - The instancing-equality test (`orient` against Aim and Up) needs T1581b's slice D.
 - A fold of folds, if one strip of a million points has to cost less than 3 ms (4.5).
-- Rows for C18, C19 and C20, which slice 8 added to 7.2.
-- Not built, as ruled: Beam drawing a strip (slice 5), Resample by curvature (slice 7).
+- Not built, as ruled: Beam drawing a strip (slice 5).
 
 ## 8. Found on the way (not fixed, not in scope)
 
