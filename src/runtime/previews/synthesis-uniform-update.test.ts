@@ -310,6 +310,33 @@ describe("§B176 — a synthesized preview's own uniforms reach the GPU", () => 
     expect(host.programs).toHaveLength(1);
   });
 
+  /**
+   * B250 — the app's own failure, through the system: a Surface geometry whose points are not
+   * a grid (an imported mesh in the app; proximity links here) draws the backdrop and no
+   * object. Its tile must tick like any other. It threw "declares no viewProjection uniform"
+   * on every tick, because the compiler's orbit named an object pass it had not emitted.
+   */
+  it("a geometry tile with nothing to draw but its backdrop ticks without a throw", () => {
+    const graph = graphOf(
+      [
+        node("grid", "pointGrid", { cols: 8, rows: 8 }, "grid1"),
+        node("links", "pointProximity", { neighbors: 2, radius: 10 }, "links1"),
+        node("subject", "geometry", { mode: "surface" }, "subject1"),
+      ],
+      {
+        e1: { id: "e1", source: { nodeId: "grid", portId: "out" }, target: { nodeId: "links", portId: "points" } },
+        e2: { id: "e2", source: { nodeId: "links", portId: "out" }, target: { nodeId: "subject", portId: "points" } },
+      },
+    );
+    const request = requestFor(compile(graph, "subject"), "subject");
+    // The premise: this IS the backdrop-only frame, not a tile that happens to draw.
+    expect(request.synthesis?.passes.map((pass) => pass.id)).toEqual(["subject#scenePreviewBackdrop:out"]);
+    const host = drive([request, { ...request, orbit: { ...DEFAULT_PREVIEW_ORBIT, azimuth: 0.6 } }]);
+    // Both ticks produced a command, and the backdrop was encoded for the tile.
+    expect(host.commands).toHaveLength(2);
+    expect(host.commands[0]!.refresh).toContain("subject#scenePreviewBackdrop:out");
+  });
+
   it("refuses an orbit target with no declared matrix instead of adding an undeclared uniform", () => {
     const fixture = FIXTURES.pointset;
     const request = requestFor(compile(fixture.graph, fixture.nodeId), fixture.nodeId);

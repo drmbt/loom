@@ -466,6 +466,25 @@ describe("every geometry mode previews (T1020)", () => {
     expect(draws.length).toBe(1); // the backdrop, and only the backdrop
   });
 
+  /**
+   * B250 — THE ORBIT NAMES ONLY PASSES THE TILE HAS. The inspection orbit pushes its camera
+   * onto the passes its basis names, and the preview system refuses, by throwing, a named
+   * pass with no viewProjection. The basis used to name the object pass whether or not the
+   * mode had emitted one, so the honest empty frame above — and every Surface geometry fed
+   * an imported mesh, whose topology is not a grid either — threw on every tick of the app.
+   * Swept over every mode, the refusal included, so a mode that learns to draw nothing
+   * cannot name a pass it did not draw.
+   */
+  it.each(["surface", "beam", "points", "instances"])("mode %s: the orbit names no pass the tile lacks", (mode) => {
+    const compiled = compile(modeGraph(mode), [{ nodeId: "subject", portId: "out" }]);
+    const synthesis = rowById(compiled, "preview:scene:subject:out")?.synthesis;
+    if (synthesis === undefined) throw new Error(`mode ${mode} has no preview row`);
+    const drawn = new Set(synthesis.passes.map((pass) => pass.id));
+    for (const passId of synthesis.orbit?.passIds ?? []) expect([mode, drawn.has(passId)]).toEqual([mode, true]);
+    // The legitimate case the guard could swallow: a mode that DOES draw its object still hands it to the orbit.
+    if (mode !== "surface") expect(synthesis.orbit?.passIds).toEqual(["subject#scenePreview:out"]);
+  });
+
   it("the beam preview mirrors the Render's own draw: endpoints bound, additive kept", () => {
     const compiled = compile(modeGraph("beam"), [{ nodeId: "subject", portId: "out" }]);
     const row = rowById(compiled, "preview:scene:subject:out");

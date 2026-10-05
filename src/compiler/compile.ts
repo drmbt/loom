@@ -2267,10 +2267,16 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
        * the "inherit from a common thing" the owner asked for, so it moved to
        * `preview-orbit.ts` where a missing kind fails to compile. `passIds` names only the
        * object pass — a geometry's backdrop has no camera to move.
+       *
+       * B250: and only when that pass was EMITTED. A Surface geometry whose points are not
+       * a grid (every imported mesh, until its tile draws one) and a Beam with no endpoint
+       * push the backdrop alone, and an orbit naming the absent object pass made the
+       * preview system refuse the tile, by throwing, on every tick.
        */
+      const objectPassId = `${nodeId}#scenePreview:${port.id}`;
       const orbit = previewOrbitBasis(payload.kind, {
         aspect: previewAspect,
-        passIds: [`${nodeId}#scenePreview:${port.id}`],
+        passIds: synthPasses.some((pass) => pass.id === objectPassId) ? [objectPassId] : [],
       });
       // A surface-mode geometry whose topology could not be used pushes only the
       // backdrop — the refusal-by-name case keeps its honest empty frame.
