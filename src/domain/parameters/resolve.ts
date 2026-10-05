@@ -180,6 +180,19 @@ export interface ParameterMorphs {
 }
 
 /**
+ * The index of a document with nothing fading. One object, so "none" is an identity check.
+ * It lives here, beside the interface, and not in the presets layer that builds the real
+ * ones: this layer's own "no flattening" read names it, and importing it from
+ * `presets/morph-index.ts` (which imports this module) closed a cycle that left it
+ * uninitialised whenever the presets layer happened to load first.
+ */
+export const NO_MORPHS: ParameterMorphs = {
+  keysOf: () => undefined,
+  stepsAt: () => undefined,
+  activeAt: () => false,
+};
+
+/**
  * T897/T901: the marker a chan read's no-resolver failure carries, matched above the
  * expression fallback to give that state the INFO tier the old driven mode gave it. Lives
  * here (the leaf both sides import) so the two spellings cannot drift and no import cycle

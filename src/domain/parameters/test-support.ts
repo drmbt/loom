@@ -1,8 +1,7 @@
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import { authoredGraph, type GraphDocument } from "../types/graph.ts";
-import { NO_MORPHS } from "../presets/morph-index.ts";
 import { NO_INSTANCES, parameterReadOptions, type InstanceChannelSources, type ParameterReadContext } from "./node-references.ts";
-import type { ChannelResolver, ParameterMorphs, ParameterReadOptions } from "./resolve.ts";
+import { NO_MORPHS, type ChannelResolver, type ParameterMorphs, type ParameterReadOptions } from "./resolve.ts";
 
 const EMPTY_GRAPH: GraphDocument = { revision: 0, nodes: {}, edges: {}, groups: {} };
 const NO_TYPES: ParameterReadContext["registry"] = { get: () => undefined };

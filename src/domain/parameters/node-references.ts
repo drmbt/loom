@@ -5,10 +5,10 @@ import type { FlatOrAuthoredGraph, GraphDocument, GraphNode } from "../types/gra
 import type { NodeId, PortId } from "../types/ids.ts";
 import type { ParameterDefinition, ParameterSchema, ParameterValue } from "../types/parameters.ts";
 import { componentKey, componentNamesFor } from "./slots.ts";
-import { NO_MORPHS } from "../presets/morph-index.ts";
 import {
   CHANNEL_RESOLVER_MISSING,
   effectiveParameterSchema,
+  NO_MORPHS,
   resolveParameterSchema,
   type ChannelResolver,
   type ParameterMorphs,
