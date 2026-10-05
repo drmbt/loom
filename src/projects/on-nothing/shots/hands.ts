@@ -5,6 +5,7 @@ import { SHARED_UNIFORMS_WGSL } from "../../../runtime/backend/shared-uniforms.t
 import { BLOOM_DOWN_WGSL, BRIGHT_PASS_WGSL } from "../../furnace/post.ts";
 import { CAMERA_PARAMS, GTAO_WGSL, VIEW } from "../../furnace/screen-space.ts";
 import { hazeLights, hazeWgsl } from "../atmosphere.ts";
+import { geometryName, meshName } from "../names.ts";
 import type { Area, Bone, OnNothingFacts } from "../scene-facts.ts";
 import { carAreas } from "../scene-facts.ts";
 import { PISTOL_GRIP, SKIN_ATTRIBUTES, boneParam, handPose, restPalm, skinKernel, type HandPose } from "../skin-kernel.ts";
@@ -1164,7 +1165,7 @@ function figurePieces(facts: OnNothingFacts, gun: boolean, body: "figbody" | "fi
   if (!facts.areas.has(body) || !facts.areas.has("figice")) throw new Error("handsDocument: the GLB has no rings (rebuild it with tools/blender/on-nothing/hands.py, T1407b hands).");
   // `figbare` is the same MPFB body at the same rest, skinned by the same joints (scene-facts
   // checks the joint lists match), so `fig`'s ice sits on its fingers and wrist as on `fig`'s
-  const pieces: (readonly [string, Area, string])[] = [["body", body, "surf1"], ["ice", "figice", "cusurf1"]];
+  const pieces: (readonly [string, Area, string])[] = [["body", body, "material_surf"], ["ice", "figice", "material_cusurf"]];
   if (gun) {
     const own = facts.areas.get("figgun");
     const fig = facts.areas.get("fig");
@@ -1172,7 +1173,7 @@ function figurePieces(facts: OnNothingFacts, gun: boolean, body: "figbody" | "fi
     // the pistol is skinned by its own copy of the rig: the kernel's indices hold only if its joints are fig's, in fig's order
     const names = (joints: string): string => joints.split(" ").map((entry) => entry.split(/[<@]/)[0]).join(" ");
     if (names(own.joints) !== names(fig.joints)) throw new Error("handsDocument: the pistol's rig lists other joints than the figure's.");
-    pieces.push(["gun", "figgun", "gunsurf1"]);
+    pieces.push(["gun", "figgun", "material_gunsurf"]);
   }
   return pieces;
 }
@@ -1184,29 +1185,29 @@ export function handsDocument(facts: OnNothingFacts, options: HandsOptions): Pro
   const take = all[options.take ?? 0];
   if (take === undefined) throw new Error(`handsDocument: no take ${options.take} (there are ${all.length}).`);
   const chain = new Chain(["shot", "out"]);
-  chain.add("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: 1, wet: 0.3, wetGloss: 0.22, dryGloss: 0.62 }, { label: "surf1" });
-  chain.add("cusurf", "materialWgsl", [-3000, -700], { model: "pbr", source: CLOSEUP_SURFACE_WGSL, pitch: 0.0011, fire: 0.35 }, { label: "cusurf1" });
-  if (take.gun === true) chain.add("gunsurf", "materialWgsl", [-3000, -800], { model: "pbr", source: GUN_SURFACE_WGSL }, { label: "gunsurf1" });
+  chain.add("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: 1, wet: 0.3, wetGloss: 0.22, dryGloss: 0.62 }, { label: "material_surf" });
+  chain.add("cusurf", "materialWgsl", [-3000, -700], { model: "pbr", source: CLOSEUP_SURFACE_WGSL, pitch: 0.0011, fire: 0.35 }, { label: "material_cusurf" });
+  if (take.gun === true) chain.add("gunsurf", "materialWgsl", [-3000, -800], { model: "pbr", source: GUN_SURFACE_WGSL }, { label: "material_gunsurf" });
   const scenes: string[] = [];
 
   // ── The set ──
   const mesh = (area: Area, material: string, row: number): void => {
     const f = facts.areas.get(area);
     if (f === undefined) throw new Error(`handsDocument: no "${area}" area in the GLB.`);
-    chain.add(`mesh_${area}`, "meshFileIn", [-3600, row * 250], { file: facts.glbUrl, select: f.select, vertices: f.vertices, triangles: f.triangles, parts: f.parts }, { label: `mesh${area}1` });
-    chain.add(`geo_${area}`, "geometry", [-3200, row * 250], { mode: "surface", material }, { label: `geo${area}1` });
+    chain.add(`mesh_${area}`, "meshFileIn", [-3600, row * 250], { file: facts.glbUrl, select: f.select, vertices: f.vertices, triangles: f.triangles, parts: f.parts }, { label: meshName(area) });
+    chain.add(`geo_${area}`, "geometry", [-3200, row * 250], { mode: "surface", material }, { label: geometryName(area) });
     chain.link([`mesh_${area}`, "out"], [`geo_${area}`, "points"]);
-    scenes.push(`geo${area}1`);
+    scenes.push(geometryName(area));
   };
   if (take.set === "warehouse") {
-    mesh("wh", "surf1", 0);
+    mesh("wh", "material_surf", 0);
     const cars = carAreas(facts);
     (take.cars ?? []).forEach((n, i) => {
       const area = cars[n];
-      if (area !== undefined) mesh(area, "surf1", i + 1);
+      if (area !== undefined) mesh(area, "material_surf", i + 1);
     });
   } else if (take.set === "cyc") {
-    mesh("cyc", "surf1", 0);
+    mesh("cyc", "material_surf", 0);
   }
 
   // ── The figure: body and ice, one pose ──
@@ -1232,12 +1233,12 @@ export function handsDocument(facts: OnNothingFacts, options: HandsOptions): Pro
     const y = 1200 + index * 250;
     // the pistol out of the hand: dropped far below the floor while `gunShow` is 0
     const away: Record<string, StoredParameter> = piece === "gun" && take.gunShow !== undefined ? { "place.y": expressionSlot(`${num(take.placement.place[1])} - 50 * (1 - (${take.gunShow}))`, take.placement.place[1]) } : {};
-    chain.add(`fig_${piece}`, "meshFileIn", [-3600, y], { file: facts.glbUrl, select: f.select, vertices: f.vertices, triangles: f.triangles, parts: f.parts, joints: f.joints }, { label: `fig${piece}1` });
-    chain.add(`skin_${piece}`, "pointKernel", [-3300, y], { capacity: f.vertices, attributes: SKIN_ATTRIBUTES, kernel, yaw: take.placement.yaw, place: vec3(take.placement.place), ...away, ...knobs }, { label: `skin${piece}1` });
-    chain.add(`figGeo_${piece}`, "geometry", [-3000, y], { mode: "surface", material }, { label: `figgeo${piece}1` });
+    chain.add(`fig_${piece}`, "meshFileIn", [-3600, y], { file: facts.glbUrl, select: f.select, vertices: f.vertices, triangles: f.triangles, parts: f.parts, joints: f.joints }, { label: `mesh_fig${piece}` });
+    chain.add(`skin_${piece}`, "pointKernel", [-3300, y], { capacity: f.vertices, attributes: SKIN_ATTRIBUTES, kernel, yaw: take.placement.yaw, place: vec3(take.placement.place), ...away, ...knobs }, { label: `kernel_skin${piece}` });
+    chain.add(`figGeo_${piece}`, "geometry", [-3000, y], { mode: "surface", material }, { label: `geometry_figgeo${piece}` });
     chain.link([`fig_${piece}`, "out"], [`skin_${piece}`, "in"]);
     chain.link([`skin_${piece}`, "out"], [`figGeo_${piece}`, "points"]);
-    scenes.push(`figgeo${piece}1`);
+    scenes.push(`geometry_figgeo${piece}`);
   });
 
   // ── Light ──
@@ -1247,28 +1248,28 @@ export function handsDocument(facts: OnNothingFacts, options: HandsOptions): Pro
   const lit = (take.strobe ?? []).map(([t0, t1]) => `(1 - clamp((abstime - ${num(t0)}) * 10000, 0, 1) * clamp((${num(t1)} - abstime) * 10000, 0, 1))`).join(" * ");
   take.lights.forEach((light, i) => {
     const intensity = lit === "" ? light.intensity : expressionSlot(`${num(light.intensity)} * ${lit}`, light.intensity);
-    chain.add(`key${i}`, "light", [-2600, 1800 + i * 80], { kind: "point", position: vec3(light.at), color: [...light.color, 1], intensity }, { label: `key${i}1` });
-    lights.push(`key${i}1`);
+    chain.add(`key${i}`, "light", [-2600, 1800 + i * 80], { kind: "point", position: vec3(light.at), color: [...light.color, 1], intensity }, { label: `light_key${i}` });
+    lights.push(`light_key${i}`);
   });
   if (take.set === "cyc") {
-    chain.add("sun", "light", [-2600, 1700], { kind: "point", position: [4.5, 7.5, 6.5], color: [1, 0.98, 0.95, 1], intensity: 6 }, { label: "sun1" });
-    lights.push("sun1");
+    chain.add("sun", "light", [-2600, 1700], { kind: "point", position: [4.5, 7.5, 6.5], color: [1, 0.98, 0.95, 1], intensity: 6 }, { label: "light_sun" });
+    lights.push("light_sun");
   }
 
   // ── Environment, camera, Render ──
-  chain.add("envSeed", "ramp", [-2900, 300], {}, { label: "envseed1", resolution: { mode: "fixed", width: 1024, height: 512 } });
+  chain.add("envSeed", "ramp", [-2900, 300], {}, { label: "ramp_envseed", resolution: { mode: "fixed", width: 1024, height: 512 } });
   // the ice needs something to mirror: the close-ups' studio (soft box, strip, small sources and
   // cards gathered round the lens) — what makes every stone of a ring throw a glint
   const toward = unit(sub(take.eye, take.aim));
   const studio = take.studio ?? 1;
-  chain.add("env", "customWgsl", [-2700, 500], { source: STUDIO_ENV_WGSL, softbox: 0.3 * studio, strip: 0.6 * studio, points: 60 * studio, count: 70, size: 0.006, ambient: 0.004, surround: 0.8 * studio, cards: 120, room: 0, roomTurn: 0, toward: vec3(toward) }, { label: "env1", resolution: { mode: "fixed", width: 2048, height: 1024 } });
+  chain.add("env", "customWgsl", [-2700, 500], { source: STUDIO_ENV_WGSL, softbox: 0.3 * studio, strip: 0.6 * studio, points: 60 * studio, count: 70, size: 0.006, ambient: 0.004, surround: 0.8 * studio, cards: 120, room: 0, roomTurn: 0, toward: vec3(toward) }, { label: "wgsl_env", resolution: { mode: "fixed", width: 2048, height: 1024 } });
   chain.link(["envSeed", "out"], ["env", "input"]);
   const fov = (2 * Math.atan(18 / 2.347 / take.focal) * 180) / Math.PI;
   const move = teleHandheld(take.eye, take.aim, take.camera.size, take.camera.jolt, take.camera.roll, take.camera.drift);
-  chain.add("cam", "camera", [-2700, -900], { eye: vec3(take.eye), lookAt: vec3(take.aim), fov, near: 0.02, far: 200, ...move }, { label: "cam1" });
+  chain.add("cam", "camera", [-2700, -900], { eye: vec3(take.eye), lookAt: vec3(take.aim), fov, near: 0.02, far: 200, ...move }, { label: "camera1" });
   chain.add("shot", "render", [-2400, 0], {
     scenes: scenes.join(" "),
-    camera: "cam1",
+    camera: "camera1",
     lights: lights.join(" "),
     projectors: "",
     ambientColor: [1, 1, 1, 1],
@@ -1280,7 +1281,7 @@ export function handsDocument(facts: OnNothingFacts, options: HandsOptions): Pro
     albedoOutput: true,
     environmentIntensity: take.environment ?? 0.4,
     environmentTaps: 16,
-  }, { label: "shot1" });
+  }, { label: "render_shot" });
   chain.link(["env", "out"], ["shot", "environment"]);
 
   if (take.layers !== undefined) {
@@ -1290,12 +1291,12 @@ export function handsDocument(facts: OnNothingFacts, options: HandsOptions): Pro
       const { eye, aim } = layerCamera(layer, take.focal);
       const id = `L${i}`;
       const moveL = teleHandheld(eye, aim, take.camera.size, take.camera.jolt, { ...take.camera.roll, start: take.camera.roll.start + layer.roll });
-      chain.add(`cam${id}`, "camera", [-2700, -1100 - i * 150], { eye: vec3(eye), lookAt: vec3(aim), fov, near: 0.02, far: 200, ...moveL }, { label: `cam${id.toLowerCase()}1` });
+      chain.add(`cam${id}`, "camera", [-2700, -1100 - i * 150], { eye: vec3(eye), lookAt: vec3(aim), fov, near: 0.02, far: 200, ...moveL }, { label: `camera_${id.toLowerCase()}` });
       chain.add(`shot${id}`, "render", [-2400, -300 - i * 150], {
-        scenes: scenes.join(" "), camera: `cam${id.toLowerCase()}1`, lights: lights.join(" "), projectors: "",
+        scenes: scenes.join(" "), camera: `camera_${id.toLowerCase()}`, lights: lights.join(" "), projectors: "",
         ambientColor: [1, 1, 1, 1], ambientIntensity: 0, background: [0, 0, 0, 1], antialias: "msaa",
         environmentIntensity: take.environment ?? 0.4, environmentTaps: 16,
-      }, { label: `shot${id.toLowerCase()}1` });
+      }, { label: `render_shot${id.toLowerCase()}` });
       chain.link(["env", "out"], [`shot${id}`, "environment"]);
       layered.push({ port: [`shot${id}`, "out"], gate: expressionSlot(`clamp((abstime - ${num(layer.at)}) * 10000 + 0.5, 0, 1)`, 0) });
     });
@@ -1357,7 +1358,7 @@ export function handsDocument(facts: OnNothingFacts, options: HandsOptions): Pro
   chain.stock("lens", "lens", take.lensFx ?? { distortion: 0.02, edgeBlur: 0.012, swirl: 0.5, aberration: 0.0025, vignette: 0.7, vignetteRound: 0.8 }, [-300, 0]);
   chain.stock("grade", "filmGrade", take.grade, [-100, 0]);
   if (options.crt === true) chain.stock("crt", "crt", { amount: 1 }, [500, 0]);
-  chain.add("out", "output", [700, 0], { toneMap: "none" }, { label: "out1" });
+  chain.add("out", "output", [700, 0], { toneMap: "none" }, { label: "output1" });
   chain.link(chain.last, ["out", "input"]);
   return chain.document(`hands-${take.row}`, width, height);
 }

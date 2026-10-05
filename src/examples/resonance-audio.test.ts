@@ -25,7 +25,7 @@ describe("Resonance musical control lanes",()=>{
         if(typeof value!=="number") throw new Error(`Missing control ${address}`);
         return value;
       };
-      samples.push({low:read("body1:low"),kick:read("detail1:kickCount"),snare:read("detail1:snareCount"),hat:read("detail1:hatCount"),bar:read("clip1:bar"),phase:read("clip1:barPhase")});
+      samples.push({low:read("lag_body:low"),kick:read("lag_detail:kickCount"),snare:read("lag_detail:snareCount"),hat:read("lag_detail:hatCount"),bar:read("audiofile_clip:bar"),phase:read("audiofile_clip:barPhase")});
     }
     // Same loudness throughout: band changes must still move the slow geometry lane.
     const low=samples.map(s=>s["low"]!);

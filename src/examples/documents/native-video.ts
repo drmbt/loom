@@ -33,7 +33,7 @@ function referenceChart(dx = 0): { nodes: readonly GraphNode[]; edges: readonly 
     nodes: [
       node("bars", "checker", at(-1320, -320), {
         size: [8, 5], offset: [0, 0], color1: [0, 0, 0, 1], color2: [1, 1, 1, 1],
-      }, { label: "bars1" }),
+      }, { label: "checker_bars" }),
       /* Four stops rather than two: a two-stop sweep is monotone in luma, so a 180-degree
          rotation looks like a slightly different gradient. Cyan, amber and magenta in that
          order cannot be confused with their own reverse. */
@@ -45,20 +45,20 @@ function referenceChart(dx = 0): { nodes: readonly GraphNode[]; edges: readonly 
           { position: 0.72, color: [1, 0.2, 0.55, 1] },
           { position: 1, color: [1, 1, 1, 1] },
         ],
-      }, { label: "tint1" }),
-      node("chart", "multiply", at(-960, -200), { opacity: 1 }, { label: "chart1" }),
+      }, { label: "ramp_tint" }),
+      node("chart", "multiply", at(-960, -200), { opacity: 1 }, { label: "multiply_chart" }),
       /* The marker is the only moving thing, and it is deliberately small: a loopback's
          picture should be comparable frame to frame, which a whole-frame animation is not. */
       node("mark", "circle", at(-1320, 160), {
         mode: "fill", center: [0.5, 0.5], radius: [0.07, 0.07], softness: 0.01,
         fillcolor: [1, 1, 1, 1], bgcolor: [0, 0, 0, 0], aspectcorrect: true,
-      }, { label: "mark1", parameters: { "center.x": drivenSlot("sweep1", 0.5) } }),
+      }, { label: "circle_mark", parameters: { "center.x": drivenSlot("lfo_sweep", 0.5) } }),
       /* §V914's shape: the retained 0.5 is a sane picture on its own, so the chart is
          correct in any host that never runs the value graph. */
       node("sweep", "lfo", at(-1320, 400), {
         shape: "triangle", frequency: 0.09, amplitude: 0.4, offset: 0.5, phase: 0,
-      }, { label: "sweep1" }),
-      node("signal", "over", at(-600, -200), { opacity: 1 }, { label: "signal1" }),
+      }, { label: "lfo_sweep" }),
+      node("signal", "over", at(-600, -200), { opacity: 1 }, { label: "over_signal" }),
     ],
     edges: [
       edge("tint-chart", ["tint", "out"], ["chart", "in1"]),
@@ -81,10 +81,10 @@ function loopback(number: number, transport: "syphon" | "ndi" | "spout", title: 
       ...chart.nodes,
       node("send", `${transport}Out`, [-240, -200], {
         name: `Loom E${number} ${title}`, enabled: transport !== "spout",
-      }, { label: "send1" }),
-      node("out", "output", [120, -200], {}, { label: "reference1" }),
-      node("receive", `${transport}In`, [-240, 140], { source: "" }, { label: "receive1" }),
-      node("returnOut", "output", [120, 140], {}, { label: "returned1" }),
+      }, { label: `${transport}out_send` }),
+      node("out", "output", [120, -200], {}, { label: "output_reference" }),
+      node("receive", `${transport}In`, [-240, 140], { source: "" }, { label: `${transport}in_receive` }),
+      node("returnOut", "output", [120, 140], {}, { label: "output_returned" }),
     ], [
       ...chart.edges,
       edge("signal-send", ["signal", "out"], ["send", "input"]),

@@ -485,7 +485,7 @@ export function shotPath(facts: FurnaceSceneFacts, drive: ShotDrive): Omit<Camer
     const ahead = safeShare(blockers, shot.eye, full.map((value) => value * 0.5));
     const signedEase = `(max(${ease}, 0) * ${n(ahead)} + min(${ease}, 0) * ${n(back)})`;
     const aimRest = [0, 1, 2].map((axis) => shot.eye[axis]! + forward[axis]! * shot.reach);
-    const ride = move.follow === undefined ? "" : ` + op('rig1').par.${move.follow}`;
+    const ride = move.follow === undefined ? "" : ` + op('kernel_rig').par.${move.follow}`;
     // The kick: a jolt along the view, 25 cm at full punch.
     const jolt = (axis: number): string => ` + ${n(forward[axis]! * 0.25)} * ${punch}`;
     for (let axis = 0 as 0 | 1 | 2; axis < 3; axis = (axis + 1) as 0 | 1 | 2) {

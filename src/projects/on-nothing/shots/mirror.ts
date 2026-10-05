@@ -68,7 +68,7 @@ export function mirrorDocument(facts: OnNothingFacts, build: Builder, options: M
   });
   // depth of field: the ring sharp, the face behind it a heavy blur
   const cameraParams = Object.fromEntries(Object.entries(plate.node("occlusion").parameters).filter(([key]) => /^(eye|aim|fov|far|roll)(\.|$)/.test(key)));
-  plate.add("lens_dof", "customWgslMulti", { source: DOF_WGSL, ...cameraParams, focusDistance: 0.6, aperture: 8 * scale, maxRadius: 32 * scale } as Record<string, StoredParameter>, { label: "lens_dof1", resolution: { mode: "project" } });
+  plate.add("lens_dof", "customWgslMulti", { source: DOF_WGSL, ...cameraParams, focusDistance: 0.6, aperture: 8 * scale, maxRadius: 32 * scale } as Record<string, StoredParameter>, { label: "wgsl_lens_dof", resolution: { mode: "project" } });
   plate.spliceAfter("occlusion", "lens_dof", [["shot", "depth"]]);
   // BACKLIT, as the reference: the white room glows behind, the key comes from behind the
   // figure toward the lens, so the back of the hand facing us sits in soft shade (skin at
@@ -82,7 +82,7 @@ export function mirrorDocument(facts: OnNothingFacts, build: Builder, options: M
   // high key: the room near white (the reference's 218,224,219), the skin a warm grey
   plate.set("finish", { exposure: 0.4, saturation: 0.6, redGamma: 1.1 });
   // the mirror: the plate's right half on the right, its flip on the left, meeting at the centre
-  plate.add("mirror", "customWgsl", { source: MIRROR_WGSL, tiles: 2, crop: 0.5, centre: 0.75, flip: 1, phase: 1, seam: 0 }, { label: "mirror1", resolution: { mode: "project" } });
+  plate.add("mirror", "customWgsl", { source: MIRROR_WGSL, tiles: 2, crop: 0.5, centre: 0.75, flip: 1, phase: 1, seam: 0 }, { label: "wgsl_mirror", resolution: { mode: "project" } });
   plate.spliceAfter("finish", "mirror");
   return {
     ...document,

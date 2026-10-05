@@ -240,25 +240,25 @@ function photo(chain: Chain, facts: OnNothingFacts, id: string, y: number, spec:
   for (const [bone, angles] of Object.entries(spec.bones)) knobs[bone] = [angles[0], angles[1], angles[2]];
   chain.add(`${id}Fig`, "meshFileIn", [-3600, y], { file: facts.glbUrl, select: fig.select, vertices: fig.vertices, triangles: fig.triangles, parts: fig.parts, joints: fig.joints });
   chain.add(`${id}Skin`, "pointKernel", [-3400, y], { capacity: fig.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw: 0, place: vec3(place), ...knobs });
-  chain.add(`${id}Geo`, "geometry", [-3200, y], { mode: "surface", material: "photosurf1" });
+  chain.add(`${id}Geo`, "geometry", [-3200, y], { mode: "surface", material: "material_photosurf" }, { label: `geometry_${id.toLowerCase()}` });
   chain.link([`${id}Fig`, "out"], [`${id}Skin`, "in"]);
   chain.link([`${id}Skin`, "out"], [`${id}Geo`, "points"]);
-  const scenes = [`${id.toLowerCase()}geo1`];
+  const scenes = [`geometry_${id.toLowerCase()}`];
   if (spec.car) {
     const car = facts.areas.get("car0");
     if (car === undefined) throw new Error("cardsDocument: no car0 in the GLB.");
     chain.add(`${id}Car`, "meshFileIn", [-3600, y + 100], { file: facts.glbUrl, select: car.select, vertices: car.vertices, triangles: car.triangles, parts: car.parts });
-    chain.add(`${id}CarGeo`, "geometry", [-3200, y + 100], { mode: "surface", material: "photosurf1" });
+    chain.add(`${id}CarGeo`, "geometry", [-3200, y + 100], { mode: "surface", material: "material_photosurf" }, { label: `geometry_${id.toLowerCase()}car` });
     chain.link([`${id}Car`, "out"], [`${id}CarGeo`, "points"]);
-    scenes.push(`${id.toLowerCase()}cargeo1`);
+    scenes.push(`geometry_${id.toLowerCase()}car`);
   }
-  chain.add(`${id}Cam`, "camera", [-3000, y], { eye: vec3(spec.eye), lookAt: vec3(spec.aim), fov: spec.fov, near: 0.05, far: 60 });
+  chain.add(`${id}Cam`, "camera", [-3000, y], { eye: vec3(spec.eye), lookAt: vec3(spec.aim), fov: spec.fov, near: 0.05, far: 60 }, { label: `camera_${id.toLowerCase()}` });
   // the flash: at the lens, a little above
   chain.add(`${id}Flash`, "light", [-3000, y + 50], { kind: "point", position: [spec.eye[0] + 0.1, spec.eye[1] + 0.15, spec.eye[2]], color: [1, 0.97, 0.94, 1], intensity: 3 });
   chain.add(`${id}Shot`, "render", [-2800, y], {
     scenes: scenes.join(" "),
-    camera: `${id.toLowerCase()}cam1`,
-    lights: `${id.toLowerCase()}flash1`,
+    camera: `camera_${id.toLowerCase()}`,
+    lights: `light_${id.toLowerCase()}flash`,
     projectors: "",
     ambientColor: [1, 1, 1, 1],
     ambientIntensity: 0.02,
@@ -282,7 +282,7 @@ export function cardsDocument(facts: OnNothingFacts, options: CardsOptions): Pro
     chain.add("seed", "ramp", [-600, 0], {}, { resolution: { mode: "fixed", width: 16, height: 16 } });
     // (a pass must bind the input it is handed; the seed is multiplied away)
     chain.pass("black", "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  return vec4f(textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 0.0, 1.0);\n}", {}, [], [-300, 0]);
-    chain.add("out", "output", [0, 0], { toneMap: "none" });
+    chain.add("out", "output", [0, 0], { toneMap: "none" }, { label: "output1" });
     chain.link(chain.last, ["out", "input"]);
     return chain.document("cards", width, height);
   }
@@ -294,18 +294,18 @@ export function cardsDocument(facts: OnNothingFacts, options: CardsOptions): Pro
   const chain = new Chain(["type", "out"]);
   // the type, white on black, one millimetre to the pixel
   chain.add("typesurf", "materialWgsl", [-3000, -600], { model: "pbr", source: CARD_TYPE_WGSL, gain: 1 });
-  chain.add("cardMesh", "meshFileIn", [-3600, 0], { file: facts.glbUrl, select: card.select, vertices: card.vertices, triangles: card.triangles, parts: card.parts });
-  chain.add("cardGeo", "geometry", [-3200, 0], { mode: "surface", material: "typesurf1" });
+  chain.add("cardMesh", "meshFileIn", [-3600, 0], { file: facts.glbUrl, select: card.select, vertices: card.vertices, triangles: card.triangles, parts: card.parts }, { label: "mesh_card" });
+  chain.add("cardGeo", "geometry", [-3200, 0], { mode: "surface", material: "material_typesurf" }, { label: "geometry_card" });
   chain.link(["cardMesh", "out"], ["cardGeo", "points"]);
   const d = 1.92 / 0.36;
   const aim = [camera.eye[0] + camera.forward[0] * d, camera.eye[1] + camera.forward[1] * d, camera.eye[2] + camera.forward[2] * d];
-  chain.add("cam", "camera", [-2800, -300], { eye: vec3(camera.eye), lookAt: aim, fov: camera.fovDeg, near: 1, far: 20 });
+  chain.add("cam", "camera", [-2800, -300], { eye: vec3(camera.eye), lookAt: aim, fov: camera.fovDeg, near: 1, far: 20 }, { label: "camera1" });
   chain.add("envSeed", "ramp", [-3000, 300], {}, { resolution: { mode: "fixed", width: 64, height: 32 } });
   chain.add("typeEnv", "customWgsl", [-2800, 300], { source: ENVIRONMENT_WGSL, bars: 0, roof: 0, floor: 0 }, { resolution: { mode: "fixed", width: 64, height: 32 } });
   chain.link(["envSeed", "out"], ["typeEnv", "input"]);
   chain.add("type", "render", [-2600, 0], {
-    scenes: "cardgeo1",
-    camera: "cam1",
+    scenes: "geometry_card",
+    camera: "camera1",
     lights: "",
     projectors: "",
     ambientColor: [1, 1, 1, 1],
@@ -331,7 +331,7 @@ export function cardsDocument(facts: OnNothingFacts, options: CardsOptions): Pro
     const c = photo(chain, facts, "photoC", 2000, { eye: [0.0, 1.2, 4.3], aim: [0.0, 1.0, 1.3], fov: 34, car: true, bones: { ...down, upperarmR: [-1.0, 0, -0.9], forearmR: [-1.9, 0, 0] } });
     chain.pass("credits", CREDITS_WGSL, { t: clock }, [[a, "out"], [b, "out"], [c, "out"]], [-2300, 0]);
   }
-  chain.add("out", "output", [0, 0], { toneMap: "none" });
+  chain.add("out", "output", [0, 0], { toneMap: "none" }, { label: "output1" });
   chain.link(chain.last, ["out", "input"]);
   return chain.document("cards", width, height);
 }

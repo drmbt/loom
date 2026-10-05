@@ -4413,7 +4413,7 @@
       "nd_e0b8e3ccb72d1": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d1",
-        "label": "video1",
+        "label": "movie_video",
         "parameters": {
           "audio": false,
           "cue": false,
@@ -4442,13 +4442,13 @@
       "nd_e0b8e3ccb72d10": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d10",
-        "label": "grade1",
+        "label": "hsv_grade",
         "parameters": {
           "hueoffset": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('hue1').chan.hue"
+                "source": "op('slider_hue').chan.hue"
               },
               "static": {
                 "kind": "static",
@@ -4461,7 +4461,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sat1').chan.sat"
+                "source": "op('slider_sat').chan.sat"
               },
               "static": {
                 "kind": "static",
@@ -4481,7 +4481,7 @@
       "nd_e0b8e3ccb72d11": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d11",
-        "label": "base1",
+        "label": "solid_base",
         "parameters": {
           "color": [
             0,
@@ -4504,7 +4504,7 @@
       "nd_e0b8e3ccb72d12": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d12",
-        "label": "underlay1",
+        "label": "layer_underlay",
         "parameters": {
           "blend": "over",
           "opacity": 1,
@@ -4522,7 +4522,7 @@
       "nd_e0b8e3ccb72d13": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d13",
-        "label": "graphic1",
+        "label": "layer_graphic",
         "parameters": {
           "blend": "screen",
           "opacity": 1,
@@ -4537,7 +4537,7 @@
       "nd_e0b8e3ccb72d14": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d14",
-        "label": "source1",
+        "label": "slider_source",
         "parameters": {
           "caption": "Source: 0 file, 1 screen, 2 webcam",
           "channel": "source",
@@ -4555,7 +4555,7 @@
       "nd_e0b8e3ccb72d15": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d15",
-        "label": "hue1",
+        "label": "slider_hue",
         "parameters": {
           "caption": "Underlay hue",
           "channel": "hue",
@@ -4573,7 +4573,7 @@
       "nd_e0b8e3ccb72d16": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d16",
-        "label": "sat1",
+        "label": "slider_sat",
         "parameters": {
           "caption": "Underlay saturation",
           "channel": "sat",
@@ -4591,9 +4591,9 @@
       "nd_e0b8e3ccb72d17": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d17",
-        "label": "desk1",
+        "label": "panel_desk",
         "parameters": {
-          "board": "{\n  \"columns\": 8,\n  \"items\": [\n    {\"label\":\"Underlay video\",\"rect\":{\"x\":0,\"y\":0,\"w\":8,\"h\":1}},\n    {\"member\":\"source1\",\"rect\":{\"x\":0,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"underlay1\",\"rect\":{\"x\":4,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"hue1\",\"rect\":{\"x\":0,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"sat1\",\"rect\":{\"x\":4,\"y\":2,\"w\":4,\"h\":1}},\n    {\"label\":\"Graphic\",\"rect\":{\"x\":0,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"graphic1\",\"rect\":{\"x\":4,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"seat1\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}}\n  ]\n}",
+          "board": "{\n  \"columns\": 8,\n  \"items\": [\n    {\"label\":\"Underlay video\",\"rect\":{\"x\":0,\"y\":0,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_source\",\"rect\":{\"x\":0,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"layer_underlay\",\"rect\":{\"x\":4,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_hue\",\"rect\":{\"x\":0,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_sat\",\"rect\":{\"x\":4,\"y\":2,\"w\":4,\"h\":1}},\n    {\"label\":\"Graphic\",\"rect\":{\"x\":0,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"layer_graphic\",\"rect\":{\"x\":4,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_seat\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}}\n  ]\n}",
           "layout": "",
           "remote": true,
           "title": "LED box desk"
@@ -4607,7 +4607,7 @@
       "nd_e0b8e3ccb72d2": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d2",
-        "label": "ledmat1",
+        "label": "material_led",
         "parameters": {
           "color": [
             1,
@@ -4625,7 +4625,7 @@
       "nd_e0b8e3ccb72d2p": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d2p",
-        "label": "stageshape1",
+        "label": "kernel_stageshape",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 12,
@@ -4647,12 +4647,12 @@
       "nd_e0b8e3ccb72d2s": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d2s",
-        "label": "ledshadow1",
+        "label": "geometry_ledshadow",
         "parameters": {
           "blend": "opaque",
           "endpoint": "",
           "group": "",
-          "material": "floormat1",
+          "material": "material_floor",
           "materialOverrides": "",
           "mode": "surface",
           "orient": [
@@ -4683,7 +4683,7 @@
       "nd_e0b8e3ccb72d2u": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d2u",
-        "label": "fill1",
+        "label": "light_fill1",
         "parameters": {
           "color": [
             1,
@@ -4724,7 +4724,7 @@
       "nd_e0b8e3ccb72d2v": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d2v",
-        "label": "trussgrid1",
+        "label": "grid_truss",
         "parameters": {
           "cols": 50,
           "count": 50,
@@ -4744,7 +4744,7 @@
       "nd_e0b8e3ccb72d2w": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d2w",
-        "label": "trussshape1",
+        "label": "kernel_trussshape",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 50,
@@ -4764,7 +4764,7 @@
       "nd_e0b8e3ccb72d2x": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d2x",
-        "label": "trussmat1",
+        "label": "material_truss",
         "parameters": {
           "color": [
             0.45,
@@ -4784,12 +4784,12 @@
       "nd_e0b8e3ccb72d2y": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d2y",
-        "label": "truss1",
+        "label": "geometry_truss",
         "parameters": {
           "blend": "opaque",
           "endpoint": "",
           "group": "",
-          "material": "trussmat1",
+          "material": "material_truss",
           "materialOverrides": "",
           "mode": "instances",
           "orient": [
@@ -4820,7 +4820,7 @@
       "nd_e0b8e3ccb72d3": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d3",
-        "label": "strip1",
+        "label": "grid_strip",
         "parameters": {
           "cols": 7,
           "count": 14,
@@ -4840,7 +4840,7 @@
       "nd_e0b8e3ccb72d31": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d31",
-        "label": "beamgrid1",
+        "label": "grid_beam",
         "parameters": {
           "cols": 7,
           "count": 7,
@@ -4860,7 +4860,7 @@
       "nd_e0b8e3ccb72d32": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d32",
-        "label": "beamshape1",
+        "label": "kernel_beamshape",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tip\",\"type\":\"vec3f\",\"default\":[0,0,0]}]",
           "capacity": 7,
@@ -4881,7 +4881,7 @@
       "nd_e0b8e3ccb72d33": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d33",
-        "label": "beammat1",
+        "label": "material_beam",
         "parameters": {
           "color": [
             0.32,
@@ -4899,12 +4899,12 @@
       "nd_e0b8e3ccb72d34": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d34",
-        "label": "beams1",
+        "label": "geometry_beams",
         "parameters": {
           "blend": "additive",
           "endpoint": "tip",
           "group": "",
-          "material": "beammat1",
+          "material": "material_beam",
           "materialOverrides": "",
           "mode": "beam",
           "orient": [
@@ -4935,7 +4935,7 @@
       "nd_e0b8e3ccb72d37": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d37",
-        "label": "spillblur1",
+        "label": "blur_spill",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -4955,7 +4955,7 @@
       "nd_e0b8e3ccb72d38": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d38",
-        "label": "spill1",
+        "label": "projector_spill",
         "parameters": {
           "aspect": 1.8,
           "brightness": 3,
@@ -4993,7 +4993,7 @@
       "nd_e0b8e3ccb72d4": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d4",
-        "label": "fold1",
+        "label": "kernel_fold",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 14,
@@ -5014,12 +5014,12 @@
       "nd_e0b8e3ccb72d5": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d5",
-        "label": "ledbox1",
+        "label": "geometry_ledbox",
         "parameters": {
           "blend": "opaque",
           "endpoint": "",
           "group": "",
-          "material": "ledmat1",
+          "material": "material_led",
           "materialOverrides": "",
           "mode": "surface",
           "orient": [
@@ -5050,7 +5050,7 @@
       "nd_e0b8e3ccb72d6": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d6",
-        "label": "floorgrid1",
+        "label": "grid_floor",
         "parameters": {
           "cols": 2,
           "count": 12,
@@ -5070,7 +5070,7 @@
       "nd_e0b8e3ccb72d8": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d8",
-        "label": "floormat1",
+        "label": "material_floor",
         "parameters": {
           "color": [
             0.085,
@@ -5090,12 +5090,12 @@
       "nd_e0b8e3ccb72d9": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d9",
-        "label": "floor1",
+        "label": "geometry_floor",
         "parameters": {
           "blend": "opaque",
           "endpoint": "",
           "group": "",
-          "material": "floormat1",
+          "material": "material_floor",
           "materialOverrides": "",
           "mode": "surface",
           "orient": [
@@ -5126,7 +5126,7 @@
       "nd_e0b8e3ccb72da": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72da",
-        "label": "key1",
+        "label": "light_key1",
         "parameters": {
           "color": [
             0.8,
@@ -5167,7 +5167,7 @@
       "nd_e0b8e3ccb72db": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72db",
-        "label": "seat1",
+        "label": "slider_seat",
         "parameters": {
           "caption": "Seat angle (deg): 0 centre, 90 side-on",
           "channel": "seat",
@@ -5185,7 +5185,7 @@
       "nd_e0b8e3ccb72dc": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72dc",
-        "label": "seatcam1",
+        "label": "camera_seat",
         "parameters": {
           "eye": [
             0,
@@ -5196,7 +5196,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "sin(op('seat1').chan.seat * 0.0174533) * 11.5"
+                "source": "sin(op('slider_seat').chan.seat * 0.0174533) * 11.5"
               },
               "static": {
                 "kind": "static",
@@ -5210,7 +5210,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "cos(op('seat1').chan.seat * 0.0174533) * 11.5 - 0.6"
+                "source": "cos(op('slider_seat').chan.seat * 0.0174533) * 11.5 - 0.6"
               },
               "static": {
                 "kind": "static",
@@ -5240,7 +5240,7 @@
       "nd_e0b8e3ccb72dd": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72dd",
-        "label": "stage1",
+        "label": "render_stage",
         "parameters": {
           "albedoOutput": false,
           "ambientColor": [
@@ -5261,16 +5261,16 @@
             0.015,
             1
           ],
-          "camera": "seatcam1",
+          "camera": "camera_seat",
           "depthOutput": false,
           "environmentFilter": "taps",
           "environmentIntensity": 1,
           "environmentTaps": 8,
           "lightDepthOutput": false,
-          "lights": "key1 fill1",
+          "lights": "light_key1 light_fill1",
           "normalOutput": false,
-          "projectors": "spill1",
-          "scenes": "ledbox1 floor1 ledshadow1 truss1 beams1",
+          "projectors": "projector_spill",
+          "scenes": "geometry_ledbox geometry_floor geometry_ledshadow geometry_truss geometry_beams",
           "shadowOutput": false,
           "showEnvironment": false
         },
@@ -5288,7 +5288,7 @@
       "nd_e0b8e3ccb72de": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72de",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "none"
         },
@@ -5301,7 +5301,7 @@
       "nd_e0b8e3ccb72dw": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72dw",
-        "label": "clip1",
+        "label": "movie_clip",
         "parameters": {
           "audio": false,
           "cue": false,
@@ -5372,14 +5372,14 @@
       "nd_e0b8e3ccb72dz": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72dz",
-        "label": "sourcesw1",
+        "label": "switch_source",
         "parameters": {
           "crossfade": false,
           "index": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('source1').chan.source"
+                "source": "op('slider_source').chan.source"
               },
               "static": {
                 "kind": "static",

@@ -107,7 +107,7 @@ function openCircuit(port: number): Circuit {
  * Run the document's value graph for one frame, transmit what `oscOut` published, and hand
  * back both ends of the circuit as the graph itself reads them.
  *
- * `meter1` is fed synthetically. The GPU reduction is not the subject here and feeding it
+ * `analyze_meter` is fed synthetically. The GPU reduction is not the subject here and feeding it
  * by hand is what makes the assertion exact: the number that goes round is one this test
  * chose, so a value that came back could not have come from anywhere else.
  */
@@ -127,7 +127,7 @@ function step(
   const evaluated = graphSession.evaluate(RELAY_GRAPH, frame, {
     flattening: NO_FLATTENING,
     pointer: { x: 0.5, y: 0.5, buttons: 0 },
-    channels: (name: string) => (name === "meter1" ? meter : circuit.readings.get(name)),
+    channels: (name: string) => (name === "analyze_meter" ? meter : circuit.readings.get(name)),
   });
   const outBag = evaluated.byId.get(SEND) ?? {};
   const inBag = evaluated.byId.get(HEAR) ?? {};
@@ -141,8 +141,8 @@ function step(
   }
 
   const dim = RELAY?.graph.nodes[DIM];
-  /* §T1129's shared factory, and it is required rather than tidy: `dim1.brightness` is an
-     EXPRESSION slot reading `op('ctl1').chan.level`, and the `op()` reader is built here —
+  /* §T1129's shared factory, and it is required rather than tidy: `level_dim.brightness` is an
+     EXPRESSION slot reading `op('math_ctl').chan.level`, and the `op()` reader is built here —
      hand `resolveParameters` a bare `channels` and the expression resolves to "this context
      has no channel resolver", falls to §V108's retained static, and this gate would read a
      plausible 1.08 while measuring nothing. It did, once. */
@@ -206,7 +206,7 @@ describe("T1193 — E64 Relay: oscOut reaches its own oscIn over real UDP", () =
     const circuit = openCircuit(listenPort);
     const graphSession = createValueGraphSession(REGISTRY);
 
-    /* Well inside the reading's working span, so `wire1` neither clamps nor extrapolates and
+    /* Well inside the reading's working span, so `math_wire` neither clamps nor extrapolates and
        the number on the wire is one this test can name: (0.30 − 0.075) / (0.42 − 0.075). */
     const METER = 0.3;
     let last = { sent: Number.NaN, received: Number.NaN, brightness: Number.NaN };
@@ -227,11 +227,15 @@ describe("T1193 — E64 Relay: oscOut reaches its own oscIn over real UDP", () =
     // degraded path would gate nothing at all.
     expect(last.received).not.toBe(rest);
     expect(settledAt).toBeGreaterThan(0);
+    /* And the number that left is the one this test chose. T1593b renamed the meter and this
+       file went on feeding `meter1`: the probe fell to its Fallback, 0.25 went round instead,
+       and every line above still held. So the choice is asserted, not only stated. */
+    expect(last.sent).toBe((METER - 0.075) / (0.42 - 0.075));
 
     /*
-     * The picture moves. `ctl1` maps the returned 0…1 onto a brightness with its bounds
+     * The picture moves. `math_ctl` maps the returned 0…1 onto a brightness with its bounds
      * INVERTED — that inversion is what makes the loop negative — so the value read off
-     * `dim1.brightness` is checked against that arithmetic, and against the brightness the
+     * `level_dim.brightness` is checked against that arithmetic, and against the brightness the
      * same document renders with no helper at all. Two assertions, because "it changed" and
      * "it changed to the right thing" are different claims.
      */

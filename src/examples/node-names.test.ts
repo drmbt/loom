@@ -26,8 +26,8 @@ import { unconformingNames } from "./node-name-audit.ts";
  *
  * ## THE LEDGER IS HONEST IN BOTH DIRECTIONS
  *
- * Phase 1 lands the rule and renames nothing, so the documents written before it are
- * listed in `NOT_YET_RENAMED` with the EXACT number of names each still owes. Not an
+ * Phase 1 landed the rule and renamed nothing, so the documents written before it were
+ * listed in `NOT_YET_RENAMED` with the EXACT number of names each still owed. Not an
  * allow-list of files: a count. So:
  *
  *  - a file NOT listed must be clean. A new example conforms from its first commit.
@@ -37,8 +37,9 @@ import { unconformingNames } from "./node-name-audit.ts";
  *    never permission for.
  *  - an entry for a file that no longer exists fails too.
  *
- * Phase 2 (the sweep) empties it. Until then it can only shrink without someone deciding
- * otherwise in a diff.
+ * Phase 2 (the sweep, 2026-10-05 and -06) emptied it, the on-nothing project's lines
+ * last. It is empty and it stays the mechanism: a line added here is a debt someone
+ * decided on in a diff, with its count.
  *
  * ## What is not counted
  *
@@ -52,42 +53,7 @@ import { unconformingNames } from "./node-name-audit.ts";
  * Counted over the file's root graph AND every component graph it embeds. To update after
  * renaming: run this test, and the failure prints the number each changed file now has.
  */
-export const NOT_YET_RENAMED: Readonly<Record<string, number>> = {
-  "examples/E71-Syphon-Loopback.loom.json": 10,
-  "examples/E72-NDI-Loopback.loom.json": 10,
-  "examples/E73-Native-Person-Mask.loom.json": 12,
-  "examples/E74-Spout-Loopback-Preparation.loom.json": 10,
-  "examples/E75-Resonance.loom.json": 76,
-  "examples/E76-Verdant-Lotus.loom.json": 72,
-  "examples/E77-Ember-Monoliths.loom.json": 110,
-  "examples/E78-Aether-Orrery.loom.json": 119,
-  "examples/E79-Crucible.loom.json": 76,
-  "projects/furnace/furnace.loom.json": 101,
-  "projects/on-nothing/cards.loom.json": 13,
-  "projects/on-nothing/crt.loom.json": 81,
-  "projects/on-nothing/cyc-wide.loom.json": 38,
-  "projects/on-nothing/cyc.loom.json": 35,
-  "projects/on-nothing/halo.loom.json": 79,
-  "projects/on-nothing/hands.loom.json": 42,
-  "projects/on-nothing/incar.loom.json": 93,
-  "projects/on-nothing/lights.loom.json": 81,
-  "projects/on-nothing/mcu.loom.json": 44,
-  "projects/on-nothing/mcu2.loom.json": 75,
-  "projects/on-nothing/mirror.loom.json": 31,
-  "projects/on-nothing/pendant.loom.json": 34,
-  "projects/on-nothing/prism.loom.json": 42,
-  "projects/on-nothing/quad.loom.json": 33,
-  "projects/on-nothing/ring.loom.json": 33,
-  "projects/on-nothing/sleep-like-a-baby-2.loom.json": 36,
-  "projects/on-nothing/sleep-like-a-baby.loom.json": 24,
-  "projects/on-nothing/sneaker.loom.json": 59,
-  "projects/on-nothing/split.loom.json": 88,
-  "projects/on-nothing/tableau.loom.json": 77,
-  "projects/on-nothing/title.loom.json": 63,
-  "projects/on-nothing/wheel.loom.json": 70,
-  "projects/on-nothing/wide.loom.json": 77,
-  "projects/on-nothing/zoom.loom.json": 77,
-};
+export const NOT_YET_RENAMED: Readonly<Record<string, number>> = {};
 
 interface ShippedFile {
   /** Repo-relative, forward slashes: the ledger's key and the name in every message. */

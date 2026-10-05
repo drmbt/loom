@@ -168,7 +168,7 @@ export interface RingOptions {
 
 export function ringDocument(facts: OnNothingFacts, options: RingOptions): ProjectDocument {
   const chain = new Chain(["shot", "out"]);
-  chain.add("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL }, { label: "surf1" });
+  chain.add("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL }, { label: "material_surf" });
 
   // ── The figure, posed by the skin kernel ──
   const mesh = facts.areas.get("fig");
@@ -187,7 +187,7 @@ export function ringDocument(facts: OnNothingFacts, options: RingOptions): Proje
   }
   chain.add("fig", "meshFileIn", [-3600, 1200], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts, joints: mesh.joints });
   chain.add("skin", "pointKernel", [-3300, 1200], { capacity: mesh.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw: yawFor(FACING), place: vec3(PLACE), ...pose });
-  chain.add("figGeo", "geometry", [-3000, 1200], { mode: "surface", material: "surf1" }, { label: "figgeo1" });
+  chain.add("figGeo", "geometry", [-3000, 1200], { mode: "surface", material: "material_surf" }, { label: "geometry_fig" });
   chain.link(["fig", "out"], ["skin", "in"]);
   chain.link(["skin", "out"], ["figGeo", "points"]);
 
@@ -195,7 +195,7 @@ export function ringDocument(facts: OnNothingFacts, options: RingOptions): Proje
   const lights: string[] = [];
   const point = (id: string, position: V3, color: readonly number[], intensity: number): void => {
     chain.add(id, "light", [-2600, 1800 + lights.length * 80], { kind: "point", position: vec3(position), color: [...color], intensity });
-    lights.push(`${id.toLowerCase()}1`);
+    lights.push(`light_${id.toLowerCase()}`);
   };
   const cold = [0.82, 0.93, 1, 1];
   point("lamp", LAMP, cold, 40);
@@ -204,10 +204,10 @@ export function ringDocument(facts: OnNothingFacts, options: RingOptions): Proje
 
   // ── Camera and the Render ──
   const operator = handheld(EYE, AIM, { tiltIn: -2.2, tilt: 0.6, settle: 0.9, shake: 0.35, creep: 0.04 });
-  chain.add("cam", "camera", [-2700, -900], { eye: vec3(EYE), lookAt: vec3(AIM), fov: FOV, near: 0.05, far: 200, ...operator }, { label: "cam1" });
+  chain.add("cam", "camera", [-2700, -900], { eye: vec3(EYE), lookAt: vec3(AIM), fov: FOV, near: 0.05, far: 200, ...operator }, { label: "camera1" });
   chain.add("shot", "render", [-2400, 0], {
-    scenes: "figgeo1",
-    camera: "cam1",
+    scenes: "geometry_fig",
+    camera: "camera1",
     lights: lights.join(" "),
     projectors: "",
     ambientColor: [1, 1, 1, 1],
@@ -218,7 +218,7 @@ export function ringDocument(facts: OnNothingFacts, options: RingOptions): Proje
     normalOutput: true,
     albedoOutput: true,
     environmentIntensity: 0,
-  }, { label: "shot1" });
+  }, { label: "render_shot" });
 
   const cam = cameraParams(EYE, AIM, FOV);
   const depth = ["shot", "depth"] as const;
@@ -273,7 +273,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   chain.pass("lens", TITLE_LENS_WGSL, { k: 0.05, edgeBlur: 0.025, swirl: 0.8, aberration: 0.004, vignette: 0.7 }, [], [-300, 0]);
   chain.pass("grade", GRADE_WGSL, { exposure: 0.2, black: 0.035, contrast: 1.15, saturation: 0.55, keepWarm: 0.6, bleach: 0.2, steel: [0.94, 1.0, 1.05], shadowTint: [0.9, 1.0, 1.08, 1], split: 0.5, grain: 0.03 }, [], [-100, 0]);
   if (options.crt === true) chain.pass("crt", CRT_WGSL, { amount: 1 }, [], [500, 0]);
-  chain.add("out", "output", [700, 0], { toneMap: "none" }, { label: "out1" });
+  chain.add("out", "output", [700, 0], { toneMap: "none" }, { label: "output1" });
   chain.link(chain.last, ["out", "input"]);
   return chain.document("ring", options.width ?? 1920, options.height ?? 818);
 }

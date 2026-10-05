@@ -4,6 +4,7 @@ import { expressionSlot } from "../../../examples/documents/builders.ts";
 import type { OnNothingFacts } from "../scene-facts.ts";
 import { boneParam, yawFor } from "../skin-kernel.ts";
 import { carAreas } from "../scene-facts.ts";
+import { geometryName } from "../names.ts";
 import { hazeLights, hazeWgsl } from "../atmosphere.ts";
 import { DOF_WGSL } from "../../furnace/screen-space.ts";
 import { addNode, connect, dropParams, finish, setParams, spliceAfter, surgery } from "./splice.ts";
@@ -148,11 +149,11 @@ export function haloDocument(facts: OnNothingFacts, options: ShotOptions, build:
   const drop = carAreas(facts).filter((area) => area !== "car0");
   const shotNode = cut.nodes["shot"];
   if (shotNode === undefined) throw new Error('haloDocument: the base graph has no Render "shot".');
-  const scenes = String(shotNode.parameters["scenes"]).split(" ").filter((label) => !drop.some((area) => label === `geo${area}1`));
+  const scenes = String(shotNode.parameters["scenes"]).split(" ").filter((label) => !drop.some((area) => label === geometryName(area)));
   // Lit from behind only: car 0's projector, a rim on the head and shoulders, the sodium practicals.
-  addNode(cut, "rim", "light", [-2600, 1300], { kind: "point", position: [place[0] + 0.35, 1.85, place[2] - 0.9], color: [0.85, 0.95, 1, 1], intensity: 2.2 }, { label: "rimhalo1" });
-  addNode(cut, "rimWarm", "light", [-2600, 1350], { kind: "point", position: [place[0] - 0.6, 1.5, place[2] - 0.7], color: [1, 0.62, 0.32, 1], intensity: 1.1 }, { label: "rimwarm1" });
-  setParams(cut, "shot", { scenes: scenes.join(" "), projectors: "head01", lights: "rimhalo1 rimwarm1 sodiuma1 sodiumb1" });
+  addNode(cut, "rim", "light", [-2600, 1300], { kind: "point", position: [place[0] + 0.35, 1.85, place[2] - 0.9], color: [0.85, 0.95, 1, 1], intensity: 2.2 }, { label: "light_rimhalo" });
+  addNode(cut, "rimWarm", "light", [-2600, 1350], { kind: "point", position: [place[0] - 0.6, 1.5, place[2] - 0.7], color: [1, 0.62, 0.32, 1], intensity: 1.1 }, { label: "light_rimwarm" });
+  setParams(cut, "shot", { scenes: scenes.join(" "), projectors: "projector_head0", lights: "light_rimhalo light_rimwarm light_sodiuma light_sodiumb" });
   const oneCar: OnNothingFacts = { ...facts, markers: new Map([...facts.markers].filter(([name]) => !name.startsWith("lamp.head.") || name.startsWith("lamp.head.0"))) };
   setParams(cut, "haze", { source: hazeWgsl(hazeLights(oneCar, ["head"])), density: 0.05, ambient: [0.036, 0.09, 0.108] });
 

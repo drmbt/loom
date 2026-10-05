@@ -175,7 +175,7 @@ Left as it is: at rest a long name ends in an ellipsis (`camerablur_the…`), so
 
 Not counted: an unnamed node, and a component's In and Out.
 
-Phase 1 renames nothing, so the files written before the rule are in `NOT_YET_RENAMED`, each with the **exact number** of names it still owes. It is a count, not an allow-list, and it is checked both ways:
+Phase 1 renamed nothing, so the files written before the rule went into `NOT_YET_RENAMED`, each with the **exact number** of names it still owed. It is a count, not an allow-list, and it is checked both ways:
 
 | Situation | The gate says |
 | --- | --- |
@@ -185,7 +185,7 @@ Phase 1 renames nothing, so the files written before the rule are in `NOT_YET_RE
 | A listed file's count went up | a non-conforming name was added to an old file; name the new node `kind_role` |
 | A line names a file that is not shipped | remove the line |
 
-Today, under the new kinds:
+On 2026-10-05, before the sweep, under the new kinds:
 
 | Set | Files | Named nodes the rule binds | Not conforming |
 | --- | --- | --- | --- |
@@ -194,7 +194,9 @@ Today, under the new kinds:
 | `projects/` | 26 | 1,541 | 1,515 |
 | **Total** | **112** | **3,393** | **3,297** |
 
-106 files are on the ledger. The 6 that are not have no named nodes at all.
+106 files were on the ledger. The 6 that were not have no named nodes at all.
+
+**Since the sweep (2026-10-06): 112 files, 3,462 named nodes the rule binds, none not conforming. The ledger is empty** (section 10.6). It stays as the mechanism: a line added to it is a debt somebody decided on in a diff, with its count.
 
 The brief's figure was 1,714 named and 1,653 non-conforming. That counted the root graphs of the examples only, against the old bases. This table also counts embedded component graphs and the projects, against the new kinds, so the numbers are not comparable line for line.
 
@@ -291,9 +293,9 @@ Each of these could reasonably go the other way.
 | `filmGrade`, `cameraBlur`, `personMask`, `cornerPin`, `gridWarp`, `crtTube`, `slitScan`, `channelIn`, `cueList`, `xyPad`, `laserPath` | kept whole | `grade`, `person`, `pin`, `warp` … | No single word says it without ambiguity. `grade` is also a common role on other kinds. |
 | Unicode in roles | allowed | ASCII only, as TouchDesigner | No reference form needs ASCII. |
 
-## 10. Phase 2: the sweep (2a prepared; nothing shipped is written yet)
+## 10. Phase 2: the sweep (applied 2026-10-05 and -06)
 
-Rename every shipped name to `kind_role`, rewrite every reference, regenerate, empty the ledger. Phase 2a built the map, a check that the rename changes nothing but names, and the tool that applies it, and ran all three without writing a shipped byte. Phase 2b applies it once the map is approved.
+Rename every shipped name to `kind_role`, rewrite every reference, regenerate, empty the ledger. Phase 2a built the map, a check that the rename changes nothing but names, and the tool that applies it, and ran all three without writing a shipped byte. Phase 2b applied it once the map was approved: 10.1 to 10.5 are the plan as it stood, 10.6 is what happened.
 
 `projects/sentinel-bot/**` and `src/projects/sentinel-bot/**` are left out of all of it: that session renames its own names.
 
@@ -402,20 +404,43 @@ In its own worktree, never the shared tree.
 4. **No GPU suite per batch.** The equivalence check is what stands in for it: the documents compile to the same plan. At the end, the lead's choice of a GPU sample, and the thumbnails, which carry no names and must not change by a pixel.
 5. The ledger is empty. Keep the gate and the empty map. Delete `src/examples/rename/` and the two map files, or keep them one release as the record; they describe a tree that no longer exists.
 
+### 10.6 What 2b did
+
+Step 0 and batches A to F, each its own commit, in the order of 10.5. Every shipped document carries `kind_role` names, the sources that build them say the same names, and the ledger is empty.
+
+**What held.** For every batch, before a byte was written: the equivalence check over all 111 documents, and `--build-in`, which builds the batch from its rewritten sources and compares with the map applied in memory. After it: the gates of 10.5 step 3 by name, and the GPU claims files of what the batch rewrote or hand-edited, one worker.
+
+**What the application found, beyond what 2a had:**
+
+- **A gate that assumed the old habit.** `doc-drift.test.ts` took a token for a node's name when it ended in a digit. Under the rule most names do not, so one check went red on E13 and another would have passed by reading nothing. It asks `nameShaped` now: letters and digits, or `kind_role` with a real kind.
+- **Shader comments name nodes.** A point kernel's comment that says which node feeds it is part of the shader text, so the frame-zero digests of E27, E31, E32, E33, E34 and E54 moved with the names and were re-stamped. The equivalence check reports this as "the same but for prose", which is what it is.
+- **An id is never a name.** The tool once rewrote a fixture's ids because the same word was a name in another scope, and half-renamed private fixtures in three engine tests because a comment mentioned an example. It now refuses an id by position, and takes a test file only when the test loads the document. Private fixtures are not shipped names and were left alone.
+- **Names a test computes are found by running it.** A regular expression over two names in `orrery-detail.gpu.test.ts`, `id + "1"` in E24's test, three assertions in `set-list-claims.gpu.test.ts` (a cue's bank, a Layer's picture, a Panel's members): no rewrite of literals reaches these. Each failed when run and was fixed by hand.
+- **Diagrams.** A fenced diagram in a page is laid out around its names, and a longer name pushes a joint off its line. The page rewrite re-lays each drawing: joints stay under the word they point at.
+- **A test that passed on a dead feed, and one that was red where nobody looked.** Both found at the very end, not in their batch. `relay-circuit.test.ts` fed E64's meter by its name, `meter1`. After the rename the probe fell to its Fallback, 0.25 went round the UDP loop instead of the number the test chose, and every assertion still held, because none of them said which number had left. It asserts that now. `technical-examples.test.ts` asserted two Output names of E71 and E72 and was red on the gate script from batch C on: the batches ran ten gates by name, not the script, and the tool takes a test only when it names its example's file, which this one does not (it finds it by number). **The whole gate script is 30 s; a sweep should run it after every batch.** After that, every test that reaches a shipped document and that the sweep had not changed was read for old names: 132 files, the end-to-end specs that open an example among them (they address nodes by `data-id`), and the 43 GPU files of that kind. Nothing else.
+
+**Projects had an oracle after all.** 10.4 said nothing checks a project's JSON against its source. Something can: the build is a pure function of facts read from a GLB, and the GLBs are in the main checkout. Built in memory from there, read-only, 23 of the 25 project documents were byte for byte the shipped ones before any rename (the other two, `sleep-like-a-baby` and `-2`, are saved by hand and have no source). So the documents were renamed in place by the map through the serialiser, the sources were edited, and the build of the edited sources had to be those renamed bytes again.
+
+- **furnace**: 101 names. The director's 31 lanes were named `${id}1` by one helper; they are written out in one table now.
+- **on-nothing**: 1,331 names in 24 documents; 255 of them built by code in some sixty places. Three small things carry most of it: `names.ts` (an area's mesh and geometry, a light), the title graph's `Chain.add` (a node is named for its kind and its id unless told otherwise), and `Plate.prefixed`, which now keeps a name's kind and puts the prefix on its role.
+- **The shots nobody ships.** The 22 shipped documents are one take of each shot; the sources hold 160 different graphs (every take, and each shot with the CRT pass, without the song, without the HDRI). Each was built from the sources as they were and as they are and put through the equivalence check: 160 of 160 the same graph but for names, every one of 10,104 names carrying its kind. 93 names appear in no shipped document; they follow the same rules. One branch (`take.second` in `shots/wide.ts`) is reached by no take and was edited by reading.
+
+**Where a document is not the map's.** One document, 19 names. The split screen is two plates under a prefix. The old helper glued the prefix to the old name (`car` + `geocar01`), and the map, reading the result, kept the `geo` in the middle: `geometry_cargeocar0`, `geometry_cargeowh`. The source cannot build that without remembering a name that no longer exists; it builds the prefix on the plate's own name: `geometry_carcar0`, `geometry_carwarehouse`. `split.loom.json` is what the source builds, and it is the map's document with those 19 names moved once more by the product's own rename, byte for byte.
+
+**Left as the map has them, and worth a look.** `light_key1` and `light_fill1`. The key light was `key1` (the id `key` and the habit's `1`), and the map read it as one of a numbered run because the white limbo has six keys `key0` … `key5` whose old names were `key01` … `key51`. The same for `fill1` beside `fill281`. So the one key light of the pendant is `light_key1`. `lightName` in `names.ts` says so in one place; changing two names there and renaming them in the documents would make them `light_key` and `light_fill`.
+
 ## 11. Open questions
 
-Ruled on 2026-10-05 and no longer open: collisions stay refused; the cross-payload families and `material` stay shared; a component instance is named for its component and is auto-named; In and Out stay exempt; surfaces caption by the role, a Layer's picture and a stack's title stay whole; starter component versions do not bump at the sweep; `apply_graph_patch` warns; save as component names its instance at the sweep's first step; a long name at rest gives up its kind first (built); 15 % zoom at three to five letters is accepted for now; a held `add_node` shows the name it will store (built).
+Ruled on 2026-10-05 and no longer open: the map is approved and applied (the hand line for judgements stands, the authors' three-letter abbreviations stay, `sample` and `texturepoints` are spelled out); project sources are renamed with their documents where a build can check them (10.6); Kaleidoscope's outward references move with the map, and the component owning its LFOs is its own row (T1605b); sentinel-bot names its own nodes and is off the ledger; collisions stay refused; the cross-payload families and `material` stay shared; a component instance is named for its component and is auto-named; In and Out stay exempt; surfaces caption by the role, a Layer's picture and a stack's title stay whole; starter component versions do not bump at the sweep; `apply_graph_patch` warns; save as component names its instance at the sweep's first step; a long name at rest gives up its kind first (built); 15 % zoom at three to five letters is accepted for now; a held `add_node` shows the name it will store (built).
 
 Still open:
 
-1. **The map.** The 70 hand decisions, the 25 kind-only and 162 restated pairs, and the six kind words it shows the shipped names on (`sample`, `texturepoints`, `audiofile`, `generator`, `pattern`, `note`).
-2. **Projects** (10.4): rename the on-nothing and furnace documents in place and leave their sources to their own sessions, as sentinel-bot's are, or do the sources in 2b?
-3. **Kaleidoscope reads two LFOs that are not in it** (10.3). The sweep keeps that as it is. Should the component own them?
-4. **Three-letter abbreviations** the authors wrote are kept (`src`, `lvl`, `env`, `fig`, `cyc`, `occ`, `dof`, `taa`); the map lists them. Spell any out?
-5. **The three thresholds** (70 %, 45 %, 9 %) come from measurements on one example in a headless browser. They want the owner's eye in the running app, over real previews.
-6. **A component whose name has no Latin letter** makes instances of kind `component`. Acceptable, or should a kind take letters of any script, as a role does?
-7. **A family's variant** (`material_floor` on a PBR) is no longer on the canvas chip. Show the chip when a kind is shared and the titles differ?
-8. **sentinel-bot.** Its ledger line moves when that session's work lands; the gate names the new number.
+1. **The split screen's 19 names** (10.6) are the source's, not the map's. Accept, or name them otherwise.
+2. **`light_key1` and `light_fill1`** (10.6): keep the map's reading, or drop the `1`.
+3. **The sweep's tooling** (`src/examples/rename/`, the two map files): delete, or keep one release as the record. It describes a tree that no longer exists; the gate and the empty ledger are what stay.
+4. **The three thresholds** (70 %, 45 %, 9 %) come from measurements on one example in a headless browser. They want the owner's eye in the running app, over real previews.
+5. **A component whose name has no Latin letter** makes instances of kind `component`. Acceptable, or should a kind take letters of any script, as a role does?
+6. **A family's variant** (`material_floor` on a PBR) is no longer on the canvas chip. Show the chip when a kind is shared and the titles differ?
 
 ## 12. TouchDesigner: what was checked and what was not
 

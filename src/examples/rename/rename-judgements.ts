@@ -15,7 +15,8 @@
  *
  * A line is removed in the batch that applies it, because a judgement that matches no
  * shipped name is refused as stale (`auditRenameMap`). All seventy, with their reasons, are
- * in the approved record: `docs/node-rename-map-2026-10-05.md`.
+ * in the approved record: `docs/node-rename-map-2026-10-05.md`. The last batch (the
+ * on-nothing project, 2026-10-06) applied the last four, so the list is empty.
  *
  * ## Where the line was drawn
  *
@@ -36,21 +37,4 @@ export interface Judgement {
   readonly unsure?: true;
 }
 
-export const JUDGEMENTS: readonly Judgement[] = [
-  // ── E75 to E78: the wall of time ───────────────────────────────────────────────────────
-  { scope: "*", kind: "timegrid", old: "timewall1", role: "wall", reason: "`time` is already in the kind; E51 calls the same instance `wall`" },
-
-  // ── E79 Crucible: a band's number is not a count ───────────────────────────────────────
-  { scope: "E79-Crucible", kind: "range", old: "range380x1", role: "band380", reason: "the 380 Hz band's range; `range380` would read as the 380th" },
-  { scope: "E79-Crucible", kind: "range", old: "range1300x1", role: "band1300", reason: "the 1300 Hz band's range" },
-  { scope: "E79-Crucible", kind: "range", old: "range3400x1", role: "band3400", reason: "the 3400 Hz band's range" },
-  { scope: "E79-Crucible", kind: "tail", old: "tail380x1", role: "band380", reason: "the 380 Hz band's tail" },
-  { scope: "E79-Crucible", kind: "tail", old: "tail3400x1", role: "band3400", reason: "the 3400 Hz band's tail" },
-  { scope: "E79-Crucible", kind: "beat", old: "beat1300x1", role: "band1300", reason: "the 1300 Hz band's beat" },
-
-  // ── on-nothing: `wh` ───────────────────────────────────────────────────────────────────
-  { scope: "projects/on-nothing", kind: "mesh", old: "meshwh1", role: "warehouse", reason: "`wh` is the warehouse area in scene-facts" },
-  { scope: "projects/on-nothing", kind: "mesh", old: "mesh_wh1", role: "warehouse", reason: "the same node in the shots that spell it with an underscore" },
-  { scope: "projects/on-nothing", kind: "geometry", old: "geowh1", role: "warehouse", reason: "`wh` is the warehouse area in scene-facts" },
-  { scope: "projects/on-nothing", kind: "geometry", old: "geo_wh1", role: "warehouse", reason: "the same node in the shots that spell it with an underscore" },
-];
+export const JUDGEMENTS: readonly Judgement[] = [];

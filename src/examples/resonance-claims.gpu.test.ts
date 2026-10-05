@@ -297,7 +297,7 @@ describe("Resonance GPU geometry invariants",()=>{
       if(raw===undefined) throw new Error("Missing seam palette readback");
       const tint=kernelRegionSlice(graph.nodes["seams"]!,raw,"tint").floats;
       const expected=([0,1,2] as const).map(channel=>{
-        const value=evaluateExpression(resonancePaletteExpression(channel).replace("op('room1').par.paletteCycle","cycle"),{abstime:seconds,cycle});
+        const value=evaluateExpression(resonancePaletteExpression(channel).replace("op('wgsl_room').par.paletteCycle","cycle"),{abstime:seconds,cycle});
         if(!value.ok) throw new Error(JSON.stringify(value));
         return value.value;
       });

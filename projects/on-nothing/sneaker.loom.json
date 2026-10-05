@@ -628,7 +628,7 @@
       "bloom": {
         "definitionVersion": 1,
         "id": "bloom",
-        "label": "bloom1",
+        "label": "wgsl_bloom",
         "parameters": {
           "gain": 0.12,
           "source": "struct Params {\n  gain: f32, // @default 0.1  Bloom brightness.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let base = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  return vec4f(base.rgb + textureSampleLevel(inputTexture1, inputSampler, uv, 0.0).rgb * params.gain, base.a);\n}"
@@ -645,7 +645,7 @@
       "bloomDown1": {
         "definitionVersion": 1,
         "id": "bloomDown1",
-        "label": "bloomdown11",
+        "label": "wgsl_bloomdown1",
         "parameters": {
           "clampLuma": 1,
           "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
@@ -663,7 +663,7 @@
       "bloomDown2": {
         "definitionVersion": 1,
         "id": "bloomDown2",
-        "label": "bloomdown21",
+        "label": "wgsl_bloomdown2",
         "parameters": {
           "clampLuma": 0,
           "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
@@ -681,7 +681,7 @@
       "bloomDown3": {
         "definitionVersion": 1,
         "id": "bloomDown3",
-        "label": "bloomdown31",
+        "label": "wgsl_bloomdown3",
         "parameters": {
           "clampLuma": 0,
           "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
@@ -699,7 +699,7 @@
       "bloomDown4": {
         "definitionVersion": 1,
         "id": "bloomDown4",
-        "label": "bloomdown41",
+        "label": "wgsl_bloomdown4",
         "parameters": {
           "clampLuma": 0,
           "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
@@ -717,7 +717,7 @@
       "bloomUp0": {
         "definitionVersion": 1,
         "id": "bloomUp0",
-        "label": "bloomup01",
+        "label": "wgsl_bloomup0",
         "parameters": {
           "lower": 1,
           "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
@@ -735,7 +735,7 @@
       "bloomUp1": {
         "definitionVersion": 1,
         "id": "bloomUp1",
-        "label": "bloomup11",
+        "label": "wgsl_bloomup1",
         "parameters": {
           "lower": 1,
           "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
@@ -753,7 +753,7 @@
       "bloomUp2": {
         "definitionVersion": 1,
         "id": "bloomUp2",
-        "label": "bloomup21",
+        "label": "wgsl_bloomup2",
         "parameters": {
           "lower": 1,
           "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
@@ -771,7 +771,7 @@
       "bloomUp3": {
         "definitionVersion": 1,
         "id": "bloomUp3",
-        "label": "bloomup31",
+        "label": "wgsl_bloomup3",
         "parameters": {
           "lower": 1,
           "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
@@ -789,7 +789,7 @@
       "bright": {
         "definitionVersion": 1,
         "id": "bright",
-        "label": "bright1",
+        "label": "wgsl_bright",
         "parameters": {
           "knee": 0.8,
           "source": "struct Params {\n  threshold: f32, // @default 1.2  Linear radiance where bloom starts.\n  knee: f32, // @default 0.8  Softness of the threshold.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n  let brightness = max(color.r, max(color.g, color.b));\n  let soft = clamp(brightness - params.threshold + params.knee, 0.0, 2.0 * params.knee);\n  let weight = max(soft * soft / (4.0 * params.knee + 1e-4), brightness - params.threshold) / max(brightness, 1e-4);\n  return vec4f(color * weight, 1.0);\n}",
@@ -808,7 +808,7 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "camera1",
         "parameters": {
           "eye": [
             2.025026559829712,
@@ -924,7 +924,7 @@
       "carKey": {
         "definitionVersion": 1,
         "id": "carKey",
-        "label": "carKey1",
+        "label": "light_carKey",
         "parameters": {
           "color": [
             0.88,
@@ -950,7 +950,7 @@
       "cookie": {
         "definitionVersion": 1,
         "id": "cookie",
-        "label": "cookie1",
+        "label": "wgsl_cookie",
         "parameters": {
           "source": "struct Params {\n  hotspot: f32, // @default 0.22  Radius of the hot spot (fraction of the image height).\n  spill: f32, // @default 0.8  Radius of the spill.\n  separation: f32, // @default 0.3  Distance between the two beams' centres (fraction of the image width).\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let unused = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).a * 0.0;\n  // Two low beams side by side (the projector sits between a car's headlights): each wide,\n  // flat on top (the cut-off), brightest a little below the axis.\n  var value = 0.0;\n  for (var k = 0; k < 2; k = k + 1) {\n    let c = (uv - vec2f(0.5 + (f32(k) - 0.5) * params.separation, 0.56)) * vec2f(1.0, 2.0);\n    let r = length(c);\n    value = value + exp(-(r * r) / (2.0 * params.hotspot * params.hotspot)) + 0.25 * exp(-(r * r) / (2.0 * params.spill * params.spill));\n  }\n  value = value * mix(0.15, 1.0, smoothstep(0.38, 0.44, uv.y));\n  // Fade to nothing at the image's border: a projector's frame edge must never draw a hard rectangle.\n  let border = smoothstep(0.0, 0.12, uv.x) * smoothstep(1.0, 0.88, uv.x) * smoothstep(0.0, 0.15, uv.y) * smoothstep(1.0, 0.85, uv.y);\n  value = value * border;\n  return vec4f(vec3f(value) + vec3f(unused), 1.0);\n}"
         },
@@ -968,7 +968,7 @@
       "cookieSeed": {
         "definitionVersion": 2,
         "id": "cookieSeed",
-        "label": "cookieseed1",
+        "label": "ramp_cookieseed",
         "parameters": {},
         "position": {
           "x": -3000,
@@ -984,7 +984,7 @@
       "coolTop": {
         "definitionVersion": 1,
         "id": "coolTop",
-        "label": "coolTop1",
+        "label": "light_coolTop",
         "parameters": {
           "color": [
             0.85,
@@ -1010,7 +1010,7 @@
       "cusurf": {
         "definitionVersion": 1,
         "id": "cusurf",
-        "label": "cusurf1",
+        "label": "material_cusurf",
         "parameters": {
           "grime": 0.35,
           "model": "pbr",
@@ -1046,7 +1046,7 @@
       "cyan": {
         "definitionVersion": 1,
         "id": "cyan",
-        "label": "cyan1",
+        "label": "light_cyan",
         "parameters": {
           "color": [
             0.3,
@@ -1072,7 +1072,7 @@
       "dof": {
         "definitionVersion": 1,
         "id": "dof",
-        "label": "dof1",
+        "label": "wgsl_dof",
         "parameters": {
           "aim": [
             0.9475702406414452,
@@ -1083,7 +1083,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.x"
+                "source": "op('camera1').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -1096,7 +1096,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.y"
+                "source": "op('camera1').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -1109,7 +1109,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.z"
+                "source": "op('camera1').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -1127,7 +1127,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.x"
+                "source": "op('camera1').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -1140,7 +1140,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.y"
+                "source": "op('camera1').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -1153,7 +1153,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.z"
+                "source": "op('camera1').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -1166,7 +1166,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.far"
+                "source": "op('camera1').par.far"
               },
               "static": {
                 "kind": "static",
@@ -1193,7 +1193,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.fov"
+                "source": "op('camera1').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -1208,7 +1208,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.roll"
+                "source": "op('camera1').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -1231,7 +1231,7 @@
       "dofFill": {
         "definitionVersion": 1,
         "id": "dofFill",
-        "label": "doffill1",
+        "label": "wgsl_doffill",
         "parameters": {
           "aim": [
             0.9475702406414452,
@@ -1242,7 +1242,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.x"
+                "source": "op('camera1').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -1255,7 +1255,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.y"
+                "source": "op('camera1').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -1268,7 +1268,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.z"
+                "source": "op('camera1').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -1286,7 +1286,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.x"
+                "source": "op('camera1').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -1299,7 +1299,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.y"
+                "source": "op('camera1').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -1312,7 +1312,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.z"
+                "source": "op('camera1').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -1325,7 +1325,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.far"
+                "source": "op('camera1').par.far"
               },
               "static": {
                 "kind": "static",
@@ -1352,7 +1352,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.fov"
+                "source": "op('camera1').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -1367,7 +1367,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.roll"
+                "source": "op('camera1').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -1390,7 +1390,7 @@
       "env": {
         "definitionVersion": 1,
         "id": "env",
-        "label": "env1",
+        "label": "wgsl_env",
         "parameters": {
           "bars": 2.5,
           "roof": 0.01,
@@ -1410,7 +1410,7 @@
       "envHdri": {
         "definitionVersion": 1,
         "id": "envHdri",
-        "label": "envhdri1",
+        "label": "wgsl_envhdri",
         "parameters": {
           "crush": 0.85,
           "gain": 1.1,
@@ -1431,7 +1431,7 @@
       "envSeed": {
         "definitionVersion": 2,
         "id": "envSeed",
-        "label": "envseed1",
+        "label": "ramp_envseed",
         "parameters": {},
         "position": {
           "x": -2700,
@@ -1447,7 +1447,7 @@
       "fig": {
         "definitionVersion": 1,
         "id": "fig",
-        "label": "fig1",
+        "label": "mesh_fig",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
           "joints": "0:pelvis@0,0.9618,0.0048 1:spine<0@0,1.0506,-0.0276 2:chest<1@0,1.1862,-0.0263 3:neck<2@0,1.5378,0.0131 4:head<3@0,1.6366,0.0473 5:shoulder.L<2@0.0234,1.4616,0.0258 6:upperarm.L<5@0.1906,1.4317,0.0196 7:forearm.L<6@0.3632,1.2339,0.0184 8:hand.L<7@0.5003,1.1029,0.2135 9:thumb1.L<8@0.5017,1.0961,0.2636 10:thumb2.L<9@0.4782,1.0871,0.2875 11:thumb3.L<10@0.464,1.073,0.3235 12:index1.L<8@0.5313,1.0611,0.3216 13:index2.L<12@0.5349,1.0449,0.3456 14:index3.L<13@0.5344,1.0271,0.3649 15:middle1.L<8@0.5497,1.0479,0.3023 16:middle2.L<15@0.5578,1.0195,0.3264 17:middle3.L<16@0.5608,0.9963,0.3464 18:ring1.L<8@0.5583,1.0389,0.2831 19:ring2.L<18@0.5686,1.0117,0.3 20:ring3.L<19@0.5736,0.9888,0.3152 21:pinky1.L<8@0.5598,1.0281,0.2615 22:pinky2.L<21@0.5665,1.007,0.2709 23:pinky3.L<22@0.5686,0.9911,0.278 24:shoulder.R<2@-0.0234,1.4616,0.0258 25:upperarm.R<24@-0.1906,1.4317,0.0196 26:forearm.R<25@-0.3632,1.2339,0.0184 27:hand.R<26@-0.5003,1.1029,0.2135 28:thumb1.R<27@-0.5017,1.0961,0.2636 29:thumb2.R<28@-0.4782,1.0871,0.2875 30:thumb3.R<29@-0.464,1.073,0.3235 31:index1.R<27@-0.5313,1.0611,0.3216 32:index2.R<31@-0.5349,1.0449,0.3456 33:index3.R<32@-0.5344,1.0271,0.3649 34:middle1.R<27@-0.5497,1.0479,0.3023 35:middle2.R<34@-0.5578,1.0195,0.3264 36:middle3.R<35@-0.5608,0.9963,0.3464 37:ring1.R<27@-0.5583,1.0389,0.2831 38:ring2.R<37@-0.5686,1.0117,0.3 39:ring3.R<38@-0.5736,0.9888,0.3152 40:pinky1.R<27@-0.5598,1.0281,0.2615 41:pinky2.R<40@-0.5665,1.007,0.2709 42:pinky3.R<41@-0.5686,0.9911,0.278 43:thigh.L<0@0.1113,0.9562,-0.0059 44:shin.L<43@0.1549,0.5171,0.0291 45:foot.L<44@0.2015,0.0739,0.0154 46:thigh.R<0@-0.1113,0.9562,-0.0059 47:shin.R<46@-0.1549,0.5171,0.0291 48:foot.R<47@-0.2015,0.0739,0.0154",
@@ -1465,9 +1465,9 @@
       "figGeo": {
         "definitionVersion": 1,
         "id": "figGeo",
-        "label": "figgeo1",
+        "label": "geometry_fig",
         "parameters": {
-          "material": "surf1",
+          "material": "material_surf",
           "mode": "surface"
         },
         "position": {
@@ -1479,9 +1479,9 @@
       "geo_car1": {
         "definitionVersion": 1,
         "id": "geo_car1",
-        "label": "geocar11",
+        "label": "geometry_car1",
         "parameters": {
-          "material": "surf1",
+          "material": "material_surf",
           "mode": "surface"
         },
         "position": {
@@ -1493,9 +1493,9 @@
       "geo_car3": {
         "definitionVersion": 1,
         "id": "geo_car3",
-        "label": "geocar31",
+        "label": "geometry_car3",
         "parameters": {
-          "material": "surf1",
+          "material": "material_surf",
           "mode": "surface"
         },
         "position": {
@@ -1507,9 +1507,9 @@
       "geo_car4": {
         "definitionVersion": 1,
         "id": "geo_car4",
-        "label": "geocar41",
+        "label": "geometry_car4",
         "parameters": {
-          "material": "surf1",
+          "material": "material_surf",
           "mode": "surface"
         },
         "position": {
@@ -1521,9 +1521,9 @@
       "geo_shoe": {
         "definitionVersion": 1,
         "id": "geo_shoe",
-        "label": "geoshoe1",
+        "label": "geometry_shoe",
         "parameters": {
-          "material": "cusurf1",
+          "material": "material_cusurf",
           "mode": "surface"
         },
         "position": {
@@ -1535,9 +1535,9 @@
       "geo_wh": {
         "definitionVersion": 1,
         "id": "geo_wh",
-        "label": "geowh1",
+        "label": "geometry_warehouse",
         "parameters": {
-          "material": "surf1",
+          "material": "material_surf",
           "mode": "surface"
         },
         "position": {
@@ -1549,7 +1549,7 @@
       "grade": {
         "definitionVersion": 1,
         "id": "grade",
-        "label": "grade1",
+        "label": "filmgrade1",
         "parameters": {
           "black": 0.035,
           "bleach": 0.3,
@@ -1582,7 +1582,7 @@
       "haze": {
         "definitionVersion": 1,
         "id": "haze",
-        "label": "haze1",
+        "label": "wgsl_haze",
         "parameters": {
           "aim": [
             0.9475702406414452,
@@ -1593,7 +1593,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.x"
+                "source": "op('camera1').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -1606,7 +1606,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.y"
+                "source": "op('camera1').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -1619,7 +1619,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.z"
+                "source": "op('camera1').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -1644,7 +1644,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.x"
+                "source": "op('camera1').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -1657,7 +1657,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.y"
+                "source": "op('camera1').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -1670,7 +1670,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.z"
+                "source": "op('camera1').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -1683,7 +1683,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.far"
+                "source": "op('camera1').par.far"
               },
               "static": {
                 "kind": "static",
@@ -1696,7 +1696,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.fov"
+                "source": "op('camera1').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -1710,7 +1710,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.roll"
+                "source": "op('camera1').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -1733,7 +1733,7 @@
       "hdri": {
         "definitionVersion": 1,
         "id": "hdri",
-        "label": "hdri1",
+        "label": "movie_hdri",
         "parameters": {
           "file": "media/on-nothing/hdri.png"
         },
@@ -1751,7 +1751,7 @@
       "head3": {
         "definitionVersion": 1,
         "id": "head3",
-        "label": "head31",
+        "label": "projector_head3",
         "parameters": {
           "aspect": 2.4,
           "brightness": 0.6,
@@ -1784,7 +1784,7 @@
       "hotSoft": {
         "definitionVersion": 1,
         "id": "hotSoft",
-        "label": "hotsoft1",
+        "label": "wgsl_hotsoft",
         "parameters": {
           "clampLuma": 0,
           "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
@@ -1802,7 +1802,7 @@
       "hotSofter": {
         "definitionVersion": 1,
         "id": "hotSofter",
-        "label": "hotsofter1",
+        "label": "wgsl_hotsofter",
         "parameters": {
           "clampLuma": 0,
           "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
@@ -1820,7 +1820,7 @@
       "hotSoftest": {
         "definitionVersion": 1,
         "id": "hotSoftest",
-        "label": "hotsoftest1",
+        "label": "wgsl_hotsoftest",
         "parameters": {
           "clampLuma": 0,
           "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
@@ -1838,7 +1838,7 @@
       "hotStreak": {
         "definitionVersion": 1,
         "id": "hotStreak",
-        "label": "hotstreak1",
+        "label": "wgsl_hotstreak",
         "parameters": {
           "knee": 3.5999999999999996,
           "source": "struct Params {\n  threshold: f32, // @default 1.2  Linear radiance where bloom starts.\n  knee: f32, // @default 0.8  Softness of the threshold.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n  let brightness = max(color.r, max(color.g, color.b));\n  let soft = clamp(brightness - params.threshold + params.knee, 0.0, 2.0 * params.knee);\n  let weight = max(soft * soft / (4.0 * params.knee + 1e-4), brightness - params.threshold) / max(brightness, 1e-4);\n  return vec4f(color * weight, 1.0);\n}",
@@ -1857,7 +1857,7 @@
       "key": {
         "definitionVersion": 1,
         "id": "key",
-        "label": "key1",
+        "label": "light_key1",
         "parameters": {
           "color": [
             0.88,
@@ -1901,7 +1901,7 @@
       "look": {
         "definitionVersion": 1,
         "id": "look",
-        "label": "look1",
+        "label": "wgsl_look",
         "parameters": {
           "contrast": 0.95,
           "grain": 0.006,
@@ -1943,7 +1943,7 @@
       "lookDown": {
         "definitionVersion": 1,
         "id": "lookDown",
-        "label": "lookdown1",
+        "label": "wgsl_lookdown",
         "parameters": {
           "source": "struct Params {\n  gain: f32, // @default 1  Scales the downsampled picture.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  // one output texel's footprint in uv\n  let foot = vec2f(abs(dpdx(uv).x), abs(dpdy(uv).y));\n  var sum = vec3f(0.0);\n  for (var j = 0; j < 4; j = j + 1) {\n    for (var i = 0; i < 4; i = i + 1) {\n      let o = (vec2f(f32(i), f32(j)) + 0.5) / 4.0 - 0.5;\n      sum = sum + max(textureSampleLevel(inputTexture, inputSampler, uv + o * foot, 0.0).rgb, vec3f(0.0));\n    }\n  }\n  return vec4f(sum / 16.0 * params.gain, 1.0);\n}"
         },
@@ -1961,7 +1961,7 @@
       "lookNear": {
         "definitionVersion": 1,
         "id": "lookNear",
-        "label": "looknear1",
+        "label": "blur_looknear",
         "parameters": {
           "size": 4
         },
@@ -1974,7 +1974,7 @@
       "lookWide": {
         "definitionVersion": 1,
         "id": "lookWide",
-        "label": "lookwide1",
+        "label": "blur_lookwide",
         "parameters": {
           "size": 24
         },
@@ -1987,7 +1987,7 @@
       "mesh_car1": {
         "definitionVersion": 1,
         "id": "mesh_car1",
-        "label": "meshcar11",
+        "label": "mesh_car1",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
           "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
@@ -2004,7 +2004,7 @@
       "mesh_car3": {
         "definitionVersion": 1,
         "id": "mesh_car3",
-        "label": "meshcar31",
+        "label": "mesh_car3",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
           "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
@@ -2021,7 +2021,7 @@
       "mesh_car4": {
         "definitionVersion": 1,
         "id": "mesh_car4",
-        "label": "meshcar41",
+        "label": "mesh_car4",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
           "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
@@ -2038,7 +2038,7 @@
       "mesh_shoe": {
         "definitionVersion": 1,
         "id": "mesh_shoe",
-        "label": "meshshoe1",
+        "label": "mesh_shoe",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
           "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
@@ -2055,7 +2055,7 @@
       "mesh_wh": {
         "definitionVersion": 1,
         "id": "mesh_wh",
-        "label": "meshwh1",
+        "label": "mesh_warehouse",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
           "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
@@ -2072,7 +2072,7 @@
       "move_car4": {
         "definitionVersion": 1,
         "id": "move_car4",
-        "label": "movecar41",
+        "label": "transform_movecar4",
         "parameters": {
           "pivot": "origin",
           "translate": [
@@ -2090,7 +2090,7 @@
       "occlusion": {
         "definitionVersion": 1,
         "id": "occlusion",
-        "label": "occlusion1",
+        "label": "wgsl_occlusion",
         "parameters": {
           "aim": [
             0.9475702406414452,
@@ -2101,7 +2101,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.x"
+                "source": "op('camera1').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -2114,7 +2114,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.y"
+                "source": "op('camera1').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -2127,7 +2127,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.z"
+                "source": "op('camera1').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -2145,7 +2145,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.x"
+                "source": "op('camera1').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -2158,7 +2158,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.y"
+                "source": "op('camera1').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -2171,7 +2171,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.z"
+                "source": "op('camera1').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -2184,7 +2184,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.far"
+                "source": "op('camera1').par.far"
               },
               "static": {
                 "kind": "static",
@@ -2197,7 +2197,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.fov"
+                "source": "op('camera1').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -2211,7 +2211,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.roll"
+                "source": "op('camera1').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -2235,7 +2235,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "none"
         },
@@ -2248,7 +2248,7 @@
       "reflections": {
         "definitionVersion": 1,
         "id": "reflections",
-        "label": "reflections1",
+        "label": "wgsl_reflections",
         "parameters": {
           "aim": [
             0.9475702406414452,
@@ -2259,7 +2259,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.x"
+                "source": "op('camera1').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -2272,7 +2272,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.y"
+                "source": "op('camera1').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -2285,7 +2285,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.z"
+                "source": "op('camera1').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -2305,7 +2305,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.x"
+                "source": "op('camera1').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -2318,7 +2318,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.y"
+                "source": "op('camera1').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -2331,7 +2331,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.z"
+                "source": "op('camera1').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -2344,7 +2344,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.far"
+                "source": "op('camera1').par.far"
               },
               "static": {
                 "kind": "static",
@@ -2357,7 +2357,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.fov"
+                "source": "op('camera1').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -2372,7 +2372,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.roll"
+                "source": "op('camera1').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -2399,7 +2399,7 @@
       "room": {
         "definitionVersion": 1,
         "id": "room",
-        "label": "room1",
+        "label": "light_room",
         "parameters": {
           "color": [
             0.8,
@@ -2425,7 +2425,7 @@
       "shoeKey": {
         "definitionVersion": 1,
         "id": "shoeKey",
-        "label": "shoeKey1",
+        "label": "light_shoeKey",
         "parameters": {
           "color": [
             0.9,
@@ -2454,7 +2454,7 @@
       "shoeRim": {
         "definitionVersion": 1,
         "id": "shoeRim",
-        "label": "shoeRim1",
+        "label": "light_shoeRim",
         "parameters": {
           "color": [
             1,
@@ -2480,7 +2480,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "albedoOutput": true,
           "ambientColor": [
@@ -2497,15 +2497,15 @@
             0,
             1
           ],
-          "camera": "cam1",
+          "camera": "camera1",
           "depthOutput": true,
           "environmentFilter": "prefiltered",
           "environmentIntensity": 0.12,
           "environmentTaps": 16,
-          "lights": "sodiumPool1 coolTop1 sodiumFar1 cyan1 key1 carKey1 room1 shoeKey1 shoeRim1",
+          "lights": "light_sodiumPool light_coolTop light_sodiumFar light_cyan light_key1 light_carKey light_room light_shoeKey light_shoeRim",
           "normalOutput": true,
-          "projectors": "head31",
-          "scenes": "geowh1 geocar11 geocar31 geocar41 geoshoe1 figgeo1"
+          "projectors": "projector_head3",
+          "scenes": "geometry_warehouse geometry_car1 geometry_car3 geometry_car4 geometry_shoe geometry_fig"
         },
         "position": {
           "x": -2400,
@@ -2516,7 +2516,7 @@
       "skin": {
         "definitionVersion": 1,
         "id": "skin",
-        "label": "skin1",
+        "label": "kernel_skin",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"normal\",\"type\":\"vec3f\",\"qualifier\":\"direction\",\"default\":[0,1,0]},{\"name\":\"joints\",\"type\":\"vec4f\",\"default\":[0,0,0,0]},{\"name\":\"weights\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
           "capacity": 103369,
@@ -2681,7 +2681,7 @@
       "sodiumFar": {
         "definitionVersion": 1,
         "id": "sodiumFar",
-        "label": "sodiumFar1",
+        "label": "light_sodiumFar",
         "parameters": {
           "color": [
             1,
@@ -2707,7 +2707,7 @@
       "sodiumPool": {
         "definitionVersion": 1,
         "id": "sodiumPool",
-        "label": "sodiumPool1",
+        "label": "light_sodiumPool",
         "parameters": {
           "color": [
             1,
@@ -2773,7 +2773,7 @@
       "surf": {
         "definitionVersion": 1,
         "id": "surf",
-        "label": "surf1",
+        "label": "material_surf",
         "parameters": {
           "dryGloss": 0.66,
           "headGain": 1,

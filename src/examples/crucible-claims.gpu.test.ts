@@ -35,7 +35,7 @@ async function render(lanes: { beat?: number; tail?: number; light?: number }, p
     for (const [key, slot] of Object.entries(node.parameters)) {
       if (typeof slot !== "object" || slot === null || !("bindings" in slot)) continue;
       const expression = (slot as { bindings: { expression?: { source?: string } } }).bindings.expression?.source ?? "";
-      if (lanes.beat !== undefined && (expression.includes("op('beat1')") || expression.includes("op('punch1')")) && !expression.includes("op('tail1')")) {
+      if (lanes.beat !== undefined && (expression.includes("op('beat1')") || expression.includes("op('lag_punch')")) && !expression.includes("op('tail1')")) {
         node.parameters[key] = expression.startsWith("24 + ") ? (lanes.light ?? 24 + lanes.beat * 90) : lanes.beat;
       } else if (lanes.tail !== undefined && expression.includes("op('tail1')") && !expression.includes("op('beat1')")) {
         // The accent light reads `8 + tail * 50`; everything else reads the lane itself.

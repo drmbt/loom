@@ -2,12 +2,14 @@ import type { GraphEdge, GraphNode, ProjectDocument } from "../../../domain/type
 import type { StoredParameter } from "../../../domain/types/parameters.ts";
 import { SCHEMA_VERSION } from "../../../domain/types/schemas.ts";
 import { LIMITS, edge, expressionSlot, graph, node as buildNode, settings } from "../../../examples/documents/builders.ts";
+import { kindOfType } from "../../../domain/graph/node-kinds.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../../furnace/post.ts";
 import { GTAO_WGSL } from "../../furnace/screen-space.ts";
 import { ENVIRONMENT_HDRI_WGSL, ENVIRONMENT_WGSL, HEADLIGHT_COOKIE_WGSL, hazeLights, hazeWgsl } from "../atmosphere.ts";
 import { GLOSSY_SSR_WGSL } from "../reflections.ts";
 import type { Area, OnNothingFacts } from "../scene-facts.ts";
 import { markerOf } from "../scene-facts.ts";
+import { geometryName, lightName, meshName } from "../names.ts";
 import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "../skin-kernel.ts";
 import { SURFACE_WGSL } from "../surface.ts";
 import { BLOOM_ADD_WGSL, DOF_FILL_WGSL, LENS_DOF_WGSL, STUDIO_ENV_WGSL } from "./closeups-fx.ts";
@@ -149,25 +151,25 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
   // the pendant set's far wall glows brightest behind and right of the pendant, as the lens sees it
   // (T1407b closeups2: the pendant-on-tee set lights its far floor instead, bright white)
   const wall = jewelSet?.set === "jewel" ? { wallCentre: vec(add(markerOf(facts, "stage.jewel").position, [0.4, -1.3, -2.2])), wallGlow: jewelSet.floorGlow } : shot === "pendant" ? { wallCentre: vec(add(markerOf(facts, "stage.pendant").position, [-2.0, 0.1, -1.6])), wallGlow: 0.13 } : {};
-  nodes.push(node("cusurf", "materialWgsl", [-3000, -700], { model: "pbr", source: CLOSEUP_SURFACE_WGSL, ...shoeFrame, ...wall, grime: 0.35, windowGlow: 0.07 }, { label: "cusurf1" }));
+  nodes.push(node("cusurf", "materialWgsl", [-3000, -700], { model: "pbr", source: CLOSEUP_SURFACE_WGSL, ...shoeFrame, ...wall, grime: 0.35, windowGlow: 0.07 }, { label: "material_cusurf" }));
   if (shot === "sneaker" || (jewelSet?.figures.length ?? 0) > 0) {
-    nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: heldSet === undefined ? 1 : 0, wet: 0.25, wetGloss: 0.22, dryGloss: 0.66 }, { label: "surf1" }));
+    nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, headGain: heldSet === undefined ? 1 : 0, wet: 0.25, wetGloss: 0.22, dryGloss: 0.66 }, { label: "material_surf" }));
   }
 
   const mesh = (area: Area, material: string, index: number, shift?: Vec3): void => {
     const facts_ = facts.areas.get(area);
     if (facts_ === undefined) throw new Error(`closeupDocument: no "${area}" area in the GLB (rebuild it with closeups.py).`);
-    nodes.push(node(`mesh_${area}`, "meshFileIn", [-3600, index * 250], { file: facts.glbUrl, select: facts_.select, vertices: facts_.vertices, triangles: facts_.triangles, parts: facts_.parts }, { label: `mesh${area}1` }));
-    nodes.push(node(`geo_${area}`, "geometry", [-3200, index * 250], { mode: "surface", material }, { label: `geo${area}1` }));
+    nodes.push(node(`mesh_${area}`, "meshFileIn", [-3600, index * 250], { file: facts.glbUrl, select: facts_.select, vertices: facts_.vertices, triangles: facts_.triangles, parts: facts_.parts }, { label: meshName(area) }));
+    nodes.push(node(`geo_${area}`, "geometry", [-3200, index * 250], { mode: "surface", material }, { label: geometryName(area) }));
     if (shift === undefined) {
       edges.push(edge(`mesh-geo-${area}`, [`mesh_${area}`, "out"], [`geo_${area}`, "points"]));
     } else {
       // the car moved for this shot: its whole mesh translated (normals are unchanged by a shift)
-      nodes.push(node(`move_${area}`, "pointTransform", [-3400, index * 250], { translate: vec(shift), pivot: "origin" }, { label: `move${area}1` }));
+      nodes.push(node(`move_${area}`, "pointTransform", [-3400, index * 250], { translate: vec(shift), pivot: "origin" }, { label: `transform_move${area}` }));
       edges.push(edge(`mesh-move-${area}`, [`mesh_${area}`, "out"], [`move_${area}`, "points"]));
       edges.push(edge(`move-geo-${area}`, [`move_${area}`, "out"], [`geo_${area}`, "points"]));
     }
-    scenes.push(`geo${area}1`);
+    scenes.push(geometryName(area));
   };
 
   let aim: [number, number, number];
@@ -178,11 +180,11 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
   if (heldSet !== undefined) {
     // ── The held sneaker (closeups-held.ts): the room, the white car behind, the figure, the shoe in its hand ──
     const spec = heldSet.take;
-    mesh("whwalls", "surf1", 0);
-    mesh("car3", "surf1", 1);
+    mesh("whwalls", "material_surf", 0);
+    mesh("car3", "material_surf", 1);
     const shoeh = facts.areas.get("shoeh");
     if (shoeh === undefined) throw new Error("closeupDocument: no shoeh area in the GLB (rebuild it with closeups2.py).");
-    nodes.push(node("mesh_shoeh", "meshFileIn", [-3600, 5 * 250], { file: facts.glbUrl, select: shoeh.select, vertices: shoeh.vertices, triangles: shoeh.triangles, parts: shoeh.parts }, { label: "meshshoeh1" }));
+    nodes.push(node("mesh_shoeh", "meshFileIn", [-3600, 5 * 250], { file: facts.glbUrl, select: shoeh.select, vertices: shoeh.vertices, triangles: shoeh.triangles, parts: shoeh.parts }, { label: "mesh_shoeh" }));
     nodes.push(node("grip", "pointKernel", [-3400, 5 * 250], {
       capacity: shoeh.vertices,
       attributes: HELD_SHOE_ATTRIBUTES,
@@ -192,24 +194,24 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
       ...sampledVec("rx", heldSet.columns.map((columns) => columns[0])),
       ...sampledVec("ry", heldSet.columns.map((columns) => columns[1])),
       ...sampledVec("rz", heldSet.columns.map((columns) => columns[2])),
-    }, { label: "grip1" }));
-    nodes.push(node("geo_shoeh", "geometry", [-3200, 5 * 250], { mode: "surface", material: "cusurf1" }, { label: "geoshoeh1" }));
+    }, { label: "kernel_grip" }));
+    nodes.push(node("geo_shoeh", "geometry", [-3200, 5 * 250], { mode: "surface", material: "material_cusurf" }, { label: "geometry_shoeh" }));
     edges.push(edge("shoeh-grip", ["mesh_shoeh", "out"], ["grip", "in"]));
     edges.push(edge("grip-geo", ["grip", "out"], ["geo_shoeh", "points"]));
-    scenes.push("geoshoeh1");
+    scenes.push("geometry_shoeh");
     const fig = facts.areas.get("fig");
     if (fig === undefined) throw new Error("closeupDocument: no figure in the GLB.");
     const posed: Record<string, StoredParameter> = {};
     for (const [bone, samples] of Object.entries(heldSet.bones)) Object.assign(posed, sampledVec(bone, samples));
-    nodes.push(node("fig", "meshFileIn", [-3600, 1500], { file: facts.glbUrl, select: fig.select, vertices: fig.vertices, triangles: fig.triangles, parts: fig.parts, joints: fig.joints }, { label: "fig1" }));
-    nodes.push(node("skin", "pointKernel", [-3300, 1500], { capacity: fig.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw: 0, place: vec(FIG), ...posed }, { label: "skin1" }));
-    nodes.push(node("figGeo", "geometry", [-3000, 1500], { mode: "surface", material: "surf1" }, { label: "figgeo1" }));
+    nodes.push(node("fig", "meshFileIn", [-3600, 1500], { file: facts.glbUrl, select: fig.select, vertices: fig.vertices, triangles: fig.triangles, parts: fig.parts, joints: fig.joints }, { label: "mesh_fig" }));
+    nodes.push(node("skin", "pointKernel", [-3300, 1500], { capacity: fig.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw: 0, place: vec(FIG), ...posed }, { label: "kernel_skin" }));
+    nodes.push(node("figGeo", "geometry", [-3000, 1500], { mode: "surface", material: "material_surf" }, { label: "geometry_fig" }));
     edges.push(edge("fig-skin", ["fig", "out"], ["skin", "in"]));
     edges.push(edge("skin-geo", ["skin", "out"], ["figGeo", "points"]));
-    scenes.push("figgeo1");
+    scenes.push("geometry_fig");
     const light = (id: string, at: Vec3, color: readonly number[], intensity: number): void => {
-      nodes.push(node(id, "light", [-2600, 2000 + lights.length * 100], { kind: "point", position: vec(at), color: [...color], intensity }, { label: `${id}1` }));
-      lights.push(`${id}1`);
+      nodes.push(node(id, "light", [-2600, 2000 + lights.length * 100], { kind: "point", position: vec(at), color: [...color], intensity }, { label: lightName(id) }));
+      lights.push(lightName(id));
     };
     const f = FIG;
     // a cool key high over the figure's left (frame right), a sodium rim behind its left
@@ -221,8 +223,8 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     light("kick", add(f, [0.8, 0.6, 0.9]), [0.3, 0.85, 1, 1], 1.2);
     light("fill", add(eye, [0, 0.25, 0.1]), [0.9, 0.95, 1, 1], 0.1);
     light("wall", add(f, [0.5, 1.8, -7]), [1, 0.5, 0.35, 1], 6);
-    nodes.push(node("strobe", "light", [-2600, 2000 + lights.length * 100], { kind: "point", position: vec(add(eye, [0.1, 0.15, 0.05])), color: [0.92, 0.97, 1, 1], intensity: expressionSlot(`(${heldSet.flash}) * 5`, 0) }, { label: "strobe1" }));
-    lights.push("strobe1");
+    nodes.push(node("strobe", "light", [-2600, 2000 + lights.length * 100], { kind: "point", position: vec(add(eye, [0.1, 0.15, 0.05])), color: [0.92, 0.97, 1, 1], intensity: expressionSlot(`(${heldSet.flash}) * 5`, 0) }, { label: "light_strobe" }));
+    lights.push("light_strobe");
     fov = heldSet.fov[0]!;
     aim = [heldSet.aim[0]![0], heldSet.aim[0]![1], heldSet.aim[0]![2]];
     move = heldCamera(heldSet);
@@ -234,7 +236,7 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
       lensFx: { distortion: 0.05, edgeBlur: 0.014, swirl: 0.5, aberration: 0.0022, vignette: 0.65, vignetteRound: 0.75 },
     };
   } else if (shot === "pendant") {
-    mesh(jewelSet?.set ?? "pend", "cusurf1", 0);
+    mesh(jewelSet?.set ?? "pend", "material_cusurf", 0);
     const stage = markerOf(facts, jewelSet?.set === "jewel" ? "stage.jewel" : "stage.pendant").position;
     // the pendant's face looks at +Z (glTF); the lens is 30 cm off, a little right and above
     // the view-plane distance to the pendant; the word is turned, so its nearest letters sit ~3 cm closer
@@ -247,8 +249,8 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     // across the word instead of washing it flat; `intensity` is what the old 1/(1 + d²) law
     // gave at the pendant, so the exposure there is unchanged.
     const light = (id: string, at: Vec3, color: readonly number[], intensity: number): void => {
-      nodes.push(node(id, "light", [-2600, 1000 + lights.length * 100], { kind: "point", position: vec(add(stage, at)), color: [...color], ...inverseSquare(intensity, at) }, { label: `${id}1` }));
-      lights.push(`${id}1`);
+      nodes.push(node(id, "light", [-2600, 1000 + lights.length * 100], { kind: "point", position: vec(add(stage, at)), color: [...color], ...inverseSquare(intensity, at) }, { label: lightName(id) }));
+      lights.push(lightName(id));
     };
     light("key", [-0.22, 0.32, 0.3], [0.9, 0.95, 1, 1], 0.35);
     light("rim", [0.28, 0.12, -0.2], [1, 0.52, 0.2, 1], 0.22);
@@ -276,15 +278,15 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
         if (area === undefined) throw new Error(`closeupDocument: no ${figure.area} area in the GLB.`);
         const knobs: Record<string, StoredParameter> = {};
         for (const [bone, angles] of Object.entries(figure.bones)) knobs[bone] = [angles[0], angles[1], angles[2]];
-        nodes.push(node(`${figure.id}Mesh`, "meshFileIn", [-3600, 1500 + nodes.length * 10], { file: facts.glbUrl, select: area.select, vertices: area.vertices, triangles: area.triangles, parts: area.parts, joints: area.joints }, { label: `${figure.id.toLowerCase()}mesh1` }));
-        nodes.push(node(`${figure.id}Skin`, "pointKernel", [-3300, 1500 + nodes.length * 10], { capacity: area.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw: figure.yaw, place: vec(figure.place), ...knobs }, { label: `${figure.id.toLowerCase()}skin1` }));
-        nodes.push(node(`${figure.id}Geo`, "geometry", [-3000, 1500 + nodes.length * 10], { mode: "surface", material: "surf1" }, { label: `${figure.id.toLowerCase()}geo1` }));
+        nodes.push(node(`${figure.id}Mesh`, "meshFileIn", [-3600, 1500 + nodes.length * 10], { file: facts.glbUrl, select: area.select, vertices: area.vertices, triangles: area.triangles, parts: area.parts, joints: area.joints }, { label: `mesh_${figure.id.toLowerCase()}` }));
+        nodes.push(node(`${figure.id}Skin`, "pointKernel", [-3300, 1500 + nodes.length * 10], { capacity: area.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw: figure.yaw, place: vec(figure.place), ...knobs }, { label: `kernel_${figure.id.toLowerCase()}skin` }));
+        nodes.push(node(`${figure.id}Geo`, "geometry", [-3000, 1500 + nodes.length * 10], { mode: "surface", material: "material_surf" }, { label: `geometry_${figure.id.toLowerCase()}` }));
         edges.push(edge(`${figure.id}-skin`, [`${figure.id}Mesh`, "out"], [`${figure.id}Skin`, "in"]));
         edges.push(edge(`${figure.id}-geo`, [`${figure.id}Skin`, "out"], [`${figure.id}Geo`, "points"]));
-        scenes.push(`${figure.id.toLowerCase()}geo1`);
+        scenes.push(`geometry_${figure.id.toLowerCase()}`);
       }
-      nodes.push(node("strobe", "light", [-2600, 1000 + lights.length * 100], { kind: "point", position: vec(add(jewelSet.eye, [0.03, 0.06, 0.02])), color: [0.92, 0.97, 1, 1], intensity: expressionSlot(`(${jewelSet.flash}) * ${jewelSet.strobe}`, 0) }, { label: "strobe1" }));
-      lights.push("strobe1");
+      nodes.push(node("strobe", "light", [-2600, 1000 + lights.length * 100], { kind: "point", position: vec(add(jewelSet.eye, [0.03, 0.06, 0.02])), color: [0.92, 0.97, 1, 1], intensity: expressionSlot(`(${jewelSet.flash}) * ${jewelSet.strobe}`, 0) }, { label: "light_strobe" }));
+      lights.push("light_strobe");
     }
   } else {
     // ── The sneaker: the warehouse, the white car, the moved black car, the shoe, the figure ──
@@ -293,9 +295,9 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     const car = moved.extras?.["loom_car"];
     if (typeof car !== "number") throw new Error("closeups: stage.sneaker carries no loom_car.");
     const drawn: Area[] = ["car1", "car3", `car${car}`];
-    mesh("wh", "surf1", 0);
-    drawn.forEach((area, index) => mesh(area, "surf1", index + 1, area === `car${car}` ? shift : undefined));
-    mesh("shoe", "cusurf1", 5);
+    mesh("wh", "material_surf", 0);
+    drawn.forEach((area, index) => mesh(area, "material_surf", index + 1, area === `car${car}` ? shift : undefined));
+    mesh("shoe", "material_cusurf", 5);
     // the figure, standing back in the dark between the white car and the bonnet
     const fig = facts.areas.get("fig");
     if (fig === undefined) throw new Error("closeupDocument: no figure in the GLB.");
@@ -320,22 +322,22 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
       if (posed[bone] === undefined) posed[bone] = [0, 0, 0];
       posed[key] = expressionSlot(value, 0);
     }
-    nodes.push(node("fig", "meshFileIn", [-3600, 1500], { file: facts.glbUrl, select: fig.select, vertices: fig.vertices, triangles: fig.triangles, parts: fig.parts, joints: fig.joints }, { label: "fig1" }));
-    nodes.push(node("skin", "pointKernel", [-3300, 1500], { capacity: fig.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw: yawFor(stage.facing), place: vec(stage.position), ...posed }, { label: "skin1" }));
-    nodes.push(node("figGeo", "geometry", [-3000, 1500], { mode: "surface", material: "surf1" }, { label: "figgeo1" }));
+    nodes.push(node("fig", "meshFileIn", [-3600, 1500], { file: facts.glbUrl, select: fig.select, vertices: fig.vertices, triangles: fig.triangles, parts: fig.parts, joints: fig.joints }, { label: "mesh_fig" }));
+    nodes.push(node("skin", "pointKernel", [-3300, 1500], { capacity: fig.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw: yawFor(stage.facing), place: vec(stage.position), ...posed }, { label: "kernel_skin" }));
+    nodes.push(node("figGeo", "geometry", [-3000, 1500], { mode: "surface", material: "material_surf" }, { label: "geometry_fig" }));
     edges.push(edge("fig-skin", ["fig", "out"], ["skin", "in"]));
     edges.push(edge("skin-geo", ["skin", "out"], ["figGeo", "points"]));
-    scenes.push("figgeo1");
+    scenes.push("geometry_fig");
     // the white car's low beams: one projector between its lamps, as the scene's cars have
-    nodes.push(node("cookieSeed", "ramp", [-3000, 1800], {}, { label: "cookieseed1", resolution: { mode: "fixed", width: 256, height: 128 } }));
-    nodes.push(node("cookie", "customWgsl", [-2800, 1800], { source: HEADLIGHT_COOKIE_WGSL }, { label: "cookie1", resolution: { mode: "fixed", width: 256, height: 128 } }));
+    nodes.push(node("cookieSeed", "ramp", [-3000, 1800], {}, { label: "ramp_cookieseed", resolution: { mode: "fixed", width: 256, height: 128 } }));
+    nodes.push(node("cookie", "customWgsl", [-2800, 1800], { source: HEADLIGHT_COOKIE_WGSL }, { label: "wgsl_cookie", resolution: { mode: "fixed", width: 256, height: 128 } }));
     edges.push(edge("seed-cookie", ["cookieSeed", "out"], ["cookie", "input"]));
     const lamps = ["lamp.head.3l", "lamp.head.3r"].map((name) => markerOf(facts, name));
     const centre = [0, 1, 2].map((axis) => (lamps[0]!.position[axis]! + lamps[1]!.position[axis]!) / 2) as [number, number, number];
     const dir = vec3Extra(lamps[0]!.extras, "loom_light_dir", "lamp.head.3l");
-    nodes.push(node("head3", "projector", [-2600, 1600], { eye: vec(centre), lookAt: vec(add(centre, dir, 2)), throwRatio: 0.5, aspect: 2.4, brightness: 0.6, color: [0.78, 0.92, 1, 1], falloff: true, occlusion: true }, { label: "head31" }));
+    nodes.push(node("head3", "projector", [-2600, 1600], { eye: vec(centre), lookAt: vec(add(centre, dir, 2)), throwRatio: 0.5, aspect: 2.4, brightness: 0.6, color: [0.78, 0.92, 1, 1], falloff: true, occlusion: true }, { label: "projector_head3" }));
     edges.push(edge("cookie-head3", ["cookie", "out"], ["head3", "cookie"]));
-    projectors.push("head31");
+    projectors.push("projector_head3");
     // sodium high-bays: the warm pool on the floor and the trusses; a cyan LED spill from the
     // left over the white car's flank; a dim key low beside the lens for the shoe
     // T1437b: inverse-square, matched to the old law's exposure at the shoe (the far lamps barely
@@ -343,8 +345,8 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     const light = (id: string, at: Vec3, color: readonly number[], intensity: number, shadow?: { readonly range: number }): void => {
       const casts = shadow === undefined ? {} : { shadows: true, shadowExtent: shadow.range, shadowSoftness: 2 };
       const toShoe: Vec3 = [at[0] - shoe!.position[0], at[1] - shoe!.position[1], at[2] - shoe!.position[2]];
-      nodes.push(node(id, "light", [-2600, 2000 + lights.length * 100], { kind: "point", position: vec(at), color: [...color], ...inverseSquare(intensity, toShoe), ...casts }, { label: `${id}1` }));
-      lights.push(`${id}1`);
+      nodes.push(node(id, "light", [-2600, 2000 + lights.length * 100], { kind: "point", position: vec(at), color: [...color], ...inverseSquare(intensity, toShoe), ...casts }, { label: lightName(id) }));
+      lights.push(lightName(id));
     };
     const shoeAt = shoe!.position;
     light("sodiumPool", [2.5, 5.5, -4.5], [1, 0.5, 0.18, 1], 0.6);
@@ -377,37 +379,37 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
   }
 
   // ── Environment (reflections) ──
-  nodes.push(node("envSeed", "ramp", [-2700, 300], {}, { label: "envseed1", resolution: { mode: "fixed", width: 1024, height: 512 } }));
+  nodes.push(node("envSeed", "ramp", [-2700, 300], {}, { label: "ramp_envseed", resolution: { mode: "fixed", width: 1024, height: 512 } }));
   if (shot === "pendant" || heldSet !== undefined) {
     // the tent of cards stands round the pendant's face (it looks along +Z), not round the lens:
     // seen this obliquely, the face mirrors the far side of the tent
     const toward = heldSet !== undefined ? [0, 0.3, 1] : [0.35, 0.1, 1];
     const hdriRoom = options.hdri === true && heldSet === undefined ? 1 : 0;
-    nodes.push(node("env", "customWgsl", [-2700, 500], { source: STUDIO_ENV_WGSL, softbox: 3, strip: 6, points: 150, count: 70, size: 0.005, surround: heldSet !== undefined ? 0.8 : 0.5, cards: 220, room: hdriRoom * 0.6, roomTurn: 0.3, toward }, { label: "env1", resolution: { mode: "fixed", width: 2048, height: 1024 } }));
+    nodes.push(node("env", "customWgsl", [-2700, 500], { source: STUDIO_ENV_WGSL, softbox: 3, strip: 6, points: 150, count: 70, size: 0.005, surround: heldSet !== undefined ? 0.8 : 0.5, cards: 220, room: hdriRoom * 0.6, roomTurn: 0.3, toward }, { label: "wgsl_env", resolution: { mode: "fixed", width: 2048, height: 1024 } }));
   } else {
-    nodes.push(node("env", "customWgsl", [-2700, 500], { source: ENVIRONMENT_WGSL, bars: 2.5, roof: 0.01 }, { label: "env1", resolution: { mode: "fixed", width: 1024, height: 512 } }));
+    nodes.push(node("env", "customWgsl", [-2700, 500], { source: ENVIRONMENT_WGSL, bars: 2.5, roof: 0.01 }, { label: "wgsl_env", resolution: { mode: "fixed", width: 1024, height: 512 } }));
   }
   const hdri = options.hdri === true;
   if (hdri && shot === "pendant") {
     // the macro's tent over a real room: the HDRI arrives as the studio's input
-    nodes.push(node("hdri", "movieFileIn", [-2900, 700], { file: "media/on-nothing/hdri.png" }, { label: "hdri1", resolution: { mode: "fixed", width: 2048, height: 1024 } }));
+    nodes.push(node("hdri", "movieFileIn", [-2900, 700], { file: "media/on-nothing/hdri.png" }, { label: "movie_hdri", resolution: { mode: "fixed", width: 2048, height: 1024 } }));
     edges.push(edge("hdri-env", ["hdri", "out"], ["env", "input"]));
   } else {
     edges.push(edge("seed-env", ["envSeed", "out"], ["env", "input"]));
   }
   if (hdri && shot === "sneaker" && heldSet === undefined) {
     // a real room in the reflections: the black paint and the chrome mirror its shapes
-    nodes.push(node("hdri", "movieFileIn", [-2900, 700], { file: "media/on-nothing/hdri.png" }, { label: "hdri1", resolution: { mode: "fixed", width: 2048, height: 1024 } }));
+    nodes.push(node("hdri", "movieFileIn", [-2900, 700], { file: "media/on-nothing/hdri.png" }, { label: "movie_hdri", resolution: { mode: "fixed", width: 2048, height: 1024 } }));
     // turned so the room's brightest window does not sit in the paint behind the heel, and SMALL: the
     // Render's IBL has no prefiltered mips (5 diffuse taps, 16 glossy), so a sharp 2k room streaks the
     // matte leather; at 256 × 128 it is its own blur, and the bonnet still mirrors soft shapes
-    nodes.push(node("envHdri", "customWgsl", [-2700, 700], { source: ENVIRONMENT_HDRI_WGSL, gain: 1.1, crush: 0.85, turn: 0.35 }, { label: "envhdri1", resolution: { mode: "fixed", width: 256, height: 128 } }));
+    nodes.push(node("envHdri", "customWgsl", [-2700, 700], { source: ENVIRONMENT_HDRI_WGSL, gain: 1.1, crush: 0.85, turn: 0.35 }, { label: "wgsl_envhdri", resolution: { mode: "fixed", width: 256, height: 128 } }));
     edges.push(edge("hdri-env", ["hdri", "out"], ["envHdri", "input"]));
   }
 
   // ── Camera and the Render ──
-  nodes.push(node("cam", "camera", [-2700, -900], { eye: vec(eye), lookAt: aim, fov, near: shot === "pendant" ? 0.01 : 0.03, far: 200, ...move }, { label: "cam1" }));
-  const cameraRef = (field: string, fallback: number): StoredParameter => expressionSlot(`op('cam1').par.${field}`, fallback);
+  nodes.push(node("cam", "camera", [-2700, -900], { eye: vec(eye), lookAt: aim, fov, near: shot === "pendant" ? 0.01 : 0.03, far: 200, ...move }, { label: "camera1" }));
+  const cameraRef = (field: string, fallback: number): StoredParameter => expressionSlot(`op('camera1').par.${field}`, fallback);
   const cameraParams: Record<string, StoredParameter> = {
     eye: vec(eye),
     aim,
@@ -423,7 +425,7 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
   };
   nodes.push(node("shot", "render", [-2400, 0], {
     scenes: scenes.join(" "),
-    camera: "cam1",
+    camera: "camera1",
     lights: lights.join(" "),
     projectors: projectors.join(" "),
     ambientColor: [1, 1, 1, 1],
@@ -438,19 +440,20 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     environmentTaps: 16,
     // T1427b: rough and matte surfaces read a prefiltered environment, so the room's lamps stop streaking them
     environmentFilter: "prefiltered",
-  }, { label: "shot1" }));
+  }, { label: "render_shot" }));
   edges.push(edge("env-shot", [hdri && shot === "sneaker" && heldSet === undefined ? "envHdri" : "env", "out"], ["shot", "environment"]));
 
   // ── Screen space ──
   let last: readonly [string, string] = ["shot", "out"];
   const pass = (id: string, source: string, extra: Record<string, StoredParameter>, more: readonly (readonly [string, string])[], position: readonly [number, number]): void => {
-    nodes.push(node(id, more.length > 0 ? "customWgslMulti" : "customWgsl", position, { source, ...extra }, { label: `${id.toLowerCase()}1`, resolution: { mode: "project" } }));
+    nodes.push(node(id, more.length > 0 ? "customWgslMulti" : "customWgsl", position, { source, ...extra }, { label: `wgsl_${id.toLowerCase()}`, resolution: { mode: "project" } }));
     edges.push(edge(`${last[0]}-${id}`, last, [id, "input"]));
     more.forEach((port, index) => edges.push(edge(`${id}-more${index}`, port, [id, "more"], index)));
     last = [id, "out"];
   };
   const stock = (id: string, type: string, parameters: Record<string, StoredParameter>, position: readonly [number, number]): void => {
-    nodes.push(node(id, type, position, parameters, { label: `${id.toLowerCase()}1` }));
+    // a stock pass is the one of its kind in the shot: `streak1`, `lens1`, `filmgrade1`
+    nodes.push(node(id, type, position, parameters, { label: `${kindOfType(type)}1` }));
     edges.push(edge(`${last[0]}-${id}`, last, [id, "input"]));
     last = [id, "out"];
   };
@@ -482,14 +485,14 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
   // What the glass smears: only the hottest sources, softened to their glow first, so a lamp's
   // column is one smooth slab as wide as the lamp (the stock Spread copies a thin source sideways
   // three times, which reads as a barcode).
-  nodes.push(node("hotStreak", "customWgsl", [-1300, 700], { source: BRIGHT_PASS_WGSL, threshold: look.streak.threshold, knee: look.streak.threshold * 0.3 }, { label: "hotstreak1", resolution: { mode: "scale", factor: 0.5 } }));
+  nodes.push(node("hotStreak", "customWgsl", [-1300, 700], { source: BRIGHT_PASS_WGSL, threshold: look.streak.threshold, knee: look.streak.threshold * 0.3 }, { label: "wgsl_hotstreak", resolution: { mode: "scale", factor: 0.5 } }));
   edges.push(edge("scene-hotstreak", scene, ["hotStreak", "input"]));
   // softened over three halvings: a lamp becomes a soft blob as wide as its halo
-  nodes.push(node("hotSoft", "customWgsl", [-1200, 700], { source: BLOOM_DOWN_WGSL, clampLuma: 0 }, { label: "hotsoft1", resolution: { mode: "scale", factor: 0.5 } }));
+  nodes.push(node("hotSoft", "customWgsl", [-1200, 700], { source: BLOOM_DOWN_WGSL, clampLuma: 0 }, { label: "wgsl_hotsoft", resolution: { mode: "scale", factor: 0.5 } }));
   edges.push(edge("hot-soft", ["hotStreak", "out"], ["hotSoft", "input"]));
-  nodes.push(node("hotSofter", "customWgsl", [-1100, 700], { source: BLOOM_DOWN_WGSL, clampLuma: 0 }, { label: "hotsofter1", resolution: { mode: "scale", factor: 0.5 } }));
+  nodes.push(node("hotSofter", "customWgsl", [-1100, 700], { source: BLOOM_DOWN_WGSL, clampLuma: 0 }, { label: "wgsl_hotsofter", resolution: { mode: "scale", factor: 0.5 } }));
   edges.push(edge("soft-softer", ["hotSoft", "out"], ["hotSofter", "input"]));
-  nodes.push(node("hotSoftest", "customWgsl", [-1000, 700], { source: BLOOM_DOWN_WGSL, clampLuma: 0 }, { label: "hotsoftest1", resolution: { mode: "scale", factor: 0.5 } }));
+  nodes.push(node("hotSoftest", "customWgsl", [-1000, 700], { source: BLOOM_DOWN_WGSL, clampLuma: 0 }, { label: "wgsl_hotsoftest", resolution: { mode: "scale", factor: 0.5 } }));
   edges.push(edge("softer-softest", ["hotSofter", "out"], ["hotSoftest", "input"]));
   stock("streak", "streak", {
     threshold: look.streak.threshold,
@@ -505,14 +508,14 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     tint: [0.92, 0.98, 1, 1],
   }, [-1200, 0]);
   edges.push(edge("soft-streak", [shot === "sneaker" ? "hotSoftest" : "hotSoft", "out"], ["streak", "bright"]));
-  nodes.push(node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: 1.4, knee: 0.8 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }));
+  nodes.push(node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: 1.4, knee: 0.8 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } }));
   edges.push(edge("scene-bright", scene, ["bright", "input"]));
   for (const level of [1, 2, 3, 4]) {
-    nodes.push(node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `bloomdown${level}1`, resolution: { mode: "scale", factor: 0.5 } }));
+    nodes.push(node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `wgsl_bloomdown${level}`, resolution: { mode: "scale", factor: 0.5 } }));
     edges.push(edge(`bloom-down${level}`, [level === 1 ? "bright" : `bloomDown${level - 1}`, "out"], [`bloomDown${level}`, "input"]));
   }
   for (const level of [0, 1, 2, 3]) {
-    nodes.push(node(`bloomUp${level}`, "customWgslMulti", [-700, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { label: `bloomup${level}1`, resolution: { mode: "scale", factor: 2 } }));
+    nodes.push(node(`bloomUp${level}`, "customWgslMulti", [-700, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { label: `wgsl_bloomup${level}`, resolution: { mode: "scale", factor: 2 } }));
     edges.push(edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]));
     edges.push(edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0));
   }
@@ -525,7 +528,7 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
   const flash = heldSet?.flash ?? jewelSet?.flash;
   if (flash !== undefined && flash !== "0") pass("flash", FLASH_WGSL, { flash: expressionSlot(flash, 0), centre: [0.72, 0.42], ring: jewelSet?.ring ?? 0.16, gain: jewelSet?.lift ?? 0.9, veil: jewelSet?.veil ?? 0.22 }, [], [100, 0]);
   if (options.crt === true) stock("crt", "crt", { amount: 1 }, [500, 0]);
-  nodes.push(node("out", "output", [700, 0], { toneMap: "none" }, { label: "out1" }));
+  nodes.push(node("out", "output", [700, 0], { toneMap: "none" }, { label: "output1" }));
   edges.push(edge("last-out", last, ["out", "input"]));
 
   return {
