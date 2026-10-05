@@ -192,8 +192,6 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         shape: "mesh",
         material: "hull1",
         orient: map("orient", [0, 0, 0, 1]),
-        // The rig's tint: its alpha drives the piece's red core (a pulse down the tentacle).
-        tint: map("tint", [1, 1, 1, 1]),
         // A ring still stowed in the body is not drawn.
         group: "p.kind > -0.5",
       }, { label: `geometry_${piece.role}` }),

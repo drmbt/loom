@@ -11,6 +11,11 @@ export const HULL_SURFACE_WGSL = `struct Params {
   coreGlow: f32, // @default 0.4  Radiance of the red cores: a dull glow between the rings, not a neon tube.
 };
 
+// What each drawn piece brings of its own: the rig's point attribute of the same name (rig.ts).
+struct Instance {
+  glow: f32, // @default 1  How hard this piece's core is driven: a pulse running down a tentacle.
+};
+
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceDefaults(s);
   let role = s.attr.z;
@@ -29,8 +34,7 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
     o.albedo = vec4f(0.12, 0.004, 0.003, 1.0);
     o.roughness = 0.45;
     o.metallic = 0.0;
-    // The draw's tint alpha is how hard this piece's core is driven (rig.ts): a pulse running down a tentacle.
-    o.emissive = p.eyeColor * p.coreGlow * s.tint.a;
+    o.emissive = p.eyeColor * p.coreGlow * s.instance.glow;
   } else if (role > 0.5) {
     o.albedo = vec4f(0.22, 0.012, 0.01, 1.0);
     o.roughness = 0.38;

@@ -45,7 +45,7 @@ interface Walk {
   /** A joint's place; undefined while it is stowed in the body. */
   at(instant: number, tentacle: number, station: number): Vec | undefined;
   slip(instant: number, tentacle: number, station: number): number;
-  /** How hard the joint's core is driven: the alpha of its tint, 1 at rest. */
+  /** How hard the joint's core is driven, 1 at rest. */
   glow(instant: number, tentacle: number, station: number): number;
 }
 
@@ -84,7 +84,7 @@ async function walk(instants: number, parameters: Record<string, number | number
   const position = read("position");
   const kind = read("kind");
   const slip = read("slip");
-  const tint = read("tint");
+  const glow = read("glow");
   const slot = (instant: number, tentacle: number, station: number): number => instant * PER_ROBOT + tentacle * STATIONS + station;
   return {
     instants,
@@ -96,7 +96,7 @@ async function walk(instants: number, parameters: Record<string, number | number
       return [position.floats[base] as number, position.floats[base + 1] as number, position.floats[base + 2] as number];
     },
     slip: (instant, tentacle, station) => slip.floats[slot(instant, tentacle, station) * slip.stride] as number,
-    glow: (instant, tentacle, station) => tint.floats[slot(instant, tentacle, station) * tint.stride + 3] as number,
+    glow: (instant, tentacle, station) => glow.floats[slot(instant, tentacle, station) * glow.stride] as number,
   };
 }
 
