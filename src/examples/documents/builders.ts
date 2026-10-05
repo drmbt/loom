@@ -8,6 +8,7 @@ import type {
 import type { ParameterSlot, ParameterValue } from "../../domain/types/parameters.ts";
 import { channelExpression } from "../../domain/parameters/slots.ts";
 import { parseComponentNodeType } from "../../domain/components/component-type.ts";
+import { conformsToKind, kindBindsName, kindOfType, withKind } from "../../domain/graph/node-kinds.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { SCHEMA_VERSION } from "../../domain/types/schemas.ts";
 
@@ -121,6 +122,86 @@ export function node(
     // on its defaults: plausible-wrong, the worst kind.
     parameters: { ...parameters, ...(extra.parameters ?? {}) },
   };
+}
+
+/**
+ * A node NAMED BY THE RULE (T1593b): write the role once, and the name is `kind_role`.
+ *
+ *     named("lamp", "slider", [0, 0])            // `slider_lamp`
+ *     named("lamp", "light", [0, 300])           // `light_lamp`: same role, another kind
+ *     named("joints", "pointKernel", [0, 0])     // `kernel_joints`
+ *     named("pathx", "lfo", [0, 0])              // `lfo_pathx`
+ *
+ * ## The rule
+ *
+ * A node's name carries its kind as a prefix, so it says what it is on the canvas at any
+ * zoom and inside every `op('…')` that reads it. The kind is one lowercase word per node
+ * type (`kindOfType`; the full table is `NODE_KINDS` in `src/domain/graph/node-kinds.ts`),
+ * then ONE underscore, then the role: what this node is FOR in this graph. The role holds
+ * letters, digits and underscores, nothing else, because a name is also what a name list,
+ * a preset target and a cue hold, and those split on spaces, commas, dots and colons.
+ *
+ * EVERY NEW EXAMPLE AND PROJECT DOCUMENT USES THIS, and `src/examples/node-names.test.ts`
+ * (on `pnpm test:gates`) fails a shipped node whose name does not carry its kind. The
+ * documents written before the rule are listed in that gate's ledger until the sweep
+ * renames them; a file that is not in the ledger has no excuse.
+ *
+ * ## The id is the name
+ *
+ * `node("dish", "screen", …, { label: "dish1" })` writes the role twice and the kind never,
+ * and leaves the document with two words for one node: edges say `dish`, expressions say
+ * `dish1`. Here the author writes the role once and the node has ONE identifier,
+ * `screen_dish`, for its id and its name alike. An edge is `["slider_lamp", "out"]` and an
+ * expression is `op('slider_lamp')`.
+ *
+ * It cannot be the bare role, and the reason is the convention's own first example: a
+ * Slider and a Light may both be for the `lamp`. Their NAMES differ by kind; an id of
+ * `lamp` for both is the collision `graph()` refuses (two nodes under one id, and the
+ * scene had no light).
+ *
+ * `extra.id` still wins, for the one case that needs it: giving a node that already
+ * shipped its `kind_role` name while keeping the id its edges, tests and thumbnails are
+ * addressed by.
+ *
+ * ## What it refuses
+ *
+ * Each of these is a mistake at the call site, named there instead of shipping:
+ *  - a role with a character a name may not hold (`"key light"`);
+ *  - a role that already carries the kind (`named("blur_soft", "blur")` would be
+ *    `blur_blur_soft`): write the role alone;
+ *  - `label` in `extra`: that is a second name;
+ *  - a component's In or Out: its name is the socket's label, not a role. Use `node()`.
+ */
+export function named(
+  role: string,
+  type: string,
+  position: readonly [number, number],
+  parameters: Record<string, ParameterValue> = {},
+  extra: Partial<GraphNode> = {},
+): GraphNode {
+  if (extra.label !== undefined) {
+    throw new Error(
+      `named("${role}", "${type}"): extra.label "${extra.label}" is a second name. named() makes the name from the role; use node() to name a node by hand.`,
+    );
+  }
+  if (!kindBindsName(type)) {
+    throw new Error(
+      `named("${role}", "${type}"): a component's In and Out are named for the socket they publish, not by kind_role. Use node("${role}", "${type}", …, { label: "<socket name>" }).`,
+    );
+  }
+  const kind = kindOfType(type);
+  if (role === "" || conformsToKind(role, kind)) {
+    throw new Error(
+      `named("${role}", "${type}"): the role is what the node is FOR, without its kind. "${role}" would be named "${withKind(kind, role)}"; write the role alone (named("lamp", "slider") is "slider_lamp").`,
+    );
+  }
+  const label = withKind(kind, role);
+  if (!conformsToKind(label, kind)) {
+    throw new Error(
+      `named("${role}", "${type}"): "${label}" is not a name. A role holds letters, digits and underscores only, starting with a letter or a digit.`,
+    );
+  }
+  return node(label, type, position, parameters, { ...extra, label });
 }
 
 export function edge(

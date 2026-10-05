@@ -88,6 +88,9 @@ const DOCUMENT_SET_ENUMERATORS: ReadonlySet<string> = new Set([
   "EXAMPLES_DIR",
   "STARTER_COMPONENTS_DIR",
   "buildExampleFiles",
+  // T1593b: the project documents under `projects/` are a shipped set too.
+  "listProjectDocuments",
+  "PROJECTS_DIR",
 ]);
 
 /**

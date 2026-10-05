@@ -5,7 +5,8 @@ import { createComponentSystem } from "../../domain/components/registry.ts";
 import { componentNodeType } from "../../domain/components/component-type.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
-import { document, edge, graph, node, settings } from "./builders.ts";
+import { conformsToKind, kindOfType } from "../../domain/graph/node-kinds.ts";
+import { document, edge, graph, named, node, settings } from "./builders.ts";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════
@@ -151,5 +152,74 @@ describe("graph() refuses a second node or edge under an id already taken", () =
     const built = graph([node("a", "constant", [0, 0]), node("b", "constant", [200, 0])], [edge("e1", ["a", "value"], ["b", "value"])]);
     expect(Object.keys(built.nodes)).toEqual(["a", "b"]);
     expect(Object.keys(built.edges)).toEqual(["e1"]);
+  });
+});
+
+describe("named() names a node kind_role from the role alone (T1593b)", () => {
+  it("makes the name from the type's kind and the role, and uses it as the id too", () => {
+    const lamp = named("lamp", "slider", [0, 0]);
+    expect(lamp.label).toBe("slider_lamp");
+    expect(lamp.id).toBe("slider_lamp");
+    // The declared SHORT kind, not the type string: `pointkernel_joints` is what the ruling refused.
+    expect(named("joints", "pointKernel", [0, 0]).label).toBe("kernel_joints");
+    expect(named("pathx", "lfo", [0, 0]).label).toBe("lfo_pathx");
+    expect(named("car01", "meshFileIn", [0, 0]).label).toBe("mesh_car01");
+  });
+
+  /*
+   * The convention's own first example, and the bug it comes from: a Slider and a Light
+   * both called "lamp" used to share one id, the second replaced the first, and the scene
+   * had no light. Named by kind they are two nodes, and the real save and load agree.
+   */
+  it("lets one role name two nodes of different kinds, through the real save path", () => {
+    const built = document(
+      "t1593b-lamp",
+      "T1593b lamp",
+      settings(),
+      graph([named("lamp", "slider", [0, 0]), named("lamp", "light", [0, 300]), named("out", "output", [300, 0])], []),
+    );
+    const loaded = roundTrip(built);
+    expect(loaded.ok).toBe(true);
+    if (!loaded.ok) return;
+    expect(loaded.changed).toBe(false);
+    const names = Object.values(loaded.document.graph.nodes).map((each) => each.label).sort();
+    expect(names).toEqual(["light_lamp", "output_out", "slider_lamp"]);
+  });
+
+  it("produces names the shipped-name gate accepts, for every node it builds", () => {
+    const nodes = [named("lamp", "slider", [0, 0]), named("joints", "pointKernel", [0, 0]), named("grade", "customWgsl", [0, 0])];
+    for (const each of nodes) expect(conformsToKind(each.label ?? "", kindOfType(each.type))).toBe(true);
+  });
+
+  it("keeps a shipped node's id when the sweep gives it its name", () => {
+    const dish = named("dish", "screen", [0, 0], {}, { id: "dish" });
+    expect(dish.id).toBe("dish");
+    expect(dish.label).toBe("screen_dish");
+  });
+
+  it("carries parameters and the registry's version exactly as node() does", () => {
+    const built = named("soft", "blur", [10, 20], { size: 4 });
+    const plain = node("blur_soft", "blur", [10, 20], { size: 4 }, { label: "blur_soft" });
+    expect(built).toEqual(plain);
+  });
+
+  it("refuses a role with a character a name may not hold", () => {
+    expect(() => named("key light", "light", [0, 0])).toThrow(
+      'named("key light", "light"): "light_key light" is not a name. A role holds letters, digits and underscores only, starting with a letter or a digit.',
+    );
+  });
+
+  it("refuses a role that already carries the kind, instead of naming the node blur_blur_soft", () => {
+    expect(() => named("blur_soft", "blur", [0, 0])).toThrow(/write the role alone/);
+    expect(() => named("blur1", "blur", [0, 0])).toThrow(/write the role alone/);
+    expect(() => named("", "blur", [0, 0])).toThrow(/write the role alone/);
+  });
+
+  it("refuses a second name in extra.label", () => {
+    expect(() => named("soft", "blur", [0, 0], {}, { label: "soft1" })).toThrow(/is a second name/);
+  });
+
+  it("refuses a component's In and Out, whose name is the socket's label", () => {
+    expect(() => named("depth", "componentIn", [0, 0])).toThrow(/named for the socket they publish/);
   });
 });
