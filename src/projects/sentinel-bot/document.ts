@@ -4,6 +4,7 @@ import { SCHEMA_VERSION } from "../../domain/types/schemas.ts";
 import { edge, expressionSlot, graph, node as buildNode, settings } from "../../examples/documents/builders.ts";
 import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from "../../examples/build-showcase-beat.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
+import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS } from "./camera.ts";
 import type { KitFacts, Vec3 } from "./kit.ts";
 import { PATH, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
@@ -93,8 +94,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     const at = pathExpression(z);
     return { x: expressionSlot(`${at.x} + ${dx}`, retained[0]), y: expressionSlot(`${at.y} + ${dy}`, retained[1]), z: expressionSlot(z, retained[2]) };
   };
-  const eye = onPath(`(0 - ${on("distance")})`, "op('view').chan.viewX", "op('view').chan.viewY", [1.1, 0.6, -7.5]);
-  const aim = onPath("0.6", "0", "0", [0, 0, 0.6]);
+  // Where the camera rides is the rig's (camera.ts); a hand never holds a camera dead still.
+  const RIG = (channel: string): string => `op('expression_camera').chan.${channel}`;
+  const eye = onPath(RIG("ahead"), `${RIG("right")} + 0.02 * sin(abstime * 2.3)`, `${RIG("up")} + 0.015 * sin(abstime * 1.7 + 1)`, [1.1, 0.6, -7.5]);
+  // Chasing, it looks down the tunnel past the robot; every other shot looks at the robot.
+  const aim = onPath(`(0.3 + 3 * (${RIG("pick")} == 0))`, "0", "0", [0, 0, 3.3]);
   const glow = onPath("0.9", "0", "0", [0, 0, 0.9]);
   /** The lamp station `step` stations from the one the robot is under: where it hangs, and how much of it is lit (1 within half a spacing, 0 a spacing and a half away, so the three in use trade places unseen). */
   const lampAt = (step: number): { position: Record<"x" | "y" | "z", StoredParameter>; near: string } => {
@@ -122,7 +126,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const controls: GraphNode[] = [
     ...sliders.map((slider, index) => node(slider.name, "slider", [-3600 + (index % 4) * 300, 1500 + Math.floor(index / 4) * 250], { channel: slider.name.slice(slider.name.indexOf("_") + 1), caption: slider.caption, value: slider.value, min: slider.min, max: slider.max, step: 0 }, { label: slider.name })),
     node("perch", "toggle", [-3600, 2250], { channel: "perch", caption: "Perch", on: false }, { label: "perch" }),
-    node("view", "xyPad", [-3300, 2250], { channel: "view", caption: "Camera side / height", x: 1.1, y: 0.6, min: -2, max: 2 }, { label: "view" }),
+    node("view", "xyPad", [-3300, 2250], { channel: "view", caption: "Chase side / height", x: 1.1, y: 0.6, min: -2, max: 2 }, { label: "view" }),
+    node("slider_shot", "slider", [-3000, 2250], { channel: "shot", caption: `Shot (${SHOTS.join(", ")})`, value: 0, min: 0, max: SHOTS.length - 1, step: 1 }, { label: "slider_shot" }),
+    node("toggle_cuts", "toggle", [-2700, 2250], { channel: "cuts", caption: "Cut on the bars", on: true }, { label: "toggle_cuts" }),
   ];
   const board = serializePanelBoard({
     columns: 12,
@@ -130,6 +136,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       { label: "Robot", rect: { x: 0, y: 0, w: 6, h: 1 } },
       ...ROBOT.map((slider, index) => ({ member: slider.name, rect: { x: 0, y: 1 + index, w: 6, h: 1 } })),
       { member: "perch", rect: { x: 0, y: 1 + ROBOT.length, w: 6, h: 1 } },
+      { label: "Camera", rect: { x: 0, y: 2 + ROBOT.length, w: 6, h: 1 } },
+      { member: "slider_shot", rect: { x: 0, y: 3 + ROBOT.length, w: 6, h: 1 } },
+      { member: "toggle_cuts", rect: { x: 0, y: 4 + ROBOT.length, w: 6, h: 1 } },
       { label: "Scene", rect: { x: 6, y: 0, w: 6, h: 1 } },
       ...SCENE.map((slider, index) => ({ member: slider.name, rect: { x: 6, y: 1 + index, w: 6, h: 1 } })),
       { member: "view", rect: { x: 6, y: 1 + SCENE.length, w: 3, h: 3 } },
@@ -205,7 +214,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("geometry_bore", "geometry", [-1800, 1200], { mode: "surface", material: "material_bore", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bore" }),
 
     // ── Camera and light ──
-    node("cam", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 0.6], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: 55, near: 0.05, far: 240 }, { label: "cam1" }),
+    node("expression_camera", "valueExpression", [-1800, -600], { expressions: CAMERA_STATEMENTS, defaults: CAMERA_DEFAULTS }, { label: "expression_camera" }),
+    // A kick punches the lens in.
+    node("cam", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} - ${KICK} * 2.5`, 55), near: 0.05, far: 240 }, { label: "cam1" }),
     // The eyes throw the tentacles' shadows down the walls.
     node("eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.12, 0.06, 1], intensity: expressionSlot(`${on("glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, shadows: true, shadowExtent: 14, shadowSoftness: 1 }, { label: "eyes1" }),
     // The three lamp plates nearest the robot, as lights; they breathe with the low end.
@@ -257,6 +268,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("rate-ease", ["rate", "out"], ["ease", "in"]),
     edge("ease-travel", ["ease", "out"], ["travel", "in"]),
     edge("stroke-rate", ["strokeRate", "out"], ["stroke", "in"]),
+    // What the camera rig reads: how far the robot has come, the track's bars, and the panel.
+    ...["travel", "clip", "slider_shot", "toggle_cuts", "distance", "view"].map((source, index) => edge(`camera-${source}`, [source, "out"], ["expression_camera", "in"], index)),
     ...robots.flatMap((_, index) => [
       edge(`robot-body${index}`, ["robot", "out"], [`body${index}`, "in"]),
       edge(`body-geo${index}`, [`body${index}`, "out"], [`bodyGeo${index}`, "points"]),

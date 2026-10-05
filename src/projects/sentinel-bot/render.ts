@@ -14,7 +14,8 @@ import { loadKit } from "./load-kit.ts";
  *     [--at 4]                      a still at that many seconds
  *     [--strip 4,8,0.25]            8 stills from 4 s, 0.25 s apart (a motion strip)
  *     [--set joints.crawl=0.5,speed.value=6]   parameter overrides by node id
- *     [--cam=-7.5,1.1,0.6]          where the camera rides: metres ahead of the robot, right, up
+ *     [--cam=-7.5,1.1,0.6]          the chase shot, placed: metres ahead of the robot, right, up
+ *     [--shot 3]                    hold one of the rig's shots (camera.ts): 0 chase, 1 lead, 2 flank, 3 post, 4 circle
  *     [--tag name]                  file name prefix
  *
  * Every animated thing runs on absTime from 0. Stills go to the gitignored renders/ tree.
@@ -46,8 +47,10 @@ const overrides = (flag("set") ?? "").split(",").filter((entry) => entry !== "")
 const { facts, glb } = loadKit(glbPath, "media/sentinel-bot/sentinel.glb");
 const camera = flag("cam")?.split(",").map(Number);
 const built = sentinelDocument(facts, { width, height });
-// The camera's place is the panel's: Camera distance (metres behind) and the Camera side / height pad.
-if (camera !== undefined) overrides.push({ nodeId: "distance", parameter: "value", value: -(camera[0] ?? 0) }, { nodeId: "view", parameter: "x", value: camera[1] ?? 0 }, { nodeId: "view", parameter: "y", value: camera[2] ?? 0 });
+// The camera's place is the panel's: the chase shot held, its distance (metres behind) and its side / height pad.
+if (camera !== undefined) overrides.push({ nodeId: "toggle_cuts", parameter: "on", value: false }, { nodeId: "slider_shot", parameter: "value", value: 0 }, { nodeId: "distance", parameter: "value", value: -(camera[0] ?? 0) }, { nodeId: "view", parameter: "x", value: camera[1] ?? 0 }, { nodeId: "view", parameter: "y", value: camera[2] ?? 0 });
+const shot = flag("shot");
+if (shot !== undefined) overrides.push({ nodeId: "toggle_cuts", parameter: "on", value: false }, { nodeId: "slider_shot", parameter: "value", value: Number(shot) });
 const nodes = { ...built.graph.nodes };
 for (const { nodeId, parameter, value } of overrides) {
   const target = nodes[nodeId];

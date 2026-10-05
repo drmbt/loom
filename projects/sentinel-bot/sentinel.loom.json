@@ -161,6 +161,78 @@
           "portId": "points"
         }
       },
+      "camera-clip": {
+        "id": "camera-clip",
+        "order": 1,
+        "source": {
+          "nodeId": "clip",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_camera",
+          "portId": "in"
+        }
+      },
+      "camera-distance": {
+        "id": "camera-distance",
+        "order": 4,
+        "source": {
+          "nodeId": "distance",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_camera",
+          "portId": "in"
+        }
+      },
+      "camera-slider_shot": {
+        "id": "camera-slider_shot",
+        "order": 2,
+        "source": {
+          "nodeId": "slider_shot",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_camera",
+          "portId": "in"
+        }
+      },
+      "camera-toggle_cuts": {
+        "id": "camera-toggle_cuts",
+        "order": 3,
+        "source": {
+          "nodeId": "toggle_cuts",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_camera",
+          "portId": "in"
+        }
+      },
+      "camera-travel": {
+        "id": "camera-travel",
+        "order": 0,
+        "source": {
+          "nodeId": "travel",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_camera",
+          "portId": "in"
+        }
+      },
+      "camera-view": {
+        "id": "camera-view",
+        "order": 5,
+        "source": {
+          "nodeId": "view",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_camera",
+          "portId": "in"
+        }
+      },
       "clip-hits": {
         "id": "clip-hits",
         "source": {
@@ -436,6 +508,18 @@
           "portId": "controls"
         }
       },
+      "panel-slider_shot": {
+        "id": "panel-slider_shot",
+        "order": 15,
+        "source": {
+          "nodeId": "slider_shot",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
       "panel-speed": {
         "id": "panel-speed",
         "order": 0,
@@ -465,6 +549,18 @@
         "order": 2,
         "source": {
           "nodeId": "swim",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel",
+          "portId": "controls"
+        }
+      },
+      "panel-toggle_cuts": {
+        "id": "panel-toggle_cuts",
+        "order": 16,
+        "source": {
+          "nodeId": "toggle_cuts",
           "portId": "out"
         },
         "target": {
@@ -660,7 +756,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('travel1').chan.value + (0 - op('distance').chan.distance))) + 0.4) + 5.0 * sin(0.085084801 * ((op('travel1').chan.value + (0 - op('distance').chan.distance))) + 1.9)) + op('view').chan.viewX"
+                "source": "(14.0 * sin(0.0327249235 * ((op('travel1').chan.value + op('expression_camera').chan.ahead)) + 0.4) + 5.0 * sin(0.085084801 * ((op('travel1').chan.value + op('expression_camera').chan.ahead)) + 1.9)) + op('expression_camera').chan.right + 0.02 * sin(abstime * 2.3)"
               },
               "static": {
                 "kind": "static",
@@ -673,7 +769,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('travel1').chan.value + (0 - op('distance').chan.distance))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('travel1').chan.value + (0 - op('distance').chan.distance))) + 0.7)) + op('view').chan.viewY"
+                "source": "(6.0 * sin(0.0261799388 * ((op('travel1').chan.value + op('expression_camera').chan.ahead)) + 2.2) + 2.5 * sin(0.0719948316 * ((op('travel1').chan.value + op('expression_camera').chan.ahead)) + 0.7)) + op('expression_camera').chan.up + 0.015 * sin(abstime * 1.7 + 1)"
               },
               "static": {
                 "kind": "static",
@@ -686,7 +782,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(op('travel1').chan.value + (0 - op('distance').chan.distance))"
+                "source": "(op('travel1').chan.value + op('expression_camera').chan.ahead)"
               },
               "static": {
                 "kind": "static",
@@ -696,17 +792,29 @@
             "mode": "expression"
           },
           "far": 240,
-          "fov": 55,
+          "fov": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('expression_camera').chan.lens - (op('hits1').chan.kickCount * op('react').chan.react) * 2.5"
+              },
+              "static": {
+                "kind": "static",
+                "value": 55
+              }
+            },
+            "mode": "expression"
+          },
           "lookAt": [
             0,
             0,
-            0.6
+            3.3
           ],
           "lookAt.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('travel1').chan.value + 0.6)) + 0.4) + 5.0 * sin(0.085084801 * ((op('travel1').chan.value + 0.6)) + 1.9)) + 0"
+                "source": "(14.0 * sin(0.0327249235 * ((op('travel1').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))) + 0.4) + 5.0 * sin(0.085084801 * ((op('travel1').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))) + 1.9)) + 0"
               },
               "static": {
                 "kind": "static",
@@ -719,7 +827,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('travel1').chan.value + 0.6)) + 2.2) + 2.5 * sin(0.0719948316 * ((op('travel1').chan.value + 0.6)) + 0.7)) + 0"
+                "source": "(6.0 * sin(0.0261799388 * ((op('travel1').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('travel1').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))) + 0.7)) + 0"
               },
               "static": {
                 "kind": "static",
@@ -732,11 +840,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(op('travel1').chan.value + 0.6)"
+                "source": "(op('travel1').chan.value + (0.3 + 3 * (op('expression_camera').chan.pick == 0)))"
               },
               "static": {
                 "kind": "static",
-                "value": 0.6
+                "value": 3.3
               }
             },
             "mode": "expression"
@@ -891,6 +999,20 @@
           "y": 1000
         },
         "type": "valueLag"
+      },
+      "expression_camera": {
+        "definitionVersion": 1,
+        "id": "expression_camera",
+        "label": "expression_camera",
+        "parameters": {
+          "defaults": "bar = floor(abstime / 4);\nvalue = 0;\nshot = 0;\ncuts = 0;\ndistance = 7.5;\nviewX = 1.1;\nviewY = 0.6",
+          "expressions": "turn = floor(bar / 2);\npick = (cuts > 0.5) * (turn - 5 * floor(turn / 5)) + (cuts <= 0.5) * floor(shot + 0.5);\npost = (floor(value / 25.6) + 0.5) * 25.6;\nahead = (pick == 0) * (0 - distance) + (pick == 1) * 5.5 + (pick == 2) * 0.4 + (pick == 3) * (post - value) + (pick == 4) * 1.5 * sin(abstime * 0.17);\nright = (pick == 0) * viewX + (pick == 1) * (0 - 0.9) + (pick == 2) * 2 + (pick == 3) * 1.6 + (pick == 4) * 1.9 * cos(abstime * 0.3);\nup = (pick == 0) * viewY + (pick == 1) * 0.35 + (pick == 2) * 0.15 + (pick == 3) * (0 - 1.3) + (pick == 4) * 1.3 * sin(abstime * 0.3);\nlens = (pick == 0) * 55 + (pick == 1) * 48 + (pick == 2) * 68 + (pick == 3) * 40 + (pick == 4) * 60;\nz = value + ahead"
+        },
+        "position": {
+          "x": -1800,
+          "y": -600
+        },
+        "type": "valueExpression"
       },
       "eyes": {
         "definitionVersion": 1,
@@ -1670,7 +1792,7 @@
         "id": "panel",
         "label": "panel1",
         "parameters": {
-          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":6,\"h\":1}},\n    {\"member\":\"perch\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":6,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"bore\",\"rect\":{\"x\":6,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"lamp\",\"rect\":{\"x\":6,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"glow\",\"rect\":{\"x\":6,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"distance\",\"rect\":{\"x\":6,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"react\",\"rect\":{\"x\":6,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":6,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"view\",\"rect\":{\"x\":6,\"y\":7,\"w\":3,\"h\":3}}\n  ]\n}",
+          "board": "{\n  \"columns\": 12,\n  \"items\": [\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"speed\",\"rect\":{\"x\":0,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"crawl\",\"rect\":{\"x\":0,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"swim\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"stride\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"flare\",\"rect\":{\"x\":0,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"wave\",\"rect\":{\"x\":0,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"grip\",\"rect\":{\"x\":0,\"y\":7,\"w\":6,\"h\":1}},\n    {\"member\":\"perch\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":9,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":10,\"w\":6,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":11,\"w\":6,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":6,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"bore\",\"rect\":{\"x\":6,\"y\":1,\"w\":6,\"h\":1}},\n    {\"member\":\"lamp\",\"rect\":{\"x\":6,\"y\":2,\"w\":6,\"h\":1}},\n    {\"member\":\"glow\",\"rect\":{\"x\":6,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"distance\",\"rect\":{\"x\":6,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"react\",\"rect\":{\"x\":6,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":6,\"y\":6,\"w\":6,\"h\":1}},\n    {\"member\":\"view\",\"rect\":{\"x\":6,\"y\":7,\"w\":3,\"h\":3}}\n  ]\n}",
           "title": "Sentinel"
         },
         "position": {
@@ -1907,6 +2029,24 @@
         },
         "type": "slider"
       },
+      "slider_shot": {
+        "definitionVersion": 1,
+        "id": "slider_shot",
+        "label": "slider_shot",
+        "parameters": {
+          "caption": "Shot (chase, lead, flank, post, circle)",
+          "channel": "shot",
+          "max": 4,
+          "min": 0,
+          "step": 1,
+          "value": 0
+        },
+        "position": {
+          "x": -3000,
+          "y": 2250
+        },
+        "type": "slider"
+      },
       "smooth": {
         "definitionVersion": 1,
         "id": "smooth",
@@ -2023,6 +2163,21 @@
         },
         "type": "slider"
       },
+      "toggle_cuts": {
+        "definitionVersion": 1,
+        "id": "toggle_cuts",
+        "label": "toggle_cuts",
+        "parameters": {
+          "caption": "Cut on the bars",
+          "channel": "cuts",
+          "on": true
+        },
+        "position": {
+          "x": -2700,
+          "y": 2250
+        },
+        "type": "toggle"
+      },
       "travel": {
         "definitionVersion": 1,
         "id": "travel",
@@ -2043,7 +2198,7 @@
         "id": "view",
         "label": "view",
         "parameters": {
-          "caption": "Camera side / height",
+          "caption": "Chase side / height",
           "channel": "view",
           "max": 2,
           "min": -2,
