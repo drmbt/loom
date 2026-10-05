@@ -7,10 +7,10 @@ import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS } from "./camera.ts";
 import { against, pace, rest, surge } from "./director.ts";
 import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
-import { PATH, pathExpression } from "./path.ts";
+import { PATH, chamberExpression, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
 import { SSR_WGSL } from "../furnace/screen-space.ts";
-import { JOINT_ATTRIBUTES, jointCount, jointKernel, type Pick } from "./rig.ts";
+import { JOINT_ATTRIBUTES, adriftExpression, jointCount, jointKernel, type Pick } from "./rig.ts";
 import { HULL_SURFACE_WGSL, lampParameter } from "./surface.ts";
 import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMPS_MIRRORED, LAMP_SPACING, MOTE_ATTRIBUTES, MOTE_COUNT, MOTE_KERNEL, lampToneExpression } from "./tunnel.ts";
 
@@ -158,9 +158,14 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   };
   // Where the camera rides is the rig's (camera.ts); a hand never holds a camera dead still.
   const RIG = (channel: string): string => `op('expression_camera').chan.${channel}`;
-  const eye = onPath(RIG("ahead"), `${RIG("right")} + 0.02 * sin(abstime * 2.3)`, `${RIG("up")} + 0.015 * sin(abstime * 1.7 + 1)`, [1.1, 0.6, -7.5]);
-  // Chasing, it looks down the tunnel past the robot; every other shot looks at the robot.
-  const aim = onPath(`(0.3 + 3 * (${RIG("pick")} == 0))`, "0", "0", [0, 0, 3.3]);
+  // Where the robot has wandered to off the axis when nothing holds it (rig.ts): swimming, or in a hall.
+  const adrift = `max(${SWIM}, ${chamberExpression(`(${TRAVEL} + 2.5)`)})`;
+  const wander = { x: `${adrift} * ${adriftExpression("x")}`, y: `${adrift} * ${adriftExpression("y")}` };
+  // A close shot rides with it (the rig's `ride`).
+  const eye = onPath(RIG("ahead"), `${RIG("right")} + ${RIG("ride")} * ${wander.x} + 0.02 * sin(abstime * 2.3)`, `${RIG("up")} + ${RIG("ride")} * ${wander.y} + 0.015 * sin(abstime * 1.7 + 1)`, [1.1, 0.6, -7.5]);
+  // From behind it looks down the tunnel past the robot; from anywhere else at the robot, wherever it has wandered.
+  const near = `(${RIG("aim")} < 1)`;
+  const aim = onPath(RIG("aim"), `${near} * ${wander.x}`, `${near} * ${wander.y}`, [0, 0, 3.3]);
   const glow = onPath("0.9", "0", "0", [0, 0, 0.9]);
   /** The lamp station `step` stations from the one the robot is under: where it hangs, and how much of it is lit (1 within half a spacing, 0 a spacing and a half away, so the three in use trade places unseen). */
   const lampAt = (step: number): { position: Record<"x" | "y" | "z", StoredParameter>; near: string; tone: readonly [string, string, string] } => {
@@ -301,7 +306,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
       lamps: expressionSlot(`${on("slider_lamp")} * 0.23 * (0.7 + ${LOW} * 0.8)`, 6),
       // How bright a kick's pulse is as it runs down the cores (the rig says where it is).
-      pulseGlow: expressionSlot(`3 * ${on("slider_legs")}`, 3),
+      pulseGlow: expressionSlot(`2 * ${on("slider_legs")}`, 2),
     }, { label: "material_hull" }),
 
     ...pieceNodes({
@@ -377,8 +382,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       camera: "camera_rig",
       lights: ["light_eyes", ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.3, 0.62, 0.66, 1],
-      // Never pitch black between two lamps: enough cold fill that a wall is still a wall.
-      ambientIntensity: 0.3,
+      // A little cold fill and no more: an unlit stretch may be black (the owner, 2026-10-05).
+      ambientIntensity: 0.1,
       background: [0, 0, 0, 1],
       antialias: "msaa",
       depthOutput: true,

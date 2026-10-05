@@ -186,7 +186,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
  */
 export const BORE_SURFACE_WGSL = `// @use surface-detail
 struct Params {
-  wet: f32, // @default 0.5  How much water still runs: the tracks down the wall and the pools on the deck.
+  wet: f32, // @default 0.4  How much water still runs: the tracks down the wall and the pools on the deck.
   grime: f32, // @default 0.85  Rust, soot and silt.
   lamp: f32, // @default 14  Radiance of the lamp plates in the crown.
 };
@@ -244,14 +244,15 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   // What still shines: the running tracks, and pools where the deck dips.
   let pool = step(2.5, what) * smoothstep(0.5, 0.62, stain.value);
   let film = clamp(p.wet * max(run * 0.9, pool), 0.0, 1.0);
-  rough = mix(rough + 0.08 * (grit.value - 0.5), 0.09, film);
+  rough = mix(rough + 0.08 * (grit.value - 0.5), 0.12, film);
   albedo = albedo * (1.0 - 0.35 * film);
 
   o.albedo = vec4f(albedo, 1.0);
   o.roughness = clamp(rough, 0.06, 1.0);
   o.metallic = metal * (1.0 - film);
   // Pitted and spalled where dry; water lies flat.
-  o.normal = detailBump(s.normal, stain.gradient * 0.55 * 0.4 + spall.gradient * 4.3 * 0.5 + grit.gradient * 31.0 * 0.12, relief * (1.0 - 0.85 * film));
+  // (Fine grit in the normal made every lit metre of wall sparkle: it roughens, it does not glint.)
+  o.normal = detailBump(s.normal, stain.gradient * 0.55 * 0.4 + spall.gradient * 4.3 * 0.42 + grit.gradient * 31.0 * 0.025, relief * (1.0 - 0.85 * film));
 
   // A lamp plate in the crown at every lamp station; each has its own steadiness.
   let station = floor(along / LAMP);

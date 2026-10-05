@@ -103,6 +103,20 @@ const PLACE_PARAMS = `  travel: f32, // @default 0  Distance travelled along the
   swim: f32, // @default 0  Let go of the wall and beat the tentacles together like a squid: 0 walking, 1 swimming. A chamber makes it swim whatever this says.
   stroke: f32, // @default 0  Where the beat is, 0 to 1: flung open at 0, snapped shut by a quarter, drifting open again.`;
 
+/**
+ * How a robot that nothing holds wanders off the tunnel's axis: two slow sines each way,
+ * `[metres, radians a second, how much of the robot's own count, phase]`. One table, read by the
+ * rig on the GPU and, for the robot the camera follows, by the camera (document.ts): a close
+ * shot rides with it.
+ */
+const ADRIFT: Readonly<Record<"x" | "y", ReadonlyArray<readonly [number, number, number, number]>>> = {
+  x: [[0.5, 0.31, 1, 0], [0.22, 0.73, 1.7, 1.3]],
+  y: [[0.38, 0.23, 0.6, 2.0], [0.18, 0.57, 1, 0]],
+};
+const adriftWgsl = (axis: "x" | "y"): string => ADRIFT[axis].map(([metres, rate, own, phase]) => `${metres} * sin(time * ${rate} + own * ${own} + ${phase})`).join(" + ");
+/** Where the pack's leader (no place of its own off the pack's) has wandered to, fully adrift: metres right or up, as an expression. */
+export const adriftExpression = (axis: "x" | "y"): string => `(${ADRIFT[axis].map(([metres, rate, , phase]) => `${metres} * sin(abstime * ${rate} + ${phase})`).join(" + ")})`;
+
 const ROBOT_FRAME = `${pathWgsl()}
 // How much it swims at z: what it is told, or a chamber's say-so, read a little way ahead so
 // it has let go before the wall is out of reach.
@@ -132,7 +146,7 @@ fn robotFrame(z: f32, offset: vec3f, roll: f32, look: vec2f, time: f32, adrift: 
   var frame: Frame;
   let own = offset.z * 1.3 + offset.x * 2.1;
   let drift = vec2f(sin(time * 0.9 + offset.z), sin(time * 1.3 + offset.z * 1.7)) * 0.05
-    + adrift * vec2f(0.5 * sin(time * 0.31 + own) + 0.22 * sin(time * 0.73 + own * 1.7 + 1.3), 0.38 * sin(time * 0.23 + own * 0.6 + 2.0) + 0.18 * sin(time * 0.57 + own));
+    + adrift * vec2f(${adriftWgsl("x")}, ${adriftWgsl("y")});
   frame.origin = tunnel.origin + tunnel.right * (offset.x + drift.x) + tunnel.up * (offset.y + drift.y);
   frame.forward = pathTangent(z + 1.2);
   let right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));

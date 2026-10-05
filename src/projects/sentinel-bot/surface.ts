@@ -29,7 +29,7 @@ ${MIRRORED.map((index) => `  ${lampParameter(index)}: vec3f, // @default [0, 2.2
   eyeGlow: f32, // @default 9  Radiance of the eye lenses.
   eyeColor: vec3f, // @default [1, 0.06, 0.03]  Their colour.
   coreGlow: f32, // @default 0.01  Radiance of a tentacle's core at rest: barely an ember.
-  pulseGlow: f32, // @default 3  Radiance of a core fully charged.
+  pulseGlow: f32, // @default 2  Radiance of a core fully charged.
 };
 
 // What each drawn piece brings of its own: the rig's point attributes of the same names (rig.ts).
@@ -87,29 +87,39 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
 
   // ── Age ──
   let wear = p.wear * ages;
+  var pitted = s.normal;
   if (wear > 0.0) {
     let skin = s.local + vec3f(17.0, 31.0, 7.0) * s.instance.seed;
     let blotch = detailFbm(skin * 2.6, 4, s.footprint).value;
     let wet = detailFbm(skin * 1.4 + vec3f(41.0, 13.0, 29.0), 3, s.footprint).value;
-    let grain = detailFbm(skin * 48.0, 3, s.footprint).value;
+    let grain = detailFbm(skin * 48.0, 3, s.footprint);
+    // Scores and scratches: long thin marks the way things have dragged along it, each a hair wide.
+    let score = detailFbm(vec3f(skin.x * 55.0, skin.y * 55.0, skin.z * 2.5) + vec3f(9.0), 3, s.footprint).value;
+    let scratched = wear * smoothstep(0.7, 0.76, score);
     // Edges and raised detail, rubbed through to the metal.
-    let rubbed = wear * detailEdgeWear(s.curvature, 28.0, grain);
-    albedo = mix(albedo, vec3f(0.4, 0.39, 0.38), rubbed * 0.7);
+    let rubbed = clamp(wear * detailEdgeWear(s.curvature, 18.0, grain.value) + scratched * 0.85, 0.0, 1.0);
+    albedo = mix(albedo, vec3f(0.55, 0.53, 0.5), rubbed * 0.8);
     rough = mix(rough, 0.3, rubbed * 0.7);
     metal = mix(metal, 1.0, rubbed);
     // Rust where it has stood wet, pitted.
-    let rust = wear * smoothstep(0.52, 0.74, wet) * (0.35 + 0.65 * grain) * (1.0 - rubbed);
-    albedo = mix(albedo, vec3f(0.1, 0.04, 0.016), rust);
+    let rust = wear * smoothstep(0.46, 0.7, wet) * (0.4 + 0.6 * grain.value) * (1.0 - rubbed);
+    albedo = mix(albedo, vec3f(0.17, 0.062, 0.022), rust);
     rough = mix(rough, 0.9, rust);
     metal = mix(metal, 0.0, rust);
-    // Dust and soot lying on it, thickest on what faces up.
-    let dust = wear * smoothstep(0.42, 0.68, blotch) * (0.45 + 0.55 * max(s.normal.y, 0.0)) * (1.0 - rubbed);
-    albedo = mix(albedo, vec3f(0.04, 0.036, 0.031), dust * 0.85);
-    rough = mix(rough, 0.96, dust * 0.85);
-    metal = mix(metal, 0.0, dust * 0.85);
-    // And no patch of it quite as smooth as the next.
-    rough = rough + wear * (grain - 0.5) * 0.22;
+    // Soot and oil baked on, in patches: darker and duller, still metal underneath.
+    let soot = wear * smoothstep(0.38, 0.62, blotch) * (1.0 - rubbed);
+    albedo = albedo * (1.0 - 0.6 * soot);
+    rough = mix(rough, 0.78, soot * 0.7);
+    // Dust lying on what faces up.
+    let dust = wear * smoothstep(0.5, 0.75, 1.0 - blotch) * max(s.normal.y, 0.0) * (1.0 - rubbed);
+    albedo = mix(albedo, vec3f(0.05, 0.045, 0.038), dust * 0.8);
+    rough = mix(rough, 0.96, dust * 0.8);
+    metal = mix(metal, 0.0, dust * 0.8);
+    // And no patch of it quite as smooth as the next; pitted all over.
+    rough = rough + wear * (grain.value - 0.5) * 0.3;
+    pitted = detailBump(s.normal, grain.gradient * 48.0, 0.0035 * wear);
   }
+  o.normal = pitted;
   o.albedo = vec4f(albedo, 1.0);
   o.roughness = clamp(rough, 0.05, 1.0);
   o.metallic = metal;
