@@ -44,6 +44,8 @@ interface Walk {
   readonly step: number;
   /** A joint's place; undefined while it is stowed in the body. */
   at(instant: number, tentacle: number, station: number): Vec | undefined;
+  /** Where a tentacle leaves the body: its first ring's place, which a stowed ring keeps. */
+  socket(instant: number, tentacle: number): Vec;
   slip(instant: number, tentacle: number, station: number): number;
   /** How much of a pulse is on the joint: 0 at rest. */
   charge(instant: number, tentacle: number, station: number): number;
@@ -93,6 +95,10 @@ async function walk(instants: number, parameters: Record<string, number | number
       const index = slot(instant, tentacle, station);
       if ((kind.floats[index * kind.stride] as number) < 0) return undefined;
       const base = index * position.stride;
+      return [position.floats[base] as number, position.floats[base + 1] as number, position.floats[base + 2] as number];
+    },
+    socket(instant, tentacle) {
+      const base = slot(instant, tentacle, 0) * position.stride;
       return [position.floats[base] as number, position.floats[base + 1] as number, position.floats[base + 2] as number];
     },
     slip: (instant, tentacle, station) => slip.floats[slot(instant, tentacle, station) * slip.stride] as number,
@@ -238,7 +244,8 @@ describe("the sentinel's rig — every joint, across two strides", () => {
   it("swims: every claw lets go and trails behind its socket, flung wide at the top of the beat and drawn in after the snap", async () => {
     /** How far behind its socket each claw trails (metres), and how far off the tunnel's axis the claws stand on average. */
     const trailing = async (stroke: number): Promise<{ behind: number[]; spread: number }> => {
-      const pose = await walk(1, { swim: 1, stroke });
+      // On rails (Carry 0): adrift, the body noses off the tunnel's heading, and "behind" below is measured along the tunnel.
+      const pose = await walk(1, { swim: 1, stroke, carry: 0 });
       const behind: number[] = [];
       let spread = 0;
       for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) {
@@ -285,6 +292,39 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     expect(held).toBeGreaterThan(TENTACLES / 2);
   }, 120_000);
 
+  it("is carried, not on rails: walking it hangs toward the tentacles that hold, swimming it is adrift, and Carry is the difference", async () => {
+    const INSTANTS = 64;
+    /** The middle of the ten sockets at each instant: the body, give or take a constant. */
+    const middles = async (parameters: Record<string, number>): Promise<Vec[]> => {
+      const pose = await walk(INSTANTS, parameters);
+      return Array.from({ length: INSTANTS }, (_, instant) => {
+        const sum: Vec = [0, 0, 0];
+        for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) {
+          const socket = pose.socket(instant, tentacle);
+          sum[0] += socket[0] / TENTACLES;
+          sum[1] += socket[1] / TENTACLES;
+          sum[2] += socket[2] / TENTACLES;
+        }
+        return sum;
+      });
+    };
+    /** How far the body is from where it would be on rails, at each instant. */
+    const off = async (parameters: Record<string, number>): Promise<number[]> => {
+      const carried = await middles({ ...parameters, carry: 1 });
+      const rails = await middles({ ...parameters, carry: 0 });
+      return carried.map((middle, instant) => norm(minus(middle, rails[instant] as Vec)));
+    };
+    // Walking with six of the ten on the wall: it is off the rails by centimetres, never by much, and not by the same amount all the way.
+    const walking = await off({ crawl: 0.6 });
+    expect(Math.max(...walking)).toBeGreaterThan(0.04);
+    expect(Math.max(...walking)).toBeLessThan(0.45);
+    expect(Math.max(...walking) - Math.min(...walking)).toBeGreaterThan(0.03);
+    // Swimming: adrift by up to most of a metre across and along (the fan's robots are one robot at 64 places, each with its own count).
+    const swimming = await off({ swim: 1, stroke: 0.3 });
+    expect(Math.max(...swimming)).toBeGreaterThan(0.3);
+    expect(Math.max(...swimming)).toBeLessThan(1.4);
+  }, 180_000);
+
   it("pulses: a kick's pulse is brightest on the ring it has reached, on every tentacle, and gone at rest", async () => {
     // 0.2 s after a kick the crest is 9 m/s × 0.2 s = 1.8 m along: ring 30 at a 0.06 m pitch.
     const SINCE = 0.2;
@@ -301,6 +341,49 @@ describe("the sentinel's rig — every joint, across two strides", () => {
       for (let ring = 0; ring < FACTS.ringCount; ring += 1) expect(rest.charge(0, tentacle, ring)).toBe(0);
     }
   }, 120_000);
+
+  it("shows the track along the cores three more ways: a meter's head, bands that step out on the beat, sparks", async () => {
+    // Every tentacle free and at full length, no pulse: ring r is 0.06 r metres from its socket.
+    const quiet = { crawl: 0, pulse: 100 };
+    const along = (pose: Walk, tentacle: number): number[] => Array.from({ length: FACTS.ringCount }, (_, ring) => pose.charge(0, tentacle, ring));
+
+    // METER at a half: each tentacle's head stands between 0.375 and 0.625 of its length out (each reads a
+    // little differently), nothing is lit beyond it, and back at the body there is only the trail: 0.05.
+    const meter = await walk(1, { ...quiet, meter: 0.5 });
+    const heads = new Set<number>();
+    for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) {
+      const charges = along(meter, tentacle);
+      const head = charges.indexOf(Math.max(...charges));
+      heads.add(head);
+      expect(head * FACTS.ringPitch).toBeGreaterThan(0.375 * FACTS.hubDistance - 0.3);
+      expect(head * FACTS.ringPitch).toBeLessThan(0.625 * (FACTS.hubDistance + 0.5));
+      expect(charges[head] as number).toBeGreaterThan(0.5);
+      expect(Math.abs((charges[2] as number) - 0.05)).toBeLessThan(1e-6);
+      expect(Math.max(...charges.slice(head + 5))).toBe(0);
+    }
+    expect(heads.size).toBeGreaterThan(3);
+
+    // CHASE: bands a third of a tentacle apart; a whole number on the phase is the same picture, a half is not.
+    const bands = along(await walk(1, { ...quiet, chase: 1, chasePhase: 0.25 }), 0);
+    const stepped = along(await walk(1, { ...quiet, chase: 1, chasePhase: 1.25 }), 0);
+    const halfway = along(await walk(1, { ...quiet, chase: 1, chasePhase: 0.75 }), 0);
+    const crests = bands.filter((value, ring) => ring > 0 && ring < bands.length - 1 && value > 0.5 && value >= (bands[ring - 1] as number) && value > (bands[ring + 1] as number)).length;
+    expect(crests).toBe(3);
+    expect(Math.max(...bands.map((value, ring) => Math.abs(value - (stepped[ring] as number))))).toBeLessThan(1e-3);
+    expect(Math.max(...bands.map((value, ring) => Math.abs(value - (halfway[ring] as number))))).toBeGreaterThan(0.9);
+
+    // SPARK: single cores, wholly lit or not at all, about one in fourteen at any moment.
+    const sparks = await walk(1, { ...quiet, spark: 1 });
+    const all = Array.from({ length: TENTACLES }, (_, tentacle) => along(sparks, tentacle)).flat();
+    expect(all.every((value) => value === 0 || value === 1)).toBe(true);
+    const lit = all.filter((value) => value === 1).length / all.length;
+    expect(lit).toBeGreaterThan(0.03);
+    expect(lit).toBeLessThan(0.12);
+
+    // Cut all three and the cores carry nothing.
+    const none = await walk(1, quiet);
+    expect(Math.max(...Array.from({ length: TENTACLES }, (_, tentacle) => along(none, tentacle)).flat())).toBe(0);
+  }, 180_000);
 
   it("gestures: a tentacle with nothing to hold reaches out instead of trailing", async () => {
     /** How far behind its socket each wrist is (metres), with every tentacle free. */

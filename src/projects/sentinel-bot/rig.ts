@@ -87,6 +87,8 @@ export const JOINT_ATTRIBUTES = JSON.stringify([
   // How much of a pulse is on the piece: 0 at rest, 1 under a crest that has just left the body. The material's
   // instance field of the same name reads it and says how bright that is (surface.ts).
   { name: "charge", type: "f32", default: [0] },
+  // Which piece it is, 0 to 1: the material ages each piece in its own way (surface.ts).
+  { name: "seed", type: "f32", default: [0] },
   // What the point is (KIND): what a draw's Group picks its points by.
   { name: "kind", type: "f32", default: [-1] },
   // Metres between the claw's mouth and where the gait wants it; zero while its rung is in reach.
@@ -115,25 +117,37 @@ fn robotZ(travel: f32, offset: vec3f, swim: f32, stroke: f32) -> f32 {
   return z + swimAt(swim, z) * 0.5 * sin(6.2831853 * (stroke - 0.125));
 }
 
+// Adrift it does not keep its distance either: it gains and loses most of a metre on a slow count.
+fn adriftZ(time: f32, offset: vec3f) -> f32 {
+  return 0.7 * sin(time * 0.21 + offset.z * 0.9 + offset.x * 1.7);
+}
+
 // The robot's own frame: on the tunnel's frame at its distance, facing a little way ahead so it
 // turns into a bend before it reaches it, banking into the bend, and never hanging dead still.
-fn robotFrame(z: f32, offset: vec3f, roll: f32, look: vec2f, time: f32) -> Frame {
+// \`adrift\` (0 to 1) is how much it is in the water and not on the wall: it wanders half a
+// metre off the axis on slow counts of its own, noses about and rolls, as a thing does that
+// nothing holds.
+fn robotFrame(z: f32, offset: vec3f, roll: f32, look: vec2f, time: f32, adrift: f32) -> Frame {
   let tunnel = pathFrame(z);
   var frame: Frame;
-  let drift = vec2f(sin(time * 0.9 + offset.z), sin(time * 1.3 + offset.z * 1.7)) * 0.05;
+  let own = offset.z * 1.3 + offset.x * 2.1;
+  let drift = vec2f(sin(time * 0.9 + offset.z), sin(time * 1.3 + offset.z * 1.7)) * 0.05
+    + adrift * vec2f(0.5 * sin(time * 0.31 + own) + 0.22 * sin(time * 0.73 + own * 1.7 + 1.3), 0.38 * sin(time * 0.23 + own * 0.6 + 2.0) + 0.18 * sin(time * 0.57 + own));
   frame.origin = tunnel.origin + tunnel.right * (offset.x + drift.x) + tunnel.up * (offset.y + drift.y);
   frame.forward = pathTangent(z + 1.2);
   let right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));
   let up = cross(frame.forward, right);
   // How fast the heading swings, measured a couple of metres either side: the inside of the turn drops.
-  let bank = roll - 1.5 * (pathTangent(z + 2.0).x - pathTangent(z - 2.0).x);
+  let bank = roll + adrift * 0.28 * sin(time * 0.19 + own * 0.8) - 1.5 * (pathTangent(z + 2.0).x - pathTangent(z - 2.0).x);
+  // Adrift it noses off the tunnel's heading: it points where it is wandering to.
+  let nose = look + adrift * vec2f(0.16 * cos(time * 0.31 + own) + 0.1 * cos(time * 0.73 + own * 1.7 + 1.3), 0.12 * cos(time * 0.23 + own * 0.6 + 2.0));
   let banked = right * cos(bank) + up * sin(bank);
   let crown = up * cos(bank) - right * sin(bank);
   // The head turns: about its own up, then about its own right.
-  let ahead = frame.forward * cos(look.x) + banked * sin(look.x);
-  frame.right = banked * cos(look.x) - frame.forward * sin(look.x);
-  frame.forward = ahead * cos(look.y) + crown * sin(look.y);
-  frame.up = crown * cos(look.y) - ahead * sin(look.y);
+  let ahead = frame.forward * cos(nose.x) + banked * sin(nose.x);
+  frame.right = banked * cos(nose.x) - frame.forward * sin(nose.x);
+  frame.forward = ahead * cos(nose.y) + crown * sin(nose.y);
+  frame.up = crown * cos(nose.y) - ahead * sin(nose.y);
   return frame;
 }
 `;
@@ -193,6 +207,12 @@ ${PLACE_PARAMS}
   gesture: f32, // @default 0  What a tentacle with no rung to hold does: 0 trails behind, 1 reaches out and feels about.
   snap: f32, // @default 0  Shuts the claws of the tentacles that hold nothing: 0 open, 1 shut. A hat on it and they clack.
   pulse: f32, // @default 100  Seconds since the last pulse left the body: it runs down every tentacle's core and fades. Drive it from a kick.
+  carry: f32, // @default 1  How much the body is carried by the tentacles that hold: it hangs toward them, sags as one lets go, and goes forward in pulls. 0 is on rails.
+  meter: f32, // @default 0  The cores as a level meter: lit from the body out to this share of each tentacle, 0 to 1. Drive it from a level.
+  chase: f32, // @default 0  Brightness of the bands that run out along the cores.
+  chasePhase: f32, // @default 0  Where those bands are: they move one band's spacing out for each whole number. Drive it from the beat.
+  bands: f32, // @default 3  How many bands a tentacle carries at once.
+  spark: f32, // @default 0  Brightness of single cores flashing at random. Drive it from a hat.
 };
 ${ROBOT_FRAME}
 const ROBOTS: u32 = ${robots.length}u;
@@ -291,10 +311,47 @@ fn plant(tentacle: u32, step: f32, stride: f32, bodyZ: f32, own: f32, seed: u32,
   return wall.origin + (wall.right * cos(theta) + wall.up * sin(theta)) * (params.bore * (1.0 + CHAMBER_SWELL * chamberAt(z)));
 }
 
+// How firmly tentacle t is told to take the wall. Crawl says how many do; WHICH ones moves
+// round the body as it goes (one tentacle's turn every 9 m), so no tentacle holds for ever and
+// none trails for ever. At Crawl 1 every one holds.
+fn grabbing(tentacle: u32, crawl: f32, bodyZ: f32) -> f32 {
+  let all = f32(TENTACLES);
+  let centre = bodyZ / 9.0;
+  let off = ENGAGE[tentacle] - centre;
+  let apart = abs(off - all * round(off / all));
+  let reach = clamp(crawl, 0.0, 1.0) * (all * 0.5 + 0.3);
+  return 1.0 - smoothstep(reach - 0.3, reach, apart);
+}
+
+// One tentacle's gait: how far through its step it is.
+fn swingOf(tentacle: u32, bodyZ: f32, stride: f32, count: f32, duty: f32) -> f32 {
+  let cycle = bodyZ / stride + STEP_PHASE[tentacle] + count;
+  return smoothstep(0.0, 1.0, clamp((cycle - floor(cycle) - duty) / max(1.0 - duty, 1e-3), 0.0, 1.0));
+}
+
+// What carries the body: the tentacles that hold. Across the bore it hangs toward where they
+// hold (x right, y up, as a share of the bore's radius); z is how many of the ten are holding.
+fn carried(bodyZ: f32, stride: f32, count: f32, seed: u32, params: Params) -> vec3f {
+  let tunnel = pathFrame(bodyZ);
+  var toward = vec2f(0.0);
+  var holding = 0.0;
+  for (var t = 0u; t < TENTACLES; t = t + 1u) {
+    let swing = swingOf(t, bodyZ, stride, count, params.duty);
+    let hold = grabbing(t, params.crawl, bodyZ) * (1.0 - sin(swing * 3.14159265));
+    let step = floor(bodyZ / stride + STEP_PHASE[t] + count);
+    let held = mix(plant(t, step, stride, bodyZ, count, seed, params), plant(t, step + 1.0, stride, bodyZ, count, seed, params), swing) - tunnel.origin;
+    let across = vec2f(dot(held, tunnel.right), dot(held, tunnel.up));
+    toward = toward + hold * across / max(length(across), 1e-3);
+    holding = holding + hold;
+  }
+  return vec3f(toward / max(holding, 1.0), holding);
+}
+
 fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
   q.slip = 0.0;
   q.charge = 0.0;
+  q.seed = chance(ctx.index, PICK_FIRST, 7u);
   let robot = ctx.index / ROBOT_POINTS;
   if (robot >= ROBOTS) {
     q.kind = -1.0;
@@ -306,8 +363,22 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let params = ctx.params;
   let offset = params.offset + ROBOT_OFFSET[robot];
   let swimming = swimAt(params.swim, params.travel + offset.z);
+  // Where the gait counts from: the rungs it plants on are a matter of how far it has come.
   let bodyZ = robotZ(params.travel, offset, params.swim, params.stroke);
-  let body = robotFrame(bodyZ, offset, params.roll, params.look, ctx.absTime);
+  let stride = PATH_PERIOD / round(PATH_PERIOD / max(params.stride, 0.5));
+  let count = f32(robot) * 0.37 * params.variety;
+  // A pack in unison plants on the same ribs; with variety each robot draws its own.
+  let seed = 1u + u32(f32(robot) * params.variety + 0.5) * 16u;
+  // The body is not on rails. Walking, the tentacles that hold carry it: it hangs toward
+  // them, sags a little for each one in the air, leans that way, and goes forward in pulls,
+  // twice a stride. Swimming, nothing holds it and it is adrift.
+  let hang = carried(bodyZ, stride, count, seed, params);
+  let afoot = (1.0 - swimming) * params.carry * clamp(hang.z, 0.0, 1.0);
+  let sway = vec3f(hang.xy * 0.42, 0.0) * afoot + vec3f(0.0, -0.012 * (f32(TENTACLES) - hang.z) * afoot, 0.0);
+  let pull = afoot * 0.11 * sin(12.5663706 * bodyZ / stride);
+  let adrift = swimming * params.carry;
+  let frameZ = bodyZ + pull + adrift * adriftZ(ctx.absTime, offset);
+  let body = robotFrame(frameZ, offset + sway, params.roll - hang.x * 0.22 * afoot, params.look + vec2f(hang.x * 0.1 * afoot, 0.0), ctx.absTime, adrift);
   if (PICK_BODY) {
     // The robot's own point: where its body is and how it is turned (the kit's robot frame: +Z forward, +Y up).
     q.position = body.origin;
@@ -320,20 +391,15 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let radial = normalize(body.right * socket.x + body.up * socket.y);
 
   // ── Walking: stance on one rib, then a swing to the next ──
-  let stride = PATH_PERIOD / round(PATH_PERIOD / max(params.stride, 0.5));
-  let count = f32(robot) * 0.37 * params.variety;
-  let cycle = bodyZ / stride + STEP_PHASE[tentacle] + count;
-  let step = floor(cycle);
-  let swing = smoothstep(0.0, 1.0, clamp((cycle - step - params.duty) / max(1.0 - params.duty, 1e-3), 0.0, 1.0));
-  // A pack in unison plants on the same ribs; with variety each robot draws its own.
-  let seed = 1u + u32(f32(robot) * params.variety + 0.5) * 16u;
+  let step = floor(bodyZ / stride + STEP_PHASE[tentacle] + count);
+  let swing = swingOf(tentacle, bodyZ, stride, count, params.duty);
   let rib = plant(tentacle, step, stride, bodyZ, count, seed, params);
   let next = plant(tentacle, step + 1.0, stride, bodyZ, count, seed, params);
   var walking = mix(rib, next, swing);
   let aloft = sin(swing * 3.14159265);
   walking = mix(walking, pathAt(walking.z), params.lift * aloft);
 
-  let grab = smoothstep(0.0, 1.0, clamp(params.crawl * f32(TENTACLES) - ENGAGE[tentacle], 0.0, 1.0)) * (1.0 - swimming);
+  let grab = grabbing(tentacle, params.crawl, bodyZ) * (1.0 - swimming);
   let leave = normalize(body.forward * -0.6 + radial * 0.8);
 
   // ── Trailing: the neck curls back into the wake (less with Flare), the arm sways, the plane rocks ──
@@ -399,9 +465,20 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   at = at + (normal * cos(ripple) + binormal * sin(ripple)) * (params.wave * sin(3.14159265 * d / run) * (1.0 - 0.6 * planted));
   // The kit's joint frame and the curve family's: +Z the tangent, +Y the normal, +X = normal × tangent.
   let frame = quatFromFrame(-binormal, normal, tangent);
+  // ── What runs along the cores ──
   // A pulse leaves the body and runs to the claw at 9 metres a second, a hand's width long, fading as it goes.
   let crest = d - 9.0 * params.pulse;
-  q.charge = exp(-crest * crest / 0.12) * exp(-params.pulse * 1.2);
+  var charge = exp(-crest * crest / 0.12) * exp(-params.pulse * 1.2);
+  // A level meter: a bright head as far out as the level says, each tentacle reading a little differently, and a
+  // faint trail back to the body. (Lit all the way it was the row of red dashes again.)
+  let reading = clamp(params.meter, 0.0, 1.0) * (0.75 + 0.5 * chance(tentacle, 3u, seed)) * LENGTH;
+  charge = charge + (1.0 - smoothstep(reading - 0.15, reading, d)) * (0.05 + 0.75 * smoothstep(reading - 0.45, reading, d)) * select(0.0, 1.0, params.meter > 0.001);
+  // Bands running out, one band's spacing a beat.
+  let band = 0.5 + 0.5 * cos(6.2831853 * (d / LENGTH * params.bands - params.chasePhase + f32(tentacle) * 0.1));
+  charge = charge + params.chase * pow(band, 8.0);
+  // Single cores flashing, a new draw fourteen times a second.
+  charge = charge + params.spark * select(0.0, 1.0, chance(ctx.index, u32(ctx.absTime * 14.0), seed + 5u) > 0.93);
+  q.charge = charge;
   // How far the claw's mouth is from where the gait wants it: zero while its rung is in reach.
   let mouth = along(bend, run);
   q.slip = grab * distance(root + out * mouth.x + plane * mouth.y, walking);

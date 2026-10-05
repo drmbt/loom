@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluateExpression } from "../../domain/expressions/evaluate.ts";
 import { CHAMBERS, PATH, chamberAt, chamberExpression, pathAt, pathExpression } from "./path.ts";
-import { LAMP_SPACING, LAMP_TONES, lampTone, lampToneExpression } from "./tunnel.ts";
+import { LAMP_GAINS, LAMP_SPACING, LAMP_TONES, lampTone, lampToneExpression } from "./tunnel.ts";
 
 /**
  * T1561b — the tunnel's centreline has three readers (the joints and the tunnel on the GPU,
@@ -59,8 +59,14 @@ describe("the tunnel path", () => {
       }
       seen.add(expected.join());
     }
-    // All three tones occur, so the rule is not one colour that trivially agrees with itself.
-    expect(seen.size).toBe(3);
+    // All three tones occur at full light, and so do a failing lamp and one as good as dead, so
+    // the rule is not one colour that trivially agrees with itself.
+    for (const tone of [LAMP_TONES.bore, LAMP_TONES.hall, LAMP_TONES.alarm]) expect(seen.has(tone.join())).toBe(true);
+    expect(seen.has(LAMP_TONES.bore.map((channel) => channel * 0.4).join())).toBe(true);
+    expect(seen.has(LAMP_TONES.bore.map((channel) => channel * 0.06).join())).toBe(true);
+    // A third of a run gives a fifth of its light or less, and the alarm all of it.
+    expect(LAMP_GAINS.filter((gain) => gain <= 0.2).length).toBe(5);
+    expect(LAMP_GAINS[LAMP_TONES.alarmAt]).toBe(1);
     // The same lamp either side of the wrap.
     expect(lampTone(-1)).toEqual(lampTone(stations - 1));
     expect(LAMP_TONES.alarmEvery).toBeGreaterThan(1);

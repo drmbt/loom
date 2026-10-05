@@ -95,7 +95,8 @@ interface Slider {
 /** The panel's sliders. A slider is named after its channel, so `op('speed').chan.speed` reads the same word twice. */
 const ROBOT: readonly Slider[] = [
   { name: "slider_speed", caption: "Speed", value: 3.2, min: 0, max: 9 },
-  { name: "slider_crawl", caption: "Crawl", value: 1, min: 0, max: 1 },
+  // Six of the ten on the wall: the rest trail, reach and feel about, and which six moves round the body (rig.ts).
+  { name: "slider_crawl", caption: "Crawl", value: 0.6, min: 0, max: 1 },
   { name: "slider_swim", caption: "Swim", value: 0, min: 0, max: 1 },
   { name: "slider_stride", caption: "Stride", value: 3.2, min: 1.6, max: 4.4 },
   { name: "slider_flare", caption: "Flare", value: 0.25, min: 0, max: 1 },
@@ -110,6 +111,14 @@ const SCENE: readonly Slider[] = [
   { name: "slider_distance", caption: "Camera distance", value: 7.5, min: -9, max: 12 },
   { name: "slider_react", caption: "Listen", value: 1, min: 0, max: 2 },
   { name: "slider_haze", caption: "Haze", value: 0.035, min: 0, max: 0.12 },
+];
+
+// What runs along the tentacles' cores (rig.ts): each a way the track shows on the robot itself.
+const LEGS: readonly Slider[] = [
+  { name: "slider_legs", caption: "Leg glow", value: 1, min: 0, max: 3 },
+  { name: "slider_meter", caption: "Meter (lows)", value: 0.7, min: 0, max: 1 },
+  { name: "slider_chase", caption: "Chase (beat)", value: 0.3, min: 0, max: 2 },
+  { name: "slider_spark", caption: "Spark (hats)", value: 0.6, min: 0, max: 2 },
 ];
 
 /** A control's value. A widget is named kind_role (§T1593b) and publishes a channel named for the role alone: `speed` for `slider_speed`. */
@@ -205,7 +214,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       }, { label: `geometry_${piece.role}` }),
     ]);
 
-  const sliders = [...ROBOT, ...SCENE];
+  const sliders = [...ROBOT, ...SCENE, ...LEGS];
   const controls: GraphNode[] = [
     ...sliders.map((slider, index) => node(slider.name, "slider", [-3600 + (index % 4) * 300, 1500 + Math.floor(index / 4) * 250], { channel: slider.name.slice(slider.name.indexOf("_") + 1), caption: slider.caption, value: slider.value, min: slider.min, max: slider.max, step: 0 }, { label: slider.name })),
     node("toggle_perch", "toggle", [-3600, 2250], { channel: "perch", caption: "Perch", on: false }, { label: "toggle_perch" }),
@@ -227,6 +236,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       { label: "Scene", rect: { x: 6, y: 0, w: 6, h: 1 } },
       ...SCENE.map((slider, index) => ({ member: slider.name, rect: { x: 6, y: 1 + index, w: 6, h: 1 } })),
       { member: "xypad_view", rect: { x: 6, y: 1 + SCENE.length, w: 3, h: 3 } },
+      { label: "Legs", rect: { x: 6, y: 4 + SCENE.length, w: 6, h: 1 } },
+      ...LEGS.map((slider, index) => ({ member: slider.name, rect: { x: 6, y: 5 + SCENE.length + index, w: 6, h: 1 } })),
     ],
   });
 
@@ -290,7 +301,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
       lamps: expressionSlot(`${on("slider_lamp")} * 0.23 * (0.7 + ${LOW} * 0.8)`, 6),
       // How bright a kick's pulse is as it runs down the cores (the rig says where it is).
-      pulseGlow: expressionSlot(`3 * ${LISTEN}`, 3),
+      pulseGlow: expressionSlot(`3 * ${on("slider_legs")}`, 3),
     }, { label: "material_hull" }),
 
     ...pieceNodes({
@@ -301,8 +312,13 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       gesture: expressionSlot(`${on("slider_gesture")} * (0.5 + 0.5 * ${PERCHED}) * (0.7 + ${LOW} * 0.6)`, 0.3),
       // A hat clacks the idle claws.
       snap: expressionSlot(HAT, 0),
-      // Every kick sends a pulse down the cores.
+      // Every kick sends a pulse down the cores; the lows fill them like a meter; bands run out on the beat
+      // (dimly even in silence: it is never quite dark); the hats spark single cores.
       pulse: expressionSlot("op('count_kick').chan.kickCountSince", 100),
+      meter: expressionSlot(`${on("slider_meter")} * ${LOW}`, 0),
+      chase: expressionSlot(`${on("slider_chase")} * (0.1 + ${HIGH} * 0.9)`, 0.05),
+      chasePhase: expressionSlot(`${STROKE} * ${SHOWCASE_BEAT.beatsPerBar}`, 0),
+      spark: expressionSlot(`${on("slider_spark")} * ${HAT}`, 0),
       ...swimming,
       stride: expressionSlot(on("slider_stride"), 3.2),
       flare: expressionSlot(on("slider_flare"), 0.25),
@@ -360,8 +376,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_motes"].join(" "),
       camera: "camera_rig",
       lights: ["light_eyes", ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
-      ambientColor: [0.5, 0.62, 0.8, 1],
-      ambientIntensity: 0.015,
+      ambientColor: [0.3, 0.62, 0.66, 1],
+      // Never pitch black between two lamps: enough cold fill that a wall is still a wall.
+      ambientIntensity: 0.3,
       background: [0, 0, 0, 1],
       antialias: "msaa",
       depthOutput: true,

@@ -43,6 +43,17 @@ export const LAMP_TONES = {
   alarmAt: 7,
 } as const;
 
+/**
+ * How much of its light each lamp of a run of fifteen still gives: a third of them give a
+ * fifth of it or less (two of those no more than a filament's glow) and a fifth are failing, so the tunnel is dark for stretches and the robot crosses them by
+ * its own eyes. (The owner, 2026-10-05: "it shouldn't look like a hospital".) The alarm is lit.
+ * A tone below is this times the lamp's colour, so the plate, its light, the dust and the
+ * steel's reflection of it all go dark together.
+ */
+// Turns 3 and 11 stay lit: with a hall every seven and a half stations, those are the lamps in the halls.
+export const LAMP_GAINS: readonly number[] = [1, 0.2, 1, 1, 0.06, 0.4, 1, 1, 0.2, 0.06, 0.4, 1, 1, 0.2, 0.4];
+if (LAMP_GAINS.length !== LAMP_TONES.alarmEvery || LAMP_GAINS[LAMP_TONES.alarmAt] !== 1) throw new Error("tunnel.ts: LAMP_GAINS is one gain per station of a run, and the alarm is lit.");
+
 const STATIONS = Math.round(PATH.period / LAMP_SPACING);
 if (STATIONS % LAMP_TONES.alarmEvery !== 0) throw new Error(`tunnel.ts: ${LAMP_TONES.alarmEvery} does not divide the ${STATIONS} lamp stations of a period.`);
 
@@ -50,14 +61,19 @@ if (STATIONS % LAMP_TONES.alarmEvery !== 0) throw new Error(`tunnel.ts: ${LAMP_T
 export function lampTone(station: number): readonly [number, number, number] {
   const turn = station - LAMP_TONES.alarmEvery * Math.floor(station / LAMP_TONES.alarmEvery);
   if (turn === LAMP_TONES.alarmAt) return LAMP_TONES.alarm;
-  return chamberAt((station + 0.5) * LAMP_SPACING) > 0.5 ? LAMP_TONES.hall : LAMP_TONES.bore;
+  const gain = LAMP_GAINS[turn] as number;
+  const tone = chamberAt((station + 0.5) * LAMP_SPACING) > 0.5 ? LAMP_TONES.hall : LAMP_TONES.bore;
+  return [tone[0] * gain, tone[1] * gain, tone[2] * gain];
 }
 
 /** The same rule as three expressions of a station number (itself an expression). */
 export function lampToneExpression(station: string): readonly [string, string, string] {
   const alarm = `(mod(${station}, ${LAMP_TONES.alarmEvery}) == ${LAMP_TONES.alarmAt})`;
   const hall = `(${chamberExpression(`((${station}) + 0.5) * ${LAMP_SPACING}`)} > 0.5)`;
-  const channel = (index: 0 | 1 | 2): string => `(${alarm} * ${LAMP_TONES.alarm[index]} + (1 - ${alarm}) * (${hall} * ${LAMP_TONES.hall[index]} + (1 - ${hall}) * ${LAMP_TONES.bore[index]}))`;
+  // The gain of its place in the run: the sum of the gains whose turn this is (a dead lamp adds nothing).
+  const turn = `mod(${station}, ${LAMP_TONES.alarmEvery})`;
+  const gain = `(${LAMP_GAINS.map((value, index) => (value === 0 ? "" : `(${turn} == ${index}) * ${value}`)).filter((term) => term !== "").join(" + ")})`;
+  const channel = (index: 0 | 1 | 2): string => `(${alarm} * ${LAMP_TONES.alarm[index]} + (1 - ${alarm}) * ${gain} * (${hall} * ${LAMP_TONES.hall[index]} + (1 - ${hall}) * ${LAMP_TONES.bore[index]}))`;
   return [channel(0), channel(1), channel(2)];
 }
 
@@ -65,11 +81,14 @@ const wgslTone = (tone: readonly number[]): string => `vec3f(${tone.map((compone
 
 /** The rule as WGSL, for the wall's material and the motes. Needs `chamberAt` beside it. */
 const LAMP_TONE_WGSL = `const LAMP: f32 = ${LAMP_SPACING.toFixed(5)};
-// The tone of the lamp at a station (tunnel.ts, LAMP_TONES): cold in the bore, sodium in a hall, every fifteenth an alarm.
+const LAMP_GAIN = array<f32, ${LAMP_GAINS.length}>(${LAMP_GAINS.map((gain) => gain.toFixed(2)).join(", ")});
+// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,
+// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.
 fn lampTone(station: f32) -> vec3f {
   let turn = station - ${LAMP_TONES.alarmEvery}.0 * floor(station / ${LAMP_TONES.alarmEvery}.0);
   if (abs(turn - ${LAMP_TONES.alarmAt}.0) < 0.5) { return ${wgslTone(LAMP_TONES.alarm)}; }
-  return mix(${wgslTone(LAMP_TONES.bore)}, ${wgslTone(LAMP_TONES.hall)}, step(0.5, chamberAt((station + 0.5) * LAMP)));
+  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, ${LAMP_GAINS.length - 1}.5))];
+  return mix(${wgslTone(LAMP_TONES.bore)}, ${wgslTone(LAMP_TONES.hall)}, step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;
 }
 `;
 
@@ -158,14 +177,17 @@ fn process(p: Point, ctx: PointCtx) -> Point {
 }`;
 
 /**
- * The wall's surface. Dark and WET: the highlights carry the picture, so most of this is
- * about where the roughness drops (streaks running down from the crown, a film on the deck)
- * and how the relief catches a lamp. The lamps themselves are plates in the crown that glow.
+ * The wall's surface: OLD, and mostly DRY. Soot-black concrete segments stained with rust
+ * where water has run down from the ribs, a tide of silt toward the deck, iron ribs gone to
+ * rust, pipes whose paint is coming off. It is matt nearly everywhere; water shines only in
+ * the narrow tracks it still runs in and where it stands on the deck, so a highlight is an
+ * event. (The owner, 2026-10-05: "too shiny all around, not dark and gritty and grimy
+ * enough … the tunnel is very grey".) The lamps are plates in the crown that glow.
  */
 export const BORE_SURFACE_WGSL = `// @use surface-detail
 struct Params {
-  wet: f32, // @default 0.7  How much of the wall carries a film of water.
-  grime: f32, // @default 0.6  Rust and soot in the recesses.
+  wet: f32, // @default 0.5  How much water still runs: the tracks down the wall and the pools on the deck.
+  grime: f32, // @default 0.85  Rust, soot and silt.
   lamp: f32, // @default 14  Radiance of the lamp plates in the crown.
 };
 
@@ -174,42 +196,62 @@ ${chamberWgsl()}${LAMP_TONE_WGSL}
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceDefaults(s);
   let what = s.tint.r;
+  let own = s.tint.g;
   let around = s.tint.b;
   let along = s.tint.a;
-  let coarse = detailFbm(s.world * 1.7, 4, s.footprint);
-  let fine = detailFbm(s.world * 13.0, 3, s.footprint);
-  // Water runs down from the crown in streaks and pools on the deck.
-  let streak = detailFbm(vec3f(around * 90.0, along * 0.6, 3.0), 3, s.footprint).value;
-  let film = clamp(p.wet * (0.35 + 0.9 * smoothstep(0.42, 0.7, streak) + 0.5 * step(2.5, what)), 0.0, 1.0);
-  let recess = smoothstep(0.35, 0.75, coarse.value);
+  // 0 at the crown, 1 at the bottom of the bore.
+  let low = abs(around - 0.5) * 2.0;
+  let stain = detailFbm(s.world * 0.55, 4, s.footprint);
+  let spall = detailFbm(s.world * 4.3, 4, s.footprint);
+  let grit = detailFbm(s.world * 31.0, 3, s.footprint);
+  // Water comes down the wall: tracks a hand wide that run the long way round it.
+  let track = detailFbm(vec3f(along * 7.0, around * 2.2, 3.0), 3, s.footprint).value;
+  let run = smoothstep(0.6, 0.72, track) * (0.35 + 0.65 * low);
+  let dirt = p.grime * smoothstep(0.3, 0.72, stain.value);
+  let pit = smoothstep(0.52, 0.8, spall.value);
 
-  var albedo = vec3f(0.035, 0.038, 0.042);
-  var rough = 0.72;
+  // The liner: concrete segments, each cast on its own day.
+  var albedo = mix(vec3f(0.03, 0.03, 0.032), vec3f(0.16, 0.135, 0.105), 0.25 + 0.75 * own) * (0.55 + 0.6 * stain.value);
+  var rough = 0.9;
   var metal = 0.0;
+  var relief = 0.14;
   if (what > 2.5) {
-    // The deck: plate steel.
-    albedo = vec3f(0.03, 0.031, 0.033);
-    rough = 0.5;
-    metal = 0.85;
+    // The deck: plate steel under silt.
+    albedo = mix(vec3f(0.04, 0.038, 0.036), vec3f(0.09, 0.066, 0.04), dirt);
+    rough = 0.78;
+    metal = 0.5 * (1.0 - dirt);
+    relief = 0.09;
   } else if (what > 1.5) {
-    // Pipes and cable runs: painted, chipped.
-    albedo = mix(vec3f(0.05, 0.055, 0.06), vec3f(0.07, 0.03, 0.02), step(0.55, s.tint.g));
-    rough = 0.45;
-    metal = 0.4;
+    // Pipes and cable runs: ochre, oxide green or red lead, flaking to the iron.
+    let paint = mix(mix(vec3f(0.13, 0.105, 0.03), vec3f(0.03, 0.07, 0.052), step(0.34, own)), vec3f(0.12, 0.03, 0.02), step(0.67, own));
+    albedo = mix(paint, vec3f(0.06, 0.05, 0.046), pit);
+    rough = 0.66;
+    metal = 0.55 * pit;
+    relief = 0.06;
   } else if (what > 0.5) {
-    // Ribs: bare steel.
-    albedo = vec3f(0.045, 0.046, 0.05);
-    rough = 0.4;
-    metal = 0.9;
+    // Ribs: iron, mostly rust.
+    albedo = mix(vec3f(0.05, 0.048, 0.05), vec3f(0.16, 0.066, 0.026), 0.35 + 0.65 * smoothstep(0.25, 0.7, spall.value) * p.grime);
+    rough = 0.74;
+    metal = 0.6 * (1.0 - pit);
+    relief = 0.08;
   }
-  let rust = recess * p.grime;
-  albedo = mix(albedo, vec3f(0.07, 0.028, 0.012), rust * 0.6) * (1.0 - 0.45 * rust);
-  rough = mix(rough + 0.2 * rust, 0.07, film);
+  // Rust and soot: brown where water has carried it, black where nothing has washed it.
+  albedo = mix(albedo, vec3f(0.15, 0.062, 0.024), run * p.grime * 0.75);
+  albedo = mix(albedo, vec3f(0.014, 0.014, 0.015), dirt * 0.55);
+  // Silt at the foot of the wall.
+  let silt = p.grime * smoothstep(0.62, 0.86, low + (stain.value - 0.5) * 0.25) * step(what, 2.5);
+  albedo = mix(albedo, vec3f(0.07, 0.052, 0.034), silt * 0.8);
+  // What still shines: the running tracks, and pools where the deck dips.
+  let pool = step(2.5, what) * smoothstep(0.5, 0.62, stain.value);
+  let film = clamp(p.wet * max(run * 0.9, pool), 0.0, 1.0);
+  rough = mix(rough + 0.08 * (grit.value - 0.5), 0.09, film);
+  albedo = albedo * (1.0 - 0.35 * film);
 
   o.albedo = vec4f(albedo, 1.0);
-  o.roughness = clamp(rough, 0.05, 1.0);
-  o.metallic = metal;
-  o.normal = detailBump(s.normal, coarse.gradient * 1.7 + fine.gradient * 13.0 * 0.25, 0.05 * (1.0 - 0.7 * film));
+  o.roughness = clamp(rough, 0.06, 1.0);
+  o.metallic = metal * (1.0 - film);
+  // Pitted and spalled where dry; water lies flat.
+  o.normal = detailBump(s.normal, stain.gradient * 0.55 * 0.4 + spall.gradient * 4.3 * 0.5 + grit.gradient * 31.0 * 0.12, relief * (1.0 - 0.85 * film));
 
   // A lamp plate in the crown at every lamp station; each has its own steadiness.
   let station = floor(along / LAMP);
@@ -269,7 +311,7 @@ fn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft:
 export const HAZE_WGSL = `${SHARED_UNIFORMS_WGSL}
 struct Params {
   density: f32, // @default 0.035  How fast the air closes in, per metre.
-  color: vec3f, // @default [0.012, 0.022, 0.034]  What the far end of the tunnel fades to.
+  color: vec3f, // @default [0.016, 0.04, 0.044]  What the far end of the tunnel fades to: never black, so what stands in front of it has an outline.
   far: f32, // @default 240  The camera's far plane (depth arrives as distance ÷ far).
 };
 

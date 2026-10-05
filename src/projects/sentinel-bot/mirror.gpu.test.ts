@@ -17,7 +17,8 @@ import { LAMPS_MIRRORED, LAMP_TONES } from "./tunnel.ts";
  * ambient is zero, so every byte in the frame is the reflection.
  *
  * The mirror is the top face of the fixture cube (y = 0.5) wearing the hull material as the
- * shell (the file's `loom_heat` 0). The frame is an odd number of pixels across, so the
+ * shell (the file's `loom_heat` 0), new from the works: Wear 0, so the steel is the clean one
+ * and the arithmetic below is all of it. The frame is an odd number of pixels across, so the
  * middle pixel's ray is the camera's axis and meets the face at (0, 0.5, 0).
  */
 
@@ -64,7 +65,7 @@ async function middlePixel(overrides: Record<string, unknown> = {}): Promise<num
   const lamps = Object.fromEntries(Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, index) => [lampParameter(index), index === LAMPS_MIRRORED ? OVERHEAD : AWAY]));
   const nodes = [
     node("mesh_cube", "meshFileIn", { vertices: FACTS.vertices, triangles: FACTS.triangles, parts: FACTS.parts }, "mesh_cube"),
-    node("material_hull", "materialWgsl", { model: "pbr", source: HULL_SURFACE_WGSL, ...lamps, station: COLD_STATION, lamps: LAMPS, pool: POOL, deck: 0.2, gloss: GLOSS, steel: STEEL, ...overrides }, "material_hull"),
+    node("material_hull", "materialWgsl", { model: "pbr", source: HULL_SURFACE_WGSL, ...lamps, station: COLD_STATION, lamps: LAMPS, pool: POOL, deck: 0.2, gloss: GLOSS, steel: STEEL, wear: 0, ...overrides }, "material_hull"),
     node("geometry_mirror", "geometry", { mode: "surface", material: "material_hull" }, "geometry_mirror"),
     node("camera_above", "camera", { eye: [0, MET[1] + 2, -2], lookAt: [...MET] }, "camera_above"),
     node("render_shot", "render", { scenes: "geometry_mirror", camera: "camera_above", lights: "", ambientColor: [1, 1, 1, 1], ambientIntensity: 0 }, "render_shot"),
@@ -97,7 +98,9 @@ function expected(tone: readonly number[], seen: number): number[] {
   // Schlick at 45 degrees.
   const graze = (1 - Math.SQRT1_2) ** 5;
   const steel = [STEEL * 0.92, STEEL * 0.96, STEEL * 1.05];
-  return tone.map((channel, index) => Math.round(Math.min(1, channel * seen * air * LAMPS * (steel[index]! + (1 - steel[index]!) * graze) * (1 - GLOSS)) * 255));
+  // A rough mirror shows less: the square of how smooth it is.
+  const polish = (1 - GLOSS) ** 2;
+  return tone.map((channel, index) => Math.round(Math.min(1, channel * seen * air * LAMPS * (steel[index]! + (1 - steel[index]!) * graze) * polish) * 255));
 }
 
 describe("the sentinel's steel shows the lamps (T1561b)", () => {
