@@ -1,8 +1,10 @@
+import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { renderHeadless, type RenderedFrame } from "../../tests/headless/render-harness.ts";
 import { nodeGpuHost } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { encodePng } from "../../runtime/export/png.ts";
 import { toRgba8At } from "../../runtime/export/image.ts";
+import { walkTrack } from "../furnace/load-audio.ts";
 import { PACK, sentinelDocument } from "./document.ts";
 import { loadKit } from "./load-kit.ts";
 
@@ -13,6 +15,8 @@ import { loadKit } from "./load-kit.ts";
  *     [--glb public/media/sentinel-bot/sentinel.glb] [--out renders/sentinel-bot] [--width 1280]
  *     [--at 4]                      a still at that many seconds
  *     [--strip 4,8,0.25]            8 stills from 4 s, 0.25 s apart (a motion strip)
+ *     [--clip 2,20]                 an MP4 of 20 s from 2 s in (needs ffmpeg)
+ *     [--audio track.wav]           the track the piece hears, muxed into a clip; without it every lane rests
  *     [--set joints.crawl=0.5,speed.value=6]   parameter overrides by node id
  *     [--cam=-7.5,1.1,0.6]          the chase shot, placed: metres ahead of the robot, right, up
  *     [--robots 3]                  the first N of the pack (document.ts, PACK); default the leader alone
@@ -63,9 +67,29 @@ for (const { nodeId, parameter, value } of overrides) {
 const document = { ...built, graph: { ...built.graph, nodes } };
 mkdirSync(outDir, { recursive: true });
 
-const capture = Array.from({ length: count }, (_, index) => Math.round((first + index * gap) * fps));
+const clip = flag("clip")?.split(",").map(Number);
+const audioPath = flag("audio");
+const track = audioPath === undefined ? undefined : walkTrack(audioPath, fps);
+const clipStart = Math.round((clip?.[0] ?? 0) * fps);
+const capture = clip === undefined ? Array.from({ length: count }, (_, index) => Math.round((first + index * gap) * fps)) : Array.from({ length: Math.round((clip[1] ?? 10) * fps) }, (_, index) => clipStart + index);
 const frames = (capture.at(-1) ?? 0) + 1;
+const clipPath = `${outDir}/${tag}.mp4`;
+const encoder =
+  clip === undefined
+    ? undefined
+    : spawn("ffmpeg", [
+        "-y", "-loglevel", "error",
+        "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${width}x${height}`, "-r", String(fps), "-i", "-",
+        // The track loops in the document (its clip node's At End is Loop), so it loops under the picture too.
+        ...(audioPath === undefined ? [] : ["-stream_loop", "-1", "-ss", String(clipStart / fps), "-i", audioPath]),
+        // The hardware encoder: x264 on the CPU competes with the renderer for the cores.
+        "-c:v", "h264_videotoolbox", "-b:v", "40M", "-pix_fmt", "yuv420p", "-profile:v", "high",
+        ...(audioPath === undefined ? [] : ["-c:a", "aac", "-b:a", "256k", "-shortest"]),
+        clipPath,
+      ], { stdio: ["pipe", "inherit", "inherit"] });
 const started = performance.now();
+const toRgba8 = (frame: RenderedFrame) =>
+  toRgba8At({ ...frame, rowStride: frame.width * (frame.format === "rgba16float" ? 8 : 4) } as never, frame.width, frame.height, { space: "encoded" });
 const result = await renderHeadless({
   host: nodeGpuHost(),
   graph: document.graph,
@@ -78,6 +102,16 @@ const result = await renderHeadless({
   animate: true,
   // Every Mesh File In of the document reads the one kit.
   meshes: Object.fromEntries(Object.values(document.graph.nodes).filter((entry) => entry.type === "meshFileIn").map((entry) => [entry.id, glb])),
+  ...(track === undefined ? {} : { audio: track.seam(fps, 0) }),
+  ...(encoder === undefined
+    ? {}
+    : {
+        onCapture: async (frame: RenderedFrame) => {
+          const stdin = encoder.stdin;
+          if (stdin === null) return;
+          if (!stdin.write(Buffer.from(toRgba8(frame).data))) await new Promise((resolve) => stdin.once("drain", resolve));
+        },
+      }),
 });
 // An ERROR is a broken graph: stop loud, before reading a picture of a robot parked on its rest pose.
 const errors = [...new Set(result.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code}: ${d.message}`))];
@@ -85,12 +119,16 @@ if (errors.length > 0) throw new Error(`the sentinel graph has errors:\n${errors
 const warnings = [...new Set(result.diagnostics.filter((d) => d.severity === "warning").map((d) => `warning ${d.code}: ${d.message}`))];
 if (warnings.length > 0) console.log(warnings.slice(0, 12).join("\n"));
 
-const toRgba8 = (frame: RenderedFrame) =>
-  toRgba8At({ ...frame, rowStride: frame.width * (frame.format === "rgba16float" ? 8 : 4) } as never, frame.width, frame.height, { space: "encoded" });
-for (const frame of result.frames) {
-  const seconds = (frame.frameIndex / fps).toFixed(2);
-  const path = `${outDir}/${tag}@${seconds}s.png`;
-  writeFileSync(path, encodePng(toRgba8(frame)).bytes);
-  console.log(path);
+if (encoder !== undefined) {
+  encoder.stdin?.end();
+  await new Promise((resolve) => encoder.on("close", resolve));
+  console.log(clipPath);
+} else {
+  for (const frame of result.frames) {
+    const seconds = (frame.frameIndex / fps).toFixed(2);
+    const path = `${outDir}/${tag}@${seconds}s.png`;
+    writeFileSync(path, encodePng(toRgba8(frame)).bytes);
+    console.log(path);
+  }
 }
 console.log(`${frames} frames stepped, ${result.frames.length} captured, ${Math.round(performance.now() - started)} ms`);
