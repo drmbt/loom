@@ -267,6 +267,18 @@
           "portId": "more"
         }
       },
+      "depth-reflect": {
+        "id": "depth-reflect",
+        "order": 0,
+        "source": {
+          "nodeId": "shot",
+          "portId": "depth"
+        },
+        "target": {
+          "nodeId": "wgsl_reflect",
+          "portId": "more"
+        }
+      },
       "ease-travel": {
         "id": "ease-travel",
         "source": {
@@ -386,6 +398,18 @@
         "target": {
           "nodeId": "smooth",
           "portId": "in"
+        }
+      },
+      "normal-reflect": {
+        "id": "normal-reflect",
+        "order": 1,
+        "source": {
+          "nodeId": "shot",
+          "portId": "normal"
+        },
+        "target": {
+          "nodeId": "wgsl_reflect",
+          "portId": "more"
         }
       },
       "panel-bore": {
@@ -637,6 +661,17 @@
           "portId": "in"
         }
       },
+      "reflect-haze": {
+        "id": "reflect-haze",
+        "source": {
+          "nodeId": "wgsl_reflect",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_haze",
+          "portId": "input"
+        }
+      },
       "robot-body0": {
         "id": "robot-body0",
         "source": {
@@ -648,14 +683,14 @@
           "portId": "in"
         }
       },
-      "shot-haze": {
-        "id": "shot-haze",
+      "shot-reflect": {
+        "id": "shot-reflect",
         "source": {
           "nodeId": "shot",
           "portId": "out"
         },
         "target": {
-          "nodeId": "wgsl_haze",
+          "nodeId": "wgsl_reflect",
           "portId": "input"
         }
       },
@@ -2291,6 +2326,7 @@
           "camera": "cam1",
           "depthOutput": true,
           "lights": "eyes1 light_lamp0 light_lamp1 light_lamp2",
+          "normalOutput": true,
           "scenes": "bodygeo0_1 rings1 hubs1 claws1 geometry_bore"
         },
         "position": {
@@ -2721,6 +2757,129 @@
         },
         "position": {
           "x": -900,
+          "y": 0
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgslMulti"
+      },
+      "wgsl_reflect": {
+        "definitionVersion": 1,
+        "id": "wgsl_reflect",
+        "label": "wgsl_reflect",
+        "parameters": {
+          "aim": [
+            0,
+            0,
+            3.3
+          ],
+          "aim.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "aim.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.lookAt.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eye": [
+            1.1,
+            0.6,
+            -7.5
+          ],
+          "eye.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.x"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.y"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "eye.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.eye.z"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "far": 240,
+          "fov": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('cam1').par.fov"
+              },
+              "static": {
+                "kind": "static",
+                "value": 55
+              }
+            },
+            "mode": "expression"
+          },
+          "maxDistance": 30,
+          "roll": 0,
+          "roughnessCutoff": 0.4,
+          "source": "struct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  strength: f32, // @default 1  Overall reflection strength.\n  maxDistance: f32, // @default 40  Longest reflection ray, metres.\n  thickness: f32, // @default 0.6  How thick a surface is assumed behind the depth buffer, metres.\n  roughnessCutoff: f32, // @default 0.45  Surfaces rougher than this reflect nothing.\n};\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n@group(0) @binding(5) var inputTexture2: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues, right-handed about the camera's +z: the angle is negated about forward),\n// exactly as camera.ts guardedRolledUp builds the render's view (T1433b).\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(-rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\nconst STEPS: u32 = 40u;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let encoded = textureLoad(inputTexture2, depthTexel(uv), 0);\n  let roughness = encoded.a;\n  let v = makeView();\n  let z = viewDepth(uv);\n  if (z < 0.0 || roughness <= 0.0 || roughness > params.roughnessCutoff) { return color; }\n  let n = normalize(encoded.rgb * 2.0 - 1.0);\n  let p = worldAt(v, uv, z);\n  let view = normalize(p - params.eye);\n  let r = reflect(view, n);\n  let fresnel = 0.04 + 0.96 * pow(1.0 - clamp(dot(-view, n), 0.0, 1.0), 5.0);\n  let gloss = 1.0 - smoothstep(0.05, params.roughnessCutoff, roughness);\n  if (fresnel * gloss < 0.01) { return color; }\n  let jitter = ignHash(uv * frameU.resolution + vec2f(frameU.absFrame * 3.1));\n  var previous = 0.0;\n  var hit = vec3f(-1.0);\n  for (var i = 1u; i <= STEPS; i = i + 1u) {\n    let travel = params.maxDistance * pow((f32(i) - 1.0 + jitter) / f32(STEPS), 2.0) + 0.05;\n    let probe = project(v, p + r * travel);\n    if (probe.z <= 0.0 || any(probe.xy < vec2f(0.0)) || any(probe.xy > vec2f(1.0))) { break; }\n    let sceneZ = viewDepth(probe.xy);\n    if (sceneZ > 0.0 && probe.z > sceneZ && probe.z - sceneZ < params.thickness + travel * 0.02) {\n      // Refine between the last miss and this hit.\n      var lo = previous;\n      var hi = travel;\n      for (var k = 0; k < 5; k = k + 1) {\n        let mid = (lo + hi) * 0.5;\n        let q = project(v, p + r * mid);\n        let qz = viewDepth(q.xy);\n        if (qz > 0.0 && q.z > qz) { hi = mid; } else { lo = mid; }\n      }\n      hit = project(v, p + r * hi);\n      break;\n    }\n    previous = travel;\n  }\n  if (hit.z <= 0.0) { return color; }\n  let edge = smoothstep(0.0, 0.08, min(min(hit.x, 1.0 - hit.x), min(hit.y, 1.0 - hit.y)));\n  let reflected = textureSampleLevel(inputTexture, inputSampler, hit.xy, 0.0).rgb;\n  let amount = clamp(fresnel * gloss * edge * params.strength, 0.0, 1.0);\n  return vec4f(mix(color.rgb, color.rgb + reflected, amount), color.a);\n}",
+          "strength": 1,
+          "thickness": 0.5
+        },
+        "position": {
+          "x": -1050,
           "y": 0
         },
         "resolution": {

@@ -8,6 +8,7 @@ import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS } from "./camera.ts";
 import type { KitFacts, Vec3 } from "./kit.ts";
 import { PATH, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
+import { SSR_WGSL } from "../furnace/screen-space.ts";
 import { BODY_ATTRIBUTES, BODY_KERNEL, JOINT_ATTRIBUTES, jointCount, jointKernel } from "./rig.ts";
 import { HULL_SURFACE_WGSL } from "./surface.ts";
 import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMP_SPACING, lampToneExpression } from "./tunnel.ts";
@@ -284,7 +285,23 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       background: [0, 0, 0, 1],
       antialias: "msaa",
       depthOutput: true,
+      normalOutput: true,
     }, { label: "shot1" }),
+    // ── Reflections: the wet deck and the wet streaks mirror the eyes and the lamps (the furnace's
+    // screen-space pass, until a stock one exists, T1372b). It reads the camera off the camera node. ──
+    node("wgsl_reflect", "customWgslMulti", [-1050, 0], {
+      source: SSR_WGSL,
+      eye: [1.1, 0.6, -7.5],
+      aim: [0, 0, 3.3],
+      ...Object.fromEntries((["x", "y", "z"] as const).flatMap((axis) => [[`eye.${axis}`, expressionSlot(`op('cam1').par.eye.${axis}`, 0)], [`aim.${axis}`, expressionSlot(`op('cam1').par.lookAt.${axis}`, 0)]])),
+      fov: expressionSlot("op('cam1').par.fov", 55),
+      far: 240,
+      roll: 0,
+      strength: 1,
+      maxDistance: 30,
+      thickness: 0.5,
+      roughnessCutoff: 0.4,
+    }, { label: "wgsl_reflect", resolution: { mode: "project" } }),
     // ── Air, then bloom: a bright pass and a four-level pyramid (the furnace's, until a stock one exists, T1402b) ──
     node("wgsl_haze", "customWgslMulti", [-900, 0], { source: HAZE_WGSL, density: expressionSlot(on("slider_haze"), 0.035), far: 240 }, { label: "wgsl_haze", resolution: { mode: "project" } }),
     node("wgsl_bright", "customWgsl", [-600, 300], { source: BRIGHT_PASS_WGSL, threshold: 1.4, knee: 1 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } }),
@@ -320,7 +337,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("joints-claws", ["joints", "out"], ["claws", "points"]),
     edge("grid-bore", ["grid_bore", "out"], ["kernel_bore", "in"]),
     edge("bore-geo", ["kernel_bore", "out"], ["geometry_bore", "points"]),
-    edge("shot-haze", ["shot", "out"], ["wgsl_haze", "input"]),
+    edge("shot-reflect", ["shot", "out"], ["wgsl_reflect", "input"]),
+    edge("depth-reflect", ["shot", "depth"], ["wgsl_reflect", "more"], 0),
+    edge("normal-reflect", ["shot", "normal"], ["wgsl_reflect", "more"], 1),
+    edge("reflect-haze", ["wgsl_reflect", "out"], ["wgsl_haze", "input"]),
     edge("depth-haze", ["shot", "depth"], ["wgsl_haze", "more"], 0),
     edge("haze-bright", ["wgsl_haze", "out"], ["wgsl_bright", "input"]),
     ...[1, 2, 3, 4].map((level) => edge(`bloom-down${level}`, [level === 1 ? "wgsl_bright" : `wgsl_bloomdown${level - 1}`, "out"], [`wgsl_bloomdown${level}`, "input"])),
