@@ -640,12 +640,9 @@ describe("§T903 — nothing reads a node's parameter schema outside the funnel"
  * `resolveStored`), so an options literal there is a type error — the last case below holds
  * that. `resolveParameterSchema`'s stays for `value-graph.ts` alone.
  */
-const LEGACY_READ_CALLERS: Readonly<Record<string, { readonly reason: string; readonly calls: readonly string[] }>> = {
-  "src/domain/channels/value-graph.ts": {
-    reason: "the value graph's frame-scoped read; another session has uncommitted work here (it needs `parameterReadOptions`).",
-    calls: ["resolveParameterSchema"],
-  },
-};
+// Empty since the Panel MIDI work landed (`01b2ab30`): the value graph reads through
+// `parameterReadOptions`. Deleting the overload and this block is §T1559b's last step.
+const LEGACY_READ_CALLERS: Readonly<Record<string, { readonly reason: string; readonly calls: readonly string[] }>> = {};
 
 const LEGACY_READ_NAMES = new Set(["resolveParameters", "resolveParameterSchema"]);
 const RESOLVER = path.join(REPO_ROOT, "src/domain/parameters/resolve.ts");
