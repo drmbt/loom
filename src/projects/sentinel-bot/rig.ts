@@ -10,7 +10,8 @@ import { PATH, pathWgsl } from "./path.ts";
  * draws a joint instances a mesh on its point. That is the TouchDesigner shape (a point
  * operator feeding a Geometry COMP's instancing) and the Notch shape (a cloner under
  * effectors), and it is why the rig costs 630 evaluations a frame however dense the ring
- * mesh is. Every point is the JOINT itself, in the kit's joint frame (+Z toward the tip), which
+ * mesh is. Every point is the JOINT itself, in the kit's joint frame (+Z toward the tip, +Y the
+ * frame's normal: the curve family's convention, docs/curve-family-design-2026-10-05.md R5), which
  * is where an instanced ring, hub or phalanx has its origin. Until a mesh can be instanced
  * (§T1581b) the joints are drawn as boxes centred on them.
  *
@@ -413,7 +414,8 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let planted = grab * (1.0 - aloft);
   let ripple = d * 3.0 - ctx.absTime * params.waveRate + f32(tentacle) * 1.7;
   at = at + (normal * cos(ripple) + binormal * sin(ripple)) * (params.wave * sin(3.14159265 * d / run) * (1.0 - 0.6 * planted));
-  let frame = quatFromFrame(normal, binormal, tangent);
+  // The kit's joint frame and the curve family's: +Z the tangent, +Y the normal, +X = normal × tangent.
+  let frame = quatFromFrame(-binormal, normal, tangent);
   // How far the claw's mouth is from where the gait wants it: zero while its rung is in reach.
   let mouth = along(bend, run);
   q.slip = grab * distance(root + out * mouth.x + plane * mouth.y, walking);

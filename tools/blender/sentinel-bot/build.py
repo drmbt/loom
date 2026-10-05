@@ -13,7 +13,8 @@ parent, which axis it hinges about, and how far the performance ever turns it.
 
 Frames are right-handed, in glTF axes, metres:
   robot   origin at the body centre, +Z forward (the eyes), +Y up, +X = up × forward.
-  joint   origin at the joint, +Z along the bone toward the tip.
+  joint   origin at the joint, +Z along the bone toward the tip, +Y the frame's normal
+          (the convention of loom's curve frames: +X = normal × tangent).
 
 What is written:
   body, eyes, lamp           robot frame, no `loom_part`.
@@ -90,8 +91,11 @@ body = bpy.data.objects["Sentinel_1"]
 # glTF axes ← Blender axes, and back: glTF (x, y, z) = Blender (x, z, −y).
 B2G = Matrix(((1, 0, 0), (0, 0, 1), (0, -1, 0))).to_4x4()
 G2B = B2G.inverted()
-# Joint frame ← bone space (bone y runs along the bone): (x, y, z) = bone (z, x, y).
-AXIS = Matrix(((0, 0, 1), (1, 0, 0), (0, 1, 0))).to_4x4()
+# Joint frame ← bone space (bone y runs along the bone): (x, y, z) = bone (−x, z, y). +Z is
+# the tangent and +Y the frame's normal, the convention loom's curve frames and instancing
+# share (docs/curve-family-design-2026-10-05.md, R5), so a ring drawn on a curve's `orient`
+# needs no roll.
+AXIS = Matrix(((-1, 0, 0), (0, 0, 1), (0, 1, 0))).to_4x4()
 
 root_of = lambda arm: next(b for b in arm.data.bones if b.parent is None)
 def chain_of(arm):
