@@ -136,6 +136,33 @@ export interface GeometryPayload {
   readonly pairs: Readonly<Record<string, ScenePairRef>>;
   readonly capacity: number;
   readonly topology?: PointTopology | string;
+  /**
+   * T1588b — the OBJECT TRANSFORM as one matrix (16 numbers, column-major), composed by the
+   * Geometry node from its Translate, Rotate, Scale and Pivot (`domain/geometry/transform.ts`
+   * states the order). Every pass of every Render draws by it and none composes it again.
+   * Absent means the identity (a payload built by hand, a test).
+   */
+  readonly objectMatrix?: readonly number[];
+  /**
+   * T1581b — present exactly when this is Instances mode drawing a MESH: the shape, and the
+   * records each instance is drawn by.
+   *
+   * `pairs` is the shape's own pointset (the Geometry's Shape Mesh input: position, normal,
+   * and uv, color, surface, emissive where it carries them), `triangles` and `indexBuffer`
+   * its mesh topology. `records` names the buffer the Geometry node RESOLVES once a frame —
+   * per instance slot the three rows of `Object · Instance` at byte offsets `m0`, `m1`,
+   * `m2`, and the instance's tint at `tint` when Tint is mapped. An instance that is not
+   * drawn (its Group predicate) holds a zero matrix. Every draw of this geometry reads the
+   * records and evaluates no per-instance attribute itself, so `scaleAttribute`,
+   * `orientAttribute`, `colorAttribute` and `group` below are absent on such a payload.
+   * The instance count is `capacity` (or the live `count`).
+   */
+  readonly instanceMesh?: {
+    readonly pairs: Readonly<Record<string, ScenePairRef>>;
+    readonly triangles: number;
+    readonly indexBuffer: string;
+    readonly records: { readonly buffer: string; readonly m0: number; readonly m1: number; readonly m2: number; readonly tint?: number };
+  };
   /** How this object renders. */
   readonly mode: "surface" | "instances" | "points" | "beam";
   /**

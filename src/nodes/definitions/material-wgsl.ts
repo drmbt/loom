@@ -32,7 +32,11 @@ import { endOf, placed, placedAroundCut } from "../../runtime/backend/wgsl-sourc
  * `sceneSurfaceWgsl`'s `custom` option):
  *   SurfaceIn  world, normal, uv, tint (vertex colour), attr (a mesh's surface row —
  *              roughness, metallic, heat, part), emissive (a mesh's own), eye, albedo,
- *              roughness, metallic (the base values, before this function), absTime.
+ *              roughness, metallic (the base values, before this function), absTime;
+ *              local, localNormal (T1588b: the vertex and its normal in the shape's OWN
+ *              frame, before the Geometry's Transform and before an instance's own —
+ *              detail painted by them moves with the object and sticks to each
+ *              instance), instanceId (the instance's slot; 0 on a surface).
  *   SurfaceOut albedo, roughness, metallic, normal, emissive.
  *   surfaceDefaults(s) → the SurfaceOut the stock material would have produced.
  *   `frameU` (SharedFrame) is readable for the other clocks.
@@ -41,14 +45,19 @@ import { endOf, placed, placedAroundCut } from "../../runtime/backend/wgsl-sourc
  * Custom WGSL and the point kernels reflect theirs (one reflector, §V349) — a uniform write,
  * never a rebuild (§V5). `// @use hash` / `grid` pull the shared modules in.
  *
- * SURFACE draws only in this build (grid or mesh). Instances, points and beams draw through
- * a different generator and refuse a WGSL material by name at the Render.
+ * SURFACE draws and MESH INSTANCES (T1581b: a Geometry in Instances mode with Shape: Mesh,
+ * where `local` is the vertex in the mesh's own frame and `instanceId` the instance's slot).
+ * Primitive instances, points and beams draw through a different generator and refuse a WGSL
+ * material by name at the Render.
  */
 
 export const MATERIAL_WGSL_DEFAULT_SOURCE = `// Runs once per pixel of every surface wearing this material, BEFORE lighting.
 // s: what the surface is — world, normal, uv, tint, attr (a mesh's roughness, metallic,
 //    heat, part), emissive, eye, albedo, roughness, metallic, absTime (seconds; keeps
 //    counting across a timeline loop — frameU.time is the clock that laps).
+//    local and localNormal are the surface in its OWN frame, before the Geometry's
+//    Transform and an instance's: paint by them and the detail moves with the object.
+//    instanceId is the instance's slot on mesh instances, 0 on a surface.
 // Return what it should be; the lighting model shades the result.
 // surfaceDefaults(s) is what the stock material would have returned.
 struct Params {
@@ -129,7 +138,7 @@ export const materialWgslNode: NodeDefinition = {
   title: "Material · WGSL",
   category: "render",
   description:
-    "A material whose surface is code: fn surface(s: SurfaceIn, p: Params) -> SurfaceOut runs per pixel before lighting and returns albedo, roughness, metallic, normal and emissive, which the chosen Model then lights. Color, Metallic and Roughness are the base values it receives. Its struct Params becomes drivable controls. Surface geometry only (grid or mesh).",
+    "A material whose surface is code: fn surface(s: SurfaceIn, p: Params) -> SurfaceOut runs per pixel before lighting and returns albedo, roughness, metallic, normal and emissive, which the chosen Model then lights. Color, Metallic and Roughness are the base values it receives. Its struct Params becomes drivable controls. s.local and s.localNormal are the surface in its own frame, before the Geometry's Transform and before an instance's, so detail painted by them moves with the object and sticks to each instance; s.instanceId is the instance's slot. Surface geometry (grid or mesh) and mesh instances.",
   tags: ["3d", "material", "wgsl", "shader", "custom", "glsl mat", "scene"],
   inputs: [],
   outputs: [{ id: "out", label: "Out", type: { kind: "material", model: "custom" } }],

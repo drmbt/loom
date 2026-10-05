@@ -245,11 +245,95 @@ fn lightDepthDirectionalVisible(map: texture_2d<f32>, direction: vec3f, extent: 
 }`,
 };
 
+/**
+ * T1581b (F9) — QUATERNIONS, for a kernel that writes a per-instance `orient`.
+ *
+ * A Geometry in Instances mode turns each instance by a unit quaternion, and until now a
+ * kernel had to write the four numbers by hand. These are the handful of operations that
+ * builds them: from an axis and an angle, from a frame, toward a direction, between two
+ * directions, composed, interpolated.
+ *
+ * ONE CONVENTION, the engine's (docs/mesh-instancing-design-2026-10-05.md, D5): a unit
+ * quaternion is a vec4f (x, y, z, w), a turn is RIGHT-HANDED about its axis and ACTIVE —
+ * `quatAxisAngle(vec3f(0, 0, 1), 1.5707963)` carries +X to +Y — and `quatMul(a, b)` turns
+ * by `b` FIRST, then by `a`, as a matrix product does. `quatRotate` is the arithmetic the
+ * renderer itself turns an instance by, so what a kernel computes with it is what is drawn.
+ */
+const QUAT_MODULE: SharedWgslModule = {
+  summary: "unit quaternions (x, y, z, w) for per-instance orient: axis-angle, multiply, rotate, from a frame, look-at, from-to, slerp",
+  source: `fn quatAxisAngle(axis: vec3f, angle: f32) -> vec4f {
+  let halfAngle = angle * 0.5;
+  return vec4f(normalize(axis) * sin(halfAngle), cos(halfAngle));
+}
+
+fn quatMul(a: vec4f, b: vec4f) -> vec4f {
+  return vec4f(a.w * b.xyz + b.w * a.xyz + cross(a.xyz, b.xyz), a.w * b.w - dot(a.xyz, b.xyz));
+}
+
+fn quatRotate(q: vec4f, v: vec3f) -> vec3f {
+  let t = 2.0 * cross(q.xyz, v);
+  return v + q.w * t + cross(q.xyz, t);
+}
+
+fn quatFromFrame(x: vec3f, y: vec3f, z: vec3f) -> vec4f {
+  let trace = x.x + y.y + z.z;
+  if (trace > 0.0) {
+    let s = sqrt(trace + 1.0) * 2.0;
+    return vec4f((y.z - z.y) / s, (z.x - x.z) / s, (x.y - y.x) / s, 0.25 * s);
+  }
+  if (x.x > y.y && x.x > z.z) {
+    let s = sqrt(1.0 + x.x - y.y - z.z) * 2.0;
+    return vec4f(0.25 * s, (y.x + x.y) / s, (z.x + x.z) / s, (y.z - z.y) / s);
+  }
+  if (y.y > z.z) {
+    let s = sqrt(1.0 + y.y - x.x - z.z) * 2.0;
+    return vec4f((y.x + x.y) / s, 0.25 * s, (z.y + y.z) / s, (z.x - x.z) / s);
+  }
+  let s = sqrt(1.0 + z.z - x.x - y.y) * 2.0;
+  return vec4f((z.x + x.z) / s, (z.y + y.z) / s, 0.25 * s, (x.y - y.x) / s);
+}
+
+fn quatLookAt(forward: vec3f, up: vec3f) -> vec4f {
+  let z = normalize(forward);
+  let side = cross(up, z);
+  let sideLength = length(side);
+  let spare = cross(select(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(z.x) > 0.9), z);
+  let x = select(side / max(sideLength, 1e-12), normalize(spare), sideLength < 1e-6);
+  return quatFromFrame(x, cross(z, x), z);
+}
+
+fn quatFromTo(a: vec3f, b: vec3f) -> vec4f {
+  let u = normalize(a);
+  let v = normalize(b);
+  let cosine = dot(u, v);
+  if (cosine < -0.999999) {
+    let axis = normalize(cross(select(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), abs(u.x) > 0.9), u));
+    return vec4f(axis, 0.0);
+  }
+  return normalize(vec4f(cross(u, v), 1.0 + cosine));
+}
+
+fn quatSlerp(a: vec4f, b: vec4f, t: f32) -> vec4f {
+  var end = b;
+  var cosine = dot(a, b);
+  if (cosine < 0.0) {
+    end = -b;
+    cosine = -cosine;
+  }
+  if (cosine > 0.9995) {
+    return normalize(mix(a, end, t));
+  }
+  let angle = acos(cosine);
+  return (a * sin((1.0 - t) * angle) + end * sin(t * angle)) / sin(angle);
+}`,
+};
+
 export const SHARED_WGSL_MODULES: Readonly<Record<string, SharedWgslModule>> = {
   hash: HASH_MODULE,
   grid: GRID_MODULE,
   "surface-detail": SURFACE_DETAIL_MODULE,
   "light-depth": LIGHT_DEPTH_MODULE,
+  quat: QUAT_MODULE,
 };
 
 /** The directive a source writes, in the file's own `// @` comment idiom. */

@@ -76,6 +76,7 @@ import {
   scenePreviewBallWgsl,
 } from "../nodes/shaders/scene-preview.wgsl.ts";
 import { cameraPayloadMatrix, viewProjection , projectorMatrix } from "../domain/geometry/camera.ts";
+import { identityMatrix } from "../domain/geometry/transform.ts";
 import type { Mat4 } from "../domain/geometry/camera.ts";
 import { DEFAULT_MATERIAL } from "../domain/types/scene.ts";
 import { applyKernelSteps, applySubstepLoops, planSubstepLoops } from "./substeps.ts";
@@ -2055,6 +2056,10 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
             },
             blend: "alpha",
           });
+        } else if (payload.instanceMesh !== undefined) {
+          /* T1581b: MESH instances. The tile's object draw is slice D of that row; until it
+             lands the tile is the backdrop alone — an honest empty frame, never the box
+             the primitives' branch below would draw in the mesh's place. */
         } else if (payload.mode === "instances") {
           const instance = payload.instance ?? { shape: "box" as const, scale: 0.05 };
           synthPasses.push({
@@ -2156,6 +2161,9 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
           // beam hole above. The backdrop pass is already in synthPasses.
           const parsed =
             typeof payload.topology === "string" ? parseTopology(payload.topology) : null;
+          /* T1588b: the tile frames the OBJECT, not its place in the scene, so it draws by
+             the identity whatever the node's Transform says. */
+          const untransformed = { model: identityMatrix(), modelNormal: identityMatrix() };
           if (parsed !== null && parsed.kind === "grid" && gridPointCount(parsed) <= payload.capacity) {
             const topology = parsed;
             const cells = gridCellCounts(topology);
@@ -2167,8 +2175,48 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
               buffers: geometryBuffers,
               uniforms: {
                 ...geometryUniforms,
+                ...untransformed,
                 grid: [topology.cols, topology.rows, topology.wrapU ? 1 : 0, topology.wrapV ? 1 : 0],
               },
+            });
+          }
+          /*
+           * B247 — a MESH surface (Mesh File In, or anything downstream of one). T532 drew
+           * grids only, so a loaded hull's tile was the backdrop and read as an empty node.
+           * The Render's own mesh draw, with the same bindings: the index list, the file's
+           * normals, and its colour, surface row and emissive where the edge carries them.
+           * A mesh without a vec3f normal is what the Render refuses by name — backdrop only.
+           */
+          const meshNormal = payload.pairs["normal"];
+          if (parsed !== null && parsed.kind === "mesh" && meshNormal !== undefined && meshNormal.type === "vec3f") {
+            const typed = (name: string, type: string) => {
+              const pair = payload.pairs[name];
+              return pair !== undefined && pair.type === type ? pair : undefined;
+            };
+            const tint = payload.colorAttribute ?? typed("color", "vec4f");
+            const uv = typed("uv", "vec2f");
+            const surface = typed("surface", "vec4f");
+            const emissive = typed("emissive", "vec3f");
+            synthPasses.push({
+              ...passBase,
+              clear: false,
+              shader: sceneSurfaceWgsl({
+                model: geometryModel,
+                lightCount: 2,
+                ...(tint === undefined ? {} : { pointColor: true }),
+                mesh: { uv: uv !== undefined, surface: surface !== undefined, emissive: emissive !== undefined },
+              }),
+              vertexCount: parsed.triangles * 3,
+              buffers: [
+                ...geometryBuffers,
+                ...(tint === undefined ? [] : [attributeBinding("pointColors", tint, "read")]),
+                { binding: "meshIndices", resourceId: parsed.indexBuffer },
+                attributeBinding("meshNormals", meshNormal, "read"),
+                ...(uv === undefined ? [] : [attributeBinding("meshUvs", uv, "read")]),
+                ...(surface === undefined ? [] : [attributeBinding("meshSurface", surface, "read")]),
+                ...(emissive === undefined ? [] : [attributeBinding("meshEmissive", emissive, "read")]),
+              ],
+              uniforms: { ...geometryUniforms, ...untransformed, grid: [0, 0, 0, 0] },
             });
           }
         }
@@ -2268,10 +2316,11 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
        * `preview-orbit.ts` where a missing kind fails to compile. `passIds` names only the
        * object pass — a geometry's backdrop has no camera to move.
        *
-       * B250: and only when that pass was EMITTED. A Surface geometry whose points are not
-       * a grid (every imported mesh, until its tile draws one) and a Beam with no endpoint
-       * push the backdrop alone, and an orbit naming the absent object pass made the
-       * preview system refuse the tile, by throwing, on every tick.
+       * B250: and only when that pass was EMITTED. A Surface geometry whose topology could
+       * not be used, a mesh-instance geometry (until T1581b's slice D draws its tile) and a
+       * Beam with no endpoint push the backdrop alone, and an orbit naming the absent object
+       * pass made the preview system refuse the tile, by throwing, on every tick. (An
+       * imported mesh on a Surface was the common case, until B247 drew it.)
        */
       const objectPassId = `${nodeId}#scenePreview:${port.id}`;
       const orbit = previewOrbitBasis(payload.kind, {

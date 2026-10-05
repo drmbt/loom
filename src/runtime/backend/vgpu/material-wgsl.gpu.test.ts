@@ -191,7 +191,7 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
     const probe = await probeDawn();
     if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
     // The harness refuses a graph that compiles with errors, naming them — which is the claim.
-    await expect(render(graph({ type: "materialWgsl", parameters: {} }, "instances"))).rejects.toThrow(/Material · WGSL, which runs on surface geometry only/);
+    await expect(render(graph({ type: "materialWgsl", parameters: {} }, "instances"))).rejects.toThrow(/is drawn as primitive instances but wears a Material · WGSL, which runs on surface geometry and mesh instances only/);
     await expect(render(graph({ type: "materialWgsl", parameters: { source: "fn shade() {}" } }))).rejects.toThrow(/fn surface/);
   });
 });

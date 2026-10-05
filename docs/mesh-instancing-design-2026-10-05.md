@@ -1,6 +1,6 @@
 # Mesh instancing and the object transform: one transform chain for scene geometry (T1581b, T1588b)
 
-**Status: design only, 2026-10-05. Nothing here is built.** The build waits for a ruling on the open decisions in section 10.
+**Status, 2026-10-05: the design is ruled (section 10, all as recommended) and in build.** Slice A (the object transform on surfaces) and slice B (a mesh at every point: the consumer's first slice) are built. Section 13 records what was built, where it differs from the text above it, and the measured frame.
 
 Two rows are designed together because they are one chain: T1581b draws a mesh at every point of a pointset, T1588b gives a scene geometry a transform of its own, and the final position is `object × instance × shape-local`.
 
@@ -186,7 +186,7 @@ This row is the Geometry COMP's instancing and Notch's cloner: one shape stored 
 - **Mesh File In gains `Frame`: World (default), Object or Part.** Three named frames and no guessing:
   - **World** is today's decode, byte for byte.
   - **Object** expresses the selection in the frame of the lowest common ancestor node of the selected objects. One selected object is its own frame, so its vertices are its authored mesh data exactly, wherever the file placed it.
-  - **Part** expresses it in the frame of the `loom_part` node that encloses the whole selection: the origin is the part pivot and the axes are the part's. A selection that lies in no part, or in more than one, refuses by name.
+  - **Part** expresses it in the frame of the `loom_part` node that encloses the whole selection: the origin is the part pivot and the axes are the part's. A selection that lies in no part, or in more than one, refuses and NAMES the parts and loose objects it found (a glob such as `part:mand_*` reaches this, and the fix is to pick one).
   - Positions take the inverse of the frame node's world matrix, normals its inverse transpose.
   - The loader writes a measured, read-only `Frame Origin` (the frame node's name and world position) beside Vertices and Parts, so the frame in use is visible and the file's placement is not lost. It is also the number an object Pivot or Translate (D6) wants.
   - Object with no common node (several root-level objects) is the file's world, and says so in a warning naming the objects.
@@ -205,17 +205,19 @@ Object     = Parent · T(translate) · T(pivot) · R(look at) · R(rotate) · S(
 Instance_i = T(position_i + offset) · T(p_i) · R(aim_i, up_i) · R(orient_i) · S(s_i) · T(−p_i)
 
 s_i     = Scale · scale_i · (Scale XYZ ∘ scaleXYZ_i)     per axis, along the shape's own axes
-normal  = normalize(cofactor(Object · Instance_i) · n)
+normal  = normalize(sign(det M) · cofactor(M) · n)       M = the 3×3 of Object · Instance_i
 ```
 
 - A surface geometry is the chain without the instance: `world = Object · v`.
 - **Both levels are scale, then turn, then translate**: the order TouchDesigner lists first and writes as `T * R * S * Position`, its Copy POP's first, and the Transform node's. `R(rotate)` is Euler degrees applied X then Y then Z, as the Transform node does and as TouchDesigner's first-listed rotate order (`R = Rz * Ry * Rx`).
+- **The turn convention, stated once for the whole chain: every turn is right-handed about its axis.** A positive turn about +Z carries +X toward +Y, about +X carries +Y toward +Z, about +Y carries +Z toward +X. Rotate's Euler angles, the `orient` quaternion ((0, 0, sin 45°, cos 45°) is +90° about +Z) and a frame a kernel builds on the GPU all turn this way. `object-transform.gpu.test.ts` pins it on Dawn against cubes the file places on the axis each turn should reach.
+- **Rotate is applied after Look At, in the object's own frame**: `R(look at) · R(rotate)` turns the vertex by Rotate first, so a Rotate about Z banks an object about its own forward axis wherever Look At points it.
 - **The object is outside the instances**: TouchDesigner's default Instance Order (`worldXform * instanceXForm * Position`). Moving the object moves the whole cloud rigidly.
 - **Pivot has TouchDesigner's meaning at both levels**: the fixed point of that level's scale and turn. With unit scale and no turn it changes nothing.
 - **Instance rotation is a unit quaternion** (T723's reasoning stands; the reference agrees Loom is ahead here), **and aim plus up is the convenience**: `R(aim, up)` turns the shape's Forward axis onto a direction with its up toward a second one. It is applied after the quaternion (`aim · orient`), TouchDesigner's Pre-Rot placement, so with both in use the quaternion is a turn in the shape's own frame and aim places the result.
 - **Scale is always inside the turn**, so a non-uniform size never shears a turned shape. That is why TouchDesigner's Default placement of rotate-to-vector (scale after it) is not offered.
 - **No order menu.** TouchDesigner needs one because channels are hard to pre-compose. Here the instance source is written by a kernel, which can write any other order as a different position and orient.
-- **Normals** take the cofactor of the final 3×3, so non-uniform and mirrored scales are lit correctly at both levels.
+- **Normals** take the direction of the inverse transpose of the final 3×3: its cofactor (nothing is divided, and a scale of zero on one axis still has an answer) times the sign of its determinant (a mirrored object keeps its normals on the side they were authored on). Non-uniform scales are lit for the shape they have, at both levels.
 - With every value neutral the arithmetic is exact: a row of the identity matrix returns its component unchanged and adds zeros. Existing pictures are unchanged bit for bit, which the existing exact tests prove.
 
 ### D6. The object transform (T1588b)
@@ -526,7 +528,7 @@ Slices A and B are most of the work. None of it is sized by measurement.
 | F6 | Non-instanced mesh surfaces onto per-producer accessors | changes shader text under existing tests |
 | F7 | Previous-frame object and instance transforms for motion vectors | T1371b is not built |
 | F8 | An id output (geometry, instance) for picking | no picking exists |
-| F9 | A `// @use quat` module (look-at, from-to, multiply, slerp) for kernels that write `orient` | a convenience; Aim covers the common case |
+| F9 | A `// @use quat` module (look-at, from-to, multiply, slerp) for kernels that write `orient` | **built** after slice B (section 13); it was a convenience, and Aim (slice D) still covers the common case without a kernel |
 | F10 | Grid-topology surfaces as the instance shape | the grid fetch under the same place step; small |
 | F11 | Glass on mesh instances | `glassMeshWgsl` shares the mesh vertex chunk; own tests |
 | F12 | Per-instance texture selection (a texture index or an array layer) | Material · WGSL has no texture inputs yet; a tile sheet through `uvTransform` works now |
@@ -598,3 +600,91 @@ Notch (10bit FX), read here:
 - Cloner (Legacy): https://manual.notch.one/2026.2/en/docs/reference/nodes/cloning/cloner-legacy/
 - Custom Shader Effector: https://manual.notch.one/2026.2/en/docs/reference/nodes/cloning/effectors/custom-shader-effector/
 - Working With Custom Shaders: https://manual.notch.one/2026.2/en/docs/workflows/working-with-custom-shaders/
+
+## 13. As built
+
+Where the build differs from, or adds to, the sections above. The rulings on section 10 were all as recommended, with O3 (a mesh instance's scale defaults to 1) and O11 (the existing `scale` is labelled "Size") made specific.
+
+### Slice A — the object transform on surfaces (T1588b)
+
+- **Parameters on Geometry, group "Transform"**: `translate`, `rotate` (degrees, X then Y then Z), `objectScale` (label "Scale") and `pivot`. All values. The existing `scale` keeps its key and is labelled "Size".
+- **The matrix is composed in `domain/geometry/transform.ts`** (`objectMatrix`, `normalMatrix`) and carried as `GeometryPayload.objectMatrix`. The Render hands it to each surface draw as `model`, and to the draws that shade as `modelNormal` too, from one helper; the depth sweeps take `model` alone.
+- **The normal matrix is normalised on the CPU** (divided by its longest column), so an object scaled to a thousandth does not hand the fragment stage a normal it would treat as zero. Not in the design text.
+- **`SurfaceIn` gained `local`, `localNormal` and `instanceId`** in this slice (`instanceId` is 0 on a surface). `localNormal` is the shape's own normal, not turned toward the viewer. The two inter-stage members exist only on a draw that wears a Material · WGSL.
+- **Instances, points and beams refuse a non-identity Transform by name** (`node.scene.transform`) and mark the four rows inactive, until their slices.
+- **The preview tile draws by the identity**, as D16 says, and now draws a mesh-topology Surface at all (B247).
+- **Look At, Forward, Parent and the Null node are slice C**, not built.
+
+### Slice B — a mesh at every point (T1581b, slice 1)
+
+**What a consumer wires and sets**
+
+```
+meshFileIn (select: "ring", frame: object) ──▶ geometry.mesh      "Shape Mesh"
+pointKernel (position, orient, size, …)    ──▶ geometry.points
+geometry { mode: "instances", shape: "mesh" }      (by name)      ──▶ render.scenes
+```
+
+| Geometry key | Constant | Map mode |
+|---|---|---|
+| `shape` | `"mesh"` | — |
+| `instanceTranslate` (vec3, 0) | an offset added to every instance's place | a vec3f attribute is the place, instead of `position`; the value still adds |
+| `orient` (identity) | identity only (T723's refusal stands) | a vec4f unit quaternion (x, y, z, w) |
+| `scale` (label "Size"; **1** on a mesh instance) | the instance's scale | an f32, or one channel of a float vector, multiplies it |
+| `tint` | per object | a vec4f, multiplied with the mesh's own `color` |
+| `group` | a predicate over `p.<attribute>`; an instance it rejects is not drawn in any pass | — |
+| `translate`, `rotate`, `objectScale`, `pivot` | the object transform, outside the instances | — |
+
+Mesh File In: `frame` (`world` | `object` | `part`), and the measured `frameOrigin` (`name@x,y,z`, empty under World). Material · WGSL: `s.local`, `s.localNormal`, `s.instanceId`.
+
+**Built as designed**
+
+- **Resolve once, draw many (D8).** `instanceResolveWgsl` (`nodes/shaders/instance-resolve.wgsl.ts`) is the one place the instance chain is written. The Geometry node emits it as its own dispatch pass (`<node>:instances:resolve`) and owns the record buffer (`scratch:<node>:instanceRecords`); the compiler placed a pass on a scene-payload node with no change, so the fallback of O5 was not needed. Two Renders naming one geometry share the one pass.
+- **One generator path (D11).** `sceneSurfaceModule` and `shadowMeshWgsl` take an `instanced` option; the primitives' three generators are byte-identical to before both slices (compared declaration by declaration against the base commit).
+- **Bindings per producer.** A draw binds `packed0…` (each buffer whole, read through `regionAccessorWgsl`) and `meshIndices`: three storage buffers for a file and a points producer whatever is mapped, four when a kernel reshapes the mesh.
+- **Citizenship (D12).** The mesh instance takes the surface branch of the Render: lit by every model, the Normal, Albedo and Shadow layers, every depth sweep, shadows cast and received from directional and point lights, a Material · WGSL.
+- **Live count (D3)** through the existing indirect arguments, with the mesh's vertex count.
+- **The frame (D4)** in `decodeGlb` (`MeshFrame`), with the Part refusal naming the parts it found.
+
+**Where the build differs from the text above**
+
+- **Group is in this slice** (the consumer draws four shapes off one pointset; each Geometry draws only what its predicate keeps). It is the zero record of D8, decided once per instance in the resolve pass.
+- **Tint is in this slice**, over the mesh's own colour. The record holds a `tint` region only when Tint is mapped.
+- **The record is `m0`, `m1`, `m2` (+ `tint`).** The `uv` region arrives with its target in slice D. The object matrix reaches the resolve pass as three vec4 rows.
+- **An instanced draw declares no `model` uniform at all**, in its lit block or its depth block; the record is the only placement. The normal is the cofactor of the record's rows times the sign of their determinant, made unit in the vertex stage.
+- **The Shape Mesh port requires `position` of its edge and nothing more**, as `points` does. A kernel between the file and the port declares no more than that, so the triangles and the normal are checked by the Geometry, with a sentence each.
+- **O3 landed through `parametersFor`**: a Geometry stored with `mode: instances, shape: mesh` carries a schema whose `scale` defaults to 1, and every reader gets it through the one funnel (`effective-schema-closure.test.ts` passes unchanged). The parameter block is hoisted to `GEOMETRY_PARAMETERS` for it, which is why that block shows as moved in the diff.
+- **A Map that names `port: "mesh"` refuses in the Geometry**, before the shared resolvers, whose sentence was left as it is.
+- **Instance Translate's constant value on a primitive is inactive, not refused**; only its Map refuses there. The T1182 gate (`frame-compile.test.ts`, §V453: a parameter that is not compile-time never changes the plan's structure) fails a refusal that depends on a value. The object Transform's refusal on primitive instances, points and beams (slice A, O13) is the same kind of refusal and is still by value: it passes that gate because the gate's fixture is a Surface. An animated Transform on such a geometry leaves the values-only frame path on the frame it leaves the identity, and the full compile then refuses. It goes away with slice G; whether it should be inactive-and-ignored until then is a ruling.
+- **Reserved names** cover the functions an instanced draw declares (`instanceSlot`, `recordM0…`, `meshPositionAt…`). Binding variables (`packed0`) are not reserved, as `positions` never was: `declaredNames` reads `fn` and `struct` only.
+
+**Open, and a gate is red on it.** The Shape Mesh socket makes every Geometry node one port row (16 px) taller. In E13 Prism the Geometries `shaft` and `fan` then stand 20 px apart where the §V389 layout gate wants 36 (`examples/layout.test.ts`, the one failure of 176). It is not fixed in this slice because each way out is a decision: (a) move `shaft` 16 px up in E13's source and regenerate E13, which changes that one shipped file's bytes; (b) a socket that is shown only while it applies (Shape: Mesh), which no input has today and which touches the node box, the canvas and connect; (c) name the shape as the material is named, with no socket, which puts pointset data on a name where §V372 says a wire.
+
+**Reached by the surface branch but not yet under a test of their own**: texture maps on a mesh instance (by the mesh's uv), Shadow Only, Blend: Additive, ambient occlusion, projectors, the environment, MSAA and SSAA. Glass on mesh instances refuses by name.
+
+**Not built (their slices)**: Look At, Forward, Parent, Null (C); Scale XYZ, instance Pivot, Aim and Up, UV, the preview tile, which shows the backdrop alone for a mesh instance (D); `struct Instance` and `instanceAttributes` (E); the shape index and its kill (F); the object transform on primitives, points and beams (G).
+
+### The `quat` module, and `// @use` in a kernel (F9, built)
+
+- **`// @use quat`** (`nodes/shaders/shared-modules.ts`) declares `quatAxisAngle(axis, angle)`, `quatMul(a, b)`, `quatRotate(q, v)`, `quatFromFrame(x, y, z)`, `quatLookAt(forward, up)`, `quatFromTo(a, b)` and `quatSlerp(a, b, t)`. The convention is D5's, stated once there: a unit quaternion is a `vec4f` (x, y, z, w), a turn is right-handed and active (a quarter turn about +Z carries +X to +Y), and `quatMul(a, b)` turns by `b` first, then by `a`. `quatLookAt` turns +Z onto `forward` and +Y as near to `up` as it can be; `up` is a hint and need not be unit or square to `forward`.
+- **Two inputs have no single answer, and the module picks one that is finite.** `quatLookAt` with `up` along `forward` picks a roll; `quatFromTo` between opposite directions picks a half turn about an axis square to them. The tests pin that the instance is drawn whole and that the determined axis is right, and say in a comment that the rest is the module's choice.
+- **A Point Kernel did not resolve `// @use` before this.** Only Custom WGSL and Material · WGSL called `resolveSharedModules`; in a kernel the line was a comment, and the first call into the module failed at the device. What it took: `kernelSharedModules` in `nodes/definitions/points.ts` (the one resolver, the same two refusals by name: a module that does not exist, and a name the text and a module both declare, code `node.points.module`), the module text pasted in front of the kernel body, and `kernelSourceMap` moved down by that text so a device error still reads the author's line. Point Kernel and Point Kernel · Advanced both call it. `points/codegen.ts` was not touched.
+- **The Spawn Hook asks for itself.** It is a module of its own, so a hook that turns its newborns writes its own `// @use quat`; it is not handed what the kernel asked for. A Group predicate is an expression and has no line to ask on.
+- **No shipped document changes.** No kernel, hook or group in `examples/**` or `projects/**` carries a `// @use` line (112 documents scanned), so every generated kernel is byte for byte what it was.
+- **Only `quat` is claimed for kernels.** The other modules resolve by the same path and declare no name a generated kernel module declares, but `grid`, `surface-detail` and `light-depth` were written for fragment shaders and were not run in a kernel.
+
+### Measured (slice B, GPU timestamp queries)
+
+Apple M3 Max, Dawn on Metal, 1920×1080, `rgba16float`. 4,000 instances of a 716-triangle ring (2.86 M triangles per pass), every instance turned by a quaternion that changes each frame, over a floor, one light. The figure is the device's own frame extent from timestamp queries (`backend.onGpuTimings`), the median of 40 frames after 8 warm-up frames. Scratch probe, not committed.
+
+| Passes | Mesh passes | GPU frame |
+|---|---|---|
+| colour, no shadow | 1 | 2.9 ms |
+| colour + Depth + Normal + Albedo + one directional shadow | 5 | 7.1 ms |
+| colour + one point-light shadow (six faces) | 7 | 9.1 ms |
+| colour + Depth + Normal + Albedo + one point-light shadow | 10 | 12.5 ms |
+
+- The lit instanced draw is about 2.7 to 3.1 ms; a G-buffer layer 1.7 to 2.4 ms; a depth sweep 0.9 to 2.6 ms. The resolve pass does not register (under the timer's 0.07 ms step).
+- **The point-light case is over the 6 ms line the lead set, so F1 (cull and compaction) moves up.** Each of the six faces sweeps all 4,000 instances and sees about a sixth of them; a per-view cull is what that costs.
+- The consumer's own load (630 instances a robot, 3 to 5 robots, about 3,150 instances and 2.3 M triangles per pass) is 0.79 of this one; by proportion about 7 ms and 10 ms for the two point-light rows. Not measured at that count.
+- This is one machine, one layout and one resolution. It is not a browser measurement.

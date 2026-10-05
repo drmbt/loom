@@ -1,6 +1,6 @@
 import type { PointAttributeSchema } from "./attributes.ts";
 import { packAttributes, type PackedLayout, type PackedLayoutResult } from "./packing.ts";
-import { decodeGlb, type DecodedJoint, type DecodedMesh } from "../domain/mesh/glb.ts";
+import { decodeGlb, type DecodedJoint, type DecodedMesh, type MeshFrame } from "../domain/mesh/glb.ts";
 
 /**
  * T1353b — a decoded mesh AS A POINTSET: the vertex attributes a `meshFileIn` publishes,
@@ -107,6 +107,7 @@ export function meshFacts(mesh: DecodedMesh): MeshFacts {
     joints: formatJointTable(mesh.skin?.joints ?? []),
     clips: (mesh.clips ?? []).map((name) => name.replace(/\s+/g, "_")).join(" "),
     clipFrames: mesh.skin?.pose?.frames ?? 0,
+    frameOrigin: mesh.frame === undefined ? "" : `${mesh.frame.node.replace(/\s+/g, "_")}@${mesh.frame.origin.map((value) => String(Number(value.toFixed(4)))).join(",")}`,
   };
 }
 
@@ -120,6 +121,11 @@ export interface MeshFacts {
   readonly clips: string;
   /** T1410b: frames in the chosen clip's baked pose table; 0 = no clip chosen (or none in the file). */
   readonly clipFrames: number;
+  /**
+   * T1581b: `name@x,y,z` — the node whose frame the vertices are in (Frame: Object or Part)
+   * and where it stands in the file's world, metres. Empty: the vertices are in the world.
+   */
+  readonly frameOrigin: string;
 }
 
 /**
@@ -155,9 +161,11 @@ export function prepareMesh(
   select: string,
   clip: { readonly name?: string; readonly rate?: number } = {},
   lamps = "",
+  frame: MeshFrame = "world",
 ): PreparedMesh | null {
   const mesh = decodeGlb(glb, {
     select,
+    ...(frame === "world" ? {} : { frame }),
     ...(clip.name === undefined || clip.name === "" ? {} : { clip: clip.name, ...(clip.rate === undefined ? {} : { clipRate: clip.rate }) }),
     ...(lamps.trim() === "" ? {} : { lamps }),
   });

@@ -11,6 +11,7 @@ import type { NodeDefinition, TextureFormat } from "../../domain/types/node-defi
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { meshSourceIdsFor, prepareMesh, type PreparedMesh } from "../../points/mesh.ts";
+import type { MeshFrame } from "../../domain/mesh/glb.ts";
 import { createVgpuBackend } from "../../runtime/backend/vgpu/vgpu-backend.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { buildMorphIndex } from "../../domain/presets/morph-index.ts";
@@ -744,6 +745,12 @@ function lampsOf(parameters: Readonly<Record<string, unknown>>): string {
   return typeof parameters["lamps"] === "string" ? parameters["lamps"] : "";
 }
 
+/** T1581b: a Mesh File In's Frame — which frame its vertices are decoded in. */
+function frameOf(parameters: Readonly<Record<string, unknown>>): MeshFrame {
+  const frame = parameters["frame"];
+  return frame === "object" || frame === "part" ? frame : "world";
+}
+
 function measureMeshes(request: HeadlessRenderRequest): { request: HeadlessRenderRequest; prepared: Map<string, PreparedMesh | null> } {
   const prepared = new Map<string, PreparedMesh | null>();
   if (request.meshes === undefined) return { request, prepared };
@@ -753,7 +760,7 @@ function measureMeshes(request: HeadlessRenderRequest): { request: HeadlessRende
     if (node === undefined) continue; // inside a component: checked, not measured, at the feed
     if (node.type !== "meshFileIn") throw new Error(`meshes: "${nodeId}" is not a Mesh File In node.`);
     const select = typeof node.parameters["select"] === "string" ? (node.parameters["select"] as string) : "";
-    const mesh = prepareMesh(glb, select, clipOf(node.parameters), lampsOf(node.parameters));
+    const mesh = prepareMesh(glb, select, clipOf(node.parameters), lampsOf(node.parameters), frameOf(node.parameters));
     prepared.set(nodeId, mesh);
     if (mesh === null) continue;
     nodes[nodeId] = { ...node, parameters: { ...node.parameters, ...mesh.facts } };
@@ -881,7 +888,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
       const node = logicalGraph.nodes[nodeId as keyof typeof logicalGraph.nodes];
       if (node?.type !== "meshFileIn") throw new Error(`meshes: "${nodeId}" is not a Mesh File In node.`);
       const select = typeof node.parameters["select"] === "string" ? (node.parameters["select"] as string) : "";
-      const prepared = preparedMeshes.has(nodeId) ? (preparedMeshes.get(nodeId) ?? null) : prepareMesh(glb, select, clipOf(node.parameters), lampsOf(node.parameters));
+      const prepared = preparedMeshes.has(nodeId) ? (preparedMeshes.get(nodeId) ?? null) : prepareMesh(glb, select, clipOf(node.parameters), lampsOf(node.parameters), frameOf(node.parameters));
       if (prepared === null) continue;
       if (node.parameters["vertices"] !== prepared.facts.vertices || node.parameters["triangles"] !== prepared.facts.triangles) {
         throw new Error(

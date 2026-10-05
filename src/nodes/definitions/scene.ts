@@ -1,12 +1,15 @@
 import type { CompiledNodeDescription, NodeDefinition } from "../../domain/types/node-definition.ts";
+import type { ParameterSchema } from "../../domain/types/parameters.ts";
+import { storedStaticValue } from "../../domain/parameters/slots.ts";
 import { instanceShapeIndex, parseInstanceShape } from "./render-instances.ts";
-import type { DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
+import type { BufferBindingDescriptor, DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
 import { relocated, type WgslSourceMap } from "../../runtime/backend/wgsl-source-map.ts";
 import type { CameraMotion, CameraPose } from "../../domain/types/scene.ts";
 import type { CameraPayload, GeometryPayload, LightPayload, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
 import { resolveGroupPredicate } from "./points.ts";
 import { DEFAULT_MATERIAL } from "../../domain/types/scene.ts";
 import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, pointShadowFaceMatrices, projectorMatrix } from "../../domain/geometry/camera.ts";
+import { identityMatrix, isIdentityMatrix, normalMatrix, objectMatrix } from "../../domain/geometry/transform.ts";
 import { gridCellCounts, gridPointCount, parseTopology } from "../../points/topology.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { DATA_TEXTURE, RGBA_TEXTURE } from "./common-ports.ts";
@@ -14,6 +17,8 @@ import { DANGLING_CAMERA_SUGGESTION, danglingCameraRefusal } from "./camera-refe
 import { readColor, readNumber, readVector } from "./parameter-readers.ts";
 import { countedDrawSupport, resolveColorMap, resolveScalarMap } from "./points.ts";
 import { attributeBinding } from "./point-storage.ts";
+import { instanceRecordStorage, isPackedType, packedGroups } from "./instance-records.ts";
+import { instanceResolveWgsl, RESOLVE_RECORDS_BINDING, RESOLVE_SOURCE_PREFIX, type InstanceResolveOptions } from "../shaders/instance-resolve.wgsl.ts";
 import { applyMaterialOverrides } from "./material-overrides.ts";
 import {
   GLASS_BLIT_WGSL,
@@ -28,6 +33,8 @@ import {
   glassSurfaceWgsl,
   sceneInstancesWgsl,
   sceneSurfaceModule,
+  INSTANCED_BINDING_PREFIX,
+  type SceneInstancedOption,
   type SceneShadingOptions,
   type SceneSurfaceModule,
   shadowInstancesWgsl,
@@ -450,6 +457,283 @@ export const lightNode: NodeDefinition = {
   },
 };
 
+/** T1581b: Instances mode drawing a MESH (the Shape Mesh input) at every point. */
+const meshInstances = (values: Readonly<Record<string, unknown>>): boolean => values["mode"] === "instances" && values["shape"] === "mesh";
+
+/**
+ * T1588b, §V146: which geometries the object Transform reaches. A Surface draws by the
+ * model matrix; the per-point modes draw through a generator that has none yet, and the
+ * compile refuses a non-identity Transform there by name.
+ */
+const transformInactive = (values: Readonly<Record<string, unknown>>): string | null =>
+  values["mode"] === undefined || values["mode"] === "surface" || meshInstances(values)
+    ? null
+    : "The Transform moves a Surface or mesh instances; primitive instances, points and beams do not take it yet.";
+
+/**
+ * The Geometry's DECLARED parameters, hoisted (T1581b) so `parametersFor` can derive the
+ * schema one placed node carries without reading the node back off itself (§T903's funnel;
+ * `switch.ts` has the same shape).
+ */
+const GEOMETRY_PARAMETERS: ParameterSchema = {
+  material: {
+    type: "string",
+    label: "Material",
+    default: "",
+    description: "Name of a material node. Empty = the default lambert material.",
+  },
+  shadowOnly: {
+    type: "boolean",
+    label: "Shadow Only",
+    default: false,
+    compileTime: true,
+    description:
+      "T1414b: this object casts shadows (and blocks projectors) but the camera never sees it — no colour, depth, normal, albedo or shadow matte, no ambient occlusion. A stand-in that throws the shadow of something not in the shot, or the performer's shadow on a wall he is composited in front of. Surface and Instances bodies of a lit, opaque material only: nothing else casts.",
+  },
+  materialOverrides: {
+    type: "string",
+    label: "Material Overrides",
+    default: "",
+    description:
+      "T1415b: this object's own values for the material it wears, the material itself untouched: one `name = value` per line (or `;`), e.g. `roughness = 0.2` or a Material · WGSL field `heatColor = 1 0.5 0.2`. roughness, metallic and any field of the material's struct Params; an unknown name refuses by name.",
+  },
+  /*
+   * T1588b — THE OBJECT TRANSFORM (docs/mesh-instancing-design-2026-10-05.md, D5/D6):
+   *
+   *     Object = T(translate) · T(pivot) · R(rotate) · S(scale) · T(−pivot)
+   *
+   * composed on the CPU (`objectMatrix`) and carried in the payload, so every pass of
+   * every Render draws by the same matrix. All four are VALUES: a moving object is a
+   * uniform write, never a rebuild (§V5).
+   */
+  translate: {
+    type: "vector",
+    size: 3,
+    label: "Translate",
+    group: "Transform",
+    default: [0, 0, 0],
+    inactiveWhen: transformInactive,
+    description: "Moves the whole object, in scene units, after its scale and its turn. Drive it to fly a hull through the shot: the vertices are not rewritten, the draw takes a matrix.",
+  },
+  rotate: {
+    type: "vector",
+    size: 3,
+    label: "Rotate",
+    group: "Transform",
+    default: [0, 0, 0],
+    inactiveWhen: transformInactive,
+    description:
+      "Turns the object about its Pivot, in DEGREES, applied X then Y then Z. Each is a right-handed turn about its axis: a positive Z carries +X toward +Y. Its normals turn with it, so it is lit for the way it faces.",
+  },
+  objectScale: {
+    type: "vector",
+    size: 3,
+    label: "Scale",
+    group: "Transform",
+    default: [1, 1, 1],
+    inactiveWhen: transformInactive,
+    description: "Grows or shrinks the object about its Pivot, per axis, before the turn. This is the object's own scale; Size below is the size of one instance, billboard or beam.",
+  },
+  pivot: {
+    type: "vector",
+    size: 3,
+    label: "Pivot",
+    group: "Transform",
+    default: [0, 0, 0],
+    inactiveWhen: transformInactive,
+    description: "The point of the object, in its own coordinates, that Rotate and Scale leave where it is. With no turn and a scale of 1 it changes nothing.",
+  },
+  mode: {
+    type: "enum",
+    label: "Mode",
+    default: "surface",
+    compileTime: true,
+    options: [
+      { value: "surface", label: "Surface" },
+      { value: "instances", label: "Instances" },
+      /* T647: camera-facing billboards — cheap reading markers with per-point colour,
+         lit through the same camera and depth buffer, honoring the same group
+         predicate. They cast no shadow (a screen-aligned card has no light-facing
+         geometry). */
+      { value: "points", label: "Points" },
+      /* T680: one quad per point, spanning `position` → the Endpoint attribute. The
+         third member of the billboard family and the one that carries a BEARING:
+         beams, streaks, trails — anything whose reading is a SEGMENT rather than a
+         dot. Casts no shadow, for §V610's reason. */
+      { value: "beam", label: "Beam" },
+    ],
+  },
+  endpoint: {
+    type: "string",
+    label: "Endpoint",
+    default: "",
+    compileTime: true,
+    inactiveWhen: (values) => (values["mode"] === "beam" ? null : "Only a beam has a far end."),
+    description:
+      "Beam mode: the name of a vec3f attribute holding the FAR end of each segment. The near end is `position`. A ray's `hitPosition`, a previous frame's position, `position + velocity` — whatever the data already knows.",
+  },
+  spherical: {
+    type: "boolean",
+    label: "Spherical",
+    default: false,
+    compileTime: true,
+    description:
+      "T940b: points mode — each billboard reads as a tiny lit sphere: round soft splat plus a shaded side, lit from the azimuth the tint attribute's ALPHA carries (radians; a kernel writes the direction light arrives from). Squares become motes.",
+    inactiveWhen: (values) => (values["mode"] === "points" ? null : "Only points draw spherical splats."),
+  },
+  taper: {
+    type: "number",
+    label: "Taper",
+    default: 1,
+    min: 0,
+    max: 1,
+    range: "bounded",
+    inactiveWhen: (values) => (values["mode"] === "beam" ? null : "Only a beam has two ends to size differently."),
+    description:
+      "Beam mode: the share of the width the beam keeps at its ORIGIN. 1 is a parallel-sided ribbon; 0 pinches the near end to a point, which is what a divergent beam does — and what keeps many beams sharing one origin from fusing into a solid wedge there.",
+  },
+  /**
+   * T917 — the SOFT PROFILE (§T845's gap, third sighting: E41 rounds quads with bloom,
+   * E45's stay hard, E44's boxes read as a wall). §T845's AA-disc formula on the
+   * primitive's own across axis: 0 is today's hard edge, bit-identical; above it the
+   * edge falls off over that share of the half-width. The colour carries the coverage
+   * (premultiplied), so an additive draw sums light without fringing.
+   */
+  soft: {
+    type: "number",
+    label: "Soft",
+    default: 0,
+    min: 0,
+    max: 1,
+    range: "bounded",
+    inactiveWhen: (values) =>
+      values["mode"] === "beam" || values["mode"] === "points"
+        ? null
+        : "The soft profile falls off across a beam's width or a point's billboard.",
+    description:
+      "Edge falloff, as a share of the half-width. 0 is a hard edge (unchanged); 1 falls off from the centreline. Pairs with Blend: Additive for beams that read as light.",
+  },
+  /**
+   * T917 — additive light. The plan and backend have carried per-draw blend since T295
+   * (\`pass.blend\`); this is the missing knob. Additive draws also stop WRITING depth
+   * (they still test it): light does not occlude light, and 61 fan beams at one depth
+   * must sum rather than fight the z-buffer.
+   */
+  blend: {
+    type: "enum",
+    label: "Blend",
+    default: "opaque",
+    compileTime: true,
+    options: [
+      { value: "opaque", label: "Opaque" },
+      { value: "additive", label: "Additive" },
+    ],
+    description:
+      "Additive adds this geometry's colour onto what is already drawn — light on light — and stops writing depth so overlapping light sums instead of occluding. A Surface drawn additively (T1411b) comes after every opaque and glass geometry, still hides behind what is in front of it, and leaves the Render's Depth, Normal and Albedo outputs and its shadows to what it glows over.",
+  },
+  shape: {
+    type: "enum",
+    label: "Shape",
+    default: "box",
+    compileTime: true,
+    options: [
+      { value: "quad", label: "Quad" },
+      { value: "box", label: "Box" },
+      { value: "octahedron", label: "Octahedron" },
+      /* T1581b: any mesh — the pointset on the Shape Mesh input, drawn once per point. */
+      { value: "mesh", label: "Mesh" },
+    ],
+    inactiveWhen: (values) => (values["mode"] === "instances" ? null : "Only instances wear a primitive."),
+    description:
+      "What Instances mode draws at every point. Quad, Box and Octahedron are built in. Mesh draws the pointset wired to Shape Mesh — a Mesh File In with Frame: Object, or anything downstream that keeps its triangles — with the mesh's own normals, uv, colour and surface values, lit, shadowed and written to the Normal and Albedo outputs as a Surface is, and under a Material · WGSL too.",
+  },
+  /*
+   * T1581b — WHERE EACH INSTANCE STANDS (docs/mesh-instancing-design-2026-10-05.md, D5/D7):
+   *
+   *     Instance = T(place + Instance Translate) · R(orient) · S(Size · size)
+   *
+   * `place` is the points' own `position` unless this is in Map mode, when it is whichever
+   * vec3f attribute the map names. The value ADDS to it either way — the rule every target
+   * with both a value and an attribute follows: they compose, and the default is neutral.
+   */
+  instanceTranslate: {
+    type: "vector",
+    size: 3,
+    label: "Instance Translate",
+    default: [0, 0, 0],
+    inactiveWhen: (values) => (meshInstances(values) ? null : "Only mesh instances take a mapped place; a primitive stands at its point's position."),
+    description:
+      "Mesh instances: an offset added to every instance's place, in the object's own frame. In Map mode a vec3f attribute IS each instance's place instead of `position` — a second set of positions a kernel wrote — and this value still adds to it.",
+  },
+  scale: {
+    type: "number",
+    /* T1588b: labelled Size since the object's own per-axis Scale arrived (the key is
+       unchanged, so every stored document reads as it did). */
+    label: "Size",
+    default: 0.05,
+    min: 0,
+    range: "floor",
+    inactiveWhen: (values) =>
+      values["mode"] === "instances" || values["mode"] === "points" || values["mode"] === "beam"
+        ? null
+        : "Size sizes instances and point billboards; a surface spans its grid.",
+    description:
+      "Instances: the primitive's size; a MESH instance's scale, which defaults to 1 — the mesh's own size. Points: the billboard's. Beam: its HALF-WIDTH — a beam takes its length from the data, so this is the only dimension left to set. In Map mode an f32 attribute (or one channel of a float vector) MULTIPLIES this per point, so the number here stays the object's size and the attribute is a factor — size by depth for a circle of confusion, by age, by confidence.",
+  },
+  /*
+   * T723 — ORIENTATION, as a unit QUATERNION, and the map is the whole of it.
+   *
+   * Why a quaternion and not Euler angles or a forward direction: `ATTRIBUTE_STRIDES`
+   * makes `vec3f` and `vec4f` both SIXTEEN BYTES — WGSL aligns a vec3 to 16 — so all
+   * three candidates cost one attribute of §V588's four and exactly the same memory.
+   * There is no cheap option, which leaves only what each CANNOT do. Euler angles
+   * cannot compose (adding angles is not composing rotations), cannot interpolate and
+   * gimbal; a forward direction cannot express ROLL and pops through a half turn when
+   * it crosses the implied up. A quaternion does all of it, and the asymmetry decides
+   * it: a direction is recoverable from a quaternion, roll is not recoverable from a
+   * direction. T287 already declared the `quaternion` qualifier on vec4f with exactly
+   * this semantic and it has had no consumer until now.
+   *
+   * The value here is the IDENTITY and the compiler refuses any other — see the
+   * refusal below. A per-object turn is a separate feature; when it arrives it
+   * composes by quaternion multiply, which is what the qualifier already says.
+   */
+  orient: {
+    type: "vector",
+    size: 4,
+    label: "Orient",
+    default: [0, 0, 0, 1],
+    inactiveWhen: (values) =>
+      values["mode"] === "instances"
+        ? null
+        : "Only instances have a frame to turn: a billboard faces the camera, a beam takes its axis from its endpoints, and a surface has no per-point anything.",
+    description:
+      "Instances only, and MAP MODE only: a vec4f attribute holding a unit quaternion (x, y, z, w) turns each primitive — and its normals with it, so a turned box is lit for the way up it actually has. Write one in a kernel to point a tile down its own velocity or along a flow. Right-handed and active: (0, 0, sin45, cos45) is a +90° turn about +Z and carries +X to +Y.",
+  },
+  tint: {
+    type: "color",
+    label: "Tint",
+    default: [1, 1, 1, 1],
+    space: "display",
+    description:
+      "Multiplier on the material's base colour: per object as a value, PER POINT in Map mode (a vec4f attribute — T478). White = inherit, either way.",
+  },
+  group: {
+    type: "string",
+    label: "Group",
+    default: "",
+    compileTime: true,
+    description:
+      "T642/T333: draw only matching points — a WGSL predicate over p.<attribute>, e.g. p.hit > 0.5. Instances, Points and Beam modes; referenced attributes bind on demand from the edge. Empty = all. On mesh instances it is decided once per instance (not per vertex), and two Geometries over one pointset with complementary predicates draw two shapes.",
+  },
+};
+
+/** T1581b: the schema a mesh-instancing Geometry carries — the declared one, its Size defaulting to 1. */
+const GEOMETRY_MESH_INSTANCE_PARAMETERS: ParameterSchema = {
+  ...GEOMETRY_PARAMETERS,
+  scale: { ...GEOMETRY_PARAMETERS["scale"], default: 1 } as ParameterSchema[string],
+};
+
 /**
  * T428/T449 — the assignment stage, TD's Geometry COMP: a pointset becomes a NAMEABLE
  * renderable object here, wearing a material (referenced by name) with per-object
@@ -473,7 +757,7 @@ export const geometryNode: NodeDefinition = {
    * for on every call, for all 107 nodes.
    */
   description:
-    "Binds a point set and a material into one nameable renderable object — a Render lists geometries by name. Mode decides what the points become: Surface skins them into a mesh over their grid topology; INSTANCES draws one primitive at every point — N copies of one shape from ONE node, never N nodes — with Scale, Orient and Tint taking per-point values in Map mode; Points draws a camera-facing billboard per point; Beam draws a quad spanning position to the Endpoint attribute, for streaks and rays. Tint multiplies the material's base colour per object (1,1,1,1 = inherit, visibly).",
+    "Binds a point set and a material into one nameable renderable object — a Render lists geometries by name. Mode decides what the points become: Surface skins them into a mesh over their grid topology; INSTANCES draws one primitive at every point — N copies of one shape from ONE node, never N nodes — a quad, box or octahedron, or with Shape: Mesh ANY MESH wired to Shape Mesh (a Mesh File In with Frame: Object), lit, shadowed and Material · WGSL-shaded as a Surface is; Size, Orient, Tint and Instance Translate take per-point values in Map mode; Points draws a camera-facing billboard per point; Beam draws a quad spanning position to the Endpoint attribute, for streaks and rays. Tint multiplies the material's base colour per object (1,1,1,1 = inherit, visibly). Translate, Rotate, Scale and Pivot move a Surface as ONE OBJECT — a matrix on every draw (colour, G-buffer, shadows), never a kernel rewriting its vertices.",
   // T1214: the tags named one of the four modes. A library search for "instances" or
   // "beam" found Render Instances and nothing else — this node does both.
   tags: ["3d", "scene", "geometry", "material", "surface", "instances", "points", "beam"],
@@ -483,6 +767,19 @@ export const geometryNode: NodeDefinition = {
       label: "Points",
       type: { kind: "pointset", requires: [{ name: "position", type: "vec3f" }] },
       description: "Surface mode needs analytic grid topology on the edge.",
+    },
+    {
+      // T1581b: the instance SHAPE. AFTER `points`, which stays the first pointset input:
+      // every Map on this node resolves against it (§V306).
+      id: "mesh",
+      label: "Shape Mesh",
+      optional: true,
+      /* Only `position` is required of the EDGE, as on `points`: a kernel between the file
+         and this port declares no more than that, and the compile checks the triangles and
+         the normal itself, with a sentence each. */
+      type: { kind: "pointset", requires: [{ name: "position", type: "vec3f" }] },
+      description:
+        "Instances mode, Shape: Mesh — the mesh drawn at every point of Points: a Mesh File In (set its Frame to Object, so the shape is in its own frame rather than where the file placed it), or anything downstream that keeps its triangles. Read in no other mode.",
     },
     {
       // T447: reference-fed — the `material` PARAMETER names the node; the compiler
@@ -495,187 +792,17 @@ export const geometryNode: NodeDefinition = {
   ],
   outputs: [{ id: "out", label: "Out", type: { kind: "scene" } }],
   sourceReferences: [{ parameter: "material", input: "material" }],
-  parameters: {
-    material: {
-      type: "string",
-      label: "Material",
-      default: "",
-      description: "Name of a material node. Empty = the default lambert material.",
-    },
-    shadowOnly: {
-      type: "boolean",
-      label: "Shadow Only",
-      default: false,
-      compileTime: true,
-      description:
-        "T1414b: this object casts shadows (and blocks projectors) but the camera never sees it — no colour, depth, normal, albedo or shadow matte, no ambient occlusion. A stand-in that throws the shadow of something not in the shot, or the performer's shadow on a wall he is composited in front of. Surface and Instances bodies of a lit, opaque material only: nothing else casts.",
-    },
-    materialOverrides: {
-      type: "string",
-      label: "Material Overrides",
-      default: "",
-      description:
-        "T1415b: this object's own values for the material it wears, the material itself untouched: one `name = value` per line (or `;`), e.g. `roughness = 0.2` or a Material · WGSL field `heatColor = 1 0.5 0.2`. roughness, metallic and any field of the material's struct Params; an unknown name refuses by name.",
-    },
-    mode: {
-      type: "enum",
-      label: "Mode",
-      default: "surface",
-      compileTime: true,
-      options: [
-        { value: "surface", label: "Surface" },
-        { value: "instances", label: "Instances" },
-        /* T647: camera-facing billboards — cheap reading markers with per-point colour,
-           lit through the same camera and depth buffer, honoring the same group
-           predicate. They cast no shadow (a screen-aligned card has no light-facing
-           geometry). */
-        { value: "points", label: "Points" },
-        /* T680: one quad per point, spanning `position` → the Endpoint attribute. The
-           third member of the billboard family and the one that carries a BEARING:
-           beams, streaks, trails — anything whose reading is a SEGMENT rather than a
-           dot. Casts no shadow, for §V610's reason. */
-        { value: "beam", label: "Beam" },
-      ],
-    },
-    endpoint: {
-      type: "string",
-      label: "Endpoint",
-      default: "",
-      compileTime: true,
-      inactiveWhen: (values) => (values["mode"] === "beam" ? null : "Only a beam has a far end."),
-      description:
-        "Beam mode: the name of a vec3f attribute holding the FAR end of each segment. The near end is `position`. A ray's `hitPosition`, a previous frame's position, `position + velocity` — whatever the data already knows.",
-    },
-    spherical: {
-      type: "boolean",
-      label: "Spherical",
-      default: false,
-      compileTime: true,
-      description:
-        "T940b: points mode — each billboard reads as a tiny lit sphere: round soft splat plus a shaded side, lit from the azimuth the tint attribute's ALPHA carries (radians; a kernel writes the direction light arrives from). Squares become motes.",
-      inactiveWhen: (values) => (values["mode"] === "points" ? null : "Only points draw spherical splats."),
-    },
-    taper: {
-      type: "number",
-      label: "Taper",
-      default: 1,
-      min: 0,
-      max: 1,
-      range: "bounded",
-      inactiveWhen: (values) => (values["mode"] === "beam" ? null : "Only a beam has two ends to size differently."),
-      description:
-        "Beam mode: the share of the width the beam keeps at its ORIGIN. 1 is a parallel-sided ribbon; 0 pinches the near end to a point, which is what a divergent beam does — and what keeps many beams sharing one origin from fusing into a solid wedge there.",
-    },
-    /**
-     * T917 — the SOFT PROFILE (§T845's gap, third sighting: E41 rounds quads with bloom,
-     * E45's stay hard, E44's boxes read as a wall). §T845's AA-disc formula on the
-     * primitive's own across axis: 0 is today's hard edge, bit-identical; above it the
-     * edge falls off over that share of the half-width. The colour carries the coverage
-     * (premultiplied), so an additive draw sums light without fringing.
-     */
-    soft: {
-      type: "number",
-      label: "Soft",
-      default: 0,
-      min: 0,
-      max: 1,
-      range: "bounded",
-      inactiveWhen: (values) =>
-        values["mode"] === "beam" || values["mode"] === "points"
-          ? null
-          : "The soft profile falls off across a beam's width or a point's billboard.",
-      description:
-        "Edge falloff, as a share of the half-width. 0 is a hard edge (unchanged); 1 falls off from the centreline. Pairs with Blend: Additive for beams that read as light.",
-    },
-    /**
-     * T917 — additive light. The plan and backend have carried per-draw blend since T295
-     * (\`pass.blend\`); this is the missing knob. Additive draws also stop WRITING depth
-     * (they still test it): light does not occlude light, and 61 fan beams at one depth
-     * must sum rather than fight the z-buffer.
-     */
-    blend: {
-      type: "enum",
-      label: "Blend",
-      default: "opaque",
-      compileTime: true,
-      options: [
-        { value: "opaque", label: "Opaque" },
-        { value: "additive", label: "Additive" },
-      ],
-      description:
-        "Additive adds this geometry's colour onto what is already drawn — light on light — and stops writing depth so overlapping light sums instead of occluding. A Surface drawn additively (T1411b) comes after every opaque and glass geometry, still hides behind what is in front of it, and leaves the Render's Depth, Normal and Albedo outputs and its shadows to what it glows over.",
-    },
-    shape: {
-      type: "enum",
-      label: "Shape",
-      default: "box",
-      compileTime: true,
-      options: [
-        { value: "quad", label: "Quad" },
-        { value: "box", label: "Box" },
-        { value: "octahedron", label: "Octahedron" },
-      ],
-      inactiveWhen: (values) => (values["mode"] === "instances" ? null : "Only instances wear a primitive."),
-    },
-    scale: {
-      type: "number",
-      label: "Scale",
-      default: 0.05,
-      min: 0,
-      range: "floor",
-      inactiveWhen: (values) =>
-        values["mode"] === "instances" || values["mode"] === "points" || values["mode"] === "beam"
-          ? null
-          : "Scale sizes instances and point billboards; a surface spans its grid.",
-      description:
-        "Instances: the primitive's size. Points: the billboard's. Beam: its HALF-WIDTH — a beam takes its length from the data, so this is the only dimension left to set. In Map mode an f32 attribute (or one channel of a float vector) MULTIPLIES this per point, so the number here stays the object's size and the attribute is a factor — size by depth for a circle of confusion, by age, by confidence.",
-    },
-    /*
-     * T723 — ORIENTATION, as a unit QUATERNION, and the map is the whole of it.
-     *
-     * Why a quaternion and not Euler angles or a forward direction: `ATTRIBUTE_STRIDES`
-     * makes `vec3f` and `vec4f` both SIXTEEN BYTES — WGSL aligns a vec3 to 16 — so all
-     * three candidates cost one attribute of §V588's four and exactly the same memory.
-     * There is no cheap option, which leaves only what each CANNOT do. Euler angles
-     * cannot compose (adding angles is not composing rotations), cannot interpolate and
-     * gimbal; a forward direction cannot express ROLL and pops through a half turn when
-     * it crosses the implied up. A quaternion does all of it, and the asymmetry decides
-     * it: a direction is recoverable from a quaternion, roll is not recoverable from a
-     * direction. T287 already declared the `quaternion` qualifier on vec4f with exactly
-     * this semantic and it has had no consumer until now.
-     *
-     * The value here is the IDENTITY and the compiler refuses any other — see the
-     * refusal below. A per-object turn is a separate feature; when it arrives it
-     * composes by quaternion multiply, which is what the qualifier already says.
-     */
-    orient: {
-      type: "vector",
-      size: 4,
-      label: "Orient",
-      default: [0, 0, 0, 1],
-      inactiveWhen: (values) =>
-        values["mode"] === "instances"
-          ? null
-          : "Only instances have a frame to turn: a billboard faces the camera, a beam takes its axis from its endpoints, and a surface has no per-point anything.",
-      description:
-        "Instances only, and MAP MODE only: a vec4f attribute holding a unit quaternion (x, y, z, w) turns each primitive — and its normals with it, so a turned box is lit for the way up it actually has. Write one in a kernel to point a tile down its own velocity or along a flow. Right-handed and active: (0, 0, sin45, cos45) is a +90° turn about +Z and carries +X to +Y.",
-    },
-    tint: {
-      type: "color",
-      label: "Tint",
-      default: [1, 1, 1, 1],
-      space: "display",
-      description:
-        "Multiplier on the material's base colour: per object as a value, PER POINT in Map mode (a vec4f attribute — T478). White = inherit, either way.",
-    },
-    group: {
-      type: "string",
-      label: "Group",
-      default: "",
-      compileTime: true,
-      description:
-        "T642/T333: draw only matching points — a WGSL predicate over p.<attribute>, e.g. p.hit > 0.5. Instances, Points and Beam modes; referenced attributes bind on demand from the edge. Empty = all.",
-    },
+  parameters: GEOMETRY_PARAMETERS,
+  /**
+   * T1581b (O3): a MESH instance's Size defaults to 1, the mesh's own size. The declared
+   * 0.05 is a primitive's half-extent, and on a mesh it would be a twentieth of the file —
+   * a trap. The schema is per instance (§T880), so every reader gets the right default
+   * through the one funnel.
+   */
+  parametersFor(stored) {
+    return storedStaticValue(stored["mode"] as never) === "instances" && storedStaticValue(stored["shape"] as never) === "mesh"
+      ? GEOMETRY_MESH_INSTANCE_PARAMETERS
+      : GEOMETRY_PARAMETERS;
   },
   compile(context): CompiledNodeDescription {
     const { nodeId, inputs, parameters, parameterMaps } = readCompileInputs(context);
@@ -716,7 +843,7 @@ export const geometryNode: NodeDefinition = {
     // retained static. `tint` (T478), `scale` (T721) and `orient` (T723) are the
     // mappable ones — and this list is the reason a new map cannot be half-added: a
     // parameter that grows a map binding without appearing here refuses itself.
-    const MAPPABLE = new Set(["tint", "scale", "orient"]);
+    const MAPPABLE = new Set(["tint", "scale", "orient", "instanceTranslate"]);
     const unhonoured = Object.keys(parameterMaps).filter((key) => !MAPPABLE.has(key)).sort();
     if (unhonoured.length > 0) {
       return {
@@ -724,9 +851,25 @@ export const geometryNode: NodeDefinition = {
         diagnostics: unhonoured.map((key) => ({
           severity: "error" as const,
           code: "node.parameter.map",
-          message: `Node "${nodeId}": ${key} is in map mode, but geometry maps only "tint", "scale" and "orient".`,
+          message: `Node "${nodeId}": ${key} is in map mode, but geometry maps only "tint", "scale", "orient" and "instanceTranslate".`,
           nodeId,
           suggestion: "Switch it back to Constant, or drive it through the value graph instead.",
+        })),
+      };
+    }
+    /* T1581b, §V306: this node has two pointset inputs now, and a Map reads ONE of them —
+       the points, where the per-instance values are. A map that names the shape is refused
+       with the reason, not resolved against the wrong pointset. */
+    const onShape = Object.entries(parameterMaps).filter(([, binding]) => binding.port === "mesh").map(([key]) => key).sort();
+    if (onShape.length > 0) {
+      return {
+        passes: [],
+        diagnostics: onShape.map((key) => ({
+          severity: "error" as const,
+          code: "node.parameter.map",
+          message: `Node "${nodeId}": ${key} maps port "mesh", but a Map reads a per-instance value and those are on the Points input; Shape Mesh is the shape every instance draws.`,
+          nodeId,
+          suggestion: "Map an attribute of the Points input (drop the port), or write the value into the points with a kernel.",
         })),
       };
     }
@@ -768,6 +911,27 @@ export const geometryNode: NodeDefinition = {
        instance is true of a billboard and of a beam — a scale, a group predicate, no
        uv, no grid. Only `surface` is the odd one. */
     const perPoint = mode === "instances" || mode === "points" || mode === "beam";
+    /* T1581b: Instances mode drawing the Shape Mesh input at every point. */
+    const meshShape = mode === "instances" && parameters["shape"] === "mesh";
+    /* Instance Translate is the mesh instance's target. MAPPED on anything else it could
+       only be dropped, so the map refuses by name (§V288) — the node's rule for a map this
+       mode cannot honour, as Size's on a surface. Its constant VALUE there is inactive and
+       says so (§V146): a value is never what decides the plan's structure (§V453). */
+    const instanceTranslate = vec3(parameters, "instanceTranslate", [0, 0, 0]);
+    if (!meshShape && parameterMaps["instanceTranslate"] !== undefined) {
+      return {
+        passes: [],
+        diagnostics: [
+          {
+            severity: "error",
+            code: "node.parameter.map",
+            message: `Node "${nodeId}": instanceTranslate is in map mode, but it places mesh instances (Mode: Instances, Shape: Mesh); this geometry is ${mode === "instances" ? `${String(parameters["shape"] ?? "box")} instances` : `a ${mode}`} and would ignore it.`,
+            nodeId,
+            suggestion: "Set Shape to Mesh and wire a mesh to Shape Mesh, or set Instance Translate back to Constant.",
+          },
+        ],
+      };
+    }
     /* T1414b: Shadow Only keeps exactly the casting half of a body — so a body that casts
        nothing (a billboard, a beam, light laid on additively, glass, an unlit marker) would
        draw nothing at all. Refused by name rather than silently invisible (§V288). */
@@ -815,7 +979,7 @@ export const geometryNode: NodeDefinition = {
             code: "node.parameter.map",
             message: `Node "${nodeId}": scale is in map mode, but a surface spans its grid and has no per-point size.`,
             nodeId,
-            suggestion: "Switch the mode to instances, points or beam, or set Scale back to Constant.",
+            suggestion: "Switch the mode to instances, points or beam, or set Size back to Constant.",
           },
         ],
       };
@@ -962,11 +1126,134 @@ export const geometryNode: NodeDefinition = {
       }
       endpointPair = { ...carried, type: "vec3f" };
     }
+    /* T1588b: the object matrix, composed HERE and nowhere downstream. */
+    const transform = objectMatrix({
+      translate: vec3(parameters, "translate", [0, 0, 0]),
+      rotate: vec3(parameters, "rotate", [0, 0, 0]),
+      scale: vec3(parameters, "objectScale", [1, 1, 1]),
+      pivot: vec3(parameters, "pivot", [0, 0, 0]),
+    });
+    /* The per-point modes draw through a generator that takes no object matrix yet, so a
+       transform there could only be dropped — refused by name instead (§V288, §V624). */
+    if (perPoint && !meshShape && !isIdentityMatrix(transform)) {
+      return {
+        passes: [],
+        diagnostics: [
+          {
+            severity: "error",
+            code: "node.scene.transform",
+            message: `Node "${nodeId}": the Transform (Translate, Rotate, Scale, Pivot) moves a Surface or mesh instances; ${mode === "instances" ? "a geometry drawing primitive instances" : `a ${mode} geometry`} does not take it yet, so it would be ignored.`,
+            nodeId,
+            suggestion: "Move the points themselves with a Transform node upstream, or set the Transform back to its defaults.",
+          },
+        ],
+      };
+    }
+    /*
+     * T1581b — MESH INSTANCES. The shape arrives on the Shape Mesh input; each instance's
+     * transform is RESOLVED ONCE A FRAME, here, by one compute pass this node owns, into a
+     * record every draw of every Render reads (instance-resolve.wgsl.ts says why). The
+     * mapped attributes, the Group predicate and the object matrix all end in that record,
+     * so nothing downstream evaluates any of them again.
+     */
+    let instanceMesh: GeometryPayload["instanceMesh"];
+    let resolve: { pass: DispatchPassDescriptor; scratch: { kind: "buffer"; key: string; stride: number; capacity: number } } | undefined;
+    if (meshShape) {
+      const refuseShape = (message: string, suggestion: string): CompiledNodeDescription => ({
+        passes: [],
+        diagnostics: [{ severity: "error", code: "node.scene.shape", message: `Node "${nodeId}": ${message}`, nodeId, suggestion }],
+      });
+      const shape = inputs["mesh"]?.pointset;
+      if (shape === undefined) {
+        return refuseShape(
+          "Shape: Mesh draws the mesh on the Shape Mesh input at every point, and no mesh arrives on it.",
+          "Wire a Mesh File In (Frame: Object) to Shape Mesh, or pick Quad, Box or Octahedron.",
+        );
+      }
+      const shapeTopology = typeof shape.topology === "string" ? parseTopology(shape.topology) : null;
+      if (shapeTopology === null || shapeTopology.kind !== "mesh") {
+        return refuseShape(
+          `the Shape Mesh input carries ${shapeTopology === null ? "an unreadable topology" : shapeTopology.kind === "grid" ? "a grid" : "points with no triangles"}, and an instance shape needs a mesh's triangles.`,
+          "Wire a Mesh File In, or something downstream of one that keeps its mesh topology.",
+        );
+      }
+      const shapeNormal = shape.pairs["normal"];
+      if (shape.pairs["position"]?.type !== "vec3f" || shapeNormal === undefined || shapeNormal.type !== "vec3f") {
+        return refuseShape(
+          "the Shape Mesh input is a mesh without a vec3f `position` and `normal`; an instance is placed and lit by them.",
+          "Keep position and normal through any kernel between the Mesh File In and the Geometry.",
+        );
+      }
+      /* The compound-head resolver again (see Orient): one vec3f attribute is the whole place. */
+      const resolvedPlace = resolveColorMap(nodeId, parameterMaps["instanceTranslate"], pointset, "points", "instanceTranslate", "vec3f");
+      if ("refusal" in resolvedPlace) return resolvedPlace.refusal;
+      const place = resolvedPlace.map ?? pointset.pairs["position"];
+      if (place === undefined) return { passes: [], diagnostics: [missingCompileResource(nodeId, "the points' position attribute")] };
+      const records = instanceRecordStorage(nodeId, pointset.capacity, { tint: tintMap !== undefined });
+      if (!records.ok) return refuseShape(records.errors.join(" "), "Lower the point capacity.");
+      const sources = packedGroups();
+      const unreadable = [
+        ...(scaleMap === undefined || isPackedType(scaleMap.type) ? [] : [`scale (${scaleMap.type})`]),
+        ...(resolvedGroup === undefined ? [] : resolvedGroup.binds.filter((bind) => !isPackedType(bind.type)).map((bind) => `p.${bind.attribute} (${bind.type})`)),
+      ];
+      if (unreadable.length > 0) {
+        return refuseShape(`mesh instances cannot read ${unreadable.join(", ")}: not a point attribute type.`, "Use an f32, vec2f, vec3f, vec4f, u32 or vec4u attribute.");
+      }
+      const reads: InstanceResolveOptions = {
+        translate: sources.read(place, "vec3f"),
+        ...(orientMap === undefined ? {} : { orient: sources.read(orientMap, "vec4f") }),
+        ...(scaleMap === undefined || !isPackedType(scaleMap.type)
+          ? {}
+          : { scale: { ...sources.read(scaleMap, scaleMap.type), ...(scaleMap.channel === undefined ? {} : { channel: scaleMap.channel }) } }),
+        ...(tintMap === undefined ? {} : { tint: sources.read(tintMap, "vec4f") }),
+        ...(resolvedGroup === undefined
+          ? {}
+          : {
+              group: {
+                expression: resolvedGroup.expression,
+                binds: resolvedGroup.binds.flatMap((bind) => (isPackedType(bind.type) ? [{ attribute: bind.attribute, read: sources.read(bind, bind.type) }] : [])),
+              },
+            }),
+        record: records.offsets,
+        groups: 0,
+      };
+      /* The object matrix as the three rows of its 3×4 (column-major in, rows out). */
+      const objectRow = (row: number): number[] => [0, 1, 2, 3].map((column) => transform[column * 4 + row] as number);
+      resolve = {
+        pass: {
+          kind: "dispatch",
+          id: `${nodeId}:instances:resolve`,
+          shader: instanceResolveWgsl({ ...reads, groups: sources.count }),
+          entryPoint: "main",
+          workgroups: [Math.ceil(pointset.capacity / 64), 1, 1],
+          buffers: [{ binding: RESOLVE_RECORDS_BINDING, resourceId: records.resourceId }, ...sources.bindings(RESOLVE_SOURCE_PREFIX)],
+          uniforms: {
+            object0: objectRow(0),
+            object1: objectRow(1),
+            object2: objectRow(2),
+            translate: [...instanceTranslate, 0],
+            scale: [readNumber(parameters, "scale", 1), 0, 0, 0],
+            count: pointset.capacity,
+          },
+          uniformBinding: "params",
+          nodeId,
+        },
+        scratch: records.scratch,
+      };
+      instanceMesh = {
+        pairs: shape.pairs,
+        triangles: shapeTopology.triangles,
+        indexBuffer: shapeTopology.indexBuffer,
+        records: { buffer: records.resourceId, ...records.offsets },
+      };
+    }
     const shapeParameter = parameters["shape"];
     const payload: GeometryPayload = {
       kind: "geometry",
       pairs: pointset.pairs,
       capacity: pointset.capacity,
+      objectMatrix: transform,
+      ...(instanceMesh === undefined ? {} : { instanceMesh }),
       ...(pointset.topology === undefined ? {} : { topology: pointset.topology }),
       mode,
       /*
@@ -994,20 +1281,60 @@ export const geometryNode: NodeDefinition = {
       ...(parameters["blend"] === "additive" ? { blend: "additive" as const } : {}),
       ...(parameters["shadowOnly"] === true ? { castOnly: true as const } : {}),
       ...(endpointPair === undefined ? {} : { endpoint: endpointPair }),
-      ...(tintMap === undefined ? {} : { colorAttribute: { ...tintMap, type: "vec4f" } }),
-      ...(scaleMap === undefined || !perPoint ? {} : { scaleAttribute: scaleMap }),
+      /* T1581b: a mesh instance's tint, size, turn and group are already in its records
+         (the resolve pass above), so none of them rides the payload for a draw to read twice. */
+      ...(tintMap === undefined || meshShape ? {} : { colorAttribute: { ...tintMap, type: "vec4f" } }),
+      ...(scaleMap === undefined || !perPoint || meshShape ? {} : { scaleAttribute: scaleMap }),
       /* T723: instances only — the refusal above has already turned away every other
          mode, so reaching here with a map means the frame is genuinely free to turn. */
-      ...(orientMap === undefined || mode !== "instances"
+      ...(orientMap === undefined || mode !== "instances" || meshShape
         ? {}
         : { orientAttribute: orientMap }),
-      ...(resolvedGroup === undefined ? {} : { group: resolvedGroup }),
+      ...(resolvedGroup === undefined || meshShape ? {} : { group: resolvedGroup }),
       ...(pointset.count === undefined ? {} : { count: { buffer: pointset.count.buffer } }),
       material,
     };
+    if (resolve !== undefined) {
+      return { passes: [resolve.pass], scratch: [resolve.scratch], scene: { out: payload } } as CompiledNodeDescription;
+    }
     return { passes: [], scene: { out: payload } } as CompiledNodeDescription;
   },
 };
+
+/**
+ * T1581b — what a MESH-INSTANCE draw binds and reads: the shape's vertex attributes and the
+ * instance records, each buffer bound once and whole (`packedGroups`), plus the index list.
+ * The depth sweeps need the position and the records alone; the passes that shade take
+ * every attribute the shape carries. Both come from this one function, so the sweep and the
+ * lit draw cannot place an instance differently.
+ */
+function meshInstanceStorage(
+  mesh: NonNullable<GeometryPayload["instanceMesh"]>,
+  shading: boolean,
+): { readonly option: SceneInstancedOption; readonly buffers: BufferBindingDescriptor[] } | undefined {
+  const position = mesh.pairs["position"];
+  const normal = mesh.pairs["normal"];
+  if (position === undefined || normal === undefined) return undefined;
+  const groups = packedGroups();
+  const typed = (name: string, type: "vec2f" | "vec3f" | "vec4f") => {
+    const pair = shading ? mesh.pairs[name] : undefined;
+    return pair !== undefined && pair.type === type ? { [name]: groups.read(pair, type) } : {};
+  };
+  const shape = {
+    position: groups.read(position, "vec3f"),
+    normal: groups.read(normal, "vec3f"),
+    ...typed("uv", "vec2f"),
+    ...typed("color", "vec4f"),
+    ...typed("surface", "vec4f"),
+    ...typed("emissive", "vec3f"),
+  };
+  const { buffer, ...offsets } = mesh.records;
+  const record = { group: groups.whole(buffer), ...offsets };
+  return {
+    option: { ...shape, record, groups: groups.count },
+    buffers: [...groups.bindings(INSTANCED_BINDING_PREFIX), { binding: "meshIndices", resourceId: mesh.indexBuffer }],
+  };
+}
 
 /**
  * T1406b — the Render's SAMPLED-TEXTURE LEDGER. The compiler already refuses a pass that
@@ -1136,7 +1463,7 @@ export const renderNode: NodeDefinition = {
       label: "Normal",
       type: DATA_TEXTURE,
       description:
-        "World-space shaded normal as data, encoded n·0.5+0.5 in rgb, and roughness in a (0 = no surface). Surface geometry only; enable with Normal Output — off, this port produces nothing. Feed it, with Depth, to reflections, occlusion and edge passes.",
+        "World-space shaded normal as data, encoded n·0.5+0.5 in rgb, and roughness in a (0 = no surface). Surface geometry and mesh instances; enable with Normal Output — off, this port produces nothing. Feed it, with Depth, to reflections, occlusion and edge passes.",
     },
     {
       /* T1380b — the G-buffer's colour half: with depth and normal it is everything a
@@ -1145,7 +1472,7 @@ export const renderNode: NodeDefinition = {
       label: "Albedo",
       type: DATA_TEXTURE,
       description:
-        "The shaded base colour as data — linear rgb after the material — and metallic in a. Surface geometry only; enable with Albedo Output — off, this port produces nothing. With Depth and Normal, a deferred pass can light the frame from any number of lamps.",
+        "The shaded base colour as data — linear rgb after the material — and metallic in a. Surface geometry and mesh instances; enable with Albedo Output — off, this port produces nothing. With Depth and Normal, a deferred pass can light the frame from any number of lamps.",
     },
     {
       /* T1417b — the LIGHT'S OWN VIEW of its occluders, for a march that needs to know. */
@@ -1161,7 +1488,7 @@ export const renderNode: NodeDefinition = {
       label: "Shadow",
       type: DATA_TEXTURE,
       description:
-        "The shadow matte as data: r, g, b = how shadowed each surface the camera sees is from the first three CASTING lights in the Lights list (1 = fully in shadow, 0 = lit, the lit pass's own shadow test and softness), a = 1 where a surface drew (0 = nothing). Surface geometry only; enable with Shadow Output — off, this port produces nothing.",
+        "The shadow matte as data: r, g, b = how shadowed each surface the camera sees is from the first three CASTING lights in the Lights list (1 = fully in shadow, 0 = lit, the lit pass's own shadow test and softness), a = 1 where a surface drew (0 = nothing). Surface geometry and mesh instances; enable with Shadow Output — off, this port produces nothing.",
     },
   ],
   depthOutputs: ["out", "depth", "normal", "albedo", "shadow", "lightDepth"],
@@ -1296,7 +1623,7 @@ export const renderNode: NodeDefinition = {
       default: false,
       compileTime: true,
       description:
-        "T1371b: renders the shaded world normal and roughness into the Normal output — one extra pass per SURFACE geometry, through the same material code as the lit draw. Instances, points and beams do not write it. Off, the port allocates nothing.",
+        "T1371b: renders the shaded world normal and roughness into the Normal output — one extra pass per SURFACE geometry (and per mesh-instance geometry, T1581b), through the same material code as the lit draw. Primitive instances, points and beams do not write it. Off, the port allocates nothing.",
     },
     albedoOutput: {
       type: "boolean",
@@ -1304,7 +1631,7 @@ export const renderNode: NodeDefinition = {
       default: false,
       compileTime: true,
       description:
-        "T1380b: renders the shaded base colour (rgb) and metallic (a) into the Albedo output — one extra pass per SURFACE geometry, through the same material code as the lit draw. Instances, points and beams do not write it. Off, the port allocates nothing.",
+        "T1380b: renders the shaded base colour (rgb) and metallic (a) into the Albedo output — one extra pass per SURFACE geometry (and per mesh-instance geometry, T1581b), through the same material code as the lit draw. Primitive instances, points and beams do not write it. Off, the port allocates nothing.",
     },
     shadowOutput: {
       type: "boolean",
@@ -1312,7 +1639,7 @@ export const renderNode: NodeDefinition = {
       default: false,
       compileTime: true,
       description:
-        "T1414b: renders the shadow matte into the Shadow output — per surface pixel, how shadowed it is from each of the first three casting lights — one extra pass per SURFACE geometry, through the same material and the same shadow test as the lit draw. Off, the port allocates nothing.",
+        "T1414b: renders the shadow matte into the Shadow output — per surface pixel, how shadowed it is from each of the first three casting lights — one extra pass per SURFACE geometry (and per mesh-instance geometry, T1581b), through the same material and the same shadow test as the lit draw. Off, the port allocates nothing.",
     },
     lightDepthOutput: {
       type: "boolean",
@@ -1551,6 +1878,37 @@ export const renderNode: NodeDefinition = {
     ] as const;
 
     /*
+     * T1581b: how many instances a mesh-instance draw draws — the capacity, or, for a
+     * counted pointset, the indirect arguments off its GPU-resident live count (T478's
+     * machinery, one args buffer per geometry shared by every pass that draws it).
+     */
+    const countedInstances = (geometryIndex: number, payload: GeometryPayload, vertexCount: number): DrawPassDescriptor["instances"] => {
+      let counted = countedByIndex.get(geometryIndex);
+      if (counted === undefined) {
+        counted = countedDrawSupport(nodeId, payload, { vertexCount, maxInstances: Math.max(1, payload.capacity), argsKey: `drawArgs${geometryIndex}` });
+        if (counted !== undefined) {
+          countedByIndex.set(geometryIndex, counted);
+          passes.push(counted.argsPass);
+          scratch.push(counted.scratch);
+        }
+      }
+      return counted?.instances ?? payload.capacity;
+    };
+
+    /*
+     * T1588b — THE ONE PLACE A PASS GETS ITS MODEL MATRIX: the geometry's own
+     * `objectMatrix` (composed by the Geometry node) and, for the passes that light,
+     * its normal matrix. Every surface draw below spreads one of these two.
+     */
+    const modelOf = (payload: GeometryPayload): { model: number[] } => ({
+      model: [...(payload.objectMatrix ?? identityMatrix())],
+    });
+    const modelAndNormalOf = (payload: GeometryPayload): { model: number[]; modelNormal: number[] } => {
+      const model = modelOf(payload).model;
+      return { model, modelNormal: normalMatrix(model) };
+    };
+
+    /*
      * T481/T624 — ONE depth-only sweep of the scene, parameterised. The shadow phase
      * runs it per casting light (light matrix, light-space clip depth); the AO prepass
      * runs it once from the camera (camera matrix, linear view distance over the far
@@ -1703,6 +2061,32 @@ export const renderNode: NodeDefinition = {
          * cannot stop it. Its visible surface still belongs in camera depth.
          */
         if (!options.visibility && payload.material.model === "unlit") return;
+        /* T1581b: MESH instances sweep through the mesh generator — the indexed mesh's own
+           depth contract, each instance placed by its record exactly as the lit draw places it. */
+        if (payload.instanceMesh !== undefined) {
+          const storage = meshInstanceStorage(payload.instanceMesh, false);
+          if (storage === undefined) return; // the lit loop refuses this by name
+          const vertexCount = payload.instanceMesh.triangles * 3;
+          passes.push({
+            kind: "draw",
+            id: `${nodeId}:${options.prefix}:${geometryIndex}`,
+            nodeId,
+            shader: depthShader(shadowMeshWgsl({ ...depthOptions, instanced: storage.option })),
+            target: options.target,
+            topology: "triangle-list",
+            instances: countedInstances(geometryIndex, payload, vertexCount),
+            vertexCount,
+            buffers: storage.buffers,
+            uniforms: {
+              lightViewProjection: Array.from(options.matrix ?? []),
+              ...options.extraUniforms,
+              ...cubeUniforms,
+            },
+            uniformBinding: "params",
+            clear: false,
+          });
+          return;
+        }
         if (payload.mode === "instances") {
           let counted = countedByIndex.get(geometryIndex);
           if (counted === undefined && payload.count !== undefined) {
@@ -1785,6 +2169,7 @@ export const renderNode: NodeDefinition = {
             buffers: [attributeBinding("positions", position), { binding: "meshIndices", resourceId: topology.indexBuffer }],
             uniforms: {
               lightViewProjection: Array.from(options.matrix ?? []),
+              ...modelOf(payload),
               ...options.extraUniforms,
               ...cubeUniforms,
             },
@@ -1808,6 +2193,7 @@ export const renderNode: NodeDefinition = {
           buffers: [attributeBinding("positions", position)],
           uniforms: {
             lightViewProjection: Array.from(options.matrix ?? []),
+            ...modelOf(payload),
             grid: [topology.cols, topology.rows, topology.wrapU ? 1 : 0, topology.wrapV ? 1 : 0],
             ...options.extraUniforms,
               ...cubeUniforms,
@@ -2205,7 +2591,9 @@ export const renderNode: NodeDefinition = {
     const emitGeometry = ({ payload, source }: { payload: GeometryPayload; source: string }, index: number): void => {
       /* T1414b: a shadow-only body is in the light sweeps above and in nothing the camera draws. */
       if (payload.castOnly === true) return;
-      if (payload.mode === "instances" || payload.mode === "points" || payload.mode === "beam") {
+      /* T1581b: MESH instances are surface citizens — they take the surface branch below. */
+      const instanceMesh = payload.instanceMesh;
+      if ((payload.mode === "instances" && instanceMesh === undefined) || payload.mode === "points" || payload.mode === "beam") {
         /* T1355b: a Material · WGSL is placed into the SURFACE generator; these three draw
            through another one, and a material whose code silently did not run would teach
            that the code is broken. Refused by name. */
@@ -2213,9 +2601,9 @@ export const renderNode: NodeDefinition = {
           diagnostics.push({
             severity: "error",
             code: "node.scene.material",
-            message: `Node "${nodeId}": geometry "${source}" is drawn as ${payload.mode} but wears a Material · WGSL, which runs on surface geometry only.`,
+            message: `Node "${nodeId}": geometry "${source}" is drawn as ${payload.mode === "instances" ? "primitive instances" : payload.mode} but wears a Material · WGSL, which runs on surface geometry and mesh instances only.`,
             nodeId,
-            suggestion: "Switch the Geometry to Surface mode, or give it a stock material.",
+            suggestion: "Switch the Geometry to Surface mode, or to Instances with Shape: Mesh, or give it a stock material.",
           });
           return;
         }
@@ -2427,7 +2815,15 @@ export const renderNode: NodeDefinition = {
         });
         return;
       }
-      const topology = typeof payload.topology === "string" ? parseTopology(payload.topology) : null;
+      /* T1581b: the SHAPE this draw fetches — the instance mesh's own pointset and triangles,
+         or the geometry's points and their topology. Everything below reads the shape. */
+      const shapePairs = instanceMesh?.pairs ?? payload.pairs;
+      const topology =
+        instanceMesh !== undefined
+          ? ({ kind: "mesh", triangles: instanceMesh.triangles, indexBuffer: instanceMesh.indexBuffer } as const)
+          : typeof payload.topology === "string"
+            ? parseTopology(payload.topology)
+            : null;
       if (topology === null || (topology.kind !== "grid" && topology.kind !== "mesh")) {
         diagnostics.push({
           severity: "error",
@@ -2441,7 +2837,7 @@ export const renderNode: NodeDefinition = {
          normal is an attribute, so a mesh without one is refused by name — a surface
          lit by a zero normal is black in a way that reads as broken lights. */
       const meshTopology = topology.kind === "mesh" ? topology : undefined;
-      const meshNormal = meshTopology === undefined ? undefined : payload.pairs["normal"];
+      const meshNormal = meshTopology === undefined ? undefined : shapePairs["normal"];
       if (meshTopology !== undefined && (meshNormal === undefined || meshNormal.type !== "vec3f")) {
         diagnostics.push({
           severity: "error",
@@ -2461,8 +2857,10 @@ export const renderNode: NodeDefinition = {
         });
         return;
       }
-      const position = payload.pairs["position"];
-      if (position === undefined) {
+      const position = shapePairs["position"];
+      /* T1581b: a mesh-instance draw binds whole buffers and reads by offset. */
+      const instancedStorage = instanceMesh === undefined ? undefined : meshInstanceStorage(instanceMesh, true);
+      if (position === undefined || (instanceMesh !== undefined && instancedStorage === undefined)) {
         diagnostics.push({
           severity: "error",
           code: "node.scene.geometry",
@@ -2486,7 +2884,7 @@ export const renderNode: NodeDefinition = {
       const vertexCount =
         topology.kind === "mesh" ? topology.triangles * 3 : gridCellCounts(topology).cellsU * gridCellCounts(topology).cellsV * 6;
       const meshAttribute = (name: string, type: string): ScenePairRef | undefined => {
-        const pair = payload.pairs[name];
+        const pair = shapePairs[name];
         return pair !== undefined && pair.type === type ? pair : undefined;
       };
       const meshUv = meshTopology === undefined ? undefined : meshAttribute("uv", "vec2f");
@@ -2495,6 +2893,10 @@ export const renderNode: NodeDefinition = {
       /* A mesh's attributes ARE its material (the file's, flattened per vertex), so its
          `color` tints by default; an explicit tint map on the Geometry still wins. */
       const tintAttribute = payload.colorAttribute ?? (meshTopology === undefined ? undefined : meshAttribute("color", "vec4f"));
+      /* T1581b: an instance's tint is the shape's colour times its record's — either makes
+         the fragment multiply by the vertex tint. */
+      const tinted = instancedStorage === undefined ? tintAttribute !== undefined : instancedStorage.option.color !== undefined || instancedStorage.option.record.tint !== undefined;
+      const instancedOption = instancedStorage === undefined ? {} : { instanced: instancedStorage.option };
       const model =
         material.model === "unlit"
           ? "unlit"
@@ -2536,7 +2938,8 @@ export const renderNode: NodeDefinition = {
       const surfaceMaterialOptions = {
         model: model as "unlit" | "lambert" | "phong" | "pbr",
         maps,
-        ...(tintAttribute === undefined ? {} : { pointColor: true }),
+        ...instancedOption,
+        ...(tinted ? { pointColor: true } : {}),
         ...(meshTopology === undefined
           ? {}
           : { mesh: { uv: meshUv !== undefined, surface: meshSurfacePair !== undefined, emissive: meshEmissive !== undefined } }),
@@ -2565,7 +2968,8 @@ export const renderNode: NodeDefinition = {
           lightCount: lights.length,
           ...(additive ? { additive: true } : {}),
           maps,
-          ...(tintAttribute === undefined ? {} : { pointColor: true }),
+          ...instancedOption,
+          ...(tinted ? { pointColor: true } : {}),
           ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, shadowBias, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
           ...(environmentResource === undefined ? {} : { environment: true, environmentTaps, ...(environmentPrefiltered ? { environmentPrefiltered: true } : {}) }),
           ...(aoActive ? { ambientOcclusion: true } : {}),
@@ -2580,23 +2984,26 @@ export const renderNode: NodeDefinition = {
         ...(material.custom === undefined ? {} : { sharedBinding: CUSTOM_SURFACE_FRAME_BINDING }),
         target,
         topology: "triangle-list",
-        instances: 1,
+        instances: instancedStorage === undefined ? 1 : countedInstances(index, payload, vertexCount),
         vertexCount,
-        buffers: [
-          attributeBinding("positions", position),
-          ...(tintAttribute === undefined
-            ? []
-            : [attributeBinding("pointColors", tintAttribute)]),
-          ...(meshTopology === undefined
-            ? []
+        buffers:
+          instancedStorage !== undefined
+            ? instancedStorage.buffers
             : [
-                { binding: "meshIndices", resourceId: meshTopology.indexBuffer },
-                attributeBinding("meshNormals", meshNormal as ScenePairRef),
-                ...(meshUv === undefined ? [] : [attributeBinding("meshUvs", meshUv)]),
-                ...(meshSurfacePair === undefined ? [] : [attributeBinding("meshSurface", meshSurfacePair)]),
-                ...(meshEmissive === undefined ? [] : [attributeBinding("meshEmissive", meshEmissive)]),
-              ]),
-        ],
+                attributeBinding("positions", position),
+                ...(tintAttribute === undefined
+                  ? []
+                  : [attributeBinding("pointColors", tintAttribute)]),
+                ...(meshTopology === undefined
+                  ? []
+                  : [
+                      { binding: "meshIndices", resourceId: meshTopology.indexBuffer },
+                      attributeBinding("meshNormals", meshNormal as ScenePairRef),
+                      ...(meshUv === undefined ? [] : [attributeBinding("meshUvs", meshUv)]),
+                      ...(meshSurfacePair === undefined ? [] : [attributeBinding("meshSurface", meshSurfacePair)]),
+                      ...(meshEmissive === undefined ? [] : [attributeBinding("meshEmissive", meshEmissive)]),
+                    ]),
+              ],
         ...(material.maps.albedo === undefined &&
         material.maps.roughness === undefined &&
         casting.length === 0 &&
@@ -2631,6 +3038,8 @@ export const renderNode: NodeDefinition = {
             }),
         uniforms: {
           viewProjection: Array.from(viewProjectionMatrix),
+          /* T1581b: an instance's record already holds the object matrix. */
+          ...(instancedStorage === undefined ? modelAndNormalOf(payload) : {}),
           eye: [camera.eye[0], camera.eye[1], camera.eye[2], 0],
           ambientColor: [ambient[0] ?? 1, ambient[1] ?? 1, ambient[2] ?? 1, ambientIntensity],
           baseColor: [...material.baseColor],
@@ -2827,6 +3236,18 @@ export const renderNode: NodeDefinition = {
           glassB: [glass.absorption[0], glass.absorption[1], glass.absorption[2], environmentIntensity],
           fallback: [background[0] ?? 0, background[1] ?? 0, background[2] ?? 0, 0],
         };
+        if (payload.instanceMesh !== undefined) {
+          /* T1581b: glass on mesh instances is its own row; a draw that fell through to the
+             primitives' glass would refract a box nobody asked for (§V288). */
+          diagnostics.push({
+            severity: "error",
+            code: "node.scene.glass",
+            message: `Node "${nodeId}": geometry "${source}" wears glass as mesh instances, which is not built yet — glass refracts a Surface, or Quad, Box and Octahedron instances.`,
+            nodeId,
+            suggestion: "Give the mesh instances a lit material, or draw the glass body as a Surface.",
+          });
+          continue;
+        }
         if (payload.mode === "instances") {
           let counted = countedByIndex.get(index);
           if (counted === undefined) {
@@ -2892,7 +3313,7 @@ export const renderNode: NodeDefinition = {
               attributeBinding("meshNormals", normal),
             ],
             textures: glassTextures,
-            uniforms: glassUniforms,
+            uniforms: { ...glassUniforms, ...modelAndNormalOf(payload) },
             uniformBinding: "params",
             clear: false,
           });
@@ -2930,6 +3351,7 @@ export const renderNode: NodeDefinition = {
           textures: glassTextures,
           uniforms: {
             ...glassUniforms,
+            ...modelAndNormalOf(payload),
             grid: [topology.cols, topology.rows, topology.wrapU ? 1 : 0, topology.wrapV ? 1 : 0],
           },
           uniformBinding: "params",
@@ -3011,7 +3433,7 @@ const envLit = (model: string): boolean => model === "phong" || model === "pbr";
  * modes keep T917's own additive rules; glass has its own phase.
  */
 const additiveSurface = (payload: GeometryPayload): boolean =>
-  payload.mode === "surface" && payload.blend === "additive" && payload.material.model !== "glass";
+  (payload.mode === "surface" || payload.instanceMesh !== undefined) && payload.blend === "additive" && payload.material.model !== "glass";
 
 function materialCompile(model: MaterialPayload["model"]) {
   return (context: Parameters<NodeDefinition["compile"]>[0]): CompiledNodeDescription => {

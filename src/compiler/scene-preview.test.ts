@@ -207,6 +207,57 @@ describe("scene payload previews are sink-gated (T462, §V309)", () => {
     expect(object?.uniforms?.["grid"]).toEqual([8, 8, 0, 0]);
   });
 
+  it("a watched MESH surface draws its triangles, not only the backdrop (B247)", () => {
+    // A Mesh File In wired to a Surface geometry: the tile used to fall through the grid
+    // parse and show the backdrop alone — a loaded hull that read as an empty node.
+    const compiled = compile(
+      graphOf(
+        [
+          node("mesh", "meshFileIn", { vertices: 24, triangles: 12 }, "mesh_hull"),
+          node("geo", "geometry", { mode: "surface" }, "geometry_hull"),
+        ],
+        { e1: { id: "e1", source: { nodeId: "mesh", portId: "out" }, target: { nodeId: "geo", portId: "points" } } },
+      ),
+      [{ nodeId: "geo", portId: "out" }],
+    );
+    const passes = (rowById(compiled, "preview:scene:geo:out")?.synthesis?.passes ?? []) as DrawPassDescriptor[];
+    expect(passes.map((pass) => pass.id)).toEqual(["geo#scenePreviewBackdrop:out", "geo#scenePreview:out"]);
+    const object = passes[1];
+    // The file's own connectivity and normals, exactly what the Render binds for it.
+    expect(object?.vertexCount).toBe(12 * 3);
+    expect(object?.buffers?.map((buffer) => buffer.binding)).toEqual(
+      expect.arrayContaining(["positions", "meshIndices", "meshNormals"]),
+    );
+    // Drawn where it is: the tile frames the object, it does not move it (identity model).
+    expect(object?.uniforms?.["model"]).toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    // B250's legitimate case: now that the object IS drawn, the orbit is handed it.
+    expect(rowById(compiled, "preview:scene:geo:out")?.synthesis?.orbit?.passIds).toEqual(["geo#scenePreview:out"]);
+  });
+
+  it("a watched MESH-INSTANCE geometry shows the backdrop alone, and its orbit names no pass (T1581b, B250)", () => {
+    // The tile's instanced draw is slice D of T1581b. Until then the tile is an honest
+    // empty frame — never the box a primitive would draw in the mesh's place — and the
+    // orbit, which throws on a pass it cannot find, is handed none.
+    const compiled = compile(
+      graphOf(
+        [
+          node("mesh", "meshFileIn", { vertices: 24, triangles: 12 }, "mesh_shape"),
+          node("grid", "pointGrid", { cols: 4, rows: 4 }, "grid_places"),
+          node("geo", "geometry", { mode: "instances", shape: "mesh" }, "geometry_instances"),
+        ],
+        {
+          e1: { id: "e1", source: { nodeId: "mesh", portId: "out" }, target: { nodeId: "geo", portId: "mesh" } },
+          e2: { id: "e2", source: { nodeId: "grid", portId: "out" }, target: { nodeId: "geo", portId: "points" } },
+        },
+      ),
+      [{ nodeId: "geo", portId: "out" }],
+    );
+    expect(compiled.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const synthesis = rowById(compiled, "preview:scene:geo:out")?.synthesis;
+    expect(synthesis?.passes.map((pass) => pass.id)).toEqual(["geo#scenePreviewBackdrop:out"]);
+    expect(synthesis?.orbit?.passIds).toEqual([]);
+  });
+
   it("INSTANCING is visible: the worn primitive and its scale reach the picture (T532)", () => {
     const compiled = compile(
       geometryGraph({ mode: "instances", shape: "octahedron", scale: 0.25 }),

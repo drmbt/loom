@@ -154,7 +154,25 @@ export interface DecodedMesh {
    * (0 = none). Present only when `DecodeOptions.lamps` names at least one group.
    */
   readonly lamps?: Float32Array;
+  /**
+   * T1581b: the node whose frame the vertices are expressed in, when `DecodeOptions.frame`
+   * found one: its name and its origin in the file's world. Absent: the vertices are in the
+   * file's world.
+   */
+  readonly frame?: { readonly node: string; readonly origin: readonly [number, number, number] };
 }
+
+/**
+ * T1581b — the FRAME a selection's vertices are expressed in.
+ *
+ *   - `world`  every node's world transform baked in: a SET, placed where the file puts it.
+ *   - `object` the frame of the lowest node that holds the whole selection. One selected
+ *              object is its own frame, so its vertices are its authored mesh data exactly,
+ *              wherever the file placed it — a SHAPE, ready to be instanced.
+ *   - `part`   the frame of the `loom_part` node the whole selection lies in: the origin is
+ *              the part's pivot and the axes are the part's.
+ */
+export type MeshFrame = "world" | "object" | "part";
 
 export interface DecodeOptions {
   /**
@@ -178,6 +196,8 @@ export interface DecodeOptions {
    * inside one mesh. Empty: no `lamps` array.
    */
   readonly lamps?: string;
+  /** T1581b: the frame the vertices are expressed in (`MeshFrame`). Absent: `world`. */
+  readonly frame?: MeshFrame;
 }
 
 /** T1424b: the Lamps groups of a `lamps` string — comma-separated, empty groups dropped. */
@@ -699,6 +719,8 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
   interface Visit { readonly node: number; readonly world: Mat4; readonly part: number }
   const partNames = new Map<string, number>();
   const parts: Array<{ name: string; index: number; pivot: Vec3; rotation: Quat; vertexStart: number; vertexCount: number; parent?: string }> = [];
+  /** T1581b: the node that declared each part (parallel to `parts`): Frame: Part's frame. */
+  const partNodes: number[] = [];
   const visits: Visit[] = [];
   const cameras: DecodedCamera[] = [];
   const markers: DecodedMarker[] = [];
@@ -726,6 +748,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
       } else {
         part = parts.length + 1;
         partNames.set(partName, part);
+        partNodes.push(nodeIndex);
         const parentName = node.extras?.["loom_parent"];
         parts.push({
           name: partName,
@@ -901,6 +924,56 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
   const indices = new Uint32Array(indexCount);
   const skinned = usedSkins.length > 0;
 
+  /*
+   * T1581b — THE SELECTION'S FRAME (`MeshFrame`). Decided here, where each node's world
+   * matrix exists: undone later at a draw, a kernel between the file and that draw would
+   * see vertices that are about to be un-placed.
+   */
+  const frameKind = options.frame ?? "world";
+  let frameNode = -1;
+  if (frameKind !== "world" && plans.length > 0) {
+    const label = frameKind === "part" ? "Part" : "Object";
+    if (skinned) {
+      throw new GlbDecodeError(`Frame: ${label} expresses the vertices in a node's own frame, and this selection is skinned: its joint table and its poses are in the file's world. Use Frame: World.`);
+    }
+    const nodeName = (index: number): string => nodes[index]?.name ?? `node ${index}`;
+    if (frameKind === "part") {
+      const held = [...new Set(plans.map((plan) => plan.visit.part))];
+      const named = held.filter((index) => index !== 0).map((index) => parts[index - 1]?.name ?? String(index));
+      const loose = [...new Set(plans.filter((plan) => plan.visit.part === 0).map((plan) => nodeName(plan.visit.node)))];
+      if (held.length !== 1 || held[0] === 0) {
+        /* Named, because a glob like `part:mand_*` reaches this and the fix is to pick one. */
+        const where = [
+          ...(named.length === 0 ? [] : [`${named.length === 1 ? "part" : `${named.length} parts:`} ${named.join(", ")}`]),
+          ...(loose.length === 0 ? [] : [`${loose.length === 1 ? "object" : "objects"} ${loose.join(", ")} in no part`]),
+        ].join(", and ");
+        throw new GlbDecodeError(`Frame: Part needs the whole selection inside ONE loom_part; it lies in ${where}. Narrow Select to one part (part:<name>), or use Frame: Object.`);
+      }
+      frameNode = partNodes[(held[0] as number) - 1] ?? -1;
+    } else {
+      /* The lowest node every selected object sits under (itself, for one object). */
+      const chain = (index: number): number[] => {
+        const up: number[] = [];
+        for (let at = index; at >= 0; at = walked.get(at)?.parent ?? -1) up.push(at);
+        return up.reverse();
+      };
+      const chains = [...new Set(plans.map((plan) => plan.visit.node))].map(chain);
+      const first = chains[0] ?? [];
+      let depth = 0;
+      while (depth < first.length && chains.every((entry) => entry[depth] === first[depth])) depth += 1;
+      frameNode = depth === 0 ? -1 : (first[depth - 1] as number);
+      if (frameNode < 0) {
+        const roots = [...new Set(chains.map((entry) => nodeName(entry[0] as number)))];
+        warnings.push(`Frame: Object found no one node holding the whole selection (it spans ${roots.join(", ")}); the file's world is used.`);
+      }
+    }
+  }
+  const frameWorld = frameNode < 0 ? undefined : (walked.get(frameNode) as { world: Mat4 }).world;
+  const frameInverse = frameWorld === undefined ? undefined : invertAffine(frameWorld);
+  /** A node's matrix in the selection's frame; the frame node itself is the identity EXACTLY. */
+  const inFrame = (visit: Visit): Mat4 =>
+    frameInverse === undefined ? visit.world : visit.node === frameNode ? identity() : multiply(frameInverse, visit.world);
+
   // T1410b: the named animation, baked into the table joints' poses.
   const clipNames = (json.animations ?? []).map((animation, index) => animation.name ?? `clip${index}`);
   let pose: DecodedPose | undefined;
@@ -932,7 +1005,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
     const { primitive, visit } = plan;
     const skin = plan.skin === undefined ? undefined : (skinning.get(plan.skin) as { table: number[]; matrices: Mat4[] });
     // A skinned node's own transform is ignored (glTF); its winding follows its skinning.
-    const world = skin === undefined ? visit.world : (skin.matrices[0] ?? visit.world);
+    const world = skin === undefined ? inFrame(visit) : (skin.matrices[0] ?? visit.world);
     const nm = normalMatrix(world);
     const jointsIn = skin === undefined ? undefined : readSkinAttribute(primitive, "JOINTS_0");
     const weightsIn = skin === undefined ? undefined : readSkinAttribute(primitive, "WEIGHTS_0");
@@ -1080,6 +1153,7 @@ export function decodeGlb(input: ArrayBuffer | Uint8Array, options: DecodeOption
     ...(skinned ? { skin: { joints, indices: jointIndices, weights: jointWeights, ...(pose === undefined ? {} : { pose }) } } : {}),
     ...(clipNames.length === 0 ? {} : { clips: clipNames }),
     ...(lamps === undefined ? {} : { lamps }),
+    ...(frameWorld === undefined ? {} : { frame: { node: nodes[frameNode]?.name ?? `node ${frameNode}`, origin: transformPoint(frameWorld, 0, 0, 0) } }),
   };
 }
 
