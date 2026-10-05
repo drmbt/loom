@@ -92,3 +92,5 @@ public/media/on-nothing/
 
 # T1561b: the sentinel kit is a build product of tools/blender/sentinel-bot from a third-party FBX; never commit
 public/media/sentinel-bot/
+# T1561b: the owner's reference stills (film frames, a third-party model's render); not ours to distribute
+projects/sentinel-bot/inspo/

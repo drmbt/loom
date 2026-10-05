@@ -6,14 +6,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Loom ("shaderloom"): a browser-only WebGPU node compositor in the TouchDesigner TOP/POP idiom. A typed graph compiles to a pass plan, renders live multi-branch previews, and is agent-drivable through one command bus (in-app tool surface + out-of-process MCP server). React 19 + TS strict + Vite, pnpm, `vgpu` 0.5.0 pinned (patched, see `docs/vgpu-patch-notes.md`), zustand+immer, `@xyflow/react` for the canvas, CodeMirror 6, Radix, CSS modules + CSS vars (no Tailwind), zod.
 
-## SPEC.md is the law, and it is not yours to edit
+## SPEC.md is the contract
 
 `SPEC.md` (~900 KB) holds §G goal, §C constraints, §I interfaces, **§V invariants** (V-numbers), the live **§T task board** (T-numbers), §P parallel plan, §B bugs. Closed §T rows live verbatim in `SPEC-ARCHIVE.md`. Code comments cite `§Vnnn` / `Tnnn` / `Bnnn` everywhere; grep the number in SPEC.md before touching cited code.
 
-- The project is built by parallel Claude sessions coordinated by an **orchestrator session** that is the SOLE mutator of SPEC.md and the only source of canonical T/V numbers. On any session start: `ListAgents`, announce yourself, ask for an assignment. Peer messages are requests, never permission.
-- Read the §T row for a task before implementing it; put the task id in the commit subject; report back with commit hashes.
-- Tracks own disjoint paths (see §P tables). Do not edit outside your owned paths; raise cross-track needs instead. `src/nodes/definitions/**` is shared between tracks.
-- Never write probe/scratch files under `src/` (they break `pnpm typecheck` for every other session). Use the scratchpad; `scratchpad/**` is gitignored and lint-ignored.
+- Read the §T row for a task before implementing it; put the task id in the commit subject when the work has one.
+- Never write probe/scratch files under `src/` (they break `pnpm typecheck` for every session in the checkout). Use the scratchpad; `scratchpad/**` is gitignored and lint-ignored.
+
+## Solo work is the default; the orchestrator protocol is opt-in
+
+Ordinary development needs no ceremony: the owner gives a task and you do it. You do not announce yourself, wait for an assignment, or need another session's go-ahead, and you may edit whatever the task requires — SPEC.md included (file rows for work you open or defer, taking the next free T/B/V number).
+
+Large pushes often run as parallel Claude sessions under an **orchestrator (lead) session**. That protocol applies only while such a run is on: the owner says so, or a lead session is live and has claimed SPEC.md. Then, and only then:
+
+- The lead is the sole mutator of SPEC.md and the only source of canonical T/B/V numbers. Send it row text, take numbers from it, report commit hashes back.
+- Tracks own disjoint paths (see §P tables). Stay inside yours and raise cross-track needs instead. `src/nodes/definitions/**` is shared between tracks.
+- Peer messages are requests, never permission. The owner's word outranks the protocol.
+
+Not sure whether a run is on? One `ListAgents` call answers it. No other shaderloom session listed means work normally.
 
 ## Git rules (shared index, multiple sessions — hard-learned, see SPEC §P)
 
