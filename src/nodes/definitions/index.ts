@@ -62,6 +62,8 @@ import { pointGatherNode } from "./point-gather.ts";
 import { pointProximityNode } from "./point-proximity.ts";
 import { pointRangeNode } from "./point-range.ts";
 import { pointTransformNode } from "./point-transform.ts";
+import { pointCurveFramesNode } from "./point-curve-frames.ts";
+import { pointResampleNode } from "./point-resample.ts";
 import { laserPathNode } from "./laser-path.ts";
 import { laserOutNode } from "./laser-out.ts";
 import { pointKernelAdvancedNode } from "./point-kernel-advanced.ts";
@@ -107,6 +109,8 @@ export { pointGatherNode } from "./point-gather.ts";
 export { pointProximityNode } from "./point-proximity.ts";
 export { pointRangeNode } from "./point-range.ts";
 export { pointTransformNode } from "./point-transform.ts";
+export { pointCurveFramesNode, curveFramesAttributes } from "./point-curve-frames.ts";
+export { pointResampleNode, resampleAttributes } from "./point-resample.ts";
 export { laserPathNode } from "./laser-path.ts";
 export { laserOutNode, LASER_OUT_TYPE } from "./laser-out.ts";
 export { pointKernelAdvancedNode, liveCountBufferId } from "./point-kernel-advanced.ts";
@@ -326,6 +330,9 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   pointProximityNode,
   pointRangeNode,
   pointTransformNode,
+  // T1586b: the curve family — curves are strips of a pointset.
+  pointCurveFramesNode,
+  pointResampleNode,
   laserPathNode,
   laserOutNode,
   pointKernelAdvancedNode,

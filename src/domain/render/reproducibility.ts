@@ -287,6 +287,16 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   // order is fixed by the tree and by the loop rather than by the scheduler — no atomics
   // (§V74), same answer run to run and device to device. No clock, no RNG, no async.
   pointTransform: "pure",
+  // T1586b. PURE: one invocation per strip walks its strip left to right — a running sum
+  // of segment lengths and a frame carried from segment to segment. The order is the slot
+  // order, fixed by the loop and never by the scheduler; strips share no slot, so no two
+  // invocations write the same word (no atomics, §V74). No clock, no RNG, no state.
+  pointCurveFrames: "pure",
+  // T1586b. PURE: a length walk per strip (the same left-to-right sum as Curve Frames),
+  // then one thread per OUTPUT slot that computes its own station from its slot number —
+  // a multiplication, never a running sum — and binary-searches its strip. Every output
+  // word is written by exactly one invocation. No clock, no RNG, no state.
+  pointResample: "pure",
   // T947. PURE, and the frame clock is the reason that needs saying: the scan-window
   // cursor reads the SHARED FRAME TIME (timeSeconds/deltaSeconds through the T172
   // uniform merge), which is timeline state, not a wall clock — the same frame inputs

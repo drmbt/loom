@@ -67,6 +67,51 @@ describe("pointTopology — the connectivity claim (T302)", () => {
     expect(result.diagnostics?.[0]?.message).toContain("100");
   });
 
+  /**
+   * T1586b: how a kernel's output becomes CURVES. The same three parameters carry it —
+   * Columns is the slots per strip, Rows the strips, Wrap U closes each strip — and
+   * Wrap V must not leak into the claim: strips are not joined to each other.
+   */
+  it("claims strips: Columns points per strip, Rows strips, Wrap U closes each one (T1586b)", () => {
+    const open = pointTopologyNode.compile(
+      compileContext({
+        nodeId: "topo",
+        inputs: ["points"],
+        pointsets: edge(4096, "points"),
+        parameters: { connectivity: "strips", cols: 55, rows: 10, wrapV: true },
+      }),
+    );
+    expect(open.diagnostics ?? []).toEqual([]);
+    expect(open.passes).toEqual([]);
+    expect(open.pointsets).toEqual({ out: { pairs: PAIRS, capacity: 4096, topology: "strips:55x10" } });
+
+    const closed = pointTopologyNode.compile(
+      compileContext({
+        nodeId: "topo",
+        inputs: ["points"],
+        pointsets: edge(4096, "grid:64x64"),
+        parameters: { connectivity: "strips", cols: 8, rows: 3, wrapU: true },
+      }),
+    );
+    expect(closed.pointsets?.["out"]?.topology).toBe("strips:8x3:closed");
+  });
+
+  it("refuses a strips claim the capacity cannot honour, at the point of authorship", () => {
+    const result = pointTopologyNode.compile(
+      compileContext({
+        nodeId: "topo",
+        inputs: ["points"],
+        pointsets: edge(500, "points"),
+        parameters: { connectivity: "strips", cols: 55, rows: 10 },
+      }),
+    );
+    expect(result.passes).toEqual([]);
+    expect(result.diagnostics?.[0]?.code).toBe("node.surface.topology");
+    expect(result.diagnostics?.[0]?.message).toContain("strips:55x10");
+    expect(result.diagnostics?.[0]?.message).toContain("550");
+    expect(result.diagnostics?.[0]?.message).toContain("500");
+  });
+
   it("refuses an input with no edge payload", () => {
     const result = pointTopologyNode.compile(compileContext({ nodeId: "topo", inputs: ["points"] }));
     expect(result.diagnostics?.[0]?.code).toBe("node.points.edge");

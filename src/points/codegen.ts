@@ -177,7 +177,8 @@ export interface KernelModuleRequest {
    * parameter of the kernel node itself, because the dimensions belong to the producer
    * and a second copy is the bug (§V349, B85). Absent for a `points` topology or an
    * unwired processor port, and a kernel that then names `ctx.dim` is REFUSED by name
-   * rather than handed zeros (§V288).
+   * rather than handed zeros (§V288). T1586b: a STRIPS claim supplies the same pair —
+   * `cols` slots per strip, `rows` strips — because it is the same index.
    */
   readonly dim?: { readonly cols: number; readonly rows: number };
   /**
@@ -804,9 +805,9 @@ export function generateKernelModule(request: KernelModuleRequest): KernelModule
   const dim = request.dim;
   if (usesDim && dim === undefined) {
     errors.push(
-      "kernel reads ctx.dim, but the point set it runs over publishes no grid topology — " +
-        "ctx.dim is the cols×rows the kernel is running over (T296/T302). Put a Point Grid, " +
-        "Tube or Torus upstream, or claim connectivity with a Point Topology node before this one.",
+      "kernel reads ctx.dim, but the point set it runs over publishes no grid topology and no strips — " +
+        "ctx.dim is the cols×rows the kernel is running over (T296/T302, T1586b). Put a Point Grid, " +
+        "Tube, Torus, Line or Circle upstream, or claim connectivity with a Topology node before this one.",
     );
   }
   if (usesDim && dim !== undefined && (!Number.isInteger(dim.cols) || dim.cols < 1 || !Number.isInteger(dim.rows) || dim.rows < 1)) {

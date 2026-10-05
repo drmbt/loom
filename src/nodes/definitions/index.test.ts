@@ -263,6 +263,9 @@ describe("core catalogue (T70, T40)", () => {
       "pointProximity",
       "pointRange",
       "pointTransform",
+      // T1586b: the curve family — curves are strips of a pointset.
+      "pointCurveFrames",
+      "pointResample",
       // T947: the vector-display path planner — the laser and the scope share it.
       "laserPath",
       // T950: the transport sink — sideEffect "emits", the catalogue's second.

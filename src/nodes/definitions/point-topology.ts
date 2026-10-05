@@ -1,5 +1,5 @@
 import type { CompiledNodeDescription, NodeDefinition } from "../../domain/types/node-definition.ts";
-import { formatTopology, gridPointCount } from "../../points/topology.ts";
+import { formatTopology, gridPointCount, stripsPointCount, type PointTopology } from "../../points/topology.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { readFlag, readNumber } from "./parameter-readers.ts";
 
@@ -11,6 +11,13 @@ import { readFlag, readNumber } from "./parameter-readers.ts";
  * T296 edge. Declaring a deformed point cloud to be a 128×64 grid, opening a torus's
  * seam, gridding a kernel's output so renderSurface will take it — all edge-payload
  * edits, all free at render time.
+ *
+ * T1586b adds the STRIPS claim: `rows` curves of `cols` slots each, connected along a
+ * strip and not between strips. It is how a kernel's output becomes curves (ten tentacles
+ * of 55 stations are `strips:55x10`), and it is TouchDesigner's "Every N Points" on the
+ * Line Break POP. The same three parameters carry it — Columns is the slots per strip,
+ * Rows the strips, Wrap U closes each strip — because a strip set is a grid with the
+ * V edges taken away, at the same index.
  *
  * Every parameter is compileTime BY DEFINITION: they exist only in the published edge
  * payload, and the classifier cannot see through an edge — a value-only cols edit
@@ -26,8 +33,8 @@ export const pointTopologyNode: NodeDefinition = {
   title: "Topology",
   category: "points",
   description:
-    "Authors the connectivity claim on a pointset edge — declare a grid, close or open wrap seams — without touching the points.",
-  tags: ["points", "topology", "connectivity", "grid", "surface"],
+    "Authors the connectivity claim on a pointset edge — declare a grid, declare strips (curves: Columns points each, Rows of them), close or open seams — without touching the points.",
+  tags: ["points", "topology", "connectivity", "grid", "surface", "strips", "curve", "line"],
   inputs: [
     {
       id: "points",
@@ -47,11 +54,15 @@ export const pointTopologyNode: NodeDefinition = {
       type: "enum",
       label: "Connectivity",
       default: "grid",
+      // §V831: APPEND only — a stored value whose row moved resolves to the default.
       options: [
         { value: "points", label: "Points" },
         { value: "grid", label: "Grid" },
+        { value: "strips", label: "Strips" },
       ],
       compileTime: true,
+      description:
+        "Points: no connectivity. Grid: a Columns × Rows sheet a Surface can skin. Strips (T1586b): Rows separate curves of Columns points each, in slot order — what the curve nodes (Curve Frames, Resample) and a kernel's ctx.dim read; a Surface refuses it, because neighbouring curves are not joined.",
     },
     cols: {
       type: "number",
@@ -63,6 +74,7 @@ export const pointTopologyNode: NodeDefinition = {
       step: 1,
       compileTime: true,
       inactiveWhen: (values) => (values["connectivity"] === "points" ? "Points connectivity has no grid." : null),
+      description: "Grid: points across. Strips: points per strip — slot j × Columns + i is station i of strip j.",
     },
     rows: {
       type: "number",
@@ -74,6 +86,7 @@ export const pointTopologyNode: NodeDefinition = {
       step: 1,
       compileTime: true,
       inactiveWhen: (values) => (values["connectivity"] === "points" ? "Points connectivity has no grid." : null),
+      description: "Grid: points down. Strips: how many strips.",
     },
     wrapU: {
       type: "boolean",
@@ -81,13 +94,19 @@ export const pointTopologyNode: NodeDefinition = {
       default: false,
       compileTime: true,
       inactiveWhen: (values) => (values["connectivity"] === "points" ? "Points connectivity has no seams." : null),
+      description: "Grid: the last column joins the first (a tube). Strips: each strip is closed — its last point joins its first.",
     },
     wrapV: {
       type: "boolean",
       label: "Wrap V",
       default: false,
       compileTime: true,
-      inactiveWhen: (values) => (values["connectivity"] === "points" ? "Points connectivity has no seams." : null),
+      inactiveWhen: (values) =>
+        values["connectivity"] === "points"
+          ? "Points connectivity has no seams."
+          : values["connectivity"] === "strips"
+            ? "Strips are not joined to each other, so there is no V seam to close."
+            : null,
     },
   },
   compile(context): CompiledNodeDescription {
@@ -111,25 +130,26 @@ export const pointTopologyNode: NodeDefinition = {
       };
     }
 
-    const topology =
+    const cols = Math.max(1, Math.round(readNumber(parameters, "cols", 64)));
+    const rows = Math.max(1, Math.round(readNumber(parameters, "rows", 64)));
+    const wrapU = readFlag(parameters, "wrapU", false) === 1;
+    const topology: PointTopology =
       parameters["connectivity"] === "points"
-        ? ({ kind: "points" } as const)
-        : ({
-            kind: "grid",
-            cols: Math.max(1, Math.round(readNumber(parameters, "cols", 64))),
-            rows: Math.max(1, Math.round(readNumber(parameters, "rows", 64))),
-            wrapU: readFlag(parameters, "wrapU", false) === 1,
-            wrapV: readFlag(parameters, "wrapV", false) === 1,
-          } as const);
+        ? { kind: "points" }
+        : parameters["connectivity"] === "strips"
+          ? { kind: "strips", cols, rows, closed: wrapU }
+          : { kind: "grid", cols, rows, wrapU, wrapV: readFlag(parameters, "wrapV", false) === 1 };
 
-    if (topology.kind === "grid" && gridPointCount(topology) > pointset.capacity) {
+    const addressed =
+      topology.kind === "grid" ? gridPointCount(topology) : topology.kind === "strips" ? stripsPointCount(topology) : 0;
+    if (addressed > pointset.capacity) {
       return {
         passes: [],
         diagnostics: [
           {
             severity: "error",
             code: "node.surface.topology",
-            message: `Node "${nodeId}": topology "${formatTopology(topology)}" addresses ${gridPointCount(topology)} points but the edge carries ${pointset.capacity}.`,
+            message: `Node "${nodeId}": topology "${formatTopology(topology)}" addresses ${addressed} points but the edge carries ${pointset.capacity}.`,
             nodeId,
             suggestion: "Match cols x rows to the producer's point count.",
           },
