@@ -149,12 +149,20 @@ fn adriftZ(time: f32, offset: vec3f) -> f32 {
 // \`adrift\` (0 to 1) is how much it is in the water and not on the wall: it wanders half a
 // metre off the axis on slow counts of its own, noses about and rolls, as a thing does that
 // nothing holds.
+fn adriftAcross(time: f32, own: f32) -> vec2f {
+  return vec2f(${adriftWgsl("x")}, ${adriftWgsl("y")});
+}
+
+// A robot's own count: what makes each of a pack wander differently.
+fn ownCount(offset: vec3f) -> f32 {
+  return offset.z * 1.3 + offset.x * 2.1;
+}
+
 fn robotFrame(z: f32, offset: vec3f, roll: f32, look: vec2f, time: f32, adrift: f32) -> Frame {
   let tunnel = pathFrame(z);
   var frame: Frame;
-  let own = offset.z * 1.3 + offset.x * 2.1;
-  let drift = vec2f(sin(time * 0.9 + offset.z), sin(time * 1.3 + offset.z * 1.7)) * 0.05
-    + adrift * vec2f(${adriftWgsl("x")}, ${adriftWgsl("y")});
+  let own = ownCount(offset);
+  let drift = vec2f(sin(time * 0.9 + offset.z), sin(time * 1.3 + offset.z * 1.7)) * 0.05 + adrift * adriftAcross(time, own);
   frame.origin = tunnel.origin + tunnel.right * (offset.x + drift.x) + tunnel.up * (offset.y + drift.y);
   frame.forward = pathTangent(z + 1.2);
   let right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));
@@ -229,7 +237,7 @@ ${PLACE_PARAMS}
   gesture: f32, // @default 0  What a tentacle with no rung to hold does: 0 trails behind, 1 reaches out and feels about.
   snap: f32, // @default 0  Shuts the claws of the tentacles that hold nothing: 0 open, 1 shut. A hat on it and they clack.
   pulse: f32, // @default 100  Seconds since the last pulse left the body: it runs down every tentacle's core and fades. Drive it from a kick.
-  carry: f32, // @default 1  How much the body is carried by the tentacles that hold: it hangs toward them, sags as one lets go, and goes forward in pulls. 0 is on rails.
+  carry: f32, // @default 1  How much the body is carried by the tentacles that hold (it hangs toward them, smoothly) and adrift when none do. 0 is on rails.
   meter: f32, // @default 0  The cores as a level meter: lit from the body out to this share of each tentacle, 0 to 1. Drive it from a level.
   chase: f32, // @default 0  Brightness of the bands that run out along the cores.
   chasePhase: f32, // @default 0  Where those bands are: they move one band's spacing out for each whole number. Drive it from the beat.
@@ -348,21 +356,35 @@ struct Trail {
   right: vec3f, // the body's right and up: the bundle starts on these and settles onto the tunnel's
   up: vec3f,
   offset: vec2f, // the body's place off the tunnel's axis: the bundle is drawn back onto the axis behind it
-  tip: f32, // how far the ends stand apart, metres
-  begins: f32, // where along a tentacle the spreading starts, metres
+  flare: f32, // how far the ends stand apart at rest, metres
+  swim: f32, // how much it is swimming, 0 to 1
+  stroke: f32, // where the swimming beat is, 0 to 1
+  adrift: f32, // how much the body is adrift, 0 to 1, and its own count
+  own: f32,
   wave: f32, // the squiggle's size, metres
   phase: f32, // this tentacle's own count
   time: f32,
 };
 
+// How open the swimming beat has the tentacles, 0 to 1: flung open at the top of the beat, drawn
+// in over the next third of it, drifting open again.
+fn strokeOpen(stroke: f32) -> f32 {
+  let at = stroke - floor(stroke);
+  return select(smoothstep(0.34, 1.0, at), 1.0 - smoothstep(0.0, 0.34, at), at < 0.34);
+}
+
 // How far off the axis the trail runs s metres along, and how fast that changes.
 fn trailRadius(t: Trail, s: f32) -> vec2f {
+  // The beat reaches the ends late: what the body did a fifth of a bar ago, the tips do now. That lag is the drag.
+  let open = t.swim * strokeOpen(t.stroke - 0.2 * s / LENGTH);
+  let tip = t.flare + open * 0.85;
+  let begins = LENGTH * mix(0.6, 0.3, open);
   let inward = clamp(s / 1.2, 0.0, 1.0);
-  let apart = clamp((s - t.begins) / max(LENGTH - t.begins, 1e-3), 0.0, 1.0);
+  let apart = clamp((s - begins) / max(LENGTH - begins, 1e-3), 0.0, 1.0);
   let drawn = inward * inward * (3.0 - 2.0 * inward);
   let spread = apart * apart * (3.0 - 2.0 * apart);
-  let radius = t.radius * (1.0 - 0.4 * drawn) + t.tip * spread * spread;
-  let slope = -0.4 * t.radius * 6.0 * inward * (1.0 - inward) / 1.2 + t.tip * 2.0 * spread * 6.0 * apart * (1.0 - apart) / max(LENGTH - t.begins, 1e-3);
+  let radius = t.radius * (1.0 - 0.4 * drawn) + tip * spread * spread;
+  let slope = -0.4 * t.radius * 6.0 * inward * (1.0 - inward) / 1.2 + tip * 2.0 * spread * 6.0 * apart * (1.0 - apart) / max(LENGTH - begins, 1e-3);
   return vec2f(radius, slope);
 }
 
@@ -385,25 +407,33 @@ fn trailShape(t: Trail, s: f32) -> vec3f {
   let around = right * t.across.x + up * t.across.y;
   let sideways = normalize(cross(around, tunnel.forward));
   let reach = s / LENGTH;
-  let size = t.wave * (0.2 + 2.2 * reach * sqrt(reach));
-  let count = s * 2.4 - t.time * 1.9 + t.phase;
+  // A long slow wave running out to the tip, growing as it goes: water, not a spring.
+  let size = t.wave * (0.15 + 3.0 * reach * reach);
+  let count = s * 1.7 - t.time * 1.25 + t.phase;
   let squiggle = (sideways * sin(count) + around * 0.6 * cos(count * 0.7 + 1.0)) * size;
   // A slow sway of the whole tail, a pendulum's: nothing at the body, most at the tip.
-  let sway = sideways * sin(t.time * 0.6 + t.phase * 1.3) * 0.22 * reach * reach;
-  let drawn = (tunnel.right * t.offset.x + tunnel.up * t.offset.y) * exp(-s / 1.5);
-  return tunnel.origin + drawn + around * trailRadius(t, s).x + squiggle + sway;
+  let sway = sideways * sin(t.time * 0.45 + t.phase * 1.3) * 0.26 * reach * reach;
+  // The tail goes where the body WENT: s metres back it is where the body had wandered to half a second
+  // a metre ago. What else has the body off the axis (the tentacles that carry it) dies away behind it.
+  let wandered = t.adrift * adriftAcross(t.time, t.own);
+  let followed = t.adrift * adriftAcross(t.time - s * 0.5, t.own) + (t.offset - wandered) * exp(-s / 1.5);
+  return tunnel.origin + tunnel.right * followed.x + tunnel.up * followed.y + around * trailRadius(t, s).x + squiggle + sway;
 }
 
 // How firmly tentacle t is told to take the wall. Crawl says how many do; WHICH ones moves
-// round the body as it goes (one tentacle's turn every 9 m), so no tentacle holds for ever and
-// none trails for ever. At Crawl 1 every one holds.
+// round the body as it goes (one tentacle's turn every 9.6 m, which divides the path's length,
+// so the set is the same either side of its wrap), so no tentacle holds for ever and none
+// trails for ever. The hand-over is slow, most of a turn: a tentacle lets go and drifts back,
+// or reaches forward and takes hold, over some three seconds. At Crawl 1 every one holds.
 fn grabbing(tentacle: u32, crawl: f32, bodyZ: f32) -> f32 {
   let all = f32(TENTACLES);
-  let centre = bodyZ / 9.0;
+  let centre = bodyZ / 9.6;
   let off = ENGAGE[tentacle] - centre;
   let apart = abs(off - all * round(off / all));
-  let reach = clamp(crawl, 0.0, 1.0) * (all * 0.5 + 0.3);
-  return 1.0 - smoothstep(reach - 0.3, reach, apart);
+  let reach = clamp(crawl, 0.0, 1.0) * (all * 0.5 + 0.9);
+  let held = clamp((reach - apart) / 0.9, 0.0, 1.0);
+  // Quintic: it neither starts nor lands with a jolt.
+  return held * held * held * (held * (held * 6.0 - 15.0) + 10.0);
 }
 
 // One tentacle's gait: how far through its step it is.
@@ -453,15 +483,19 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   // A pack in unison plants on the same ribs; with variety each robot draws its own.
   let seed = 1u + u32(f32(robot) * params.variety + 0.5) * 16u;
   // The body is not on rails. Walking, the tentacles that hold carry it: it hangs toward
-  // them, sags a little for each one in the air, leans that way, and goes forward in pulls,
-  // twice a stride. Swimming, nothing holds it and it is adrift.
-  let hang = carried(bodyZ, stride, count, seed, params);
+  // them and leans that way. SMOOTHLY (the owner, 2026-10-05: "too bobby in its sway … these
+  // things move smooth not jerk"): what carries it is averaged over a whole stride, four
+  // readings a quarter-stride apart, so no single step shows in the body, only where the
+  // holding has been tending. No bob and no pulls. Swimming, nothing holds it and it is adrift.
+  var hang = vec3f(0.0);
+  for (var k = 0u; k < 4u; k = k + 1u) {
+    hang = hang + carried(bodyZ - stride * 0.25 * f32(k), stride, count, seed, params) * 0.25;
+  }
   let afoot = (1.0 - swimming) * params.carry * clamp(hang.z, 0.0, 1.0);
-  let sway = vec3f(hang.xy * 0.42, 0.0) * afoot + vec3f(0.0, -0.012 * (f32(TENTACLES) - hang.z) * afoot, 0.0);
-  let pull = afoot * 0.11 * sin(12.5663706 * bodyZ / stride);
+  let sway = vec3f(hang.xy * 0.55, 0.0) * afoot;
   let adrift = swimming * params.carry;
-  let frameZ = bodyZ + pull + adrift * adriftZ(ctx.absTime, offset);
-  let body = robotFrame(frameZ, offset + sway, params.roll - hang.x * 0.22 * afoot, params.look + vec2f(hang.x * 0.1 * afoot, 0.0), ctx.absTime, adrift);
+  let frameZ = bodyZ + adrift * adriftZ(ctx.absTime, offset);
+  let body = robotFrame(frameZ, offset + sway, params.roll - hang.x * 0.18 * afoot, params.look + vec2f(hang.x * 0.08 * afoot, 0.0), ctx.absTime, adrift);
   if (PICK_BODY) {
     // The robot's own point: where its body is and how it is turned (the kit's robot frame: +Z forward, +Y up).
     q.position = body.origin;
@@ -553,11 +587,15 @@ fn process(p: Point, ctx: PointCtx) -> Point {
     trail.right = body.right;
     trail.up = body.up;
     trail.offset = vec2f(dot(off, axis.right), dot(off, axis.up));
-    // Swimming flings the ends wide at the top of the beat, from nearer the body, and draws them in after the snap.
-    trail.tip = 0.18 + 0.7 * params.flare + swimming * open * 1.3;
-    trail.begins = LENGTH * mix(0.6, 0.2, swimming * open);
+    // Swimming flings the ends wide at the top of the beat and draws them in after it (trailRadius).
+    trail.flare = 0.18 + 0.7 * params.flare;
+    trail.swim = swimming;
+    trail.stroke = params.stroke;
+    trail.adrift = adrift;
+    trail.own = ownCount(offset);
     trail.wave = params.wave * 1.6 + 0.03;
-    trail.phase = f32(tentacle) * 1.7 + f32(robot) * 0.9;
+    // Each robot of a pack squiggles on its own count, as far as Variety says (in unison they are one robot).
+    trail.phase = f32(tentacle) * 1.7 + f32(robot) * 0.9 * params.variety;
     trail.time = ctx.absTime;
     let trailAt = root + trailShape(trail, d) - trailShape(trail, 0.0);
     let trailTangent = normalize(trailShape(trail, d + 0.04) - trailShape(trail, max(d - 0.04, 0.0)));

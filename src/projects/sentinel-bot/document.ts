@@ -55,7 +55,11 @@ export interface SentinelDocumentOptions {
    * what bring the shadow and the articulated claw back to the live tier.
    */
   readonly tier?: "live" | "offline";
-  /** The two things a tier decides, each on its own, for measuring one without the other. Unset, the tier decides. */
+  /**
+   * The two things a tier decides, each on its own, for measuring one without the other. Unset, the tier decides.
+   * `shadows`: whether EVERYTHING casts (the wall's ribs and pipes too). Off, the robot's body and tentacles
+   * still cast, from the eyes' light and the lamp overhead.
+   */
   readonly shadows?: boolean;
   readonly hingedClaws?: boolean;
 }
@@ -182,9 +186,12 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   // From behind it looks down the tunnel past the robot; from anywhere else at the robot, wherever it has wandered.
   const near = `(${RIG("aim")} < 1)`;
   const aim = onPath(RIG("aim"), `${near} * ${wander.x}`, `${near} * ${wander.y}`, [0, 0, 3.3]);
+  // The face's light hangs a hand's breadth in front of the foremost lens (the kit's own measure): clear of
+  // the hull, which casts its shadow, and not out in the air ahead where its glow read as a ball the robot chased.
+  const face = facts.eyes.length > 0 ? Math.max(...facts.eyes.map((lens) => lens.position[2])) + 0.2 : 0.65;
   // The face goes where the robot goes: off the axis and along it when it is adrift.
   // (Along it: the slow drift, and the lunge of each swimming stroke — rig.ts, robotZ.)
-  const glow = onPath(`(0.9 + ${adrift} * (${adriftAheadExpression} + 0.5 * sin(6.2831853 * (${STROKE} - 0.125))))`, wander.x, wander.y, [0, 0, 0.9]);
+  const glow = onPath(`(${face.toFixed(3)} + ${adrift} * (${adriftAheadExpression} + 0.5 * sin(6.2831853 * (${STROKE} - 0.125))))`, wander.x, wander.y, [0, 0, face]);
   /** The lamp station `step` stations from the one the robot is under: where it hangs, and how much of it is lit (1 within half a spacing, 0 a spacing and a half away, so the three in use trade places unseen). */
   const lampAt = (step: number): { position: Record<"x" | "y" | "z", StoredParameter>; near: string; tone: readonly [string, string, string] } => {
     const station = `(floor(${TRAVEL} / ${LAMP_SPACING}) + ${step})`;
@@ -234,6 +241,14 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       ? [{ role: "hub", shape: facts.hub, pick: { first: facts.ringCount, count: 1 } }, ...facts.phalanxMeshes.map((shape, which) => ({ role: `phalanx${which}`, shape, pick: { first: facts.ringCount + 1 + which, count: 1 } }))]
       : [{ role: "claw", shape: facts.claw, pick: { first: facts.ringCount, count: 1 } }]),
   ];
+  /**
+   * Which geometries a light's shadow is cast by. Live, the robot's body and tentacles only, by
+   * name (§T1598b: a Light's Shadow Casters; measured by the lead on this document at 0.3 ms a
+   * frame for the eyes' light, against 4 to 6 ms with everything casting). Offline, everything:
+   * the ribs and pipes shadow the wall too. The owner noticed its absence: "shadow seems to not
+   * really working for the robot on the environment".
+   */
+  const robotCasts: Record<string, StoredParameter> = shadows ? {} : { shadowCasters: "geometry_hull geometry_ring" };
   const pieceNodes = (rig: Record<string, StoredParameter>): GraphNode[] =>
     pieces.flatMap((piece, index) => [
       node(`mesh_${piece.role}`, "meshFileIn", [-2700, index * 150], { file: facts.glbUrl, select: piece.shape.select, vertices: piece.shape.vertices, triangles: piece.shape.triangles, parts: piece.shape.parts }, { label: `mesh_${piece.role}` }),
@@ -304,11 +319,12 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("count_kick", "valueCount", [-3000, 900], { threshold: 0.5, holdoff: 0.1 }, { label: "count_kick" }),
 
     // ── How far it has come: a rate, eased, integrated, wrapping where the path does ──
-    // Perch stops it (the panel's, or a breakdown gone nearly silent: director.ts); a kick shoves it. (The lunge of a swimming stroke is the rig's own, on the
+    // Perch stops it (the panel's, or a breakdown gone nearly silent: director.ts). No drum moves the body: it
+    // travels smoothly, and the track shows in its lights. (The lunge of a swimming stroke is the rig's own, on the
     // GPU: the rate cannot read how far it has come without the value graph closing a loop,
     // and a loop there is dropped whole.)
     node("constant_rate", "constant", [-2400, 1000], {
-      value: expressionSlot(`${on("slider_speed")} * (1 - op('constant_perch').chan.value) * (1 + ${KICK} * 0.6) * ${pace(FOLLOW, ENERGY)}`, 3.2),
+      value: expressionSlot(`${on("slider_speed")} * (1 - op('constant_perch').chan.value) * ${pace(FOLLOW, ENERGY)}`, 3.2),
     }, { label: "constant_rate" }),
     node("lag_rate", "valueLag", [-2100, 1000], { lag: 0.25, releaseRatio: 1.6 }, { label: "lag_rate" }),
     // Perch, eased: how perched it is, 0 to 1, for the head and the tentacles it frees.
@@ -357,7 +373,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       ...look,
       // Perched, the last three tentacles to take the wall let go of it and feel about.
       crawl: expressionSlot(`${on("slider_crawl")} * (1 - 0.3 * ${PERCHED})`, 1),
-      gesture: expressionSlot(`${on("slider_gesture")} * (0.5 + 0.5 * ${PERCHED}) * (0.7 + ${LOW} * 0.6)`, 0.3),
+      // Only perched does it feel about, and it comes to that slowly. (The track does not move the tentacles:
+      // the lows pumping this made the free ones snap between two shapes on every beat.)
+      gesture: expressionSlot(`${on("slider_gesture")} * ${PERCHED}`, 0),
       // A hat clacks the idle claws.
       snap: expressionSlot(HAT, 0),
       // Every kick sends a pulse down the cores; the lows fill them like a meter; bands run out on the beat
@@ -371,7 +389,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       stride: expressionSlot(on("slider_stride"), 3.2),
       flare: expressionSlot(on("slider_flare"), 0.25),
       // The low end runs down the tentacles.
-      wave: expressionSlot(`${on("slider_wave")} + ${LOW} * 0.08`, 0.05),
+      wave: expressionSlot(on("slider_wave"), 0.05),
       grip: expressionSlot(on("slider_grip"), 1),
       bore: expressionSlot(on("slider_bore"), 2.6),
     }),
@@ -403,8 +421,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("expression_camera", "valueExpression", [-1800, -600], { expressions: CAMERA_STATEMENTS, defaults: CAMERA_DEFAULTS }, { label: "expression_camera" }),
     // A kick punches the lens in.
     node("camera_rig", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} - ${KICK} * 2.5`, 55), near: 0.05, far: 240 }, { label: "camera_rig" }),
-    // Offline, the eyes throw the tentacles' shadows down the walls; live, no light casts (see `tier`).
-    node("light_eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04), intensity: expressionSlot(`${on("slider_glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, ...(shadows ? { shadows: true, shadowExtent: 14, shadowSoftness: 1 } : {}) }, { label: "light_eyes" }),
+    // The eyes throw the tentacles' shadows down the walls (which of the scene casts them: see `robotCasts`).
+    node("light_eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04), intensity: expressionSlot(`${on("slider_glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, shadows: true, shadowExtent: 14, shadowSoftness: 1, ...robotCasts }, { label: "light_eyes" }),
     // The three lamp plates nearest the robot, as lights; they breathe with the low end.
     ...lamps.map((lamp, index) =>
       node(`light_lamp${index}`, "light", [-1500, -150 + index * 150], {
@@ -421,7 +439,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         falloff: "inverseSquare",
         range: 30,
         // Offline, the lamp overhead casts too.
-        ...(shadows && index === 1 ? { shadows: true, shadowExtent: 30, shadowSoftness: 1 } : {}),
+        // The lamp overhead throws the robot's shadow on the deck and the wall; offline, everything's.
+        ...(index === 1 ? { shadows: true, shadowExtent: 30, shadowSoftness: 1, ...robotCasts } : {}),
       }, { label: `light_lamp${index}` }),
     ),
     node("render_shot", "render", [-1200, 0], {

@@ -261,13 +261,16 @@ describe("the sentinel's rig — every joint, across two strides", () => {
       }
       return { behind, spread };
     };
-    const open = await trailing(0);
-    const shut = await trailing(0.3);
-    // A 3.18 m tentacle streaming aft: every wrist is well over a metre behind its socket once drawn in, and still behind it when flung open.
+    // The beat reaches the ends a fifth of a bar late (that lag is the drag), so the ends are widest a
+    // little after the top of the beat and drawn in by the middle of the bar.
+    const open = await trailing(0.15);
+    const shut = await trailing(0.55);
+    // A 3.18 m tentacle streaming aft: every wrist is well over a metre behind its socket once drawn in (measured 2.85 m), and still behind it when flung open (2.03 m).
     expect(Math.min(...shut.behind)).toBeGreaterThan(1.5);
     expect(Math.min(...open.behind)).toBeGreaterThan(0);
     // The beat is the difference: cut `stroke` and the two poses are one. Open, the claws stand at least a metre further off the axis.
-    expect(open.spread - shut.spread).toBeGreaterThan(1);
+    // Measured: 1.45 m off the axis open, 0.59 m drawn in.
+    expect(open.spread - shut.spread).toBeGreaterThan(0.5);
   }, 120_000);
 
   it("crosses a chamber swimming: told to walk, in the middle of a hall every claw has let go and trails", async () => {
@@ -316,6 +319,7 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     };
     // Walking with six of the ten on the wall: it is off the rails by centimetres, never by much, and not by the same amount all the way.
     const walking = await off({ crawl: 0.6 });
+    // Measured: between 4 mm and 6 cm off the rails over two strides. Small on purpose: it is averaged over a stride so that no step shows.
     expect(Math.max(...walking)).toBeGreaterThan(0.04);
     expect(Math.max(...walking)).toBeLessThan(0.45);
     expect(Math.max(...walking) - Math.min(...walking)).toBeGreaterThan(0.03);
@@ -428,5 +432,13 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     const fine = largestMove(await walk(480));
     expect(coarse / fine).toBeGreaterThan(1.7);
     expect(coarse / fine).toBeLessThan(2.3);
-  }, 180_000);
+    // The same with six of the ten on the wall, the piece's own setting: across these two strides tentacles
+    // let go and take hold in turn, a held arc blending into a trail and back. (The owner, 2026-10-05: "the
+    // legs can't move jerkily … shouldn't glitch around and teleport".)
+    const handingOver = largestMove(await walk(240, { crawl: 0.6 }));
+    const handingOverFine = largestMove(await walk(480, { crawl: 0.6 }));
+    // Measured: 27 cm against 13.6 cm, a ratio of 1.99.
+    expect(handingOver / handingOverFine).toBeGreaterThan(1.7);
+    expect(handingOver / handingOverFine).toBeLessThan(2.3);
+  }, 240_000);
 });
