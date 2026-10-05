@@ -1,6 +1,6 @@
 # Node names carry their kind: `kind_role`
 
-T1593b and T1597b. Owner's ruling, 2026-10-05, and the lead's rulings on phase 1's open questions the same day. Phases 1 and 1b are built, including the low-zoom kind label (section 8). Phase 2, the sweep of shipped names, is planned in section 10 and not started.
+T1593b and T1597b. Owner's ruling, 2026-10-05, and the lead's rulings on phase 1's open questions the same day. Phases 1 and 1b are built, including the low-zoom kind label (section 8). Phase 2a is built too: the rename map, the check that a rename changes nothing but names, and the apply tool, all run without writing a shipped byte (section 10). Phase 2b applies them.
 
 The owner's reason: "it's pretty damn hard that we need to zoom in and figure out, ah okay, this is this kind of operator". A new node is auto-named from its type (`blur1`), and then nearly every shipped node was renamed to a bare role (`dye1`, `lamp`, `pathx1`), which throws the identification away. TouchDesigner practice keeps the operator type in the name (`null_out`, `constant_color`), so a node says what it is on the canvas and inside every `op('…')`.
 
@@ -291,109 +291,131 @@ Each of these could reasonably go the other way.
 | `filmGrade`, `cameraBlur`, `personMask`, `cornerPin`, `gridWarp`, `crtTube`, `slitScan`, `channelIn`, `cueList`, `xyPad`, `laserPath` | kept whole | `grade`, `person`, `pin`, `warp` … | No single word says it without ambiguity. `grade` is also a common role on other kinds. |
 | Unicode in roles | allowed | ASCII only, as TouchDesigner | No reference form needs ASCII. |
 
-## 10. Phase 2: the sweep (planned, not started)
+## 10. Phase 2: the sweep (2a prepared; nothing shipped is written yet)
 
-Rename every shipped name to `kind_role`, rewrite every reference, regenerate, empty the ledger.
+Rename every shipped name to `kind_role`, rewrite every reference, regenerate, empty the ledger. Phase 2a built the map, a check that the rename changes nothing but names, and the tool that applies it, and ran all three without writing a shipped byte. Phase 2b applies it once the map is approved.
 
-### 10.1 What carries a name
+`projects/sentinel-bot/**` and `src/projects/sentinel-bot/**` are left out of all of it: that session renames its own names.
 
-In the **document sources** (the only files edited by hand):
+### 10.1 The pieces
 
-| What | Where | Size |
-| --- | --- | --- |
-| `label:` literals | `src/examples/documents/*.ts` | 1,410 in 68 of 71 files |
-| | `src/examples/starter-components.ts` | 111 |
-| | `src/projects/**` | 350 in 24 files (furnace 59, on-nothing 259, sentinel-bot 32) |
-| Labels built from a template (`` `${label}1` ``) | mostly `src/projects/**` | 78; these need hand edits, not a string swap |
-| `op('…')` in expression sources | examples, starter components, projects | 158 + 5 + 56 literals, plus strings built in code |
-| Name parameters: Feedback `source`, Geometry `material`, Render `scenes` / `camera` / `lights` / `projectors`, the point renderers' and Camera Blur's `camera`, a Layer's picture, a Window Out's input | the same sources | not counted; often built from arrays of labels |
-| Preset banks: `targets`, and the bank JSON keyed by node name (`values`, `on`, `recalls.bank`, morph records) | 3 shipped banks | |
-| Cue lists: each cue's `bank` | 1 | |
-| Panel boards: `member` | 5 stored boards | |
+All under `src/examples/rename/`, all run with `node --import ./src/tooling/alias-hooks.ts <file>`.
 
-Every one of these reference kinds is a clause of `rewriteNodeNameReferences` (expressions, legacy channels, source references, preset banks, panel boards, cue lists). The sweep must apply **the same semantics to the sources**: the same token rules for lists, only the part before the dot in a target, never a preset or cue name that happens to share a spelling.
-
-Outside the sources:
-
-| What | Checked by | Size |
-| --- | --- | --- |
-| `.md` claims, fenced `name(type)` lines | `doc-drift.test.ts` | 181 lines in 54 of 74 files |
-| Names in `.md` prose and `op('…')` in `.md` | `doc-claims.test.ts` | 6 `op('…')`; prose not counted |
-| `examples/README.md` | `readme.test.ts` | 1 `op('…')` |
-| Tests that address a shipped node by name | themselves | 26 files under `src/examples` and `src/projects` (8 need a GPU); up to 21 more elsewhere read a shipped document |
-| Project render scripts and shot files that set a parameter by label | not gated | `src/projects/*/render.ts`, `director.ts`, `shots/*.ts`, `edl.json`; to be read, not assumed |
-| Playwright specs that find a node by its text | themselves | not counted |
-| The ledger | the gate | 106 lines, all removed |
-
-**Thumbnails do not carry names.** `thumbnails.test.ts` checks existence and size only, and a correct rename changes no pixel. They need no regeneration. They are the cheapest proof the sweep cut nothing: an example that renders differently afterwards has a reference that was missed.
-
-Not touched: a user's saved documents (section 5), and a saved project's own copy of a starter component, which wins over the shipped one on load.
-
-### 10.2 How each role is derived
-
-I ran a draft of these rules over all 3,297 names (read-only, in the scratchpad; the tool itself is phase 2 work). Every name got a conforming proposal.
-
-| Rule | What it does | Example | Names |
-| --- | --- | --- | --- |
-| **R1** | The old habit was label = id + `1`. The id is the author's own word for the role. | id `dye`, `dye1` on a Feedback → `feedback_dye`; `pathx1` on an LFO → `lfo_pathx` | 2,508 (76 %) |
-| **R1′** | Otherwise strip the trailing number. | `noteBanks` → `note_…` (then R2) | 275 |
-| **R2** | A role that restates the kind loses the restating word. If nothing is left, the name is `kind<n>`. | `out1` on an Output → `output1`; `cam1` → `camera1`; `wallgrid1` → `grid_wall`; `matfloor1` → `material_floor`; `halolvl1` → `level_halo` | 514, about 199 distinct (type, name) pairs |
-| **R3** | Never two nodes under one name in a graph: keep the old number when stripping would collide. | `renderpoints2` → `points2`; `soften1`, `soften2` keep their digits | 117 of the above |
-
-So `out1` on an Output becomes **`output1`**, not `output_out`: a role that only repeats the kind is no role.
-
-R2 needs a small table of the words authors used for each kind (`geo`, `mat`, `cam`, `lvl`, `pts`, `proj` …). It is a draft and it is where the judgement lies. The sweep tool should **print a review table, old → new with the rule that produced it, before writing anything**, and a person reads the R2 rows. Cases a rule cannot decide:
-
-- **Single letters left over**: `slag1` → `lag_s`, `clim1` → `limit_c`, `pstep1` → `step_p`. Technically right, unreadable. They need real roles.
-- **Case of what is left**: `camA1` → `camera_A`, `projL1` → `projector_L`, `noteBanks` → `note_Banks` or `note_banks`.
-- **A role that is a synonym, not a restatement**: `shot1` on a Render (43 of them). I would keep `render_shot`; `render1` loses the author's word.
-- **Authors' own type words that are now another kind**: `surf1` on a Material · WGSL (19) → `material_surf`, while `surface` is the kind of Render Surface.
-- **Names with an inner underscore already**: `mesh_car01`, `lens_dof1`, `place_car11`. The first conforms once the trailing `1` goes (`mesh_car0`).
-- **The trailing digit that is part of the word**: `streak01` is id `streak0` plus the habit's `1`, so `wgsl_streak0`; `key11` is `key1` + `1`. R1 handles these because it reads the id, but a name whose id is not its label needs a look.
-- **Component instances** take their component's name: `holo1` on DepthPoints → `depthpoints_holo`; `timewall1` on TimeGrid → `timegrid_wall`; `analysis1` on AudioAnalysis → `audioanalysis1`, because that role only repeats the kind.
-- **Unnamed nodes** (81 in the root graphs, 249 counting the component graphs files embed, most of them a component's In and Out): leave them. The gate does not count them.
-
-### 10.3 Order
-
-One example at a time, per CLAUDE.md, because an unscoped regeneration sweeps other sessions' work.
-
-1. Land the sweep tool and its review table. No document changes. The owner or lead reads the R2 rows.
-2. **Starter components first** (12 files, `--only <ComponentName>`). Examples embed copies of them, so they must be settled before the examples that carry them. This is also where `component.saveSelection` starts naming the instance it leaves (one line in `commands.ts`, marked T1593b phase 2): each of the 12 files then gains `"label": "<component>1"` on its root instance, which conforms, in the same commit that regenerates it.
-3. **Examples that embed a component**, each: edit the source, regenerate `--only E<n>`, fix its `.md` claims, run its own tests by name, lower or remove its ledger line, commit source, JSON, `.md` and ledger together.
-4. **The remaining examples**, the same way, in batches by owning track so no batch crosses a session's in-flight document.
-5. **Projects**, through each project's own `build.ts`: furnace (1 document), on-nothing (25 documents from one source tree, so one edit moves 25 ledger lines), sentinel-bot (owned by another session; coordinate).
-6. The ledger is empty. Keep the gate and the empty map: from then on every shipped name conforms with no exceptions.
-
-Per example the proof is: `sync.test.ts` (bytes match source), `doc-drift.test.ts`, `reference-integrity.test.ts` (no `op('…')` names a node that is not there), and the example's own claims test where it has one. The GPU claims tests are the proof that nothing was cut, and should run for the examples a batch touched, not for all.
-
-### 10.4 Size
-
-| | Files |
+| File | What it is |
 | --- | --- |
-| Document sources | about 93 (68 + 1 + 24) |
-| Generated `.loom.json` | 106 |
-| `.md` | 54, up to 74 |
-| Tests | 26, up to about 47, plus Playwright specs not yet counted |
-| README, docs, the ledger | about 4 |
-| **Total** | **roughly 290 to 330 files, 3,297 names** |
+| `rename-rules.ts` | The rules: what the old naming habit added to a name, and which words only say the kind again. Pure, exact-tested. |
+| `rename-judgements.ts` | The 70 names a rule could not decide, each with its role and one sentence of why. **This is the file to edit when a review changes a name.** |
+| `rename-map.ts` | Builds the map from the shipped bytes, the rules and the judgements, and audits it: every name ends carrying its kind, no graph holds a name twice, no thin role is undecided, no judgement is stale. |
+| `build-rename-map.ts` | Writes `docs/node-rename-map-2026-10-05.md` (for a person) and `.json` (the whole map). `--check` fails when they are stale. |
+| `apply-rename-map.ts` | The map applied to one file's bytes in memory, through the product's own `rewriteNodeNameReferences`. |
+| `rename-equivalence.ts`, `check-rename-equivalence.ts` | The equivalence check (10.3). |
+| `source-rewrite.ts`, `apply-rename.ts`, `overlay-hooks.ts` | The apply tool (10.4). |
+
+### 10.2 The map
+
+`docs/node-rename-map-2026-10-05.md`. 111 documents, 3,130 nodes, 2,143 distinct names.
+
+A name is decided once per **scope**, not once per file: an example's own graph, a component's graph wherever it is embedded, or a whole project. A starter component's graph ships inside every example that uses it, and on-nothing's two dozen shots are built by shared source; one answer per name is what lets that source be rewritten at all.
+
+Five rules are mechanical and keep the author's word exactly (2,549 nodes). Three are listed in full in the map for review: the role said the kind again at one end (`wallgrid1` → `grid_wall`, 328 nodes), the role was only the kind (`out1` → `output1`, 163 nodes), and the 70 decided by hand (90 nodes). The line for those: a role is decided by hand when the rules leave one or two characters, and then its whole chain is renamed with it, so three nodes in a row do not mix two spellings. A chain with no thin member keeps the author's words.
+
+### 10.3 The equivalence check
+
+`check-rename-equivalence.ts` applies the map to every shipped document in memory and asks whether each still does what it did. CPU only: it loads, flattens and compiles, and opens no device. **2.8 s for all 111 documents.**
+
+Four questions, because no one of them is enough:
+
+1. **The same graph.** Flatten before and after. With every name replaced by the id of the node that holds it, in labels and in references, the two flattened graphs must be the same bytes.
+2. **The same plan.** Compile both. Wherever the plans differ, the difference must be nothing but a name standing where its other name stood, word for word.
+3. **No old name left behind.** After the rename, no parameter may still spell a name no node holds. (1) and (2) find references through the product's own walker and inherit its blind spots: a reference kind the walker does not know is the same text on both sides. (3) reads the text.
+4. **As many references as before**, per renamed node.
+
+Result: 111 of 111 the same, 3,260 names and 2,760 references moved.
+
+**It can fail.** `--sabotage` breaks the rename of every document in every way it knows (a reference left on its old name, a reference moved onto another node that exists, every label renamed and no reference rewritten) and requires each to be reported: 1,920 broken renames, 1,920 caught (123 s; run it through `tools/heavy.sh`).
+
+**It found three things before the sweep ran:**
+
+- **A reference kind the product's rename did not know.** A Channel In reads a published channel by name, and an Analyze publishes under its own name. Renaming the Analyze left every Channel In reading its Fallback for good, with no diagnostic. The sweep would have cut the sensor out of the control loops of E14, E27, E64 and furnace. Only check 3 saw it; the plans were identical. Fixed in `names.ts` (clause 8), with the literal bug as a test through `node.rename`.
+- **A component that reads the document around it.** Kaleidoscope's `facets` reads `op('driftx1')` and `op('drifty1')`, two LFOs that are not in the component but beside it in the document it ships in. The map carries those two references as their own rule (`outward`) so they follow the LFOs. Anywhere else the component is used, the references name nothing, today and after. That is probably not what was meant and is worth its own row.
+- **Prose that names nodes.** 35 sentences in the notes of E81 and E82 mention a node by its old name. They are not references and fail nothing; `--mentions` lists them for the hand pass.
+
+### 10.4 The apply tool
+
+`apply-rename.ts` rewrites the text that builds and describes the documents. Without `--write` it writes nothing: it rewrites every file in memory and prints what would change.
+
+A node's name is found by **where it is written**, read from the syntax tree: a `label:`, a parameter that holds names (from `SOURCE_REFERENCE_PARAMETERS`, the table the product renames by), an argument of a function, the key of a preset's `values`, `op('…')` anywhere, and in comments and pages the name in backticks. A node's **id** is never touched, even where it is the same word as the label: it is the address edges are written against.
+
+Dry run, 2026-10-05:
+
+| | Files | Spellings |
+| --- | ---: | ---: |
+| Sources, `src/examples/documents/` and `starter-components.ts` | 68 | 3,077 |
+| Sources, `src/projects/furnace/` and `on-nothing/` | 23 | 379 |
+| Pages, `examples/*.md` and the README index | 66 | 2,356 |
+| Tests that name nodes, 9 directories | 62 | 377 |
+| Project documents, renamed in place | 25 | 1,482 |
+| **Total** | **244** | **7,671** |
+
+Plus 86 generated documents under `examples/`, regenerated and not written by the tool.
+
+**The proof** (`--build-in <dir>`): the rewritten example sources are put in a scratch directory, every example and starter component is built from them (a loader hook swaps the text; the tree is not touched), and each built file is compared with the same file renamed in memory by the map. 4.5 s.
+
+- **75 of 77** documents tried are byte for byte the renamed document.
+- E81 is the same but for the text of a note, which the rewritten source updates and a rename in memory does not.
+- `components/AudioAnalysis` differs in one expression. The tool refused it and said so: `hits` is a node in the host document and a socket inside the component, and one file builds both.
+- **9 were not tried**, because their sources build names in code: E71, E72, E73, E74 (one helper builds three transports' send and receive nodes) and E75 to E79 (loops over rings, slabs and swarms; an occluder pass that looks nodes up by a name it composes).
+
+**By hand in 2b**, all listed with line numbers by `--notes`:
+
+| What | Size |
+| --- | --- |
+| Names built by code, which no file writes | 501 in 10 scopes: E71, E72, E74 (2 each), E75 (6), E76 (24), E77 (72), E78 (72), E79 (24), furnace (42), on-nothing (255) |
+| The 85 places such a name is built | mostly `src/projects/on-nothing/shots/` |
+| Literals in tests that are a node's name AND a node's id | 188; the tool shows each and moves none |
+| Sentences that mention a node | 30 in sources, the 35 in the notes of E81 and E82 |
+| A name two documents of one file rename differently | 24 |
+
+**Projects are different, and this is a decision for the lead.** furnace and on-nothing are not regenerated by a gate: their documents are built by `build.ts` from GLB and audio files this checkout does not always have, and nothing checks the shipped JSON against the source. So:
+
+- Their **documents** are renamed in place, through the save path's own serialiser. Every one of the 111 shipped files comes back byte for byte from that serialiser with an empty map, so the rename is the only change. The equivalence check covers exactly this.
+- Their **sources** have to say the new names too, or the next build undoes the sweep. on-nothing writes few names: a shot is a plate with an id, a plate is prefixed (`Plate.prefixed("car")` turns `cam1` into `carcam1`), and labels are `` `${id.toLowerCase()}1` `` in a dozen helpers. That is a change to those helpers, checked against a real build, and not a text rewrite. It needs the build inputs and somebody who knows the project.
+
+### 10.5 Order for 2b
+
+In its own worktree, never the shared tree.
+
+0. **Save as component names its instance** (`commands.ts`, the line marked phase 2; `instance-names.test.ts` pins the old behaviour and flips with it). Each of the 12 starter component files gains `"label": "<component>1"` on its root instance. Regenerate them one at a time, `--only Antialias` and so on. Gates: `component-sync.test.ts`, `only-flag.test.ts`, `component-port-names.test.ts`, `instance-names.test.ts`.
+1. `build-rename-map.ts --check`, then `check-rename-equivalence.ts`. Both must be green on the tree as it is that day; the map is rebuilt from the bytes, so a document another session changed since is picked up, or refused.
+2. **One batch at a time**: `apply-rename.ts --only <batch> --write`. A batch is widened to every scope that shares a source file, and says so. Then `--only <batch> --build-in <dir>` until every document of the batch is byte for byte the renamed one, finishing by hand what `--notes` lists. Then regenerate, one `--only E<n>` at a time, reading the list each run prints.
+
+   | Batch | `--only` | Documents |
+   | --- | --- | --- |
+   | A | `components/` | the 12 starter components, their graphs, and E1, E5, E6, which are built from the same sources |
+   | B | each of `E2` … `E70`, `E80` … `E82` | one example each; the tool widens where a source is shared |
+   | C | `E71` | E71 to E74 (hand work: one helper, three transports) |
+   | D | `E75` | E75 to E78 (hand work: the family's loops and the occluder pass) |
+   | E | `E79` | E79 (hand work: the swarm loop) |
+   | F | `furnace`, `on-nothing` | documents in place; sources by hand, against a build |
+
+3. **After each batch, by name:** `src/examples/sync.test.ts`, `component-sync.test.ts`, `doc-drift.test.ts`, `doc-claims.test.ts`, `readme.test.ts`, `reference-integrity.test.ts`, `channel-integrity.test.ts`, `layout.test.ts`, `only-flag.test.ts`, `node-names.test.ts` (lower or remove the batch's ledger lines), and the test files the batch's dry run lists under `test` (`--files`). `pnpm typecheck` always.
+4. **No GPU suite per batch.** The equivalence check is what stands in for it: the documents compile to the same plan. At the end, the lead's choice of a GPU sample, and the thumbnails, which carry no names and must not change by a pixel.
+5. The ledger is empty. Keep the gate and the empty map. Delete `src/examples/rename/` and the two map files, or keep them one release as the record; they describe a tree that no longer exists.
 
 ## 11. Open questions
 
-Ruled on 2026-10-05 and no longer open: collisions stay refused; the cross-payload families and `material` stay shared; a component instance is named for its component and is auto-named; In and Out stay exempt; surfaces caption by the role; starter component versions do not bump at the sweep; `apply_graph_patch` warns.
+Ruled on 2026-10-05 and no longer open: collisions stay refused; the cross-payload families and `material` stay shared; a component instance is named for its component and is auto-named; In and Out stay exempt; surfaces caption by the role, a Layer's picture and a stack's title stay whole; starter component versions do not bump at the sweep; `apply_graph_patch` warns; save as component names its instance at the sweep's first step; a long name at rest gives up its kind first (built); 15 % zoom at three to five letters is accepted for now; a held `add_node` shows the name it will store (built).
 
 Still open:
 
-1. **Save as component does not name its instance yet** (section 3). Doing it changes one line in each of the 12 shipped starter component files. I stopped there, because phase 1b may not change a shipped byte. Flip it now and regenerate the 12 files one at a time, or with the sweep? I planned it with the sweep (10.3, step 2).
-2. **A Layer's picture and a layer stack's title.** Both show the name of another node (`graphic · movie_clip`, a stack titled `output_main`). I left them whole: the surface does not draw what kind of node that other one is, so the kind is information there. Role instead?
-3. **A long name at rest.** It ends in an ellipsis (`camerablur_the…`): the kind survives and the role is cut. In the editor the kind elides first. Should it at rest too? It would cost the kind at 100 %, which is where the type chip is already hidden.
-4. **15 % zoom.** A 27 px node shows three or four letters of its kind (`geo`, `kern`, `wgs`). Enough? The options are a narrower face at that tier, a declared abbreviation per kind, or leaving it.
+1. **The map.** The 70 hand decisions, the 25 kind-only and 162 restated pairs, and the six kind words it shows the shipped names on (`texattr`, `texpoints`, `audiofile`, `generator`, `pattern`, `note`).
+2. **Projects** (10.4): rename the on-nothing and furnace documents in place and leave their sources to their own sessions, as sentinel-bot's are, or do the sources in 2b?
+3. **Kaleidoscope reads two LFOs that are not in it** (10.3). The sweep keeps that as it is. Should the component own them?
+4. **Three-letter abbreviations** the authors wrote are kept (`src`, `lvl`, `env`, `fig`, `cyc`, `occ`, `dof`, `taa`); the map lists them. Spell any out?
 5. **The three thresholds** (70 %, 45 %, 9 %) come from measurements on one example in a headless browser. They want the owner's eye in the running app, over real previews.
-6. **The kind words** in section 9, especially `texattr`, `texpoints`, `pattern`, `geometry`, `points`.
-7. **The R2 word table and the single-letter leftovers** (section 10.2) need a person.
-8. **A component whose name has no Latin letter** makes instances of kind `component`. Acceptable, or should a kind take letters of any script, as a role does?
-9. **The review preview of an agent's `add_node`** on a component instance shows the label as asked; the run stores it with the kind and reports it. The preview has no registry to read the component's name from.
-10. **A family's variant** (`material_floor` on a PBR) is no longer on the canvas chip. Show the chip when a kind is shared and the titles differ?
-11. **sentinel-bot.** Its ledger line moves when that session's work lands; the gate names the new number.
+6. **A component whose name has no Latin letter** makes instances of kind `component`. Acceptable, or should a kind take letters of any script, as a role does?
+7. **A family's variant** (`material_floor` on a PBR) is no longer on the canvas chip. Show the chip when a kind is shared and the titles differ?
+8. **sentinel-bot.** Its ledger line moves when that session's work lands; the gate names the new number.
 
 ## 12. TouchDesigner: what was checked and what was not
 
