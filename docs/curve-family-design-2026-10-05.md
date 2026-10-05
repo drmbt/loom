@@ -1,6 +1,6 @@
 # A curve family: curves as strips of a pointset (T1586b)
 
-**Status, 2026-10-05: ruled and partly built.** Every decision in section 7.3 was ruled as recommended, and the consumer (shaderloom-f1) reviewed the design with no objection. Slices 1, 3 and 4 are built: Strips (`726cc203`), Curve Frames (`c8fd00ba`) and Resample (`dbb5c761`), on main as `b9e63995`. Slice 2, the Curve node, is built with its authored table (`6f303252`). Section 7.4 lists what changed from this design as they were built. Beam drawing a strip (the rest of slice 5) and slices 6 to 8 are design only.
+**Status, 2026-10-05: ruled and partly built.** Every decision in section 7.3 was ruled as recommended, and the consumer (shaderloom-f1) reviewed the design with no objection. Slices 1, 3 and 4 are built: Strips (`726cc203`), Curve Frames (`c8fd00ba`) and Resample (`dbb5c761`), on main as `b9e63995`. Slice 2, the Curve node, is built with its authored table (`6f303252`, on main as `a4a4c0fb`). Slice 6, strips longer than 1,024 points, is built (`fe489f4d`). Section 7.4 lists what changed from this design as they were built. Beam drawing a strip (the rest of slice 5) and slices 7 and 8 are design only.
 
 The row asks for a Curve node, a Resample node and a Curve Frames node, with instancing along a curve (T1581b), sweep (T1587b), a path follower (T1590b) and rope (T1585b) as consumers. The owner's standard for it (2026-10-05): consider how TouchDesigner and Notch do this, build the right general shape and not the first consumer's minimum, no brittle or unscalable shortcuts.
 
@@ -390,9 +390,9 @@ A tentacle, a cable or a spine has a fixed length. The consumer's finding (shade
 | Topology | no pass | no pass | none |
 | Curve (every basis, Arc, Arc Chain) | 1 pass, one thread per output point | the same | none |
 | Resample, Even Parameter | 1 pass, one thread per output point | the same | none |
-| Resample, Even Length and Distance | 1 walk + 1 pass per output point | 3-pass scan + 1 pass | one f32 per input point; totals per strip |
+| Resample, Even Length and Distance | 1 walk + 1 pass per output point | block sums, a fold, an add per point, then the same pass per output point | one f32 per input point; totals per strip; long strips: one f32 per block |
 | Resample, Curvature | the same, with the density folded into the walk | the same | the same |
-| Curve Frames | 1 walk | 3-pass scan | long strips only: one quaternion and one f32 per point; totals per block and per strip |
+| Curve Frames | 1 walk | block, fold, write; Fixed Up: block, fold, chain, chain fold, write | long strips only: 56 words per block and 4 per strip |
 
 ### 4.2 The walk
 
@@ -413,18 +413,28 @@ Arc length is a running sum and a carried frame is a running product of rotation
 | On the CPU | n/a | 0 | right for an authored curve read by a follower (5.3); a GPU-resident curve would need a readback every frame |
 | Each point re-walks its strip in a kernel | `cols` | 1 | `cols²` loads per strip; the substeps assessment's alternative 4 |
 
-### 4.3 Long strips
+### 4.3 Long strips (built, slice 6)
 
-A strip longer than `BLOCK` is cut into blocks of `BLOCK` points, in three passes:
+A strip longer than `BLOCK` is cut into blocks of `BLOCK` points. What a block does to a distance and to a frame does not depend on what came before it: it adds its own length, and it turns whatever normal it is handed by its own rotation. So:
 
-1. one invocation per block walks its block from a zero distance and an identity rotation, writes each point's local result, and writes the block's totals (its length; its composed rotation);
-2. one invocation per strip walks its blocks' totals in order and writes each block's starting distance and rotation, the strip's length and its closing angle;
-3. one thread per point adds its block's start to its local distance, composes its block's start rotation with its local one and the seed, and applies close, roll and twist.
+1. **Block.** One invocation per block summarises its block on its own: its length, its first and last real segments, and a reference normal seeded on the first and carried to the last.
+2. **Fold.** One invocation per strip walks its blocks' summaries in order, a step per block. It leaves each block the state the whole walk would have arrived with (distance so far, the last direction, the carried normal), and finds the strip's length and its closing angle.
+3. **Write.** One invocation per block walks its block again from that state and writes its points. This is the whole walk's second half, started in the middle.
 
-- A step of the frame's walk is a rotation and rotations compose associatively, so cutting the product into blocks is exact up to rounding.
-- For a strip of at most `BLOCK` points the block is the strip, passes 2 and 3 do not exist, and the result is the walk's, bit for bit. So short strips are a true prefix of the long form.
-- `BLOCK` is fixed when the first walk ships. Changing it later would change the rounding of long strips.
-- One strip of 1,000,000 points is 977 block walks of 1,024 steps and one walk of 977 totals.
+- **A long strip costs two walks of one block**, whatever its length, plus a fold as long as its number of blocks. One strip of 1,000,000 points is 977 block walks of 1,024 steps, twice, and three loops over 977 summaries.
+- **No per-point scratch.** The scratch is 56 words a block and 4 a strip. The design had a quaternion and a distance per point and a third pass per point; walking each block twice needs neither, and it is the same code as the short walk.
+- **A block's turn is one angle.** Carrying a normal across a point is a rotation, so two normals carried through the same block keep the angle between them. The fold takes the angle between the handed normal and the block's reference at the block's first segment and lays it off from the carried reference at its last. An exact reversal keeps the normal and turns the direction round, which mirrors that angle, so a block also records whether it holds an odd number of reversals.
+- **Runs cross seams.** A run of coincident points is written with the turn at the segment that ends it, which can be blocks away, and padding can fill whole blocks. The fold walks the blocks backward too and hands each one the turn that ends its trailing run. Every block then writes only its own points, a strip that is mostly padding is still written by all its blocks at once, and the points of one run share one frame to the bit.
+- **Distance** is a block's start plus the distance inside the block. Resample takes its lengths in the same order (three light passes: block sums, a fold, an add per point), so "how far along is this point" still has one answer in the family.
+- **Rounding.** A sum taken a block at a time is not the same floats as one taken a point at a time, and a normal turned by a block's summary is not the same floats as one carried across its points. A long strip differs from the same points walked whole in its last bits, and `BLOCK` is part of that rounding: it is fixed at 1,024.
+- **Short strips are not the case of one block.** A strip of at most `BLOCK` points is walked by the single program it always was, and that program is pinned by its text in the tests. The design said the short walk would be the long form with passes 2 and 3 missing; keeping the program is the stronger promise.
+- The CPU reference has both forms (`frameStripWhole`, `frameStripBlocked`), and its tests hold the blocked one to the whole one on strips cut into blocks of a few points.
+
+**Fixed Up has two more passes**, between the fold and the write, because it hands a second thing from point to point: where a tangent runs along Up, a point takes the normal of the point before it. The design missed this dependency.
+
+- That chain is cut at every point that can decide its own normal. A block that holds one hands on a normal that owes nothing to the blocks before it.
+- A block with none (a straight run along Up, longer than a block) hands on what it was handed, pressed square to each of its tangents in turn. That is a linear map, kept as the three vectors it sends the axes to. **Chain** (one invocation per block) finds it; **Chain fold** (one per strip) applies it block by block and leaves each block the normal it starts from.
+- A linear map cannot say one thing: the handed normal collapsing inside such a block (landing along a tangent, which restarts it from a world axis). Every pressing can only shorten the normal, so the fold can tell that this did not happen: the mapped normal is still more than a millionth of its length. When it is not, the fold marks what follows as not known, and the write pass walks forward from the last block whose handed normal is known. That needs Up mapped to the curve's own tangent and an exact reversal, never a real curve, and it is exact when it happens. The tests hold both the result and the path taken.
 
 ### 4.4 Resample's search
 
@@ -451,7 +461,25 @@ Dawn/Metal, best of 9 runs of 200 frames, each figure the difference from the sa
 - That is the measurement D5 asked for, and it kept the walk: the alternative buys depth, which only long strips need, and cannot hold a strip over 256 points.
 - The length walk alone is one square root and one add a step: under 0.1 ms for a block of 1,024. Curve Frames' cost is its frame arithmetic, not the walk's shape.
 - The figures at 2,160 points are at the submission floor and are noise-limited.
-- Not measured: long strips (slice 6), and a chain's total.
+- Not measured: a chain's total.
+
+**Long strips (slice 6).** The same method, on another day; the two rows of 1,024-point strips are the unchanged short walk, measured again beside the long ones.
+
+| Points | Strips × points per strip | Blocks per strip | Curve Frames, Minimise Twist, all eight | metrics only | Curve Frames, Fixed Up, all eight | Resample, Even Length | Even Parameter |
+|---|---|---|---|---|---|---|---|
+| 1,024 | 1 × 1,024 | 1 (the short walk) | 0.80 | 0.32 | 0.64 | 0.08 | 0.01 |
+| 4,096 | 1 × 4,096 | 4 | 0.97 | 0.49 | 1.27 | 0.14 | 0.01 |
+| 16,384 | 1 × 16,384 | 16 | 1.05 | 0.52 | 1.36 | 0.15 | 0.02 |
+| 999,424 | 976 × 1,024 | 1 (the short walk) | 1.30 | 0.64 | 1.13 | 0.44 | 0.23 |
+| 999,424 | 244 × 4,096 | 4 | 1.38 | 0.76 | 1.73 | 0.56 | 0.21 |
+| 999,424 | 61 × 16,384 | 16 | 1.41 | 0.78 | 1.77 | 0.56 | 0.21 |
+| 1,000,000 | 1 × 1,000,000 | 977 | 3.04 | 2.36 | 3.80 | 0.66 | 0.22 |
+
+- **A long strip costs about what one block costs.** A strip of 16,384 points is measured in 1.05 ms where a strip of 1,024 takes 0.80: sixteen times the points for a quarter more time. That is the blocked form doing what it is for: at the short walk's rate, one walk that deep would take about 13 ms.
+- **The fold is what grows.** One strip of a million points is 977 blocks, and the pass that walks their summaries is 977 steps deep, three times over: about 1.6 ms of the 3.0. The same million points as 61 strips of 16 blocks cost 1.4 ms. A fold of folds would bound that depth; nothing asks for it yet, and it is the only cost here that still follows a strip's length.
+- **Fixed Up costs half as much again on a long strip** (1.3 ms against 1.0): it has a third walk per block, for the normal handed from point to point. On a short strip it is the cheaper method.
+- **Metrics only is dearer on a long strip than on a short one** (0.49 against 0.32): the block pass and the fold carry the frame whether or not one is published. A variant that skips it when neither Frame nor Vectors is on would save about 0.2 ms; it is not built.
+- **Resample's lengths** go from one walk to three light passes: 0.14 ms for a strip of 4,096 against 0.08 for one of 1,024.
 
 **Curve (slice 2).** The same method; strips of 16 control points at 16 segments (241 points a strip), position only.
 
@@ -465,11 +493,11 @@ Dawn/Metal, best of 9 runs of 200 frames, each figure the difference from the sa
 - Linear reads dearer than Catmull-Rom here, which the arithmetic cannot explain: the method's noise at this size is as large as the differences between the bases. Read the row as "about 0.1 ms, the Arc highest".
 - Bezier was not measured.
 
-- Memory: Resample owns every attribute of its output. Curve Frames owns 32 bytes a point (80 with the vectors). The scans' scratch is 4 bytes a point for Resample and 20 for long-strip frames.
+- Memory: Resample owns every attribute of its output. Curve Frames owns 32 bytes a point (80 with the vectors). Resample's scratch is 4 bytes an input point, and 4 a block for a long strip. Curve Frames' scratch exists for long strips only: 224 bytes a block and 16 a strip, so 219 KB for one strip of a million points.
 
 ### 4.6 Limits
 
-- `rows × cols ≤ 1,000,000`, and the packed size bound, as for every pointset.
+- `rows × cols ≤ 1,000,000`, and the packed size bound, as for every pointset. Since slice 6 that product is the Topology node's only limit too: its Columns and Rows stopped at 4,096 each, a Grid generator's limit, so a kernel's strip of 16,384 points could not be claimed.
 - Curve: at most 64 authored control points; any number wired. Arc Chain: at most 16 sections per strip.
 - Storage bindings: Resample binds one buffer per upstream producer it reads attributes from, plus its scratch and its output, against the baseline of 8 per stage (§V588). A chain of by-reference attributes from many producers refuses by name, as a kernel does.
 - Curve nodes run along U only (R6).
@@ -622,6 +650,17 @@ On Dawn through the compiler and the backend, red-verified, with the wire-cut ca
 
 - Seek: frame N rendered directly equals frame N after frames 0 to N−1, byte for byte, for Curve → Resample → Curve Frames under an animated control point.
 - A long strip (2,500 points, when slice 6 lands): every point's `distance` and `orient` equal the CPU reference run in the blocked order, and a strip of 1,024 points reads back byte for byte what it read before the slice.
+
+*Built in slice 6. The long strips are placed on the device by a formula (WGSL caps a constant array at 2,047 elements), so a test reads the points back and compares against what follows from those.*
+
+- *A strip of at most 1,024 points keeps its program: nine Curve Frames configurations and six Resample ones are pinned by a fingerprint of their passes (ids, shader text, bindings, dispatch, uniforms), recorded from main before the slice. A device-independent statement of "the same bytes"; a hash of read-back floats would depend on a GPU's square root.*
+- *Exact, seams included: a straight line of 2,500 and of 16,384 points (distance `k × 0.5`, an unturned frame); a twelve-gon traced 200 times, closed (the normal `(0, 0, 1)` at all 2,400 points, curvature one half); Resample at a point every 2.5 along the line (500 stations, each on an input point).*
+- *Closed forms across seams: the helix's lag per point over 3,000 points; a closed space polygon traced 301 times still comes back turned by −π/3.*
+- *The blocked reference on two unlike strips of 3,500 points with a run of coincident points across a seam, a whole block of padding and a padded tail; open and closed; both methods; and Resample by Count and by Distance on the same strips. The points of one run share one frame to the bit.*
+- *An exact reversal inside a later block; a Fixed Up run along Up longer than two blocks, by hand, with the fold's own handed normal read back; the handed normal collapsing inside a block, with the path the write pass took read back.*
+- *The first block of a long strip against the short strip its points make: equal to the last digit of single precision at every point. Not byte for byte: the two are different programs, and the device fuses a multiply and an add in one and not in the other (measured: tangent, distance and curvature the same bytes, a normal off by at most one unit in its last place).*
+- *Seek on long strips for both nodes, since the walk's scratch outlasts a frame. Curve → Resample → Curve Frames with every strip longer than a block, each stage held to the reference run on what the stage before it wrote.*
+- *Reference comparisons on long strips are at four digits where the short strips' are at five: a frame at point 3,000 is the product of three thousand single-precision turns.*
 - Headless definition tests for every refusal sentence: a `points` edge into each node, Bezier without handles, a mismatched attribute type, the binding budget, a follower on a wired Curve.
 - The measurements of 4.5, reported.
 
@@ -638,12 +677,12 @@ Each is shippable, and each is a prefix of the final design: the claim, the attr
 | 3 | Curve Frames | metrics, Minimise Twist and Fixed Up, the seeds, roll, twist, closing; strips up to `BLOCK`; the measurement that fixes the scan (D5) | instancing along a curve with `orient` |
 | 4 | Resample | Count (both spacings) and Distance, with anchor, offset, range and `live`; strips up to `BLOCK` | exact pitch, stowed rings, the tip pointset, lights along a tunnel; sentinel-bot step 1 (with slices 1 and 3) |
 | 5 | Drawing | Beam mode takes a strip's next point as its far end when Endpoint is empty (the authored table moved to slice 2) | a curve visible as a line with no kernel |
-| 6 | Long strips | the blocked scan for Curve Frames and Resample | one curve of 100k points and more |
+| 6 | Long strips | the blocked walk for Curve Frames and Resample (built); the Topology node's Columns and Rows limited by the edge and no longer by 4,096 | one curve of 100k points and more |
 | 7 | Resample by curvature | the density measure | fewer points on straights |
 | 8 | Arc Chain | sections by length and curvature | sentinel-bot step 2; tails, stems, antennae |
 
 - Slices 2, 3 and 4 depend only on slice 1.
-- **Build order, from the consumer's review**: slices 1, 3 and 4 together first, because they are what removes the consumer's frame code (built); then slice 2 (built); then slice 6 and Arc Chain.
+- **Build order, from the consumer's review**: slices 1, 3 and 4 together first, because they are what removes the consumer's frame code (built); then slice 2 (built); then slice 6 (built) and Arc Chain.
 - Slice 5's Beam change is in `scene.ts`, which T1581b and T1588b are editing, so it is scheduled after the mesh-instancing slices. It has a second consumer, a debug spine for a rig. Until then a five-line kernel writes each point's successor into an attribute and Beam draws it, with no engine change.
 
 ### 7.2 Accepted limitations, as follow-up rows
@@ -734,11 +773,23 @@ Names as built: node types `pointCurve` (Curve), `pointCurveFrames` (Curve Frame
 - The seed rule (`perpendicular`, `leastAligned`, `seedNormal`) moved to `shaders/curve-common.wgsl.ts`, shared by the Arc and Curve Frames. Curve Frames' functions are the same text moved, and its exact-value Dawn tests read what they read before.
 - The design's length test asked for "the summed distance is `L × sinc(φ ÷ segments)`"; it is built so, and with the stronger statement that every station lies on the one circle of radius `L ÷ 2φ`.
 
+**Slice 6, long strips** (section 4.3 is rewritten as built; this is the list of what moved)
+
+- The third pass is per block, not per point: every block walks again from the state the fold left it. The design had a pass per point over a quaternion and a distance stored per point. Walking twice needs no per-point scratch and is the short walk's own code.
+- A strip of at most 1,024 points keeps its single program, pinned by its text. The design said the short walk would be the long form with two passes missing.
+- A block's turn is carried as one angle against a reference normal, with a flag for an odd number of exact reversals. The design said "its composed rotation".
+- Runs of coincident points that cross a seam, and whole blocks of padding, are handled by a backward loop in the fold. The design did not consider them.
+- Fixed Up has a chain pass and a chain fold, and a write pass that can walk forward from an earlier block. The design missed that Fixed Up hands the previous point's normal along.
+- Resample's lengths are block sums, a fold and an add per point, as designed.
+- The Topology node's Columns and Rows are limited by the points the edge carries and no longer by 4,096 each. Found while measuring: a kernel's strip of 16,384 points could not be claimed.
+- The CPU reference takes the block size as an argument, so its tests cut eleven points into blocks of four.
+- Found while testing: two programs that compute the same expression can differ in its last bit on this device, so "the first block of a long strip is the short strip, byte for byte" is not a statement a test can make across them. The promise that holds is the one that is tested: a short strip's own program does not change.
+
 **Owed**
 
 - The instancing-equality test (`orient` against Aim and Up) needs T1581b's slice D.
-- Rows for C16 and C17, which this slice added to 7.2.
-- Not built, as ruled: Beam drawing a strip (slice 5), strips over 1,024 (slice 6), Resample by curvature (slice 7), Arc Chain (slice 8).
+- A fold of folds, if one strip of a million points has to cost less than 3 ms (4.5).
+- Not built, as ruled: Beam drawing a strip (slice 5), Resample by curvature (slice 7).
 
 ## 8. Found on the way (not fixed, not in scope)
 
