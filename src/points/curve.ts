@@ -676,19 +676,103 @@ function frameStripBlocked(points: ReadonlyArray<Vec3>, options: StripFrameOptio
 
 export interface ResampleOptions {
   readonly closed: boolean;
-  readonly method: "count" | "distance";
+  readonly method: "count" | "distance" | "curvature";
   /** Count: even in length along the strip, or even in the input's point index. */
   readonly spacing?: "length" | "parameter";
-  /** Count: points per strip. Distance: the slots allocated per strip. */
+  /** Count: points per strip. Distance and Curvature: the slots allocated per strip. */
   readonly slots: number;
   /** Distance: metres between points. */
   readonly distance?: number;
-  /** Distance: which end the stations are measured from. */
+  /** Distance and Curvature: which end the stations are measured from. */
   readonly anchor?: "start" | "end";
   /** Metres to slide every station along the strip. */
   readonly offset?: number;
   readonly rangeStart?: number;
   readonly rangeEnd?: number;
+  /** Curvature: how close two points may come (where the strip turns hardest), and how far apart (where it runs straight). */
+  readonly minDistance?: number;
+  readonly maxDistance?: number;
+  /** Curvature: 0 to 1 — toward the farthest spacing or toward the nearest (`resampleTurnPerPoint`). */
+  readonly bias?: number;
+  /** Curvature: how sharply the strip turns at each of its points, 1 ÷ metres — Curve Frames' `curvature`. */
+  readonly curvature?: ReadonlyArray<number>;
+}
+
+/**
+ * Resample by Curvature: THE TURN ONE STEP MAY CARRY, radians, from the Bias.
+ *
+ * Spacing a curve by how it turns is spacing it so that no step turns by more than some
+ * angle — the "angle tolerance" every curve flattener has. TouchDesigner's Line Resample
+ * calls its dial Min Max Bias and says only that it puts points "more near the minimum or
+ * more near the maximum distance"; this is that dial given a meaning. It runs from a whole
+ * radian a step at 0 (coarse: the spacing sits at the maximum almost everywhere) to a
+ * hundredth of a radian at 1 (fine: the spacing sits at the minimum wherever the strip
+ * turns at all), geometrically, so the middle is a tenth of a radian — 5.7 degrees, a
+ * circle in 63 points.
+ */
+export function resampleTurnPerPoint(bias: number): number {
+  return Math.pow(0.01, Math.min(Math.max(bias, 0), 1));
+}
+
+/** The shape of Resample by Curvature's density: how many points a metre, between two limits, for a turn per point. */
+export interface DensityShape {
+  readonly minDistance: number;
+  readonly maxDistance: number;
+  readonly bias: number;
+}
+
+/** Points per metre where the strip's curvature is `curvature`: a point per `turn`, never farther apart than the maximum nor closer than the minimum. */
+export function resampleDensity(curvature: number, shape: DensityShape): number {
+  const farthest = Math.max(shape.maxDistance, 1e-6);
+  const nearest = Math.min(Math.max(shape.minDistance, 1e-6), farthest);
+  return Math.min(Math.max(Math.max(curvature, 0) / resampleTurnPerPoint(shape.bias), 1 / farthest), 1 / nearest);
+}
+
+export interface StripDensity {
+  /** Points per metre AT each point of the strip. */
+  readonly density: number[];
+  /** How many points' worth of curve lie before each point: the strip's length, counted in points. */
+  readonly cumulative: number[];
+  /** The whole strip, counted in points. */
+  readonly total: number;
+}
+
+/**
+ * Resample by Curvature measures the strip in POINTS rather than metres. The density at a
+ * point is `resampleDensity` of its curvature; along a segment it runs straight from one
+ * end's to the other's, so the segment is worth its length times the mean of the two. A
+ * station every 1 of that measure is then a point per `turn` where the strip turns and a
+ * point per maximum where it does not, with no jump in spacing anywhere in between.
+ *
+ * Summed in `stripLengths`' order — a block's start plus the sum inside the block — and a
+ * segment of no length is worth nothing, so padding and repeated points pass as they do
+ * everywhere else.
+ */
+export function stripDensity(
+  points: ReadonlyArray<Vec3>,
+  closed: boolean,
+  curvature: ReadonlyArray<number>,
+  shape: DensityShape,
+  block = STRIP_WALK_BLOCK,
+): StripDensity {
+  const cols = points.length;
+  const segments = segmentCount(cols, closed);
+  const density = points.map((_, index) => resampleDensity(curvature[index] ?? 0, shape));
+  const cumulative = new Array<number>(cols);
+  let start = 0;
+  for (let first = 0; first < cols; first += block) {
+    const last = Math.min(first + block, cols);
+    let inside = 0;
+    for (let k = first; k < last; k += 1) {
+      cumulative[k] = start + inside;
+      if (k >= segments) continue;
+      const segment = segmentOf(points, k);
+      const squared = dot(segment, segment);
+      if (squared > ZERO_SEGMENT_SQUARED) inside += Math.sqrt(squared) * (((density[k] as number) + (density[(k + 1) % cols] as number)) * 0.5);
+    }
+    start += inside;
+  }
+  return { density, cumulative, total: start };
 }
 
 /** Where one output slot reads the input strip: between `index` and `next`, `t` of the way; padding when not live. */
@@ -767,16 +851,42 @@ export function resampleStations(lengths: StripLengths, options: ResampleOptions
     return stations;
   }
 
-  const wanted = Math.max(options.distance ?? 0.1, 1e-6);
+  if (options.method === "curvature") {
+    throw new Error("resampleStations places by Count and by Distance; Resample by Curvature needs the strip's points and curvature — call resampleStrip.");
+  }
+  return placeEvery(Math.max(options.distance ?? 0.1, 1e-6), total, a, b, offset, loop, options).map(({ live, at }) => ({
+    live,
+    ...stationAtDistance(lengths, closed, at),
+  }));
+}
+
+/**
+ * A station every `wanted` along a measured strip, into a fixed number of slots: the rule
+ * Distance and Curvature share, over metres for the one and over points for the other.
+ * `total` is the whole strip in that measure, `a` and `b` the part of it used, and
+ * `offset` how far the first station sits from the anchor. Over budget, the spacing widens
+ * until the whole range fits (D6); a slot with no station repeats the nearest one and is
+ * not live (§V788).
+ */
+function placeEvery(
+  wanted: number,
+  total: number,
+  a: number,
+  b: number,
+  offset: number,
+  loop: boolean,
+  options: Pick<ResampleOptions, "slots" | "anchor">,
+): Array<{ live: boolean; at: number }> {
+  const { slots } = options;
+  const range = Math.max(b - a, 0);
+  const wrap = (d: number): number => (total > 0 ? d - Math.floor(d / total) * total : 0);
+  const placed: Array<{ live: boolean; at: number }> = [];
   if (loop) {
     const needed = Math.floor(total / wanted + RESAMPLE_END_TOLERANCE);
     const count = Math.max(Math.min(needed, slots), 1);
     const spacing = needed > slots ? total / slots : wanted;
-    for (let k = 0; k < slots; k += 1) {
-      const d = wrap(Math.min(k, count - 1) * spacing + offset);
-      stations.push({ live: k < count, ...stationAtDistance(lengths, closed, d) });
-    }
-    return stations;
+    for (let k = 0; k < slots; k += 1) placed.push({ live: k < count, at: wrap(Math.min(k, count - 1) * spacing + offset) });
+    return placed;
   }
   const needed = Math.floor(range / wanted + RESAMPLE_END_TOLERANCE) + 1;
   const spacing = needed > slots ? range / Math.max(slots - 1, 1) : wanted;
@@ -789,15 +899,85 @@ export function resampleStations(lengths: StripLengths, options: ResampleOptions
     const m = fromEnd ? k - (slots - 1) : k;
     const any = lowest <= highest;
     const live = any && m >= lowest && m <= highest;
-    const d = any ? Math.min(Math.max(base + Math.min(Math.max(m, lowest), highest) * spacing, a), b) : Math.min(Math.max(base, a), b);
-    stations.push({ live, ...stationAtDistance(lengths, closed, d) });
+    placed.push({
+      live,
+      at: any ? Math.min(Math.max(base + Math.min(Math.max(m, lowest), highest) * spacing, a), b) : Math.min(Math.max(base, a), b),
+    });
   }
-  return stations;
+  return placed;
+}
+
+/**
+ * Resample by Curvature: a station every ONE POINT'S WORTH of the strip (`stripDensity`),
+ * which is the rule Distance follows in metres. The Range is still a share of the strip's
+ * LENGTH and the Offset still metres, so both are turned into the point measure first: a
+ * range of a half is the first half of the curve, not the first half of its points.
+ */
+function curvatureStations(points: ReadonlyArray<Vec3>, options: ResampleOptions): ResampleStation[] {
+  const { closed } = options;
+  const cols = points.length;
+  const lengths = stripLengths(points, closed);
+  const shape: DensityShape = { minDistance: options.minDistance ?? 0.02, maxDistance: options.maxDistance ?? 0.5, bias: options.bias ?? 0.5 };
+  const measure = stripDensity(points, closed, options.curvature ?? [], shape);
+  const rangeStart = options.rangeStart ?? 0;
+  const rangeEnd = options.rangeEnd ?? 1;
+  const offset = options.offset ?? 0;
+  const loop = closed && rangeStart <= 0 && rangeEnd >= 1;
+
+  /** One segment of the strip: its two points, its length, and how many points it is worth. */
+  const segmentAt = (index: number) => {
+    const last = index === cols - 1;
+    const next = (index + 1) % cols;
+    const size = (last ? lengths.total : (lengths.cumulative[index + 1] as number)) - (lengths.cumulative[index] as number);
+    const worth = (last ? measure.total : (measure.cumulative[index + 1] as number)) - (measure.cumulative[index] as number);
+    return { next, size, worth, from: measure.density[index] as number, to: measure.density[next] as number };
+  };
+  /** How many points' worth of strip lie before the place `metres` along it. */
+  const measureAt = (metres: number): number => {
+    const station = stationAtDistance(lengths, closed, Math.min(Math.max(metres, 0), lengths.total));
+    if (station.t === 0) return measure.cumulative[station.index] as number;
+    const { size, from, to } = segmentAt(station.index);
+    // The density runs straight from one end of the segment to the other.
+    return (measure.cumulative[station.index] as number) + size * (from * station.t + (to - from) * station.t * station.t * 0.5);
+  };
+  /** The place a count of points along the strip falls: its segment, and how far along it. */
+  const stationAt = (count: number): Omit<ResampleStation, "live"> => {
+    let low = 0;
+    let high = cols - 1;
+    while (low < high) {
+      const mid = (low + high + 1) >> 1;
+      if ((measure.cumulative[mid] as number) <= count) low = mid;
+      else high = mid - 1;
+    }
+    const index = low;
+    if (!closed && index >= cols - 1) return { index, next: index, t: 0 };
+    const { next, size, worth, from, to } = segmentAt(index);
+    const into = count - (measure.cumulative[index] as number);
+    if (!(worth > 0) || into <= 0) return { index, next, t: 0 };
+    // size·(from·t + (to − from)·t²/2) = into, solved for t in the form that loses nothing
+    // when the two densities are equal.
+    const linear = size * from;
+    const curve = size * (to - from) * 0.5;
+    const t = (2 * into) / (linear + Math.sqrt(Math.max(linear * linear + 4 * curve * into, 0)));
+    return { index, next, t: Math.min(Math.max(t, 0), 1) };
+  };
+
+  const a = measureAt(rangeStart * lengths.total);
+  const b = measureAt(rangeEnd * lengths.total);
+  // The Offset is metres from the anchor; in points it is whatever lies between the two places.
+  const fromEnd = options.anchor === "end";
+  const wrapMetres = (d: number): number => (lengths.total > 0 ? d - Math.floor(d / lengths.total) * lengths.total : 0);
+  const shift = loop
+    ? measureAt(wrapMetres(offset))
+    : offset === 0
+      ? 0
+      : measureAt((fromEnd ? rangeEnd : rangeStart) * lengths.total + offset) - (fromEnd ? b : a);
+  return placeEvery(1, measure.total, a, b, shift, loop, options).map(({ live, at }) => ({ live, ...stationAt(at) }));
 }
 
 /** Resample one strip's positions: the stations, read back as points and a `live` flag per slot. */
 export function resampleStrip(points: ReadonlyArray<Vec3>, options: ResampleOptions): { positions: Vec3[]; live: number[] } {
-  const stations = resampleStations(stripLengths(points, options.closed), options);
+  const stations = options.method === "curvature" ? curvatureStations(points, options) : resampleStations(stripLengths(points, options.closed), options);
   return {
     positions: stations.map((station) => {
       const from = points[station.index] as Vec3;

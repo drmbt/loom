@@ -11,10 +11,13 @@ import {
   frameStrip,
   parseCurveTable,
   quatFromFrame,
+  resampleDensity,
   resampleStations,
   resampleStrip,
+  resampleTurnPerPoint,
   rotateByQuat,
   solveArc,
+  stripDensity,
   stripLengths,
   type Vec2,
   type Vec3,
@@ -301,6 +304,134 @@ describe("stripLengths and resampleStations (T1586b section 3.3)", () => {
     const padded: Vec3[] = [[0, 0, 0], [0, 0, 0], [1, 0, 0], [4, 0, 0], [4, 0, 0], [4, 0, 0]];
     const result = resampleStrip(padded, { closed: false, method: "count", spacing: "length", slots: 5 });
     expect(result.positions.map((p) => p[0])).toEqual([0, 1, 2, 3, 4]);
+  });
+});
+
+/**
+ * T1586b slice 7 — RESAMPLE BY CURVATURE: Distance over another measure.
+ *
+ * A strip is measured in POINTS: so many a metre at each point (one per `turn` of
+ * curvature, between the two limits), running straight from one point's density to the
+ * next's. A station every 1 of that measure is the whole method. So every expectation here
+ * is arithmetic on a line with a curvature WRITTEN ON IT — the curvature is an attribute
+ * the method reads, never something it works out, and a test may set it to anything.
+ */
+describe("Resample by Curvature — a station every point's worth of curve (T1586b slice 7)", () => {
+  const four = line(5, 1);
+  const shape = { minDistance: 0.125, maxDistance: 0.5, bias: 0.5 };
+  const byCurvature = { closed: false, method: "curvature", ...shape } as const;
+  const SHARP = 1000;
+
+  it("the Bias is the turn one step may carry: a radian at 0, a tenth at a half, a hundredth at 1", () => {
+    expect(resampleTurnPerPoint(0)).toBe(1);
+    expect(resampleTurnPerPoint(0.5)).toBeCloseTo(0.1, 15);
+    expect(resampleTurnPerPoint(1)).toBeCloseTo(0.01, 15);
+    expect(resampleTurnPerPoint(-3)).toBe(1);
+    expect(resampleTurnPerPoint(7)).toBeCloseTo(0.01, 15);
+  });
+
+  it("the density is a point per turn, never sparser than the Max Distance nor denser than the Min", () => {
+    // A straight has no curvature: a point every Max Distance.
+    expect(resampleDensity(0, shape)).toBe(2);
+    // Curvature 0.5 (a circle of radius 2) at a tenth of a radian a point: a point every 0.2 m.
+    expect(resampleDensity(0.5, shape)).toBeCloseTo(5, 12);
+    // Turning too hard for the Min: the Min wins.
+    expect(resampleDensity(SHARP, shape)).toBe(8);
+    expect(resampleDensity(-4, shape)).toBe(2);
+    // A Min above the Max is the Max: there is one spacing left.
+    expect(resampleDensity(SHARP, { minDistance: 2, maxDistance: 0.5, bias: 0.5 })).toBe(2);
+  });
+
+  it("a straight is a point every Max Distance, and a strip that turns hard everywhere a point every Min", () => {
+    const straight = resampleStrip(four, { ...byCurvature, slots: 16, curvature: [0, 0, 0, 0, 0] });
+    // Exactly what Distance gives at that spacing: the method IS Distance, over another measure.
+    expect(straight).toEqual(resampleStrip(four, { closed: false, method: "distance", slots: 16, distance: 0.5 }));
+    const tight = resampleStrip(four, { ...byCurvature, slots: 40, curvature: [SHARP, SHARP, SHARP, SHARP, SHARP] });
+    expect(tight.positions.slice(0, 33).map((p) => p[0])).toEqual(Array.from({ length: 33 }, (_, k) => k * 0.125));
+    expect(tight.live).toEqual(Array.from({ length: 40 }, (_, k) => (k < 33 ? 1 : 0)));
+  });
+
+  /**
+   * Straight for a metre, then one segment in which the density climbs from 2 a metre to
+   * 8, then hard-turning to the end. In points the five input points sit at 0, 2, 7, 15 and
+   * 23: the climbing segment is worth 1 × (2 + 8) ÷ 2 = 5. A station s points into it is t
+   * of the way along where 2t + 3t² = s, so t = 2s ÷ (2 + √(4 + 12s)): a third of the way
+   * for the first, and exactly the far end for the fifth.
+   */
+  it("where the density climbs along a segment, the stations close up along it by the quadratic's root", () => {
+    const curvature = [0, 0, SHARP, SHARP, SHARP];
+    const measure = stripDensity(four, false, curvature, shape);
+    expect(measure.density).toEqual([2, 2, 8, 8, 8]);
+    expect(measure.cumulative).toEqual([0, 2, 7, 15, 23]);
+    expect(measure.total).toBe(23);
+    const out = resampleStrip(four, { ...byCurvature, slots: 32, curvature });
+    const x = out.positions.map((p) => p[0]);
+    expect(out.live).toEqual(Array.from({ length: 32 }, (_, k) => (k < 24 ? 1 : 0)));
+    expect(x.slice(0, 3)).toEqual([0, 0.5, 1]);
+    for (const s of [1, 2, 3, 4]) expect(x[2 + s], `station ${s} of the climb`).toBeCloseTo(1 + (2 * s) / (2 + Math.sqrt(4 + 12 * s)), 12);
+    expect(x[3]).toBeCloseTo(1 + 1 / 3, 12);
+    expect(x[7]).toBe(2);
+    // And from there a point every eighth of a metre to the end.
+    expect(x.slice(7, 24)).toEqual(Array.from({ length: 17 }, (_, k) => 2 + k * 0.125));
+    for (const padding of x.slice(24)) expect(padding).toBe(4);
+  });
+
+  /**
+   * The Range is a share of the strip's LENGTH and the Offset is metres, as for every other
+   * method — not a share of its points. Half way along this strip is x = 2; half its points
+   * are spent by x = 2.56.
+   */
+  it("the Range is a share of the length and the Offset is metres, whatever the density", () => {
+    const curvature = [0, 0, SHARP, SHARP, SHARP];
+    const half = resampleStrip(four, { ...byCurvature, slots: 32, curvature, rangeStart: 0.5 });
+    expect(half.positions[0]![0]).toBe(2);
+    expect(half.positions[1]![0]).toBe(2.125);
+    expect(half.live.reduce((sum, flag) => sum + flag, 0)).toBe(17);
+    // Half a metre of offset on the straight is one whole point there: the first station is at 0.5.
+    const slid = resampleStrip(four, { ...byCurvature, slots: 32, curvature, offset: 0.5 });
+    expect(slid.positions.slice(0, 2).map((p) => p[0])).toEqual([0.5, 1]);
+    expect(slid.positions[2]![0]).toBeCloseTo(1 + 1 / 3, 12);
+    // Anchored at the End, the last slot is on the end and the padding collects at the head.
+    const fromEnd = resampleStrip(four, { ...byCurvature, slots: 32, curvature, anchor: "end" });
+    expect(fromEnd.positions[31]![0]).toBe(4);
+    expect(fromEnd.positions[30]![0]).toBe(3.875);
+    expect(fromEnd.live.slice(0, 9)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 1]);
+  });
+
+  it("over budget every spacing widens together and the whole strip is still covered", () => {
+    const out = resampleStrip(four, { ...byCurvature, slots: 5, curvature: [0, 0, 0, 0, 0] });
+    expect(out.live).toEqual([1, 1, 1, 1, 1]);
+    expect(out.positions.map((p) => p[0])).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  /**
+   * A 64-gon of radius 2, closed, with the curvature a circle of that radius has: a tenth
+   * of a radian a point at curvature one half is a point every 0.2 m of its perimeter.
+   * Neighbouring stations are 0.2 m apart along the polygon, so their straight-line
+   * distance is 0.2 less at most what a corner of 5.6 degrees cuts: a quarter of a
+   * millimetre.
+   */
+  it("round a circle of radius 2 at a tenth of a radian a point: a point every 0.2 m", () => {
+    const polygon: Vec3[] = Array.from({ length: 64 }, (_, i) => [2 * Math.cos((i * Math.PI) / 32), 2 * Math.sin((i * Math.PI) / 32), 0] as Vec3);
+    const out = resampleStrip(polygon, { closed: true, method: "curvature", minDistance: 0.02, maxDistance: 0.5, bias: 0.5, slots: 80, curvature: polygon.map(() => 0.5) });
+    const live = out.live.reduce((sum, flag) => sum + flag, 0);
+    // The perimeter is 64 sides of 4·sin(π/64): 12.56 m, so 62 whole steps of 0.2.
+    expect(live).toBe(62);
+    for (let k = 0; k + 1 < live; k += 1) {
+      const a = out.positions[k]!;
+      const b = out.positions[k + 1]!;
+      expect(Math.hypot(a[0] - b[0], a[1] - b[1]), `stations ${k} and ${k + 1}`).toBeCloseTo(0.2, 3);
+    }
+  });
+
+  it("padding in the input is worth nothing, and the blocked order is the whole one", () => {
+    const padded: Vec3[] = [[0, 0, 0], [0, 0, 0], [1, 0, 0], [4, 0, 0], [4, 0, 0], [4, 0, 0]];
+    const out = resampleStrip(padded, { ...byCurvature, slots: 12, curvature: [0, 0, 0, 0, 0, 0] });
+    expect(out.positions.slice(0, 9).map((p) => p[0])).toEqual([0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]);
+    const curvature = [0, 0, SHARP, SHARP, SHARP];
+    for (const block of [1, 2, 3]) expect(stripDensity(four, false, curvature, shape, block)).toEqual(stripDensity(four, false, curvature, shape));
+    // By Count and by Distance a strip is placed from its lengths alone; by Curvature it is not.
+    expect(() => resampleStations(stripLengths(four, false), { ...byCurvature, slots: 4 })).toThrow(/needs the strip's points and curvature/);
   });
 });
 

@@ -8,7 +8,7 @@ import {
   type PointAttributeSchema,
   type PointAttributeType,
 } from "../../points/attributes.ts";
-import { STRIP_WALK_BLOCK } from "../../points/curve.ts";
+import { STRIP_WALK_BLOCK, resampleTurnPerPoint } from "../../points/curve.ts";
 import { formatTopology } from "../../points/topology.ts";
 import {
   resampleBlockAddWgsl,
@@ -16,6 +16,10 @@ import {
   resampleBlockLengthsWgsl,
   resampleEmitWgsl,
   resampleLengthsWgsl,
+  resampleMeasureAddWgsl,
+  resampleMeasureBlockWgsl,
+  resampleMeasureFoldWgsl,
+  resampleMeasureWgsl,
   type ResampleCarriedAttribute,
 } from "../shaders/curve-resample.wgsl.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
@@ -48,6 +52,15 @@ import { stripsOnEdge } from "./point-strips.ts";
  *
  * ⚑ IT PUBLISHES NO DISTANCE AND NO FRAME (D4). Curve Frames is the one node that measures
  * a strip, so Resample runs BEFORE it. The lengths this node walks are its own scratch.
+ *
+ * ⚑ BY CURVATURE IT READS THE CURVATURE, FOR THE SAME REASON (slice 7). More points where
+ * the strip turns, between a Min and a Max Distance: TouchDesigner's Line Resample "By
+ * Curvature". How sharply a strip turns at a point is a thing Curve Frames measures, with
+ * its rule for coincident points and its own long-strip passes; a second measurement of it
+ * here would be a second answer. So this method reads an f32 attribute — `curvature`, from a
+ * Curve Frames placed BEFORE the node — and refuses by name without it. It is then Distance
+ * over another measure (points' worth of curve rather than metres), and any f32 attribute
+ * can stand in for the curvature: more points where it is larger.
  *
  * ⚑ EVERY ATTRIBUTE IS OWNED AFRESH. Slots move, so nothing can pass by reference: float
  * attributes are interpolated linearly between the two input points around a station and
@@ -91,7 +104,11 @@ export function resampleAttributes(
 }
 
 const byDistance = (values: Readonly<Record<string, unknown>>): boolean => values["method"] === "distance";
-const byParameter = (values: Readonly<Record<string, unknown>>): boolean => !byDistance(values) && values["spacing"] === "parameter";
+const byCurvature = (values: Readonly<Record<string, unknown>>): boolean => values["method"] === "curvature";
+/** The two methods whose point count follows the curve, into Max Points slots. */
+const intoSlots = (values: Readonly<Record<string, unknown>>): boolean => byDistance(values) || byCurvature(values);
+const byParameter = (values: Readonly<Record<string, unknown>>): boolean => !intoSlots(values) && values["spacing"] === "parameter";
+const notCurvature = (why: string) => (values: Readonly<Record<string, unknown>>): string | null => (byCurvature(values) ? null : why);
 
 export const pointResampleNode: NodeDefinition = {
   type: "pointResample",
@@ -99,7 +116,7 @@ export const pointResampleNode: NodeDefinition = {
   title: "Resample",
   category: "points",
   description:
-    "Places new points along every strip of a pointset: by Count (so many, at Even Length along the curve or at Even Parameter, the same number between each pair of the input's own points) or by Distance (one every so many metres, into Max Points slots per strip). Offset slides them along the curve and Range uses part of it — that is the trim. By Distance a strip can be shorter than its slots: the spare slots repeat the nearest point and the live attribute is 0 there, so draw instances with Group p.live > 0.5. Every attribute is interpolated. Put Curve Frames after it.",
+    "Places new points along every strip of a pointset: by Count (so many, at Even Length along the curve or at Even Parameter, the same number between each pair of the input's own points), by Distance (one every so many metres, into Max Points slots per strip) or by Curvature (closer together where the curve turns, between a Min and a Max Distance; it reads the curvature attribute, so put a Curve Frames before it). Offset slides them along the curve and Range uses part of it — that is the trim. By Distance and by Curvature a strip can be shorter than its slots: the spare slots repeat the nearest point and the live attribute is 0 there, so draw instances with Group p.live > 0.5. Every attribute is interpolated. Put Curve Frames after it.",
   tags: ["points", "curve", "strips", "resample", "spacing", "distance", "trim", "line", "spline", "cloner"],
   inputs: [
     {
@@ -116,7 +133,7 @@ export const pointResampleNode: NodeDefinition = {
       label: "Points",
       type: { kind: "pointset" as const, requires: [{ name: "position", type: "vec3f" as const }] },
       description:
-        "The same strips with their points re-placed: Count points per strip, or Max Points slots per strip by Distance. Every attribute of the input is carried, interpolated between the two points around each new one (integers take the earlier point). By Distance it adds live (f32): 1 on a point of the strip, 0 on a spare slot.",
+        "The same strips with their points re-placed: Count points per strip, or Max Points slots per strip by Distance and by Curvature. Every attribute of the input is carried, interpolated between the two points around each new one (integers take the earlier point). By Distance and by Curvature it adds live (f32): 1 on a point of the strip, 0 on a spare slot.",
     },
   ],
   parameters: {
@@ -125,13 +142,14 @@ export const pointResampleNode: NodeDefinition = {
       label: "Method",
       default: "count",
       compileTime: true,
-      // §V831: APPEND only — Curvature (§T1586b slice 7) takes the next row.
+      // §V831: APPEND only.
       options: [
         { value: "count", label: "Count" },
         { value: "distance", label: "Distance" },
+        { value: "curvature", label: "Curvature" },
       ],
       description:
-        "Count: a fixed number of points per strip, all of them live. Distance: a point every Distance metres; how many depends on the curve's length, so the strip is allocated Max Points slots and the live attribute marks the ones in use.",
+        "Count: a fixed number of points per strip, all of them live. Distance: a point every Distance metres; how many depends on the curve's length, so the strip is allocated Max Points slots and the live attribute marks the ones in use. Curvature: points closer together where the curve turns and farther apart where it runs straight, between Min Distance and Max Distance, into Max Points slots — fewer points on the straights for the same shape.",
     },
     count: {
       type: "number",
@@ -142,7 +160,7 @@ export const pointResampleNode: NodeDefinition = {
       range: "bounded",
       step: 1,
       compileTime: true,
-      inactiveWhen: (values) => (byDistance(values) ? "By Distance the number of points follows the curve's length." : null),
+      inactiveWhen: (values) => (intoSlots(values) ? "By Distance and by Curvature the number of points follows the curve." : null),
       description: "Points per strip. One point sits on the start of the Range.",
     },
     spacing: {
@@ -154,7 +172,7 @@ export const pointResampleNode: NodeDefinition = {
         { value: "length", label: "Even Length" },
         { value: "parameter", label: "Even Parameter" },
       ],
-      inactiveWhen: (values) => (byDistance(values) ? "By Distance the points are a fixed length apart." : null),
+      inactiveWhen: (values) => (intoSlots(values) ? "By Distance and by Curvature the spacing is the method's own." : null),
       description:
         "Even Length: the points are the same distance apart along the curve, so something riding them moves at a steady speed. Even Parameter: the same number of new points between each pair of the input's points, however far apart those are — Notch's Length and Knots.",
     },
@@ -169,6 +187,48 @@ export const pointResampleNode: NodeDefinition = {
       description:
         "Metres between points, along the curve. If a strip would need more than Max Points, the spacing widens until the whole Range fits: the curve is never cut short.",
     },
+    minDistance: {
+      type: "number",
+      label: "Min Distance",
+      default: 0.02,
+      min: 0,
+      range: "floor",
+      step: 0.001,
+      inactiveWhen: notCurvature("Only the Curvature method varies its spacing."),
+      description: "Curvature: the closest two points come, in metres — the spacing where the curve turns hardest.",
+    },
+    maxDistance: {
+      type: "number",
+      label: "Max Distance",
+      default: 0.5,
+      min: 0,
+      range: "floor",
+      step: 0.01,
+      inactiveWhen: notCurvature("Only the Curvature method varies its spacing."),
+      description:
+        "Curvature: the farthest apart two points sit, in metres — the spacing along a straight. If a strip would need more than Max Points, every spacing widens together until the whole Range fits.",
+    },
+    bias: {
+      type: "number",
+      label: "Min Max Bias",
+      default: 0.5,
+      min: 0,
+      max: 1,
+      range: "bounded",
+      step: 0.01,
+      inactiveWhen: notCurvature("Only the Curvature method varies its spacing."),
+      description:
+        "Curvature: toward the Max Distance (0) or toward the Min (1). It sets how much the curve may turn between two points: a whole radian at 0, a tenth of one (5.7 degrees, a circle in 63 points) at 0.5, a hundredth at 1. Where that asks for a spacing outside Min and Max, the limit wins.",
+    },
+    curvatureAttribute: {
+      type: "string",
+      label: "Curvature Attribute",
+      default: "curvature",
+      compileTime: true,
+      inactiveWhen: notCurvature("Only the Curvature method reads how the curve turns."),
+      description:
+        "Curvature: the f32 attribute that says how sharply the curve turns at each point, in 1 ÷ metres. Curve Frames publishes it as curvature when Metrics is on, so put one before this node. Any f32 attribute works: the points gather where it is larger.",
+    },
     maxPoints: {
       type: "number",
       label: "Max Points",
@@ -178,7 +238,7 @@ export const pointResampleNode: NodeDefinition = {
       range: "bounded",
       step: 1,
       compileTime: true,
-      inactiveWhen: (values) => (byDistance(values) ? null : "Count already says how many slots a strip has."),
+      inactiveWhen: (values) => (intoSlots(values) ? null : "Count already says how many slots a strip has."),
       description: "Slots allocated per strip. Changing it reallocates.",
     },
     anchor: {
@@ -190,7 +250,7 @@ export const pointResampleNode: NodeDefinition = {
         { value: "start", label: "Start" },
         { value: "end", label: "End" },
       ],
-      inactiveWhen: (values) => (byDistance(values) ? null : "Count spans the Range from end to end."),
+      inactiveWhen: (values) => (intoSlots(values) ? null : "Count spans the Range from end to end."),
       description:
         "Which end the points are measured from. Start: the first slot is on the start of the Range and spare slots collect at the tail. End: the LAST slot is on the end of the Range and spare slots collect at the head — a tentacle whose tip must reach its target while its slack is stowed at the root. A closed strip used whole has no ends, and its points start from its first one.",
     },
@@ -204,7 +264,7 @@ export const pointResampleNode: NodeDefinition = {
       step: 0.01,
       inactiveWhen: (values) => (byParameter(values) ? "Even Parameter has no length to slide along." : null),
       description:
-        "Metres to slide every point along the curve. On an open strip a point that slides past an end of the Range stops being live (Distance) or waits at the end (Count); on a closed strip used whole the points go round.",
+        "Metres to slide every point along the curve. On an open strip a point that slides past an end of the Range stops being live (Distance, Curvature) or waits at the end (Count); on a closed strip used whole the points go round. By Curvature it is the first point that slides by this much; the rest follow at their own spacing.",
     },
     rangeStart: {
       type: "number",
@@ -277,9 +337,9 @@ export const pointResampleNode: NodeDefinition = {
       );
     }
 
-    const method = parameters["method"] === "distance" ? "distance" : "count";
+    const method = parameters["method"] === "distance" ? "distance" : parameters["method"] === "curvature" ? "curvature" : "count";
     const spacing = method === "count" && parameters["spacing"] === "parameter" ? "parameter" : "length";
-    const anchor = method === "distance" && parameters["anchor"] === "end" ? "end" : "start";
+    const anchor = method !== "count" && parameters["anchor"] === "end" ? "end" : "start";
     const walksLength = !(method === "count" && spacing === "parameter");
     if (!walksLength && upstream.pairs[LIVE_ATTRIBUTE.name] !== undefined) {
       /* Even in the input's POINTS — and some of those points are padding. The stations
@@ -305,6 +365,22 @@ export const pointResampleNode: NodeDefinition = {
     }
     if (position.type !== "vec3f") return refuse(`the incoming position is ${position.type ?? "untyped"}, not vec3f.`);
 
+    /* Curvature: how the strip turns is READ, never worked out here (the docblock's last ⚑). */
+    let turning: PointsetAttributeRef | undefined;
+    if (method === "curvature") {
+      const name = typeof parameters["curvatureAttribute"] === "string" && parameters["curvatureAttribute"].trim() !== "" ? parameters["curvatureAttribute"].trim() : "curvature";
+      const carriedTurning = upstream.pairs[name];
+      if (carriedTurning === undefined || carriedTurning.type !== "f32") {
+        return refuse(
+          carriedTurning === undefined
+            ? `Resample by Curvature reads how sharply each strip turns from the f32 attribute "${name}", which the incoming pointset does not carry.`
+            : `Resample by Curvature reads how sharply each strip turns from "${name}", which is ${carriedTurning.type ?? "untyped"}; it needs an f32, in 1 ÷ metres.`,
+          `Put a Curve Frames before this node with Metrics on (it publishes curvature), or name another f32 attribute. It provides: ${available.join(", ")}.`,
+        );
+      }
+      turning = carriedTurning;
+    }
+
     const colsOut = Math.max(method === "count" ? 1 : 2, Math.round(readNumber(parameters, method === "count" ? "count" : "maxPoints", method === "count" ? 64 : 256)));
     const capacity = colsOut * strips.rows;
     if (capacity > MAX_POINTS) {
@@ -314,7 +390,7 @@ export const pointResampleNode: NodeDefinition = {
         "node.points.capacity",
       );
     }
-    const publishesLive = method === "distance";
+    const publishesLive = method !== "count";
     const schema = resampleAttributes(carried, publishesLive);
     const storage = packedPointStorage(nodeId, schema, capacity, "write");
     if (!storage.ok) return refuse(storage.errors.join(" "), undefined, "node.points.capacity");
@@ -353,6 +429,22 @@ export const pointResampleNode: NodeDefinition = {
         ]
       : [];
     const closed = strips.closed ? 1 : 0;
+    const offset = readNumber(parameters, "offset", 0);
+    const rangeStart = Math.min(1, Math.max(0, readNumber(parameters, "rangeStart", 0)));
+    const rangeEnd = Math.min(1, Math.max(0, readNumber(parameters, "rangeEnd", 1)));
+
+    /* Curvature measures a strip in POINTS as well as metres: both per point in one buffer
+       (x metres, y points), both totals per strip in another. The three numbers that turn a
+       curvature into points per metre reach every pass that reads one. */
+    const farthest = Math.max(readNumber(parameters, "maxDistance", 0.5), 1e-6);
+    const nearest = Math.min(Math.max(readNumber(parameters, "minDistance", 0.02), 1e-6), farthest);
+    const density = { sparsest: 1 / farthest, densest: 1 / nearest, perRadian: 1 / resampleTurnPerPoint(readNumber(parameters, "bias", 0.5)) };
+    const measureId = scratchResourceId(nodeId, "measure");
+    const measureTotalsId = scratchResourceId(nodeId, "measureTotals");
+    const measureBindings: BufferBindingDescriptor[] = [
+      { binding: "measure", resourceId: measureId },
+      { binding: "measureTotals", resourceId: measureTotalsId },
+    ];
 
     const lengths: DispatchPassDescriptor = {
       kind: "dispatch",
@@ -376,25 +468,29 @@ export const pointResampleNode: NodeDefinition = {
         groups: groups.length,
         attributes,
         ...(liveRegion === undefined ? {} : { liveWord: liveRegion.offset / 4 }),
+        ...(turning === undefined ? {} : { curvature: { group: groupOf(turning), word: turning.offset / 4 } }),
       }),
       entryPoint: "main",
       workgroups: [Math.ceil(capacity / 64), 1, 1],
       buffers: [
         ...groups.map((group, index) => ({ binding: `pk_${index}`, resourceId: group.resourceId, half: group.half })),
-        ...lengthBindings,
+        ...(method === "curvature" ? measureBindings : lengthBindings),
         // The WHOLE packed buffer: every region is written by offset (T1076).
         { binding: "out_points", resourceId: storage.resourceId, half: "write" as const },
       ],
-      uniforms: {
-        colsIn: strips.cols,
-        rows: strips.rows,
-        closed,
-        colsOut,
-        distance: Math.max(0, readNumber(parameters, "distance", 0.1)),
-        offset: readNumber(parameters, "offset", 0),
-        rangeStart: Math.min(1, Math.max(0, readNumber(parameters, "rangeStart", 0))),
-        rangeEnd: Math.min(1, Math.max(0, readNumber(parameters, "rangeEnd", 1))),
-      },
+      uniforms:
+        method === "curvature"
+          ? { colsIn: strips.cols, rows: strips.rows, closed, colsOut, offset, rangeStart, rangeEnd, ...density }
+          : {
+              colsIn: strips.cols,
+              rows: strips.rows,
+              closed,
+              colsOut,
+              distance: Math.max(0, readNumber(parameters, "distance", 0.1)),
+              offset,
+              rangeStart,
+              rangeEnd,
+            },
       uniformBinding: "params",
       nodeId,
     };
@@ -446,6 +542,83 @@ export const pointResampleNode: NodeDefinition = {
           },
         ]
       : [];
+
+    if (method === "curvature" && turning !== undefined) {
+      /* ── Curvature: the strip measured in metres AND in points, then the same emit ──
+         One walk per strip up to a block; past that, every block sums itself, one pass per
+         strip turns the sums into each block's start, and every point adds its block's. */
+      const measureStartsBinding: BufferBindingDescriptor = { binding: "measureStarts", resourceId: scratchResourceId(nodeId, "measureStarts") };
+      const sources = [attributeBinding("in_position", position), attributeBinding("in_curvature", turning)];
+      const long = strips.cols > STRIP_WALK_BLOCK;
+      const measure: DispatchPassDescriptor[] = long
+        ? [
+            {
+              kind: "dispatch",
+              id: `${nodeId}:resample:measure:block`,
+              shader: resampleMeasureBlockWgsl(),
+              entryPoint: "main",
+              // One invocation per BLOCK.
+              workgroups: [Math.ceil((strips.rows * blocks) / 64), 1, 1],
+              buffers: [...sources, { binding: "measure", resourceId: measureId }, measureStartsBinding],
+              uniforms: { cols: strips.cols, rows: strips.rows, closed, blocks, ...density },
+              uniformBinding: "params",
+              nodeId,
+            },
+            {
+              kind: "dispatch",
+              id: `${nodeId}:resample:measure:fold`,
+              shader: resampleMeasureFoldWgsl(),
+              entryPoint: "main",
+              workgroups: [Math.ceil(strips.rows / 64), 1, 1],
+              buffers: [measureStartsBinding, { binding: "measureTotals", resourceId: measureTotalsId }],
+              uniforms: { rows: strips.rows, blocks },
+              uniformBinding: "params",
+              nodeId,
+            },
+            {
+              kind: "dispatch",
+              id: `${nodeId}:resample:measure:add`,
+              shader: resampleMeasureAddWgsl(),
+              entryPoint: "main",
+              // One thread per input POINT.
+              workgroups: [Math.ceil((strips.cols * strips.rows) / 64), 1, 1],
+              buffers: [measureStartsBinding, { binding: "measure", resourceId: measureId }],
+              uniforms: { cols: strips.cols, rows: strips.rows, blocks },
+              uniformBinding: "params",
+              nodeId,
+            },
+          ]
+        : [
+            {
+              kind: "dispatch",
+              id: `${nodeId}:resample:measure`,
+              shader: resampleMeasureWgsl(),
+              entryPoint: "main",
+              // One invocation per STRIP: each walks its own strip, in order.
+              workgroups: [Math.ceil(strips.rows / 64), 1, 1],
+              buffers: [...sources, ...measureBindings],
+              uniforms: { cols: strips.cols, rows: strips.rows, closed, ...density },
+              uniformBinding: "params",
+              nodeId,
+            },
+          ];
+      return {
+        passes: [...measure, emit],
+        scratch: [
+          { key: "measure", kind: "buffer" as const, stride: 8, capacity: upstream.capacity },
+          { key: "measureTotals", kind: "buffer" as const, stride: 8, capacity: strips.rows },
+          ...(long ? [{ key: "measureStarts", kind: "buffer" as const, stride: 8, capacity: strips.rows * blocks }] : []),
+          storage.scratch,
+        ],
+        pointsets: {
+          out: {
+            pairs: storage.pairs,
+            capacity,
+            topology: formatTopology({ kind: "strips", cols: colsOut, rows: strips.rows, closed: strips.closed }),
+          },
+        },
+      };
+    }
 
     return {
       passes: !walksLength ? [emit] : blocked ? [...blockedLengths, emit] : [lengths, emit],

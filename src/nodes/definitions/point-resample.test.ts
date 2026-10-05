@@ -232,6 +232,112 @@ describe("Resample — an input strip longer than one block (T1586b slice 6)", (
   });
 });
 
+/**
+ * T1586b slice 7 — Resample by Curvature at the fixture level: how the curvature it reads
+ * and the three numbers that turn it into a spacing reach its passes, and what it refuses.
+ * The points it places are asserted on Dawn.
+ */
+describe("Resample — by Curvature (T1586b slice 7)", () => {
+  const MEASURED = fixturePairs(
+    "frames_spine",
+    [
+      { name: "position", type: "vec3f" },
+      { name: "curvature", type: "f32" },
+      { name: "heat", type: "f32" },
+      { name: "tangent", type: "vec3f" },
+    ],
+    7500,
+  );
+  const curved = (topology: string, parameters: Record<string, unknown> = {}, pairs: typeof MEASURED = MEASURED) =>
+    compile(topology, { method: "curvature", ...parameters }, { capacity: 7500, pairs });
+  const declared = (shader: string): string[] => {
+    const body = shader.slice(shader.indexOf("struct "), shader.indexOf("};"));
+    return [...body.matchAll(/^\s+(\w+):/gm)].map((match) => match[1] as string);
+  };
+
+  it("measures each strip in metres and in points with one walk, then places into Max Points slots with live", () => {
+    const result = curved("strips:100x4", { maxPoints: 64 });
+    expect(result.diagnostics ?? []).toEqual([]);
+    const [measure, emit] = result.passes as [Pass, Pass];
+    expect(result.passes).toHaveLength(2);
+    expect(measure.id).toBe("resample_rings:resample:measure");
+    expect(measure.workgroups).toEqual([1, 1, 1]); // four strips, one invocation each
+    // It READS the curvature: a binding of its own in the walk, and by offset in the emit.
+    expect(measure.buffers.map((entry) => entry.binding)).toEqual(["in_position", "in_curvature", "measure", "measureTotals"]);
+    expect(emit.buffers.map((entry) => entry.binding)).toEqual(["pk_0", "measure", "measureTotals", "out_points"]);
+    expect(emit.id).toBe("resample_rings:resample:emit:curvature:length:start:64x4");
+    const out = result.pointsets?.["out"];
+    expect(out?.topology).toBe("strips:64x4");
+    expect(out?.pairs["live"]?.type).toBe("f32");
+    // The curvature it read rides out with every other attribute, interpolated.
+    expect(Object.keys(out?.pairs ?? {}).sort()).toEqual(["curvature", "heat", "live", "position", "tangent"]);
+    expect((result.scratch ?? []).map((entry) => (entry as { key: string }).key)).toEqual(["measure", "measureTotals", "@points"]);
+  });
+
+  /**
+   * The three numbers reach the passes as what the shader multiplies by: points per metre
+   * on a straight (1 ÷ Max Distance), where the strip turns hardest (1 ÷ Min Distance), and
+   * points per radian (1 ÷ the turn the Bias allows a step).
+   */
+  it("Min, Max and Bias reach both passes as two densities and a number of points per radian", () => {
+    const [measure, emit] = curved("strips:100x4").passes as [Pass, Pass];
+    for (const pass of [measure, emit]) {
+      expect(pass.uniforms["sparsest"]).toBe(2);
+      expect(pass.uniforms["densest"]).toBe(50);
+      expect(pass.uniforms["perRadian"]).toBeCloseTo(10, 12);
+    }
+    const tuned = curved("strips:100x4", { minDistance: 0.25, maxDistance: 4, bias: 1 }).passes[1] as Pass;
+    expect(tuned.uniforms).toMatchObject({ sparsest: 0.25, densest: 4 });
+    expect(tuned.uniforms["perRadian"]).toBeCloseTo(100, 9);
+    // A Min above the Max leaves one spacing: the Max.
+    expect((curved("strips:100x4", { minDistance: 3, maxDistance: 0.5 }).passes[1] as Pass).uniforms).toMatchObject({ sparsest: 2, densest: 2 });
+    // Distance has no part in it: the spacing is the method's own.
+    expect(Object.keys(emit.uniforms)).not.toContain("distance");
+  });
+
+  it("every pass sets exactly the uniforms its shader declares, for a short strip and a long one", () => {
+    for (const topology of ["strips:100x4", "strips:2500x3:closed"]) {
+      const result = curved(topology, { anchor: "end" });
+      expect(result.diagnostics ?? []).toEqual([]);
+      for (const pass of result.passes as Pass[]) expect(declared(pass.shader), pass.id).toEqual(Object.keys(pass.uniforms));
+    }
+  });
+
+  it("a strip longer than one block is measured by a block pass, a fold and an add, then the same emit", () => {
+    const short = curved("strips:1024x3");
+    const long = curved("strips:1025x3");
+    expect((long.passes as Pass[]).map((pass) => pass.id.split(":").slice(2, 4).join(":"))).toEqual(["measure:block", "measure:fold", "measure:add", "emit:curvature"]);
+    const passes = long.passes as Pass[];
+    expect(passes[0]!.buffers.map((entry) => entry.binding)).toEqual(["in_position", "in_curvature", "measure", "measureStarts"]);
+    expect(passes[1]!.buffers.map((entry) => entry.binding)).toEqual(["measureStarts", "measureTotals"]);
+    expect(passes[2]!.buffers.map((entry) => entry.binding)).toEqual(["measureStarts", "measure"]);
+    // The emit pass does not know its input was long.
+    expect(passes[3]!.shader).toBe((short.passes as Pass[])[1]!.shader);
+    expect((long.scratch ?? []).map((entry) => (entry as { key: string }).key)).toEqual(["measure", "measureTotals", "measureStarts", "@points"]);
+  });
+
+  it("any f32 attribute can stand in for the curvature, by name", () => {
+    const [measure, emit] = curved("strips:100x4", { curvatureAttribute: "heat" }).passes as [Pass, Pass];
+    const plain = curved("strips:100x4").passes[1] as Pass;
+    // Another region of the same buffer: the walk's binding moves, and the emit's text does.
+    expect(measure.buffers[1]).not.toEqual((curved("strips:100x4").passes[0] as Pass).buffers[1]);
+    expect(emit.shader).not.toBe(plain.shader);
+  });
+
+  it("refuses to guess how the strip turns: no such attribute, or one that is not an f32", () => {
+    const bare = fixturePairs("kernel_source", [{ name: "position", type: "vec3f" }], 7500);
+    const missing = errorOf(curved("strips:100x4", {}, bare));
+    expect(missing.code).toBe("node.points.resample");
+    expect(missing.message).toContain('the f32 attribute "curvature", which the incoming pointset does not carry');
+    expect(missing.suggestion).toContain("Put a Curve Frames before this node with Metrics on");
+    expect(missing.suggestion).toContain("It provides: position.");
+    const vector = errorOf(curved("strips:100x4", { curvatureAttribute: "tangent" }));
+    expect(vector.message).toContain('"tangent", which is vec3f');
+    // The other methods never read it: a strip with no curvature resamples by Distance as before.
+    expect(compile("strips:100x4", { method: "distance" }, { capacity: 7500, pairs: bare }).diagnostics ?? []).toEqual([]);
+  });
+});
+
 describe("Resample — refusals, each by name (§V288)", () => {
   it("an edge with no strips (D10)", () => {
     const refused = errorOf(compile("points"));

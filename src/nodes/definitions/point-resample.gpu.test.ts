@@ -63,7 +63,8 @@ async function resampleFrom<T = Resampled>(
   parameters: Record<string, unknown>,
   also?: Also<T>,
 ): Promise<T> {
-  const byDistance = parameters["method"] === "distance";
+  // By Distance and by Curvature the strip is allocated Max Points slots and publishes live.
+  const byDistance = parameters["method"] === "distance" || parameters["method"] === "curvature";
   const colsOut = Number(byDistance ? (parameters["maxPoints"] ?? 256) : (parameters["count"] ?? 64));
   const capacity = colsOut * strips.rows;
   const sink = drawnTo("resample_rings", capacity);
@@ -522,4 +523,234 @@ describe("Resample on Dawn — input strips longer than one block (T1586b slice 
     // The control: the curve really moved between frame 0 and frame 5.
     expect(still).not.toEqual(direct);
   }, 120_000);
+});
+
+/**
+ * T1586b slice 7 — RESAMPLE BY CURVATURE on a real device.
+ *
+ * The method READS how a strip turns from an f32 attribute, so the first tests write that
+ * attribute by hand onto a straight line: the arithmetic is then exact, and a spacing is
+ * the Max, the Min, or the root of a quadratic a person can write down. Then the real
+ * chain — a polygon, measured by Curve Frames, resampled — and the reference on strips
+ * with no symmetry.
+ */
+describe("Resample on Dawn — by Curvature: closer together where the strip turns (T1586b slice 7)", () => {
+  const SHARP = 1000;
+  const curved = { method: "curvature", minDistance: 0.125, maxDistance: 0.5, bias: 0.5 };
+  const turning = (values: number[]): AuthoredAttribute => ({ name: "curvature", type: "f32", values });
+
+  it("a straight is a point every Max Distance, a strip that turns hard everywhere a point every Min — exactly", async () => {
+    const straight = await resample(LINE_OF_FOUR, { cols: 5, rows: 1 }, { ...curved, maxPoints: 16 }, [turning([0, 0, 0, 0, 0])]);
+    expect(straight.x).toEqual([0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4, 4, 4, 4, 4, 4, 4]);
+    expect(straight.live).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]);
+    const tight = await resample(LINE_OF_FOUR, { cols: 5, rows: 1 }, { ...curved, maxPoints: 40 }, [turning([SHARP, SHARP, SHARP, SHARP, SHARP])]);
+    expect(tight.x.slice(0, 33)).toEqual(Array.from({ length: 33 }, (_, k) => k * 0.125));
+    expect(tight.live).toEqual(Array.from({ length: 40 }, (_, k) => (k < 33 ? 1 : 0)));
+  }, 60_000);
+
+  /**
+   * Straight for a metre, one segment in which the density climbs from 2 a metre to 8, then
+   * hard-turning to the end. The climbing segment is worth (2 + 8) ÷ 2 = 5 points, and a
+   * station s points into it is t of the way along where 2t + 3t² = s: t = 2s ÷ (2 + √(4 +
+   * 12s)). A mark that is ten times x at every input point reads ten times x at every
+   * station, so every attribute was read at the same place the position was.
+   */
+  it("where the density climbs along a segment the stations close up by the quadratic's root, attributes with them", async () => {
+    const out = await resample(
+      LINE_OF_FOUR,
+      { cols: 5, rows: 1 },
+      { ...curved, maxPoints: 32 },
+      [turning([0, 0, SHARP, SHARP, SHARP]), { name: "mark", type: "f32", values: [0, 10, 20, 30, 40] }],
+      async (read, result) => ({ ...result, mark: Array.from((await read("mark")).floats) }),
+    );
+    expect(out.live).toEqual(Array.from({ length: 32 }, (_, k) => (k < 24 ? 1 : 0)));
+    expect(out.x.slice(0, 3)).toEqual([0, 0.5, 1]);
+    for (const s of [1, 2, 3, 4]) expect(out.x[2 + s], `station ${s} of the climb`).toBeCloseTo(1 + (2 * s) / (2 + Math.sqrt(4 + 12 * s)), 5);
+    expect(out.x[7]).toBe(2);
+    expect(out.x.slice(7, 24)).toEqual(Array.from({ length: 17 }, (_, k) => 2 + k * 0.125));
+    out.x.forEach((x, k) => expect(out.mark[k], `mark at slot ${k}`).toBeCloseTo(10 * x, 4));
+  }, 60_000);
+
+  /**
+   * The Range is a share of the strip's LENGTH and the Offset is metres, as for every
+   * method: half way along this strip is x = 2, though half its points are spent by 2.56.
+   * Over budget, every spacing widens together and the strip is still covered to its end.
+   */
+  it("the Range is a share of the length, the Offset is metres, and over budget the strip is still covered", async () => {
+    const extras = [turning([0, 0, SHARP, SHARP, SHARP])];
+    const half = await resample(LINE_OF_FOUR, { cols: 5, rows: 1 }, { ...curved, maxPoints: 32, rangeStart: 0.5 }, extras);
+    expect(half.x.slice(0, 3)).toEqual([2, 2.125, 2.25]);
+    expect(half.live!.reduce((sum, flag) => sum + flag, 0)).toBe(17);
+    const slid = await resample(LINE_OF_FOUR, { cols: 5, rows: 1 }, { ...curved, maxPoints: 32, offset: 0.5 }, extras);
+    expect(slid.x.slice(0, 2)).toEqual([0.5, 1]);
+    expect(slid.x[2]).toBeCloseTo(1 + 1 / 3, 5);
+    const fromEnd = await resample(LINE_OF_FOUR, { cols: 5, rows: 1 }, { ...curved, maxPoints: 32, anchor: "end" }, extras);
+    expect(fromEnd.x.slice(30)).toEqual([3.875, 4]);
+    expect(fromEnd.live!.slice(0, 9)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    const tight = await resample(LINE_OF_FOUR, { cols: 5, rows: 1 }, { ...curved, maxPoints: 5 }, [turning([0, 0, 0, 0, 0])]);
+    expect(tight.x).toEqual([0, 1, 2, 3, 4]);
+    expect(tight.live).toEqual([1, 1, 1, 1, 1]);
+  }, 60_000);
+
+  /**
+   * THE REAL CHAIN, and the wire cut. A 64-gon of radius 2, closed, measured by Curve
+   * Frames: every corner sits on that circle, so its curvature reads one half. At a tenth
+   * of a radian a point that is a point every 0.2 m of perimeter — 62 of them — and
+   * neighbours are 0.2 m apart along the polygon, so at most a quarter of a millimetre less
+   * in a straight line across one of its corners.
+   *
+   * Point the node at an attribute that is zero instead and the same curve is a point
+   * every Max Distance: the spacing came from the curvature, through the attribute.
+   */
+  it("a circle measured by Curve Frames is a point every turn's worth of arc; read a flat attribute and it is every Max Distance", async () => {
+    const polygon: Vec3[] = Array.from({ length: 64 }, (_, i) => [2 * Math.cos((i * Math.PI) / 32), 2 * Math.sin((i * Math.PI) / 32), 0] as Vec3);
+    const along = async (curvatureAttribute: string): Promise<{ live: number; gaps: number[] }> => {
+      const source = authoredPoints("kernel_source", polygon, [{ name: "flat", type: "f32", values: polygon.map(() => 0) }]);
+      const sink = drawnTo("resample_rings", 80);
+      const graph = curveGraph(
+        [
+          source.node,
+          curveNode("topology_strips", "pointTopology", { connectivity: "strips", cols: 64, rows: 1, wrapU: true }),
+          curveNode("frames_measure", "pointCurveFrames", { frame: false }),
+          curveNode("resample_rings", "pointResample", { method: "curvature", minDistance: 0.02, maxDistance: 0.5, bias: 0.5, maxPoints: 80, curvatureAttribute }),
+          ...sink.nodes,
+        ],
+        [
+          curveEdge(["kernel_source", "out"], ["topology_strips", "points"]),
+          curveEdge(["topology_strips", "out"], ["frames_measure", "points"]),
+          curveEdge(["frames_measure", "out"], ["resample_rings", "points"]),
+          ...sink.edges,
+        ],
+      );
+      const schema = resampleAttributes(
+        [
+          { name: "position", type: "vec3f" },
+          { name: "flat", type: "f32" },
+          { name: "distance", type: "f32" },
+          { name: "curveU", type: "f32" },
+          { name: "curveLength", type: "f32" },
+          { name: "curvature", type: "f32" },
+        ],
+        true,
+      );
+      return onDawn(graph, async (session) => {
+        const position = (await session.read("resample_rings", schema, 80, "position")).floats;
+        const live = Array.from((await session.read("resample_rings", schema, 80, "live")).floats).reduce((sum, flag) => sum + flag, 0);
+        const gaps: number[] = [];
+        for (let k = 0; k + 1 < live; k += 1) {
+          const a = vecAt(position, k);
+          const b = vecAt(position, k + 1);
+          gaps.push(Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!));
+        }
+        return { live, gaps };
+      });
+    };
+    const turned = await along("curvature");
+    expect(turned.live).toBe(62);
+    turned.gaps.forEach((gap, k) => expect(gap, `stations ${k} and ${k + 1}`).toBeCloseTo(0.2, 3));
+    // The perimeter is 12.56 m: 25 whole steps of the Max Distance.
+    const flat = await along("flat");
+    expect(flat.live).toBe(25);
+    flat.gaps.forEach((gap, k) => expect(gap, `flat stations ${k} and ${k + 1}`).toBeCloseTo(0.5, 2));
+  }, 60_000);
+
+  /** Curvature with no pattern on strips with no symmetry: the device places what the CPU reference places. */
+  it("agrees with the CPU reference on two unlike strips, open and closed, from either end", async () => {
+    const stripA: Vec3[] = [[0, 0, 0], [1, 0.25, 0], [1.5, 1, 0.5], [1, 2, 1.5], [0, 2.5, 1], [-1, 2, 0]];
+    const stripB: Vec3[] = [[4, 0, 0], [4, 1, 0], [5, 1, 1], [5, 3, 1], [3, 3, 2], [3, 0, -1]];
+    const turns = [0.05, 0.9, 0.3, 2.5, 0.01, 0.6, 1.2, 0, 0.4, 3, 0.2, 0.7];
+    const cases: Array<{ parameters: Record<string, unknown>; options: Omit<ResampleOptions, "closed" | "curvature"> }> = [
+      {
+        parameters: { method: "curvature", minDistance: 0.05, maxDistance: 0.6, bias: 0.4, maxPoints: 96 },
+        options: { method: "curvature", minDistance: 0.05, maxDistance: 0.6, bias: 0.4, slots: 96 },
+      },
+      {
+        parameters: { method: "curvature", minDistance: 0.1, maxDistance: 0.4, bias: 0.6, maxPoints: 64, anchor: "end", offset: 0.07, rangeStart: 0.15, rangeEnd: 0.9 },
+        options: { method: "curvature", minDistance: 0.1, maxDistance: 0.4, bias: 0.6, slots: 64, anchor: "end", offset: 0.07, rangeStart: 0.15, rangeEnd: 0.9 },
+      },
+    ];
+    for (const entry of cases) {
+      for (const closed of [false, true]) {
+        const out = await resample([...stripA, ...stripB], { cols: 6, rows: 2, closed }, entry.parameters, [turning(turns)]);
+        const cols = entry.options.slots;
+        [stripA, stripB].forEach((strip, row) => {
+          const expected = resampleStrip(strip, { ...entry.options, closed, curvature: turns.slice(row * 6, row * 6 + 6) });
+          expect(out.live!.slice(row * cols, (row + 1) * cols), `${closed ? "closed" : "open"} strip ${row} live`).toEqual(expected.live);
+          expected.positions.forEach((point, k) =>
+            point.forEach((value, axis) =>
+              expect(out.position[row * cols + k]![axis], `${JSON.stringify(entry.parameters)} ${closed ? "closed" : "open"} strip ${row} slot ${k}`).toBeCloseTo(value, 4),
+            ),
+          );
+        });
+      }
+    }
+  }, 120_000);
+
+  /**
+   * Strips longer than one block are measured by many walks at once. Half-unit steps along
+   * +X for 2,500 points with no curvature, and a Max Distance of 2: half a point a metre,
+   * so every sum is a multiple of a quarter and a station every 2 m lands on an input
+   * point in every block, exactly. And on a curve with no symmetry and a curvature of its
+   * own, with padding across the seams, the device agrees with the reference in its
+   * blocked order.
+   */
+  it("input strips longer than one block: exact along a line through both seams, and the reference on a padded curve", async () => {
+    const line = formulaPoints("kernel_source", 2500, "  q.position = vec3f(f32(i) * 0.5, 0.0, 0.0);\n  q.curvature = 0.0;", [{ name: "curvature", type: "f32" }]);
+    const even = await resampleFrom(line, { cols: 2500, rows: 1 }, { method: "curvature", minDistance: 0.5, maxDistance: 2, maxPoints: 640 });
+    expect(even.x).toEqual(Array.from({ length: 640 }, (_, k) => Math.min(k, 624) * 2));
+    expect(even.live).toEqual(Array.from({ length: 640 }, (_, k) => (k < 625 ? 1 : 0)));
+
+    const wander = formulaPoints(
+      "kernel_source",
+      7000,
+      `  let j = i / 3500u;
+  var s = i % 3500u;
+  if (s >= 1020u) { s = 1020u; }
+  if (i % 3500u >= 1030u) { s = i % 3500u - 10u; }
+  if (i % 3500u >= 2040u) { s = 2030u; }
+  if (i % 3500u >= 3080u) { s = i % 3500u - 1050u; }
+  let t = f32(s) * 0.013 + f32(j) * 1.7;
+  q.position = vec3f(cos(t) * (1.0 + 0.3 * sin(t * 2.7)), sin(t * 1.3) * 0.8 + 0.2 * cos(t * 3.1), sin(t * 0.7) + f32(s) * 0.001);
+  q.curvature = 1.5 + 1.4 * sin(t * 2.1);`,
+      [{ name: "curvature", type: "f32" }],
+    );
+    const parameters = { method: "curvature", minDistance: 0.03, maxDistance: 0.2, bias: 0.5, maxPoints: 1400 };
+    const sink = drawnTo("resample_rings", 2800);
+    const graph = curveGraph(
+      [
+        wander.node,
+        curveNode("topology_strips", "pointTopology", { connectivity: "strips", cols: 3500, rows: 2 }),
+        curveNode("resample_rings", "pointResample", parameters),
+        ...sink.nodes,
+      ],
+      [curveEdge(["kernel_source", "out"], ["topology_strips", "points"]), curveEdge(["topology_strips", "out"], ["resample_rings", "points"]), ...sink.edges],
+    );
+    const schema = resampleAttributes([{ name: "position", type: "vec3f" }, { name: "curvature", type: "f32" }], true);
+    await onDawn(graph, async (session) => {
+      const position = (await session.read("resample_rings", schema, 2800, "position")).floats;
+      const live = Array.from((await session.read("resample_rings", schema, 2800, "live")).floats);
+      const input = (await session.read("kernel_source", wander.schema, 7000, "position")).floats;
+      const turns = (await session.read("kernel_source", wander.schema, 7000, "curvature")).floats;
+      for (const strip of [0, 1]) {
+        const points = Array.from({ length: 3500 }, (_, k) => vecAt(input, strip * 3500 + k) as unknown as Vec3);
+        const expected = resampleStrip(points, {
+          closed: false,
+          method: "curvature",
+          minDistance: 0.03,
+          maxDistance: 0.2,
+          bias: 0.5,
+          slots: 1400,
+          curvature: Array.from(turns.subarray(strip * 3500, (strip + 1) * 3500)),
+        });
+        expect(live.slice(strip * 1400, (strip + 1) * 1400), `strip ${strip} live`).toEqual(expected.live);
+        // More than a point every Max Distance would give, fewer than the slots: the density is at work.
+        const count = expected.live.reduce((sum, flag) => sum + flag, 0);
+        expect(count).toBeGreaterThan(300);
+        expect(count).toBeLessThan(1400);
+        expected.positions.forEach((point, k) =>
+          point.forEach((value, axis) => expect(vecAt(position, strip * 1400 + k)[axis], `strip ${strip} slot ${k} axis ${axis}`).toBeCloseTo(value, 3)),
+        );
+      }
+    });
+  }, 240_000);
 });
