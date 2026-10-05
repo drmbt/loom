@@ -86,14 +86,48 @@ function example(fileName: string): Animated {
 }
 
 /**
- * The first consumer's document with its claw as nine pieces and shadows on: thirteen
- * geometries, the scene the cost was measured on. Its kit is not in the repository, so the
- * meshes are sized as cubes; a compile reads the sizes and nothing else.
+ * What this file needs of ANOTHER SESSION'S project, checked before anything is built on
+ * it. `sentinelDocument` and `KIT_FIXTURE` belong to `src/projects/sentinel-bot`, which
+ * changes under its own author; when their shape changes, this says so in one sentence
+ * instead of failing three lines later on an undefined field.
  */
-function sentinel(): Animated {
+function consumerDocument(): { graph: GraphDocument; settings: ProjectSettings } {
+  const changed = (what: string): Error =>
+    new Error(
+      `The consumer's document builder changed its signature: ${what}. This test (T1603b) reads sentinelDocument(facts, { width, height, robots, tier, shadows, hingedClaws }) and KIT_FIXTURE from src/projects/sentinel-bot; update how it calls them here, or tell that session.`,
+    );
+  const fixture = KIT_FIXTURE as unknown as Record<string, unknown>;
+  for (const key of ["robot", "ring", "hub", "claw", "phalanxMeshes", "phalanges"]) {
+    if (!(key in fixture)) throw changed(`KIT_FIXTURE has no "${key}"`);
+  }
+  if (!Array.isArray(fixture["phalanges"]) || !Array.isArray(PACK) || PACK.length === 0) throw changed("KIT_FIXTURE.phalanges or PACK is not a list");
+  if (typeof sentinelDocument !== "function") throw changed("sentinelDocument is not a function");
+  // The kit is not in the repository, so its meshes are sized as cubes; a compile reads the sizes and nothing else.
   const mesh = (select: string) => ({ select, vertices: 24, triangles: 12, parts: "" });
   const facts = { ...KIT_FIXTURE, robot: mesh("hull"), ring: mesh("ring"), hub: mesh("hub"), claw: mesh("claw"), phalanxMeshes: KIT_FIXTURE.phalanges.map((_, which) => mesh(`phalanx${String(which)}`)) };
-  const built = sentinelDocument(facts, { width: 320, height: 180, robots: PACK.slice(0, 1), tier: "live", shadows: true, hingedClaws: true });
+  let built: unknown;
+  try {
+    built = sentinelDocument(facts, { width: 320, height: 180, robots: PACK.slice(0, 1), tier: "live", shadows: true, hingedClaws: true });
+  } catch (error) {
+    throw changed(`sentinelDocument threw "${error instanceof Error ? error.message : String(error)}"`);
+  }
+  const document = built as { graph?: { nodes?: Record<string, { type?: string }> }; settings?: unknown };
+  if (document.graph?.nodes === undefined || document.settings === undefined) throw changed("it no longer returns { graph, settings }");
+  // The scene this test is about: nine claw pieces, the ring and the hull as geometries, and a light that casts.
+  const types = Object.values(document.graph.nodes).map((node) => node.type);
+  const geometries = types.filter((type) => type === "geometry").length;
+  if (geometries < 12 || !types.includes("render") || !types.includes("light")) {
+    throw changed(`{ hingedClaws: true, shadows: true } built ${String(geometries)} geometries (twelve or more expected), ${types.includes("render") ? "a" : "no"} render and ${types.includes("light") ? "a" : "no"} light`);
+  }
+  return built as { graph: GraphDocument; settings: ProjectSettings };
+}
+
+/**
+ * The first consumer's document with its claw as nine pieces and shadows on: thirteen
+ * geometries, the scene the cost was measured on.
+ */
+function sentinel(): Animated {
+  const built = consumerDocument();
   const graph = built.graph;
   const logical = compiledWithoutCatalogue(graph);
   const session = createValueGraphSession(registry);
