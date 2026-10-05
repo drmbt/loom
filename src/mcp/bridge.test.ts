@@ -1227,7 +1227,7 @@ describe("the parameter modes reach an MCP client (T1207)", () => {
     expect(instructions).toContain("op('constant1').par.value");
     expect(instructions).toContain("op('lfo1').chan.value");
     // The mechanism that shipped and nobody found (T1204).
-    expect(instructions).toContain("op('mask1').chan.lagFrames");
+    expect(instructions).toContain("op('personmask1').chan.lagFrames");
   });
 
   it("publishes the same mode list on the schema of the tool that sets parameters", async () => {

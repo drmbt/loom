@@ -1540,7 +1540,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
         `${PARAMETER_MODES} ` +
         `${NODE_NAMES} ` +
         "An async source publishes its own latency, so `cache.index` as an expression " +
-        "`op('mask1').chan.lagFrames` delays a sibling branch by exactly the lag the mask introduced. " +
+        "`op('personmask1').chan.lagFrames` delays a sibling branch by exactly the lag the mask introduced. " +
         assemblies;
       /**
        * T1211 — THE POINTER (AND EVERY OTHER LIVE SIGNAL) IS UNAVAILABLE HERE, BY NAME.
