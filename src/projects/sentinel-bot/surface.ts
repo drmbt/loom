@@ -5,7 +5,7 @@
  * says what that surface is. The look lives here, not in the file.
  */
 export const HULL_SURFACE_WGSL = `struct Params {
-  gloss: f32, // @default 0.2  Roughness of the black shell: lower is wetter.
+  gloss: f32, // @default 0.16  Roughness of the black shell: lower is wetter.
   eyeGlow: f32, // @default 9  Radiance of the eye lenses.
   eyeColor: vec3f, // @default [1, 0.06, 0.03]  Their colour.
   coreGlow: f32, // @default 1.5  Radiance of the red cores.
@@ -39,7 +39,8 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
     o.roughness = 0.22;
     o.metallic = 1.0;
   } else {
-    o.albedo = vec4f(0.018, 0.019, 0.022, 1.0);
+    // Black enamel: almost no diffuse, so under a lamp it stays black and only its highlights read.
+    o.albedo = vec4f(0.006, 0.0065, 0.008, 1.0);
     o.roughness = p.gloss;
     o.metallic = 0.0;
   }

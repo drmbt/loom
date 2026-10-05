@@ -3,7 +3,7 @@ import { renderHeadless, type RenderedFrame } from "../../tests/headless/render-
 import { nodeGpuHost } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { encodePng } from "../../runtime/export/png.ts";
 import { toRgba8At } from "../../runtime/export/image.ts";
-import { sentinelDocument } from "./document.ts";
+import { PACK, sentinelDocument } from "./document.ts";
 import { loadKit } from "./load-kit.ts";
 
 /**
@@ -15,6 +15,7 @@ import { loadKit } from "./load-kit.ts";
  *     [--strip 4,8,0.25]            8 stills from 4 s, 0.25 s apart (a motion strip)
  *     [--set joints.crawl=0.5,speed.value=6]   parameter overrides by node id
  *     [--cam=-7.5,1.1,0.6]          the chase shot, placed: metres ahead of the robot, right, up
+ *     [--robots 3]                  the first N of the pack (document.ts, PACK); default the leader alone
  *     [--shot 3]                    hold one of the rig's shots (camera.ts): 0 chase, 1 lead, 2 flank, 3 post, 4 circle
  *     [--tag name]                  file name prefix
  *
@@ -46,7 +47,7 @@ const overrides = (flag("set") ?? "").split(",").filter((entry) => entry !== "")
 
 const { facts, glb } = loadKit(glbPath, "media/sentinel-bot/sentinel.glb");
 const camera = flag("cam")?.split(",").map(Number);
-const built = sentinelDocument(facts, { width, height });
+const built = sentinelDocument(facts, { width, height, robots: PACK.slice(0, Number(flag("robots") ?? 1)) });
 // The camera's place is the panel's: the chase shot held, its distance (metres behind) and its side / height pad.
 if (camera !== undefined) overrides.push({ nodeId: "toggle_cuts", parameter: "on", value: false }, { nodeId: "slider_shot", parameter: "value", value: 0 }, { nodeId: "distance", parameter: "value", value: -(camera[0] ?? 0) }, { nodeId: "view", parameter: "x", value: camera[1] ?? 0 }, { nodeId: "view", parameter: "y", value: camera[2] ?? 0 });
 const shot = flag("shot");

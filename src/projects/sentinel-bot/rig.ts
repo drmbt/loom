@@ -84,12 +84,13 @@ export const BODY_ATTRIBUTES = JSON.stringify([
 /** The knobs that say where the robot is. Both kernels declare them first, under these names. */
 const PLACE_PARAMS = `  travel: f32, // @default 0  Distance travelled along the tunnel, metres.
   offset: vec3f, // @default 0  The robot's place off the tunnel's axis: right, up, ahead (metres).
-  roll: f32, // @default 0  Roll about its own heading, radians.`;
+  roll: f32, // @default 0  Roll about its own heading, radians.
+  look: vec2f, // @default 0  Where the head turns, radians: x to its right, y up. A perched robot scans with it.`;
 
 const ROBOT_FRAME = `${pathWgsl()}
 // The robot's own frame: on the tunnel's frame at its distance, facing a little way ahead so it
 // turns into a bend before it reaches it, banking into the bend, and never hanging dead still.
-fn robotFrame(travel: f32, offset: vec3f, roll: f32, time: f32) -> Frame {
+fn robotFrame(travel: f32, offset: vec3f, roll: f32, look: vec2f, time: f32) -> Frame {
   let z = travel + offset.z;
   let tunnel = pathFrame(z);
   var frame: Frame;
@@ -100,8 +101,13 @@ fn robotFrame(travel: f32, offset: vec3f, roll: f32, time: f32) -> Frame {
   let up = cross(frame.forward, right);
   // How fast the heading swings, measured a couple of metres either side: the inside of the turn drops.
   let bank = roll - 1.5 * (pathTangent(z + 2.0).x - pathTangent(z - 2.0).x);
-  frame.right = right * cos(bank) + up * sin(bank);
-  frame.up = up * cos(bank) - right * sin(bank);
+  let banked = right * cos(bank) + up * sin(bank);
+  let crown = up * cos(bank) - right * sin(bank);
+  // The head turns: about its own up, then about its own right.
+  let ahead = frame.forward * cos(look.x) + banked * sin(look.x);
+  frame.right = banked * cos(look.x) - frame.forward * sin(look.x);
+  frame.forward = ahead * cos(look.y) + crown * sin(look.y);
+  frame.up = crown * cos(look.y) - ahead * sin(look.y);
   return frame;
 }
 `;
@@ -114,7 +120,7 @@ ${PLACE_PARAMS}
 ${ROBOT_FRAME}
 fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
-  let frame = robotFrame(ctx.params.travel, ctx.params.offset, ctx.params.roll, ctx.absTime);
+  let frame = robotFrame(ctx.params.travel, ctx.params.offset, ctx.params.roll, ctx.params.look, ctx.absTime);
   q.position = frame.origin + frame.right * p.position.x + frame.up * p.position.y + frame.forward * p.position.z;
   q.normal = normalize(frame.right * p.normal.x + frame.up * p.normal.y + frame.forward * p.normal.z);
   return q;
@@ -172,6 +178,8 @@ ${PLACE_PARAMS}
   variety: f32, // @default 1  How differently the robots of a pack step: 0 in unison, 1 each on its own count.
   swim: f32, // @default 0  Let go of the wall and beat the tentacles together like a squid: 0 walking, 1 swimming.
   stroke: f32, // @default 0  Where the beat is, 0 to 1: flung open at 0, snapped shut by a quarter, drifting open again.
+  gesture: f32, // @default 0  What a tentacle with no rung to hold does: 0 trails behind, 1 reaches out and feels about.
+  snap: f32, // @default 0  Shuts the claws of the tentacles that hold nothing: 0 open, 1 shut. A hat on it and they clack.
 };
 ${ROBOT_FRAME}
 const ROBOTS: u32 = ${robots.length}u;
@@ -307,7 +315,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let station = ctx.index % STATIONS;
   let params = ctx.params;
   let offset = params.offset + ROBOT_OFFSET[robot];
-  let body = robotFrame(params.travel, offset, params.roll, ctx.absTime);
+  let body = robotFrame(params.travel, offset, params.roll, params.look, ctx.absTime);
   let bodyZ = params.travel + offset.z;
   let socket = SOCKET[tentacle];
   let root = body.origin + body.right * socket.x + body.up * socket.y + body.forward * socket.z;
@@ -315,14 +323,14 @@ fn process(p: Point, ctx: PointCtx) -> Point {
 
   // ── Walking: stance on one rib, then a swing to the next ──
   let stride = PATH_PERIOD / round(PATH_PERIOD / max(params.stride, 0.5));
-  let own = f32(robot) * 0.37 * params.variety;
-  let cycle = bodyZ / stride + STEP_PHASE[tentacle] + own;
+  let count = f32(robot) * 0.37 * params.variety;
+  let cycle = bodyZ / stride + STEP_PHASE[tentacle] + count;
   let step = floor(cycle);
   let swing = smoothstep(0.0, 1.0, clamp((cycle - step - params.duty) / max(1.0 - params.duty, 1e-3), 0.0, 1.0));
   // A pack in unison plants on the same ribs; with variety each robot draws its own.
   let seed = 1u + u32(f32(robot) * params.variety + 0.5) * 16u;
-  let rib = plant(tentacle, step, stride, bodyZ, own, seed, params);
-  let next = plant(tentacle, step + 1.0, stride, bodyZ, own, seed, params);
+  let rib = plant(tentacle, step, stride, bodyZ, count, seed, params);
+  let next = plant(tentacle, step + 1.0, stride, bodyZ, count, seed, params);
   var walking = mix(rib, next, swing);
   let aloft = sin(swing * 3.14159265);
   walking = mix(walking, pathAt(walking.z), params.lift * aloft);
@@ -339,10 +347,19 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   // Swimming opens and shuts them together: splayed wide at the top of the beat, streamlined after the snap.
   let open = select(smoothstep(0.25, 1.0, params.stroke), 1.0 - smoothstep(0.0, 0.25, params.stroke), params.stroke < 0.25);
   let splay = clamp(params.flare + params.swim * (open * 1.1 - 0.15), -0.2, 1.2);
-  let loose = Bend(
+  let trailing = Bend(
     acos(clamp(dot(leave, wake), -1.0, 1.0)) * (1.0 - splay) / NECK,
     (sin(ctx.absTime * 0.9 + f32(tentacle) * 2.1) * 0.35 - params.swim * open * 0.6) / ARM,
   );
+  // Gesturing: the neck turns the other way, out and forward, and the arm curls and uncurls
+  // on two slow counts of its own, so no two tentacles feel about in step. Swimming overrides it.
+  let own = f32(tentacle) * 1.9 + f32(robot) * 0.7;
+  let feeling = Bend(
+    -(1.0 + 0.35 * sin(ctx.absTime * 0.7 + own)) / NECK,
+    (0.9 * sin(ctx.absTime * 1.1 + own * 1.3) + 0.7 * sin(ctx.absTime * 0.43 + own * 0.6)) / ARM,
+  );
+  let reaching = clamp(params.gesture, 0.0, 1.0) * (1.0 - clamp(params.swim, 0.0, 1.0));
+  let loose = Bend(mix(trailing.neck, feeling.neck, reaching), mix(trailing.arm, feeling.arm, reaching));
 
   // ── Holding: the one arc from socket to claw, bowing the way the socket faces ──
   let span = walking - root;
@@ -405,7 +422,9 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   // ── The claw: each phalanx on its carrier, turned about its hinge ──
   let which = station - RINGS - 1u;
   let knuckle = which - which % 2u;
-  let closed = params.grip * planted;
+  // A planted claw grips; one that holds nothing hangs open, shuts on Snap, and works idly while it feels about.
+  let idle = clamp(params.snap + reaching * (0.5 + 0.5 * sin(ctx.absTime * 2.6 + own)) * 0.6, 0.0, 1.0);
+  let closed = mix(idle * (1.0 - grab), params.grip, planted);
   let knuckleFrame = qmul(qmul(frame, axisAngle(PHALANX_AXIS[knuckle], mix(PHALANX_RANGE[knuckle].x, PHALANX_RANGE[knuckle].y, closed))), PHALANX_REST[knuckle]);
   let knuckleAt = at + qrot(frame, PHALANX_JOINT[knuckle]);
   var jointFrame = knuckleFrame;

@@ -45,7 +45,7 @@ interface Walk {
   slip(instant: number, tentacle: number, station: number): number;
 }
 
-async function walk(instants: number, parameters: Record<string, number> = {}): Promise<Walk> {
+async function walk(instants: number, parameters: Record<string, number | number[]> = {}): Promise<Walk> {
   const step = SPAN / instants;
   const robots = Array.from({ length: instants }, (_, index) => [0, 0, index * step] as const);
   // No wave: it is a deliberate departure from the arc, measured on its own below.
@@ -247,6 +247,41 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     expect(Math.min(...open.behind)).toBeGreaterThan(0);
     // The beat is the difference: cut `stroke` and the two poses are one. Open, the claws stand at least a metre further off the axis.
     expect(open.spread - shut.spread).toBeGreaterThan(1);
+  }, 120_000);
+
+  it("gestures: a tentacle with nothing to hold reaches out instead of trailing", async () => {
+    /** How far behind its socket each wrist is (metres), with every tentacle free. */
+    const behind = async (gesture: number): Promise<number[]> => {
+      const pose = await walk(1, { crawl: 0, gesture });
+      return Array.from({ length: TENTACLES }, (_, tentacle) => {
+        const socket = pose.at(0, tentacle, 0);
+        const claw = pose.at(0, tentacle, FACTS.ringCount);
+        if (socket === undefined || claw === undefined) throw new Error("a free tentacle is stowed");
+        return socket[2] - claw[2];
+      });
+    };
+    const trailing = await behind(0);
+    const reaching = await behind(1);
+    for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) {
+      // Trailing, the wrist streams well aft; gesturing, the neck turns the other way and the same wrist comes at least a metre forward of where it trailed.
+      expect(trailing[tentacle] as number).toBeGreaterThan(1.5);
+      expect((trailing[tentacle] as number) - (reaching[tentacle] as number)).toBeGreaterThan(1);
+    }
+  }, 120_000);
+
+  it("looks: turning the head carries every socket round the body's own up, by exactly the angle asked", async () => {
+    const ANGLE = 0.5;
+    const ahead = await walk(1, { crawl: 0 });
+    const turned = await walk(1, { crawl: 0, look: [ANGLE, 0] });
+    for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) {
+      const from = ahead.at(0, tentacle, 0);
+      const to = turned.at(0, tentacle, 0);
+      const socket = FACTS.sockets[tentacle];
+      if (from === undefined || to === undefined || socket === undefined) throw new Error("a socket is missing");
+      // A point at (x, y, z) in the robot's frame turned about its up axis moves along a chord of the circle of radius √(x² + z²).
+      const chord = 2 * Math.hypot(socket[0], socket[2]) * Math.sin(ANGLE / 2);
+      expect(Math.abs(norm(minus(to, from)) - chord)).toBeLessThan(RESOLUTION);
+    }
   }, 120_000);
 
   it("moves without a pop: halve the step and the largest move halves with it", async () => {

@@ -33,9 +33,23 @@ import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGS
 export interface SentinelDocumentOptions {
   readonly width?: number;
   readonly height?: number;
-  /** Each robot's place off the pack's own: right, up, ahead (metres). Default: one robot, on the axis. */
+  /** Each robot's place off the pack's own: right, up, ahead (metres). Default: the leader alone. The camera follows the first. */
   readonly robots?: readonly Vec3[];
 }
+
+/**
+ * A leader on the axis and two behind it, staggered: far enough apart that no two can reach
+ * the same rung. The document's default is the leader alone, because that is what holds 60
+ * frames a second today: measured in the app at 1280×720 with two shadow-casting lights, one
+ * robot ran 55 to 59 fps and three 50 to 52. Each robot is a 152,490-vertex kernel and a
+ * 213k-triangle hull drawn again in every cube-shadow sweep; an instanced hull with culling
+ * (§T1581b, §T1592b) is what makes a pack cheap.
+ */
+export const PACK: readonly Vec3[] = [
+  [0, 0, 0],
+  [0.7, 0.35, -8.4],
+  [-0.6, -0.25, -15.6],
+];
 
 /** Parameters may be slots (expressions, maps); the shared builder's signature takes values only. */
 function node(id: string, type: string, position: readonly [number, number], parameters: Record<string, StoredParameter>, extra: Partial<GraphNode> = {}): GraphNode {
@@ -64,6 +78,7 @@ const ROBOT: readonly Slider[] = [
   { name: "flare", caption: "Flare", value: 0.25, min: 0, max: 1 },
   { name: "wave", caption: "Wave", value: 0.05, min: 0, max: 0.3 },
   { name: "grip", caption: "Grip", value: 1, min: 0, max: 1 },
+  { name: "slider_gesture", caption: "Gesture", value: 0.6, min: 0, max: 1 },
 ];
 const SCENE: readonly Slider[] = [
   { name: "bore", caption: "Tunnel", value: 2.6, min: 2.2, max: 3.4 },
@@ -87,7 +102,14 @@ const SWIM = on("swim");
 
 export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptions = {}): ProjectDocument {
   const travel = expressionSlot(TRAVEL, 0);
-  const robots = options.robots ?? [[0, 0, 0]];
+  const robots = options.robots ?? PACK.slice(0, 1);
+  // Perched, it eases to a stop (below) and its head scans the tunnel on two slow counts, so the sweep never repeats on the bar.
+  const PERCHED = "op('lag_perched').chan.value";
+  const look: Record<string, StoredParameter> = {
+    look: [0, 0],
+    "look.x": expressionSlot(`${PERCHED} * (0.55 * sin(abstime * 0.5) + 0.2 * sin(abstime * 1.3))`, 0),
+    "look.y": expressionSlot(`${PERCHED} * 0.22 * sin(abstime * 0.37 + 1)`, 0),
+  };
   /** A point of the tunnel's centreline `ahead` metres from the robot, moved by (dx, dy): three expressions, and what a host with no value graph shows. */
   const onPath = (ahead: string, dx: string, dy: string, retained: readonly [number, number, number]): Record<"x" | "y" | "z", StoredParameter> => {
     const z = `(${TRAVEL} + ${ahead})`;
@@ -167,6 +189,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       value: expressionSlot(`${on("speed")} * (1 - ${on("perch")}) * (1 + ${KICK} * 0.6) * (1 + ${SWIM} * (sin(clamp(${STROKE} / 0.25, 0, 1) * 3.14159265) * 1.4 - 0.3))`, 3.2),
     }, { label: "rate1" }),
     node("ease", "valueLag", [-2100, 1000], { lag: 0.25, releaseRatio: 1.6 }, { label: "ease1" }),
+    // Perch, eased: how perched it is, 0 to 1, for the head and the tentacles it frees.
+    node("constant_perch", "constant", [-2400, 1125], { value: expressionSlot(on("perch"), 0) }, { label: "constant_perch" }),
+    node("lag_perched", "valueLag", [-2100, 1125], { lag: 0.6, releaseRatio: 1 }, { label: "lag_perched" }),
     node("travel", "valueSpeed", [-1800, 1000], { minimum: 0, maximum: PATH.period, limit: "loop" }, { label: "travel1" }),
     // The swimming beat: one stroke per bar of the track.
     node("strokeRate", "constant", [-2400, 1250], { value: SHOWCASE_BEAT.bpm / 60 / SHOWCASE_BEAT.beatsPerBar }, { label: "strokerate1" }),
@@ -176,7 +201,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("robot", "meshFileIn", [-2400, 0], { file: facts.glbUrl, select: facts.robot.select, vertices: facts.robot.vertices, triangles: facts.robot.triangles, parts: facts.robot.parts }, { label: "robot1" }),
     // One kernel and one draw per robot until the body is an object with a transform (T1588b).
     ...robots.flatMap((offset, index) => [
-      node(`body${index}`, "pointKernel", [-2100, -index * 150], { capacity: facts.robot.vertices, attributes: BODY_ATTRIBUTES, kernel: BODY_KERNEL, travel, offset: [offset[0], offset[1], offset[2]] }, { label: `body${index}_1` }),
+      node(`body${index}`, "pointKernel", [-2100, -index * 150], { capacity: facts.robot.vertices, attributes: BODY_ATTRIBUTES, kernel: BODY_KERNEL, travel, offset: [offset[0], offset[1], offset[2]], ...look }, { label: `body${index}_1` }),
       node(`bodyGeo${index}`, "geometry", [-1800, -index * 150], { mode: "surface", material: "hull1" }, { label: `bodygeo${index}_1` }),
     ]),
     node("hull", "materialWgsl", [-1800, 150], {
@@ -192,7 +217,12 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       attributes: JOINT_ATTRIBUTES,
       kernel: jointKernel(facts, robots),
       travel,
-      crawl: expressionSlot(on("crawl"), 1),
+      ...look,
+      // Perched, the last three tentacles to take the wall let go of it and feel about.
+      crawl: expressionSlot(`${on("crawl")} * (1 - 0.3 * ${PERCHED})`, 1),
+      gesture: expressionSlot(`${on("slider_gesture")} * (0.5 + 0.5 * ${PERCHED}) * (0.7 + ${LOW} * 0.6)`, 0.3),
+      // A hat clacks the idle claws.
+      snap: expressionSlot(HAT, 0),
       swim: expressionSlot(SWIM, 0),
       stroke: expressionSlot(STROKE, 0),
       stride: expressionSlot(on("stride"), 3.2),
@@ -217,7 +247,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("expression_camera", "valueExpression", [-1800, -600], { expressions: CAMERA_STATEMENTS, defaults: CAMERA_DEFAULTS }, { label: "expression_camera" }),
     // A kick punches the lens in.
     node("cam", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} - ${KICK} * 2.5`, 55), near: 0.05, far: 240 }, { label: "cam1" }),
-    // The eyes throw the tentacles' shadows down the walls.
+    // The eyes throw the tentacles' shadows down the walls: the one shadow the frame budget affords, and the one that tells.
     node("eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.12, 0.06, 1], intensity: expressionSlot(`${on("glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, shadows: true, shadowExtent: 14, shadowSoftness: 1 }, { label: "eyes1" }),
     // The three lamp plates nearest the robot, as lights; they breathe with the low end.
     ...lamps.map((lamp, index) =>
@@ -231,8 +261,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         "position.z": lamp.position.z,
         falloff: "inverseSquare",
         range: 30,
-        // Only the lamp overhead casts: a cube shadow is six more passes of the whole scene.
-        ...(index === 1 ? { shadows: true, shadowExtent: 30, shadowSoftness: 1 } : {}),
+        // The lamps cast no shadow: a cube shadow is six more sweeps of the whole scene, and
+        // with the eyes' it does not hold 60 frames a second (measured in the app, 1280×720:
+        // no shadows 2.2 ms of GPU, the eyes' alone 4.6 ms, both 6 to 39 ms and 55 fps).
       }, { label: `light_lamp${index}` }),
     ),
     node("shot", "render", [-1200, 0], {
@@ -267,6 +298,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("hits-lag", ["pickHits", "out"], ["hits", "in"]),
     edge("rate-ease", ["rate", "out"], ["ease", "in"]),
     edge("ease-travel", ["ease", "out"], ["travel", "in"]),
+    edge("perch-ease", ["constant_perch", "out"], ["lag_perched", "in"]),
     edge("stroke-rate", ["strokeRate", "out"], ["stroke", "in"]),
     // What the camera rig reads: how far the robot has come, the track's bars, and the panel.
     ...["travel", "clip", "slider_shot", "toggle_cuts", "distance", "view"].map((source, index) => edge(`camera-${source}`, [source, "out"], ["expression_camera", "in"], index)),
