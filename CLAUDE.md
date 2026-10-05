@@ -31,7 +31,8 @@ pnpm build               # tsc -b && vite build  (CI runs this; vite-only breaka
 pnpm lint                # eslint . — custom invariant rules, see below
 pnpm typecheck           # THE type gate. Bare `tsc --noEmit` at root checks nothing (solution tsconfig).
 pnpm test                # vitest run, both workspace projects — 580 files, 8k+ tests, >2 min
-pnpm test:gates          # the 48 gate files no selector can find — ~7.4 s. See "Scoping test runs".
+pnpm test:gates          # the 56 gate files no selector can find — ~15 s. See "Scoping test runs". Cap it with `pnpm test:gates --maxWorkers=2` (NO `--` before the flags: pnpm forwards it and vitest then ignores them).
+pnpm test:first-import   # every module under src/domain, src/compiler, src/runtime imported as the FIRST module of a fresh node (§V1028) — ~10 s
 pnpm test:headless       # only the "headless" (node env) project
 pnpm test:e2e            # playwright, src/tests/e2e, boots dev server itself
 pnpm helper              # the local helper: stdio MCP server + loopback device bridge (was `mcp:serve`, still aliased)
@@ -67,7 +68,7 @@ The bare `node --experimental-strip-types src/...` form is dead and has been "fi
 `pnpm test` is >2 minutes and most changes cannot reach most of it. Default to this ladder instead:
 
 1. **`pnpm vitest run <paths>`** — the tests for what you touched, named directly. Seconds.
-2. **`pnpm test:gates`** — ~7.4 s, and **not optional**. These 48 files walk the *source tree* (`readdirSync`, globs) or the *document set* rather than importing what they check, so **no dependency-graph selector can find them and your own file's tests will never pull them in** (§V957): `composition-seams` (a factory no product entry point reaches), `command-holder` (a command with no coverage row), `emission-sites` (an unregistered pump), `rename-gate` (an unregistered storage address), `layout` (§V389, two nodes on top of each other in a shipped document), `doc-drift`, `tokens`, `helper`, `copy-guard`, `headless`, `side-effects`, and the `guardrails/`. They are the ones that catch what you did not know you touched.
+2. **`pnpm test:gates`** — ~15 s, and **not optional**. These 56 files walk the *source tree* (`readdirSync`, globs) or the *document set* rather than importing what they check, so **no dependency-graph selector can find them and your own file's tests will never pull them in** (§V957): `composition-seams` (a factory no product entry point reaches), `command-holder` (a command with no coverage row), `emission-sites` (an unregistered pump), `rename-gate` (an unregistered storage address), `layout` (§V389, two nodes on top of each other in a shipped document), `doc-drift`, `tokens`, `helper`, `copy-guard`, `headless`, `side-effects`, and the `guardrails/`. They are the ones that catch what you did not know you touched.
 
    **The list is derived, not remembered** (T1273). `gate-list.test.ts` walks `src/**` for tests that discover their subjects by `readdirSync`/`import.meta.glob`, AND (T1274) for non-GPU tests that IMPORT a document-set enumerator (`listExamples`, `EXAMPLE_DOCUMENTS`, …), and fails when one is not named in the `test:gates` script — because a hand-maintained list of the gates nothing can find is one edit away from being wrong, and was: `layout.test.ts` was off it while §V389 sat red on two freshly-landed rows. Add a gate of that class to the script, or exempt it by name with a reason. If it is not CHEAP, give it its own script instead: this one runs before every commit.
 3. **`pnpm typecheck`** — always. It is the cheapest cross-file blast-radius check you have.
@@ -113,6 +114,7 @@ Path aliases: `@domain @compiler @runtime @editor @nodes @ui @agent @devices` �
 - §V63: no `window`/`document` globals under `src/compiler/**` and `src/runtime/**` (worker-movable).
 - §V29: no `.internals` / `.raw` store access outside `src/domain/commands`.
 - §V145: domain types whose names collide with DOM globals (`MediaSource`, …) must be imported explicitly.
+- §V1028 (`v1028/layering-zone`): a layer may not import the layer that imports it — `src/domain/parameters` ↛ `presets`, `components`; `src/domain` ↛ `src/ui`, `src/editor`, react; type-only imports included. A module-scope read across an import cycle fails only under plain `node` (B246), which is why `first-import.test.ts` is on `test:gates`.
 
 ## Examples are executable specs
 
