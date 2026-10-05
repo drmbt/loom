@@ -326,6 +326,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
    * owner 2026-10-05). Eight columns across and every control the full width, so a row is an
    * eighth of the phone's width tall and each panel is one screen.
    */
+  // Each is published to the phone (Phone: on). That opens nothing by itself: a phone reaches them only through
+  // the helper's phone door, armed by its own flag and opened from the paired tab.
   const COLUMNS = 8;
   const row = (member: string, y: number): { member: string; rect: { x: number; y: number; w: number; h: number } } => ({ member, rect: { x: 0, y, w: COLUMNS, h: 1 } });
   const heading = (label: string, y: number): { label: string; rect: { x: number; y: number; w: number; h: number } } => ({ label, rect: { x: 0, y, w: COLUMNS, h: 1 } });
@@ -628,7 +630,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
 
     // ── The panel: the piece's own words ──
     ...controls,
-    ...panels.map((panel, index) => node(panel.id, "panel", [-2400 + index * 300, 3500], { title: panel.title, board: panel.board }, { label: panel.id })),
+    ...panels.map((panel, index) => node(panel.id, "panel", [-2400 + index * 300, 3500], { title: panel.title, board: panel.board, remote: true }, { label: panel.id })),
   ];
 
   const edges: GraphEdge[] = [
