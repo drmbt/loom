@@ -93,10 +93,31 @@ describe("a document's source", () => {
 
 describe("a test that names nodes", () => {
   it("moves a literal that is a name, and shows one that is also an id instead of guessing", () => {
-    const source = `expect(byLabel("rd1")).toBeDefined();\nexpect(graph.nodes["dim"]).toBeDefined();\nexpect(source).toBe("op('rd1').chan.x");`;
+    const source = `expect(byLabel("rd1")).toBeDefined();\nexpect(labelled("dim")).toBeDefined();\nexpect(source).toBe("op('rd1').chan.x");`;
     const done = rewriteTest("x.test.ts", source, table({ rd1: "wgsl_reaction", dim: "level_dim" }, { idsToo: ["dim"] }));
-    expect(done.text).toBe(`expect(byLabel("wgsl_reaction")).toBeDefined();\nexpect(graph.nodes["dim"]).toBeDefined();\nexpect(source).toBe("op('wgsl_reaction').chan.x");`);
-    expect(done.notes).toEqual([`line 2: "dim" is a node's name and a node's id: left alone`]);
+    expect(done.text).toBe(`expect(byLabel("wgsl_reaction")).toBeDefined();\nexpect(labelled("dim")).toBeDefined();\nexpect(source).toBe("op('wgsl_reaction').chan.x");`);
+    expect(done.notes).toEqual([`line 2: "dim" is a node's name and, here or in another document, a node's id: left alone`]);
+  });
+
+  /*
+   * The literal mistake of the sweep's first batch. `cut1` is the name of a node inside
+   * DepthCut. A test of DepthCut's ports gave its own instance the ID `cut1`, the tool took
+   * the four strings for the name and renamed them, and the record still keyed `cut1` no
+   * longer held the node its edges pointed at. Nothing failed: every edge moved together.
+   * It was simply no longer the fixture its author wrote.
+   */
+  it("never moves a string written as an id, though the word is a name in another document", () => {
+    const fixture = [
+      `const instance = node("cut1", componentNodeType("depthCut", 1));`,
+      `const edges = { e: { source: { nodeId: "cut1", portId: "out" } } };`,
+      `edge("e2", ["cut1", "out"], ["sink", "input"]);`,
+      `expect(graph.nodes["cut1"]).toBe(instance);`,
+    ].join("\n");
+    const reads = `expect(byLabel("cut1")).toBeDefined();`;
+    const done = rewriteTest("x.test.ts", `${fixture}\n${reads}`, table({ cut1: "mask_cut" }));
+    // The four ids are what they were. The one string that asks for the NAME moved.
+    expect(done.text).toBe(`${fixture}\nexpect(byLabel("mask_cut")).toBeDefined();`);
+    expect(done.notes).toEqual([1, 2, 3, 4].map((line) => `line ${String(line)}: "cut1" is written as a node's ID here, and is a node's name elsewhere: an id is never moved`));
   });
 });
 

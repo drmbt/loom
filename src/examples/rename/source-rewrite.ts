@@ -38,7 +38,11 @@ export interface NameTable {
   readonly typed: ReadonlyMap<string, string>;
   /** Old names that two of its scopes rename differently: never rewritten, always noted. */
   readonly clash: ReadonlySet<string>;
-  /** Old names that are also some node's ID: a bare literal of one may be either. */
+  /**
+   * Old names that are also some node's ID, in ANY shipped document, not only the ones this
+   * file builds: a bare literal of one may be either, and a test's own fixture is as likely
+   * to borrow the word for an id as for a name.
+   */
   readonly idsToo: ReadonlySet<string>;
 }
 
@@ -213,6 +217,37 @@ function labelType(node: ts.Node): string | undefined {
   return builderType(assignment);
 }
 
+/**
+ * Is this string written where a node's ID goes? An id is an address: edges are written
+ * against it, and it is never rewritten, whatever name it shares a word with.
+ *
+ * `node("cut1", componentNodeType("depthCut", 1))` is why this exists. `cut1` is the name
+ * of a node inside DepthCut, and here it is the id a test gave its own instance: the sweep's
+ * first batch renamed it, in four places, and left the record keyed `cut1` behind.
+ */
+function idPosition(node: ts.Node): boolean {
+  const parent = node.parent;
+  if (ts.isPropertyAssignment(parent) && parent.initializer === node) {
+    const key = ts.isIdentifier(parent.name) || ts.isStringLiteral(parent.name) ? parent.name.text : "";
+    return key === "nodeId" || key === "id";
+  }
+  // `graph.nodes["dim"]`
+  if (ts.isElementAccessExpression(parent) && parent.argumentExpression === node) return /nodes$/i.test(parent.expression.getText());
+  // `["dim", "out"]`: an edge's endpoint.
+  if (ts.isArrayLiteralExpression(parent) && parent.elements.length === 2 && parent.elements[0] === node) {
+    const port = parent.elements[1];
+    return port !== undefined && ts.isStringLiteralLike(port);
+  }
+  // `node("dim", "level", …)`: the first argument of a call whose second says a node type.
+  if (ts.isCallExpression(parent) && parent.arguments[0] === node) {
+    const second = parent.arguments[1];
+    if (second === undefined) return false;
+    if (ts.isCallExpression(second) || ts.isTemplateExpression(second)) return true;
+    return ts.isStringLiteralLike(second) && (second.text in NODE_KINDS || second.text.startsWith("component:") || second.text.includes("."));
+  }
+  return false;
+}
+
 /** Is this expression written where a node's NAME goes? */
 function namePosition(node: ts.Node): boolean {
   const parent = node.parent;
@@ -254,12 +289,17 @@ function rewriteTypeScript(path: string, text: string, table: NameTable, byPosit
     const start = node.getStart(source) + 1;
     const end = node.getEnd() - 1;
     const raw = text.slice(start, end);
+    if (idPosition(node)) {
+      // Said, so a person can see the word is in use for both; never moved.
+      if (table.names.has(raw) || table.clash.has(raw)) session.note(start, `"${raw}" is written as a node's ID here, and is a node's name elsewhere: an id is never moved`);
+      return;
+    }
     if (!byPosition) {
       // A test: any literal that is a name of the documents it tests. A word that is also
       // a node's id could be either, so it is shown and not moved.
       const heads = NAME_LIST.test(raw) ? raw.trim().split(/[\s,]+/).map((piece) => piece.split(/[.:]/)[0] ?? "") : [];
       const either = heads.find((head) => table.names.has(head) && table.idsToo.has(head));
-      if (either !== undefined) session.note(start, `"${either}" is a node's name and a node's id: left alone`);
+      if (either !== undefined) session.note(start, `"${either}" is a node's name and, here or in another document, a node's id: left alone`);
       else if (heads.length > 0) session.names(start, end);
       else session.ops(start, end);
       return;

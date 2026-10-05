@@ -28,8 +28,9 @@ import { rewriteDocumentSource, rewritePage, rewriteTest, type NameTable, type R
  * with the SAME file renamed in memory by the map. Equal means the rewritten source builds
  * exactly the renamed document. `<dir>` must be outside the shipped tree.
  *
- * `--only <text>` does one batch: the scopes whose name contains the text (`E45`,
- * `components/Bloom`, `on-nothing`), widened to every scope that shares a source file with
+ * `--only <text>[,<text>…]` does one batch: the scopes whose name contains a text
+ * (`components/Bloom`, `on-nothing`; an E-number such as `E2` names that one example
+ * exactly), widened to every scope that shares a source file with
  * one of them, because a file cannot be half renamed. It says what it widened to. Names of
  * every other scope are left exactly as they are, in every file.
  *
@@ -99,7 +100,7 @@ function tableFor(scopes: Iterable<string>): NameTable {
     for (const name of namesIn.get(scope) ?? []) {
       if (!map.entries.some((entry) => entry.scope === scope && entry.old === name)) seen.set(name, (seen.get(name) ?? new Set<string>()).add(name));
     }
-    for (const id of idsIn.get(scope) ?? []) ids.add(id);
+    // (ids are read from every scope below, not from this one alone)
   }
   const names = new Map<string, string>();
   const clash = new Set<string>();
@@ -108,6 +109,7 @@ function tableFor(scopes: Iterable<string>): NameTable {
     else if (!news.has(old) && !outside.has(old)) names.set(old, [...news][0] ?? old);
   }
   const typed = new Map([...seenTyped].flatMap(([key, news]) => (news.size === 1 && !outside.has(key) ? [[key, [...news][0] ?? ""] as const] : [])));
+  for (const scopeIds of idsIn.values()) for (const id of scopeIds) ids.add(id);
   return { names, typed, clash, idsToo: new Set([...names.keys()].filter((name) => ids.has(name))) };
 }
 
@@ -202,7 +204,10 @@ for (const project of ["furnace", "on-nothing"]) {
 const only = valueOf("--only");
 if (only !== undefined) {
   const every = [...new Set(map.entries.map((entry) => entry.scope))];
-  const chosen = new Set(every.filter((scope) => scope.includes(only)));
+  // Several at once, by comma. An E-number names ONE example, exactly, as it does for the
+  // examples build: `E2` is not E20 to E29.
+  const asks = only.split(",").map((ask) => ask.trim()).filter((ask) => ask !== "");
+  const chosen = new Set(every.filter((scope) => asks.some((ask) => (/^E[0-9]+$/.test(ask) ? scope.startsWith(`examples/${ask}-`) : scope.includes(ask)))));
   if (chosen.size === 0) throw new Error(`--only ${only} matches no scope that renames anything.`);
   const asked = chosen.size;
   for (let grew = true; grew; ) {
